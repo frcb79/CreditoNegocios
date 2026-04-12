@@ -1,0 +1,254 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --background: hsl(210, 20%, 98%);
+  --foreground: hsl(214, 52%, 15%);
+  --card: hsl(0, 0%, 100%);
+  --card-foreground: hsl(214, 52%, 15%);
+  --popover: hsl(0, 0%, 100%);
+  --popover-foreground: hsl(214, 52%, 15%);
+  --primary: hsl(210, 93%, 28%);
+  --primary-foreground: hsl(0, 0%, 100%);
+  --primary-dark: hsl(210, 93%, 22%);
+  --secondary: hsl(207, 98%, 50%);
+  --secondary-foreground: hsl(0, 0%, 100%);
+  --muted: hsl(210, 20%, 94%);
+  --muted-foreground: hsl(215, 16%, 47%);
+  --accent: hsl(213, 66%, 60%);
+  --accent-foreground: hsl(0, 0%, 100%);
+  --destructive: hsl(0, 84%, 60%);
+  --destructive-foreground: hsl(0, 0%, 100%);
+  --danger: hsl(0, 84%, 60%);
+  --border: hsl(214, 32%, 91%);
+  --input: hsl(214, 32%, 96%);
+  --ring: hsl(210, 93%, 28%);
+  --success: hsl(160, 84%, 39%);
+  --warning: hsl(38, 92%, 50%);
+  --neutral: hsl(215, 16%, 47%);
+  --chart-1: hsl(210, 93%, 28%);
+  --chart-2: hsl(160, 84%, 39%);
+  --chart-3: hsl(38, 92%, 50%);
+  --chart-4: hsl(207, 98%, 50%);
+  --chart-5: hsl(213, 66%, 60%);
+  --sidebar-background: #EBF4FF;
+  --sidebar-foreground: #1E3A5F;
+  --sidebar-primary: #05478a;
+  --sidebar-primary-foreground: #FFFFFF;
+  --sidebar-accent: #D6E6FF;
+  --sidebar-accent-foreground: #1E3A5F;
+  --sidebar-border: #C8DCFF;
+  --sidebar-ring: #048cfc;
+  --font-sans: 'Inter', sans-serif;
+  --font-serif: Georgia, serif;
+  --font-mono: Menlo, monospace;
+  --radius: 1.3rem;
+  --shadow-2xs: 0px 2px 0px 0px hsl(221, 83%, 53% / 0.00);
+  --shadow-xs: 0px 2px 0px 0px hsl(221, 83%, 53% / 0.00);
+  --shadow-sm: 0px 2px 0px 0px hsl(221, 83%, 53% / 0.00), 0px 1px 2px -1px hsl(221, 83%, 53% / 0.00);
+  --shadow: 0px 2px 0px 0px hsl(221, 83%, 53% / 0.00), 0px 1px 2px -1px hsl(221, 83%, 53% / 0.00);
+  --shadow-md: 0px 2px 0px 0px hsl(221, 83%, 53% / 0.00), 0px 2px 4px -1px hsl(221, 83%, 53% / 0.00);
+  --shadow-lg: 0px 2px 0px 0px hsl(221, 83%, 53% / 0.00), 0px 4px 6px -1px hsl(221, 83%, 53% / 0.00);
+  --shadow-xl: 0px 2px 0px 0px hsl(221, 83%, 53% / 0.00), 0px 8px 10px -1px hsl(221, 83%, 53% / 0.00);
+  --shadow-2xl: 0px 2px 0px 0px hsl(221, 83%, 53% / 0.00);
+  --tracking-normal: 0em;
+  --spacing: 0.25rem;
+}
+
+.dark {
+  --background: hsl(214, 35%, 8%);
+  --foreground: hsl(210, 20%, 90%);
+  --card: hsl(214, 30%, 12%);
+  --card-foreground: hsl(210, 20%, 90%);
+  --popover: hsl(214, 30%, 12%);
+  --popover-foreground: hsl(210, 20%, 90%);
+  --primary: hsl(207, 98%, 55%);
+  --primary-foreground: hsl(0, 0%, 100%);
+  --primary-dark: hsl(207, 98%, 45%);
+  --secondary: hsl(213, 66%, 60%);
+  --secondary-foreground: hsl(0, 0%, 100%);
+  --muted: hsl(214, 20%, 18%);
+  --muted-foreground: hsl(215, 16%, 55%);
+  --accent: hsl(210, 93%, 35%);
+  --accent-foreground: hsl(0, 0%, 100%);
+  --destructive: hsl(0, 84%, 60%);
+  --destructive-foreground: hsl(0, 0%, 100%);
+  --danger: hsl(0, 84%, 60%);
+  --border: hsl(214, 20%, 20%);
+  --input: hsl(214, 25%, 16%);
+  --ring: hsl(207, 98%, 55%);
+  --success: hsl(160, 84%, 39%);
+  --warning: hsl(38, 92%, 50%);
+  --neutral: hsl(215, 16%, 55%);
+  --chart-1: hsl(207, 98%, 55%);
+  --chart-2: hsl(160, 84%, 39%);
+  --chart-3: hsl(38, 92%, 50%);
+  --chart-4: hsl(213, 66%, 60%);
+  --chart-5: hsl(210, 93%, 45%);
+  --sidebar-background: hsl(214, 30%, 12%);
+  --sidebar-foreground: hsl(210, 20%, 90%);
+  --sidebar-primary: hsl(207, 98%, 55%);
+  --sidebar-primary-foreground: hsl(0, 0%, 100%);
+  --sidebar-accent: hsl(214, 25%, 20%);
+  --sidebar-accent-foreground: hsl(207, 98%, 60%);
+  --sidebar-border: hsl(214, 20%, 22%);
+  --sidebar-ring: hsl(207, 98%, 55%);
+  --font-sans: 'Inter', sans-serif;
+  --font-serif: Georgia, serif;
+  --font-mono: Menlo, monospace;
+  --radius: 1.3rem;
+  --shadow-2xs: 0px 2px 0px 0px hsl(221, 83%, 53% / 0.00);
+  --shadow-xs: 0px 2px 0px 0px hsl(221, 83%, 53% / 0.00);
+  --shadow-sm: 0px 2px 0px 0px hsl(221, 83%, 53% / 0.00), 0px 1px 2px -1px hsl(221, 83%, 53% / 0.00);
+  --shadow: 0px 2px 0px 0px hsl(221, 83%, 53% / 0.00), 0px 1px 2px -1px hsl(221, 83%, 53% / 0.00);
+  --shadow-md: 0px 2px 0px 0px hsl(221, 83%, 53% / 0.00), 0px 2px 4px -1px hsl(221, 83%, 53% / 0.00);
+  --shadow-lg: 0px 2px 0px 0px hsl(221, 83%, 53% / 0.00), 0px 4px 6px -1px hsl(221, 83%, 53% / 0.00);
+  --shadow-xl: 0px 2px 0px 0px hsl(221, 83%, 53% / 0.00), 0px 8px 10px -1px hsl(221, 83%, 53% / 0.00);
+  --shadow-2xl: 0px 2px 0px 0px hsl(221, 83%, 53% / 0.00);
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply font-sans antialiased bg-background text-foreground;
+  }
+}
+
+/* Custom styles for the broker app - Classic Blue palette */
+.bg-primary\/10 {
+  background-color: hsl(207, 92%, 28% / 0.1);
+}
+
+.bg-secondary\/10 {
+  background-color: hsl(207, 98%, 50% / 0.1);
+}
+
+.bg-warning\/10 {
+  background-color: hsl(38, 92%, 50% / 0.1);
+}
+
+.bg-success\/10 {
+  background-color: hsl(160, 84%, 39% / 0.1);
+}
+
+.bg-danger\/10 {
+  background-color: hsl(0, 84%, 60% / 0.1);
+}
+
+.bg-neutral\/10 {
+  background-color: hsl(207, 35%, 30% / 0.1);
+}
+
+.text-primary {
+  color: hsl(207, 92%, 28%);
+}
+
+.text-primary-dark {
+  color: hsl(207, 92%, 20%);
+}
+
+.text-secondary {
+  color: hsl(207, 98%, 50%);
+}
+
+.text-success {
+  color: hsl(160, 84%, 39%);
+}
+
+.text-warning {
+  color: hsl(38, 92%, 50%);
+}
+
+.text-danger {
+  color: hsl(0, 84%, 60%);
+}
+
+.text-neutral {
+  color: hsl(207, 35%, 30%);
+}
+
+.border-primary {
+  border-color: hsl(207, 92%, 28%);
+}
+
+.border-secondary {
+  border-color: hsl(207, 98%, 50%);
+}
+
+.border-success {
+  border-color: hsl(160, 84%, 39%);
+}
+
+.border-warning {
+  border-color: hsl(38, 92%, 50%);
+}
+
+.border-danger {
+  border-color: hsl(0, 84%, 60%);
+}
+
+.hover\:bg-primary-dark:hover {
+  background-color: hsl(221, 83%, 43%);
+}
+
+.hover\:text-primary-dark:hover {
+  color: hsl(221, 83%, 43%);
+}
+
+.bg-blue-100 {
+  background-color: hsl(221, 83%, 95%);
+}
+
+.bg-green-100 {
+  background-color: hsl(142, 76%, 95%);
+}
+
+.bg-yellow-100 {
+  background-color: hsl(38, 92%, 95%);
+}
+
+.bg-orange-100 {
+  background-color: hsl(25, 95%, 90%);
+}
+
+.bg-red-50 {
+  background-color: hsl(0, 84%, 97%);
+}
+
+.bg-yellow-50 {
+  background-color: hsl(38, 92%, 97%);
+}
+
+.bg-green-50 {
+  background-color: hsl(142, 76%, 97%);
+}
+
+.bg-blue-50 {
+  background-color: hsl(221, 83%, 97%);
+}
+
+.bg-purple-100 {
+  background-color: hsl(270, 95%, 95%);
+}
+
+.text-purple-600 {
+  color: hsl(270, 91%, 65%);
+}
+
+.text-orange-600 {
+  color: hsl(25, 95%, 53%);
+}
+
+.text-green-800 {
+  color: hsl(142, 76%, 25%);
+}
+
+.bg-green-200 {
+  background-color: hsl(142, 76%, 85%);
+}

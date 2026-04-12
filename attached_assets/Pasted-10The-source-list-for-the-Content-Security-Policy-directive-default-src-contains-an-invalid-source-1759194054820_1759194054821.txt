@@ -1,0 +1,84 @@
+10The source list for the Content Security Policy directive 'default-src' contains an invalid source: ''unsafe-dynamic''. It will be ignored.Understand this error
+10The Content-Security-Policy directive 'default-src' contains 'report-uri' as a source expression. Did you want to add it as a directive and forget a semicolon?Understand this error
+10The source list for Content Security Policy directive 'default-src' contains a source with an invalid path: '/api/4509669501698048/security/?sentry_key=7eb3d90eb4660416caf507087367e67e'. The query component, including the '?', will be ignored.Understand this error
+_app-e1a9ecaa502069cd.js:34 
+      /////////////////////
+   ///////////////////////////
+  ////////@@@@@@@//////////////
+  ////////@@@@@@@//////////////
+  ////////@@@@@@@//////////////        Curious and driven?
+  ///////////////@@@@@@@///////        Work with us!
+  ///////////////@@@@@@@///////
+  ///////////////@@@@@@@///////        https://join.replit.com/hack.with.us
+  ////////@@@@@@@//////////////
+  ////////@@@@@@@//////////////
+  ////////@@@@@@#//////////////
+   ///////////////////////////
+      /////////////////////
+      
+CreditoNegocios:1 The source list for the Content Security Policy directive 'default-src' contains an invalid source: ''unsafe-dynamic''. It will be ignored.Understand this error
+CreditoNegocios:1 The Content-Security-Policy directive 'default-src' contains 'report-uri' as a source expression. Did you want to add it as a directive and forget a semicolon?Understand this error
+CreditoNegocios:1 The source list for Content Security Policy directive 'default-src' contains a source with an invalid path: '/api/4509669501698048/security/?sentry_key=7eb3d90eb4660416caf507087367e67e'. The query component, including the '?', will be ignored.Understand this error
+_app-e1a9ecaa502069cd.js:34 [LaunchDarkly] LaunchDarkly client initialized
+framework-52d8d2061846de7f.js:1 Error while parsing the 'sandbox' attribute: 'allow-downloads-without-user-activation' is an invalid sandbox flag.
+_ @ framework-52d8d2061846de7f.js:1Understand this error
+framework-52d8d2061846de7f.js:1 Unrecognized feature: 'ambient-light-sensor'.
+_ @ framework-52d8d2061846de7f.js:1Understand this warning
+framework-52d8d2061846de7f.js:1 Unrecognized feature: 'battery'.
+_ @ framework-52d8d2061846de7f.js:1Understand this warning
+framework-52d8d2061846de7f.js:1 Unrecognized feature: 'execution-while-not-rendered'.
+_ @ framework-52d8d2061846de7f.js:1Understand this warning
+framework-52d8d2061846de7f.js:1 Unrecognized feature: 'execution-while-out-of-viewport'.
+_ @ framework-52d8d2061846de7f.js:1Understand this warning
+framework-52d8d2061846de7f.js:1 Unrecognized feature: 'layout-animations'.
+_ @ framework-52d8d2061846de7f.js:1Understand this warning
+framework-52d8d2061846de7f.js:1 Unrecognized feature: 'legacy-image-formats'.
+_ @ framework-52d8d2061846de7f.js:1Understand this warning
+framework-52d8d2061846de7f.js:1 Unrecognized feature: 'navigation-override'.
+_ @ framework-52d8d2061846de7f.js:1Understand this warning
+framework-52d8d2061846de7f.js:1 Unrecognized feature: 'oversized-images'.
+_ @ framework-52d8d2061846de7f.js:1Understand this warning
+framework-52d8d2061846de7f.js:1 Unrecognized feature: 'publickey-credentials'.
+_ @ framework-52d8d2061846de7f.js:1Understand this warning
+framework-52d8d2061846de7f.js:1 Unrecognized feature: 'speaker-selection'.
+_ @ framework-52d8d2061846de7f.js:1Understand this warning
+framework-52d8d2061846de7f.js:1 Unrecognized feature: 'unoptimized-images'.
+_ @ framework-52d8d2061846de7f.js:1Understand this warning
+framework-52d8d2061846de7f.js:1 Unrecognized feature: 'unsized-media'.
+_ @ framework-52d8d2061846de7f.js:1Understand this warning
+framework-52d8d2061846de7f.js:1 Unrecognized feature: 'pointer-lock'.
+_ @ framework-52d8d2061846de7f.js:1Understand this warning
+framework-52d8d2061846de7f.js:1 Allow attribute will take precedence over 'allowfullscreen'.
+_ @ framework-52d8d2061846de7f.js:1Understand this warning
+framework-52d8d2061846de7f.js:1 Allow attribute will take precedence over 'allowpaymentrequest'.
+_ @ framework-52d8d2061846de7f.js:1Understand this warning
+workspace_iframe.html?initialPath=%2F&id=%3Arc7%3A:32 Error while parsing the 'sandbox' attribute: 'allow-downloads-without-user-activation' is an invalid sandbox flag.Understand this error
+workspace_iframe.html?initialPath=%2F&id=%3Arc7%3A:32 Unrecognized feature: 'ambient-light-sensor'.Understand this warning
+workspace_iframe.html?initialPath=%2F&id=%3Arc7%3A:32 Unrecognized feature: 'battery'.Understand this warning
+workspace_iframe.html?initialPath=%2F&id=%3Arc7%3A:32 Unrecognized feature: 'execution-while-not-rendered'.Understand this warning
+workspace_iframe.html?initialPath=%2F&id=%3Arc7%3A:32 Unrecognized feature: 'execution-while-out-of-viewport'.Understand this warning
+workspace_iframe.html?initialPath=%2F&id=%3Arc7%3A:32 Unrecognized feature: 'layout-animations'.Understand this warning
+workspace_iframe.html?initialPath=%2F&id=%3Arc7%3A:32 Unrecognized feature: 'legacy-image-formats'.Understand this warning
+workspace_iframe.html?initialPath=%2F&id=%3Arc7%3A:32 Unrecognized feature: 'navigation-override'.Understand this warning
+workspace_iframe.html?initialPath=%2F&id=%3Arc7%3A:32 Unrecognized feature: 'oversized-images'.Understand this warning
+workspace_iframe.html?initialPath=%2F&id=%3Arc7%3A:32 Unrecognized feature: 'publickey-credentials'.Understand this warning
+workspace_iframe.html?initialPath=%2F&id=%3Arc7%3A:32 Unrecognized feature: 'speaker-selection'.Understand this warning
+workspace_iframe.html?initialPath=%2F&id=%3Arc7%3A:32 Unrecognized feature: 'unoptimized-images'.Understand this warning
+workspace_iframe.html?initialPath=%2F&id=%3Arc7%3A:32 Unrecognized feature: 'unsized-media'.Understand this warning
+workspace_iframe.html?initialPath=%2F&id=%3Arc7%3A:32 Allow attribute will take precedence over 'allowfullscreen'.Understand this warning
+workspace_iframe.html?initialPath=%2F&id=%3Arc7%3A:32 Allow attribute will take precedence over 'allowpaymentrequest'.Understand this warning
+Network.js:227 WebSocket connection to 'wss://7079fa87-e871-4e9b-834a-023cbc4640b0-00-60whld3bui8e.janeway.replit.dev/?token=C8Db40Jr56Yj' failed: 
+t @ Network.js:227Understand this error
+Network.js:227 Uncaught (in promise) SyntaxError: Failed to construct 'WebSocket': The URL 'wss://localhost:undefined/?token=C8Db40Jr56Yj' is invalid.
+    at new t (Network.js:227:18)
+    at setupWebSocket (client:536:19)
+    at fallback (client:509:16)
+    at WebSocket.<anonymous> (client:555:7)Understand this error
+Console.js:61 `DialogContent` requires a `DialogTitle` for the component to be accessible for screen reader users.
+
+If you want to hide the `DialogTitle`, you can wrap it with our VisuallyHidden component.
+
+For more information, see https://radix-ui.com/primitives/docs/components/dialog
+Mt.forEach.n.<computed> @ Console.js:61Understand this error
+Console.js:61 Warning: Missing `Description` or `aria-describedby={undefined}` for {DialogContent}.
+Mt.forEach.n.<computed> @ Console.js:61Understand this warning

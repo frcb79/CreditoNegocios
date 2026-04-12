@@ -1,0 +1,31 @@
+Productos
+La administración central de los productos de crédito se realiza exclusivamente desde el panel de Superadministrador. Desde aquí, se crean y configuran los productos base, definiendo sus variables fundamentales.
+Posteriormente, estos productos son asignados a cada financiera según su portafolio de ofertas. Una vez asignado un producto, es necesario configurar sus parámetros específicos (como tasas, plazos, requisitos,etc) directamente dentro del perfil de cada financiera, adaptándolo a sus políticas comerciales.
+Adicionalmente para la vista de broker e independiente en la sección de Gestión de Crédito se debe de visualizar y poder seleccionar el producto o productos que esté buscando el cliente o prospecto. 
+En resumen, el flujo es: 1) Crear el producto genérico en Superadmin, 2) Asignarlo a las financieras necesarias, 3) Personalizar sus características para cada una de ellas desde la sección de financiera, 4) Al crear un nuevo crédito (perfil de broker o independiente) deben aparecer las opciones del tipo de producto o productos que está buscando el prospecto o cliente. 
+Variables -> 
+Todas estas variables deben de  aparecer disponibles para todos los productos y se debe de poder incluir nuevas variables en caso de ser requerido. Para cada producto se van a seleccionar las variables que se requiere que aparezcan para que después se terminen de configurar sus parámetros dentro de la sección de financieras.  
+Tipo de crédito 
+Destino
+Monto -> Mínimo y Máximo
+Plazos -> 
+Comisión por apertura
+Tasa de interés -> Mínima y Máxima
+Garantías
+Avales
+Financieras
+Ya se tiene la sección de financieras. Desde el super admin se dan de alta a las financieras y sus condiciones, productos, características, contactos, entre otras cosas. En caso que una entidad (master broker, organización, broker o independiente) quiera añadir una financiera adicional deben de solicitarla desde la sección de financieras dentro del perfil de cada uno. Esta solicitud nos debe de llegar al super admin dentro de una sección de Mensajes que tendrá otras funciones más adelante. 
+Variables -> 
+Todas estas variables deben de aparecer disponibles para todas las financieras y se debe de poder incluir nuevas variables en caso de ser requerido. Para financiera se van a seleccionar que se requiere que aparezcan para que después se terminen de configurar sus parámetros.
+
+Tipo de Cliente: Opciones para seleccionar una o varias:  Persona Moral, PFAE, Persona Física, SIn SAT. 
+Giros con mayor aprobación: campo abierto con opción a agregar más campos
+Presencia: se refiere si es nacional o solo en ciertos estados de la república mexicana
+Giros Prohibidos: campo abierto con opción a agregar más campos
+Tiempo de respuesta: dejar campo abierto y es en días 
+Edad Accionista -> campo para Mínima y Máxima
+Antigüedad de la empresa: campo abierto y es en años
+Buro: utilizar los rangos que ya se tienen para el alta de clientes. 
+Ingresos se necesitan campos para Persona Moral, Pfae, Física y Sin SAT y para cada uno debe tener el mismo rango de ingresos que se utilizó en la sección de alta de clientes 
+Clientes 
+Los brokers, los independientes y las organizaciones pueden dar de alta a nuevos clientes y gestionarlos. Cada cliente tiene su perfilamiento al registrarse, este perfil funciona para hacer match de sus características con los requisitos que la financiera busca. 
