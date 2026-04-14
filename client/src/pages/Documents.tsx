@@ -12,6 +12,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Document, Client } from "@shared/schema";
 import { apiRequest } from "@/lib/queryClient";
+import { buildApiUrl } from "@/lib/runtimeConfig";
 import { useToast } from "@/hooks/use-toast";
 import { formatDistanceToNow } from "date-fns";
 import { es } from "date-fns/locale";
@@ -361,8 +362,7 @@ export default function Documents() {
                         variant="outline"
                         className="flex-1"
                         onClick={() => {
-                          // TODO: Implementar visualizador de documentos
-                          alert('Visualizador de documentos próximamente');
+                          window.open(buildApiUrl(`/api/documents/${document.id}/file`), '_blank', 'noopener,noreferrer');
                         }}
                         data-testid={`button-view-${document.id}`}
                       >
@@ -373,8 +373,7 @@ export default function Documents() {
                         size="sm"
                         variant="outline"
                         onClick={() => {
-                          // TODO: Implementar descarga de documentos
-                          alert('Descarga de documentos próximamente');
+                          window.open(buildApiUrl(`/api/documents/${document.id}/download`), '_blank', 'noopener,noreferrer');
                         }}
                         title="Descargar documento"
                         data-testid={`button-download-${document.id}`}

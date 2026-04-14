@@ -1,5 +1,10 @@
 node_modules
 dist
+.env
+.env.*
+!.env.example
+smoke-report.json
+reports/
 .DS_Store
 server/public
 vite.config.ts.*

@@ -7,16 +7,30 @@ import type { Express, RequestHandler } from "express";
 import memoize from "memoizee";
 import connectPg from "connect-pg-simple";
 import { storage } from "./storage";
+import { replitAuthEnabled } from "./runtimeConfig";
 
-if (!process.env.REPLIT_DOMAINS) {
-  throw new Error("Environment variable REPLIT_DOMAINS not provided");
+if (!process.env.SESSION_SECRET) {
+  throw new Error("Environment variable SESSION_SECRET not provided");
+}
+
+function requireReplitAuthConfig() {
+  if (!replitAuthEnabled) {
+    throw new Error("Replit authentication is not configured for this environment");
+  }
+
+  return {
+    domains: process.env.REPLIT_DOMAINS!.split(",").map((domain) => domain.trim()).filter(Boolean),
+    replitId: process.env.REPL_ID!,
+  };
 }
 
 const getOidcConfig = memoize(
   async () => {
+    const { replitId } = requireReplitAuthConfig();
+
     return await client.discovery(
       new URL(process.env.ISSUER_URL ?? "https://replit.com/oidc"),
-      process.env.REPL_ID!
+      replitId,
     );
   },
   { maxAge: 3600 * 1000 }
@@ -108,6 +122,10 @@ export async function setupAuth(app: Express) {
   app.use(passport.initialize());
   app.use(passport.session());
 
+  if (!replitAuthEnabled) {
+    return;
+  }
+
   const config = await getOidcConfig();
 
   const verify: VerifyFunction = async (
@@ -121,7 +139,7 @@ export async function setupAuth(app: Express) {
   };
 
   // Handle development environment
-  const domains = process.env.REPLIT_DOMAINS?.split(",") || ["127.0.0.1", "localhost"];
+  const { domains, replitId } = requireReplitAuthConfig();
   
   for (const domain of domains) {
     const strategy = new Strategy(
@@ -157,7 +175,7 @@ export async function setupAuth(app: Express) {
     req.logout(() => {
       res.redirect(
         client.buildEndSessionUrl(config, {
-          client_id: process.env.REPL_ID!,
+          client_id: replitId,
           post_logout_redirect_uri: `${req.protocol}://${req.hostname}`,
         }).href
       );

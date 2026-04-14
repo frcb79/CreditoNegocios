@@ -1,11 +1,14 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { WebSocketServer, WebSocket } from "ws";
+import rateLimit from "express-rate-limit";
+import { pool } from "./db";
 import { storage } from "./storage";
 import { setupAuth, isAuthenticated } from "./replitAuth";
 import PDFDocument from "pdfkit";
 import bcrypt from "bcrypt";
 import { sendPasswordResetEmail } from "./emailService";
+import { getDocumentAccessTarget, persistDocumentFile, removeStoredDocument } from "./documentStorage";
 import { 
   generateFinancierasTemplate, 
   generateClientsTemplate, 
@@ -287,6 +290,30 @@ function simulateOcrProcessing(file: Express.Multer.File) {
 }
 
 export async function registerRoutes(app: Express): Promise<Server> {
+  app.get('/api/health', async (_req, res) => {
+    try {
+      await pool.query('select 1');
+
+      res.json({
+        status: 'ok',
+        services: {
+          api: 'ok',
+          database: 'ok',
+        },
+        timestamp: new Date().toISOString(),
+      });
+    } catch (error) {
+      res.status(503).json({
+        status: 'degraded',
+        services: {
+          api: 'ok',
+          database: 'error',
+        },
+        timestamp: new Date().toISOString(),
+      });
+    }
+  });
+
   // Auth middleware
   await setupAuth(app);
 
@@ -310,6 +337,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Rate limiters for auth endpoints
+  const authLoginLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000, // 15 minutes
+    max: 10,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: { message: "Demasiados intentos. Intenta de nuevo en 15 minutos." },
+  });
+
+  const authMutationLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000,
+    max: 5,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: { message: "Demasiados intentos. Intenta de nuevo en 15 minutos." },
+  });
+
   // Local authentication - Register
   const registerSchema = z.object({
     email: z.string().email("Email inválido"),
@@ -318,7 +362,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     lastName: z.string().min(1, "Apellido requerido"),
   });
 
-  app.post('/api/auth/register', async (req: any, res) => {
+  app.post('/api/auth/register', authMutationLimiter, async (req: any, res) => {
     try {
       const data = registerSchema.parse(req.body);
       
@@ -376,7 +420,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     password: z.string().min(1, "Contraseña requerida"),
   });
 
-  app.post('/api/auth/login', async (req: any, res) => {
+  app.post('/api/auth/login', authLoginLimiter, async (req: any, res) => {
     try {
       const data = loginSchema.parse(req.body);
       
@@ -435,7 +479,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     email: z.string().email("Email inválido"),
   });
 
-  app.post('/api/auth/forgot-password', async (req, res) => {
+  app.post('/api/auth/forgot-password', authMutationLimiter, async (req, res) => {
     try {
       const data = forgotPasswordSchema.parse(req.body);
       
@@ -1719,6 +1763,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Document management with OCR
   app.post('/api/documents', isAuthenticated, upload.single('file'), async (req: any, res) => {
+    let storedFilePath: string | undefined;
+
     try {
       const userId = req.user.claims.sub;
       const { clientId, creditId, type } = req.body;
@@ -1730,6 +1776,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       // Simulate OCR processing
       const extractedData = simulateOcrProcessing(file);
+      const storedFile = await persistDocumentFile(file, {
+        brokerId: userId,
+        clientId: clientId || null,
+        creditId: creditId || null,
+        type,
+      });
+      storedFilePath = storedFile.filePath;
       
       const documentData = insertDocumentSchema.parse({
         clientId: clientId || null,
@@ -1737,7 +1790,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         brokerId: userId,
         type,
         fileName: file.originalname,
-        filePath: file.path,
+        filePath: storedFile.filePath,
         fileSize: file.size,
         mimeType: file.mimetype,
         extractedData,
@@ -1747,8 +1800,73 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       res.status(201).json(document);
     } catch (error) {
+      if (storedFilePath) {
+        try {
+          await removeStoredDocument(storedFilePath);
+        } catch (cleanupError) {
+          console.error("Error cleaning up stored document after failed create:", cleanupError);
+        }
+      }
       console.error("Error uploading document:", error);
       res.status(500).json({ message: "Failed to upload document" });
+    }
+  });
+
+  app.get('/api/documents/:id/file', isAuthenticated, async (req: any, res) => {
+    try {
+      const { id } = req.params;
+      const userId = req.user.claims.sub;
+      const user = await storage.getUser(userId);
+
+      const authResult = await authorizeDocumentAccess(userId, user?.role || '', id);
+      if (!authResult.authorized || !authResult.document) {
+        return res.status(authResult.reason === 'Document not found' ? 404 : 403).json({ message: authResult.reason || 'Access denied' });
+      }
+
+      const accessTarget = await getDocumentAccessTarget(authResult.document.filePath, {
+        fileName: authResult.document.fileName,
+      });
+
+      if (accessTarget.kind === 'redirect') {
+        return res.redirect(accessTarget.url);
+      }
+
+      if (authResult.document.mimeType) {
+        res.type(authResult.document.mimeType);
+      }
+
+      res.setHeader('Content-Disposition', `inline; filename="${encodeURIComponent(authResult.document.fileName)}"`);
+      return res.sendFile(accessTarget.absolutePath);
+    } catch (error) {
+      console.error('Error opening document:', error);
+      res.status(500).json({ message: 'Failed to open document' });
+    }
+  });
+
+  app.get('/api/documents/:id/download', isAuthenticated, async (req: any, res) => {
+    try {
+      const { id } = req.params;
+      const userId = req.user.claims.sub;
+      const user = await storage.getUser(userId);
+
+      const authResult = await authorizeDocumentAccess(userId, user?.role || '', id);
+      if (!authResult.authorized || !authResult.document) {
+        return res.status(authResult.reason === 'Document not found' ? 404 : 403).json({ message: authResult.reason || 'Access denied' });
+      }
+
+      const accessTarget = await getDocumentAccessTarget(authResult.document.filePath, {
+        download: true,
+        fileName: authResult.document.fileName,
+      });
+
+      if (accessTarget.kind === 'redirect') {
+        return res.redirect(accessTarget.url);
+      }
+
+      return res.download(accessTarget.absolutePath, authResult.document.fileName);
+    } catch (error) {
+      console.error('Error downloading document:', error);
+      res.status(500).json({ message: 'Failed to download document' });
     }
   });
 
@@ -1818,6 +1936,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   app.put('/api/documents/:id', isAuthenticated, upload.single('file'), async (req: any, res) => {
+    let newStoredFilePath: string | undefined;
+
     try {
       const { id } = req.params;
       const userId = req.user.claims.sub;
@@ -1841,10 +1961,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // If new file is uploaded, update file information and process OCR
       if (file) {
         const extractedData = simulateOcrProcessing(file);
+        const storedFile = await persistDocumentFile(file, {
+          brokerId: userId,
+          clientId: clientId || authResult.document.clientId || null,
+          creditId: creditId || authResult.document.creditId || null,
+          type: type || authResult.document.type,
+        });
+        newStoredFilePath = storedFile.filePath;
+
         updateData = {
           ...updateData,
           fileName: file.originalname,
-          filePath: file.path,
+          filePath: storedFile.filePath,
           fileSize: file.size,
           mimeType: file.mimetype,
           extractedData,
@@ -1854,11 +1982,29 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const document = await storage.updateDocument(id, updateData);
       
       if (!document) {
+        if (newStoredFilePath) {
+          await removeStoredDocument(newStoredFilePath);
+        }
         return res.status(404).json({ message: "Document not found" });
+      }
+
+      if (newStoredFilePath && authResult.document.filePath !== newStoredFilePath) {
+        try {
+          await removeStoredDocument(authResult.document.filePath);
+        } catch (cleanupError) {
+          console.error('Error deleting previous document file after update:', cleanupError);
+        }
       }
       
       res.json(document);
     } catch (error) {
+      if (newStoredFilePath) {
+        try {
+          await removeStoredDocument(newStoredFilePath);
+        } catch (cleanupError) {
+          console.error('Error cleaning up new stored document after failed update:', cleanupError);
+        }
+      }
       console.error("Error updating document:", error);
       res.status(500).json({ message: "Failed to update document" });
     }
@@ -1879,6 +2025,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const success = await storage.deleteDocument(id);
       
       if (success) {
+        try {
+          await removeStoredDocument(authResult.document.filePath);
+        } catch (cleanupError) {
+          console.error('Error deleting stored document file after record deletion:', cleanupError);
+        }
         res.json({ message: "Document deleted successfully" });
       } else {
         res.status(404).json({ message: "Document not found" });

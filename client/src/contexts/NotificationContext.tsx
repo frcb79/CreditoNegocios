@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { useAuth } from '@/hooks/useAuth';
+import { buildWebSocketUrl } from '@/lib/runtimeConfig';
 import { Notification } from '@shared/schema';
 
 interface NotificationContextType {
@@ -56,8 +57,7 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
   useEffect(() => {
     if (!user?.id) return;
 
-    const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-    const wsUrl = `${protocol}//${window.location.host}/ws?userId=${user.id}`;
+    const wsUrl = buildWebSocketUrl(`/ws?userId=${user.id}`);
     const socket = new WebSocket(wsUrl);
 
     socket.onmessage = (event) => {

@@ -8,6 +8,7 @@ import { NotificationProvider } from "@/contexts/NotificationContext";
 import { useEffect } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { isUnauthorizedError } from "@/lib/authUtils";
+import { getAppBaseUrl } from "@/lib/runtimeConfig";
 import NotFound from "@/pages/not-found";
 import Landing from "@/pages/Landing";
 import ResetPassword from "@/pages/ResetPassword";
@@ -48,11 +49,11 @@ function Router() {
       if (isProtected) {
         toast({
           title: "Sesión expirada",
-          description: "Tu sesión ha expirado. Redirigiendo al login...",
+          description: "Tu sesión ha expirado. Redirigiendo al inicio...",
           variant: "destructive",
         });
         setTimeout(() => {
-          window.location.href = "/api/login";
+          window.location.href = `${getAppBaseUrl()}/`;
         }, 500);
       }
     }
