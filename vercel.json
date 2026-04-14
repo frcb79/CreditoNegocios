@@ -3,6 +3,14 @@
   "outputDirectory": "dist/public",
   "rewrites": [
     {
+      "source": "/",
+      "destination": "/landing.html"
+    },
+    {
+      "source": "/index.html",
+      "destination": "/landing.html"
+    },
+    {
       "source": "/(.*)",
       "destination": "/index.html"
     }
