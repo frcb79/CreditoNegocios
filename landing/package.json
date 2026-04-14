@@ -1,0 +1,10 @@
+{
+  "name": "credito-negocios-landing",
+  "private": true,
+  "version": "1.0.0",
+  "scripts": {
+    "build": "node -e \"const fs=require('fs');fs.mkdirSync('public',{recursive:true});fs.copyFileSync('index.html','public/index.html');console.log('Landing build done');\"",
+    "build:client": "npm run build",
+    "vercel-build": "npm run build"
+  }
+}
