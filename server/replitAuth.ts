@@ -38,13 +38,20 @@ const getOidcConfig = memoize(
 
 export function getSession() {
   const sessionTtl = 7 * 24 * 60 * 60 * 1000; // 1 week
-  const pgStore = connectPg(session);
-  const sessionStore = new pgStore({
-    conString: process.env.DATABASE_URL,
-    createTableIfMissing: false,
-    ttl: sessionTtl,
-    tableName: "sessions",
-  });
+  const dbUrl = process.env.DATABASE_URL ?? "";
+  const usesSupabaseDirectIpv6Host = dbUrl.includes("supabase.co") && dbUrl.includes(":5432");
+  const forceMemoryStore = process.env.SESSION_STORE === "memory";
+  const runningOnRailway = !!process.env.RAILWAY_ENVIRONMENT_NAME;
+  const shouldUseMemoryStore = forceMemoryStore || (runningOnRailway && usesSupabaseDirectIpv6Host);
+
+  const sessionStore = shouldUseMemoryStore
+    ? undefined
+    : new (connectPg(session))({
+        conString: dbUrl,
+        createTableIfMissing: false,
+        ttl: sessionTtl,
+        tableName: "sessions",
+      });
   
   // Replit always uses HTTPS even in development (webview runs in iframe)
   // We need secure cookies with sameSite: 'none' for the webview to work
@@ -56,7 +63,7 @@ export function getSession() {
   
   return session({
     secret: process.env.SESSION_SECRET!,
-    store: sessionStore,
+    ...(sessionStore ? { store: sessionStore } : {}),
     resave: true,
     saveUninitialized: false,
     proxy: true,

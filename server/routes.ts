@@ -291,8 +291,16 @@ function simulateOcrProcessing(file: Express.Multer.File) {
 
 export async function registerRoutes(app: Express): Promise<Server> {
   app.get('/api/health', async (_req, res) => {
+    const strictHealth = process.env.HEALTHCHECK_STRICT === 'true';
+    const healthQueryTimeoutMs = Number(process.env.HEALTHCHECK_DB_TIMEOUT_MS ?? '1500');
+
     try {
-      await pool.query('select 1');
+      await Promise.race([
+        pool.query('select 1'),
+        new Promise((_, reject) => {
+          setTimeout(() => reject(new Error('database health query timeout')), healthQueryTimeoutMs);
+        }),
+      ]);
 
       res.json({
         status: 'ok',
@@ -303,7 +311,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         timestamp: new Date().toISOString(),
       });
     } catch (error) {
-      res.status(503).json({
+      res.status(strictHealth ? 503 : 200).json({
         status: 'degraded',
         services: {
           api: 'ok',

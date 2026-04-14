@@ -41,4 +41,16 @@ if (missing.length > 0) {
   process.exit(1);
 }
 
+if (target === "backend") {
+  const databaseUrl = String(process.env.DATABASE_URL || "").toLowerCase();
+  const isSupabase = databaseUrl.includes("supabase.co");
+  const usesDirectPort = databaseUrl.includes(":5432/");
+
+  if (isSupabase && usesDirectPort) {
+    console.error("[fail] DATABASE_URL appears to use Supabase direct port 5432.");
+    console.error("[hint] On Railway, use the Supabase pooler connection string (usually port 6543) to avoid IPv6-only host failures.");
+    process.exit(1);
+  }
+}
+
 console.log(`[ok] ${target} environment preflight passed (${required.length} vars)`);
