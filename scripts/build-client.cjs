@@ -4,17 +4,19 @@ const { spawnSync } = require('node:child_process');
 
 function buildStaticLanding() {
   const landingIndex = resolve('landing', 'index.html');
-  const outputDir = resolve('dist', 'public');
-  const outputIndex = join(outputDir, 'index.html');
+  const outputDirs = [resolve('dist', 'public'), resolve('public')];
 
   if (!existsSync(landingIndex)) {
     console.error('landing/index.html not found for static fallback build');
     process.exit(1);
   }
 
-  mkdirSync(outputDir, { recursive: true });
-  copyFileSync(landingIndex, outputIndex);
-  console.log('Static landing fallback build completed:', outputIndex);
+  for (const outputDir of outputDirs) {
+    const outputIndex = join(outputDir, 'index.html');
+    mkdirSync(outputDir, { recursive: true });
+    copyFileSync(landingIndex, outputIndex);
+    console.log('Static landing fallback build completed:', outputIndex);
+  }
 }
 
 function runViteBuild() {
