@@ -11,6 +11,7 @@ import { isUnauthorizedError } from "@/lib/authUtils";
 import { getAppBaseUrl } from "@/lib/runtimeConfig";
 import NotFound from "@/pages/not-found";
 import Landing from "@/pages/Landing";
+import BrokersLanding from "@/pages/BrokersLanding";
 import ResetPassword from "@/pages/ResetPassword";
 import Dashboard from "@/pages/Dashboard";
 import Clients from "@/pages/Clients";
@@ -65,6 +66,8 @@ function Router() {
       <Route path="/reset-password" component={ResetPassword} />
       {/* Design preview - accessible without auth for testing */}
       <Route path="/design-preview" component={DesignPreview} />
+      {/* Broker acquisition page - accessible without auth */}
+      <Route path="/brokers" component={BrokersLanding} />
       
       {isLoading || !isAuthenticated ? (
         <Route path="/" component={Landing} />

@@ -12,8 +12,8 @@ tailwind.config = {
     extend: {
       colors: {
         brand: {
-          navy: '#2c5475',
-          teal: '#4db8a4',
+          navy: '#05478a',
+          teal: '#05b981',
           orange: '#f59e0b'
         }
       }
@@ -25,16 +25,16 @@ tailwind.config = {
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap');
 * { font-family: 'Inter', sans-serif; }
 
-.gradient-navy { background: linear-gradient(135deg, #2c5475 0%, #1e3a52 100%); }
-.gradient-teal  { background: linear-gradient(135deg, #4db8a4 0%, #3a9d8f 100%); }
+.gradient-navy { background: linear-gradient(135deg, #05478a 0%, #1e3a5f 100%); }
+.gradient-teal  { background: linear-gradient(135deg, #05b981 0%, #0f8f6a 100%); }
 .gradient-orange{ background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%); }
 
 /* Unified icon gradient: teal → navy */
-.gradient-brand { background: linear-gradient(135deg, #4db8a4 0%, #2c5475 100%); }
+.gradient-brand { background: linear-gradient(135deg, #05b981 0%, #05478a 100%); }
 
 .hero-pattern {
-  background-color: #2c5475;
-  background-image: url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%234db8a4' fill-opacity='0.1'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E");
+  background-color: #05478a;
+  background-image: url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%2305b981' fill-opacity='0.08'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E");
 }
 
 .card-hover { transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); }
@@ -50,8 +50,20 @@ tailwind.config = {
 @media(max-width:1023px){ .caso-card { flex: 0 0 calc(50% - 12px); min-width: calc(50% - 12px); } }
 @media(max-width:767px){ .caso-card { flex: 0 0 100%; min-width: 100%; } }
 .carousel-dot { width:10px; height:10px; border-radius:50%; background:#cbd5e1; border:none; cursor:pointer; transition:background .2s; }
-.carousel-dot.active { background:#4db8a4; }
+.carousel-dot.active { background:#05b981; }
 @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+
+.btn-soft-blue { background-color: #2f5f88; }
+.btn-soft-blue:hover { background-color: #274f71; }
+
+#casos .caso-card > .bg-white {
+  display: grid;
+  grid-template-rows: auto auto minmax(120px, 1fr) auto minmax(96px, auto);
+}
+
+#casos .caso-card p.text-xs.text-gray-500 {
+  margin-bottom: 1rem;
+}
 
 .whatsapp-float {
   position: fixed; width: 60px; height: 60px; bottom: 40px; right: 40px;
@@ -75,7 +87,7 @@ tailwind.config = {
 }
 .dropdown-content.open { display: block; }
 .dropdown-content a { display: block; padding: 12px 20px; color: #374151; transition: all 0.2s; }
-.dropdown-content a:hover { background: #f3f4f6; color: #2c5475; padding-left: 24px; }
+.dropdown-content a:hover { background: #f3f4f6; color: #05478a; padding-left: 24px; }
 </style>
 </head>
 
@@ -134,12 +146,6 @@ tailwind.config = {
 
         <a href="#casos" class="text-gray-700 hover:text-brand-navy font-medium transition">Casos de Éxito</a>
         <a href="#faq" class="text-gray-700 hover:text-brand-navy font-medium transition">FAQ</a>
-        <a href="https://app.creditonegocios.com.mx/" target="_blank" rel="noopener noreferrer" class="text-brand-navy border border-brand-navy px-5 py-2 rounded-full font-semibold text-sm hover:bg-brand-navy hover:text-white transition">
-          Log In
-        </a>
-        <a href="https://app.creditonegocios.com.mx/" target="_blank" rel="noopener noreferrer" class="text-brand-teal border border-brand-teal px-5 py-2 rounded-full font-semibold text-sm hover:bg-brand-teal hover:text-white transition">
-          Registrarse
-        </a>
         <a href="#contacto" class="gradient-teal text-white px-6 py-2 rounded-full font-semibold text-sm hover:shadow-lg transition">
           Cotizar Ahora
         </a>
@@ -147,11 +153,8 @@ tailwind.config = {
 
       <!-- Mobile Quick Actions -->
       <div class="md:hidden flex items-center gap-2">
-        <a href="https://app.creditonegocios.com.mx/" target="_blank" rel="noopener noreferrer" class="text-brand-navy border border-brand-navy px-3 py-2 rounded-full font-semibold text-xs">
-          Log In
-        </a>
-        <a href="https://app.creditonegocios.com.mx/" target="_blank" rel="noopener noreferrer" class="gradient-teal text-white px-3 py-2 rounded-full font-semibold text-xs">
-          Registro
+        <a href="#contacto" class="gradient-teal text-white px-4 py-2 rounded-full font-semibold text-xs shadow-sm">
+          Cotizar
         </a>
       </div>
     </div>
@@ -166,7 +169,7 @@ tailwind.config = {
     <div class="text-center mb-16">
       <h1 class="text-5xl lg:text-6xl font-black mb-6 leading-tight">
         Soluciones Financieras<br/>
-        <span class="text-teal-300"> para tu Empresa</span>
+        <span class="text-emerald-200"> para tu Empresa</span>
       </h1>
       <!-- ✅ Orden cambiado: Créditos primero, luego Arrendamiento -->
       <p class="text-xl lg:text-2xl text-blue-100 max-w-3xl mx-auto mb-3">
@@ -263,12 +266,12 @@ tailwind.config = {
   <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
     <div class="grid md:grid-cols-4 gap-8 text-center">
       <div>
-        <div class="text-4xl font-black text-brand-teal mb-2">$150M+</div>
+        <div id="stats-financing" class="text-4xl font-black text-brand-teal mb-2">$150M+</div>
         <p class="text-gray-600">Financiamiento Otorgado</p>
       </div>
       <div>
-        <div class="text-4xl font-black text-brand-teal mb-2">100+</div>
-        <p class="text-gray-600">Empresas Financiadas</p>
+        <div id="stats-companies" class="text-4xl font-black text-brand-teal mb-2">100+</div>
+        <p class="text-gray-600">Empresas y Negocios Financiados</p>
       </div>
       <div>
         <div class="text-4xl font-black text-brand-teal mb-2">7 Días</div>
@@ -416,7 +419,7 @@ tailwind.config = {
       <!-- ✅ Iconos unificados: gradiente teal→navy -->
       <div class="grid md:grid-cols-4 gap-6">
         <div class="bg-white rounded-2xl p-6 card-hover border-2 border-transparent hover:border-brand-teal transition">
-          <div class="w-14 h-14 gradient-brand rounded-xl flex items-center justify-center mb-4">
+          <div class="w-14 h-14 bg-slate-900 rounded-xl flex items-center justify-center mb-4">
             <svg class="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"/>
             </svg>
@@ -426,7 +429,7 @@ tailwind.config = {
         </div>
 
         <div class="bg-white rounded-2xl p-6 card-hover border-2 border-transparent hover:border-brand-teal transition">
-          <div class="w-14 h-14 gradient-brand rounded-xl flex items-center justify-center mb-4">
+          <div class="w-14 h-14 bg-slate-900 rounded-xl flex items-center justify-center mb-4">
             <svg class="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/>
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
@@ -437,7 +440,7 @@ tailwind.config = {
         </div>
 
         <div class="bg-white rounded-2xl p-6 card-hover border-2 border-transparent hover:border-brand-teal transition">
-          <div class="w-14 h-14 gradient-brand rounded-xl flex items-center justify-center mb-4">
+          <div class="w-14 h-14 bg-slate-900 rounded-xl flex items-center justify-center mb-4">
             <svg class="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z"/>
             </svg>
@@ -447,7 +450,7 @@ tailwind.config = {
         </div>
 
         <div class="bg-white rounded-2xl p-6 card-hover border-2 border-transparent hover:border-brand-teal transition">
-          <div class="w-14 h-14 gradient-brand rounded-xl flex items-center justify-center mb-4">
+          <div class="w-14 h-14 bg-slate-900 rounded-xl flex items-center justify-center mb-4">
             <svg class="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/>
             </svg>
@@ -480,7 +483,7 @@ tailwind.config = {
     <div class="grid md:grid-cols-2 lg:grid-cols-4 gap-6 mb-12">
 
       <!-- 1. Crédito Simple — ✅ Blanco (antes naranja) -->
-      <div id="credito-simple" class="bg-white border-2 border-gray-200 rounded-3xl p-8 shadow-lg card-hover">
+      <div id="credito-simple" class="bg-white border-2 border-gray-200 rounded-3xl p-8 shadow-lg card-hover h-full flex flex-col">
         <div class="w-14 h-14 gradient-brand rounded-2xl flex items-center justify-center mb-6">
           <svg class="w-7 h-7 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 14h.01M12 14h.01M15 11h.01M12 11h.01M9 11h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z"/>
@@ -489,7 +492,7 @@ tailwind.config = {
         <h3 class="text-2xl font-bold text-gray-900 mb-3">Crédito Simple</h3>
         <p class="text-gray-600 mb-4">De $100k a $30M en 7 días</p>
         <p class="text-sm text-gray-600 mb-6">Financiamiento estructurado con mensualidades fijas. Plazos hasta 60 meses.</p>
-        <ul class="space-y-2 text-sm mb-8">
+        <ul class="space-y-2 text-sm mb-8 flex-1">
           <li class="flex items-start gap-2">
             <svg class="w-5 h-5 text-brand-teal flex-shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
               <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z"/>
@@ -510,13 +513,13 @@ tailwind.config = {
           </li>
         </ul>
         <!-- ✅ Botón Gray-700 -->
-        <a href="#contacto" class="block w-full text-white text-center py-3 rounded-full font-bold hover:opacity-90 transition" style="background-color:#374151">
+        <a href="#contacto" class="btn-soft-blue mt-auto block w-full text-white text-center py-3 rounded-full font-bold transition">
           Solicitar →
         </a>
       </div>
 
       <!-- 2. Línea Revolvente — ✅ Icono unificado -->
-      <div id="credito-revolvente" class="bg-white border-2 border-gray-200 rounded-3xl p-8 shadow-lg card-hover">
+      <div id="credito-revolvente" class="bg-white border-2 border-gray-200 rounded-3xl p-8 shadow-lg card-hover h-full flex flex-col">
         <div class="w-14 h-14 gradient-brand rounded-2xl flex items-center justify-center mb-6">
           <svg class="w-7 h-7 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
@@ -525,7 +528,7 @@ tailwind.config = {
         <h3 class="text-2xl font-bold text-gray-900 mb-3">Línea Revolvente</h3>
         <p class="text-gray-600 mb-4">Hasta $2M por 24 meses</p>
         <p class="text-sm text-gray-600 mb-6">Liquidez inmediata cuando la necesites. Funciona como tarjeta de crédito empresarial.</p>
-        <ul class="space-y-2 text-sm mb-8">
+        <ul class="space-y-2 text-sm mb-8 flex-1">
           <li class="flex items-start gap-2">
             <svg class="w-5 h-5 text-brand-teal flex-shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
               <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z"/>
@@ -545,13 +548,13 @@ tailwind.config = {
             <span>Tasas flexibles</span>
           </li>
         </ul>
-        <a href="#contacto" class="block w-full text-white text-center py-3 rounded-full font-bold hover:opacity-90 transition" style="background-color:#374151">
+        <a href="#contacto" class="btn-soft-blue mt-auto block w-full text-white text-center py-3 rounded-full font-bold transition">
           Solicitar →
         </a>
       </div>
 
       <!-- 3. Factoraje — ✅ Icono unificado -->
-      <div id="factoraje" class="bg-white border-2 border-gray-200 rounded-3xl p-8 shadow-lg card-hover">
+      <div id="factoraje" class="bg-white border-2 border-gray-200 rounded-3xl p-8 shadow-lg card-hover h-full flex flex-col">
         <div class="w-14 h-14 gradient-brand rounded-2xl flex items-center justify-center mb-6">
           <svg class="w-7 h-7 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v13m0-13V6a2 2 0 112 2h-2zm0 0V5.5A2.5 2.5 0 109.5 8H12zm-7 4h14M5 12a2 2 0 110-4h14a2 2 0 110 4M5 12v7a2 2 0 002 2h10a2 2 0 002-2v-7"/>
@@ -559,7 +562,7 @@ tailwind.config = {
         </div>
         <h3 class="text-2xl font-bold text-gray-900 mb-3">Factoraje Financiero</h3>
         <p class="text-sm text-gray-600 mb-6">Convierte tus cuentas por cobrar en liquidez inmediata sin endeudarte.</p>
-        <ul class="space-y-2 text-sm mb-8">
+        <ul class="space-y-2 text-sm mb-8 flex-1">
           <li class="flex items-start gap-2">
             <svg class="w-5 h-5 text-brand-teal flex-shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
               <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z"/>
@@ -579,13 +582,13 @@ tailwind.config = {
             <span>Mejora flujo de caja</span>
           </li>
         </ul>
-        <a href="#contacto" class="block w-full text-white text-center py-3 rounded-full font-bold hover:opacity-90 transition" style="background-color:#374151">
+        <a href="#contacto" class="btn-soft-blue mt-auto block w-full text-white text-center py-3 rounded-full font-bold transition">
           Solicitar →
         </a>
       </div>
 
       <!-- 4. Sustitución de Pasivos — ✅ Nuevo producto (reemplaza Arrendamiento Financiero) -->
-      <div id="sustitucion-pasivos" class="bg-white border-2 border-gray-200 rounded-3xl p-8 shadow-lg card-hover">
+      <div id="sustitucion-pasivos" class="bg-white border-2 border-gray-200 rounded-3xl p-8 shadow-lg card-hover h-full flex flex-col">
         <div class="w-14 h-14 gradient-brand rounded-2xl flex items-center justify-center mb-6">
           <svg class="w-7 h-7 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 14l6-6m-5.5.5h.01m4.99 5h.01M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16l3.5-2 3.5 2 3.5-2 3.5 2z"/>
@@ -593,7 +596,7 @@ tailwind.config = {
         </div>
         <h3 class="text-2xl font-bold text-gray-900 mb-3">Sustitución de Pasivos</h3>
         <p class="text-sm text-gray-600 mb-6">Refinanciar tus deudas a mejor tasa con mejores condiciones y menores pagos mensuales.</p>
-        <ul class="space-y-2 text-sm mb-8">
+        <ul class="space-y-2 text-sm mb-8 flex-1">
           <li class="flex items-start gap-2">
             <svg class="w-5 h-5 text-brand-teal flex-shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
               <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z"/>
@@ -613,7 +616,7 @@ tailwind.config = {
             <span>Una sola mensualidad</span>
           </li>
         </ul>
-        <a href="#contacto" class="block w-full text-white text-center py-3 rounded-full font-bold hover:opacity-90 transition" style="background-color:#374151">
+        <a href="#contacto" class="btn-soft-blue mt-auto block w-full text-white text-center py-3 rounded-full font-bold transition">
           Solicitar →
         </a>
       </div>
@@ -622,7 +625,7 @@ tailwind.config = {
 
     <!-- ✅ Soluciones a Medida — centrado abajo, informativo (no es un producto) -->
     <div class="max-w-5xl mx-auto">
-      <div id="soluciones-medida" class="bg-gradient-to-br from-brand-navy to-blue-900 rounded-3xl p-8 shadow-lg text-white">
+      <div id="soluciones-medida" class="gradient-navy rounded-3xl p-8 shadow-lg text-white">
         <div class="flex items-start gap-6">
           <div class="w-14 h-14 bg-white/20 rounded-2xl flex items-center justify-center flex-shrink-0">
             <svg class="w-7 h-7 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -635,139 +638,347 @@ tailwind.config = {
               Si nuestros productos no se ajustan a tu proyecto, nuestro equipo buscará una estructura financiera que se pueda adaptar a tus necesidades.
             </p>
             <ul class="flex flex-nowrap gap-6 text-sm">
-              <li class="flex items-center gap-2 whitespace-nowrap">
-                <svg class="w-4 h-4 text-brand-teal flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
-                  <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z"/>
-                </svg>
-                <span>Términos 100% flexibles</span>
-              </li>
-              <li class="flex items-center gap-2 whitespace-nowrap">
-                <svg class="w-4 h-4 text-brand-teal flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
-                  <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z"/>
-                </svg>
-                <span>Asesoría de expertos financieros</span>
-              </li>
-              <li class="flex items-center gap-2 whitespace-nowrap">
-                <svg class="w-4 h-4 text-brand-teal flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
-                  <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z"/>
-                </svg>
-                <span>Estructuración financiera óptima</span>
-              </li>
-            </ul>
-          </div>
-        </div>
-      </div>
-    </div>
-
-  </div>
-</section>
-
-
-<!-- ═══════════════════════════════════════════════════
-     CASOS DE ÉXITO
-═══════════════════════════════════════════════════ -->
-<section id="casos" class="py-20 bg-gray-50">
-  <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-    <div class="text-center mb-12">
-      <div class="inline-block bg-teal-100 text-brand-teal text-sm font-bold px-4 py-2 rounded-full mb-4">
-        ⭐ CASOS DE ÉXITO
-      </div>
-      <h2 class="text-4xl lg:text-5xl font-black text-gray-900 mb-4">Lo que Hemos Logrado Juntos</h2>
-      <p class="text-xl text-gray-600 max-w-3xl mx-auto">Empresas reales que crecieron con nuestras soluciones financieras.</p>
-    </div>
-
-    <!-- Category tabs -->
-    <div class="flex justify-center mb-10">
-      <div class="inline-flex bg-white rounded-full p-2 shadow-lg">
-        <button id="casos-btn-creditos" onclick="switchCasos('creditos')" class="tab-btn tab-btn-active px-8 py-3 rounded-full font-bold transition">
-          💰 Créditos
-        </button>
-        <button id="casos-btn-arrendamiento" onclick="switchCasos('arrendamiento')" class="tab-btn tab-btn-inactive px-8 py-3 rounded-full font-bold transition">
-          🚗 Arrendamiento
-        </button>
-      </div>
-    </div>
-
-    <!-- ── CRÉDITOS panel ── -->
-    <div id="casos-creditos" style="display:block">
-      <div class="relative">
-        <div class="carousel-wrap">
-          <div id="carousel-creditos" class="carousel-track">
-
-            <!-- Caso 1 Crédito Simple -->
-            <div class="caso-card">
-              <div class="bg-white rounded-2xl p-7 shadow-lg h-full flex flex-col">
-                <div class="flex items-center gap-3 mb-4">
-                  <div class="w-10 h-10 gradient-brand rounded-xl flex items-center justify-center flex-shrink-0">
-                    <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 14h.01M12 14h.01M15 11h.01M12 11h.01M9 11h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z"/></svg>
-                  </div>
-                  <div>
-                    <span class="text-xs font-bold text-brand-teal uppercase tracking-wide">Crédito Simple</span>
-                    <h3 class="font-bold text-gray-900 text-base leading-tight">Distribuidora Alimentos del Bajío</h3>
+              <!-- Brokers CTA -->
+              <section class="py-16 bg-white border-t">
+                <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+                  <div class="rounded-[32px] gradient-navy p-8 lg:p-10 text-white shadow-2xl">
+                    <div class="grid lg:grid-cols-[1.1fr_0.9fr] gap-10 items-center">
+                      <div>
+                        <div class="inline-flex items-center gap-2 bg-white/10 text-cyan-100 text-sm font-bold px-4 py-2 rounded-full mb-5">
+                          <span>🚀</span>
+                          <span>Programa para Brokers</span>
+                        </div>
+                        <h2 class="text-3xl lg:text-5xl font-black leading-tight mb-4">
+                          Si eres broker PyME, PFAE o hipotecario, esta plataforma está hecha para ayudarte a colocar mejor.
+                        </h2>
+                        <p class="text-lg text-blue-100 mb-6 max-w-3xl">
+                          Sin costo de uso, con mejor organización, un solo lugar para concentrar tus casos y acceso a un abanico más amplio de financieras y bancos. Si una solicitud de tu cliente se aprueba, también puedes ganar comisión.
+                        </p>
+                        <div class="grid sm:grid-cols-2 lg:grid-cols-4 gap-4 text-sm mb-8">
+                          <div class="rounded-2xl bg-white/10 border border-white/10 p-4">
+                            <p class="font-bold mb-1">Sin costo</p>
+                            <p class="text-blue-100">Empieza sin pagar acceso.</p>
+                          </div>
+                          <div class="rounded-2xl bg-white/10 border border-white/10 p-4">
+                            <p class="font-bold mb-1">Todo concentrado</p>
+                            <p class="text-blue-100">Expedientes, seguimiento y orden.</p>
+                          </div>
+                          <div class="rounded-2xl bg-white/10 border border-white/10 p-4">
+                            <p class="font-bold mb-1">Más opciones</p>
+                            <p class="text-blue-100">Bancos y financieras para cada caso.</p>
+                          </div>
+                          <div class="rounded-2xl bg-white/10 border border-white/10 p-4">
+                            <p class="font-bold mb-1">Comisión</p>
+                            <p class="text-blue-100">Oportunidad por casos aprobados.</p>
+                          </div>
+                        </div>
+                      </div>
+                      <div class="bg-white text-gray-900 rounded-[28px] p-8 shadow-lg">
+                        <img src="/credito-negocios-full-logo.jpg" alt="Crédito Negocios" data-footer-logo class="h-12 w-auto mb-6" />
+                        <h3 class="text-2xl font-black mb-3 text-brand-navy">Conoce la experiencia para brokers</h3>
+                        <p class="text-gray-600 mb-6">
+                          Descubre cómo funciona, qué beneficios te da, revisa testimoniales y entra al login actual del app desde una sola página.
+                        </p>
+                        <div class="flex flex-col sm:flex-row gap-3">
+                          <a href="https://app.creditonegocios.com.mx/brokers" class="flex-1 text-center gradient-teal text-white py-3 rounded-full font-bold hover:shadow-lg transition">
+                            Ver página brokers →
+                          </a>
+                          <a href="https://wa.me/525623300270" target="_blank" rel="noopener noreferrer" class="flex-1 text-center border border-brand-navy text-brand-navy py-3 rounded-full font-bold hover:bg-brand-navy hover:text-white transition">
+                            WhatsApp
+                          </a>
+                        </div>
+                      </div>
+                    </div>
                   </div>
                 </div>
-                <p class="text-xs text-gray-500 mb-1">León, Gto. &nbsp;·&nbsp; <strong>$3,200,000</strong> &nbsp;·&nbsp; 36 meses</p>
-                <p class="text-sm text-gray-600 mb-4 flex-grow">Necesitaban ampliar capacidad de almacenamiento en frío para cumplir un nuevo contrato. Su banco tardaba demasiado. Aprobamos en 5 días hábiles sin garantía hipotecaria.</p>
-                <div class="bg-teal-50 rounded-xl p-3 mb-4">
-                  <p class="text-xs font-bold text-brand-teal mb-1">✅ Resultado</p>
-                  <p class="text-sm text-gray-700">Ampliaron su bodega, cumplieron con el cliente y recuperaron la inversión en 18 meses.</p>
-                </div>
-                <blockquote class="border-l-4 border-brand-teal pl-3">
-                  <p class="text-sm italic text-gray-600">"Teníamos el dinero en cuenta antes de que venciera nuestro plazo con el cliente."</p>
-                  <footer class="text-xs text-gray-500 mt-1">— Lic. Sandoval, Director General</footer>
-                </blockquote>
-              </div>
-            </div>
+              </section>
 
-            <!-- Caso 2 Línea Revolvente -->
-            <div class="caso-card">
-              <div class="bg-white rounded-2xl p-7 shadow-lg h-full flex flex-col">
-                <div class="flex items-center gap-3 mb-4">
-                  <div class="w-10 h-10 gradient-brand rounded-xl flex items-center justify-center flex-shrink-0">
-                    <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
-                  </div>
-                  <div>
-                    <span class="text-xs font-bold text-brand-teal uppercase tracking-wide">Línea Revolvente</span>
-                    <h3 class="font-bold text-gray-900 text-base leading-tight">Constructora Pedraza & Asociados</h3>
-                  </div>
-                </div>
-                <p class="text-xs text-gray-500 mb-1">Querétaro, Qro. &nbsp;·&nbsp; <strong>$1,800,000</strong> &nbsp;·&nbsp; 24 meses renovables</p>
-                <p class="text-sm text-gray-600 mb-4 flex-grow">Sus clientes pagaban a 90 días pero los proveedores exigían pago al contado. Con la línea revolvente disponen solo lo necesario, pagan intereses sobre lo usado y liquidan al cobrar.</p>
-                <div class="bg-teal-50 rounded-xl p-3 mb-4">
-                  <p class="text-xs font-bold text-brand-teal mb-1">✅ Resultado</p>
-                  <p class="text-sm text-gray-700">Usaron y liquidaron la línea 6 veces en un año. El ahorro con proveedores superó el costo del crédito.</p>
-                </div>
-                <blockquote class="border-l-4 border-brand-teal pl-3">
-                  <p class="text-sm italic text-gray-600">"Usas lo que necesitas, pagas solo por eso, y siempre tienes liquidez disponible."</p>
-                  <footer class="text-xs text-gray-500 mt-1">— Ing. Carmen Pedraza, Socia Directora</footer>
-                </blockquote>
-              </div>
-            </div>
+              <!-- Footer -->
+              <footer class="bg-gray-900 text-white pt-16 pb-24 md:pb-16">
+                <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+                  <div class="grid md:grid-cols-4 gap-12 mb-12">
+                    <div class="md:col-span-1">
+                      <img src="/credito-negocios-full-logo.jpg" alt="Crédito Negocios" data-footer-logo class="h-10 w-auto mb-5" />
+                      <p class="text-gray-400 text-sm leading-6 mb-4">
+                        Soluciones especializadas en arrendamiento y créditos empresariales para impulsar el crecimiento de empresas y negocios.
+                      </p>
+                      <a href="mailto:info@creditonegocios.com.mx" class="text-sm text-blue-200 hover:text-white transition">
+                        info@creditonegocios.com.mx
+                      </a>
+                    </div>
 
-            <!-- Caso 3 Factoraje -->
-            <div class="caso-card">
-              <div class="bg-white rounded-2xl p-7 shadow-lg h-full flex flex-col">
-                <div class="flex items-center gap-3 mb-4">
-                  <div class="w-10 h-10 gradient-brand rounded-xl flex items-center justify-center flex-shrink-0">
-                    <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v13m0-13V6a2 2 0 112 2h-2zm0 0V5.5A2.5 2.5 0 109.5 8H12zm-7 4h14M5 12a2 2 0 110-4h14a2 2 0 110 4M5 12v7a2 2 0 002 2h10a2 2 0 002-2v-7"/></svg>
+                    <div>
+                      <h4 class="font-bold mb-4 text-lg">Arrendamiento</h4>
+                      <ul class="space-y-2 text-sm text-gray-400">
+                        <li><a href="#arrendamiento" class="hover:text-brand-teal transition">Vehicular</a></li>
+                        <li><a href="#arrendamiento" class="hover:text-brand-teal transition">Maquinaria y Equipo</a></li>
+                        <li><a href="#arrendamiento" class="hover:text-brand-teal transition">Inversión Plus</a></li>
+                      </ul>
+                    </div>
+
+                    <div>
+                      <h4 class="font-bold mb-4 text-lg">Créditos</h4>
+                      <ul class="space-y-2 text-sm text-gray-400">
+                        <li><a href="#credito-simple" class="hover:text-brand-teal transition">Crédito Simple</a></li>
+                        <li><a href="#credito-revolvente" class="hover:text-brand-teal transition">Línea Revolvente</a></li>
+                        <li><a href="#factoraje" class="hover:text-brand-teal transition">Factoraje</a></li>
+                        <li><a href="#sustitucion-pasivos" class="hover:text-brand-teal transition">Sustitución de Pasivos</a></li>
+                        <li><a href="#soluciones-medida" class="hover:text-brand-teal transition">Soluciones a Medida</a></li>
+                      </ul>
+                    </div>
+
+                    <div>
+                      <h4 class="font-bold mb-4 text-lg">Enlaces</h4>
+                      <ul class="space-y-2 text-sm text-gray-400">
+                        <li><a href="#casos" class="hover:text-brand-teal transition">Casos de Éxito</a></li>
+                        <li><a href="#faq" class="hover:text-brand-teal transition">FAQ</a></li>
+                        <li><a href="#contacto" class="hover:text-brand-teal transition">Cotizar</a></li>
+                        <li><a href="https://app.creditonegocios.com.mx/brokers" class="hover:text-brand-teal transition">Soy Broker</a></li>
+                      </ul>
+                    </div>
                   </div>
-                  <div>
-                    <span class="text-xs font-bold text-brand-teal uppercase tracking-wide">Factoraje Financiero</span>
-                    <h3 class="font-bold text-gray-900 text-base leading-tight">Manufacturas Técnicas Zenteno</h3>
+
+                  <div class="border-t border-white/10 pt-6 pr-24 md:pr-28 flex flex-col md:flex-row md:items-center md:justify-between gap-4 text-sm text-gray-400">
+                    <p>© 2026 Crédito Negocios. Todos los derechos reservados.</p>
+                    <div class="flex flex-wrap gap-5">
+                      <a href="#" class="hover:text-brand-teal transition">Aviso de Privacidad</a>
+                      <a href="#" class="hover:text-brand-teal transition">Términos y Condiciones</a>
+                    </div>
                   </div>
                 </div>
-                <p class="text-xs text-gray-500 mb-1">Saltillo, Coah. &nbsp;·&nbsp; <strong>$2,400,000</strong>/mes &nbsp;·&nbsp; Anticipo 88%</p>
-                <p class="text-sm text-gray-600 mb-4 flex-grow">Proveedor Tier 2 de la industria automotriz con clientes que pagaban a 90 días. Sin flujo para comprar materia prima ni pagar nómina. Cedían la factura y recibían el 88% en menos de 48 horas.</p>
-                <div class="bg-teal-50 rounded-xl p-3 mb-4">
-                  <p class="text-xs font-bold text-brand-teal mb-1">✅ Resultado</p>
-                  <p class="text-sm text-gray-700">Aceptaron 35% más pedidos. Crecimiento en ventas del 30% ese año.</p>
-                </div>
-                <blockquote class="border-l-4 border-brand-teal pl-3">
-                  <p class="text-sm italic text-gray-600">"Pasamos de financiar a nuestro cliente a tener el dinero en dos días."</p>
-                  <footer class="text-xs text-gray-500 mt-1">— Héctor Zenteno, Director Financiero</footer>
-                </blockquote>
-              </div>
-            </div>
+              </footer>
+
+              <script>
+              (function() {
+                var dropdowns = document.querySelectorAll('.dropdown');
+                var timers = {};
+                dropdowns.forEach(function(dropdown, index) {
+                  var trigger = dropdown.querySelector('button');
+                  var content = dropdown.querySelector('.dropdown-content');
+                  var key = 'dropdown-' + index;
+                  if (!trigger || !content) return;
+
+                  trigger.addEventListener('mouseenter', function() {
+                    clearTimeout(timers[key]);
+                    content.classList.add('open');
+                  });
+                  dropdown.addEventListener('mouseleave', function() {
+                    timers[key] = setTimeout(function() { content.classList.remove('open'); }, 150);
+                  });
+                  content.addEventListener('mouseenter', function() {
+                    clearTimeout(timers[key]);
+                    content.classList.add('open');
+                  });
+                  content.addEventListener('mouseleave', function() {
+                    timers[key] = setTimeout(function() { content.classList.remove('open'); }, 150);
+                  });
+                });
+              })();
+
+              function switchTab(tabName) {
+                ['vehicular','maquinaria'].forEach(function(n) {
+                  var el = document.getElementById('tab-' + n);
+                  if (el) el.classList[n === tabName ? 'add' : 'remove']('active');
+                  var btn = document.getElementById('btn-' + n);
+                  if (!btn) return;
+                  if (n === tabName) {
+                    btn.classList.add('tab-btn-active');
+                    btn.classList.remove('tab-btn-inactive');
+                  } else {
+                    btn.classList.remove('tab-btn-active');
+                    btn.classList.add('tab-btn-inactive');
+                  }
+                });
+              }
+
+              function switchCasos(category) {
+                ['creditos','arrendamiento'].forEach(function(cat) {
+                  var btn = document.getElementById('casos-btn-' + cat);
+                  var panel = document.getElementById('casos-' + cat);
+                  if (cat === category) {
+                    if (btn) {
+                      btn.classList.add('tab-btn-active');
+                      btn.classList.remove('tab-btn-inactive');
+                    }
+                    if (panel) panel.style.display = 'block';
+                  } else {
+                    if (btn) {
+                      btn.classList.remove('tab-btn-active');
+                      btn.classList.add('tab-btn-inactive');
+                    }
+                    if (panel) panel.style.display = 'none';
+                  }
+                });
+                carouselState[category] = 0;
+                updateCarousel(category);
+              }
+
+              var carouselState = { creditos: 0, arrendamiento: 0 };
+
+              function getVisibleCount() {
+                return window.innerWidth >= 1024 ? 3 : window.innerWidth >= 768 ? 2 : 1;
+              }
+
+              function updateCarousel(category) {
+                var carousel = document.getElementById('carousel-' + category);
+                if (!carousel) return;
+                var cards = carousel.querySelectorAll('.caso-card');
+                var visible = getVisibleCount();
+                var maxIdx = Math.max(0, cards.length - visible);
+                if (carouselState[category] > maxIdx) carouselState[category] = maxIdx;
+                var idx = carouselState[category];
+
+                carousel.style.transform = 'translateX(-' + (idx * (100 / visible)) + '%)';
+
+                var dotsEl = document.getElementById('dots-' + category);
+                if (!dotsEl) return;
+                dotsEl.innerHTML = '';
+                for (var i = 0; i <= maxIdx; i++) {
+                  var dot = document.createElement('button');
+                  dot.className = 'carousel-dot' + (i === idx ? ' active' : '');
+                  dot.setAttribute('aria-label', 'Slide ' + (i + 1));
+                  (function(cat, n) {
+                    dot.onclick = function() {
+                      carouselState[cat] = n;
+                      updateCarousel(cat);
+                    };
+                  })(category, i);
+                  dotsEl.appendChild(dot);
+                }
+              }
+
+              function nextSlide(category) {
+                var carousel = document.getElementById('carousel-' + category);
+                var visible = getVisibleCount();
+                var total = carousel ? carousel.querySelectorAll('.caso-card').length : 5;
+                carouselState[category] = Math.min(carouselState[category] + 1, Math.max(0, total - visible));
+                updateCarousel(category);
+              }
+
+              function prevSlide(category) {
+                carouselState[category] = Math.max(0, carouselState[category] - 1);
+                updateCarousel(category);
+              }
+
+              function getMonthsElapsed(baseDate) {
+                var now = new Date();
+                var base = new Date(baseDate);
+                var months = (now.getFullYear() - base.getFullYear()) * 12 + (now.getMonth() - base.getMonth());
+                return Math.max(0, months);
+              }
+
+              function animateNumber(options) {
+                var element = options.element;
+                var start = options.start || 0;
+                var end = options.end;
+                var duration = options.duration || 1400;
+                var formatter = options.formatter;
+                var startTime = null;
+
+                function step(timestamp) {
+                  if (!startTime) startTime = timestamp;
+                  var progress = Math.min((timestamp - startTime) / duration, 1);
+                  var eased = 1 - Math.pow(1 - progress, 3);
+                  var value = start + (end - start) * eased;
+                  element.textContent = formatter(value, progress === 1);
+                  if (progress < 1) {
+                    window.requestAnimationFrame(step);
+                  }
+                }
+
+                window.requestAnimationFrame(step);
+              }
+
+              function initStatsCounters() {
+                var financingEl = document.getElementById('stats-financing');
+                var companiesEl = document.getElementById('stats-companies');
+                if (!financingEl || !companiesEl) return;
+
+                var growthRate = 0.08;
+                var monthsElapsed = getMonthsElapsed('2026-04-01');
+                var financingBase = 150;
+                var companiesBase = 100;
+                var financingTarget = Math.round(financingBase * Math.pow(1 + growthRate, monthsElapsed));
+                var companiesTarget = Math.round(companiesBase * Math.pow(1 + growthRate, monthsElapsed));
+
+                animateNumber({
+                  element: financingEl,
+                  end: financingTarget,
+                  formatter: function(value, done) {
+                    return '$' + Math.round(value) + 'M+';
+                  }
+                });
+
+                animateNumber({
+                  element: companiesEl,
+                  end: companiesTarget,
+                  formatter: function(value, done) {
+                    return Math.round(value) + '+';
+                  }
+                });
+              }
+
+              document.querySelectorAll('a[href^="#"]').forEach(function(anchor) {
+                anchor.addEventListener('click', function(e) {
+                  var href = this.getAttribute('href');
+                  var target = document.querySelector(href);
+                  if (target) {
+                    e.preventDefault();
+                    var offset = 80;
+                    var targetPosition = target.getBoundingClientRect().top + window.pageYOffset - offset;
+                    window.scrollTo({ top: targetPosition, behavior: 'smooth' });
+                    if (href === '#arrendamiento-vehicular') switchTab('vehicular');
+                    if (href === '#arrendamiento-maquinaria') switchTab('maquinaria');
+                  }
+                });
+              });
+
+              var form = document.querySelector('#contacto form');
+              if (form) {
+                form.addEventListener('submit', function(e) {
+                  e.preventDefault();
+                  alert('¡Gracias por tu solicitud! Nos pondremos en contacto contigo en menos de 24 horas.');
+                  this.reset();
+                });
+              }
+
+              document.addEventListener('DOMContentLoaded', function() {
+                var navLogo = document.querySelector('nav img[alt="Crédito Negocios"]');
+                if (navLogo) {
+                  navLogo.setAttribute('src', '/credito-negocios-full-logo.jpg');
+                }
+
+                switchTab('vehicular');
+                switchCasos('creditos');
+                updateCarousel('creditos');
+                updateCarousel('arrendamiento');
+                initStatsCounters();
+
+                var btnV = document.getElementById('btn-vehicular');
+                var btnM = document.getElementById('btn-maquinaria');
+                if (btnV) {
+                  btnV.classList.add('tab-btn-active');
+                  btnV.classList.remove('tab-btn-inactive');
+                }
+                if (btnM) {
+                  btnM.classList.remove('tab-btn-active');
+                  btnM.classList.add('tab-btn-inactive');
+                }
+
+                var cbC = document.getElementById('casos-btn-creditos');
+                var cbA = document.getElementById('casos-btn-arrendamiento');
+                if (cbC) {
+                  cbC.classList.add('tab-btn-active');
+                  cbC.classList.remove('tab-btn-inactive');
+                }
+                if (cbA) {
+                  cbA.classList.remove('tab-btn-active');
+                  cbA.classList.add('tab-btn-inactive');
+                }
+              });
+              </script>
+              </body>
+              </html>
 
             <!-- Caso 4 Sustitución de Pasivos -->
             <div class="caso-card">

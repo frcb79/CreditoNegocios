@@ -7,7 +7,7 @@ import { storage } from "./storage";
 import { setupAuth, isAuthenticated } from "./replitAuth";
 import PDFDocument from "pdfkit";
 import bcrypt from "bcrypt";
-import { sendPasswordResetEmail } from "./emailService";
+import { sendBrokerLeadEmail, sendPasswordResetEmail } from "./emailService";
 import { getDocumentAccessTarget, persistDocumentFile, removeStoredDocument } from "./documentStorage";
 import { 
   generateFinancierasTemplate, 
@@ -360,6 +360,43 @@ export async function registerRoutes(app: Express): Promise<Server> {
     standardHeaders: true,
     legacyHeaders: false,
     message: { message: "Demasiados intentos. Intenta de nuevo en 15 minutos." },
+  });
+
+  const publicLeadLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000,
+    max: 10,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: { message: "Demasiados intentos. Intenta de nuevo en 15 minutos." },
+  });
+
+  const brokerLeadSchema = z.object({
+    name: z.string().min(2, "Nombre requerido"),
+    email: z.string().email("Email inválido"),
+    phone: z.string().min(8, "Teléfono inválido"),
+    company: z.string().optional(),
+    brokerType: z.enum(["pyme", "pfae", "hipotecario", "mixto"]),
+    message: z.string().max(1200, "Mensaje demasiado largo").optional(),
+  });
+
+  app.post('/api/public/broker-leads', publicLeadLimiter, async (req, res) => {
+    try {
+      const data = brokerLeadSchema.parse(req.body);
+
+      const emailResult = await sendBrokerLeadEmail(data);
+      if (!emailResult.success) {
+        return res.status(500).json({ message: emailResult.error || 'No se pudo enviar el correo' });
+      }
+
+      res.status(201).json({ message: 'Lead recibido correctamente' });
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: error.errors[0].message });
+      }
+
+      console.error('Error creating broker lead:', error);
+      res.status(500).json({ message: 'No se pudo procesar la solicitud' });
+    }
   });
 
   // Local authentication - Register
