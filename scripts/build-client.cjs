@@ -6,12 +6,14 @@ function emitLandingPublic() {
   const landingIndex = resolve('landing', 'index.html');
   const landingLogoPng = resolve('landing', 'Credito Negocios-07.png');
   const landingLogoJpg = resolve('landing', 'Credito Negocios-07.jpg');
-  const outputDirs = [resolve('public'), resolve('dist', 'public')];
-  const htmlTargets = ['index.html', 'landing.html'];
+  const landingOutputs = [
+    { outputDir: resolve('public'), htmlTargets: ['index.html', 'landing.html'] },
+    { outputDir: resolve('dist', 'public'), htmlTargets: ['landing.html'] },
+  ];
 
   if (!existsSync(landingIndex)) return;
 
-  for (const outputDir of outputDirs) {
+  for (const { outputDir, htmlTargets } of landingOutputs) {
     mkdirSync(outputDir, { recursive: true });
 
     for (const htmlTarget of htmlTargets) {
@@ -26,7 +28,9 @@ function emitLandingPublic() {
       copyFileSync(landingLogoJpg, join(outputDir, 'Credito Negocios-07.jpg'));
     }
 
-    console.log('Static landing copy completed:', join(outputDir, 'index.html'));
+    for (const htmlTarget of htmlTargets) {
+      console.log('Static landing copy completed:', join(outputDir, htmlTarget));
+    }
   }
 }
 
