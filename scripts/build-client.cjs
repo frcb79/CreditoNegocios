@@ -4,14 +4,30 @@ const { spawnSync } = require('node:child_process');
 
 function emitLandingPublic() {
   const landingIndex = resolve('landing', 'index.html');
-  const publicDir = resolve('public');
-  const publicIndex = join(publicDir, 'index.html');
+  const landingLogoPng = resolve('landing', 'Credito Negocios-07.png');
+  const landingLogoJpg = resolve('landing', 'Credito Negocios-07.jpg');
+  const outputDirs = [resolve('public'), resolve('dist', 'public')];
+  const htmlTargets = ['index.html', 'landing.html'];
 
   if (!existsSync(landingIndex)) return;
 
-  mkdirSync(publicDir, { recursive: true });
-  copyFileSync(landingIndex, publicIndex);
-  console.log('Static landing copy completed:', publicIndex);
+  for (const outputDir of outputDirs) {
+    mkdirSync(outputDir, { recursive: true });
+
+    for (const htmlTarget of htmlTargets) {
+      copyFileSync(landingIndex, join(outputDir, htmlTarget));
+    }
+
+    if (existsSync(landingLogoPng)) {
+      copyFileSync(landingLogoPng, join(outputDir, 'Credito Negocios-07.png'));
+    }
+
+    if (existsSync(landingLogoJpg)) {
+      copyFileSync(landingLogoJpg, join(outputDir, 'Credito Negocios-07.jpg'));
+    }
+
+    console.log('Static landing copy completed:', join(outputDir, 'index.html'));
+  }
 }
 
 function runViteBuild() {

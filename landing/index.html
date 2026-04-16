@@ -42,8 +42,9 @@ tailwind.config = {
 
 .tab-content { display: none !important; }
 .tab-content.active { display: block !important; animation: fadeIn 0.4s ease-in; }
-.tab-btn-active { background: linear-gradient(135deg, #4db8a4 0%, #3a9d8f 100%) !important; color: #fff !important; }
-.tab-btn-inactive { background: transparent; color: #374151; }
+.tab-btn { border: 2px solid transparent; }
+.tab-btn-active { background: #ffffff !important; color: #0A3042 !important; border: 2px solid #0A3042 !important; }
+.tab-btn-inactive { background: transparent; color: #374151; border: 2px solid transparent; }
 .carousel-wrap { overflow: hidden; position: relative; }
 .carousel-track { display: flex; gap: 24px; transition: transform 0.35s cubic-bezier(.4,0,.2,1); }
 .caso-card { flex: 0 0 calc(33.333% - 16px); min-width: calc(33.333% - 16px); }
@@ -140,7 +141,7 @@ tailwind.config = {
         <a href="https://app.creditonegocios.com.mx/brokers" target="_blank" rel="noopener noreferrer" class="text-brand-navy border border-brand-navy px-5 py-2 rounded-full font-semibold text-sm hover:bg-brand-navy hover:text-white transition">
           Soy Broker
         </a>
-        <a href="#contacto" class="gradient-teal text-white px-6 py-2 rounded-full font-semibold text-sm hover:shadow-lg transition">
+        <a href="#contacto" class="text-brand-navy border border-brand-navy px-6 py-2 rounded-full font-semibold text-sm hover:bg-brand-navy hover:text-white transition">
           Solicitar Ahora
         </a>
       </div>
@@ -150,7 +151,7 @@ tailwind.config = {
         <a href="https://app.creditonegocios.com.mx/brokers" target="_blank" rel="noopener noreferrer" class="text-brand-navy border border-brand-navy px-3 py-2 rounded-full font-semibold text-xs">
           Soy Broker
         </a>
-        <a href="#contacto" class="gradient-teal text-white px-3 py-2 rounded-full font-semibold text-xs">
+        <a href="#contacto" class="text-brand-navy border border-brand-navy px-3 py-2 rounded-full font-semibold text-xs hover:bg-brand-navy hover:text-white transition">
           Cotizar
         </a>
       </div>
@@ -681,7 +682,6 @@ tailwind.config = {
         ⭐ CASOS DE ÉXITO
       </div>
       <h2 class="text-4xl lg:text-5xl font-black text-gray-900 mb-4">Casos Reales de Créditos y Arrendamiento</h2>
-      <p class="text-xl text-gray-600 max-w-3xl mx-auto">Mantén visibles los 5 casos de crédito y los 5 de arrendamiento para mostrar resultados, confianza y crecimiento real.</p>
     </div>
 
     <div class="flex flex-col items-center gap-4 mb-10">

@@ -5,6 +5,7 @@ const landingIndex = resolve('landing', 'index.html');
 const landingLogo = resolve('landing', 'Credito Negocios-07.png');
 const landingLogoJpg = resolve('landing', 'Credito Negocios-07.jpg');
 const outputDirs = [resolve('dist', 'public'), resolve('public')];
+const htmlTargets = ['index.html', 'landing.html'];
 
 if (!existsSync(landingIndex)) {
   console.error('landing/index.html not found for static landing build');
@@ -12,11 +13,13 @@ if (!existsSync(landingIndex)) {
 }
 
 for (const outputDir of outputDirs) {
-  const outputIndex = join(outputDir, 'index.html');
   const outputLogo = join(outputDir, 'Credito Negocios-07.png');
   const outputLogoJpg = join(outputDir, 'Credito Negocios-07.jpg');
   mkdirSync(outputDir, { recursive: true });
-  copyFileSync(landingIndex, outputIndex);
+
+  for (const htmlTarget of htmlTargets) {
+    copyFileSync(landingIndex, join(outputDir, htmlTarget));
+  }
 
   if (existsSync(landingLogo)) {
     copyFileSync(landingLogo, outputLogo);
@@ -26,5 +29,5 @@ for (const outputDir of outputDirs) {
     copyFileSync(landingLogoJpg, outputLogoJpg);
   }
 
-  console.log('Static landing build completed:', outputIndex);
+  console.log('Static landing build completed:', join(outputDir, 'index.html'));
 }

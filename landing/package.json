@@ -3,7 +3,7 @@
   "private": true,
   "version": "1.0.0",
   "scripts": {
-    "build": "node -e \"const fs=require('fs');fs.mkdirSync('public',{recursive:true});fs.copyFileSync('index.html','public/index.html');console.log('Landing build done');\"",
+    "build": "node -e \"const fs=require('fs');fs.mkdirSync('public',{recursive:true});if(fs.existsSync('index.html')){fs.copyFileSync('index.html','public/index.html');fs.copyFileSync('index.html','public/landing.html');}['Credito Negocios-07.png','Credito Negocios-07.jpg'].forEach(f=>{if(fs.existsSync(f)) fs.copyFileSync(f,'public/'+f)});console.log('Landing build done');\"",
     "build:client": "npm run build",
     "vercel-build": "npm run build"
   }
