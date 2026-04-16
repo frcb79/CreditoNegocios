@@ -398,26 +398,34 @@ tailwind.config = {
 
     <!-- Tab: Maquinaria -->
     <div id="tab-maquinaria" class="tab-content"><span id="arrendamiento-maquinaria"></span>
-      <!-- ✅ Banner informativo más sutil -->
-      <div class="bg-gradient-to-br from-slate-50 to-blue-50 rounded-3xl p-8 lg:p-10 text-brand-navy mb-12 border border-blue-100 shadow-sm">
+      <!-- ✅ Banner informativo con más presencia -->
+      <div class="bg-gradient-to-br from-[#ecfbf6] to-[#dff5ef] rounded-3xl p-8 lg:p-10 text-brand-navy mb-12 border border-[#b7e8da] shadow-md">
         <div class="grid md:grid-cols-4 gap-6 text-center">
           <div>
-            <div class="text-3xl font-black mb-2">⚡</div>
+            <div class="w-12 h-12 mx-auto mb-3 rounded-full bg-teal-100 flex items-center justify-center">
+              <svg class="w-6 h-6 text-brand-teal" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+            </div>
             <p class="font-bold text-lg mb-1 text-brand-navy">Ultra Rápido</p>
             <p class="text-sm text-slate-600">Respuesta en 36 hrs</p>
           </div>
           <div>
-            <div class="text-3xl font-black mb-2">🎯</div>
+            <div class="w-12 h-12 mx-auto mb-3 rounded-full bg-teal-100 flex items-center justify-center">
+              <svg class="w-6 h-6 text-brand-teal" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10l7-7m0 0h-5m5 0v5M11 14l-7 7m0 0h5m-5 0v-5"/></svg>
+            </div>
             <p class="font-bold text-lg mb-1 text-brand-navy">Sin Límites</p>
             <p class="text-sm text-slate-600">Desde $50k hasta $50M+</p>
           </div>
           <div>
-            <div class="text-3xl font-black mb-2">💯</div>
+            <div class="w-12 h-12 mx-auto mb-3 rounded-full bg-teal-100 flex items-center justify-center">
+              <svg class="w-6 h-6 text-brand-teal" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
+            </div>
             <p class="font-bold text-lg mb-1 text-brand-navy">Deducción Total</p>
             <p class="text-sm text-slate-600">100% deducible</p>
           </div>
           <div>
-            <div class="text-3xl font-black mb-2">🛠️</div>
+            <div class="w-12 h-12 mx-auto mb-3 rounded-full bg-teal-100 flex items-center justify-center">
+              <svg class="w-6 h-6 text-brand-teal" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5h2m-1 0v14m-7-4h14"/></svg>
+            </div>
             <p class="font-bold text-lg mb-1 text-brand-navy">Todo Incluido</p>
             <p class="text-sm text-slate-600">Mantenimiento y soporte</p>
           </div>
@@ -1258,32 +1266,32 @@ tailwind.config = {
     </div>
 
     <form class="bg-white rounded-2xl p-6 lg:p-8 text-gray-800 shadow-2xl border border-teal-100">
-      <div class="grid md:grid-cols-2 gap-6 mb-6">
+      <div class="grid md:grid-cols-2 gap-5 mb-5">
         <div>
           <label class="block text-sm font-bold mb-2 text-gray-700">Nombre Completo *</label>
-          <input type="text" required class="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:outline-none focus:border-brand-teal transition">
+          <input type="text" required class="w-full px-4 py-2.5 border-2 border-gray-200 rounded-xl focus:outline-none focus:border-brand-teal transition">
         </div>
         <div>
           <label class="block text-sm font-bold mb-2 text-gray-700">Email *</label>
-          <input type="email" required class="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:outline-none focus:border-brand-teal transition">
+          <input type="email" required class="w-full px-4 py-2.5 border-2 border-gray-200 rounded-xl focus:outline-none focus:border-brand-teal transition">
         </div>
       </div>
 
-      <div class="grid md:grid-cols-2 gap-6 mb-6">
+      <div class="grid md:grid-cols-2 gap-5 mb-5">
         <div>
           <label class="block text-sm font-bold mb-2 text-gray-700">Teléfono *</label>
-          <input type="tel" required class="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:outline-none focus:border-brand-teal transition">
+          <input type="tel" required class="w-full px-4 py-2.5 border-2 border-gray-200 rounded-xl focus:outline-none focus:border-brand-teal transition">
         </div>
         <div>
           <label class="block text-sm font-bold mb-2 text-gray-700">Empresa</label>
-          <input type="text" class="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:outline-none focus:border-brand-teal transition">
+          <input type="text" class="w-full px-4 py-2.5 border-2 border-gray-200 rounded-xl focus:outline-none focus:border-brand-teal transition">
         </div>
       </div>
 
-      <div class="grid md:grid-cols-2 gap-6 mb-6">
+      <div class="grid md:grid-cols-2 gap-5 mb-5">
         <div>
           <label class="block text-sm font-bold mb-2 text-gray-700">Tipo de Solución *</label>
-          <select required class="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:outline-none focus:border-brand-teal transition">
+          <select required class="w-full px-4 py-2.5 border-2 border-gray-200 rounded-xl focus:outline-none focus:border-brand-teal transition">
             <option value="">Seleccionar</option>
             <option>Arrendamiento - Vehicular</option>
             <option>Arrendamiento - Maquinaria/Equipo</option>
@@ -1297,7 +1305,7 @@ tailwind.config = {
         </div>
         <div>
           <label class="block text-sm font-bold mb-2 text-gray-700">Monto Aproximado *</label>
-          <select required class="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:outline-none focus:border-brand-teal transition">
+          <select required class="w-full px-4 py-2.5 border-2 border-gray-200 rounded-xl focus:outline-none focus:border-brand-teal transition">
             <option value="">Seleccionar</option>
             <option>Menos de $500,000</option>
             <option>$500,000 - $1,000,000</option>
@@ -1310,9 +1318,9 @@ tailwind.config = {
         </div>
       </div>
 
-      <div class="mb-6">
+      <div class="mb-5">
         <label class="block text-sm font-bold mb-2 text-gray-700">Mensaje</label>
-        <textarea rows="3" class="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:outline-none focus:border-brand-teal transition" placeholder="Cuéntanos más sobre tu proyecto o necesidad..."></textarea>
+        <textarea rows="2" class="w-full px-4 py-2.5 border-2 border-gray-200 rounded-xl focus:outline-none focus:border-brand-teal transition" placeholder="Cuéntanos más sobre tu proyecto o necesidad..."></textarea>
       </div>
 
       <button type="submit" class="w-full gradient-teal text-white py-3 rounded-xl font-bold text-lg shadow-xl hover:shadow-2xl transition">
@@ -1339,10 +1347,8 @@ tailwind.config = {
         </div>
         <div class="bg-white rounded-3xl p-6 text-gray-900 shadow-xl">
           <h3 class="text-2xl font-black mb-3">Gana comisión por referir</h3>
-          <p class="text-gray-600 mb-5">Entra directo a la página de Brokers o abre el App general para continuar tu registro.</p>
-          <a href="https://app.creditonegocios.com.mx/brokers" class="block w-full text-center gradient-teal text-white py-3 rounded-full font-bold mb-3">Ir a Soy Broker</a>
-          <a href="https://app.creditonegocios.com.mx/" class="block w-full text-center bg-brand-navy text-white py-3 rounded-full font-bold mb-3">Abrir App</a>
-          <a href="https://wa.me/525623300270" target="_blank" rel="noopener noreferrer" class="block w-full text-center border border-brand-navy text-brand-navy py-3 rounded-full font-bold">Hablar por WhatsApp</a>
+          <p class="text-gray-600 mb-5">Conoce la página exclusiva para brokers y empieza a enviarnos oportunidades reales.</p>
+          <a href="https://app.creditonegocios.com.mx/brokers" class="block w-full text-center gradient-teal text-white py-3 rounded-full font-bold">Ir a Soy Broker</a>
         </div>
       </div>
     </div>
@@ -1352,8 +1358,8 @@ tailwind.config = {
 <!-- Footer -->
 <footer class="bg-brand-navy text-white py-10 border-t border-white/10">
   <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-    <div class="grid md:grid-cols-4 gap-6 mb-8">
-      <div>
+    <div class="grid md:grid-cols-4 gap-x-8 gap-y-6 mb-8">
+      <div class="max-w-xs">
         <img src="/Credito%20Negocios-07.png" alt="Crédito Negocios" class="h-12 lg:h-14 w-auto mb-4" />
         <p class="text-blue-100 text-sm leading-6 mb-4">Soluciones especializadas en arrendamiento y créditos empresariales para impulsar el crecimiento de tu negocio.</p>
         <a href="mailto:info@creditonegocios.com.mx" class="text-sm text-white hover:text-teal-200 font-semibold transition">info@creditonegocios.com.mx</a>
