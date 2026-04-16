@@ -142,21 +142,21 @@ tailwind.config = {
 
       <!-- Desktop Actions -->
       <div class="hidden md:flex items-center gap-3 justify-end">
-        <a href="https://app.creditonegocios.com.mx/brokers/" target="_blank" rel="noopener noreferrer" onclick="window.open('https://app.creditonegocios.com.mx/brokers/','_blank'); return false;" class="text-white border border-white px-5 py-2 rounded-full font-semibold text-sm hover:bg-white hover:text-brand-navy transition">
+        <a href="https://app.creditonegocios.com.mx/brokers" class="text-white border border-white px-5 py-2 rounded-full font-semibold text-sm hover:bg-white hover:text-brand-navy transition">
           Soy Broker
         </a>
-        <a href="https://app.creditonegocios.com.mx/" target="_blank" rel="noopener noreferrer" onclick="window.open('https://app.creditonegocios.com.mx/','_blank'); return false;" class="bg-white text-brand-navy border border-white px-6 py-2 rounded-full font-semibold text-sm hover:bg-slate-100 transition">
+        <a href="#contacto" class="bg-white text-brand-navy border border-white px-6 py-2 rounded-full font-semibold text-sm hover:bg-slate-100 transition">
           Solicitar Ahora
         </a>
       </div>
 
       <!-- Mobile Quick Actions -->
       <div class="md:hidden flex items-center gap-2">
-        <a href="https://app.creditonegocios.com.mx/brokers/" target="_blank" rel="noopener noreferrer" onclick="window.open('https://app.creditonegocios.com.mx/brokers/','_blank'); return false;" class="text-white border border-white px-3 py-2 rounded-full font-semibold text-xs">
+        <a href="https://app.creditonegocios.com.mx/brokers" class="text-white border border-white px-3 py-2 rounded-full font-semibold text-xs">
           Soy Broker
         </a>
-        <a href="https://app.creditonegocios.com.mx/" target="_blank" rel="noopener noreferrer" onclick="window.open('https://app.creditonegocios.com.mx/','_blank'); return false;" class="bg-white text-brand-navy border border-white px-3 py-2 rounded-full font-semibold text-xs hover:bg-slate-100 transition">
-          Ir al App
+        <a href="#contacto" class="bg-white text-brand-navy border border-white px-3 py-2 rounded-full font-semibold text-xs hover:bg-slate-100 transition">
+          Cotizar
         </a>
       </div>
     </div>
@@ -183,7 +183,7 @@ tailwind.config = {
     <div class="grid md:grid-cols-2 gap-8 max-w-5xl mx-auto">
 
       <!-- Arrendamiento Card -->
-      <div class="bg-[#f8fffd] rounded-3xl p-8 border-2 border-brand-teal shadow-lg hover:shadow-2xl transition card-hover">
+      <div class="bg-white rounded-3xl p-8 border border-[#cfeee6] shadow-[0_10px_30px_rgba(13,84,96,0.06)] hover:shadow-xl transition card-hover">
         <div class="flex items-center gap-4 mb-5">
           <div class="w-14 h-14 gradient-brand rounded-2xl flex items-center justify-center flex-shrink-0">
             <svg class="w-7 h-7 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -220,7 +220,7 @@ tailwind.config = {
       </div>
 
       <!-- Créditos Card -->
-      <div class="bg-[#f8fffd] rounded-3xl p-8 border-2 border-brand-teal shadow-lg hover:shadow-2xl transition card-hover">
+      <div class="bg-white rounded-3xl p-8 border border-[#cfeee6] shadow-[0_10px_30px_rgba(13,84,96,0.06)] hover:shadow-xl transition card-hover">
         <div class="flex items-center gap-4 mb-5">
           <div class="w-14 h-14 gradient-brand rounded-2xl flex items-center justify-center flex-shrink-0">
             <svg class="w-7 h-7 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -398,28 +398,28 @@ tailwind.config = {
 
     <!-- Tab: Maquinaria -->
     <div id="tab-maquinaria" class="tab-content"><span id="arrendamiento-maquinaria"></span>
-      <!-- ✅ Banner unificado a navy (antes verde, no daba seriedad) -->
-      <div class="gradient-navy rounded-3xl p-8 lg:p-12 text-white mb-12">
+      <!-- ✅ Banner informativo más sutil -->
+      <div class="bg-gradient-to-br from-slate-50 to-blue-50 rounded-3xl p-8 lg:p-10 text-brand-navy mb-12 border border-blue-100 shadow-sm">
         <div class="grid md:grid-cols-4 gap-6 text-center">
           <div>
             <div class="text-3xl font-black mb-2">⚡</div>
-            <p class="font-bold text-lg mb-1">Ultra Rápido</p>
-            <p class="text-sm text-blue-200">Respuesta en 36 hrs</p>
+            <p class="font-bold text-lg mb-1 text-brand-navy">Ultra Rápido</p>
+            <p class="text-sm text-slate-600">Respuesta en 36 hrs</p>
           </div>
           <div>
             <div class="text-3xl font-black mb-2">🎯</div>
-            <p class="font-bold text-lg mb-1">Sin Límites</p>
-            <p class="text-sm text-blue-200">Desde $50k hasta $50M+</p>
+            <p class="font-bold text-lg mb-1 text-brand-navy">Sin Límites</p>
+            <p class="text-sm text-slate-600">Desde $50k hasta $50M+</p>
           </div>
           <div>
             <div class="text-3xl font-black mb-2">💯</div>
-            <p class="font-bold text-lg mb-1">Deducción Total</p>
-            <p class="text-sm text-blue-200">100% deducible</p>
+            <p class="font-bold text-lg mb-1 text-brand-navy">Deducción Total</p>
+            <p class="text-sm text-slate-600">100% deducible</p>
           </div>
           <div>
             <div class="text-3xl font-black mb-2">🛠️</div>
-            <p class="font-bold text-lg mb-1">Todo Incluido</p>
-            <p class="text-sm text-blue-200">Mantenimiento y soporte</p>
+            <p class="font-bold text-lg mb-1 text-brand-navy">Todo Incluido</p>
+            <p class="text-sm text-slate-600">Mantenimiento y soporte</p>
           </div>
         </div>
       </div>
@@ -1340,8 +1340,8 @@ tailwind.config = {
         <div class="bg-white rounded-3xl p-6 text-gray-900 shadow-xl">
           <h3 class="text-2xl font-black mb-3">Gana comisión por referir</h3>
           <p class="text-gray-600 mb-5">Entra directo a la página de Brokers o abre el App general para continuar tu registro.</p>
-          <a href="https://app.creditonegocios.com.mx/brokers/" target="_blank" rel="noopener noreferrer" onclick="window.open('https://app.creditonegocios.com.mx/brokers/','_blank'); return false;" class="block w-full text-center gradient-teal text-white py-3 rounded-full font-bold mb-3">Ir a Soy Broker</a>
-          <a href="https://app.creditonegocios.com.mx/" target="_blank" rel="noopener noreferrer" onclick="window.open('https://app.creditonegocios.com.mx/','_blank'); return false;" class="block w-full text-center bg-brand-navy text-white py-3 rounded-full font-bold mb-3">Abrir App</a>
+          <a href="https://app.creditonegocios.com.mx/brokers" class="block w-full text-center gradient-teal text-white py-3 rounded-full font-bold mb-3">Ir a Soy Broker</a>
+          <a href="https://app.creditonegocios.com.mx/" class="block w-full text-center bg-brand-navy text-white py-3 rounded-full font-bold mb-3">Abrir App</a>
           <a href="https://wa.me/525623300270" target="_blank" rel="noopener noreferrer" class="block w-full text-center border border-brand-navy text-brand-navy py-3 rounded-full font-bold">Hablar por WhatsApp</a>
         </div>
       </div>
@@ -1350,9 +1350,9 @@ tailwind.config = {
 </section>
 
 <!-- Footer -->
-<footer class="bg-brand-navy text-white py-12 border-t border-white/10">
-  <div class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
-    <div class="grid md:grid-cols-4 gap-8 mb-10">
+<footer class="bg-brand-navy text-white py-10 border-t border-white/10">
+  <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+    <div class="grid md:grid-cols-4 gap-6 mb-8">
       <div>
         <img src="/Credito%20Negocios-07.png" alt="Crédito Negocios" class="h-12 lg:h-14 w-auto mb-4" />
         <p class="text-blue-100 text-sm leading-6 mb-4">Soluciones especializadas en arrendamiento y créditos empresariales para impulsar el crecimiento de tu negocio.</p>
@@ -1381,12 +1381,12 @@ tailwind.config = {
         <ul class="space-y-3 text-sm text-blue-100">
           <li><a href="#casos" class="hover:text-teal-200 transition">Resultados</a></li>
           <li><a href="#faq" class="hover:text-teal-200 transition">FAQ</a></li>
-          <li><a href="https://app.creditonegocios.com.mx/" target="_blank" rel="noopener noreferrer" class="hover:text-teal-200 transition">Ir al App</a></li>
-          <li><a href="https://app.creditonegocios.com.mx/brokers/" target="_blank" rel="noopener noreferrer" class="hover:text-teal-200 transition">Soy Broker</a></li>
+          <li><a href="https://app.creditonegocios.com.mx/" class="hover:text-teal-200 transition">Ir al App</a></li>
+          <li><a href="https://app.creditonegocios.com.mx/brokers" class="hover:text-teal-200 transition">Soy Broker</a></li>
         </ul>
       </div>
     </div>
-    <div class="border-t border-white/10 pt-8 flex flex-col md:flex-row md:items-center md:justify-between text-sm text-blue-100">
+    <div class="border-t border-white/10 pt-5 flex flex-col md:flex-row md:items-center md:justify-between text-sm text-blue-100">
       <p>© 2026 Crédito Negocios. Todos los derechos reservados.</p>
       <div class="flex gap-6 mt-4 md:mt-0">
         <a href="#" class="hover:text-teal-200 transition">Aviso de Privacidad</a>
