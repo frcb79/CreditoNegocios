@@ -183,9 +183,9 @@ export default function BrokersLanding() {
         <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-4 sm:px-6 lg:px-8">
           <div className="flex items-center gap-4">
             <img
-              src="/credito-negocios-full-logo.jpg"
+              src="/Credito%20Negocios-07.jpg"
               alt="Credito Negocios"
-              className="h-11 w-auto"
+              className="h-12 w-auto rounded-lg shadow-sm"
             />
             <Badge className="hidden rounded-full bg-secondary/10 px-3 py-1 text-secondary sm:inline-flex">
               Programa para Brokers
@@ -608,7 +608,7 @@ export default function BrokersLanding() {
       <footer className="border-t border-slate-200 bg-white/90">
         <div className="mx-auto flex max-w-7xl flex-col gap-4 px-4 py-8 text-sm text-slate-500 sm:px-6 lg:flex-row lg:items-center lg:justify-between lg:px-8">
           <div className="flex items-center gap-3">
-            <img src="/credito-negocios-full-logo.jpg" alt="Credito Negocios" className="h-9 w-auto" />
+            <img src="/Credito%20Negocios-07.jpg" alt="Credito Negocios" className="h-11 w-auto rounded-lg shadow-sm" />
             <span>© 2026 Crédito Negocios</span>
           </div>
           <div className="flex flex-wrap gap-4">
