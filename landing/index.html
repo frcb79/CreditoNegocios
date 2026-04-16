@@ -25,12 +25,12 @@ tailwind.config = {
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap');
 * { font-family: 'Inter', sans-serif; }
 
-.gradient-navy { background: linear-gradient(135deg, #0A3042 0%, #20466B 100%); }
+.gradient-navy { background: linear-gradient(135deg, #0A3042 0%, #163f56 100%); }
 .gradient-teal  { background: linear-gradient(135deg, #00cca2 0%, #00FFCA 100%); }
 .gradient-orange{ background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%); }
 
-/* Unified icon gradient: teal → navy */
-.gradient-brand { background: linear-gradient(135deg, #00cca2 0%, #0A3042 100%); }
+/* Unified icon gradient: logo blue */
+.gradient-brand { background: linear-gradient(135deg, #0A3042 0%, #163f56 100%); }
 
 .hero-pattern {
   background-color: #0A3042;
@@ -90,7 +90,7 @@ tailwind.config = {
 </a>
 
 <!-- Navigation -->
-<nav class="fixed w-full bg-white shadow-md z-50">
+<nav class="fixed w-full bg-brand-navy shadow-lg z-50 border-b border-white/10">
   <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
     <div class="flex justify-between items-center h-20">
       <!-- Logo -->
@@ -105,10 +105,10 @@ tailwind.config = {
 
       <!-- Desktop Menu -->
       <div class="hidden md:flex items-center space-x-6">
-        <a href="#inicio" class="text-gray-700 hover:text-brand-navy font-medium transition">Inicio</a>
+        <a href="#inicio" class="text-white hover:text-teal-200 font-medium transition">Inicio</a>
 
         <div class="dropdown">
-          <a href="#arrendamiento" class="text-gray-700 hover:text-brand-navy font-medium transition flex items-center gap-1">
+          <a href="#arrendamiento" class="text-white hover:text-teal-200 font-medium transition flex items-center gap-1">
             Arrendamiento
             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
@@ -121,7 +121,7 @@ tailwind.config = {
         </div>
 
         <div class="dropdown">
-          <a href="#creditos" class="text-gray-700 hover:text-brand-navy font-medium transition flex items-center gap-1">
+          <a href="#creditos" class="text-white hover:text-teal-200 font-medium transition flex items-center gap-1">
             Créditos
             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
@@ -136,22 +136,22 @@ tailwind.config = {
           </div>
         </div>
 
-        <a href="#casos" class="text-gray-700 hover:text-brand-navy font-medium transition">Casos de Éxito</a>
-        <a href="#faq" class="text-gray-700 hover:text-brand-navy font-medium transition">FAQ</a>
-        <a href="https://app.creditonegocios.com.mx/brokers" target="_blank" rel="noopener noreferrer" class="text-brand-navy border border-brand-navy px-5 py-2 rounded-full font-semibold text-sm hover:bg-brand-navy hover:text-white transition">
+        <a href="#casos" class="text-white hover:text-teal-200 font-medium transition">Casos de Éxito</a>
+        <a href="#faq" class="text-white hover:text-teal-200 font-medium transition">FAQ</a>
+        <a href="https://app.creditonegocios.com.mx/brokers" target="_blank" rel="noopener noreferrer" class="text-white border border-white px-5 py-2 rounded-full font-semibold text-sm hover:bg-white hover:text-brand-navy transition">
           Soy Broker
         </a>
-        <a href="#contacto" class="text-brand-navy border border-brand-navy px-6 py-2 rounded-full font-semibold text-sm hover:bg-brand-navy hover:text-white transition">
+        <a href="#contacto" class="bg-white text-brand-navy border border-white px-6 py-2 rounded-full font-semibold text-sm hover:bg-slate-100 transition">
           Solicitar Ahora
         </a>
       </div>
 
       <!-- Mobile Quick Actions -->
       <div class="md:hidden flex items-center gap-2">
-        <a href="https://app.creditonegocios.com.mx/brokers" target="_blank" rel="noopener noreferrer" class="text-brand-navy border border-brand-navy px-3 py-2 rounded-full font-semibold text-xs">
+        <a href="https://app.creditonegocios.com.mx/brokers" target="_blank" rel="noopener noreferrer" class="text-white border border-white px-3 py-2 rounded-full font-semibold text-xs">
           Soy Broker
         </a>
-        <a href="#contacto" class="text-brand-navy border border-brand-navy px-3 py-2 rounded-full font-semibold text-xs hover:bg-brand-navy hover:text-white transition">
+        <a href="#contacto" class="bg-white text-brand-navy border border-white px-3 py-2 rounded-full font-semibold text-xs hover:bg-slate-100 transition">
           Cotizar
         </a>
       </div>
@@ -167,14 +167,12 @@ tailwind.config = {
     <div class="text-center mb-16">
       <h1 class="text-5xl lg:text-6xl font-black mb-6 leading-tight">
         Soluciones Financieras<br/>
-        <span class="text-teal-300"> para tu Empresa</span>
+        <span class="text-blue-200"> para tu Empresa</span>
       </h1>
-      <!-- ✅ Orden cambiado: Créditos primero, luego Arrendamiento -->
       <p class="text-xl lg:text-2xl text-blue-100 max-w-3xl mx-auto mb-3">
         Créditos empresariales + Arrendamiento de autos y maquinaria
       </p>
-      <!-- ✅ Monto centrado debajo, aplica a ambos productos -->
-      <p class="text-2xl font-bold text-teal-300 text-center mb-10">Desde $100K hasta $30M</p>
+      <p class="text-2xl font-bold text-white text-center mb-10">Desde $100K hasta $30M</p>
     </div>
 
     <!-- Dual Hero Cards — ✅ Fondo blanco, texto de color -->
@@ -260,32 +258,32 @@ tailwind.config = {
 </section>
 
 <!-- Stats Bar -->
-<section class="bg-white py-12 border-b">
+<section class="gradient-navy py-12 border-b border-white/10">
   <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
     <div class="grid md:grid-cols-4 gap-8 text-center">
       <div>
-        <div class="text-4xl font-black text-brand-teal mb-2">
+        <div class="text-4xl font-black text-white mb-2">
           <span class="counter-value" data-counter="150" data-growth="0.06" data-reference="2026-04-01" data-prefix="$" data-suffix="M+" data-decimals="0">$0M+</span>
         </div>
-        <p class="text-gray-600">Financiamiento Otorgado</p>
+        <p class="text-blue-100">Financiamiento Otorgado</p>
       </div>
       <div>
-        <div class="text-4xl font-black text-brand-teal mb-2">
+        <div class="text-4xl font-black text-white mb-2">
           <span class="counter-value" data-counter="100" data-growth="0.06" data-reference="2026-04-01" data-suffix="+" data-decimals="0">0+</span>
         </div>
-        <p class="text-gray-600">Empresas y Negocios Financiados</p>
+        <p class="text-blue-100">Empresas y Negocios Financiados</p>
       </div>
       <div>
-        <div class="text-4xl font-black text-brand-teal mb-2">
+        <div class="text-4xl font-black text-white mb-2">
           <span class="counter-value" data-counter="7" data-prefix="" data-suffix=" Días" data-decimals="0">0 Días</span>
         </div>
-        <p class="text-gray-600">Tiempo Promedio de Aprobación</p>
+        <p class="text-blue-100">Tiempo Promedio de Aprobación</p>
       </div>
       <div>
-        <div class="text-4xl font-black text-brand-teal mb-2">
+        <div class="text-4xl font-black text-white mb-2">
           <span class="counter-value" data-counter="4.8" data-suffix="/5" data-decimals="1">0/5</span>
         </div>
-        <p class="text-gray-600">Calificación de Clientes</p>
+        <p class="text-blue-100">Calificación de Clientes</p>
       </div>
     </div>
   </div>
@@ -298,7 +296,7 @@ tailwind.config = {
   <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
     <div class="text-center mb-12">
       <div class="inline-block bg-teal-100 text-brand-teal text-sm font-bold px-4 py-2 rounded-full mb-4">
-        🚗 ARRENDAMIENTO
+         ARRENDAMIENTO
       </div>
       <h2 class="text-4xl lg:text-5xl font-black text-gray-900 mb-4">Arrendamiento Sin Límites</h2>
       <p class="text-xl text-gray-600 max-w-3xl mx-auto">
@@ -424,8 +422,8 @@ tailwind.config = {
 
       <!-- ✅ Iconos unificados: gradiente teal→navy -->
       <div class="grid md:grid-cols-4 gap-6">
-        <div class="bg-white rounded-2xl p-6 card-hover border-2 border-transparent hover:border-brand-teal transition">
-          <div class="w-14 h-14 bg-gradient-to-br from-blue-900 to-blue-700 rounded-xl flex items-center justify-center mb-4">
+        <div class="bg-white rounded-2xl p-6 card-hover border-2 border-transparent hover:border-brand-navy transition">
+          <div class="w-14 h-14 gradient-navy rounded-xl flex items-center justify-center mb-4">
             <svg class="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"/>
             </svg>
@@ -434,8 +432,8 @@ tailwind.config = {
           <p class="text-sm text-gray-600">Excavadoras, grúas, montacargas</p>
         </div>
 
-        <div class="bg-white rounded-2xl p-6 card-hover border-2 border-transparent hover:border-brand-teal transition">
-          <div class="w-14 h-14 bg-gradient-to-br from-blue-900 to-blue-700 rounded-xl flex items-center justify-center mb-4">
+        <div class="bg-white rounded-2xl p-6 card-hover border-2 border-transparent hover:border-brand-navy transition">
+          <div class="w-14 h-14 gradient-navy rounded-xl flex items-center justify-center mb-4">
             <svg class="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/>
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
@@ -445,8 +443,8 @@ tailwind.config = {
           <p class="text-sm text-gray-600">CNC, tornos, prensas</p>
         </div>
 
-        <div class="bg-white rounded-2xl p-6 card-hover border-2 border-transparent hover:border-brand-teal transition">
-          <div class="w-14 h-14 bg-gradient-to-br from-blue-900 to-blue-700 rounded-xl flex items-center justify-center mb-4">
+        <div class="bg-white rounded-2xl p-6 card-hover border-2 border-transparent hover:border-brand-navy transition">
+          <div class="w-14 h-14 gradient-navy rounded-xl flex items-center justify-center mb-4">
             <svg class="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z"/>
             </svg>
@@ -455,8 +453,8 @@ tailwind.config = {
           <p class="text-sm text-gray-600">Resonancia, rayos X, quirúrgicos</p>
         </div>
 
-        <div class="bg-white rounded-2xl p-6 card-hover border-2 border-transparent hover:border-brand-teal transition">
-          <div class="w-14 h-14 bg-gradient-to-br from-blue-900 to-blue-700 rounded-xl flex items-center justify-center mb-4">
+        <div class="bg-white rounded-2xl p-6 card-hover border-2 border-transparent hover:border-brand-navy transition">
+          <div class="w-14 h-14 gradient-navy rounded-xl flex items-center justify-center mb-4">
             <svg class="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/>
             </svg>
@@ -477,7 +475,7 @@ tailwind.config = {
   <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
     <div class="text-center mb-16">
       <div class="inline-block bg-teal-100 text-brand-teal text-sm font-bold px-4 py-2 rounded-full mb-4">
-        💰 CRÉDITOS EMPRESARIALES
+         CRÉDITOS EMPRESARIALES
       </div>
       <h2 class="text-4xl lg:text-5xl font-black text-gray-900 mb-4">Financiamiento Rápido y Flexible</h2>
       <p class="text-xl text-gray-600 max-w-3xl mx-auto">
@@ -679,7 +677,7 @@ tailwind.config = {
   <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
     <div class="text-center mb-12">
       <div class="inline-block bg-teal-100 text-brand-teal text-sm font-bold px-4 py-2 rounded-full mb-4">
-        ⭐ CASOS DE ÉXITO
+         CASOS DE ÉXITO
       </div>
       <h2 class="text-4xl lg:text-5xl font-black text-gray-900 mb-4">Casos Reales de Créditos y Arrendamiento</h2>
     </div>
@@ -693,7 +691,6 @@ tailwind.config = {
           🚛 Arrendamiento
         </button>
       </div>
-      <p class="text-sm text-gray-500 text-center">Navega con flechas entre testimonios de liquidez, expansión, flotilla y maquinaria.</p>
     </div>
 
     <!-- ── CRÉDITOS panel ── -->
@@ -1348,47 +1345,47 @@ tailwind.config = {
 </section>
 
 <!-- Footer -->
-<footer class="bg-gray-900 text-white py-16">
+<footer class="bg-brand-navy text-white py-16 border-t border-white/10">
   <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
     <div class="grid md:grid-cols-4 gap-12 mb-12">
       <div>
         <img src="/Credito%20Negocios-07.png" alt="Crédito Negocios" class="h-14 lg:h-16 w-auto mb-4" />
-        <p class="text-gray-400 text-sm leading-6 mb-4">Soluciones especializadas en arrendamiento y créditos empresariales para impulsar el crecimiento de tu negocio.</p>
-        <a href="mailto:info@creditonegocios.com.mx" class="text-sm text-blue-300 hover:text-white font-semibold transition">info@creditonegocios.com.mx</a>
+        <p class="text-blue-100 text-sm leading-6 mb-4">Soluciones especializadas en arrendamiento y créditos empresariales para impulsar el crecimiento de tu negocio.</p>
+        <a href="mailto:info@creditonegocios.com.mx" class="text-sm text-white hover:text-teal-200 font-semibold transition">info@creditonegocios.com.mx</a>
       </div>
       <div>
         <h4 class="font-bold text-white mb-6 text-lg">Arrendamiento</h4>
-        <ul class="space-y-3 text-sm text-gray-400">
-          <li><a href="#arrendamiento" data-tab-target="vehicular" class="hover:text-brand-teal transition">Vehicular</a></li>
-          <li><a href="#arrendamiento" data-tab-target="maquinaria" class="hover:text-brand-teal transition">Maquinaria y Equipo</a></li>
-          <li><a href="#arrendamiento" class="hover:text-brand-teal transition">Inversión Plus</a></li>
+        <ul class="space-y-3 text-sm text-blue-100">
+          <li><a href="#arrendamiento" data-tab-target="vehicular" class="hover:text-teal-200 transition">Vehicular</a></li>
+          <li><a href="#arrendamiento" data-tab-target="maquinaria" class="hover:text-teal-200 transition">Maquinaria y Equipo</a></li>
+          <li><a href="#arrendamiento" class="hover:text-teal-200 transition">Inversión Plus</a></li>
         </ul>
       </div>
       <div>
         <h4 class="font-bold text-white mb-6 text-lg">Créditos</h4>
-        <ul class="space-y-3 text-sm text-gray-400">
-          <li><a href="#credito-simple" class="hover:text-brand-teal transition">Crédito Simple</a></li>
-          <li><a href="#credito-revolvente" class="hover:text-brand-teal transition">Línea Revolvente</a></li>
-          <li><a href="#factoraje" class="hover:text-brand-teal transition">Factoraje</a></li>
-          <li><a href="#sustitucion-pasivos" class="hover:text-brand-teal transition">Sustitución de Pasivos</a></li>
-          <li><a href="#soluciones-medida" class="hover:text-brand-teal transition">Soluciones a Medida</a></li>
+        <ul class="space-y-3 text-sm text-blue-100">
+          <li><a href="#credito-simple" class="hover:text-teal-200 transition">Crédito Simple</a></li>
+          <li><a href="#credito-revolvente" class="hover:text-teal-200 transition">Línea Revolvente</a></li>
+          <li><a href="#factoraje" class="hover:text-teal-200 transition">Factoraje</a></li>
+          <li><a href="#sustitucion-pasivos" class="hover:text-teal-200 transition">Sustitución de Pasivos</a></li>
+          <li><a href="#soluciones-medida" class="hover:text-teal-200 transition">Soluciones a Medida</a></li>
         </ul>
       </div>
       <div>
         <h4 class="font-bold text-white mb-6 text-lg">Enlaces</h4>
-        <ul class="space-y-3 text-sm text-gray-400">
-          <li><a href="#casos" class="hover:text-brand-teal transition">Resultados</a></li>
-          <li><a href="#faq" class="hover:text-brand-teal transition">FAQ</a></li>
-          <li><a href="#contacto" class="hover:text-brand-teal transition">Cotizar</a></li>
-          <li><a href="https://app.creditonegocios.com.mx/brokers" class="hover:text-brand-teal transition">Soy Broker</a></li>
+        <ul class="space-y-3 text-sm text-blue-100">
+          <li><a href="#casos" class="hover:text-teal-200 transition">Resultados</a></li>
+          <li><a href="#faq" class="hover:text-teal-200 transition">FAQ</a></li>
+          <li><a href="#contacto" class="hover:text-teal-200 transition">Cotizar</a></li>
+          <li><a href="https://app.creditonegocios.com.mx/brokers" class="hover:text-teal-200 transition">Soy Broker</a></li>
         </ul>
       </div>
     </div>
-    <div class="border-t border-gray-800 pt-8 flex flex-col md:flex-row md:items-center md:justify-between text-sm text-gray-400">
+    <div class="border-t border-white/10 pt-8 flex flex-col md:flex-row md:items-center md:justify-between text-sm text-blue-100">
       <p>© 2026 Crédito Negocios. Todos los derechos reservados.</p>
       <div class="flex gap-6 mt-4 md:mt-0">
-        <a href="#" class="hover:text-brand-teal transition">Aviso de Privacidad</a>
-        <a href="#" class="hover:text-brand-teal transition">Términos y Condiciones</a>
+        <a href="#" class="hover:text-teal-200 transition">Aviso de Privacidad</a>
+        <a href="#" class="hover:text-teal-200 transition">Términos y Condiciones</a>
       </div>
     </div>
   </div>
