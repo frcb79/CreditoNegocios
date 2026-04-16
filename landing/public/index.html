@@ -55,9 +55,9 @@ tailwind.config = {
 @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
 
 .whatsapp-float {
-  position: fixed; width: 60px; height: 60px; bottom: 40px; right: 40px;
-  background-color: #25d366; color: #FFF; border-radius: 50px; text-align: center;
-  font-size: 30px; box-shadow: 2px 2px 15px rgba(0,0,0,0.3); z-index: 100;
+  position: fixed; width: 52px; height: 52px; bottom: 24px; right: 24px;
+  background-color: #25d366; color: #FFF; border-radius: 9999px; text-align: center;
+  font-size: 24px; box-shadow: 0 8px 18px rgba(0,0,0,0.22); z-index: 100;
   display: flex; align-items: center; justify-content: center;
   transition: all 0.3s ease; animation: pulse 2s infinite;
 }
@@ -84,7 +84,7 @@ tailwind.config = {
 
 <!-- WhatsApp Float Button -->
 <a href="https://wa.me/525623300270" target="_blank" class="whatsapp-float">
-  <svg class="w-8 h-8" fill="currentColor" viewBox="0 0 24 24">
+  <svg class="w-6 h-6" fill="currentColor" viewBox="0 0 24 24">
     <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/>
   </svg>
 </a>
@@ -142,21 +142,21 @@ tailwind.config = {
 
       <!-- Desktop Actions -->
       <div class="hidden md:flex items-center gap-3 justify-end">
-        <a href="https://app.creditonegocios.com.mx/brokers" target="_blank" rel="noopener noreferrer" class="text-white border border-white px-5 py-2 rounded-full font-semibold text-sm hover:bg-white hover:text-brand-navy transition">
+        <a href="https://app.creditonegocios.com.mx/brokers/" target="_blank" rel="noopener noreferrer" onclick="window.open('https://app.creditonegocios.com.mx/brokers/','_blank'); return false;" class="text-white border border-white px-5 py-2 rounded-full font-semibold text-sm hover:bg-white hover:text-brand-navy transition">
           Soy Broker
         </a>
-        <a href="#contacto" class="bg-white text-brand-navy border border-white px-6 py-2 rounded-full font-semibold text-sm hover:bg-slate-100 transition">
+        <a href="https://app.creditonegocios.com.mx/" target="_blank" rel="noopener noreferrer" onclick="window.open('https://app.creditonegocios.com.mx/','_blank'); return false;" class="bg-white text-brand-navy border border-white px-6 py-2 rounded-full font-semibold text-sm hover:bg-slate-100 transition">
           Solicitar Ahora
         </a>
       </div>
 
       <!-- Mobile Quick Actions -->
       <div class="md:hidden flex items-center gap-2">
-        <a href="https://app.creditonegocios.com.mx/brokers" target="_blank" rel="noopener noreferrer" class="text-white border border-white px-3 py-2 rounded-full font-semibold text-xs">
+        <a href="https://app.creditonegocios.com.mx/brokers/" target="_blank" rel="noopener noreferrer" onclick="window.open('https://app.creditonegocios.com.mx/brokers/','_blank'); return false;" class="text-white border border-white px-3 py-2 rounded-full font-semibold text-xs">
           Soy Broker
         </a>
-        <a href="#contacto" class="bg-white text-brand-navy border border-white px-3 py-2 rounded-full font-semibold text-xs hover:bg-slate-100 transition">
-          Cotizar
+        <a href="https://app.creditonegocios.com.mx/" target="_blank" rel="noopener noreferrer" onclick="window.open('https://app.creditonegocios.com.mx/','_blank'); return false;" class="bg-white text-brand-navy border border-white px-3 py-2 rounded-full font-semibold text-xs hover:bg-slate-100 transition">
+          Ir al App
         </a>
       </div>
     </div>
@@ -183,7 +183,7 @@ tailwind.config = {
     <div class="grid md:grid-cols-2 gap-8 max-w-5xl mx-auto">
 
       <!-- Arrendamiento Card -->
-      <div class="bg-white rounded-3xl p-8 hover:shadow-2xl transition card-hover">
+      <div class="bg-[#f8fffd] rounded-3xl p-8 border-2 border-brand-teal shadow-lg hover:shadow-2xl transition card-hover">
         <div class="flex items-center gap-4 mb-5">
           <div class="w-14 h-14 gradient-brand rounded-2xl flex items-center justify-center flex-shrink-0">
             <svg class="w-7 h-7 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -220,7 +220,7 @@ tailwind.config = {
       </div>
 
       <!-- Créditos Card -->
-      <div class="bg-white rounded-3xl p-8 hover:shadow-2xl transition card-hover">
+      <div class="bg-[#f8fffd] rounded-3xl p-8 border-2 border-brand-teal shadow-lg hover:shadow-2xl transition card-hover">
         <div class="flex items-center gap-4 mb-5">
           <div class="w-14 h-14 gradient-brand rounded-2xl flex items-center justify-center flex-shrink-0">
             <svg class="w-7 h-7 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -633,16 +633,16 @@ tailwind.config = {
 
     <!-- ✅ Soluciones a Medida — centrado abajo, informativo (no es un producto) -->
     <div class="max-w-5xl mx-auto">
-      <div id="soluciones-medida" class="bg-gradient-to-br from-brand-navy to-blue-900 rounded-3xl p-8 shadow-lg text-white">
+      <div id="soluciones-medida" class="bg-white border-2 border-brand-teal rounded-3xl p-8 shadow-lg text-gray-900">
         <div class="flex items-start gap-6">
-          <div class="w-14 h-14 bg-white/20 rounded-2xl flex items-center justify-center flex-shrink-0">
-            <svg class="w-7 h-7 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <div class="w-14 h-14 bg-teal-100 rounded-2xl flex items-center justify-center flex-shrink-0">
+            <svg class="w-7 h-7 text-brand-teal" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 4a2 2 0 114 0v1a1 1 0 001 1h3a1 1 0 011 1v3a1 1 0 01-1 1h-1a2 2 0 100 4h1a1 1 0 011 1v3a1 1 0 01-1 1h-3a1 1 0 01-1-1v-1a2 2 0 10-4 0v1a1 1 0 01-1 1H7a1 1 0 01-1-1v-3a1 1 0 00-1-1H4a2 2 0 110-4h1a1 1 0 001-1V7a1 1 0 011-1h3a1 1 0 001-1V4z"/>
             </svg>
           </div>
           <div class="flex-1">
-            <h3 class="text-2xl font-bold mb-2">Soluciones a la Medida</h3>
-            <p class="text-blue-100 mb-5">
+            <h3 class="text-2xl font-bold mb-2 text-gray-900">Soluciones a la Medida</h3>
+            <p class="text-gray-600 mb-5">
               Si nuestros productos no se ajustan a tu proyecto, nuestro equipo buscará una estructura financiera que se pueda adaptar a tus necesidades.
             </p>
             <ul class="flex flex-nowrap gap-6 text-sm">
@@ -683,7 +683,7 @@ tailwind.config = {
       <div class="inline-block bg-teal-100 text-brand-teal text-sm font-bold px-4 py-2 rounded-full mb-4">
          CASOS DE ÉXITO
       </div>
-      <h2 class="text-4xl lg:text-5xl font-black text-gray-900 mb-4">Casos Reales de Créditos y Arrendamiento</h2>
+      <h2 class="text-4xl lg:text-5xl font-black text-gray-900 mb-4">Casos Reales y Testimonios</h2>
     </div>
 
     <div class="flex flex-col items-center gap-4 mb-10">
@@ -1250,14 +1250,14 @@ tailwind.config = {
 </section>
 
 <!-- Contact Form -->
-<section id="contacto" class="py-20 gradient-navy text-white">
-  <div class="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8">
-    <div class="text-center mb-12">
-      <h2 class="text-4xl lg:text-5xl font-black mb-4">Solicita Tu Cotización</h2>
-      <p class="text-xl text-blue-200">Completa el formulario y te contactamos en menos de 24 horas</p>
+<section id="contacto" class="py-14 gradient-navy text-white">
+  <div class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
+    <div class="text-center mb-8">
+      <h2 class="text-3xl lg:text-4xl font-black mb-3">Solicita Tu Cotización</h2>
+      <p class="text-base lg:text-lg text-blue-100 max-w-2xl mx-auto">Completa el formulario y te contactamos en menos de 24 horas</p>
     </div>
 
-    <form class="bg-white rounded-3xl p-8 lg:p-12 text-gray-800 shadow-2xl">
+    <form class="bg-white rounded-2xl p-6 lg:p-8 text-gray-800 shadow-2xl border border-teal-100">
       <div class="grid md:grid-cols-2 gap-6 mb-6">
         <div>
           <label class="block text-sm font-bold mb-2 text-gray-700">Nombre Completo *</label>
@@ -1312,10 +1312,10 @@ tailwind.config = {
 
       <div class="mb-6">
         <label class="block text-sm font-bold mb-2 text-gray-700">Mensaje</label>
-        <textarea rows="4" class="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:outline-none focus:border-brand-teal transition" placeholder="Cuéntanos más sobre tu proyecto o necesidad..."></textarea>
+        <textarea rows="3" class="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:outline-none focus:border-brand-teal transition" placeholder="Cuéntanos más sobre tu proyecto o necesidad..."></textarea>
       </div>
 
-      <button type="submit" class="w-full gradient-teal text-white py-4 rounded-xl font-bold text-lg shadow-xl hover:shadow-2xl transition">
+      <button type="submit" class="w-full gradient-teal text-white py-3 rounded-xl font-bold text-lg shadow-xl hover:shadow-2xl transition">
         Enviar Solicitud →
       </button>
       <p class="text-sm text-gray-500 text-center mt-6">* Respuesta garantizada en menos de 24 horas</p>
@@ -1339,8 +1339,9 @@ tailwind.config = {
         </div>
         <div class="bg-white rounded-3xl p-6 text-gray-900 shadow-xl">
           <h3 class="text-2xl font-black mb-3">Gana comisión por referir</h3>
-          <p class="text-gray-600 mb-5">Conoce la página exclusiva y empieza a enviarnos oportunidades reales de crédito o arrendamiento.</p>
-          <a href="https://app.creditonegocios.com.mx/brokers" target="_blank" rel="noopener noreferrer" class="block w-full text-center gradient-teal text-white py-3 rounded-full font-bold mb-3">Ir a Soy Broker</a>
+          <p class="text-gray-600 mb-5">Entra directo a la página de Brokers o abre el App general para continuar tu registro.</p>
+          <a href="https://app.creditonegocios.com.mx/brokers/" target="_blank" rel="noopener noreferrer" onclick="window.open('https://app.creditonegocios.com.mx/brokers/','_blank'); return false;" class="block w-full text-center gradient-teal text-white py-3 rounded-full font-bold mb-3">Ir a Soy Broker</a>
+          <a href="https://app.creditonegocios.com.mx/" target="_blank" rel="noopener noreferrer" onclick="window.open('https://app.creditonegocios.com.mx/','_blank'); return false;" class="block w-full text-center bg-brand-navy text-white py-3 rounded-full font-bold mb-3">Abrir App</a>
           <a href="https://wa.me/525623300270" target="_blank" rel="noopener noreferrer" class="block w-full text-center border border-brand-navy text-brand-navy py-3 rounded-full font-bold">Hablar por WhatsApp</a>
         </div>
       </div>
@@ -1349,11 +1350,11 @@ tailwind.config = {
 </section>
 
 <!-- Footer -->
-<footer class="bg-brand-navy text-white py-16 border-t border-white/10">
-  <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-    <div class="grid md:grid-cols-4 gap-12 mb-12">
+<footer class="bg-brand-navy text-white py-12 border-t border-white/10">
+  <div class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
+    <div class="grid md:grid-cols-4 gap-8 mb-10">
       <div>
-        <img src="/Credito%20Negocios-07.png" alt="Crédito Negocios" class="h-14 lg:h-16 w-auto mb-4" />
+        <img src="/Credito%20Negocios-07.png" alt="Crédito Negocios" class="h-12 lg:h-14 w-auto mb-4" />
         <p class="text-blue-100 text-sm leading-6 mb-4">Soluciones especializadas en arrendamiento y créditos empresariales para impulsar el crecimiento de tu negocio.</p>
         <a href="mailto:info@creditonegocios.com.mx" class="text-sm text-white hover:text-teal-200 font-semibold transition">info@creditonegocios.com.mx</a>
       </div>
@@ -1380,8 +1381,8 @@ tailwind.config = {
         <ul class="space-y-3 text-sm text-blue-100">
           <li><a href="#casos" class="hover:text-teal-200 transition">Resultados</a></li>
           <li><a href="#faq" class="hover:text-teal-200 transition">FAQ</a></li>
-          <li><a href="#contacto" class="hover:text-teal-200 transition">Cotizar</a></li>
-          <li><a href="https://app.creditonegocios.com.mx/brokers" class="hover:text-teal-200 transition">Soy Broker</a></li>
+          <li><a href="https://app.creditonegocios.com.mx/" target="_blank" rel="noopener noreferrer" class="hover:text-teal-200 transition">Ir al App</a></li>
+          <li><a href="https://app.creditonegocios.com.mx/brokers/" target="_blank" rel="noopener noreferrer" class="hover:text-teal-200 transition">Soy Broker</a></li>
         </ul>
       </div>
     </div>
