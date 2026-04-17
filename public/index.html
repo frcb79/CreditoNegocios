@@ -137,6 +137,7 @@ tailwind.config = {
         </div>
 
         <a href="#casos" class="text-white hover:text-teal-200 font-medium transition">Casos de Éxito</a>
+        <a href="#referidos" class="text-white hover:text-teal-200 font-medium transition">Referidos</a>
         <a href="#faq" class="text-white hover:text-teal-200 font-medium transition">FAQ</a>
       </div>
 
@@ -152,8 +153,8 @@ tailwind.config = {
 
       <!-- Mobile Quick Actions -->
       <div class="md:hidden flex items-center gap-2">
-        <a href="https://app.creditonegocios.com.mx/brokers" class="text-white border border-white px-3 py-2 rounded-full font-semibold text-xs">
-          Soy Broker
+        <a href="#referidos" class="text-white border border-white px-3 py-2 rounded-full font-semibold text-xs hover:bg-white hover:text-brand-navy transition">
+          Referidos
         </a>
         <a href="#contacto" class="bg-white text-brand-navy border border-white px-3 py-2 rounded-full font-semibold text-xs hover:bg-slate-100 transition">
           Cotizar
@@ -1331,26 +1332,52 @@ tailwind.config = {
   </div>
 </section>
 
-<section class="py-16 bg-white border-t border-gray-100">
+<section id="referidos" class="py-20 bg-white border-t border-gray-100">
   <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-    <div class="gradient-navy rounded-3xl p-8 lg:p-12 text-white shadow-2xl">
-      <div class="grid lg:grid-cols-[1.6fr_0.9fr] gap-8 items-center">
-        <div>
-          <div class="inline-block bg-teal-400/20 text-teal-200 text-sm font-bold px-4 py-2 rounded-full mb-4">🤝 REFERIDOS Y BROKERS</div>
-          <h2 class="text-3xl lg:text-4xl font-black mb-4">¿Conoces a alguien que necesite un crédito o arrendamiento?</h2>
-          <p class="text-lg text-blue-100 mb-6">No necesitas dedicarte formalmente a ser broker: cualquier persona puede referir una operación y ganar comisión si nos conecta con una empresa, PFAE o cliente hipotecario que necesite financiamiento.</p>
-          <div class="grid sm:grid-cols-3 gap-4 text-sm mb-6">
-            <div class="bg-white/10 rounded-2xl p-4"><strong class="block text-white">Comisión por referido</strong><span class="text-blue-100">Si conoces a alguien, puedes generar ingresos</span></div>
-            <div class="bg-white/10 rounded-2xl p-4"><strong class="block text-white">Respuesta rápida</strong><span class="text-blue-100">Seguimiento comercial oportuno y profesional</span></div>
-            <div class="bg-white/10 rounded-2xl p-4"><strong class="block text-white">Más cierre</strong><span class="text-blue-100">Procesos claros para PyME, PFAE e hipotecario</span></div>
-          </div>
-        </div>
-        <div class="bg-white rounded-3xl p-6 text-gray-900 shadow-xl">
-          <h3 class="text-2xl font-black mb-3">Gana comisión por referir</h3>
-          <p class="text-gray-600 mb-5">Conoce la página exclusiva para brokers y empieza a enviarnos oportunidades reales.</p>
-          <a href="https://app.creditonegocios.com.mx/brokers" class="block w-full text-center gradient-teal text-white py-3 rounded-full font-bold">Ir a Soy Broker</a>
+    <div class="max-w-4xl mx-auto text-center mb-12">
+      <div class="inline-block bg-emerald-50 text-emerald-700 text-base lg:text-lg font-black px-6 py-3 rounded-full mb-7 tracking-wide">PROGRAMA DE REFERIDOS Y BROKERS</div>
+      <h2 class="text-3xl lg:text-5xl font-black text-gray-900 leading-tight">Tú traes el cliente, nosotros ponemos el capital.</h2>
+      <p class="text-2xl lg:text-3xl font-black text-brand-teal mt-6">¡Gana comisiones sin límites!</p>
+      <p class="text-lg text-gray-600 mt-6">Si eres Broker, Contador, Consultor, o simplemente conoces a una empresa, PFAE o cliente hipotecario que necesitan financiamiento, recomiéndanos. Nosotros nos encargamos de todo el cierre; tú te llevas la comisión.</p>
+      <p class="text-xl lg:text-2xl font-black text-gray-900 mt-10">Únete a los más de <span class="counter-value text-brand-teal" data-counter="160" data-growth="0.03" data-reference="2026-04-01" data-prefix="+" data-suffix=" aliados" data-decimals="0">+0 aliados</span> que ya generan ingresos adicionales con nosotros.</p>
+      <p class="text-xl font-black text-gray-900 mt-6">Empieza a ganar comisiones desde tu primera recomendación.</p>
+    </div>
+
+    <div class="grid md:grid-cols-2 xl:grid-cols-5 gap-4 mb-8 items-stretch">
+      <div class="rounded-2xl border-2 border-emerald-200 bg-white p-4 shadow-sm">
+        <div class="flex items-start gap-3">
+          <span class="text-emerald-600 text-xl leading-none">✔</span>
+          <div><strong class="block text-gray-900 mb-1">Cero costo</strong><span class="text-sm text-gray-600">Registro gratuito y sin compromisos.</span></div>
         </div>
       </div>
+      <div class="rounded-2xl border-2 border-emerald-200 bg-white p-4 shadow-sm">
+        <div class="flex items-start gap-3">
+          <span class="text-emerald-600 text-xl leading-none">✔</span>
+          <div><strong class="block text-gray-900 mb-1">Cero fricción</strong><span class="text-sm text-gray-600">Registra un prospecto en 1 minuto, nosotros hacemos la venta.</span></div>
+        </div>
+      </div>
+      <div class="rounded-2xl border-2 border-emerald-200 bg-white p-4 shadow-sm">
+        <div class="flex items-start gap-3">
+          <span class="text-emerald-600 text-xl leading-none">✔</span>
+          <div><strong class="block text-gray-900 mb-1">Las más competitivas</strong><span class="text-sm text-gray-600">Gana las mejores comisiones del mercado por operación.</span></div>
+        </div>
+      </div>
+      <div class="rounded-2xl border-2 border-emerald-200 bg-white p-4 shadow-sm">
+        <div class="flex items-start gap-3">
+          <span class="text-emerald-600 text-xl leading-none">✔</span>
+          <div><strong class="block text-gray-900 mb-1">Para todos</strong><span class="text-sm text-gray-600">Manda solo el contacto o sube el expediente completo.</span></div>
+        </div>
+      </div>
+      <div class="rounded-2xl border-2 border-emerald-200 bg-white p-4 shadow-sm">
+        <div class="flex items-start gap-3">
+          <span class="text-emerald-600 text-xl leading-none">✔</span>
+          <div><strong class="block text-gray-900 mb-1">Múltiples opciones</strong><span class="text-sm text-gray-600">Bancos, SOFOMEs, financieras e hipotecas. Todo en un mismo lugar.</span></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="max-w-md mx-auto text-center">
+      <a href="https://app.creditonegocios.com.mx/brokers" class="block w-full text-center bg-brand-teal text-white py-3 rounded-full font-bold shadow-lg hover:bg-emerald-600 hover:shadow-xl transition">Quiero empezar a ganar comisiones</a>
     </div>
   </div>
 </section>
