@@ -9,7 +9,9 @@ import connectPg from "connect-pg-simple";
 import { storage } from "./storage";
 import { replitAuthEnabled } from "./runtimeConfig";
 
-if (!process.env.SESSION_SECRET) {
+const sessionSecret = process.env.SESSION_SECRET || (process.env.NODE_ENV !== "production" ? "dev-session-secret-local" : undefined);
+
+if (!sessionSecret) {
   throw new Error("Environment variable SESSION_SECRET not provided");
 }
 
@@ -62,7 +64,7 @@ export function getSession() {
   const useSecureCookies = isReplit || isProduction;
   
   return session({
-    secret: process.env.SESSION_SECRET!,
+    secret: sessionSecret,
     ...(sessionStore ? { store: sessionStore } : {}),
     resave: true,
     saveUninitialized: false,

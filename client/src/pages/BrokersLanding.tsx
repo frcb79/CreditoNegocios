@@ -36,39 +36,119 @@ import {
 
 const whatsappUrl = "https://wa.me/525623300270";
 
-const logos = [
-  "Bancos Comerciales",
-  "Sofomes",
-  "Arrendadoras",
-  "Financieras PyME",
-  "Hipotecario",
-  "Capital de Trabajo",
-];
-
-const benefits = [
+const statHighlights = [
   {
-    icon: LayoutDashboard,
-    title: "Todo concentrado",
-    description:
-      "Organiza solicitudes, expedientes y seguimiento sin perder trazabilidad.",
+    value: "+ Comisiones",
+    label: "Mayores ganancias y recurrencia",
+    description: "Tasas competitivas y pagos al instante.",
   },
   {
-    icon: BriefcaseBusiness,
-    title: "Más tiempo para vender",
+    value: "Un solo lugar",
+    label: "Visibilidad y seguimiento comercial",
+    description: "Expedientes, avances, ofertas, comisiones y más.",
+  },
+  {
+    value: "Cero costo",
+    label: "Acceso y uso gratuito a la plataforma",
+    description: "Alta inmediata para aliados y brokers. Sin cuotas.",
+  },
+  {
+    value: "+ Opciones",
+    label: "Múltiples productos y alternativas para tus clientes",
+    description: "Acceso a red de financieras y bancos para todos los perfiles.",
+  },
+];
+
+const valueCards = [
+  {
+    icon: LayoutDashboard,
+    title: "Control total del pipeline",
     description:
-      "Menos trabajo administrativo repetitivo y más foco en prospectar y cerrar.",
+      "Centraliza prospectos, expedientes y seguimiento en una experiencia ordenada y profesional.",
   },
   {
     icon: Landmark,
-    title: "Más opciones de aprobación",
+    title: "Mejor salida financiera",
     description:
-      "Abanico amplio para PyMES, PFAEs, hipotecario y capital de trabajo.",
+      "Evalúa mejor cada caso y accede a más caminos de colocación según el perfil del cliente.",
   },
   {
-    icon: ShieldCheck,
-    title: "Imagen más profesional",
+    icon: CircleDollarSign,
+    title: "Comisión con visibilidad",
     description:
-      "Da un seguimiento claro que genera confianza con tu cliente.",
+      "Opera con mayor claridad comercial para proteger tu relación y tu ingreso por cierre.",
+  },
+];
+
+const operatingModes = [
+  {
+    key: "pro",
+    badge: "Broker profesional",
+    title: "Para despachos y colocadores que quieren escalar",
+    description:
+      "Ideal si manejas cartera, expedientes y seguimiento comercial de forma constante.",
+    points: [
+      "Mayor visibilidad de tus casos en tiempo real.",
+      "Una plataforma estructurada para vender más.",
+      "Menos carga operativa y más tiempo para vender.",
+    ],
+  },
+  {
+    key: "referidor",
+    badge: "Aliado y Referido",
+    title: "Para quienes quieren canalizar oportunidades y ganar al hacerlo",
+    description:
+      "Ideal para quienes desean detectar prospectos, referirlos y participar comercialmente sin complicarse.",
+    points: [
+      "Proceso simple y rápido para enviar contactos.",
+      "Acompañamiento del equipo comercial en el cierre.",
+      "Modelo claro para colaborar sin complicaciones.",
+    ],
+  },
+] as const;
+
+const networkSegments = [
+  {
+    title: "PyME y capital de trabajo",
+    description:
+      "Casos que requieren velocidad, estructura comercial y mejor presentación ante instituciones.",
+  },
+  {
+    title: "PFAE y perfil patrimonial",
+    description:
+      "Alineación más precisa según historial, flujo y capacidad del cliente.",
+  },
+  {
+    title: "Hipotecario y soluciones mixtas",
+    description:
+      "Comparativos más claros y acompañamiento para mover operaciones complejas.",
+  },
+];
+
+const workflow = [
+  {
+    step: "1",
+    title: "Captura el caso en minutos",
+    description:
+      "Sube el prospecto o envía la oportunidad sin depender de mensajes dispersos o hojas de cálculo.",
+  },
+  {
+    step: "2",
+    title: "Perfila mejor la salida",
+    description:
+      "La operación se acomoda con mayor criterio según producto, perfil y capacidad real de aprobación.",
+  },
+  {
+    step: "3",
+    title: "Da seguimiento con autoridad",
+    description:
+      "Tu cliente recibe una experiencia más clara, más ordenada y con mejor percepción profesional.",
+  },
+  {
+    step: "4",
+    title: "Cierra y cobra con visibilidad",
+    description:
+      "Mantén control del avance comercial y acompaña la operación hasta su mejor desenlace.",
   },
 ];
 
@@ -76,23 +156,26 @@ const testimonials = [
   {
     name: "María Fernanda R.",
     role: "Broker PyME",
+    company: "Despacho financiero aliado",
     quote:
-      "Antes perdía tiempo armando expedientes y buscando con quién colocar cada caso. Ahora tengo mejor control y velocidad.",
-    result: "Duplicó su volumen de casos en 4 meses.",
+      "La conversación con el cliente cambió por completo. Ahora todo se siente más serio, más claro y más fácil de mover.",
+    result: "Duplicó su capacidad de seguimiento en un trimestre.",
   },
   {
     name: "Jorge A. Téllez",
-    role: "Broker Hipotecario",
+    role: "Broker hipotecario",
+    company: "Consultoría patrimonial",
     quote:
-      "Lo que más valor tiene es la visibilidad. Ves tus solicitudes y opciones de salida muy claras. Cambia la conversación con el cliente.",
-    result: "Redujo tiempos de seguimiento de días a horas.",
+      "Lo que más ayuda es la visibilidad. Ya no se trabaja a ciegas y eso mejora mucho la confianza del cliente final.",
+    result: "Redujo tiempos de respuesta comercial de días a horas.",
   },
   {
     name: "Ana Lucía G.",
-    role: "Despacho aliado",
+    role: "Aliada comercial",
+    company: "Red de referidos empresariales",
     quote:
-      "Dejamos de operar de manera reactiva. Presentamos casos mejor documentados y se nota en la aprobación.",
-    result: "Mejoró su conversión de colocación.",
+      "Incluso cuando solo referimos contactos, el proceso se ve mucho más profesional y ordenado.",
+    result: "Mejoró la calidad de sus prospectos enviados.",
   },
 ];
 
@@ -100,28 +183,34 @@ const faqs = [
   {
     question: "¿Tiene costo usar la plataforma?",
     answer:
-      "No. El acceso es 100% sin costo para brokers, despachos y referidores aliados.",
+      "No. El acceso para brokers y aliados es sin costo; el objetivo es ayudarte a operar con más orden y más capacidad de colocación.",
   },
   {
-    question: "¿Qué tipos de broker pueden aprovecharla?",
+    question: "¿Sirve si solo quiero referir clientes?",
     answer:
-      "Brokers formales, despachos contables, consultores y también referidores ocasionales que solo quieren pasar un contacto.",
+      "Sí. Puedes participar como aliado referidor y enviar oportunidades sin llevar todo el expediente por tu cuenta.",
   },
   {
-    question: "¿Tengo que cambiar mi forma de trabajar?",
+    question: "¿Qué tipo de operaciones pueden entrar?",
     answer:
-      "No. La plataforma se adapta a ti para darte más orden, visibilidad y seguimiento, no para darte más trabajo.",
+      "PyME, PFAE, hipotecario y esquemas mixtos, dependiendo del perfil del cliente y de la necesidad de fondeo.",
   },
   {
-    question: "¿Cómo garantizan el pago de mi comisión?",
+    question: "¿Cómo se da seguimiento a mi comisión?",
     answer:
-      "Trabajamos con total transparencia comercial desde el día uno y damos seguimiento claro al estatus de la operación aprobada y fondeada.",
+      "La operación se trabaja con trazabilidad comercial clara para que sepas en qué etapa está y puedas dar seguimiento con mayor certeza.",
+  },
+  {
+    question: "¿Cuánto tardan en contactarme?",
+    answer:
+      "Normalmente el equipo responde dentro de las siguientes 24 horas hábiles para activar el acceso o agendar una demo.",
   },
 ];
 
 export default function BrokersLanding() {
   const { toast } = useToast();
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [preferredTrack, setPreferredTrack] = useState<"pro" | "referidor">("pro");
   const [brokerType, setBrokerType] = useState("");
   const [form, setForm] = useState({
     name: "",
@@ -138,8 +227,8 @@ export default function BrokersLanding() {
 
     if (!brokerType) {
       toast({
-        title: "Selecciona tu perfil",
-        description: "Indícanos qué tipo de broker eres para contactarte mejor.",
+        title: "Selecciona tu especialidad",
+        description: "Elige el tipo de operación que más se parece a tu mercado.",
         variant: "destructive",
       });
       return;
@@ -155,7 +244,7 @@ export default function BrokersLanding() {
 
       toast({
         title: "Solicitud enviada",
-        description: "Recibimos tus datos y te contactaremos pronto.",
+        description: "El equipo comercial te contactará muy pronto.",
       });
 
       setForm({
@@ -166,10 +255,11 @@ export default function BrokersLanding() {
         message: "",
       });
       setBrokerType("");
+      setPreferredTrack("pro");
     } catch (error: any) {
       toast({
         title: "No se pudo enviar",
-        description: error.message || "Intenta de nuevo en unos minutos.",
+        description: error.message || "Intenta nuevamente en unos minutos.",
         variant: "destructive",
       });
     } finally {
@@ -178,124 +268,264 @@ export default function BrokersLanding() {
   }
 
   return (
-    <div className="min-h-screen bg-[linear-gradient(180deg,#f6fbff_0%,#eef5fb_38%,#ffffff_100%)] text-slate-900">
-      <section className="border-b border-slate-200/70 bg-white/80 backdrop-blur">
-        <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-4 sm:px-6 lg:px-8">
-          <div className="flex items-center gap-4">
+    <div className="min-h-screen bg-[linear-gradient(180deg,#f5fbff_0%,#edf5fb_40%,#ffffff_100%)] text-slate-900">
+      <nav className="sticky top-0 z-50 border-b border-slate-200/70 bg-white/95 backdrop-blur-xl">
+        <div className="mx-auto grid max-w-[90rem] grid-cols-[auto_1fr_auto] items-center gap-3 px-4 py-3 sm:px-6 lg:px-8">
+          <div className="flex items-center">
             <img
-              src="/Credito%20Negocios-07.jpg"
+              src="/Credito_Negocios-07.jpg"
               alt="Credito Negocios"
-              className="h-12 w-auto rounded-lg shadow-sm"
+              className="h-14 w-auto sm:h-16 lg:h-[4.5rem]"
             />
-            <Badge className="hidden rounded-full bg-secondary/10 px-3 py-1 text-secondary sm:inline-flex">
-              Programa para Brokers
-            </Badge>
           </div>
-          <div className="flex items-center gap-3">
-            <Button variant="outline" asChild>
+
+          <div className="px-2 text-center">
+            <p className="text-sm font-black uppercase tracking-[0.2em] text-primary sm:text-base lg:text-xl">
+              Programa para Brokers y Referidos
+            </p>
+          </div>
+
+          <div className="flex items-center justify-end gap-2 sm:gap-3">
+            <Button asChild size="sm" className="bg-emerald-500 text-white shadow-md hover:bg-emerald-600">
               <a href={whatsappUrl} target="_blank" rel="noreferrer">
-                <MessageSquare />
+                <MessageSquare className="mr-2 h-4 w-4" />
                 WhatsApp
               </a>
             </Button>
-            <Button asChild className="bg-primary hover:bg-primary/90">
+            <Button variant="outline" size="sm" asChild className="border-emerald-500 text-emerald-600 hover:bg-emerald-50 hover:text-emerald-700">
               <a href={loginHref}>
-                <LogIn />
+                <LogIn className="mr-2 h-4 w-4" />
                 Login
               </a>
             </Button>
           </div>
         </div>
-      </section>
+      </nav>
 
-      <section className="relative overflow-hidden bg-[linear-gradient(135deg,#0A3042_0%,#12385C_100%)] text-white">
-        <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(0,204,162,0.18),transparent_25%),radial-gradient(circle_at_left_center,rgba(245,158,11,0.14),transparent_24%)]" />
-        <div className="mx-auto grid max-w-7xl gap-12 px-4 py-16 sm:px-6 lg:grid-cols-[1.08fr_0.92fr] lg:px-8 lg:py-20">
-          <div className="relative z-10">
-            <Badge className="mb-5 rounded-full bg-white/10 px-4 py-1.5 text-cyan-100">
-              PARA BROKERS, DESPACHOS Y REFERIDORES
-            </Badge>
-            <h1 className="max-w-4xl text-4xl font-black leading-tight text-white sm:text-5xl lg:text-6xl">
-              Tú traes el cliente, nosotros el capital. Gana comisiones sin límites.
+      <section className="relative overflow-hidden bg-[linear-gradient(135deg,#081c2b_0%,#0c3151_55%,#0a3042_100%)] text-white">
+        <div className="absolute inset-0">
+          <div className="absolute -right-16 -top-24 h-72 w-72 rounded-full bg-cyan-400/15 blur-3xl" />
+          <div className="absolute -left-12 bottom-0 h-80 w-80 rounded-full bg-emerald-400/10 blur-3xl" />
+        </div>
+
+        <div className="relative mx-auto grid max-w-[90rem] gap-10 px-4 pb-16 pt-12 sm:px-6 lg:grid-cols-[1.08fr_0.92fr] lg:px-8 lg:pb-20 lg:pt-16">
+          <div className="flex flex-col justify-center">
+            <h1 className="max-w-4xl text-4xl font-black leading-[1.05] text-white sm:text-5xl lg:text-6xl">
+              ¡La plataforma que te permite ganar comisiones sin límites!
             </h1>
-            <h2 className="mt-5 max-w-3xl text-lg font-medium leading-8 text-blue-50 sm:text-xl">
-              Sin costo. Más orden. Más opciones. Más cierres. La plataforma tecnológica que te ayuda a centralizar casos, o simplemente referir contactos, con acceso a la red financiera más grande de México.
+
+            <h2 className="mt-4 max-w-3xl text-2xl font-semibold text-white sm:text-3xl">
+              Tú traes el cliente, nosotros el capital.
             </h2>
-            <p className="mt-6 max-w-3xl text-base leading-7 text-blue-100">
+
+            <p className="mt-3 text-xs font-black uppercase tracking-[0.24em] text-emerald-300 sm:text-sm">
+              Para brokers, despachos y referidos
+            </p>
+
+            <p className="mt-6 max-w-3xl text-base leading-8 text-slate-200 sm:text-lg">
               Refiere un contacto o administra expedientes completos desde un solo lugar. Nosotros te ayudamos a perfilar, presentar y dar seguimiento para que cierres más y cobres mejor.
             </p>
 
-            <div className="mt-8 flex flex-wrap gap-3 text-sm text-blue-50">
-              <div className="rounded-full border border-white/15 bg-white/10 px-4 py-2">Sin costo</div>
-              <div className="rounded-full border border-white/15 bg-white/10 px-4 py-2">Más orden</div>
-              <div className="rounded-full border border-white/15 bg-white/10 px-4 py-2">Más opciones</div>
-              <div className="rounded-full border border-white/15 bg-white/10 px-4 py-2">Más cierres</div>
+            <div className="mt-8 grid max-w-2xl gap-3 sm:grid-cols-2">
+              {["Sin costo", "Más visibilidad", "Más opciones", "Más cierres"].map((item) => (
+                <div
+                  key={item}
+                  className="flex items-center gap-3 rounded-2xl border border-emerald-400/20 bg-white/10 px-4 py-3 text-sm font-semibold text-white shadow-lg shadow-slate-950/10 backdrop-blur"
+                >
+                  <CheckCircle2 className="h-5 w-5 text-emerald-400" />
+                  {item}
+                </div>
+              ))}
+            </div>
+
+            <div className="mt-8 flex flex-col gap-3 sm:flex-row">
+              <Button asChild size="lg" className="bg-secondary text-base font-semibold shadow-lg shadow-secondary/20 hover:bg-secondary/90">
+                <a href="#form-brokers">
+                  Solicitar demo
+                  <ArrowRight className="ml-2 h-5 w-5" />
+                </a>
+              </Button>
+              <Button
+                asChild
+                size="lg"
+                className="bg-emerald-500 text-base font-semibold text-white shadow-lg shadow-emerald-900/20 hover:bg-emerald-600"
+              >
+                <a href={whatsappUrl} target="_blank" rel="noreferrer">
+                  <MessageSquare className="mr-2 h-5 w-5" />
+                  Hablar con un asesor
+                </a>
+              </Button>
             </div>
           </div>
 
-          <div className="relative z-10">
-            <Card id="form-brokers" className="overflow-hidden border-slate-200 shadow-[0_28px_80px_-32px_rgba(5,71,138,0.42)]">
-              <div className="bg-white px-6 py-6 text-slate-900 sm:px-8">
-                <p className="text-sm font-semibold uppercase tracking-[0.24em] text-primary">Acceso inmediato</p>
-                <h2 className="mt-2 text-2xl font-bold">Solicita acceso gratuito</h2>
+          <div className="relative">
+            <Card id="form-brokers" className="overflow-hidden border-none bg-white/95 shadow-[0_30px_90px_-35px_rgba(5,71,138,0.45)]">
+              <div className="border-b border-slate-100 bg-white px-6 py-5 sm:px-8">
+                <p className="text-xs font-bold uppercase tracking-[0.2em] text-primary">Acceso inmediato</p>
+                <h2 className="mt-2 text-3xl font-bold tracking-tight text-slate-900">Solicita acceso gratuito</h2>
                 <p className="mt-2 text-sm text-slate-600">
-                  Déjanos tus datos y te contactamos para explicarte el flujo y ayudarte a comenzar.
+                  Déjanos tus datos y te ayudamos a activar el mejor camino para tu operación.
                 </p>
               </div>
-              <CardContent className="bg-white p-6 sm:p-8">
-                <form onSubmit={handleSubmit} className="space-y-5">
-                  <div className="space-y-2">
-                    <Label htmlFor="broker-name">Nombre</Label>
-                    <Input
 
+              <CardContent className="p-6 sm:p-8">
+                <div className="mb-5 grid gap-3 sm:grid-cols-2">
+                  <button
+                    type="button"
+                    aria-pressed={preferredTrack === "pro"}
+                    onClick={() => setPreferredTrack("pro")}
+                    className={`rounded-2xl border-2 p-4 text-left transition-all duration-200 ${
+                      preferredTrack === "pro"
+                        ? "border-primary bg-gradient-to-br from-primary/10 to-cyan-50 shadow-lg ring-4 ring-primary/10"
+                        : "border-primary/40 bg-slate-50 hover:border-primary/60 hover:bg-white"
+                    }`}
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <p className="text-sm font-bold text-slate-900">Broker profesional</p>
+                        <p className="mt-1 text-xs leading-5 text-slate-600">Administro cartera, clientes y seguimiento.</p>
+                      </div>
+                      {preferredTrack === "pro" && <CheckCircle2 className="h-5 w-5 shrink-0 text-primary" />}
+                    </div>
+                    <span className={`mt-3 inline-flex rounded-full px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.16em] ${
+                      preferredTrack === "pro" ? "bg-primary text-white" : "bg-slate-200 text-slate-600"
+                    }`}>
+                      {preferredTrack === "pro" ? "Seleccionado" : "Disponible"}
+                    </span>
+                  </button>
+
+                  <button
+                    type="button"
+                    aria-pressed={preferredTrack === "referidor"}
+                    onClick={() => setPreferredTrack("referidor")}
+                    className={`rounded-2xl border-2 p-4 text-left transition-all duration-200 ${
+                      preferredTrack === "referidor"
+                        ? "border-secondary bg-gradient-to-br from-secondary/10 to-emerald-50 shadow-lg ring-4 ring-secondary/10"
+                        : "border-secondary/40 bg-slate-50 hover:border-secondary/60 hover:bg-white"
+                    }`}
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <p className="text-sm font-bold text-slate-900">Aliado referidor</p>
+                        <p className="mt-1 text-xs leading-5 text-slate-600">Solo quiero detectar y canalizar oportunidades.</p>
+                      </div>
+                      {preferredTrack === "referidor" && <CheckCircle2 className="h-5 w-5 shrink-0 text-secondary" />}
+                    </div>
+                    <span className={`mt-3 inline-flex rounded-full px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.16em] ${
+                      preferredTrack === "referidor" ? "bg-secondary text-white" : "bg-slate-200 text-slate-600"
+                    }`}>
+                      {preferredTrack === "referidor" ? "Seleccionado" : "Disponible"}
+                    </span>
+                  </button>
+                </div>
+
+                <form onSubmit={handleSubmit} className="space-y-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="broker-name" className="text-xs font-bold uppercase tracking-wider text-slate-500">
+                      Nombre
+                    </Label>
+                    <Input
                       id="broker-name"
                       value={form.name}
                       onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))}
-                      placeholder="Tu nombre completo"
+                      placeholder="Nombre completo"
+                      className="border-slate-200 bg-slate-50 focus:bg-white"
                       required
                     />
                   </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="broker-phone">WhatsApp</Label>
-                    <Input
-                      id="broker-phone"
-                      value={form.phone}
-                      onChange={(event) => setForm((current) => ({ ...current, phone: event.target.value }))}
-                      placeholder="55 0000 0000"
-                      required
-                    />
-                  </div>
-                  <div className="grid gap-5 sm:grid-cols-2">
+
+                  <div className="grid gap-4 sm:grid-cols-2">
                     <div className="space-y-2">
-                      <Label htmlFor="broker-email">Correo</Label>
+                      <Label htmlFor="broker-phone" className="text-xs font-bold uppercase tracking-wider text-slate-500">
+                        WhatsApp
+                      </Label>
+                      <Input
+                        id="broker-phone"
+                        value={form.phone}
+                        onChange={(event) => setForm((current) => ({ ...current, phone: event.target.value }))}
+                        placeholder="55 0000 0000"
+                        className="border-slate-200 bg-slate-50 focus:bg-white"
+                        required
+                      />
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="broker-email" className="text-xs font-bold uppercase tracking-wider text-slate-500">
+                        Correo
+                      </Label>
                       <Input
                         id="broker-email"
                         type="email"
                         value={form.email}
                         onChange={(event) => setForm((current) => ({ ...current, email: event.target.value }))}
                         placeholder="nombre@empresa.com"
+                        className="border-slate-200 bg-slate-50 focus:bg-white"
                         required
                       />
                     </div>
+                  </div>
+
+                  <div className="grid gap-4 sm:grid-cols-2">
                     <div className="space-y-2">
-                      <Label>Perfil</Label>
+                      <Label htmlFor="broker-company" className="text-xs font-bold uppercase tracking-wider text-slate-500">
+                        Empresa o despacho
+                      </Label>
+                      <Input
+                        id="broker-company"
+                        value={form.company}
+                        onChange={(event) => setForm((current) => ({ ...current, company: event.target.value }))}
+                        placeholder="Nombre comercial"
+                        className="border-slate-200 bg-slate-50 focus:bg-white"
+                      />
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label className="text-xs font-bold uppercase tracking-wider text-slate-500">
+                        Especialidad principal
+                      </Label>
                       <Select value={brokerType} onValueChange={setBrokerType}>
-                        <SelectTrigger>
-                          <SelectValue placeholder="Selecciona tu perfil" />
+                        <SelectTrigger className="border-slate-200 bg-slate-50 focus:bg-white">
+                          <SelectValue placeholder="Selecciona una opción" />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="broker">Soy Broker</SelectItem>
-                          <SelectItem value="referidor">Solo quiero referir</SelectItem>
+                          <SelectItem value="pyme">Crédito PyME</SelectItem>
+                          <SelectItem value="pfae">PFAE</SelectItem>
+                          <SelectItem value="hipotecario">Hipotecario</SelectItem>
+                          <SelectItem value="mixto">Mixto o varios productos</SelectItem>
                         </SelectContent>
                       </Select>
                     </div>
                   </div>
-                  <Button type="submit" size="lg" className="w-full bg-secondary text-base hover:bg-secondary/90" disabled={isSubmitting}>
-                    {isSubmitting ? "Enviando..." : "Crear mi cuenta"}
-                    <ArrowRight />
+
+                  <div className="space-y-2">
+                    <Label htmlFor="broker-message" className="text-xs font-bold uppercase tracking-wider text-slate-500">
+                      Mensaje
+                    </Label>
+                    <Textarea
+                      id="broker-message"
+                      value={form.message}
+                      onChange={(event) => setForm((current) => ({ ...current, message: event.target.value }))}
+                      placeholder={
+                        preferredTrack === "pro"
+                          ? "Cuéntanos qué tipo de clientes atiendes o qué te gustaría mejorar en tu operación."
+                          : "Cuéntanos cómo generas oportunidades o a qué tipo de clientes sueles referir."
+                      }
+                      className="min-h-[96px] border-slate-200 bg-slate-50 focus:bg-white"
+                    />
+                  </div>
+
+                  <Button
+                    type="submit"
+                    size="lg"
+                    className="w-full bg-secondary text-base font-bold shadow-lg shadow-secondary/20 hover:bg-secondary/90"
+                    disabled={isSubmitting}
+                  >
+                    {isSubmitting ? "Enviando..." : "Solicitar acceso y demo"}
+                    <ArrowRight className="ml-2 h-5 w-5" />
                   </Button>
-                  <p className="text-xs leading-5 text-slate-500">
-                    También puedes escribirnos por WhatsApp para atención más rápida.
+
+                  <p className="text-center text-xs leading-5 text-slate-500">
+                    Respuesta comercial normalmente dentro de las siguientes 24 horas hábiles.
                   </p>
                 </form>
               </CardContent>
@@ -304,213 +534,195 @@ export default function BrokersLanding() {
         </div>
       </section>
 
-      <section className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
-        <div className="grid gap-4 rounded-[2rem] border border-slate-200 bg-white p-6 shadow-sm sm:grid-cols-2 lg:grid-cols-4">
-          <div className="rounded-2xl bg-slate-50 p-4">
-            <p className="text-3xl font-black text-primary">$0 Costo</p>
-            <p className="mt-2 text-sm text-slate-600">Acceso gratuito a la plataforma.</p>
-          </div>
-          <div className="rounded-2xl bg-slate-50 p-4">
-            <p className="text-3xl font-black text-primary">1 Solo Lugar</p>
-            <p className="mt-2 text-sm text-slate-600">Prospectos, expedientes y seguimiento comercial.</p>
-          </div>
-          <div className="rounded-2xl bg-slate-50 p-4">
-            <p className="text-3xl font-black text-primary">+ Opciones</p>
-            <p className="mt-2 text-sm text-slate-600">Financieras y bancos según el perfil del caso.</p>
-          </div>
-          <div className="rounded-2xl bg-slate-50 p-4">
-            <p className="text-3xl font-black text-primary">+ Comisión</p>
-            <p className="mt-2 text-sm text-slate-600">Las mejores tasas de pago por operación aprobada.</p>
-          </div>
+      <section className="mx-auto max-w-[90rem] px-4 pt-10 sm:px-6 lg:px-8 lg:pt-12">
+        <div className="grid items-stretch gap-5 rounded-[2rem] border border-slate-200 bg-white p-5 shadow-xl sm:grid-cols-2 lg:grid-cols-4 lg:p-6">
+          {statHighlights.map((item) => (
+            <div
+              key={item.label}
+              className="flex h-full flex-col rounded-[1.5rem] border border-slate-100 bg-[linear-gradient(180deg,#ffffff_0%,#f8fbff_100%)] p-6 text-left shadow-sm lg:min-h-[240px]"
+            >
+              <div>
+                <p className="min-h-[56px] text-3xl font-extrabold leading-tight text-primary">{item.value}</p>
+                <p className="mt-3 min-h-[52px] text-base font-bold leading-6 text-slate-900">{item.label}</p>
+              </div>
+              <p className="mt-4 text-sm leading-7 text-slate-600">{item.description}</p>
+            </div>
+          ))}
         </div>
       </section>
 
-      <section className="mx-auto max-w-7xl px-4 py-16 sm:px-6 lg:px-8">
-        <div className="mb-10 max-w-3xl">
-          <p className="text-sm font-semibold uppercase tracking-[0.24em] text-primary">Dos formas de ganar</p>
-          <h2 className="mt-3 text-3xl font-black text-slate-950 sm:text-4xl">
+      <section className="mx-auto max-w-[90rem] px-4 py-14 sm:px-6 lg:px-8 lg:py-16">
+        <div className="mb-10">
+          <h2 className="text-3xl font-black tracking-tight text-slate-900 sm:text-4xl">
             Elige la forma que mejor se adapta a tu operación.
           </h2>
         </div>
+
         <div className="grid gap-6 lg:grid-cols-2">
-          <Card className="border-slate-200 bg-white shadow-sm">
-            <CardContent className="p-7 lg:p-8">
-              <div className="mb-4 inline-flex rounded-full bg-secondary/10 px-3 py-1 text-xs font-semibold uppercase tracking-[0.2em] text-secondary">
-                Referidor ocasional
-              </div>
-              <h3 className="text-2xl font-bold text-slate-950">Para aliados y referidores ocasionales</h3>
-              <p className="mt-3 text-sm leading-7 text-slate-600">
-                ¿Eres contador, consultor, o tienes un conocido que necesita crédito? Solo déjanos su nombre y teléfono.
-              </p>
-              <ul className="mt-5 space-y-3 text-sm text-slate-700">
-                <li className="flex gap-2"><CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-emerald-600" /><span>Nuestro equipo comercial hace el perfilamiento, la venta y el cierre.</span></li>
-                <li className="flex gap-2"><CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-emerald-600" /><span>Tú recibes tu comisión directamente al fondearse.</span></li>
-                <li className="flex gap-2"><CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-emerald-600" /><span>Cero fricción y sin necesidad de armar expedientes.</span></li>
-              </ul>
-            </CardContent>
-          </Card>
-
-          <Card className="border-slate-200 bg-white shadow-sm">
-            <CardContent className="p-7 lg:p-8">
-              <div className="mb-4 inline-flex rounded-full bg-primary/10 px-3 py-1 text-xs font-semibold uppercase tracking-[0.2em] text-primary">
-                Broker profesional
-              </div>
-              <h3 className="text-2xl font-bold text-slate-950">Para brokers profesionales</h3>
-              <p className="mt-3 text-sm leading-7 text-slate-600">
-                ¿Te dedicas a esto y quieres multiplicar tu colocación? Accede a nuestro CRM y controla toda tu operación.
-              </p>
-              <ul className="mt-5 space-y-3 text-sm text-slate-700">
-                <li className="flex gap-2"><CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-emerald-600" /><span>Centraliza información, sube expedientes y compara alternativas.</span></li>
-                <li className="flex gap-2"><CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-emerald-600" /><span>Controla el pipeline y mantén trazabilidad sin depender de Excel.</span></li>
-                <li className="flex gap-2"><CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-emerald-600" /><span>Opera PyME, PFAE e hipotecario con más orden y visibilidad.</span></li>
-              </ul>
-            </CardContent>
-          </Card>
-        </div>
-      </section>
-
-      <section className="mx-auto max-w-7xl px-4 py-2 sm:px-6 lg:px-8">
-        <div className="mb-10 max-w-3xl">
-          <p className="text-sm font-semibold uppercase tracking-[0.24em] text-primary">Problema vs solución</p>
-          <h2 className="mt-3 text-3xl font-black text-slate-950 sm:text-4xl">
-            Diseñada para aliados que necesitan velocidad, orden y capacidad de colocación.
-          </h2>
-        </div>
-        <Card className="overflow-hidden border-slate-200 bg-white shadow-sm">
-          <CardContent className="grid gap-6 p-0 lg:grid-cols-[0.95fr_1.05fr]">
-            <div className="bg-rose-50 p-8">
-              <h3 className="text-2xl font-bold text-slate-950">Lo que un broker suele tener hoy</h3>
-              <ul className="mt-5 space-y-3 text-sm leading-7 text-slate-700">
-                <li className="flex gap-3"><span className="text-rose-500">✕</span><span>Información dispersa entre eternas cadenas de WhatsApp, correos y Excel.</span></li>
-                <li className="flex gap-3"><span className="text-rose-500">✕</span><span>Poco control de estatus y seguimiento manual.</span></li>
-                <li className="flex gap-3"><span className="text-rose-500">✕</span><span>Menos visibilidad para decidir a qué institución presentar cada caso.</span></li>
-              </ul>
-            </div>
-            <div className="p-8">
-              <h3 className="text-2xl font-bold text-slate-950">Lo que ganas con CreditoNegocios</h3>
-              <div className="mt-5 grid gap-4 md:grid-cols-2">
-                {benefits.map(({ icon: Icon, title, description }) => (
-                  <div key={title} className="rounded-2xl bg-slate-50 p-4">
-                    <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10 text-primary">
-                      <Icon className="h-5 w-5" />
-                    </div>
-                    <p className="font-semibold text-slate-900">{title}</p>
-                    <p className="mt-2 text-sm leading-6 text-slate-600">{description}</p>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      </section>
-
-      <section className="mx-auto max-w-7xl px-4 py-4 sm:px-6 lg:px-8">
-        <div className="grid gap-8 rounded-[2rem] bg-[linear-gradient(135deg,#0b3f74_0%,#0f2741_100%)] p-8 text-white lg:grid-cols-[1fr_1.1fr] lg:p-10">
-          <div>
-            <p className="text-sm font-semibold uppercase tracking-[0.24em] text-cyan-100">Red financiera</p>
-            <h2 className="mt-3 text-3xl font-black">Más puertas para aprobar mejor.</h2>
-            <p className="mt-4 max-w-2xl text-base leading-7 text-blue-100">
-              En vez de operar con una sola salida, orientas cada caso hacia instituciones que sí hacen sentido con el perfil de tu cliente. Expedientes mejor presentados = mayor tasa de aprobación.
-            </p>
-            <div className="mt-6 grid gap-3 sm:grid-cols-2">
-              <div className="rounded-2xl border border-white/15 bg-white/10 p-4">
-                <p className="font-semibold">PyMES y capital de trabajo</p>
-                <p className="mt-1 text-sm text-blue-100">Expedientes mejor presentados para necesidades de liquidez y crecimiento.</p>
-              </div>
-              <div className="rounded-2xl border border-white/15 bg-white/10 p-4">
-                <p className="font-semibold">PFAEs e hipotecario</p>
-                <p className="mt-1 text-sm text-blue-100">Seguimiento más claro y comparativo comercial más sólido.</p>
-              </div>
-            </div>
-          </div>
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            {logos.map((logo) => (
-              <div key={logo} className="flex min-h-24 items-center justify-center rounded-2xl border border-white/15 bg-white/10 px-4 text-center text-sm font-semibold text-white/90">
-                {logo}
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      <section className="mx-auto max-w-7xl px-4 py-16 sm:px-6 lg:px-8">
-        <div className="grid gap-10 lg:grid-cols-[0.95fr_1.05fr]">
-          <div className="rounded-[2rem] border border-slate-200 bg-white p-8 shadow-sm">
-            <p className="text-sm font-semibold uppercase tracking-[0.24em] text-primary">Cómo funciona</p>
-            <h2 className="mt-3 text-3xl font-black text-slate-950">Una operación más ordenada desde el día uno.</h2>
-            <div className="mt-8 space-y-5">
-              {[
-                ["1", "Recibes y organizas", "Centralizas información del cliente, documentos y necesidades. O simplemente nos pasas el contacto."],
-                ["2", "Perfilas y comparas", "Detectamos las mejores rutas con financieras y bancos según la operación."],
-                ["3", "Das seguimiento sin fricción", "Controlas pendientes y estatus con total trazabilidad."],
-                ["4", "Colocas con visibilidad", "Si la operación se aprueba, tú mantienes el control y aseguras tu comisión."],
-              ].map(([step, title, description]) => (
-                <div key={step} className="flex gap-4">
-                  <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-primary text-lg font-bold text-white">
-                    {step}
-                  </div>
-                  <div>
-                    <p className="text-base font-semibold text-slate-900">{title}</p>
-                    <p className="mt-1 text-sm leading-6 text-slate-600">{description}</p>
-                  </div>
+          {operatingModes.map((mode) => (
+            <Card
+              key={mode.key}
+              className={`overflow-hidden rounded-[2rem] border-2 bg-white shadow-sm transition-all ${
+                preferredTrack === mode.key
+                  ? mode.key === "referidor"
+                    ? "border-secondary ring-2 ring-secondary/15 shadow-xl"
+                    : "border-primary ring-2 ring-primary/20 shadow-xl"
+                  : mode.key === "referidor"
+                    ? "border-secondary/40 hover:shadow-lg"
+                    : "border-primary/40 hover:shadow-lg"
+              }`}
+            >
+              <CardContent className="p-8 lg:p-10">
+                <div className={`mb-4 inline-flex rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-[0.2em] ${
+                  mode.key === "pro" ? "bg-primary/10 text-primary" : "bg-secondary/10 text-secondary"
+                }`}>
+                  {mode.badge}
                 </div>
-              ))}
-            </div>
-          </div>
-
-          <div className="grid gap-6">
-            <Card className="overflow-hidden border-slate-200 bg-white shadow-sm">
-              <CardContent className="grid gap-6 p-0 sm:grid-cols-[0.9fr_1.1fr]">
-                <div className="bg-[linear-gradient(145deg,rgba(5,71,138,0.92),rgba(5,185,129,0.88))] p-8 text-white">
-                  <Sparkles className="h-8 w-8 text-cyan-100" />
-                  <h3 className="mt-5 text-2xl font-bold">Lo que un broker suele tener hoy</h3>
-                  <ul className="mt-5 space-y-3 text-sm text-blue-50">
-                    <li className="flex gap-2"><span>•</span><span>Información dispersa entre WhatsApp, correo y hojas de cálculo.</span></li>
-                    <li className="flex gap-2"><span>•</span><span>Poco control de estatus y seguimiento manual.</span></li>
-                    <li className="flex gap-2"><span>•</span><span>Menos visibilidad para decidir a quién presentar cada caso.</span></li>
-                  </ul>
-                </div>
-                <div className="p-8">
-                  <h3 className="text-2xl font-bold text-slate-950">Lo que ganas con CreditoNegocios</h3>
-                  <div className="mt-5 space-y-4 text-sm leading-6 text-slate-600">
-                    <div className="flex gap-3 rounded-2xl bg-slate-50 p-4">
-                      <Users className="mt-0.5 h-5 w-5 shrink-0 text-primary" />
-                      <div>
-                        <p className="font-semibold text-slate-900">Más confianza con tu cliente</p>
-                        <p>Presentas una operación más clara, más ordenada y con mejor seguimiento.</p>
-                      </div>
-                    </div>
-                    <div className="flex gap-3 rounded-2xl bg-slate-50 p-4">
-                      <BriefcaseBusiness className="mt-0.5 h-5 w-5 shrink-0 text-primary" />
-                      <div>
-                        <p className="font-semibold text-slate-900">Más tiempo para vender</p>
-                        <p>Menos trabajo administrativo repetitivo y más foco en prospectar y cerrar.</p>
-                      </div>
-                    </div>
-                    <div className="flex gap-3 rounded-2xl bg-slate-50 p-4">
-                      <Banknote className="mt-0.5 h-5 w-5 shrink-0 text-primary" />
-                      <div>
-                        <p className="font-semibold text-slate-900">Más posibilidades de aprobación</p>
-                        <p>Mejor perfilamiento del caso y más alternativas para buscar salida adecuada.</p>
-                      </div>
-                    </div>
-                  </div>
-                </div>
+                <h3 className="text-3xl font-bold leading-tight text-slate-950">{mode.title}</h3>
+                <p className="mt-4 text-base leading-8 text-slate-600">{mode.description}</p>
+                <ul className="mt-6 space-y-4 text-base text-slate-700">
+                  {mode.points.map((point) => (
+                    <li key={point} className="flex gap-2">
+                      <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-emerald-600" />
+                      <span>{point}</span>
+                    </li>
+                  ))}
+                </ul>
               </CardContent>
             </Card>
+          ))}
+        </div>
+      </section>
+
+      <section className="mx-auto max-w-[90rem] px-4 py-12 sm:px-6 lg:px-8">
+        <div className="mb-10 max-w-[88rem]">
+          <h2 className="max-w-none text-4xl font-bold tracking-tight text-slate-900 sm:text-5xl lg:text-[3rem] lg:leading-[1.12]">
+            Diseñada para aquellos que buscan velocidad, orden <br className="hidden lg:block" /> y más opciones para su colocación.
+          </h2>
+          <p className="mt-4 text-base leading-8 text-slate-600 sm:text-lg">
+            El valor real está en tener más probabilidades de colocación, ofrecer más productos, tener una mejor estructura y control de expedientes y llevar todo el proceso en un mismo lugar.
+          </p>
+        </div>
+
+        <div className="grid gap-6 lg:grid-cols-2">
+          <Card className="overflow-hidden border-none bg-white shadow-xl">
+            <CardContent className="h-full p-0">
+              <div className="h-full bg-rose-50 p-8 lg:p-10">
+                <Sparkles className="h-8 w-8 text-rose-600" />
+                <h3 className="mt-5 text-2xl font-bold text-rose-950">Lo que usualmente frena al broker</h3>
+                <div className="mt-6 space-y-5">
+                  <div className="flex gap-4">
+                    <Users className="mt-0.5 h-6 w-6 shrink-0 text-rose-600" />
+                    <div>
+                      <p className="text-base font-bold text-rose-950">Seguimiento disperso</p>
+                      <p className="mt-1 text-sm leading-6 text-rose-900/80">WhatsApp, correos, notas y hojas de cálculo hacen más lenta la operación.</p>
+                    </div>
+                  </div>
+                  <div className="flex gap-4">
+                    <BriefcaseBusiness className="mt-0.5 h-6 w-6 shrink-0 text-rose-600" />
+                    <div>
+                      <p className="text-base font-bold text-rose-950">Menos control del expediente</p>
+                      <p className="mt-1 text-sm leading-6 text-rose-900/80">Cuesta saber qué falta, qué avance lleva cada caso y qué sigue en el proceso.</p>
+                    </div>
+                  </div>
+                  <div className="flex gap-4">
+                    <Banknote className="mt-0.5 h-6 w-6 shrink-0 text-rose-600" />
+                    <div>
+                      <p className="text-base font-bold text-rose-950">Pocas alternativas de salida</p>
+                      <p className="mt-1 text-sm leading-6 text-rose-900/80">Se limita la colocación cuando no hay visibilidad de más productos e instituciones.</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="overflow-hidden border-none bg-white shadow-xl">
+            <CardContent className="h-full p-0">
+              <div className="h-full bg-emerald-50 p-8 lg:p-10">
+                <ShieldCheck className="h-8 w-8 text-emerald-600" />
+                <h3 className="mt-5 text-2xl font-bold text-emerald-950">Lo que ganas con Crédito Negocios</h3>
+                <div className="mt-6 space-y-5">
+                  <div className="flex gap-4">
+                    <Users className="mt-0.5 h-6 w-6 shrink-0 text-emerald-600" />
+                    <div>
+                      <p className="text-base font-bold text-emerald-950">Más probabilidades de colocación</p>
+                      <p className="mt-1 text-sm leading-6 text-emerald-900/80">Acceso a más rutas y productos para presentar mejor cada oportunidad.</p>
+                    </div>
+                  </div>
+                  <div className="flex gap-4">
+                    <BriefcaseBusiness className="mt-0.5 h-6 w-6 shrink-0 text-emerald-600" />
+                    <div>
+                      <p className="text-base font-bold text-emerald-950">Mayor estructura y control</p>
+                      <p className="mt-1 text-sm leading-6 text-emerald-900/80">Todo el expediente, seguimiento y avance comercial en un mismo lugar.</p>
+                    </div>
+                  </div>
+                  <div className="flex gap-4">
+                    <Banknote className="mt-0.5 h-6 w-6 shrink-0 text-emerald-600" />
+                    <div>
+                      <p className="text-base font-bold text-emerald-950">Más productos para ofrecer</p>
+                      <p className="mt-1 text-sm leading-6 text-emerald-900/80">Mayor capacidad para vender con mejor orden, visibilidad y confianza frente al cliente.</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      </section>
+
+      <section className="mx-auto max-w-[90rem] px-4 py-12 sm:px-6 lg:px-8">
+        <div className="grid gap-4 lg:grid-cols-3">
+          <div className="rounded-[1.75rem] bg-[#0A3042] p-6 text-white shadow-xl">
+            <Building2 className="h-6 w-6 text-cyan-300" />
+            <p className="mt-3 text-lg font-bold">Instituciones más alineadas</p>
+            <p className="mt-2 text-sm leading-6 text-blue-100">Cada oportunidad puede perfilarse con una lógica mucho más comercial y menos improvisada.</p>
+          </div>
+
+          <div className="rounded-[1.75rem] bg-[#0A3042] p-6 text-white shadow-xl">
+            <Wallet className="h-6 w-6 text-cyan-300" />
+            <p className="mt-3 text-lg font-bold">Mayor percepción de valor</p>
+            <p className="mt-2 text-sm leading-6 text-blue-100">Tu despacho se ve más sólido cuando el proceso es claro y estructurado.</p>
+          </div>
+
+          <div className="rounded-[1.75rem] bg-[#0A3042] p-6 text-white shadow-xl">
+            <ShieldCheck className="h-6 w-6 text-cyan-300" />
+            <p className="mt-3 text-lg font-bold">Seguimiento con mejor trazabilidad</p>
+            <p className="mt-2 text-sm leading-6 text-blue-100">Menos incertidumbre, más orden y una experiencia mucho más digna de mostrar frente a tu nicho de mercado.</p>
           </div>
         </div>
       </section>
 
-      <section className="mx-auto max-w-7xl px-4 py-16 sm:px-6 lg:px-8">
-        <div className="mb-10 max-w-3xl">
-          <p className="text-sm font-semibold uppercase tracking-[0.24em] text-primary">Testimoniales</p>
-          <h2 className="mt-3 text-3xl font-black text-slate-950">Lo que dicen quienes ya operan con más estructura.</h2>
+      <section className="mx-auto max-w-[90rem] px-4 py-20 sm:px-6 lg:px-8">
+        <div className="mb-10 max-w-4xl">
+          <p className="text-xs font-bold uppercase tracking-[0.2em] text-primary">Cómo funciona</p>
+          <h2 className="mt-3 text-4xl font-bold tracking-tight text-slate-900">Paso a paso para operar mejor.</h2>
         </div>
-        <div className="grid gap-6 lg:grid-cols-3">
+
+        <div className="grid items-stretch gap-5 lg:grid-cols-4">
+          {workflow.map((item) => (
+            <Card key={item.step} className="h-full rounded-[1.75rem] border-slate-200 bg-white shadow-sm">
+              <CardContent className="flex h-full flex-col items-start p-6 text-left lg:p-7">
+                <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-2xl bg-primary text-lg font-bold text-white">
+                  {item.step}
+                </div>
+                <h3 className="min-h-[56px] text-xl font-bold leading-tight text-slate-900">{item.title}</h3>
+                <p className="mt-3 text-sm leading-7 text-slate-600">{item.description}</p>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      </section>
+
+      <section className="mx-auto max-w-[90rem] px-4 py-4 sm:px-6 lg:px-8">
+        <div className="mb-10 text-center">
+          <h2 className="text-4xl font-bold tracking-tight text-slate-900">Lo que valoran quienes ya operan con más estructura.</h2>
+        </div>
+
+        <div className="grid items-stretch gap-6 lg:grid-cols-3">
           {testimonials.map((testimonial) => (
-            <Card key={testimonial.name} className="border-slate-200 bg-white shadow-sm">
-              <CardContent className="p-7">
+            <Card key={testimonial.name} className="flex h-full border-slate-200 bg-white shadow-sm transition-all hover:shadow-lg">
+              <CardContent className="flex h-full flex-col p-7">
                 <div className="mb-5 flex items-center gap-4">
                   <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-primary/10 text-lg font-bold text-primary">
                     {testimonial.name
@@ -522,12 +734,15 @@ export default function BrokersLanding() {
                   <div>
                     <p className="font-semibold text-slate-900">{testimonial.name}</p>
                     <p className="text-sm text-slate-500">{testimonial.role}</p>
+                    <p className="text-xs text-slate-400">{testimonial.company}</p>
                   </div>
                 </div>
                 <p className="text-sm leading-7 text-slate-600">“{testimonial.quote}”</p>
-                <div className="mt-6 rounded-2xl bg-emerald-50 p-4">
-                  <p className="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-700">Resultado</p>
-                  <p className="mt-2 text-sm font-medium text-slate-800">{testimonial.result}</p>
+                <div className="mt-auto pt-6">
+                  <div className="rounded-2xl bg-emerald-50 p-4">
+                    <p className="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-700">Resultado</p>
+                    <p className="mt-2 text-sm font-medium text-slate-800">{testimonial.result}</p>
+                  </div>
                 </div>
               </CardContent>
             </Card>
@@ -535,12 +750,13 @@ export default function BrokersLanding() {
         </div>
       </section>
 
-      <section className="mx-auto max-w-5xl px-4 py-16 sm:px-6 lg:px-8">
+      <section className="mx-auto max-w-[82rem] px-4 py-20 sm:px-6 lg:px-8">
         <div className="rounded-[2rem] border border-slate-200 bg-white p-8 shadow-sm lg:p-10">
           <div className="max-w-3xl">
-            <p className="text-sm font-semibold uppercase tracking-[0.24em] text-primary">Preguntas frecuentes</p>
-            <h2 className="mt-3 text-3xl font-black text-slate-950">Resolvemos lo esencial para que decidas rápido.</h2>
+            <p className="text-xs font-bold uppercase tracking-[0.2em] text-primary">Preguntas frecuentes</p>
+            <h2 className="mt-3 text-4xl font-bold tracking-tight text-slate-900">Respuestas claras para decidir rápido.</h2>
           </div>
+
           <div className="mt-8 space-y-4">
             {faqs.map((item) => (
               <details key={item.question} className="group rounded-2xl border border-slate-200 bg-slate-50 px-6 py-5">
@@ -555,24 +771,30 @@ export default function BrokersLanding() {
       </section>
 
       <section className="px-4 pb-16 sm:px-6 lg:px-8">
-        <div className="mx-auto flex max-w-7xl flex-col gap-6 rounded-[2rem] bg-[linear-gradient(135deg,hsl(210,93%,28%)_0%,#123255_100%)] p-8 text-white lg:flex-row lg:items-center lg:justify-between lg:p-10">
+        <div className="mx-auto flex max-w-[90rem] flex-col gap-6 rounded-[2rem] bg-[linear-gradient(135deg,hsl(210,93%,28%)_0%,#123255_100%)] p-8 text-white lg:flex-row lg:items-center lg:justify-between lg:p-10">
           <div className="max-w-3xl">
-            <p className="text-sm font-semibold uppercase tracking-[0.24em] text-cyan-100">Siguiente paso</p>
-            <h2 className="mt-3 text-3xl font-black">Entra, conoce el flujo y decide si hace sentido para tu operación diaria.</h2>
+            <p className="text-xs font-bold uppercase tracking-[0.2em] text-cyan-100">Siguiente paso</p>
+            <h2 className="mt-3 text-3xl font-black">Si tu mercado exige confianza, tu experiencia también debe verla.</h2>
             <p className="mt-3 text-base leading-7 text-blue-100">
-              Empieza a referir hoy mismo o solicita una demo para ver cómo centralizar tus casos y ganar más comisión.
+              Solicita acceso, conoce el flujo y decide si esta es la forma correcta de elevar tu operación comercial.
             </p>
           </div>
+
           <div className="flex flex-col gap-3 sm:flex-row">
             <Button size="lg" asChild className="bg-secondary px-7 text-white hover:bg-secondary/90">
               <a href="#form-brokers">
-                <ArrowRight />
-                Solicitar Acceso y Demo
+                Solicitar acceso
+                <ArrowRight className="ml-2 h-5 w-5" />
               </a>
             </Button>
-            <Button size="lg" variant="outline" asChild className="border-white/30 bg-white/10 px-7 text-white hover:bg-white/20 hover:text-white">
+            <Button
+              size="lg"
+              variant="outline"
+              asChild
+              className="border-white/30 bg-white/10 px-7 text-white hover:bg-white/20 hover:text-white"
+            >
               <a href={loginHref}>
-                <LogIn />
+                <LogIn className="mr-2 h-4 w-4" />
                 Ya tengo cuenta
               </a>
             </Button>
@@ -580,16 +802,22 @@ export default function BrokersLanding() {
         </div>
       </section>
 
-      <footer className="border-t border-slate-200 bg-white/90">
-        <div className="mx-auto flex max-w-7xl flex-col gap-4 px-4 py-8 text-sm text-slate-500 sm:px-6 lg:flex-row lg:items-center lg:justify-between lg:px-8">
-          <div className="flex items-center gap-3">
-            <img src="/Credito%20Negocios-07.jpg" alt="Credito Negocios" className="h-11 w-auto rounded-lg shadow-sm" />
-            <span>© 2026 Crédito Negocios</span>
+      <footer className="border-t border-blue-900/20 bg-[#0A3042] text-white">
+        <div className="mx-auto flex max-w-[90rem] flex-col gap-4 px-4 py-8 text-sm sm:px-6 lg:flex-row lg:items-center lg:justify-between lg:px-8">
+          <div className="flex flex-col items-center justify-center gap-2 text-center lg:flex-1">
+            <img src="/Credito_Negocios-07.png" alt="Credito Negocios" className="h-16 w-auto sm:h-20" />
+            <span className="text-base text-center text-blue-100">@ Credito Negocios 2026</span>
           </div>
-          <div className="flex flex-wrap gap-4">
-            <a href="mailto:info@creditonegocios.com.mx" className="hover:text-slate-800">info@creditonegocios.com.mx</a>
-            <a href={whatsappUrl} target="_blank" rel="noreferrer" className="hover:text-slate-800">WhatsApp</a>
-            <a href={loginHref} className="hover:text-slate-800">Login</a>
+
+          <div className="flex flex-wrap gap-4 text-blue-100">
+            <a href="mailto:info@creditonegocios.com.mx" className="inline-flex items-center gap-2 hover:text-white">
+              <Mail className="h-4 w-4" />
+              info@creditonegocios.com.mx
+            </a>
+            <a href={whatsappUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-2 hover:text-white">
+              <Phone className="h-4 w-4" />
+              WhatsApp
+            </a>
           </div>
         </div>
       </footer>

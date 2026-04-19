@@ -2724,10 +2724,10 @@ export class MemStorage implements IStorage {
 // Import DbStorage (ready for future use)
 import { DbStorage } from "./dbStorage";
 
-// Switch to DbStorage for persistent data storage
-export const storage = new DbStorage();
-
 // Keep MemStorage available for fallback/testing if needed
 export const memStorage = new MemStorage();
 
-// DbStorage is now the primary storage system with PostgreSQL persistence
+// Use memory storage for local preview when requested, otherwise keep PostgreSQL storage.
+export const storage = process.env.USE_MEMORY_STORAGE === "true" ? memStorage : new DbStorage();
+
+// DbStorage remains the primary storage system for normal environments.

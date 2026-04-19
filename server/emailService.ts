@@ -1,6 +1,6 @@
 import { Resend } from 'resend';
 
-const resend = new Resend(process.env.RESEND_API_KEY);
+const resend = process.env.RESEND_API_KEY ? new Resend(process.env.RESEND_API_KEY) : null;
 
 const FROM_EMAIL = 'Crédito Negocios <noreply@creditonegocios.com.mx>';
 const APP_NAME = 'Crédito Negocios';
@@ -21,6 +21,10 @@ export async function sendPasswordResetEmail(
   userName?: string
 ): Promise<{ success: boolean; error?: string }> {
   try {
+    if (!resend) {
+      console.warn('Email service disabled: missing RESEND_API_KEY');
+      return { success: false, error: 'Email service not configured' };
+    }
     // Use FRONTEND_BASE_URL for custom domain, or get from REPLIT_DOMAINS, or fallback to localhost
     let baseUrl = process.env.FRONTEND_BASE_URL;
     
@@ -135,6 +139,10 @@ export async function sendBrokerLeadEmail(
   payload: BrokerLeadPayload,
 ): Promise<{ success: boolean; error?: string }> {
   try {
+    if (!resend) {
+      console.warn('Email service disabled: missing RESEND_API_KEY');
+      return { success: false, error: 'Email service not configured' };
+    }
     const { data, error } = await resend.emails.send({
       from: FROM_EMAIL,
       to: [BROKER_LEADS_TO],
