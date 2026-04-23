@@ -274,9 +274,9 @@ export default function BrokersLanding() {
         <div className="mx-auto grid max-w-[90rem] grid-cols-[auto_1fr_auto] items-center gap-3 px-4 py-3 sm:px-6 lg:px-8">
           <div className="flex items-center">
             <img
-              src="/Credito_Negocios-07.png"
+              src="/credito-negocios-full-logo.jpg"
               alt="Credito Negocios"
-              className="h-14 w-auto sm:h-16 lg:h-[4.5rem]"
+              className="h-12 w-auto sm:h-14 lg:h-16"
             />
           </div>
 
@@ -310,8 +310,8 @@ export default function BrokersLanding() {
         </div>
 
         <div className="relative mx-auto grid max-w-[90rem] gap-10 px-4 pb-16 pt-12 sm:px-6 lg:grid-cols-[1.08fr_0.92fr] lg:px-8 lg:pb-20 lg:pt-16">
-          <div className="flex flex-col justify-center">
-            <h1 className="max-w-4xl text-4xl font-black leading-[1.05] text-white sm:text-5xl lg:text-6xl">
+          <div className="flex flex-col justify-start">
+            <h1 className="max-w-3xl text-3xl font-extrabold leading-[1.12] text-white sm:text-4xl lg:text-5xl">
               ¡La plataforma que te permite ganar comisiones sin límites!
             </h1>
 
