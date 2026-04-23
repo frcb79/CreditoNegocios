@@ -293,9 +293,9 @@ export default function BrokersLanding() {
                 WhatsApp
               </a>
             </Button>
-            <Button variant="outline" size="sm" asChild className="border-white/40 text-white hover:bg-white/10 hover:text-white">
+            <Button variant="outline" size="sm" asChild className="border-emerald-300/80 bg-transparent text-emerald-100 hover:bg-emerald-500/20 hover:text-emerald-50">
               <a href={loginHref}>
-                <LogIn className="mr-2 h-4 w-4 text-white" />
+                <LogIn className="mr-2 h-4 w-4 text-emerald-100" />
                 Login
               </a>
             </Button>
@@ -319,7 +319,7 @@ export default function BrokersLanding() {
               Tú traes el cliente, nosotros el capital.
             </h2>
 
-            <p className="mt-6 text-xs font-black uppercase tracking-[0.24em] text-[#1F476B] sm:text-sm">
+            <p className="mt-6 text-xs font-black uppercase tracking-[0.24em] text-emerald-700 sm:text-sm">
               Para brokers, despachos y referidos
             </p>
 
