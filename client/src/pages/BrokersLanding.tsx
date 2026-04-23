@@ -295,7 +295,7 @@ export default function BrokersLanding() {
             </Button>
             <Button variant="outline" size="sm" asChild className="border-white/40 text-white hover:bg-white/10 hover:text-white">
               <a href={loginHref}>
-                <LogIn className="mr-2 h-4 w-4" />
+                <LogIn className="mr-2 h-4 w-4 text-white" />
                 Login
               </a>
             </Button>
@@ -315,16 +315,16 @@ export default function BrokersLanding() {
               ¡La plataforma que te permite ganar comisiones sin límites!
             </h1>
 
-            <h2 className="mt-4 max-w-3xl text-2xl font-semibold text-slate-700 sm:text-3xl">
+            <h2 className="mt-6 max-w-3xl text-2xl font-semibold text-slate-700 sm:text-3xl">
               Tú traes el cliente, nosotros el capital.
             </h2>
 
-            <p className="mt-3 text-xs font-black uppercase tracking-[0.24em] text-emerald-300 sm:text-sm">
+            <p className="mt-6 text-xs font-black uppercase tracking-[0.24em] text-[#1F476B] sm:text-sm">
               Para brokers, despachos y referidos
             </p>
 
-            <p className="mt-6 max-w-3xl text-base leading-8 text-slate-600 sm:text-lg">
-              Refiere un contacto o administra expedientes completos desde un solo lugar. Nosotros te ayudamos a perfilar, presentar y dar seguimiento para que cierres más y cobres mejor.
+            <p className="mt-8 max-w-3xl text-base leading-8 text-slate-600 sm:text-lg">
+              Refiere un contacto o administra expedientes completos desde un solo lugar. Nosotros te ayudamos a perfilar, presentar y dar seguimiento para que cierres más&nbsp;y cobres mejor.
             </p>
 
             <div className="mt-8 grid max-w-2xl gap-3 sm:grid-cols-2">
@@ -772,7 +772,7 @@ export default function BrokersLanding() {
       </section>
 
       <section className="px-4 pb-16 sm:px-6 lg:px-8">
-        <div className="mx-auto flex max-w-[90rem] flex-col gap-6 rounded-[2rem] bg-[linear-gradient(135deg,hsl(210,93%,28%)_0%,#123255_100%)] p-8 text-white lg:flex-row lg:items-center lg:justify-between lg:p-10">
+        <div className="mx-auto flex max-w-[90rem] flex-col gap-6 rounded-[2rem] bg-[linear-gradient(135deg,#2B5B85_0%,#1F476B_58%,#173653_100%)] p-8 text-white lg:flex-row lg:items-center lg:justify-between lg:p-10">
           <div className="max-w-3xl">
             <p className="text-xs font-bold uppercase tracking-[0.2em] text-cyan-100">Siguiente paso</p>
             <h2 className="mt-3 text-3xl font-black">Si tu mercado exige confianza, tu experiencia también debe verla.</h2>
