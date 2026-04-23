@@ -270,18 +270,18 @@ export default function BrokersLanding() {
 
   return (
     <div className="min-h-screen bg-[linear-gradient(180deg,#f5fbff_0%,#edf5fb_40%,#ffffff_100%)] text-slate-900">
-      <nav className="sticky top-0 z-50 border-b border-slate-200/70 bg-white/95 backdrop-blur-xl">
+      <nav className="sticky top-0 z-50 border-b border-[#173653] bg-[#1F476B] backdrop-blur-xl">
         <div className="mx-auto grid max-w-[90rem] grid-cols-[auto_1fr_auto] items-center gap-3 px-4 py-3 sm:px-6 lg:px-8">
           <div className="flex items-center">
             <img
-              src="/credito-negocios-full-logo.jpg"
+              src="/Credito_Negocios-07.png"
               alt="Credito Negocios"
               className="h-12 w-auto sm:h-14 lg:h-16"
             />
           </div>
 
           <div className="px-2 text-center">
-            <p className="text-sm font-black uppercase tracking-[0.2em] text-primary sm:text-base lg:text-xl">
+            <p className="text-sm font-black uppercase tracking-[0.2em] text-white sm:text-base lg:text-xl">
               Programa para Brokers y Referidos
             </p>
           </div>
@@ -293,7 +293,7 @@ export default function BrokersLanding() {
                 WhatsApp
               </a>
             </Button>
-            <Button variant="outline" size="sm" asChild className="border-emerald-500 text-emerald-600 hover:bg-emerald-50 hover:text-emerald-700">
+            <Button variant="outline" size="sm" asChild className="border-white/40 text-white hover:bg-white/10 hover:text-white">
               <a href={loginHref}>
                 <LogIn className="mr-2 h-4 w-4" />
                 Login
@@ -303,19 +303,19 @@ export default function BrokersLanding() {
         </div>
       </nav>
 
-      <section className="relative overflow-hidden bg-[linear-gradient(135deg,#081c2b_0%,#0c3151_55%,#0a3042_100%)] text-white">
+      <section className="relative overflow-hidden bg-[linear-gradient(180deg,#f7f9fb_0%,#eef2f6_100%)] text-slate-900">
         <div className="absolute inset-0">
-          <div className="absolute -right-16 -top-24 h-72 w-72 rounded-full bg-cyan-400/15 blur-3xl" />
-          <div className="absolute -left-12 bottom-0 h-80 w-80 rounded-full bg-emerald-400/10 blur-3xl" />
+          <div className="absolute -right-16 -top-24 h-72 w-72 rounded-full bg-slate-300/30 blur-3xl" />
+          <div className="absolute -left-12 bottom-0 h-80 w-80 rounded-full bg-slate-200/45 blur-3xl" />
         </div>
 
         <div className="relative mx-auto grid max-w-[90rem] gap-10 px-4 pb-16 pt-12 sm:px-6 lg:grid-cols-[1.08fr_0.92fr] lg:px-8 lg:pb-20 lg:pt-16">
           <div className="flex flex-col justify-start">
-            <h1 className="max-w-3xl text-3xl font-extrabold leading-[1.12] text-white sm:text-4xl lg:text-5xl">
+            <h1 className="max-w-3xl text-3xl font-extrabold leading-[1.12] text-slate-900 sm:text-4xl lg:text-5xl">
               ¡La plataforma que te permite ganar comisiones sin límites!
             </h1>
 
-            <h2 className="mt-4 max-w-3xl text-2xl font-semibold text-white sm:text-3xl">
+            <h2 className="mt-4 max-w-3xl text-2xl font-semibold text-slate-700 sm:text-3xl">
               Tú traes el cliente, nosotros el capital.
             </h2>
 
@@ -323,7 +323,7 @@ export default function BrokersLanding() {
               Para brokers, despachos y referidos
             </p>
 
-            <p className="mt-6 max-w-3xl text-base leading-8 text-slate-200 sm:text-lg">
+            <p className="mt-6 max-w-3xl text-base leading-8 text-slate-600 sm:text-lg">
               Refiere un contacto o administra expedientes completos desde un solo lugar. Nosotros te ayudamos a perfilar, presentar y dar seguimiento para que cierres más y cobres mejor.
             </p>
 
@@ -331,9 +331,9 @@ export default function BrokersLanding() {
               {["Sin costo", "Más visibilidad", "Más opciones", "Más cierres"].map((item) => (
                 <div
                   key={item}
-                  className="flex items-center gap-3 rounded-2xl border border-emerald-400/20 bg-white/10 px-4 py-3 text-sm font-semibold text-white shadow-lg shadow-slate-950/10 backdrop-blur"
+                  className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700 shadow-sm"
                 >
-                  <CheckCircle2 className="h-5 w-5 text-emerald-400" />
+                  <CheckCircle2 className="h-5 w-5 text-emerald-500" />
                   {item}
                 </div>
               ))}
@@ -803,7 +803,7 @@ export default function BrokersLanding() {
         </div>
       </section>
 
-      <footer className="border-t border-blue-900/20 bg-[#0A3042] text-white">
+      <footer className="border-t border-[#173653] bg-[#1F476B] text-white">
         <div className="mx-auto grid max-w-[90rem] grid-cols-1 items-center gap-4 px-4 py-8 text-sm sm:px-6 lg:grid-cols-[auto_1fr_auto] lg:gap-6 lg:px-8">
           <div className="flex items-center justify-center lg:justify-start">
             <img src="/Credito_Negocios-07.png" alt="Credito Negocios" className="h-16 w-auto sm:h-20" />
