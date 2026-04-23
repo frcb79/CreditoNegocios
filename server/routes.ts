@@ -375,6 +375,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     email: z.string().email("Email inválido"),
     phone: z.string().min(8, "Teléfono inválido"),
     company: z.string().optional(),
+    brokerProfile: z.enum(["pro", "referidor"]).default("pro"),
     brokerType: z.enum(["pyme", "pfae", "hipotecario", "mixto"]),
     message: z.string().max(1200, "Mensaje demasiado largo").optional(),
   });

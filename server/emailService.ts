@@ -11,8 +11,14 @@ type BrokerLeadPayload = {
   email: string;
   phone: string;
   company?: string;
+  brokerProfile: 'pro' | 'referidor';
   brokerType: string;
   message?: string;
+};
+
+const brokerProfileLabels: Record<BrokerLeadPayload['brokerProfile'], string> = {
+  pro: 'Broker profesional',
+  referidor: 'Aliado referidor',
 };
 
 type WebsiteLeadPayload = {
@@ -160,11 +166,14 @@ export async function sendBrokerLeadEmail(
       console.warn('Broker lead email skipped in non-production: missing RESEND_API_KEY');
       return { success: true };
     }
+    const brokerProfile = payload.brokerProfile || 'pro';
+    const brokerProfileLabel = brokerProfileLabels[brokerProfile] || brokerProfile;
+
     const { data, error } = await resend.emails.send({
       from: FROM_EMAIL,
       to: [BROKER_LEADS_TO],
       replyTo: payload.email,
-      subject: `Nuevo lead brokers - ${APP_NAME}`,
+      subject: `Nuevo lead brokers [${brokerProfileLabel}] - ${APP_NAME}`,
       html: `
         <!DOCTYPE html>
         <html>
@@ -196,6 +205,10 @@ export async function sendBrokerLeadEmail(
                   <td style="padding: 10px 0; border-bottom: 1px solid #e2e8f0;">${payload.phone}</td>
                 </tr>
                 <tr>
+                  <td style="padding: 10px 0; border-bottom: 1px solid #e2e8f0; font-weight: 600; color: #0f172a;">Perfil</td>
+                  <td style="padding: 10px 0; border-bottom: 1px solid #e2e8f0;">${brokerProfileLabel}</td>
+                </tr>
+                <tr>
                   <td style="padding: 10px 0; border-bottom: 1px solid #e2e8f0; font-weight: 600; color: #0f172a;">Tipo de broker</td>
                   <td style="padding: 10px 0; border-bottom: 1px solid #e2e8f0;">${payload.brokerType}</td>
                 </tr>
@@ -220,6 +233,7 @@ Nuevo lead brokers - ${APP_NAME}
 Nombre: ${payload.name}
 Email: ${payload.email}
 Teléfono: ${payload.phone}
+Perfil: ${brokerProfileLabel}
 Tipo de broker: ${payload.brokerType}
 Despacho / empresa: ${payload.company || 'No especificado'}
 

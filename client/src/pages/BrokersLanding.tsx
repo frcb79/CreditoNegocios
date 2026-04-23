@@ -239,6 +239,7 @@ export default function BrokersLanding() {
     try {
       await apiRequest("POST", "/api/public/broker-leads", {
         ...form,
+        brokerProfile: preferredTrack,
         brokerType,
       });
 
@@ -275,8 +276,7 @@ export default function BrokersLanding() {
             <img
               src="/Credito_Negocios-07.png"
               alt="Credito Negocios"
-              className="h-14 w-auto brightness-0 saturate-100 sm:h-16 lg:h-[4.5rem]"
-              style={{ filter: "brightness(0) saturate(100%) invert(23%) sepia(27%) saturate(1068%) hue-rotate(166deg) brightness(95%) contrast(91%)" }}
+              className="h-14 w-auto sm:h-16 lg:h-[4.5rem]"
             />
           </div>
 
