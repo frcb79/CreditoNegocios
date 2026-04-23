@@ -41,10 +41,11 @@ const getOidcConfig = memoize(
 export function getSession() {
   const sessionTtl = 7 * 24 * 60 * 60 * 1000; // 1 week
   const dbUrl = process.env.DATABASE_URL ?? "";
+  const useMemoryStorage = process.env.USE_MEMORY_STORAGE === "true";
   const usesSupabaseDirectIpv6Host = dbUrl.includes("supabase.co") && dbUrl.includes(":5432");
   const forceMemoryStore = process.env.SESSION_STORE === "memory";
   const runningOnRailway = !!process.env.RAILWAY_ENVIRONMENT_NAME;
-  const shouldUseMemoryStore = forceMemoryStore || (runningOnRailway && usesSupabaseDirectIpv6Host);
+  const shouldUseMemoryStore = useMemoryStorage || forceMemoryStore || (runningOnRailway && usesSupabaseDirectIpv6Host);
 
   const sessionStore = shouldUseMemoryStore
     ? undefined
@@ -123,13 +124,27 @@ async function upsertUser(
 }
 
 export async function setupAuth(app: Express) {
-  // Trust all proxies - Replit uses multiple proxy layers
-  // Using 1 causes req.secure to be false when there are more proxies,
-  // which silently prevents Set-Cookie from being sent with secure: true
-  app.set("trust proxy", true);
+  const rawTrustProxy = process.env.TRUST_PROXY;
+  const trustProxySetting = rawTrustProxy
+    ? rawTrustProxy === "true"
+      ? true
+      : rawTrustProxy === "false"
+        ? false
+        : Number.parseInt(rawTrustProxy, 10)
+    : process.env.REPLIT_DOMAINS
+      ? true
+      : process.env.RAILWAY_ENVIRONMENT_NAME
+        ? 1
+        : false;
+
+  app.set("trust proxy", Number.isNaN(trustProxySetting as number) ? false : trustProxySetting);
   app.use(getSession());
   app.use(passport.initialize());
   app.use(passport.session());
+
+  // Needed for local auth sessions (email/password) and Replit OIDC sessions.
+  passport.serializeUser((user: Express.User, cb) => cb(null, user));
+  passport.deserializeUser((user: Express.User, cb) => cb(null, user));
 
   if (!replitAuthEnabled) {
     return;
@@ -162,9 +177,6 @@ export async function setupAuth(app: Express) {
     );
     passport.use(strategy);
   }
-
-  passport.serializeUser((user: Express.User, cb) => cb(null, user));
-  passport.deserializeUser((user: Express.User, cb) => cb(null, user));
 
   app.get("/api/login", (req, res, next) => {
     passport.authenticate(`replitauth:${req.hostname}`, {

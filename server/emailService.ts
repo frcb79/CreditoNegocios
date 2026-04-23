@@ -4,7 +4,7 @@ const resend = process.env.RESEND_API_KEY ? new Resend(process.env.RESEND_API_KE
 
 const FROM_EMAIL = 'Crédito Negocios <noreply@creditonegocios.com.mx>';
 const APP_NAME = 'Crédito Negocios';
-const BROKER_LEADS_TO = process.env.BROKER_LEADS_TO || 'fcb@creditonegocios.com.mx';
+const BROKER_LEADS_TO = process.env.BROKER_LEADS_TO || 'info@creditonegocios.com.mx';
 
 type BrokerLeadPayload = {
   name: string;
@@ -12,6 +12,16 @@ type BrokerLeadPayload = {
   phone: string;
   company?: string;
   brokerType: string;
+  message?: string;
+};
+
+type WebsiteLeadPayload = {
+  name: string;
+  email: string;
+  phone: string;
+  company?: string;
+  solutionType: string;
+  amountRange: string;
   message?: string;
 };
 
@@ -140,8 +150,15 @@ export async function sendBrokerLeadEmail(
 ): Promise<{ success: boolean; error?: string }> {
   try {
     if (!resend) {
-      console.warn('Email service disabled: missing RESEND_API_KEY');
-      return { success: false, error: 'Email service not configured' };
+      const isProduction = process.env.NODE_ENV === 'production';
+      if (isProduction) {
+        console.error('Broker lead email failed: missing RESEND_API_KEY in production');
+        return { success: false, error: 'Email service not configured' };
+      }
+
+      // Do not block lead capture in local/dev preview where email is optional.
+      console.warn('Broker lead email skipped in non-production: missing RESEND_API_KEY');
+      return { success: true };
     }
     const { data, error } = await resend.emails.send({
       from: FROM_EMAIL,
@@ -220,6 +237,108 @@ ${payload.message || 'Sin mensaje adicional.'}
     return { success: true };
   } catch (error: any) {
     console.error('Error sending broker lead email:', error);
+    return { success: false, error: error.message || 'Error desconocido' };
+  }
+}
+
+export async function sendWebsiteLeadEmail(
+  payload: WebsiteLeadPayload,
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    if (!resend) {
+      const isProduction = process.env.NODE_ENV === 'production';
+      if (isProduction) {
+        console.error('Website lead email failed: missing RESEND_API_KEY in production');
+        return { success: false, error: 'Email service not configured' };
+      }
+
+      // Do not block lead capture in local/dev preview where email is optional.
+      console.warn('Website lead email skipped in non-production: missing RESEND_API_KEY');
+      return { success: true };
+    }
+
+    const { data, error } = await resend.emails.send({
+      from: FROM_EMAIL,
+      to: [BROKER_LEADS_TO],
+      replyTo: payload.email,
+      subject: `Nuevo lead sitio web - ${APP_NAME}`,
+      html: `
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <meta charset="utf-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1.0">
+          <title>Nuevo lead sitio web</title>
+        </head>
+        <body style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; line-height: 1.6; color: #334155; max-width: 680px; margin: 0 auto; padding: 24px; background: #f8fafc;">
+          <div style="background: #ffffff; border-radius: 18px; overflow: hidden; box-shadow: 0 10px 30px rgba(15, 23, 42, 0.08); border: 1px solid #e2e8f0;">
+            <div style="background: linear-gradient(135deg, #0f766e 0%, #155e75 100%); color: white; padding: 28px 32px;">
+              <p style="margin: 0 0 6px 0; font-size: 12px; text-transform: uppercase; letter-spacing: 0.16em; color: #ccfbf1;">Sitio web</p>
+              <h1 style="margin: 0; font-size: 28px;">Nueva solicitud de cotizacion</h1>
+              <p style="margin: 8px 0 0 0; font-size: 14px; color: #ccfbf1;">Formulario enviado desde creditonegocios.com.mx</p>
+            </div>
+
+            <div style="padding: 28px 32px;">
+              <table style="width: 100%; border-collapse: collapse;">
+                <tr>
+                  <td style="padding: 10px 0; border-bottom: 1px solid #e2e8f0; width: 200px; font-weight: 600; color: #0f172a;">Nombre</td>
+                  <td style="padding: 10px 0; border-bottom: 1px solid #e2e8f0;">${payload.name}</td>
+                </tr>
+                <tr>
+                  <td style="padding: 10px 0; border-bottom: 1px solid #e2e8f0; font-weight: 600; color: #0f172a;">Email</td>
+                  <td style="padding: 10px 0; border-bottom: 1px solid #e2e8f0;">${payload.email}</td>
+                </tr>
+                <tr>
+                  <td style="padding: 10px 0; border-bottom: 1px solid #e2e8f0; font-weight: 600; color: #0f172a;">Telefono</td>
+                  <td style="padding: 10px 0; border-bottom: 1px solid #e2e8f0;">${payload.phone}</td>
+                </tr>
+                <tr>
+                  <td style="padding: 10px 0; border-bottom: 1px solid #e2e8f0; font-weight: 600; color: #0f172a;">Empresa</td>
+                  <td style="padding: 10px 0; border-bottom: 1px solid #e2e8f0;">${payload.company || 'No especificado'}</td>
+                </tr>
+                <tr>
+                  <td style="padding: 10px 0; border-bottom: 1px solid #e2e8f0; font-weight: 600; color: #0f172a;">Tipo de solucion</td>
+                  <td style="padding: 10px 0; border-bottom: 1px solid #e2e8f0;">${payload.solutionType}</td>
+                </tr>
+                <tr>
+                  <td style="padding: 10px 0; border-bottom: 1px solid #e2e8f0; font-weight: 600; color: #0f172a;">Monto aproximado</td>
+                  <td style="padding: 10px 0; border-bottom: 1px solid #e2e8f0;">${payload.amountRange}</td>
+                </tr>
+              </table>
+
+              <div style="margin-top: 24px; border-radius: 16px; background: #f8fafc; border: 1px solid #e2e8f0; padding: 18px 20px;">
+                <p style="margin: 0 0 8px 0; font-size: 12px; text-transform: uppercase; letter-spacing: 0.12em; color: #64748b;">Mensaje</p>
+                <p style="margin: 0; white-space: pre-wrap; color: #334155;">${payload.message || 'Sin mensaje adicional.'}</p>
+              </div>
+            </div>
+          </div>
+        </body>
+        </html>
+      `,
+      text: `
+Nuevo lead sitio web - ${APP_NAME}
+
+Nombre: ${payload.name}
+Email: ${payload.email}
+Telefono: ${payload.phone}
+Empresa: ${payload.company || 'No especificado'}
+Tipo de solucion: ${payload.solutionType}
+Monto aproximado: ${payload.amountRange}
+
+Mensaje:
+${payload.message || 'Sin mensaje adicional.'}
+      `.trim(),
+    });
+
+    if (error) {
+      console.error('Resend website lead email error:', error);
+      return { success: false, error: error.message };
+    }
+
+    console.log('Website lead email sent successfully:', data?.id);
+    return { success: true };
+  } catch (error: any) {
+    console.error('Error sending website lead email:', error);
     return { success: false, error: error.message || 'Error desconocido' };
   }
 }

@@ -273,9 +273,10 @@ export default function BrokersLanding() {
         <div className="mx-auto grid max-w-[90rem] grid-cols-[auto_1fr_auto] items-center gap-3 px-4 py-3 sm:px-6 lg:px-8">
           <div className="flex items-center">
             <img
-              src="/Credito_Negocios-07.jpg"
+              src="/Credito_Negocios-07.png"
               alt="Credito Negocios"
-              className="h-14 w-auto sm:h-16 lg:h-[4.5rem]"
+              className="h-14 w-auto brightness-0 saturate-100 sm:h-16 lg:h-[4.5rem]"
+              style={{ filter: "brightness(0) saturate(100%) invert(23%) sepia(27%) saturate(1068%) hue-rotate(166deg) brightness(95%) contrast(91%)" }}
             />
           </div>
 
@@ -803,13 +804,14 @@ export default function BrokersLanding() {
       </section>
 
       <footer className="border-t border-blue-900/20 bg-[#0A3042] text-white">
-        <div className="mx-auto flex max-w-[90rem] flex-col gap-4 px-4 py-8 text-sm sm:px-6 lg:flex-row lg:items-center lg:justify-between lg:px-8">
-          <div className="flex flex-col items-center justify-center gap-2 text-center lg:flex-1">
+        <div className="mx-auto grid max-w-[90rem] grid-cols-1 items-center gap-4 px-4 py-8 text-sm sm:px-6 lg:grid-cols-[auto_1fr_auto] lg:gap-6 lg:px-8">
+          <div className="flex items-center justify-center lg:justify-start">
             <img src="/Credito_Negocios-07.png" alt="Credito Negocios" className="h-16 w-auto sm:h-20" />
-            <span className="text-base text-center text-blue-100">@ Credito Negocios 2026</span>
           </div>
 
-          <div className="flex flex-wrap gap-4 text-blue-100">
+          <div className="text-center text-base text-blue-100">@ Credito Negocios 2026</div>
+
+          <div className="flex flex-wrap items-center justify-center gap-4 text-blue-100 lg:justify-end">
             <a href="mailto:info@creditonegocios.com.mx" className="inline-flex items-center gap-2 hover:text-white">
               <Mail className="h-4 w-4" />
               info@creditonegocios.com.mx

@@ -1266,33 +1266,33 @@ tailwind.config = {
       <p class="text-base lg:text-lg text-blue-100 max-w-2xl mx-auto">Completa el formulario y te contactamos en menos de 24 horas</p>
     </div>
 
-    <form class="bg-white rounded-2xl p-6 lg:p-8 text-gray-800 shadow-2xl border border-teal-100">
+    <form id="website-lead-form" class="bg-white rounded-2xl p-6 lg:p-8 text-gray-800 shadow-2xl border border-teal-100">
       <div class="grid md:grid-cols-2 gap-5 mb-5">
         <div>
           <label class="block text-sm font-bold mb-2 text-gray-700">Nombre Completo *</label>
-          <input type="text" required class="w-full px-4 py-2.5 border-2 border-gray-200 rounded-xl focus:outline-none focus:border-brand-teal transition">
+          <input name="name" type="text" required class="w-full px-4 py-2.5 border-2 border-gray-200 rounded-xl focus:outline-none focus:border-brand-teal transition">
         </div>
         <div>
           <label class="block text-sm font-bold mb-2 text-gray-700">Email *</label>
-          <input type="email" required class="w-full px-4 py-2.5 border-2 border-gray-200 rounded-xl focus:outline-none focus:border-brand-teal transition">
+          <input name="email" type="email" required class="w-full px-4 py-2.5 border-2 border-gray-200 rounded-xl focus:outline-none focus:border-brand-teal transition">
         </div>
       </div>
 
       <div class="grid md:grid-cols-2 gap-5 mb-5">
         <div>
           <label class="block text-sm font-bold mb-2 text-gray-700">Teléfono *</label>
-          <input type="tel" required class="w-full px-4 py-2.5 border-2 border-gray-200 rounded-xl focus:outline-none focus:border-brand-teal transition">
+          <input name="phone" type="tel" required class="w-full px-4 py-2.5 border-2 border-gray-200 rounded-xl focus:outline-none focus:border-brand-teal transition">
         </div>
         <div>
           <label class="block text-sm font-bold mb-2 text-gray-700">Empresa</label>
-          <input type="text" class="w-full px-4 py-2.5 border-2 border-gray-200 rounded-xl focus:outline-none focus:border-brand-teal transition">
+          <input name="company" type="text" class="w-full px-4 py-2.5 border-2 border-gray-200 rounded-xl focus:outline-none focus:border-brand-teal transition">
         </div>
       </div>
 
       <div class="grid md:grid-cols-2 gap-5 mb-5">
         <div>
           <label class="block text-sm font-bold mb-2 text-gray-700">Tipo de Solución *</label>
-          <select required class="w-full px-4 py-2.5 border-2 border-gray-200 rounded-xl focus:outline-none focus:border-brand-teal transition">
+          <select name="solutionType" required class="w-full px-4 py-2.5 border-2 border-gray-200 rounded-xl focus:outline-none focus:border-brand-teal transition">
             <option value="">Seleccionar</option>
             <option>Arrendamiento - Vehicular</option>
             <option>Arrendamiento - Maquinaria/Equipo</option>
@@ -1306,7 +1306,7 @@ tailwind.config = {
         </div>
         <div>
           <label class="block text-sm font-bold mb-2 text-gray-700">Monto Aproximado *</label>
-          <select required class="w-full px-4 py-2.5 border-2 border-gray-200 rounded-xl focus:outline-none focus:border-brand-teal transition">
+          <select name="amountRange" required class="w-full px-4 py-2.5 border-2 border-gray-200 rounded-xl focus:outline-none focus:border-brand-teal transition">
             <option value="">Seleccionar</option>
             <option>Menos de $500,000</option>
             <option>$500,000 - $1,000,000</option>
@@ -1321,12 +1321,13 @@ tailwind.config = {
 
       <div class="mb-5">
         <label class="block text-sm font-bold mb-2 text-gray-700">Mensaje</label>
-        <textarea rows="2" class="w-full px-4 py-2.5 border-2 border-gray-200 rounded-xl focus:outline-none focus:border-brand-teal transition" placeholder="Cuéntanos más sobre tu proyecto o necesidad..."></textarea>
+        <textarea name="message" rows="2" class="w-full px-4 py-2.5 border-2 border-gray-200 rounded-xl focus:outline-none focus:border-brand-teal transition" placeholder="Cuéntanos más sobre tu proyecto o necesidad..."></textarea>
       </div>
 
-      <button type="submit" class="w-full gradient-teal text-white py-3 rounded-xl font-bold text-lg shadow-xl hover:shadow-2xl transition">
+      <button id="website-lead-submit" type="submit" class="w-full gradient-teal text-white py-3 rounded-xl font-bold text-lg shadow-xl hover:shadow-2xl transition">
         Enviar Solicitud →
       </button>
+      <p id="website-lead-status" class="text-sm text-center mt-4 hidden"></p>
       <p class="text-sm text-gray-500 text-center mt-6">* Respuesta garantizada en menos de 24 horas</p>
     </form>
   </div>
@@ -1673,12 +1674,77 @@ document.querySelectorAll('a[href^="#"]').forEach(function(anchor) {
 });
 
 // ── FORM SUBMISSION ──
-var form = document.querySelector('form');
+var form = document.getElementById('website-lead-form');
 if (form) {
-  form.addEventListener('submit', function(e) {
+  form.addEventListener('submit', async function(e) {
     e.preventDefault();
-    alert('¡Gracias por tu solicitud! Nos pondremos en contacto contigo en menos de 24 horas.');
-    this.reset();
+
+    var submitBtn = document.getElementById('website-lead-submit');
+    var statusEl = document.getElementById('website-lead-status');
+    var previousText = submitBtn ? submitBtn.textContent : '';
+
+    if (submitBtn) {
+      submitBtn.disabled = true;
+      submitBtn.textContent = 'Enviando...';
+      submitBtn.style.opacity = '0.75';
+      submitBtn.style.cursor = 'not-allowed';
+    }
+
+    if (statusEl) {
+      statusEl.classList.add('hidden');
+      statusEl.textContent = '';
+      statusEl.className = 'text-sm text-center mt-4 hidden';
+    }
+
+    var data = new FormData(form);
+    var payload = {
+      name: String(data.get('name') || '').trim(),
+      email: String(data.get('email') || '').trim(),
+      phone: String(data.get('phone') || '').trim(),
+      company: String(data.get('company') || '').trim(),
+      solutionType: String(data.get('solutionType') || '').trim(),
+      amountRange: String(data.get('amountRange') || '').trim(),
+      message: String(data.get('message') || '').trim(),
+    };
+
+    var endpoint = '/api/public/website-leads';
+
+    try {
+      var response = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+
+      var body = {};
+      try {
+        body = await response.json();
+      } catch (parseError) {
+        body = {};
+      }
+
+      if (!response.ok) {
+        throw new Error(body.message || 'No se pudo enviar la solicitud. Intenta nuevamente.');
+      }
+
+      if (statusEl) {
+        statusEl.textContent = 'Solicitud enviada. Te contactaremos en menos de 24 horas.';
+        statusEl.className = 'text-sm text-center mt-4 text-emerald-700';
+      }
+      form.reset();
+    } catch (error) {
+      if (statusEl) {
+        statusEl.textContent = error && error.message ? error.message : 'Error al enviar la solicitud. Intenta de nuevo.';
+        statusEl.className = 'text-sm text-center mt-4 text-red-600';
+      }
+    } finally {
+      if (submitBtn) {
+        submitBtn.disabled = false;
+        submitBtn.textContent = previousText || 'Enviar Solicitud →';
+        submitBtn.style.opacity = '1';
+        submitBtn.style.cursor = 'pointer';
+      }
+    }
   });
 }
 

@@ -30,6 +30,7 @@ Use these variables in Railway/Render:
 - SUPABASE_SERVICE_ROLE_KEY
 - SUPABASE_STORAGE_BUCKET=documents
 - RESEND_API_KEY
+- BROKER_LEADS_TO=info@creditonegocios.com.mx
 
 Optional if Replit auth is still needed:
 - REPLIT_DOMAINS

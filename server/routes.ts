@@ -7,7 +7,7 @@ import { storage } from "./storage";
 import { setupAuth, isAuthenticated } from "./replitAuth";
 import PDFDocument from "pdfkit";
 import bcrypt from "bcrypt";
-import { sendBrokerLeadEmail, sendPasswordResetEmail } from "./emailService";
+import { sendBrokerLeadEmail, sendPasswordResetEmail, sendWebsiteLeadEmail } from "./emailService";
 import { getDocumentAccessTarget, persistDocumentFile, removeStoredDocument } from "./documentStorage";
 import { 
   generateFinancierasTemplate, 
@@ -379,6 +379,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
     message: z.string().max(1200, "Mensaje demasiado largo").optional(),
   });
 
+  const websiteLeadSchema = z.object({
+    name: z.string().min(2, "Nombre requerido"),
+    email: z.string().email("Email inválido"),
+    phone: z.string().min(8, "Teléfono inválido"),
+    company: z.string().optional(),
+    solutionType: z.string().min(2, "Tipo de solución requerido"),
+    amountRange: z.string().min(2, "Monto aproximado requerido"),
+    message: z.string().max(1200, "Mensaje demasiado largo").optional(),
+  });
+
   app.post('/api/public/broker-leads', publicLeadLimiter, async (req, res) => {
     try {
       const data = brokerLeadSchema.parse(req.body);
@@ -395,6 +405,26 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       console.error('Error creating broker lead:', error);
+      res.status(500).json({ message: 'No se pudo procesar la solicitud' });
+    }
+  });
+
+  app.post('/api/public/website-leads', publicLeadLimiter, async (req, res) => {
+    try {
+      const data = websiteLeadSchema.parse(req.body);
+
+      const emailResult = await sendWebsiteLeadEmail(data);
+      if (!emailResult.success) {
+        return res.status(500).json({ message: emailResult.error || 'No se pudo enviar el correo' });
+      }
+
+      res.status(201).json({ message: 'Solicitud recibida correctamente' });
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: error.errors[0].message });
+      }
+
+      console.error('Error creating website lead:', error);
       res.status(500).json({ message: 'No se pudo procesar la solicitud' });
     }
   });
