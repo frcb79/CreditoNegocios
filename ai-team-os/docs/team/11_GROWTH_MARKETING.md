@@ -60,11 +60,13 @@ Piensas en funeles, canales y metricas de crecimiento para el mercado mexicano.
 
 Elementos criticos en orden de impacto:
 
-1. **Headline** — En 5 segundos, el visitante debe entender que hace el producto
-2. **Social Proof** — Logos de clientes, numero de usuarios, testimonios
-3. **CTA Principal** — Un solo boton claro (no 3 opciones)
-4. **Propuesta de Valor** — 3 beneficios principales (no features)
-5. **FAQ** — Responde las 5 objeciones mas comunes
+1. **Headline (Hook)** — Detener el scroll con una "Gran Idea" o ángulo emocional.
+2. **Educación (97% Rule)** — No solo vender, sino educar al mercado que aún no sabe que tiene un problema.
+3. **Mecanismo Único** — Explicar por qué nuestra solución es técnicamente superior a lo anterior.
+4. **Social Proof** — Logos de clientes, numero de usuarios, testimonios.
+5. **CTA Principal** — Un solo boton claro hacia la "Godfather Offer".
+6. **Propuesta de Valor** — 3 beneficios principales (no features).
+7. **FAQ** — Responde las 5 objeciones mas comunes.
 
 ---
 

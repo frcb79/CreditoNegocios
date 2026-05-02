@@ -309,21 +309,21 @@ export default function BrokersLanding() {
           <div className="absolute -left-12 bottom-0 h-80 w-80 rounded-full bg-slate-200/45 blur-3xl" />
         </div>
 
-        <div className="relative mx-auto grid max-w-[90rem] gap-10 px-4 pb-16 pt-12 sm:px-6 lg:grid-cols-[1.08fr_0.92fr] lg:px-8 lg:pb-20 lg:pt-16">
+        <div className="relative mx-auto grid max-w-[90rem] gap-10 px-4 pb-12 pt-10 sm:px-6 lg:grid-cols-[1.08fr_0.92fr] lg:px-8 lg:pb-16 lg:pt-12">
           <div className="flex flex-col justify-start">
-            <h1 className="max-w-3xl text-3xl font-extrabold leading-[1.12] text-slate-900 sm:text-4xl lg:text-5xl">
+            <h1 className="max-w-3xl text-2xl font-extrabold leading-[1.15] text-slate-900 sm:text-3xl lg:text-4xl">
               ¡La plataforma que te permite ganar comisiones sin límites!
             </h1>
 
-            <h2 className="mt-6 max-w-3xl text-2xl font-semibold text-slate-700 sm:text-3xl">
+            <h2 className="mt-4 max-w-3xl text-xl font-semibold text-slate-700 sm:text-2xl">
               Tú traes el cliente, nosotros el capital.
             </h2>
 
-            <p className="mt-6 text-xs font-black uppercase tracking-[0.24em] text-emerald-700 sm:text-sm">
+            <p className="mt-5 text-[10px] font-black uppercase tracking-[0.2em] text-emerald-700 sm:text-xs">
               Para brokers, despachos y referidos
             </p>
 
-            <p className="mt-8 max-w-3xl text-base leading-8 text-slate-600 sm:text-lg">
+            <p className="mt-6 max-w-3xl text-sm leading-7 text-slate-600 sm:text-base">
               Refiere un contacto o administra expedientes completos desde un solo lugar. Nosotros te ayudamos a perfilar, presentar y dar seguimiento para que cierres más&nbsp;y cobres mejor.
             </p>
 
@@ -543,8 +543,8 @@ export default function BrokersLanding() {
               className="flex h-full flex-col rounded-[1.5rem] border border-slate-100 bg-[linear-gradient(180deg,#ffffff_0%,#f8fbff_100%)] p-6 text-left shadow-sm lg:min-h-[240px]"
             >
               <div>
-                <p className="min-h-[56px] text-3xl font-extrabold leading-tight text-primary">{item.value}</p>
-                <p className="mt-3 min-h-[52px] text-base font-bold leading-6 text-slate-900">{item.label}</p>
+                <p className="min-h-[48px] text-2xl font-extrabold leading-tight text-primary">{item.value}</p>
+                <p className="mt-2 min-h-[44px] text-sm font-bold leading-5 text-slate-900">{item.label}</p>
               </div>
               <p className="mt-4 text-sm leading-7 text-slate-600">{item.description}</p>
             </div>
@@ -552,9 +552,9 @@ export default function BrokersLanding() {
         </div>
       </section>
 
-      <section className="mx-auto max-w-[90rem] px-4 py-14 sm:px-6 lg:px-8 lg:py-16">
-        <div className="mb-10">
-          <h2 className="text-3xl font-black tracking-tight text-slate-900 sm:text-4xl">
+      <section className="mx-auto max-w-[90rem] px-4 py-12 sm:px-6 lg:px-8 lg:py-14">
+        <div className="mb-8">
+          <h2 className="text-2xl font-black tracking-tight text-slate-900 sm:text-3xl">
             Elige la forma que mejor se adapta a tu operación.
           </h2>
         </div>
@@ -579,9 +579,9 @@ export default function BrokersLanding() {
                 }`}>
                   {mode.badge}
                 </div>
-                <h3 className="text-3xl font-bold leading-tight text-slate-950">{mode.title}</h3>
-                <p className="mt-4 text-base leading-8 text-slate-600">{mode.description}</p>
-                <ul className="mt-6 space-y-4 text-base text-slate-700">
+                <h3 className="text-2xl font-bold leading-tight text-slate-950">{mode.title}</h3>
+                <p className="mt-3 text-sm leading-7 text-slate-600">{mode.description}</p>
+                <ul className="mt-5 space-y-3 text-sm text-slate-700">
                   {mode.points.map((point) => (
                     <li key={point} className="flex gap-2">
                       <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-emerald-600" />
@@ -595,12 +595,12 @@ export default function BrokersLanding() {
         </div>
       </section>
 
-      <section className="mx-auto max-w-[90rem] px-4 py-12 sm:px-6 lg:px-8">
-        <div className="mb-10 max-w-[88rem]">
-          <h2 className="max-w-none text-4xl font-bold tracking-tight text-slate-900 sm:text-5xl lg:text-[3rem] lg:leading-[1.12]">
+      <section className="mx-auto max-w-[90rem] px-4 py-10 sm:px-6 lg:px-8">
+        <div className="mb-8 max-w-[88rem]">
+          <h2 className="max-w-none text-3xl font-bold tracking-tight text-slate-900 sm:text-4xl lg:text-[2.5rem] lg:leading-[1.15]">
             Diseñada para aquellos que buscan velocidad, orden <br className="hidden lg:block" /> y más opciones para su colocación.
           </h2>
-          <p className="mt-4 text-base leading-8 text-slate-600 sm:text-lg">
+          <p className="mt-3 text-sm leading-7 text-slate-600 sm:text-base">
             El valor real está en tener más probabilidades de colocación, ofrecer más productos, tener una mejor estructura y control de expedientes y llevar todo el proceso en un mismo lugar.
           </p>
         </div>
@@ -694,10 +694,10 @@ export default function BrokersLanding() {
         </div>
       </section>
 
-      <section className="mx-auto max-w-[90rem] px-4 py-20 sm:px-6 lg:px-8">
-        <div className="mb-10 max-w-4xl">
-          <p className="text-xs font-bold uppercase tracking-[0.2em] text-primary">Cómo funciona</p>
-          <h2 className="mt-3 text-4xl font-bold tracking-tight text-slate-900">Paso a paso para operar mejor.</h2>
+      <section className="mx-auto max-w-[90rem] px-4 py-16 sm:px-6 lg:px-8">
+        <div className="mb-8 max-w-4xl">
+          <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-primary">Cómo funciona</p>
+          <h2 className="mt-2 text-3xl font-bold tracking-tight text-slate-900">Paso a paso para operar mejor.</h2>
         </div>
 
         <div className="grid items-stretch gap-5 lg:grid-cols-4">
@@ -716,8 +716,8 @@ export default function BrokersLanding() {
       </section>
 
       <section className="mx-auto max-w-[90rem] px-4 py-4 sm:px-6 lg:px-8">
-        <div className="mb-10 text-center">
-          <h2 className="text-4xl font-bold tracking-tight text-slate-900">Lo que valoran quienes ya operan con más estructura.</h2>
+        <div className="mb-8 text-center">
+          <h2 className="text-3xl font-bold tracking-tight text-slate-900">Lo que valoran quienes ya operan con más estructura.</h2>
         </div>
 
         <div className="grid items-stretch gap-6 lg:grid-cols-3">
@@ -751,11 +751,11 @@ export default function BrokersLanding() {
         </div>
       </section>
 
-      <section className="mx-auto max-w-[82rem] px-4 py-20 sm:px-6 lg:px-8">
-        <div className="rounded-[2rem] border border-slate-200 bg-white p-8 shadow-sm lg:p-10">
+      <section className="mx-auto max-w-[82rem] px-4 py-16 sm:px-6 lg:px-8">
+        <div className="rounded-[2rem] border border-slate-200 bg-white p-6 shadow-sm lg:p-8">
           <div className="max-w-3xl">
-            <p className="text-xs font-bold uppercase tracking-[0.2em] text-primary">Preguntas frecuentes</p>
-            <h2 className="mt-3 text-4xl font-bold tracking-tight text-slate-900">Respuestas claras para decidir rápido.</h2>
+            <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-primary">Preguntas frecuentes</p>
+            <h2 className="mt-2 text-3xl font-bold tracking-tight text-slate-900">Respuestas claras para decidir rápido.</h2>
           </div>
 
           <div className="mt-8 space-y-4">
@@ -771,12 +771,12 @@ export default function BrokersLanding() {
         </div>
       </section>
 
-      <section className="px-4 pb-16 sm:px-6 lg:px-8">
-        <div className="mx-auto flex max-w-[90rem] flex-col gap-6 rounded-[2rem] bg-[linear-gradient(135deg,#2B5B85_0%,#1F476B_58%,#173653_100%)] p-8 text-white lg:flex-row lg:items-center lg:justify-between lg:p-10">
+      <section className="px-4 pb-12 sm:px-6 lg:px-8">
+        <div className="mx-auto flex max-w-[90rem] flex-col gap-6 rounded-[2rem] bg-[linear-gradient(135deg,#2B5B85_0%,#1F476B_58%,#173653_100%)] p-6 text-white lg:flex-row lg:items-center lg:justify-between lg:p-8">
           <div className="max-w-3xl">
-            <p className="text-xs font-bold uppercase tracking-[0.2em] text-cyan-100">Siguiente paso</p>
-            <h2 className="mt-3 text-3xl font-black">Si tu mercado exige confianza, tu experiencia también debe verla.</h2>
-            <p className="mt-3 text-base leading-7 text-blue-100">
+            <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-cyan-100">Siguiente paso</p>
+            <h2 className="mt-2 text-2xl font-black">Si tu mercado exige confianza, tu experiencia también debe verla.</h2>
+            <p className="mt-2 text-sm leading-7 text-blue-100">
               Solicita acceso, conoce el flujo y decide si esta es la forma correcta de elevar tu operación comercial.
             </p>
           </div>

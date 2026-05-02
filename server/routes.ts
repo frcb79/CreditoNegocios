@@ -552,7 +552,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Forgot Password - Request reset token
   const forgotPasswordSchema = z.object({
-    email: z.string().email("Email inválido"),
+    email: z.string().email("Email inválido").trim().toLowerCase(),
   });
 
   app.post('/api/auth/forgot-password', authMutationLimiter, async (req, res) => {
@@ -589,8 +589,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const emailResult = await sendPasswordResetEmail(user.email, resetToken, userName);
       
       if (!emailResult.success) {
-        console.error('Failed to send password reset email:', emailResult.error);
-        // Still return success message to prevent email enumeration
+        console.error('❌ [AUTH ERROR] Failed to send password reset email:');
+        console.error('   - Target Email:', user.email);
+        console.error('   - Error:', emailResult.error);
+        console.error('   - Check RESEND_API_KEY and domain verification status.');
       }
       
       res.json({ 

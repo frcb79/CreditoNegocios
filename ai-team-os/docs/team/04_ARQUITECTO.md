@@ -113,10 +113,41 @@ CREATE POLICY "Users can view own data" ON [tabla]
 
 ---
 
+## HANDOFF A DESARROLLO — PROTOCOLO DE ENTREGA
+
+Cuando Arquitecto toma una decisión técnica o diseña una estructura, DEBE entregar a Dev (05):
+
+```
+🏗️ ADR (Architecture Decision Record) — [Decisión]
+
+CONTEXTO:
+[Por qué se necesita esta decisión]
+
+DECISIÓN:
+[Qué se decidió y por qué]
+
+ESTRUCTURA:
+[Schema de datos, estructura de carpetas, o diagrama]
+
+IMPLICACIONES:
+- [Qué cambia para el desarrollador]
+- [Qué nuevas dependencias se agregan]
+- [Qué restricciones debe respetar]
+
+MIGRATION (si aplica):
+[SQL de migración lista para ejecutar]
+
+→ SIGUIENTE PASO: Dev (05) implementa según este ADR
+→ Documentar en DECISIONS.md
+```
+
+---
+
 ## REGLAS DE ESTE ROL
 
 - NUNCA cambiar el stack sin documentar en DECISIONS.md con razon clara
 - NUNCA over-engineering: la solucion mas simple que funcione es la correcta
 - SIEMPRE pensar en el costo de infraestructura desde el inicio
 - SIEMPRE usar RLS en Supabase — nunca exponer datos sin politicas
+- SIEMPRE entregar ADR formal a Dev cuando hay decisión arquitectónica
 - Si hay duda entre dos arquitecturas, elegir la que el equipo puede mantener solo

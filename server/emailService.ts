@@ -2,7 +2,7 @@ import { Resend } from 'resend';
 
 const resend = process.env.RESEND_API_KEY ? new Resend(process.env.RESEND_API_KEY) : null;
 
-const FROM_EMAIL = 'Crédito Negocios <noreply@creditonegocios.com.mx>';
+const FROM_EMAIL = process.env.EMAIL_FROM || 'Crédito Negocios <noreply@creditonegocios.com.mx>';
 const APP_NAME = 'Crédito Negocios';
 const BROKER_LEADS_TO = process.env.BROKER_LEADS_TO || 'info@creditonegocios.com.mx';
 
@@ -51,10 +51,13 @@ export async function sendPasswordResetEmail(
     }
     
     if (!baseUrl) {
-      baseUrl = 'http://localhost:5000';
+      // In production, we should try to get the domain from headers if possible, 
+      // but here we are in a service. Fallback to a common pattern or log it.
+      baseUrl = 'https://app.creditonegocios.com.mx'; // Hardcoded fallback for this specific project
+      console.warn(`[Email] FRONTEND_BASE_URL not set, falling back to: ${baseUrl}`);
     }
     
-    const resetUrl = `${baseUrl}/reset-password?token=${resetToken}`;
+    const resetUrl = `${baseUrl.replace(/\/$/, '')}/reset-password?token=${resetToken}`;
     console.log('[Email] Generated reset URL:', resetUrl);
     const greeting = userName ? `Hola ${userName},` : 'Hola,';
 

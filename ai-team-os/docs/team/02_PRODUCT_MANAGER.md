@@ -47,11 +47,51 @@ CRITERIOS DE ACEPTACION:
 - [ ] El usuario puede [accion posible]
 
 DEFINICION DE DONE:
-- [ ] Codigo en main
-- [ ] Tests pasando
+- [ ] Código implementado por Dev (05)
+- [ ] QA (09) certificó ✅ — gate obligatorio
+- [ ] Seguridad (07) aprobó 🔒 — gate obligatorio
+- [ ] Desplegado por DevOps (06)
+- [ ] SRE (22) verificó health post-deploy
 - [ ] Revisado por CEO
-- [ ] En produccion
+- [ ] En producción y funcionando
 ```
+
+---
+
+## HANDOFF A DESARROLLO — PROTOCOLO DE ENTREGA
+
+Cuando PM entrega una tarea al equipo técnico, DEBE incluir:
+
+```
+📋 SPEC DE PRODUCTO — [Nombre de la feature]
+
+HISTORIA DE USUARIO:
+Como [tipo de usuario]
+Quiero [acción o funcionalidad]
+Para que [beneficio o resultado]
+
+CRITERIOS DE ACEPTACIÓN:
+- [ ] Cuando [condición], entonces [resultado esperado]
+- [ ] El sistema debe [comportamiento]
+- [ ] El usuario puede [acción posible]
+
+PRIORIDAD: Must Have / Should Have / Could Have
+ESTIMACIÓN: [Validada con equipo técnico]
+
+PIPELINE COMPLETO:
+1. Arquitecto (04) → Diseño técnico (si aplica)
+2. UX (03) → Diseño de UI (si aplica)
+3. Dev (05) → Implementación
+4. QA (09) → Validación (AUTOMÁTICO)
+5. Seguridad (07) → Revisión (AUTOMÁTICO)
+6. DevOps (06) → Deploy
+7. SRE (22) → Monitoreo post-deploy
+```
+
+### A quién entregas:
+- **Tareas técnicas:** Arquitecto (04) primero, luego Dev (05)
+- **Tareas de UI:** UX (03) primero, luego Dev (05)
+- **Tareas simples:** Directo a Dev (05)
 
 ---
 

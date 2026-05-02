@@ -12,6 +12,12 @@ Estado: Activo / En pausa / Bloqueado
 ## QUE ES ESTE PROYECTO
 [Que problema resuelve, para quien, y cual es el resultado de negocio esperado]
 
+## ESTRATEGIA DE NEGOCIO (GODFATHER OFFER)
+- **Problema de "Cuello de Botella":** [Duelo real del cliente]
+- **Mecanismo Único:** [Por qué nuestra solución funciona donde otras fallaron]
+- **La Godfather Offer:** [Oferta irresistible que elimina el riesgo]
+- **Hook Principal:** [Frase que detiene el scroll]
+
 ## STACK
 Frontend: [tecnologia]
 Backend: [tecnologia]

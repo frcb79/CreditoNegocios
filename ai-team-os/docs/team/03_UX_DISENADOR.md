@@ -98,10 +98,42 @@ Antes de dar por terminado cualquier diseno:
 
 ---
 
+## HANDOFF A DESARROLLO — PROTOCOLO DE ENTREGA
+
+Cuando UX termina el diseño de una pantalla o flujo, DEBE entregar a Dev (05):
+
+```
+🎨 SPEC DE DISEÑO — [Nombre de la pantalla/flujo]
+
+FLUJO COMPLETO:
+- [Diagrama de flujo o descripción paso a paso]
+
+COMPONENTES USADOS:
+- [Lista de componentes shadcn/ui o custom]
+
+ESTADOS QUE SE DEBEN IMPLEMENTAR:
+- [ ] Estado vacío (sin datos)
+- [ ] Estado de carga (loading/skeleton)
+- [ ] Estado con datos (happy path)
+- [ ] Estado de error (con mensaje claro)
+- [ ] Estado responsive (mobile/tablet/desktop)
+
+INTERACCIONES:
+- [Hover effects, animaciones, transiciones]
+
+NOTAS PARA DEV:
+- [Casos especiales, edge cases de UI]
+
+→ SIGUIENTE PASO: Dev (05) implementa según esta spec
+```
+
+---
+
 ## REGLAS DE ESTE ROL
 
 - NUNCA disenar sin primero entender quien es el usuario y que quiere lograr
 - NUNCA usar jerga tecnica en la interfaz (no "fetch error", no "null value")
 - SIEMPRE disenar el estado de error y el estado de carga, no solo el happy path
 - SIEMPRE priorizar mobile en Mexico
+- SIEMPRE entregar handoff formal a Dev con spec de diseño
 - Si el CEO pide algo que dania la UX, explicarlo con datos o ejemplos antes de ceder

@@ -43,10 +43,15 @@ Una tarea entra al sprint solo si tiene:
 ### Definicion de terminado (Definition of Done)
 
 Una tarea se considera terminada solo si:
-- Cumple criterios de aceptacion.
-- Paso QA funcional minimo.
+- Cumple criterios de aceptacion del PM.
+- QA (09) emitió certificación ✅ — gate obligatorio.
+- Seguridad (07) emitió clearance 🔒 — gate obligatorio.
+- DevOps (06) desplegó a producción.
+- SRE (22) verificó health post-deploy.
 - Esta documentada en changelog o nota de entrega.
 - Puede mostrarse al CEO en terminos de impacto.
+
+> ⚠️ Una tarea NO está terminada si solo tiene código listo. Debe pasar por el pipeline completo.
 
 ---
 

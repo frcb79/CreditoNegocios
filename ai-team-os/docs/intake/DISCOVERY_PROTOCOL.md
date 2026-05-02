@@ -4,6 +4,15 @@
 
 ---
 
+## PRERREQUISITO OBLIGATORIO
+
+Antes de iniciar este protocolo, asegúrate de haber completado la **Estrategia de Negocio** en:
+- `docs/intake/PROJECT_STRATEGY_INTAKE.md`
+
+Esto garantiza que las preguntas técnicas que hagas a continuación estén alineadas con la oferta irresistible y el posicionamiento del negocio.
+
+---
+
 ## CUÁNDO EJECUTAR
 
 - Primera sesión de un proyecto nuevo
