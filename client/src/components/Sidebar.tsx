@@ -88,7 +88,7 @@ export default function Sidebar() {
   };
 
   const SidebarContent = ({ collapsed = false, testIdSuffix = '' }: { collapsed?: boolean; testIdSuffix?: string }) => (
-    <div className="flex flex-col h-full">
+    <div className="flex flex-col h-full font-['Plus_Jakarta_Sans']">
       <div className={cn("border-b border-sidebar-border", collapsed ? "p-2" : "p-4 lg:p-6")}>
         <div className={cn("flex flex-col items-center", collapsed ? "space-y-1" : "space-y-2 lg:space-y-3")}>
           <div className={cn(
@@ -109,7 +109,7 @@ export default function Sidebar() {
           </div>
           {!collapsed && (
             <div className="text-center hidden lg:block">
-              <h1 className="text-lg font-bold text-sidebar-foreground">Plataforma de Gestión Financiera</h1>
+              <h1 className="text-lg font-semibold tracking-tight text-sidebar-foreground">Plataforma de Gestión Financiera</h1>
             </div>
           )}
         </div>
@@ -127,10 +127,10 @@ export default function Sidebar() {
           </div>
           {!collapsed && (
             <div className="min-w-0 flex-1">
-              <p className="font-semibold text-sidebar-foreground text-sm lg:text-base truncate">
+              <p className="font-semibold tracking-tight text-sidebar-foreground text-sm lg:text-base truncate">
                 {user?.firstName} {user?.lastName}
               </p>
-              <p className="text-xs text-sidebar-primary bg-sidebar-accent px-2 py-0.5 lg:py-1 rounded-full capitalize inline-block">
+              <p className="text-[11px] font-medium tracking-wide text-sidebar-primary bg-sidebar-accent px-2 py-0.5 lg:py-1 rounded-full capitalize inline-block">
                 {user?.role?.replace('_', ' ')}
               </p>
             </div>
@@ -171,7 +171,7 @@ export default function Sidebar() {
                       collapsed && isActive ? "text-sidebar-primary bg-sidebar-accent rounded-lg p-1.5" : collapsed ? "text-sidebar-foreground" : ""
                     )} aria-hidden="true"></i>
                   </span>
-                  {!collapsed && <span className="truncate">{item.name}</span>}
+                  {!collapsed && <span className="truncate text-[13.5px] lg:text-[14.5px] font-medium tracking-[0.01em]">{item.name}</span>}
                 </div>
                 {!collapsed && isReGestion && unreadCount > 0 && (
                   <span className="bg-warning text-white text-xs px-1.5 lg:px-2 py-0.5 lg:py-1 rounded-full flex-shrink-0">
@@ -220,7 +220,7 @@ export default function Sidebar() {
                     collapsed && isActive ? "text-sidebar-primary bg-sidebar-accent rounded-lg p-1.5" : collapsed ? "text-sidebar-foreground" : ""
                   )} aria-hidden="true"></i>
                 </span>
-                {!collapsed && <span>{item.name}</span>}
+                {!collapsed && <span className="text-[13.5px] lg:text-[14.5px] font-medium tracking-[0.01em]">{item.name}</span>}
               </div>
             </Link>
           );
@@ -240,7 +240,7 @@ export default function Sidebar() {
           )}>
             <i className={cn("fas fa-sign-out-alt", collapsed ? "text-xl text-sidebar-foreground" : "text-sm")} aria-hidden="true"></i>
           </span>
-          {!collapsed && <span>Cerrar Sesión</span>}
+          {!collapsed && <span className="text-[13.5px] lg:text-[14.5px] font-medium tracking-[0.01em]">Cerrar Sesión</span>}
         </button>
       </div>
     </div>

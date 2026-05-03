@@ -1929,7 +1929,7 @@ export default function ProductConfigurationModal({
                     <div className="border-2 border-dashed border-gray-300 rounded-lg p-4 text-center">
                       <i className="fas fa-file-contract text-4xl text-gray-400 mb-2"></i>
                       <p className="text-sm text-gray-600 mb-2">Contrato</p>
-                      <Button variant="outline" size="sm" data-testid="button-upload-contrato">
+                      <Button variant="outline" size="sm" data-testid="button-upload-contrato" onClick={() => triggerFileInput('contrato')}>
                         <i className="fas fa-upload mr-2"></i>
                         Subir Contrato
                       </Button>
@@ -1938,7 +1938,7 @@ export default function ProductConfigurationModal({
                     <div className="border-2 border-dashed border-gray-300 rounded-lg p-4 text-center">
                       <i className="fas fa-handshake text-4xl text-gray-400 mb-2"></i>
                       <p className="text-sm text-gray-600 mb-2">Convenio</p>
-                      <Button variant="outline" size="sm" data-testid="button-upload-convenio">
+                      <Button variant="outline" size="sm" data-testid="button-upload-convenio" onClick={() => triggerFileInput('convenio')}>
                         <i className="fas fa-upload mr-2"></i>
                         Subir Convenio
                       </Button>
@@ -1949,7 +1949,7 @@ export default function ProductConfigurationModal({
                     <div className="border-2 border-dashed border-gray-300 rounded-lg p-4 text-center">
                       <i className="fas fa-home text-4xl text-gray-400 mb-2"></i>
                       <p className="text-sm text-gray-600 mb-2">Comprobante de Domicilio</p>
-                      <Button variant="outline" size="sm" data-testid="button-upload-domicilio">
+                      <Button variant="outline" size="sm" data-testid="button-upload-domicilio" onClick={() => triggerFileInput('comprobante_domicilio')}>
                         <i className="fas fa-upload mr-2"></i>
                         Subir Comprobante
                       </Button>
@@ -1958,7 +1958,7 @@ export default function ProductConfigurationModal({
                     <div className="border-2 border-dashed border-gray-300 rounded-lg p-4 text-center">
                       <i className="fas fa-file-invoice-dollar text-4xl text-gray-400 mb-2"></i>
                       <p className="text-sm text-gray-600 mb-2">Constancia de Situación Fiscal</p>
-                      <Button variant="outline" size="sm" data-testid="button-upload-situacion-fiscal">
+                      <Button variant="outline" size="sm" data-testid="button-upload-situacion-fiscal" onClick={() => triggerFileInput('csf')}>
                         <i className="fas fa-upload mr-2"></i>
                         Subir Constancia
                       </Button>

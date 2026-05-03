@@ -87,6 +87,15 @@ export function useUserTour() {
         }
       },
       {
+        element: '[data-testid="nav-comisiones"]',
+        popover: {
+          title: 'Comisiones',
+          description: 'Monitorea tus comisiones pagadas y pendientes para tener visibilidad total de tus ingresos.',
+          side: "right",
+          align: 'start'
+        }
+      },
+      {
         element: '[data-testid="nav-configuración"]',
         popover: {
           title: 'Tu Perfil',

@@ -461,6 +461,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
         authMethod: "local",
         role: "broker", // Default role for new registrations
       });
+
+      // Send welcome email for local self-registration without blocking signup flow.
+      try {
+        const fullName = `${user.firstName || ''} ${user.lastName || ''}`.trim() || user.email;
+        const emailResult = await sendWelcomeEmail(user.email, fullName);
+        if (!emailResult.success) {
+          console.error(`[EMAIL] Welcome email failed for local signup ${user.email}: ${emailResult.error}`);
+        }
+      } catch (emailError: any) {
+        console.error(`[EMAIL] Unexpected welcome email error for ${user.email}:`, emailError?.message || emailError);
+      }
       
       // Create session for the new user
       req.login({ claims: { sub: user.id } }, (err: any) => {
@@ -749,7 +760,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       
       // Get all admins and super_admins to notify
-      const allUsers = await storage.getUsers();
+      const allUsers = await storage.getAllUsers();
       const admins = allUsers.filter(u => u.role === 'admin' || u.role === 'super_admin');
       
       // Create notification for each admin
