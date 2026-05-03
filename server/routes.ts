@@ -558,9 +558,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post('/api/auth/forgot-password', authMutationLimiter, async (req, res) => {
     try {
       const data = forgotPasswordSchema.parse(req.body);
+      console.log(`[AUTH] Password reset requested for: ${data.email}`);
       
       // Find user by email
       const user = await storage.getUserByEmail(data.email);
+      console.log(`[AUTH] User search result for ${data.email}: ${user ? 'Found' : 'Not Found'}`);
       
       // Always return success to prevent email enumeration attacks
       if (!user) {
@@ -571,8 +573,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       // Check if user uses local auth
       if (user.authMethod !== "local") {
+        console.log(`[AUTH] User ${data.email} uses ${user.authMethod} auth, skipping local password reset.`);
         return res.json({ 
-          message: "Esta cuenta usa autenticación de Replit. Por favor inicia sesión con Replit.",
+          message: "Esta cuenta usa autenticación externa (Replit/Google). Por favor inicia sesión con ese método.",
         });
       }
       
@@ -586,6 +589,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       // Send password reset email
       const userName = user.firstName || undefined;
+      console.log(`[AUTH] Attempting to send reset email to ${user.email} via Resend...`);
       const emailResult = await sendPasswordResetEmail(user.email, resetToken, userName);
       
       if (!emailResult.success) {

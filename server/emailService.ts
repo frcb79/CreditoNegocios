@@ -38,9 +38,10 @@ export async function sendPasswordResetEmail(
 ): Promise<{ success: boolean; error?: string }> {
   try {
     if (!resend) {
-      console.warn('Email service disabled: missing RESEND_API_KEY');
-      return { success: false, error: 'Email service not configured' };
+      console.warn('❌ [Email] Email service disabled: missing RESEND_API_KEY');
+      return { success: false, error: 'Email service not configured (RESEND_API_KEY missing)' };
     }
+    console.log(`[Email] Service initialized. Target: ${to}`);
     // Use FRONTEND_BASE_URL for custom domain, or get from REPLIT_DOMAINS, or fallback to localhost
     let baseUrl = process.env.FRONTEND_BASE_URL;
     
@@ -61,6 +62,7 @@ export async function sendPasswordResetEmail(
     console.log('[Email] Generated reset URL:', resetUrl);
     const greeting = userName ? `Hola ${userName},` : 'Hola,';
 
+    console.log(`[Email] Preparing to send reset email to ${to}...`);
     const { data, error } = await resend.emails.send({
       from: FROM_EMAIL,
       to: [to],
