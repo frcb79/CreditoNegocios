@@ -5,8 +5,10 @@ import CreditPipeline from "@/components/Dashboard/CreditPipeline";
 import NotificationsPanel from "@/components/Dashboard/NotificationsPanel";
 import ReGestionSection from "@/components/Dashboard/ReGestionSection";
 import QuickActionsGrid from "@/components/Dashboard/QuickActionsGrid";
+import { useUserTour } from "@/hooks/useUserTour";
 
 export default function Dashboard() {
+  useUserTour();
   return (
     <MainLayout>
       <Header 

@@ -121,6 +121,15 @@ async function upsertUser(
     profileImageUrl: claims["profile_image_url"],
     role: role,
   }, userId);
+
+  // Send welcome email if it's a new broker
+  if (!existingUser && claims["email"] && (role === 'broker' || role === 'master_broker')) {
+    const fullName = `${claims["first_name"] || ''} ${claims["last_name"] || ''}`.trim() || claims["email"];
+    console.log(`[EMAIL] Sending welcome email to new Replit user: ${claims["email"]}`);
+    // We import dynamically to avoid circular dependencies if any
+    const { sendWelcomeEmail } = await import("./emailService");
+    await sendWelcomeEmail(claims["email"], fullName);
+  }
 }
 
   });

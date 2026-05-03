@@ -361,3 +361,101 @@ ${payload.message || 'Sin mensaje adicional.'}
     return { success: false, error: error.message || 'Error desconocido' };
   }
 }
+
+export async function sendWelcomeEmail(
+  to: string,
+  userName: string,
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    if (!resend) {
+      console.warn('❌ [Email] Welcome email skipped: missing RESEND_API_KEY');
+      return { success: false, error: 'Email service not configured' };
+    }
+
+    const { data, error } = await resend.emails.send({
+      from: FROM_EMAIL,
+      to: [to],
+      subject: `¡Bienvenido a ${APP_NAME}! 🚀`,
+      html: `
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <meta charset="utf-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1.0">
+          <title>Bienvenido a ${APP_NAME}</title>
+        </head>
+        <body style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; line-height: 1.6; color: #1e293b; max-width: 600px; margin: 0 auto; padding: 20px; background-color: #f8fafc;">
+          <div style="background-color: #ffffff; border-radius: 16px; overflow: hidden; box-shadow: 0 4px 20px rgba(0,0,0,0.05); border: 1px solid #e2e8f0;">
+            <div style="background: linear-gradient(135deg, #05478a 0%, #1e3a5f 100%); padding: 40px 20px; text-align: center;">
+              <h1 style="color: #ffffff; margin: 0; font-size: 32px; font-weight: 800;">¡Bienvenido, ${userName}!</h1>
+              <p style="color: #dbeafe; margin-top: 10px; font-size: 18px;">Estamos emocionados de tenerte con nosotros.</p>
+            </div>
+            
+            <div style="padding: 40px;">
+              <p style="font-size: 16px; margin-bottom: 25px;">
+                Gracias por unirte a <strong>${APP_NAME}</strong>, la plataforma líder para la gestión y colocación de créditos empresariales.
+              </p>
+              
+              <p style="font-size: 16px; margin-bottom: 25px;">
+                Desde ahora, tienes acceso a un ecosistema diseñado para potenciar tu negocio:
+              </p>
+              
+              <div style="background-color: #f1f5f9; border-radius: 12px; padding: 25px; margin-bottom: 30px;">
+                <ul style="margin: 0; padding-left: 20px; color: #475569;">
+                  <li style="margin-bottom: 12px;"><strong>Gestión Centralizada:</strong> Administra todos tus clientes y solicitudes en un solo lugar.</li>
+                  <li style="margin-bottom: 12px;"><strong>Múltiples Financieras:</strong> Acceso a las mejores instituciones financieras del país.</li>
+                  <li style="margin-bottom: 12px;"><strong>Seguimiento en Tiempo Real:</strong> Conoce el estado de tus expedientes en cada etapa.</li>
+                  <li style="margin-bottom: 0;"><strong>Comisiones Transparentes:</strong> Visualiza y gestiona tus ganancias de forma clara.</li>
+                </ul>
+              </div>
+              
+              <div style="text-align: center; margin: 40px 0;">
+                <a href="https://app.creditonegocios.com.mx" 
+                   style="background-color: #05478a; color: #ffffff; padding: 16px 36px; text-decoration: none; border-radius: 8px; font-weight: 700; display: inline-block; font-size: 16px; box-shadow: 0 4px 6px rgba(5, 71, 138, 0.2);">
+                  Comenzar ahora
+                </a>
+              </div>
+              
+              <p style="font-size: 14px; color: #64748b; text-align: center;">
+                Si tienes alguna duda, nuestro equipo de soporte está listo para ayudarte.
+              </p>
+            </div>
+            
+            <div style="background-color: #f8fafc; padding: 20px; text-align: center; border-top: 1px solid #e2e8f0;">
+              <p style="color: #94a3b8; font-size: 12px; margin: 0;">
+                &copy; ${new Date().getFullYear()} ${APP_NAME}. Todos los derechos reservados.
+              </p>
+            </div>
+          </div>
+        </body>
+        </html>
+      `,
+      text: `
+¡Bienvenido a ${APP_NAME}, ${userName}!
+
+Estamos muy contentos de que te hayas unido a nuestra plataforma.
+
+Con ${APP_NAME} podrás:
+- Gestionar todos tus clientes y solicitudes en un solo lugar.
+- Acceder a las mejores instituciones financieras.
+- Dar seguimiento en tiempo real a tus expedientes.
+- Gestionar tus comisiones de forma transparente.
+
+Comienza ahora en: https://app.creditonegocios.com.mx
+
+¡Mucho éxito!
+El equipo de ${APP_NAME}
+      `.trim(),
+    });
+
+    if (error) {
+      console.error('Welcome email error:', error);
+      return { success: false, error: error.message };
+    }
+
+    return { success: true };
+  } catch (error: any) {
+    console.error('Error sending welcome email:', error);
+    return { success: false, error: error.message || 'Error desconocido' };
+  }
+}

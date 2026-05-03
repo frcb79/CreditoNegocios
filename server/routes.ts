@@ -7,7 +7,7 @@ import { storage } from "./storage";
 import { setupAuth, isAuthenticated } from "./replitAuth";
 import PDFDocument from "pdfkit";
 import bcrypt from "bcrypt";
-import { sendBrokerLeadEmail, sendPasswordResetEmail, sendWebsiteLeadEmail } from "./emailService";
+import { sendBrokerLeadEmail, sendPasswordResetEmail, sendWebsiteLeadEmail, sendWelcomeEmail } from "./emailService";
 import { getDocumentAccessTarget, persistDocumentFile, removeStoredDocument } from "./documentStorage";
 import { 
   generateFinancierasTemplate, 
@@ -1091,6 +1091,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       
       const newUser = await storage.createUser(userData);
+      
+      // Send welcome email to the new broker
+      if (newUser.email && (newUser.role === 'broker' || newUser.role === 'master_broker')) {
+        const fullName = `${newUser.firstName || ''} ${newUser.lastName || ''}`.trim() || newUser.email;
+        console.log(`[EMAIL] Sending welcome email to new user: ${newUser.email}`);
+        await sendWelcomeEmail(newUser.email, fullName);
+      }
       
       res.status(201).json(newUser);
     } catch (error: any) {

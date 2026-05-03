@@ -136,13 +136,13 @@ export default function Sidebar() {
                 <div className={cn("flex items-center min-w-0", collapsed ? "" : "gap-2 lg:gap-3")}>
                   <span className={cn(
                     "inline-flex items-center justify-center flex-shrink-0",
-                    collapsed ? "w-9 h-9 rounded-full" : "w-5",
-                    collapsed && isActive ? "bg-white/20" : collapsed ? "bg-sidebar-accent" : ""
+                    collapsed ? "w-9 h-9" : "w-5",
+                    collapsed && isActive ? "" : collapsed ? "" : ""
                   )}>
                     <i className={cn(
                       item.icon, 
-                      collapsed ? "text-base" : "text-sm",
-                      collapsed && isActive ? "text-white" : ""
+                      collapsed ? "text-xl" : "text-sm",
+                      collapsed && isActive ? "text-sidebar-primary bg-sidebar-accent rounded-lg p-1.5" : collapsed ? "text-sidebar-foreground" : ""
                     )} aria-hidden="true"></i>
                   </span>
                   {!collapsed && <span className="truncate">{item.name}</span>}
@@ -185,13 +185,13 @@ export default function Sidebar() {
               >
                 <span className={cn(
                   "inline-flex items-center justify-center flex-shrink-0",
-                  collapsed ? "w-9 h-9 rounded-full" : "w-5",
-                  collapsed && isActive ? "bg-white/20" : collapsed ? "bg-sidebar-accent" : ""
+                  collapsed ? "w-9 h-9" : "w-5",
+                  collapsed && isActive ? "" : ""
                 )}>
                   <i className={cn(
                     item.icon, 
-                    collapsed ? "text-base" : "text-sm",
-                    collapsed && isActive ? "text-white" : ""
+                    collapsed ? "text-xl" : "text-sm",
+                    collapsed && isActive ? "text-sidebar-primary bg-sidebar-accent rounded-lg p-1.5" : collapsed ? "text-sidebar-foreground" : ""
                   )} aria-hidden="true"></i>
                 </span>
                 {!collapsed && <span>{item.name}</span>}
@@ -210,9 +210,9 @@ export default function Sidebar() {
         >
           <span className={cn(
             "inline-flex items-center justify-center flex-shrink-0",
-            collapsed ? "w-9 h-9 rounded-full bg-sidebar-accent" : "w-5"
+            collapsed ? "w-9 h-9" : "w-5"
           )}>
-            <i className={cn("fas fa-sign-out-alt", collapsed ? "text-base" : "text-sm")} aria-hidden="true"></i>
+            <i className={cn("fas fa-sign-out-alt", collapsed ? "text-xl text-sidebar-foreground" : "text-sm")} aria-hidden="true"></i>
           </span>
           {!collapsed && <span>Cerrar Sesión</span>}
         </button>

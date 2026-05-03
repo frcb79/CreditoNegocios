@@ -182,7 +182,7 @@ export default function MetricsGrid() {
   }
 
   return (
-    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8" data-testid="metrics-grid">
       {displayCards.map((card, index) => (
         <Card key={index} className="border border-gray-200">
           <CardContent className="p-6">
