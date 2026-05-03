@@ -690,6 +690,48 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Change Password
+  const changePasswordSchema = z.object({
+    currentPassword: z.string().min(1, "Contraseña actual requerida"),
+    newPassword: z.string().min(6, "La nueva contraseña debe tener al menos 6 caracteres"),
+  });
+
+  app.post('/api/users/:id/change-password', isAuthenticated, async (req: any, res) => {
+    try {
+      const { id } = req.params;
+      const userId = req.user.claims.sub;
+      
+      if (id !== userId) {
+        return res.status(403).json({ message: "No autorizado" });
+      }
+      
+      const data = changePasswordSchema.parse(req.body);
+      const user = await storage.getUser(userId);
+      
+      if (!user) {
+        return res.status(404).json({ message: "Usuario no encontrado" });
+      }
+      
+      // Verify current password
+      const isMatch = await bcrypt.compare(data.currentPassword, user.password || "");
+      if (!isMatch) {
+        return res.status(400).json({ message: "La contraseña actual es incorrecta" });
+      }
+      
+      // Hash new password
+      const hashedPassword = await bcrypt.hash(data.newPassword, 10);
+      await storage.updateUserPassword(userId, hashedPassword);
+      
+      res.json({ message: "Contraseña actualizada exitosamente" });
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: error.errors[0].message });
+      }
+      console.error("Error in change password:", error);
+      res.status(500).json({ message: "Error al cambiar la contraseña" });
+    }
+  });
+
   // Account deactivation request
   app.post('/api/users/:id/deactivation-request', isAuthenticated, async (req: any, res) => {
     try {

@@ -150,21 +150,23 @@ export default function FinancieraDetail() {
                 </div>
               </div>
 
-              {/* Contact Info */}
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-6 pt-6 border-t">
-                <div>
-                  <p className="text-sm text-neutral mb-1">Contacto</p>
-                  <p className="font-medium">{institution.contactPerson || 'No asignado'}</p>
+              {/* Contact Info - Only visible to admins */}
+              {isAdmin && (
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-6 pt-6 border-t">
+                  <div>
+                    <p className="text-sm text-neutral mb-1">Contacto</p>
+                    <p className="font-medium">{institution.contactPerson || 'No asignado'}</p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-neutral mb-1">Email</p>
+                    <p className="font-medium text-sm">{institution.email || 'No proporcionado'}</p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-neutral mb-1">Teléfono</p>
+                    <p className="font-medium">{institution.phone || 'No proporcionado'}</p>
+                  </div>
                 </div>
-                <div>
-                  <p className="text-sm text-neutral mb-1">Email</p>
-                  <p className="font-medium text-sm">{institution.email || 'No proporcionado'}</p>
-                </div>
-                <div>
-                  <p className="text-sm text-neutral mb-1">Teléfono</p>
-                  <p className="font-medium">{institution.phone || 'No proporcionado'}</p>
-                </div>
-              </div>
+              )}
 
               {/* Accepted Profiles */}
               <div className="mt-4 pt-4 border-t">

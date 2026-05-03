@@ -77,6 +77,25 @@ export default function Settings() {
   const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState("profile");
   const [profileType, setProfileType] = useState<"persona_moral" | "fisica_empresarial" | "fisica" | "sin_sat">("persona_moral");
+  const [showPasswordModal, setShowPasswordModal] = useState(false);
+
+  const passwordSchema = z.object({
+    currentPassword: z.string().min(1, "Contraseña actual requerida"),
+    newPassword: z.string().min(6, "La nueva contraseña debe tener al menos 6 caracteres"),
+    confirmPassword: z.string().min(6, "Confirmar contraseña"),
+  }).refine((data) => data.newPassword === data.confirmPassword, {
+    message: "Las contraseñas no coinciden",
+    path: ["confirmPassword"],
+  });
+
+  const passwordForm = useForm({
+    resolver: zodResolver(passwordSchema),
+    defaultValues: {
+      currentPassword: "",
+      newPassword: "",
+      confirmPassword: "",
+    },
+  });
 
   const profileForm = useForm({
     resolver: zodResolver(profileSchema),
@@ -293,6 +312,32 @@ export default function Settings() {
     };
     
     updateProfileMutation.mutate(payload);
+  };
+
+  const updatePasswordMutation = useMutation({
+    mutationFn: async (data: any) => {
+      const response = await apiRequest("POST", `/api/users/${user?.id}/change-password`, data);
+      return response.json();
+    },
+    onSuccess: () => {
+      toast({
+        title: "Contraseña actualizada",
+        description: "Tu contraseña ha sido cambiada exitosamente.",
+      });
+      setShowPasswordModal(false);
+      passwordForm.reset();
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Error",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
+
+  const onPasswordSubmit = (data: any) => {
+    updatePasswordMutation.mutate(data);
   };
 
   return (
@@ -1180,12 +1225,92 @@ export default function Settings() {
                             Actualiza tu contraseña regularmente para mayor seguridad
                           </p>
                         </div>
-                        <Button variant="outline" data-testid="button-change-password">
+                        <Button 
+                          variant="outline" 
+                          data-testid="button-change-password"
+                          onClick={() => setShowPasswordModal(true)}
+                        >
                           <i className="fas fa-key mr-2"></i>
                           Cambiar
                         </Button>
                       </div>
                     </div>
+
+                    {/* Change Password Modal */}
+                    {showPasswordModal && (
+                      <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+                        <Card className="w-full max-w-md">
+                          <CardHeader>
+                            <CardTitle>Cambiar Contraseña</CardTitle>
+                            <CardDescription>
+                              Ingresa tu contraseña actual y la nueva contraseña que deseas usar.
+                            </CardDescription>
+                          </CardHeader>
+                          <CardContent>
+                            <Form {...passwordForm}>
+                              <form onSubmit={passwordForm.handleSubmit(onPasswordSubmit)} className="space-y-4">
+                                <FormField
+                                  control={passwordForm.control}
+                                  name="currentPassword"
+                                  render={({ field }) => (
+                                    <FormItem>
+                                      <FormLabel>Contraseña Actual</FormLabel>
+                                      <FormControl>
+                                        <Input type="password" {...field} />
+                                      </FormControl>
+                                      <FormMessage />
+                                    </FormItem>
+                                  )}
+                                />
+                                <FormField
+                                  control={passwordForm.control}
+                                  name="newPassword"
+                                  render={({ field }) => (
+                                    <FormItem>
+                                      <FormLabel>Nueva Contraseña</FormLabel>
+                                      <FormControl>
+                                        <Input type="password" {...field} />
+                                      </FormControl>
+                                      <FormMessage />
+                                    </FormItem>
+                                  )}
+                                />
+                                <FormField
+                                  control={passwordForm.control}
+                                  name="confirmPassword"
+                                  render={({ field }) => (
+                                    <FormItem>
+                                      <FormLabel>Confirmar Nueva Contraseña</FormLabel>
+                                      <FormControl>
+                                        <Input type="password" {...field} />
+                                      </FormControl>
+                                      <FormMessage />
+                                    </FormItem>
+                                  )}
+                                />
+                                <div className="flex justify-end gap-3 pt-4">
+                                  <Button 
+                                    type="button" 
+                                    variant="ghost" 
+                                    onClick={() => setShowPasswordModal(false)}
+                                  >
+                                    Cancelar
+                                  </Button>
+                                  <Button 
+                                    type="submit" 
+                                    className="bg-primary text-white"
+                                    disabled={updatePasswordMutation.isPending}
+                                  >
+                                    {updatePasswordMutation.isPending && <i className="fas fa-spinner fa-spin mr-2"></i>}
+                                    Actualizar Contraseña
+                                  </Button>
+                                </div>
+                              </form>
+                            </Form>
+                          </CardContent>
+                        </Card>
+                      </div>
+                    )}
 
                     <div className="p-4 border border-orange-200 bg-orange-50 rounded-lg">
                       <div className="flex items-center justify-between">

@@ -156,7 +156,7 @@ export default function Financieras() {
           {/* Summary Card */}
           <Card className="mb-8">
             <CardContent className="p-6">
-              <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-6">
                 <div className="text-center">
                   <div className="w-16 h-16 bg-primary/10 rounded-full flex items-center justify-center mx-auto mb-3">
                     <i className="fas fa-building text-primary text-2xl"></i>
@@ -182,7 +182,7 @@ export default function Financieras() {
                   <div className="w-16 h-16 bg-success/10 rounded-full flex items-center justify-center mx-auto mb-3">
                     <i className="fas fa-handshake text-success text-2xl"></i>
                   </div>
-                  <p className="text-2xl font-bold text-gray-900">147</p>
+                  <p className="text-2xl font-bold text-gray-900">0</p>
                   <p className="text-sm text-neutral">Créditos Enviados</p>
                 </div>
                 <div className="text-center">
@@ -339,19 +339,22 @@ export default function Financieras() {
                   </Link>
                   
                   <CardContent className="space-y-4">
-                    <div className="space-y-3 text-sm">
-                      <div className="flex justify-between">
-                        <span className="text-neutral">Contacto:</span>
-                        <span className="font-medium">{institution.contactPerson ?? 'No asignado'}</span>
+                    {isAdmin && (
+                      <div className="space-y-3 text-sm">
+                        <div className="flex justify-between">
+                          <span className="text-neutral">Contacto:</span>
+                          <span className="font-medium">{institution.contactPerson ?? 'No asignado'}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-neutral">Email:</span>
+                          <span className="font-medium text-xs">{institution.email || 'No proporcionado'}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-neutral">Teléfono:</span>
+                          <span className="font-medium">{institution.phone || 'No proporcionado'}</span>
+                        </div>
                       </div>
-                      <div className="flex justify-between">
-                        <span className="text-neutral">Email:</span>
-                        <span className="font-medium text-xs">{institution.email || 'No proporcionado'}</span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span className="text-neutral">Teléfono:</span>
-                        <span className="font-medium">{institution.phone || 'No proporcionado'}</span>
-                      </div>
+                    )}
                       {/* Comisión solo visible para admin */}
                       {isAdmin && (
                         <div className="flex justify-between">

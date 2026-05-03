@@ -62,7 +62,7 @@ export default function Sidebar() {
   }, []);
 
   const SidebarContent = ({ collapsed = false }: { collapsed?: boolean }) => (
-    <>
+    <div className="flex flex-col h-full">
       <div className={cn("border-b border-sidebar-border", collapsed ? "p-2" : "p-4 lg:p-6")}>
         <div className={cn("flex flex-col items-center", collapsed ? "space-y-1" : "space-y-2 lg:space-y-3")}>
           <div className={cn(
@@ -113,7 +113,7 @@ export default function Sidebar() {
       </div>
 
       <nav className={cn(
-        "flex-1 py-4 lg:py-6 space-y-1 lg:space-y-2 overflow-y-auto",
+        "flex-1 py-4 lg:py-6 space-y-1 lg:space-y-2 overflow-y-auto scrollbar-hide",
         collapsed ? "px-2" : "px-2 lg:px-4"
       )}>
         {allNavigationItems.map((item) => {
@@ -136,9 +136,14 @@ export default function Sidebar() {
                 <div className={cn("flex items-center min-w-0", collapsed ? "" : "gap-2 lg:gap-3")}>
                   <span className={cn(
                     "inline-flex items-center justify-center flex-shrink-0",
-                    collapsed ? "w-9 h-9 rounded-full bg-sidebar-accent" : "w-5"
+                    collapsed ? "w-9 h-9 rounded-full" : "w-5",
+                    collapsed && isActive ? "bg-white/20" : collapsed ? "bg-sidebar-accent" : ""
                   )}>
-                    <i className={cn(item.icon, collapsed ? "text-base" : "text-sm")} aria-hidden="true"></i>
+                    <i className={cn(
+                      item.icon, 
+                      collapsed ? "text-base" : "text-sm",
+                      collapsed && isActive ? "text-white" : ""
+                    )} aria-hidden="true"></i>
                   </span>
                   {!collapsed && <span className="truncate">{item.name}</span>}
                 </div>
@@ -159,7 +164,7 @@ export default function Sidebar() {
       </nav>
 
       <div className={cn(
-        "border-t border-sidebar-border space-y-1 lg:space-y-2",
+        "border-t border-sidebar-border mt-auto space-y-1 lg:space-y-2",
         collapsed ? "p-2" : "p-2 lg:p-4"
       )}>
         {bottomNavigation.map((item) => {
@@ -180,19 +185,24 @@ export default function Sidebar() {
               >
                 <span className={cn(
                   "inline-flex items-center justify-center flex-shrink-0",
-                  collapsed ? "w-9 h-9 rounded-full bg-sidebar-accent" : "w-5"
+                  collapsed ? "w-9 h-9 rounded-full" : "w-5",
+                  collapsed && isActive ? "bg-white/20" : collapsed ? "bg-sidebar-accent" : ""
                 )}>
-                  <i className={cn(item.icon, collapsed ? "text-base" : "text-sm")} aria-hidden="true"></i>
+                  <i className={cn(
+                    item.icon, 
+                    collapsed ? "text-base" : "text-sm",
+                    collapsed && isActive ? "text-white" : ""
+                  )} aria-hidden="true"></i>
                 </span>
                 {!collapsed && <span>{item.name}</span>}
               </div>
             </Link>
           );
         })}
-        <a
-          href="/api/logout"
+        <button
+          onClick={() => window.location.href = "/api/logout"}
           className={cn(
-            "flex items-center rounded-lg text-sidebar-foreground hover:bg-sidebar-accent transition-colors",
+            "flex items-center rounded-lg text-sidebar-foreground hover:bg-sidebar-accent transition-colors w-full",
             collapsed ? "justify-center p-2" : "space-x-2 lg:space-x-3 px-2 lg:px-3 py-2 text-sm lg:text-base"
           )}
           data-testid="nav-logout"
@@ -205,9 +215,9 @@ export default function Sidebar() {
             <i className={cn("fas fa-sign-out-alt", collapsed ? "text-base" : "text-sm")} aria-hidden="true"></i>
           </span>
           {!collapsed && <span>Cerrar Sesión</span>}
-        </a>
+        </button>
       </div>
-    </>
+    </div>
   );
 
   return (
@@ -254,7 +264,7 @@ export default function Sidebar() {
 
       {/* Desktop sidebar */}
       <div className={cn(
-        "hidden lg:flex flex-col bg-sidebar-background shadow-lg border-r border-sidebar-border transition-all duration-300 ease-in-out relative",
+        "hidden lg:flex flex-col bg-sidebar-background shadow-lg border-r border-sidebar-border transition-all duration-300 ease-in-out relative h-screen sticky top-0",
         isCollapsed ? "w-16" : "w-64"
       )}>
         <button

@@ -32,6 +32,7 @@ import ProposalComparison from "@/pages/ProposalComparison";
 import UserManagement from "@/pages/UserManagement";
 import DesignPreview from "@/pages/DesignPreview";
 import BulkImport from "@/pages/BulkImport";
+import Notifications from "@/pages/Notifications";
 
 function Router() {
   const { isAuthenticated, isLoading } = useAuth();
@@ -42,7 +43,7 @@ function Router() {
     // Only redirect if we're on a protected route and definitely not authenticated
     if (!isLoading && !isAuthenticated) {
       const currentPath = window.location.pathname;
-      const protectedRoutes = ['/clientes', '/creditos', '/re-gestion', '/red-brokers', '/comisiones', '/financieras', '/documentos', '/reportes', '/configuracion', '/sistema-productos', '/solicitudes-pendientes', '/mis-solicitudes', '/admin/usuarios', '/importacion-masiva'];
+      const protectedRoutes = ['/clientes', '/creditos', '/re-gestion', '/red-brokers', '/comisiones', '/financieras', '/documentos', '/reportes', '/configuracion', '/sistema-productos', '/solicitudes-pendientes', '/mis-solicitudes', '/admin/usuarios', '/importacion-masiva', '/notificaciones'];
       
       // Check if current path starts with any protected route
       const isProtected = protectedRoutes.some(route => currentPath.startsWith(route));
@@ -90,6 +91,7 @@ function Router() {
           <Route path="/mis-solicitudes" component={MySubmissions} />
           <Route path="/comparar-propuestas/:requestId" component={ProposalComparison} />
           <Route path="/admin/usuarios" component={UserManagement} />
+          <Route path="/notificaciones" component={Notifications} />
           <Route path="/importacion-masiva" component={BulkImport} />
         </>
       )}

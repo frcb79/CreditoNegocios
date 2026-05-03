@@ -123,6 +123,9 @@ async function upsertUser(
   }, userId);
 }
 
+  });
+}
+
 export async function setupAuth(app: Express) {
   const rawTrustProxy = process.env.TRUST_PROXY;
   const trustProxySetting = rawTrustProxy
@@ -145,6 +148,16 @@ export async function setupAuth(app: Express) {
   // Needed for local auth sessions (email/password) and Replit OIDC sessions.
   passport.serializeUser((user: Express.User, cb) => cb(null, user));
   passport.deserializeUser((user: Express.User, cb) => cb(null, user));
+
+  // Global logout route - works for both Replit and Local Auth
+  app.get("/api/logout", (req, res) => {
+    req.logout(() => {
+      req.session.destroy(() => {
+        res.clearCookie('connect.sid');
+        res.redirect('/');
+      });
+    });
+  });
 
   if (!replitAuthEnabled) {
     return;
@@ -190,17 +203,6 @@ export async function setupAuth(app: Express) {
       successReturnToOrRedirect: "/",
       failureRedirect: "/api/login",
     })(req, res, next);
-  });
-
-  app.get("/api/logout", (req, res) => {
-    req.logout(() => {
-      res.redirect(
-        client.buildEndSessionUrl(config, {
-          client_id: replitId,
-          post_logout_redirect_uri: `${req.protocol}://${req.hostname}`,
-        }).href
-      );
-    });
   });
 }
 
