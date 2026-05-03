@@ -339,22 +339,24 @@ export default function Financieras() {
                   </Link>
                   
                   <CardContent className="space-y-4">
-                    {isAdmin && (
-                      <div className="space-y-3 text-sm">
-                        <div className="flex justify-between">
-                          <span className="text-neutral">Contacto:</span>
-                          <span className="font-medium">{institution.contactPerson ?? 'No asignado'}</span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span className="text-neutral">Email:</span>
-                          <span className="font-medium text-xs">{institution.email || 'No proporcionado'}</span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span className="text-neutral">Teléfono:</span>
-                          <span className="font-medium">{institution.phone || 'No proporcionado'}</span>
-                        </div>
-                      </div>
-                    )}
+                    <div className="space-y-3 text-sm">
+                      {/* Información de contacto - Solo visible para admins */}
+                      {isAdmin && (
+                        <>
+                          <div className="flex justify-between">
+                            <span className="text-neutral">Contacto:</span>
+                            <span className="font-medium">{institution.contactPerson ?? 'No asignado'}</span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className="text-neutral">Email:</span>
+                            <span className="font-medium text-xs">{institution.email || 'No proporcionado'}</span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className="text-neutral">Teléfono:</span>
+                            <span className="font-medium">{institution.phone || 'No proporcionado'}</span>
+                          </div>
+                        </>
+                      )}
                       {/* Comisión solo visible para admin */}
                       {isAdmin && (
                         <div className="flex justify-between">
