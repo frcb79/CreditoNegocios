@@ -3,6 +3,7 @@ import { Link, useLocation } from "wouter";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/useAuth";
 import { useNotifications } from "@/contexts/NotificationContext";
+import { buildApiUrl } from "@/lib/runtimeConfig";
 import { Menu, X, ChevronLeft, ChevronRight } from "lucide-react";
 
 const navigation = [
@@ -61,7 +62,32 @@ export default function Sidebar() {
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
-  const SidebarContent = ({ collapsed = false }: { collapsed?: boolean }) => (
+  const handleLogout = async () => {
+    const logoutCandidates = [
+      { method: 'GET', url: buildApiUrl('/api/logout') },
+      { method: 'POST', url: buildApiUrl('/api/logout') },
+      { method: 'POST', url: buildApiUrl('/api/auth/logout') },
+    ];
+
+    for (const candidate of logoutCandidates) {
+      try {
+        const response = await fetch(candidate.url, {
+          method: candidate.method,
+          credentials: 'include',
+        });
+
+        if (response.ok || response.status === 401 || response.redirected) {
+          break;
+        }
+      } catch {
+        // Try next candidate and always finish with local redirect.
+      }
+    }
+
+    window.location.assign('/');
+  };
+
+  const SidebarContent = ({ collapsed = false, testIdSuffix = '' }: { collapsed?: boolean; testIdSuffix?: string }) => (
     <div className="flex flex-col h-full">
       <div className={cn("border-b border-sidebar-border", collapsed ? "p-2" : "p-4 lg:p-6")}>
         <div className={cn("flex flex-col items-center", collapsed ? "space-y-1" : "space-y-2 lg:space-y-3")}>
@@ -130,7 +156,7 @@ export default function Sidebar() {
                     ? "bg-sidebar-primary text-sidebar-primary-foreground"
                     : "text-sidebar-foreground hover:bg-sidebar-accent"
                 )}
-                data-testid={`nav-${item.name.toLowerCase().replace(/\s+/g, '-')}`}
+                data-testid={`nav-${item.name.toLowerCase().replace(/\s+/g, '-')}${testIdSuffix}`}
                 title={collapsed ? item.name : undefined}
               >
                 <div className={cn("flex items-center min-w-0", collapsed ? "" : "gap-2 lg:gap-3")}>
@@ -180,7 +206,7 @@ export default function Sidebar() {
                     ? "bg-sidebar-primary text-sidebar-primary-foreground"
                     : "text-sidebar-foreground hover:bg-sidebar-accent"
                 )}
-                data-testid={`nav-${item.name.toLowerCase()}`}
+                data-testid={`nav-${item.name.toLowerCase()}${testIdSuffix}`}
                 title={collapsed ? item.name : undefined}
               >
                 <span className={cn(
@@ -200,12 +226,12 @@ export default function Sidebar() {
           );
         })}
         <button
-          onClick={() => window.location.href = "/api/logout"}
+          onClick={handleLogout}
           className={cn(
             "flex items-center rounded-lg text-sidebar-foreground hover:bg-sidebar-accent transition-colors w-full",
             collapsed ? "justify-center p-2" : "space-x-2 lg:space-x-3 px-2 lg:px-3 py-2 text-sm lg:text-base"
           )}
-          data-testid="nav-logout"
+          data-testid={`nav-logout${testIdSuffix}`}
           title={collapsed ? "Cerrar Sesión" : undefined}
         >
           <span className={cn(
@@ -259,7 +285,7 @@ export default function Sidebar() {
           <X className="h-5 w-5 text-sidebar-foreground" />
         </button>
         
-        <SidebarContent collapsed={false} />
+        <SidebarContent collapsed={false} testIdSuffix="-mobile" />
       </div>
 
       {/* Desktop sidebar */}

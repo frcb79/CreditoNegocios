@@ -132,9 +132,6 @@ async function upsertUser(
   }
 }
 
-  });
-}
-
 export async function setupAuth(app: Express) {
   const rawTrustProxy = process.env.TRUST_PROXY;
   const trustProxySetting = rawTrustProxy
