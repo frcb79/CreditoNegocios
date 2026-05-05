@@ -63,6 +63,10 @@ interface MatchResult {
   category: 'recommended' | 'compatible' | 'other';
   reasons: string[];
   warnings: string[];
+  // Shadow mode AI fields (not displayed, used for ground truth collection)
+  ruleScore?: number;
+  aiScore?: number;
+  finalScore?: number;
 }
 
 interface ProductTemplate {
@@ -521,7 +525,94 @@ export default function CreditRequestModal({ isOpen, onClose, preselectedClientI
       reasons.push('Disponible para solicitud');
     }
 
-    return { score, category, reasons, warnings };
+    // ── AI Shadow Mode ──────────────────────────────────────────────
+    // Heuristic signals not captured by the rule engine.
+    // These map qualitative client fields to a 0-100 signal.
+    // When real ML is available, this function will be replaced by an API call.
+    const computeAiScore = (): number => {
+      let aiPoints = 0;
+      let aiChecks = 0;
+
+      // Payment history: positive track record
+      const historialMap: Record<string, number> = {
+        'excelente': 100, 'bueno': 75, 'regular': 40, 'malo': 10, 'sin-historial': 50
+      };
+      const historial = selectedClient.historialPagos;
+      if (historial && historialMap[historial] !== undefined) {
+        aiPoints += historialMap[historial];
+        aiChecks++;
+      }
+
+      // Credit experience: experienced borrowers are lower risk
+      const expMap: Record<string, number> = {
+        'sin-experiencia': 30, 'menos-1-anio': 45, '1-3-anios': 65,
+        '3-5-anios': 80, 'mas-5-anios': 95
+      };
+      const experiencia = selectedClient.experienciaCrediticia;
+      if (experiencia && expMap[experiencia] !== undefined) {
+        aiPoints += expMap[experiencia];
+        aiChecks++;
+      }
+
+      // Repayment capacity: higher capacity = better fit
+      const capMap: Record<string, number> = {
+        'baja': 25, 'media': 55, 'alta': 80, 'muy-alta': 100
+      };
+      const capacidad = selectedClient.capacidadPago;
+      if (capacidad && capMap[capacidad] !== undefined) {
+        aiPoints += capMap[capacidad];
+        aiChecks++;
+      }
+
+      // Civil status: minor signal
+      const estadoMap: Record<string, number> = {
+        'casado': 60, 'soltero': 50, 'union-libre': 55, 'divorciado': 45, 'viudo': 45
+      };
+      const estado = selectedClient.estadoCivil;
+      if (estado && estadoMap[estado] !== undefined) {
+        aiPoints += estadoMap[estado];
+        aiChecks++;
+      }
+
+      // Education level: minor signal for unsecured credit
+      const eduMap: Record<string, number> = {
+        'sin-estudios': 40, 'primaria': 45, 'secundaria': 50, 'preparatoria': 58,
+        'licenciatura': 68, 'posgrado': 75
+      };
+      const edu = selectedClient.nivelEducativo;
+      if (edu && eduMap[edu] !== undefined) {
+        aiPoints += eduMap[edu];
+        aiChecks++;
+      }
+
+      return aiChecks > 0 ? Math.round(aiPoints / aiChecks) : score; // fallback to rule score
+    };
+
+    const ruleScore = score;
+    const aiScore = computeAiScore();
+    // Weighted blend: rule engine is authoritative (70%), AI heuristic adds signal (30%)
+    const finalScore = Math.round(0.7 * ruleScore + 0.3 * aiScore);
+
+    // Re-categorize using finalScore
+    let finalCategory: 'recommended' | 'compatible' | 'other';
+    if (finalScore >= 80) finalCategory = 'recommended';
+    else if (finalScore >= 50) finalCategory = 'compatible';
+    else finalCategory = 'other';
+
+    // Ground truth logging (shadow mode — no UI impact)
+    if (process.env.NODE_ENV !== 'production') {
+      console.debug('[AI-MATCH]', {
+        institution: institution.name,
+        clientType: selectedClient.type,
+        requestedAmount,
+        ruleScore,
+        aiScore,
+        finalScore,
+        category: finalCategory,
+      });
+    }
+
+    return { score: finalScore, category: finalCategory, reasons, warnings, ruleScore, aiScore, finalScore };
   };
 
   // Sort institutions by match score
