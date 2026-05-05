@@ -10,7 +10,6 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Credit, Client, Commission } from "@shared/schema";
 import { startOfMonth, endOfMonth, startOfYear, endOfYear, subMonths } from "date-fns";
 import { utils as xlsxUtils, writeFile } from "xlsx";
-import PDFDocument from "pdfkit";
 
 interface ReportData {
   totalCredits: number;
@@ -179,68 +178,7 @@ export default function Reports() {
   };
 
   const exportToPDF = () => {
-    try {
-      const doc = new PDFDocument();
-      const fileName = `reporte-creditos-${new Date().toISOString().split('T')[0]}.pdf`;
-      
-      // For browser compatibility, create blob instead
-      const chunks: any[] = [];
-      doc.on('data', (chunk) => chunks.push(chunk));
-      doc.on('end', () => {
-        const blob = new Blob(chunks, { type: 'application/pdf' });
-        const url = window.URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = fileName;
-        document.body.appendChild(a);
-        a.click();
-        window.URL.revokeObjectURL(url);
-        document.body.removeChild(a);
-      });
-
-      // Add title
-      doc.fontSize(20).text('Reporte de Créditos', { align: 'center' }).moveDown();
-      doc.fontSize(12).text(`Generado: ${new Date().toLocaleDateString('es-MX')}`, { align: 'center' }).moveDown(2);
-
-      // Add summary section
-      doc.fontSize(14).text('Resumen', { underline: true }).moveDown();
-      doc.fontSize(11);
-      doc.text(`Créditos Otorgados: ${reportData.totalCredits}`);
-      doc.text(`Monto Total: $${reportData.totalAmount.toFixed(2)}`);
-      doc.text(`Promedio por Crédito: $${reportData.avgCreditAmount.toFixed(2)}`);
-      doc.text(`Tasa de Conversión: ${reportData.conversionRate.toFixed(2)}%`).moveDown(2);
-
-      // Add status distribution
-      if (reportData.statusDistribution.length > 0) {
-        doc.fontSize(14).text('Distribución por Estado', { underline: true }).moveDown();
-        reportData.statusDistribution.forEach(item => {
-          doc.fontSize(11).text(`${item.status}: ${item.count}`);
-        });
-        doc.moveDown();
-      }
-
-      // Add top clients
-      if (reportData.topClients.length > 0) {
-        doc.fontSize(14).text('Clientes Top 10', { underline: true }).moveDown();
-        reportData.topClients.slice(0, 10).forEach((client, idx) => {
-          doc.fontSize(11).text(`${idx + 1}. ${client.name}: $${client.totalAmount.toFixed(2)} (${client.creditsCount} créditos)`);
-        });
-        doc.moveDown();
-      }
-
-      // Add monthly trend
-      if (reportData.monthlyTrend.length > 0) {
-        doc.fontSize(14).text('Tendencia Mensual', { underline: true }).moveDown();
-        reportData.monthlyTrend.forEach(item => {
-          doc.fontSize(11).text(`${item.month}: ${item.credits} créditos, $${item.amount.toFixed(2)}`);
-        });
-      }
-
-      doc.end();
-    } catch (error) {
-      console.error('Error al generar PDF:', error);
-      alert('Error al generar el PDF. Por favor intente nuevamente.');
-    }
+    alert('La exportacion PDF estara disponible en la siguiente actualizacion. Usa Excel por ahora.');
   };
 
   if (isLoading) {
