@@ -11,6 +11,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Commission } from "@shared/schema";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/hooks/useAuth";
 import { formatDistanceToNow } from "date-fns";
 import { es } from "date-fns/locale";
 
@@ -29,6 +30,8 @@ const commissionTypeLabels: Record<string, string> = {
 };
 
 export default function Commissions() {
+  const { user } = useAuth();
+  const canProcessPayments = user?.role === 'admin' || user?.role === 'super_admin';
   const [searchTerm, setSearchTerm] = useState("");
   const [filterStatus, setFilterStatus] = useState<string>("all");
   const [selectedCommission, setSelectedCommission] = useState<Commission | null>(null);
@@ -280,7 +283,7 @@ export default function Commissions() {
                           {statusConfig[commission.status as keyof typeof statusConfig]?.label || commission.status}
                         </Badge>
                         
-                        {commission.status === 'pending' && (
+                        {commission.status === 'pending' && canProcessPayments && (
                           <div>
                             <Dialog>
                               <DialogTrigger asChild>

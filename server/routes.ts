@@ -311,9 +311,13 @@ async function requirePlatformRole(userId: string, allowedRoles: string[]): Prom
 async function processStpPayment(amount: string, accountNumber: string) {
   // Simulate STP payment processing
   await new Promise(resolve => setTimeout(resolve, 2000));
+  const failureRate = Number.parseFloat(process.env.STP_SIMULATE_FAILURE_RATE || "0");
+  const normalizedFailureRate = Number.isFinite(failureRate)
+    ? Math.min(Math.max(failureRate, 0), 1)
+    : 0;
   
   return {
-    success: Math.random() > 0.1, // 90% success rate
+    success: Math.random() > normalizedFailureRate,
     transactionId: `STP-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
     amount,
     accountNumber,
@@ -1905,13 +1909,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       // Master brokers can see their own commissions + their network's commissions
       if (user?.role === 'master_broker') {
-        const networkBrokers = await storage.getUsersByMasterBroker(userId);
-        const brokerIds = [userId, ...networkBrokers.map(b => b.id)];
-        const allCommissions = await storage.getCommissions();
-        const filteredCommissions = allCommissions.filter(c => 
-          brokerIds.includes(c.brokerId) || c.masterBrokerId === userId
-        );
-        return res.json(filteredCommissions);
+        const commissions = await storage.getCommissions({
+          masterBrokerId: userId,
+          includeNetwork: true,
+        });
+        return res.json(commissions);
       }
       
       // Regular brokers only see their own commissions
@@ -1927,6 +1929,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const { id } = req.params;
       const { accountNumber } = req.body;
+      const userId = req.user.claims.sub;
+      const user = await storage.getUser(userId);
+
+      // Only admins can trigger payouts
+      if (!user || (user.role !== 'admin' && user.role !== 'super_admin')) {
+        return res.status(403).json({ message: "Only admins can process commission payments" });
+      }
+
+      if (!accountNumber || !/^\d{18}$/.test(String(accountNumber))) {
+        return res.status(400).json({ message: "Número de cuenta inválido. Debe ser CLABE de 18 dígitos." });
+      }
       
       const commission = await storage.getCommissions().then(comms => 
         comms.find(c => c.id === id)
@@ -1934,6 +1947,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       if (!commission) {
         return res.status(404).json({ message: "Commission not found" });
+      }
+
+      if (commission.status === 'paid') {
+        return res.json({
+          message: "Commission already paid",
+          transactionId: null,
+          alreadyPaid: true,
+          paidAt: commission.paidAt,
+        });
+      }
+
+      if (commission.status !== 'pending') {
+        return res.status(400).json({
+          message: `Commission cannot be paid from status '${commission.status}'`,
+        });
       }
       
       // Process STP payment
@@ -1944,6 +1972,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
           status: 'paid',
           paidAt: new Date(),
         });
+
+        // Notify beneficiary
+        const beneficiaryId = parseFloat(commission.masterBrokerShare || '0') > 0 && commission.masterBrokerId
+          ? commission.masterBrokerId
+          : commission.brokerId;
+
+        const paidNotification = await storage.createNotification({
+          userId: beneficiaryId,
+          type: 'commission_paid',
+          title: 'Comisión pagada',
+          message: `Se pagó una comisión de $${parseFloat(commission.amount || '0').toLocaleString('es-MX')} (${commission.commissionType || 'sin tipo'}).`,
+          relatedEntityType: 'commission',
+          relatedEntityId: commission.id,
+          priority: 'high',
+        });
+        broadcastToUser(beneficiaryId, { type: 'notification', notification: paidNotification });
         
         res.json({
           message: "Payment processed successfully",
@@ -2977,6 +3021,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       const productData = insertInstitutionProductSchema.partial().parse(req.body);
+
+      // Prevent logical inconsistency: cannot activate a product if institution is inactive.
+      if (productData.isActive === true) {
+        const existingProduct = await storage.getInstitutionProduct(id);
+        if (!existingProduct) {
+          return res.status(404).json({ message: "Institution product not found" });
+        }
+
+        const institution = await storage.getFinancialInstitution(existingProduct.institutionId);
+        if (!institution || institution.isActive === false) {
+          return res.status(400).json({
+            message: "No se puede activar un producto si la financiera está inactiva",
+          });
+        }
+      }
+
       const product = await storage.updateInstitutionProduct(id, productData);
       
       if (!product) {
