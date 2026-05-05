@@ -1326,13 +1326,22 @@ export class DbStorage implements IStorage {
         .where(eq(creditSubmissionTargets.id, targetId))
         .returning();
       
-      // Update the submission status to sent_to_institutions
-      await db.update(creditSubmissionRequests)
-        .set({
-          status: "sent_to_institutions",
-          updatedAt: new Date()
-        })
-        .where(eq(creditSubmissionRequests.id, requestId));
+      // Update the submission status to sent_to_institutions only if all targets are processed
+      const pendingTargets = await db.select()
+        .from(creditSubmissionTargets)
+        .where(
+          and(
+            eq(creditSubmissionTargets.requestId, requestId),
+            eq(creditSubmissionTargets.status, "pending_admin")
+          )
+        );
+      
+      if (pendingTargets.length === 0) {
+        // All targets have been reviewed — advance request status
+        await db.update(creditSubmissionRequests)
+          .set({ status: "sent_to_institutions", updatedAt: new Date() })
+          .where(eq(creditSubmissionRequests.id, requestId));
+      }
       
       return result[0];
     } catch (error) {

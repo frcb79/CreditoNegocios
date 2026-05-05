@@ -3377,8 +3377,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       // Enrich targets with request, broker, master broker, and client information
       const enrichedTargets = await Promise.all(targets.map(enrichCreditSubmissionTarget));
+
+      // Ownership/role filter — prevent exposing other brokers' data
+      let filteredTargets = enrichedTargets;
+      if (user.role === 'broker') {
+        // Broker: only see their own submissions
+        filteredTargets = enrichedTargets.filter((t: any) => t.request?.brokerId === userId);
+      } else if (user.role === 'master_broker') {
+        // Master broker: see own + their network's submissions
+        filteredTargets = enrichedTargets.filter((t: any) =>
+          t.request?.brokerId === userId || t.broker?.masterBrokerId === userId
+        );
+      }
+      // admin / super_admin: see all (no filter)
       
-      res.json(enrichedTargets);
+      res.json(filteredTargets);
     } catch (error) {
       console.error("Error fetching credit submission targets:", error);
       res.status(500).json({ message: "Failed to fetch credit submission targets" });
@@ -3402,6 +3415,38 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       if (!rawTarget) {
         return res.status(404).json({ message: "Credit submission target not found" });
+      }
+
+      // Notify broker (and master_broker if applicable)
+      try {
+        const request = await storage.getCreditSubmissionRequest(rawTarget.requestId);
+        if (request) {
+          const notification = await storage.createNotification({
+            userId: request.brokerId,
+            type: 'submission_update',
+            title: 'Solicitud aprobada por el administrador',
+            message: adminNotes || 'Tu solicitud fue aprobada y será enviada a la institución.',
+            relatedEntityType: 'credit_submission_target',
+            relatedEntityId: rawTarget.id,
+            priority: 'high',
+          });
+          broadcastToUser(request.brokerId, { type: 'notification', notification });
+          const broker = await storage.getUser(request.brokerId);
+          if (broker?.masterBrokerId) {
+            const mbNotif = await storage.createNotification({
+              userId: broker.masterBrokerId,
+              type: 'submission_update',
+              title: 'Solicitud de tu red aprobada',
+              message: `La solicitud de un broker de tu red fue aprobada.`,
+              relatedEntityType: 'credit_submission_target',
+              relatedEntityId: rawTarget.id,
+              priority: 'medium',
+            });
+            broadcastToUser(broker.masterBrokerId, { type: 'notification', notification: mbNotif });
+          }
+        }
+      } catch (notifError) {
+        console.error("[NOTIF] Error sending approve notification:", notifError);
       }
 
       const target = await enrichCreditSubmissionTarget(rawTarget);
@@ -3431,6 +3476,38 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ message: "Credit submission target not found" });
       }
 
+      // Notify broker (and master_broker if applicable)
+      try {
+        const request = await storage.getCreditSubmissionRequest(rawTarget.requestId);
+        if (request) {
+          const notification = await storage.createNotification({
+            userId: request.brokerId,
+            type: 'submission_update',
+            title: 'Solicitud rechazada por el administrador',
+            message: adminNotes || 'Tu solicitud fue rechazada.',
+            relatedEntityType: 'credit_submission_target',
+            relatedEntityId: rawTarget.id,
+            priority: 'high',
+          });
+          broadcastToUser(request.brokerId, { type: 'notification', notification });
+          const broker = await storage.getUser(request.brokerId);
+          if (broker?.masterBrokerId) {
+            const mbNotif = await storage.createNotification({
+              userId: broker.masterBrokerId,
+              type: 'submission_update',
+              title: 'Solicitud de tu red rechazada',
+              message: `La solicitud de un broker de tu red fue rechazada.`,
+              relatedEntityType: 'credit_submission_target',
+              relatedEntityId: rawTarget.id,
+              priority: 'medium',
+            });
+            broadcastToUser(broker.masterBrokerId, { type: 'notification', notification: mbNotif });
+          }
+        }
+      } catch (notifError) {
+        console.error("[NOTIF] Error sending reject notification:", notifError);
+      }
+
       const target = await enrichCreditSubmissionTarget(rawTarget);
       res.json(target);
     } catch (error) {
@@ -3456,6 +3533,38 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       if (!rawTarget) {
         return res.status(404).json({ message: "Credit submission target not found" });
+      }
+
+      // Notify broker (and master_broker if applicable)
+      try {
+        const request = await storage.getCreditSubmissionRequest(rawTarget.requestId);
+        if (request) {
+          const notification = await storage.createNotification({
+            userId: request.brokerId,
+            type: 'submission_update',
+            title: 'Solicitud devuelta para revisión',
+            message: adminNotes || 'El administrador devolvió tu solicitud para correcciones.',
+            relatedEntityType: 'credit_submission_target',
+            relatedEntityId: rawTarget.id,
+            priority: 'high',
+          });
+          broadcastToUser(request.brokerId, { type: 'notification', notification });
+          const broker = await storage.getUser(request.brokerId);
+          if (broker?.masterBrokerId) {
+            const mbNotif = await storage.createNotification({
+              userId: broker.masterBrokerId,
+              type: 'submission_update',
+              title: 'Solicitud de tu red devuelta al broker',
+              message: `Una solicitud de tu red fue devuelta al broker para correcciones.`,
+              relatedEntityType: 'credit_submission_target',
+              relatedEntityId: rawTarget.id,
+              priority: 'medium',
+            });
+            broadcastToUser(broker.masterBrokerId, { type: 'notification', notification: mbNotif });
+          }
+        }
+      } catch (notifError) {
+        console.error("[NOTIF] Error sending return-to-broker notification:", notifError);
       }
 
       const target = await enrichCreditSubmissionTarget(rawTarget);
@@ -3699,11 +3808,125 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ message: "Credit submission target not found" });
       }
 
+      // Notify broker (and master_broker if applicable)
+      try {
+        const request = await storage.getCreditSubmissionRequest(rawTarget.requestId);
+        if (request) {
+          const notification = await storage.createNotification({
+            userId: request.brokerId,
+            type: 'submission_update',
+            title: 'Propuesta de institución recibida',
+            message: `Monto aprobado: $${proposal.approvedAmount.toLocaleString('es-MX')} a ${proposal.interestRate}% en ${proposal.term} meses.`,
+            relatedEntityType: 'credit_submission_target',
+            relatedEntityId: rawTarget.id,
+            priority: 'high',
+          });
+          broadcastToUser(request.brokerId, { type: 'notification', notification });
+          const broker = await storage.getUser(request.brokerId);
+          if (broker?.masterBrokerId) {
+            const mbNotif = await storage.createNotification({
+              userId: broker.masterBrokerId,
+              type: 'submission_update',
+              title: 'Propuesta recibida para solicitud de tu red',
+              message: `Una institución aprobó la solicitud de un broker de tu red.`,
+              relatedEntityType: 'credit_submission_target',
+              relatedEntityId: rawTarget.id,
+              priority: 'medium',
+            });
+            broadcastToUser(broker.masterBrokerId, { type: 'notification', notification: mbNotif });
+          }
+        }
+      } catch (notifError) {
+        console.error("[NOTIF] Error sending institution proposal notification:", notifError);
+      }
+
       const target = await enrichCreditSubmissionTarget(rawTarget);
       res.json(target);
     } catch (error) {
       console.error("Error saving institution proposal:", error);
       res.status(500).json({ message: "Failed to save institution proposal" });
+    }
+  });
+
+  // Institution response (approve or reject from institution side) - Admins only
+  app.patch('/api/credit-submission-targets/:id/mark-institution-response', isAuthenticated, async (req: any, res) => {
+    try {
+      const { id } = req.params;
+      const userId = req.user.claims.sub;
+      const user = await storage.getUser(userId);
+
+      if (!user || (user.role !== 'admin' && user.role !== 'super_admin')) {
+        return res.status(403).json({ message: "Only admins can record institution responses" });
+      }
+
+      const bodySchema = z.object({
+        approved: z.boolean(),
+        adminNotes: z.string().optional(),
+        proposal: z.object({
+          approvedAmount: z.number(),
+          interestRate: z.number(),
+          term: z.number(),
+          openingCommission: z.number().optional(),
+        }).optional(),
+      });
+
+      const { approved, adminNotes, proposal } = bodySchema.parse(req.body);
+
+      const newStatus = approved ? 'institution_approved' : 'institution_rejected';
+      const updatePayload: any = { status: newStatus };
+      if (approved && proposal) {
+        updatePayload.institutionProposal = proposal;
+        updatePayload.proposalReceivedAt = new Date();
+      }
+      if (adminNotes) updatePayload.adminNotes = adminNotes;
+
+      const rawTarget = await storage.updateCreditSubmissionTarget(id, updatePayload);
+
+      if (!rawTarget) {
+        return res.status(404).json({ message: "Credit submission target not found" });
+      }
+
+      // Notify broker (and master_broker if applicable)
+      try {
+        const request = await storage.getCreditSubmissionRequest(rawTarget.requestId);
+        if (request) {
+          const title = approved ? 'Institución aprobó tu solicitud' : 'Institución rechazó tu solicitud';
+          const message = approved && proposal
+            ? `Monto aprobado: $${proposal.approvedAmount.toLocaleString('es-MX')} a ${proposal.interestRate}% en ${proposal.term} meses.`
+            : (adminNotes || (approved ? 'Tu solicitud fue aprobada por la institución.' : 'Tu solicitud fue rechazada por la institución.'));
+          const notification = await storage.createNotification({
+            userId: request.brokerId,
+            type: 'submission_update',
+            title,
+            message,
+            relatedEntityType: 'credit_submission_target',
+            relatedEntityId: rawTarget.id,
+            priority: 'high',
+          });
+          broadcastToUser(request.brokerId, { type: 'notification', notification });
+          const broker = await storage.getUser(request.brokerId);
+          if (broker?.masterBrokerId) {
+            const mbNotif = await storage.createNotification({
+              userId: broker.masterBrokerId,
+              type: 'submission_update',
+              title: approved ? 'Institución aprobó solicitud de tu red' : 'Institución rechazó solicitud de tu red',
+              message: `Una institución ${approved ? 'aprobó' : 'rechazó'} la solicitud de un broker de tu red.`,
+              relatedEntityType: 'credit_submission_target',
+              relatedEntityId: rawTarget.id,
+              priority: 'medium',
+            });
+            broadcastToUser(broker.masterBrokerId, { type: 'notification', notification: mbNotif });
+          }
+        }
+      } catch (notifError) {
+        console.error("[NOTIF] Error sending institution-response notification:", notifError);
+      }
+
+      const target = await enrichCreditSubmissionTarget(rawTarget);
+      res.json(target);
+    } catch (error) {
+      console.error("Error recording institution response:", error);
+      res.status(500).json({ message: "Failed to record institution response" });
     }
   });
 
