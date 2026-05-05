@@ -243,9 +243,6 @@ export default function Reports() {
     }
   };
 
-  const reportData = generateReportData();
-  const totalCommissions = commissions?.reduce((sum, c) => sum + parseFloat(c.amount), 0) || 0;
-
   if (isLoading) {
     return (
       <div className="min-h-screen flex bg-gray-50">
