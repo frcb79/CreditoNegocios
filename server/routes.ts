@@ -78,6 +78,58 @@ function broadcastToUser(userId: string, notification: any) {
   }
 }
 
+const SUPPORTED_COMMISSION_TYPES = ["apertura", "sobretasa", "renovacion"] as const;
+
+function parseCommissionRate(value: unknown): number {
+  const parsed = parseFloat(String(value ?? "0"));
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
+}
+
+async function ensureCommissionRecord(params: {
+  creditId: string;
+  brokerId: string;
+  masterBrokerId?: string | null;
+  commissionType: string;
+  amount: number;
+  recipient: "broker" | "master_broker";
+}): Promise<boolean> {
+  const { creditId, brokerId, masterBrokerId, commissionType, amount, recipient } = params;
+  if (!Number.isFinite(amount) || amount <= 0) {
+    return false;
+  }
+
+  const existing = await storage.getCommissions({ brokerId });
+  const isDuplicate = existing.some((c) => {
+    if (c.creditId !== creditId || c.commissionType !== commissionType) {
+      return false;
+    }
+
+    if (recipient === "broker") {
+      return parseFloat(c.brokerShare || "0") > 0;
+    }
+
+    return c.masterBrokerId === masterBrokerId && parseFloat(c.masterBrokerShare || "0") > 0;
+  });
+
+  if (isDuplicate) {
+    return false;
+  }
+
+  await storage.createCommission({
+    creditId,
+    brokerId,
+    masterBrokerId: recipient === "master_broker" ? (masterBrokerId || null) : null,
+    amount: amount.toFixed(2),
+    brokerShare: recipient === "broker" ? amount.toFixed(2) : "0.00",
+    masterBrokerShare: recipient === "master_broker" ? amount.toFixed(2) : "0.00",
+    appShare: "0.00",
+    status: "pending",
+    commissionType,
+  });
+
+  return true;
+}
+
 // Authorization helper for broker-owned resources
 // Validates that a user has permission to access a resource based on brokerId
 async function authorizeBrokerResource(params: {
@@ -1507,38 +1559,31 @@ export async function registerRoutes(app: Express): Promise<Server> {
               
               if (role === 'masterBroker' && masterBrokerId) {
                 const rate = parseFloat(commissionRates.masterBroker?.[type] || '0');
-                const amount = (approvedAmount * rate / 100).toFixed(2);
-                
-                await storage.createCommission({
+                const amount = approvedAmount * rate / 100;
+                const created = await ensureCommissionRecord({
                   creditId: credit.id,
                   brokerId: credit.brokerId,
-                  masterBrokerId: masterBrokerId,
+                  masterBrokerId,
                   commissionType: type,
-                  amount: amount,
-                  masterBrokerShare: amount, // Full amount goes to master broker
-                  brokerShare: '0',
-                  appShare: '0',
-                  status: 'pending',
+                  amount,
+                  recipient: 'master_broker',
                 });
-                
-                console.log(`[Commission] Created ${type} commission for Master Broker ${masterBrokerId}: $${amount} MXN (${rate}%)`);
+                if (created) {
+                  console.log(`[Commission] Created ${type} commission for Master Broker ${masterBrokerId}: $${amount.toFixed(2)} MXN (${rate}%)`);
+                }
               } else if (role === 'broker') {
                 const rate = parseFloat(commissionRates.broker?.[type] || '0');
-                const amount = (approvedAmount * rate / 100).toFixed(2);
-                
-                await storage.createCommission({
+                const amount = approvedAmount * rate / 100;
+                const created = await ensureCommissionRecord({
                   creditId: credit.id,
                   brokerId: credit.brokerId,
-                  masterBrokerId: masterBrokerId || undefined,
                   commissionType: type,
-                  amount: amount,
-                  brokerShare: amount, // Full amount goes to broker
-                  masterBrokerShare: '0',
-                  appShare: '0',
-                  status: 'pending',
+                  amount,
+                  recipient: 'broker',
                 });
-                
-                console.log(`[Commission] Created ${type} commission for Broker ${credit.brokerId}: $${amount} MXN (${rate}%)`);
+                if (created) {
+                  console.log(`[Commission] Created ${type} commission for Broker ${credit.brokerId}: $${amount.toFixed(2)} MXN (${rate}%)`);
+                }
               }
             }
           }
@@ -1682,6 +1727,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const updatedInstitution = await storage.updateFinancialInstitution(id, {
         isActive: !institution.isActive
       });
+
+      // Keep product catalog coherent: if institution is deactivated, force all its products inactive.
+      if (updatedInstitution && updatedInstitution.isActive === false) {
+        const linkedProducts = await storage.getInstitutionProducts(id);
+        for (const product of linkedProducts) {
+          if (product.isActive) {
+            await storage.updateInstitutionProduct(product.id, { isActive: false });
+          }
+        }
+      }
 
       res.json(updatedInstitution);
     } catch (error) {
@@ -4067,7 +4122,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         creditId: credit!.id,
       });
 
-      // CREATE COMMISSIONS
+      // CREATE COMMISSIONS (apertura/sobretasa/renovacion)
       if (proposal && proposal.approvedAmount) {
         const broker = await storage.getUser(request.brokerId);
         if (broker) {
@@ -4151,46 +4206,71 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get('/api/import/template/:type', isAuthenticated, async (req: any, res) => {
     try {
       const { type } = req.params;
-      const userId = req.user?.claims?.sub || req.user?.id;
-      
-      if (!userId) {
-        return res.status(401).json({ message: 'No autorizado' });
-      }
-      
-      const hasPermission = await requirePlatformRole(userId, ['super_admin', 'admin']);
-      if (!hasPermission) {
-        return res.status(403).json({ message: 'Solo administradores pueden descargar templates' });
-      }
-      
-      let buffer: Buffer;
-      let filename: string;
-      
-      if (type === 'financieras') {
-        buffer = generateFinancierasTemplate();
-        filename = 'template_financieras_productos.xlsx';
-      } else if (type === 'clients') {
-        buffer = generateClientsTemplate();
-        filename = 'template_clientes.xlsx';
-      } else {
-        return res.status(400).json({ message: 'Tipo de template inválido' });
-      }
-      
-      res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-      res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
-      res.send(buffer);
-    } catch (error: any) {
-      console.error('Error generating template:', error);
-      res.status(500).json({ message: error.message || 'Error al generar template' });
-    }
-  });
 
-  app.post('/api/import/preview/:type', isAuthenticated, excelUpload.single('file'), async (req: any, res) => {
-    try {
-      const { type } = req.params;
-      const userId = req.user?.claims?.sub || req.user?.id;
-      
-      if (!userId) {
-        return res.status(401).json({ message: 'No autorizado' });
+            let createdForBroker = 0;
+            let createdForMaster = 0;
+
+            for (const commissionType of SUPPORTED_COMMISSION_TYPES) {
+              const brokerRate = parseCommissionRate(commissionRates.broker?.[commissionType]);
+              if (brokerRate > 0) {
+                const brokerAmount = (approvedAmount * brokerRate) / 100;
+                const created = await ensureCommissionRecord({
+                  creditId: credit!.id,
+                  brokerId: request.brokerId,
+                  commissionType,
+                  amount: brokerAmount,
+                  recipient: "broker",
+                });
+                if (created) {
+                  createdForBroker++;
+                  console.log(`[Commission] Created ${commissionType} commission for broker ${request.brokerId}: $${brokerAmount.toFixed(2)}`);
+                }
+              }
+
+              if (masterBrokerId) {
+                const masterRate = parseCommissionRate(commissionRates.masterBroker?.[commissionType]);
+                if (masterRate > 0) {
+                  const masterAmount = (approvedAmount * masterRate) / 100;
+                  const created = await ensureCommissionRecord({
+                    creditId: credit!.id,
+                    brokerId: request.brokerId,
+                    masterBrokerId,
+                    commissionType,
+                    amount: masterAmount,
+                    recipient: "master_broker",
+                  });
+                  if (created) {
+                    createdForMaster++;
+                    console.log(`[Commission] Created ${commissionType} commission for master broker ${masterBrokerId}: $${masterAmount.toFixed(2)}`);
+                  }
+                }
+              }
+            }
+
+            if (createdForBroker > 0) {
+              const brokerNotification = await storage.createNotification({
+                userId: request.brokerId,
+                type: "commission_created",
+                title: "Comisiones generadas",
+                message: `Se generaron ${createdForBroker} comisiones pendientes para el crédito dispersado.`,
+                relatedEntityType: "credit",
+                relatedEntityId: credit!.id,
+                priority: "high",
+              });
+              broadcastToUser(request.brokerId, { type: "notification", notification: brokerNotification });
+            }
+
+            if (masterBrokerId && createdForMaster > 0) {
+              const masterNotification = await storage.createNotification({
+                userId: masterBrokerId,
+                type: "commission_created",
+                title: "Comisiones de red generadas",
+                message: `Se generaron ${createdForMaster} comisiones pendientes en una operación de tu red.`,
+                relatedEntityType: "credit",
+                relatedEntityId: credit!.id,
+                priority: "high",
+              });
+              broadcastToUser(masterBrokerId, { type: "notification", notification: masterNotification });
       }
       
       const hasPermission = await requirePlatformRole(userId, ['super_admin', 'admin']);

@@ -956,11 +956,79 @@ export class DbStorage implements IStorage {
 
   // Commission operations
   async getCommissions(filtersOrBrokerId?: { brokerId?: string; masterBrokerId?: string; includeNetwork?: boolean; status?: string; from?: Date; to?: Date } | string): Promise<Commission[]> {
-    // TODO: Implement SQL query with filter support
-    return [];
+    try {
+      const filters = typeof filtersOrBrokerId === "string"
+        ? { brokerId: filtersOrBrokerId }
+        : filtersOrBrokerId;
+
+      if (!filters) {
+        return await db.select().from(commissions).orderBy(desc(commissions.createdAt));
+      }
+
+      const conditions: any[] = [];
+
+      if (filters.brokerId) {
+        conditions.push(eq(commissions.brokerId, filters.brokerId));
+      } else if (filters.masterBrokerId) {
+        if (filters.includeNetwork) {
+          const networkBrokers = await this.getUsersByMasterBroker(filters.masterBrokerId);
+          const brokerIds = [...networkBrokers.map((b) => b.id), filters.masterBrokerId];
+          conditions.push(inArray(commissions.brokerId, brokerIds));
+        } else {
+          conditions.push(eq(commissions.brokerId, filters.masterBrokerId));
+        }
+      }
+
+      if (filters.status) {
+        conditions.push(eq(commissions.status, filters.status));
+      }
+
+      if (filters.from) {
+        conditions.push(sql`${commissions.createdAt} >= ${filters.from}`);
+      }
+
+      if (filters.to) {
+        conditions.push(sql`${commissions.createdAt} <= ${filters.to}`);
+      }
+
+      if (conditions.length === 0) {
+        return await db.select().from(commissions).orderBy(desc(commissions.createdAt));
+      }
+
+      return await db
+        .select()
+        .from(commissions)
+        .where(and(...conditions))
+        .orderBy(desc(commissions.createdAt));
+    } catch (error) {
+      console.error("Error fetching commissions:", error);
+      return [];
+    }
   }
-  async createCommission(commission: InsertCommission): Promise<Commission> { throw new Error("Not implemented"); }
-  async updateCommission(id: string, commission: Partial<InsertCommission>): Promise<Commission | undefined> { return undefined; }
+
+  async createCommission(commissionData: InsertCommission): Promise<Commission> {
+    try {
+      const [created] = await db.insert(commissions).values(commissionData).returning();
+      return created;
+    } catch (error) {
+      console.error("Error creating commission:", error);
+      throw error;
+    }
+  }
+
+  async updateCommission(id: string, commissionData: Partial<InsertCommission>): Promise<Commission | undefined> {
+    try {
+      const [updated] = await db
+        .update(commissions)
+        .set(commissionData)
+        .where(eq(commissions.id, id))
+        .returning();
+      return updated;
+    } catch (error) {
+      console.error("Error updating commission:", error);
+      return undefined;
+    }
+  }
 
   // Notification operations
   async getNotifications(userId: string): Promise<Notification[]> {

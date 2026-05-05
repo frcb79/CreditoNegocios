@@ -21,6 +21,13 @@ const statusConfig = {
   advance_paid: { label: "Adelanto Pagado", color: "bg-secondary/10 text-secondary" },
 };
 
+const commissionTypeLabels: Record<string, string> = {
+  apertura: "Apertura",
+  sobretasa: "Sobretasa",
+  renovacion: "Renovación",
+  total: "Total",
+};
+
 export default function Commissions() {
   const [searchTerm, setSearchTerm] = useState("");
   const [filterStatus, setFilterStatus] = useState<string>("all");
@@ -249,6 +256,12 @@ export default function Commissions() {
                           <h3 className="font-semibold text-gray-900">
                             ${parseFloat(commission.amount).toLocaleString('es-MX')} MXN
                           </h3>
+                          <p className="text-xs text-neutral">
+                            Tipo: {commissionTypeLabels[commission.commissionType || ""] || (commission.commissionType || "Sin tipo")}
+                          </p>
+                          <p className="text-xs text-neutral">
+                            Beneficiario: {parseFloat(commission.masterBrokerShare || "0") > 0 ? "Master Broker" : "Broker"}
+                          </p>
                           <p className="text-sm text-neutral">ID: {commission.id.slice(-8)}</p>
                           <p className="text-xs text-neutral">
                             {formatDistanceToNow(new Date(commission.createdAt!), { 
