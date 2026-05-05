@@ -118,12 +118,23 @@ export default function Sidebar() {
       <div className={cn("border-b border-sidebar-border", collapsed ? "p-2" : "p-3 lg:p-4")}>
         <div className={cn("flex items-center", collapsed ? "justify-center" : "space-x-3")}>
           <div className={cn(
-            "bg-gradient-to-r from-primary to-secondary rounded-full flex items-center justify-center flex-shrink-0",
+            "bg-gradient-to-r from-primary to-secondary rounded-full flex items-center justify-center flex-shrink-0 overflow-hidden",
             collapsed ? "w-10 h-10" : "w-8 h-8 lg:w-10 lg:h-10"
           )}>
-            <span className={cn("text-white font-semibold", collapsed ? "text-sm" : "text-xs lg:text-sm")}>
-              {user?.firstName?.[0]}{user?.lastName?.[0]}
-            </span>
+            {user?.profileImageUrl ? (
+              <img
+                src={user.profileImageUrl}
+                alt="Foto de perfil"
+                className="w-full h-full object-cover"
+                onError={(event) => {
+                  event.currentTarget.style.display = "none";
+                }}
+              />
+            ) : (
+              <span className={cn("text-white font-semibold", collapsed ? "text-sm" : "text-xs lg:text-sm")}>
+                {user?.firstName?.[0]}{user?.lastName?.[0]}
+              </span>
+            )}
           </div>
           {!collapsed && (
             <div className="min-w-0 flex-1">
@@ -153,7 +164,9 @@ export default function Sidebar() {
                   "flex items-center rounded-lg font-medium transition-colors cursor-pointer relative",
                   collapsed ? "justify-center p-2" : "justify-between px-2 lg:px-3 py-2 text-sm lg:text-base",
                   isActive
-                    ? "bg-sidebar-primary text-sidebar-primary-foreground"
+                    ? collapsed
+                      ? "text-sidebar-foreground"
+                      : "bg-sidebar-primary text-sidebar-primary-foreground"
                     : "text-sidebar-foreground hover:bg-sidebar-accent"
                 )}
                 data-testid={`nav-${item.name.toLowerCase().replace(/\s+/g, '-')}${testIdSuffix}`}
@@ -168,7 +181,11 @@ export default function Sidebar() {
                     <i className={cn(
                       item.icon, 
                       collapsed ? "text-xl" : "text-sm",
-                      collapsed && isActive ? "text-sidebar-primary bg-sidebar-accent rounded-lg p-1.5" : collapsed ? "text-sidebar-foreground" : ""
+                      collapsed && isActive
+                        ? "bg-sidebar-primary text-sidebar-primary-foreground rounded-xl p-1.5 shadow-sm"
+                        : collapsed
+                          ? "text-sidebar-foreground"
+                          : ""
                     )} aria-hidden="true"></i>
                   </span>
                   {!collapsed && <span className="truncate text-[13.5px] lg:text-[14.5px] font-medium tracking-[0.01em]">{item.name}</span>}
@@ -203,7 +220,9 @@ export default function Sidebar() {
                   "flex items-center rounded-lg font-medium transition-colors cursor-pointer",
                   collapsed ? "justify-center p-2" : "space-x-2 lg:space-x-3 px-2 lg:px-3 py-2 text-sm lg:text-base",
                   isActive
-                    ? "bg-sidebar-primary text-sidebar-primary-foreground"
+                    ? collapsed
+                      ? "text-sidebar-foreground"
+                      : "bg-sidebar-primary text-sidebar-primary-foreground"
                     : "text-sidebar-foreground hover:bg-sidebar-accent"
                 )}
                 data-testid={`nav-${item.name.toLowerCase()}${testIdSuffix}`}
@@ -217,7 +236,11 @@ export default function Sidebar() {
                   <i className={cn(
                     item.icon, 
                     collapsed ? "text-xl" : "text-sm",
-                    collapsed && isActive ? "text-sidebar-primary bg-sidebar-accent rounded-lg p-1.5" : collapsed ? "text-sidebar-foreground" : ""
+                    collapsed && isActive
+                      ? "bg-sidebar-primary text-sidebar-primary-foreground rounded-xl p-1.5 shadow-sm"
+                      : collapsed
+                        ? "text-sidebar-foreground"
+                        : ""
                   )} aria-hidden="true"></i>
                 </span>
                 {!collapsed && <span className="text-[13.5px] lg:text-[14.5px] font-medium tracking-[0.01em]">{item.name}</span>}

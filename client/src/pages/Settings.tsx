@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
@@ -78,6 +78,12 @@ export default function Settings() {
   const [activeTab, setActiveTab] = useState("profile");
   const [profileType, setProfileType] = useState<"persona_moral" | "fisica_empresarial" | "fisica" | "sin_sat">("persona_moral");
   const [showPasswordModal, setShowPasswordModal] = useState(false);
+  const [avatarPreview, setAvatarPreview] = useState<string | null>((user?.profileImageUrl as string) || null);
+  const avatarInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    setAvatarPreview((user?.profileImageUrl as string) || null);
+  }, [user?.profileImageUrl]);
 
   const passwordSchema = z.object({
     currentPassword: z.string().min(1, "Contraseña actual requerida"),
@@ -225,6 +231,27 @@ export default function Settings() {
     },
   });
 
+  const updateAvatarMutation = useMutation({
+    mutationFn: async (profileImageUrl: string) => {
+      const response = await apiRequest("PUT", `/api/users/${user?.id}`, { profileImageUrl });
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/auth/user"] });
+      toast({
+        title: "Foto actualizada",
+        description: "Tu foto de perfil se actualizó correctamente.",
+      });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Error",
+        description: error.message || "No se pudo actualizar la foto de perfil",
+        variant: "destructive",
+      });
+    },
+  });
+
   const onProfileSubmit = (data: any) => {
     // Separate core profile fields from address fields
     const { street, exteriorNumber, interiorNumber, colonia, city, state, postalCode, phone, ...coreFields } = data;
@@ -340,6 +367,48 @@ export default function Settings() {
     updatePasswordMutation.mutate(data);
   };
 
+  const handleAvatarSelection = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    if (!file.type.startsWith("image/")) {
+      toast({
+        title: "Archivo inválido",
+        description: "Selecciona una imagen JPG, PNG o GIF.",
+        variant: "destructive",
+      });
+      event.target.value = "";
+      return;
+    }
+
+    const maxSizeBytes = 2 * 1024 * 1024;
+    if (file.size > maxSizeBytes) {
+      toast({
+        title: "Archivo demasiado grande",
+        description: "La imagen no debe exceder 2MB.",
+        variant: "destructive",
+      });
+      event.target.value = "";
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      const base64Image = reader.result as string;
+      setAvatarPreview(base64Image);
+      updateAvatarMutation.mutate(base64Image);
+    };
+    reader.onerror = () => {
+      toast({
+        title: "Error",
+        description: "No se pudo leer la imagen seleccionada.",
+        variant: "destructive",
+      });
+    };
+    reader.readAsDataURL(file);
+    event.target.value = "";
+  };
+
   return (
     <div className="min-h-screen flex bg-gray-50">
       <Sidebar />
@@ -370,16 +439,40 @@ export default function Settings() {
                     <Form {...profileForm}>
                       <form onSubmit={profileForm.handleSubmit(onProfileSubmit)} className="space-y-6">
                         <div className="flex flex-col sm:flex-row items-center gap-4 sm:gap-6">
-                          <div className="w-20 h-20 sm:w-24 sm:h-24 bg-gradient-to-r from-primary to-secondary rounded-full flex items-center justify-center flex-shrink-0">
-                            <span className="text-white font-semibold text-xl sm:text-2xl">
-                              {user?.firstName?.[0]}{user?.lastName?.[0]}
-                            </span>
+                          <div className="w-20 h-20 sm:w-24 sm:h-24 bg-gradient-to-r from-primary to-secondary rounded-full flex items-center justify-center flex-shrink-0 overflow-hidden">
+                            {avatarPreview ? (
+                              <img
+                                src={avatarPreview}
+                                alt="Foto de perfil"
+                                className="w-full h-full object-cover"
+                                onError={() => setAvatarPreview(null)}
+                              />
+                            ) : (
+                              <span className="text-white font-semibold text-xl sm:text-2xl">
+                                {user?.firstName?.[0]}{user?.lastName?.[0]}
+                              </span>
+                            )}
                           </div>
                           <div className="text-center sm:text-left">
-                            <Button variant="outline" size="sm" className="sm:size-default">
-                              <i className="fas fa-camera mr-2"></i>
-                              Cambiar Foto
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              className="sm:size-default"
+                              onClick={() => avatarInputRef.current?.click()}
+                              disabled={updateAvatarMutation.isPending}
+                              data-testid="button-change-profile-photo"
+                            >
+                              <i className={updateAvatarMutation.isPending ? "fas fa-spinner fa-spin mr-2" : "fas fa-camera mr-2"}></i>
+                              {updateAvatarMutation.isPending ? "Actualizando..." : "Cambiar Foto"}
                             </Button>
+                            <input
+                              ref={avatarInputRef}
+                              type="file"
+                              accept="image/png,image/jpeg,image/jpg,image/gif"
+                              className="hidden"
+                              onChange={handleAvatarSelection}
+                            />
                             <p className="text-xs sm:text-sm text-neutral mt-2">
                               JPG, PNG o GIF (máx. 2MB)
                             </p>
