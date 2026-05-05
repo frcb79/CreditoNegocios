@@ -10,6 +10,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Credit, Client, Commission } from "@shared/schema";
 import { startOfMonth, endOfMonth, startOfYear, endOfYear, subMonths } from "date-fns";
 import { utils as xlsxUtils, writeFile } from "xlsx";
+import { jsPDF } from "jspdf";
 
 interface ReportData {
   totalCredits: number;
@@ -178,7 +179,74 @@ export default function Reports() {
   };
 
   const exportToPDF = () => {
-    alert('La exportacion PDF estara disponible en la siguiente actualizacion. Usa Excel por ahora.');
+    try {
+      const doc = new jsPDF({ unit: "pt", format: "a4" });
+      const fileName = `reporte-creditos-${new Date().toISOString().split("T")[0]}.pdf`;
+
+      let y = 50;
+      const lineHeight = 18;
+
+      const writeLine = (text: string, options?: { bold?: boolean; size?: number }) => {
+        const size = options?.size ?? 11;
+        const bold = options?.bold ?? false;
+        doc.setFont("helvetica", bold ? "bold" : "normal");
+        doc.setFontSize(size);
+
+        const maxWidth = 500;
+        const lines = doc.splitTextToSize(text, maxWidth);
+
+        lines.forEach((line: string) => {
+          if (y > 790) {
+            doc.addPage();
+            y = 50;
+          }
+          doc.text(line, 50, y);
+          y += lineHeight;
+        });
+      };
+
+      writeLine("Reporte de Creditos", { bold: true, size: 18 });
+      writeLine(`Generado: ${new Date().toLocaleDateString("es-MX")}`);
+      y += 8;
+
+      writeLine("Resumen", { bold: true, size: 14 });
+      writeLine(`Creditos Otorgados: ${reportData.totalCredits}`);
+      writeLine(`Monto Total: $${reportData.totalAmount.toFixed(2)}`);
+      writeLine(`Promedio por Credito: $${reportData.avgCreditAmount.toFixed(2)}`);
+      writeLine(`Tasa de Conversion: ${reportData.conversionRate.toFixed(2)}%`);
+      writeLine(`Comisiones Totales: $${totalCommissions.toFixed(2)}`);
+      y += 8;
+
+      if (reportData.statusDistribution.length > 0) {
+        writeLine("Distribucion por Estado", { bold: true, size: 14 });
+        reportData.statusDistribution.forEach((item) => {
+          writeLine(`- ${item.status}: ${item.count}`);
+        });
+        y += 8;
+      }
+
+      if (reportData.topClients.length > 0) {
+        writeLine("Clientes Top 10", { bold: true, size: 14 });
+        reportData.topClients.slice(0, 10).forEach((client, idx) => {
+          writeLine(
+            `${idx + 1}. ${client.name}: $${client.totalAmount.toFixed(2)} (${client.creditsCount} creditos)`
+          );
+        });
+        y += 8;
+      }
+
+      if (reportData.monthlyTrend.length > 0) {
+        writeLine("Tendencia Mensual", { bold: true, size: 14 });
+        reportData.monthlyTrend.forEach((item) => {
+          writeLine(`${item.month}: ${item.credits} creditos, $${item.amount.toFixed(2)}`);
+        });
+      }
+
+      doc.save(fileName);
+    } catch (error) {
+      console.error("Error al generar PDF:", error);
+      alert("Error al generar el PDF. Por favor intente nuevamente.");
+    }
   };
 
   if (isLoading) {
