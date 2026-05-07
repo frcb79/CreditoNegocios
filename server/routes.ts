@@ -2912,16 +2912,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // 🔹 INSTITUTION PRODUCTS (Level 3A: Assigned to financieras - Admin only)
+  // 🔹 INSTITUTION PRODUCTS (Level 3A: Assigned to financieras)
   app.get('/api/institution-products', isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
       const { institutionId } = req.query;
-      
-      const hasPermission = await requirePlatformRole(userId, ['super_admin', 'admin']);
-      if (!hasPermission) {
-        return res.status(403).json({ message: "Access denied - Admin privileges required" });
-      }
 
       const products = await storage.getInstitutionProducts(institutionId as string);
       res.json(products);
@@ -2934,12 +2928,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get('/api/institution-products/:id', isAuthenticated, async (req: any, res) => {
     try {
       const { id } = req.params;
-      const userId = req.user.claims.sub;
-      
-      const hasPermission = await requirePlatformRole(userId, ['super_admin', 'admin']);
-      if (!hasPermission) {
-        return res.status(403).json({ message: "Access denied - Admin privileges required" });
-      }
 
       const product = await storage.getInstitutionProduct(id);
       if (!product) {
@@ -2956,12 +2944,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get('/api/institution-products/template/:templateId', isAuthenticated, async (req: any, res) => {
     try {
       const { templateId } = req.params;
-      const userId = req.user.claims.sub;
-      
-      const hasPermission = await requirePlatformRole(userId, ['super_admin', 'admin']);
-      if (!hasPermission) {
-        return res.status(403).json({ message: "Access denied - Admin privileges required" });
-      }
 
       const products = await storage.getInstitutionProductsByTemplate(templateId);
       res.json(products);

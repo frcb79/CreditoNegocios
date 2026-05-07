@@ -4,6 +4,7 @@ import {
   commissions, notifications, documents, tenants, 
   tenantMembers, productVariables, productTemplates,
   institutionProducts, products, productRequests,
+  financialInstitutionRequests,
   creditSubmissionRequests, creditSubmissionTargets,
   clientCreditHistories,
   type User, type UpsertUser, type Client, type InsertClient,
@@ -15,6 +16,7 @@ import {
   type InsertProductTemplate, type InstitutionProduct, type InsertInstitutionProduct,
   type InstitutionProductWithTemplate,
   type Product, type InsertProduct, type ProductRequest, type InsertProductRequest,
+  type FinancialInstitutionRequest, type InsertFinancialInstitutionRequest,
   type CreditSubmissionRequest, type InsertCreditSubmissionRequest,
   type CreditSubmissionTarget, type InsertCreditSubmissionTarget,
   type ClientCreditHistory, type InsertClientCreditHistory
@@ -1168,10 +1170,77 @@ export class DbStorage implements IStorage {
   async deleteProductRequest(id: string): Promise<boolean> { return false; }
 
   // Financial Institution Request operations
-  async getFinancialInstitutionRequests(filters?: { status?: string; brokerId?: string }): Promise<FinancialInstitutionRequest[]> { return []; }
-  async getFinancialInstitutionRequest(id: string): Promise<FinancialInstitutionRequest | undefined> { return undefined; }
-  async createFinancialInstitutionRequest(request: InsertFinancialInstitutionRequest): Promise<FinancialInstitutionRequest> { throw new Error("Not implemented"); }
-  async updateFinancialInstitutionRequest(id: string, request: Partial<FinancialInstitutionRequest>): Promise<FinancialInstitutionRequest | undefined> { return undefined; }
+  async getFinancialInstitutionRequests(filters?: { status?: string; brokerId?: string }): Promise<FinancialInstitutionRequest[]> {
+    try {
+      const conditions = [];
+      if (filters?.status) {
+        conditions.push(eq(financialInstitutionRequests.status, filters.status));
+      }
+      if (filters?.brokerId) {
+        conditions.push(eq(financialInstitutionRequests.brokerId, filters.brokerId));
+      }
+
+      const rows = conditions.length > 0
+        ? await db.select().from(financialInstitutionRequests).where(and(...conditions)).orderBy(desc(financialInstitutionRequests.createdAt))
+        : await db.select().from(financialInstitutionRequests).orderBy(desc(financialInstitutionRequests.createdAt));
+
+      return rows;
+    } catch (error) {
+      console.error("Error fetching financial institution requests:", error);
+      return [];
+    }
+  }
+
+  async getFinancialInstitutionRequest(id: string): Promise<FinancialInstitutionRequest | undefined> {
+    try {
+      const [request] = await db.select().from(financialInstitutionRequests).where(eq(financialInstitutionRequests.id, id));
+      return request;
+    } catch (error) {
+      console.error("Error fetching financial institution request:", error);
+      return undefined;
+    }
+  }
+
+  async createFinancialInstitutionRequest(request: InsertFinancialInstitutionRequest): Promise<FinancialInstitutionRequest> {
+    const [created] = await db
+      .insert(financialInstitutionRequests)
+      .values({
+        ...request,
+        contactName: request.contactName ?? null,
+        contactEmail: request.contactEmail ?? null,
+        contactPhone: request.contactPhone ?? null,
+        status: "pending",
+        updatedAt: new Date(),
+      })
+      .returning();
+
+    return created;
+  }
+
+  async updateFinancialInstitutionRequest(id: string, request: Partial<FinancialInstitutionRequest>): Promise<FinancialInstitutionRequest | undefined> {
+    try {
+      const shouldSetReviewedAt = request.status && request.status !== "pending";
+      const payload: Partial<FinancialInstitutionRequest> = {
+        ...request,
+        updatedAt: new Date(),
+      };
+
+      if (shouldSetReviewedAt && !request.reviewedAt) {
+        payload.reviewedAt = new Date();
+      }
+
+      const [updated] = await db
+        .update(financialInstitutionRequests)
+        .set(payload)
+        .where(eq(financialInstitutionRequests.id, id))
+        .returning();
+
+      return updated;
+    } catch (error) {
+      console.error("Error updating financial institution request:", error);
+      return undefined;
+    }
+  }
 
   // Credit Submission Requests operations
   async getCreditSubmissionRequests(filters?: { status?: string; brokerId?: string; clientId?: string }): Promise<CreditSubmissionRequest[]> {

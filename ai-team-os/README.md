@@ -66,6 +66,23 @@ Los gates son OBLIGATORIOS. Sin QA ✅ y Security 🔒, nada llega a producción
 9. **Verifica que el pipeline de entrega (QA → Seguridad → Deploy → Monitor) opera en cada tarea.**
 10. Cierra cada sesion con `docs/team/SESSION_CLOSE_PROTOCOL.md`.
 
+## Estandar Top 1% para proyectos reales
+
+Todo proyecto cliente debe arrancar con estos entregables y controles desde la semana 1:
+
+- **Matriz de ambientes obligatoria**: local, staging y produccion con URL, owner, deploy target, variables criticas y criterio de uso.
+- **Separacion app vs backend**: frontend publico y backend/API documentados como superficies distintas para evitar validar la URL incorrecta.
+- **Inventario de credenciales y servicios**: Vercel, Railway, Supabase, dominio, email, analytics, repositorio, integraciones y billing owner.
+- **Plan de transferencia al cliente**: que cuentas se migran, cuando se migran, que accesos se revocan, que llaves se rotan y quien firma el cierre.
+- **Paquete minimo de documentacion**: PROJECT_BRAIN, decisiones, error log, runbook de deploy, checklist de handoff, accesos operativos, smoke tests y rollback.
+- **Validacion por ambiente**: health checks, smoke tests, auth, carga de datos, CORS, archivos, monitoreo, backup y restore.
+- **Cierre financiero y operativo**: todo trabajo extra de migracion de cuentas, cambio de propietarios y corte de credenciales se estima y se cobra por separado si no estaba contratado.
+
+Archivos base para esto:
+- `docs/project/PROJECT_BRAIN_TEMPLATE.md`
+- `docs/deployment/MASTER_CREDENTIALS_TEMPLATE.md`
+- `docs/deployment/ACCOUNT_TRANSFER_CHECKLIST.md`
+
 ## Lectura obligatoria al iniciar sesion
 1. `docs/project/PROJECT_BRAIN.md`
 2. `docs/project/ERROR_LOG.md` — **ahora con sistema de trazabilidad completo**
@@ -103,5 +120,10 @@ Los gates son OBLIGATORIOS. Sin QA ✅ y Security 🔒, nada llega a producción
 - Sistema de logs y ERROR_LOG estructurado.
 - Memoria de proyecto y changelog en uso.
 - Proceso de sync de aprendizajes operando.
+- Matriz de ambientes documentada y validada.
+- Inventario de cuentas, credenciales y owners actualizado.
+- Handoff checklist listo antes del primer deploy a produccion.
+- Smoke tests por ambiente ejecutados y guardados.
+- URL de frontend y URL de backend documentadas por separado.
 
 AI TEAM OS es un activo vivo: se mejora en cada proyecto y luego se reutiliza en el siguiente.

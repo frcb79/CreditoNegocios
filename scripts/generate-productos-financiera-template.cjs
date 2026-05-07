@@ -1,0 +1,138 @@
+#!/usr/bin/env node
+const path = require("path");
+const XLSX = require("xlsx");
+
+const outputFile = process.argv[2] || "Plantilla_Productos_por_Financiera.xlsx";
+
+const headers = [
+  "nombre_financiera",
+  "tipo_producto",
+  "perfil_cliente",
+  "monto_minimo",
+  "monto_maximo",
+  "plazo_meses",
+  "tasa_interes",
+  "comision_apertura",
+  "destinos_credito",
+  "edad_minima",
+  "edad_maxima",
+  "antiguedad_meses_min",
+  "ingreso_mensual_min",
+  "buro_accionista_min",
+  "buro_empresa_min",
+  "buro_persona_fisica_min",
+  "tipo_garantia",
+  "opinion_cumplimiento",
+  "participacion_ventas_gob_max",
+  "giros_prohibidos",
+  "presencia",
+  "tiempo_respuesta",
+  "comision_apertura_broker",
+  "comision_sobretasa_broker",
+  "comision_renovacion_broker",
+  "comision_apertura_master",
+  "comision_sobretasa_master",
+  "comision_renovacion_master",
+  "contacto",
+  "email_contacto",
+  "telefono_contacto",
+  "observaciones",
+];
+
+const exampleRows = [
+  [
+    "Financiera Ejemplo",
+    "Credito Simple",
+    "persona_moral",
+    100000,
+    5000000,
+    36,
+    24.5,
+    2.5,
+    "capital_trabajo;activo_fijo",
+    21,
+    70,
+    12,
+    50000,
+    650,
+    650,
+    "",
+    "hipotecaria;prendaria",
+    "solo-positiva",
+    "40",
+    "casinos;casa_empeno",
+    "Nacional",
+    "24-48 horas",
+    1.5,
+    0.5,
+    0.3,
+    0.5,
+    0.2,
+    0.1,
+    "Equipo Comercial",
+    "contacto@financiera.com",
+    "5512345678",
+    "Una fila equivale a un producto por financiera para un perfil",
+  ],
+  [
+    "Financiera Ejemplo",
+    "Credito Simple",
+    "fisica_empresarial",
+    80000,
+    2000000,
+    24,
+    28.0,
+    3.0,
+    "capital_trabajo",
+    21,
+    65,
+    12,
+    35000,
+    "",
+    "",
+    620,
+    "obligado_solidario",
+    "positiva-negativa",
+    "30",
+    "giro_restringido_a",
+    "Centro y Norte",
+    "48-72 horas",
+    1.2,
+    0.4,
+    0.2,
+    0.4,
+    0.2,
+    0.1,
+    "Equipo PYME",
+    "pyme@financiera.com",
+    "5587654321",
+    "Mismo producto, perfil distinto -> fila distinta",
+  ],
+];
+
+const instructions = [
+  ["Template canonico: productos por financiera"],
+  ["Regla principal"],
+  ["1 fila = 1 producto de 1 financiera para 1 perfil"],
+  ["Perfiles validos"],
+  ["persona_moral | fisica_empresarial | fisica | sin_sat"],
+  ["Separador recomendado en listas"],
+  ["Usar ';' para destinos, garantias y giros"],
+  ["Proceso recomendado"],
+  ["1) Llenar hoja ProductosPorFinanciera"],
+  ["2) Correr preview/import desde la app o script"],
+  ["3) Corregir errores y repetir"],
+  ["Notas"],
+  ["nombre_financiera + tipo_producto + perfil_cliente definen la combinacion"],
+  ["Si la financiera ofrece 3 productos a 2 perfiles: 6 filas"],
+];
+
+const wb = XLSX.utils.book_new();
+const wsData = XLSX.utils.aoa_to_sheet([headers, ...exampleRows]);
+const wsInstructions = XLSX.utils.aoa_to_sheet(instructions);
+XLSX.utils.book_append_sheet(wb, wsData, "ProductosPorFinanciera");
+XLSX.utils.book_append_sheet(wb, wsInstructions, "Instrucciones");
+
+const target = path.resolve(process.cwd(), outputFile);
+XLSX.writeFile(wb, target);
+console.log(`Template generado: ${target}`);
