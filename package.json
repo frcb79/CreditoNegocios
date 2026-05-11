@@ -27,6 +27,8 @@
     "convert:financieras:ficha": "node scripts/convert-ficha-to-financieras.cjs",
     "template:productos:financiera": "node scripts/generate-productos-financiera-template.cjs",
     "qa:buttons:checklist": "node scripts/generate-button-checklist.cjs",
+    "validate:flujo:1a1:staging": "node scripts/validate-flujo-1a1-staging.cjs",
+    "validate:flujo:completo:staging": "node scripts/validate-flujo-completo-staging.cjs",
     "import:financieras:staging": "node scripts/staging-import-financieras.cjs",
     "import:financieras:ficha:staging": "node scripts/convert-ficha-to-financieras.cjs && node scripts/staging-import-financieras.cjs --file scripts/financieras-from-ficha.xlsx --sheet Financieras",
     "validate:staging": "powershell -ExecutionPolicy Bypass -File scripts/run-staging-validation.ps1",

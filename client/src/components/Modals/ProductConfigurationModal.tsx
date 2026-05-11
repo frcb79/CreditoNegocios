@@ -385,6 +385,7 @@ export default function ProductConfigurationModal({
   
   // Variables state
   const [activeVariables, setActiveVariables] = useState<any[]>([]);
+  const [selectedTemplateToAssign, setSelectedTemplateToAssign] = useState('');
 
   // Configuration system state
   const [fieldValues, setFieldValues] = useState<Record<string, any>>({});
@@ -405,6 +406,11 @@ export default function ProductConfigurationModal({
   const { data: institutionProducts = [], isLoading: productsLoading } = useQuery<InstitutionProductWithTemplate[]>({
     queryKey: [`/api/institution-products?institutionId=${financiera.id}`],
     enabled: isOpen && !!financiera.id,
+  });
+
+  const { data: productTemplates = [], isLoading: templatesLoading } = useQuery<ProductTemplate[]>({
+    queryKey: ['/api/product-templates'],
+    enabled: isOpen,
   });
 
   // Initialize product variables map when institution products load
@@ -723,6 +729,68 @@ export default function ProductConfigurationModal({
   // Handler simplificado que usa la mutation
   const handleToggleProductStatus = (productId: string, isActive: boolean) => {
     toggleProductStatusMutation.mutate({ productId, isActive });
+  };
+
+  // Mutation para asignar una nueva plantilla directamente desde la financiera
+  const assignTemplateMutation = useMutation({
+    mutationFn: async (templateId: string) => {
+      const template = productTemplates.find((item) => item.id === templateId);
+      const response = await apiRequest('POST', '/api/institution-products', {
+        templateId,
+        institutionId: financiera.id,
+        customName: template?.name,
+      });
+
+      if (!response.ok) {
+        const errorBody = await response.json().catch(() => null);
+        throw new Error(errorBody?.message || 'No se pudo asignar la plantilla');
+      }
+
+      return response.json();
+    },
+    onSuccess: () => {
+      const selectedTemplate = productTemplates.find((item) => item.id === selectedTemplateToAssign);
+      toast({
+        title: 'Plantilla asignada',
+        description: `Se asigno ${selectedTemplate?.name || 'la plantilla'} a ${financiera.name}.`,
+      });
+      setSelectedTemplateToAssign('');
+      queryClient.invalidateQueries({ queryKey: [`/api/institution-products?institutionId=${financiera.id}`] });
+      queryClient.invalidateQueries({ queryKey: ['/api/institution-products'] });
+    },
+    onError: (error: any) => {
+      toast({
+        title: 'Error',
+        description: error.message || 'No se pudo asignar la plantilla',
+        variant: 'destructive',
+      });
+    },
+  });
+
+  const handleAssignTemplateInFinanciera = () => {
+    if (!selectedTemplateToAssign) {
+      toast({
+        title: 'Seleccion requerida',
+        description: 'Selecciona una plantilla para asignar.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    const alreadyAssigned = institutionProducts.some(
+      (product) => product.templateId === selectedTemplateToAssign
+    );
+
+    if (alreadyAssigned) {
+      toast({
+        title: 'Plantilla ya asignada',
+        description: 'Esta plantilla ya esta asignada a la financiera.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    assignTemplateMutation.mutate(selectedTemplateToAssign);
   };
 
   // Handler para guardar variables editadas de un producto
@@ -2632,6 +2700,39 @@ export default function ProductConfigurationModal({
                 </p>
               </div>
 
+              <Card className="border border-blue-200">
+                <CardContent className="p-4">
+                  <div className="grid grid-cols-1 md:grid-cols-[1fr_auto] gap-3 items-end">
+                    <div className="space-y-1">
+                      <Label htmlFor="select-template-financiera">Asignar nueva plantilla</Label>
+                      <Select
+                        value={selectedTemplateToAssign}
+                        onValueChange={setSelectedTemplateToAssign}
+                        disabled={templatesLoading || assignTemplateMutation.isPending}
+                      >
+                        <SelectTrigger id="select-template-financiera" data-testid="select-template-financiera">
+                          <SelectValue placeholder={templatesLoading ? 'Cargando plantillas...' : 'Selecciona una plantilla'} />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {productTemplates.map((template) => (
+                            <SelectItem key={template.id} value={template.id}>
+                              {template.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <Button
+                      onClick={handleAssignTemplateInFinanciera}
+                      disabled={!selectedTemplateToAssign || assignTemplateMutation.isPending || templatesLoading}
+                      data-testid="button-assign-template-in-financiera"
+                    >
+                      {assignTemplateMutation.isPending ? 'Asignando...' : 'Asignar Plantilla'}
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+
               {/* Products List */}
               {productsLoading ? (
                 <div className="text-center py-8">
@@ -2733,7 +2834,7 @@ export default function ProductConfigurationModal({
                     Sin Plantillas Asignadas
                   </h3>
                   <p className="text-sm text-gray-500">
-                    Esta financiera no tiene plantillas asignadas. Ve a Productos para asignar plantillas.
+                    Esta financiera no tiene plantillas asignadas. Usa el selector superior para asignar la primera plantilla.
                   </p>
                 </div>
               )}
