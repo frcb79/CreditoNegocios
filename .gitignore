@@ -11,3 +11,6 @@ vite.config.ts.*
 *.tar.gz
 .vercel
 .env*.local
+flujo-1a1-report.json
+flujo-completo-report.json
+smoke-report-prod.json
