@@ -4,7 +4,7 @@ const resend = process.env.RESEND_API_KEY ? new Resend(process.env.RESEND_API_KE
 
 const FROM_EMAIL = process.env.EMAIL_FROM || 'Crédito Negocios <noreply@creditonegocios.com.mx>';
 const APP_NAME = 'Crédito Negocios';
-const BROKER_LEADS_TO = process.env.BROKER_LEADS_TO || 'info@creditonegocios.com.mx';
+const INTERNAL_EMAIL_TO = process.env.INTERNAL_EMAIL_TO || process.env.BROKER_LEADS_TO || 'info@creditonegocios.com.mx';
 
 type BrokerLeadPayload = {
   name: string;
@@ -176,7 +176,7 @@ export async function sendBrokerLeadEmail(
 
     const { data, error } = await resend.emails.send({
       from: FROM_EMAIL,
-      to: [BROKER_LEADS_TO],
+      to: [INTERNAL_EMAIL_TO],
       replyTo: payload.email,
       subject: `Nuevo lead brokers [${brokerProfileLabel}] - ${APP_NAME}`,
       html: `
@@ -278,7 +278,7 @@ export async function sendWebsiteLeadEmail(
 
     const { data, error } = await resend.emails.send({
       from: FROM_EMAIL,
-      to: [BROKER_LEADS_TO],
+      to: [INTERNAL_EMAIL_TO],
       replyTo: payload.email,
       subject: `Nuevo lead sitio web - ${APP_NAME}`,
       html: `
@@ -456,6 +456,62 @@ El equipo de ${APP_NAME}
     return { success: true };
   } catch (error: any) {
     console.error('Error sending welcome email:', error);
+    return { success: false, error: error.message || 'Error desconocido' };
+  }
+}
+
+export async function sendBrokerDeactivationRequestEmail(payload: {
+  firstName?: string | null;
+  lastName?: string | null;
+  email: string;
+  userId: string;
+}): Promise<{ success: boolean; error?: string }> {
+  try {
+    if (!resend) {
+      const isProduction = process.env.NODE_ENV === 'production';
+      if (isProduction) {
+        console.error('Deactivation request email failed: missing RESEND_API_KEY in production');
+        return { success: false, error: 'Email service not configured' };
+      }
+      console.warn('Deactivation request email skipped in non-production: missing RESEND_API_KEY');
+      return { success: true };
+    }
+
+    const fullName = `${payload.firstName || ''} ${payload.lastName || ''}`.trim() || 'Usuario sin nombre';
+
+    const { error } = await resend.emails.send({
+      from: FROM_EMAIL,
+      to: [INTERNAL_EMAIL_TO],
+      replyTo: payload.email,
+      subject: `Solicitud de baja de broker - ${APP_NAME}`,
+      html: `
+        <h2>Solicitud de baja de broker</h2>
+        <p>Se recibió una solicitud de baja de cuenta.</p>
+        <ul>
+          <li><strong>Nombre:</strong> ${fullName}</li>
+          <li><strong>Email:</strong> ${payload.email}</li>
+          <li><strong>User ID:</strong> ${payload.userId}</li>
+          <li><strong>Fecha:</strong> ${new Date().toISOString()}</li>
+        </ul>
+      `,
+      text: `
+Solicitud de baja de broker
+
+Nombre: ${fullName}
+Email: ${payload.email}
+User ID: ${payload.userId}
+Fecha: ${new Date().toISOString()}
+      `.trim(),
+    });
+
+    if (error) {
+      console.error('Resend deactivation request email error:', error);
+      return { success: false, error: error.message };
+    }
+
+    return { success: true };
+  } catch (error: any) {
+    console.error('Error sending deactivation request email:', error);
     return { success: false, error: error.message || 'Error desconocido' };
   }
 }

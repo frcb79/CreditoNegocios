@@ -249,16 +249,17 @@ export class DbStorage implements IStorage {
       if (!existingUser) return undefined;
 
       // Deep merge profileData to preserve existing nested fields with null-safety
-      const priorProfileData = existingUser.profileData ?? {};
-      const mergedProfileData = userData.profileData
+      const priorProfileData = existingUser.profileData && typeof existingUser.profileData === 'object' ? existingUser.profileData as Record<string, any> : {};
+      const incomingProfileData = userData.profileData && typeof userData.profileData === 'object' ? userData.profileData as Record<string, any> : undefined;
+      const mergedProfileData = incomingProfileData
         ? {
             ...priorProfileData,
-            ...userData.profileData,
+            ...incomingProfileData,
             // Merge nested address object if provided
-            ...(userData.profileData.address && {
+            ...(incomingProfileData.address && {
               address: {
                 ...(priorProfileData.address || {}),
-                ...userData.profileData.address,
+                ...incomingProfileData.address,
               },
             }),
           }
@@ -522,6 +523,7 @@ export class DbStorage implements IStorage {
           id: institutionProducts.id,
           templateId: institutionProducts.templateId,
           institutionId: institutionProducts.institutionId,
+          targetProfiles: institutionProducts.targetProfiles,
           customName: institutionProducts.customName,
           configuration: institutionProducts.configuration,
           activeVariables: institutionProducts.activeVariables,
@@ -535,10 +537,10 @@ export class DbStorage implements IStorage {
             name: productTemplates.name,
             description: productTemplates.description,
             category: productTemplates.category,
-            targetProfiles: productTemplates.targetProfiles,
+            targetProfiles: sql<string[]>`COALESCE(${productTemplates.targetProfiles}, ARRAY[]::text[])`,
             availableVariables: productTemplates.availableVariables,
             baseConfiguration: productTemplates.baseConfiguration,
-            isActive: productTemplates.isActive,
+            isActive: sql<boolean>`COALESCE(${productTemplates.isActive}, true)`,
           }
         })
         .from(institutionProducts)
@@ -1042,7 +1044,7 @@ export class DbStorage implements IStorage {
     }
   }
 
-  async createNotification(notification: InsertNotification): Promise<Notification> {
+  async createNotification(notification: InsertNotification & { relatedEntityType?: string; relatedEntityId?: string; metadata?: unknown }): Promise<Notification> {
     try {
       const [created] = await db.insert(notifications).values(notification).returning();
       return created;

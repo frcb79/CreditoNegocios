@@ -9,9 +9,9 @@ import connectPg from "connect-pg-simple";
 import { storage } from "./storage";
 import { replitAuthEnabled } from "./runtimeConfig";
 
-const sessionSecret = process.env.SESSION_SECRET || (process.env.NODE_ENV !== "production" ? "dev-session-secret-local" : undefined);
+const sessionSecret: string = process.env.SESSION_SECRET ?? "dev-session-secret-local";
 
-if (!sessionSecret) {
+if (process.env.NODE_ENV === "production" && !process.env.SESSION_SECRET) {
   throw new Error("Environment variable SESSION_SECRET not provided");
 }
 

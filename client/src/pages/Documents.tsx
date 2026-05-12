@@ -300,8 +300,8 @@ export default function Documents() {
                   data-testid={`document-${document.id}`}
                 >
                   <CardHeader className="pb-3">
-                    <div className="flex items-start justify-between">
-                      <div className="flex items-center space-x-3">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex items-center space-x-3 min-w-0 flex-1">
                         <div className="w-12 h-12 bg-primary/10 rounded-lg flex items-center justify-center">
                           <i className="fas fa-file-alt text-primary text-lg"></i>
                         </div>
@@ -316,7 +316,7 @@ export default function Documents() {
                       </div>
                       <Badge 
                         variant={document.isValid ? "default" : "destructive"}
-                        className={document.isValid ? "bg-success/10 text-success" : ""}
+                        className={document.isValid ? "bg-success/10 text-success shrink-0" : "shrink-0"}
                       >
                         {document.isValid ? "Válido" : "Problema"}
                       </Badge>
@@ -325,9 +325,9 @@ export default function Documents() {
                   
                   <CardContent className="space-y-4">
                     <div className="space-y-2 text-sm">
-                      <div className="flex justify-between">
+                      <div className="flex items-center justify-between gap-2">
                         <span className="text-neutral">Cliente:</span>
-                        <span className="font-medium truncate ml-2">
+                        <span className="font-medium truncate text-right max-w-[60%]">
                           {getClientName(document.clientId)}
                         </span>
                       </div>
@@ -356,11 +356,11 @@ export default function Documents() {
                       )}
                     </div>
                     
-                    <div className="flex space-x-2 pt-4 border-t">
+                    <div className="flex flex-wrap gap-2 pt-4 border-t">
                       <Button 
                         size="sm"
                         variant="outline"
-                        className="flex-1"
+                        className="flex-1 min-w-[110px]"
                         onClick={() => {
                           window.open(buildApiUrl(`/api/documents/${document.id}/file`), '_blank', 'noopener,noreferrer');
                         }}
@@ -372,6 +372,7 @@ export default function Documents() {
                       <Button 
                         size="sm"
                         variant="outline"
+                        className="shrink-0"
                         onClick={() => {
                           window.open(buildApiUrl(`/api/documents/${document.id}/download`), '_blank', 'noopener,noreferrer');
                         }}
@@ -383,6 +384,7 @@ export default function Documents() {
                       <Button 
                         size="sm"
                         variant="outline"
+                        className="shrink-0"
                         onClick={() => {
                           setEditingDocument(document);
                           setShowUpload(true);
@@ -395,6 +397,7 @@ export default function Documents() {
                       <Button 
                         size="sm"
                         variant="destructive"
+                        className="shrink-0"
                         onClick={() => {
                           if (window.confirm('¿Estás seguro de que quieres eliminar este documento?')) {
                             deleteMutation.mutate(document.id);

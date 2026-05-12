@@ -85,7 +85,7 @@ export default function DocumentUpload({
     onSuccess: (data) => {
       toast({
         title: editingDocument ? "Documento actualizado exitosamente" : "Documento subido exitosamente",
-        description: `Se extrajo información automáticamente usando OCR: ${JSON.stringify(data.extractedData)}`,
+        description: "La extracción automática de información estará disponible pronto.",
       });
       form.reset();
       onSuccess?.();
@@ -271,11 +271,10 @@ export default function DocumentUpload({
                 <i className="fas fa-magic text-primary text-lg mt-1"></i>
                 <div>
                   <h4 className="font-medium text-gray-900 mb-1">
-                    Procesamiento OCR Automático
+                    Extracción automática de información
                   </h4>
                   <p className="text-sm text-gray-600">
-                    El sistema extraerá automáticamente información del documento usando OCR 
-                    (Reconocimiento Óptico de Caracteres) para facilitar la validación y gestión.
+                    Esta funcionalidad estará disponible pronto para ayudarte en la validación y gestión de documentos.
                   </p>
                 </div>
               </div>

@@ -187,7 +187,7 @@ export default function BrokerProducts() {
                   </div>
                 )}
 
-                {selectedProduct.configuration && typeof selectedProduct.configuration === 'object' && (
+                {Boolean(selectedProduct.configuration) && typeof selectedProduct.configuration === 'object' && (
                   <div>
                     <h4 className="font-semibold text-gray-900 mb-2">Configuración</h4>
                     <div className="space-y-2">
@@ -205,7 +205,7 @@ export default function BrokerProducts() {
                   </div>
                 )}
 
-                {selectedProduct.activeVariables && typeof selectedProduct.activeVariables === 'object' && (
+                {Boolean(selectedProduct.activeVariables) && typeof selectedProduct.activeVariables === 'object' && (
                   <div>
                     <h4 className="font-semibold text-gray-900 mb-2">Variables Activas</h4>
                     <div className="space-y-2">

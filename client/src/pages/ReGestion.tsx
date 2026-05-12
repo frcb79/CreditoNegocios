@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { differenceInDays } from "date-fns";
+import { Link } from "wouter";
 
 interface ReGestionOpportunity {
   id: string;
@@ -220,10 +221,12 @@ export default function ReGestion() {
                       : "No se encontraron oportunidades con los filtros aplicados."
                     }
                   </p>
-                  <Button className="bg-primary text-white hover:bg-primary-dark">
-                    <i className="fas fa-plus mr-2"></i>
-                    Ver Cartera Activa
-                  </Button>
+                  <Link href="/credits">
+                    <Button className="bg-primary text-white hover:bg-primary-dark">
+                      <i className="fas fa-briefcase mr-2"></i>
+                      Ver Cartera Activa
+                    </Button>
+                  </Link>
                 </div>
               </CardContent>
             </Card>

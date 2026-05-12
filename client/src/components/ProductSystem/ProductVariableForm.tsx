@@ -234,7 +234,7 @@ export default function ProductVariableForm({ variable, onSuccess, onCancel }: P
               <div className="flex flex-wrap gap-2">
                 {options.map((option, index) => (
                   <Badge key={index} variant="outline" className="flex items-center space-x-2">
-                    <span>{typeof option === 'string' ? option : (option.label || option.value || 'N/A')}</span>
+                    <span>{option}</span>
                     <button
                       type="button"
                       onClick={() => handleRemoveOption(index)}

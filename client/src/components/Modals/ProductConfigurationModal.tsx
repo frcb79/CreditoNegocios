@@ -1159,7 +1159,7 @@ export default function ProductConfigurationModal({
                                     <label
                                       key={profile.value}
                                       className={`flex items-center space-x-2 p-3 rounded-lg border-2 cursor-pointer transition-all ${
-                                        field.value?.includes(profile.value)
+                                        field.value?.includes(profile.value as any)
                                           ? `${profile.color} border-current`
                                           : 'bg-gray-50 border-gray-200 hover:border-gray-300'
                                       }`}

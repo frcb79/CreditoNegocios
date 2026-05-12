@@ -7,7 +7,7 @@ import { storage } from "./storage";
 import { setupAuth, isAuthenticated } from "./replitAuth";
 import PDFDocument from "pdfkit";
 import bcrypt from "bcrypt";
-import { sendBrokerLeadEmail, sendPasswordResetEmail, sendWebsiteLeadEmail, sendWelcomeEmail } from "./emailService";
+import { sendBrokerDeactivationRequestEmail, sendBrokerLeadEmail, sendPasswordResetEmail, sendWebsiteLeadEmail, sendWelcomeEmail } from "./emailService";
 import { getDocumentAccessTarget, persistDocumentFile, removeStoredDocument } from "./documentStorage";
 import { 
   generateFinancierasTemplate, 
@@ -198,18 +198,9 @@ async function authorizeDocumentAccess(userId: string, userRole: string, documen
   if (!document) {
     return { authorized: false, reason: 'Document not found' };
   }
-  
-  // Document has brokerId
-  if (document.brokerId) {
-    const authResult = await authorizeBrokerResource({
-      currentUserId: userId,
-      resourceBrokerId: document.brokerId,
-      currentUserRole: userRole,
-    });
-    return { ...authResult, document };
-  }
-  
-  // Document linked to client - check client ownership
+
+  // If the document is linked to a client, client ownership is the source of truth.
+  // This prevents stale brokerId on document records from denying valid access.
   if (document.clientId) {
     const client = await storage.getClient(document.clientId);
     if (client) {
@@ -220,6 +211,16 @@ async function authorizeDocumentAccess(userId: string, userRole: string, documen
       });
       return { ...authResult, document };
     }
+  }
+  
+  // Document has brokerId
+  if (document.brokerId) {
+    const authResult = await authorizeBrokerResource({
+      currentUserId: userId,
+      resourceBrokerId: document.brokerId,
+      currentUserRole: userRole,
+    });
+    return { ...authResult, document };
   }
   
   // Admins can access orphan documents
@@ -325,24 +326,9 @@ async function processStpPayment(amount: string, accountNumber: string) {
   };
 }
 
-// OCR simulation for document processing
-function simulateOcrProcessing(file: Express.Multer.File) {
-  // Simulate OCR extraction based on file type
-  const extractedData: any = {};
-  
-  if (file.originalname.toLowerCase().includes('rfc')) {
-    extractedData.rfc = 'XAXX010101000';
-    extractedData.name = 'Juan Pérez García';
-  } else if (file.originalname.toLowerCase().includes('curp')) {
-    extractedData.curp = 'PEGJ800101HDFRRN09';
-    extractedData.name = 'Juan Pérez García';
-    extractedData.birthDate = '1980-01-01';
-  } else if (file.originalname.toLowerCase().includes('comprobante')) {
-    extractedData.address = 'Av. Insurgentes Sur 123, Col. Roma Norte, CDMX';
-    extractedData.name = 'Juan Pérez García';
-  }
-  
-  return extractedData;
+function getDocumentExtractedData() {
+  // OCR extraction is intentionally disabled for now.
+  return {};
 }
 
 export async function registerRoutes(app: Express): Promise<Server> {
@@ -520,10 +506,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // Send welcome email for local self-registration without blocking signup flow.
       try {
-        const fullName = `${user.firstName || ''} ${user.lastName || ''}`.trim() || user.email;
-        const emailResult = await sendWelcomeEmail(user.email, fullName);
-        if (!emailResult.success) {
-          console.error(`[EMAIL] Welcome email failed for local signup ${user.email}: ${emailResult.error}`);
+        const fullName = `${user.firstName || ''} ${user.lastName || ''}`.trim() || user.email || '';
+        if (user.email) {
+          const emailResult = await sendWelcomeEmail(user.email, fullName);
+          if (!emailResult.success) {
+            console.error(`[EMAIL] Welcome email failed for local signup ${user.email}: ${emailResult.error}`);
+          }
+        } else {
+          console.error(`[EMAIL] Welcome email skipped for local signup because user has no email`);
         }
       } catch (emailError: any) {
         console.error(`[EMAIL] Unexpected welcome email error for ${user.email}:`, emailError?.message || emailError);
@@ -657,7 +647,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Send password reset email
       const userName = user.firstName || undefined;
       console.log(`[AUTH] Attempting to send reset email to ${user.email} via Resend...`);
-      const emailResult = await sendPasswordResetEmail(user.email, resetToken, userName);
+      const emailResult = user.email
+        ? await sendPasswordResetEmail(user.email, resetToken, userName)
+        : { success: false, error: 'User has no email' };
       
       if (!emailResult.success) {
         console.error('❌ [AUTH ERROR] Failed to send password reset email:');
@@ -838,6 +830,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
       );
       
       await Promise.all(notificationPromises);
+
+      if (currentUser.email) {
+        const deactivationEmailResult = await sendBrokerDeactivationRequestEmail({
+          firstName: currentUser.firstName,
+          lastName: currentUser.lastName,
+          email: currentUser.email,
+          userId,
+        });
+
+        if (!deactivationEmailResult.success) {
+          console.error('[EMAIL] Failed to send deactivation request email:', deactivationEmailResult.error);
+        }
+      } else {
+        console.error('[EMAIL] Deactivation request email skipped: user has no email address');
+      }
       
       res.json({ 
         success: true, 
@@ -1150,6 +1157,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       
       const userData = insertUserSchema.parse(req.body);
+      if (!userData.email) {
+        return res.status(400).json({ message: "El email es requerido" });
+      }
       
       // Check if email already exists
       const existingUser = await storage.getUserByEmail(userData.email);
@@ -2015,8 +2025,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ message: "No file uploaded" });
       }
       
-      // Simulate OCR processing
-      const extractedData = simulateOcrProcessing(file);
+      const extractedData = getDocumentExtractedData();
       const storedFile = await persistDocumentFile(file, {
         brokerId: userId,
         clientId: clientId || null,
@@ -2201,7 +2210,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       // If new file is uploaded, update file information and process OCR
       if (file) {
-        const extractedData = simulateOcrProcessing(file);
+        const extractedData = getDocumentExtractedData();
         const storedFile = await persistDocumentFile(file, {
           brokerId: userId,
           clientId: clientId || authResult.document.clientId || null,
