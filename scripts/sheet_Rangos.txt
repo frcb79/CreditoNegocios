@@ -1,0 +1,32 @@
+========================================
+SHEET: Rangos (Total Rows: 47)
+========================================
+Row 2: [A2]: Accionista / Pfae  |  [G2]: PM   |  [P2]: Pfae
+Row 3: [A3]: Score  |  [B3]: Calificación  |  [H3]: Con Syntage  |  [J3]: Sin Syntage
+Row 4: [A4]: 610  |  [B4]: 700  |  [C4]: NORMAL  |  [G4]: Score sobre 1,000  |  [H4]: Peso  |  [I4]: Total  |  [J4]: Peso  |  [K4]: Total  |  [P4]: Score sobre 1,000  |  [Q4]: Peso  |  [R4]: Total
+Row 5: [A5]: Tabla   |  [E5]: Modelo SAT  |  [F5]: Incluye Buro PM  |  [G5]: 656  |  [H5]: 0.25  |  [I5]: 164  |  [J5]: 0.35  |  [K5]: 229.6  |  [N5]: Modelo SAT  |  [O5]: No incluye Buro  |  [P5]: 656  |  [Q5]: 0.2  |  [R5]: 131.20000000000002
+Row 6: [A6]: Score Buró  |  [B6]: Score OLR  |  [E6]: Modelo Bancos  |  [F6]: tal como esta  |  [G6]: 337.372071766105  |  [H6]: 0.45 [=+SAT!B525]  |  [I6]: 151.81743229474728  |  [J6]: 0.45 [=+H6*I6]  |  [K6]: 151.81743229474728  |  [N6]: Modelo Bancos  |  [O6]: tal como esta  |  [P6]: 337.372071766105  |  [Q6]: 0.45 [=+H6]  |  [R6]: 151.81743229474728
+Row 7: [A7]: 700+  |  [B7]: 1000  |  [E7]: Buró  |  [F7]: Accionista  |  [G7]: 700  |  [H7]: 0.18 [=+BANCOS!F512]  |  [I7]: 126  |  [J7]: 0.18 [=+H7*I7]  |  [K7]: 126  |  [N7]: Buró  |  [O7]: Persona   |  [P7]: 700  |  [Q7]: 0.35 [=+H7]  |  [R7]: 244.99999999999997
+Row 8: [A8]: 650-699  |  [B8]: 850  |  [F8]: Syntage Score  |  [G8]: 544  |  [H8]: 0.1 [=+C5]  |  [I8]: 54.400000000000006  |  [J8]: 0 [=+H8*I8]  |  [K8]: 0
+Row 9: [A9]: 600-649  |  [B9]: 700  |  [F9]: Visita Ocular  |  [G9]: 620  |  [H9]: 0.02  |  [I9]: 12.4  |  [J9]: 0.02 [=+H9*I9]  |  [K9]: 12.4  |  [Q9]: 1  |  [R9]: 528.0174322947473
+Row 10: [A10]: 550-599  |  [B10]: 500  |  [H10]: 0.9999999999999999 [=+L39]  |  [I10]: 508.61743229474723  |  [J10]: 1 [=+H10*I10]  |  [K10]: 519.8174322947473
+Row 11: [A11]: 500-549  |  [B11]: 300
+Row 12: [A12]: <500  |  [B12]: 100  |  [G12]: Si es PM entonces el modelo SAT toma en cuenta el Bruo de la empresa y adicional en el modelo gneeral se mete el del accionista con cierto peso.   |  [P12]: Si es Pfae en tonces en el modelo SAT no se toma en cuenta y no se pone , se redistribuye el peso a la otra variable de esa seccion  riesgo crediticio. Y se toma en cuenta el buro de la Pfae por fuera con su peso para despues tomar un socre final 
+Row 17: [G17]: Visita Ocular  |  [K17]: Ejemplo 
+Row 18: [H18]: SI / NA  |  [I18]: NO  |  [K18]: SI / NA  |  [L18]: NO
+Row 19: [F19]: 1  |  [G19]: Sí/No/NA  |  [H19]: 5  |  [I19]: 0  |  [K19]: 5
+Row 20: [F20]: 2  |  [G20]: Sí/No  |  [H20]: 10  |  [I20]: 0  |  [K20]: 10
+Row 21: [F21]: 3  |  [G21]: Sí/No  |  [H21]: 5  |  [I21]: 0  |  [L21]: 0
+Row 22: [F22]: 4  |  [G22]: Sí/No  |  [H22]: 5  |  [I22]: 0  |  [K22]: 5
+Row 23: [F23]: 5  |  [G23]: Sí/No  |  [H23]: 5  |  [I23]: 0  |  [J23]: 30  |  [L23]: 0
+Row 25: [F25]: 6  |  [G25]: Sí/No  |  [H25]: 5  |  [I25]: 0  |  [L25]: 0
+Row 26: [F26]: 7  |  [G26]: Sí/No  |  [H26]: 10  |  [I26]: 0  |  [K26]: 10
+Row 27: [F27]: 8  |  [G27]: Sí/No  |  [H27]: 5  |  [I27]: 0  |  [K27]: 5
+Row 28: [F28]: 9  |  [G28]: Sí/No  |  [H28]: 10  |  [I28]: 0  |  [J28]: 30  |  [L28]: 0
+Row 30: [F30]: 10  |  [G30]: Sí/No  |  [H30]: 10  |  [I30]: 0  |  [K30]: 10
+Row 31: [F31]: 11  |  [G31]: Sí/No  |  [H31]: 10  |  [I31]: 0  |  [L31]: 0
+Row 32: [F32]: 12  |  [G32]: Sí/No  |  [H32]: 10  |  [I32]: 0  |  [J32]: 30  |  [K32]: 10
+Row 34: [F34]: 13  |  [G34]: Respuesta del 1 al 5   |  [I34]: 1,2,3,4,5,  |  [K34]: 3
+Row 35: [F35]: 14  |  [G35]: Respuesta del 1 al 5   |  [I35]: 1,2,3,4,5  |  [J35]: 10  |  [K35]: 4
+Row 37: [J37]: 100  |  [K37]: 62
+Row 38: [J38]: 1000  |  [K38]: 620 [=SUM(K24:K36)]

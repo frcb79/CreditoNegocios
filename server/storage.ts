@@ -1,4 +1,5 @@
 // @ts-nocheck
+import { randomUUID } from "crypto";
 import {
   users,
   clients,
@@ -47,6 +48,8 @@ import {
   type InsertCreditSubmissionTarget,
   type ClientCreditHistory,
   type InsertClientCreditHistory,
+  type InsertBankAnalysisReport,
+  type BankAnalysisReport
 } from "@shared/schema";
 import { randomUUID } from "crypto";
 
@@ -57,6 +60,11 @@ type NotificationInput = InsertNotification & {
 };
 
 export interface IStorage {
+  // Bank analysis report operations
+  createBankAnalysisReport(report: InsertBankAnalysisReport): Promise<BankAnalysisReport>;
+  getBankAnalysisReportById(id: string): Promise<BankAnalysisReport | undefined>;
+  getBankAnalysisReportsByClient(clientId: string): Promise<BankAnalysisReport[]>;
+
   // User operations (mandatory for Replit Auth)
   getUser(id: string): Promise<User | undefined>;
   getUserByEmail(email: string): Promise<User | undefined>;
@@ -202,6 +210,8 @@ export class MemStorage implements IStorage {
   private clientCreditHistories: Map<string, ClientCreditHistory> = new Map();
   private credits: Map<string, Credit> = new Map();
   private financialInstitutions: Map<string, FinancialInstitution> = new Map();
+  // Bank analysis report storage
+  private bankAnalysisReports: Map<string, BankAnalysisReport> = new Map();
   private commissions: Map<string, Commission> = new Map();
   private notifications: Map<string, Notification> = new Map();
   private documents: Map<string, Document> = new Map();
@@ -209,6 +219,7 @@ export class MemStorage implements IStorage {
   private tenantMembers: Map<string, TenantMember> = new Map();
   
   // Product system storage
+
   private productVariables: Map<string, ProductVariable> = new Map();
   private productTemplates: Map<string, ProductTemplate> = new Map();
   private institutionProducts: Map<string, InstitutionProduct> = new Map();
@@ -221,6 +232,27 @@ export class MemStorage implements IStorage {
   // Configuration system storage
   
   // Credit submission system storage
+
+  // Implement BankAnalysisReport methods
+  async createBankAnalysisReport(report: InsertBankAnalysisReport): Promise<BankAnalysisReport> {
+    const id = report.id ?? randomUUID();
+    const newReport: BankAnalysisReport = {
+      ...report,
+      id,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    } as BankAnalysisReport;
+    this.bankAnalysisReports.set(id, newReport);
+    return newReport;
+  }
+
+  async getBankAnalysisReportById(id: string): Promise<BankAnalysisReport | undefined> {
+    return this.bankAnalysisReports.get(id);
+  }
+
+  async getBankAnalysisReportsByClient(clientId: string): Promise<BankAnalysisReport[]> {
+    return Array.from(this.bankAnalysisReports.values()).filter(r => r.clientId === clientId);
+  }
   private creditSubmissionRequests: Map<string, CreditSubmissionRequest> = new Map();
   private creditSubmissionTargets: Map<string, CreditSubmissionTarget> = new Map();
 

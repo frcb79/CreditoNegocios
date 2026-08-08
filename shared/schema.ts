@@ -595,6 +595,27 @@ export const financialInstitutionRequests = pgTable("financial_institution_reque
   updatedAt: timestamp("updated_at").defaultNow(),
 });
 
+// Bank Analysis Reports table
+export const bankAnalysisReports = pgTable("bank_analysis_reports", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  clientId: varchar("client_id").notNull().references(() => clients.id),
+  status: varchar("status").notNull().default("pending"), // "pending", "processed", "failed_validation"
+  validationFlags: jsonb("validation_flags").default('{}'), // continuity, rfc, account check, etc.
+  monthlySummaries: jsonb("monthly_summaries").default('[]'), // array of MonthlyAnalysisResult
+  financialMetrics: jsonb("financial_metrics").default('{}'), // averages, DSCR, Burn rate, SPM
+  scoreResult: jsonb("score_result").default('{}'), // final scorecard scoring
+  todasTransaccionesExcluidas: jsonb("todas_transacciones_excluidas").default('[]'), // excluded loans/transfers
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+// Create insert schemas for bank analysis reports
+export const insertBankAnalysisReportSchema = createInsertSchema(bankAnalysisReports).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
 // Create insert schemas for tenants
 export const insertTenantSchema = createInsertSchema(tenants).omit({
   id: true,
@@ -715,4 +736,7 @@ export type CreditSubmissionTarget = typeof creditSubmissionTargets.$inferSelect
 
 export type InsertFinancialInstitutionRequest = z.infer<typeof insertFinancialInstitutionRequestSchema>;
 export type FinancialInstitutionRequest = typeof financialInstitutionRequests.$inferSelect;
+
+export type InsertBankAnalysisReport = z.infer<typeof insertBankAnalysisReportSchema>;
+export type BankAnalysisReport = typeof bankAnalysisReports.$inferSelect;
 
