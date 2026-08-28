@@ -35,7 +35,7 @@ export interface MonthlyAnalysisResult extends MonthlyBankData {
 export interface KnockOutRuleTrigger {
   rule: string;
   condition: string;
-  action: 'Rechazo' | 'Revisión/Aval' | 'Comité' | 'Alerta';
+  action: 'Rechazo' | 'Revisión' | 'Revisión/Aval' | 'Comité' | 'Alerta';
   triggered: boolean;
   details: string;
 }

@@ -34,7 +34,7 @@ import {
   insertClientCreditHistorySchema,
   insertUserSchema,
   insertFinancialInstitutionRequestSchema
-} from "@shared/schema";
+} from "../shared/schema";
 import { z } from "zod";
 import multer from "multer";
 import path from "path";

@@ -1,6 +1,6 @@
 import * as XLSX from 'xlsx';
 import { storage } from './storage';
-import { insertFinancialInstitutionSchema, updatedInsertClientSchema } from '@shared/schema';
+import { insertFinancialInstitutionSchema, updatedInsertClientSchema } from "../shared/schema";
 import { z } from 'zod';
 
 function generateSlug(name: string): string {

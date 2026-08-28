@@ -7,6 +7,7 @@ import {
   financialInstitutionRequests,
   creditSubmissionRequests, creditSubmissionTargets,
   clientCreditHistories,
+  bankAnalysisReports,
   type User, type UpsertUser, type Client, type InsertClient,
   type Credit, type InsertCredit, type FinancialInstitution,
   type InsertFinancialInstitution, type Commission, type InsertCommission,
@@ -19,10 +20,13 @@ import {
   type FinancialInstitutionRequest, type InsertFinancialInstitutionRequest,
   type CreditSubmissionRequest, type InsertCreditSubmissionRequest,
   type CreditSubmissionTarget, type InsertCreditSubmissionTarget,
-  type ClientCreditHistory, type InsertClientCreditHistory
-} from "@shared/schema";
+  type ClientCreditHistory, type InsertClientCreditHistory,
+  type BankAnalysisReport, type InsertBankAnalysisReport
+} from "../shared/schema";
 import { eq, desc, asc, like, and, or, inArray, sql } from "drizzle-orm";
+
 import { randomUUID } from "crypto";
+
 import type { IStorage } from "./storage";
 
 export class DbStorage implements IStorage {
@@ -123,6 +127,32 @@ export class DbStorage implements IStorage {
     for (const institution of institutions) {
       await this.createFinancialInstitution(institution as InsertFinancialInstitution);
     }
+  }
+
+  // Implement BankAnalysisReport methods using the database
+  async createBankAnalysisReport(report: InsertBankAnalysisReport): Promise<BankAnalysisReport> {
+    const [created] = await db
+      .insert(bankAnalysisReports)
+      .values(report)
+      .returning();
+    return created;
+  }
+
+
+  async getBankAnalysisReportById(id: string): Promise<BankAnalysisReport | undefined> {
+    const result = await db
+      .select()
+      .from(bankAnalysisReports)
+      .where(eq(bankAnalysisReports.id, id))
+      .limit(1);
+    return result[0];
+  }
+
+  async getBankAnalysisReportsByClient(clientId: string): Promise<BankAnalysisReport[]> {
+    return await db
+      .select()
+      .from(bankAnalysisReports)
+      .where(eq(bankAnalysisReports.clientId, clientId));
   }
   
   // ===== USER OPERATIONS =====

@@ -50,8 +50,8 @@ import {
   type InsertClientCreditHistory,
   type InsertBankAnalysisReport,
   type BankAnalysisReport
-} from "@shared/schema";
-import { randomUUID } from "crypto";
+} from "../shared/schema";
+
 
 type NotificationInput = InsertNotification & {
   relatedEntityType?: string;
@@ -2640,6 +2640,6 @@ import { DbStorage } from "./dbStorage";
 export const memStorage = new MemStorage();
 
 // Use memory storage for local preview when requested, otherwise keep PostgreSQL storage.
-export const storage = process.env.USE_MEMORY_STORAGE === "true" ? memStorage : new DbStorage();
+export const storage = process.env.USE_MEMORY_STORAGE === "true" || process.env.NODE_ENV === "test" ? memStorage : new DbStorage();
 
 // DbStorage remains the primary storage system for normal environments.
