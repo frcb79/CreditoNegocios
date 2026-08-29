@@ -285,14 +285,34 @@ export default function FinancieraDetail() {
                         Tiempos Estimados
                       </h3>
                       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                        {Object.entries(estimatedTimeframes).map(([key, value]) => (
-                          <div key={key} className="p-4 bg-blue-50 rounded-lg border border-blue-200">
-                            <p className="text-sm text-gray-600 mb-1 capitalize">
-                              {key.replace(/([A-Z])/g, ' $1').trim()}
-                            </p>
-                            <p className="font-semibold text-gray-900">{value as string}</p>
-                          </div>
-                        ))}
+                        {Object.entries(estimatedTimeframes).map(([key, value]) => {
+                          const labelMap: Record<string, string> = {
+                            approval: "Aprobación",
+                            disbursement: "Dispersión",
+                            processing: "Procesamiento",
+                            review: "Revisión",
+                            documentation: "Documentación",
+                            evaluation: "Evaluación",
+                            response: "Respuesta",
+                            total: "Total",
+                            aprobacion: "Aprobación",
+                            dispersion: "Dispersión",
+                            procesamiento: "Procesamiento",
+                            revision: "Revisión",
+                            documentacion: "Documentación",
+                            evaluacion: "Evaluación",
+                            respuesta: "Respuesta",
+                          };
+                          const label = labelMap[key] || key.replace(/([A-Z])/g, ' $1').trim();
+                          return (
+                            <div key={key} className="p-4 bg-blue-50 rounded-lg border border-blue-200">
+                              <p className="text-sm text-gray-600 mb-1 capitalize">
+                                {label}
+                              </p>
+                              <p className="font-semibold text-gray-900">{value as string}</p>
+                            </div>
+                          );
+                        })}
                       </div>
                     </div>
                   )}

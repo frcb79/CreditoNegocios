@@ -222,7 +222,12 @@ export default function Commissions() {
                   </div>
                 </div>
                 
-                <Button className="bg-primary text-white hover:bg-primary-dark">
+                <Button 
+                  className="bg-primary text-white hover:bg-primary-dark"
+                  onClick={() => {
+                    alert("⏳ Próximamente\n\nEsta opción estará disponible pronto. Estamos trabajando para que puedas solicitar adelantos sobre tus comisiones directamente desde la plataforma.");
+                  }}
+                >
                   <i className="fas fa-bolt mr-2"></i>
                   Solicitar Adelanto
                 </Button>

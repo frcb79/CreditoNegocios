@@ -57,8 +57,11 @@ export default function CurrencyInput({
     // Obtener solo números
     const numericValue = getNumericValue(inputValue);
     
-    // Si no hay números, no hacer nada
+    // Si no hay números después de filtrar (ej. el usuario borró el último dígito
+    // y solo queda el símbolo "$" o comas), limpiar el campo
     if (!numericValue) {
+      setDisplayValue("");
+      onChange?.("", "");
       return;
     }
     

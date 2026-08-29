@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -109,10 +109,26 @@ export default function CreditRequestModal({ isOpen, onClose, preselectedClientI
     },
   });
 
+  // Reset form when modal opens or preselected client changes
+  useEffect(() => {
+    if (isOpen) {
+      form.reset({
+        clientId: preselectedClientId || "",
+        productTemplateId: "",
+        requestedAmount: "",
+        purpose: "",
+        brokerNotes: "",
+        financialInstitutionIds: [],
+      });
+      setSelectedInstitutions([]);
+    }
+  }, [isOpen, preselectedClientId, form]);
+
   // Fetch data
   const { data: clients, isLoading: clientsLoading } = useQuery<Client[]>({
     queryKey: ['/api/clients'],
   });
+
 
   const { data: productTemplates, isLoading: templatesLoading } = useQuery<ProductTemplate[]>({
     queryKey: ['/api/product-templates'],
@@ -761,7 +777,7 @@ export default function CreditRequestModal({ isOpen, onClose, preselectedClientI
               render={({ field }) => (
                 <FormItem>
                   <FormLabel>Cliente *</FormLabel>
-                  <Select onValueChange={field.onChange} defaultValue={field.value}>
+                  <Select onValueChange={field.onChange} value={field.value}>
                     <FormControl>
                       <SelectTrigger data-testid="select-client">
                         <SelectValue placeholder="Selecciona un cliente" />
@@ -809,7 +825,7 @@ export default function CreditRequestModal({ isOpen, onClose, preselectedClientI
               render={({ field }) => (
                 <FormItem>
                   <FormLabel>Tipo de Producto *</FormLabel>
-                  <Select onValueChange={field.onChange} defaultValue={field.value}>
+                  <Select onValueChange={field.onChange} value={field.value}>
                     <FormControl>
                       <SelectTrigger data-testid="select-product-template">
                         <SelectValue placeholder="Selecciona el tipo de producto" />

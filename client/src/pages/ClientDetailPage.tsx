@@ -59,6 +59,68 @@ const vigenteFormSchema = z.object({
 
 type VigenteFormData = z.infer<typeof vigenteFormSchema>;
 
+export const formatDisplayValue = (val: any): string => {
+  if (val === null || val === undefined || val === '') return 'No especificado';
+  if (typeof val !== 'string') return String(val);
+  
+  const customMap: Record<string, string> = {
+    'persona_moral': 'Persona Moral',
+    'fisica_empresarial': 'Persona Física con Actividad Empresarial',
+    'fisica': 'Persona Física',
+    'sin_sat': 'Sin SAT',
+    'moral': 'Moral',
+    'si': 'Sí',
+    'no': 'No',
+    'casado': 'Casado(a)',
+    'soltero': 'Soltero(a)',
+    'union-libre': 'Unión libre',
+    'divorciado': 'Divorciado(a)',
+    'viudo': 'Viudo(a)',
+    'excelente': 'Excelente',
+    'bueno': 'Bueno',
+    'regular': 'Regular',
+    'malo': 'Malo',
+    'sin-historial': 'Sin historial',
+    '1-2-anos': '1 a 2 años',
+    '2-5-anos': '2 a 5 años',
+    '5-10-anos': '5 a 10 años',
+    'mas-10-anos': 'Más de 10 años',
+    'menos-1-anio': 'Menos de 1 año',
+    '1-3-anios': '1 a 3 años',
+    '3-5-anios': '3 a 5 años',
+    'mas-5-anios': 'Más de 5 años',
+    'sin-experiencia': 'Sin experiencia',
+    'capital_trabajo': 'Capital de trabajo',
+    'expansion': 'Expansión de negocio',
+    'equipamiento': 'Adquisición de activo fijo / maquinaria',
+    'construccion': 'Construcción',
+    'pyme': 'PYME',
+    'simple': 'Crédito Simple',
+    'revolvente': 'Crédito Revolvente',
+    'hipotecario': 'Crédito Hipotecario',
+    'automotriz': 'Crédito Automotriz',
+    'arrendamiento': 'Arrendamiento',
+    'factoraje': 'Factoraje',
+    'tarjeta_credito': 'Tarjeta de Crédito',
+    'negativa': 'Negativa',
+    'positiva': 'Positiva',
+    'sin_opinion': 'Sin opinión',
+  };
+
+  const lowerVal = val.toLowerCase().trim();
+  if (customMap[lowerVal]) {
+    return customMap[lowerVal];
+  }
+
+  let formatted = val
+    .replace(/[-_]/g, ' ')
+    .replace(/\banos\b/g, 'años')
+    .replace(/\banio\b/g, 'año')
+    .replace(/\banios\b/g, 'años');
+
+  return formatted.charAt(0).toUpperCase() + formatted.slice(1);
+};
+
 export default function ClientDetailPage() {
   const [, params] = useRoute("/clientes/:clientId");
   const [, setLocation] = useLocation();
@@ -412,19 +474,19 @@ export default function ClientDetailPage() {
                         </div>
                         <div className="flex items-start justify-between py-2 border-b border-gray-100">
                           <span className="text-sm text-neutral">Participación ventas gobierno</span>
-                          <span className="text-sm font-medium text-right">{client.participacionVentasGobierno || 'No especificado'}</span>
+                          <span className="text-sm font-medium text-right">{formatDisplayValue(client.participacionVentasGobierno)}</span>
                         </div>
                         <div className="flex items-start justify-between py-2 border-b border-gray-100">
                           <span className="text-sm text-neutral">Buró accionista principal</span>
-                          <span className="text-sm font-medium text-right">{client.buroAccionistaPrincipal || 'No especificado'}</span>
+                          <span className="text-sm font-medium text-right">{formatDisplayValue(client.buroAccionistaPrincipal)}</span>
                         </div>
                         <div className="flex items-start justify-between py-2 border-b border-gray-100">
                           <span className="text-sm text-neutral">Buró empresa</span>
-                          <span className="text-sm font-medium text-right">{client.buroEmpresa || 'No especificado'}</span>
+                          <span className="text-sm font-medium text-right">{formatDisplayValue(client.buroEmpresa)}</span>
                         </div>
                         <div className="flex items-start justify-between py-2 border-b border-gray-100">
                           <span className="text-sm text-neutral">Sector económico</span>
-                          <span className="text-sm font-medium text-right">{client.sectoreEconomico || 'No especificado'}</span>
+                          <span className="text-sm font-medium text-right">{formatDisplayValue(client.sectoreEconomico)}</span>
                         </div>
                       </>
                     )}
@@ -432,11 +494,11 @@ export default function ClientDetailPage() {
                       <>
                         <div className="flex items-start justify-between py-2 border-b border-gray-100">
                           <span className="text-sm text-neutral">Puesto</span>
-                          <span className="text-sm font-medium text-right">{client.puesto || 'No especificado'}</span>
+                          <span className="text-sm font-medium text-right">{formatDisplayValue(client.puesto)}</span>
                         </div>
                         <div className="flex items-start justify-between py-2 border-b border-gray-100">
                           <span className="text-sm text-neutral">Antigüedad laboral</span>
-                          <span className="text-sm font-medium text-right">{client.antiguedadLaboral || 'No especificado'}</span>
+                          <span className="text-sm font-medium text-right">{formatDisplayValue(client.antiguedadLaboral)}</span>
                         </div>
                         <div className="flex items-start justify-between py-2 border-b border-gray-100">
                           <span className="text-sm text-neutral">Ingresos comprobables</span>
@@ -458,7 +520,7 @@ export default function ClientDetailPage() {
                         </div>
                         <div className="flex items-start justify-between py-2 border-b border-gray-100">
                           <span className="text-sm text-neutral">Buró persona física</span>
-                          <span className="text-sm font-medium text-right">{client.buroPersonaFisica || 'No especificado'}</span>
+                          <span className="text-sm font-medium text-right">{formatDisplayValue(client.buroPersonaFisica)}</span>
                         </div>
                       </>
                     )}
@@ -466,11 +528,11 @@ export default function ClientDetailPage() {
                       <>
                         <div className="flex items-start justify-between py-2 border-b border-gray-100">
                           <span className="text-sm text-neutral">Nombre comercial</span>
-                          <span className="text-sm font-medium text-right">{client.nombreComercial || 'No especificado'}</span>
+                          <span className="text-sm font-medium text-right">{formatDisplayValue(client.nombreComercial)}</span>
                         </div>
                         <div className="flex items-start justify-between py-2 border-b border-gray-100">
                           <span className="text-sm text-neutral">Ocupación</span>
-                          <span className="text-sm font-medium text-right">{client.ocupacion || 'No especificada'}</span>
+                          <span className="text-sm font-medium text-right">{formatDisplayValue(client.ocupacion)}</span>
                         </div>
                         <div className="flex items-start justify-between py-2 border-b border-gray-100">
                           <span className="text-sm text-neutral">Ingresos comprobables</span>
@@ -492,7 +554,7 @@ export default function ClientDetailPage() {
                         </div>
                         <div className="flex items-start justify-between py-2 border-b border-gray-100">
                           <span className="text-sm text-neutral">Buró persona física</span>
-                          <span className="text-sm font-medium text-right">{client.buroPersonaFisicaSinSat || 'No especificado'}</span>
+                          <span className="text-sm font-medium text-right">{formatDisplayValue(client.buroPersonaFisicaSinSat)}</span>
                         </div>
                       </>
                     )}
@@ -590,13 +652,23 @@ export default function ClientDetailPage() {
                     <Tabs defaultValue="gestion" className="w-full">
                       <TabsList className="grid w-full grid-cols-3">
                         <TabsTrigger value="gestion" data-testid="tab-en-gestion">
-                          En Gestión
+                          En Gestión ({submissions?.length || 0})
                         </TabsTrigger>
                         <TabsTrigger value="vigentes" data-testid="tab-creditos-vigentes">
-                          Créditos Vigentes
+                          Vigentes ({(() => {
+                            const today = new Date();
+                            today.setHours(0, 0, 0, 0);
+                            const allVigentes = (client?.creditosVigentesDetalles as any[]) || [];
+                            return allVigentes.filter((credito: any) => {
+                              if (!credito.fechaTermino) return true;
+                              const endDate = new Date(credito.fechaTermino);
+                              endDate.setHours(0, 0, 0, 0);
+                              return endDate >= today;
+                            }).length;
+                          })()})
                         </TabsTrigger>
                         <TabsTrigger value="pasados" data-testid="tab-creditos-pasados">
-                          Créditos Pasados
+                          Pasados ({creditHistories?.length || 0})
                         </TabsTrigger>
                       </TabsList>
 
