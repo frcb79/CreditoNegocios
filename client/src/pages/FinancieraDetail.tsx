@@ -287,6 +287,10 @@ export default function FinancieraDetail() {
                       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                         {Object.entries(estimatedTimeframes).map(([key, value]) => {
                           const labelMap: Record<string, string> = {
+                            analysis: "Análisis",
+                            initialanalysis: "Análisis Inicial",
+                            creditanalysis: "Análisis Crediticio",
+                            analisis: "Análisis",
                             approval: "Aprobación",
                             disbursement: "Dispersión",
                             processing: "Procesamiento",
@@ -303,7 +307,8 @@ export default function FinancieraDetail() {
                             evaluacion: "Evaluación",
                             respuesta: "Respuesta",
                           };
-                          const label = labelMap[key] || key.replace(/([A-Z])/g, ' $1').trim();
+                          const normalizedKey = key.toLowerCase().trim();
+                          const label = labelMap[key] || labelMap[normalizedKey] || key.replace(/([A-Z])/g, ' $1').trim();
                           return (
                             <div key={key} className="p-4 bg-blue-50 rounded-lg border border-blue-200">
                               <p className="text-sm text-gray-600 mb-1 capitalize">

@@ -216,6 +216,35 @@ export default function CreditRequestModal({ isOpen, onClose, preselectedClientI
     return labels[type as keyof typeof labels] || type;
   };
 
+  const normalizeProfileType = (type?: string): string => {
+    if (!type) return '';
+    const t = type.toLowerCase().trim();
+    if (t === 'moral' || t === 'persona_moral') return 'persona_moral';
+    if (t === 'pfae' || t === 'fisica_empresarial') return 'fisica_empresarial';
+    if (t === 'pf' || t === 'fisica') return 'fisica';
+    if (t === 'sin_sat') return 'sin_sat';
+    return t;
+  };
+
+  const matchesProfile = (profiles?: any, clientType?: string): boolean => {
+    if (!profiles) return true;
+    let list: string[] = [];
+    if (Array.isArray(profiles)) {
+      list = profiles;
+    } else if (typeof profiles === 'string') {
+      try {
+        const parsed = JSON.parse(profiles);
+        if (Array.isArray(parsed)) list = parsed;
+        else list = [profiles];
+      } catch {
+        list = profiles.replace(/[{}]/g, '').split(',').map(s => s.trim().replace(/^"|"$/g, ''));
+      }
+    }
+    if (list.length === 0) return true;
+    const normClient = normalizeProfileType(clientType);
+    return list.some(p => normalizeProfileType(p) === normClient);
+  };
+
   const selectedClient = clients?.find(c => c.id === form.watch('clientId'));
   const selectedTemplateId = form.watch('productTemplateId');
   const selectedTemplate = productTemplates?.find(t => t.id === selectedTemplateId);
@@ -228,9 +257,11 @@ export default function CreditRequestModal({ isOpen, onClose, preselectedClientI
       return { score: 0, category: 'other', reasons: [], warnings: ['Completa los datos del cliente y monto'] };
     }
     
+    const clientType = normalizeProfileType(selectedClient.type);
+
     // FIRST: Check if institution accepts this client profile globally
     const institutionAcceptedProfiles = institution.acceptedProfiles || [];
-    if (institutionAcceptedProfiles.length > 0 && !institutionAcceptedProfiles.includes(selectedClient.type)) {
+    if (institutionAcceptedProfiles.length > 0 && !matchesProfile(institutionAcceptedProfiles, clientType)) {
       const profileLabels = {
         'persona_moral': 'Personas Morales',
         'fisica': 'Personas Físicas',
@@ -275,7 +306,7 @@ export default function CreditRequestModal({ isOpen, onClose, preselectedClientI
     
     // Check if client type is in template's targetProfiles
     if (selectedTemplate?.targetProfiles && selectedTemplate.targetProfiles.length > 0) {
-      if (!selectedTemplate.targetProfiles.includes(selectedClient.type)) {
+      if (!matchesProfile(selectedTemplate.targetProfiles, clientType)) {
         const profileLabels = {
           'persona_moral': 'Personas Morales',
           'fisica': 'Personas Físicas',
@@ -297,7 +328,7 @@ export default function CreditRequestModal({ isOpen, onClose, preselectedClientI
     
     // Check if institution has restricted targetProfiles for this product
     if (institutionProduct?.targetProfiles && institutionProduct.targetProfiles.length > 0) {
-      if (!institutionProduct.targetProfiles.includes(selectedClient.type)) {
+      if (!matchesProfile(institutionProduct.targetProfiles, clientType)) {
         const profileLabels = {
           'persona_moral': 'Personas Morales',
           'fisica': 'Personas Físicas',
@@ -317,8 +348,7 @@ export default function CreditRequestModal({ isOpen, onClose, preselectedClientI
       }
     }
     
-    const clientType = selectedClient.type;
-    const requirements = institution.requirements?.[clientType];
+    const requirements = institution.requirements?.[clientType] || institution.requirements?.[selectedClient.type];
     
     if (!requirements) {
       return { 
@@ -835,8 +865,7 @@ export default function CreditRequestModal({ isOpen, onClose, preselectedClientI
                       {productTemplates
                         ?.filter((template) => {
                           if (!selectedClient) return true;
-                          if (!template.targetProfiles || template.targetProfiles.length === 0) return true;
-                          return template.targetProfiles.includes(selectedClient.type);
+                          return matchesProfile(template.targetProfiles, selectedClient.type);
                         })
                         .map((template) => (
                           <SelectItem key={template.id} value={template.id}>

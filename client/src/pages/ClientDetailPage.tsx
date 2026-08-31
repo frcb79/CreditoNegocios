@@ -1881,13 +1881,23 @@ export default function ClientDetailPage() {
                   <Tabs defaultValue="gestion" className="w-full">
                     <TabsList className="grid w-full grid-cols-3">
                       <TabsTrigger value="gestion">
-                        En Gestión
+                        En Gestión ({submissions?.length || 0})
                       </TabsTrigger>
                       <TabsTrigger value="vigentes">
-                        Créditos Vigentes
+                        Vigentes ({(() => {
+                          const today = new Date();
+                          today.setHours(0, 0, 0, 0);
+                          const allVigentes = (client?.creditosVigentesDetalles as any[]) || [];
+                          return allVigentes.filter((credito: any) => {
+                            if (!credito.fechaTermino) return true;
+                            const endDate = new Date(credito.fechaTermino);
+                            endDate.setHours(0, 0, 0, 0);
+                            return endDate >= today;
+                          }).length;
+                        })()})
                       </TabsTrigger>
                       <TabsTrigger value="pasados">
-                        Créditos Pasados
+                        Pasados ({creditHistories?.length || 0})
                       </TabsTrigger>
                     </TabsList>
 

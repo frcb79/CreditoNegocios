@@ -2785,17 +2785,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // 🔹 PRODUCT TEMPLATES (Level 2: Generic products - Admin/SuperAdmin only)
+  // 🔹 PRODUCT TEMPLATES (Level 2: Generic products)
   app.get('/api/product-templates', isAuthenticated, async (req: any, res) => {
     try {
-      // For development: use fallback user if claims not available
-      const userId = req.user?.claims?.sub || "user-super-admin";
-      
-      const hasPermission = await requirePlatformRole(userId, ['super_admin', 'admin']);
-      if (!hasPermission) {
-        return res.status(403).json({ message: "Access denied - Admin privileges required" });
-      }
-
       const templates = await storage.getProductTemplates();
       console.log(`📋 GET /api/product-templates - Returning ${templates.length} templates:`, templates.map(t => `${t.name} (${t.id})`).join(', '));
       res.json(templates);
@@ -2808,12 +2800,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get('/api/product-templates/:id', isAuthenticated, async (req: any, res) => {
     try {
       const { id } = req.params;
-      const userId = req.user.claims.sub;
-      
-      const hasPermission = await requirePlatformRole(userId, ['super_admin', 'admin']);
-      if (!hasPermission) {
-        return res.status(403).json({ message: "Access denied - Admin privileges required" });
-      }
 
       const template = await storage.getProductTemplate(id);
       if (!template) {
