@@ -24,6 +24,7 @@ import {
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
+import { buildApiUrl } from "@/lib/runtimeConfig";
 import { 
   CheckCircle, 
   XCircle, 

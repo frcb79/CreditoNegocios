@@ -34,7 +34,9 @@ export default function Commissions() {
   const canProcessPayments = user?.role === 'admin' || user?.role === 'super_admin';
   const [searchTerm, setSearchTerm] = useState("");
   const [filterStatus, setFilterStatus] = useState<string>("all");
-  const [selectedCommission, setSelectedCommission] = useState<Commission | null>(null);
+  const [selectedCommission, setSelectedCommission] = useState<any | null>(null);
+  const [viewingCommission, setViewingCommission] = useState<any | null>(null);
+  const [accountNumber, setAccountNumber] = useState("");
   const [showRatesModal, setShowRatesModal] = useState(false);
   const [ratesSearchTerm, setRatesSearchTerm] = useState("");
 
@@ -50,7 +52,7 @@ export default function Commissions() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
-  const { data: commissions, isLoading } = useQuery<Commission[]>({
+  const { data: commissions, isLoading } = useQuery<any[]>({
     queryKey: ["/api/commissions"],
   });
 
@@ -72,6 +74,28 @@ export default function Commissions() {
       toast({
         title: "Error en el pago",
         description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
+
+  const markPaidMutation = useMutation({
+    mutationFn: async ({ id, notes }: { id: string; notes?: string }) => {
+      const response = await apiRequest("POST", `/api/commissions/${id}/mark-paid`, { notes });
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/commissions"] });
+      toast({
+        title: "Comisión Pagada",
+        description: "La comisión fue marcada como pagada correctamente",
+      });
+      setSelectedCommission(null);
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Error",
+        description: error.message || "No se pudo actualizar el estado de la comisión",
         variant: "destructive",
       });
     },
@@ -275,26 +299,33 @@ export default function Commissions() {
                   {filteredCommissions.map((commission) => (
                     <div
                       key={commission.id}
-                      className="flex items-center justify-between p-4 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
+                      className="flex items-center justify-between p-4 border border-gray-200 rounded-lg hover:bg-gray-50/80 transition-colors cursor-pointer"
+                      onClick={() => setViewingCommission(commission)}
                       data-testid={`commission-${commission.id}`}
                     >
                       <div className="flex items-center space-x-4">
-                        <div className="w-12 h-12 bg-primary rounded-full flex items-center justify-center">
-                          <i className="fas fa-dollar-sign text-white"></i>
+                        <div className="w-12 h-12 bg-primary/10 text-primary rounded-full flex items-center justify-center">
+                          <i className="fas fa-dollar-sign text-lg"></i>
                         </div>
                         <div>
                           <h3 className="font-semibold text-gray-900">
                             ${parseFloat(commission.amount).toLocaleString('es-MX')} MXN
                           </h3>
-                          <p className="text-xs text-neutral">
-                            Tipo: {commissionTypeLabels[commission.commissionType || ""] || (commission.commissionType || "Sin tipo")}
-                          </p>
-                          <p className="text-xs text-neutral">
-                            Beneficiario: {parseFloat(commission.masterBrokerShare || "0") > 0 ? "Master Broker" : "Broker"}
-                          </p>
-                          <p className="text-sm text-neutral">ID: {commission.id.slice(-8)}</p>
-                          <p className="text-xs text-neutral">
-                            {formatDistanceToNow(new Date(commission.createdAt!), { 
+                          <div className="flex items-center gap-2 flex-wrap text-xs text-neutral mt-0.5">
+                            <span className="font-medium text-gray-700">
+                              {commission.client ? (commission.client.businessName || `${commission.client.firstName || ''} ${commission.client.lastName || ''}`.trim()) : 'Cliente'}
+                            </span>
+                            {commission.financialInstitution && (
+                              <>
+                                <span>•</span>
+                                <span className="text-gray-600">{commission.financialInstitution.name}</span>
+                              </>
+                            )}
+                            <span>•</span>
+                            <span>Tipo: {commissionTypeLabels[commission.commissionType || ""] || (commission.commissionType || "Sin tipo")}</span>
+                          </div>
+                          <p className="text-[11px] text-gray-400 mt-1">
+                            ID: {commission.id.slice(-8)} • {formatDistanceToNow(new Date(commission.createdAt!), { 
                               addSuffix: true, 
                               locale: es 
                             })}
@@ -302,7 +333,7 @@ export default function Commissions() {
                         </div>
                       </div>
                       
-                      <div className="text-right space-y-2">
+                      <div className="text-right space-y-2 flex flex-col items-end" onClick={(e) => e.stopPropagation()}>
                         <Badge 
                           className={statusConfig[commission.status as keyof typeof statusConfig]?.color || "bg-gray-100 text-gray-800"}
                           data-testid={`commission-status-${commission.id}`}
@@ -311,12 +342,24 @@ export default function Commissions() {
                         </Badge>
                         
                         {commission.status === 'pending' && canProcessPayments && (
-                          <div>
+                          <div className="flex items-center gap-2">
+                            <Button 
+                              size="sm"
+                              variant="outline"
+                              className="text-xs border-success text-success hover:bg-success/10"
+                              onClick={() => markPaidMutation.mutate({ id: commission.id })}
+                              disabled={markPaidMutation.isPending}
+                              title="Marcar como pagada sin procesar transferencia STP"
+                              data-testid={`button-mark-paid-${commission.id}`}
+                            >
+                              <i className="fas fa-check mr-1"></i>
+                              Marcar Pagada
+                            </Button>
                             <Dialog>
                               <DialogTrigger asChild>
                                 <Button 
                                   size="sm"
-                                  className="bg-success text-white hover:bg-green-700"
+                                  className="bg-success text-white hover:bg-green-700 text-xs"
                                   onClick={() => setSelectedCommission(commission)}
                                   data-testid={`button-pay-${commission.id}`}
                                 >
@@ -331,7 +374,7 @@ export default function Commissions() {
                                 <div className="space-y-4">
                                   <div>
                                     <p className="font-semibold">Monto a pagar:</p>
-                                    <p className="text-2xl text-primary">
+                                    <p className="text-2xl text-primary font-bold">
                                       ${parseFloat(commission.amount).toLocaleString('es-MX')} MXN
                                     </p>
                                   </div>
@@ -368,7 +411,7 @@ export default function Commissions() {
                         )}
                         
                         {commission.paidAt && (
-                          <p className="text-xs text-success">
+                          <p className="text-[11px] text-success font-medium">
                             Pagado el {new Date(commission.paidAt).toLocaleDateString('es-MX')}
                           </p>
                         )}
@@ -512,7 +555,80 @@ export default function Commissions() {
                   </tbody>
                 </table>
               </div>
-            </div>
+        {/* Modal de Detalle de Comisión */}
+        <Dialog open={!!viewingCommission} onOpenChange={(open) => !open && setViewingCommission(null)}>
+          <DialogContent className="max-w-lg">
+            <DialogHeader>
+              <DialogTitle className="text-lg font-bold flex items-center gap-2">
+                <i className="fas fa-receipt text-primary"></i>
+                Detalle de Comisión #{viewingCommission?.id?.slice(-8)}
+              </DialogTitle>
+            </DialogHeader>
+
+            {viewingCommission && (
+              <div className="space-y-4 pt-2">
+                <div className="bg-primary/5 p-4 rounded-lg flex items-center justify-between">
+                  <div>
+                    <p className="text-xs text-neutral">Monto de Comisión</p>
+                    <p className="text-2xl font-bold text-primary">
+                      ${parseFloat(viewingCommission.amount || '0').toLocaleString('es-MX')} MXN
+                    </p>
+                  </div>
+                  <Badge className={statusConfig[viewingCommission.status as keyof typeof statusConfig]?.color || "bg-gray-100 text-gray-800"}>
+                    {statusConfig[viewingCommission.status as keyof typeof statusConfig]?.label || viewingCommission.status}
+                  </Badge>
+                </div>
+
+                <div className="space-y-2 text-sm">
+                  <div className="flex justify-between py-1 border-b">
+                    <span className="text-neutral">Tipo de Comisión:</span>
+                    <span className="font-medium capitalize">{commissionTypeLabels[viewingCommission.commissionType || ""] || viewingCommission.commissionType || "Apertura"}</span>
+                  </div>
+                  {viewingCommission.client && (
+                    <div className="flex justify-between py-1 border-b">
+                      <span className="text-neutral">Cliente:</span>
+                      <span className="font-semibold text-gray-900">
+                        {viewingCommission.client.businessName || `${viewingCommission.client.firstName || ''} ${viewingCommission.client.lastName || ''}`.trim()}
+                      </span>
+                    </div>
+                  )}
+                  {viewingCommission.financialInstitution && (
+                    <div className="flex justify-between py-1 border-b">
+                      <span className="text-neutral">Financiera:</span>
+                      <span className="font-medium">{viewingCommission.financialInstitution.name}</span>
+                    </div>
+                  )}
+                  {viewingCommission.credit && (
+                    <div className="flex justify-between py-1 border-b">
+                      <span className="text-neutral">Monto del Crédito:</span>
+                      <span className="font-medium">${parseFloat(viewingCommission.credit.amount || '0').toLocaleString('es-MX')} MXN</span>
+                    </div>
+                  )}
+                  {viewingCommission.broker && (
+                    <div className="flex justify-between py-1 border-b">
+                      <span className="text-neutral">Broker:</span>
+                      <span className="font-medium">{viewingCommission.broker.firstName} {viewingCommission.broker.lastName}</span>
+                    </div>
+                  )}
+                  <div className="flex justify-between py-1 border-b">
+                    <span className="text-neutral">Fecha de Generación:</span>
+                    <span>{new Date(viewingCommission.createdAt).toLocaleDateString('es-MX')}</span>
+                  </div>
+                  {viewingCommission.paidAt && (
+                    <div className="flex justify-between py-1 border-b text-success">
+                      <span className="font-medium">Fecha de Pago:</span>
+                      <span className="font-semibold">{new Date(viewingCommission.paidAt).toLocaleDateString('es-MX')}</span>
+                    </div>
+                  )}
+                </div>
+
+                <div className="flex justify-end pt-2">
+                  <Button variant="outline" onClick={() => setViewingCommission(null)}>
+                    Cerrar
+                  </Button>
+                </div>
+              </div>
+            )}
           </DialogContent>
         </Dialog>
       </div>

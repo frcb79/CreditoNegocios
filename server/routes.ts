@@ -1463,37 +1463,71 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const user = await storage.getUser(userId);
       const { clientId, status } = req.query;
       
-      // Admin and super_admin can see all credits
       const isAdmin = user?.role === 'admin' || user?.role === 'super_admin';
+      let rawCredits: any[] = [];
       
       if (isAdmin) {
-        const credits = await storage.getCredits({
+        rawCredits = await storage.getCredits({
           clientId: clientId as string,
           status: status as string,
         });
-        return res.json(credits);
-      }
-      
-      // Master brokers can see their own credits + their network's credits
-      if (user?.role === 'master_broker') {
+      } else if (user?.role === 'master_broker') {
         const networkBrokers = await storage.getUsersByMasterBroker(userId);
         const brokerIds = [userId, ...networkBrokers.map(b => b.id)];
         const allCredits = await storage.getCredits({
           clientId: clientId as string,
           status: status as string,
         });
-        const filteredCredits = allCredits.filter(c => brokerIds.includes(c.brokerId));
-        return res.json(filteredCredits);
+        rawCredits = allCredits.filter(c => brokerIds.includes(c.brokerId));
+      } else {
+        rawCredits = await storage.getCredits({
+          brokerId: userId,
+          clientId: clientId as string,
+          status: status as string,
+        });
       }
+
+      // Enrich with client, institution and product template details
+      const enrichedCredits = await Promise.all(
+        rawCredits.map(async (credit) => {
+          const client = credit.clientId ? await storage.getClient(credit.clientId) : null;
+          const institution = credit.financialInstitutionId ? await storage.getFinancialInstitution(credit.financialInstitutionId) : null;
+          const productTemplate = credit.productTemplateId ? await storage.getProductTemplate(credit.productTemplateId) : null;
+          const broker = credit.brokerId ? await storage.getUser(credit.brokerId) : null;
+
+          return {
+            ...credit,
+            client: client ? {
+              id: client.id,
+              firstName: client.firstName,
+              lastName: client.lastName,
+              businessName: client.businessName,
+              type: client.type,
+              rfc: client.rfc,
+              email: client.email,
+              phone: client.phone,
+            } : null,
+            financialInstitution: institution ? {
+              id: institution.id,
+              name: institution.name,
+              logoUrl: institution.logoUrl,
+            } : null,
+            productTemplate: productTemplate ? {
+              id: productTemplate.id,
+              name: productTemplate.name,
+              category: productTemplate.category,
+            } : null,
+            broker: broker ? {
+              id: broker.id,
+              firstName: broker.firstName,
+              lastName: broker.lastName,
+              email: broker.email,
+            } : null,
+          };
+        })
+      );
       
-      // Regular brokers only see their own credits
-      const credits = await storage.getCredits({
-        brokerId: userId,
-        clientId: clientId as string,
-        status: status as string,
-      });
-      
-      res.json(credits);
+      res.json(enrichedCredits);
     } catch (error) {
       console.error("Error fetching credits:", error);
       res.status(500).json({ message: "Failed to fetch credits" });
@@ -1937,26 +1971,97 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       // Admin and super_admin can see all commissions
       const isAdmin = user?.role === 'admin' || user?.role === 'super_admin';
+      let rawCommissions: any[] = [];
       
       if (isAdmin) {
-        const commissions = await storage.getCommissions();
-        return res.json(commissions);
-      }
-      
-      // Master brokers can see their own commissions + their network's commissions
-      if (user?.role === 'master_broker') {
-        const commissions = await storage.getCommissions({
+        rawCommissions = await storage.getCommissions();
+      } else if (user?.role === 'master_broker') {
+        rawCommissions = await storage.getCommissions({
           masterBrokerId: userId,
           includeNetwork: true,
         });
-        return res.json(commissions);
+      } else {
+        rawCommissions = await storage.getCommissions(userId);
       }
-      
-      // Regular brokers only see their own commissions
-      const commissions = await storage.getCommissions(userId);
-      res.json(commissions);
+
+      // Enrich with credit, client and institution information
+      const enrichedCommissions = await Promise.all(
+        rawCommissions.map(async (comm) => {
+          let credit = null;
+          let client = null;
+          let institution = null;
+
+          if (comm.creditId) {
+            credit = await storage.getCredit(comm.creditId);
+            if (credit) {
+              if (credit.clientId) {
+                client = await storage.getClient(credit.clientId);
+              }
+              if (credit.financialInstitutionId) {
+                institution = await storage.getFinancialInstitution(credit.financialInstitutionId);
+              }
+            }
+          }
+
+          const broker = comm.brokerId ? await storage.getUser(comm.brokerId) : null;
+
+          return {
+            ...comm,
+            credit: credit ? {
+              id: credit.id,
+              amount: credit.amount,
+              term: credit.term,
+              interestRate: credit.interestRate,
+              status: credit.status,
+            } : null,
+            client: client ? {
+              id: client.id,
+              firstName: client.firstName,
+              lastName: client.lastName,
+              businessName: client.businessName,
+              type: client.type,
+            } : null,
+            financialInstitution: institution ? {
+              id: institution.id,
+              name: institution.name,
+            } : null,
+            broker: broker ? {
+              id: broker.id,
+              firstName: broker.firstName,
+              lastName: broker.lastName,
+              email: broker.email,
+            } : null,
+          };
+        })
+      );
+
+      res.json(enrichedCommissions);
     } catch (error) {
       console.error("Error fetching commissions:", error);
+      res.status(500).json({ message: "Failed to fetch commissions" });
+    }
+  });
+
+  app.get('/api/commissions/my-commissions', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const user = await storage.getUser(userId);
+
+      let rawCommissions: any[] = [];
+      if (user?.role === 'master_broker') {
+        rawCommissions = await storage.getCommissions({
+          masterBrokerId: userId,
+          includeNetwork: true,
+        });
+      } else if (user?.role === 'admin' || user?.role === 'super_admin') {
+        rawCommissions = await storage.getCommissions();
+      } else {
+        rawCommissions = await storage.getCommissions(userId);
+      }
+
+      res.json(rawCommissions);
+    } catch (error) {
+      console.error("Error fetching my-commissions:", error);
       res.status(500).json({ message: "Failed to fetch commissions" });
     }
   });
@@ -2035,6 +2140,57 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Error processing payment:", error);
       res.status(500).json({ message: "Failed to process payment" });
+    }
+  });
+
+  // Mark commission as paid manually (Admins only)
+  app.post('/api/commissions/:id/mark-paid', isAuthenticated, async (req: any, res) => {
+    try {
+      const { id } = req.params;
+      const { notes } = req.body;
+      const userId = req.user.claims.sub;
+      const user = await storage.getUser(userId);
+
+      if (!user || (user.role !== 'admin' && user.role !== 'super_admin')) {
+        return res.status(403).json({ message: "Solo los administradores pueden marcar comisiones como pagadas" });
+      }
+
+      const allComms = await storage.getCommissions();
+      const commission = allComms.find(c => c.id === id);
+
+      if (!commission) {
+        return res.status(404).json({ message: "Comisión no encontrada" });
+      }
+
+      if (commission.status === 'paid') {
+        return res.json({ message: "La comisión ya estaba marcada como pagada", commission });
+      }
+
+      const updated = await storage.updateCommission(id, {
+        status: 'paid',
+        paidAt: new Date(),
+      });
+
+      // Notify beneficiary
+      const beneficiaryId = parseFloat(commission.masterBrokerShare || '0') > 0 && commission.masterBrokerId
+        ? commission.masterBrokerId
+        : commission.brokerId;
+
+      const paidNotification = await storage.createNotification({
+        userId: beneficiaryId,
+        type: 'commission_paid',
+        title: 'Comisión pagada',
+        message: `Se marcó como pagada la comisión de $${parseFloat(commission.amount || '0').toLocaleString('es-MX')} (${commission.commissionType || 'sin tipo'}). ${notes ? `Nota: ${notes}` : ''}`,
+        relatedEntityType: 'commission',
+        relatedEntityId: commission.id,
+        priority: 'high',
+      });
+      broadcastToUser(beneficiaryId, { type: 'notification', notification: paidNotification });
+
+      res.json({ message: "Comisión marcada como pagada exitosamente", commission: updated });
+    } catch (error) {
+      console.error("Error marking commission as paid:", error);
+      res.status(500).json({ message: "Error al marcar la comisión como pagada" });
     }
   });
 

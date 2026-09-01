@@ -221,7 +221,7 @@ export default function ReGestion() {
                       : "No se encontraron oportunidades con los filtros aplicados."
                     }
                   </p>
-                  <Link href="/credits">
+                  <Link href="/creditos">
                     <Button className="bg-primary text-white hover:bg-primary-dark">
                       <i className="fas fa-briefcase mr-2"></i>
                       Ver Cartera Activa
