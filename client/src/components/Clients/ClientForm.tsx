@@ -54,13 +54,60 @@ const formSchema = updatedInsertClientSchema.extend({
     });
   }
   
-  // Validación condicional: si tienes créditos vigentes, debes dar detalles
-  if (data.creditosVigentes === "si" && (!data.creditosVigentesDetalles || !Array.isArray(data.creditosVigentesDetalles) || data.creditosVigentesDetalles.length === 0)) {
-    ctx.addIssue({
-      code: z.ZodIssueCode.custom,
-      message: "Detalles de créditos vigentes son requeridos cuando se selecciona 'SI'",
-      path: ["creditosVigentesDetalles"],
-    });
+  // Validación condicional: si tienes créditos vigentes, debes dar detalles y cada crédito debe tener todos sus campos completos
+  if (data.creditosVigentes === "si") {
+    if (!data.creditosVigentesDetalles || !Array.isArray(data.creditosVigentesDetalles) || data.creditosVigentesDetalles.length === 0) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Debes agregar al menos un crédito vigente con todos sus datos completos",
+        path: ["creditosVigentesDetalles"],
+      });
+    } else {
+      data.creditosVigentesDetalles.forEach((credit: any, index: number) => {
+        if (!credit.tipo || !credit.tipo.trim()) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: "El tipo de crédito es requerido",
+            path: ["creditosVigentesDetalles", index, "tipo"],
+          });
+        }
+        if (!credit.institucion || !credit.institucion.trim()) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: "La institución financiera es requerida",
+            path: ["creditosVigentesDetalles", index, "institucion"],
+          });
+        }
+        if (!credit.saldoOriginal || String(credit.saldoOriginal).trim() === '') {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: "El saldo original es requerido",
+            path: ["creditosVigentesDetalles", index, "saldoOriginal"],
+          });
+        }
+        if (!credit.saldo || String(credit.saldo).trim() === '') {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: "El saldo actual es requerido",
+            path: ["creditosVigentesDetalles", index, "saldo"],
+          });
+        }
+        if (!credit.fechaInicio || !credit.fechaInicio.trim()) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: "La fecha de inicio es requerida",
+            path: ["creditosVigentesDetalles", index, "fechaInicio"],
+          });
+        }
+        if (!credit.fechaTermino || !credit.fechaTermino.trim()) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: "La fecha de término es requerida",
+            path: ["creditosVigentesDetalles", index, "fechaTermino"],
+          });
+        }
+      });
+    }
   }
   
 
@@ -185,14 +232,6 @@ const formSchema = updatedInsertClientSchema.extend({
         code: z.ZodIssueCode.custom,
         message: "Detalles de garantía hipotecaria son requeridos",
         path: ["garantiaFisicaDetalles"],
-      });
-    }
-    // Validaciones condicionales para créditos vigentes - Persona Física
-    if (data.creditosVigentes === "si" && (!data.creditosVigentesDetalles || !Array.isArray(data.creditosVigentesDetalles) || data.creditosVigentesDetalles.length === 0)) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: "Detalles de créditos vigentes son requeridos cuando se selecciona 'SI'",
-        path: ["creditosVigentesDetalles"],
       });
     }
   }
@@ -336,17 +375,32 @@ export default function ClientForm({ client, onSuccess }: ClientFormProps) {
   });
 
   const onSubmit = (data: InsertClient) => {
-    // Filter out completely empty credit entries
-    let cleanedCredits = data.creditosVigentesDetalles;
-    if (Array.isArray(cleanedCredits)) {
-      cleanedCredits = cleanedCredits.filter(
-        (c: any) => c && (c.tipo?.trim() || c.institucion?.trim() || c.saldoOriginal || c.saldo || c.fechaInicio || c.fechaTermino)
+    // Si seleccionó SI en créditos vigentes, validar y filtrar
+    let cleanedCredits: any[] = [];
+    if (data.creditosVigentes === "si") {
+      const rawCredits = data.creditosVigentesDetalles || [];
+      cleanedCredits = Array.isArray(rawCredits) 
+        ? rawCredits.filter((c: any) => c && (c.tipo?.trim() || c.institucion?.trim() || c.saldoOriginal || c.saldo || c.fechaInicio || c.fechaTermino))
+        : [];
+      
+      // Verificar si algún crédito está incompleto
+      const hasIncomplete = cleanedCredits.some((c: any) => 
+        !c.tipo?.trim() || !c.institucion?.trim() || !String(c.saldoOriginal || '').trim() || !String(c.saldo || '').trim() || !c.fechaInicio || !c.fechaTermino
       );
+
+      if (cleanedCredits.length === 0 || hasIncomplete) {
+        toast({
+          title: "Campos de crédito incompletos",
+          description: "Debes completar todos los datos del crédito vigente (Tipo, Institución, Saldo Original, Saldo Actual, Fecha Inicio y Fecha Término).",
+          variant: "destructive",
+        });
+        return;
+      }
     }
 
     const submitData = {
       ...data,
-      creditosVigentesDetalles: (data.creditosVigentes === "si" && cleanedCredits && cleanedCredits.length > 0) ? cleanedCredits : [],
+      creditosVigentesDetalles: (data.creditosVigentes === "si" && cleanedCredits.length > 0) ? cleanedCredits : [],
       type: clientType,
     };
 
@@ -1733,7 +1787,15 @@ export default function ClientForm({ client, onSuccess }: ClientFormProps) {
                               render={({ field }) => (
                                 <FormItem>
                                   <FormLabel>Créditos Vigentes</FormLabel>
-                                  <Select onValueChange={field.onChange} value={field.value || ""}>
+                                  <Select 
+                                    onValueChange={(val) => {
+                                      field.onChange(val);
+                                      if (val === "si" && creditFields.length === 0) {
+                                        appendCredit({ tipo: "", saldoOriginal: "", saldo: "", institucion: "", fechaInicio: "", fechaTermino: "" });
+                                      }
+                                    }} 
+                                    value={field.value || ""}
+                                  >
                                     <FormControl>
                                       <SelectTrigger data-testid="select-fisica-active-credits">
                                         <SelectValue placeholder="Seleccionar" />
@@ -1753,15 +1815,26 @@ export default function ClientForm({ client, onSuccess }: ClientFormProps) {
                             {form.watch("creditosVigentes") === "si" && (
                               <div className="mt-4 space-y-4">
                                 <h4 className="text-md font-medium">Detalles de Créditos Vigentes</h4>
-                                {creditFields.map((field, index) => (
-                                  <div key={field.id} className="border p-4 rounded-lg space-y-4">
+                                 {creditFields.map((field, index) => (
+                                  <div key={field.id} className="border border-blue-100 bg-blue-50/20 p-4 rounded-lg space-y-4 relative">
+                                    <div className="flex items-center justify-between pb-2 border-b border-gray-200">
+                                      <span className="text-sm font-semibold text-primary">Crédito #{index + 1}</span>
+                                      <button
+                                        type="button"
+                                        onClick={() => removeCredit(index)}
+                                        className="text-xs text-red-500 hover:text-red-700 hover:bg-red-50 px-2 py-1 rounded transition-colors flex items-center gap-1"
+                                      >
+                                        <i className="fas fa-trash-alt"></i>
+                                        Eliminar
+                                      </button>
+                                    </div>
                                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                                       <FormField
                                         control={form.control}
                                         name={`creditosVigentesDetalles.${index}.tipo`}
                                         render={({ field }) => (
                                           <FormItem>
-                                            <FormLabel>Tipo</FormLabel>
+                                            <FormLabel>Tipo *</FormLabel>
                                             <FormControl>
                                               <Input 
                                                 placeholder="Hipotecario, Automotriz, Personal, etc."
@@ -1780,7 +1853,7 @@ export default function ClientForm({ client, onSuccess }: ClientFormProps) {
                                         name={`creditosVigentesDetalles.${index}.institucion`}
                                         render={({ field }) => (
                                           <FormItem>
-                                            <FormLabel>Institución</FormLabel>
+                                            <FormLabel>Institución *</FormLabel>
                                             <FormControl>
                                               <Input 
                                                 placeholder="Banco, Financiera, etc."
@@ -1799,7 +1872,7 @@ export default function ClientForm({ client, onSuccess }: ClientFormProps) {
                                         name={`creditosVigentesDetalles.${index}.saldoOriginal`}
                                         render={({ field }) => (
                                           <FormItem>
-                                            <FormLabel>Saldo Original</FormLabel>
+                                            <FormLabel>Saldo Original *</FormLabel>
                                             <FormControl>
                                               <CurrencyInput
                                                 value={field.value || ''}
@@ -1820,7 +1893,7 @@ export default function ClientForm({ client, onSuccess }: ClientFormProps) {
                                         name={`creditosVigentesDetalles.${index}.saldo`}
                                         render={({ field }) => (
                                           <FormItem>
-                                            <FormLabel>Saldo Actual</FormLabel>
+                                            <FormLabel>Saldo Actual *</FormLabel>
                                             <FormControl>
                                               <CurrencyInput
                                                 value={field.value || ''}
@@ -1839,7 +1912,7 @@ export default function ClientForm({ client, onSuccess }: ClientFormProps) {
                                         name={`creditosVigentesDetalles.${index}.fechaInicio`}
                                         render={({ field }) => (
                                           <FormItem>
-                                            <FormLabel>Fecha Inicio</FormLabel>
+                                            <FormLabel>Fecha Inicio *</FormLabel>
                                             <FormControl>
                                               <Input 
                                                 type="date"
@@ -1858,7 +1931,7 @@ export default function ClientForm({ client, onSuccess }: ClientFormProps) {
                                         name={`creditosVigentesDetalles.${index}.fechaTermino`}
                                         render={({ field }) => (
                                           <FormItem>
-                                            <FormLabel>Fecha Término</FormLabel>
+                                            <FormLabel>Fecha Término *</FormLabel>
                                             <FormControl>
                                               <Input 
                                                 type="date"
@@ -2283,7 +2356,15 @@ export default function ClientForm({ client, onSuccess }: ClientFormProps) {
                               render={({ field }) => (
                                 <FormItem>
                                   <FormLabel>Créditos Vigentes</FormLabel>
-                                  <Select onValueChange={field.onChange} value={field.value || ""}>
+                                  <Select 
+                                    onValueChange={(val) => {
+                                      field.onChange(val);
+                                      if (val === "si" && creditFields.length === 0) {
+                                        appendCredit({ tipo: "", saldoOriginal: "", saldo: "", institucion: "", fechaInicio: "", fechaTermino: "" });
+                                      }
+                                    }} 
+                                    value={field.value || ""}
+                                  >
                                     <FormControl>
                                       <SelectTrigger data-testid="select-sinsat-active-credits">
                                         <SelectValue placeholder="Seleccionar" />
@@ -2304,14 +2385,25 @@ export default function ClientForm({ client, onSuccess }: ClientFormProps) {
                               <div className="mt-4 space-y-4">
                                 <h4 className="text-md font-medium">Detalles de Créditos Vigentes</h4>
                                 {creditFields.map((field, index) => (
-                                  <div key={field.id} className="border p-4 rounded-lg space-y-4">
+                                  <div key={field.id} className="border border-blue-100 bg-blue-50/20 p-4 rounded-lg space-y-4 relative">
+                                    <div className="flex items-center justify-between pb-2 border-b border-gray-200">
+                                      <span className="text-sm font-semibold text-primary">Crédito #{index + 1}</span>
+                                      <button
+                                        type="button"
+                                        onClick={() => removeCredit(index)}
+                                        className="text-xs text-red-500 hover:text-red-700 hover:bg-red-50 px-2 py-1 rounded transition-colors flex items-center gap-1"
+                                      >
+                                        <i className="fas fa-trash-alt"></i>
+                                        Eliminar
+                                      </button>
+                                    </div>
                                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                                       <FormField
                                         control={form.control}
                                         name={`creditosVigentesDetalles.${index}.tipo`}
                                         render={({ field }) => (
                                           <FormItem>
-                                            <FormLabel>Tipo</FormLabel>
+                                            <FormLabel>Tipo *</FormLabel>
                                             <FormControl>
                                               <Input 
                                                 placeholder="Hipotecario, Automotriz, Personal, etc."
@@ -2330,7 +2422,7 @@ export default function ClientForm({ client, onSuccess }: ClientFormProps) {
                                         name={`creditosVigentesDetalles.${index}.institucion`}
                                         render={({ field }) => (
                                           <FormItem>
-                                            <FormLabel>Institución</FormLabel>
+                                            <FormLabel>Institución *</FormLabel>
                                             <FormControl>
                                               <Input 
                                                 placeholder="Banco, Financiera, etc."
@@ -2349,7 +2441,7 @@ export default function ClientForm({ client, onSuccess }: ClientFormProps) {
                                         name={`creditosVigentesDetalles.${index}.saldoOriginal`}
                                         render={({ field }) => (
                                           <FormItem>
-                                            <FormLabel>Saldo Original</FormLabel>
+                                            <FormLabel>Saldo Original *</FormLabel>
                                             <FormControl>
                                               <CurrencyInput
                                                 value={field.value || ''}
@@ -2370,7 +2462,7 @@ export default function ClientForm({ client, onSuccess }: ClientFormProps) {
                                         name={`creditosVigentesDetalles.${index}.saldo`}
                                         render={({ field }) => (
                                           <FormItem>
-                                            <FormLabel>Saldo Actual</FormLabel>
+                                            <FormLabel>Saldo Actual *</FormLabel>
                                             <FormControl>
                                               <CurrencyInput
                                                 value={field.value || ''}
@@ -2389,7 +2481,7 @@ export default function ClientForm({ client, onSuccess }: ClientFormProps) {
                                         name={`creditosVigentesDetalles.${index}.fechaInicio`}
                                         render={({ field }) => (
                                           <FormItem>
-                                            <FormLabel>Fecha Inicio</FormLabel>
+                                            <FormLabel>Fecha Inicio *</FormLabel>
                                             <FormControl>
                                               <Input 
                                                 type="date"
@@ -2408,7 +2500,7 @@ export default function ClientForm({ client, onSuccess }: ClientFormProps) {
                                         name={`creditosVigentesDetalles.${index}.fechaTermino`}
                                         render={({ field }) => (
                                           <FormItem>
-                                            <FormLabel>Fecha Término</FormLabel>
+                                            <FormLabel>Fecha Término *</FormLabel>
                                             <FormControl>
                                               <Input 
                                                 type="date"
@@ -3069,7 +3161,15 @@ export default function ClientForm({ client, onSuccess }: ClientFormProps) {
                               render={({ field }) => (
                                 <FormItem>
                                   <FormLabel>Créditos Vigentes</FormLabel>
-                                  <Select onValueChange={field.onChange} value={field.value || ""}>
+                                  <Select 
+                                    onValueChange={(val) => {
+                                      field.onChange(val);
+                                      if (val === "si" && creditFields.length === 0) {
+                                        appendCredit({ tipo: "", saldoOriginal: "", saldo: "", institucion: "", fechaInicio: "", fechaTermino: "" });
+                                      }
+                                    }} 
+                                    value={field.value || ""}
+                                  >
                                     <FormControl>
                                       <SelectTrigger data-testid="select-pfae-active-credits">
                                         <SelectValue placeholder="Seleccionar" />
@@ -3090,14 +3190,25 @@ export default function ClientForm({ client, onSuccess }: ClientFormProps) {
                               <div className="mt-4 space-y-4">
                                 <h4 className="text-md font-medium">Detalles de Créditos Vigentes</h4>
                                 {creditFields.map((field, index) => (
-                                  <div key={field.id} className="border p-4 rounded-lg space-y-4">
+                                  <div key={field.id} className="border border-blue-100 bg-blue-50/20 p-4 rounded-lg space-y-4 relative">
+                                    <div className="flex items-center justify-between pb-2 border-b border-gray-200">
+                                      <span className="text-sm font-semibold text-primary">Crédito #{index + 1}</span>
+                                      <button
+                                        type="button"
+                                        onClick={() => removeCredit(index)}
+                                        className="text-xs text-red-500 hover:text-red-700 hover:bg-red-50 px-2 py-1 rounded transition-colors flex items-center gap-1"
+                                      >
+                                        <i className="fas fa-trash-alt"></i>
+                                        Eliminar
+                                      </button>
+                                    </div>
                                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                                       <FormField
                                         control={form.control}
                                         name={`creditosVigentesDetalles.${index}.tipo`}
                                         render={({ field }) => (
                                           <FormItem>
-                                            <FormLabel>Tipo</FormLabel>
+                                            <FormLabel>Tipo *</FormLabel>
                                             <FormControl>
                                               <Input 
                                                 placeholder="Hipotecario, Automotriz, Personal, etc."
@@ -3116,7 +3227,7 @@ export default function ClientForm({ client, onSuccess }: ClientFormProps) {
                                         name={`creditosVigentesDetalles.${index}.institucion`}
                                         render={({ field }) => (
                                           <FormItem>
-                                            <FormLabel>Institución</FormLabel>
+                                            <FormLabel>Institución *</FormLabel>
                                             <FormControl>
                                               <Input 
                                                 placeholder="Banco, Financiera, etc."
@@ -3135,7 +3246,7 @@ export default function ClientForm({ client, onSuccess }: ClientFormProps) {
                                         name={`creditosVigentesDetalles.${index}.saldoOriginal`}
                                         render={({ field }) => (
                                           <FormItem>
-                                            <FormLabel>Saldo Original</FormLabel>
+                                            <FormLabel>Saldo Original *</FormLabel>
                                             <FormControl>
                                               <CurrencyInput
                                                 value={field.value || ''}
@@ -3156,7 +3267,7 @@ export default function ClientForm({ client, onSuccess }: ClientFormProps) {
                                         name={`creditosVigentesDetalles.${index}.saldo`}
                                         render={({ field }) => (
                                           <FormItem>
-                                            <FormLabel>Saldo Actual</FormLabel>
+                                            <FormLabel>Saldo Actual *</FormLabel>
                                             <FormControl>
                                               <CurrencyInput
                                                 value={field.value || ''}
@@ -3175,7 +3286,7 @@ export default function ClientForm({ client, onSuccess }: ClientFormProps) {
                                         name={`creditosVigentesDetalles.${index}.fechaInicio`}
                                         render={({ field }) => (
                                           <FormItem>
-                                            <FormLabel>Fecha Inicio</FormLabel>
+                                            <FormLabel>Fecha Inicio *</FormLabel>
                                             <FormControl>
                                               <Input 
                                                 type="date"
@@ -3194,7 +3305,7 @@ export default function ClientForm({ client, onSuccess }: ClientFormProps) {
                                         name={`creditosVigentesDetalles.${index}.fechaTermino`}
                                         render={({ field }) => (
                                           <FormItem>
-                                            <FormLabel>Fecha Término</FormLabel>
+                                            <FormLabel>Fecha Término *</FormLabel>
                                             <FormControl>
                                               <Input 
                                                 type="date"
@@ -3662,7 +3773,15 @@ export default function ClientForm({ client, onSuccess }: ClientFormProps) {
                               render={({ field }) => (
                                 <FormItem>
                                   <FormLabel>Créditos Vigentes</FormLabel>
-                                  <Select onValueChange={field.onChange} value={field.value || ""}>
+                                  <Select 
+                                    onValueChange={(val) => {
+                                      field.onChange(val);
+                                      if (val === "si" && creditFields.length === 0) {
+                                        appendCredit({ tipo: "", saldoOriginal: "", saldo: "", institucion: "", fechaInicio: "", fechaTermino: "" });
+                                      }
+                                    }} 
+                                    value={field.value || ""}
+                                  >
                                     <FormControl>
                                       <SelectTrigger data-testid="select-active-credits">
                                         <SelectValue placeholder="Seleccionar" />
@@ -3683,14 +3802,25 @@ export default function ClientForm({ client, onSuccess }: ClientFormProps) {
                               <div className="mt-4 space-y-4">
                                 <h4 className="text-md font-medium">Detalles de Créditos Vigentes</h4>
                                 {creditFields.map((field, index) => (
-                                  <div key={field.id} className="border p-4 rounded-lg space-y-4">
+                                  <div key={field.id} className="border border-blue-100 bg-blue-50/20 p-4 rounded-lg space-y-4 relative">
+                                    <div className="flex items-center justify-between pb-2 border-b border-gray-200">
+                                      <span className="text-sm font-semibold text-primary">Crédito #{index + 1}</span>
+                                      <button
+                                        type="button"
+                                        onClick={() => removeCredit(index)}
+                                        className="text-xs text-red-500 hover:text-red-700 hover:bg-red-50 px-2 py-1 rounded transition-colors flex items-center gap-1"
+                                      >
+                                        <i className="fas fa-trash-alt"></i>
+                                        Eliminar
+                                      </button>
+                                    </div>
                                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                                       <FormField
                                         control={form.control}
                                         name={`creditosVigentesDetalles.${index}.tipo`}
                                         render={({ field }) => (
                                           <FormItem>
-                                            <FormLabel>Tipo</FormLabel>
+                                            <FormLabel>Tipo *</FormLabel>
                                             <FormControl>
                                               <Input 
                                                 placeholder="Hipotecario, Automotriz, Personal, etc."
@@ -3709,7 +3839,7 @@ export default function ClientForm({ client, onSuccess }: ClientFormProps) {
                                         name={`creditosVigentesDetalles.${index}.institucion`}
                                         render={({ field }) => (
                                           <FormItem>
-                                            <FormLabel>Institución</FormLabel>
+                                            <FormLabel>Institución *</FormLabel>
                                             <FormControl>
                                               <Input 
                                                 placeholder="Banco, Financiera, etc."
@@ -3728,7 +3858,7 @@ export default function ClientForm({ client, onSuccess }: ClientFormProps) {
                                         name={`creditosVigentesDetalles.${index}.saldoOriginal`}
                                         render={({ field }) => (
                                           <FormItem>
-                                            <FormLabel>Saldo Original</FormLabel>
+                                            <FormLabel>Saldo Original *</FormLabel>
                                             <FormControl>
                                               <CurrencyInput
                                                 value={field.value || ''}
@@ -3749,7 +3879,7 @@ export default function ClientForm({ client, onSuccess }: ClientFormProps) {
                                         name={`creditosVigentesDetalles.${index}.saldo`}
                                         render={({ field }) => (
                                           <FormItem>
-                                            <FormLabel>Saldo Actual</FormLabel>
+                                            <FormLabel>Saldo Actual *</FormLabel>
                                             <FormControl>
                                               <CurrencyInput
                                                 value={field.value || ''}
@@ -3768,7 +3898,7 @@ export default function ClientForm({ client, onSuccess }: ClientFormProps) {
                                         name={`creditosVigentesDetalles.${index}.fechaInicio`}
                                         render={({ field }) => (
                                           <FormItem>
-                                            <FormLabel>Fecha Inicio</FormLabel>
+                                            <FormLabel>Fecha Inicio *</FormLabel>
                                             <FormControl>
                                               <Input 
                                                 type="date"
@@ -3787,7 +3917,7 @@ export default function ClientForm({ client, onSuccess }: ClientFormProps) {
                                         name={`creditosVigentesDetalles.${index}.fechaTermino`}
                                         render={({ field }) => (
                                           <FormItem>
-                                            <FormLabel>Fecha Término</FormLabel>
+                                            <FormLabel>Fecha Término *</FormLabel>
                                             <FormControl>
                                               <Input 
                                                 type="date"
