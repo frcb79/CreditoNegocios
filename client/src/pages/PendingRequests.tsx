@@ -273,8 +273,9 @@ export default function PendingRequests() {
 
   const handleDownloadPDF = async (targetId: string) => {
     try {
-      const response = await fetch(`/api/credit-submission-targets/${targetId}/generate-pdf`, {
+      const response = await fetch(buildApiUrl(`/api/credit-submission-targets/${targetId}/generate-pdf`), {
         method: 'POST',
+        credentials: 'include',
       });
       if (!response.ok) throw new Error('Failed to generate PDF');
       

@@ -35,7 +35,17 @@ export default function Commissions() {
   const [searchTerm, setSearchTerm] = useState("");
   const [filterStatus, setFilterStatus] = useState<string>("all");
   const [selectedCommission, setSelectedCommission] = useState<Commission | null>(null);
-  const [accountNumber, setAccountNumber] = useState("");
+  const [showRatesModal, setShowRatesModal] = useState(false);
+  const [ratesSearchTerm, setRatesSearchTerm] = useState("");
+
+  const { data: financialInstitutions = [] } = useQuery<any[]>({
+    queryKey: ["/api/financial-institutions"],
+  });
+
+  const activeInstitutions = financialInstitutions.filter((f: any) => f.isActive !== false);
+  const filteredInstitutions = activeInstitutions.filter((f: any) =>
+    f.name.toLowerCase().includes(ratesSearchTerm.toLowerCase())
+  );
 
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -222,15 +232,27 @@ export default function Commissions() {
                   </div>
                 </div>
                 
-                <Button 
-                  className="bg-primary text-white hover:bg-primary-dark"
-                  onClick={() => {
-                    alert("⏳ Próximamente\n\nEsta opción estará disponible pronto. Estamos trabajando para que puedas solicitar adelantos sobre tus comisiones directamente desde la plataforma.");
-                  }}
-                >
-                  <i className="fas fa-bolt mr-2"></i>
-                  Solicitar Adelanto
-                </Button>
+                <div className="flex gap-2">
+                  <Button 
+                    variant="outline"
+                    className="border-primary text-primary hover:bg-primary/10"
+                    onClick={() => setShowRatesModal(true)}
+                    data-testid="button-view-commission-rates"
+                  >
+                    <i className="fas fa-table mr-2"></i>
+                    Esquema de Comisiones
+                  </Button>
+
+                  <Button 
+                    className="bg-primary text-white hover:bg-primary-dark"
+                    onClick={() => {
+                      alert("⏳ Próximamente\n\nEsta opción estará disponible pronto. Estamos trabajando para que puedas solicitar adelantos sobre tus comisiones directamente desde la plataforma.");
+                    }}
+                  >
+                    <i className="fas fa-bolt mr-2"></i>
+                    Solicitar Adelanto
+                  </Button>
+                </div>
               </div>
             </CardContent>
           </Card>
@@ -358,6 +380,141 @@ export default function Commissions() {
             </CardContent>
           </Card>
         </main>
+
+        {/* Modal de Esquema de Comisiones por Financiera */}
+        <Dialog open={showRatesModal} onOpenChange={setShowRatesModal}>
+          <DialogContent className="max-w-4xl max-h-[85vh] flex flex-col">
+            <DialogHeader>
+              <DialogTitle className="text-xl font-bold flex items-center gap-2">
+                <i className="fas fa-percentage text-primary"></i>
+                Esquema de Porcentajes de Comisión por Financiera
+              </DialogTitle>
+            </DialogHeader>
+
+            <div className="space-y-4 flex-1 overflow-hidden flex flex-col pt-2">
+              <div className="flex items-center justify-between gap-4">
+                <Input
+                  placeholder="Buscar financiera..."
+                  value={ratesSearchTerm}
+                  onChange={(e) => setRatesSearchTerm(e.target.value)}
+                  className="max-w-xs"
+                />
+                <Badge variant="outline" className="text-xs bg-gray-50">
+                  Rol activo: <span className="font-semibold ml-1 capitalize">{user?.role?.replace('_', ' ')}</span>
+                </Badge>
+              </div>
+
+              <div className="flex-1 overflow-y-auto border rounded-lg">
+                <table className="w-full text-sm text-left border-collapse">
+                  <thead className="bg-gray-100 text-gray-700 text-xs font-semibold sticky top-0 uppercase">
+                    <tr>
+                      <th className="p-3 border-b">Financiera</th>
+                      {(user?.role === 'admin' || user?.role === 'super_admin') && (
+                        <>
+                          <th className="p-3 border-b text-center bg-blue-50 text-blue-900">Total F.</th>
+                          <th className="p-3 border-b text-center bg-blue-50 text-blue-900">Apertura F.</th>
+                          <th className="p-3 border-b text-center bg-blue-50 text-blue-900">Sobretasa F.</th>
+                          <th className="p-3 border-b text-center bg-blue-50 text-blue-900">Renovación F.</th>
+                        </>
+                      )}
+                      {(user?.role === 'master_broker' || user?.role === 'admin' || user?.role === 'super_admin') && (
+                        <>
+                          {(user?.role === 'admin' || user?.role === 'super_admin') && (
+                            <th className="p-3 border-b text-center bg-green-50 text-green-900">Total MB</th>
+                          )}
+                          <th className="p-3 border-b text-center bg-green-50 text-green-900">Apertura MB</th>
+                          {(user?.role === 'admin' || user?.role === 'super_admin') && (
+                            <th className="p-3 border-b text-center bg-green-50 text-green-900">Sobretasa MB</th>
+                          )}
+                          <th className="p-3 border-b text-center bg-green-50 text-green-900">Renovación MB</th>
+                        </>
+                      )}
+                      <th className="p-3 border-b text-center bg-purple-50 text-purple-900">Apertura Broker</th>
+                      {(user?.role === 'admin' || user?.role === 'super_admin') && (
+                        <th className="p-3 border-b text-center bg-purple-50 text-purple-900">Sobretasa Broker</th>
+                      )}
+                      <th className="p-3 border-b text-center bg-purple-50 text-purple-900">Renovación Broker</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-200">
+                    {filteredInstitutions.length === 0 ? (
+                      <tr>
+                        <td colSpan={10} className="text-center py-8 text-neutral">
+                          No hay financieras registradas
+                        </td>
+                      </tr>
+                    ) : (
+                      filteredInstitutions.map((fi: any) => {
+                        const comm = fi.commissionRates || {};
+                        const fin = comm.financiera || {};
+                        const mb = comm.masterBroker || {};
+                        const brk = comm.broker || {};
+
+                        return (
+                          <tr key={fi.id} className="hover:bg-gray-50/80 transition-colors">
+                            <td className="p-3 font-medium text-gray-900 whitespace-nowrap">
+                              <div className="flex items-center gap-2">
+                                <i className="fas fa-building text-gray-400 text-xs"></i>
+                                {fi.name}
+                              </div>
+                            </td>
+                            {(user?.role === 'admin' || user?.role === 'super_admin') && (
+                              <>
+                                <td className="p-3 text-center font-semibold text-blue-700 bg-blue-50/30">
+                                  {fin.total !== undefined ? `${fin.total}%` : '-'}
+                                </td>
+                                <td className="p-3 text-center text-blue-600 bg-blue-50/30">
+                                  {fin.apertura !== undefined ? `${fin.apertura}%` : '-'}
+                                </td>
+                                <td className="p-3 text-center text-blue-600 bg-blue-50/30">
+                                  {fin.sobretasa !== undefined ? `${fin.sobretasa}%` : '-'}
+                                </td>
+                                <td className="p-3 text-center text-blue-600 bg-blue-50/30">
+                                  {fin.renovacion !== undefined ? `${fin.renovacion}%` : '-'}
+                                </td>
+                              </>
+                            )}
+                            {(user?.role === 'master_broker' || user?.role === 'admin' || user?.role === 'super_admin') && (
+                              <>
+                                {(user?.role === 'admin' || user?.role === 'super_admin') && (
+                                  <td className="p-3 text-center font-semibold text-green-700 bg-green-50/30">
+                                    {mb.total !== undefined ? `${mb.total}%` : '-'}
+                                  </td>
+                                )}
+                                <td className="p-3 text-center text-green-700 font-medium bg-green-50/30">
+                                  {mb.apertura !== undefined ? `${mb.apertura}%` : '-'}
+                                </td>
+                                {(user?.role === 'admin' || user?.role === 'super_admin') && (
+                                  <td className="p-3 text-center text-green-600 bg-green-50/30">
+                                    {mb.sobretasa !== undefined ? `${mb.sobretasa}%` : '-'}
+                                  </td>
+                                )}
+                                <td className="p-3 text-center text-green-600 bg-green-50/30">
+                                  {mb.renovacion !== undefined ? `${mb.renovacion}%` : '-'}
+                                </td>
+                              </>
+                            )}
+                            <td className="p-3 text-center text-purple-700 font-semibold bg-purple-50/30">
+                              {brk.apertura !== undefined ? `${brk.apertura}%` : '-'}
+                            </td>
+                            {(user?.role === 'admin' || user?.role === 'super_admin') && (
+                              <td className="p-3 text-center text-purple-600 bg-purple-50/30">
+                                {brk.sobretasa !== undefined ? `${brk.sobretasa}%` : '-'}
+                              </td>
+                            )}
+                            <td className="p-3 text-center text-purple-600 bg-purple-50/30">
+                              {brk.renovacion !== undefined ? `${brk.renovacion}%` : '-'}
+                            </td>
+                          </tr>
+                        );
+                      })
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </DialogContent>
+        </Dialog>
       </div>
     </div>
   );

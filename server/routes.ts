@@ -1127,6 +1127,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  app.put('/api/notifications/:id/read', isAuthenticated, async (req: any, res) => {
+    try {
+      const { id } = req.params;
+      const success = await storage.markNotificationAsRead(id);
+      
+      if (success) {
+        res.json({ message: "Notification marked as read" });
+      } else {
+        res.status(404).json({ message: "Notification not found" });
+      }
+    } catch (error) {
+      console.error("Error marking notification as read:", error);
+      res.status(500).json({ message: "Failed to mark notification as read" });
+    }
+  });
+
   // User Management (Admin only)
   app.get('/api/users', isAuthenticated, async (req: any, res) => {
     try {
@@ -1879,6 +1895,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const request = await storage.createFinancialInstitutionRequest(requestData);
       
       // Create notifications for all admins
+      const requestingUser = await storage.getUser(userId);
+      let masterBrokerText = "";
+      if (requestingUser?.masterBrokerId) {
+        const masterBroker = await storage.getUser(requestingUser.masterBrokerId);
+        if (masterBroker) {
+          masterBrokerText = ` (Red de Master Broker: ${masterBroker.firstName || ''} ${masterBroker.lastName || ''}`.trim() + `)`;
+        }
+      }
+      const brokerName = requestingUser ? `${requestingUser.firstName || ''} ${requestingUser.lastName || ''}`.trim() || requestingUser.email : 'Un broker';
+
       const allUsers = await storage.getAllUsers();
       const admins = allUsers.filter(u => u.role === 'admin' || u.role === 'super_admin');
       
@@ -1887,8 +1913,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
           userId: admin.id,
           type: 'institution_request',
           title: 'Nueva solicitud de financiera',
-          message: `Un broker ha solicitado agregar la financiera: ${requestData.institutionName}`,
-          data: { requestId: request.id },
+          message: `El broker ${brokerName}${masterBrokerText} ha solicitado agregar la financiera: ${requestData.institutionName}`,
+          data: { requestId: request.id, brokerId: userId, brokerName },
         });
       }
       

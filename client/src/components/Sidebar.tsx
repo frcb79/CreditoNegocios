@@ -190,16 +190,11 @@ export default function Sidebar() {
                   </span>
                   {!collapsed && <span className="truncate text-[13.5px] lg:text-[14.5px] font-medium tracking-[0.01em]">{item.name}</span>}
                 </div>
-                {!collapsed && isReGestion && unreadCount > 0 && (
-                  <span className="bg-warning text-white text-xs px-1.5 lg:px-2 py-0.5 lg:py-1 rounded-full flex-shrink-0">
-                    {unreadCount > 99 ? '99+' : unreadCount}
-                  </span>
+                {!collapsed && isReGestion && (
+                  // Re-gestion notifications badge if needed, otherwise no hardcoded notification counter
+                  null
                 )}
-                {collapsed && isReGestion && unreadCount > 0 && (
-                  <span className="absolute -top-1 -right-1 bg-warning text-white text-xs w-4 h-4 rounded-full flex items-center justify-center text-[10px]">
-                    {unreadCount > 9 ? '9+' : unreadCount}
-                  </span>
-                )}
+
               </div>
             </Link>
           );

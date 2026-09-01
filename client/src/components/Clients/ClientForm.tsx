@@ -285,7 +285,7 @@ export default function ClientForm({ client, onSuccess }: ClientFormProps) {
   });
 
   // useFieldArray hook for managing multiple credits (unified for all client types)
-  const { fields: creditFields, append: appendCredit } = useFieldArray({
+  const { fields: creditFields, append: appendCredit, remove: removeCredit } = useFieldArray({
     control: form.control,
     name: "creditosVigentesDetalles",
   });
@@ -336,8 +336,17 @@ export default function ClientForm({ client, onSuccess }: ClientFormProps) {
   });
 
   const onSubmit = (data: InsertClient) => {
+    // Filter out completely empty credit entries
+    let cleanedCredits = data.creditosVigentesDetalles;
+    if (Array.isArray(cleanedCredits)) {
+      cleanedCredits = cleanedCredits.filter(
+        (c: any) => c && (c.tipo?.trim() || c.institucion?.trim() || c.saldoOriginal || c.saldo || c.fechaInicio || c.fechaTermino)
+      );
+    }
+
     const submitData = {
       ...data,
+      creditosVigentesDetalles: (data.creditosVigentes === "si" && cleanedCredits && cleanedCredits.length > 0) ? cleanedCredits : [],
       type: clientType,
     };
 

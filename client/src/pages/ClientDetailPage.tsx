@@ -602,20 +602,36 @@ export default function ClientDetailPage() {
                     ) : (
                       <div className="space-y-3 max-h-64 overflow-y-auto">
                         {documents.slice(0, 5).map((doc) => (
-                          <div key={doc.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                            <div className="flex items-center space-x-3 flex-1 min-w-0">
-                              <FileText className="h-5 w-5 text-primary flex-shrink-0" />
+                          <div key={doc.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg gap-2">
+                            <div className="flex items-center space-x-2 flex-1 min-w-0">
+                              <FileText className="h-4 w-4 text-primary flex-shrink-0" />
                               <div className="flex-1 min-w-0">
-                                <p className="text-sm font-medium text-gray-900 truncate">{doc.fileName}</p>
-                                <p className="text-xs text-neutral capitalize">{doc.type.replace('_', ' ')}</p>
+                                <p className="text-xs sm:text-sm font-medium text-gray-900 truncate max-w-[150px] sm:max-w-[200px]" title={doc.fileName}>
+                                  {doc.fileName}
+                                </p>
+                                <p className="text-[11px] text-neutral capitalize truncate">{doc.type.replace('_', ' ')}</p>
                               </div>
                             </div>
-                            <Badge 
-                              variant={doc.isValid ? "default" : "secondary"}
-                              className={doc.isValid ? "bg-green-100 text-green-800" : "bg-yellow-100 text-yellow-800"}
-                            >
-                              {doc.isValid ? "Válido" : "Pendiente"}
-                            </Badge>
+                            <div className="flex items-center gap-1.5 flex-shrink-0">
+                              <Badge 
+                                variant={doc.isValid ? "default" : "secondary"}
+                                className={doc.isValid ? "bg-green-100 text-green-800 text-xs px-2 py-0.5" : "bg-yellow-100 text-yellow-800 text-xs px-2 py-0.5"}
+                              >
+                                {doc.isValid ? "Válido" : "Pendiente"}
+                              </Badge>
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                className="h-7 w-7 p-0 text-primary hover:text-primary-dark hover:bg-primary/10 rounded-full"
+                                onClick={() => {
+                                  window.open(buildApiUrl(`/api/documents/${doc.id}/file`), '_blank', 'noopener,noreferrer');
+                                }}
+                                title="Ver documento"
+                                data-testid={`button-view-doc-${doc.id}`}
+                              >
+                                <Eye className="h-3.5 w-3.5" />
+                              </Button>
+                            </div>
                           </div>
                         ))}
                         {documents && documents.length > 5 && (

@@ -643,11 +643,15 @@ export default function CreditList() {
               <Button
                 variant="default"
                 onClick={() => {
+                  const reqId = selectedSubmissionId;
                   setSelectedSubmissionId(null);
+                  if (reqId) {
+                    setLocation(`/comparar-propuestas/${reqId}`);
+                  }
                 }}
                 data-testid="button-compare-proposals"
               >
-                Ver Comparación de Propuestas
+                Ver Comparativo de Propuestas
               </Button>
             )}
           </DialogFooter>
