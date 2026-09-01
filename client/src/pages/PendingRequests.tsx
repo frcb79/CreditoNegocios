@@ -384,7 +384,11 @@ export default function PendingRequests() {
       approved: <CheckCircle className="w-3 h-3 mr-1" />,
       returned_to_broker: <AlertCircle className="w-3 h-3 mr-1" />,
       sent: <Send className="w-3 h-3 mr-1" />,
+      institution_approved: <CheckCircle className="w-3 h-3 mr-1" />,
       proposal_received: <CheckCircle className="w-3 h-3 mr-1" />,
+      institution_rejected: <XCircle className="w-3 h-3 mr-1" />,
+      rejected: <XCircle className="w-3 h-3 mr-1" />,
+      selected_winner: <CheckCircle className="w-3 h-3 mr-1" />,
       winner: <CheckCircle className="w-3 h-3 mr-1" />,
       dispersed: <Package className="w-3 h-3 mr-1" />,
     };
@@ -872,27 +876,81 @@ export default function PendingRequests() {
                                       </div>
                                     )}
 
-                                    {target.status === 'institution_approved' && target.institutionProposal && (
-                                      <div className="bg-green-50 p-3 rounded-lg border border-green-200">
-                                        <h4 className="font-medium text-green-900 mb-2">Propuesta Recibida</h4>
-                                        <div className="grid grid-cols-2 gap-3 text-sm">
-                                          <div>
-                                            <span className="text-gray-600">Monto Aprobado:</span>
-                                            <p className="font-medium">${target.institutionProposal.approvedAmount.toLocaleString('es-MX')}</p>
-                                          </div>
-                                          <div>
-                                            <span className="text-gray-600">Tasa:</span>
-                                            <p className="font-medium">{target.institutionProposal.interestRate}%</p>
-                                          </div>
-                                          <div>
-                                            <span className="text-gray-600">Plazo:</span>
-                                            <p className="font-medium">{target.institutionProposal.term} meses</p>
-                                          </div>
-                                          {target.institutionProposal.openingCommission && (
-                                            <div>
-                                              <span className="text-gray-600">Comisión:</span>
-                                              <p className="font-medium">{target.institutionProposal.openingCommission}%</p>
+                                    {target.status === 'institution_approved' && (
+                                      <div className="space-y-3">
+                                        {target.institutionProposal && (
+                                          <div className="bg-emerald-50/70 p-4 rounded-lg border border-emerald-200">
+                                            <div className="flex items-center justify-between mb-2">
+                                              <h4 className="font-semibold text-emerald-900 flex items-center gap-1.5">
+                                                <CheckCircle className="w-4 h-4 text-emerald-600" />
+                                                Propuesta de la Financiera
+                                              </h4>
+                                              <Badge className="bg-emerald-600 text-white border-0 text-xs">
+                                                Aprobada
+                                              </Badge>
                                             </div>
+                                            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-sm pt-1">
+                                              <div className="bg-white p-2.5 rounded border border-emerald-100">
+                                                <span className="text-xs text-gray-500 block">Monto Aprobado</span>
+                                                <p className="font-bold text-emerald-700 text-base">
+                                                  ${Number(target.institutionProposal.approvedAmount || 0).toLocaleString('es-MX')} MXN
+                                                </p>
+                                              </div>
+                                              <div className="bg-white p-2.5 rounded border border-emerald-100">
+                                                <span className="text-xs text-gray-500 block">Tasa de Interés</span>
+                                                <p className="font-bold text-gray-900 text-base">{target.institutionProposal.interestRate}%</p>
+                                              </div>
+                                              <div className="bg-white p-2.5 rounded border border-emerald-100">
+                                                <span className="text-xs text-gray-500 block">Plazo</span>
+                                                <p className="font-bold text-gray-900 text-base">{target.institutionProposal.term} meses</p>
+                                              </div>
+                                              <div className="bg-white p-2.5 rounded border border-emerald-100">
+                                                <span className="text-xs text-gray-500 block">Comisión Apertura</span>
+                                                <p className="font-bold text-gray-900 text-base">
+                                                  {target.institutionProposal.openingCommission ? `${target.institutionProposal.openingCommission}%` : '0%'}
+                                                </p>
+                                              </div>
+                                            </div>
+                                          </div>
+                                        )}
+
+                                        <div className="flex flex-wrap gap-2 pt-1">
+                                          <Button
+                                            size="sm"
+                                            className="bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm"
+                                            onClick={() => {
+                                              setSelectedTarget(target);
+                                              if (target.institutionProposal) {
+                                                proposalForm.reset({
+                                                  approvedAmount: Number(target.institutionProposal.approvedAmount || 0),
+                                                  interestRate: Number(target.institutionProposal.interestRate || 0),
+                                                  term: Number(target.institutionProposal.term || 12),
+                                                  openingCommission: Number(target.institutionProposal.openingCommission || 0),
+                                                });
+                                              }
+                                              setShowProposalModal(true);
+                                            }}
+                                            data-testid={`button-edit-proposal-${target.id}`}
+                                          >
+                                            <FileText className="w-4 h-4 mr-1.5" />
+                                            Editar Propuesta
+                                          </Button>
+
+                                          <Button
+                                            size="sm"
+                                            variant="outline"
+                                            className="border-emerald-300 text-emerald-700 hover:bg-emerald-50"
+                                            onClick={() => document.getElementById(`file-upload-${target.id}`)?.click()}
+                                            data-testid={`button-reupload-${target.id}`}
+                                          >
+                                            <Upload className="w-4 h-4 mr-1.5" />
+                                            Reemplazar Documento
+                                          </Button>
+                                          
+                                          {target.proposalDocument && (
+                                            <Badge variant="outline" className="bg-emerald-50 text-emerald-700 border-emerald-200 self-center">
+                                              ✓ Carátula / Documento cargado
+                                            </Badge>
                                           )}
                                         </div>
                                       </div>

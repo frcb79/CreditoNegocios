@@ -13,13 +13,17 @@ export const submissionStatusConfig = {
 };
 
 export const targetStatusConfig = {
-  pending_admin: { label: "Pendiente Admin", color: "bg-yellow-100 text-yellow-800" },
-  approved: { label: "Visto Bueno", color: "bg-green-100 text-green-800" },
-  returned_to_broker: { label: "Devuelto", color: "bg-orange-100 text-orange-800" },
-  sent: { label: "Enviado", color: "bg-blue-100 text-blue-800" },
-  proposal_received: { label: "Propuesta Recibida", color: "bg-purple-100 text-purple-800" },
-  winner: { label: "Ganador", color: "bg-green-600 text-white" },
-  dispersed: { label: "Dispersado", color: "bg-success text-white" },
+  pending_admin: { label: "Pendiente Admin", color: "bg-yellow-100 text-yellow-800 border-yellow-300" },
+  approved: { label: "Visto Bueno", color: "bg-blue-100 text-blue-800 border-blue-300" },
+  returned_to_broker: { label: "Devuelto", color: "bg-orange-100 text-orange-800 border-orange-300" },
+  sent: { label: "Enviado", color: "bg-indigo-100 text-indigo-800 border-indigo-300" },
+  institution_approved: { label: "Propuesta Recibida", color: "bg-emerald-100 text-emerald-800 border-emerald-300" },
+  proposal_received: { label: "Propuesta Recibida", color: "bg-emerald-100 text-emerald-800 border-emerald-300" },
+  institution_rejected: { label: "Rechazada por Financiera", color: "bg-red-100 text-red-800 border-red-300" },
+  rejected: { label: "Rechazada", color: "bg-red-100 text-red-800 border-red-300" },
+  selected_winner: { label: "Ganador", color: "bg-purple-100 text-purple-800 border-purple-300" },
+  winner: { label: "Ganador", color: "bg-purple-100 text-purple-800 border-purple-300" },
+  dispersed: { label: "Dispersado", color: "bg-success text-white border-green-600" },
 };
 
 export const creditStatusConfig = {

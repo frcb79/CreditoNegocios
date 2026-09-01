@@ -3724,13 +3724,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       // Información de referencia
       doc.fillColor('#000000').fontSize(10);
-      doc.text(`Folio: ${target.requestId.substring(0, 8).toUpperCase()}`, 50, doc.y);
+      const folio = target.requestId ? target.requestId.substring(0, 8).toUpperCase() : id.substring(0, 8).toUpperCase();
+      doc.text(`Folio: ${folio}`, 50, doc.y);
       doc.text(`Fecha: ${new Date().toLocaleDateString('es-MX')}`, 400, doc.y - 12, { align: 'right' });
       doc.text(`Financiera: ${target.institution?.name || 'N/A'}`, 50, doc.y + 5);
       doc.moveDown(2);
       
       if (target.request) {
-        const client = target.request.client;
+        const client = target.request.client || target.client;
         
         // Sección Cliente
         doc.fontSize(14).fillColor('#1e40af').text('DATOS DEL CLIENTE', { underline: true });
@@ -3738,8 +3739,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         
         if (client) {
           doc.fontSize(10).fillColor('#000000');
+          const clientName = client.businessName || `${client.firstName || ''} ${client.lastName || ''}`.trim() || 'N/A';
           const clientData = [
-            ['Nombre Completo', `${client.firstName || ''} ${client.lastName || ''}`.trim()],
+            ['Nombre Completo / Razón Social', clientName],
             ['Tipo de Cliente', client.type === 'persona_moral' ? 'Persona Moral' : 
                              client.type === 'fisica' ? 'Persona Física' : 
                              client.type === 'fisica_empresarial' ? 'PFAE' : 
@@ -3751,7 +3753,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           
           clientData.forEach(([label, value]) => {
             doc.fillColor('#4b5563').text(label + ':', 70, doc.y);
-            doc.fillColor('#000000').text(value, 220, doc.y - 12);
+            doc.fillColor('#000000').text(String(value || 'N/A'), 240, doc.y - 12);
             doc.moveDown(0.8);
           });
         }
@@ -3763,34 +3765,39 @@ export async function registerRoutes(app: Express): Promise<Server> {
         doc.moveDown(0.5);
         doc.fontSize(10).fillColor('#000000');
         
+        const reqAmount = target.request.requestedAmount ? parseFloat(String(target.request.requestedAmount)) : 0;
+        const formattedAmount = isNaN(reqAmount) ? '$0.00 MXN' : `$${reqAmount.toLocaleString('es-MX')} MXN`;
+        const productName = target.request.productTemplate?.name || target.productTemplate?.name || 'N/A';
+
         const requestData = [
-          ['Monto Solicitado', `$${parseFloat(target.request.requestedAmount as any).toLocaleString('es-MX')} MXN`],
-          ['Producto', target.request.productTemplate?.name || 'N/A'],
+          ['Monto Solicitado', formattedAmount],
+          ['Producto', productName],
           ['Propósito', target.request.purpose || 'N/A']
         ];
         
         requestData.forEach(([label, value]) => {
           doc.fillColor('#4b5563').text(label + ':', 70, doc.y);
-          doc.fillColor('#000000').text(value, 220, doc.y - 12);
+          doc.fillColor('#000000').text(String(value || 'N/A'), 240, doc.y - 12);
           doc.moveDown(0.8);
         });
         
         doc.moveDown(1);
         
         // Sección Broker
-        if (target.request.broker) {
+        const broker = target.request.broker || target.broker;
+        if (broker) {
           doc.fontSize(14).fillColor('#1e40af').text('INFORMACIÓN DEL BROKER', { underline: true });
           doc.moveDown(0.5);
           doc.fontSize(10).fillColor('#000000');
           
           const brokerData = [
-            ['Nombre', `${target.request.broker.firstName} ${target.request.broker.lastName}`],
-            ['Email', target.request.broker.email || 'N/A']
+            ['Nombre', `${broker.firstName || ''} ${broker.lastName || ''}`.trim() || 'N/A'],
+            ['Email', broker.email || 'N/A']
           ];
           
           brokerData.forEach(([label, value]) => {
             doc.fillColor('#4b5563').text(label + ':', 70, doc.y);
-            doc.fillColor('#000000').text(value, 220, doc.y - 12);
+            doc.fillColor('#000000').text(String(value || 'N/A'), 240, doc.y - 12);
             doc.moveDown(0.8);
           });
           
@@ -3802,7 +3809,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           doc.fontSize(14).fillColor('#1e40af').text('DETALLES IMPORTANTES', { underline: true });
           doc.moveDown(0.5);
           doc.fontSize(10).fillColor('#000000');
-          doc.text(target.adminNotes, { align: 'justify' });
+          doc.text(String(target.adminNotes), { align: 'justify' });
           doc.moveDown(1);
         }
         
@@ -3810,7 +3817,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           doc.fontSize(14).fillColor('#1e40af').text('NOTAS DEL BROKER', { underline: true });
           doc.moveDown(0.5);
           doc.fontSize(10).fillColor('#000000');
-          doc.text(target.request.brokerNotes, { align: 'justify' });
+          doc.text(String(target.request.brokerNotes), { align: 'justify' });
         }
       }
       
@@ -3821,7 +3828,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       doc.end();
     } catch (error) {
       console.error("Error generating PDF:", error);
-      res.status(500).json({ message: "Failed to generate PDF" });
+      if (!res.headersSent) {
+        res.status(500).json({ message: "Failed to generate PDF" });
+      }
     }
   });
 
