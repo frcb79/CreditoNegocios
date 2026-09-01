@@ -277,7 +277,10 @@ export default function PendingRequests() {
         method: 'POST',
         credentials: 'include',
       });
-      if (!response.ok) throw new Error('Failed to generate PDF');
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.message || 'No se pudo generar el PDF');
+      }
       
       const blob = await response.blob();
       const url = window.URL.createObjectURL(blob);
@@ -291,12 +294,12 @@ export default function PendingRequests() {
       
       toast({
         title: "PDF descargado",
-        description: "El PDF de la solicitud ha sido descargado",
+        description: "El PDF de la solicitud ha sido generado y descargado exitosamente",
       });
-    } catch (error) {
+    } catch (error: any) {
       toast({
         title: "Error",
-        description: "No se pudo generar el PDF",
+        description: error.message || "No se pudo generar el PDF",
         variant: "destructive",
       });
     }

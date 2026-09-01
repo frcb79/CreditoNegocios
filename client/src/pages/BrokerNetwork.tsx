@@ -7,7 +7,7 @@ import { Card, CardContent } from "@/components/ui/card";
 export default function BrokerNetwork() {
   const { user } = useAuth();
 
-  if (user?.role !== 'master_broker' && user?.role !== 'admin') {
+  if (user?.role !== 'master_broker' && user?.role !== 'admin' && user?.role !== 'super_admin') {
     return (
       <div className="min-h-screen flex bg-gray-50">
         <Sidebar />

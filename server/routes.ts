@@ -2340,13 +2340,45 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const userId = req.user.claims.sub;
       const user = await storage.getUser(userId);
       
-      if (user?.role !== 'master_broker' && user?.role !== 'admin') {
+      if (user?.role !== 'master_broker' && user?.role !== 'admin' && user?.role !== 'super_admin') {
         return res.status(403).json({ message: "Access denied" });
       }
 
       const { email, firstName, lastName, phone, message } = req.body;
       
-      // Create a notification for now (in a real app this would send an email)
+      if (!email) {
+        return res.status(400).json({ message: "El correo electrónico es requerido" });
+      }
+
+      // Check if user already exists or create new broker in network
+      const existingUser = await storage.getUserByEmail(email);
+      let targetBroker: any = existingUser;
+
+      if (existingUser) {
+        // Link to master broker if this is invited by a master broker
+        if (user.role === 'master_broker' && (!existingUser.masterBrokerId || existingUser.masterBrokerId !== userId)) {
+          targetBroker = await storage.updateUser(existingUser.id, {
+            masterBrokerId: userId,
+          });
+        }
+      } else {
+        // Create new broker user record under master broker
+        targetBroker = await storage.upsertUser({
+          email,
+          firstName: firstName || '',
+          lastName: lastName || '',
+          role: 'broker',
+          masterBrokerId: user.role === 'master_broker' ? userId : (req.body.masterBrokerId || null),
+          isActive: true,
+          profileData: {
+            phone: phone || '',
+            invitedBy: userId,
+            invitationMessage: message || '',
+          },
+        });
+      }
+
+      // Create a notification for sender
       const notification = await storage.createNotification({
         userId,
         type: 'broker_invitation_sent',
@@ -2357,6 +2389,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           firstName, 
           lastName, 
           phone,
+          brokerId: targetBroker?.id,
           invitationMessage: message 
         },
         priority: 'medium',
@@ -2370,6 +2403,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       res.status(201).json({ 
         message: "Invitation sent successfully",
+        broker: targetBroker,
         invitation: { email, firstName, lastName, phone }
       });
     } catch (error) {

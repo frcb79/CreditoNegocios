@@ -4,10 +4,11 @@ import Header from "@/components/Header";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Bell, BellRing, CheckCheck } from "lucide-react";
+import { Bell, BellRing, CheckCheck, Check } from "lucide-react";
 import { apiRequest } from "@/lib/queryClient";
 import { formatDistanceToNow } from "date-fns";
 import { es } from "date-fns/locale";
+import { useNotifications } from "@/contexts/NotificationContext";
 
 interface Notification {
   id: string;
@@ -20,6 +21,7 @@ interface Notification {
 
 export default function Notifications() {
   const queryClient = useQueryClient();
+  const { fetchNotifications } = useNotifications();
 
   const { data: notifications, isLoading } = useQuery<Notification[]>({
     queryKey: ["/api/notifications"],
@@ -32,6 +34,7 @@ export default function Notifications() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/notifications"] });
       queryClient.invalidateQueries({ queryKey: ["/api/notifications/unread-count"] });
+      fetchNotifications();
     },
   });
 
@@ -45,6 +48,7 @@ export default function Notifications() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/notifications"] });
       queryClient.invalidateQueries({ queryKey: ["/api/notifications/unread-count"] });
+      fetchNotifications();
     },
   });
 
