@@ -115,10 +115,15 @@ export default function CreditList() {
   const unifiedItems = useMemo(() => {
     const items: UnifiedCreditItem[] = [];
     
-    // Add submissions that haven't been dispersed (exclude both 'dispersed' and 'disbursed')
+    // Add submissions that haven't been dispersed (exclude submissions whose status is dispersed/disbursed or have targets already dispersed)
     if (submissions) {
       submissions
-        .filter(sub => sub.status !== 'dispersed' && sub.status !== 'disbursed')
+        .filter(sub => {
+          if (sub.status === 'dispersed' || sub.status === 'disbursed') return false;
+          const hasDispersedTarget = sub.targets?.some((t: any) => t.status === 'dispersed');
+          if (hasDispersedTarget) return false;
+          return true;
+        })
         .forEach(sub => {
           const targetsCount = sub.targets?.length || 0;
           const proposalsCount = sub.targets?.filter((t: any) => t.institutionProposal).length || 0;
@@ -310,32 +315,26 @@ export default function CreditList() {
                 <div className="flex items-center space-x-3">
                   <div className="text-right">
                     {(() => {
-                      // For submissions with multiple statuses, show all badges or summary
-                      if (item.type === 'submission' && item.statusSummary?.hasMultipleStatuses) {
+                      if (item.type === 'submission' && item.statusSummary) {
+                        const primaryConfig = targetStatusConfig[item.statusSummary.primaryStatus as keyof typeof targetStatusConfig] || submissionStatusConfig[item.status as keyof typeof submissionStatusConfig];
                         return (
-                          <div className="flex flex-col gap-1 items-end">
-                            {item.statusSummary.badges.map((badge, idx) => (
-                              <Badge 
-                                key={idx}
-                                className={badge.color}
-                                data-testid={`item-status-${item.id}-${idx}`}
-                              >
-                                {badge.label}
-                              </Badge>
-                            ))}
-                          </div>
+                          <Badge 
+                            className={primaryConfig?.color || "bg-gray-100 text-gray-800"}
+                            data-testid={`item-status-${item.id}`}
+                          >
+                            {primaryConfig?.label || item.status}
+                          </Badge>
                         );
                       }
                       
-                      // For single status or credits, show normal badge
-                      const config = item.type === 'submission' ? submissionStatusConfig : creditStatusConfig;
-                      const statusInfo = config[item.status as keyof typeof config];
+                      // For credits, show normal badge
+                      const config = creditStatusConfig[item.status as keyof typeof creditStatusConfig];
                       return (
                         <Badge 
-                          className={statusInfo?.color || "bg-gray-100 text-gray-800"}
+                          className={config?.color || "bg-gray-100 text-gray-800"}
                           data-testid={`item-status-${item.id}`}
                         >
-                          {statusInfo?.label || item.status}
+                          {config?.label || item.status}
                         </Badge>
                       );
                     })()}
@@ -445,9 +444,23 @@ export default function CreditList() {
                       </div>
                       <div>
                         <p className="text-xs text-gray-500">Estado Actual</p>
-                        <Badge className={submissionStatusConfig[selectedSubmission.status as keyof typeof submissionStatusConfig]?.color || "bg-gray-100"}>
-                          {submissionStatusConfig[selectedSubmission.status as keyof typeof submissionStatusConfig]?.label || selectedSubmission.status}
-                        </Badge>
+                        {(() => {
+                          const targets = submissionTargets || selectedSubmission.targets || [];
+                          if (targets.length > 0) {
+                            const summary = getSubmissionStatusSummary(targets);
+                            const config = targetStatusConfig[summary.primaryStatus as keyof typeof targetStatusConfig] || submissionStatusConfig[selectedSubmission.status as keyof typeof submissionStatusConfig];
+                            return (
+                              <Badge className={config?.color || "bg-gray-100"}>
+                                {config?.label || selectedSubmission.status}
+                              </Badge>
+                            );
+                          }
+                          return (
+                            <Badge className={submissionStatusConfig[selectedSubmission.status as keyof typeof submissionStatusConfig]?.color || "bg-gray-100"}>
+                              {submissionStatusConfig[selectedSubmission.status as keyof typeof submissionStatusConfig]?.label || selectedSubmission.status}
+                            </Badge>
+                          );
+                        })()}
                       </div>
                     </div>
 

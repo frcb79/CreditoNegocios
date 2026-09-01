@@ -4384,6 +4384,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
         creditId: credit!.id,
       });
 
+      // Update parent submission request status to dispersed so it transitions cleanly out of pending/in-progress
+      await storage.updateCreditSubmissionRequest(target.requestId, {
+        status: 'dispersed',
+      });
+
       // CREATE COMMISSIONS (apertura/sobretasa/renovacion)
       if (proposal && proposal.approvedAmount) {
         const broker = await storage.getUser(request.brokerId);

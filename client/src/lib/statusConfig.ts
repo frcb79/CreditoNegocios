@@ -67,14 +67,19 @@ export function getSubmissionStatusSummary(targets: Array<{ status: string }>): 
   const hasMultipleStatuses = uniqueStatuses.length > 1;
 
   // Determinar estado primario (prioridad: devuelto > pendiente > aprobado > enviado > propuesta > ganador > dispersado)
+  // Determinar estado primario (prioridad: dispersado > ganador > propuesta > aprobado > pendiente > devuelto)
   const statusPriority: Record<string, number> = {
-    'returned_to_broker': 1,
-    'pending_admin': 2,
-    'approved': 3,
-    'sent': 4,
+    'dispersed': 1,
+    'selected_winner': 2,
+    'winner': 3,
+    'institution_approved': 4,
     'proposal_received': 5,
-    'winner': 6,
-    'dispersed': 7,
+    'sent': 6,
+    'approved': 7,
+    'pending_admin': 8,
+    'returned_to_broker': 9,
+    'institution_rejected': 10,
+    'rejected': 11,
   };
 
   const primaryStatus = uniqueStatuses.sort((a, b) => 
