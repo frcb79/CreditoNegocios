@@ -434,22 +434,85 @@ export default function FinancieraDetail() {
 
                 {/* Requisitos Tab */}
                 <TabsContent value="requisitos" className="mt-6">
-                  <div>
-                    <h3 className="text-lg font-semibold mb-4 flex items-center">
-                      <i className="fas fa-clipboard-check text-primary mr-2"></i>
-                      Requisitos por Tipo de Cliente
-                    </h3>
-                    <p className="text-gray-600 mb-4">
-                      Los requisitos específicos se configuran en la pestaña de Requisitos del modal de configuración.
-                    </p>
-                    {isAdmin && (
-                      <Button 
-                        onClick={() => setConfigModal(true)}
-                        variant="outline"
-                      >
-                        <Settings className="w-4 h-4 mr-2" />
-                        Ver/Editar Requisitos
-                      </Button>
+                  <div className="space-y-6">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <h3 className="text-lg font-semibold flex items-center text-gray-900">
+                          <i className="fas fa-clipboard-check text-primary mr-2"></i>
+                          Requisitos por Tipo de Cliente
+                        </h3>
+                        <p className="text-sm text-gray-600">
+                          Requisitos y condiciones de perfilamiento requeridos por {institution.name}.
+                        </p>
+                      </div>
+                      {isAdmin && (
+                        <Button 
+                          onClick={() => setConfigModal(true)}
+                          className="bg-primary text-white hover:bg-primary-dark"
+                        >
+                          <Settings className="w-4 h-4 mr-2" />
+                          Configurar Requisitos
+                        </Button>
+                      )}
+                    </div>
+
+                    {institution.requirements && typeof institution.requirements === 'object' && Object.keys(institution.requirements).length > 0 ? (
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        {Object.entries(institution.requirements).map(([clientType, reqs]: [string, any]) => {
+                          const reqList = Array.isArray(reqs) ? reqs : [];
+                          const typeLabels: Record<string, string> = {
+                            persona_moral: 'Persona Moral',
+                            fisica_empresarial: 'Persona Física con Actividad Empresarial (PFAE)',
+                            fisica: 'Persona Física',
+                            sin_sat: 'Sin SAT'
+                          };
+
+                          return (
+                            <Card key={clientType} className="border border-gray-200">
+                              <CardHeader className="pb-3 bg-gray-50/50">
+                                <CardTitle className="text-base font-semibold text-gray-900 flex items-center justify-between">
+                                  <span>{typeLabels[clientType] || clientType}</span>
+                                  <Badge variant="outline" className="bg-white">
+                                    {reqList.length} requisito{reqList.length !== 1 ? 's' : ''}
+                                  </Badge>
+                                </CardTitle>
+                              </CardHeader>
+                              <CardContent className="pt-4">
+                                {reqList.length === 0 ? (
+                                  <p className="text-xs text-muted-foreground italic">No hay requisitos configurados para este tipo de cliente.</p>
+                                ) : (
+                                  <ul className="space-y-2">
+                                    {reqList.map((reqItem: any, idx: number) => {
+                                      const label = typeof reqItem === 'string' ? reqItem.replace(/([A-Z])/g, ' $1').replace(/^./, str => str.toUpperCase()) : (reqItem?.label || reqItem?.id || JSON.stringify(reqItem));
+                                      return (
+                                        <li key={idx} className="flex items-center text-sm text-gray-700 bg-gray-50 px-3 py-1.5 rounded">
+                                          <CheckCircle className="w-4 h-4 text-green-600 mr-2 flex-shrink-0" />
+                                          <span className="capitalize">{label}</span>
+                                        </li>
+                                      );
+                                    })}
+                                  </ul>
+                                )}
+                              </CardContent>
+                            </Card>
+                          );
+                        })}
+                      </div>
+                    ) : (
+                      <div className="text-center py-12 border rounded-lg bg-gray-50/50">
+                        <i className="fas fa-clipboard-list text-5xl text-gray-300 mb-3"></i>
+                        <p className="text-gray-600 font-medium">No hay requisitos configurados para esta financiera</p>
+                        <p className="text-sm text-gray-500 mt-1 mb-4">Haz clic en Configurar Requisitos para definir los campos requeridos y rangos de aceptación.</p>
+                        {isAdmin && (
+                          <Button 
+                            onClick={() => setConfigModal(true)}
+                            className="bg-primary text-white hover:bg-primary-dark"
+                          >
+                            <Settings className="w-4 h-4 mr-2" />
+                            Configurar Requisitos
+                          </Button>
+                        )}
+                      </div>
                     )}
                   </div>
                 </TabsContent>

@@ -13,22 +13,25 @@ interface CurrencyInputProps {
 }
 
 // Formatear número como moneda mexicana
-const formatCurrency = (value: string): string => {
+const formatCurrency = (value: any): string => {
+  if (value === null || value === undefined) return "";
   // Remover todo excepto números
-  const numericValue = value.replace(/[^\d]/g, "");
+  const numericValue = String(value).replace(/[^\d]/g, "");
   
   if (!numericValue) return "";
   
   // Convertir a número y formatear con comas
-  const number = parseInt(numericValue, 10);
+  const number = Number(numericValue);
+  if (isNaN(number)) return "";
   const formatted = number.toLocaleString("es-MX");
   
   return `$${formatted}`;
 };
 
 // Obtener solo el valor numérico sin formato
-const getNumericValue = (value: string): string => {
-  return value.replace(/[^\d]/g, "");
+const getNumericValue = (value: any): string => {
+  if (value === null || value === undefined) return "";
+  return String(value).replace(/[^\d]/g, "");
 };
 
 export default function CurrencyInput({

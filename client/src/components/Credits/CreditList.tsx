@@ -631,7 +631,7 @@ export default function CreditList() {
             </div>
           )}
 
-          <DialogFooter className="flex justify-between">
+          <DialogFooter className="flex justify-between items-center gap-2">
             <Button
               variant="outline"
               onClick={() => setSelectedSubmissionId(null)}
@@ -639,7 +639,7 @@ export default function CreditList() {
             >
               Cerrar
             </Button>
-            {submissionTargets && submissionTargets.filter(t => t.institutionProposal).length > 1 && (
+            {submissionTargets && submissionTargets.length > 0 && (
               <Button
                 variant="default"
                 onClick={() => {
@@ -649,6 +649,7 @@ export default function CreditList() {
                     setLocation(`/comparar-propuestas/${reqId}`);
                   }
                 }}
+                className="bg-primary text-white hover:bg-primary-dark"
                 data-testid="button-compare-proposals"
               >
                 Ver Comparativo de Propuestas

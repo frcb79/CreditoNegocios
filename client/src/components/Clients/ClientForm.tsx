@@ -14,7 +14,7 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import CurrencyInput from "@/components/ui/currency-input";
-import { User, TrendingUp } from "lucide-react";
+import { User, TrendingUp, Trash2, Plus } from "lucide-react";
 
 interface ClientFormProps {
   client?: any;
@@ -1822,9 +1822,9 @@ export default function ClientForm({ client, onSuccess }: ClientFormProps) {
                                       <button
                                         type="button"
                                         onClick={() => removeCredit(index)}
-                                        className="text-xs text-red-500 hover:text-red-700 hover:bg-red-50 px-2 py-1 rounded transition-colors flex items-center gap-1"
+                                        className="text-xs text-red-600 hover:text-red-800 hover:bg-red-50 px-2 py-1 rounded border border-red-200 transition-colors flex items-center gap-1 font-medium"
                                       >
-                                        <i className="fas fa-trash-alt"></i>
+                                        <Trash2 className="w-3.5 h-3.5 text-red-600" />
                                         Eliminar
                                       </button>
                                     </div>
@@ -1948,16 +1948,22 @@ export default function ClientForm({ client, onSuccess }: ClientFormProps) {
                                   </div>
                                 ))}
                                 
-                                <div className="flex justify-end">
-                                  <button
-                                    type="button"
-                                    onClick={() => appendCredit({ tipo: "", saldoOriginal: "", saldo: "", institucion: "", fechaInicio: "", fechaTermino: "" })}
-                                    className="px-4 py-2 text-sm font-medium text-primary border border-primary rounded-md hover:bg-primary hover:text-white transition-colors"
-                                    data-testid="button-fisica-add-credit"
-                                  >
-                                    + Agregar otro crédito
-                                  </button>
-                                </div>
+                                <div className="flex items-center justify-between pt-2">
+                                    <p className="text-xs text-muted-foreground">
+                                      * Recuerda hacer clic en <strong>{client ? "Actualizar Cliente" : "Crear Cliente"}</strong> al final del formulario para guardar los cambios.
+                                    </p>
+                                    <Button
+                                      type="button"
+                                      variant="outline"
+                                      size="sm"
+                                      onClick={() => appendCredit({ tipo: "", saldoOriginal: "", saldo: "", institucion: "", fechaInicio: "", fechaTermino: "" })}
+                                      className="text-primary border-primary hover:bg-primary hover:text-white transition-colors"
+                                      data-testid="button-fisica-add-credit"
+                                    >
+                                      <Plus className="w-4 h-4 mr-1" />
+                                      Agregar otro crédito
+                                    </Button>
+                                  </div>
                               </div>
                             )}
 
@@ -2391,9 +2397,9 @@ export default function ClientForm({ client, onSuccess }: ClientFormProps) {
                                       <button
                                         type="button"
                                         onClick={() => removeCredit(index)}
-                                        className="text-xs text-red-500 hover:text-red-700 hover:bg-red-50 px-2 py-1 rounded transition-colors flex items-center gap-1"
+                                        className="text-xs text-red-600 hover:text-red-800 hover:bg-red-50 px-2 py-1 rounded border border-red-200 transition-colors flex items-center gap-1 font-medium"
                                       >
-                                        <i className="fas fa-trash-alt"></i>
+                                        <Trash2 className="w-3.5 h-3.5 text-red-600" />
                                         Eliminar
                                       </button>
                                     </div>
@@ -2517,15 +2523,21 @@ export default function ClientForm({ client, onSuccess }: ClientFormProps) {
                                   </div>
                                 ))}
                                 
-                                <div className="flex justify-end">
-                                  <button
+                                <div className="flex items-center justify-between pt-2">
+                                  <p className="text-xs text-muted-foreground">
+                                    * Recuerda hacer clic en <strong>{client ? "Actualizar Cliente" : "Crear Cliente"}</strong> al final del formulario para guardar los cambios.
+                                  </p>
+                                  <Button
                                     type="button"
+                                    variant="outline"
+                                    size="sm"
                                     onClick={() => appendCredit({ tipo: "", saldoOriginal: "", saldo: "", institucion: "", fechaInicio: "", fechaTermino: "" })}
-                                    className="px-4 py-2 text-sm font-medium text-primary border border-primary rounded-md hover:bg-primary hover:text-white transition-colors"
+                                    className="text-primary border-primary hover:bg-primary hover:text-white transition-colors"
                                     data-testid="button-sinsat-add-credit"
                                   >
-                                    + Agregar otro crédito
-                                  </button>
+                                    <Plus className="w-4 h-4 mr-1" />
+                                    Agregar otro crédito
+                                  </Button>
                                 </div>
                               </div>
                             )}
@@ -3196,9 +3208,9 @@ export default function ClientForm({ client, onSuccess }: ClientFormProps) {
                                       <button
                                         type="button"
                                         onClick={() => removeCredit(index)}
-                                        className="text-xs text-red-500 hover:text-red-700 hover:bg-red-50 px-2 py-1 rounded transition-colors flex items-center gap-1"
+                                        className="text-xs text-red-600 hover:text-red-800 hover:bg-red-50 px-2 py-1 rounded border border-red-200 transition-colors flex items-center gap-1 font-medium"
                                       >
-                                        <i className="fas fa-trash-alt"></i>
+                                        <Trash2 className="w-3.5 h-3.5 text-red-600" />
                                         Eliminar
                                       </button>
                                     </div>
@@ -3322,15 +3334,21 @@ export default function ClientForm({ client, onSuccess }: ClientFormProps) {
                                   </div>
                                 ))}
                                 
-                                <div className="flex justify-end">
-                                  <button
+                                <div className="flex items-center justify-between pt-2">
+                                  <p className="text-xs text-muted-foreground">
+                                    * Recuerda hacer clic en <strong>{client ? "Actualizar Cliente" : "Crear Cliente"}</strong> al final del formulario para guardar los cambios.
+                                  </p>
+                                  <Button
                                     type="button"
+                                    variant="outline"
+                                    size="sm"
                                     onClick={() => appendCredit({ tipo: "", saldoOriginal: "", saldo: "", institucion: "", fechaInicio: "", fechaTermino: "" })}
-                                    className="px-4 py-2 text-sm font-medium text-primary border border-primary rounded-md hover:bg-primary hover:text-white transition-colors"
+                                    className="text-primary border-primary hover:bg-primary hover:text-white transition-colors"
                                     data-testid="button-pfae-add-credit"
                                   >
-                                    + Agregar otro crédito
-                                  </button>
+                                    <Plus className="w-4 h-4 mr-1" />
+                                    Agregar otro crédito
+                                  </Button>
                                 </div>
                               </div>
                             )}
@@ -3808,9 +3826,9 @@ export default function ClientForm({ client, onSuccess }: ClientFormProps) {
                                       <button
                                         type="button"
                                         onClick={() => removeCredit(index)}
-                                        className="text-xs text-red-500 hover:text-red-700 hover:bg-red-50 px-2 py-1 rounded transition-colors flex items-center gap-1"
+                                        className="text-xs text-red-600 hover:text-red-800 hover:bg-red-50 px-2 py-1 rounded border border-red-200 transition-colors flex items-center gap-1 font-medium"
                                       >
-                                        <i className="fas fa-trash-alt"></i>
+                                        <Trash2 className="w-3.5 h-3.5 text-red-600" />
                                         Eliminar
                                       </button>
                                     </div>
@@ -3934,15 +3952,21 @@ export default function ClientForm({ client, onSuccess }: ClientFormProps) {
                                   </div>
                                 ))}
                                 
-                                <div className="flex justify-end">
-                                  <button
+                                <div className="flex items-center justify-between pt-2">
+                                  <p className="text-xs text-muted-foreground">
+                                    * Recuerda hacer clic en <strong>{client ? "Actualizar Cliente" : "Crear Cliente"}</strong> al final del formulario para guardar los cambios.
+                                  </p>
+                                  <Button
                                     type="button"
+                                    variant="outline"
+                                    size="sm"
                                     onClick={() => appendCredit({ tipo: "", saldoOriginal: "", saldo: "", institucion: "", fechaInicio: "", fechaTermino: "" })}
-                                    className="px-4 py-2 text-sm font-medium text-primary border border-primary rounded-md hover:bg-primary hover:text-white transition-colors"
+                                    className="text-primary border-primary hover:bg-primary hover:text-white transition-colors"
                                     data-testid="button-moral-add-credit"
                                   >
-                                    + Agregar otro crédito
-                                  </button>
+                                    <Plus className="w-4 h-4 mr-1" />
+                                    Agregar otro crédito
+                                  </Button>
                                 </div>
                               </div>
                             )}

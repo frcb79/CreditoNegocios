@@ -360,27 +360,46 @@ export default function ProductConfigurationModal({
   
   // Requirements state per client type
   const [requirementsClientType, setRequirementsClientType] = useState<'persona_moral' | 'fisica_empresarial' | 'fisica' | 'sin_sat'>('persona_moral');
-  const [requirementsByType, setRequirementsByType] = useState({
-    persona_moral: (financiera.requirements as any)?.persona_moral?.selected || [],
-    fisica_empresarial: (financiera.requirements as any)?.fisica_empresarial?.selected || [],
-    fisica: (financiera.requirements as any)?.fisica?.selected || [],
-    sin_sat: (financiera.requirements as any)?.sin_sat?.selected || [],
+  const [requirementsByType, setRequirementsByType] = useState<{
+    persona_moral: string[];
+    fisica_empresarial: string[];
+    fisica: string[];
+    sin_sat: string[];
+  }>(() => {
+    const req = (financiera.requirements as any) || {};
+    return {
+      persona_moral: Array.isArray(req.persona_moral) ? req.persona_moral : Array.isArray(req.persona_moral?.selected) ? req.persona_moral.selected : [],
+      fisica_empresarial: Array.isArray(req.fisica_empresarial) ? req.fisica_empresarial : Array.isArray(req.fisica_empresarial?.selected) ? req.fisica_empresarial.selected : [],
+      fisica: Array.isArray(req.fisica) ? req.fisica : Array.isArray(req.fisica?.selected) ? req.fisica.selected : [],
+      sin_sat: Array.isArray(req.sin_sat) ? req.sin_sat : Array.isArray(req.sin_sat?.selected) ? req.sin_sat.selected : [],
+    };
   });
   
   // Ranges state for matching - stores min/max values for each requirement
-  const [rangesByType, setRangesByType] = useState({
-    persona_moral: (financiera.requirements as any)?.persona_moral?.ranges || {},
-    fisica_empresarial: (financiera.requirements as any)?.fisica_empresarial?.ranges || {},
-    fisica: (financiera.requirements as any)?.fisica?.ranges || {},
-    sin_sat: (financiera.requirements as any)?.sin_sat?.ranges || {},
+  const [rangesByType, setRangesByType] = useState<Record<string, Record<string, any>>>(() => {
+    const req = (financiera.requirements as any) || {};
+    return {
+      persona_moral: req.persona_moral?.ranges && typeof req.persona_moral.ranges === 'object' ? req.persona_moral.ranges : {},
+      fisica_empresarial: req.fisica_empresarial?.ranges && typeof req.fisica_empresarial.ranges === 'object' ? req.fisica_empresarial.ranges : {},
+      fisica: req.fisica?.ranges && typeof req.fisica.ranges === 'object' ? req.fisica.ranges : {},
+      sin_sat: req.sin_sat?.ranges && typeof req.sin_sat.ranges === 'object' ? req.sin_sat.ranges : {},
+    };
   });
   
   // Additional notes state for requirements
-  const [additionalNotesByType, setAdditionalNotesByType] = useState({
-    persona_moral: (financiera.requirements as any)?.persona_moral?.additionalNotes || '',
-    fisica_empresarial: (financiera.requirements as any)?.fisica_empresarial?.additionalNotes || '',
-    fisica: (financiera.requirements as any)?.fisica?.additionalNotes || '',
-    sin_sat: (financiera.requirements as any)?.sin_sat?.additionalNotes || '',
+  const [additionalNotesByType, setAdditionalNotesByType] = useState<{
+    persona_moral: string;
+    fisica_empresarial: string;
+    fisica: string;
+    sin_sat: string;
+  }>(() => {
+    const req = (financiera.requirements as any) || {};
+    return {
+      persona_moral: typeof req.persona_moral?.additionalNotes === 'string' ? req.persona_moral.additionalNotes : '',
+      fisica_empresarial: typeof req.fisica_empresarial?.additionalNotes === 'string' ? req.fisica_empresarial.additionalNotes : '',
+      fisica: typeof req.fisica?.additionalNotes === 'string' ? req.fisica.additionalNotes : '',
+      sin_sat: typeof req.sin_sat?.additionalNotes === 'string' ? req.sin_sat.additionalNotes : '',
+    };
   });
   
   // Variables state
@@ -566,7 +585,7 @@ export default function ProductConfigurationModal({
 
   const handleRequirementToggle = (fieldId: string) => {
     setRequirementsByType(prev => {
-      const currentList = prev[requirementsClientType];
+      const currentList = Array.isArray(prev?.[requirementsClientType]) ? prev[requirementsClientType] : [];
       const newList = currentList.includes(fieldId)
         ? currentList.filter((id: string) => id !== fieldId)
         : [...currentList, fieldId];
@@ -576,7 +595,7 @@ export default function ProductConfigurationModal({
   
   const handleRangeChange = (fieldId: string, rangeType: 'min' | 'max' | 'multiplier' | 'maxThreshold' | 'acceptanceMode', value: string) => {
     setRangesByType(prev => {
-      const currentRanges = prev[requirementsClientType];
+      const currentRanges = (prev?.[requirementsClientType] && typeof prev[requirementsClientType] === 'object') ? prev[requirementsClientType] : {};
       const fieldRange = currentRanges[fieldId] || {};
       
       return {

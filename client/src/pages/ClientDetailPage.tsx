@@ -40,8 +40,12 @@ import {
   ArrowLeft,
   X,
   Eye,
-  AlertCircle
+  AlertCircle,
+  Download,
+  ExternalLink,
+  Trash2
 } from "lucide-react";
+import { buildApiUrl } from "@/lib/runtimeConfig";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import CreditRequestModal from "@/components/Modals/CreditRequestModal";
@@ -132,6 +136,7 @@ export default function ClientDetailPage() {
   const [showHistoryModal, setShowHistoryModal] = useState(false);
   const [showCreditRequestModal, setShowCreditRequestModal] = useState(false);
   const [showDocumentUploadModal, setShowDocumentUploadModal] = useState(false);
+  const [previewDocument, setPreviewDocument] = useState<Document | null>(null);
   const { toast } = useToast();
 
   const clientId = params?.clientId || "";
@@ -159,6 +164,32 @@ export default function ClientDetailPage() {
   const { data: creditHistories, isLoading: isLoadingHistories } = useQuery<ClientCreditHistory[]>({
     queryKey: ["/api/clients", clientId, "credit-histories"],
     enabled: !!clientId,
+  });
+
+  const deleteVigenteMutation = useMutation({
+    mutationFn: async (creditIndex: number) => {
+      const currentVigentes = (client?.creditosVigentesDetalles as any[]) || [];
+      const updatedVigentes = currentVigentes.filter((_, idx) => idx !== creditIndex);
+      return await apiRequest(
+        "PUT",
+        `/api/clients/${clientId}`,
+        { creditosVigentesDetalles: updatedVigentes }
+      );
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/clients", clientId] });
+      toast({
+        title: "Crédito eliminado",
+        description: "El crédito vigente ha sido eliminado correctamente",
+      });
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Error",
+        description: error.message || "No se pudo eliminar el crédito vigente",
+        variant: "destructive",
+      });
+    },
   });
 
   const handleEditClient = (client: Client) => {
@@ -612,10 +643,10 @@ export default function ClientDetailPage() {
                                 <p className="text-[11px] text-neutral capitalize truncate">{doc.type.replace('_', ' ')}</p>
                               </div>
                             </div>
-                            <div className="flex items-center gap-1.5 flex-shrink-0">
+                            <div className="flex items-center gap-1 flex-shrink-0">
                               <Badge 
                                 variant={doc.isValid ? "default" : "secondary"}
-                                className={doc.isValid ? "bg-green-100 text-green-800 text-xs px-2 py-0.5" : "bg-yellow-100 text-yellow-800 text-xs px-2 py-0.5"}
+                                className={doc.isValid ? "bg-green-100 text-green-800 text-[11px] px-1.5 py-0.5" : "bg-yellow-100 text-yellow-800 text-[11px] px-1.5 py-0.5"}
                               >
                                 {doc.isValid ? "Válido" : "Pendiente"}
                               </Badge>
@@ -624,12 +655,24 @@ export default function ClientDetailPage() {
                                 variant="ghost"
                                 className="h-7 w-7 p-0 text-primary hover:text-primary-dark hover:bg-primary/10 rounded-full"
                                 onClick={() => {
-                                  window.open(buildApiUrl(`/api/documents/${doc.id}/file`), '_blank', 'noopener,noreferrer');
+                                  setPreviewDocument(doc);
                                 }}
-                                title="Ver documento"
+                                title="Visualizar documento"
                                 data-testid={`button-view-doc-${doc.id}`}
                               >
-                                <Eye className="h-3.5 w-3.5" />
+                                <Eye className="h-4 w-4" />
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                className="h-7 w-7 p-0 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-full"
+                                onClick={() => {
+                                  window.open(buildApiUrl(`/api/documents/${doc.id}/download`), '_blank', 'noopener,noreferrer');
+                                }}
+                                title="Descargar documento"
+                                data-testid={`button-download-doc-${doc.id}`}
+                              >
+                                <Download className="h-3.5 w-3.5" />
                               </Button>
                             </div>
                           </div>
@@ -768,9 +811,27 @@ export default function ClientDetailPage() {
                                             )}
                                           </div>
                                         </div>
-                                        <Badge variant="default" className="bg-green-100 text-green-800">
-                                          Vigente
-                                        </Badge>
+                                        <div className="flex items-center gap-2 flex-shrink-0">
+                                          <Badge variant="default" className="bg-green-100 text-green-800">
+                                            Vigente
+                                          </Badge>
+                                          <Button
+                                            size="sm"
+                                            variant="ghost"
+                                            className="h-7 w-7 p-0 text-red-500 hover:text-red-700 hover:bg-red-50 rounded-full"
+                                            onClick={() => {
+                                              const origIndex = allVigentes.indexOf(credito);
+                                              if (confirm("¿Estás seguro de eliminar este crédito vigente?")) {
+                                                deleteVigenteMutation.mutate(origIndex !== -1 ? origIndex : index);
+                                              }
+                                            }}
+                                            disabled={deleteVigenteMutation.isPending}
+                                            title="Eliminar crédito vigente"
+                                            data-testid={`button-delete-vigente-${index}`}
+                                          >
+                                            <Trash2 className="h-3.5 w-3.5" />
+                                          </Button>
+                                        </div>
                                       </div>
                                     </div>
                                   ))}
@@ -2238,6 +2299,88 @@ export default function ClientDetailPage() {
               setShowDocumentUploadModal(false);
             }}
           />
+        </DialogContent>
+      </Dialog>
+
+      {/* Document Preview Modal */}
+      <Dialog open={!!previewDocument} onOpenChange={(open) => !open && setPreviewDocument(null)}>
+        <DialogContent className="max-w-4xl w-[95vw] max-h-[90vh] flex flex-col p-4 sm:p-6">
+          <DialogHeader className="flex flex-row items-center justify-between pb-2 border-b">
+            <div>
+              <DialogTitle className="text-base sm:text-lg truncate max-w-[300px] sm:max-w-md">
+                {previewDocument?.fileName || "Visualizador de Documento"}
+              </DialogTitle>
+              <DialogDescription className="capitalize text-xs">
+                {previewDocument?.type?.replace(/_/g, " ")} • {previewDocument?.isValid ? "Documento Válido" : "Pendiente de validación"}
+              </DialogDescription>
+            </div>
+            <div className="flex items-center gap-2 pr-6">
+              {previewDocument && (
+                <>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => {
+                      window.open(buildApiUrl(`/api/documents/${previewDocument.id}/download`), '_blank');
+                    }}
+                    className="h-8 text-xs"
+                  >
+                    <Download className="h-3.5 w-3.5 mr-1" />
+                    Descargar
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => {
+                      window.open(buildApiUrl(`/api/documents/${previewDocument.id}/file`), '_blank');
+                    }}
+                    className="h-8 text-xs text-primary"
+                    title="Abrir en pestaña nueva"
+                  >
+                    <ExternalLink className="h-3.5 w-3.5 mr-1" />
+                    Abrir nueva pestaña
+                  </Button>
+                </>
+              )}
+            </div>
+          </DialogHeader>
+
+          <div className="flex-1 min-h-[400px] sm:min-h-[500px] max-h-[70vh] bg-gray-100 rounded-lg overflow-hidden flex items-center justify-center p-2 mt-2">
+            {previewDocument && (
+              <>
+                {previewDocument.mimeType?.startsWith('image/') ? (
+                  <img
+                    src={buildApiUrl(`/api/documents/${previewDocument.id}/file`)}
+                    alt={previewDocument.fileName}
+                    className="max-h-full max-w-full object-contain rounded shadow"
+                  />
+                ) : previewDocument.mimeType === 'application/pdf' || previewDocument.fileName?.toLowerCase().endsWith('.pdf') ? (
+                  <iframe
+                    src={`${buildApiUrl(`/api/documents/${previewDocument.id}/file`)}#toolbar=1`}
+                    title={previewDocument.fileName}
+                    className="w-full h-full min-h-[450px] border-0 rounded"
+                  />
+                ) : (
+                  <div className="text-center p-8 bg-white rounded-lg shadow-sm border max-w-md">
+                    <FileText className="h-16 w-16 text-primary mx-auto mb-4 opacity-75" />
+                    <h4 className="font-semibold text-gray-800 mb-1">{previewDocument.fileName}</h4>
+                    <p className="text-xs text-gray-500 mb-4">
+                      Este formato de archivo no permite visualización directa integrada.
+                    </p>
+                    <Button
+                      onClick={() => {
+                        window.open(buildApiUrl(`/api/documents/${previewDocument.id}/download`), '_blank');
+                      }}
+                      className="bg-primary text-white"
+                    >
+                      <Download className="h-4 w-4 mr-2" />
+                      Descargar archivo para ver
+                    </Button>
+                  </div>
+                )}
+              </>
+            )}
+          </div>
         </DialogContent>
       </Dialog>
     </div>
