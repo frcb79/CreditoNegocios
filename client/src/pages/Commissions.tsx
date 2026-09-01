@@ -555,6 +555,10 @@ export default function Commissions() {
                   </tbody>
                 </table>
               </div>
+            </div>
+          </DialogContent>
+        </Dialog>
+
         {/* Modal de Detalle de Comisión */}
         <Dialog open={!!viewingCommission} onOpenChange={(open) => !open && setViewingCommission(null)}>
           <DialogContent className="max-w-lg">
