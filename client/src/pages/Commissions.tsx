@@ -210,6 +210,8 @@ export default function Commissions() {
                 Control de Sobretasa (Financieras)
               </Button>
             </div>
+          )}
+
           {/* Contenido de Comisiones Normales */}
           {activeTab === 'commissions' && (
             <>
@@ -532,6 +534,9 @@ export default function Commissions() {
                         )}
                         
                         {commission.paidAt && (
+                          <p className="text-[11px] text-success font-medium">
+                            Pagado el {new Date(commission.paidAt).toLocaleDateString('es-MX')}
+                          </p>
                         )}
                       </div>
                     </div>
