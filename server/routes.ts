@@ -1285,6 +1285,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const user = await storage.getUser(userId);
       
       // Admin and super_admin can see all clients
+      const isAdmin = user?.role === 'admin' || user?.role === 'super_admin';
       let rawClients: any[] = [];
       if (isAdmin) {
         rawClients = await storage.getClients();

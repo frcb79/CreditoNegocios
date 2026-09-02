@@ -38,6 +38,7 @@ export default function Commissions() {
   const [viewingCommission, setViewingCommission] = useState<any | null>(null);
   const [accountNumber, setAccountNumber] = useState("");
   const [showRatesModal, setShowRatesModal] = useState(false);
+  const [ratesSearchTerm, setRatesSearchTerm] = useState("");
   const [, setLocation] = useLocation();
   const [activeTab, setActiveTab] = useState<'commissions' | 'sobretasa'>('commissions');
 
@@ -397,10 +398,10 @@ export default function Commissions() {
                             </div>
                           )}
                           <p className="text-[11px] text-gray-400 mt-1">
-                            ID: {commission.id.slice(-8)} • {formatDistanceToNow(new Date(commission.createdAt!), { 
+                            ID: {commission.id.slice(-8)} • {commission.createdAt ? formatDistanceToNow(new Date(commission.createdAt), { 
                               addSuffix: true, 
                               locale: es 
-                            })}
+                            }) : 'Reciente'}
                           </p>
                         </div>
                       </div>
@@ -625,7 +626,7 @@ export default function Commissions() {
                                 <td className="p-3 font-mono text-xs">
                                   #{c.credit?.id?.slice(-8) || c.id.slice(-8)}
                                   <p className="text-[11px] text-gray-400">
-                                    {new Date(c.createdAt).toLocaleDateString('es-MX')}
+                                    {c.createdAt ? new Date(c.createdAt).toLocaleDateString('es-MX') : 'Reciente'}
                                   </p>
                                 </td>
                                 <td className="p-3 font-semibold text-gray-900">
@@ -859,7 +860,7 @@ export default function Commissions() {
                   )}
                   <div className="flex justify-between py-1 border-b">
                     <span className="text-neutral">Fecha de Generación:</span>
-                    <span>{new Date(viewingCommission.createdAt).toLocaleDateString('es-MX')}</span>
+                    <span>{viewingCommission.createdAt ? new Date(viewingCommission.createdAt).toLocaleDateString('es-MX') : 'Reciente'}</span>
                   </div>
                   {viewingCommission.paidAt && (
                     <div className="flex justify-between py-1 border-b text-success">
