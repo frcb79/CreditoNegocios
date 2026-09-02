@@ -157,6 +157,22 @@ export default function ClientList({ onSelectClient, onNewClient }: ClientListPr
                     {client.phone && (
                       <p className="text-xs text-neutral">{client.phone}</p>
                     )}
+                    {((client as any).broker || (client as any).masterBroker) && (
+                      <div className="flex items-center gap-1.5 mt-1.5 flex-wrap">
+                        {(client as any).broker && (
+                          <Badge variant="outline" className="text-[10px] py-0 px-1.5 bg-gray-50 text-gray-700 border-gray-300">
+                            <i className="fas fa-user-tie text-[9px] mr-1 text-primary"></i>
+                            {(client as any).broker.firstName} {(client as any).broker.lastName}
+                          </Badge>
+                        )}
+                        {(client as any).masterBroker && (
+                          <Badge variant="outline" className="text-[10px] py-0 px-1.5 bg-purple-50 text-purple-700 border-purple-200">
+                            <i className="fas fa-network-wired text-[9px] mr-1"></i>
+                            MB: {(client as any).masterBroker.brandName || `${(client as any).masterBroker.firstName} ${(client as any).masterBroker.lastName}`}
+                          </Badge>
+                        )}
+                      </div>
+                    )}
                   </div>
                 </div>
                 

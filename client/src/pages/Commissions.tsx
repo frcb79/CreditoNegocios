@@ -38,7 +38,13 @@ export default function Commissions() {
   const [viewingCommission, setViewingCommission] = useState<any | null>(null);
   const [accountNumber, setAccountNumber] = useState("");
   const [showRatesModal, setShowRatesModal] = useState(false);
-  const [ratesSearchTerm, setRatesSearchTerm] = useState("");
+  const [, setLocation] = useLocation();
+  const [activeTab, setActiveTab] = useState<'commissions' | 'sobretasa'>('commissions');
+
+  // Check if current user has pending commissions and lacks CLABE
+  const needsBankSetup = (user?.role === 'broker' || user?.role === 'master_broker') && 
+    !user?.clabe && 
+    (commissions?.some(c => c.status === 'pending') || false);
 
   const { data: financialInstitutions = [] } = useQuery<any[]>({
     queryKey: ["/api/financial-institutions"],
@@ -158,8 +164,56 @@ export default function Commissions() {
         />
         
         <main className="flex-1 p-4 sm:p-6 lg:p-8 overflow-y-auto">
-          {/* Summary Cards */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+          {/* Alerta de cuenta bancaria pendiente */}
+          {needsBankSetup && (
+            <div className="mb-6 p-4 bg-orange-50 border-2 border-orange-300 rounded-xl flex items-center justify-between flex-wrap gap-3">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 bg-orange-100 rounded-full flex items-center justify-center flex-shrink-0">
+                  <i className="fas fa-exclamation-triangle text-orange-600 text-lg"></i>
+                </div>
+                <div>
+                  <h4 className="font-bold text-orange-900 text-sm">¡Tienes comisiones pendientes por cobrar!</h4>
+                  <p className="text-xs text-orange-800">
+                    Aún no has registrado tu cuenta bancaria (CLABE) para que la administración pueda dispersar tus pagos.
+                  </p>
+                </div>
+              </div>
+              <Button 
+                className="bg-orange-600 hover:bg-orange-700 text-white text-xs h-9"
+                onClick={() => setLocation('/configuracion')}
+              >
+                <i className="fas fa-university mr-1.5"></i>
+                Registrar CLABE ahora
+              </Button>
+            </div>
+          )}
+
+          {/* Selector de Pestañas para Super Admin */}
+          {(user?.role === 'admin' || user?.role === 'super_admin') && (
+            <div className="flex gap-2 mb-6 border-b pb-3">
+              <Button
+                variant={activeTab === 'commissions' ? 'default' : 'outline'}
+                size="sm"
+                onClick={() => setActiveTab('commissions')}
+                className={activeTab === 'commissions' ? 'bg-primary text-white' : ''}
+              >
+                <i className="fas fa-users-cog mr-2"></i>
+                Comisiones de Red & Brokers
+              </Button>
+              <Button
+                variant={activeTab === 'sobretasa' ? 'default' : 'outline'}
+                size="sm"
+                onClick={() => setActiveTab('sobretasa')}
+                className={activeTab === 'sobretasa' ? 'bg-purple-700 text-white hover:bg-purple-800' : 'text-purple-800 border-purple-300'}
+              >
+                <i className="fas fa-percentage mr-2"></i>
+                Control de Sobretasa (Financieras)
+              </Button>
+            </div>
+          {/* Contenido de Comisiones Normales */}
+          {activeTab === 'commissions' && (
+            <>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
             <Card className="border border-gray-200">
               <CardContent className="p-6">
                 <div className="flex items-center justify-between">
@@ -324,6 +378,22 @@ export default function Commissions() {
                             <span>•</span>
                             <span>Tipo: {commissionTypeLabels[commission.commissionType || ""] || (commission.commissionType || "Sin tipo")}</span>
                           </div>
+                          {(commission.broker || commission.masterBroker) && (
+                            <div className="flex items-center gap-1.5 mt-1 flex-wrap">
+                              {commission.broker && (
+                                <Badge variant="outline" className="text-[10px] py-0 px-1.5 bg-gray-50 text-gray-700 border-gray-300">
+                                  <i className="fas fa-user-tie text-[9px] mr-1 text-primary"></i>
+                                  {commission.broker.firstName} {commission.broker.lastName}
+                                </Badge>
+                              )}
+                              {commission.masterBroker && (
+                                <Badge variant="outline" className="text-[10px] py-0 px-1.5 bg-purple-50 text-purple-700 border-purple-200">
+                                  <i className="fas fa-network-wired text-[9px] mr-1"></i>
+                                  MB: {commission.masterBroker.brandName || `${commission.masterBroker.firstName} ${commission.masterBroker.lastName}`}
+                                </Badge>
+                              )}
+                            </div>
+                          )}
                           <p className="text-[11px] text-gray-400 mt-1">
                             ID: {commission.id.slice(-8)} • {formatDistanceToNow(new Date(commission.createdAt!), { 
                               addSuffix: true, 
@@ -360,27 +430,75 @@ export default function Commissions() {
                                 <Button 
                                   size="sm"
                                   className="bg-success text-white hover:bg-green-700 text-xs"
-                                  onClick={() => setSelectedCommission(commission)}
+                                  onClick={() => {
+                                    setSelectedCommission(commission);
+                                    setAccountNumber(commission.effectiveBankAccount?.clabe || "");
+                                  }}
                                   data-testid={`button-pay-${commission.id}`}
                                 >
                                   <i className="fas fa-credit-card mr-1"></i>
                                   Pagar STP
                                 </Button>
                               </DialogTrigger>
-                              <DialogContent>
+                              <DialogContent className="max-w-md">
                                 <DialogHeader>
-                                  <DialogTitle>Procesar Pago STP</DialogTitle>
+                                  <DialogTitle className="flex items-center gap-2">
+                                    <i className="fas fa-university text-primary"></i>
+                                    Procesar Dispersión STP
+                                  </DialogTitle>
                                 </DialogHeader>
-                                <div className="space-y-4">
-                                  <div>
-                                    <p className="font-semibold">Monto a pagar:</p>
-                                    <p className="text-2xl text-primary font-bold">
-                                      ${parseFloat(commission.amount).toLocaleString('es-MX')} MXN
-                                    </p>
+                                <div className="space-y-4 pt-1">
+                                  <div className="bg-primary/5 p-3.5 rounded-lg flex items-center justify-between">
+                                    <div>
+                                      <p className="text-xs text-neutral">Monto de Comisión a Dispersar:</p>
+                                      <p className="text-xl text-primary font-bold">
+                                        ${parseFloat(commission.amount).toLocaleString('es-MX')} MXN
+                                      </p>
+                                    </div>
+                                    <Badge className="bg-blue-100 text-blue-800 border-blue-200">
+                                      STP SPEI
+                                    </Badge>
                                   </div>
+
+                                  {/* Información Bancaria Pre-cargada */}
+                                  <div className="p-3 bg-gray-50 rounded-lg border border-gray-200 space-y-2 text-xs">
+                                    <p className="font-bold text-gray-700 uppercase tracking-wider text-[10px]">
+                                      Cuenta Destino {commission.effectiveBankAccount?.beneficiaryType === 'master_broker' ? '(Master Broker)' : '(Broker Directo)'}
+                                    </p>
+                                    <div className="grid grid-cols-2 gap-2">
+                                      <div>
+                                        <span className="text-gray-500">Beneficiario:</span>
+                                        <p className="font-semibold text-gray-900 truncate">
+                                          {commission.effectiveBankAccount?.beneficiaryName || 'No registrado'}
+                                        </p>
+                                      </div>
+                                      <div>
+                                        <span className="text-gray-500">Banco:</span>
+                                        <p className="font-semibold text-gray-900">
+                                          {commission.effectiveBankAccount?.bankName || 'No registrado'}
+                                        </p>
+                                      </div>
+                                    </div>
+                                    <div>
+                                      <span className="text-gray-500">CLABE Interbancaria Registrada:</span>
+                                      <p className="font-mono font-semibold text-gray-900 text-xs">
+                                        {commission.effectiveBankAccount?.clabe || (
+                                          <span className="text-orange-600 font-normal">Sin CLABE registrada en el perfil</span>
+                                        )}
+                                      </p>
+                                    </div>
+                                  </div>
+
+                                  {!commission.effectiveBankAccount?.clabe && (
+                                    <div className="bg-orange-50 border border-orange-200 p-2.5 rounded-lg text-xs text-orange-800 flex items-start gap-2">
+                                      <i className="fas fa-exclamation-triangle mt-0.5 text-orange-600"></i>
+                                      <span>El beneficiario aún no ha registrado sus datos bancarios en Configuración. Puedes ingresar la CLABE manualmente a continuación.</span>
+                                    </div>
+                                  )}
+
                                   <div>
-                                    <label className="block text-sm font-medium mb-2">
-                                      Número de Cuenta (CLABE)
+                                    <label className="block text-xs font-semibold text-gray-700 mb-1">
+                                      CLABE para la Transferencia (18 dígitos)
                                     </label>
                                     <Input
                                       placeholder="012345678901234567"
@@ -388,20 +506,23 @@ export default function Commissions() {
                                       onChange={(e) => setAccountNumber(e.target.value)}
                                       maxLength={18}
                                       data-testid="input-account-number"
+                                      className="font-mono text-sm"
                                     />
                                   </div>
-                                  <div className="flex justify-end space-x-4">
-                                    <Button variant="outline" onClick={() => setSelectedCommission(null)}>
+
+                                  <div className="flex justify-end space-x-3 pt-2">
+                                    <Button variant="outline" size="sm" onClick={() => setSelectedCommission(null)}>
                                       Cancelar
                                     </Button>
                                     <Button 
+                                      size="sm"
                                       onClick={handlePayment}
-                                      disabled={!accountNumber || paymentMutation.isPending}
-                                      className="bg-success text-white hover:bg-green-700"
+                                      disabled={!accountNumber || accountNumber.length < 18 || paymentMutation.isPending}
+                                      className="bg-success text-white hover:bg-green-700 text-xs"
                                       data-testid="button-confirm-payment"
                                     >
-                                      {paymentMutation.isPending && <i className="fas fa-spinner fa-spin mr-2"></i>}
-                                      Procesar Pago
+                                      {paymentMutation.isPending && <i className="fas fa-spinner fa-spin mr-1.5"></i>}
+                                      Confirmar y Dispersar STP
                                     </Button>
                                   </div>
                                 </div>
@@ -411,9 +532,6 @@ export default function Commissions() {
                         )}
                         
                         {commission.paidAt && (
-                          <p className="text-[11px] text-success font-medium">
-                            Pagado el {new Date(commission.paidAt).toLocaleDateString('es-MX')}
-                          </p>
                         )}
                       </div>
                     </div>
@@ -422,6 +540,126 @@ export default function Commissions() {
               )}
             </CardContent>
           </Card>
+        </>
+      )}
+          {/* Vista de Sobretasas para Super Admin */}
+          {activeTab === 'sobretasa' && (user?.role === 'admin' || user?.role === 'super_admin') ? (
+            <div className="space-y-6">
+              {/* Resumen de Sobretasa */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <Card className="border border-purple-200 bg-purple-50/40">
+                  <CardContent className="p-6">
+                    <p className="text-xs font-semibold text-purple-900 uppercase">Sobretasa Total Generada</p>
+                    <p className="text-2xl font-bold text-purple-900 mt-1">
+                      ${commissions?.reduce((sum, c) => {
+                        const creditAmount = parseFloat(c.credit?.amount || '0');
+                        const overRate = parseFloat(c.financialInstitution?.overRate || '1.0');
+                        return sum + (creditAmount * (overRate / 100));
+                      }, 0).toLocaleString('es-MX', { maximumFractionDigits: 2 })} MXN
+                    </p>
+                    <p className="text-xs text-purple-700 mt-1">Monto por cobrar a financieras</p>
+                  </CardContent>
+                </Card>
+
+                <Card className="border border-blue-200 bg-blue-50/40">
+                  <CardContent className="p-6">
+                    <p className="text-xs font-semibold text-blue-900 uppercase">Créditos con Sobretasa</p>
+                    <p className="text-2xl font-bold text-blue-900 mt-1">
+                      {commissions?.filter(c => c.credit).length || 0} operaciones
+                    </p>
+                    <p className="text-xs text-blue-700 mt-1">Colocaciones activas</p>
+                  </CardContent>
+                </Card>
+
+                <Card className="border border-green-200 bg-green-50/40">
+                  <CardContent className="p-6">
+                    <p className="text-xs font-semibold text-green-900 uppercase">Estatus de Cobranza</p>
+                    <p className="text-2xl font-bold text-green-800 mt-1">Al día</p>
+                    <p className="text-xs text-green-700 mt-1">Facturación mensual a financieras</p>
+                  </CardContent>
+                </Card>
+              </div>
+
+              {/* Tabla de Sobretasa por Operación */}
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <i className="fas fa-file-invoice-dollar text-purple-700"></i>
+                    Seguimiento de Pagos de Sobretasa por Financiera
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm text-left border-collapse">
+                      <thead className="bg-gray-100 text-gray-700 text-xs font-semibold uppercase">
+                        <tr>
+                          <th className="p-3 border-b">Crédito ID / Fecha</th>
+                          <th className="p-3 border-b">Financiera</th>
+                          <th className="p-3 border-b">Cliente</th>
+                          <th className="p-3 border-b">Broker Originador</th>
+                          <th className="p-3 border-b text-right">Monto Dispersado</th>
+                          <th className="p-3 border-b text-center">% Sobretasa</th>
+                          <th className="p-3 border-b text-right text-purple-800 font-bold">Sobretasa a Cobrar</th>
+                          <th className="p-3 border-b text-center">Estatus Pago</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {commissions?.length === 0 ? (
+                          <tr>
+                            <td colSpan={8} className="p-6 text-center text-gray-500">
+                              No hay créditos colocados para cálculo de sobretasa.
+                            </td>
+                          </tr>
+                        ) : (
+                          commissions?.map((c) => {
+                            const creditAmount = parseFloat(c.credit?.amount || '0');
+                            const overRate = parseFloat(c.financialInstitution?.overRate || '1.0');
+                            const overRateAmount = creditAmount * (overRate / 100);
+                            return (
+                              <tr key={c.id} className="border-b hover:bg-gray-50/80">
+                                <td className="p-3 font-mono text-xs">
+                                  #{c.credit?.id?.slice(-8) || c.id.slice(-8)}
+                                  <p className="text-[11px] text-gray-400">
+                                    {new Date(c.createdAt).toLocaleDateString('es-MX')}
+                                  </p>
+                                </td>
+                                <td className="p-3 font-semibold text-gray-900">
+                                  {c.financialInstitution?.name || 'Financiera'}
+                                </td>
+                                <td className="p-3">
+                                  {c.client ? (c.client.businessName || `${c.client.firstName || ''} ${c.client.lastName || ''}`.trim()) : 'Cliente'}
+                                </td>
+                                <td className="p-3">
+                                  {c.broker ? `${c.broker.firstName} ${c.broker.lastName}` : 'Broker'}
+                                  {c.masterBroker && (
+                                    <p className="text-[10px] text-purple-700">MB: {c.masterBroker.brandName || c.masterBroker.firstName}</p>
+                                  )}
+                                </td>
+                                <td className="p-3 text-right font-medium">
+                                  ${creditAmount.toLocaleString('es-MX')} MXN
+                                </td>
+                                <td className="p-3 text-center font-bold text-purple-700">
+                                  {overRate}%
+                                </td>
+                                <td className="p-3 text-right font-bold text-purple-900">
+                                  ${overRateAmount.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} MXN
+                                </td>
+                                <td className="p-3 text-center">
+                                  <Badge className="bg-purple-100 text-purple-800 border-purple-300 text-xs">
+                                    Por Conciliar
+                                  </Badge>
+                                </td>
+                              </tr>
+                            );
+                          })
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+          ) : null}
         </main>
 
         {/* Modal de Esquema de Comisiones por Financiera */}

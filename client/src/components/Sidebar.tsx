@@ -116,26 +116,7 @@ export default function Sidebar() {
       </div>
 
       <div className={cn("border-b border-sidebar-border", collapsed ? "p-2" : "p-3 lg:p-4")}>
-        <div className={cn("flex items-center", collapsed ? "justify-center" : "space-x-3")}>
-          <div className={cn(
-            "bg-gradient-to-r from-primary to-secondary rounded-full flex items-center justify-center flex-shrink-0 overflow-hidden",
-            collapsed ? "w-10 h-10" : "w-8 h-8 lg:w-10 lg:h-10"
-          )}>
-            {user?.profileImageUrl ? (
-              <img
-                src={user.profileImageUrl}
-                alt="Foto de perfil"
-                className="w-full h-full object-cover"
-                onError={(event) => {
-                  event.currentTarget.style.display = "none";
-                }}
-              />
-            ) : (
-              <span className={cn("text-white font-semibold", collapsed ? "text-sm" : "text-xs lg:text-sm")}>
-                {user?.firstName?.[0]}{user?.lastName?.[0]}
-              </span>
-            )}
-          </div>
+        <div className={cn("flex items-center", collapsed ? "justify-center" : "justify-between space-x-3")}>
           {!collapsed && (
             <div className="min-w-0 flex-1">
               <p className="font-semibold tracking-tight text-sidebar-foreground text-sm lg:text-base truncate">
@@ -146,6 +127,27 @@ export default function Sidebar() {
               </p>
             </div>
           )}
+          <div className={cn(
+            "rounded-lg flex items-center justify-center flex-shrink-0 overflow-hidden bg-transparent",
+            collapsed ? "w-10 h-10" : "w-10 h-10 lg:w-12 lg:h-12"
+          )}>
+            {user?.profileImageUrl || (user as any)?.customLogo ? (
+              <img
+                src={user?.profileImageUrl || (user as any)?.customLogo}
+                alt="Logo o Foto de perfil"
+                className="w-full h-full object-contain"
+                onError={(event) => {
+                  event.currentTarget.style.display = "none";
+                }}
+              />
+            ) : (
+              <div className="w-full h-full bg-gradient-to-r from-primary to-secondary rounded-full flex items-center justify-center">
+                <span className={cn("text-white font-semibold", collapsed ? "text-sm" : "text-xs lg:text-sm")}>
+                  {user?.firstName?.[0]}{user?.lastName?.[0]}
+                </span>
+              </div>
+            )}
+          </div>
         </div>
       </div>
 

@@ -179,10 +179,16 @@ export default function MySubmissions() {
                                 {credit.financialInstitution.name}
                               </Badge>
                             )}
-                            <Badge className="bg-emerald-600">
+                            <Badge className="bg-emerald-600 text-white">
                               <Package className="w-3 h-3 mr-1" />
                               Dispersado
                             </Badge>
+                            {commission?.status === 'paid' && (
+                              <Badge className="bg-green-700 text-white border-green-800">
+                                <DollarSign className="w-3 h-3 mr-0.5" />
+                                Comisión Pagada
+                              </Badge>
+                            )}
                           </div>
                           
                           <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-sm mt-2">

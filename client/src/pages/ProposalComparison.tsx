@@ -314,7 +314,7 @@ export default function ProposalComparison() {
                               <>
                                 <p className="text-xs font-semibold text-orange-800">Solicitud Devuelta</p>
                                 <p className="text-xs text-gray-600 italic">
-                                  {(target as any).adminNotes || 'La solicitud requiere correcciones antes de ser aprobada por esta institución.'}
+                                  {(target as any).details || (target as any).adminNotes || 'La solicitud requiere correcciones antes de ser aprobada por esta institución.'}
                                 </p>
                               </>
                             ) : target.status === 'institution_rejected' ? (

@@ -1285,25 +1285,55 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const user = await storage.getUser(userId);
       
       // Admin and super_admin can see all clients
-      const isAdmin = user?.role === 'admin' || user?.role === 'super_admin';
-      
+      let rawClients: any[] = [];
       if (isAdmin) {
-        const clients = await storage.getClients();
-        return res.json(clients);
-      }
-      
-      // Master brokers can see their own clients + their network's clients
-      if (user?.role === 'master_broker') {
+        rawClients = await storage.getClients();
+      } else if (user?.role === 'master_broker') {
         const networkBrokers = await storage.getUsersByMasterBroker(userId);
         const brokerIds = [userId, ...networkBrokers.map(b => b.id)];
         const allClients = await storage.getClients();
-        const filteredClients = allClients.filter(c => brokerIds.includes(c.brokerId));
-        return res.json(filteredClients);
+        rawClients = allClients.filter(c => brokerIds.includes(c.brokerId));
+      } else {
+        rawClients = await storage.getClients(userId);
       }
-      
-      // Regular brokers only see their own clients
-      const clients = await storage.getClients(userId);
-      res.json(clients);
+
+      const enrichedClients = await Promise.all(
+        rawClients.map(async (client) => {
+          let broker = null;
+          let masterBroker = null;
+          if (client.brokerId) {
+            const brokerUser = await storage.getUser(client.brokerId);
+            if (brokerUser) {
+              broker = {
+                id: brokerUser.id,
+                firstName: brokerUser.firstName,
+                lastName: brokerUser.lastName,
+                email: brokerUser.email,
+                role: brokerUser.role,
+              };
+              if (brokerUser.masterBrokerId) {
+                const mbUser = await storage.getUser(brokerUser.masterBrokerId);
+                if (mbUser) {
+                  masterBroker = {
+                    id: mbUser.id,
+                    firstName: mbUser.firstName,
+                    lastName: mbUser.lastName,
+                    email: mbUser.email,
+                    brandName: mbUser.brandName,
+                  };
+                }
+              }
+            }
+          }
+          return {
+            ...client,
+            broker,
+            masterBroker,
+          };
+        })
+      );
+
+      res.json(enrichedClients);
     } catch (error) {
       console.error("Error fetching clients:", error);
       res.status(500).json({ message: "Failed to fetch clients" });
@@ -2025,7 +2055,57 @@ export async function registerRoutes(app: Express): Promise<Server> {
             }
           }
 
-          const broker = comm.brokerId ? await storage.getUser(comm.brokerId) : null;
+          let broker = null;
+          let masterBroker = null;
+          let effectiveBankAccount = null;
+
+          if (comm.brokerId) {
+            const brokerUser = await storage.getUser(comm.brokerId);
+            if (brokerUser) {
+              broker = {
+                id: brokerUser.id,
+                firstName: brokerUser.firstName,
+                lastName: brokerUser.lastName,
+                email: brokerUser.email,
+                bankName: brokerUser.bankName,
+                clabe: brokerUser.clabe,
+                accountHolder: brokerUser.accountHolder,
+              };
+
+              if (brokerUser.masterBrokerId) {
+                const mbUser = await storage.getUser(brokerUser.masterBrokerId);
+                if (mbUser) {
+                  masterBroker = {
+                    id: mbUser.id,
+                    firstName: mbUser.firstName,
+                    lastName: mbUser.lastName,
+                    email: mbUser.email,
+                    brandName: mbUser.brandName,
+                    bankName: mbUser.bankName,
+                    clabe: mbUser.clabe,
+                    accountHolder: mbUser.accountHolder,
+                  };
+                  // If under master broker, the beneficiary account is the master broker's
+                  effectiveBankAccount = {
+                    beneficiaryType: 'master_broker',
+                    beneficiaryName: mbUser.accountHolder || `${mbUser.firstName || ''} ${mbUser.lastName || ''}`.trim() || mbUser.brandName,
+                    bankName: mbUser.bankName,
+                    clabe: mbUser.clabe,
+                  };
+                }
+              }
+
+              if (!effectiveBankAccount) {
+                // Solo broker
+                effectiveBankAccount = {
+                  beneficiaryType: 'broker',
+                  beneficiaryName: brokerUser.accountHolder || `${brokerUser.firstName || ''} ${brokerUser.lastName || ''}`.trim(),
+                  bankName: brokerUser.bankName,
+                  clabe: brokerUser.clabe,
+                };
+              }
+            }
+          }
 
           return {
             ...comm,
@@ -2046,13 +2126,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
             financialInstitution: institution ? {
               id: institution.id,
               name: institution.name,
+              overRate: (institution as any).overRate || 0,
             } : null,
-            broker: broker ? {
-              id: broker.id,
-              firstName: broker.firstName,
-              lastName: broker.lastName,
-              email: broker.email,
-            } : null,
+            broker,
+            masterBroker,
+            effectiveBankAccount,
           };
         })
       );
@@ -3869,11 +3947,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
       try {
         const request = await storage.getCreditSubmissionRequest(rawTarget.requestId);
         if (request) {
+          const returnMsg = details || adminNotes || 'El administrador devolvió tu solicitud para correcciones.';
           const notification = await storage.createNotification({
             userId: request.brokerId,
             type: 'submission_update',
             title: 'Solicitud devuelta para revisión',
-            message: adminNotes || 'El administrador devolvió tu solicitud para correcciones.',
+            message: returnMsg,
             relatedEntityType: 'credit_submission_target',
             relatedEntityId: rawTarget.id,
             priority: 'high',

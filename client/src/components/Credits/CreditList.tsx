@@ -31,6 +31,9 @@ type UnifiedCreditItem = {
   targetsCount?: number;
   proposalsCount?: number;
   statusSummary?: ReturnType<typeof getSubmissionStatusSummary>;
+  isCommissionPaid?: boolean;
+  broker?: any;
+  masterBroker?: any;
 };
 
 // Ahora se usa configuración compartida desde @/lib/statusConfig
@@ -49,6 +52,10 @@ export default function CreditList() {
 
   const { data: submissions, isLoading: submissionsLoading } = useQuery<any[]>({
     queryKey: ["/api/credit-submissions"],
+  });
+
+  const { data: commissions } = useQuery<any[]>({
+    queryKey: ["/api/commissions"],
   });
 
   const { data: clients } = useQuery<Client[]>({
@@ -141,6 +148,8 @@ export default function CreditList() {
             targetsCount,
             proposalsCount,
             statusSummary,
+            broker: (sub as any).broker,
+            masterBroker: (sub as any).masterBroker,
           });
         });
     }
@@ -153,6 +162,12 @@ export default function CreditList() {
           const targets = credit.targets || credit.submission?.targets || [];
           const statusSummary = targets.length > 0 ? getSubmissionStatusSummary(targets) : undefined;
           const proposalsCount = targets.filter((t: any) => t.institutionProposal).length;
+
+          // Check if associated commission has been paid
+          const linkedComm = commissions?.find(
+            c => c.creditId === credit.id || (credit.linkedSubmissionId && c.credit?.submissionId === credit.linkedSubmissionId)
+          );
+          const isCommissionPaid = linkedComm?.status === 'paid';
 
           items.push({
             id: credit.id,
@@ -168,6 +183,9 @@ export default function CreditList() {
             targetsCount: targets.length,
             proposalsCount,
             statusSummary,
+            isCommissionPaid,
+            broker: credit.broker,
+            masterBroker: credit.masterBroker,
           });
         });
     }
@@ -322,35 +340,60 @@ export default function CreditList() {
                         locale: es 
                       })}
                     </p>
+                    {(item.broker || item.masterBroker) && (
+                      <div className="flex items-center gap-1.5 mt-1 flex-wrap">
+                        {item.broker && (
+                          <Badge variant="outline" className="text-[10px] py-0 px-1.5 bg-gray-50 text-gray-700 border-gray-300">
+                            <i className="fas fa-user-tie text-[9px] mr-1 text-primary"></i>
+                            {item.broker.firstName} {item.broker.lastName}
+                          </Badge>
+                        )}
+                        {item.masterBroker && (
+                          <Badge variant="outline" className="text-[10px] py-0 px-1.5 bg-purple-50 text-purple-700 border-purple-200">
+                            <i className="fas fa-network-wired text-[9px] mr-1"></i>
+                            MB: {item.masterBroker.brandName || `${item.masterBroker.firstName} ${item.masterBroker.lastName}`}
+                          </Badge>
+                        )}
+                      </div>
+                    )}
                   </div>
                 </div>
                 
                 <div className="flex items-center space-x-3">
                   <div className="text-right">
-                    {(() => {
-                      if (item.type === 'submission' && item.statusSummary) {
-                        const primaryConfig = targetStatusConfig[item.statusSummary.primaryStatus as keyof typeof targetStatusConfig] || submissionStatusConfig[item.status as keyof typeof submissionStatusConfig];
+                    <div className="flex items-center gap-1.5 justify-end flex-wrap">
+                      {(() => {
+                        if (item.type === 'submission' && item.statusSummary) {
+                          const primaryConfig = targetStatusConfig[item.statusSummary.primaryStatus as keyof typeof targetStatusConfig] || submissionStatusConfig[item.status as keyof typeof submissionStatusConfig];
+                          return (
+                            <Badge 
+                              className={primaryConfig?.color || "bg-gray-100 text-gray-800"}
+                              data-testid={`item-status-${item.id}`}
+                            >
+                              {primaryConfig?.label || item.status}
+                            </Badge>
+                          );
+                        }
+                        
+                        // For credits, show normal badge
+                        const config = creditStatusConfig[item.status as keyof typeof creditStatusConfig];
                         return (
                           <Badge 
-                            className={primaryConfig?.color || "bg-gray-100 text-gray-800"}
+                            className={config?.color || "bg-gray-100 text-gray-800"}
                             data-testid={`item-status-${item.id}`}
                           >
-                            {primaryConfig?.label || item.status}
+                            {config?.label || item.status}
                           </Badge>
                         );
-                      }
-                      
-                      // For credits, show normal badge
-                      const config = creditStatusConfig[item.status as keyof typeof creditStatusConfig];
-                      return (
-                        <Badge 
-                          className={config?.color || "bg-gray-100 text-gray-800"}
-                          data-testid={`item-status-${item.id}`}
-                        >
-                          {config?.label || item.status}
+                      })()}
+
+                      {item.isCommissionPaid && (
+                        <Badge className="bg-emerald-700 text-white border-emerald-800 text-xs">
+                          <DollarSign className="w-3 h-3 mr-0.5 inline" />
+                          Comisión Pagada
                         </Badge>
-                      );
-                    })()}
+                      )}
+                    </div>
                     {item.targetsCount !== undefined && item.targetsCount > 0 && (
                       <div className="text-[11px] text-gray-500 font-medium mt-1 space-y-0.5">
                         <p>{item.targetsCount} financiera{item.targetsCount !== 1 ? 's' : ''} selec.</p>

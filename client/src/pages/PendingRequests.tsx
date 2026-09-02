@@ -505,51 +505,63 @@ export default function PendingRequests() {
           <div className="space-y-6">
             <Card>
               <CardContent className="p-6">
-                <div className="flex items-center space-x-6">
-                  <div className="flex items-center space-x-2">
-                    <div className="p-2 bg-yellow-100 rounded-lg">
+                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">
+                  <div className="flex items-center space-x-3 p-3 bg-yellow-50/70 rounded-xl border border-yellow-200/60">
+                    <div className="p-2.5 bg-yellow-100 rounded-lg">
                       <Clock className="w-5 h-5 text-yellow-600" />
                     </div>
                     <div>
-                      <p className="text-sm font-medium text-gray-600">Pendientes</p>
+                      <p className="text-xs font-medium text-gray-600">Por Revisar</p>
                       <p className="text-2xl font-bold text-yellow-600" data-testid="text-pending-count">
                         {pendingCount}
                       </p>
                     </div>
                   </div>
                   
-                  <div className="flex items-center space-x-2">
-                    <div className="p-2 bg-green-100 rounded-lg">
+                  <div className="flex items-center space-x-3 p-3 bg-blue-50/70 rounded-xl border border-blue-200/60">
+                    <div className="p-2.5 bg-blue-100 rounded-lg">
+                      <Send className="w-5 h-5 text-blue-600" />
+                    </div>
+                    <div>
+                      <p className="text-xs font-medium text-gray-600">Enviadas a Financiera</p>
+                      <p className="text-2xl font-bold text-blue-600">
+                        {sentCount}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center space-x-3 p-3 bg-green-50/70 rounded-xl border border-green-200/60">
+                    <div className="p-2.5 bg-green-100 rounded-lg">
                       <CheckCircle className="w-5 h-5 text-green-600" />
                     </div>
                     <div>
-                      <p className="text-sm font-medium text-gray-600">Aprobadas</p>
+                      <p className="text-xs font-medium text-gray-600">Aprobadas / Propuestas</p>
                       <p className="text-2xl font-bold text-green-600">
                         {approvedCount}
                       </p>
                     </div>
                   </div>
                   
-                  <div className="flex items-center space-x-2">
-                    <div className="p-2 bg-blue-100 rounded-lg">
-                      <Send className="w-5 h-5 text-blue-600" />
-                    </div>
-                    <div>
-                      <p className="text-sm font-medium text-gray-600">Enviadas</p>
-                      <p className="text-2xl font-bold text-blue-600">
-                        {sentCount}
-                      </p>
-                    </div>
-                  </div>
-                  
-                  <div className="flex items-center space-x-2">
-                    <div className="p-2 bg-orange-100 rounded-lg">
+                  <div className="flex items-center space-x-3 p-3 bg-orange-50/70 rounded-xl border border-orange-200/60">
+                    <div className="p-2.5 bg-orange-100 rounded-lg">
                       <XCircle className="w-5 h-5 text-orange-600" />
                     </div>
                     <div>
-                      <p className="text-sm font-medium text-gray-600">Devueltas</p>
+                      <p className="text-xs font-medium text-gray-600">Devueltas a Broker</p>
                       <p className="text-2xl font-bold text-orange-600" data-testid="text-returned-count">
                         {returnedCount}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center space-x-3 p-3 bg-purple-50/70 rounded-xl border border-purple-200/60">
+                    <div className="p-2.5 bg-purple-100 rounded-lg">
+                      <FileText className="w-5 h-5 text-purple-600" />
+                    </div>
+                    <div>
+                      <p className="text-xs font-medium text-gray-600">Total Solicitudes</p>
+                      <p className="text-2xl font-bold text-purple-700">
+                        {submissionEntries.length}
                       </p>
                     </div>
                   </div>
