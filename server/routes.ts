@@ -1495,6 +1495,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
           const productTemplate = credit.productTemplateId ? await storage.getProductTemplate(credit.productTemplateId) : null;
           const broker = credit.brokerId ? await storage.getUser(credit.brokerId) : null;
 
+          let submission = null;
+          let targets: any[] = [];
+          if (credit.linkedSubmissionId) {
+            submission = await storage.getCreditSubmissionRequest(credit.linkedSubmissionId);
+            if (submission) {
+              const rawTargets = await storage.getCreditSubmissionTargetsByRequest(submission.id);
+              targets = await Promise.all(rawTargets.map(t => enrichCreditSubmissionTarget(t)));
+            }
+          }
+
           return {
             ...credit,
             client: client ? {
@@ -1506,6 +1516,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
               rfc: client.rfc,
               email: client.email,
               phone: client.phone,
+              monthlyIncome: client.monthlyIncome,
+              creditScore: client.creditScore,
+              yearsInBusiness: client.yearsInBusiness,
             } : null,
             financialInstitution: institution ? {
               id: institution.id,
@@ -1523,6 +1536,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
               lastName: broker.lastName,
               email: broker.email,
             } : null,
+            submission: submission ? {
+              id: submission.id,
+              requestedAmount: submission.requestedAmount,
+              purpose: submission.purpose,
+              createdAt: submission.createdAt,
+              brokerNotes: submission.brokerNotes,
+              matchingAnalysis: submission.matchingAnalysis,
+            } : null,
+            targets,
           };
         })
       );

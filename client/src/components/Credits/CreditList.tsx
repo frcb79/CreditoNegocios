@@ -19,6 +19,7 @@ import { submissionStatusConfig, creditStatusConfig, targetStatusConfig, getSubm
 
 type UnifiedCreditItem = {
   id: string;
+  linkedSubmissionId?: string;
   type: 'submission' | 'credit';
   clientId: string;
   amount: string;
@@ -148,9 +149,14 @@ export default function CreditList() {
     if (credits) {
       credits
         .filter(credit => credit.status === 'dispersed' || credit.status === 'disbursed' || credit.linkedSubmissionId)
-        .forEach(credit => {
+        .forEach((credit: any) => {
+          const targets = credit.targets || credit.submission?.targets || [];
+          const statusSummary = targets.length > 0 ? getSubmissionStatusSummary(targets) : undefined;
+          const proposalsCount = targets.filter((t: any) => t.institutionProposal).length;
+
           items.push({
             id: credit.id,
+            linkedSubmissionId: credit.linkedSubmissionId || credit.submission?.id,
             type: 'credit',
             clientId: credit.clientId,
             amount: credit.amount,
@@ -158,6 +164,10 @@ export default function CreditList() {
             createdAt: credit.createdAt!,
             term: credit.term || undefined,
             frequency: credit.frequency || undefined,
+            productTemplateName: credit.productTemplate?.name,
+            targetsCount: targets.length,
+            proposalsCount,
+            statusSummary,
           });
         });
     }
@@ -188,10 +198,13 @@ export default function CreditList() {
   });
 
   const handleItemClick = (item: UnifiedCreditItem) => {
-    if (item.type === 'credit') {
-      setLocation(`/clientes/${item.clientId}`);
-    } else {
+    if (item.type === 'submission') {
       setSelectedSubmissionId(item.id);
+    } else if (item.linkedSubmissionId) {
+      // Dispersed credit with submission: open full proposals & matching modal
+      setSelectedSubmissionId(item.linkedSubmissionId);
+    } else {
+      setLocation(`/clientes/${item.clientId}`);
     }
   };
 
@@ -338,10 +351,21 @@ export default function CreditList() {
                         </Badge>
                       );
                     })()}
-                    {item.type === 'submission' && item.proposalsCount !== undefined && item.proposalsCount > 0 && (
-                      <p className="text-xs text-green-600 font-medium mt-1">
-                        {item.proposalsCount} propuesta{item.proposalsCount !== 1 ? 's' : ''}
-                      </p>
+                    {item.targetsCount !== undefined && item.targetsCount > 0 && (
+                      <div className="text-[11px] text-gray-500 font-medium mt-1 space-y-0.5">
+                        <p>{item.targetsCount} financiera{item.targetsCount !== 1 ? 's' : ''} selec.</p>
+                        <div className="flex gap-1.5 justify-end flex-wrap">
+                          {item.proposalsCount !== undefined && item.proposalsCount > 0 && (
+                            <span className="text-green-600 font-semibold">{item.proposalsCount} prop.</span>
+                          )}
+                          {item.statusSummary?.statusCounts?.returned_to_broker && item.statusSummary.statusCounts.returned_to_broker > 0 && (
+                            <span className="text-orange-600">{item.statusSummary.statusCounts.returned_to_broker} dev.</span>
+                          )}
+                          {item.statusSummary?.statusCounts?.institution_rejected && item.statusSummary.statusCounts.institution_rejected > 0 && (
+                            <span className="text-red-600">{item.statusSummary.statusCounts.institution_rejected} rech.</span>
+                          )}
+                        </div>
+                      </div>
                     )}
                     {item.type === 'credit' && item.frequency && (
                       <p className="text-xs text-neutral mt-1">

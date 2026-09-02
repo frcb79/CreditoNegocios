@@ -626,8 +626,23 @@ export default function Commissions() {
                   )}
                 </div>
 
-                <div className="flex justify-end pt-2">
-                  <Button variant="outline" onClick={() => setViewingCommission(null)}>
+                <div className="flex justify-between items-center pt-2">
+                  {viewingCommission.status === 'pending' && canProcessPayments && (
+                    <Button 
+                      size="sm"
+                      className="bg-success text-white hover:bg-green-700 text-xs"
+                      onClick={() => {
+                        const targetId = viewingCommission.id;
+                        setViewingCommission(null);
+                        markPaidMutation.mutate({ id: targetId });
+                      }}
+                      disabled={markPaidMutation.isPending}
+                    >
+                      <i className="fas fa-check mr-1.5"></i>
+                      Marcar Comisión como Pagada
+                    </Button>
+                  )}
+                  <Button variant="outline" className="ml-auto" onClick={() => setViewingCommission(null)}>
                     Cerrar
                   </Button>
                 </div>
