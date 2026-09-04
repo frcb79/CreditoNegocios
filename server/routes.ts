@@ -2194,7 +2194,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             financialInstitution: institution ? {
               id: institution.id,
               name: institution.name,
-              overRate: (institution as any).overRate || 0,
+              overRate: (institution as any).overRate ?? (institution as any).overrateCommissionRate ?? (institution as any).commissionRates?.financiera?.sobretasa ?? 0,
             } : null,
             broker,
             masterBroker,
