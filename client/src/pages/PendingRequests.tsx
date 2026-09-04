@@ -480,6 +480,7 @@ export default function PendingRequests() {
   const approvedCount = allTargets?.filter(t => t.status === 'approved').length || 0;
   const sentCount = allTargets?.filter(t => t.status === 'sent').length || 0;
   const returnedCount = allTargets?.filter(t => t.status === 'returned_to_broker').length || 0;
+  const winnerCount = allTargets?.filter(t => t.status === 'selected_winner' || t.isWinner).length || 0;
 
   // Helper to get predominant status for a submission
   const getPredominantStatus = (targets: CreditSubmissionTarget[]) => {
@@ -505,7 +506,7 @@ export default function PendingRequests() {
           <div className="space-y-6">
             <Card>
               <CardContent className="p-6">
-                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">
+                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
                   <div className="flex items-center space-x-3 p-3 bg-yellow-50/70 rounded-xl border border-yellow-200/60">
                     <div className="p-2.5 bg-yellow-100 rounded-lg">
                       <Clock className="w-5 h-5 text-yellow-600" />
@@ -538,6 +539,18 @@ export default function PendingRequests() {
                       <p className="text-xs font-medium text-gray-600">Aprobadas / Propuestas</p>
                       <p className="text-2xl font-bold text-green-600">
                         {approvedCount}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center space-x-3 p-3 bg-amber-50/90 rounded-xl border-2 border-amber-400 shadow-sm animate-pulse">
+                    <div className="p-2.5 bg-amber-200 rounded-lg text-lg">
+                      🏆
+                    </div>
+                    <div>
+                      <p className="text-xs font-bold text-amber-900">Ganadoras por Dispersar</p>
+                      <p className="text-2xl font-extrabold text-amber-700" data-testid="text-winner-count">
+                        {winnerCount}
                       </p>
                     </div>
                   </div>
@@ -660,8 +673,8 @@ export default function PendingRequests() {
                       <CardHeader className="pb-3">
                         <div className="flex items-start justify-between">
                           <div className="flex-1 space-y-3">
-                            {/* Header con título y badges */}
-                            <div className="flex items-center space-x-2">
+                              {/* Header con título y badges */}
+                            <div className="flex items-center space-x-2 flex-wrap gap-y-1">
                               <CardTitle className="text-lg">
                                 {getClientName(client)}
                               </CardTitle>
@@ -672,6 +685,11 @@ export default function PendingRequests() {
                                   data-testid={`badge-client-type-${requestId}`}
                                 >
                                   {getCategoryDisplayName(client.type)}
+                                </Badge>
+                              )}
+                              {targets.some(t => (t.status === 'selected_winner' || t.isWinner) && t.status !== 'dispersed') && (
+                                <Badge className="bg-amber-500 text-white font-bold border-amber-600 shadow-sm animate-pulse flex items-center gap-1">
+                                  <span>🏆</span> Propuesta Ganadora (Por Dispersar)
                                 </Badge>
                               )}
                               {getStatusBadge(predominantStatus)}

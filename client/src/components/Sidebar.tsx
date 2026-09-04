@@ -5,6 +5,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { useNotifications } from "@/contexts/NotificationContext";
 import { buildApiUrl } from "@/lib/runtimeConfig";
 import { Menu, X, ChevronLeft, ChevronRight } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
 
 const navigation = [
   { name: 'Dashboard', href: '/', icon: 'fas fa-chart-pie' },
@@ -40,6 +41,19 @@ export default function Sidebar() {
   const isAdmin = user?.role === 'admin' || user?.role === 'super_admin' || user?.role === 'master_broker';
   const isFullAdmin = user?.role === 'admin' || user?.role === 'super_admin';
   
+  const { data: allTargets } = useQuery<any[]>({
+    queryKey: ["/api/credit-submission-targets"],
+    enabled: isFullAdmin,
+  });
+
+  const winnersPendingDispersal = allTargets?.filter(
+    (t: any) => (t.status === 'selected_winner' || t.isWinner) && t.status !== 'dispersed'
+  ).length || 0;
+
+  const totalPendingAdmin = allTargets?.filter(
+    (t: any) => t.status === 'pending_admin'
+  ).length || 0;
+
   const filteredNavigation = isAdmin 
     ? navigation 
     : navigation.filter(item => !item.adminOnly);
@@ -196,7 +210,16 @@ export default function Sidebar() {
                   // Re-gestion notifications badge if needed, otherwise no hardcoded notification counter
                   null
                 )}
-
+                {!collapsed && item.href === '/solicitudes-pendientes' && winnersPendingDispersal > 0 && (
+                  <span className="ml-auto inline-flex items-center px-2 py-0.5 rounded-full text-xs font-bold bg-amber-500 text-white animate-pulse shadow-sm" title={`${winnersPendingDispersal} propuesta(s) ganadora(s) por dispersar`}>
+                    🏆 {winnersPendingDispersal}
+                  </span>
+                )}
+                {!collapsed && item.href === '/solicitudes-pendientes' && winnersPendingDispersal === 0 && totalPendingAdmin > 0 && (
+                  <span className="ml-auto inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-yellow-100 text-yellow-800">
+                    {totalPendingAdmin}
+                  </span>
+                )}
               </div>
             </Link>
           );

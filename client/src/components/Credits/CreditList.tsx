@@ -12,7 +12,7 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/component
 import { Credit, Client } from "@shared/schema";
 import { formatDistanceToNow, format } from "date-fns";
 import { es } from "date-fns/locale";
-import { ChevronDown, ChevronUp, X, FileText, Building2, Calendar, DollarSign, User, AlertCircle } from "lucide-react";
+import { ChevronDown, ChevronUp, X, FileText, Building2, Calendar, DollarSign, User, AlertCircle, ExternalLink, Percent } from "lucide-react";
 import FinalProposalModal from "@/components/Modals/FinalProposalModal";
 import MatchingComparisonTable from "@/components/MatchingAnalysis/MatchingComparisonTable";
 import { submissionStatusConfig, creditStatusConfig, targetStatusConfig, getSubmissionStatusSummary } from "@/lib/statusConfig";
@@ -27,6 +27,8 @@ type UnifiedCreditItem = {
   createdAt: Date | string;
   term?: number;
   frequency?: string;
+  interestRate?: string | number;
+  financialInstitutionName?: string;
   productTemplateName?: string;
   targetsCount?: number;
   proposalsCount?: number;
@@ -34,6 +36,7 @@ type UnifiedCreditItem = {
   isCommissionPaid?: boolean;
   broker?: any;
   masterBroker?: any;
+  rawCredit?: any;
 };
 
 // Ahora se usa configuración compartida desde @/lib/statusConfig
@@ -43,6 +46,7 @@ export default function CreditList() {
   const [filterStatus, setFilterStatus] = useState<string>("all");
   const [proposalCredit, setProposalCredit] = useState<Credit | null>(null);
   const [selectedSubmissionId, setSelectedSubmissionId] = useState<string | null>(null);
+  const [selectedCreditItem, setSelectedCreditItem] = useState<UnifiedCreditItem | null>(null);
   const [expandedInstitutions, setExpandedInstitutions] = useState<Set<string>>(new Set());
   const [, setLocation] = useLocation();
 
@@ -72,9 +76,10 @@ export default function CreditList() {
     enabled: !!selectedSubmissionId,
   });
 
+  const activeClientId = selectedSubmission?.clientId || selectedCreditItem?.clientId;
   const { data: selectedClient } = useQuery<Client>({
-    queryKey: ["/api/clients", selectedSubmission?.clientId],
-    enabled: !!selectedSubmission?.clientId,
+    queryKey: ["/api/clients", activeClientId],
+    enabled: !!activeClientId,
   });
 
   const { data: institutions } = useQuery<any[]>({
@@ -171,7 +176,7 @@ export default function CreditList() {
 
           items.push({
             id: credit.id,
-            linkedSubmissionId: credit.linkedSubmissionId || credit.submission?.id,
+            linkedSubmissionId: credit.linkedSubmissionId || credit.submission?.id || (credit.submissionId ? String(credit.submissionId) : undefined),
             type: 'credit',
             clientId: credit.clientId,
             amount: credit.amount,
@@ -179,6 +184,8 @@ export default function CreditList() {
             createdAt: credit.createdAt!,
             term: credit.term || undefined,
             frequency: credit.frequency || undefined,
+            interestRate: credit.interestRate || undefined,
+            financialInstitutionName: credit.financialInstitution?.name,
             productTemplateName: credit.productTemplate?.name,
             targetsCount: targets.length,
             proposalsCount,
@@ -186,6 +193,7 @@ export default function CreditList() {
             isCommissionPaid,
             broker: credit.broker,
             masterBroker: credit.masterBroker,
+            rawCredit: credit,
           });
         });
     }
@@ -216,13 +224,14 @@ export default function CreditList() {
   });
 
   const handleItemClick = (item: UnifiedCreditItem) => {
+    setSelectedCreditItem(item);
     if (item.type === 'submission') {
       setSelectedSubmissionId(item.id);
     } else if (item.linkedSubmissionId) {
       // Dispersed credit with submission: open full proposals & matching modal
       setSelectedSubmissionId(item.linkedSubmissionId);
     } else {
-      setLocation(`/clientes/${item.clientId}`);
+      setSelectedSubmissionId(null);
     }
   };
 
@@ -362,16 +371,23 @@ export default function CreditList() {
                 <div className="flex items-center space-x-3">
                   <div className="text-right">
                     <div className="flex items-center gap-1.5 justify-end flex-wrap">
-                      {(() => {
+                        const isWinnerPending = item.status === 'selected_winner' || item.statusSummary?.statusCounts?.selected_winner;
                         if (item.type === 'submission' && item.statusSummary) {
                           const primaryConfig = targetStatusConfig[item.statusSummary.primaryStatus as keyof typeof targetStatusConfig] || submissionStatusConfig[item.status as keyof typeof submissionStatusConfig];
                           return (
-                            <Badge 
-                              className={primaryConfig?.color || "bg-gray-100 text-gray-800"}
-                              data-testid={`item-status-${item.id}`}
-                            >
-                              {primaryConfig?.label || item.status}
-                            </Badge>
+                            <>
+                              {isWinnerPending && (
+                                <Badge className="bg-amber-500 hover:bg-amber-600 text-white font-bold animate-pulse shadow-sm text-xs">
+                                  🏆 Ganadora (Por Dispersar)
+                                </Badge>
+                              )}
+                              <Badge 
+                                className={primaryConfig?.color || "bg-gray-100 text-gray-800"}
+                                data-testid={`item-status-${item.id}`}
+                              >
+                                {primaryConfig?.label || item.status}
+                              </Badge>
+                            </>
                           );
                         }
                         
@@ -430,7 +446,15 @@ export default function CreditList() {
         onClose={() => setProposalCredit(null)} 
       />
 
-      <Dialog open={!!selectedSubmissionId} onOpenChange={(open) => !open && setSelectedSubmissionId(null)}>
+      <Dialog 
+        open={!!selectedSubmissionId || !!selectedCreditItem} 
+        onOpenChange={(open) => {
+          if (!open) {
+            setSelectedSubmissionId(null);
+            setSelectedCreditItem(null);
+          }
+        }}
+      >
         <DialogContent className="max-w-5xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center justify-between">
@@ -438,17 +462,26 @@ export default function CreditList() {
                 <User className="w-6 h-6 text-primary" />
                 <div>
                   <h2 className="text-xl font-bold">
-                    {selectedClient ? getClientName(selectedClient.id) : 'Cargando...'}
+                    {selectedClient 
+                      ? getClientName(selectedClient.id) 
+                      : selectedCreditItem 
+                        ? getClientName(selectedCreditItem.clientId) 
+                        : 'Cargando...'}
                   </h2>
                   <p className="text-sm text-gray-500 font-normal">
-                    Análisis Detallado de Matching
+                    {selectedCreditItem?.type === 'credit' 
+                      ? 'Detalle del Crédito Dispersado' 
+                      : 'Análisis Detallado de Matching'}
                   </p>
                 </div>
               </div>
               <Button
                 variant="ghost"
                 size="sm"
-                onClick={() => setSelectedSubmissionId(null)}
+                onClick={() => {
+                  setSelectedSubmissionId(null);
+                  setSelectedCreditItem(null);
+                }}
                 data-testid="button-close-dialog"
               >
                 <X className="w-4 h-4" />
@@ -704,6 +737,148 @@ export default function CreditList() {
                 </CardContent>
               </Card>
             </div>
+          ) : selectedCreditItem ? (
+            <div className="space-y-6">
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-lg">Detalles del Crédito Dispersado</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="flex items-start space-x-3">
+                      <User className="w-5 h-5 text-gray-400 mt-0.5" />
+                      <div>
+                        <p className="text-xs text-gray-500">Cliente</p>
+                        <p className="font-semibold text-gray-900">{getClientName(selectedCreditItem.clientId)}</p>
+                        {selectedClient && (
+                          <p className="text-xs text-gray-600">
+                            {selectedClient.type === 'persona_moral' ? 'Persona Moral' :
+                             selectedClient.type === 'fisica_empresarial' ? 'PFAE' :
+                             selectedClient.type === 'fisica' ? 'Persona Física' : 'Sin SAT'}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="flex items-start space-x-3">
+                      <DollarSign className="w-5 h-5 text-gray-400 mt-0.5" />
+                      <div>
+                        <p className="text-xs text-gray-500">Monto Aprobado / Dispersado</p>
+                        <p className="font-bold text-xl text-primary">
+                          ${parseFloat(selectedCreditItem.amount || '0').toLocaleString('es-MX')} MXN
+                        </p>
+                      </div>
+                    </div>
+
+                    {selectedCreditItem.financialInstitutionName && (
+                      <div className="flex items-start space-x-3">
+                        <Building2 className="w-5 h-5 text-gray-400 mt-0.5" />
+                        <div>
+                          <p className="text-xs text-gray-500">Financiera</p>
+                          <p className="font-medium text-gray-900">{selectedCreditItem.financialInstitutionName}</p>
+                        </div>
+                      </div>
+                    )}
+
+                    {selectedCreditItem.productTemplateName && (
+                      <div className="flex items-start space-x-3">
+                        <FileText className="w-5 h-5 text-gray-400 mt-0.5" />
+                        <div>
+                          <p className="text-xs text-gray-500">Producto / Modalidad</p>
+                          <p className="font-medium text-gray-900">{selectedCreditItem.productTemplateName}</p>
+                        </div>
+                      </div>
+                    )}
+
+                    {selectedCreditItem.term && (
+                      <div className="flex items-start space-x-3">
+                        <Calendar className="w-5 h-5 text-gray-400 mt-0.5" />
+                        <div>
+                          <p className="text-xs text-gray-500">Plazo</p>
+                          <p className="font-medium text-gray-900">{selectedCreditItem.term} meses</p>
+                        </div>
+                      </div>
+                    )}
+
+                    {selectedCreditItem.frequency && (
+                      <div className="flex items-start space-x-3">
+                        <Calendar className="w-5 h-5 text-gray-400 mt-0.5" />
+                        <div>
+                          <p className="text-xs text-gray-500">Frecuencia de Pago</p>
+                          <p className="font-medium text-gray-900 capitalize">
+                            {selectedCreditItem.frequency === 'weekly' ? 'Semanal' :
+                             selectedCreditItem.frequency === 'biweekly' ? 'Quincenal' :
+                             selectedCreditItem.frequency === 'monthly' ? 'Mensual' : selectedCreditItem.frequency}
+                          </p>
+                        </div>
+                      </div>
+                    )}
+
+                    {selectedCreditItem.interestRate && (
+                      <div className="flex items-start space-x-3">
+                        <Percent className="w-5 h-5 text-gray-400 mt-0.5" />
+                        <div>
+                          <p className="text-xs text-gray-500">Tasa de Interés</p>
+                          <p className="font-medium text-gray-900">{selectedCreditItem.interestRate}%</p>
+                        </div>
+                      </div>
+                    )}
+
+                    <div className="flex items-start space-x-3">
+                      <div className="w-5 h-5 flex items-center justify-center mt-0.5">
+                        <div className="w-3 h-3 rounded-full bg-primary"></div>
+                      </div>
+                      <div>
+                        <p className="text-xs text-gray-500">Estado del Crédito</p>
+                        {(() => {
+                          const config = creditStatusConfig[selectedCreditItem.status as keyof typeof creditStatusConfig];
+                          return (
+                            <Badge className={config?.color || "bg-gray-100 text-gray-800"}>
+                              {config?.label || selectedCreditItem.status}
+                            </Badge>
+                          );
+                        })()}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="mt-6 pt-4 border-t flex flex-wrap items-center justify-between gap-3">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        const cId = selectedCreditItem.clientId;
+                        setSelectedSubmissionId(null);
+                        setSelectedCreditItem(null);
+                        setLocation(`/clientes/${cId}`);
+                      }}
+                      className="text-xs gap-1.5"
+                    >
+                      <ExternalLink className="w-3.5 h-3.5" />
+                      Ver Expediente Completo del Cliente
+                    </Button>
+
+                    {selectedCreditItem.linkedSubmissionId && (
+                      <Button
+                        variant="default"
+                        size="sm"
+                        onClick={() => {
+                          const subId = selectedCreditItem.linkedSubmissionId;
+                          setSelectedSubmissionId(null);
+                          setSelectedCreditItem(null);
+                          if (subId) {
+                            setLocation(`/comparar-propuestas/${subId}`);
+                          }
+                        }}
+                        className="text-xs bg-primary text-white hover:bg-primary-dark"
+                      >
+                        Ver Comparativo de Propuestas
+                      </Button>
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
           ) : (
             <div className="space-y-4">
               <Skeleton className="h-32 w-full" />
@@ -714,17 +889,21 @@ export default function CreditList() {
           <DialogFooter className="flex justify-between items-center gap-2">
             <Button
               variant="outline"
-              onClick={() => setSelectedSubmissionId(null)}
+              onClick={() => {
+                setSelectedSubmissionId(null);
+                setSelectedCreditItem(null);
+              }}
               data-testid="button-close-footer"
             >
               Cerrar
             </Button>
-            {submissionTargets && submissionTargets.length > 0 && (
+            {((submissionTargets && submissionTargets.length > 0) || selectedCreditItem?.linkedSubmissionId) && (
               <Button
                 variant="default"
                 onClick={() => {
-                  const reqId = selectedSubmissionId;
+                  const reqId = selectedSubmissionId || selectedCreditItem?.linkedSubmissionId;
                   setSelectedSubmissionId(null);
+                  setSelectedCreditItem(null);
                   if (reqId) {
                     setLocation(`/comparar-propuestas/${reqId}`);
                   }

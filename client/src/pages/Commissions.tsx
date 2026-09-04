@@ -42,6 +42,10 @@ export default function Commissions() {
   const [, setLocation] = useLocation();
   const [activeTab, setActiveTab] = useState<'commissions' | 'sobretasa'>('commissions');
 
+  const { data: commissions = [], isLoading } = useQuery<any[]>({
+    queryKey: ["/api/commissions"],
+  });
+
   // Check if current user has pending commissions and lacks CLABE
   const needsBankSetup = (user?.role === 'broker' || user?.role === 'master_broker') && 
     !user?.clabe && 
@@ -58,10 +62,6 @@ export default function Commissions() {
 
   const { toast } = useToast();
   const queryClient = useQueryClient();
-
-  const { data: commissions, isLoading } = useQuery<any[]>({
-    queryKey: ["/api/commissions"],
-  });
 
   const paymentMutation = useMutation({
     mutationFn: async ({ id, accountNumber }: { id: string; accountNumber: string }) => {

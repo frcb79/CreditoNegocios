@@ -1072,25 +1072,43 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get('/api/dashboard/pipeline', isAuthenticated, async (req: any, res) => {
     try {
       const userId = req.user.claims.sub;
-      const credits = await storage.getCredits({ brokerId: userId });
+      const user = await storage.getUser(userId);
+      const isAdmin = user?.role === 'admin' || user?.role === 'super_admin';
+      
+      const credits = isAdmin 
+        ? await storage.getCredits({}) 
+        : await storage.getCredits({ brokerId: userId });
       
       const pipeline = {
         en_revision: credits.filter(c => c.status === 'under_review').length,
         validacion: credits.filter(c => c.status === 'submitted').length,
         aprobacion: credits.filter(c => c.status === 'approved').length,
         por_firmar: credits.filter(c => c.status === 'approved').length,
-        dispersion: credits.filter(c => c.status === 'disbursed').length,
+        dispersion: credits.filter(c => c.status === 'disbursed' || c.status === 'dispersed').length,
       };
       
-      const recentCases = credits
-        .slice(0, 5)
-        .map(credit => ({
-          id: credit.id,
-          clientName: credit.clientId, // Would need to join with client data
-          amount: credit.amount,
-          status: credit.status,
-          updatedAt: credit.updatedAt,
-        }));
+      const recentCases = await Promise.all(
+        credits
+          .slice(0, 5)
+          .map(async (credit) => {
+            let clientName = `Cliente ${credit.clientId ? credit.clientId.slice(-6) : ''}`;
+            if (credit.clientId) {
+              const client = await storage.getClient(credit.clientId);
+              if (client) {
+                clientName = client.type === 'persona_moral' 
+                  ? (client.businessName || 'Empresa') 
+                  : `${client.firstName || ''} ${client.lastName || ''}`.trim() || clientName;
+              }
+            }
+            return {
+              id: credit.id,
+              clientName,
+              amount: credit.amount,
+              status: credit.status,
+              updatedAt: credit.updatedAt,
+            };
+          })
+      );
       
       res.json({ pipeline, recentCases });
     } catch (error) {
@@ -4400,6 +4418,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         clientId: request.clientId,
         brokerId: request.brokerId,
         financialInstitutionId: target.financialInstitutionId,
+        productTemplateId: request.productTemplateId,
+        linkedSubmissionId: request.id,
         amount: proposal.approvedAmount?.toString() || request.requestedAmount.toString(),
         interestRate: proposal.interestRate?.toString(),
         term: proposal.term,
@@ -4410,6 +4430,36 @@ export async function registerRoutes(app: Express): Promise<Server> {
       await storage.updateCreditSubmissionTarget(id, {
         creditId: credit.id,
       });
+
+      // Notify Super Admins & Admins that a winning proposal was selected and is ready for dispersal
+      try {
+        const institution = target.financialInstitutionId 
+          ? await storage.getFinancialInstitution(target.financialInstitutionId) 
+          : null;
+        const client = await storage.getClient(request.clientId);
+        const clientName = client ? (client.type === 'persona_moral' ? client.businessName : `${client.firstName} ${client.lastName}`) : 'Cliente';
+        const formattedAmount = proposal?.approvedAmount 
+          ? `$${parseFloat(proposal.approvedAmount.toString()).toLocaleString('es-MX')} MXN` 
+          : `$${parseFloat(request.requestedAmount.toString()).toLocaleString('es-MX')} MXN`;
+
+        const allUsers = await storage.getAllUsers();
+        const admins = allUsers.filter(u => u.role === 'admin' || u.role === 'super_admin');
+        
+        for (const admin of admins) {
+          const notification = await storage.createNotification({
+            userId: admin.id,
+            type: 'submission_update',
+            title: '🏆 Propuesta Ganadora Seleccionada',
+            message: `Se seleccionó la oferta de ${institution?.name || 'la Financiera'} por ${formattedAmount} para el cliente ${clientName}. Lista para dispersión en Aprobaciones.`,
+            relatedEntityType: 'credit_submission_target',
+            relatedEntityId: target.id,
+            priority: 'high',
+          });
+          broadcastToUser(admin.id, { type: 'notification', notification });
+        }
+      } catch (notifErr) {
+        console.error("Error creating notifications for admins on winner selection:", notifErr);
+      }
 
       const enrichedTarget = await enrichCreditSubmissionTarget(target);
       res.json({ target: enrichedTarget, credit });
