@@ -22,12 +22,20 @@ interface PipelineData {
   }>;
 }
 
-const statusConfig = {
+const statusConfig: Record<string, { label: string; color: string }> = {
   under_review: { label: "En Revisión", color: "bg-blue-100 text-primary" },
+  en_revision: { label: "En Revisión", color: "bg-blue-100 text-primary" },
   submitted: { label: "En Validación", color: "bg-yellow-100 text-warning" },
-  approved: { label: "Por Firmar", color: "bg-green-100 text-success" },
-  disbursed: { label: "Dispersión", color: "bg-green-200 text-green-800" },
+  validacion_juridica: { label: "En Validación", color: "bg-yellow-100 text-warning" },
+  en_mesa_control: { label: "En Validación", color: "bg-yellow-100 text-warning" },
+  approved: { label: "Aprobado", color: "bg-green-100 text-success" },
+  aprobado: { label: "Aprobado", color: "bg-green-100 text-success" },
+  por_firmar: { label: "Por Firmar", color: "bg-emerald-100 text-emerald-800" },
+  disbursed: { label: "Dispersado", color: "bg-green-200 text-green-800" },
+  dispersed: { label: "Dispersado", color: "bg-green-200 text-green-800" },
+  dispersado: { label: "Dispersado", color: "bg-green-200 text-green-800" },
   rejected: { label: "Rechazado", color: "bg-red-100 text-danger" },
+  rechazado: { label: "Rechazado", color: "bg-red-100 text-danger" },
 };
 
 export default function CreditPipeline() {
@@ -123,9 +131,9 @@ export default function CreditPipeline() {
                 data-testid={`case-${creditCase.id}`}
               >
                 <div className="flex items-center space-x-3">
-                  <div className="w-10 h-10 bg-primary rounded-full flex items-center justify-center">
+                  <div className="w-10 h-10 bg-primary rounded-full flex items-center justify-center flex-shrink-0">
                     <span className="text-white font-semibold text-sm">
-                      {creditCase.clientName.split(' ').map(n => n[0]).join('').slice(0, 2)}
+                      {(creditCase.clientName || 'Cliente').trim().split(/\s+/).filter(Boolean).map(n => n[0]).join('').slice(0, 2).toUpperCase()}
                     </span>
                   </div>
                   <div>

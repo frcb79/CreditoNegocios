@@ -1074,32 +1074,81 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const userId = req.user.claims.sub;
       const user = await storage.getUser(userId);
       const isAdmin = user?.role === 'admin' || user?.role === 'super_admin';
+      const isMasterBroker = user?.role === 'master_broker';
       
-      const credits = isAdmin 
-        ? await storage.getCredits({}) 
-        : await storage.getCredits({ brokerId: userId });
+      let credits: any[] = [];
+      if (isAdmin) {
+        credits = await storage.getCredits({});
+      } else if (isMasterBroker) {
+        const networkBrokers = await storage.getUsersByMasterBroker(userId);
+        const brokerIds = [userId, ...networkBrokers.map(b => b.id)];
+        const allCredits = await storage.getCredits({});
+        credits = allCredits.filter(c => brokerIds.includes(c.brokerId));
+      } else {
+        credits = await storage.getCredits({ brokerId: userId });
+      }
       
       const pipeline = {
-        en_revision: credits.filter(c => c.status === 'under_review').length,
-        validacion: credits.filter(c => c.status === 'submitted').length,
-        aprobacion: credits.filter(c => c.status === 'approved').length,
-        por_firmar: credits.filter(c => c.status === 'approved').length,
-        dispersion: credits.filter(c => c.status === 'disbursed' || c.status === 'dispersed').length,
+        en_revision: credits.filter(c => c.status === 'en_revision' || c.status === 'under_review').length,
+        validacion: credits.filter(c => c.status === 'validacion_juridica' || c.status === 'submitted' || c.status === 'en_mesa_control').length,
+        aprobacion: credits.filter(c => c.status === 'approved' || c.status === 'aprobado').length,
+        por_firmar: credits.filter(c => c.status === 'approved' || c.status === 'aprobado' || c.status === 'por_firmar').length,
+        dispersion: credits.filter(c => c.status === 'disbursed' || c.status === 'dispersed' || c.status === 'dispersado').length,
       };
       
       const recentCases = await Promise.all(
         credits
           .slice(0, 5)
           .map(async (credit) => {
-            let clientName = `Cliente ${credit.clientId ? credit.clientId.slice(-6) : ''}`;
+            let clientName = '';
+            
+            // 1. Try finding client directly by clientId
             if (credit.clientId) {
               const client = await storage.getClient(credit.clientId);
               if (client) {
-                clientName = client.type === 'persona_moral' 
-                  ? (client.businessName || 'Empresa') 
-                  : `${client.firstName || ''} ${client.lastName || ''}`.trim() || clientName;
+                if (client.type === 'persona_moral' || client.type === 'moral') {
+                  clientName = client.businessName || client.tradeName || '';
+                } else {
+                  clientName = `${client.firstName || ''} ${client.lastName || ''}`.trim();
+                }
               }
             }
+            
+            // 2. If no clientName yet, check linked submission request
+            if (!clientName && credit.linkedSubmissionId) {
+              try {
+                const submission = await storage.getCreditSubmissionRequest(credit.linkedSubmissionId);
+                if (submission) {
+                  if (submission.clientId) {
+                    const subClient = await storage.getClient(submission.clientId);
+                    if (subClient) {
+                      if (subClient.type === 'persona_moral' || subClient.type === 'moral') {
+                        clientName = subClient.businessName || subClient.tradeName || '';
+                      } else {
+                        clientName = `${subClient.firstName || ''} ${subClient.lastName || ''}`.trim();
+                      }
+                    }
+                  }
+                  if (!clientName && submission.purpose) {
+                    clientName = submission.purpose;
+                  }
+                }
+              } catch (e) {
+                // ignore
+              }
+            }
+
+            // 3. If credit has client object pre-attached
+            if (!clientName && (credit as any).client) {
+              const c = (credit as any).client;
+              clientName = c.businessName || `${c.firstName || ''} ${c.lastName || ''}`.trim();
+            }
+
+            // 4. Clean fallback without raw uuid
+            if (!clientName) {
+              clientName = credit.purpose || 'Cliente General';
+            }
+
             return {
               id: credit.id,
               clientName,
