@@ -371,6 +371,7 @@ export default function CreditList() {
                 <div className="flex items-center space-x-3">
                   <div className="text-right">
                     <div className="flex items-center gap-1.5 justify-end flex-wrap">
+                      {(() => {
                         const isWinnerPending = item.status === 'selected_winner' || item.statusSummary?.statusCounts?.selected_winner;
                         if (item.type === 'submission' && item.statusSummary) {
                           const primaryConfig = targetStatusConfig[item.statusSummary.primaryStatus as keyof typeof targetStatusConfig] || submissionStatusConfig[item.status as keyof typeof submissionStatusConfig];
