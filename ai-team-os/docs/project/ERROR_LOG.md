@@ -13,8 +13,8 @@
 | 🔴 Errores Críticos Abiertos | 0 |
 | 🟠 Errores Altos Abiertos | 0 |
 | 🟡 Errores Medios Abiertos | 0 |
-| Total Errores Resueltos | 0 |
-| Último Incidente | N/A |
+| Total Errores Resueltos | 1 |
+| Último Incidente | 2026-09-04 (ERR-2026-09-04-001) |
 
 ---
 
@@ -88,29 +88,62 @@ Usar el siguiente formato para CADA error. El ID se genera con: `ERR-[FECHA]-[N�
 
 ## ERRORES ACTIVOS
 
-_[Se agregan conforme se detectan — los más recientes primero]_
+_Ninguno activo en este momento._
 
 ---
 
 ## ERRORES RESUELTOS
 
-_[Se mueven aquí cuando se verifican — los más recientes primero]_
+### ERR-2026-09-04-001 — esbuild Unexpected "const" en build de Vercel (CreditList.tsx)
+
+| Campo | Valor |
+|-------|-------|
+| ID | ERR-2026-09-04-001 |
+| Fecha detección | 2026-09-04 23:14 CST |
+| Severidad | 🟠 Alto (bloqueó deploy de Vercel en producción) |
+| Área | Frontend / Build / Infra |
+| Estado | ✅ Verificado |
+| Reportado por | CEO / Vercel Deploy Log |
+| Asignado a | Fullstack Dev / SRE |
+
+**Descripción:**
+El build de producción en Vercel (`npm run build:client`) falló con:
+`Unexpected "const" ... const isWinnerPending = item.status === 'selected_winner' ... at failureErrorWithLog ... esbuild/lib/main.js`
+
+**Pasos para reproducir:**
+1. Ejecutar `npm run build:client` o deployar en Vercel.
+2. esbuild parsea `client/src/components/Credits/CreditList.tsx`.
+3. Falla en línea ~374 al encontrar sentencias `const` y `if` dentro del árbol JSX sin envolver.
+
+**Impacto en negocio:**
+Deploy bloqueado en Vercel. Las nuevas funcionalidades aprobadas (filtros de clientes por broker, soporte multi-dispersión y red de brokers para super admin) no podían reflejarse para los usuarios finales en la plataforma.
+
+**Solución aplicada:**
+Se agregó la apertura del IIFE `{(() => {` que faltaba antes de la declaración `const isWinnerPending` en `CreditList.tsx`. El bloque ya contaba con su cierre `})()}` pero le faltaba la apertura tras una edición previa en el template JSX. Commit `c79ef4a`.
+
+**Causa raíz:**
+En JSX solo se permiten expresiones válidas entre `{}`. Sentencias de control imperativas (`const`, `let`, `if`, `return`) insertadas en medio de un contenedor JSX sin una función inmediatamente invocada (IIFE) provocan que el parser de TypeScript/esbuild arroje `SyntaxError: Unexpected "const"`.
+
+**Aprendizaje:**
+Toda lógica condicional compleja con múltiples `const`/`if` embebida directamente en JSX debe estar rigurosamente encapsulada en un IIFE `{(() => { ... })()}` o extraída a un componente auxiliar/función helper antes del `return` principal del componente.
+
+**Fecha resolución:** 2026-09-04 23:15 CST
+**Verificado por:** Commit `c79ef4a` pusheado exitosamente a `origin/main`.
 
 ---
 
 ## ANÁLISIS DE PATRONES
 
 ### Errores Recurrentes
-_[Identificar errores que se repiten para atacar causa raíz sistémica]_
 
 | Patrón | Frecuencia | Área | Acción preventiva |
 |--------|-----------|------|-------------------|
-| _[Se llena con el tiempo]_ | | | |
+| Declaración imperativa (`const`/`if`) suelta en JSX | 1 | Frontend (Build esbuild/Vercel) | Envolver siempre en IIFE `{(() => { ... })()}` o refactorizar a subcomponente/función renderizadora antes del JSX. |
 
 ### Métricas de Calidad del Proyecto
 | Métrica | Valor actual | Tendencia |
 |---------|-------------|-----------|
-| Total errores detectados | 0 | — |
-| Tiempo promedio de resolución | — | — |
-| Bug escape rate (llegaron a prod) | — | — |
-| Errores por área (top 3) | — | — |
+| Total errores detectados | 1 | Estable |
+| Tiempo promedio de resolución | < 10 min | Rápido |
+| Bug escape rate (llegaron a prod) | 0 (detenido en CI/Build) | Bajo control |
+| Errores por área (top 3) | Frontend (1) | — |

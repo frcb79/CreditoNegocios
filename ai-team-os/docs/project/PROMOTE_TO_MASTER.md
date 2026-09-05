@@ -77,12 +77,23 @@ Cada entrada debe seguir este formato:
 
 Aquí se registran los aprendizajes listos pero aún no sincronizados al master.
 
-```markdown
-- [FECHA] — [Título breve]
-  - Origen: [proyecto]
-  - Aprendizaje: [resumen]
-  - Aplicación: [dónde aplica]
-```
+- 2026-09-04 — Regla estricta de sintaxis en JSX para bundlers modernos (esbuild/Vite/Vercel)
+  - Origen: CreditoNegocios (Deploy en Vercel)
+  - Problema: Bloqueo de deploy por declaraciones imperativas (`const`, `let`, `if`) sueltas en el árbol JSX sin estar contenidas en una expresión de función inmediatamente invocada.
+  - Aprendizaje: Envolver siempre bloques con variables locales en un IIFE `{(() => { ... })()}` o refactorizar a funciones helper externas.
+  - Aplicación: Frontend Dev (05), QA (09), SRE (22) en todos los proyectos React/Vite/Next.js.
+
+- 2026-09-04 — Patrón Multi-Dispersión y Comisiones Independientes en Plataformas Fintech
+  - Origen: CreditoNegocios (Módulo de Créditos y Comisiones)
+  - Problema: Si una solicitud se asociaba a una sola financiera ganadora de forma excluyente, no permitía préstamos sindicados o particionados entre múltiples entidades para cubrir un monto grande.
+  - Aprendizaje: Diseñar el ciclo de vida de crédito permitiendo múltiples targets en estado ganador y dispersado concurrentes, conservando la solicitud en progreso hasta el cierre total y generando comisiones aisladas.
+  - Aplicación: Arquitecto (04), Backend Dev (05), CFO (18) en aplicaciones financieras y transaccionales.
+
+- 2026-09-04 — Patrón de Segmentación Jerárquica en Redes Multinivel (3-en-1)
+  - Origen: CreditoNegocios (Red de Brokers Super Admin)
+  - Problema: La vista aparecía vacía o desordenada al no distinguir entre brokers de master brokers, brokers independientes y red propia de casa matriz.
+  - Aprendizaje: Segmentar la visualización en 3 pestañas claras: Master Brokers (con acordeón hijo), Independientes y Casa Matriz Directa con métricas globales consolidadas.
+  - Aplicación: UX/UI (03), Fullstack (05) en cualquier sistema B2B2C o de comisiones multinivel.
 
 ---
 

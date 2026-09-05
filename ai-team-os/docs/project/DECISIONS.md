@@ -37,5 +37,15 @@ Formato: Fecha / Decision / Opciones evaluadas / Decision final / Por que
 	- Experiencia de usuario (UX) más intuitiva, limpia y con aspecto SaaS financiero moderno.
 	- Preparado para migrar progresivamente todas las vistas a esta misma estética.
 
+### 2026-09-04 / Soporte para Multi-Dispersión y Comisiones Independientes por Solicitud
+- Opciones evaluadas:
+	- Opcion A: Mantener el modelo estricto de una única propuesta ganadora por crédito (si el cliente acepta otra financiera, la anterior se cancela).
+	- Opcion B: Permitir que una misma solicitud de crédito apruebe y disperse múltiples ofertas de diferentes financieras (ej. 3 MDP de Financiera A + 2 MDP de Financiera B para cubrir 5 MDP), generando registros de crédito separados y comisiones independientes para cada una.
+- Decision final: Opcion B.
+- Por que:
+	- Modela la realidad operativa de créditos empresariales de mayor escala en México donde un solo intermediario no cubre el monto total requerido.
+	- Evita que los brókers o el super admin tengan que duplicar expedientes manualmente para cobrar comisiones de diferentes financieras.
+	- Garantiza que cada desembolso mantenga su botón de pago STP y tracking de dispersión sin bloquear a las demás propuestas en proceso.
+
 ## DECISIONES CAMBIADAS
 [Si alguna se revirtio, documentar con la razon]
