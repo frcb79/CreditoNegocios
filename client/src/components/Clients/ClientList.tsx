@@ -6,7 +6,8 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Client } from "@shared/schema";
+import { Client, User } from "@shared/schema";
+import { useAuth } from "@/hooks/useAuth";
 
 interface ClientListProps {
   onSelectClient: (client: Client) => void;
@@ -14,12 +15,27 @@ interface ClientListProps {
 }
 
 export default function ClientList({ onSelectClient, onNewClient }: ClientListProps) {
+  const { user } = useAuth();
+  const isAdmin = user?.role === 'admin' || user?.role === 'super_admin';
+  const isMasterBroker = user?.role === 'master_broker';
+
   const [searchTerm, setSearchTerm] = useState("");
   const [filterType, setFilterType] = useState<string>("all");
+  const [filterBroker, setFilterBroker] = useState<string>("all");
+  const [filterMasterBroker, setFilterMasterBroker] = useState<string>("all");
 
   const { data: clients, isLoading } = useQuery<Client[]>({
     queryKey: ["/api/clients"],
   });
+
+  const { data: allUsers } = useQuery<User[]>({
+    queryKey: ["/api/users"],
+    enabled: isAdmin,
+  });
+
+  // Extract brokers and master brokers for filter dropdowns
+  const brokerOptions = (allUsers || []).filter(u => u.role === 'broker');
+  const masterBrokerOptions = (allUsers || []).filter(u => u.role === 'master_broker');
 
   const filteredClients = clients?.filter(client => {
     const matchesSearch = 
@@ -29,8 +45,16 @@ export default function ClientList({ onSelectClient, onNewClient }: ClientListPr
       client.rfc?.toLowerCase().includes(searchTerm.toLowerCase());
     
     const matchesType = filterType === "all" || client.type === filterType;
+
+    const matchesBroker = filterBroker === "all" || 
+      client.brokerId === filterBroker || 
+      (client as any).broker?.id === filterBroker;
+
+    const matchesMasterBroker = filterMasterBroker === "all" || 
+      (client as any).masterBroker?.id === filterMasterBroker ||
+      (client as any).broker?.masterBrokerId === filterMasterBroker;
     
-    return matchesSearch && matchesType;
+    return matchesSearch && matchesType && matchesBroker && matchesMasterBroker;
   }) || [];
 
   if (isLoading) {
@@ -73,8 +97,8 @@ export default function ClientList({ onSelectClient, onNewClient }: ClientListPr
         </div>
         
         {/* Filters */}
-        <div className="flex space-x-4 mt-4">
-          <div className="flex-1">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 mt-4">
+          <div className={isAdmin ? "lg:col-span-1" : "sm:col-span-2 lg:col-span-3"}>
             <Input
               placeholder="Buscar por nombre, razón social o RFC..."
               value={searchTerm}
@@ -83,13 +107,13 @@ export default function ClientList({ onSelectClient, onNewClient }: ClientListPr
               className="placeholder:text-gray-400"
             />
           </div>
-          <div className="w-48">
+          <div>
             <Select value={filterType} onValueChange={setFilterType}>
               <SelectTrigger data-testid="select-client-type">
                 <SelectValue placeholder="Tipo de cliente" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">Todos</SelectItem>
+                <SelectItem value="all">Todos los Tipos</SelectItem>
                 <SelectItem value="fisica">Personas Físicas</SelectItem>
                 <SelectItem value="persona_moral">Personas Morales</SelectItem>
                 <SelectItem value="fisica_empresarial">PFAE</SelectItem>
@@ -97,6 +121,42 @@ export default function ClientList({ onSelectClient, onNewClient }: ClientListPr
               </SelectContent>
             </Select>
           </div>
+
+          {isAdmin && (
+            <>
+              <div>
+                <Select value={filterMasterBroker} onValueChange={setFilterMasterBroker}>
+                  <SelectTrigger data-testid="select-master-broker">
+                    <SelectValue placeholder="Master Broker" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Todos los Master Brokers</SelectItem>
+                    {masterBrokerOptions.map((mb) => (
+                      <SelectItem key={mb.id} value={mb.id}>
+                        {mb.brandName || `${mb.firstName} ${mb.lastName}`}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div>
+                <Select value={filterBroker} onValueChange={setFilterBroker}>
+                  <SelectTrigger data-testid="select-broker">
+                    <SelectValue placeholder="Broker" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Todos los Brokers</SelectItem>
+                    {brokerOptions.map((b) => (
+                      <SelectItem key={b.id} value={b.id}>
+                        {b.firstName} {b.lastName}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </>
+          )}
         </div>
       </CardHeader>
       

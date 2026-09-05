@@ -2646,10 +2646,38 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const userId = req.user.claims.sub;
       const user = await storage.getUser(userId);
       
-      if (user?.role !== 'master_broker' && user?.role !== 'admin') {
+      if (user?.role !== 'master_broker' && user?.role !== 'admin' && user?.role !== 'super_admin') {
         return res.status(403).json({ message: "Access denied" });
       }
       
+      const isAdmin = user?.role === 'admin' || user?.role === 'super_admin';
+
+      if (isAdmin) {
+        const allUsers = await storage.getAllUsers();
+        const masterBrokers = allUsers.filter(u => u.role === 'master_broker');
+        const allBrokers = allUsers.filter(u => u.role === 'broker');
+
+        // Master brokers with their respective network brokers
+        const masterBrokersWithNetwork = masterBrokers.map(mb => ({
+          ...mb,
+          networkBrokers: allBrokers.filter(b => b.masterBrokerId === mb.id),
+        }));
+
+        // Brokers directos que no tienen master broker asignado
+        const independentDirectBrokers = allBrokers.filter(b => !b.masterBrokerId);
+
+        // Brokers asignados directamente al super admin
+        const adminNetworkBrokers = allBrokers.filter(b => b.masterBrokerId === userId);
+
+        return res.json({
+          masterBrokers: masterBrokersWithNetwork,
+          independentBrokers: independentDirectBrokers,
+          adminBrokers: adminNetworkBrokers,
+          allBrokers,
+        });
+      }
+
+      // If user is a Master Broker, return their own brokers
       const brokers = await storage.getUsersByMasterBroker(userId);
       res.json(brokers);
     } catch (error) {
@@ -4447,20 +4475,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(403).json({ message: "Only the broker who created the submission or admins can select the winner" });
       }
 
-      const allTargets = await storage.getCreditSubmissionTargetsByRequest(target.requestId);
-      
-      for (const t of allTargets) {
-        if (t.id === id) {
-          await storage.updateCreditSubmissionTarget(t.id, {
-            isWinner: true,
-            status: 'selected_winner',
-          });
-        } else {
-          await storage.updateCreditSubmissionTarget(t.id, {
-            isWinner: false,
-          });
-        }
-      }
+      // Update selected target to winner / selected_winner without overriding other approved/dispersed targets
+      await storage.updateCreditSubmissionTarget(id, {
+        isWinner: true,
+        status: 'selected_winner',
+      });
 
       const proposal = target.institutionProposal as any;
       const credit = await storage.createCredit({
@@ -4585,9 +4604,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
         creditId: credit!.id,
       });
 
-      // Update parent submission request status to dispersed so it transitions cleanly out of pending/in-progress
+      // Update parent submission request status - if all targets processed, mark as dispersed, otherwise keep in progress
+      const allSiblings = await storage.getCreditSubmissionTargetsByRequest(target.requestId);
+      const anyPendingOrEvaluating = allSiblings.some(t => t.id !== id && (t.status === 'selected_winner' || t.status === 'institution_approved' || t.status === 'sent'));
       await storage.updateCreditSubmissionRequest(target.requestId, {
-        status: 'dispersed',
+        status: anyPendingOrEvaluating ? 'in_progress' : 'dispersed',
       });
 
       // CREATE COMMISSIONS (apertura/sobretasa/renovacion)
