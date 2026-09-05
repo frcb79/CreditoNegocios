@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useRoute, useLocation } from "wouter";
-import Sidebar from "@/components/Sidebar";
+import MainLayout from "@/components/MainLayout";
 import Header from "@/components/Header";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -90,25 +90,22 @@ export default function ProposalComparison() {
 
   if (!match || !requestId) {
     return (
-      <div className="min-h-screen flex bg-gray-50">
-        <Sidebar />
-        <div className="flex-1 flex flex-col">
-          <Header title="Error" subtitle="Solicitud no encontrada" />
-          <main className="flex-1 p-8">
-            <Card>
-              <CardContent className="p-12 text-center">
-                <p className="text-gray-600">La solicitud que buscas no existe.</p>
-                <Button
-                  className="mt-4"
-                  onClick={() => setLocation('/mis-solicitudes')}
-                >
-                  Volver a Mis Créditos
-                </Button>
-              </CardContent>
-            </Card>
-          </main>
-        </div>
-      </div>
+      <MainLayout>
+        <Header title="Error" subtitle="Solicitud no encontrada" />
+        <main className="flex-1 p-8">
+          <Card>
+            <CardContent className="p-12 text-center">
+              <p className="text-muted-foreground">La solicitud que buscas no existe.</p>
+              <Button
+                className="mt-4"
+                onClick={() => setLocation('/mis-solicitudes')}
+              >
+                Volver a Mis Créditos
+              </Button>
+            </CardContent>
+          </Card>
+        </main>
+      </MainLayout>
     );
   }
 
@@ -133,23 +130,20 @@ export default function ProposalComparison() {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen flex bg-gray-50">
-        <Sidebar />
-        <div className="flex-1 flex flex-col">
-          <Header 
-            title="Comparar Propuestas"
-            subtitle="Cargando..."
-          />
-          <main className="flex-1 p-8">
-            <Card className="animate-pulse">
-              <CardContent className="p-12">
-                <div className="h-8 bg-gray-200 rounded mb-4"></div>
-                <div className="h-64 bg-gray-200 rounded"></div>
-              </CardContent>
-            </Card>
-          </main>
-        </div>
-      </div>
+      <MainLayout>
+        <Header 
+          title="Comparar Propuestas"
+          subtitle="Cargando..."
+        />
+        <main className="flex-1 p-8">
+          <Card className="animate-pulse">
+            <CardContent className="p-12">
+              <div className="h-8 bg-muted rounded mb-4"></div>
+              <div className="h-64 bg-muted rounded"></div>
+            </CardContent>
+          </Card>
+        </main>
+      </MainLayout>
     );
   }
 
@@ -176,13 +170,11 @@ export default function ProposalComparison() {
   };
 
   return (
-    <div className="min-h-screen flex bg-gray-50">
-      <Sidebar />
-      <div className="flex-1 flex flex-col">
-        <Header 
-          title="Comparativo de Financieras y Propuestas"
-          subtitle={`Solicitud para ${request?.client?.firstName || ''} ${request?.client?.lastName || ''}`}
-        />
+    <MainLayout>
+      <Header 
+        title="Comparativo de Financieras y Propuestas"
+        subtitle={`Solicitud para ${request?.client?.firstName || ''} ${request?.client?.lastName || ''}`}
+      />
         
         <main className="flex-1 p-4 sm:p-6 lg:p-8 overflow-y-auto">
           <div className="space-y-6">
@@ -359,10 +351,10 @@ export default function ProposalComparison() {
               </div>
             )}
 
-            <Card className="bg-blue-50 border-blue-200">
+            <Card className="bg-primary/5 border-primary/20">
               <CardContent className="p-4 sm:p-6">
-                <h3 className="font-semibold text-blue-900 mb-2 text-sm">Información y Reglas de Propuestas</h3>
-                <ul className="text-xs text-blue-800 space-y-1">
+                <h3 className="font-semibold text-foreground mb-2 text-sm">Información y Reglas de Propuestas</h3>
+                <ul className="text-xs text-muted-foreground space-y-1">
                   <li>• Puedes comparar todas las financieras seleccionadas y visualizar las ofertas registradas.</li>
                   <li>• Al aceptar una propuesta, se asigna como seleccionada y se habilita para su posterior dispersión.</li>
                   <li>• En caso de que el cliente pueda y desee tomar más de una oferta, cada propuesta aprobada mantiene su estado disponible para aceptación independiente.</li>
@@ -371,7 +363,6 @@ export default function ProposalComparison() {
             </Card>
           </div>
         </main>
-      </div>
-    </div>
-  );
-}
+      </MainLayout>
+    );
+  }

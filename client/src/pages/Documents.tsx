@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import Sidebar from "@/components/Sidebar";
+import MainLayout from "@/components/MainLayout";
 import Header from "@/components/Header";
 import DocumentUpload from "@/components/Documents/DocumentUpload";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -109,41 +109,36 @@ export default function Documents() {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen flex bg-gray-50">
-        <Sidebar />
-        <div className="flex-1 flex flex-col">
-          <Header 
-            title="Documentos"
-            subtitle="Gestiona y organiza todos los documentos"
-          />
-          
-          <main className="flex-1 p-4 sm:p-6 lg:p-8 overflow-y-auto">
-            <div className="space-y-6">
-              <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-                {Array.from({ length: 4 }).map((_, i) => (
-                  <Skeleton key={i} className="h-32 w-full" />
-                ))}
-              </div>
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {Array.from({ length: 6 }).map((_, i) => (
-                  <Skeleton key={i} className="h-48 w-full" />
-                ))}
-              </div>
+      <MainLayout>
+        <Header 
+          title="Documentos"
+          subtitle="Gestiona y organiza todos los documentos"
+        />
+        
+        <main className="flex-1 p-4 sm:p-6 lg:p-8 overflow-y-auto">
+          <div className="space-y-6">
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+              {Array.from({ length: 4 }).map((_, i) => (
+                <Skeleton key={i} className="h-32 w-full" />
+              ))}
             </div>
-          </main>
-        </div>
-      </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {Array.from({ length: 6 }).map((_, i) => (
+                <Skeleton key={i} className="h-48 w-full" />
+              ))}
+            </div>
+          </div>
+        </main>
+      </MainLayout>
     );
   }
 
   return (
-    <div className="min-h-screen flex bg-gray-50">
-      <Sidebar />
-      <div className="flex-1 flex flex-col">
-        <Header 
-          title="Gestión de Documentos"
-          subtitle="Organiza y gestiona todos los documentos de tus clientes"
-          action={{
+    <MainLayout>
+      <Header 
+        title="Gestión de Documentos"
+        subtitle="Organiza y gestiona todos los documentos de tus clientes"
+        action={{
             label: "Subir Documento",
             onClick: () => setShowUpload(true)
           }}
@@ -441,7 +436,6 @@ export default function Documents() {
             </DialogContent>
           </Dialog>
         </main>
-      </div>
-    </div>
-  );
-}
+      </MainLayout>
+    );
+  }

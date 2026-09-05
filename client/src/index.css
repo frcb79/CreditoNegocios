@@ -1,5 +1,4 @@
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
-@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@500;600;700&display=swap');
 
 @tailwind base;
 @tailwind components;
@@ -121,135 +120,27 @@
   }
 }
 
-/* Custom styles for the broker app - Classic Blue palette */
+/* Subtle background tints using theme tokens */
 .bg-primary\/10 {
-  background-color: hsl(207, 92%, 28% / 0.1);
+  background-color: color-mix(in srgb, var(--primary) 10%, transparent);
 }
 
 .bg-secondary\/10 {
-  background-color: hsl(207, 98%, 50% / 0.1);
+  background-color: color-mix(in srgb, var(--secondary) 10%, transparent);
 }
 
 .bg-warning\/10 {
-  background-color: hsl(38, 92%, 50% / 0.1);
+  background-color: color-mix(in srgb, var(--warning) 10%, transparent);
 }
 
 .bg-success\/10 {
-  background-color: hsl(160, 84%, 39% / 0.1);
+  background-color: color-mix(in srgb, var(--success) 10%, transparent);
 }
 
 .bg-danger\/10 {
-  background-color: hsl(0, 84%, 60% / 0.1);
+  background-color: color-mix(in srgb, var(--danger) 10%, transparent);
 }
 
 .bg-neutral\/10 {
-  background-color: hsl(207, 35%, 30% / 0.1);
-}
-
-.text-primary {
-  color: hsl(207, 92%, 28%);
-}
-
-.text-primary-dark {
-  color: hsl(207, 92%, 20%);
-}
-
-.text-secondary {
-  color: hsl(207, 98%, 50%);
-}
-
-.text-success {
-  color: hsl(160, 84%, 39%);
-}
-
-.text-warning {
-  color: hsl(38, 92%, 50%);
-}
-
-.text-danger {
-  color: hsl(0, 84%, 60%);
-}
-
-.text-neutral {
-  color: hsl(207, 35%, 30%);
-}
-
-.border-primary {
-  border-color: hsl(207, 92%, 28%);
-}
-
-.border-secondary {
-  border-color: hsl(207, 98%, 50%);
-}
-
-.border-success {
-  border-color: hsl(160, 84%, 39%);
-}
-
-.border-warning {
-  border-color: hsl(38, 92%, 50%);
-}
-
-.border-danger {
-  border-color: hsl(0, 84%, 60%);
-}
-
-.hover\:bg-primary-dark:hover {
-  background-color: hsl(221, 83%, 43%);
-}
-
-.hover\:text-primary-dark:hover {
-  color: hsl(221, 83%, 43%);
-}
-
-.bg-blue-100 {
-  background-color: hsl(221, 83%, 95%);
-}
-
-.bg-green-100 {
-  background-color: hsl(142, 76%, 95%);
-}
-
-.bg-yellow-100 {
-  background-color: hsl(38, 92%, 95%);
-}
-
-.bg-orange-100 {
-  background-color: hsl(25, 95%, 90%);
-}
-
-.bg-red-50 {
-  background-color: hsl(0, 84%, 97%);
-}
-
-.bg-yellow-50 {
-  background-color: hsl(38, 92%, 97%);
-}
-
-.bg-green-50 {
-  background-color: hsl(142, 76%, 97%);
-}
-
-.bg-blue-50 {
-  background-color: hsl(221, 83%, 97%);
-}
-
-.bg-purple-100 {
-  background-color: hsl(270, 95%, 95%);
-}
-
-.text-purple-600 {
-  color: hsl(270, 91%, 65%);
-}
-
-.text-orange-600 {
-  color: hsl(25, 95%, 53%);
-}
-
-.text-green-800 {
-  color: hsl(142, 76%, 25%);
-}
-
-.bg-green-200 {
-  background-color: hsl(142, 76%, 85%);
+  background-color: color-mix(in srgb, var(--neutral) 10%, transparent);
 }

@@ -11,6 +11,8 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Progress } from "@/components/ui/progress";
 import { Upload, Download, FileSpreadsheet, Building2, Users, CheckCircle2, XCircle, AlertCircle, Loader2 } from "lucide-react";
+import MainLayout from "@/components/MainLayout";
+import Header from "@/components/Header";
 
 interface ImportError {
   row: number;
@@ -399,13 +401,12 @@ export default function BulkImport() {
   );
 
   return (
-    <div className="p-4 md:p-6 space-y-6">
-      <div>
-        <h1 className="text-2xl md:text-3xl font-bold text-gray-900">Importación Masiva</h1>
-        <p className="text-gray-600 mt-1">
-          Carga financieras, productos y clientes desde archivos Excel
-        </p>
-      </div>
+    <MainLayout>
+      <Header 
+        title="Importación Masiva"
+        subtitle="Carga financieras, productos y clientes desde archivos Excel"
+      />
+      <main className="flex-1 p-4 sm:p-6 lg:p-8 overflow-y-auto space-y-6">
 
       <Tabs value={activeTab} onValueChange={setActiveTab}>
         <TabsList className="grid w-full grid-cols-2 max-w-md">
@@ -675,6 +676,7 @@ export default function BulkImport() {
           </div>
         </TabsContent>
       </Tabs>
-    </div>
+      </main>
+    </MainLayout>
   );
 }

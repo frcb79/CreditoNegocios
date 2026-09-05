@@ -82,11 +82,11 @@ export default function MetricsGrid() {
     const isNeutral = deltaPct === 0;
     
     if (isNeutral) {
-      return <span className="text-sm text-gray-600">Sin cambios</span>;
+      return <span className="text-sm text-muted-foreground">Sin cambios</span>;
     }
     
     return (
-      <span className={`text-sm flex items-center ${isPositive ? 'text-success' : 'text-red-600'}`}>
+      <span className={`text-sm flex items-center ${isPositive ? 'text-success' : 'text-danger'}`}>
         <i className={`fas fa-arrow-${isPositive ? 'up' : 'down'} text-xs mr-1`}></i>
         {Math.abs(deltaPct).toFixed(1)}% vs mes anterior
       </span>
@@ -181,34 +181,45 @@ export default function MetricsGrid() {
     displayCards = brokerCards;
   }
 
+  const colorStyles: Record<string, { bg: string; text: string }> = {
+    blue: { bg: "bg-primary/10", text: "text-primary" },
+    green: { bg: "bg-success/10", text: "text-success" },
+    purple: { bg: "bg-accent/10", text: "text-accent" },
+    orange: { bg: "bg-warning/10", text: "text-warning" },
+    indigo: { bg: "bg-secondary/10", text: "text-secondary" },
+  };
+
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8" data-testid="metrics-grid">
-      {displayCards.map((card, index) => (
-        <Card key={index} className="border border-gray-200">
-          <CardContent className="p-6">
-            <div className="flex items-center justify-between">
-              <div className="flex-1">
-                <p className="text-neutral text-sm font-medium" data-testid={`${card.testId}-title`}>
-                  {card.title}
-                </p>
-                <p className="text-2xl font-bold text-gray-900 mt-1" data-testid={`${card.testId}-value`}>
-                  {card.value}
-                </p>
-                <div className="mt-1">
-                  {'trend' in card && card.trend !== undefined ? (
-                    renderTrendIndicator(card.trend)
-                  ) : 'subtitle' in card && card.subtitle ? (
-                    <p className="text-xs text-gray-600">{card.subtitle}</p>
-                  ) : null}
+      {displayCards.map((card, index) => {
+        const style = colorStyles[card.color] || colorStyles.blue;
+        return (
+          <Card key={index} className="border border-border">
+            <CardContent className="p-6">
+              <div className="flex items-center justify-between">
+                <div className="flex-1">
+                  <p className="text-muted-foreground text-sm font-medium" data-testid={`${card.testId}-title`}>
+                    {card.title}
+                  </p>
+                  <p className="text-2xl font-bold text-foreground mt-1" data-testid={`${card.testId}-value`}>
+                    {card.value}
+                  </p>
+                  <div className="mt-1">
+                    {'trend' in card && card.trend !== undefined ? (
+                      renderTrendIndicator(card.trend)
+                    ) : 'subtitle' in card && card.subtitle ? (
+                      <p className="text-xs text-muted-foreground">{card.subtitle}</p>
+                    ) : null}
+                  </div>
+                </div>
+                <div className={`w-12 h-12 ${style.bg} rounded-lg flex items-center justify-center flex-shrink-0`}>
+                  <i className={`${card.icon} ${style.text} text-lg`}></i>
                 </div>
               </div>
-              <div className={`w-12 h-12 bg-${card.color}-100 rounded-lg flex items-center justify-center flex-shrink-0`}>
-                <i className={`${card.icon} text-${card.color}-600 text-lg`}></i>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      ))}
+            </CardContent>
+          </Card>
+        );
+      })}
     </div>
   );
 }

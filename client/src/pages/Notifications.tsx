@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import Sidebar from "@/components/Sidebar";
+import MainLayout from "@/components/MainLayout";
 import Header from "@/components/Header";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -55,15 +55,13 @@ export default function Notifications() {
   const unreadCount = notifications?.filter((n) => !n.isRead).length || 0;
 
   return (
-    <div className="min-h-screen flex bg-gray-50">
-      <Sidebar />
-      <div className="flex-1 flex flex-col">
-        <Header
-          title="Notificaciones"
-          subtitle="Mantente al día con las actualizaciones de tus créditos"
-        />
+    <MainLayout>
+      <Header
+        title="Notificaciones"
+        subtitle="Mantente al día con las actualizaciones de tus créditos"
+      />
 
-        <main className="flex-1 p-4 sm:p-6 lg:p-8 overflow-y-auto">
+      <main className="flex-1 p-4 sm:p-6 lg:p-8 overflow-y-auto">
           <div className="max-w-4xl mx-auto space-y-4">
             {/* Header row with counter + mark all read */}
             <div className="flex items-center justify-between">
@@ -120,8 +118,8 @@ export default function Notifications() {
                     key={notification.id}
                     className={`flex items-start gap-4 p-4 rounded-lg border transition-all cursor-pointer ${
                       !notification.isRead
-                        ? "bg-blue-50 border-blue-200 shadow-sm"
-                        : "bg-white border-gray-200 opacity-75"
+                        ? "bg-primary/5 border-primary/20 shadow-sm"
+                        : "bg-card border-border opacity-75"
                     }`}
                     onClick={() => {
                       if (!notification.isRead) {
@@ -133,14 +131,14 @@ export default function Notifications() {
                     <div
                       className={`flex-shrink-0 w-10 h-10 rounded-full flex items-center justify-center ${
                         !notification.isRead
-                          ? "bg-blue-100"
-                          : "bg-gray-100"
+                          ? "bg-primary/10"
+                          : "bg-muted"
                       }`}
                     >
                       {!notification.isRead ? (
-                        <BellRing className="h-5 w-5 text-blue-600" />
+                        <BellRing className="h-5 w-5 text-primary" />
                       ) : (
-                        <Bell className="h-5 w-5 text-gray-400" />
+                        <Bell className="h-5 w-5 text-muted-foreground" />
                       )}
                     </div>
 
@@ -149,16 +147,16 @@ export default function Notifications() {
                       <div className="flex items-start justify-between gap-2">
                         <p
                           className={`text-sm font-semibold ${
-                            !notification.isRead ? "text-gray-900" : "text-gray-500"
+                            !notification.isRead ? "text-foreground" : "text-muted-foreground"
                           }`}
                         >
                           {notification.title}
                         </p>
                         <div className="flex items-center gap-2 flex-shrink-0">
                           {!notification.isRead && (
-                            <span className="w-2 h-2 bg-blue-500 rounded-full flex-shrink-0" />
+                            <span className="w-2 h-2 bg-primary rounded-full flex-shrink-0" />
                           )}
-                          <span className="text-xs text-gray-400 whitespace-nowrap">
+                          <span className="text-xs text-muted-foreground whitespace-nowrap">
                             {formatDistanceToNow(new Date(notification.createdAt), {
                               addSuffix: true,
                               locale: es,
@@ -168,7 +166,7 @@ export default function Notifications() {
                       </div>
                       <p
                         className={`text-sm mt-1 ${
-                          !notification.isRead ? "text-gray-700" : "text-gray-400"
+                          !notification.isRead ? "text-foreground" : "text-muted-foreground"
                         }`}
                       >
                         {notification.message}
@@ -180,7 +178,6 @@ export default function Notifications() {
             )}
           </div>
         </main>
-      </div>
-    </div>
-  );
-}
+      </MainLayout>
+    );
+  }

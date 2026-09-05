@@ -1,10 +1,10 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import Sidebar from "@/components/Sidebar";
+import MainLayout from "@/components/MainLayout";
 import Header from "@/components/Header";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { differenceInDays } from "date-fns";
@@ -12,43 +12,45 @@ import { Link } from "wouter";
 
 interface ReGestionOpportunity {
   id: string;
+  creditId: string;
   clientId: string;
   currentAmount: string;
-  remainingBalance: string;
-  endDate: string;
-  paymentHistory: any[];
   suggestedAmount: string;
+  currentRate: string;
+  suggestedRate: string;
+  endDate: string;
+  paymentHistory: string;
+  status: string;
   estimatedSavings: string;
+  remainingBalance?: string;
 }
 
 export default function ReGestion() {
   const [searchTerm, setSearchTerm] = useState("");
-  const [filterUrgency, setFilterUrgency] = useState<string>("all");
+  const [filterUrgency, setFilterUrgency] = useState("all");
 
   const { data: opportunities, isLoading } = useQuery<ReGestionOpportunity[]>({
-    queryKey: ["/api/re-gestion"],
+    queryKey: ["/api/regestion-opportunities"],
   });
 
   const getUrgencyLevel = (endDate: string) => {
-    const daysToExpire = differenceInDays(new Date(endDate), new Date());
-    if (daysToExpire <= 7) return 'urgent';
-    if (daysToExpire <= 30) return 'high';
-    if (daysToExpire <= 60) return 'medium';
-    return 'low';
+    const days = differenceInDays(new Date(endDate), new Date());
+    if (days <= 7) return "urgent";
+    if (days <= 30) return "high";
+    if (days <= 60) return "medium";
+    return "low";
   };
 
-  const getUrgencyConfig = (level: string) => {
-    switch (level) {
+  const getUrgencyConfig = (urgency: string) => {
+    switch (urgency) {
       case 'urgent':
         return { label: 'Urgente', color: 'bg-danger text-white', badgeColor: 'bg-danger/10 text-danger' };
       case 'high':
         return { label: 'Alta', color: 'bg-warning text-white', badgeColor: 'bg-warning/10 text-warning' };
       case 'medium':
         return { label: 'Media', color: 'bg-primary text-white', badgeColor: 'bg-primary/10 text-primary' };
-      case 'low':
-        return { label: 'Baja', color: 'bg-success text-white', badgeColor: 'bg-success/10 text-success' };
       default:
-        return { label: 'Normal', color: 'bg-gray-500 text-white', badgeColor: 'bg-gray-100 text-gray-800' };
+        return { label: 'Baja', color: 'bg-muted text-muted-foreground', badgeColor: 'bg-muted text-muted-foreground' };
     }
   };
 
@@ -62,57 +64,52 @@ export default function ReGestion() {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen flex bg-gray-50">
-        <Sidebar />
-        <div className="flex-1 flex flex-col">
-          <Header 
-            title="Renovaciones de Créditos"
-            subtitle="Identifica oportunidades de renovación y mejora"
-          />
-          
-          <main className="flex-1 p-4 sm:p-6 lg:p-8 overflow-y-auto">
-            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
-              {Array.from({ length: 6 }).map((_, i) => (
-                <Skeleton key={i} className="h-64 w-full" />
-              ))}
-            </div>
-          </main>
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <div className="min-h-screen flex bg-gray-50">
-      <Sidebar />
-      <div className="flex-1 flex flex-col">
+      <MainLayout>
         <Header 
           title="Renovaciones de Créditos"
           subtitle="Identifica oportunidades de renovación y mejora"
         />
         
         <main className="flex-1 p-4 sm:p-6 lg:p-8 overflow-y-auto">
-          {/* Summary Cards */}
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
-            <Card className="border border-gray-200">
-              <CardContent className="p-6">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-neutral text-sm font-medium">Total Oportunidades</p>
-                    <p className="text-2xl font-bold text-gray-900">{opportunities?.length || 0}</p>
-                  </div>
-                  <div className="w-12 h-12 bg-primary/10 rounded-lg flex items-center justify-center">
-                    <i className="fas fa-recycle text-primary text-lg"></i>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+            {Array.from({ length: 6 }).map((_, i) => (
+              <Skeleton key={i} className="h-64 w-full" />
+            ))}
+          </div>
+        </main>
+      </MainLayout>
+    );
+  }
 
-            <Card className="border border-gray-200">
+  return (
+    <MainLayout>
+      <Header 
+        title="Renovaciones de Créditos"
+        subtitle="Identifica oportunidades de renovación y mejora"
+      />
+      
+      <main className="flex-1 p-4 sm:p-6 lg:p-8 overflow-y-auto">
+        {/* Summary Cards */}
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
+          <Card>
+            <CardContent className="p-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-muted-foreground text-sm font-medium">Total Oportunidades</p>
+                  <p className="text-2xl font-bold text-foreground">{opportunities?.length || 0}</p>
+                </div>
+                <div className="w-12 h-12 bg-primary/10 rounded-lg flex items-center justify-center">
+                  <i className="fas fa-recycle text-primary text-lg"></i>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+            <Card className="border border-border">
               <CardContent className="p-6">
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-neutral text-sm font-medium">Urgentes (7 días)</p>
+                    <p className="text-muted-foreground text-sm font-medium">Urgentes (7 días)</p>
                     <p className="text-2xl font-bold text-danger">
                       {opportunities?.filter(o => getUrgencyLevel(o.endDate) === 'urgent').length || 0}
                     </p>
@@ -124,11 +121,11 @@ export default function ReGestion() {
               </CardContent>
             </Card>
 
-            <Card className="border border-gray-200">
+            <Card className="border border-border">
               <CardContent className="p-6">
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-neutral text-sm font-medium">Alta Prioridad</p>
+                    <p className="text-muted-foreground text-sm font-medium">Alta Prioridad</p>
                     <p className="text-2xl font-bold text-warning">
                       {opportunities?.filter(o => getUrgencyLevel(o.endDate) === 'high').length || 0}
                     </p>
@@ -140,11 +137,11 @@ export default function ReGestion() {
               </CardContent>
             </Card>
 
-            <Card className="border border-gray-200">
+            <Card className="border border-border">
               <CardContent className="p-6">
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-neutral text-sm font-medium">Potencial Ingresos</p>
+                    <p className="text-muted-foreground text-sm font-medium">Potencial Ingresos</p>
                     <p className="text-2xl font-bold text-success">
                       ${opportunities?.reduce((sum, o) => sum + parseFloat(o.estimatedSavings), 0).toLocaleString('es-MX') || '0'}
                     </p>
@@ -320,7 +317,6 @@ export default function ReGestion() {
             </div>
           )}
         </main>
-      </div>
-    </div>
-  );
-}
+      </MainLayout>
+    );
+  }

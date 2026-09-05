@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
-import Sidebar from "@/components/Sidebar";
+import MainLayout from "@/components/MainLayout";
 import Header from "@/components/Header";
 import { useAuth } from "@/hooks/useAuth";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -35,13 +35,11 @@ export default function ProductSystem() {
   }, [isAdmin]);
 
   return (
-    <div className="min-h-screen flex bg-gray-50">
-      <Sidebar />
-      <div className="flex-1 flex flex-col">
-        <Header 
-          title="Productos"
-          subtitle="Administra el catálogo completo de productos crediticios"
-        />
+    <MainLayout>
+      <Header 
+        title="Productos"
+        subtitle="Administra el catálogo completo de productos crediticios"
+      />
         
         <main className="flex-1 p-4 sm:p-6 lg:p-8 overflow-y-auto">
           {/* Overview Cards */}
@@ -114,7 +112,7 @@ export default function ProductSystem() {
           <Card>
             <CardContent className="p-0">
               <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as TabValue)} className="w-full">
-                <div className="border-b bg-white px-6 py-4">
+                <div className="border-b border-border bg-card px-6 py-4">
                   <TabsList className={`grid w-full ${isAdmin ? 'grid-cols-3' : 'grid-cols-1'}`}>
                     {isAdmin && (
                       <TabsTrigger value="variables" data-testid="tab-variables">
@@ -170,7 +168,6 @@ export default function ProductSystem() {
             </CardContent>
           </Card>
         </main>
-      </div>
-    </div>
-  );
-}
+      </MainLayout>
+    );
+  }

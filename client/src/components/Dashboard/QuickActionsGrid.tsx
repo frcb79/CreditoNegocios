@@ -7,7 +7,7 @@ const quickActions = [
     description: "Simula diferentes escenarios para tus clientes",
     icon: "fas fa-calculator",
     iconColor: "text-primary",
-    bgColor: "bg-blue-100",
+    bgColor: "bg-primary/10",
     action: "Abrir calculadora →",
     actionColor: "text-primary",
     featureName: "Calculadora de Créditos",
@@ -16,20 +16,20 @@ const quickActions = [
     title: "Escáner OCR",
     description: "Extrae información de documentos automáticamente",
     icon: "fas fa-scan",
-    iconColor: "text-secondary",
-    bgColor: "bg-green-100",
+    iconColor: "text-success",
+    bgColor: "bg-success/10",
     action: "Escanear documento →",
-    actionColor: "text-secondary",
+    actionColor: "text-success",
     featureName: "Escáner OCR de documentos",
   },
   {
     title: "Portal del Cliente",
     description: "Comparte links seguros para actualización de datos",
     icon: "fas fa-share-alt",
-    iconColor: "text-purple-600",
-    bgColor: "bg-purple-100",
+    iconColor: "text-accent",
+    bgColor: "bg-accent/10",
     action: "Generar link →",
-    actionColor: "text-purple-600",
+    actionColor: "text-accent",
     featureName: "Portal Autónomo de Clientes",
   },
   {
@@ -37,7 +37,7 @@ const quickActions = [
     description: "Solicita adelantos sobre comisiones futuras",
     icon: "fas fa-bolt",
     iconColor: "text-warning",
-    bgColor: "bg-yellow-100",
+    bgColor: "bg-warning/10",
     action: "Solicitar adelanto →",
     actionColor: "text-warning",
     featureName: "Adelanto de Comisiones",
@@ -54,7 +54,7 @@ export default function QuickActionsGrid() {
       {quickActions.map((action, index) => (
         <Card 
           key={index}
-          className="border border-gray-200 hover:shadow-md transition-shadow cursor-pointer relative overflow-hidden"
+          className="border border-border hover:shadow-md hover:border-primary/30 transition-all cursor-pointer relative overflow-hidden"
           onClick={() => handleFeatureClick(action.featureName)}
           data-testid={`quick-action-${index}`}
         >
@@ -63,19 +63,19 @@ export default function QuickActionsGrid() {
               <div className={`w-12 h-12 ${action.bgColor} rounded-lg flex items-center justify-center`}>
                 <i className={`${action.icon} ${action.iconColor} text-lg`}></i>
               </div>
-              <span className="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 bg-gray-100 text-gray-500 border border-gray-200 rounded-full">
+              <span className="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 bg-muted text-muted-foreground border border-border rounded-full">
                 Próximamente
               </span>
             </div>
-            <h3 className="font-semibold text-gray-900 mb-2" data-testid={`action-title-${index}`}>
+            <h3 className="font-semibold text-foreground mb-2" data-testid={`action-title-${index}`}>
               {action.title}
             </h3>
-            <p className="text-sm text-neutral mb-4 animate-pulse-slow" data-testid={`action-description-${index}`}>
+            <p className="text-sm text-muted-foreground mb-4" data-testid={`action-description-${index}`}>
               {action.description}
             </p>
             <Button 
               variant="ghost"
-              className={`${action.actionColor} font-medium text-sm hover:bg-gray-50 p-0 h-auto`}
+              className={`${action.actionColor} font-medium text-sm hover:bg-transparent hover:underline p-0 h-auto`}
               data-testid={`action-button-${index}`}
               onClick={(e) => {
                 e.stopPropagation();

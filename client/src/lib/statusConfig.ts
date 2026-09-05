@@ -2,39 +2,39 @@
 // Centraliza labels y colores para mantener consistencia en toda la aplicación
 
 export const submissionStatusConfig = {
-  draft: { label: "Borrador", color: "bg-gray-100 text-gray-800" },
-  submitted: { label: "Enviado", color: "bg-blue-100 text-primary" },
-  pending_admin: { label: "Pendiente Admin", color: "bg-yellow-100 text-yellow-800" },
-  returned_to_broker: { label: "Devuelto", color: "bg-orange-100 text-orange-800" },
-  sent_to_institutions: { label: "Enviado a Financieras", color: "bg-blue-100 text-blue-800" },
-  proposals_received: { label: "Propuestas Recibidas", color: "bg-purple-100 text-purple-800" },
-  winner_selected: { label: "Ganador Seleccionado", color: "bg-green-100 text-green-800" },
-  dispersed: { label: "Dispersado", color: "bg-success text-white" },
+  draft: { label: "Borrador", color: "bg-muted text-muted-foreground border-border" },
+  submitted: { label: "Enviado", color: "bg-primary/10 text-primary border-primary/20" },
+  pending_admin: { label: "Pendiente Admin", color: "bg-warning/10 text-warning border-warning/20" },
+  returned_to_broker: { label: "Devuelto", color: "bg-danger/10 text-danger border-danger/20" },
+  sent_to_institutions: { label: "Enviado a Financieras", color: "bg-secondary/10 text-secondary border-secondary/20" },
+  proposals_received: { label: "Propuestas Recibidas", color: "bg-accent/10 text-accent border-accent/20" },
+  winner_selected: { label: "Ganador Seleccionado", color: "bg-success/15 text-success border-success/30 font-semibold" },
+  dispersed: { label: "Dispersado", color: "bg-success text-primary-foreground" },
 };
 
 export const targetStatusConfig = {
-  pending_admin: { label: "Pendiente Admin", color: "bg-yellow-100 text-yellow-800 border-yellow-300" },
-  approved: { label: "Visto Bueno", color: "bg-blue-100 text-blue-800 border-blue-300" },
-  returned_to_broker: { label: "Devuelto", color: "bg-orange-100 text-orange-800 border-orange-300" },
-  sent: { label: "Enviado", color: "bg-indigo-100 text-indigo-800 border-indigo-300" },
-  institution_approved: { label: "Propuesta Recibida", color: "bg-emerald-100 text-emerald-800 border-emerald-300" },
-  proposal_received: { label: "Propuesta Recibida", color: "bg-emerald-100 text-emerald-800 border-emerald-300" },
-  institution_rejected: { label: "Rechazada por Financiera", color: "bg-red-100 text-red-800 border-red-300" },
-  rejected: { label: "Rechazada", color: "bg-red-100 text-red-800 border-red-300" },
-  selected_winner: { label: "Ganador", color: "bg-purple-100 text-purple-800 border-purple-300" },
-  winner: { label: "Ganador", color: "bg-purple-100 text-purple-800 border-purple-300" },
-  dispersed: { label: "Dispersado", color: "bg-success text-white border-green-600" },
+  pending_admin: { label: "Pendiente Admin", color: "bg-warning/10 text-warning border-warning/20" },
+  approved: { label: "Visto Bueno", color: "bg-primary/10 text-primary border-primary/20" },
+  returned_to_broker: { label: "Devuelto", color: "bg-danger/10 text-danger border-danger/20" },
+  sent: { label: "Enviado", color: "bg-secondary/10 text-secondary border-secondary/20" },
+  institution_approved: { label: "Propuesta Recibida", color: "bg-success/10 text-success border-success/20" },
+  proposal_received: { label: "Propuesta Recibida", color: "bg-success/10 text-success border-success/20" },
+  institution_rejected: { label: "Rechazada por Financiera", color: "bg-danger/10 text-danger border-danger/20" },
+  rejected: { label: "Rechazada", color: "bg-danger/10 text-danger border-danger/20" },
+  selected_winner: { label: "Ganador", color: "bg-accent/10 text-accent border-accent/20 font-semibold" },
+  winner: { label: "Ganador", color: "bg-accent/10 text-accent border-accent/20 font-semibold" },
+  dispersed: { label: "Dispersado", color: "bg-success text-primary-foreground border-success/30" },
 };
 
 export const creditStatusConfig = {
-  under_review: { label: "En Revisión", color: "bg-yellow-100 text-warning" },
-  approved: { label: "Aprobado", color: "bg-green-100 text-success" },
-  rejected: { label: "Rechazado", color: "bg-red-100 text-danger" },
-  disbursed: { label: "Dispersado", color: "bg-success text-white" },
-  dispersed: { label: "Dispersado", color: "bg-success text-white" },
-  active: { label: "Activo", color: "bg-green-200 text-green-800" },
-  completed: { label: "Completado", color: "bg-gray-200 text-gray-700" },
-  defaulted: { label: "En Mora", color: "bg-red-200 text-red-800" },
+  under_review: { label: "En Revisión", color: "bg-warning/10 text-warning border-warning/20" },
+  approved: { label: "Aprobado", color: "bg-success/10 text-success border-success/20" },
+  rejected: { label: "Rechazado", color: "bg-danger/10 text-danger border-danger/20" },
+  disbursed: { label: "Dispersado", color: "bg-success text-primary-foreground" },
+  dispersed: { label: "Dispersado", color: "bg-success text-primary-foreground" },
+  active: { label: "Activo", color: "bg-success/15 text-success border-success/30" },
+  completed: { label: "Completado", color: "bg-muted text-muted-foreground border-border" },
+  defaulted: { label: "En Mora", color: "bg-danger/15 text-danger border-danger/30" },
 };
 
 // Helper para obtener resumen de estados cuando hay múltiples targets

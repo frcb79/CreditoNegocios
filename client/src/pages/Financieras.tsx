@@ -4,7 +4,7 @@ import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/useAuth";
 import { Link } from "wouter";
-import Sidebar from "@/components/Sidebar";
+import MainLayout from "@/components/MainLayout";
 import Header from "@/components/Header";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -123,34 +123,29 @@ export default function Financieras() {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen flex bg-gray-50">
-        <Sidebar />
-        <div className="flex-1 flex flex-col">
-          <Header 
-            title="Financieras"
-            subtitle="Gestiona tus instituciones financieras aliadas"
-          />
-          
-          <main className="flex-1 p-4 sm:p-6 lg:p-8 overflow-y-auto">
-            <div className="space-y-4">
-              {Array.from({ length: 4 }).map((_, i) => (
-                <Skeleton key={i} className="h-32 w-full" />
-              ))}
-            </div>
-          </main>
-        </div>
-      </div>
+      <MainLayout>
+        <Header 
+          title="Financieras"
+          subtitle="Gestiona tus instituciones financieras aliadas"
+        />
+        
+        <main className="flex-1 p-4 sm:p-6 lg:p-8 overflow-y-auto">
+          <div className="space-y-4">
+            {Array.from({ length: 4 }).map((_, i) => (
+              <Skeleton key={i} className="h-32 w-full" />
+            ))}
+          </div>
+        </main>
+      </MainLayout>
     );
   }
 
   return (
-    <div className="min-h-screen flex bg-gray-50">
-      <Sidebar />
-      <div className="flex-1 flex flex-col">
-        <Header 
-          title="Instituciones Financieras"
-          subtitle="Administra tu red de financieras aliadas"
-        />
+    <MainLayout>
+      <Header 
+        title="Instituciones Financieras"
+        subtitle="Administra tu red de financieras aliadas"
+      />
         
         <main className="flex-1 p-4 sm:p-6 lg:p-8 overflow-y-auto">
           {/* Summary Card */}
@@ -540,7 +535,6 @@ export default function Financieras() {
             </AlertDialogContent>
           </AlertDialog>
         )}
-      </div>
-    </div>
-  );
-}
+      </MainLayout>
+    );
+  }

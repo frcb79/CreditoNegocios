@@ -102,7 +102,7 @@ export default function Sidebar() {
   };
 
   const SidebarContent = ({ collapsed = false, testIdSuffix = '' }: { collapsed?: boolean; testIdSuffix?: string }) => (
-    <div className="flex flex-col h-full font-['Plus_Jakarta_Sans']">
+    <div className="flex flex-col h-full">
       <div className={cn("border-b border-sidebar-border", collapsed ? "p-2" : "p-4 lg:p-6")}>
         <div className={cn("flex flex-col items-center", collapsed ? "space-y-1" : "space-y-2 lg:space-y-3")}>
           <div className={cn(
@@ -338,7 +338,7 @@ export default function Sidebar() {
       )}>
         <button
           onClick={() => setIsCollapsed(!isCollapsed)}
-          className="absolute -right-3 top-20 z-10 bg-white border border-sidebar-border rounded-full p-1 shadow-md hover:bg-gray-50 transition-colors"
+          className="absolute -right-3 top-20 z-10 bg-card border border-sidebar-border rounded-full p-1 shadow-md hover:bg-sidebar-accent transition-colors"
           aria-label={isCollapsed ? "Expandir sidebar" : "Colapsar sidebar"}
           data-testid="button-toggle-sidebar"
         >

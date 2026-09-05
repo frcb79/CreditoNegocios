@@ -23,19 +23,19 @@ interface PipelineData {
 }
 
 const statusConfig: Record<string, { label: string; color: string }> = {
-  under_review: { label: "En Revisión", color: "bg-blue-100 text-primary" },
-  en_revision: { label: "En Revisión", color: "bg-blue-100 text-primary" },
-  submitted: { label: "En Validación", color: "bg-yellow-100 text-warning" },
-  validacion_juridica: { label: "En Validación", color: "bg-yellow-100 text-warning" },
-  en_mesa_control: { label: "En Validación", color: "bg-yellow-100 text-warning" },
-  approved: { label: "Aprobado", color: "bg-green-100 text-success" },
-  aprobado: { label: "Aprobado", color: "bg-green-100 text-success" },
-  por_firmar: { label: "Por Firmar", color: "bg-emerald-100 text-emerald-800" },
-  disbursed: { label: "Dispersado", color: "bg-green-200 text-green-800" },
-  dispersed: { label: "Dispersado", color: "bg-green-200 text-green-800" },
-  dispersado: { label: "Dispersado", color: "bg-green-200 text-green-800" },
-  rejected: { label: "Rechazado", color: "bg-red-100 text-danger" },
-  rechazado: { label: "Rechazado", color: "bg-red-100 text-danger" },
+  under_review: { label: "En Revisión", color: "bg-primary/10 text-primary border-primary/20" },
+  en_revision: { label: "En Revisión", color: "bg-primary/10 text-primary border-primary/20" },
+  submitted: { label: "En Validación", color: "bg-warning/10 text-warning border-warning/20" },
+  validacion_juridica: { label: "En Validación", color: "bg-warning/10 text-warning border-warning/20" },
+  en_mesa_control: { label: "En Validación", color: "bg-warning/10 text-warning border-warning/20" },
+  approved: { label: "Aprobado", color: "bg-secondary/10 text-secondary border-secondary/20" },
+  aprobado: { label: "Aprobado", color: "bg-secondary/10 text-secondary border-secondary/20" },
+  por_firmar: { label: "Por Firmar", color: "bg-accent/10 text-accent border-accent/20" },
+  disbursed: { label: "Dispersado", color: "bg-success/10 text-success border-success/20" },
+  dispersed: { label: "Dispersado", color: "bg-success/10 text-success border-success/20" },
+  dispersado: { label: "Dispersado", color: "bg-success/10 text-success border-success/20" },
+  rejected: { label: "Rechazado", color: "bg-danger/10 text-danger border-danger/20" },
+  rechazado: { label: "Rechazado", color: "bg-danger/10 text-danger border-danger/20" },
 };
 
 export default function CreditPipeline() {
@@ -72,27 +72,27 @@ export default function CreditPipeline() {
     return (
       <Card className="lg:col-span-2">
         <CardContent className="p-6">
-          <p className="text-center text-neutral">Error cargando pipeline</p>
+          <p className="text-center text-muted-foreground">Error cargando pipeline</p>
         </CardContent>
       </Card>
     );
   }
 
   const pipelineStages = [
-    { label: "En Revisión", count: data.pipeline.en_revision, color: "bg-blue-100 text-primary" },
-    { label: "Validación", count: data.pipeline.validacion, color: "bg-yellow-100 text-warning" },
-    { label: "Aprobación", count: data.pipeline.aprobacion, color: "bg-orange-100 text-orange-600" },
-    { label: "Por Firmar", count: data.pipeline.por_firmar, color: "bg-green-100 text-success" },
-    { label: "Dispersión", count: data.pipeline.dispersion, color: "bg-green-200 text-green-800" },
+    { label: "En Revisión", count: data.pipeline.en_revision, color: "bg-primary/10 text-primary" },
+    { label: "Validación", count: data.pipeline.validacion, color: "bg-warning/10 text-warning" },
+    { label: "Aprobación", count: data.pipeline.aprobacion, color: "bg-secondary/10 text-secondary" },
+    { label: "Por Firmar", count: data.pipeline.por_firmar, color: "bg-accent/10 text-accent" },
+    { label: "Dispersión", count: data.pipeline.dispersion, color: "bg-success/10 text-success" },
   ];
 
   return (
-    <Card className="lg:col-span-2 border border-gray-200">
+    <Card className="lg:col-span-2 border border-border">
       <CardHeader>
         <div className="flex items-center justify-between">
-          <CardTitle className="text-lg font-semibold text-gray-900">Pipeline de Créditos</CardTitle>
+          <CardTitle className="text-lg font-semibold text-foreground">Pipeline de Créditos</CardTitle>
           <button 
-            className="text-primary hover:text-primary-dark text-sm font-medium"
+            className="text-primary hover:text-primary-dark text-sm font-medium transition-colors"
             data-testid="button-view-all-pipeline"
           >
             Ver todos
@@ -104,12 +104,12 @@ export default function CreditPipeline() {
         <div className="grid grid-cols-5 gap-4 mb-6">
           {pipelineStages.map((stage, index) => (
             <div key={index} className="text-center">
-              <div className={`w-12 h-12 ${stage.color} rounded-full flex items-center justify-center mx-auto mb-2`}>
-                <span className="font-semibold" data-testid={`pipeline-count-${index}`}>
+              <div className={`w-12 h-12 ${stage.color} rounded-full flex items-center justify-center mx-auto mb-2 font-semibold shadow-xs`}>
+                <span data-testid={`pipeline-count-${index}`}>
                   {stage.count}
                 </span>
               </div>
-              <p className="text-xs text-neutral" data-testid={`pipeline-label-${index}`}>
+              <p className="text-xs text-muted-foreground font-medium" data-testid={`pipeline-label-${index}`}>
                 {stage.label}
               </p>
             </div>
@@ -120,39 +120,37 @@ export default function CreditPipeline() {
         <div className="space-y-3">
           {data.recentCases.length === 0 ? (
             <div className="text-center py-8">
-              <i className="fas fa-credit-card text-4xl text-gray-300 mb-4"></i>
-              <p className="text-neutral">No hay casos recientes</p>
+              <i className="fas fa-credit-card text-4xl text-muted-foreground/30 mb-4"></i>
+              <p className="text-muted-foreground">No hay casos recientes</p>
             </div>
           ) : (
             data.recentCases.map((creditCase) => (
               <div 
                 key={creditCase.id} 
-                className="flex items-center justify-between p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors cursor-pointer"
+                className="flex items-center justify-between p-3 bg-muted/40 rounded-lg hover:bg-muted/70 transition-colors cursor-pointer border border-border/50"
                 data-testid={`case-${creditCase.id}`}
               >
                 <div className="flex items-center space-x-3">
-                  <div className="w-10 h-10 bg-primary rounded-full flex items-center justify-center flex-shrink-0">
-                    <span className="text-white font-semibold text-sm">
-                      {(creditCase.clientName || 'Cliente').trim().split(/\s+/).filter(Boolean).map(n => n[0]).join('').slice(0, 2).toUpperCase()}
-                    </span>
+                  <div className="w-10 h-10 bg-primary text-primary-foreground rounded-full flex items-center justify-center flex-shrink-0 font-semibold text-sm shadow-xs">
+                    {(creditCase.clientName || 'Cliente').trim().split(/\s+/).filter(Boolean).map(n => n[0]).join('').slice(0, 2).toUpperCase()}
                   </div>
                   <div>
-                    <p className="font-medium text-gray-900" data-testid={`case-client-${creditCase.id}`}>
+                    <p className="font-medium text-foreground text-sm" data-testid={`case-client-${creditCase.id}`}>
                       {creditCase.clientName}
                     </p>
-                    <p className="text-sm text-neutral" data-testid={`case-amount-${creditCase.id}`}>
+                    <p className="text-xs text-muted-foreground" data-testid={`case-amount-${creditCase.id}`}>
                       Crédito - ${parseFloat(creditCase.amount).toLocaleString('es-MX')} MXN
                     </p>
                   </div>
                 </div>
                 <div className="text-right">
                   <Badge 
-                    className={statusConfig[creditCase.status as keyof typeof statusConfig]?.color || "bg-gray-100 text-gray-800"}
+                    className={statusConfig[creditCase.status as keyof typeof statusConfig]?.color || "bg-muted text-muted-foreground"}
                     data-testid={`case-status-${creditCase.id}`}
                   >
                     {statusConfig[creditCase.status as keyof typeof statusConfig]?.label || creditCase.status}
                   </Badge>
-                  <p className="text-xs text-neutral mt-1" data-testid={`case-time-${creditCase.id}`}>
+                  <p className="text-xs text-muted-foreground mt-1" data-testid={`case-time-${creditCase.id}`}>
                     {formatDistanceToNow(new Date(creditCase.updatedAt), { 
                       addSuffix: true, 
                       locale: es 

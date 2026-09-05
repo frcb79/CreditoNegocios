@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import Sidebar from "@/components/Sidebar";
+import MainLayout from "@/components/MainLayout";
 import Header from "@/components/Header";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -258,52 +258,46 @@ export default function UserManagement() {
 
   if (!isAdmin) {
     return (
-      <div className="min-h-screen flex bg-gray-50">
-        <Sidebar />
-        <div className="flex-1 flex flex-col">
-          <Header 
-            title="Gestión de Usuarios"
-            subtitle="Administra los usuarios de la plataforma"
-          />
-          
-          <main className="flex-1 p-4 sm:p-6 lg:p-8 overflow-y-auto">
-            <Card>
-              <CardContent className="p-12">
-                <div className="text-center">
-                  <Shield className="mx-auto h-12 w-12 text-gray-400 mb-4" />
-                  <h3 className="text-xl font-semibold text-gray-900 mb-2">
-                    Acceso Restringido
-                  </h3>
-                  <p className="text-neutral">
-                    Esta funcionalidad está disponible solo para administradores.
-                  </p>
-                </div>
-              </CardContent>
-            </Card>
-          </main>
-        </div>
-      </div>
+      <MainLayout>
+        <Header 
+          title="Gestión de Usuarios"
+          subtitle="Administra los usuarios de la plataforma"
+        />
+        
+        <main className="flex-1 p-4 sm:p-6 lg:p-8 overflow-y-auto">
+          <Card>
+            <CardContent className="p-12">
+              <div className="text-center">
+                <Shield className="mx-auto h-12 w-12 text-muted-foreground/50 mb-4" />
+                <h3 className="text-xl font-semibold text-foreground mb-2">
+                  Acceso Restringido
+                </h3>
+                <p className="text-muted-foreground">
+                  Esta funcionalidad está disponible solo para administradores.
+                </p>
+              </div>
+            </CardContent>
+          </Card>
+        </main>
+      </MainLayout>
     );
   }
 
   if (isLoading) {
     return (
-      <div className="min-h-screen flex bg-gray-50">
-        <Sidebar />
-        <div className="flex-1 flex flex-col">
-          <Header 
-            title="Gestión de Usuarios"
-            subtitle="Administra los usuarios de la plataforma"
-          />
-          
-          <main className="flex-1 p-4 sm:p-6 lg:p-8 overflow-y-auto">
-            <div className="space-y-4">
-              <Skeleton className="h-24 w-full" />
-              <Skeleton className="h-96 w-full" />
-            </div>
-          </main>
-        </div>
-      </div>
+      <MainLayout>
+        <Header 
+          title="Gestión de Usuarios"
+          subtitle="Administra los usuarios de la plataforma"
+        />
+        
+        <main className="flex-1 p-4 sm:p-6 lg:p-8 overflow-y-auto">
+          <div className="space-y-4">
+            <Skeleton className="h-24 w-full" />
+            <Skeleton className="h-96 w-full" />
+          </div>
+        </main>
+      </MainLayout>
     );
   }
 
@@ -312,18 +306,16 @@ export default function UserManagement() {
   const totalMasterBrokers = users?.filter(u => u.role === 'master_broker').length || 0;
 
   return (
-    <div className="min-h-screen flex bg-gray-50">
-      <Sidebar />
-      <div className="flex-1 flex flex-col">
-        <Header 
-          title="Gestión de Usuarios"
-          subtitle="Administra los usuarios de la plataforma"
+    <MainLayout>
+      <Header 
+        title="Gestión de Usuarios"
+        subtitle="Administra los usuarios de la plataforma"
+      >
+        <Button
+          onClick={handleNewUser}
+          className="bg-primary hover:bg-primary-dark ml-3 text-primary-foreground"
+          data-testid="button-new-user"
         >
-          <Button
-            onClick={handleNewUser}
-            className="bg-blue-600 hover:bg-blue-700 ml-3"
-            data-testid="button-new-user"
-          >
             <UserPlus className="w-4 h-4 mr-2" />
             Nuevo Usuario
           </Button>
@@ -711,7 +703,6 @@ export default function UserManagement() {
             </AlertDialogContent>
           </AlertDialog>
         )}
-      </div>
-    </div>
-  );
-}
+      </MainLayout>
+    );
+  }

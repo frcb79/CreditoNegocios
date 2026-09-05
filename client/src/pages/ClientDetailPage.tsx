@@ -4,7 +4,7 @@ import { useRoute, useLocation } from "wouter";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import Sidebar from "@/components/Sidebar";
+import MainLayout from "@/components/MainLayout";
 import Header from "@/components/Header";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -203,75 +203,66 @@ export default function ClientDetailPage() {
 
   if (!clientId) {
     return (
-      <div className="min-h-screen flex bg-gray-50">
-        <Sidebar />
-        <div className="flex-1 flex flex-col">
-          <Header 
-            title="Cliente no encontrado"
-            subtitle="El cliente especificado no existe"
-          />
-          <main className="flex-1 p-8">
-            <div className="text-center">
-              <p className="text-neutral mb-4">No se encontró el cliente</p>
-              <Button onClick={handleGoBack}>
-                <ArrowLeft className="h-4 w-4 mr-2" />
-                Volver a Clientes
-              </Button>
-            </div>
-          </main>
-        </div>
-      </div>
+      <MainLayout>
+        <Header 
+          title="Cliente no encontrado"
+          subtitle="El cliente especificado no existe"
+        />
+        <main className="flex-1 p-8">
+          <div className="text-center">
+            <p className="text-muted-foreground mb-4">No se encontró el cliente</p>
+            <Button onClick={handleGoBack}>
+              <ArrowLeft className="h-4 w-4 mr-2" />
+              Volver a Clientes
+            </Button>
+          </div>
+        </main>
+      </MainLayout>
     );
   }
 
   if (isLoading) {
     return (
-      <div className="min-h-screen flex bg-gray-50">
-        <Sidebar />
-        <div className="flex-1 flex flex-col">
-          <Header 
-            title="Cargando..."
-            subtitle="Obteniendo información del cliente"
-          />
-          <main className="flex-1 p-8">
-            <div className="space-y-6">
-              <div className="flex items-center justify-between">
-                <Skeleton className="h-8 w-64" />
-                <Skeleton className="h-8 w-8" />
-              </div>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <Skeleton className="h-48" />
-                <Skeleton className="h-48" />
-                <Skeleton className="h-48" />
-                <Skeleton className="h-48" />
-              </div>
+      <MainLayout>
+        <Header 
+          title="Cargando..."
+          subtitle="Obteniendo información del cliente"
+        />
+        <main className="flex-1 p-8">
+          <div className="space-y-6">
+            <div className="flex items-center justify-between">
+              <Skeleton className="h-8 w-64" />
+              <Skeleton className="h-8 w-8" />
             </div>
-          </main>
-        </div>
-      </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <Skeleton className="h-48" />
+              <Skeleton className="h-48" />
+              <Skeleton className="h-48" />
+              <Skeleton className="h-48" />
+            </div>
+          </div>
+        </main>
+      </MainLayout>
     );
   }
 
   if (!client) {
     return (
-      <div className="min-h-screen flex bg-gray-50">
-        <Sidebar />
-        <div className="flex-1 flex flex-col">
-          <Header 
-            title="Cliente no encontrado"
-            subtitle="El cliente especificado no existe"
-          />
-          <main className="flex-1 p-8">
-            <div className="text-center">
-              <p className="text-neutral mb-4">No se encontró el cliente</p>
-              <Button onClick={handleGoBack}>
-                <ArrowLeft className="h-4 w-4 mr-2" />
-                Volver a Clientes
-              </Button>
-            </div>
-          </main>
-        </div>
-      </div>
+      <MainLayout>
+        <Header 
+          title="Cliente no encontrado"
+          subtitle="El cliente especificado no existe"
+        />
+        <main className="flex-1 p-8">
+          <div className="text-center">
+            <p className="text-muted-foreground mb-4">No se encontró el cliente</p>
+            <Button onClick={handleGoBack}>
+              <ArrowLeft className="h-4 w-4 mr-2" />
+              Volver a Clientes
+            </Button>
+          </div>
+        </main>
+      </MainLayout>
     );
   }
 
@@ -301,13 +292,11 @@ export default function ClientDetailPage() {
   };
 
   return (
-    <div className="min-h-screen flex bg-gray-50">
-      <Sidebar />
-      <div className="flex-1 flex flex-col">
-        <Header 
-          title={clientName || "Cliente"}
-          subtitle={`RFC: ${client.rfc}`}
-        />
+    <MainLayout>
+      <Header 
+        title={clientName || "Cliente"}
+        subtitle={`RFC: ${client.rfc}`}
+      />
         
         <main className="flex-1 overflow-y-auto">
           <div className="bg-gray-50">
@@ -2274,7 +2263,6 @@ export default function ClientDetailPage() {
             </Dialog>
           </div>
         </main>
-      </div>
 
       {/* Credit Request Modal */}
       <CreditRequestModal
@@ -2383,7 +2371,7 @@ export default function ClientDetailPage() {
           </div>
         </DialogContent>
       </Dialog>
-    </div>
+    </MainLayout>
   );
 }
 

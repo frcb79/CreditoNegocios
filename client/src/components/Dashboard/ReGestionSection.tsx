@@ -44,13 +44,13 @@ export default function ReGestionSection() {
   const displayOpportunities = opportunities?.slice(0, 3) || [];
 
   return (
-    <Card className="mb-8 border border-gray-200">
+    <Card className="mb-8 border border-border">
       <CardHeader>
         <div className="flex items-center justify-between">
           <div className="flex items-center space-x-3">
-            <CardTitle className="text-lg font-semibold text-gray-900">Renovaciones de Créditos</CardTitle>
+            <CardTitle className="text-lg font-semibold text-foreground">Renovaciones de Créditos</CardTitle>
             <Badge 
-              className="bg-warning text-white"
+              className="bg-warning/15 text-warning border border-warning/30 font-medium"
               data-testid="re-gestion-count"
             >
               {opportunitiesCount} Oportunidades
@@ -58,7 +58,7 @@ export default function ReGestionSection() {
           </div>
           <Link href="/re-gestion">
             <Button 
-              className="bg-secondary text-white hover:bg-green-700"
+              className="bg-primary text-primary-foreground hover:bg-primary-dark"
               data-testid="button-view-all-re-gestion"
             >
               Ver Todas
@@ -69,8 +69,8 @@ export default function ReGestionSection() {
       <CardContent>
         {displayOpportunities.length === 0 ? (
           <div className="text-center py-8">
-            <i className="fas fa-recycle text-4xl text-gray-300 mb-4"></i>
-            <p className="text-neutral">No hay oportunidades de renovación en este momento</p>
+            <i className="fas fa-recycle text-4xl text-muted-foreground/30 mb-4"></i>
+            <p className="text-muted-foreground">No hay oportunidades de renovación en este momento</p>
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
@@ -81,18 +81,18 @@ export default function ReGestionSection() {
               return (
                 <div 
                   key={opportunity.id}
-                  className="border border-gray-200 rounded-lg p-4 hover:shadow-md transition-shadow"
+                  className="border border-border rounded-lg p-4 hover:shadow-md hover:border-primary/30 transition-all bg-card"
                   data-testid={`re-gestion-${opportunity.id}`}
                 >
                   <div className="flex items-center justify-between mb-3">
-                    <h4 className="font-semibold text-gray-900">
+                    <h4 className="font-semibold text-foreground">
                       Cliente {opportunity.clientId.slice(-8)}
                     </h4>
                     <Badge 
                       className={
-                        urgencyLevel === 'danger' ? 'bg-danger/10 text-danger' :
-                        urgencyLevel === 'warning' ? 'bg-warning/10 text-warning' :
-                        'bg-success/10 text-success'
+                        urgencyLevel === 'danger' ? 'bg-danger/10 text-danger border-danger/20' :
+                        urgencyLevel === 'warning' ? 'bg-warning/10 text-warning border-warning/20' :
+                        'bg-success/10 text-success border-success/20'
                       }
                       data-testid={`urgency-${opportunity.id}`}
                     >
@@ -100,10 +100,10 @@ export default function ReGestionSection() {
                     </Badge>
                   </div>
                   
-                  <div className="space-y-2 text-sm text-gray-600">
+                  <div className="space-y-2 text-sm text-muted-foreground">
                     <div className="flex justify-between">
                       <span>Crédito actual:</span>
-                      <span className="font-semibold">
+                      <span className="font-semibold text-foreground">
                         ${parseFloat(opportunity.currentAmount).toLocaleString('es-MX')}
                       </span>
                     </div>
@@ -127,7 +127,7 @@ export default function ReGestionSection() {
                   
                   <div className="flex space-x-2 mt-4">
                     <Button 
-                      className="flex-1 bg-primary text-white hover:bg-primary-dark text-sm"
+                      className="flex-1 bg-primary text-primary-foreground hover:bg-primary-dark text-sm"
                       data-testid={`button-pre-approve-${opportunity.id}`}
                     >
                       Pre-aprobar

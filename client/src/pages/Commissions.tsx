@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useLocation } from "wouter";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import Sidebar from "@/components/Sidebar";
+import MainLayout from "@/components/MainLayout";
 import Header from "@/components/Header";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -143,68 +143,60 @@ export default function Commissions() {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen flex bg-gray-50">
-        <Sidebar />
-        <div className="flex-1 flex flex-col">
-          <Header 
-            title="Comisiones"
-            subtitle="Gestiona tus comisiones y pagos"
-          />
-          
-          <main className="flex-1 p-4 sm:p-6 lg:p-8 overflow-y-auto">
-            <div className="space-y-6">
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                {Array.from({ length: 3 }).map((_, i) => (
-                  <Skeleton key={i} className="h-32 w-full" />
-                ))}
-              </div>
-              <Skeleton className="h-96 w-full" />
+      <MainLayout>
+        <Header 
+          title="Comisiones"
+          subtitle="Gestiona tus comisiones y pagos"
+        />
+        
+        <main className="flex-1 p-4 sm:p-6 lg:p-8 overflow-y-auto">
+          <div className="space-y-6">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              {Array.from({ length: 3 }).map((_, i) => (
+                <Skeleton key={i} className="h-32 w-full" />
+              ))}
             </div>
-          </main>
-        </div>
-      </div>
+            <Skeleton className="h-96 w-full" />
+          </div>
+        </main>
+      </MainLayout>
     );
   }
 
   if (isError) {
     return (
-      <div className="min-h-screen flex bg-gray-50">
-        <Sidebar />
-        <div className="flex-1 flex flex-col">
-          <Header 
-            title="Comisiones"
-            subtitle="Gestiona tus comisiones y pagos"
-          />
-          
-          <main className="flex-1 p-4 sm:p-6 lg:p-8 overflow-y-auto">
-            <Card className="border-red-200 bg-red-50/50">
-              <CardContent className="p-8 text-center space-y-4">
-                <div className="w-12 h-12 rounded-full bg-red-100 text-red-600 flex items-center justify-center mx-auto">
-                  <i className="fas fa-exclamation-triangle text-xl"></i>
-                </div>
-                <div>
-                  <h3 className="text-lg font-bold text-gray-900">Error al cargar la información de comisiones</h3>
-                  <p className="text-sm text-gray-600 mt-1">{(error as any)?.message || "Ocurrió un error inesperado al consultar el servidor."}</p>
-                </div>
-                <Button onClick={() => refetch()} className="bg-primary text-white">
-                  <i className="fas fa-redo mr-2"></i> Reintentar
-                </Button>
-              </CardContent>
-            </Card>
-          </main>
-        </div>
-      </div>
+      <MainLayout>
+        <Header 
+          title="Comisiones"
+          subtitle="Gestiona tus comisiones y pagos"
+        />
+        
+        <main className="flex-1 p-4 sm:p-6 lg:p-8 overflow-y-auto">
+          <Card className="border-destructive/30 bg-destructive/5">
+            <CardContent className="p-8 text-center space-y-4">
+              <div className="w-12 h-12 rounded-full bg-destructive/10 text-destructive flex items-center justify-center mx-auto">
+                <i className="fas fa-exclamation-triangle text-xl"></i>
+              </div>
+              <div>
+                <h3 className="text-lg font-bold text-foreground">Error al cargar la información de comisiones</h3>
+                <p className="text-sm text-muted-foreground mt-1">{(error as any)?.message || "Ocurrió un error inesperado al consultar el servidor."}</p>
+              </div>
+              <Button onClick={() => refetch()} className="bg-primary text-primary-foreground">
+                <i className="fas fa-redo mr-2"></i> Reintentar
+              </Button>
+            </CardContent>
+          </Card>
+        </main>
+      </MainLayout>
     );
   }
 
   return (
-    <div className="min-h-screen flex bg-gray-50">
-      <Sidebar />
-      <div className="flex-1 flex flex-col">
-        <Header 
-          title="Comisiones"
-          subtitle="Gestiona tus comisiones y pagos STP"
-        />
+    <MainLayout>
+      <Header 
+        title="Comisiones"
+        subtitle="Gestiona tus comisiones y pagos STP"
+      />
         
         <main className="flex-1 p-4 sm:p-6 lg:p-8 overflow-y-auto">
           {/* Alerta de cuenta bancaria pendiente */}
@@ -938,7 +930,6 @@ export default function Commissions() {
             )}
           </DialogContent>
         </Dialog>
-      </div>
-    </div>
-  );
-}
+      </MainLayout>
+    );
+  }

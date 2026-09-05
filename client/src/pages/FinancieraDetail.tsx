@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useParams, Link } from "wouter";
 import { useAuth } from "@/hooks/useAuth";
-import Sidebar from "@/components/Sidebar";
+import MainLayout from "@/components/MainLayout";
 import Header from "@/components/Header";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -36,39 +36,30 @@ export default function FinancieraDetail() {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen flex bg-gray-50">
-        <Sidebar />
-        <div className="flex-1 flex flex-col">
-          <Header title="Cargando..." subtitle="Institución Financiera" />
-          <main className="flex-1 p-8">
-            <Skeleton className="h-64 w-full" />
-          </main>
-        </div>
-      </div>
+      <MainLayout>
+        <Header title="Cargando..." subtitle="Institución Financiera" />
+        <main className="flex-1 p-8">
+          <Skeleton className="h-64 w-full" />
+        </main>
+      </MainLayout>
     );
   }
 
   if (!institution) {
     return (
-      <div className="min-h-screen flex bg-gray-50">
-        <Sidebar />
-        <div className="flex-1 flex flex-col">
-          <Header title="No Encontrada" subtitle="Institución Financiera" />
-          <main className="flex-1 p-8">
-            <Card>
-              <CardContent className="p-12 text-center">
-                <p className="text-gray-600 mb-4">La financiera no fue encontrada</p>
-                <Link href="/financieras">
-                  <Button>
-                    <ArrowLeft className="w-4 h-4 mr-2" />
-                    Volver a Financieras
-                  </Button>
-                </Link>
-              </CardContent>
-            </Card>
-          </main>
-        </div>
-      </div>
+      <MainLayout>
+        <Header title="No Encontrada" subtitle="Institución Financiera" />
+        <main className="flex-1 p-8">
+          <Card>
+            <CardContent className="p-12 text-center">
+              <p className="text-muted-foreground mb-4">La financiera no fue encontrada</p>
+              <Link href="/financieras">
+                <Button>Volver a Financieras</Button>
+              </Link>
+            </CardContent>
+          </Card>
+        </main>
+      </MainLayout>
     );
   }
 
@@ -97,13 +88,11 @@ export default function FinancieraDetail() {
   const commissionRates = institution.commissionRates || null;
 
   return (
-    <div className="min-h-screen flex bg-gray-50">
-      <Sidebar />
-      <div className="flex-1 flex flex-col">
-        <Header 
-          title={institution.name}
-          subtitle="Detalle de Institución Financiera"
-        />
+    <MainLayout>
+      <Header 
+        title={institution.name}
+        subtitle="Detalle de Institución Financiera"
+      />
         
         <main className="flex-1 p-4 sm:p-6 lg:p-8 overflow-y-auto">
           {/* Header Section */}
@@ -656,7 +645,6 @@ export default function FinancieraDetail() {
             financiera={institution}
           />
         )}
-      </div>
-    </div>
-  );
-}
+      </MainLayout>
+    );
+  }

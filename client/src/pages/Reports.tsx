@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import Sidebar from "@/components/Sidebar";
+import MainLayout from "@/components/MainLayout";
 import Header from "@/components/Header";
 import ReportsChart from "@/components/Reports/ReportsChart";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -251,40 +251,35 @@ export default function Reports() {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen flex bg-gray-50">
-        <Sidebar />
-        <div className="flex-1 flex flex-col">
-          <Header 
-            title="Reportes"
-            subtitle="Análisis y métricas de tu operación"
-          />
-          
-          <main className="flex-1 p-4 sm:p-6 lg:p-8 overflow-y-auto">
-            <div className="space-y-6">
-              <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-                {Array.from({ length: 4 }).map((_, i) => (
-                  <Skeleton key={i} className="h-32 w-full" />
-                ))}
-              </div>
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                <Skeleton className="h-96 w-full" />
-                <Skeleton className="h-96 w-full" />
-              </div>
+      <MainLayout>
+        <Header 
+          title="Reportes"
+          subtitle="Análisis y métricas de tu operación"
+        />
+        
+        <main className="flex-1 p-4 sm:p-6 lg:p-8 overflow-y-auto">
+          <div className="space-y-6">
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+              {Array.from({ length: 4 }).map((_, i) => (
+                <Skeleton key={i} className="h-32 w-full" />
+              ))}
             </div>
-          </main>
-        </div>
-      </div>
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              <Skeleton className="h-96 w-full" />
+              <Skeleton className="h-96 w-full" />
+            </div>
+          </div>
+        </main>
+      </MainLayout>
     );
   }
 
   return (
-    <div className="min-h-screen flex bg-gray-50">
-      <Sidebar />
-      <div className="flex-1 flex flex-col">
-        <Header 
-          title="Reportes y Analytics"
-          subtitle="Análisis detallado del desempeño de tu operación"
-        />
+    <MainLayout>
+      <Header 
+        title="Reportes y Analytics"
+        subtitle="Análisis detallado del desempeño de tu operación"
+      />
         
         <main className="flex-1 p-4 sm:p-6 lg:p-8 overflow-y-auto">
           {/* Controls */}
@@ -494,7 +489,6 @@ export default function Reports() {
             </CardContent>
           </Card>
         </main>
-      </div>
-    </div>
-  );
-}
+      </MainLayout>
+    );
+  }

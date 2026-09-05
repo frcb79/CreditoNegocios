@@ -3,7 +3,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { z } from "zod";
-import Sidebar from "@/components/Sidebar";
+import MainLayout from "@/components/MainLayout";
 import Header from "@/components/Header";
 import { useAuth } from "@/hooks/useAuth";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -410,15 +410,13 @@ export default function Settings() {
   };
 
   return (
-    <div className="min-h-screen flex bg-gray-50">
-      <Sidebar />
-      <div className="flex-1 flex flex-col">
-        <Header 
-          title="Configuración"
-          subtitle="Gestiona tu perfil y preferencias"
-        />
-        
-        <main className="flex-1 p-4 sm:p-6 lg:p-4 sm:p-6 lg:p-8 overflow-y-auto">
+    <MainLayout>
+      <Header 
+        title="Configuración"
+        subtitle="Gestiona tu perfil y preferencias"
+      />
+      
+      <main className="flex-1 p-4 sm:p-6 lg:p-8 overflow-y-auto">
           <div className="max-w-4xl mx-auto">
             <Tabs value={activeTab} onValueChange={setActiveTab}>
               <TabsList className="grid w-full grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 h-auto gap-1">
@@ -1447,7 +1445,6 @@ export default function Settings() {
             </Tabs>
           </div>
         </main>
-      </div>
-    </div>
-  );
-}
+      </MainLayout>
+    );
+  }

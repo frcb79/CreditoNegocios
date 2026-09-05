@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@/hooks/useAuth";
-import Sidebar from "@/components/Sidebar";
+import MainLayout from "@/components/MainLayout";
 import Header from "@/components/Header";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -104,41 +104,36 @@ export default function MySubmissions() {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen flex bg-gray-50">
-        <Sidebar />
-        <div className="flex-1 flex flex-col">
-          <Header 
-            title="Mis Créditos"
-            subtitle="Revisa tus créditos dispersados y comisiones"
-          />
-          <main className="flex-1 p-4 sm:p-6 lg:p-8 overflow-y-auto">
-            <div className="space-y-6">
-              {Array.from({ length: 3 }).map((_, i) => (
-                <Card key={i} className="animate-pulse">
-                  <CardContent className="p-6">
-                    <div className="h-4 bg-gray-200 rounded mb-2"></div>
-                    <div className="h-3 bg-gray-200 rounded w-3/4 mb-4"></div>
-                    <div className="h-8 bg-gray-200 rounded"></div>
-                  </CardContent>
-                </Card>
-              ))}
-            </div>
-          </main>
-        </div>
-      </div>
+      <MainLayout>
+        <Header 
+          title="Mis Créditos"
+          subtitle="Revisa tus créditos dispersados y comisiones"
+        />
+        <main className="flex-1 p-4 sm:p-6 lg:p-8 overflow-y-auto">
+          <div className="space-y-6">
+            {Array.from({ length: 3 }).map((_, i) => (
+              <Card key={i} className="animate-pulse">
+                <CardContent className="p-6">
+                  <div className="h-4 bg-muted rounded mb-2"></div>
+                  <div className="h-3 bg-muted rounded w-3/4 mb-4"></div>
+                  <div className="h-8 bg-muted rounded"></div>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        </main>
+      </MainLayout>
     );
   }
 
   return (
-    <div className="min-h-screen flex bg-gray-50">
-      <Sidebar />
-      <div className="flex-1 flex flex-col">
-        <Header 
-          title="Mis Créditos"
-          subtitle={`${myCredits.length} crédito${myCredits.length !== 1 ? 's' : ''} dispersado${myCredits.length !== 1 ? 's' : ''}`}
-        />
-        
-        <main className="flex-1 p-4 sm:p-6 lg:p-8 overflow-y-auto">
+    <MainLayout>
+      <Header 
+        title="Mis Créditos"
+        subtitle={`${myCredits.length} crédito${myCredits.length !== 1 ? 's' : ''} dispersado${myCredits.length !== 1 ? 's' : ''}`}
+      />
+      
+      <main className="flex-1 p-4 sm:p-6 lg:p-8 overflow-y-auto">
           <div className="space-y-6">
             {myCredits.length === 0 ? (
               <Card>
@@ -491,7 +486,6 @@ export default function MySubmissions() {
             )}
           </DialogContent>
         </Dialog>
-      </div>
-    </div>
-  );
-}
+      </MainLayout>
+    );
+  }

@@ -20,7 +20,7 @@ export default function Dashboard() {
           }}
         />
         
-        <main className="flex-1 p-4 sm:p-6 lg:p-4 sm:p-6 lg:p-8 overflow-y-auto">
+        <main className="flex-1 p-4 sm:p-6 lg:p-8 overflow-y-auto">
           {/* Metrics Cards */}
           <MetricsGrid />
 

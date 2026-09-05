@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { useLocation } from "wouter";
 import { useQuery } from "@tanstack/react-query";
-import Sidebar from "@/components/Sidebar";
+import MainLayout from "@/components/MainLayout";
 import Header from "@/components/Header";
 import ClientList from "@/components/Clients/ClientList";
 import ClientForm from "@/components/Clients/ClientForm";
@@ -51,34 +51,31 @@ export default function Clients() {
   };
 
   return (
-    <div className="min-h-screen flex bg-gray-50">
-      <Sidebar />
-      <div className="flex-1 flex flex-col">
-        <Header 
-          title="Gestión de Clientes"
-          subtitle="Administra tu cartera completa de clientes"
-          action={{
-            label: "Nuevo Cliente",
-            onClick: handleNewClient
-          }}
-        />
-        
-        <main className="flex-1 p-4 sm:p-6 lg:p-4 sm:p-6 lg:p-8 overflow-y-auto">
-          {viewMode === "list" && (
-            <ClientList 
-              onSelectClient={handleSelectClient}
-              onNewClient={handleNewClient}
-            />
-          )}
+    <MainLayout>
+      <Header 
+        title="Gestión de Clientes"
+        subtitle="Administra tu cartera completa de clientes"
+        action={{
+          label: "Nuevo Cliente",
+          onClick: handleNewClient
+        }}
+      />
+      
+      <main className="flex-1 p-4 sm:p-6 lg:p-8 overflow-y-auto">
+        {viewMode === "list" && (
+          <ClientList 
+            onSelectClient={handleSelectClient}
+            onNewClient={handleNewClient}
+          />
+        )}
 
-          {viewMode === "form" && (
-            <ClientForm 
-              client={editingClient}
-              onSuccess={handleFormSuccess}
-            />
-          )}
-        </main>
-      </div>
-    </div>
+        {viewMode === "form" && (
+          <ClientForm 
+            client={editingClient}
+            onSuccess={handleFormSuccess}
+          />
+        )}
+      </main>
+    </MainLayout>
   );
 }
