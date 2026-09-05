@@ -1,6 +1,11 @@
+import { useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { CheckCircle, XCircle, AlertCircle, Info } from "lucide-react";
+import { CheckCircle, XCircle, AlertCircle, Info, HelpCircle } from "lucide-react";
+import {
+  evaluateBuroScore,
+  evaluateGovSales,
+} from "./matchingRules";
 
 interface Client {
   [key: string]: any;
@@ -38,6 +43,8 @@ export default function MatchingComparisonTable({
   productTemplate,
   requestedAmount
 }: MatchingComparisonTableProps) {
+  const [activeFilter, setActiveFilter] = useState<'all' | 'pass' | 'warning' | 'info'>('all');
+
   const requirements = institution.requirements?.[client.type] || {};
   const ranges = requirements.ranges || {};
   const fields: ComparisonField[] = [];
@@ -93,28 +100,19 @@ export default function MatchingComparisonTable({
   const acceptedProfiles = institution.acceptedProfiles || [];
   if (acceptedProfiles.length > 0) {
     const profileAccepted = acceptedProfiles.includes(client.type);
+    const profileLabels: Record<string, string> = {
+      'persona_moral': 'Persona Moral',
+      'fisica_empresarial': 'PFAE',
+      'fisica': 'Persona Física',
+      'sin_sat': 'Sin SAT'
+    };
     fields.push({
       fieldName: 'profileType',
       label: 'Tipo de Perfil Aceptado',
-      requirementValue: acceptedProfiles.map(p => {
-        const labels: Record<string, string> = {
-          'persona_moral': 'Persona Moral',
-          'fisica_empresarial': 'PFAE',
-          'fisica': 'Persona Física',
-          'sin_sat': 'Sin SAT'
-        };
-        return labels[p] || p;
-      }).join(', '),
-      clientValue: (() => {
-        const labels: Record<string, string> = {
-          'persona_moral': 'Persona Moral',
-          'fisica_empresarial': 'PFAE',
-          'fisica': 'Persona Física',
-          'sin_sat': 'Sin SAT'
-        };
-        return labels[client.type] || client.type;
-      })(),
+      requirementValue: acceptedProfiles.map(p => profileLabels[p] || p).join(', '),
+      clientValue: profileLabels[client.type] || client.type,
       status: profileAccepted ? 'pass' : 'fail',
+      notes: profileAccepted ? 'Perfil admitido por la institución' : 'La institución no acepta este perfil de cliente',
     });
   }
 
@@ -131,7 +129,7 @@ export default function MatchingComparisonTable({
     
     fields.push({
       fieldName: 'monto',
-      label: 'Monto',
+      label: 'Monto Solicitado',
       requirementValue: reqValue,
       clientValue: requestedAmount.toLocaleString('es-MX', { 
         style: 'currency', 
@@ -139,53 +137,47 @@ export default function MatchingComparisonTable({
         minimumFractionDigits: 0, 
         maximumFractionDigits: 0 
       }),
-      status: inRange ? 'pass' : 'warning',
+      status: inRange ? 'pass' : 'fail',
+      notes: inRange ? 'Monto dentro del rango permitido' : 'Monto fuera del rango aceptado por la financiera',
     });
   }
 
-  // 3. Bureau Score (multiple fields)
+  // 3. Bureau Scores (Persona Física, Accionista Principal, Empresa)
   const bureauFields = ['buroPersonaFisica', 'buroAccionistaPrincipal', 'buroEmpresa'];
   bureauFields.forEach(fieldKey => {
     if (ranges[fieldKey]?.min !== undefined) {
-      const minReq = ranges[fieldKey].min;
+      const minReq = Number(ranges[fieldKey].min);
       const clientValue = client[fieldKey];
-      
-      let status: 'pass' | 'warning' | 'fail' | 'info' = 'info';
-      let clientDisplay = formatValue(clientValue);
-      
-      if (clientValue === 'N/A' || !clientValue || clientValue === '') {
-        status = 'warning';
-        clientDisplay = 'No proporcionado';
-      } else {
-        const numValue = parseInt(clientValue);
-        status = numValue >= minReq ? 'pass' : 'warning';
-      }
+      const evalResult = evaluateBuroScore(fieldKey, clientValue, minReq);
       
       fields.push({
         fieldName: fieldKey,
         label: getFieldLabel(fieldKey),
-        requirementValue: `Mínimo ${minReq} puntos`,
-        clientValue: clientDisplay,
-        status,
+        requirementValue: evalResult.requirementDisplay || `Mínimo ${minReq} puntos`,
+        clientValue: evalResult.clientDisplay,
+        status: evalResult.status,
+        notes: evalResult.notes,
       });
     }
   });
 
-  // 3b. Buró Persona Física Sin SAT (boolean-type: si/no)
+  // 3b. Buró Persona Física Sin SAT (boolean: si/no)
   if (ranges.buroPersonaFisicaSinSat !== undefined) {
     const reqValue = ranges.buroPersonaFisicaSinSat;
     const clientValue = client.buroPersonaFisicaSinSat;
     const reqStr = typeof reqValue === 'object' ? reqValue.required : reqValue;
     let status: 'pass' | 'warning' | 'fail' | 'info' = 'info';
     let clientDisplay = formatValue(clientValue);
-    const reqDisplay = reqStr === 'si' ? 'Sí tiene buró' : 'No tiene buró';
+    const reqDisplay = reqStr === 'si' ? 'Requiere historial de buró' : 'Sin buró requerido';
+
     if (!clientValue || clientValue === '' || clientValue === 'N/A') {
       status = 'warning';
       clientDisplay = 'No proporcionado';
     } else {
-      status = clientValue === reqStr ? 'pass' : 'warning';
+      status = clientValue === reqStr ? 'pass' : 'fail';
       clientDisplay = clientValue === 'si' ? 'Sí tiene buró' : 'No tiene buró';
     }
+
     fields.push({
       fieldName: 'buroPersonaFisicaSinSat',
       label: getFieldLabel('buroPersonaFisicaSinSat'),
@@ -195,7 +187,7 @@ export default function MatchingComparisonTable({
     });
   }
 
-  // 4. Income/Expense Fields (all possible income/expense fields across profiles)
+  // 4. Income and Expense Fields
   const incomeExpenseFields = [
     'ingresoMensualPromedio',
     'ingresoMensualPromedioComprobables',
@@ -208,37 +200,55 @@ export default function MatchingComparisonTable({
   ];
   
   incomeExpenseFields.forEach(fieldKey => {
-    if (ranges[fieldKey]?.min !== undefined) {
-      const minReq = ranges[fieldKey].min;
+    const fieldRange = ranges[fieldKey];
+    if (fieldRange?.min !== undefined || fieldRange?.max !== undefined) {
+      const minReq = fieldRange.min !== undefined ? Number(fieldRange.min) : undefined;
+      const maxReq = fieldRange.max !== undefined ? Number(fieldRange.max) : undefined;
       const clientValue = client[fieldKey];
       
+      let reqValue = '';
+      if (minReq !== undefined && maxReq !== undefined) {
+        reqValue = `$${minReq.toLocaleString('es-MX')} - $${maxReq.toLocaleString('es-MX')}`;
+      } else if (minReq !== undefined) {
+        reqValue = `Mínimo $${minReq.toLocaleString('es-MX')}`;
+      } else if (maxReq !== undefined) {
+        reqValue = `Máximo $${maxReq.toLocaleString('es-MX')}`;
+      }
+
       let status: 'pass' | 'warning' | 'fail' | 'info' = 'info';
       let clientDisplay = formatValue(clientValue);
       
-      if (clientValue === 'N/A' || !clientValue || clientValue === '') {
+      if (clientValue === 'N/A' || clientValue === null || clientValue === undefined || clientValue === '') {
         status = 'warning';
         clientDisplay = 'No proporcionado';
       } else {
-        const numValue = parseFloat(clientValue);
-        status = numValue >= minReq ? 'pass' : 'warning';
+        const numValue = parseFloat(String(clientValue).replace(/[^0-9.-]/g, ''));
+        if (isNaN(numValue)) {
+          status = 'warning';
+        } else {
+          const meetsMin = minReq === undefined || numValue >= minReq;
+          const meetsMax = maxReq === undefined || numValue <= maxReq;
+          status = meetsMin && meetsMax ? 'pass' : 'fail';
+          clientDisplay = `$${numValue.toLocaleString('es-MX')}`;
+        }
       }
       
       fields.push({
         fieldName: fieldKey,
         label: getFieldLabel(fieldKey),
-        requirementValue: `Mínimo $${minReq.toLocaleString('es-MX')}`,
+        requirementValue: reqValue,
         clientValue: clientDisplay,
         status,
       });
     }
   });
 
-  // 5. Tenure Fields
+  // 5. Tenure Fields (Laboral / Actividad)
   const tenureFields = ['antiguedadLaboral', 'tiempoActividad'];
   tenureFields.forEach(fieldKey => {
     if (ranges[fieldKey]?.min || ranges[fieldKey]?.max) {
-      const min = ranges[fieldKey]?.min;
-      const max = ranges[fieldKey]?.max;
+      const min = ranges[fieldKey]?.min !== undefined ? Number(ranges[fieldKey].min) : undefined;
+      const max = ranges[fieldKey]?.max !== undefined ? Number(ranges[fieldKey].max) : undefined;
       const clientValue = client[fieldKey];
       
       let reqValue = '';
@@ -253,15 +263,36 @@ export default function MatchingComparisonTable({
       let status: 'pass' | 'warning' | 'fail' | 'info' = 'info';
       let clientDisplay = formatValue(clientValue);
       
-      if (clientValue === 'N/A' || !clientValue || clientValue === '') {
+      if (clientValue === 'N/A' || clientValue === null || clientValue === undefined || clientValue === '') {
         status = 'warning';
         clientDisplay = 'No proporcionado';
       } else {
-        const numValue = parseInt(clientValue);
-        const meetsMin = min === undefined || numValue >= min;
-        const meetsMax = max === undefined || numValue <= max;
-        status = meetsMin && meetsMax ? 'pass' : 'warning';
-        clientDisplay = `${numValue} meses`;
+        const strVal = String(clientValue).toLowerCase().trim();
+        const tenureMap: Record<string, { minMonths: number; maxMonths: number; label: string }> = {
+          'menos-1': { minMonths: 0, maxMonths: 11, label: '< 1 año' },
+          '1-2': { minMonths: 12, maxMonths: 24, label: '1 a 2 años' },
+          '2-5': { minMonths: 24, maxMonths: 60, label: '2 a 5 años' },
+          '5-10': { minMonths: 60, maxMonths: 120, label: '5 a 10 años' },
+          'mas-10': { minMonths: 120, maxMonths: 9999, label: '> 10 años' },
+        };
+
+        if (tenureMap[strVal]) {
+          const mapping = tenureMap[strVal];
+          const meetsMin = min === undefined || mapping.maxMonths >= min;
+          const meetsMax = max === undefined || mapping.minMonths <= max;
+          status = meetsMin && meetsMax ? 'pass' : 'fail';
+          clientDisplay = mapping.label;
+        } else {
+          const numValue = parseInt(strVal.replace(/[^0-9]/g, ''), 10);
+          if (!isNaN(numValue)) {
+            const meetsMin = min === undefined || numValue >= min;
+            const meetsMax = max === undefined || numValue <= max;
+            status = meetsMin && meetsMax ? 'pass' : 'fail';
+            clientDisplay = `${numValue} meses`;
+          } else {
+            status = 'warning';
+          }
+        }
       }
       
       fields.push({
@@ -276,32 +307,36 @@ export default function MatchingComparisonTable({
 
   // 6. Age
   if (ranges.edadCliente?.min || ranges.edadCliente?.max) {
-    const min = ranges.edadCliente.min;
-    const max = ranges.edadCliente.max;
+    const min = ranges.edadCliente.min !== undefined ? Number(ranges.edadCliente.min) : undefined;
+    const max = ranges.edadCliente.max !== undefined ? Number(ranges.edadCliente.max) : undefined;
     const clientValue = client.edadCliente;
     
     let reqValue = '';
-    if (min && max) reqValue = `${min} - ${max} años`;
-    else if (min) reqValue = `Mínimo ${min} años`;
-    else if (max) reqValue = `Máximo ${max} años`;
+    if (min !== undefined && max !== undefined) reqValue = `${min} - ${max} años`;
+    else if (min !== undefined) reqValue = `Mínimo ${min} años`;
+    else if (max !== undefined) reqValue = `Máximo ${max} años`;
     
     let status: 'pass' | 'warning' | 'fail' | 'info' = 'info';
     let clientDisplay = formatValue(clientValue);
     
-    if (clientValue === 'N/A' || !clientValue || clientValue === '') {
+    if (clientValue === 'N/A' || clientValue === null || clientValue === undefined || clientValue === '') {
       status = 'warning';
       clientDisplay = 'No proporcionado';
     } else {
-      const numValue = parseInt(clientValue);
-      const meetsMin = !min || numValue >= min;
-      const meetsMax = !max || numValue <= max;
-      status = meetsMin && meetsMax ? 'pass' : 'warning';
-      clientDisplay = `${numValue} años`;
+      const numValue = parseInt(String(clientValue), 10);
+      if (!isNaN(numValue)) {
+        const meetsMin = min === undefined || numValue >= min;
+        const meetsMax = max === undefined || numValue <= max;
+        status = meetsMin && meetsMax ? 'pass' : 'fail';
+        clientDisplay = `${numValue} años`;
+      } else {
+        status = 'warning';
+      }
     }
     
     fields.push({
       fieldName: 'edadCliente',
-      label: 'Edad',
+      label: 'Edad del Cliente',
       requirementValue: reqValue,
       clientValue: clientDisplay,
       status,
@@ -312,46 +347,15 @@ export default function MatchingComparisonTable({
   if (ranges.participacionVentasGobierno?.maxThreshold) {
     const maxThreshold = ranges.participacionVentasGobierno.maxThreshold;
     const clientValue = client.participacionVentasGobierno;
-    
-    const thresholdLabels: Record<string, string> = {
-      '0': '0%',
-      'menor-20': 'Menor a 20%',
-      'menor-40': 'Menor a 40%',
-      'menor-50': 'Menor a 50%',
-      'menor-60': 'Menor a 60%'
-    };
-    
-    const thresholdHierarchy: Record<string, number> = {
-      '0': 0,
-      'menor-10': 1,
-      '0-10': 1,
-      '11-20': 2,
-      'menor-20': 2,
-      '21-40': 3,
-      'menor-40': 3,
-      'menor-50': 4,
-      'menor-60': 5,
-      'arriba-40': 6
-    };
-    
-    let status: 'pass' | 'warning' | 'fail' | 'info' = 'info';
-    let clientDisplay = formatValue(clientValue);
-    
-    if (clientValue === 'N/A' || !clientValue || clientValue === '') {
-      status = 'warning';
-      clientDisplay = 'No proporcionado';
-    } else {
-      const maxAllowedLevel = thresholdHierarchy[maxThreshold] || 999;
-      const clientLevel = thresholdHierarchy[clientValue] || 999;
-      status = clientLevel <= maxAllowedLevel ? 'pass' : 'warning';
-    }
+    const evalResult = evaluateGovSales(clientValue, maxThreshold);
     
     fields.push({
       fieldName: 'participacionVentasGobierno',
       label: 'Participación Ventas Gobierno',
-      requirementValue: `Máximo ${thresholdLabels[maxThreshold] || maxThreshold}`,
-      clientValue: clientDisplay,
-      status,
+      requirementValue: evalResult.requirementDisplay || maxThreshold,
+      clientValue: evalResult.clientDisplay,
+      status: evalResult.status,
+      notes: evalResult.notes,
     });
   }
 
@@ -367,16 +371,17 @@ export default function MatchingComparisonTable({
     let status: 'pass' | 'warning' | 'fail' | 'info' = 'info';
     let clientDisplay = formatValue(clientValue);
     
-    if (clientValue === 'N/A' || !clientValue || clientValue === '') {
+    if (clientValue === 'N/A' || clientValue === null || clientValue === undefined || clientValue === '') {
       status = 'warning';
       clientDisplay = 'No proporcionado';
     } else {
+      const valLower = String(clientValue).toLowerCase().trim();
       if (acceptanceMode === 'solo-positiva') {
-        status = clientValue === 'positiva' ? 'pass' : 'warning';
+        status = valLower === 'positiva' ? 'pass' : 'fail';
       } else {
         status = 'pass';
       }
-      clientDisplay = clientValue === 'positiva' ? 'Positiva' : 'Negativa';
+      clientDisplay = valLower === 'positiva' ? 'Positiva' : 'Negativa';
     }
     
     fields.push({
@@ -403,13 +408,14 @@ export default function MatchingComparisonTable({
       let status: 'pass' | 'warning' | 'fail' | 'info' = 'info';
       let clientDisplay = formatValue(clientGuaranteeType);
       
-      if (clientGuaranteeType === 'N/A' || !clientGuaranteeType || clientGuaranteeType === '') {
+      if (clientGuaranteeType === 'N/A' || clientGuaranteeType === null || clientGuaranteeType === undefined || clientGuaranteeType === '') {
         status = 'warning';
         clientDisplay = 'No proporcionado';
       } else {
-        const multiplier = guaranteeMultipliers[clientGuaranteeType];
-        status = multiplier ? 'pass' : 'warning';
-        clientDisplay = `${clientGuaranteeType.replace(/-/g, ' ')}${multiplier ? ` (${multiplier})` : ''}`;
+        const strVal = String(clientGuaranteeType).toLowerCase().trim();
+        const multiplier = guaranteeMultipliers[strVal];
+        status = multiplier ? 'pass' : 'fail';
+        clientDisplay = `${strVal.replace(/-/g, ' ')}${multiplier ? ` (${multiplier})` : ''}`;
       }
       
       fields.push({
@@ -440,11 +446,11 @@ export default function MatchingComparisonTable({
     
     let reqValue = '';
     if (minOption && maxOption) {
-      reqValue = `Entre ${ingresoLabels[minOption]} y ${ingresoLabels[maxOption]}`;
+      reqValue = `Entre ${ingresoLabels[minOption] || minOption} y ${ingresoLabels[maxOption] || maxOption}`;
     } else if (minOption) {
-      reqValue = `Mínimo ${ingresoLabels[minOption]}`;
+      reqValue = `Mínimo ${ingresoLabels[minOption] || minOption}`;
     } else if (maxOption) {
-      reqValue = `Máximo ${ingresoLabels[maxOption]}`;
+      reqValue = `Máximo ${ingresoLabels[maxOption] || maxOption}`;
     }
     
     const ingresoHierarchy: Record<string, number> = {
@@ -460,7 +466,7 @@ export default function MatchingComparisonTable({
     let status: 'pass' | 'warning' | 'fail' | 'info' = 'info';
     let clientDisplay = formatValue(clientValue);
     
-    if (clientValue === 'N/A' || !clientValue || clientValue === '') {
+    if (clientValue === 'N/A' || clientValue === null || clientValue === undefined || clientValue === '') {
       status = 'warning';
       clientDisplay = 'No proporcionado';
     } else {
@@ -468,7 +474,7 @@ export default function MatchingComparisonTable({
       const minLevel = minOption ? (ingresoHierarchy[minOption] ?? -1) : -1;
       const maxLevel = maxOption ? (ingresoHierarchy[maxOption] ?? 999) : 999;
       
-      status = clientLevel >= minLevel && clientLevel <= maxLevel ? 'pass' : 'warning';
+      status = clientLevel >= minLevel && clientLevel <= maxLevel ? 'pass' : 'fail';
       clientDisplay = ingresoLabels[clientValue] || clientValue;
     }
     
@@ -521,7 +527,7 @@ export default function MatchingComparisonTable({
       clientDisplay = 'No proporcionado';
     } else {
       const clientLevel = ventasHierarchy[clientValue] ?? 0;
-      status = clientLevel >= reqMinLevel ? 'pass' : 'warning';
+      status = clientLevel >= reqMinLevel ? 'pass' : 'fail';
       clientDisplay = ventasLabels[clientValue] || clientValue;
     }
 
@@ -534,7 +540,7 @@ export default function MatchingComparisonTable({
     });
   }
 
-  // 12. Atrasos/Deudas en Buró (all profile variants)
+  // 12. Atrasos/Deudas en Buró
   const atrasosFields = ['atrasosDeudas', 'atrasosDeudasBuro', 'atrasosDeudasBuroSinSat'];
   atrasosFields.forEach(fieldKey => {
     if (ranges[fieldKey] !== undefined) {
@@ -566,16 +572,16 @@ export default function MatchingComparisonTable({
           clientDisplay = `Tiene atrasos (verificar que no excedan $${Number(reqData.max).toLocaleString('es-MX')})`;
         } else {
           const reqStr = typeof reqData === 'string' ? reqData : reqData?.required;
-          status = reqStr === 'no' ? 'warning' : 'pass';
+          status = reqStr === 'no' ? 'fail' : 'pass';
           clientDisplay = 'Tiene atrasos';
         }
       } else {
-        const numValue = parseFloat(clientValue);
+        const numValue = parseFloat(String(clientValue).replace(/[^0-9.-]/g, ''));
         if (!isNaN(numValue) && hasMaxAmount) {
-          status = numValue <= Number(reqData.max) ? 'pass' : 'warning';
+          status = numValue <= Number(reqData.max) ? 'pass' : 'fail';
           clientDisplay = `$${numValue.toLocaleString('es-MX')} en atrasos`;
         } else {
-          clientDisplay = clientValue;
+          clientDisplay = String(clientValue);
         }
       }
 
@@ -589,24 +595,24 @@ export default function MatchingComparisonTable({
     }
   });
 
-  // 13. Aval u Obligado Solidario (all profile variants)
+  // 13. Aval u Obligado Solidario
   const avalFields = ['avalObligadoSolidario', 'tieneAvalObligadoSolidarioFisica', 'tieneAvalObligadoSolidarioSinSat'];
   avalFields.forEach(fieldKey => {
     if (ranges[fieldKey] !== undefined) {
       const reqValue = ranges[fieldKey];
       const clientValue = client[fieldKey];
+      const reqStr = typeof reqValue === 'object' ? reqValue.required : reqValue;
+      const reqDisplay = reqStr === 'si' ? 'Requiere aval' : 'No requiere aval';
 
       let status: 'pass' | 'warning' | 'fail' | 'info' = 'info';
       let clientDisplay = formatValue(clientValue);
-      const reqStr = typeof reqValue === 'object' ? reqValue.required : reqValue;
-      const reqDisplay = reqStr === 'si' ? 'Requiere aval' : 'No requiere aval';
 
       if (!clientValue || clientValue === '' || clientValue === 'N/A') {
         status = 'warning';
         clientDisplay = 'No proporcionado';
       } else {
         if (reqStr === 'si') {
-          status = clientValue === 'si' ? 'pass' : 'warning';
+          status = clientValue === 'si' ? 'pass' : 'fail';
         } else {
           status = 'pass';
         }
@@ -623,7 +629,7 @@ export default function MatchingComparisonTable({
     }
   });
 
-  // 14. SAT CIEC Connection
+  // 14. SAT CIEC
   if (ranges.satCiec !== undefined) {
     const reqValue = ranges.satCiec;
     const clientValue = client.satCiec;
@@ -637,7 +643,7 @@ export default function MatchingComparisonTable({
       clientDisplay = 'No proporcionado';
     } else {
       if (reqStr === 'si') {
-        status = clientValue === 'si' ? 'pass' : 'warning';
+        status = clientValue === 'si' ? 'pass' : 'fail';
       } else {
         status = 'pass';
       }
@@ -667,7 +673,7 @@ export default function MatchingComparisonTable({
       clientDisplay = 'No proporcionado';
     } else {
       if (reqStr === 'si') {
-        status = clientValue === 'si' ? 'pass' : 'warning';
+        status = clientValue === 'si' ? 'pass' : 'fail';
       } else {
         status = 'pass';
       }
@@ -696,7 +702,7 @@ export default function MatchingComparisonTable({
       status = 'warning';
       clientDisplay = 'No proporcionado';
     } else {
-      status = clientValue === reqStr ? 'pass' : 'warning';
+      status = clientValue === reqStr ? 'pass' : 'fail';
       clientDisplay = clientValue === 'si' ? 'Sí tiene créditos vigentes' : 'No tiene créditos vigentes';
     }
 
@@ -733,109 +739,254 @@ export default function MatchingComparisonTable({
     });
   }
 
-  const getStatusIcon = (status: string) => {
+  // Group fields into the 3 canonical categories requested by user:
+  // 1. Compatibles (pass)
+  // 2. Advertencias / No cumple (warning or fail with provided data)
+  // 3. Sin datos / Informativo (unprovided data or informative notes)
+  const compatibleFields = fields.filter(f => f.status === 'pass');
+  const warningFields = fields.filter(f => (f.status === 'fail' || f.status === 'warning') && f.clientValue !== 'No proporcionado');
+  const infoFields = fields.filter(f => f.status === 'info' || f.clientValue === 'No proporcionado');
+
+  const getStatusIcon = (status: string, clientVal?: string) => {
+    if (clientVal === 'No proporcionado') {
+      return <HelpCircle className="w-4 h-4 text-muted-foreground" />;
+    }
     switch (status) {
       case 'pass':
-        return <CheckCircle className="w-4 h-4 text-green-600" />;
+        return <CheckCircle className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />;
       case 'warning':
-        return <AlertCircle className="w-4 h-4 text-yellow-600" />;
+        return <AlertCircle className="w-4 h-4 text-amber-600 dark:text-amber-400" />;
       case 'fail':
-        return <XCircle className="w-4 h-4 text-red-600" />;
+        return <XCircle className="w-4 h-4 text-destructive" />;
       default:
-        return <Info className="w-4 h-4 text-blue-600" />;
+        return <Info className="w-4 h-4 text-blue-600 dark:text-blue-400" />;
     }
   };
 
-  const getStatusBadge = (status: string) => {
+  const getStatusBadge = (status: string, clientVal?: string) => {
+    if (clientVal === 'No proporcionado') {
+      return <Badge variant="outline" className="bg-muted text-muted-foreground border-border">Sin datos</Badge>;
+    }
     switch (status) {
       case 'pass':
-        return <Badge className="bg-green-100 text-green-800 border-green-300">Cumple</Badge>;
+        return <Badge className="bg-emerald-100 text-emerald-800 border-emerald-300 dark:bg-emerald-950 dark:text-emerald-300">Cumple</Badge>;
       case 'warning':
-        return <Badge className="bg-yellow-100 text-yellow-800 border-yellow-300">Advertencia</Badge>;
+        return <Badge className="bg-amber-100 text-amber-800 border-amber-300 dark:bg-amber-950 dark:text-amber-300">Advertencia</Badge>;
       case 'fail':
-        return <Badge className="bg-red-100 text-red-800 border-red-300">No cumple</Badge>;
+        return <Badge className="bg-red-100 text-red-800 border-red-300 dark:bg-red-950 dark:text-red-300">No cumple</Badge>;
       default:
-        return <Badge className="bg-blue-100 text-blue-800 border-blue-300">Info</Badge>;
+        return <Badge className="bg-blue-100 text-blue-800 border-blue-300 dark:bg-blue-950 dark:text-blue-300">Informativo</Badge>;
     }
   };
 
   if (fields.length === 0) {
     return (
-      <div className="text-center py-8 text-gray-500">
-        <Info className="w-12 h-12 mx-auto mb-2 text-gray-300" />
+      <div className="text-center py-8 text-muted-foreground">
+        <Info className="w-12 h-12 mx-auto mb-2 text-muted-foreground/40" />
         <p className="text-sm">No hay requisitos configurados para este perfil de cliente</p>
       </div>
     );
   }
 
+  const renderFieldsTable = (items: ComparisonField[], tableId: string) => (
+    <div className="border rounded-lg overflow-hidden bg-card">
+      <Table>
+        <TableHeader>
+          <TableRow className="bg-muted/50">
+            <TableHead className="w-[30%] text-xs font-semibold uppercase tracking-wider">Campo</TableHead>
+            <TableHead className="w-[32%] text-xs font-semibold uppercase tracking-wider">Requisito Financiera</TableHead>
+            <TableHead className="w-[23%] text-xs font-semibold uppercase tracking-wider">Dato Cliente</TableHead>
+            <TableHead className="w-[15%] text-center text-xs font-semibold uppercase tracking-wider">Estado</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {items.map((field, index) => (
+            <TableRow key={`${tableId}-${field.fieldName}-${index}`} data-testid={`matching-row-${field.fieldName}`}>
+              <TableCell className="font-medium text-sm text-foreground">
+                <div className="flex items-center space-x-2">
+                  {getStatusIcon(field.status, field.clientValue)}
+                  <span>{field.label}</span>
+                </div>
+              </TableCell>
+              <TableCell className="text-sm text-muted-foreground font-medium">
+                {field.requirementValue}
+              </TableCell>
+              <TableCell className="text-sm text-foreground font-medium">
+                {field.clientValue}
+              </TableCell>
+              <TableCell className="text-center">
+                {getStatusBadge(field.status, field.clientValue)}
+              </TableCell>
+            </TableRow>
+          ))}
+        </TableBody>
+      </Table>
+    </div>
+  );
+
   return (
     <div className="space-y-4">
-      <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
-        <div className="flex items-start space-x-2">
-          <Info className="w-4 h-4 text-blue-600 mt-0.5 flex-shrink-0" />
-          <div className="text-xs text-blue-800">
-            <p className="font-medium mb-1">Análisis de Matching</p>
-            <p>Comparación detallada de los requisitos de la financiera vs. los datos del cliente</p>
+      {/* Overview Banner */}
+      <div className="bg-blue-50/80 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-900 rounded-lg p-3">
+        <div className="flex items-start justify-between">
+          <div className="flex items-start space-x-2">
+            <Info className="w-4 h-4 text-blue-600 dark:text-blue-400 mt-0.5 flex-shrink-0" />
+            <div className="text-xs text-blue-900 dark:text-blue-300">
+              <p className="font-semibold mb-0.5">Análisis de Compatibilidad</p>
+              <p className="text-blue-700 dark:text-blue-400">
+                Comparación detallada de los requisitos de la financiera vs. los datos del cliente.
+              </p>
+            </div>
           </div>
+          <Badge variant="outline" className="text-xs bg-card border-border font-medium">
+            {institution.name}
+          </Badge>
         </div>
       </div>
 
-      <div className="border rounded-lg overflow-hidden">
-        <Table>
-          <TableHeader>
-            <TableRow className="bg-gray-50">
-              <TableHead className="w-[30%]">Campo</TableHead>
-              <TableHead className="w-[30%]">Requisito Financiera</TableHead>
-              <TableHead className="w-[25%]">Dato Cliente</TableHead>
-              <TableHead className="w-[15%] text-center">Estado</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {fields.map((field, index) => (
-              <TableRow key={`${field.fieldName}-${index}`} data-testid={`matching-row-${field.fieldName}`}>
-                <TableCell className="font-medium text-sm">
-                  <div className="flex items-center space-x-2">
-                    {getStatusIcon(field.status)}
-                    <span>{field.label}</span>
-                  </div>
-                </TableCell>
-                <TableCell className="text-sm text-gray-700">
-                  {field.requirementValue}
-                </TableCell>
-                <TableCell className="text-sm text-gray-900 font-medium">
-                  {field.clientValue}
-                </TableCell>
-                <TableCell className="text-center">
-                  {getStatusBadge(field.status)}
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
+      {/* Category Filter Tabs */}
+      <div className="flex flex-wrap gap-1.5 p-1 bg-muted/60 rounded-lg border border-border text-xs">
+        <button
+          type="button"
+          onClick={() => setActiveFilter('all')}
+          className={`px-3 py-1.5 rounded-md font-medium transition-all ${
+            activeFilter === 'all'
+              ? 'bg-card text-foreground shadow-sm'
+              : 'text-muted-foreground hover:text-foreground'
+          }`}
+        >
+          Todos ({fields.length})
+        </button>
+        <button
+          type="button"
+          onClick={() => setActiveFilter('pass')}
+          className={`px-3 py-1.5 rounded-md font-medium transition-all flex items-center space-x-1.5 ${
+            activeFilter === 'pass'
+              ? 'bg-emerald-600 text-white shadow-sm'
+              : 'text-emerald-700 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/50'
+          }`}
+        >
+          <CheckCircle className="w-3.5 h-3.5" />
+          <span>Compatibles ({compatibleFields.length})</span>
+        </button>
+        <button
+          type="button"
+          onClick={() => setActiveFilter('warning')}
+          className={`px-3 py-1.5 rounded-md font-medium transition-all flex items-center space-x-1.5 ${
+            activeFilter === 'warning'
+              ? 'bg-amber-600 text-white shadow-sm'
+              : 'text-amber-700 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-950/50'
+          }`}
+        >
+          <AlertCircle className="w-3.5 h-3.5" />
+          <span>Advertencias ({warningFields.length})</span>
+        </button>
+        <button
+          type="button"
+          onClick={() => setActiveFilter('info')}
+          className={`px-3 py-1.5 rounded-md font-medium transition-all flex items-center space-x-1.5 ${
+            activeFilter === 'info'
+              ? 'bg-blue-600 text-white shadow-sm'
+              : 'text-blue-700 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-950/50'
+          }`}
+        >
+          <HelpCircle className="w-3.5 h-3.5" />
+          <span>Sin datos ({infoFields.length})</span>
+        </button>
       </div>
 
-      <div className="flex items-center justify-between bg-gray-50 rounded-lg p-3 text-xs">
-        <div className="flex items-center space-x-4">
-          <div className="flex items-center space-x-1">
-            <CheckCircle className="w-3 h-3 text-green-600" />
-            <span className="text-gray-600">
-              {fields.filter(f => f.status === 'pass').length} Cumple
+      {/* Grouped Content Sections */}
+      <div className="space-y-4">
+        {/* Section 1: ✅ Compatibles */}
+        {(activeFilter === 'all' || activeFilter === 'pass') && (
+          <div className="space-y-2">
+            <div className="flex items-center justify-between px-1">
+              <div className="flex items-center space-x-2">
+                <div className="w-2.5 h-2.5 rounded-full bg-emerald-500" />
+                <h4 className="font-semibold text-sm text-emerald-900 dark:text-emerald-300">
+                  Requisitos Compatibles ({compatibleFields.length})
+                </h4>
+              </div>
+              <span className="text-xs text-muted-foreground">El cliente cumple plenamente</span>
+            </div>
+            {compatibleFields.length > 0 ? (
+              renderFieldsTable(compatibleFields, 'compatible')
+            ) : (
+              <div className="p-4 text-center rounded-lg border border-dashed border-border text-xs text-muted-foreground">
+                No hay campos evaluados que cumplan actualmente
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Section 2: ⚠️ Advertencias / No cumple */}
+        {(activeFilter === 'all' || activeFilter === 'warning') && (
+          <div className="space-y-2">
+            <div className="flex items-center justify-between px-1">
+              <div className="flex items-center space-x-2">
+                <div className="w-2.5 h-2.5 rounded-full bg-amber-500" />
+                <h4 className="font-semibold text-sm text-amber-900 dark:text-amber-300">
+                  Advertencias y Requisitos No Cumplidos ({warningFields.length})
+                </h4>
+              </div>
+              <span className="text-xs text-muted-foreground">Requieren revisión o ajuste</span>
+            </div>
+            {warningFields.length > 0 ? (
+              renderFieldsTable(warningFields, 'warning')
+            ) : (
+              <div className="p-4 text-center rounded-lg border border-dashed border-border text-xs text-muted-foreground">
+                Ninguna advertencia detectada en los datos proporcionados
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Section 3: ℹ️ Sin datos / Informativo */}
+        {(activeFilter === 'all' || activeFilter === 'info') && (
+          <div className="space-y-2">
+            <div className="flex items-center justify-between px-1">
+              <div className="flex items-center space-x-2">
+                <div className="w-2.5 h-2.5 rounded-full bg-blue-500" />
+                <h4 className="font-semibold text-sm text-blue-900 dark:text-blue-300">
+                  Sin Datos / Información Adicional ({infoFields.length})
+                </h4>
+              </div>
+              <span className="text-xs text-muted-foreground">Datos no provistos o notas informativas</span>
+            </div>
+            {infoFields.length > 0 ? (
+              renderFieldsTable(infoFields, 'info')
+            ) : (
+              <div className="p-4 text-center rounded-lg border border-dashed border-border text-xs text-muted-foreground">
+                No hay campos sin información ni notas adicionales
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* Summary Stats Footer */}
+      <div className="flex items-center justify-between bg-muted/40 border border-border rounded-lg p-3 text-xs">
+        <div className="flex flex-wrap items-center gap-4">
+          <div className="flex items-center space-x-1.5">
+            <CheckCircle className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+            <span className="text-muted-foreground">
+              <strong className="text-foreground">{compatibleFields.length}</strong> Cumple
             </span>
           </div>
-          <div className="flex items-center space-x-1">
-            <AlertCircle className="w-3 h-3 text-yellow-600" />
-            <span className="text-gray-600">
-              {fields.filter(f => f.status === 'warning').length} Advertencias
+          <div className="flex items-center space-x-1.5">
+            <AlertCircle className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
+            <span className="text-muted-foreground">
+              <strong className="text-foreground">{warningFields.length}</strong> Advertencias
             </span>
           </div>
-          <div className="flex items-center space-x-1">
-            <XCircle className="w-3 h-3 text-red-600" />
-            <span className="text-gray-600">
-              {fields.filter(f => f.status === 'fail').length} No cumple
+          <div className="flex items-center space-x-1.5">
+            <HelpCircle className="w-3.5 h-3.5 text-muted-foreground" />
+            <span className="text-muted-foreground">
+              <strong className="text-foreground">{infoFields.length}</strong> Sin datos / Notas
             </span>
           </div>
         </div>
-        <div className="text-gray-600">
+        <div className="text-muted-foreground font-medium">
           Total: {fields.length} campos evaluados
         </div>
       </div>

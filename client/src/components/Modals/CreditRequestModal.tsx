@@ -24,7 +24,8 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
-import { Building2, User, DollarSign, Send, AlertCircle, CheckCircle, AlertTriangle, Info } from "lucide-react";
+import { Building2, User, DollarSign, Send, AlertCircle, CheckCircle, AlertTriangle, Info, HelpCircle } from "lucide-react";
+import { evaluateBuroScore, evaluateGovSales } from "@/components/MatchingAnalysis/matchingRules";
 
 interface Client {
   id: string;
@@ -379,28 +380,83 @@ export default function CreditRequestModal({ isOpen, onClose, preselectedClientI
       }
     }
 
-    // Check other numeric ranges
-    const numericFields = [
-      { key: 'score', label: 'Score de Buró', clientKey: 'bureauScore' },
-      { key: 'antiguedadLaboral', label: 'Antigüedad Laboral', clientKey: 'antiguedadLaboral' },
-      { key: 'edadCliente', label: 'Edad del Cliente', clientKey: 'edadCliente' },
+    // Buró evaluations
+    const buroFields = [
+      { key: 'buroPersonaFisica', label: 'Buró Persona Física' },
+      { key: 'buroAccionistaPrincipal', label: 'Buró Accionista Principal' },
+      { key: 'buroEmpresa', label: 'Buró Empresa' }
     ];
 
-    numericFields.forEach(({ key, label, clientKey }) => {
-      if (ranges[key]) {
+    buroFields.forEach(({ key, label }) => {
+      if (ranges[key]?.min !== undefined) {
         totalChecks++;
-        const min = parseFloat(ranges[key].min || 0);
-        const max = parseFloat(ranges[key].max || Infinity);
-        const clientValue = parseFloat(selectedClient[clientKey] || '0');
-
-        if (clientValue >= min && (!max || clientValue <= max)) {
+        const minReq = Number(ranges[key].min);
+        const clientVal = selectedClient[key];
+        const res = evaluateBuroScore(key, clientVal, minReq);
+        if (res.status === 'pass') {
           passedChecks++;
-          reasons.push(`${label}: ${clientValue} (rango: ${min}-${max})`);
-        } else if (clientValue > 0) {
-          warnings.push(`${label}: ${clientValue} fuera del rango ${min}-${max}`);
+          reasons.push(`${label}: ${res.clientDisplay} (mínimo: ${minReq} pts)`);
+        } else if (res.status === 'warning') {
+          warnings.push(`${label}: no proporcionado (mínimo: ${minReq} pts)`);
+        } else {
+          warnings.push(`${label}: ${res.clientDisplay} no alcanza el mínimo de ${minReq} pts`);
         }
       }
     });
+
+    // Buró Sin SAT
+    if (ranges.buroPersonaFisicaSinSat !== undefined) {
+      totalChecks++;
+      const reqVal = ranges.buroPersonaFisicaSinSat;
+      const reqStr = typeof reqVal === 'object' ? reqVal.required : reqVal;
+      const clientVal = selectedClient.buroPersonaFisicaSinSat;
+      if (!clientVal || clientVal === '' || clientVal === 'N/A') {
+        warnings.push('Buró Sin SAT: dato no proporcionado');
+      } else if (clientVal === reqStr) {
+        passedChecks++;
+        reasons.push('Buró Sin SAT: cumple con el requisito');
+      } else {
+        warnings.push('Buró Sin SAT: no cumple con el requisito');
+      }
+    }
+
+    // Antigüedad Laboral
+    if (ranges.antiguedadLaboral?.min || ranges.antiguedadLaboral?.max) {
+      totalChecks++;
+      const min = ranges.antiguedadLaboral.min !== undefined ? parseFloat(ranges.antiguedadLaboral.min) : undefined;
+      const max = ranges.antiguedadLaboral.max !== undefined ? parseFloat(ranges.antiguedadLaboral.max) : undefined;
+      const clientVal = selectedClient.antiguedadLaboral;
+      if (!clientVal || clientVal === '' || clientVal === 'N/A') {
+        warnings.push('Antigüedad Laboral: dato no proporcionado');
+      } else {
+        const tenureMap: Record<string, number> = {
+          'menos-1': 6, '1-2': 18, '2-5': 36, '5-10': 72, 'mas-10': 120
+        };
+        const months = tenureMap[clientVal] ?? parseFloat(clientVal) ?? 0;
+        const meetsMin = min === undefined || months >= min;
+        const meetsMax = max === undefined || months <= max;
+        if (meetsMin && meetsMax) {
+          passedChecks++;
+          reasons.push(`Antigüedad Laboral: ${clientVal} cumple requisito`);
+        } else {
+          warnings.push(`Antigüedad Laboral: ${clientVal} fuera del rango`);
+        }
+      }
+    }
+
+    // Edad del Cliente
+    if (ranges.edadCliente?.min || ranges.edadCliente?.max) {
+      totalChecks++;
+      const min = ranges.edadCliente.min ? parseFloat(ranges.edadCliente.min) : 0;
+      const max = ranges.edadCliente.max ? parseFloat(ranges.edadCliente.max) : Infinity;
+      const clientVal = parseFloat(selectedClient.edadCliente || '0');
+      if (clientVal >= min && (!max || clientVal <= max)) {
+        passedChecks++;
+        reasons.push(`Edad del Cliente: ${clientVal} años (rango: ${min}-${max})`);
+      } else if (clientVal > 0) {
+        warnings.push(`Edad del Cliente: ${clientVal} años fuera del rango ${min}-${max}`);
+      }
+    }
 
     // Check required profiling fields
     const selectedFields = requirements.selected || [];
@@ -421,47 +477,14 @@ export default function CreditRequestModal({ isOpen, onClose, preselectedClientI
       totalChecks++;
       const maxThreshold = ranges.participacionVentasGobierno.maxThreshold;
       const clientValue = selectedClient.participacionVentasGobierno;
-      
-      if (!clientValue || clientValue === '' || clientValue === 'N/A') {
-        warnings.push('Participación ventas gobierno: dato requerido no proporcionado');
+      const res = evaluateGovSales(clientValue, maxThreshold);
+      if (res.status === 'pass') {
+        passedChecks++;
+        reasons.push(`Participación ventas gobierno: ${res.clientDisplay} cumple (${res.requirementDisplay})`);
+      } else if (res.status === 'warning') {
+        warnings.push(`Participación ventas gobierno: no proporcionada`);
       } else {
-        // Define threshold hierarchy from lowest to highest
-        const thresholdHierarchy: Record<string, number> = {
-          '0': 0,
-          'menor-10': 1,
-          '0-10': 1,
-          '11-20': 2,
-          'menor-20': 2,
-          '21-40': 3,
-          'menor-40': 3,
-          'menor-50': 4,
-          'menor-60': 5,
-          'arriba-40': 6
-        };
-        
-        const maxAllowedLevel = thresholdHierarchy[maxThreshold] || 999;
-        const clientLevel = thresholdHierarchy[clientValue] || 999;
-        
-        if (clientLevel <= maxAllowedLevel) {
-          passedChecks++;
-          const thresholdLabels: Record<string, string> = {
-            '0': '0%',
-            'menor-20': 'Menor a 20%',
-            'menor-40': 'Menor a 40%',
-            'menor-50': 'Menor a 50%',
-            'menor-60': 'Menor a 60%'
-          };
-          reasons.push(`Participación ventas gobierno aceptable (máximo: ${thresholdLabels[maxThreshold] || maxThreshold})`);
-        } else {
-          const thresholdLabels: Record<string, string> = {
-            '0': '0%',
-            'menor-20': 'Menor a 20%',
-            'menor-40': 'Menor a 40%',
-            'menor-50': 'Menor a 50%',
-            'menor-60': 'Menor a 60%'
-          };
-          warnings.push(`Participación ventas gobierno excede el máximo aceptado (${thresholdLabels[maxThreshold] || maxThreshold})`);
-        }
+        warnings.push(`Participación ventas gobierno: ${res.clientDisplay} excede ${res.requirementDisplay}`);
       }
     }
 
@@ -667,9 +690,15 @@ export default function CreditRequestModal({ isOpen, onClose, preselectedClientI
     match: evaluateMatch(inst)
   })).sort((a, b) => b.match.score - a.match.score);
 
-  const recommendedInstitutions = institutionsWithMatch.filter(i => i.match.category === 'recommended');
-  const compatibleInstitutions = institutionsWithMatch.filter(i => i.match.category === 'compatible');
-  const otherInstitutions = institutionsWithMatch.filter(i => i.match.category === 'other');
+  const compatibleInstitutions = institutionsWithMatch.filter(
+    i => (i.match.category === 'recommended' || i.match.category === 'compatible') && i.match.warnings.length === 0
+  );
+  const warningInstitutions = institutionsWithMatch.filter(
+    i => i.match.warnings.length > 0 && i.match.score > 0
+  );
+  const otherInstitutions = institutionsWithMatch.filter(
+    i => !compatibleInstitutions.includes(i) && !warningInstitutions.includes(i)
+  );
 
   const renderInstitutionCard = (institution: FinancialInstitution, match: MatchResult) => {
     const isSelected = selectedInstitutions.includes(institution.id);
@@ -683,27 +712,34 @@ export default function CreditRequestModal({ isOpen, onClose, preselectedClientI
     let categoryBadge = null;
     let categoryIcon = null;
     
-    if (match.category === 'recommended') {
+    if (match.category === 'recommended' || (match.warnings.length === 0 && match.score >= 70)) {
       categoryBadge = (
-        <Badge variant="outline" className="bg-green-50 text-green-700 border-green-300 text-xs">
+        <Badge variant="outline" className="bg-emerald-50 text-emerald-700 border-emerald-300 text-xs">
           ⭐ Recomendada
         </Badge>
       );
-      categoryIcon = <CheckCircle className="w-4 h-4 text-green-600" />;
-    } else if (match.category === 'compatible') {
+      categoryIcon = <CheckCircle className="w-4 h-4 text-emerald-600" />;
+    } else if (match.warnings.length === 0 && match.score >= 50) {
       categoryBadge = (
         <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-300 text-xs">
           ✓ Compatible
         </Badge>
       );
-      categoryIcon = <Info className="w-4 h-4 text-blue-600" />;
-    } else {
+      categoryIcon = <CheckCircle className="w-4 h-4 text-blue-600" />;
+    } else if (match.warnings.length > 0 && match.score > 0) {
       categoryBadge = (
-        <Badge variant="outline" className="bg-gray-50 text-gray-700 border-gray-300 text-xs">
-          Otra opción
+        <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-300 text-xs">
+          ⚠ Advertencia
         </Badge>
       );
-      categoryIcon = <AlertTriangle className="w-4 h-4 text-gray-600" />;
+      categoryIcon = <AlertTriangle className="w-4 h-4 text-amber-600" />;
+    } else {
+      categoryBadge = (
+        <Badge variant="outline" className="bg-gray-100 text-gray-700 border-gray-300 text-xs">
+          Sin datos / No aplica
+        </Badge>
+      );
+      categoryIcon = <HelpCircle className="w-4 h-4 text-gray-500" />;
     }
 
     return (
@@ -956,33 +992,17 @@ export default function CreditRequestModal({ isOpen, onClose, preselectedClientI
                       El sistema las ordena según su compatibilidad con el perfil del cliente.
                     </p>
 
-                    {/* Recommended Institutions */}
-                    {recommendedInstitutions.length > 0 && (
-                      <div className="space-y-2">
-                        <div className="flex items-center space-x-2">
-                          <CheckCircle className="w-4 h-4 text-green-600" />
-                          <h4 className="font-semibold text-sm text-green-900">
-                            Financieras Recomendadas ({recommendedInstitutions.length})
-                          </h4>
-                        </div>
-                        <div className="grid grid-cols-1 gap-2">
-                          {recommendedInstitutions.map(({ institution, match }) => 
-                            renderInstitutionCard(institution, match)
-                          )}
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Compatible Institutions */}
+                    {/* Compatible Institutions (Recomendadas y Compatibles) */}
                     {compatibleInstitutions.length > 0 && (
                       <div className="space-y-2">
                         <div className="flex items-center space-x-2">
-                          <Info className="w-4 h-4 text-blue-600" />
-                          <h4 className="font-semibold text-sm text-blue-900">
+                          <CheckCircle className="w-4 h-4 text-emerald-600" />
+                          <h4 className="font-semibold text-sm text-emerald-900">
                             Financieras Compatibles ({compatibleInstitutions.length})
                           </h4>
+                          <span className="text-xs text-muted-foreground">Cumplen con los requisitos</span>
                         </div>
-                        <div className="grid grid-cols-1 gap-2 max-h-48 overflow-y-auto">
+                        <div className="grid grid-cols-1 gap-2 max-h-56 overflow-y-auto">
                           {compatibleInstitutions.map(({ institution, match }) => 
                             renderInstitutionCard(institution, match)
                           )}
@@ -990,14 +1010,33 @@ export default function CreditRequestModal({ isOpen, onClose, preselectedClientI
                       </div>
                     )}
 
-                    {/* Other Institutions */}
+                    {/* Warning Institutions */}
+                    {warningInstitutions.length > 0 && (
+                      <div className="space-y-2">
+                        <div className="flex items-center space-x-2">
+                          <AlertTriangle className="w-4 h-4 text-amber-600" />
+                          <h4 className="font-semibold text-sm text-amber-900">
+                            Financieras con Advertencias ({warningInstitutions.length})
+                          </h4>
+                          <span className="text-xs text-muted-foreground">Presentan requisitos no cumplidos o incompletos</span>
+                        </div>
+                        <div className="grid grid-cols-1 gap-2 max-h-48 overflow-y-auto">
+                          {warningInstitutions.map(({ institution, match }) => 
+                            renderInstitutionCard(institution, match)
+                          )}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Other / No Data Institutions */}
                     {otherInstitutions.length > 0 && (
                       <div className="space-y-2">
                         <div className="flex items-center space-x-2">
-                          <AlertTriangle className="w-4 h-4 text-gray-600" />
+                          <HelpCircle className="w-4 h-4 text-gray-500" />
                           <h4 className="font-semibold text-sm text-gray-700">
-                            Otras Opciones ({otherInstitutions.length})
+                            Sin Datos Suficientes / No Aplica ({otherInstitutions.length})
                           </h4>
+                          <span className="text-xs text-muted-foreground">Sin requisitos configurados o perfil no admitido</span>
                         </div>
                         <div className="grid grid-cols-1 gap-2 max-h-40 overflow-y-auto">
                           {otherInstitutions.map(({ institution, match }) => 
