@@ -33,7 +33,13 @@ const commissionTypeLabels: Record<string, string> = {
 export default function Commissions() {
   const { user } = useAuth();
   const canProcessPayments = user?.role === 'admin' || user?.role === 'super_admin';
-  const [searchTerm, setSearchTerm] = useState("");
+  const [searchTerm, setSearchTerm] = useState(() => {
+    if (typeof window !== "undefined") {
+      const params = new URLSearchParams(window.location.search);
+      return params.get("creditId") || params.get("search") || "";
+    }
+    return "";
+  });
   const [filterStatus, setFilterStatus] = useState<string>("all");
   const [selectedCommission, setSelectedCommission] = useState<any | null>(null);
   const [viewingCommission, setViewingCommission] = useState<any | null>(null);
@@ -128,10 +134,18 @@ export default function Commissions() {
 
   const filteredCommissions = commissions.filter(commission => {
     const commId = String(commission.id || "").toLowerCase();
+    const commCreditId = String(commission.creditId || "").toLowerCase();
     const commAmount = String(commission.amount ?? "");
+    const brokerName = `${commission.broker?.firstName || ''} ${commission.broker?.lastName || ''}`.toLowerCase();
+    const clientName = `${commission.credit?.client?.businessName || commission.credit?.client?.firstName || ''} ${commission.credit?.client?.lastName || ''}`.toLowerCase();
+    const searchLower = searchTerm.toLowerCase();
+
     const matchesSearch = !searchTerm ||
-      commId.includes(searchTerm.toLowerCase()) ||
-      commAmount.includes(searchTerm);
+      commId.includes(searchLower) ||
+      commCreditId.includes(searchLower) ||
+      brokerName.includes(searchLower) ||
+      clientName.includes(searchLower) ||
+      commAmount.includes(searchLower);
     
     const matchesStatus = filterStatus === "all" || commission.status === filterStatus;
     

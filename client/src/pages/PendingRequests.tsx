@@ -1,5 +1,6 @@
 import { useState, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useLocation } from "wouter";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -103,6 +104,8 @@ interface CreditSubmissionTarget {
     lastName: string;
     email?: string;
     role: string;
+    bankName?: string;
+    clabe?: string;
   };
   masterBroker?: {
     id: string;
@@ -143,6 +146,7 @@ type ProposalForm = z.infer<typeof proposalSchema>;
 export default function PendingRequests() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const [, setLocation] = useLocation();
   const [selectedTarget, setSelectedTarget] = useState<CreditSubmissionTarget | null>(null);
   const [reviewAction, setReviewAction] = useState<'approve' | 'return_to_broker' | null>(null);
   const [showReviewModal, setShowReviewModal] = useState(false);
@@ -177,6 +181,10 @@ export default function PendingRequests() {
 
   const { data: allTargets, isLoading: targetsLoading } = useQuery<CreditSubmissionTarget[]>({
     queryKey: ['/api/credit-submission-targets'],
+  });
+
+  const { data: commissions } = useQuery<any[]>({
+    queryKey: ['/api/commissions'],
   });
 
   const reviewMutation = useMutation({
@@ -266,9 +274,12 @@ export default function PendingRequests() {
     onSuccess: () => {
       toast({
         title: "Marcado como dispersado",
-        description: "El crédito ha sido marcado como dispersado",
+        description: "El crédito ha sido marcado como dispersado y la comisión fue generada exitosamente",
       });
       queryClient.invalidateQueries({ queryKey: ['/api/credit-submission-targets'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/credit-submissions'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/credits'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/commissions'] });
     },
   });
 
@@ -1003,13 +1014,76 @@ export default function PendingRequests() {
                                       </div>
                                     )}
 
-                                    {target.status === 'dispersed' && (
-                                      <div className="bg-emerald-50 p-3 rounded-lg">
-                                        <p className="font-medium text-emerald-900">
-                                          Dispersado el {new Date(target.dispersedAt!).toLocaleDateString('es-ES')}
-                                        </p>
-                                      </div>
-                                    )}
+                                    {target.status === 'dispersed' && (() => {
+                                        const targetComm = commissions?.find((c: any) => 
+                                          c.creditId === (target as any).creditId || 
+                                          (target.id && c.targetId === target.id)
+                                        );
+                                        const isPaid = targetComm?.status === 'paid';
+                                        const isPending = targetComm && targetComm.status !== 'paid';
+
+                                        return (
+                                          <div className="bg-emerald-50/80 p-3.5 rounded-lg border border-emerald-200 space-y-2.5">
+                                            <div className="flex items-center justify-between flex-wrap gap-2">
+                                              <p className="font-semibold text-emerald-900 flex items-center gap-1.5 text-sm">
+                                                <CheckCircle className="w-4 h-4 text-emerald-600" />
+                                                Dispersado el {target.dispersedAt ? new Date(target.dispersedAt).toLocaleDateString('es-ES') : 'Recientemente'}
+                                              </p>
+                                              {isPaid ? (
+                                                <Badge className="bg-emerald-700 text-white font-medium text-xs">
+                                                  <DollarSign className="w-3 h-3 mr-0.5 inline" />
+                                                  Comisión Pagada (${parseFloat(targetComm.amount).toLocaleString('es-MX')} MXN)
+                                                </Badge>
+                                              ) : isPending ? (
+                                                <Badge className="bg-amber-500 text-white font-medium text-xs animate-pulse">
+                                                  <Clock className="w-3 h-3 mr-0.5 inline" />
+                                                  Comisión Pendiente (${parseFloat(targetComm.amount).toLocaleString('es-MX')} MXN)
+                                                </Badge>
+                                              ) : (
+                                                <Badge variant="outline" className="text-emerald-700 border-emerald-300 text-xs">
+                                                  Dispersión Registrada
+                                                </Badge>
+                                              )}
+                                            </div>
+
+                                            {targetComm && (
+                                              <div className="bg-white p-2.5 rounded border border-emerald-100 flex items-center justify-between flex-wrap gap-3">
+                                                <div className="text-xs">
+                                                  <span className="text-gray-500 block">Comisión {targetComm.commissionType === 'apertura' ? 'de Apertura' : ''} del Bróker:</span>
+                                                  <span className="font-bold text-gray-900 text-sm">${parseFloat(targetComm.amount).toLocaleString('es-MX')} MXN</span>
+                                                  {target.broker && (
+                                                    <span className="text-gray-600 ml-2">
+                                                      ({target.broker.firstName} {target.broker.lastName} • {target.broker.bankName || 'Banco'}: {target.broker.clabe || 'Sin CLABE'})
+                                                    </span>
+                                                  )}
+                                                </div>
+                                                <div className="flex items-center gap-2">
+                                                  {isPending ? (
+                                                    <Button
+                                                      size="sm"
+                                                      className="bg-amber-600 hover:bg-amber-700 text-white text-xs font-semibold shadow-sm"
+                                                      onClick={() => setLocation(`/comisiones?creditId=${(target as any).creditId || ''}`)}
+                                                      data-testid={`button-pay-commission-${target.id}`}
+                                                    >
+                                                      <DollarSign className="w-3.5 h-3.5 mr-1" />
+                                                      Pagar Comisión
+                                                    </Button>
+                                                  ) : (
+                                                    <Button
+                                                      size="sm"
+                                                      variant="outline"
+                                                      className="text-emerald-700 border-emerald-200 hover:bg-emerald-50 text-xs"
+                                                      onClick={() => setLocation(`/comisiones?creditId=${(target as any).creditId || ''}`)}
+                                                    >
+                                                      Ver en Comisiones
+                                                    </Button>
+                                                  )}
+                                                </div>
+                                              </div>
+                                            )}
+                                          </div>
+                                        );
+                                      })()}
 
                                     {/* Collapsible Matching Analysis */}
                                     {target.institution && client && (

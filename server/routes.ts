@@ -1107,7 +1107,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
               const client = await storage.getClient(credit.clientId);
               if (client) {
                 if (client.type === 'persona_moral' || client.type === 'moral') {
-                  clientName = client.businessName || client.tradeName || '';
+                  clientName = client.businessName || (client as any).tradeName || (client as any).nombreComercial || '';
                 } else {
                   clientName = `${client.firstName || ''} ${client.lastName || ''}`.trim();
                 }
@@ -1123,7 +1123,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
                     const subClient = await storage.getClient(submission.clientId);
                     if (subClient) {
                       if (subClient.type === 'persona_moral' || subClient.type === 'moral') {
-                        clientName = subClient.businessName || subClient.tradeName || '';
+                        clientName = subClient.businessName || (subClient as any).tradeName || (subClient as any).nombreComercial || '';
                       } else {
                         clientName = `${subClient.firstName || ''} ${subClient.lastName || ''}`.trim();
                       }
@@ -1614,14 +1614,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
               rfc: client.rfc,
               email: client.email,
               phone: client.phone,
-              monthlyIncome: client.monthlyIncome,
-              creditScore: client.creditScore,
+              monthlyIncome: (client as any).monthlyIncome || client.ingresoMensualPromedio,
+              creditScore: (client as any).creditScore,
               yearsInBusiness: client.yearsInBusiness,
             } : null,
             financialInstitution: institution ? {
               id: institution.id,
               name: institution.name,
-              logoUrl: institution.logoUrl,
+              logoUrl: (institution as any).logoUrl,
             } : null,
             productTemplate: productTemplate ? {
               id: productTemplate.id,
@@ -1640,7 +1640,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
               purpose: submission.purpose,
               createdAt: submission.createdAt,
               brokerNotes: submission.brokerNotes,
-              matchingAnalysis: submission.matchingAnalysis,
+              matchingAnalysis: (submission as any).matchingAnalysis,
             } : null,
             targets,
           };
@@ -2715,7 +2715,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
       } else {
         // Create new broker user record under master broker
-        targetBroker = await storage.upsertUser({
+        targetBroker = await storage.createUser({
           email,
           firstName: firstName || '',
           lastName: lastName || '',
@@ -3657,7 +3657,53 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       const submissions = await storage.getCreditSubmissionRequests(filters);
-      res.json(submissions);
+      
+      // Enrich with related data (client, broker, masterBroker, productTemplate, targets)
+      const enrichedSubmissions = await Promise.all(
+        submissions.map(async (submission) => {
+          const client = submission.clientId ? await storage.getClient(submission.clientId) : null;
+          const productTemplate = submission.productTemplateId ? await storage.getProductTemplate(submission.productTemplateId) : null;
+          const broker = submission.brokerId ? await storage.getUser(submission.brokerId) : null;
+          const masterBroker = broker?.masterBrokerId ? await storage.getUser(broker.masterBrokerId) : null;
+          
+          const targets = await storage.getCreditSubmissionTargets({ requestId: submission.id });
+          const enrichedTargets = await Promise.all(
+            targets.map(async (target) => {
+              const institution = await storage.getFinancialInstitution(target.financialInstitutionId);
+              return {
+                ...target,
+                institution
+              };
+            })
+          );
+          
+          return {
+            ...submission,
+            client,
+            productTemplate,
+            broker: broker ? {
+              id: broker.id,
+              firstName: broker.firstName,
+              lastName: broker.lastName,
+              email: broker.email,
+              role: broker.role,
+              bankName: broker.bankName,
+              clabe: broker.clabe
+            } : null,
+            masterBroker: masterBroker ? {
+              id: masterBroker.id,
+              firstName: masterBroker.firstName,
+              lastName: masterBroker.lastName,
+              email: masterBroker.email,
+              role: masterBroker.role,
+              brandName: (masterBroker as any).brandName
+            } : null,
+            targets: enrichedTargets
+          };
+        })
+      );
+
+      res.json(enrichedSubmissions);
     } catch (error) {
       console.error("Error fetching credit submissions:", error);
       res.status(500).json({ message: "Failed to fetch credit submissions" });
@@ -3681,7 +3727,41 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(403).json({ message: "Access denied" });
       }
 
-      res.json(submission);
+      // Enrich single submission
+      const client = submission.clientId ? await storage.getClient(submission.clientId) : null;
+      const productTemplate = submission.productTemplateId ? await storage.getProductTemplate(submission.productTemplateId) : null;
+      const broker = submission.brokerId ? await storage.getUser(submission.brokerId) : null;
+      const masterBroker = broker?.masterBrokerId ? await storage.getUser(broker.masterBrokerId) : null;
+      const targets = await storage.getCreditSubmissionTargets({ requestId: submission.id });
+      const enrichedTargets = await Promise.all(
+        targets.map(async (target) => {
+          const institution = await storage.getFinancialInstitution(target.financialInstitutionId);
+          return {
+            ...target,
+            institution
+          };
+        })
+      );
+
+      res.json({
+        ...submission,
+        client,
+        productTemplate,
+        broker: broker ? {
+          id: broker.id,
+          firstName: broker.firstName,
+          lastName: broker.lastName,
+          email: broker.email,
+          role: broker.role
+        } : null,
+        masterBroker: masterBroker ? {
+          id: masterBroker.id,
+          firstName: masterBroker.firstName,
+          lastName: masterBroker.lastName,
+          brandName: (masterBroker as any).brandName
+        } : null,
+        targets: enrichedTargets
+      });
     } catch (error) {
       console.error("Error fetching credit submission:", error);
       res.status(500).json({ message: "Failed to fetch credit submission" });
@@ -4624,9 +4704,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
           if (institution) {
             const commissionRates = institution.commissionRates as any || {};
             
-            // Calculate opening commission for broker
-            if (commissionRates.broker?.apertura) {
-              const brokerOpeningRate = parseFloat(commissionRates.broker.apertura);
+            // Calculate opening commission for broker with fallback to institution legacy rates
+            const brokerOpeningRate = parseFloat(
+              commissionRates.broker?.apertura ||
+              (institution as any).brokerCommissionRate ||
+              (institution as any).commissionRate ||
+              '0'
+            );
+
+            if (brokerOpeningRate > 0) {
               const brokerOpeningAmount = (approvedAmount * brokerOpeningRate) / 100;
               
               await storage.createCommission({
@@ -4645,8 +4731,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
             }
             
             // Calculate opening commission for master broker if exists
-            if (masterBrokerId && commissionRates.masterBroker?.apertura) {
-              const masterOpeningRate = parseFloat(commissionRates.masterBroker.apertura);
+            const masterOpeningRate = parseFloat(
+              commissionRates.masterBroker?.apertura ||
+              (institution as any).masterBrokerCommissionRate ||
+              '0'
+            );
+
+            if (masterBrokerId && masterOpeningRate > 0) {
               const masterOpeningAmount = (approvedAmount * masterOpeningRate) / 100;
               
               await storage.createCommission({

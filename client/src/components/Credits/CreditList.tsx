@@ -1,5 +1,5 @@
 import { useState, useMemo } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -12,10 +12,28 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/component
 import { Credit, Client } from "@shared/schema";
 import { formatDistanceToNow, format } from "date-fns";
 import { es } from "date-fns/locale";
-import { ChevronDown, ChevronUp, X, FileText, Building2, Calendar, DollarSign, User, AlertCircle, ExternalLink, Percent } from "lucide-react";
+import { 
+  ChevronDown, 
+  ChevronUp, 
+  X, 
+  FileText, 
+  Building2, 
+  Calendar, 
+  DollarSign, 
+  User, 
+  AlertCircle, 
+  ExternalLink, 
+  Percent,
+  CheckCircle,
+  Package,
+  Clock
+} from "lucide-react";
 import FinalProposalModal from "@/components/Modals/FinalProposalModal";
 import MatchingComparisonTable from "@/components/MatchingAnalysis/MatchingComparisonTable";
 import { submissionStatusConfig, creditStatusConfig, targetStatusConfig, getSubmissionStatusSummary } from "@/lib/statusConfig";
+import { useAuth } from "@/hooks/useAuth";
+import { useToast } from "@/hooks/use-toast";
+import { apiRequest } from "@/lib/queryClient";
 
 type UnifiedCreditItem = {
   id: string;
@@ -23,6 +41,9 @@ type UnifiedCreditItem = {
   type: 'submission' | 'credit';
   clientId: string;
   amount: string;
+  totalApprovedAmount?: number;
+  winningTargets?: any[];
+  dispersedTargets?: any[];
   status: string;
   createdAt: Date | string;
   term?: number;
@@ -34,14 +55,21 @@ type UnifiedCreditItem = {
   proposalsCount?: number;
   statusSummary?: ReturnType<typeof getSubmissionStatusSummary>;
   isCommissionPaid?: boolean;
+  hasPendingCommission?: boolean;
   broker?: any;
   masterBroker?: any;
+  rawSubmission?: any;
   rawCredit?: any;
 };
 
 // Ahora se usa configuración compartida desde @/lib/statusConfig
 
 export default function CreditList() {
+  const { user } = useAuth();
+  const isAdmin = user?.role === 'admin' || user?.role === 'super_admin';
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+
   const [searchTerm, setSearchTerm] = useState("");
   const [filterStatus, setFilterStatus] = useState<string>("all");
   const [proposalCredit, setProposalCredit] = useState<Credit | null>(null);
@@ -49,6 +77,29 @@ export default function CreditList() {
   const [selectedCreditItem, setSelectedCreditItem] = useState<UnifiedCreditItem | null>(null);
   const [expandedInstitutions, setExpandedInstitutions] = useState<Set<string>>(new Set());
   const [, setLocation] = useLocation();
+
+  const markDispersedMutation = useMutation({
+    mutationFn: async (targetId: string) => {
+      return apiRequest("PATCH", `/api/credit-submission-targets/${targetId}/mark-dispersed`, {});
+    },
+    onSuccess: () => {
+      toast({
+        title: "Crédito dispersado exitosamente",
+        description: "Se ha registrado la dispersión y generado la comisión correspondiente.",
+      });
+      queryClient.invalidateQueries({ queryKey: ["/api/credit-submission-targets"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/credit-submissions"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/credits"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/commissions"] });
+    },
+    onError: (err: any) => {
+      toast({
+        title: "Error al dispersar",
+        description: err.message || "No se pudo marcar como dispersado",
+        variant: "destructive",
+      });
+    }
+  });
 
   const { data: credits, isLoading: creditsLoading } = useQuery<Credit[]>({
     queryKey: ["/api/credits"],
@@ -124,59 +175,95 @@ export default function CreditList() {
     return colors[client.type as keyof typeof colors] || 'bg-gray-100 text-gray-700';
   };
 
-  // Combine submissions and credits into unified list
+  // Combine submissions and standalone credits into unified list (EXACTLY 1 card per submission request)
   const unifiedItems = useMemo(() => {
     const items: UnifiedCreditItem[] = [];
     
-    // Add submissions that haven't been dispersed (exclude submissions whose status is dispersed/disbursed or have targets already dispersed)
+    // Add every submission request as exactly 1 item
     if (submissions) {
-      submissions
-        .filter(sub => {
-          if (sub.status === 'dispersed' || sub.status === 'disbursed') return false;
-          const hasDispersedTarget = sub.targets?.some((t: any) => t.status === 'dispersed');
-          if (hasDispersedTarget) return false;
-          return true;
-        })
-        .forEach(sub => {
-          const targetsCount = sub.targets?.length || 0;
-          const proposalsCount = sub.targets?.filter((t: any) => t.institutionProposal).length || 0;
-          const statusSummary = getSubmissionStatusSummary(sub.targets || []);
-          
-          items.push({
-            id: sub.id,
-            type: 'submission',
-            clientId: sub.clientId,
-            amount: sub.requestedAmount || '0',
-            status: sub.status,
-            createdAt: sub.createdAt,
-            productTemplateName: sub.productTemplate?.name,
-            targetsCount,
-            proposalsCount,
-            statusSummary,
-            broker: (sub as any).broker,
-            masterBroker: (sub as any).masterBroker,
-          });
+      submissions.forEach(sub => {
+        const targets = sub.targets || [];
+        const targetsCount = targets.length;
+        const proposalsCount = targets.filter((t: any) => t.institutionProposal).length;
+        const statusSummary = getSubmissionStatusSummary(targets);
+
+        const winningTargets = targets.filter((t: any) => 
+          t.status === 'selected_winner' || t.status === 'dispersed' || t.isWinner
+        );
+        const dispersedTargets = targets.filter((t: any) => t.status === 'dispersed');
+        
+        const totalApprovedAmount = winningTargets.reduce((sum: number, t: any) => {
+          const val = parseFloat(t.institutionProposal?.approvedAmount || '0');
+          return sum + (isNaN(val) ? 0 : val);
+        }, 0);
+
+        // Check commission status for dispersed targets
+        let isCommissionPaid = false;
+        let hasPendingCommission = false;
+        if (dispersedTargets.length > 0) {
+          const commissionsForSub = dispersedTargets.map((t: any) => 
+            commissions?.find((c: any) => c.creditId === t.creditId || (t.id && c.targetId === t.id))
+          ).filter(Boolean);
+
+          if (commissionsForSub.length > 0) {
+            isCommissionPaid = commissionsForSub.every((c: any) => c.status === 'paid');
+            hasPendingCommission = commissionsForSub.some((c: any) => c.status !== 'paid');
+          }
+        }
+
+        // Determine overall status
+        let effectiveStatus = sub.status;
+        if (dispersedTargets.length > 0 && dispersedTargets.length === winningTargets.length) {
+          effectiveStatus = 'dispersed';
+        } else if (dispersedTargets.length > 0) {
+          effectiveStatus = 'partially_dispersed';
+        } else if (winningTargets.length > 0) {
+          effectiveStatus = 'winner_selected';
+        }
+
+        items.push({
+          id: sub.id,
+          type: 'submission',
+          clientId: sub.clientId,
+          amount: sub.requestedAmount || '0',
+          totalApprovedAmount,
+          winningTargets,
+          dispersedTargets,
+          status: effectiveStatus,
+          createdAt: sub.createdAt,
+          productTemplateName: sub.productTemplate?.name,
+          targetsCount,
+          proposalsCount,
+          statusSummary,
+          isCommissionPaid,
+          hasPendingCommission,
+          broker: sub.broker,
+          masterBroker: sub.masterBroker,
+          rawSubmission: sub,
         });
+      });
     }
     
-    // Add dispersed credits (include both 'dispersed' and 'disbursed' statuses, plus any with linkedSubmissionId)
+    // Add standalone credits that do NOT belong to any submission above
     if (credits) {
+      const knownSubmissionIds = new Set((submissions || []).map(s => String(s.id)));
       credits
-        .filter(credit => credit.status === 'dispersed' || credit.status === 'disbursed' || credit.linkedSubmissionId)
+        .filter(credit => {
+          const linkedId = credit.linkedSubmissionId || (credit as any).submissionId;
+          // Exclude credits that belong to a known submission request to prevent duplicates
+          if (linkedId && knownSubmissionIds.has(String(linkedId))) {
+            return false;
+          }
+          return true;
+        })
         .forEach((credit: any) => {
-          const targets = credit.targets || credit.submission?.targets || [];
-          const statusSummary = targets.length > 0 ? getSubmissionStatusSummary(targets) : undefined;
-          const proposalsCount = targets.filter((t: any) => t.institutionProposal).length;
-
-          // Check if associated commission has been paid
-          const linkedComm = commissions?.find(
-            c => c.creditId === credit.id || (credit.linkedSubmissionId && c.credit?.submissionId === credit.linkedSubmissionId)
-          );
+          const linkedComm = commissions?.find(c => c.creditId === credit.id);
           const isCommissionPaid = linkedComm?.status === 'paid';
+          const hasPendingCommission = linkedComm && linkedComm.status !== 'paid';
 
           items.push({
             id: credit.id,
-            linkedSubmissionId: credit.linkedSubmissionId || credit.submission?.id || (credit.submissionId ? String(credit.submissionId) : undefined),
+            linkedSubmissionId: credit.linkedSubmissionId || (credit.submissionId ? String(credit.submissionId) : undefined),
             type: 'credit',
             clientId: credit.clientId,
             amount: credit.amount,
@@ -187,10 +274,8 @@ export default function CreditList() {
             interestRate: credit.interestRate || undefined,
             financialInstitutionName: credit.financialInstitution?.name,
             productTemplateName: credit.productTemplate?.name,
-            targetsCount: targets.length,
-            proposalsCount,
-            statusSummary,
             isCommissionPaid,
+            hasPendingCommission,
             broker: credit.broker,
             masterBroker: credit.masterBroker,
             rawCredit: credit,
@@ -202,12 +287,14 @@ export default function CreditList() {
     return items.sort((a, b) => 
       new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
     );
-  }, [submissions, credits]);
+  }, [submissions, credits, commissions]);
 
   const filteredItems = unifiedItems.filter(item => {
     const clientName = getClientName(item.clientId);
+    const brokerName = item.broker ? `${item.broker.firstName || ''} ${item.broker.lastName || ''}`.trim() : '';
     const matchesSearch = 
       clientName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      brokerName.toLowerCase().includes(searchTerm.toLowerCase()) ||
       item.id.toLowerCase().includes(searchTerm.toLowerCase()) ||
       item.amount.toString().includes(searchTerm);
     
@@ -215,7 +302,7 @@ export default function CreditList() {
     let matchesStatus = filterStatus === "all";
     if (!matchesStatus && item.type === 'submission' && item.statusSummary) {
       const uniqueStatuses = Object.keys(item.statusSummary.statusCounts);
-      matchesStatus = uniqueStatuses.includes(filterStatus);
+      matchesStatus = uniqueStatuses.includes(filterStatus) || item.status === filterStatus;
     } else if (!matchesStatus) {
       matchesStatus = item.status === filterStatus;
     }
@@ -338,78 +425,90 @@ export default function CreditList() {
                     <h3 className="font-semibold text-gray-900" data-testid={`item-client-${item.id}`}>
                       {getClientName(item.clientId)}
                     </h3>
-                    <p className="text-sm text-neutral">
-                      ${parseFloat(item.amount).toLocaleString('es-MX')} MXN
-                      {item.term && ` • ${item.term} meses`}
-                      {item.productTemplateName && ` • ${item.productTemplateName}`}
-                    </p>
-                    <p className="text-xs text-neutral">
+                    <div className="flex items-center gap-2 flex-wrap text-sm">
+                      <span className="font-semibold text-gray-800">
+                        ${parseFloat(item.amount).toLocaleString('es-MX')} MXN Solicitado
+                      </span>
+                      {item.totalApprovedAmount && item.totalApprovedAmount > 0 ? (
+                        <Badge className="bg-emerald-50 text-emerald-800 border border-emerald-300 text-[11px] font-medium">
+                          ${item.totalApprovedAmount.toLocaleString('es-MX')} MXN Aprobado ({item.winningTargets?.length || 1} oferta{item.winningTargets?.length === 1 ? '' : 's'})
+                        </Badge>
+                      ) : null}
+                      {item.term && <span className="text-xs text-neutral">• {item.term} meses</span>}
+                      {item.productTemplateName && <span className="text-xs text-neutral">• {item.productTemplateName}</span>}
+                    </div>
+                    <p className="text-xs text-neutral mt-0.5">
                       {item.type === 'submission' ? 'Solicitud' : 'Crédito'} • Creado {formatDistanceToNow(new Date(item.createdAt), { 
                         addSuffix: true, 
                         locale: es 
                       })}
                     </p>
-                    {(item.broker || item.masterBroker) && (
-                      <div className="flex items-center gap-1.5 mt-1 flex-wrap">
-                        {item.broker && (
-                          <Badge variant="outline" className="text-[10px] py-0 px-1.5 bg-gray-50 text-gray-700 border-gray-300">
-                            <i className="fas fa-user-tie text-[9px] mr-1 text-primary"></i>
-                            {item.broker.firstName} {item.broker.lastName}
-                          </Badge>
-                        )}
-                        {item.masterBroker && (
-                          <Badge variant="outline" className="text-[10px] py-0 px-1.5 bg-purple-50 text-purple-700 border-purple-200">
-                            <i className="fas fa-network-wired text-[9px] mr-1"></i>
-                            MB: {item.masterBroker.brandName || `${item.masterBroker.firstName} ${item.masterBroker.lastName}`}
-                          </Badge>
-                        )}
-                      </div>
-                    )}
+                    <div className="flex items-center gap-1.5 mt-1.5 flex-wrap">
+                      {item.broker ? (
+                        <Badge variant="outline" className="text-xs py-0.5 px-2 bg-blue-50 text-blue-800 border-blue-200 font-medium">
+                          <User className="w-3 h-3 mr-1 text-blue-600 inline" />
+                          Bróker: {item.broker.firstName} {item.broker.lastName || ''}
+                        </Badge>
+                      ) : (
+                        <Badge variant="outline" className="text-xs py-0.5 px-2 bg-gray-50 text-gray-600 border-gray-200">
+                          <User className="w-3 h-3 mr-1 inline text-gray-400" />
+                          Bróker: No asignado
+                        </Badge>
+                      )}
+                      {item.masterBroker && (
+                        <Badge variant="outline" className="text-xs py-0.5 px-2 bg-purple-50 text-purple-700 border-purple-200">
+                          <Building2 className="w-3 h-3 mr-1 inline text-purple-600" />
+                          MB: {item.masterBroker.brandName || `${item.masterBroker.firstName} ${item.masterBroker.lastName}`}
+                        </Badge>
+                      )}
+                    </div>
                   </div>
                 </div>
                 
                 <div className="flex items-center space-x-3">
                   <div className="text-right">
                     <div className="flex items-center gap-1.5 justify-end flex-wrap">
-                      {(() => {
-                        const isWinnerPending = item.status === 'selected_winner' || item.statusSummary?.statusCounts?.selected_winner;
-                        if (item.type === 'submission' && item.statusSummary) {
-                          const primaryConfig = targetStatusConfig[item.statusSummary.primaryStatus as keyof typeof targetStatusConfig] || submissionStatusConfig[item.status as keyof typeof submissionStatusConfig];
-                          return (
-                            <>
-                              {isWinnerPending && (
-                                <Badge className="bg-amber-500 hover:bg-amber-600 text-white font-bold animate-pulse shadow-sm text-xs">
-                                  🏆 Ganadora (Por Dispersar)
-                                </Badge>
-                              )}
-                              <Badge 
-                                className={primaryConfig?.color || "bg-gray-100 text-gray-800"}
-                                data-testid={`item-status-${item.id}`}
-                              >
-                                {primaryConfig?.label || item.status}
-                              </Badge>
-                            </>
-                          );
-                        }
-                        
-                        // For credits, show normal badge
-                        const config = creditStatusConfig[item.status as keyof typeof creditStatusConfig];
-                        return (
-                          <Badge 
-                            className={config?.color || "bg-gray-100 text-gray-800"}
-                            data-testid={`item-status-${item.id}`}
-                          >
-                            {config?.label || item.status}
+                      {item.dispersedTargets && item.dispersedTargets.length > 0 ? (
+                        item.dispersedTargets.length === item.winningTargets?.length ? (
+                          <Badge className="bg-emerald-600 text-white font-bold text-xs shadow-sm">
+                            ✓ Dispersado ({item.dispersedTargets.length})
                           </Badge>
-                        );
-                      })()}
+                        ) : (
+                          <Badge className="bg-teal-600 text-white font-bold text-xs shadow-sm">
+                            Dispersión Parcial ({item.dispersedTargets.length}/{item.winningTargets?.length})
+                          </Badge>
+                        )
+                      ) : item.winningTargets && item.winningTargets.length > 0 ? (
+                        <Badge className="bg-amber-500 hover:bg-amber-600 text-white font-bold animate-pulse shadow-sm text-xs">
+                          🏆 {item.winningTargets.length} Ganadora{item.winningTargets.length > 1 ? 's' : ''} (Por Dispersar)
+                        </Badge>
+                      ) : item.type === 'submission' && item.statusSummary ? (
+                        <Badge 
+                          className={targetStatusConfig[item.statusSummary.primaryStatus as keyof typeof targetStatusConfig]?.color || submissionStatusConfig[item.status as keyof typeof submissionStatusConfig]?.color || "bg-gray-100 text-gray-800"}
+                          data-testid={`item-status-${item.id}`}
+                        >
+                          {targetStatusConfig[item.statusSummary.primaryStatus as keyof typeof targetStatusConfig]?.label || item.status}
+                        </Badge>
+                      ) : (
+                        <Badge 
+                          className={creditStatusConfig[item.status as keyof typeof creditStatusConfig]?.color || "bg-gray-100 text-gray-800"}
+                          data-testid={`item-status-${item.id}`}
+                        >
+                          {creditStatusConfig[item.status as keyof typeof creditStatusConfig]?.label || item.status}
+                        </Badge>
+                      )}
 
-                      {item.isCommissionPaid && (
+                      {item.isCommissionPaid ? (
                         <Badge className="bg-emerald-700 text-white border-emerald-800 text-xs">
                           <DollarSign className="w-3 h-3 mr-0.5 inline" />
                           Comisión Pagada
                         </Badge>
-                      )}
+                      ) : item.hasPendingCommission ? (
+                        <Badge className="bg-amber-500 text-white border-amber-600 text-xs animate-pulse">
+                          <Clock className="w-3 h-3 mr-0.5 inline" />
+                          Comisión Pendiente
+                        </Badge>
+                      ) : null}
                     </div>
                     {item.targetsCount !== undefined && item.targetsCount > 0 && (
                       <div className="text-[11px] text-gray-500 font-medium mt-1 space-y-0.5">
@@ -565,6 +664,24 @@ export default function CreditList() {
                       </div>
                     </div>
 
+                    <div className="flex items-start space-x-3">
+                      <User className="w-5 h-5 text-gray-400 mt-0.5" />
+                      <div>
+                        <p className="text-xs text-gray-500">Bróker Asignado</p>
+                        <p className="font-medium">
+                          {selectedSubmission.broker 
+                            ? `${selectedSubmission.broker.firstName} ${selectedSubmission.broker.lastName || ''}`.trim()
+                            : 'No asignado'}
+                        </p>
+                        {selectedSubmission.broker?.email && (
+                          <p className="text-xs text-gray-600">{selectedSubmission.broker.email}</p>
+                        )}
+                        {selectedSubmission.broker?.clabe && (
+                          <p className="text-xs text-gray-500 font-mono">CLABE: {selectedSubmission.broker.clabe}</p>
+                        )}
+                      </div>
+                    </div>
+
                     {selectedSubmission.purpose && (
                       <div className="flex items-start space-x-3">
                         <FileText className="w-5 h-5 text-gray-400 mt-0.5" />
@@ -584,6 +701,149 @@ export default function CreditList() {
                   )}
                 </CardContent>
               </Card>
+
+              {/* Winning / Dispersed Offers Breakdown */}
+              {(() => {
+                const currentTargets = submissionTargets || selectedSubmission.targets || [];
+                const winners = currentTargets.filter((t: any) => t.status === 'selected_winner' || t.status === 'dispersed' || t.isWinner);
+                if (winners.length === 0) return null;
+
+                return (
+                  <Card className="border-2 border-amber-300 bg-amber-50/20 shadow-sm">
+                    <CardHeader className="bg-amber-100/60 pb-3">
+                      <CardTitle className="text-base flex items-center justify-between text-amber-950 font-bold">
+                        <span className="flex items-center gap-2">
+                          <span className="text-lg">🏆</span> Ofertas Ganadoras Seleccionadas ({winners.length})
+                        </span>
+                        <span className="text-xs font-normal text-amber-900 bg-amber-200/80 px-2.5 py-1 rounded-full">
+                          Aprobaciones Finales
+                        </span>
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent className="pt-4 space-y-4">
+                      {winners.map((target: any) => {
+                        const institution = institutions?.find((inst: any) => inst.id === target.financialInstitutionId) || target.institution;
+                        const prop = target.institutionProposal || {};
+                        const comm = commissions?.find((c: any) => c.creditId === target.creditId || (target.id && c.targetId === target.id));
+                        const isDispersed = target.status === 'dispersed';
+                        const isCommPaid = comm?.status === 'paid';
+
+                        return (
+                          <div key={target.id} className="bg-white rounded-lg border border-amber-200 p-4 shadow-sm space-y-3">
+                            <div className="flex items-center justify-between flex-wrap gap-2">
+                              <div className="flex items-center space-x-2">
+                                <Building2 className="w-5 h-5 text-amber-700" />
+                                <h4 className="font-bold text-gray-900 text-base">
+                                  {institution?.name || 'Financiera Ganadora'}
+                                </h4>
+                              </div>
+                              <div className="flex items-center gap-2">
+                                {isDispersed ? (
+                                  <Badge className="bg-emerald-600 text-white font-semibold">
+                                    ✓ Dispersado
+                                  </Badge>
+                                ) : (
+                                  <Badge className="bg-amber-500 text-white font-semibold animate-pulse">
+                                    Por Dispersar
+                                  </Badge>
+                                )}
+                              </div>
+                            </div>
+
+                            {/* Metrics grid */}
+                            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 bg-gray-50 p-3 rounded-lg border border-gray-100">
+                              <div>
+                                <span className="text-xs text-gray-500 block">Monto Aprobado</span>
+                                <span className="font-bold text-emerald-700 text-base">
+                                  ${parseFloat(prop.approvedAmount || '0').toLocaleString('es-MX')} MXN
+                                </span>
+                              </div>
+                              <div>
+                                <span className="text-xs text-gray-500 block">Tasa de Interés</span>
+                                <span className="font-bold text-gray-900 text-base">{prop.interestRate || '0'}%</span>
+                              </div>
+                              <div>
+                                <span className="text-xs text-gray-500 block">Plazo</span>
+                                <span className="font-bold text-gray-900 text-base">{prop.term || '12'} meses</span>
+                              </div>
+                              <div>
+                                <span className="text-xs text-gray-500 block">Comisión Apertura</span>
+                                <span className="font-bold text-gray-900 text-base">{prop.openingCommission ? `${prop.openingCommission}%` : '0%'}</span>
+                              </div>
+                            </div>
+
+                            {/* Actions & Commission row */}
+                            <div className="pt-2 flex flex-wrap items-center justify-between gap-3 border-t border-gray-100">
+                              <div className="flex items-center gap-2">
+                                {target.proposalDocument && (
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    className="text-xs h-8 text-blue-700 border-blue-200 hover:bg-blue-50"
+                                    onClick={() => window.open(target.proposalDocument, '_blank')}
+                                  >
+                                    <FileText className="w-3.5 h-3.5 mr-1" />
+                                    Ver Carátula / Documento
+                                  </Button>
+                                )}
+                              </div>
+
+                              <div className="flex items-center gap-2 ml-auto">
+                                {!isDispersed ? (
+                                  isAdmin && (
+                                    <Button
+                                      size="sm"
+                                      className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs h-8 shadow-sm"
+                                      onClick={() => markDispersedMutation.mutate(target.id)}
+                                      disabled={markDispersedMutation.isPending}
+                                      data-testid={`button-disperse-${target.id}`}
+                                    >
+                                      <Package className="w-3.5 h-3.5 mr-1.5" />
+                                      Dispersar Crédito
+                                    </Button>
+                                  )
+                                ) : (
+                                  <div className="flex items-center gap-2">
+                                    {isCommPaid ? (
+                                      <Badge className="bg-emerald-700 text-white font-medium text-xs py-1 px-2.5">
+                                        <CheckCircle className="w-3 h-3 mr-1 inline" />
+                                        Comisión Pagada (${parseFloat(comm.amount).toLocaleString('es-MX')} MXN)
+                                      </Badge>
+                                    ) : comm ? (
+                                      <div className="flex items-center gap-2">
+                                        <Badge className="bg-amber-100 text-amber-800 border-amber-300 text-xs py-1">
+                                          Comisión Pendiente: ${parseFloat(comm.amount).toLocaleString('es-MX')} MXN
+                                        </Badge>
+                                        <Button
+                                          size="sm"
+                                          className="bg-amber-600 hover:bg-amber-700 text-white text-xs font-semibold h-8 shadow-sm"
+                                          onClick={() => {
+                                            setSelectedSubmissionId(null);
+                                            setSelectedCreditItem(null);
+                                            setLocation(`/comisiones?creditId=${target.creditId || ''}`);
+                                          }}
+                                          data-testid={`button-pay-comm-${target.id}`}
+                                        >
+                                          <DollarSign className="w-3.5 h-3.5 mr-1" />
+                                          Pagar Comisión
+                                        </Button>
+                                      </div>
+                                    ) : (
+                                      <Badge variant="outline" className="text-emerald-700 border-emerald-300 text-xs">
+                                        Dispersado
+                                      </Badge>
+                                    )}
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </CardContent>
+                  </Card>
+                );
+              })()}
 
               <Card>
                 <CardHeader>
