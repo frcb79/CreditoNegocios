@@ -25,7 +25,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 import { Building2, User, DollarSign, Send, AlertCircle, CheckCircle, AlertTriangle, Info, HelpCircle } from "lucide-react";
-import { evaluateBuroScore, evaluateGovSales } from "@/components/MatchingAnalysis/matchingRules";
+import { evaluateAllFieldsForClient } from "@/components/MatchingAnalysis/matchingRules";
 
 interface Client {
   id: string;
@@ -354,255 +354,23 @@ export default function CreditRequestModal({ isOpen, onClose, preselectedClientI
     if (!requirements) {
       return { 
         score: 50, 
-        category: 'compatible', 
+        category: 'other', 
         reasons: ['No hay requisitos específicos configurados'], 
         warnings: [] 
       };
     }
 
-    let totalChecks = 0;
-    let passedChecks = 0;
-    const reasons: string[] = [];
-    const warnings: string[] = [];
-    const ranges = requirements.ranges || {};
-
-    // Check monto range
-    if (ranges.monto) {
-      totalChecks++;
-      const min = parseFloat(ranges.monto.min || 0);
-      const max = parseFloat(ranges.monto.max || Infinity);
-      
-      if (requestedAmount >= min && (!max || requestedAmount <= max)) {
-        passedChecks++;
-        reasons.push(`Monto en rango: $${min.toLocaleString('es-MX')} - $${max.toLocaleString('es-MX')}`);
-      } else {
-        warnings.push(`Monto fuera de rango: $${min.toLocaleString('es-MX')} - $${max.toLocaleString('es-MX')}`);
-      }
-    }
-
-    // Buró evaluations
-    const buroFields = [
-      { key: 'buroPersonaFisica', label: 'Buró Persona Física' },
-      { key: 'buroAccionistaPrincipal', label: 'Buró Accionista Principal' },
-      { key: 'buroEmpresa', label: 'Buró Empresa' }
-    ];
-
-    buroFields.forEach(({ key, label }) => {
-      if (ranges[key]?.min !== undefined) {
-        totalChecks++;
-        const minReq = Number(ranges[key].min);
-        const clientVal = selectedClient[key];
-        const res = evaluateBuroScore(key, clientVal, minReq);
-        if (res.status === 'pass') {
-          passedChecks++;
-          reasons.push(`${label}: ${res.clientDisplay} (mínimo: ${minReq} pts)`);
-        } else if (res.status === 'warning') {
-          warnings.push(`${label}: no proporcionado (mínimo: ${minReq} pts)`);
-        } else {
-          warnings.push(`${label}: ${res.clientDisplay} no alcanza el mínimo de ${minReq} pts`);
-        }
-      }
-    });
-
-    // Buró Sin SAT
-    if (ranges.buroPersonaFisicaSinSat !== undefined) {
-      totalChecks++;
-      const reqVal = ranges.buroPersonaFisicaSinSat;
-      const reqStr = typeof reqVal === 'object' ? reqVal.required : reqVal;
-      const clientVal = selectedClient.buroPersonaFisicaSinSat;
-      if (!clientVal || clientVal === '' || clientVal === 'N/A') {
-        warnings.push('Buró Sin SAT: dato no proporcionado');
-      } else if (clientVal === reqStr) {
-        passedChecks++;
-        reasons.push('Buró Sin SAT: cumple con el requisito');
-      } else {
-        warnings.push('Buró Sin SAT: no cumple con el requisito');
-      }
-    }
-
-    // Antigüedad Laboral
-    if (ranges.antiguedadLaboral?.min || ranges.antiguedadLaboral?.max) {
-      totalChecks++;
-      const min = ranges.antiguedadLaboral.min !== undefined ? parseFloat(ranges.antiguedadLaboral.min) : undefined;
-      const max = ranges.antiguedadLaboral.max !== undefined ? parseFloat(ranges.antiguedadLaboral.max) : undefined;
-      const clientVal = selectedClient.antiguedadLaboral;
-      if (!clientVal || clientVal === '' || clientVal === 'N/A') {
-        warnings.push('Antigüedad Laboral: dato no proporcionado');
-      } else {
-        const tenureMap: Record<string, number> = {
-          'menos-1': 6, '1-2': 18, '2-5': 36, '5-10': 72, 'mas-10': 120
-        };
-        const months = tenureMap[clientVal] ?? parseFloat(clientVal) ?? 0;
-        const meetsMin = min === undefined || months >= min;
-        const meetsMax = max === undefined || months <= max;
-        if (meetsMin && meetsMax) {
-          passedChecks++;
-          reasons.push(`Antigüedad Laboral: ${clientVal} cumple requisito`);
-        } else {
-          warnings.push(`Antigüedad Laboral: ${clientVal} fuera del rango`);
-        }
-      }
-    }
-
-    // Edad del Cliente
-    if (ranges.edadCliente?.min || ranges.edadCliente?.max) {
-      totalChecks++;
-      const min = ranges.edadCliente.min ? parseFloat(ranges.edadCliente.min) : 0;
-      const max = ranges.edadCliente.max ? parseFloat(ranges.edadCliente.max) : Infinity;
-      const clientVal = parseFloat(selectedClient.edadCliente || '0');
-      if (clientVal >= min && (!max || clientVal <= max)) {
-        passedChecks++;
-        reasons.push(`Edad del Cliente: ${clientVal} años (rango: ${min}-${max})`);
-      } else if (clientVal > 0) {
-        warnings.push(`Edad del Cliente: ${clientVal} años fuera del rango ${min}-${max}`);
-      }
-    }
-
-    // Check required profiling fields
-    const selectedFields = requirements.selected || [];
-    if (selectedFields.length > 0) {
-      selectedFields.forEach((fieldId: string) => {
-        totalChecks++;
-        const clientValue = selectedClient[fieldId];
-        if (clientValue && clientValue !== '' && clientValue !== 'N/A') {
-          passedChecks++;
-        } else {
-          warnings.push(`Campo requerido sin llenar: ${fieldId}`);
-        }
-      });
-    }
-
-    // Check maxThreshold for participacionVentasGobierno
-    if (ranges.participacionVentasGobierno?.maxThreshold) {
-      totalChecks++;
-      const maxThreshold = ranges.participacionVentasGobierno.maxThreshold;
-      const clientValue = selectedClient.participacionVentasGobierno;
-      const res = evaluateGovSales(clientValue, maxThreshold);
-      if (res.status === 'pass') {
-        passedChecks++;
-        reasons.push(`Participación ventas gobierno: ${res.clientDisplay} cumple (${res.requirementDisplay})`);
-      } else if (res.status === 'warning') {
-        warnings.push(`Participación ventas gobierno: no proporcionada`);
-      } else {
-        warnings.push(`Participación ventas gobierno: ${res.clientDisplay} excede ${res.requirementDisplay}`);
-      }
-    }
-
-    // Check acceptanceMode for opinionCumplimiento
-    if (ranges.opinionCumplimiento?.acceptanceMode) {
-      totalChecks++;
-      const acceptanceMode = ranges.opinionCumplimiento.acceptanceMode;
-      const clientValue = selectedClient.opinionCumplimiento;
-      
-      if (!clientValue || clientValue === '' || clientValue === 'N/A') {
-        warnings.push('Opinión de cumplimiento: dato requerido no proporcionado');
-      } else {
-        if (acceptanceMode === 'solo-positiva') {
-          if (clientValue === 'positiva') {
-            passedChecks++;
-            reasons.push('Opinión de cumplimiento: positiva (requerida)');
-          } else {
-            warnings.push('Opinión de cumplimiento: solo se acepta positiva');
-          }
-        } else if (acceptanceMode === 'positiva-y-negativa') {
-          passedChecks++;
-          reasons.push('Opinión de cumplimiento: aceptable (ambas se aceptan)');
-        }
-      }
-    }
-
-    // Check guarantee multipliers
-    const guaranteeFields = ['garantia', 'cuentaConGarantiaFisica', 'cuentaConGarantiaSinSat'];
-    guaranteeFields.forEach(fieldKey => {
-      if (ranges[fieldKey]?.guaranteeMultipliers) {
-        totalChecks++;
-        const guaranteeMultipliers = ranges[fieldKey].guaranteeMultipliers;
-        const clientGuaranteeType = selectedClient[fieldKey];
-        
-        if (!clientGuaranteeType || clientGuaranteeType === '' || clientGuaranteeType === 'N/A') {
-          warnings.push('Tipo de garantía: dato requerido no proporcionado');
-        } else {
-          const multiplier = guaranteeMultipliers[clientGuaranteeType];
-          if (multiplier) {
-            passedChecks++;
-            reasons.push(`Garantía ${clientGuaranteeType.replace(/-/g, ' ')}: aceptada (${multiplier})`);
-          } else {
-            warnings.push(`Tipo de garantía ${clientGuaranteeType.replace(/-/g, ' ')}: no configurado para esta institución`);
-          }
-        }
-      }
-    });
-
-    // Check select field ranges (e.g., ingresoAnual)
-    const selectRangeFields = ['ingresoAnual'];
-    selectRangeFields.forEach(fieldKey => {
-      if (ranges[fieldKey]?.min || ranges[fieldKey]?.max) {
-        totalChecks++;
-        const minOption = ranges[fieldKey].min;
-        const maxOption = ranges[fieldKey].max;
-        const clientValue = selectedClient[fieldKey];
-        
-        if (!clientValue || clientValue === '' || clientValue === 'N/A') {
-          warnings.push(`${fieldKey}: dato requerido no proporcionado`);
-        } else {
-          // Hierarchy for ingresoAnual options
-          const ingresoHierarchy: Record<string, number> = {
-            'menor-100000': 0,
-            '100000-250000': 1,
-            '250000-500000': 2,
-            '500000-1000000': 3,
-            '1000000-2500000': 4,
-            '2500000-5000000': 5,
-            'arriba-5000000': 6
-          };
-          
-          const clientLevel = ingresoHierarchy[clientValue] ?? -1;
-          const minLevel = minOption ? (ingresoHierarchy[minOption] ?? -1) : -1;
-          const maxLevel = maxOption ? (ingresoHierarchy[maxOption] ?? 999) : 999;
-          
-          if (clientLevel >= minLevel && clientLevel <= maxLevel) {
-            passedChecks++;
-            reasons.push(`Ingreso anual dentro del rango aceptable`);
-          } else {
-            warnings.push(`Ingreso anual fuera del rango aceptable`);
-          }
-        }
-      }
-    });
-
-    // Add additional notes if present
-    const additionalNotes = requirements.additionalNotes;
-    if (additionalNotes && additionalNotes.trim()) {
-      warnings.push(`📋 Nota: ${additionalNotes.trim()}`);
-    }
-
-    // Calculate score
-    const score = totalChecks > 0 ? Math.round((passedChecks / totalChecks) * 100) : 50;
-    
-    // Categorize
-    let category: 'recommended' | 'compatible' | 'other';
-    if (score >= 80) {
-      category = 'recommended';
-    } else if (score >= 50) {
-      category = 'compatible';
-    } else {
-      category = 'other';
-    }
-
-    // Add summary reason
-    if (reasons.length === 0 && warnings.length === 0) {
-      reasons.push('Disponible para solicitud');
-    }
+    // Comprehensive evaluation of ALL 18 fields using the unified matching rules engine
+    const fullEval = evaluateAllFieldsForClient(selectedClient, institution, requestedAmount);
 
     // ── AI Shadow Mode ──────────────────────────────────────────────
     // Heuristic signals not captured by the rule engine.
     // These map qualitative client fields to a 0-100 signal.
-    // When real ML is available, this function will be replaced by an API call.
     const computeAiScore = (): number => {
       let aiPoints = 0;
       let aiChecks = 0;
 
-      // Payment history: positive track record
+      // Payment history
       const historialMap: Record<string, number> = {
         'excelente': 100, 'bueno': 75, 'regular': 40, 'malo': 10, 'sin-historial': 50
       };
@@ -612,7 +380,7 @@ export default function CreditRequestModal({ isOpen, onClose, preselectedClientI
         aiChecks++;
       }
 
-      // Credit experience: experienced borrowers are lower risk
+      // Credit experience
       const expMap: Record<string, number> = {
         'sin-experiencia': 30, 'menos-1-anio': 45, '1-3-anios': 65,
         '3-5-anios': 80, 'mas-5-anios': 95
@@ -623,7 +391,7 @@ export default function CreditRequestModal({ isOpen, onClose, preselectedClientI
         aiChecks++;
       }
 
-      // Repayment capacity: higher capacity = better fit
+      // Repayment capacity
       const capMap: Record<string, number> = {
         'baja': 25, 'media': 55, 'alta': 80, 'muy-alta': 100
       };
@@ -633,7 +401,7 @@ export default function CreditRequestModal({ isOpen, onClose, preselectedClientI
         aiChecks++;
       }
 
-      // Civil status: minor signal
+      // Civil status
       const estadoMap: Record<string, number> = {
         'casado': 60, 'soltero': 50, 'union-libre': 55, 'divorciado': 45, 'viudo': 45
       };
@@ -643,7 +411,7 @@ export default function CreditRequestModal({ isOpen, onClose, preselectedClientI
         aiChecks++;
       }
 
-      // Education level: minor signal for unsecured credit
+      // Education level
       const eduMap: Record<string, number> = {
         'sin-estudios': 40, 'primaria': 45, 'secundaria': 50, 'preparatoria': 58,
         'licenciatura': 68, 'posgrado': 75
@@ -654,19 +422,26 @@ export default function CreditRequestModal({ isOpen, onClose, preselectedClientI
         aiChecks++;
       }
 
-      return aiChecks > 0 ? Math.round(aiPoints / aiChecks) : score; // fallback to rule score
+      return aiChecks > 0 ? Math.round(aiPoints / aiChecks) : fullEval.score;
     };
 
-    const ruleScore = score;
+    const ruleScore = fullEval.score;
     const aiScore = computeAiScore();
     // Weighted blend: rule engine is authoritative (70%), AI heuristic adds signal (30%)
     const finalScore = Math.round(0.7 * ruleScore + 0.3 * aiScore);
 
-    // Re-categorize using finalScore
+    // Re-categorize:
+    // If the institution has hard failures (failedChecks > 0), it goes to other/advertencia
     let finalCategory: 'recommended' | 'compatible' | 'other';
-    if (finalScore >= 80) finalCategory = 'recommended';
-    else if (finalScore >= 50) finalCategory = 'compatible';
-    else finalCategory = 'other';
+    if (fullEval.failedChecks > 0) {
+      finalCategory = 'other';
+    } else if (finalScore >= 80 && fullEval.warningChecks === 0) {
+      finalCategory = 'recommended';
+    } else if (finalScore >= 50) {
+      finalCategory = 'compatible';
+    } else {
+      finalCategory = 'other';
+    }
 
     // Ground truth logging (shadow mode — no UI impact)
     if (process.env.NODE_ENV !== 'production') {
@@ -681,8 +456,17 @@ export default function CreditRequestModal({ isOpen, onClose, preselectedClientI
       });
     }
 
-    return { score: finalScore, category: finalCategory, reasons, warnings, ruleScore, aiScore, finalScore };
+    return {
+      score: finalScore,
+      category: finalCategory,
+      reasons: fullEval.reasons,
+      warnings: fullEval.warnings,
+      ruleScore,
+      aiScore,
+      finalScore
+    };
   };
+
 
   // Sort institutions by match score
   const institutionsWithMatch = activeInstitutions.map(inst => ({
