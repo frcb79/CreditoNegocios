@@ -14,7 +14,7 @@ import { es } from "date-fns/locale";
 import InviteBrokerModal from "@/components/Modals/InviteBrokerModal";
 
 export default function BrokerNetworkComponent() {
-  const { user } = useAuth();
+  const { user, isLoading: isAuthLoading } = useAuth();
   const isAdmin = user?.role === 'admin' || user?.role === 'super_admin';
   const [showInviteModal, setShowInviteModal] = useState(false);
   const [inviteMasterBrokerId, setInviteMasterBrokerId] = useState<string | null>(null);
@@ -25,7 +25,7 @@ export default function BrokerNetworkComponent() {
     queryKey: ["/api/broker-network"],
   });
 
-  if (isLoading) {
+  if (isLoading || isAuthLoading) {
     return (
       <Card>
         <CardHeader>
@@ -184,23 +184,26 @@ export default function BrokerNetworkComponent() {
   }
 
   // Vista exclusiva para SUPER ADMIN / ADMIN
-  const masterBrokers = networkData?.masterBrokers || [];
-  const independentBrokers = networkData?.independentBrokers || [];
-  const adminBrokers = networkData?.adminBrokers || [];
-  const allBrokers = networkData?.allBrokers || [];
+  const masterBrokers = Array.isArray(networkData?.masterBrokers) ? networkData.masterBrokers : [];
+  const independentBrokers = Array.isArray(networkData?.independentBrokers) ? networkData.independentBrokers : [];
+  const adminBrokers = Array.isArray(networkData?.adminBrokers) ? networkData.adminBrokers : [];
+  const allBrokers = Array.isArray(networkData?.allBrokers) ? networkData.allBrokers : [];
 
   const filteredMasterBrokers = masterBrokers.filter((mb: any) => {
-    const text = `${mb.firstName} ${mb.lastName} ${mb.email} ${mb.brandName || ''}`.toLowerCase();
+    if (!mb) return false;
+    const text = `${mb.firstName || ''} ${mb.lastName || ''} ${mb.email || ''} ${mb.brandName || ''}`.toLowerCase();
     return text.includes(searchTerm.toLowerCase());
   });
 
   const filteredIndependentBrokers = independentBrokers.filter((b: any) => {
-    const text = `${b.firstName} ${b.lastName} ${b.email}`.toLowerCase();
+    if (!b) return false;
+    const text = `${b.firstName || ''} ${b.lastName || ''} ${b.email || ''}`.toLowerCase();
     return text.includes(searchTerm.toLowerCase());
   });
 
   const filteredAdminBrokers = adminBrokers.filter((b: any) => {
-    const text = `${b.firstName} ${b.lastName} ${b.email}`.toLowerCase();
+    if (!b) return false;
+    const text = `${b.firstName || ''} ${b.lastName || ''} ${b.email || ''}`.toLowerCase();
     return text.includes(searchTerm.toLowerCase());
   });
 
@@ -368,7 +371,7 @@ export default function BrokerNetworkComponent() {
                         </div>
                       ) : (
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                          {mb.networkBrokers.map((broker: any) => (
+                          {(mb.networkBrokers || []).map((broker: any) => (
                             <div 
                               key={broker.id}
                               className="p-3 bg-gray-50/70 border border-gray-200 rounded-lg flex items-center justify-between"

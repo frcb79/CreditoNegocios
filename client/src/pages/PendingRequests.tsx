@@ -251,19 +251,32 @@ export default function PendingRequests() {
     mutationFn: async (data: { targetId: string; file: File }) => {
       const formData = new FormData();
       formData.append('proposalDocument', data.file);
-      const response = await fetch(`/api/credit-submission-targets/${data.targetId}/upload-proposal`, {
+      const response = await fetch(buildApiUrl(`/api/credit-submission-targets/${data.targetId}/upload-proposal`), {
         method: 'POST',
         body: formData,
+        credentials: 'include',
       });
-      if (!response.ok) throw new Error('Failed to upload document');
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.message || 'Error al subir el documento de propuesta');
+      }
       return response.json();
     },
     onSuccess: () => {
       toast({
-        title: "Documento subido",
-        description: "El documento de propuesta ha sido subido exitosamente",
+        title: "Documento subido exitosamente",
+        description: "El documento de propuesta ha sido cargado y asociado a la financiera.",
       });
       queryClient.invalidateQueries({ queryKey: ['/api/credit-submission-targets'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/credit-submissions'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/credits'] });
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Error al subir documento",
+        description: error.message || "No se pudo cargar el archivo seleccionado",
+        variant: "destructive",
+      });
     },
   });
 
@@ -322,6 +335,8 @@ export default function PendingRequests() {
     if (file) {
       uploadDocumentMutation.mutate({ targetId: target.id, file });
     }
+    // Reset value to allow selecting the same file again if needed
+    event.target.value = '';
   };
 
   const handleProposalSubmit = (data: ProposalForm) => {
@@ -719,8 +734,8 @@ export default function PendingRequests() {
                               <div className="flex items-center space-x-2">
                                 <Package className="w-4 h-4 text-gray-500" />
                                 <span className="font-medium text-gray-700">Producto:</span>
-                                <span className="text-gray-900" data-testid={`text-product-${requestId}`}>
-                                  {targets[0]?.productTemplate?.name || 'No especificado'}
+                                <span className="text-gray-900 font-medium" data-testid={`text-product-${requestId}`}>
+                                  {targets[0]?.productTemplate?.name || submission.productTemplate?.name || submission.purpose || 'Crédito Empresarial'}
                                 </span>
                               </div>
 
@@ -792,6 +807,14 @@ export default function PendingRequests() {
                               
                               return (
                                 <div key={target.id} className="border rounded-lg bg-white">
+                                  {/* Persistent hidden file input for proposals (#15) */}
+                                  <input
+                                    type="file"
+                                    onChange={(e) => handleFileUpload(target, e)}
+                                    accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
+                                    className="hidden"
+                                    id={`file-upload-${target.id}`}
+                                  />
                                   <div className="p-4 space-y-3">
                                     {/* Institution Header */}
                                     <div className="flex items-center justify-between">
@@ -801,8 +824,8 @@ export default function PendingRequests() {
                                           <h4 className="font-semibold text-gray-900" data-testid={`text-institution-${target.id}`}>
                                             {target.institution?.name || 'Financiera no especificada'}
                                           </h4>
-                                          <p className="text-sm text-gray-500">
-                                            {target.productTemplate?.name || 'Producto no especificado'}
+                                          <p className="text-sm text-gray-500 font-medium">
+                                            {target.productTemplate?.name || submission.productTemplate?.name || target.request?.productTemplate?.name || 'Crédito Empresarial'}
                                           </p>
                                         </div>
                                       </div>
@@ -867,13 +890,6 @@ export default function PendingRequests() {
 
                                     {target.status === 'sent' && (
                                       <div className="flex space-x-2">
-                                        <Input
-                                          type="file"
-                                          onChange={(e) => handleFileUpload(target, e)}
-                                          accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
-                                          className="hidden"
-                                          id={`file-upload-${target.id}`}
-                                        />
                                         <Button
                                           size="sm"
                                           variant="outline"

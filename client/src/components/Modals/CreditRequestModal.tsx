@@ -61,9 +61,10 @@ interface CreditRequestModalProps {
 
 interface MatchResult {
   score: number;
-  category: 'recommended' | 'compatible' | 'other';
+  category: 'recommended' | 'compatible' | 'other' | 'unconfigured';
   reasons: string[];
   warnings: string[];
+  isConfigured?: boolean;
   // Shadow mode AI fields (not displayed, used for ground truth collection)
   ruleScore?: number;
   aiScore?: number;
@@ -255,7 +256,13 @@ export default function CreditRequestModal({ isOpen, onClose, preselectedClientI
   // Advanced matching algorithm
   const evaluateMatch = (institution: FinancialInstitution): MatchResult => {
     if (!selectedClient || !requestedAmount || requestedAmount <= 0) {
-      return { score: 0, category: 'other', reasons: [], warnings: ['Completa los datos del cliente y monto'] };
+      return { 
+        score: 0, 
+        category: 'unconfigured', 
+        reasons: [], 
+        warnings: ['Ingresa el cliente y monto para calcular compatibilidad'],
+        isConfigured: false
+      };
     }
     
     const clientType = normalizeProfileType(selectedClient.type);
@@ -277,7 +284,8 @@ export default function CreditRequestModal({ isOpen, onClose, preselectedClientI
         score: 0,
         category: 'other',
         reasons: [],
-        warnings: [`Esta financiera solo acepta: ${acceptedProfilesList}`]
+        warnings: [`Esta financiera no acepta este tipo de perfil (solo: ${acceptedProfilesList})`],
+        isConfigured: true
       };
     }
     
@@ -291,7 +299,8 @@ export default function CreditRequestModal({ isOpen, onClose, preselectedClientI
         score: 0,
         category: 'other',
         reasons: [],
-        warnings: ['No ofrece este tipo de producto']
+        warnings: ['No ofrece este tipo de producto'],
+        isConfigured: true
       };
     }
     
@@ -301,7 +310,8 @@ export default function CreditRequestModal({ isOpen, onClose, preselectedClientI
         score: 0,
         category: 'other',
         reasons: [],
-        warnings: ['Este producto está inactivo temporalmente']
+        warnings: ['Este producto está inactivo temporalmente'],
+        isConfigured: true
       };
     }
     
@@ -322,7 +332,8 @@ export default function CreditRequestModal({ isOpen, onClose, preselectedClientI
           score: 0,
           category: 'other',
           reasons: [],
-          warnings: [`Este producto solo acepta: ${requiredProfiles}`]
+          warnings: [`Este producto solo acepta: ${requiredProfiles}`],
+          isConfigured: true
         };
       }
     }
@@ -344,7 +355,8 @@ export default function CreditRequestModal({ isOpen, onClose, preselectedClientI
           score: 0,
           category: 'other',
           reasons: [],
-          warnings: [`Esta financiera solo acepta para este producto: ${requiredProfiles}`]
+          warnings: [`Esta financiera no acepta este perfil para este producto (solo: ${requiredProfiles})`],
+          isConfigured: true
         };
       }
     }
@@ -353,10 +365,11 @@ export default function CreditRequestModal({ isOpen, onClose, preselectedClientI
     
     if (!requirements) {
       return { 
-        score: 50, 
-        category: 'other', 
-        reasons: ['No hay requisitos específicos configurados'], 
-        warnings: [] 
+        score: 0, 
+        category: 'unconfigured', 
+        reasons: [], 
+        warnings: ['Sin requisitos específicos configurados para este tipo de cliente'],
+        isConfigured: false
       };
     }
 
@@ -461,6 +474,7 @@ export default function CreditRequestModal({ isOpen, onClose, preselectedClientI
       category: finalCategory,
       reasons: fullEval.reasons,
       warnings: fullEval.warnings,
+      isConfigured: true,
       ruleScore,
       aiScore,
       finalScore
@@ -475,13 +489,13 @@ export default function CreditRequestModal({ isOpen, onClose, preselectedClientI
   })).sort((a, b) => b.match.score - a.match.score);
 
   const compatibleInstitutions = institutionsWithMatch.filter(
-    i => (i.match.category === 'recommended' || i.match.category === 'compatible') && i.match.warnings.length === 0
+    i => i.match.isConfigured !== false && i.match.warnings.length === 0 && (i.match.category === 'recommended' || i.match.category === 'compatible' || i.match.score >= 70)
   );
   const warningInstitutions = institutionsWithMatch.filter(
-    i => i.match.warnings.length > 0 && i.match.score > 0
+    i => i.match.isConfigured !== false && !compatibleInstitutions.includes(i)
   );
-  const otherInstitutions = institutionsWithMatch.filter(
-    i => !compatibleInstitutions.includes(i) && !warningInstitutions.includes(i)
+  const unconfiguredInstitutions = institutionsWithMatch.filter(
+    i => i.match.isConfigured === false
   );
 
   const renderInstitutionCard = (institution: FinancialInstitution, match: MatchResult) => {
@@ -496,34 +510,34 @@ export default function CreditRequestModal({ isOpen, onClose, preselectedClientI
     let categoryBadge = null;
     let categoryIcon = null;
     
-    if (match.category === 'recommended' || (match.warnings.length === 0 && match.score >= 70)) {
+    if (match.isConfigured === false) {
+      categoryBadge = (
+        <Badge variant="outline" className="bg-gray-100 text-gray-700 border-gray-300 text-xs">
+          Sin Configuración
+        </Badge>
+      );
+      categoryIcon = <HelpCircle className="w-4 h-4 text-gray-500" />;
+    } else if (match.warnings.length === 0 && (match.category === 'recommended' || match.score >= 80)) {
       categoryBadge = (
         <Badge variant="outline" className="bg-emerald-50 text-emerald-700 border-emerald-300 text-xs">
           ⭐ Recomendada
         </Badge>
       );
       categoryIcon = <CheckCircle className="w-4 h-4 text-emerald-600" />;
-    } else if (match.warnings.length === 0 && match.score >= 50) {
+    } else if (match.warnings.length === 0 && match.score >= 70) {
       categoryBadge = (
         <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-300 text-xs">
           ✓ Compatible
         </Badge>
       );
       categoryIcon = <CheckCircle className="w-4 h-4 text-blue-600" />;
-    } else if (match.warnings.length > 0 && match.score > 0) {
+    } else {
       categoryBadge = (
         <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-300 text-xs">
-          ⚠ Advertencia
+          {match.score === 0 ? '✕ No Compatible' : '⚠ Advertencia'}
         </Badge>
       );
       categoryIcon = <AlertTriangle className="w-4 h-4 text-amber-600" />;
-    } else {
-      categoryBadge = (
-        <Badge variant="outline" className="bg-gray-100 text-gray-700 border-gray-300 text-xs">
-          Sin datos / No aplica
-        </Badge>
-      );
-      categoryIcon = <HelpCircle className="w-4 h-4 text-gray-500" />;
     }
 
     return (
@@ -776,7 +790,7 @@ export default function CreditRequestModal({ isOpen, onClose, preselectedClientI
                       El sistema las ordena según su compatibilidad con el perfil del cliente.
                     </p>
 
-                    {/* Compatible Institutions (Recomendadas y Compatibles) */}
+                    {/* 1. Financieras Compatibles (Recomendadas y Compatibles) */}
                     {compatibleInstitutions.length > 0 && (
                       <div className="space-y-2">
                         <div className="flex items-center space-x-2">
@@ -784,7 +798,7 @@ export default function CreditRequestModal({ isOpen, onClose, preselectedClientI
                           <h4 className="font-semibold text-sm text-emerald-900">
                             Financieras Compatibles ({compatibleInstitutions.length})
                           </h4>
-                          <span className="text-xs text-muted-foreground">Cumplen con los requisitos</span>
+                          <span className="text-xs text-muted-foreground">Cumplen con los requisitos y perfil del cliente</span>
                         </div>
                         <div className="grid grid-cols-1 gap-2 max-h-56 overflow-y-auto">
                           {compatibleInstitutions.map(({ institution, match }) => 
@@ -794,15 +808,15 @@ export default function CreditRequestModal({ isOpen, onClose, preselectedClientI
                       </div>
                     )}
 
-                    {/* Warning Institutions */}
+                    {/* 2. Con Advertencias / No Compatibles */}
                     {warningInstitutions.length > 0 && (
                       <div className="space-y-2">
                         <div className="flex items-center space-x-2">
                           <AlertTriangle className="w-4 h-4 text-amber-600" />
                           <h4 className="font-semibold text-sm text-amber-900">
-                            Financieras con Advertencias ({warningInstitutions.length})
+                            Con Advertencias / No Compatibles ({warningInstitutions.length})
                           </h4>
-                          <span className="text-xs text-muted-foreground">Presentan requisitos no cumplidos o incompletos</span>
+                          <span className="text-xs text-muted-foreground">Presentan requisitos no cumplidos, perfil no admitido o advertencias</span>
                         </div>
                         <div className="grid grid-cols-1 gap-2 max-h-48 overflow-y-auto">
                           {warningInstitutions.map(({ institution, match }) => 
@@ -812,18 +826,18 @@ export default function CreditRequestModal({ isOpen, onClose, preselectedClientI
                       </div>
                     )}
 
-                    {/* Other / No Data Institutions */}
-                    {otherInstitutions.length > 0 && (
+                    {/* 3. Sin Configuración / Requieren Información Adicional */}
+                    {unconfiguredInstitutions.length > 0 && (
                       <div className="space-y-2">
                         <div className="flex items-center space-x-2">
                           <HelpCircle className="w-4 h-4 text-gray-500" />
                           <h4 className="font-semibold text-sm text-gray-700">
-                            Sin Datos Suficientes / No Aplica ({otherInstitutions.length})
+                            Sin Configuración / Requieren Información Adicional ({unconfiguredInstitutions.length})
                           </h4>
-                          <span className="text-xs text-muted-foreground">Sin requisitos configurados o perfil no admitido</span>
+                          <span className="text-xs text-muted-foreground">Financieras sin requisitos parametrizados para este tipo de cliente</span>
                         </div>
                         <div className="grid grid-cols-1 gap-2 max-h-40 overflow-y-auto">
-                          {otherInstitutions.map(({ institution, match }) => 
+                          {unconfiguredInstitutions.map(({ institution, match }) => 
                             renderInstitutionCard(institution, match)
                           )}
                         </div>

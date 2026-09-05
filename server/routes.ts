@@ -231,6 +231,32 @@ async function authorizeDocumentAccess(userId: string, userRole: string, documen
   return { authorized: false, document, reason: 'Access denied' };
 }
 
+// Helper function to resolve product template with cascading fallbacks (#6)
+async function resolveProductTemplate(productTemplateId?: string | null, fallbackPurpose?: string | null) {
+  let productTemplate = null;
+  if (productTemplateId) {
+    productTemplate = await storage.getProductTemplate(productTemplateId);
+    if (!productTemplate) {
+      const instProd = await storage.getInstitutionProduct(productTemplateId);
+      if (instProd) {
+        if (instProd.templateId) {
+          productTemplate = await storage.getProductTemplate(instProd.templateId);
+        }
+        if (!productTemplate && instProd.customName) {
+          productTemplate = { id: instProd.id, name: instProd.customName } as any;
+        }
+      }
+    }
+  }
+  if (!productTemplate && fallbackPurpose) {
+    productTemplate = { id: 'default', name: fallbackPurpose } as any;
+  }
+  if (!productTemplate) {
+    productTemplate = { id: 'default', name: 'Crédito Empresarial' } as any;
+  }
+  return productTemplate;
+}
+
 // Helper function to enrich credit submission target with related data
 async function enrichCreditSubmissionTarget(target: any) {
   const request = await storage.getCreditSubmissionRequest(target.requestId);
@@ -247,17 +273,15 @@ async function enrichCreditSubmissionTarget(target: any) {
     masterBroker = await storage.getUser(broker.masterBrokerId);
   }
   
-  let productTemplate = null;
-  if (request.productTemplateId) {
-    productTemplate = await storage.getProductTemplate(request.productTemplateId);
-  }
+  const productTemplate = await resolveProductTemplate(request.productTemplateId, request.purpose);
   
   return {
     ...target,
     request: {
       ...request,
       broker,
-      client
+      client,
+      productTemplate
     },
     broker,
     masterBroker,
@@ -3662,7 +3686,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const enrichedSubmissions = await Promise.all(
         submissions.map(async (submission) => {
           const client = submission.clientId ? await storage.getClient(submission.clientId) : null;
-          const productTemplate = submission.productTemplateId ? await storage.getProductTemplate(submission.productTemplateId) : null;
+          const productTemplate = await resolveProductTemplate(submission.productTemplateId, submission.purpose);
           const broker = submission.brokerId ? await storage.getUser(submission.brokerId) : null;
           const masterBroker = broker?.masterBrokerId ? await storage.getUser(broker.masterBrokerId) : null;
           
@@ -3729,7 +3753,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // Enrich single submission
       const client = submission.clientId ? await storage.getClient(submission.clientId) : null;
-      const productTemplate = submission.productTemplateId ? await storage.getProductTemplate(submission.productTemplateId) : null;
+      const productTemplate = await resolveProductTemplate(submission.productTemplateId, submission.purpose);
       const broker = submission.brokerId ? await storage.getUser(submission.brokerId) : null;
       const masterBroker = broker?.masterBrokerId ? await storage.getUser(broker.masterBrokerId) : null;
       const targets = await storage.getCreditSubmissionTargets({ requestId: submission.id });
@@ -3784,7 +3808,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         submissions.map(async (submission) => {
           // Get related data
           const client = submission.clientId ? await storage.getClient(submission.clientId) : null;
-          const productTemplate = submission.productTemplateId ? await storage.getProductTemplate(submission.productTemplateId) : null;
+          const productTemplate = await resolveProductTemplate(submission.productTemplateId, submission.purpose);
           const broker = await storage.getUser(submission.brokerId);
           
           // Get targets with institution data
@@ -3864,7 +3888,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         allSubmissions.map(async (submission) => {
           // Get related data
           const client = submission.clientId ? await storage.getClient(submission.clientId) : null;
-          const productTemplate = submission.productTemplateId ? await storage.getProductTemplate(submission.productTemplateId) : null;
+          const productTemplate = await resolveProductTemplate(submission.productTemplateId, submission.purpose);
           const broker = await storage.getUser(submission.brokerId);
           
           // Get targets with institution data
@@ -4756,6 +4780,30 @@ export async function registerRoutes(app: Express): Promise<Server> {
             }
           }
         }
+      }
+
+      // Auto-record in client credit history (#25)
+      try {
+        const prod = await resolveProductTemplate(request.productTemplateId, request.purpose);
+        const institution = await storage.getFinancialInstitution(target.financialInstitutionId);
+        const grantedAmount = proposal?.approvedAmount?.toString() || request.requestedAmount.toString();
+        const term = proposal?.term ? String(proposal.term) : '12';
+        const rate = proposal?.interestRate ? String(proposal.interestRate) : '0';
+
+        await storage.createClientCreditHistory({
+          clientId: request.clientId,
+          source: 'system',
+          linkedCreditId: credit!.id,
+          creditType: prod?.name || 'Crédito Empresarial',
+          amountGranted: grantedAmount,
+          termMonths: term,
+          interestRate: rate,
+          financialInstitution: institution?.name || 'Financiera',
+          notes: `Crédito dispersado exitosamente el ${new Date().toLocaleDateString('es-MX')}. Financiera: ${institution?.name || 'N/A'}. Folio: ${credit!.id.slice(-8)}.`,
+        });
+        console.log(`[CreditHistory] Auto-created credit history for client ${request.clientId}`);
+      } catch (historyErr) {
+        console.error("[CreditHistory] Error auto-creating credit history:", historyErr);
       }
 
       const enrichedTarget = await enrichCreditSubmissionTarget(updated!);

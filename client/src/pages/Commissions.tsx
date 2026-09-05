@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useLocation } from "wouter";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import MainLayout from "@/components/MainLayout";
@@ -155,6 +155,100 @@ export default function Commissions() {
   const totalPending = commissions.filter(c => c.status === 'pending').reduce((sum, c) => sum + safeFloat(c.amount), 0);
   const totalPaid = commissions.filter(c => c.status === 'paid').reduce((sum, c) => sum + safeFloat(c.amount), 0);
 
+  // Super Admin specific analytics (#11 & #13)
+  const isSuperAdmin = user?.role === 'admin' || user?.role === 'super_admin';
+
+  // Total overRate generated
+  const totalSobretasa = useMemo(() => {
+    return commissions.reduce((sum, c) => {
+      const creditAmount = safeFloat(c.credit?.amount);
+      const overRate = safeFloat(c.financialInstitution?.overRate, 1.0);
+      return sum + (creditAmount * (overRate / 100));
+    }, 0);
+  }, [commissions]);
+
+  // Monthly recurring overRate across all credits
+  const totalMonthlySobretasaSinIva = useMemo(() => {
+    return commissions.reduce((sum, c) => {
+      const creditAmount = safeFloat(c.credit?.amount);
+      const overRate = safeFloat(c.financialInstitution?.overRate, 1.0);
+      const term = safeFloat(c.credit?.term, 12);
+      const totalOver = creditAmount * (overRate / 100);
+      return sum + (term > 0 ? totalOver / term : totalOver);
+    }, 0);
+  }, [commissions]);
+
+  const totalMonthlySobretasaConIva = totalMonthlySobretasaSinIva * 1.16;
+
+  // Platform earnings: App share of opening commissions + Total Sobretasas
+  const platformApertura = useMemo(() => {
+    return commissions.reduce((sum, c) => sum + safeFloat(c.appShare), 0);
+  }, [commissions]);
+
+  const totalPlatformEarnings = platformApertura + totalSobretasa;
+
+  // Master Broker commissions breakdown
+  const mbCommissions = useMemo(() => {
+    return commissions.filter(c => safeFloat(c.masterBrokerShare) > 0 || c.masterBrokerId);
+  }, [commissions]);
+  const totalPaidToMB = mbCommissions.filter(c => c.status === 'paid').reduce((sum, c) => sum + safeFloat(c.masterBrokerShare || c.amount), 0);
+  const totalPendingToMB = mbCommissions.filter(c => c.status === 'pending').reduce((sum, c) => sum + safeFloat(c.masterBrokerShare || c.amount), 0);
+
+  // Broker direct commissions breakdown
+  const brokerCommissions = useMemo(() => {
+    return commissions.filter(c => safeFloat(c.brokerShare) > 0 || (!c.masterBrokerId && c.brokerId));
+  }, [commissions]);
+  const totalPaidToBrokers = brokerCommissions.filter(c => c.status === 'paid').reduce((sum, c) => sum + safeFloat(c.brokerShare || c.amount), 0);
+  const totalPendingToBrokers = brokerCommissions.filter(c => c.status === 'pending').reduce((sum, c) => sum + safeFloat(c.brokerShare || c.amount), 0);
+
+  // Broker performance ranking (#13)
+  const brokerRankings = useMemo(() => {
+    const brokerMap = new Map<string, {
+      brokerId: string;
+      name: string;
+      email: string;
+      masterBrokerName: string;
+      creditsCount: number;
+      totalVolume: number;
+      totalCommissions: number;
+      paidCommissions: number;
+      pendingCommissions: number;
+    }>();
+
+    commissions.forEach(c => {
+      const bId = c.brokerId || c.broker?.id || 'unknown';
+      const bName = c.broker ? `${c.broker.firstName || ''} ${c.broker.lastName || ''}`.trim() : 'Broker Originador';
+      const bEmail = c.broker?.email || '';
+      const mbName = c.masterBroker ? (c.masterBroker.brandName || `${c.masterBroker.firstName} ${c.masterBroker.lastName}`) : 'Directo (Sin MB)';
+      const creditVol = safeFloat(c.credit?.amount);
+      const commAmount = safeFloat(c.amount);
+      const isPaid = c.status === 'paid';
+
+      if (!brokerMap.has(bId)) {
+        brokerMap.set(bId, {
+          brokerId: bId,
+          name: bName,
+          email: bEmail,
+          masterBrokerName: mbName,
+          creditsCount: 1,
+          totalVolume: creditVol,
+          totalCommissions: commAmount,
+          paidCommissions: isPaid ? commAmount : 0,
+          pendingCommissions: !isPaid ? commAmount : 0,
+        });
+      } else {
+        const item = brokerMap.get(bId)!;
+        item.creditsCount += 1;
+        item.totalVolume += creditVol;
+        item.totalCommissions += commAmount;
+        if (isPaid) item.paidCommissions += commAmount;
+        else item.pendingCommissions += commAmount;
+      }
+    });
+
+    return Array.from(brokerMap.values()).sort((a, b) => b.totalVolume - a.totalVolume);
+  }, [commissions]);
+
   if (isLoading) {
     return (
       <MainLayout>
@@ -264,62 +358,157 @@ export default function Commissions() {
           {/* Contenido de Comisiones Normales */}
           {activeTab === 'commissions' && (
             <>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-            <Card className="border border-gray-200">
-              <CardContent className="p-6">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-neutral text-sm font-medium">Comisiones Pendientes</p>
-                    <p className="text-2xl font-bold text-warning">
-                      ${totalPending.toLocaleString('es-MX')}
-                    </p>
-                    <p className="text-xs text-neutral mt-1">
-                      {commissions?.filter(c => c.status === 'pending').length || 0} pagos pendientes
-                    </p>
-                  </div>
-                  <div className="w-12 h-12 bg-warning/10 rounded-lg flex items-center justify-center">
-                    <i className="fas fa-clock text-warning text-lg"></i>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
+              {/* KPIs de Comisiones */}
+              {isSuperAdmin ? (
+                /* Super Admin Dashboard Analítico de Comisiones (#13) */
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+                  <Card className="border border-purple-200 bg-purple-50/50 shadow-sm">
+                    <CardContent className="p-5">
+                      <div className="flex items-center justify-between">
+                        <div className="space-y-1">
+                          <p className="text-xs font-bold text-purple-900 uppercase tracking-wide">
+                            Ganancia Plataforma (Total)
+                          </p>
+                          <p className="text-2xl font-black text-purple-900">
+                            ${totalPlatformEarnings.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                          </p>
+                          <div className="text-[11px] text-purple-700 font-medium pt-1 space-y-0.5">
+                            <p>• Sobretasas: ${totalSobretasa.toLocaleString('es-MX', { maximumFractionDigits: 0 })} MXN</p>
+                            <p>• Comisión Apertura: ${platformApertura.toLocaleString('es-MX', { maximumFractionDigits: 0 })} MXN</p>
+                          </div>
+                        </div>
+                        <div className="w-12 h-12 bg-purple-200/80 rounded-xl flex items-center justify-center text-purple-900 shadow-inner">
+                          <i className="fas fa-crown text-xl"></i>
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
 
-            <Card className="border border-gray-200">
-              <CardContent className="p-6">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-neutral text-sm font-medium">Comisiones Pagadas</p>
-                    <p className="text-2xl font-bold text-success">
-                      ${totalPaid.toLocaleString('es-MX')}
-                    </p>
-                    <p className="text-xs text-neutral mt-1">
-                      {commissions?.filter(c => c.status === 'paid').length || 0} pagos completados
-                    </p>
-                  </div>
-                  <div className="w-12 h-12 bg-success/10 rounded-lg flex items-center justify-center">
-                    <i className="fas fa-check-circle text-success text-lg"></i>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
+                  <Card className="border border-blue-200 bg-blue-50/50 shadow-sm">
+                    <CardContent className="p-5">
+                      <div className="flex items-center justify-between">
+                        <div className="space-y-1">
+                          <p className="text-xs font-bold text-blue-900 uppercase tracking-wide">
+                            Master Brokers
+                          </p>
+                          <p className="text-2xl font-black text-blue-900">
+                            ${(totalPaidToMB + totalPendingToMB).toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                          </p>
+                          <div className="text-[11px] text-blue-700 font-medium pt-1 space-y-0.5">
+                            <p className="text-emerald-700 font-semibold">✓ Pagadas: ${totalPaidToMB.toLocaleString('es-MX', { maximumFractionDigits: 0 })}</p>
+                            <p className="text-amber-700 font-semibold">⏳ Pendientes: ${totalPendingToMB.toLocaleString('es-MX', { maximumFractionDigits: 0 })}</p>
+                          </div>
+                        </div>
+                        <div className="w-12 h-12 bg-blue-200/80 rounded-xl flex items-center justify-center text-blue-900 shadow-inner">
+                          <i className="fas fa-sitemap text-xl"></i>
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
 
-            <Card className="border border-gray-200">
-              <CardContent className="p-6">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-neutral text-sm font-medium">Total Comisiones</p>
-                    <p className="text-2xl font-bold text-primary">
-                      ${(totalPending + totalPaid).toLocaleString('es-MX')}
-                    </p>
-                    <p className="text-xs text-neutral mt-1">Este mes</p>
-                  </div>
-                  <div className="w-12 h-12 bg-primary/10 rounded-lg flex items-center justify-center">
-                    <i className="fas fa-dollar-sign text-primary text-lg"></i>
-                  </div>
+                  <Card className="border border-amber-200 bg-amber-50/50 shadow-sm">
+                    <CardContent className="p-5">
+                      <div className="flex items-center justify-between">
+                        <div className="space-y-1">
+                          <p className="text-xs font-bold text-amber-900 uppercase tracking-wide">
+                            Brokers Directos
+                          </p>
+                          <p className="text-2xl font-black text-amber-900">
+                            ${(totalPaidToBrokers + totalPendingToBrokers).toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                          </p>
+                          <div className="text-[11px] text-amber-800 font-medium pt-1 space-y-0.5">
+                            <p className="text-emerald-700 font-semibold">✓ Pagadas: ${totalPaidToBrokers.toLocaleString('es-MX', { maximumFractionDigits: 0 })}</p>
+                            <p className="text-amber-700 font-semibold">⏳ Pendientes: ${totalPendingToBrokers.toLocaleString('es-MX', { maximumFractionDigits: 0 })}</p>
+                          </div>
+                        </div>
+                        <div className="w-12 h-12 bg-amber-200/80 rounded-xl flex items-center justify-center text-amber-900 shadow-inner">
+                          <i className="fas fa-user-tie text-xl"></i>
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+
+                  <Card className="border border-emerald-200 bg-emerald-50/50 shadow-sm">
+                    <CardContent className="p-5">
+                      <div className="flex items-center justify-between">
+                        <div className="space-y-1">
+                          <p className="text-xs font-bold text-emerald-900 uppercase tracking-wide">
+                            Total Pagado / Por Pagar
+                          </p>
+                          <p className="text-2xl font-black text-emerald-900">
+                            ${(totalPaid + totalPending).toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                          </p>
+                          <div className="text-[11px] text-emerald-700 font-medium pt-1 space-y-0.5">
+                            <p>• {commissions.filter(c => c.status === 'paid').length} comisiones pagadas</p>
+                            <p>• {commissions.filter(c => c.status === 'pending').length} comisiones por liquidar</p>
+                          </div>
+                        </div>
+                        <div className="w-12 h-12 bg-emerald-200/80 rounded-xl flex items-center justify-center text-emerald-900 shadow-inner">
+                          <i className="fas fa-wallet text-xl"></i>
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
                 </div>
-              </CardContent>
-            </Card>
-          </div>
+              ) : (
+                /* Broker / Master Broker Cards */
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+                  <Card className="border border-gray-200">
+                    <CardContent className="p-6">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <p className="text-neutral text-sm font-medium">Comisiones Pendientes</p>
+                          <p className="text-2xl font-bold text-warning">
+                            ${totalPending.toLocaleString('es-MX')}
+                          </p>
+                          <p className="text-xs text-neutral mt-1">
+                            {commissions?.filter(c => c.status === 'pending').length || 0} pagos pendientes
+                          </p>
+                        </div>
+                        <div className="w-12 h-12 bg-warning/10 rounded-lg flex items-center justify-center">
+                          <i className="fas fa-clock text-warning text-lg"></i>
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+
+                  <Card className="border border-gray-200">
+                    <CardContent className="p-6">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <p className="text-neutral text-sm font-medium">Comisiones Pagadas</p>
+                          <p className="text-2xl font-bold text-success">
+                            ${totalPaid.toLocaleString('es-MX')}
+                          </p>
+                          <p className="text-xs text-neutral mt-1">
+                            {commissions?.filter(c => c.status === 'paid').length || 0} pagos completados
+                          </p>
+                        </div>
+                        <div className="w-12 h-12 bg-success/10 rounded-lg flex items-center justify-center">
+                          <i className="fas fa-check-circle text-success text-lg"></i>
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+
+                  <Card className="border border-gray-200">
+                    <CardContent className="p-6">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <p className="text-neutral text-sm font-medium">Total Comisiones</p>
+                          <p className="text-2xl font-bold text-primary">
+                            ${(totalPending + totalPaid).toLocaleString('es-MX')}
+                          </p>
+                          <p className="text-xs text-neutral mt-1">Registradas</p>
+                        </div>
+                        <div className="w-12 h-12 bg-primary/10 rounded-lg flex items-center justify-center">
+                          <i className="fas fa-dollar-sign text-primary text-lg"></i>
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                </div>
+              )}
 
           {/* Filters and Actions */}
           <Card className="mb-8">
@@ -503,47 +692,176 @@ export default function Commissions() {
               )}
             </CardContent>
           </Card>
+
+          {/* Ranking y Analítica de Colocadores para Super Admin (#13) */}
+          {isSuperAdmin && (
+            <Card className="border-2 border-indigo-200 bg-white shadow-sm mt-8">
+              <CardHeader className="bg-indigo-50/50 pb-3 border-b">
+                <div className="flex items-center justify-between flex-wrap gap-2">
+                  <div>
+                    <CardTitle className="text-base font-bold text-indigo-950 flex items-center gap-2">
+                      <i className="fas fa-trophy text-amber-500 text-lg"></i>
+                      Ranking y Rendimiento de Colocadores (Brokers & Master Brokers)
+                    </CardTitle>
+                    <p className="text-xs text-indigo-800 mt-0.5">
+                      Identifica a los mejores originadores para otorgar bonos, evaluar retención o renegociar esquemas de comisión.
+                    </p>
+                  </div>
+                  <Badge className="bg-indigo-700 text-white text-xs font-semibold">
+                    {brokerRankings.length} Colocador{brokerRankings.length !== 1 ? 'es' : ''}
+                  </Badge>
+                </div>
+              </CardHeader>
+              <CardContent className="pt-4">
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm text-left border-collapse">
+                    <thead className="bg-gray-100 text-gray-700 text-xs font-semibold uppercase">
+                      <tr>
+                        <th className="p-3 border-b text-center w-16">Posición</th>
+                        <th className="p-3 border-b">Broker Originador</th>
+                        <th className="p-3 border-b">Red / Master Broker</th>
+                        <th className="p-3 border-b text-center">Créditos</th>
+                        <th className="p-3 border-b text-right">Volumen Colocado</th>
+                        <th className="p-3 border-b text-right font-bold text-indigo-950">Comisiones Totales</th>
+                        <th className="p-3 border-b text-center">Estatus Pago</th>
+                        <th className="p-3 border-b text-center">Incentivo Sugerido</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {brokerRankings.length === 0 ? (
+                        <tr>
+                          <td colSpan={8} className="p-8 text-center text-gray-500">
+                            No se han registrado colocaciones de brokers aún.
+                          </td>
+                        </tr>
+                      ) : (
+                        brokerRankings.map((brk, index) => {
+                          const medal = index === 0 ? '🥇' : index === 1 ? '🥈' : index === 2 ? '🥉' : `${index + 1}°`;
+                          const isTop = index === 0 || brk.totalVolume >= 1000000;
+
+                          return (
+                            <tr key={brk.brokerId} className="border-b hover:bg-gray-50/80 transition-colors">
+                              <td className="p-3 text-center font-bold text-base">
+                                {medal}
+                              </td>
+                              <td className="p-3">
+                                <p className="font-bold text-gray-900">{brk.name}</p>
+                                <p className="text-xs text-gray-500">{brk.email}</p>
+                              </td>
+                              <td className="p-3 text-xs text-gray-700 font-medium">
+                                {brk.masterBrokerName}
+                              </td>
+                              <td className="p-3 text-center">
+                                <Badge variant="outline" className="bg-blue-50 text-blue-800 font-semibold border-blue-200">
+                                  {brk.creditsCount} crédito{brk.creditsCount !== 1 ? 's' : ''}
+                                </Badge>
+                              </td>
+                              <td className="p-3 text-right font-bold text-gray-900">
+                                ${brk.totalVolume.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} MXN
+                              </td>
+                              <td className="p-3 text-right font-black text-indigo-900">
+                                ${brk.totalCommissions.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} MXN
+                              </td>
+                              <td className="p-3 text-center text-xs">
+                                <div className="space-y-0.5">
+                                  <span className="text-emerald-700 font-medium block">
+                                    Pagado: ${brk.paidCommissions.toLocaleString('es-MX', { maximumFractionDigits: 0 })}
+                                  </span>
+                                  {brk.pendingCommissions > 0 && (
+                                    <span className="text-amber-700 font-semibold block">
+                                      Pend: ${brk.pendingCommissions.toLocaleString('es-MX', { maximumFractionDigits: 0 })}
+                                    </span>
+                                  )}
+                                </div>
+                              </td>
+                              <td className="p-3 text-center">
+                                {isTop ? (
+                                  <Badge className="bg-amber-500 hover:bg-amber-600 text-white text-[11px] font-bold shadow-sm">
+                                    ⭐ Candidato a Bono
+                                  </Badge>
+                                ) : brk.creditsCount > 1 ? (
+                                  <Badge variant="outline" className="bg-emerald-50 text-emerald-800 border-emerald-300 text-[11px]">
+                                    🔥 Buen Desempeño
+                                  </Badge>
+                                ) : (
+                                  <Badge variant="outline" className="bg-gray-100 text-gray-700 text-[11px]">
+                                    Activo
+                                  </Badge>
+                                )}
+                              </td>
+                            </tr>
+                          );
+                        })
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </CardContent>
+            </Card>
+          )}
         </>
       )}
-          {/* Vista de Sobretasas para Super Admin */}
+          {/* Vista de Sobretasas para Super Admin (#11) */}
           {activeTab === 'sobretasa' && (user?.role === 'admin' || user?.role === 'super_admin') ? (
             <div className="space-y-6">
               {/* Resumen de Sobretasa */}
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                <Card className="border border-purple-200 bg-purple-50/40">
-                  <CardContent className="p-6">
-                    <p className="text-xs font-semibold text-purple-900 uppercase">Sobretasa Total Generada</p>
-                    <p className="text-2xl font-bold text-purple-900 mt-1">
-                      ${commissions.reduce((sum, c) => {
-                        const creditAmount = safeFloat(c.credit?.amount);
-                        const overRate = safeFloat(c.financialInstitution?.overRate, 1.0);
-                        return sum + (creditAmount * (overRate / 100));
-                      }, 0).toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} MXN
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                <Card className="border border-purple-200 bg-purple-50/50 shadow-sm">
+                  <CardContent className="p-5">
+                    <p className="text-xs font-bold text-purple-900 uppercase tracking-wide">Sobretasa Total Generada</p>
+                    <p className="text-2xl font-black text-purple-900 mt-1">
+                      ${totalSobretasa.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} MXN
                     </p>
-                    <p className="text-xs text-purple-700 mt-1">Monto por cobrar a financieras</p>
+                    <p className="text-xs text-purple-700 mt-1 font-medium">Monto acumulado por cobrar a financieras</p>
                   </CardContent>
                 </Card>
 
-                <Card className="border border-blue-200 bg-blue-50/40">
-                  <CardContent className="p-6">
-                    <p className="text-xs font-semibold text-blue-900 uppercase">Créditos con Sobretasa</p>
-                    <p className="text-2xl font-bold text-blue-900 mt-1">
-                      {commissions.filter(c => c.credit).length} operaciones
+                <Card className="border border-blue-200 bg-blue-50/50 shadow-sm">
+                  <CardContent className="p-5">
+                    <p className="text-xs font-bold text-blue-900 uppercase tracking-wide">Cuota Mensual (sin IVA)</p>
+                    <p className="text-2xl font-black text-blue-900 mt-1">
+                      ${totalMonthlySobretasaSinIva.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} MXN
                     </p>
-                    <p className="text-xs text-blue-700 mt-1">Colocaciones activas</p>
+                    <p className="text-xs text-blue-700 mt-1 font-medium">Facturación mensual neta ({commissions.filter(c => c.credit).length} créditos)</p>
                   </CardContent>
                 </Card>
 
-                <Card className="border border-green-200 bg-green-50/40">
-                  <CardContent className="p-6">
-                    <p className="text-xs font-semibold text-green-900 uppercase">Estatus de Cobranza</p>
-                    <p className="text-2xl font-bold text-green-800 mt-1">Al día</p>
-                    <p className="text-xs text-green-700 mt-1">Facturación mensual a financieras</p>
+                <Card className="border border-emerald-200 bg-emerald-50/50 shadow-sm">
+                  <CardContent className="p-5">
+                    <p className="text-xs font-bold text-emerald-900 uppercase tracking-wide">Cuota Mensual (con IVA 16%)</p>
+                    <p className="text-2xl font-black text-emerald-900 mt-1">
+                      ${totalMonthlySobretasaConIva.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} MXN
+                    </p>
+                    <p className="text-xs text-emerald-700 mt-1 font-medium">Total facturado mensual a instituciones</p>
+                  </CardContent>
+                </Card>
+
+                <Card className="border border-indigo-200 bg-indigo-50/50 shadow-sm">
+                  <CardContent className="p-5">
+                    <p className="text-xs font-bold text-indigo-900 uppercase tracking-wide">Estatus de Conciliación</p>
+                    <p className="text-2xl font-black text-indigo-900 mt-1">Al día</p>
+                    <p className="text-xs text-indigo-700 mt-1 font-medium">Cobranza regular programada</p>
                   </CardContent>
                 </Card>
               </div>
 
-              {/* Tabla de Sobretasa por Operación */}
+              {/* Explicación / Fórmula Oficial (#11) */}
+              <div className="bg-purple-100/70 border border-purple-300 rounded-xl p-4 flex items-start gap-3 text-purple-950 text-xs">
+                <i className="fas fa-info-circle text-purple-700 text-base mt-0.5 flex-shrink-0"></i>
+                <div className="space-y-1">
+                  <p className="font-bold text-sm">Fórmula Oficial de Cálculo de Sobretasas:</p>
+                  <p>
+                    <span className="font-mono font-semibold">Total Sobretasa = Monto Aprobado × (% Sobretasa)</span> • 
+                    <span className="font-mono font-semibold ml-2">Cuota Mensual sin IVA = Total Sobretasa / Plazo en meses</span> • 
+                    <span className="font-mono font-semibold ml-2">Cuota Mensual con IVA (16%) = Cuota Mensual sin IVA × 1.16</span>
+                  </p>
+                  <p className="text-purple-900 text-[11px]">
+                    Ejemplo: Monto $1,000,000 con 5% sobretasa a 24 meses = $50,000 total sobretasa ($2,083.33/mes sin IVA, $2,416.67/mes con IVA).
+                  </p>
+                </div>
+              </div>
+
+              {/* Tabla de Sobretasa por Operación (#11) */}
               <Card>
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2">
@@ -560,16 +878,19 @@ export default function Commissions() {
                           <th className="p-3 border-b">Financiera</th>
                           <th className="p-3 border-b">Cliente</th>
                           <th className="p-3 border-b">Broker Originador</th>
-                          <th className="p-3 border-b text-right">Monto Dispersado</th>
+                          <th className="p-3 border-b text-right">Monto Aprobado</th>
+                          <th className="p-3 border-b text-center">Plazo</th>
                           <th className="p-3 border-b text-center">% Sobretasa</th>
-                          <th className="p-3 border-b text-right text-purple-800 font-bold">Sobretasa a Cobrar</th>
+                          <th className="p-3 border-b text-right text-purple-800 font-bold">Total Sobretasa</th>
+                          <th className="p-3 border-b text-right text-blue-800 font-semibold">Mensual (sin IVA)</th>
+                          <th className="p-3 border-b text-right text-emerald-800 font-bold">Mensual (con IVA 16%)</th>
                           <th className="p-3 border-b text-center">Estatus Pago</th>
                         </tr>
                       </thead>
                       <tbody>
                         {commissions.length === 0 ? (
                           <tr>
-                            <td colSpan={8} className="p-6 text-center text-gray-500">
+                            <td colSpan={11} className="p-8 text-center text-gray-500">
                               No hay créditos colocados para cálculo de sobretasa.
                             </td>
                           </tr>
@@ -577,9 +898,13 @@ export default function Commissions() {
                           commissions.map((c) => {
                             const creditAmount = safeFloat(c.credit?.amount);
                             const overRate = safeFloat(c.financialInstitution?.overRate, 1.0);
-                            const overRateAmount = creditAmount * (overRate / 100);
+                            const term = safeFloat(c.credit?.term, 12);
+                            const totalOverRate = creditAmount * (overRate / 100);
+                            const monthlySinIva = term > 0 ? (totalOverRate / term) : totalOverRate;
+                            const monthlyConIva = monthlySinIva * 1.16;
+
                             return (
-                              <tr key={c.id} className="border-b hover:bg-gray-50/80">
+                              <tr key={c.id} className="border-b hover:bg-gray-50/80 transition-colors">
                                 <td className="p-3 font-mono text-xs">
                                   #{String(c.credit?.id || c.id || "").slice(-8)}
                                   <p className="text-[11px] text-gray-400">
@@ -593,19 +918,28 @@ export default function Commissions() {
                                   {c.client ? (c.client.businessName || `${c.client.firstName || ''} ${c.client.lastName || ''}`.trim()) : 'Cliente'}
                                 </td>
                                 <td className="p-3">
-                                  {c.broker ? `${c.broker.firstName} ${c.broker.lastName}` : 'Broker'}
+                                  <p className="font-medium text-gray-900">{c.broker ? `${c.broker.firstName} ${c.broker.lastName}` : 'Broker'}</p>
                                   {c.masterBroker && (
-                                    <p className="text-[10px] text-purple-700">MB: {c.masterBroker.brandName || c.masterBroker.firstName}</p>
+                                    <p className="text-[10px] text-purple-700 font-medium">MB: {c.masterBroker.brandName || c.masterBroker.firstName}</p>
                                   )}
                                 </td>
                                 <td className="p-3 text-right font-medium">
                                   ${creditAmount.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} MXN
                                 </td>
+                                <td className="p-3 text-center font-medium">
+                                  {term} meses
+                                </td>
                                 <td className="p-3 text-center font-bold text-purple-700">
                                   {overRate}%
                                 </td>
                                 <td className="p-3 text-right font-bold text-purple-900">
-                                  ${overRateAmount.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} MXN
+                                  ${totalOverRate.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} MXN
+                                </td>
+                                <td className="p-3 text-right font-bold text-blue-700 bg-blue-50/30">
+                                  ${monthlySinIva.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                </td>
+                                <td className="p-3 text-right font-black text-emerald-800 bg-emerald-50/30">
+                                  ${monthlyConIva.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                                 </td>
                                 <td className="p-3 text-center">
                                   <Badge className="bg-purple-100 text-purple-800 border-purple-300 text-xs">

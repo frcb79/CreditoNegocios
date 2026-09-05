@@ -231,7 +231,7 @@ export default function CreditList() {
           dispersedTargets,
           status: effectiveStatus,
           createdAt: sub.createdAt,
-          productTemplateName: sub.productTemplate?.name,
+          productTemplateName: sub.productTemplate?.name || sub.targets?.find((t: any) => t.productTemplate?.name)?.productTemplate?.name || sub.purpose || 'Crédito Empresarial',
           targetsCount,
           proposalsCount,
           statusSummary,
@@ -624,7 +624,12 @@ export default function CreditList() {
                       <FileText className="w-5 h-5 text-gray-400 mt-0.5" />
                       <div>
                         <p className="text-xs text-gray-500">Producto</p>
-                        <p className="font-medium">{selectedSubmission.productTemplate?.name || 'No especificado'}</p>
+                        <p className="font-medium text-gray-900">
+                          {selectedSubmission.productTemplate?.name || 
+                           selectedSubmission.targets?.find((t: any) => t.productTemplate?.name)?.productTemplate?.name || 
+                           selectedSubmission.purpose || 
+                           'Crédito Empresarial'}
+                        </p>
                       </div>
                     </div>
 
