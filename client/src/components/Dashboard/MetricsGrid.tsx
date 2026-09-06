@@ -4,9 +4,12 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 
 interface TrendData {
-  current: number;
-  previous: number;
+  current?: number;
+  previous?: number;
   deltaPct: number;
+  isPositive?: boolean;
+  isNeutral?: boolean;
+  label?: string;
 }
 
 interface DashboardMetrics {
@@ -17,18 +20,24 @@ interface DashboardMetrics {
     disbursedVolume: number;
     commissionsPaid: number;
     commissionsPending: number;
+    commissionsPendingCount?: number;
     commissionsTotal: number;
+    avgTicket?: number;
+    conversionRate?: number;
   };
   masterBroker?: {
     activeBrokers: number;
     networkPipeline: number;
     networkDisbursedVolume: number;
+    networkDisbursedCredits?: number;
   };
   admin?: {
     totalPipeline: number;
     totalDisbursed: number;
+    totalDisbursedVolume?: number;
     activeBrokers: number;
     totalClients: number;
+    avgTicket?: number;
   };
   trend?: {
     pipeline: TrendData;
@@ -77,18 +86,32 @@ export default function MetricsGrid() {
 
   const formatCurrency = (amount: number) => `$${amount.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
-  const renderTrendIndicator = (deltaPct: number) => {
-    const isPositive = deltaPct > 0;
-    const isNeutral = deltaPct === 0;
+  const renderTrendIndicator = (trend?: TrendData) => {
+    if (!trend) return null;
+    
+    if (trend.label) {
+      if (trend.isNeutral) {
+        return <span className="text-xs text-muted-foreground">{trend.label}</span>;
+      }
+      return (
+        <span className={`text-xs font-medium flex items-center ${trend.isPositive ? 'text-emerald-600' : 'text-rose-600'}`}>
+          <i className={`fas fa-arrow-${trend.isPositive ? 'up' : 'down'} text-[10px] mr-1`}></i>
+          {trend.label}
+        </span>
+      );
+    }
+
+    const isPositive = trend.deltaPct > 0;
+    const isNeutral = trend.deltaPct === 0;
     
     if (isNeutral) {
-      return <span className="text-sm text-muted-foreground">Sin cambios</span>;
+      return <span className="text-xs text-muted-foreground">Activo en periodo</span>;
     }
     
     return (
-      <span className={`text-sm flex items-center ${isPositive ? 'text-success' : 'text-danger'}`}>
-        <i className={`fas fa-arrow-${isPositive ? 'up' : 'down'} text-xs mr-1`}></i>
-        {Math.abs(deltaPct).toFixed(1)}% vs mes anterior
+      <span className={`text-xs font-medium flex items-center ${isPositive ? 'text-emerald-600' : 'text-rose-600'}`}>
+        <i className={`fas fa-arrow-${isPositive ? 'up' : 'down'} text-[10px] mr-1`}></i>
+        {Math.abs(trend.deltaPct).toFixed(1)}% vs mes anterior
       </span>
     );
   };
@@ -98,7 +121,7 @@ export default function MetricsGrid() {
     {
       title: "Solicitudes en Pipeline",
       value: metrics.broker.pipelineRequests,
-      trend: metrics.trend?.pipeline.deltaPct,
+      trend: metrics.trend?.pipeline,
       icon: "fas fa-funnel-dollar",
       color: "blue",
       testId: "metric-pipeline",
@@ -106,34 +129,34 @@ export default function MetricsGrid() {
     {
       title: "Créditos Dispersados",
       value: `${metrics.broker.disbursedCredits} (${formatCurrency(metrics.broker.disbursedVolume)})`,
-      trend: metrics.trend?.disbursedVolume.deltaPct,
+      trend: metrics.trend?.disbursedVolume,
       icon: "fas fa-check-circle",
       color: "green",
       testId: "metric-dispersed",
     },
     {
-      title: "Comisiones Este Mes",
-      value: formatCurrency(metrics.broker.commissionsPaid),
-      trend: metrics.trend?.commissionsPaid.deltaPct,
-      icon: "fas fa-dollar-sign",
-      color: "purple",
-      testId: "metric-commissions",
-    },
-    {
       title: "Comisiones Pendientes",
       value: formatCurrency(metrics.broker.commissionsPending),
-      subtitle: `Total: ${formatCurrency(metrics.broker.commissionsTotal)}`,
+      subtitle: `${metrics.broker.commissionsPendingCount || 0} por cobrar | Total: ${formatCurrency(metrics.broker.commissionsTotal)}`,
       icon: "fas fa-clock",
       color: "orange",
       testId: "metric-pending-commissions",
+    },
+    {
+      title: "Ticket Promedio",
+      value: formatCurrency(metrics.broker.avgTicket || 0),
+      subtitle: `Tasa de éxito: ${metrics.broker.conversionRate || 0}%`,
+      icon: "fas fa-bullseye",
+      color: "emerald",
+      testId: "metric-ticket-promedio",
     },
   ] : [];
 
   // Master Broker additional card
   const masterBrokerCard = metrics.masterBroker ? {
     title: "Mi Red de Brokers",
-    value: metrics.masterBroker.activeBrokers,
-    subtitle: `Pipeline Red: ${metrics.masterBroker.networkPipeline} | Vol: ${formatCurrency(metrics.masterBroker.networkDisbursedVolume)}`,
+    value: `${metrics.masterBroker.activeBrokers} Brokers`,
+    subtitle: `Vol: ${formatCurrency(metrics.masterBroker.networkDisbursedVolume)} | Pipeline: ${metrics.masterBroker.networkPipeline}`,
     icon: "fas fa-network-wired",
     color: "indigo",
     testId: "metric-network",
@@ -142,32 +165,36 @@ export default function MetricsGrid() {
   // Admin metrics
   const adminCards = metrics.admin ? [
     {
-      title: "Pipeline Total",
-      value: metrics.admin.totalPipeline,
+      title: "Pipeline Global",
+      value: `${metrics.admin.totalPipeline} solicitudes`,
+      trend: metrics.trend?.pipeline,
       icon: "fas fa-chart-line",
       color: "blue",
       testId: "metric-total-pipeline",
     },
     {
       title: "Créditos Dispersados",
-      value: metrics.admin.totalDisbursed,
+      value: `${metrics.admin.totalDisbursed} (${formatCurrency(metrics.admin.totalDisbursedVolume || 0)})`,
+      trend: metrics.trend?.disbursedVolume,
       icon: "fas fa-coins",
       color: "green",
       testId: "metric-total-dispersed",
     },
     {
-      title: "Brokers Activos",
-      value: metrics.admin.activeBrokers,
+      title: "Brokers Registrados",
+      value: `${metrics.admin.activeBrokers} activos`,
+      subtitle: `${metrics.admin.totalClients} clientes en plataforma`,
       icon: "fas fa-users",
       color: "purple",
       testId: "metric-active-brokers",
     },
     {
-      title: "Clientes Totales",
-      value: metrics.admin.totalClients,
-      icon: "fas fa-user-tie",
-      color: "orange",
-      testId: "metric-total-clients",
+      title: "Ticket Promedio Global",
+      value: formatCurrency(metrics.admin.avgTicket || 0),
+      subtitle: "Promedio por colocación",
+      icon: "fas fa-bullseye",
+      color: "emerald",
+      testId: "metric-avg-ticket",
     },
   ] : [];
 
@@ -176,7 +203,7 @@ export default function MetricsGrid() {
   if (isAdmin) {
     displayCards = adminCards;
   } else if (isMasterBroker && masterBrokerCard) {
-    displayCards = [...brokerCards.slice(0, 3), masterBrokerCard];
+    displayCards = [brokerCards[0], brokerCards[1], masterBrokerCard, brokerCards[2]];
   } else {
     displayCards = brokerCards;
   }
@@ -187,6 +214,7 @@ export default function MetricsGrid() {
     purple: { bg: "bg-accent/10", text: "text-accent" },
     orange: { bg: "bg-warning/10", text: "text-warning" },
     indigo: { bg: "bg-secondary/10", text: "text-secondary" },
+    emerald: { bg: "bg-emerald-50", text: "text-emerald-700" },
   };
 
   return (
@@ -197,18 +225,18 @@ export default function MetricsGrid() {
           <Card key={index} className="border border-border">
             <CardContent className="p-6">
               <div className="flex items-center justify-between">
-                <div className="flex-1">
-                  <p className="text-muted-foreground text-sm font-medium" data-testid={`${card.testId}-title`}>
+                <div className="flex-1 min-w-0 pr-3">
+                  <p className="text-muted-foreground text-sm font-medium truncate" data-testid={`${card.testId}-title`}>
                     {card.title}
                   </p>
-                  <p className="text-2xl font-bold text-foreground mt-1" data-testid={`${card.testId}-value`}>
+                  <p className="text-2xl font-bold text-foreground mt-1 truncate" data-testid={`${card.testId}-value`}>
                     {card.value}
                   </p>
                   <div className="mt-1">
-                    {'trend' in card && card.trend !== undefined ? (
+                    {'trend' in card && card.trend ? (
                       renderTrendIndicator(card.trend)
                     ) : 'subtitle' in card && card.subtitle ? (
-                      <p className="text-xs text-muted-foreground">{card.subtitle}</p>
+                      <p className="text-xs text-muted-foreground truncate">{card.subtitle}</p>
                     ) : null}
                   </div>
                 </div>

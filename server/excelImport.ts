@@ -20,6 +20,14 @@ function cleanEmptyString(value: any): string | undefined {
   return String(value).trim() || undefined;
 }
 
+function parseBoolean(value: any): boolean | undefined {
+  if (value === null || value === undefined || value === '') return undefined;
+  const str = String(value).trim().toLowerCase();
+  if (['si', 'sí', 'true', '1', 'requerido', 'obligatorio', 'yes', 'aplica'].includes(str)) return true;
+  if (['no', 'false', '0', 'opcional', 'no requerido', 'no aplica'].includes(str)) return false;
+  return undefined;
+}
+
 interface ImportError {
   row: number;
   field: string;
@@ -54,12 +62,20 @@ const FINANCIERA_HEADERS = [
   'edad_maxima',
   'antiguedad_meses_min',
   'ingreso_mensual_min',
+  'ingreso_anual_min',
+  'ventas_terminal_min',
   'buro_accionista_min',
   'buro_empresa_min',
   'buro_persona_fisica_min',
+  'permite_atrasos_buro',
+  'tolerancia_atrasos_max',
   'tipo_garantia',
+  'requiere_aval',
+  'requiere_sat_ciec',
+  'requiere_estados_financieros',
   'opinion_cumplimiento',
   'participacion_ventas_gob_max',
+  'requiere_creditos_vigentes',
   'giros_prohibidos',
   'presencia',
   'tiempo_respuesta',
@@ -212,18 +228,25 @@ export function generateFinancierasTemplate(): Buffer {
     ['- tasa_interes: Tasa de interés % (ej: 18 o rango como "15-24")'],
     ['- comision_apertura: Comisión por apertura % (ej: 2.5)'],
     ['- destinos_credito: Principales destinos separados por punto y coma (ej: Capital de trabajo; Adquisición de activos)'],
-    [''],
     ['REQUISITOS PARA EL MATCHING (alimentan la selección inteligente):'],
     ['- edad_minima: Edad mínima del cliente (años)'],
     ['- edad_maxima: Edad máxima del cliente (años)'],
     ['- antiguedad_meses_min: Antigüedad mínima del negocio/empleo (meses)'],
     ['- ingreso_mensual_min: Ingreso mensual mínimo requerido (pesos)'],
+    ['- ingreso_anual_min: Ingreso anual mínimo (Persona Moral / PFAE)'],
+    ['- ventas_terminal_min: Facturación mensual mínima con terminal bancaria/TPV (pesos)'],
     ['- buro_accionista_min: Score mínimo buró accionista principal (puntos)'],
     ['- buro_empresa_min: Score mínimo buró empresa (puntos)'],
     ['- buro_persona_fisica_min: Score mínimo buró persona física (puntos)'],
+    ['- permite_atrasos_buro: si / no (si tolera atrasos o cuentas activas en buró)'],
+    ['- tolerancia_atrasos_max: Monto máximo tolerado en atrasos (pesos)'],
     ['- tipo_garantia: Tipos de garantía aceptados (ej: hipotecaria, prendaria, líquida, sin garantía)'],
+    ['- requiere_aval: si / no (si exige aval u obligado solidario)'],
+    ['- requiere_sat_ciec: si / no (si exige conexión / contraseña CIEC SAT)'],
+    ['- requiere_estados_financieros: si / no (si exige estados financieros)'],
     ['- opinion_cumplimiento: solo-positiva o positiva-negativa'],
     ['- participacion_ventas_gob_max: Máx. participación ventas gobierno (ej: menor-20, menor-40, menor-50, menor-60)'],
+    ['- requiere_creditos_vigentes: si / no (si exige tener créditos bancarios vigentes)'],
     [''],
     ['INFORMACIÓN OPERATIVA:'],
     ['- giros_prohibidos: Giros no aceptados, separados por punto y coma'],
@@ -261,12 +284,20 @@ export function generateFinancierasTemplate(): Buffer {
       75,
       24,
       135000,
+      1000000,
+      50000,
       650,
       620,
       '',
+      'no',
+      0,
       'hipotecaria; prendaria',
+      'si',
+      'si',
+      'si',
       'solo-positiva',
       'menor-40',
+      'si',
       'Casinos; Casas de empeño',
       'Nacional',
       '24-48 horas',
@@ -279,7 +310,7 @@ export function generateFinancierasTemplate(): Buffer {
       'Juan Pérez',
       'contacto@financiera.com',
       '5555551234',
-      'Ejemplo de registro completo'
+      'Ejemplo de registro completo con matching rules'
     ],
     [
       'Financiera Ejemplo',
@@ -295,12 +326,20 @@ export function generateFinancierasTemplate(): Buffer {
       70,
       12,
       80000,
+      500000,
+      30000,
       630,
       '',
       '',
+      'si',
+      15000,
       'prendaria; sin garantía',
+      'no',
+      'si',
+      'no',
       'positiva-negativa',
       'menor-20',
+      'no',
       'Casinos',
       'Nacional',
       '24-48 horas',
@@ -329,12 +368,20 @@ export function generateFinancierasTemplate(): Buffer {
       65,
       36,
       250000,
+      2500000,
+      100000,
       680,
       650,
       '',
+      'no',
+      0,
       'hipotecaria',
+      'si',
+      'si',
+      'si',
       'solo-positiva',
       'menor-50',
+      'si',
       '',
       'CDMX; Jalisco; Nuevo León',
       '3-5 días',
@@ -362,6 +409,14 @@ export function generateFinancierasTemplate(): Buffer {
     'presencia': 25,
     'observaciones': 35,
     'tipo_garantia': 25,
+    'ingreso_anual_min': 20,
+    'ventas_terminal_min': 22,
+    'permite_atrasos_buro': 22,
+    'tolerancia_atrasos_max': 24,
+    'requiere_aval': 18,
+    'requiere_sat_ciec': 18,
+    'requiere_estados_financieros': 28,
+    'requiere_creditos_vigentes': 26,
   };
   financierasWs['!cols'] = FINANCIERA_HEADERS.map(h => ({ wch: colWidths[h] || 18 }));
   
@@ -838,6 +893,49 @@ export async function importFinancieras(buffer: Buffer, userId: string): Promise
       const participacionMax = cleanEmptyString(getValue('participacion_ventas_gob_max'));
       if (participacionMax) {
         ranges.participacionVentasGobierno = { maxThreshold: participacionMax.toLowerCase().trim() };
+      }
+
+      const ingresoAnualMin = parseNumeric(getValue('ingreso_anual_min'));
+      if (ingresoAnualMin !== undefined) {
+        ranges.ingresoAnual = { min: ingresoAnualMin };
+      }
+
+      const ventasTerminalMin = parseNumeric(getValue('ventas_terminal_min'));
+      if (ventasTerminalMin !== undefined) {
+        ranges.ventasTerminalBancaria = { min: ventasTerminalMin, minThreshold: ventasTerminalMin };
+      }
+
+      const permiteAtrasos = parseBoolean(getValue('permite_atrasos_buro'));
+      const toleranciaAtrasos = parseNumeric(getValue('tolerancia_atrasos_max'));
+      if (permiteAtrasos !== undefined || toleranciaAtrasos !== undefined) {
+        const atrasosKey = normalizedProfile === 'fisica' ? 'atrasosDeudasBuro' :
+                           normalizedProfile === 'sin_sat' ? 'atrasosDeudasBuroSinSat' : 'atrasosDeudas';
+        ranges[atrasosKey] = {
+          allowsDelinquency: permiteAtrasos ?? false,
+          maxToleranceAmount: toleranciaAtrasos ?? 0,
+        };
+      }
+
+      const requiereAval = parseBoolean(getValue('requiere_aval'));
+      if (requiereAval !== undefined) {
+        const avalKey = normalizedProfile === 'fisica' ? 'tieneAvalObligadoSolidarioFisica' :
+                        normalizedProfile === 'sin_sat' ? 'tieneAvalObligadoSolidarioSinSat' : 'avalObligadoSolidario';
+        ranges[avalKey] = { required: requiereAval };
+      }
+
+      const requiereSatCiec = parseBoolean(getValue('requiere_sat_ciec'));
+      if (requiereSatCiec !== undefined) {
+        ranges.satCiec = { required: requiereSatCiec };
+      }
+
+      const requiereEstadosFin = parseBoolean(getValue('requiere_estados_financieros'));
+      if (requiereEstadosFin !== undefined) {
+        ranges.estadosFinancieros = { required: requiereEstadosFin };
+      }
+
+      const requiereCreditosVig = parseBoolean(getValue('requiere_creditos_vigentes'));
+      if (requiereCreditosVig !== undefined) {
+        ranges.creditosVigentes = { required: requiereCreditosVig };
       }
       
       if (!updatedRequirements[financiera.id]) {

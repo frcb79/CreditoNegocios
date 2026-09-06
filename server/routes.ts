@@ -941,150 +941,173 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const lastMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
       const lastMonthEnd = new Date(now.getFullYear(), now.getMonth(), 0, 23, 59, 59);
       
-      // Pipeline statuses
-      const pipelineStatuses = ['submitted', 'under_review', 'approved'];
-      const disbursedStatuses = ['disbursed', 'active'];
-      
       let metrics: any = {
         role: user.role,
       };
       
-      if (isBroker || isMasterBroker || isAdmin) {
-        // Broker metrics (for broker and master_broker roles)
-        const brokerId = (isBroker || isMasterBroker) ? userId : undefined;
-        
-        // Pipeline count (current month) - with date filter to match trend comparison
-        const pipelineCount = (await storage.getCredits({
-          brokerId,
-          statuses: pipelineStatuses,
-          from: currentMonthStart,
-        })).length;
-        
-        // Pipeline count (last month) for trend
-        const lastMonthPipeline = (await storage.getCredits({
-          brokerId,
-          statuses: pipelineStatuses,
-          from: lastMonthStart,
-          to: lastMonthEnd,
-        })).length;
-        
-        // Disbursed credits (current month) - with date filter to match trend comparison
-        const disbursedCount = (await storage.getCredits({
-          brokerId,
-          statuses: disbursedStatuses,
-          from: currentMonthStart,
-        })).length;
-        
-        // Disbursed volume (current month)
-        const disbursedVolume = await storage.sumCreditAmounts({
-          brokerId,
-          statuses: disbursedStatuses,
-          from: currentMonthStart,
-        });
-        
-        // Disbursed volume (last month) for trend
-        const lastMonthVolume = await storage.sumCreditAmounts({
-          brokerId,
-          statuses: disbursedStatuses,
-          from: lastMonthStart,
-          to: lastMonthEnd,
-        });
-        
-        // Commissions
-        const commissions = await storage.getCommissions({ brokerId });
-        const currentMonthPaid = commissions
-          .filter(c => c.status === 'paid' && c.createdAt && new Date(c.createdAt) >= currentMonthStart)
-          .reduce((sum, c) => sum + parseFloat(c.amount || '0'), 0);
-        
-        const lastMonthPaid = commissions
-          .filter(c => c.status === 'paid' && c.createdAt && 
-                  new Date(c.createdAt) >= lastMonthStart && new Date(c.createdAt) <= lastMonthEnd)
-          .reduce((sum, c) => sum + parseFloat(c.amount || '0'), 0);
-        
-        const pendingCommissions = commissions
-          .filter(c => c.status === 'pending')
-          .reduce((sum, c) => sum + parseFloat(c.amount || '0'), 0);
-        
-        // Calculate trends
-        const pipelineDelta = lastMonthPipeline > 0 
-          ? ((pipelineCount - lastMonthPipeline) / lastMonthPipeline * 100).toFixed(1)
-          : '0';
-        
-        const volumeDelta = parseFloat(lastMonthVolume) > 0
-          ? ((parseFloat(disbursedVolume) - parseFloat(lastMonthVolume)) / parseFloat(lastMonthVolume) * 100).toFixed(1)
-          : '0';
-        
-        const commissionDelta = lastMonthPaid > 0
-          ? ((currentMonthPaid - lastMonthPaid) / lastMonthPaid * 100).toFixed(1)
-          : '0';
-        
-        metrics.broker = {
-          pipelineRequests: pipelineCount,
-          disbursedCredits: disbursedCount,
-          disbursedVolume: parseFloat(disbursedVolume),
-          commissionsPaid: currentMonthPaid,
-          commissionsPending: pendingCommissions,
-          commissionsTotal: currentMonthPaid + pendingCommissions,
-        };
-        
-        metrics.trend = {
-          pipeline: {
-            current: pipelineCount,
-            previous: lastMonthPipeline,
-            deltaPct: parseFloat(pipelineDelta),
-          },
-          disbursedVolume: {
-            current: parseFloat(disbursedVolume),
-            previous: parseFloat(lastMonthVolume),
-            deltaPct: parseFloat(volumeDelta),
-          },
-          commissionsPaid: {
-            current: currentMonthPaid,
-            previous: lastMonthPaid,
-            deltaPct: parseFloat(commissionDelta),
-          },
-        };
-      }
-      
-      // Master Broker additional metrics
+      // 1. Get submissions and network broker IDs
+      let networkBrokerIds: string[] = [userId];
+      let networkBrokers: any[] = [];
       if (isMasterBroker) {
-        const networkBrokers = await storage.getUsersByMasterBroker(userId);
-        const networkPipeline = await storage.countCreditsByStatus({
-          masterBrokerId: userId,
-          includeNetwork: true,
-          statuses: pipelineStatuses,
-        });
-        
-        const networkDisbursed = await storage.sumCreditAmounts({
-          masterBrokerId: userId,
-          includeNetwork: true,
-          statuses: disbursedStatuses,
-          from: currentMonthStart,
-        });
-        
+        networkBrokers = await storage.getUsersByMasterBroker(userId);
+        networkBrokerIds = [userId, ...networkBrokers.map(b => b.id)];
+      }
+
+      // 2. Fetch all submissions relevant for user
+      const allSubmissions = await storage.getCreditSubmissionRequests({});
+      const userSubmissions = isAdmin
+        ? allSubmissions
+        : isMasterBroker
+          ? allSubmissions.filter(s => networkBrokerIds.includes(s.brokerId))
+          : allSubmissions.filter(s => s.brokerId === userId);
+
+      // Active pipeline requests (in progress)
+      const activePipelineSubmissions = userSubmissions.filter(s =>
+        s.status === 'submitted' || s.status === 'evaluating' || s.status === 'under_review' ||
+        s.status === 'offers_received' || s.status === 'winner_selected' || s.status === 'in_progress'
+      );
+      const pipelineCount = activePipelineSubmissions.length;
+
+      // 3. Fetch credits (dispersed / active loans)
+      const allCredits = await storage.getCredits({});
+      const userCredits = isAdmin
+        ? allCredits
+        : isMasterBroker
+          ? allCredits.filter(c => networkBrokerIds.includes(c.brokerId))
+          : allCredits.filter(c => c.brokerId === userId);
+
+      const disbursedCredits = userCredits.filter(c =>
+        c.status === 'disbursed' || c.status === 'dispersed' || c.status === 'dispersado' || c.status === 'active'
+      );
+      const disbursedCount = disbursedCredits.length;
+      const disbursedVolume = disbursedCredits.reduce((sum, c) => sum + parseFloat(c.amount || '0'), 0);
+
+      // Suggested metrics: Average Ticket & Conversion Rate (#27)
+      const avgTicket = disbursedCount > 0 ? disbursedVolume / disbursedCount : 0;
+      const totalDecidedOrActive = pipelineCount + disbursedCount;
+      const conversionRate = totalDecidedOrActive > 0 ? (disbursedCount / totalDecidedOrActive) * 100 : 0;
+
+      // 4. Commissions calculation (including network for Master Broker #27)
+      let commissions: any[] = [];
+      if (isAdmin) {
+        commissions = await storage.getCommissions();
+      } else if (isMasterBroker) {
+        const directComms = await storage.getCommissions({ brokerId: userId });
+        const netComms = await storage.getCommissions({ masterBrokerId: userId, includeNetwork: true });
+        const commMap = new Map<string, any>();
+        for (const c of [...directComms, ...netComms]) {
+          commMap.set(c.id, c);
+        }
+        commissions = Array.from(commMap.values());
+      } else {
+        commissions = await storage.getCommissions({ brokerId: userId });
+      }
+
+      const currentMonthPaid = commissions
+        .filter(c => c.status === 'paid' && c.createdAt && new Date(c.createdAt) >= currentMonthStart)
+        .reduce((sum, c) => sum + parseFloat(c.amount || '0'), 0);
+
+      const allTimePaid = commissions
+        .filter(c => c.status === 'paid')
+        .reduce((sum, c) => sum + parseFloat(c.amount || '0'), 0);
+
+      const pendingCommissions = commissions
+        .filter(c => c.status === 'pending')
+        .reduce((sum, c) => sum + parseFloat(c.amount || '0'), 0);
+
+      const pendingCommissionsCount = commissions.filter(c => c.status === 'pending').length;
+
+      // 5. Dynamic trends (solving the static "Sin cambios" bug #27)
+      const lastMonthSubmissions = userSubmissions.filter(s =>
+        s.createdAt && new Date(s.createdAt) >= lastMonthStart && new Date(s.createdAt) <= lastMonthEnd
+      ).length;
+      const currentMonthSubmissions = userSubmissions.filter(s =>
+        s.createdAt && new Date(s.createdAt) >= currentMonthStart
+      ).length;
+
+      const currentMonthDisbursed = disbursedCredits.filter(c =>
+        c.createdAt && new Date(c.createdAt) >= currentMonthStart
+      );
+      const currentMonthDisbursedVol = currentMonthDisbursed.reduce((sum, c) => sum + parseFloat(c.amount || '0'), 0);
+
+      const lastMonthDisbursed = disbursedCredits.filter(c =>
+        c.createdAt && new Date(c.createdAt) >= lastMonthStart && new Date(c.createdAt) <= lastMonthEnd
+      );
+      const lastMonthDisbursedVol = lastMonthDisbursed.reduce((sum, c) => sum + parseFloat(c.amount || '0'), 0);
+
+      const lastMonthPaid = commissions
+        .filter(c => c.status === 'paid' && c.createdAt &&
+                new Date(c.createdAt) >= lastMonthStart && new Date(c.createdAt) <= lastMonthEnd)
+        .reduce((sum, c) => sum + parseFloat(c.amount || '0'), 0);
+
+      const formatTrend = (current: number, previous: number, labelUnit = '') => {
+        if (previous === 0 && current > 0) {
+          return { deltaPct: 100, isPositive: true, isNeutral: false, label: `+${current}${labelUnit} este mes (Nuevo)` };
+        }
+        if (previous === 0 && current === 0) {
+          return { deltaPct: 0, isPositive: false, isNeutral: true, label: 'Sin actividad previa' };
+        }
+        const delta = ((current - previous) / previous) * 100;
+        const rounded = Math.round(delta * 10) / 10;
+        if (rounded === 0) {
+          return { deltaPct: 0, isPositive: true, isNeutral: false, label: 'Mismo nivel que mes anterior' };
+        }
+        return {
+          deltaPct: rounded,
+          isPositive: delta > 0,
+          isNeutral: false,
+          label: `${delta > 0 ? '+' : ''}${rounded.toFixed(1)}% vs mes anterior`
+        };
+      };
+
+      metrics.broker = {
+        pipelineRequests: pipelineCount,
+        disbursedCredits: disbursedCount,
+        disbursedVolume: disbursedVolume,
+        commissionsPaid: currentMonthPaid > 0 ? currentMonthPaid : allTimePaid,
+        commissionsPending: pendingCommissions,
+        commissionsPendingCount: pendingCommissionsCount,
+        commissionsTotal: allTimePaid + pendingCommissions,
+        avgTicket: Math.round(avgTicket),
+        conversionRate: Math.round(conversionRate * 10) / 10,
+      };
+
+      metrics.trend = {
+        pipeline: formatTrend(currentMonthSubmissions > 0 ? currentMonthSubmissions : pipelineCount, lastMonthSubmissions, ' casos'),
+        disbursedVolume: formatTrend(currentMonthDisbursedVol > 0 ? currentMonthDisbursedVol : disbursedVolume, lastMonthDisbursedVol),
+        commissionsPaid: formatTrend(currentMonthPaid, lastMonthPaid),
+      };
+
+      if (isMasterBroker) {
+        const networkDisbursedCredits = userCredits.filter(c =>
+          c.brokerId !== userId && (c.status === 'disbursed' || c.status === 'dispersed' || c.status === 'active')
+        );
+        const networkDisbursedVol = networkDisbursedCredits.reduce((sum, c) => sum + parseFloat(c.amount || '0'), 0);
+        const networkActiveSubmissions = userSubmissions.filter(s =>
+          s.brokerId !== userId && (s.status === 'submitted' || s.status === 'evaluating' || s.status === 'under_review' || s.status === 'in_progress')
+        ).length;
+
         metrics.masterBroker = {
           activeBrokers: networkBrokers.filter(b => b.isActive).length,
-          networkPipeline,
-          networkDisbursedVolume: parseFloat(networkDisbursed),
+          networkPipeline: networkActiveSubmissions,
+          networkDisbursedVolume: networkDisbursedVol,
+          networkDisbursedCredits: networkDisbursedCredits.length,
         };
       }
-      
-      // Admin metrics
+
       if (isAdmin) {
-        const allCredits = await storage.getCredits({});
-        const totalPipeline = allCredits.filter(c => pipelineStatuses.includes(c.status)).length;
-        const totalDisbursed = allCredits.filter(c => disbursedStatuses.includes(c.status)).length;
+        const allClients = await storage.getClients();
         const allUsers = await storage.getAllUsers();
-        const activeBrokers = allUsers.filter(u => (u.role === 'broker' || u.role === 'master_broker') && u.isActive).length;
-        
         metrics.admin = {
-          totalPipeline,
-          totalDisbursed,
-          activeBrokers,
-          totalClients: (await storage.getClients()).length,
+          totalPipeline: pipelineCount,
+          totalDisbursed: disbursedCount,
+          totalDisbursedVolume: disbursedVolume,
+          activeBrokers: allUsers.filter(u => (u.role === 'broker' || u.role === 'master_broker') && u.isActive).length,
+          totalClients: allClients.length,
+          avgTicket: Math.round(avgTicket),
         };
       }
-      
+
       res.json(metrics);
     } catch (error) {
       console.error("Error fetching dashboard metrics:", error);
@@ -1092,7 +1115,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Credit pipeline
+  // Credit pipeline (Unified submissions & credits #27)
   app.get('/api/dashboard/pipeline', isAuthenticated, async (req: any, res) => {
     try {
       const userId = req.user.claims.sub;
@@ -1100,92 +1123,111 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const isAdmin = user?.role === 'admin' || user?.role === 'super_admin';
       const isMasterBroker = user?.role === 'master_broker';
       
-      let credits: any[] = [];
-      if (isAdmin) {
-        credits = await storage.getCredits({});
-      } else if (isMasterBroker) {
+      let brokerIds = [userId];
+      if (isMasterBroker) {
         const networkBrokers = await storage.getUsersByMasterBroker(userId);
-        const brokerIds = [userId, ...networkBrokers.map(b => b.id)];
-        const allCredits = await storage.getCredits({});
-        credits = allCredits.filter(c => brokerIds.includes(c.brokerId));
-      } else {
-        credits = await storage.getCredits({ brokerId: userId });
+        brokerIds = [userId, ...networkBrokers.map(b => b.id)];
       }
-      
+
+      // Fetch both submissions and credits
+      const allSubmissions = await storage.getCreditSubmissionRequests({});
+      const userSubmissions = isAdmin
+        ? allSubmissions
+        : allSubmissions.filter(s => brokerIds.includes(s.brokerId));
+
+      const allCredits = await storage.getCredits({});
+      const userCredits = isAdmin
+        ? allCredits
+        : allCredits.filter(c => brokerIds.includes(c.brokerId));
+
+      // Calculate pipeline stages across both submissions in-flight and credits
+      const en_revision = userSubmissions.filter(s =>
+        s.status === 'submitted' || s.status === 'under_review' || s.status === 'evaluating'
+      ).length;
+
+      const validacion = userSubmissions.filter(s =>
+        s.status === 'offers_received' || s.status === 'in_progress'
+      ).length + userCredits.filter(c =>
+        c.status === 'validacion_juridica' || c.status === 'en_mesa_control'
+      ).length;
+
+      const aprobacion = userCredits.filter(c =>
+        c.status === 'approved' || c.status === 'aprobado'
+      ).length;
+
+      const por_firmar = userSubmissions.filter(s =>
+        s.status === 'winner_selected'
+      ).length + userCredits.filter(c =>
+        c.status === 'por_firmar'
+      ).length;
+
+      const dispersion = userCredits.filter(c =>
+        c.status === 'disbursed' || c.status === 'dispersed' || c.status === 'dispersado' || c.status === 'active'
+      ).length;
+
       const pipeline = {
-        en_revision: credits.filter(c => c.status === 'en_revision' || c.status === 'under_review').length,
-        validacion: credits.filter(c => c.status === 'validacion_juridica' || c.status === 'submitted' || c.status === 'en_mesa_control').length,
-        aprobacion: credits.filter(c => c.status === 'approved' || c.status === 'aprobado').length,
-        por_firmar: credits.filter(c => c.status === 'approved' || c.status === 'aprobado' || c.status === 'por_firmar').length,
-        dispersion: credits.filter(c => c.status === 'disbursed' || c.status === 'dispersed' || c.status === 'dispersado').length,
+        en_revision,
+        validacion,
+        aprobacion,
+        por_firmar,
+        dispersion,
       };
-      
-      const recentCases = await Promise.all(
-        credits
-          .slice(0, 5)
-          .map(async (credit) => {
-            let clientName = '';
-            
-            // 1. Try finding client directly by clientId
-            if (credit.clientId) {
-              const client = await storage.getClient(credit.clientId);
-              if (client) {
-                if (client.type === 'persona_moral' || client.type === 'moral') {
-                  clientName = client.businessName || (client as any).tradeName || (client as any).nombreComercial || '';
-                } else {
-                  clientName = `${client.firstName || ''} ${client.lastName || ''}`.trim();
-                }
-              }
-            }
-            
-            // 2. If no clientName yet, check linked submission request
-            if (!clientName && credit.linkedSubmissionId) {
-              try {
-                const submission = await storage.getCreditSubmissionRequest(credit.linkedSubmissionId);
-                if (submission) {
-                  if (submission.clientId) {
-                    const subClient = await storage.getClient(submission.clientId);
-                    if (subClient) {
-                      if (subClient.type === 'persona_moral' || subClient.type === 'moral') {
-                        clientName = subClient.businessName || (subClient as any).tradeName || (subClient as any).nombreComercial || '';
-                      } else {
-                        clientName = `${subClient.firstName || ''} ${subClient.lastName || ''}`.trim();
-                      }
-                    }
-                  }
-                  if (!clientName && submission.purpose) {
-                    clientName = submission.purpose;
-                  }
-                }
-              } catch (e) {
-                // ignore
-              }
-            }
 
-            // 3. If credit has client object pre-attached
-            if (!clientName && (credit as any).client) {
-              const c = (credit as any).client;
-              clientName = c.businessName || `${c.firstName || ''} ${c.lastName || ''}`.trim();
-            }
+      // Helper to resolve client display name
+      const getClientName = async (clientId?: string | null, fallbackPurpose?: string | null) => {
+        if (!clientId) return fallbackPurpose || 'Cliente General';
+        try {
+          const c = await storage.getClient(clientId);
+          if (!c) return fallbackPurpose || 'Cliente General';
+          if (c.type === 'persona_moral' || c.type === 'moral') {
+            return c.businessName || (c as any).tradeName || (c as any).nombreComercial || 'Empresa';
+          }
+          return `${c.firstName || ''} ${c.lastName || ''}`.trim() || 'Cliente';
+        } catch {
+          return fallbackPurpose || 'Cliente General';
+        }
+      };
 
-            // 4. Clean fallback without raw uuid
-            if (!clientName) {
-              clientName = credit.purpose || 'Cliente General';
-            }
+      // Build unified recent cases list
+      const recentList: any[] = [];
 
-            return {
-              id: credit.id,
-              clientName,
-              amount: credit.amount,
-              status: credit.status,
-              updatedAt: credit.updatedAt,
-            };
-          })
-      );
-      
-      res.json({ pipeline, recentCases });
+      for (const credit of userCredits.slice(0, 10)) {
+        const clientName = await getClientName(credit.clientId, credit.purpose);
+        recentList.push({
+          id: credit.id,
+          clientName,
+          amount: credit.amount,
+          status: credit.status,
+          updatedAt: credit.updatedAt || credit.createdAt,
+          sourceType: 'credit'
+        });
+      }
+
+      for (const sub of userSubmissions.slice(0, 10)) {
+        // Only include if not already represented in credits
+        const clientName = await getClientName(sub.clientId, sub.purpose);
+        recentList.push({
+          id: sub.id,
+          clientName,
+          amount: sub.requestedAmount,
+          status: sub.status === 'submitted' ? 'en_revision' :
+                  sub.status === 'winner_selected' ? 'por_firmar' :
+                  sub.status === 'dispersed' ? 'disbursed' : sub.status,
+          updatedAt: sub.updatedAt || sub.createdAt,
+          sourceType: 'submission'
+        });
+      }
+
+      // Sort by updatedAt descending and take top 5
+      recentList.sort((a, b) => new Date(b.updatedAt || 0).getTime() - new Date(a.updatedAt || 0).getTime());
+      const recentCases = recentList.slice(0, 5);
+
+      res.json({
+        pipeline,
+        recentCases,
+      });
     } catch (error) {
-      console.error("Error fetching pipeline:", error);
+      console.error("Error fetching credit pipeline:", error);
       res.status(500).json({ message: "Failed to fetch pipeline" });
     }
   });

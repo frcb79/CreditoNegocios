@@ -10,7 +10,7 @@ import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Progress } from "@/components/ui/progress";
-import { Upload, Download, FileSpreadsheet, Building2, Users, CheckCircle2, XCircle, AlertCircle, Loader2 } from "lucide-react";
+import { Upload, Download, FileSpreadsheet, Building2, Users, CheckCircle2, XCircle, AlertCircle, Loader2, Sparkles, Layers } from "lucide-react";
 import MainLayout from "@/components/MainLayout";
 import Header from "@/components/Header";
 
@@ -306,41 +306,52 @@ export default function BulkImport() {
     );
   };
 
-  const PreviewTable = ({ preview }: { preview: PreviewData }) => (
-    <div className="mt-4">
-      <div className="flex items-center justify-between mb-2">
-        <p className="text-sm text-gray-600">
-          Mostrando {Math.min(5, preview.rows.length)} de {preview.totalRows} filas
-        </p>
-      </div>
-      <ScrollArea className="h-64 border rounded-md">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead className="w-12 bg-gray-50">#</TableHead>
-              {preview.headers.map((header, i) => (
-                <TableHead key={i} className="bg-gray-50 whitespace-nowrap">
-                  {header}
-                </TableHead>
-              ))}
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {preview.rows.slice(0, 5).map((row, rowIndex) => (
-              <TableRow key={rowIndex}>
-                <TableCell className="font-mono text-gray-500">{rowIndex + 1}</TableCell>
-                {preview.headers.map((header, colIndex) => (
-                  <TableCell key={colIndex} className="whitespace-nowrap max-w-[200px] truncate">
-                    {row[header] || '-'}
-                  </TableCell>
+  const PreviewTable = ({ preview }: { preview: PreviewData }) => {
+    const hasMatchingFields = preview.headers.some(h => 
+      h.includes('buro') || h.includes('ingreso_anual') || h.includes('ventas_terminal') || h.includes('atrasos')
+    );
+
+    return (
+      <div className="mt-4 space-y-2">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <p className="text-xs text-muted-foreground">
+            Mostrando {Math.min(5, preview.rows.length)} de {preview.totalRows} filas detectadas
+          </p>
+          {hasMatchingFields && (
+            <Badge variant="outline" className="bg-emerald-50 text-emerald-700 border-emerald-300 text-xs">
+              ✓ Columnas de Matching Detectadas
+            </Badge>
+          )}
+        </div>
+        <ScrollArea className="h-64 border rounded-md shadow-inner bg-white">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead className="w-12 bg-gray-50 text-xs font-bold">#</TableHead>
+                {preview.headers.map((header, i) => (
+                  <TableHead key={i} className="bg-gray-50 text-xs whitespace-nowrap font-semibold text-gray-700">
+                    {header}
+                  </TableHead>
                 ))}
               </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-      </ScrollArea>
-    </div>
-  );
+            </TableHeader>
+            <TableBody>
+              {preview.rows.slice(0, 5).map((row, rowIndex) => (
+                <TableRow key={rowIndex} className="hover:bg-blue-50/30">
+                  <TableCell className="font-mono text-xs text-gray-500">{rowIndex + 1}</TableCell>
+                  {preview.headers.map((header, colIndex) => (
+                    <TableCell key={colIndex} className="whitespace-nowrap text-xs max-w-[200px] truncate">
+                      {row[header] !== undefined && row[header] !== '' ? String(row[header]) : <span className="text-gray-300">-</span>}
+                    </TableCell>
+                  ))}
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </ScrollArea>
+      </div>
+    );
+  };
 
   const ErrorList = ({ result }: { result: ImportResult }) => (
     <div className="mt-4 space-y-4">
@@ -430,19 +441,40 @@ export default function BulkImport() {
                   Template de Financieras
                 </CardTitle>
                 <CardDescription>
-                  Descarga el template para cargar financieras con sus productos y requisitos
+                  Descarga el template oficial para cargar financieras con sus productos y reglas completas de matching
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
-                <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 text-sm">
-                  <p className="font-medium text-blue-900 mb-2">El template incluye:</p>
-                  <ul className="list-disc list-inside text-blue-800 space-y-1">
-                    <li>Datos generales de la financiera</li>
-                    <li>Información de contacto</li>
-                    <li>Productos y configuración</li>
-                    <li>Requisitos por tipo de cliente</li>
-                    <li>Tasas de comisión</li>
-                  </ul>
+                <div className="bg-gradient-to-br from-blue-50 to-indigo-50 border border-blue-200 rounded-lg p-4 text-sm space-y-3">
+                  <p className="font-semibold text-blue-900 flex items-center gap-2">
+                    <Sparkles className="w-4 h-4 text-blue-600" />
+                    Plantilla Actualizada con Reglas de Matching Completas:
+                  </p>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-xs">
+                    <div className="bg-white/80 p-2.5 rounded border border-blue-100 shadow-xs">
+                      <p className="font-semibold text-blue-950 mb-1">🎯 Criterios de Matching (18 campos):</p>
+                      <ul className="list-disc list-inside text-blue-900 space-y-0.5">
+                        <li>Buró PF, Accionista y Empresa</li>
+                        <li>Ingreso Mensual y Anual</li>
+                        <li>Facturación TPV / Terminal</li>
+                        <li>Tolerancia y Atrasos en Buró</li>
+                        <li>Aval, SAT CIEC y Estados Fin.</li>
+                        <li>Opinión SAT y Ventas Gobierno</li>
+                      </ul>
+                    </div>
+                    <div className="bg-white/80 p-2.5 rounded border border-blue-100 shadow-xs">
+                      <p className="font-semibold text-blue-950 mb-1">⚙️ Producto y Comisiones:</p>
+                      <ul className="list-disc list-inside text-blue-900 space-y-0.5">
+                        <li>Monto Min/Max y Plazo</li>
+                        <li>Tasa de Interés y Apertura</li>
+                        <li>Destinos y Giros Prohibidos</li>
+                        <li>Comisiones Broker y Master</li>
+                      </ul>
+                    </div>
+                  </div>
+                  <p className="text-xs text-blue-700 italic">
+                    💡 Si la financiera ya existe, el sistema actualizará sus requisitos y agregará sus nuevos productos automáticamente sin duplicar.
+                  </p>
                 </div>
                 <Button 
                   onClick={() => handleDownloadTemplate('financieras')}
@@ -450,7 +482,7 @@ export default function BulkImport() {
                   variant="outline"
                 >
                   <Download className="w-4 h-4 mr-2" />
-                  Descargar Template
+                  Descargar Template de Financieras
                 </Button>
               </CardContent>
             </Card>
