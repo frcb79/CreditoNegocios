@@ -94,9 +94,7 @@ async function ensureCommissionRecord(params: {
   recipient: "broker" | "master_broker";
 }): Promise<boolean> {
   const { creditId, brokerId, masterBrokerId, commissionType, amount, recipient } = params;
-  if (!Number.isFinite(amount) || amount <= 0) {
-    return false;
-  }
+  const safeAmount = Number.isFinite(amount) && amount >= 0 ? amount : 0;
 
   const existing = await storage.getCommissions({ brokerId });
   const isDuplicate = existing.some((c) => {
@@ -105,27 +103,50 @@ async function ensureCommissionRecord(params: {
     }
 
     if (recipient === "broker") {
-      return parseFloat(c.brokerShare || "0") > 0;
+      return c.brokerId === brokerId && c.brokerShare !== null && c.brokerShare !== undefined;
     }
 
-    return c.masterBrokerId === masterBrokerId && parseFloat(c.masterBrokerShare || "0") > 0;
+    return c.masterBrokerId === masterBrokerId && c.masterBrokerShare !== null && c.masterBrokerShare !== undefined;
   });
 
   if (isDuplicate) {
     return false;
   }
 
-  await storage.createCommission({
+  const commission = await storage.createCommission({
     creditId,
     brokerId,
-    masterBrokerId: recipient === "master_broker" ? (masterBrokerId || null) : null,
-    amount: amount.toFixed(2),
-    brokerShare: recipient === "broker" ? amount.toFixed(2) : "0.00",
-    masterBrokerShare: recipient === "master_broker" ? amount.toFixed(2) : "0.00",
+    masterBrokerId: masterBrokerId || null,
+    amount: safeAmount.toFixed(2),
+    brokerShare: recipient === "broker" ? safeAmount.toFixed(2) : "0.00",
+    masterBrokerShare: recipient === "master_broker" ? safeAmount.toFixed(2) : "0.00",
     appShare: "0.00",
     status: "pending",
     commissionType,
   });
+
+  // Notify recipient immediately upon dispersion
+  try {
+    const targetUserId = recipient === "master_broker" ? masterBrokerId : brokerId;
+    if (targetUserId) {
+      await storage.createNotification({
+        userId: targetUserId,
+        type: 'commission_paid',
+        title: 'Nueva comisión generada (Pendiente)',
+        message: `Se ha registrado una comisión de ${commissionType} por $${safeAmount.toLocaleString('es-MX', { minimumFractionDigits: 2 })} MXN en estatus pendiente de liquidación.`,
+        relatedEntityType: 'commission',
+        relatedEntityId: commission.id,
+      });
+      broadcastToUser(targetUserId, {
+        type: 'commission_update',
+        commissionId: commission.id,
+        status: 'pending',
+        amount: safeAmount,
+      });
+    }
+  } catch (notifErr) {
+    console.warn('[Commission] Notification error:', notifErr);
+  }
 
   return true;
 }
@@ -1105,6 +1126,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
           activeBrokers: allUsers.filter(u => (u.role === 'broker' || u.role === 'master_broker') && u.isActive).length,
           totalClients: allClients.length,
           avgTicket: Math.round(avgTicket),
+          commissionsPendingTotal: pendingCommissions,
+          commissionsPendingCount: pendingCommissionsCount,
         };
       }
 
@@ -1785,32 +1808,24 @@ export async function registerRoutes(app: Express): Promise<Server> {
           console.log(`[Commission Trigger] Credit ${id} comes from winning submission target ${submissionTarget.id}, proceeding with commission calculation`);
         }
         
-        // Check if finalProposal exists
-        const finalProposal = credit.finalProposal as any;
-        if (!finalProposal || !finalProposal.approvedAmount) {
-          console.warn(`[Commission Trigger] No finalProposal found for credit ${id}, skipping commission calculation`);
-        } else {
-          // Get broker and master broker
-          const broker = await storage.getUser(credit.brokerId);
-          if (!broker) {
-            console.warn(`[Commission Trigger] Broker ${credit.brokerId} not found for credit ${id}`);
-          } else {
-            const masterBrokerId = broker.masterBrokerId;
-            const approvedAmount = parseFloat(finalProposal.approvedAmount);
-            const commissionsToApply = finalProposal.commissionsToApply || [];
-            const commissionRates = finalProposal.commissionRates || {};
-            
-            console.log(`[Commission Trigger] Creating commissions for credit ${id}, amount: ${approvedAmount}, apply: ${commissionsToApply.join(', ')}`);
-            
-            // Create commission records for each type that should be applied
+        // Get broker and master broker
+        const broker = await storage.getUser(credit.brokerId);
+        if (broker) {
+          const masterBrokerId = broker.masterBrokerId;
+          const finalProposal = credit.finalProposal as any;
+          const approvedAmount = parseFloat(finalProposal?.approvedAmount || credit.amount || '0');
+          const commissionsToApply = finalProposal?.commissionsToApply || [];
+          const commissionRates = finalProposal?.commissionRates || {};
+          const institution = credit.financialInstitutionId ? await storage.getFinancialInstitution(credit.financialInstitutionId) : null;
+          const instRates = (institution?.commissionRates as any) || {};
+
+          if (commissionsToApply.length > 0) {
             for (const commissionKey of commissionsToApply) {
-              // Parse commission key: "masterBroker_apertura" or "broker_apertura"
               const [role, type] = commissionKey.split('_');
-              
               if (role === 'masterBroker' && masterBrokerId) {
                 const rate = parseFloat(commissionRates.masterBroker?.[type] || '0');
                 const amount = approvedAmount * rate / 100;
-                const created = await ensureCommissionRecord({
+                await ensureCommissionRecord({
                   creditId: credit.id,
                   brokerId: credit.brokerId,
                   masterBrokerId,
@@ -1818,23 +1833,43 @@ export async function registerRoutes(app: Express): Promise<Server> {
                   amount,
                   recipient: 'master_broker',
                 });
-                if (created) {
-                  console.log(`[Commission] Created ${type} commission for Master Broker ${masterBrokerId}: $${amount.toFixed(2)} MXN (${rate}%)`);
-                }
               } else if (role === 'broker') {
                 const rate = parseFloat(commissionRates.broker?.[type] || '0');
                 const amount = approvedAmount * rate / 100;
-                const created = await ensureCommissionRecord({
+                await ensureCommissionRecord({
                   creditId: credit.id,
                   brokerId: credit.brokerId,
+                  masterBrokerId: masterBrokerId || null,
                   commissionType: type,
                   amount,
                   recipient: 'broker',
                 });
-                if (created) {
-                  console.log(`[Commission] Created ${type} commission for Broker ${credit.brokerId}: $${amount.toFixed(2)} MXN (${rate}%)`);
-                }
               }
+            }
+          } else {
+            // Default to apertura commission (even if 0%)
+            const brokerRate = parseFloat(commissionRates.broker?.apertura || instRates.broker?.apertura || (institution as any)?.brokerCommissionRate || (institution as any)?.commissionRate || '0');
+            const brokerAmount = (approvedAmount * brokerRate) / 100;
+            await ensureCommissionRecord({
+              creditId: credit.id,
+              brokerId: credit.brokerId,
+              masterBrokerId: masterBrokerId || null,
+              commissionType: 'apertura',
+              amount: brokerAmount,
+              recipient: 'broker',
+            });
+
+            if (masterBrokerId) {
+              const masterRate = parseFloat(commissionRates.masterBroker?.apertura || instRates.masterBroker?.apertura || (institution as any)?.masterBrokerCommissionRate || '0');
+              const masterAmount = (approvedAmount * masterRate) / 100;
+              await ensureCommissionRecord({
+                creditId: credit.id,
+                brokerId: credit.brokerId,
+                masterBrokerId,
+                commissionType: 'apertura',
+                amount: masterAmount,
+                recipient: 'master_broker',
+              });
             }
           }
         }
@@ -2162,10 +2197,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (isAdmin) {
         rawCommissions = await storage.getCommissions();
       } else if (user?.role === 'master_broker') {
-        rawCommissions = await storage.getCommissions({
+        const mbComms = await storage.getCommissions({
           masterBrokerId: userId,
           includeNetwork: true,
         });
+        const directComms = await storage.getCommissions({ brokerId: userId });
+        const commMap = new Map<string, any>();
+        for (const c of [...mbComms, ...directComms]) {
+          commMap.set(c.id, c);
+        }
+        rawCommissions = Array.from(commMap.values());
       } else {
         rawCommissions = await storage.getCommissions(userId);
       }
@@ -4757,71 +4798,64 @@ export async function registerRoutes(app: Express): Promise<Server> {
         status: anyPendingOrEvaluating ? 'in_progress' : 'dispersed',
       });
 
-      // CREATE COMMISSIONS (apertura/sobretasa/renovacion)
-      if (proposal && proposal.approvedAmount) {
+      // CREATE COMMISSIONS (apertura/sobretasa/renovacion) - UNCONDITIONAL (EVEN IF 0%)
+      try {
         const broker = await storage.getUser(request.brokerId);
         if (broker) {
           const masterBrokerId = broker.masterBrokerId;
-          const approvedAmount = parseFloat(proposal.approvedAmount);
+          const approvedAmount = parseFloat(proposal?.approvedAmount || credit?.amount || request.requestedAmount?.toString() || '0');
           
           // Get institution for commission rates
           const institution = await storage.getFinancialInstitution(target.financialInstitutionId);
+          const commissionRates = (institution?.commissionRates as any) || {};
           
-          if (institution) {
-            const commissionRates = institution.commissionRates as any || {};
-            
-            // Calculate opening commission for broker with fallback to institution legacy rates
-            const brokerOpeningRate = parseFloat(
-              commissionRates.broker?.apertura ||
-              (institution as any).brokerCommissionRate ||
-              (institution as any).commissionRate ||
-              '0'
-            );
+          // Calculate opening commission for broker (even if 0%)
+          const brokerOpeningRate = parseFloat(
+            proposal?.openingCommission ||
+            commissionRates.broker?.apertura ||
+            (institution as any)?.brokerCommissionRate ||
+            (institution as any)?.commissionRate ||
+            (institution as any)?.openingCommissionRate ||
+            '0'
+          );
 
-            if (brokerOpeningRate > 0) {
-              const brokerOpeningAmount = (approvedAmount * brokerOpeningRate) / 100;
-              
-              await storage.createCommission({
-                creditId: credit!.id,
-                brokerId: request.brokerId,
-                masterBrokerId: masterBrokerId || null,
-                amount: brokerOpeningAmount.toFixed(2),
-                brokerShare: brokerOpeningAmount.toFixed(2),
-                masterBrokerShare: '0.00',
-                appShare: '0.00',
-                status: 'pending',
-                commissionType: 'apertura',
-              });
-              
-              console.log(`[Commission] Created opening commission for broker ${request.brokerId}: $${brokerOpeningAmount.toFixed(2)}`);
-            }
-            
-            // Calculate opening commission for master broker if exists
+          const brokerOpeningAmount = (approvedAmount * brokerOpeningRate) / 100;
+          
+          await ensureCommissionRecord({
+            creditId: credit!.id,
+            brokerId: request.brokerId,
+            masterBrokerId: masterBrokerId || null,
+            amount: brokerOpeningAmount,
+            recipient: 'broker',
+            commissionType: 'apertura',
+          });
+          
+          console.log(`[Commission] Created opening commission for broker ${request.brokerId}: $${brokerOpeningAmount.toFixed(2)} (${brokerOpeningRate}%)`);
+          
+          // Calculate opening commission for master broker if exists (even if 0%)
+          if (masterBrokerId) {
             const masterOpeningRate = parseFloat(
               commissionRates.masterBroker?.apertura ||
-              (institution as any).masterBrokerCommissionRate ||
+              (institution as any)?.masterBrokerCommissionRate ||
               '0'
             );
 
-            if (masterBrokerId && masterOpeningRate > 0) {
-              const masterOpeningAmount = (approvedAmount * masterOpeningRate) / 100;
-              
-              await storage.createCommission({
-                creditId: credit!.id,
-                brokerId: request.brokerId, // Keep original broker as brokerId
-                masterBrokerId: masterBrokerId, // Set master broker in masterBrokerId field
-                amount: masterOpeningAmount.toFixed(2),
-                brokerShare: '0.00',
-                masterBrokerShare: masterOpeningAmount.toFixed(2),
-                appShare: '0.00',
-                status: 'pending',
-                commissionType: 'apertura',
-              });
-              
-              console.log(`[Commission] Created opening commission for master broker ${masterBrokerId}: $${masterOpeningAmount.toFixed(2)}`);
-            }
+            const masterOpeningAmount = (approvedAmount * masterOpeningRate) / 100;
+            
+            await ensureCommissionRecord({
+              creditId: credit!.id,
+              brokerId: request.brokerId,
+              masterBrokerId: masterBrokerId,
+              amount: masterOpeningAmount,
+              recipient: 'master_broker',
+              commissionType: 'apertura',
+            });
+            
+            console.log(`[Commission] Created opening commission for master broker ${masterBrokerId}: $${masterOpeningAmount.toFixed(2)} (${masterOpeningRate}%)`);
           }
         }
+      } catch (commErr) {
+        console.error("[Commission] Error generating commissions on mark-dispersed:", commErr);
       }
 
       // Auto-record in client credit history (#25)

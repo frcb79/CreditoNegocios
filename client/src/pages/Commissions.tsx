@@ -577,10 +577,48 @@ export default function Commissions() {
 
           {/* Commissions List */}
           <Card>
-            <CardHeader>
-              <CardTitle>Historial de Comisiones ({filteredCommissions.length})</CardTitle>
+            <CardHeader className="pb-3">
+              <div className="flex items-center justify-between flex-wrap gap-2">
+                <CardTitle>Historial de Comisiones ({filteredCommissions.length})</CardTitle>
+                <div className="flex items-center gap-2">
+                  <Badge variant="outline" className="text-xs bg-amber-50 text-amber-900 border-amber-300 font-semibold">
+                    ⏳ Pendientes: {commissions.filter(c => c.status === 'pending').length}
+                  </Badge>
+                  <Badge variant="outline" className="text-xs bg-emerald-50 text-emerald-900 border-emerald-300 font-semibold">
+                    ✓ Pagadas: {commissions.filter(c => c.status === 'paid').length}
+                  </Badge>
+                </div>
+              </div>
             </CardHeader>
             <CardContent>
+              {/* Callout destacado de Adeudos Activos */}
+              {commissions.some(c => c.status === 'pending') && filterStatus !== 'paid' && (
+                <div className="mb-4 p-3.5 bg-amber-50/90 border-2 border-amber-300 rounded-xl flex items-center justify-between flex-wrap gap-3 shadow-sm">
+                  <div className="flex items-center gap-3">
+                    <div className="w-9 h-9 rounded-full bg-amber-200 text-amber-900 flex items-center justify-center font-bold text-sm shadow-inner">
+                      {commissions.filter(c => c.status === 'pending').length}
+                    </div>
+                    <div>
+                      <p className="text-xs font-bold text-amber-950 flex items-center gap-1.5">
+                        <i className="fas fa-exclamation-circle text-amber-600"></i>
+                        {canProcessPayments ? 'Adeudos de comisiones pendientes por liquidar' : 'Comisiones pendientes por recibir'}
+                      </p>
+                      <p className="text-[11px] text-amber-800">
+                        {canProcessPayments 
+                          ? 'Se generaron automáticamente al dispersar los créditos. Requieren ser liquidadas vía STP.' 
+                          : 'Se generaron automáticamente al dispersarse tus créditos colocados. Pendiente de pago por la administración.'}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <span className="text-xs text-amber-900 font-medium">Monto adeudado: </span>
+                    <span className="text-base font-black text-amber-950">
+                      ${totalPending.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} MXN
+                    </span>
+                  </div>
+                </div>
+              )}
+
               {filteredCommissions.length === 0 ? (
                 <div className="text-center py-8">
                   <i className="fas fa-dollar-sign text-4xl text-gray-300 mb-4"></i>
@@ -590,104 +628,186 @@ export default function Commissions() {
                 </div>
               ) : (
                 <div className="space-y-3">
-                  {filteredCommissions.map((commission) => (
-                    <div
-                      key={commission.id}
-                      className="flex items-center justify-between p-4 border border-gray-200 rounded-lg hover:bg-gray-50/80 transition-colors cursor-pointer"
-                      onClick={() => setViewingCommission(commission)}
-                      data-testid={`commission-${commission.id}`}
-                    >
-                      <div className="flex items-center space-x-4">
-                        <div className="w-12 h-12 bg-primary/10 text-primary rounded-full flex items-center justify-center">
-                          <i className="fas fa-dollar-sign text-lg"></i>
-                        </div>
-                        <div>
-                          <h3 className="font-semibold text-gray-900">
-                            ${safeFloat(commission.amount).toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} MXN
-                          </h3>
-                          <div className="flex items-center gap-2 flex-wrap text-xs text-neutral mt-0.5">
-                            <span className="font-medium text-gray-700">
-                              {commission.client ? (commission.client.businessName || `${commission.client.firstName || ''} ${commission.client.lastName || ''}`.trim()) : 'Cliente'}
-                            </span>
-                            {commission.financialInstitution && (
-                              <>
-                                <span>•</span>
-                                <span className="text-gray-600">{commission.financialInstitution.name}</span>
-                              </>
-                            )}
-                            <span>•</span>
-                            <span>Tipo: {commissionTypeLabels[commission.commissionType || ""] || (commission.commissionType || "Sin tipo")}</span>
+                  {filteredCommissions.map((commission) => {
+                    const isPending = commission.status === 'pending';
+                    const isBrokerRole = user?.role === 'broker';
+                    const isMasterBrokerRole = user?.role === 'master_broker';
+                    const isSuperAdminRole = user?.role === 'admin' || user?.role === 'super_admin';
+
+                    const brokerShare = safeFloat(commission.brokerShare || (commission.masterBrokerShare ? '0' : commission.amount));
+                    const masterBrokerShare = safeFloat(commission.masterBrokerShare);
+                    const appShare = safeFloat(commission.appShare);
+                    const totalAmount = safeFloat(commission.amount);
+
+                    // User role specific share calculation
+                    const isOwnCreditAsMB = isMasterBrokerRole && (commission.brokerId === user?.id || !commission.masterBrokerId);
+                    const profileSpecificAmount = isBrokerRole 
+                      ? brokerShare 
+                      : (isMasterBrokerRole ? (isOwnCreditAsMB ? brokerShare : masterBrokerShare) : totalAmount);
+
+                    return (
+                      <div
+                        key={commission.id}
+                        className={`flex items-center justify-between p-4 border rounded-xl transition-all cursor-pointer ${
+                          isPending 
+                            ? 'border-amber-300 bg-amber-50/30 hover:bg-amber-50/60 shadow-sm' 
+                            : 'border-gray-200 hover:bg-gray-50/80'
+                        }`}
+                        onClick={() => setViewingCommission(commission)}
+                        data-testid={`commission-${commission.id}`}
+                      >
+                        <div className="flex items-center space-x-4">
+                          <div className={`w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0 ${
+                            isPending ? 'bg-amber-100 text-amber-700' : 'bg-primary/10 text-primary'
+                          }`}>
+                            <i className={`fas ${isPending ? 'fa-clock' : 'fa-dollar-sign'} text-lg`}></i>
                           </div>
-                          {(commission.broker || commission.masterBroker) && (
-                            <div className="flex items-center gap-1.5 mt-1 flex-wrap">
-                              {commission.broker && (
-                                <Badge variant="outline" className="text-[10px] py-0 px-1.5 bg-gray-50 text-gray-700 border-gray-300">
-                                  <i className="fas fa-user-tie text-[9px] mr-1 text-primary"></i>
-                                  {commission.broker.firstName} {commission.broker.lastName}
+                          <div>
+                            {/* Monto de acuerdo al perfil del usuario */}
+                            <div className="flex items-baseline gap-2 flex-wrap">
+                              <h3 className="font-bold text-gray-950 text-base">
+                                ${profileSpecificAmount.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} MXN
+                              </h3>
+                              {totalAmount === 0 && (
+                                <Badge variant="outline" className="text-[10px] text-gray-500 border-gray-300 bg-white">
+                                  Tasa 0% al dispersar
                                 </Badge>
                               )}
-                              {commission.masterBroker && (
-                                <Badge variant="outline" className="text-[10px] py-0 px-1.5 bg-purple-50 text-purple-700 border-purple-200">
-                                  <i className="fas fa-network-wired text-[9px] mr-1"></i>
-                                  MB: {commission.masterBroker.brandName || `${commission.masterBroker.firstName} ${commission.masterBroker.lastName}`}
-                                </Badge>
+                              {isBrokerRole && (
+                                <span className="text-xs font-semibold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
+                                  Tu Comisión
+                                </span>
+                              )}
+                              {isMasterBrokerRole && (
+                                <span className={`text-xs font-semibold px-2 py-0.5 rounded border ${
+                                  isOwnCreditAsMB 
+                                    ? 'text-emerald-700 bg-emerald-50 border-emerald-200' 
+                                    : 'text-indigo-700 bg-indigo-50 border-indigo-200'
+                                }`}>
+                                  {isOwnCreditAsMB ? 'Tu Comisión Directa' : 'Tu Comisión de Red'}
+                                </span>
                               )}
                             </div>
+
+                            {/* Datos de Crédito, Cliente y Financiera */}
+                            <div className="flex items-center gap-2 flex-wrap text-xs text-neutral mt-1">
+                              <span className="font-semibold text-gray-800">
+                                {commission.client ? (commission.client.businessName || `${commission.client.firstName || ''} ${commission.client.lastName || ''}`.trim()) : 'Cliente'}
+                              </span>
+                              {commission.financialInstitution && (
+                                <>
+                                  <span>•</span>
+                                  <span className="text-gray-600 font-medium">{commission.financialInstitution.name}</span>
+                                </>
+                              )}
+                              {commission.credit && (
+                                <>
+                                  <span>•</span>
+                                  <span className="text-gray-700 font-medium">
+                                    Crédito: ${safeFloat(commission.credit.amount).toLocaleString('es-MX')} MXN
+                                  </span>
+                                </>
+                              )}
+                              <span>•</span>
+                              <span>Tipo: {commissionTypeLabels[commission.commissionType || ""] || (commission.commissionType || "Apertura")}</span>
+                            </div>
+
+                            {/* Desglose de Repartición de acuerdo al perfil (#27 / Requerimiento de Perfil) */}
+                            {isSuperAdminRole ? (
+                              <div className="flex items-center gap-1.5 flex-wrap text-[11px] mt-2 p-1.5 bg-white/90 rounded border border-gray-200">
+                                <span className="font-bold text-gray-700">Repartición por Perfil:</span>
+                                <span className="text-blue-800 bg-blue-50 px-1.5 py-0.5 rounded font-medium border border-blue-200">
+                                  👤 Bróker: ${brokerShare.toLocaleString('es-MX', { minimumFractionDigits: 2 })} MXN
+                                </span>
+                                {masterBrokerShare > 0 && (
+                                  <span className="text-purple-800 bg-purple-50 px-1.5 py-0.5 rounded font-medium border border-purple-200">
+                                    🌐 Master Bróker: ${masterBrokerShare.toLocaleString('es-MX', { minimumFractionDigits: 2 })} MXN
+                                  </span>
+                                )}
+                                {appShare > 0 && (
+                                  <span className="text-emerald-800 bg-emerald-50 px-1.5 py-0.5 rounded font-medium border border-emerald-200">
+                                    🏢 Plataforma: ${appShare.toLocaleString('es-MX', { minimumFractionDigits: 2 })} MXN
+                                  </span>
+                                )}
+                              </div>
+                            ) : isMasterBrokerRole && !isOwnCreditAsMB ? (
+                              <div className="flex items-center gap-1.5 flex-wrap text-[11px] mt-1.5 text-gray-600">
+                                <span className="text-gray-500">Bróker Originador de Red:</span>
+                                <span className="font-semibold text-gray-800">
+                                  {commission.broker ? `${commission.broker.firstName} ${commission.broker.lastName}` : 'Bróker'}
+                                </span>
+                                <span className="text-blue-700 bg-blue-50 px-1.5 py-0.5 rounded border border-blue-200 font-medium">
+                                  Comisión Bróker: ${brokerShare.toLocaleString('es-MX', { minimumFractionDigits: 2 })} MXN
+                                </span>
+                              </div>
+                            ) : null}
+
+                            <p className="text-[11px] text-gray-400 mt-1">
+                              ID: {String(commission.id || "").slice(-8)} • Dispersado/Generado {commission.createdAt ? formatDistanceToNow(new Date(commission.createdAt), { 
+                                addSuffix: true, 
+                                locale: es 
+                              }) : 'recientemente'}
+                            </p>
+                          </div>
+                        </div>
+                        
+                        <div className="text-right space-y-2 flex flex-col items-end" onClick={(e) => e.stopPropagation()}>
+                          {isPending ? (
+                            <Badge 
+                              className="bg-amber-500 hover:bg-amber-600 text-white font-semibold text-xs animate-pulse shadow-sm"
+                              data-testid={`commission-status-${commission.id}`}
+                            >
+                              <i className="fas fa-clock mr-1"></i>
+                              {canProcessPayments ? '🔴 ADEUDO ACTIVO (No Pagada)' : '⏳ Pendiente por Recibir'}
+                            </Badge>
+                          ) : (
+                            <Badge 
+                              className="bg-emerald-600 hover:bg-emerald-700 text-white font-medium text-xs shadow-sm"
+                              data-testid={`commission-status-${commission.id}`}
+                            >
+                              <i className="fas fa-check-circle mr-1"></i>
+                              Pagada
+                            </Badge>
                           )}
-                          <p className="text-[11px] text-gray-400 mt-1">
-                            ID: {String(commission.id || "").slice(-8)} • {commission.createdAt ? formatDistanceToNow(new Date(commission.createdAt), { 
-                              addSuffix: true, 
-                              locale: es 
-                            }) : 'Reciente'}
-                          </p>
+                          
+                          {isPending && canProcessPayments && (
+                            <div className="flex items-center gap-2">
+                              <Button 
+                                size="sm"
+                                variant="outline"
+                                className="text-xs border-success text-success hover:bg-success/10 font-semibold"
+                                onClick={() => markPaidMutation.mutate({ id: commission.id })}
+                                disabled={markPaidMutation.isPending}
+                                title="Marcar como pagada sin procesar transferencia STP"
+                                data-testid={`button-mark-paid-${commission.id}`}
+                              >
+                                <i className="fas fa-check mr-1"></i>
+                                Marcar Pagada
+                              </Button>
+                              <Button 
+                                size="sm"
+                                className="bg-success text-white hover:bg-green-700 text-xs font-semibold shadow-sm"
+                                onClick={() => {
+                                  setSelectedCommission(commission);
+                                  setAccountNumber(commission.effectiveBankAccount?.clabe || "");
+                                }}
+                                data-testid={`button-pay-${commission.id}`}
+                              >
+                                <i className="fas fa-credit-card mr-1"></i>
+                                Pagar STP
+                              </Button>
+                            </div>
+                          )}
+                          
+                          {commission.paidAt && (
+                            <p className="text-[11px] text-success font-medium">
+                              Pagado el {new Date(commission.paidAt).toLocaleDateString('es-MX')}
+                            </p>
+                          )}
                         </div>
                       </div>
-                      
-                      <div className="text-right space-y-2 flex flex-col items-end" onClick={(e) => e.stopPropagation()}>
-                        <Badge 
-                          className={statusConfig[commission.status as keyof typeof statusConfig]?.color || "bg-gray-100 text-gray-800"}
-                          data-testid={`commission-status-${commission.id}`}
-                        >
-                          {statusConfig[commission.status as keyof typeof statusConfig]?.label || commission.status}
-                        </Badge>
-                        
-                        {commission.status === 'pending' && canProcessPayments && (
-                          <div className="flex items-center gap-2">
-                            <Button 
-                              size="sm"
-                              variant="outline"
-                              className="text-xs border-success text-success hover:bg-success/10"
-                              onClick={() => markPaidMutation.mutate({ id: commission.id })}
-                              disabled={markPaidMutation.isPending}
-                              title="Marcar como pagada sin procesar transferencia STP"
-                              data-testid={`button-mark-paid-${commission.id}`}
-                            >
-                              <i className="fas fa-check mr-1"></i>
-                              Marcar Pagada
-                            </Button>
-                            <Button 
-                              size="sm"
-                              className="bg-success text-white hover:bg-green-700 text-xs"
-                              onClick={() => {
-                                setSelectedCommission(commission);
-                                setAccountNumber(commission.effectiveBankAccount?.clabe || "");
-                              }}
-                              data-testid={`button-pay-${commission.id}`}
-                            >
-                              <i className="fas fa-credit-card mr-1"></i>
-                              Pagar STP
-                            </Button>
-                          </div>
-                        )}
-                        
-                        {commission.paidAt && (
-                          <p className="text-[11px] text-success font-medium">
-                            Pagado el {new Date(commission.paidAt).toLocaleDateString('es-MX')}
-                          </p>
-                        )}
-                      </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
             </CardContent>
@@ -1159,6 +1279,27 @@ export default function Commissions() {
                       <span className="font-semibold">{new Date(viewingCommission.paidAt).toLocaleDateString('es-MX')}</span>
                     </div>
                   )}
+
+                  {/* Desglose de Repartición de acuerdo al perfil */}
+                  <div className="bg-gray-50 p-3 rounded-lg border border-gray-200 text-xs space-y-1.5 mt-2">
+                    <p className="font-bold text-gray-800">Distribución de Comisión:</p>
+                    <div className="flex justify-between text-blue-900">
+                      <span>👤 Asignado a Bróker:</span>
+                      <span className="font-semibold">${safeFloat(viewingCommission.brokerShare || (viewingCommission.masterBrokerShare ? '0' : viewingCommission.amount)).toLocaleString('es-MX', { minimumFractionDigits: 2 })} MXN</span>
+                    </div>
+                    {safeFloat(viewingCommission.masterBrokerShare) > 0 && (
+                      <div className="flex justify-between text-purple-900">
+                        <span>🌐 Asignado a Master Bróker:</span>
+                        <span className="font-semibold">${safeFloat(viewingCommission.masterBrokerShare).toLocaleString('es-MX', { minimumFractionDigits: 2 })} MXN</span>
+                      </div>
+                    )}
+                    {safeFloat(viewingCommission.appShare) > 0 && (
+                      <div className="flex justify-between text-emerald-900">
+                        <span>🏢 Plataforma / Retención:</span>
+                        <span className="font-semibold">${safeFloat(viewingCommission.appShare).toLocaleString('es-MX', { minimumFractionDigits: 2 })} MXN</span>
+                      </div>
+                    )}
+                  </div>
                 </div>
 
                 <div className="flex justify-between items-center pt-2">

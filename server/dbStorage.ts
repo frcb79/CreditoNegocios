@@ -1007,9 +1007,19 @@ export class DbStorage implements IStorage {
         if (filters.includeNetwork) {
           const networkBrokers = await this.getUsersByMasterBroker(filters.masterBrokerId);
           const brokerIds = [...networkBrokers.map((b) => b.id), filters.masterBrokerId];
-          conditions.push(inArray(commissions.brokerId, brokerIds));
+          conditions.push(
+            or(
+              eq(commissions.masterBrokerId, filters.masterBrokerId),
+              inArray(commissions.brokerId, brokerIds)
+            )
+          );
         } else {
-          conditions.push(eq(commissions.brokerId, filters.masterBrokerId));
+          conditions.push(
+            or(
+              eq(commissions.masterBrokerId, filters.masterBrokerId),
+              eq(commissions.brokerId, filters.masterBrokerId)
+            )
+          );
         }
       }
 

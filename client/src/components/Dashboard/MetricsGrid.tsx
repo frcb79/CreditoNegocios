@@ -1,3 +1,4 @@
+import { useLocation } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@/hooks/useAuth";
 import { Card, CardContent } from "@/components/ui/card";
@@ -38,6 +39,8 @@ interface DashboardMetrics {
     activeBrokers: number;
     totalClients: number;
     avgTicket?: number;
+    commissionsPendingTotal?: number;
+    commissionsPendingCount?: number;
   };
   trend?: {
     pipeline: TrendData;
@@ -48,6 +51,7 @@ interface DashboardMetrics {
 
 export default function MetricsGrid() {
   const { user } = useAuth();
+  const [, setLocation] = useLocation();
   const { data: metrics, isLoading } = useQuery<DashboardMetrics>({
     queryKey: ["/api/dashboard/metrics"],
   });
@@ -117,6 +121,7 @@ export default function MetricsGrid() {
   };
 
   // Broker metrics
+  // Broker metrics
   const brokerCards = metrics.broker ? [
     {
       title: "Solicitudes en Pipeline",
@@ -141,6 +146,7 @@ export default function MetricsGrid() {
       icon: "fas fa-clock",
       color: "orange",
       testId: "metric-pending-commissions",
+      onClick: () => setLocation('/comisiones?filter=pending'),
     },
     {
       title: "Ticket Promedio",
@@ -162,7 +168,7 @@ export default function MetricsGrid() {
     testId: "metric-network",
   } : null;
 
-  // Admin metrics
+  // Admin metrics (Includes Comisiones por Pagar / Adeudos)
   const adminCards = metrics.admin ? [
     {
       title: "Pipeline Global",
@@ -179,6 +185,15 @@ export default function MetricsGrid() {
       icon: "fas fa-coins",
       color: "green",
       testId: "metric-total-dispersed",
+    },
+    {
+      title: "Comisiones por Pagar",
+      value: formatCurrency(metrics.admin.commissionsPendingTotal || 0),
+      subtitle: `${metrics.admin.commissionsPendingCount || 0} pagos pendientes de liquidar`,
+      icon: "fas fa-file-invoice-dollar",
+      color: "orange",
+      testId: "metric-admin-commissions-pending",
+      onClick: () => setLocation('/comisiones?filter=pending'),
     },
     {
       title: "Brokers Registrados",
@@ -199,7 +214,7 @@ export default function MetricsGrid() {
   ] : [];
 
   // Select appropriate cards based on role
-  let displayCards = [];
+  let displayCards: any[] = [];
   if (isAdmin) {
     displayCards = adminCards;
   } else if (isMasterBroker && masterBrokerCard) {
@@ -218,30 +233,35 @@ export default function MetricsGrid() {
   };
 
   return (
-    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8" data-testid="metrics-grid">
+    <div className={`grid grid-cols-1 md:grid-cols-2 ${isAdmin ? 'lg:grid-cols-5' : 'lg:grid-cols-4'} gap-4 mb-8`} data-testid="metrics-grid">
       {displayCards.map((card, index) => {
         const style = colorStyles[card.color] || colorStyles.blue;
+        const isClickable = !!card.onClick;
         return (
-          <Card key={index} className="border border-border">
-            <CardContent className="p-6">
+          <Card 
+            key={index} 
+            className={`border border-border ${isClickable ? 'cursor-pointer hover:border-warning/60 hover:shadow-md transition-all' : ''}`}
+            onClick={card.onClick}
+          >
+            <CardContent className="p-5">
               <div className="flex items-center justify-between">
-                <div className="flex-1 min-w-0 pr-3">
-                  <p className="text-muted-foreground text-sm font-medium truncate" data-testid={`${card.testId}-title`}>
+                <div className="flex-1 min-w-0 pr-2">
+                  <p className="text-muted-foreground text-xs font-semibold uppercase tracking-wider truncate" data-testid={`${card.testId}-title`}>
                     {card.title}
                   </p>
-                  <p className="text-2xl font-bold text-foreground mt-1 truncate" data-testid={`${card.testId}-value`}>
+                  <p className="text-xl font-bold text-foreground mt-1 truncate" data-testid={`${card.testId}-value`}>
                     {card.value}
                   </p>
                   <div className="mt-1">
                     {'trend' in card && card.trend ? (
                       renderTrendIndicator(card.trend)
                     ) : 'subtitle' in card && card.subtitle ? (
-                      <p className="text-xs text-muted-foreground truncate">{card.subtitle}</p>
+                      <p className="text-[11px] text-muted-foreground truncate">{card.subtitle}</p>
                     ) : null}
                   </div>
                 </div>
-                <div className={`w-12 h-12 ${style.bg} rounded-lg flex items-center justify-center flex-shrink-0`}>
-                  <i className={`${card.icon} ${style.text} text-lg`}></i>
+                <div className={`w-11 h-11 ${style.bg} rounded-lg flex items-center justify-center flex-shrink-0`}>
+                  <i className={`${card.icon} ${style.text} text-base`}></i>
                 </div>
               </div>
             </CardContent>

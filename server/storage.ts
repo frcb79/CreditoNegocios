@@ -1773,10 +1773,10 @@ export class MemStorage implements IStorage {
         // Get all brokers in the network
         const networkBrokers = await this.getUsersByMasterBroker(filters.masterBrokerId);
         const brokerIds = [...networkBrokers.map(b => b.id), filters.masterBrokerId];
-        commissions = commissions.filter(c => brokerIds.includes(c.brokerId));
+        commissions = commissions.filter(c => c.masterBrokerId === filters.masterBrokerId || brokerIds.includes(c.brokerId));
       } else {
         // Only master broker's own commissions
-        commissions = commissions.filter(c => c.brokerId === filters.masterBrokerId);
+        commissions = commissions.filter(c => c.masterBrokerId === filters.masterBrokerId || c.brokerId === filters.masterBrokerId);
       }
     }
     
