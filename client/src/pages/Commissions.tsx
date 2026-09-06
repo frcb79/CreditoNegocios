@@ -17,10 +17,10 @@ import { formatDistanceToNow } from "date-fns";
 import { es } from "date-fns/locale";
 
 const statusConfig = {
-  pending: { label: "Pendiente", color: "bg-warning/10 text-warning" },
-  paid: { label: "Pagado", color: "bg-success/10 text-success" },
-  advance_requested: { label: "Adelanto Solicitado", color: "bg-primary/10 text-primary" },
-  advance_paid: { label: "Adelanto Pagado", color: "bg-secondary/10 text-secondary" },
+  pending: { label: "Pendiente", color: "bg-amber-100 text-amber-800 border-amber-300" },
+  paid: { label: "Pagado", color: "bg-emerald-100 text-emerald-800 border-emerald-300" },
+  advance_requested: { label: "Adelanto Solicitado", color: "bg-blue-100 text-blue-800 border-blue-300" },
+  advance_paid: { label: "Adelanto Pagado", color: "bg-purple-100 text-purple-800 border-purple-300" },
 };
 
 const commissionTypeLabels: Record<string, string> = {
@@ -135,16 +135,23 @@ export default function Commissions() {
   const filteredCommissions = commissions.filter(commission => {
     const commId = String(commission.id || "").toLowerCase();
     const commCreditId = String(commission.creditId || "").toLowerCase();
+    const commTargetId = String(commission.targetId || "").toLowerCase();
+    const commSubmissionId = String(commission.credit?.submissionId || commission.credit?.linkedSubmissionId || "").toLowerCase();
     const commAmount = String(commission.amount ?? "");
     const brokerName = `${commission.broker?.firstName || ''} ${commission.broker?.lastName || ''}`.toLowerCase();
-    const clientName = `${commission.credit?.client?.businessName || commission.credit?.client?.firstName || ''} ${commission.credit?.client?.lastName || ''}`.toLowerCase();
+    const clientObj = commission.client || commission.credit?.client;
+    const clientName = `${clientObj?.businessName || clientObj?.firstName || ''} ${clientObj?.lastName || ''}`.toLowerCase();
+    const fiName = `${commission.financialInstitution?.name || ''}`.toLowerCase();
     const searchLower = searchTerm.toLowerCase();
 
     const matchesSearch = !searchTerm ||
       commId.includes(searchLower) ||
       commCreditId.includes(searchLower) ||
+      commTargetId.includes(searchLower) ||
+      commSubmissionId.includes(searchLower) ||
       brokerName.includes(searchLower) ||
       clientName.includes(searchLower) ||
+      fiName.includes(searchLower) ||
       commAmount.includes(searchLower);
     
     const matchesStatus = filterStatus === "all" || commission.status === filterStatus;
@@ -515,13 +522,28 @@ export default function Commissions() {
             <CardContent className="p-6">
               <div className="flex justify-between items-center">
                 <div className="flex space-x-4">
-                  <div className="w-80">
+                  <div className="relative w-80">
                     <Input
-                      placeholder="Buscar por ID o monto..."
+                      placeholder="Buscar por ID, cliente, financiera o monto..."
                       value={searchTerm}
                       onChange={(e) => setSearchTerm(e.target.value)}
                       data-testid="input-search-commissions"
+                      className={searchTerm ? "pr-8" : ""}
                     />
+                    {searchTerm && (
+                      <button
+                        onClick={() => {
+                          setSearchTerm("");
+                          if (typeof window !== "undefined") {
+                            window.history.replaceState({}, '', window.location.pathname);
+                          }
+                        }}
+                        className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 text-xs font-bold"
+                        title="Limpiar búsqueda"
+                      >
+                        ✕
+                      </button>
+                    )}
                   </div>
                   <div className="flex space-x-2">
                     <Button
@@ -535,7 +557,7 @@ export default function Commissions() {
                       variant={filterStatus === "pending" ? "default" : "outline"}
                       onClick={() => setFilterStatus("pending")}
                       size="sm"
-                      className={filterStatus === "pending" ? "bg-warning hover:bg-yellow-600" : ""}
+                      className={filterStatus === "pending" ? "bg-amber-600 hover:bg-amber-700 text-white" : ""}
                     >
                       Pendientes
                     </Button>
@@ -543,7 +565,7 @@ export default function Commissions() {
                       variant={filterStatus === "paid" ? "default" : "outline"}
                       onClick={() => setFilterStatus("paid")}
                       size="sm"
-                      className={filterStatus === "paid" ? "bg-success hover:bg-green-600" : ""}
+                      className={filterStatus === "paid" ? "bg-emerald-600 hover:bg-emerald-700 text-white" : ""}
                     >
                       Pagados
                     </Button>

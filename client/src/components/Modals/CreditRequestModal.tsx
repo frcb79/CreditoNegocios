@@ -165,6 +165,9 @@ export default function CreditRequestModal({ isOpen, onClose, preselectedClientI
       });
       queryClient.invalidateQueries({ queryKey: ['/api/credit-submissions'] });
       queryClient.invalidateQueries({ queryKey: [`/api/credit-submissions/client/${variables.clientId}`] });
+      queryClient.invalidateQueries({ queryKey: ['/api/credits'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/credit-submission-targets'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/notifications'] });
       form.reset();
       setSelectedInstitutions([]);
       onClose();

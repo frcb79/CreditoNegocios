@@ -71,6 +71,11 @@ interface CreditSubmissionRequest {
     lastName: string;
     role: string;
   };
+  productTemplate?: {
+    id: string;
+    name: string;
+    description?: string;
+  };
 }
 
 interface CreditSubmissionTarget {

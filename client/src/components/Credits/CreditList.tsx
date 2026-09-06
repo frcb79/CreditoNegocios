@@ -56,6 +56,8 @@ type UnifiedCreditItem = {
   statusSummary?: ReturnType<typeof getSubmissionStatusSummary>;
   isCommissionPaid?: boolean;
   hasPendingCommission?: boolean;
+  paidCommissionsCount?: number;
+  totalCommissionsCount?: number;
   broker?: any;
   masterBroker?: any;
   rawSubmission?: any;
@@ -200,15 +202,19 @@ export default function CreditList() {
         // Check commission status for dispersed targets
         let isCommissionPaid = false;
         let hasPendingCommission = false;
+        let paidCommissionsCount = 0;
+        const totalCommissionsCount = dispersedTargets.length;
         if (dispersedTargets.length > 0) {
-          const commissionsForSub = dispersedTargets.map((t: any) => 
-            commissions?.find((c: any) => c.creditId === t.creditId || (t.id && c.targetId === t.id))
-          ).filter(Boolean);
+          const targetComms = dispersedTargets.map((t: any) => {
+            const comm = commissions?.find((c: any) => c.creditId === t.creditId || (t.id && c.targetId === t.id));
+            return { target: t, commission: comm };
+          });
 
-          if (commissionsForSub.length > 0) {
-            isCommissionPaid = commissionsForSub.every((c: any) => c.status === 'paid');
-            hasPendingCommission = commissionsForSub.some((c: any) => c.status !== 'paid');
-          }
+          paidCommissionsCount = targetComms.filter((tc: any) => tc.commission?.status === 'paid').length;
+          // Paid only if EVERY dispersed target has a registered commission AND that commission is 'paid'
+          isCommissionPaid = targetComms.length > 0 && targetComms.every((tc: any) => tc.commission && tc.commission.status === 'paid');
+          // Pending if any dispersed target lacks a commission or its status is not 'paid'
+          hasPendingCommission = targetComms.some((tc: any) => !tc.commission || tc.commission.status !== 'paid');
         }
 
         // Determine overall status
@@ -237,6 +243,8 @@ export default function CreditList() {
           statusSummary,
           isCommissionPaid,
           hasPendingCommission,
+          paidCommissionsCount,
+          totalCommissionsCount,
           broker: sub.broker,
           masterBroker: sub.masterBroker,
           rawSubmission: sub,
@@ -259,7 +267,7 @@ export default function CreditList() {
         .forEach((credit: any) => {
           const linkedComm = commissions?.find(c => c.creditId === credit.id);
           const isCommissionPaid = linkedComm?.status === 'paid';
-          const hasPendingCommission = linkedComm && linkedComm.status !== 'paid';
+          const hasPendingCommission = credit.status === 'dispersed' && (!linkedComm || linkedComm.status !== 'paid');
 
           items.push({
             id: credit.id,
@@ -276,6 +284,8 @@ export default function CreditList() {
             productTemplateName: credit.productTemplate?.name,
             isCommissionPaid,
             hasPendingCommission,
+            paidCommissionsCount: isCommissionPaid ? 1 : 0,
+            totalCommissionsCount: credit.status === 'dispersed' ? 1 : 0,
             broker: credit.broker,
             masterBroker: credit.masterBroker,
             rawCredit: credit,
@@ -504,10 +514,30 @@ export default function CreditList() {
                           Comisión Pagada
                         </Badge>
                       ) : item.hasPendingCommission ? (
-                        <Badge className="bg-amber-500 text-white border-amber-600 text-xs animate-pulse">
-                          <Clock className="w-3 h-3 mr-0.5 inline" />
-                          Comisión Pendiente
-                        </Badge>
+                        <div className="flex flex-col items-end gap-1">
+                          <Badge className="bg-amber-500 text-white border-amber-600 text-xs animate-pulse">
+                            <Clock className="w-3 h-3 mr-0.5 inline" />
+                            {item.totalCommissionsCount && item.totalCommissionsCount > 1 && item.paidCommissionsCount !== undefined
+                              ? `Comisión Pendiente (${item.paidCommissionsCount}/${item.totalCommissionsCount} pagadas)`
+                              : "Comisión Pendiente"}
+                          </Badge>
+                          {isAdmin && (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="text-[11px] h-6 px-2 bg-amber-50 text-amber-800 border-amber-300 hover:bg-amber-100 hover:text-amber-900 font-medium"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                const creditIdParam = item.dispersedTargets?.[0]?.creditId || item.id;
+                                setLocation(`/comisiones?creditId=${creditIdParam}`);
+                              }}
+                              data-testid={`button-pay-commission-item-${item.id}`}
+                            >
+                              <DollarSign className="w-3 h-3 mr-0.5" />
+                              Pagar Comisión
+                            </Button>
+                          )}
+                        </div>
                       ) : null}
                     </div>
                     {item.targetsCount !== undefined && item.targetsCount > 0 && (
@@ -814,29 +844,27 @@ export default function CreditList() {
                                         <CheckCircle className="w-3 h-3 mr-1 inline" />
                                         Comisión Pagada (${parseFloat(comm.amount).toLocaleString('es-MX')} MXN)
                                       </Badge>
-                                    ) : comm ? (
+                                    ) : (
                                       <div className="flex items-center gap-2">
                                         <Badge className="bg-amber-100 text-amber-800 border-amber-300 text-xs py-1">
-                                          Comisión Pendiente: ${parseFloat(comm.amount).toLocaleString('es-MX')} MXN
+                                          {comm ? `Comisión Pendiente: $${parseFloat(comm.amount).toLocaleString('es-MX')} MXN` : 'Comisión por Liquidar'}
                                         </Badge>
-                                        <Button
-                                          size="sm"
-                                          className="bg-amber-600 hover:bg-amber-700 text-white text-xs font-semibold h-8 shadow-sm"
-                                          onClick={() => {
-                                            setSelectedSubmissionId(null);
-                                            setSelectedCreditItem(null);
-                                            setLocation(`/comisiones?creditId=${target.creditId || ''}`);
-                                          }}
-                                          data-testid={`button-pay-comm-${target.id}`}
-                                        >
-                                          <DollarSign className="w-3.5 h-3.5 mr-1" />
-                                          Pagar Comisión
-                                        </Button>
+                                        {isAdmin && (
+                                          <Button
+                                            size="sm"
+                                            className="bg-amber-600 hover:bg-amber-700 text-white text-xs font-semibold h-8 shadow-sm"
+                                            onClick={() => {
+                                              setSelectedSubmissionId(null);
+                                              setSelectedCreditItem(null);
+                                              setLocation(`/comisiones?creditId=${target.creditId || selectedSubmission.id || ''}`);
+                                            }}
+                                            data-testid={`button-pay-comm-${target.id}`}
+                                          >
+                                            <DollarSign className="w-3.5 h-3.5 mr-1" />
+                                            Pagar Comisión
+                                          </Button>
+                                        )}
                                       </div>
-                                    ) : (
-                                      <Badge variant="outline" className="text-emerald-700 border-emerald-300 text-xs">
-                                        Dispersado
-                                      </Badge>
                                     )}
                                   </div>
                                 )}

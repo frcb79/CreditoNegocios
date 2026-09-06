@@ -1285,13 +1285,15 @@ export class DbStorage implements IStorage {
   }
 
   // Credit Submission Requests operations
-  async getCreditSubmissionRequests(filters?: { status?: string; brokerId?: string; clientId?: string }): Promise<CreditSubmissionRequest[]> {
+  async getCreditSubmissionRequests(filters?: { status?: string; brokerId?: string; brokerIds?: string[]; clientId?: string }): Promise<CreditSubmissionRequest[]> {
     try {
       const conditions = [];
       if (filters?.status) {
         conditions.push(eq(creditSubmissionRequests.status, filters.status));
       }
-      if (filters?.brokerId) {
+      if (filters?.brokerIds && filters.brokerIds.length > 0) {
+        conditions.push(inArray(creditSubmissionRequests.brokerId, filters.brokerIds));
+      } else if (filters?.brokerId) {
         conditions.push(eq(creditSubmissionRequests.brokerId, filters.brokerId));
       }
       if (filters?.clientId) {

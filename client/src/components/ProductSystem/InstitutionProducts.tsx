@@ -27,7 +27,8 @@ import {
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
-import { Plus, Building2, FileText, Settings, DollarSign, Trash2, Package, CheckCircle, XCircle } from "lucide-react";
+import { Plus, Building2, FileText, Settings, DollarSign, Trash2, Package, CheckCircle, XCircle, Search, AlertTriangle, ArrowRight, SlidersHorizontal, Eye } from "lucide-react";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 
 // Helper function to translate category values to display names
 const getCategoryDisplayName = (category: string | null | undefined): string => {
@@ -183,6 +184,48 @@ export default function InstitutionProducts() {
       });
     },
   });
+
+  const [viewMode, setViewMode] = useState<'by_institution' | 'by_product'>('by_institution');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [statusFilter, setStatusFilter] = useState<'all' | 'with_products' | 'without_products'>('all');
+
+  const unassignMutation = useMutation({
+    mutationFn: async (productId: string) => {
+      await apiRequest("DELETE", `/api/institution-products/${productId}`);
+    },
+    onSuccess: () => {
+      toast({
+        title: "Asignación eliminada",
+        description: "El producto se ha desvinculado de la financiera exitosamente",
+      });
+      queryClient.invalidateQueries({ queryKey: ['/api/institution-products'] });
+    },
+    onError: (err: any) => {
+      toast({
+        title: "Error",
+        description: err.message || "No se pudo desvincular el producto",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const handleOpenAssignForInstitution = (institutionId: string) => {
+    form.reset({
+      templateId: "",
+      institutionIds: [institutionId],
+      customName: "",
+    });
+    setShowAssignModal(true);
+  };
+
+  const handleOpenAssignForTemplate = (templateId: string) => {
+    form.reset({
+      templateId: templateId,
+      institutionIds: [],
+      customName: "",
+    });
+    setShowAssignModal(true);
+  };
 
   const onSubmit = (data: AssignProductForm) => {
     assignProductMutation.mutate(data);
@@ -428,18 +471,364 @@ export default function InstitutionProducts() {
         </Card>
       </div>
 
-      {/* Assignment Complete Message */}
-      <div className="text-center py-12">
-        <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
-          <CheckCircle className="w-8 h-8 text-green-600" />
-        </div>
-        <h3 className="text-lg font-medium text-gray-900 mb-2">
-          Asignación de Plantillas
-        </h3>
-        <p className="text-gray-600 mb-4">
-          Las plantillas asignadas están disponibles en el menú principal "Financieras" para configuración y personalización.
-        </p>
-      </div>
+      {/* Alert banner for institutions without products */}
+      {(() => {
+        const unassigned = institutions?.filter(i => i.isActive && !institutionProducts?.some(p => p.institutionId === i.id)) || [];
+        if (unassigned.length === 0) return null;
+        return (
+          <div className="p-4 bg-amber-50 border-2 border-amber-300 rounded-xl flex items-start gap-3 shadow-sm">
+            <AlertTriangle className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
+            <div className="flex-1">
+              <h4 className="text-sm font-bold text-amber-950">
+                Financieras pendientes de asignación ({unassigned.length})
+              </h4>
+              <p className="text-xs text-amber-800 mt-0.5">
+                Las siguientes financieras activas aún no tienen productos asignados: <strong>{unassigned.map(i => i.name).join(', ')}</strong>. Asigna productos para que puedan recibir solicitudes en el matching inteligente.
+              </p>
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* Assignment Table Card */}
+      <Card className="border border-gray-200 shadow-sm">
+        <CardHeader className="pb-4">
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div>
+              <CardTitle className="text-lg font-bold text-gray-900 flex items-center gap-2">
+                <SlidersHorizontal className="w-5 h-5 text-primary" />
+                Matriz de Asignaciones (Financieras y Productos)
+              </CardTitle>
+              <p className="text-xs text-gray-500 mt-1">
+                Consulta y audita qué productos tiene asignados cada financiera antes o después de darla de alta.
+              </p>
+            </div>
+
+            {/* View Mode Toggle */}
+            <div className="flex items-center gap-2 bg-gray-100 p-1 rounded-lg border border-gray-200">
+              <Button
+                variant={viewMode === 'by_institution' ? 'default' : 'ghost'}
+                size="sm"
+                onClick={() => setViewMode('by_institution')}
+                className="text-xs font-semibold h-8"
+                data-testid="toggle-view-by-institution"
+              >
+                <Building2 className="w-3.5 h-3.5 mr-1.5" />
+                Por Financiera ({institutions?.length || 0})
+              </Button>
+              <Button
+                variant={viewMode === 'by_product' ? 'default' : 'ghost'}
+                size="sm"
+                onClick={() => setViewMode('by_product')}
+                className="text-xs font-semibold h-8"
+                data-testid="toggle-view-by-product"
+              >
+                <FileText className="w-3.5 h-3.5 mr-1.5" />
+                Por Producto ({templates?.length || 0})
+              </Button>
+            </div>
+          </div>
+
+          {/* Filters Bar */}
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 pt-3 mt-3 border-t border-gray-100">
+            <div className="relative flex-1 max-w-sm">
+              <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+              <Input
+                placeholder={viewMode === 'by_institution' ? "Buscar por financiera..." : "Buscar por producto..."}
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="pl-9 text-xs h-9"
+                data-testid="input-search-assignments"
+              />
+            </div>
+
+            {viewMode === 'by_institution' && (
+              <Select value={statusFilter} onValueChange={(val: any) => setStatusFilter(val)}>
+                <SelectTrigger className="w-full sm:w-[220px] h-9 text-xs" data-testid="select-assignment-filter">
+                  <SelectValue placeholder="Filtrar asignaciones..." />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todas las Financieras ({institutions?.length || 0})</SelectItem>
+                  <SelectItem value="with_products">Con Productos Asignados</SelectItem>
+                  <SelectItem value="without_products">⚠️ Sin Productos (Faltantes)</SelectItem>
+                </SelectContent>
+              </Select>
+            )}
+          </div>
+        </CardHeader>
+
+        <CardContent className="p-0">
+          {viewMode === 'by_institution' ? (
+            /* Vista 1: Por Financiera */
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow className="bg-gray-50/75">
+                    <TableHead className="font-semibold text-gray-700 text-xs py-3">Financiera</TableHead>
+                    <TableHead className="font-semibold text-gray-700 text-xs py-3">Perfiles Aceptados</TableHead>
+                    <TableHead className="font-semibold text-gray-700 text-xs py-3">Productos Asignados</TableHead>
+                    <TableHead className="font-semibold text-gray-700 text-xs py-3 text-center">Total</TableHead>
+                    <TableHead className="font-semibold text-gray-700 text-xs py-3 text-right">Acciones</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {(() => {
+                    const filtered = institutions?.filter(inst => {
+                      const matchesSearch = inst.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                        (inst.contactPerson || '').toLowerCase().includes(searchQuery.toLowerCase());
+                      const assignedCount = institutionProducts?.filter(p => p.institutionId === inst.id).length || 0;
+                      
+                      let matchesFilter = true;
+                      if (statusFilter === 'with_products') matchesFilter = assignedCount > 0;
+                      if (statusFilter === 'without_products') matchesFilter = assignedCount === 0;
+
+                      return matchesSearch && matchesFilter;
+                    }) || [];
+
+                    if (filtered.length === 0) {
+                      return (
+                        <TableRow>
+                          <TableCell colSpan={5} className="text-center py-8 text-gray-500 text-sm">
+                            No se encontraron financieras que coincidan con los filtros de búsqueda.
+                          </TableCell>
+                        </TableRow>
+                      );
+                    }
+
+                    return filtered.map((inst) => {
+                      const assignedProducts = institutionProducts?.filter(p => p.institutionId === inst.id) || [];
+                      const hasProducts = assignedProducts.length > 0;
+
+                      return (
+                        <TableRow key={inst.id} className="hover:bg-gray-50/50">
+                          <TableCell className="py-3">
+                            <div className="flex items-center space-x-2.5">
+                              <Building2 className={`w-4 h-4 ${hasProducts ? 'text-primary' : 'text-amber-500'}`} />
+                              <div>
+                                <p className="font-bold text-gray-900 text-sm">{inst.name}</p>
+                                <div className="flex items-center gap-2 mt-0.5">
+                                  <Badge variant="outline" className={`text-[10px] py-0 px-1.5 ${inst.isActive ? 'bg-emerald-50 text-emerald-700 border-emerald-300' : 'bg-gray-100 text-gray-600'}`}>
+                                    {inst.isActive ? 'Activa' : 'Inactiva'}
+                                  </Badge>
+                                  {inst.contactPerson && (
+                                    <span className="text-[11px] text-gray-500">• {inst.contactPerson}</span>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+                          </TableCell>
+
+                          <TableCell className="py-3">
+                            <div className="flex flex-wrap gap-1 max-w-[200px]">
+                              {inst.acceptedProfiles && inst.acceptedProfiles.length > 0 ? (
+                                inst.acceptedProfiles.map((p) => (
+                                  <Badge key={p} variant="secondary" className="text-[10px] py-0 px-1.5 font-medium bg-blue-50 text-blue-800 border border-blue-200">
+                                    {getCategoryDisplayName(p)}
+                                  </Badge>
+                                ))
+                              ) : (
+                                <span className="text-xs text-gray-400 italic">Todos los perfiles</span>
+                              )}
+                            </div>
+                          </TableCell>
+
+                          <TableCell className="py-3">
+                            {hasProducts ? (
+                              <div className="flex flex-wrap gap-1.5 max-w-md">
+                                {assignedProducts.map((p) => {
+                                  const template = templates?.find(t => t.id === p.templateId);
+                                  return (
+                                    <div
+                                      key={p.id}
+                                      className="inline-flex items-center gap-1 px-2 py-1 bg-purple-50 text-purple-900 border border-purple-200 rounded-md text-xs font-medium"
+                                    >
+                                      <Package className="w-3 h-3 text-purple-600" />
+                                      <span>{(p as any).customName || p.name || template?.name || 'Producto'}</span>
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          if (confirm(`¿Desvincular "${(p as any).customName || p.name || template?.name}" de ${inst.name}?`)) {
+                                            unassignMutation.mutate(p.id);
+                                          }
+                                        }}
+                                        className="ml-1 text-gray-400 hover:text-red-600 rounded-full"
+                                        title="Eliminar asignación"
+                                        data-testid={`button-unassign-${p.id}`}
+                                      >
+                                        <XCircle className="w-3 h-3" />
+                                      </button>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            ) : (
+                              <div className="flex items-center gap-1.5 text-amber-700 bg-amber-50 px-2.5 py-1 rounded-md border border-amber-200 w-fit text-xs font-semibold">
+                                <AlertTriangle className="w-3.5 h-3.5 text-amber-600" />
+                                <span>Sin productos asignados (Faltante)</span>
+                              </div>
+                            )}
+                          </TableCell>
+
+                          <TableCell className="py-3 text-center">
+                            <Badge className={`text-xs font-bold ${hasProducts ? 'bg-purple-100 text-purple-800' : 'bg-amber-100 text-amber-800'}`}>
+                              {assignedProducts.length}
+                            </Badge>
+                          </TableCell>
+
+                          <TableCell className="py-3 text-right">
+                            <div className="flex items-center justify-end gap-1.5">
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => handleOpenAssignForInstitution(inst.id)}
+                                className="text-xs h-8 border-primary text-primary hover:bg-primary/10"
+                                data-testid={`button-assign-to-inst-${inst.id}`}
+                              >
+                                <Plus className="w-3.5 h-3.5 mr-1" />
+                                Asignar
+                              </Button>
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      );
+                    });
+                  })()}
+                </TableBody>
+              </Table>
+            </div>
+          ) : (
+            /* Vista 2: Por Producto / Plantilla */
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow className="bg-gray-50/75">
+                    <TableHead className="font-semibold text-gray-700 text-xs py-3">Plantilla de Producto</TableHead>
+                    <TableHead className="font-semibold text-gray-700 text-xs py-3">Categoría y Perfiles</TableHead>
+                    <TableHead className="font-semibold text-gray-700 text-xs py-3">Financieras con este Producto</TableHead>
+                    <TableHead className="font-semibold text-gray-700 text-xs py-3 text-center">Cobertura</TableHead>
+                    <TableHead className="font-semibold text-gray-700 text-xs py-3 text-right">Acciones</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {(() => {
+                    const filtered = templates?.filter(template => {
+                      return template.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                        (template.description || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+                        (template.category || '').toLowerCase().includes(searchQuery.toLowerCase());
+                    }) || [];
+
+                    if (filtered.length === 0) {
+                      return (
+                        <TableRow>
+                          <TableCell colSpan={5} className="text-center py-8 text-gray-500 text-sm">
+                            No se encontraron plantillas de productos que coincidan con la búsqueda.
+                          </TableCell>
+                        </TableRow>
+                      );
+                    }
+
+                    return filtered.map((tmpl) => {
+                      const assignedToInsts = institutionProducts?.filter(p => p.templateId === tmpl.id) || [];
+                      const instNames = assignedToInsts.map(p => {
+                        const inst = institutions?.find(i => i.id === p.institutionId);
+                        return { productId: p.id, institutionName: inst?.name || 'Financiera' };
+                      });
+                      const hasInsts = instNames.length > 0;
+
+                      return (
+                        <TableRow key={tmpl.id} className="hover:bg-gray-50/50">
+                          <TableCell className="py-3">
+                            <div className="flex items-center space-x-2.5">
+                              <FileText className={`w-4 h-4 ${hasInsts ? 'text-primary' : 'text-amber-500'}`} />
+                              <div>
+                                <p className="font-bold text-gray-900 text-sm">{tmpl.name}</p>
+                                {tmpl.description && (
+                                  <p className="text-[11px] text-gray-500 line-clamp-1 max-w-xs">{tmpl.description}</p>
+                                )}
+                              </div>
+                            </div>
+                          </TableCell>
+
+                          <TableCell className="py-3">
+                            <div className="space-y-1">
+                              <span className="text-[11px] font-semibold text-gray-600 capitalize block">
+                                {tmpl.category || 'General'}
+                              </span>
+                              <div className="flex flex-wrap gap-1">
+                                {tmpl.targetProfiles && tmpl.targetProfiles.length > 0 ? (
+                                  tmpl.targetProfiles.map((p: string) => (
+                                    <Badge key={p} variant="outline" className="text-[10px] py-0 px-1 font-medium bg-blue-50 text-blue-800 border-blue-200">
+                                      {getCategoryDisplayName(p)}
+                                    </Badge>
+                                  ))
+                                ) : (
+                                  <span className="text-[10px] text-gray-400">Todos</span>
+                                )}
+                              </div>
+                            </div>
+                          </TableCell>
+
+                          <TableCell className="py-3">
+                            {hasInsts ? (
+                              <div className="flex flex-wrap gap-1.5 max-w-md">
+                                {instNames.map((item) => (
+                                  <div
+                                    key={item.productId}
+                                    className="inline-flex items-center gap-1 px-2 py-1 bg-green-50 text-green-900 border border-green-200 rounded-md text-xs font-medium"
+                                  >
+                                    <Building2 className="w-3 h-3 text-green-700" />
+                                    <span>{item.institutionName}</span>
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        if (confirm(`¿Desvincular "${tmpl.name}" de ${item.institutionName}?`)) {
+                                          unassignMutation.mutate(item.productId);
+                                        }
+                                      }}
+                                      className="ml-1 text-gray-400 hover:text-red-600 rounded-full"
+                                      title="Eliminar asignación"
+                                      data-testid={`button-unassign-tmpl-${item.productId}`}
+                                    >
+                                      <XCircle className="w-3 h-3" />
+                                    </button>
+                                  </div>
+                                ))}
+                              </div>
+                            ) : (
+                              <span className="text-xs text-amber-700 font-semibold bg-amber-50 px-2 py-1 rounded border border-amber-200 inline-block">
+                                ⚠️ Sin financieras asignadas
+                              </span>
+                            )}
+                          </TableCell>
+
+                          <TableCell className="py-3 text-center">
+                            <Badge className={`text-xs font-bold ${hasInsts ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-600'}`}>
+                              {instNames.length} {instNames.length === 1 ? 'financiera' : 'financieras'}
+                            </Badge>
+                          </TableCell>
+
+                          <TableCell className="py-3 text-right">
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => handleOpenAssignForTemplate(tmpl.id)}
+                              className="text-xs h-8 border-primary text-primary hover:bg-primary/10"
+                              data-testid={`button-assign-template-${tmpl.id}`}
+                            >
+                              <Plus className="w-3.5 h-3.5 mr-1" />
+                              Asignar
+                            </Button>
+                          </TableCell>
+                        </TableRow>
+                      );
+                    });
+                  })()}
+                </TableBody>
+              </Table>
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
       {/* Product Configuration Modal */}
       {selectedProduct && (

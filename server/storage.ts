@@ -186,7 +186,7 @@ export interface IStorage {
   updateFinancialInstitutionRequest(id: string, requestData: Partial<FinancialInstitutionRequest>): Promise<FinancialInstitutionRequest | undefined>;
 
   // Credit Submission Requests operations (broker → admin approval flow)
-  getCreditSubmissionRequests(filters?: { status?: string; brokerId?: string; clientId?: string }): Promise<CreditSubmissionRequest[]>;
+  getCreditSubmissionRequests(filters?: { status?: string; brokerId?: string; brokerIds?: string[]; clientId?: string }): Promise<CreditSubmissionRequest[]>;
   getCreditSubmissionRequest(id: string): Promise<CreditSubmissionRequest | undefined>;
   createCreditSubmissionRequest(requestData: InsertCreditSubmissionRequest): Promise<CreditSubmissionRequest>;
   updateCreditSubmissionRequest(id: string, requestData: Partial<InsertCreditSubmissionRequest>): Promise<CreditSubmissionRequest | undefined>;
@@ -2464,14 +2464,16 @@ export class MemStorage implements IStorage {
   }
 
   // Credit Submission Requests operations
-  async getCreditSubmissionRequests(filters?: { status?: string; brokerId?: string; clientId?: string }): Promise<CreditSubmissionRequest[]> {
+  async getCreditSubmissionRequests(filters?: { status?: string; brokerId?: string; brokerIds?: string[]; clientId?: string }): Promise<CreditSubmissionRequest[]> {
     let requests = Array.from(this.creditSubmissionRequests.values());
     
     if (filters?.status) {
       requests = requests.filter(r => r.status === filters.status);
     }
     
-    if (filters?.brokerId) {
+    if (filters?.brokerIds && filters.brokerIds.length > 0) {
+      requests = requests.filter(r => filters.brokerIds!.includes(r.brokerId));
+    } else if (filters?.brokerId) {
       requests = requests.filter(r => r.brokerId === filters.brokerId);
     }
 

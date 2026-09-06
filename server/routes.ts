@@ -3751,11 +3751,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ message: "User not found" });
       }
 
-      const filters: { status?: string; brokerId?: string } = {};
+      const filters: { status?: string; brokerId?: string; brokerIds?: string[] } = {};
       
       // If user is broker, only show their submissions
-      if (user.role === 'broker' || user.role === 'master_broker') {
+      // If user is master_broker, show submissions of their whole network
+      if (user.role === 'broker') {
         filters.brokerId = userId;
+      } else if (user.role === 'master_broker') {
+        const networkBrokers = await storage.getUsersByMasterBroker(userId);
+        filters.brokerIds = [userId, ...networkBrokers.map(b => b.id)];
       }
       
       // Apply query filters
@@ -4035,6 +4039,60 @@ export async function registerRoutes(app: Express): Promise<Server> {
           const target = await storage.createCreditSubmissionTarget(targetData);
           targets.push(target);
         }
+      }
+
+      // Notify Admin / Super Admin, Master Broker (if applicable), and Broker
+      try {
+        const client = await storage.getClient(submission.clientId);
+        const clientName = client ? (client.type === 'persona_moral' ? client.businessName : `${client.firstName} ${client.lastName}`.trim()) : 'Cliente';
+        const formattedAmount = `$${parseFloat(submission.requestedAmount.toString()).toLocaleString('es-MX')} MXN`;
+
+        const allUsers = await storage.getAllUsers();
+        const admins = allUsers.filter(u => u.role === 'admin' || u.role === 'super_admin');
+
+        // 1. Notify Admins and Super Admins
+        for (const admin of admins) {
+          const adminNotif = await storage.createNotification({
+            userId: admin.id,
+            type: 'credit_submission_created',
+            title: 'Nueva solicitud de crédito recibida',
+            message: `Nueva solicitud para ${clientName} por ${formattedAmount}. Pendiente de revisión y visto bueno.`,
+            relatedEntityType: 'credit_submission',
+            relatedEntityId: submission.id,
+            priority: 'high',
+          });
+          broadcastToUser(admin.id, { type: 'notification', notification: adminNotif });
+          broadcastToUser(admin.id, { type: 'submission_created', submissionId: submission.id });
+        }
+
+        // 2. Notify Master Broker if applicable
+        if (user.masterBrokerId) {
+          const mbNotif = await storage.createNotification({
+            userId: user.masterBrokerId,
+            type: 'credit_submission_created',
+            title: 'Nueva solicitud en tu red de brokers',
+            message: `${user.firstName} ${user.lastName || ''} registró una solicitud para ${clientName} por ${formattedAmount}.`,
+            relatedEntityType: 'credit_submission',
+            relatedEntityId: submission.id,
+            priority: 'normal',
+          });
+          broadcastToUser(user.masterBrokerId, { type: 'notification', notification: mbNotif });
+          broadcastToUser(user.masterBrokerId, { type: 'submission_created', submissionId: submission.id });
+        }
+
+        // 3. Notify the submitting Broker
+        const brokerNotif = await storage.createNotification({
+          userId: user.id,
+          type: 'credit_submission_created',
+          title: 'Solicitud enviada a revisión',
+          message: `Tu solicitud para ${clientName} por ${formattedAmount} fue registrada exitosamente y está en revisión administrativa.`,
+          relatedEntityType: 'credit_submission',
+          relatedEntityId: submission.id,
+          priority: 'normal',
+        });
+        broadcastToUser(user.id, { type: 'notification', notification: brokerNotif });
+      } catch (notifErr) {
+        console.error("Error creating notifications on submission creation:", notifErr);
       }
 
       res.status(201).json({ submission, targets });

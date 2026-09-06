@@ -14,6 +14,7 @@ const navigation = [
   { name: 'Mis Créditos', href: '/mis-solicitudes', icon: 'fas fa-coins', brokerOnly: true },
   { name: 'Renovaciones', href: '/re-gestion', icon: 'fas fa-recycle' },
   { name: 'Red de Brokers', href: '/red-brokers', icon: 'fas fa-network-wired', adminOnly: true },
+  { name: 'Aprobaciones', href: '/solicitudes-pendientes', icon: 'fas fa-clock', adminOnly: true },
   { name: 'Comisiones', href: '/comisiones', icon: 'fas fa-dollar-sign' },
   { name: 'Financieras', href: '/financieras', icon: 'fas fa-building' },
   { name: 'Productos', href: '/sistema-productos', icon: 'fas fa-layer-group' },
@@ -22,7 +23,6 @@ const navigation = [
 ];
 
 const adminNavigation = [
-  { name: 'Aprobaciones', href: '/solicitudes-pendientes', icon: 'fas fa-clock', adminOnly: true },
   { name: 'Importación', href: '/importacion-masiva', icon: 'fas fa-file-import', adminOnly: true },
   { name: 'Usuarios', href: '/admin/usuarios', icon: 'fas fa-users-cog', adminOnly: true },
 ];

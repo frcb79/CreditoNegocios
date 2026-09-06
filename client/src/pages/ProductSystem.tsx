@@ -3,149 +3,159 @@ import { useQuery } from "@tanstack/react-query";
 import MainLayout from "@/components/MainLayout";
 import Header from "@/components/Header";
 import { useAuth } from "@/hooks/useAuth";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { ChevronDown, ChevronUp, Sliders } from "lucide-react";
 import ProductVariables from "@/components/ProductSystem/ProductVariables";
 import ProductTemplates from "@/components/ProductSystem/ProductTemplates";
 import InstitutionProducts from "@/components/ProductSystem/InstitutionProducts";
 import BrokerProducts from "@/components/ProductSystem/BrokerProducts";
 
-type TabValue = "variables" | "templates" | "institution" | "tenant";
+type TabValue = "templates" | "institution" | "tenant" | "variables";
 
 export default function ProductSystem() {
   const { user } = useAuth();
   const [activeTab, setActiveTab] = useState<TabValue>("tenant");
+  const [showAdvancedVariables, setShowAdvancedVariables] = useState(false);
 
   const isAdmin = user?.role === 'super_admin' || user?.role === 'admin';
-  const isTenantUser = user?.role === 'master_broker' || user?.role === 'broker';
 
-  // Fetch product templates count for overview
+  // Fetch metrics for overview
   const { data: templates } = useQuery<any[]>({
     queryKey: ['/api/product-templates'],
     enabled: isAdmin,
   });
 
-  // Set initial tab based on role
+  const { data: institutions } = useQuery<any[]>({
+    queryKey: ['/api/financial-institutions'],
+    enabled: isAdmin,
+  });
+
+  const { data: institutionProducts } = useQuery<any[]>({
+    queryKey: ['/api/institution-products'],
+    enabled: isAdmin,
+  });
+
+  const { data: tenantProducts } = useQuery<any[]>({
+    queryKey: ['/api/tenant-products'],
+  });
+
+  // Set initial tab based on role: admins default to templates
   useEffect(() => {
     if (isAdmin) {
-      setActiveTab("variables");
+      setActiveTab("templates");
     }
   }, [isAdmin]);
+
+  const activeInstitutionsCount = institutions?.filter((i: any) => i.isActive !== false).length ?? '-';
 
   return (
     <MainLayout>
       <Header 
         title="Productos"
-        subtitle="Administra el catálogo completo de productos crediticios"
+        subtitle="Administra el catálogo completo de productos crediticios y su asignación a financieras"
       />
         
-        <main className="flex-1 p-4 sm:p-6 lg:p-8 overflow-y-auto">
+        <main className="flex-1 p-4 sm:p-6 lg:p-8 overflow-y-auto space-y-6">
           {/* Overview Cards */}
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
-            <Card>
-              <CardContent className="p-6">
-                <div className="flex items-center space-x-2">
-                  <div className="p-2 bg-blue-100 rounded-lg">
-                    <i className="fas fa-cogs text-blue-600"></i>
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
+            <Card className="border shadow-sm">
+              <CardContent className="p-5">
+                <div className="flex items-center space-x-3">
+                  <div className="p-3 bg-blue-100 text-blue-700 rounded-xl">
+                    <i className="fas fa-building text-lg"></i>
                   </div>
                   <div>
-                    <p className="text-sm font-medium text-gray-600">Variables</p>
-                    <p className="text-2xl font-bold" data-testid="text-variables-count">8</p>
-                    <p className="text-xs text-gray-500">Catálogo base</p>
+                    <p className="text-xs font-medium text-gray-500">Financieras Activas</p>
+                    <p className="text-2xl font-black text-gray-900" data-testid="text-institutions-count">
+                      {activeInstitutionsCount}
+                    </p>
+                    <p className="text-[11px] text-gray-400">Registradas en sistema</p>
                   </div>
                 </div>
               </CardContent>
             </Card>
 
-            <Card>
-              <CardContent className="p-6">
-                <div className="flex items-center space-x-2">
-                  <div className="p-2 bg-green-100 rounded-lg">
-                    <i className="fas fa-layer-group text-green-600"></i>
+            <Card className="border shadow-sm">
+              <CardContent className="p-5">
+                <div className="flex items-center space-x-3">
+                  <div className="p-3 bg-emerald-100 text-emerald-700 rounded-xl">
+                    <i className="fas fa-layer-group text-lg"></i>
                   </div>
                   <div>
-                    <p className="text-sm font-medium text-gray-600">Plantilla Producto</p>
-                    <p className="text-2xl font-bold" data-testid="text-templates-count">
+                    <p className="text-xs font-medium text-gray-500">Plantillas Producto</p>
+                    <p className="text-2xl font-black text-gray-900" data-testid="text-templates-count">
                       {templates ? templates.length : '-'}
                     </p>
-                    <p className="text-xs text-gray-500">Productos base</p>
+                    <p className="text-[11px] text-gray-400">Productos base</p>
                   </div>
                 </div>
               </CardContent>
             </Card>
 
-            <Card>
-              <CardContent className="p-6">
-                <div className="flex items-center space-x-2">
-                  <div className="p-2 bg-purple-100 rounded-lg">
-                    <i className="fas fa-building text-purple-600"></i>
+            <Card className="border shadow-sm">
+              <CardContent className="p-5">
+                <div className="flex items-center space-x-3">
+                  <div className="p-3 bg-purple-100 text-purple-700 rounded-xl">
+                    <i className="fas fa-link text-lg"></i>
                   </div>
                   <div>
-                    <p className="text-sm font-medium text-gray-600">Asignación</p>
-                    <p className="text-2xl font-bold" data-testid="text-institution-products-count">-</p>
-                    <p className="text-xs text-gray-500">Productos asignados</p>
+                    <p className="text-xs font-medium text-gray-500">Asignaciones</p>
+                    <p className="text-2xl font-black text-gray-900" data-testid="text-institution-products-count">
+                      {institutionProducts ? institutionProducts.length : '-'}
+                    </p>
+                    <p className="text-[11px] text-gray-400">Productos vinculados</p>
                   </div>
                 </div>
               </CardContent>
             </Card>
 
-            <Card>
-              <CardContent className="p-6">
-                <div className="flex items-center space-x-2">
-                  <div className="p-2 bg-orange-100 rounded-lg">
-                    <i className="fas fa-users text-orange-600"></i>
+            <Card className="border shadow-sm">
+              <CardContent className="p-5">
+                <div className="flex items-center space-x-3">
+                  <div className="p-3 bg-orange-100 text-orange-700 rounded-xl">
+                    <i className="fas fa-users text-lg"></i>
                   </div>
                   <div>
-                    <p className="text-sm font-medium text-gray-600">Tenant</p>
-                    <p className="text-2xl font-bold" data-testid="text-tenant-products-count">-</p>
-                    <p className="text-xs text-gray-500">Personalizados</p>
+                    <p className="text-xs font-medium text-gray-500">Catálogo Red</p>
+                    <p className="text-2xl font-black text-gray-900" data-testid="text-tenant-products-count">
+                      {tenantProducts ? tenantProducts.length : (isAdmin ? 'Todos' : '-')}
+                    </p>
+                    <p className="text-[11px] text-gray-400">Disponibles para brókers</p>
                   </div>
                 </div>
               </CardContent>
             </Card>
           </div>
 
-
           {/* Tabs for different product levels */}
-          <Card>
+          <Card className="border shadow-sm">
             <CardContent className="p-0">
               <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as TabValue)} className="w-full">
                 <div className="border-b border-border bg-card px-6 py-4">
-                  <TabsList className={`grid w-full ${isAdmin ? 'grid-cols-3' : 'grid-cols-1'}`}>
+                  <TabsList className={`grid w-full ${isAdmin ? 'grid-cols-2' : 'grid-cols-1'}`}>
                     {isAdmin && (
-                      <TabsTrigger value="variables" data-testid="tab-variables">
-                        <i className="fas fa-cogs mr-2"></i>
-                        Variables
-                      </TabsTrigger>
-                    )}
-                    {isAdmin && (
-                      <TabsTrigger value="templates" data-testid="tab-templates">
+                      <TabsTrigger value="templates" data-testid="tab-templates" className="font-semibold">
                         <i className="fas fa-layer-group mr-2"></i>
-                        Plantilla Producto
+                        Plantillas de Producto
                       </TabsTrigger>
                     )}
                     {isAdmin && (
-                      <TabsTrigger value="institution" data-testid="tab-institution">
+                      <TabsTrigger value="institution" data-testid="tab-institution" className="font-semibold">
                         <i className="fas fa-building mr-2"></i>
-                        Asignación
+                        Asignación a Financieras
                       </TabsTrigger>
                     )}
                     {!isAdmin && (
-                      <TabsTrigger value="tenant" data-testid="tab-tenant">
+                      <TabsTrigger value="tenant" data-testid="tab-tenant" className="font-semibold">
                         <i className="fas fa-users mr-2"></i>
                         Mi Catálogo
                       </TabsTrigger>
                     )}
                   </TabsList>
                 </div>
-
-                {isAdmin && (
-                  <TabsContent value="variables" className="p-6">
-                    <ProductVariables />
-                  </TabsContent>
-                )}
 
                 {isAdmin && (
                   <TabsContent value="templates" className="p-6">
@@ -167,7 +177,48 @@ export default function ProductSystem() {
               </Tabs>
             </CardContent>
           </Card>
+
+          {/* Optional Advanced Variables Section for Admins */}
+          {isAdmin && (
+            <Collapsible
+              open={showAdvancedVariables}
+              onOpenChange={setShowAdvancedVariables}
+              className="border border-dashed border-gray-300 rounded-xl bg-gray-50/50 p-4"
+            >
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Sliders className="w-4 h-4 text-gray-500" />
+                  <span className="text-xs font-semibold text-gray-700">
+                    Configuración Técnica: Variables de Producto (Catálogo Base)
+                  </span>
+                  <span className="text-[10px] text-gray-400 bg-gray-200 px-2 py-0.5 rounded-full">
+                    Avanzado / No requerido para el matching
+                  </span>
+                </div>
+                <CollapsibleTrigger asChild>
+                  <Button variant="ghost" size="sm" className="text-xs text-gray-500 h-7 px-2">
+                    {showAdvancedVariables ? (
+                      <>
+                        Ocultar <ChevronUp className="w-3.5 h-3.5 ml-1" />
+                      </>
+                    ) : (
+                      <>
+                        Mostrar <ChevronDown className="w-3.5 h-3.5 ml-1" />
+                      </>
+                    )}
+                  </Button>
+                </CollapsibleTrigger>
+              </div>
+
+              <CollapsibleContent className="pt-4 border-t border-gray-200 mt-3">
+                <p className="text-xs text-gray-500 mb-4">
+                  Nota: Las reglas principales de matching y ponderación del score se definen directamente en los parámetros de la plantilla y financiera. Las variables a continuación corresponden al catálogo de metadatos general.
+                </p>
+                <ProductVariables />
+              </CollapsibleContent>
+            </Collapsible>
+          )}
         </main>
-      </MainLayout>
-    );
-  }
+    </MainLayout>
+  );
+}
