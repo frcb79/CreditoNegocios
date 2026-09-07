@@ -10,9 +10,10 @@ import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Progress } from "@/components/ui/progress";
-import { Upload, Download, FileSpreadsheet, Building2, Users, CheckCircle2, XCircle, AlertCircle, Loader2, Sparkles, Layers } from "lucide-react";
+import { Upload, Download, FileSpreadsheet, Building2, Users, CheckCircle2, XCircle, AlertCircle, Loader2, Sparkles, Layers, ShieldCheck } from "lucide-react";
 import MainLayout from "@/components/MainLayout";
 import Header from "@/components/Header";
+import { downloadFinancierasTemplateClient } from "@/lib/excelTemplates";
 
 interface ImportError {
   row: number;
@@ -53,6 +54,15 @@ export default function BulkImport() {
 
   const handleDownloadTemplate = async (type: 'financieras' | 'clients') => {
     try {
+      if (type === 'financieras') {
+        downloadFinancierasTemplateClient();
+        toast({
+          title: "Template descargado",
+          description: "La plantilla oficial de financieras con comisiones para Super Admin se generó y descargó correctamente.",
+        });
+        return;
+      }
+
       const response = await fetch(`/api/import/template/${type}`, {
         credentials: 'include'
       });
@@ -63,7 +73,7 @@ export default function BulkImport() {
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = type === 'financieras' ? 'template_financieras_productos.xlsx' : 'template_clientes.xlsx';
+      a.download = 'template_clientes.xlsx';
       document.body.appendChild(a);
       a.click();
       window.URL.revokeObjectURL(url);
@@ -71,7 +81,7 @@ export default function BulkImport() {
       
       toast({
         title: "Template descargado",
-        description: `El template de ${type === 'financieras' ? 'financieras y productos' : 'clientes'} se descargó correctamente.`,
+        description: "El template de clientes se descargó correctamente.",
       });
     } catch (error) {
       toast({
@@ -468,9 +478,14 @@ export default function BulkImport() {
                         <li>Monto Min/Max y Plazo</li>
                         <li>Tasa de Interés y Apertura</li>
                         <li>Destinos y Giros Prohibidos</li>
-                        <li>Comisiones Broker y Master</li>
+                        <li className="font-semibold text-emerald-800">Comisiones Super Admin, Broker y Master</li>
                       </ul>
                     </div>
+                  </div>
+                  <div className="flex items-center gap-2 pt-1">
+                    <Badge variant="outline" className="bg-emerald-100/80 text-emerald-900 border-emerald-300 text-xs font-medium">
+                      ✓ Incluye columnas de Comisión Super Admin (Apertura, Sobretasa, Renovación)
+                    </Badge>
                   </div>
                   <p className="text-xs text-blue-700 italic">
                     💡 Si la financiera ya existe, el sistema actualizará sus requisitos y agregará sus nuevos productos automáticamente sin duplicar.

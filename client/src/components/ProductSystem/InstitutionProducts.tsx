@@ -27,8 +27,9 @@ import {
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
-import { Plus, Building2, FileText, Settings, DollarSign, Trash2, Package, CheckCircle, XCircle, Search, AlertTriangle, ArrowRight, SlidersHorizontal, Eye } from "lucide-react";
+import { Plus, Download, Building2, FileText, Settings, DollarSign, Trash2, Package, CheckCircle, XCircle, Search, AlertTriangle, ArrowRight, SlidersHorizontal, Eye } from "lucide-react";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { downloadFinancierasTemplateClient } from "@/lib/excelTemplates";
 
 // Helper function to translate category values to display names
 const getCategoryDisplayName = (category: string | null | undefined): string => {
@@ -269,13 +270,23 @@ export default function InstitutionProducts() {
             Asigna plantillas a financieras y configúralas específicamente
           </p>
         </div>
-        <Dialog open={showAssignModal} onOpenChange={setShowAssignModal}>
-          <DialogTrigger asChild>
-            <Button data-testid="button-assign-product">
-              <Plus className="w-4 h-4 mr-2" />
-              Asignar Producto
-            </Button>
-          </DialogTrigger>
+        <div className="flex items-center gap-2">
+          <Button 
+            variant="outline" 
+            onClick={() => downloadFinancierasTemplateClient()}
+            title="Descargar plantilla oficial con comisiones de Super Admin y matching completo"
+            data-testid="button-download-template"
+          >
+            <Download className="w-4 h-4 mr-2 text-emerald-600" />
+            Descargar Plantilla Excel
+          </Button>
+          <Dialog open={showAssignModal} onOpenChange={setShowAssignModal}>
+            <DialogTrigger asChild>
+              <Button data-testid="button-assign-product">
+                <Plus className="w-4 h-4 mr-2" />
+                Asignar Producto
+              </Button>
+            </DialogTrigger>
           <DialogContent className="sm:max-w-md">
             <DialogHeader>
               <DialogTitle>Asignar Producto a Financiera</DialogTitle>
@@ -415,6 +426,7 @@ export default function InstitutionProducts() {
             </Form>
           </DialogContent>
         </Dialog>
+        </div>
       </div>
 
       {/* Stats */}
