@@ -7,7 +7,7 @@ import { storage } from "./storage";
 import { setupAuth, isAuthenticated } from "./replitAuth";
 import PDFDocument from "pdfkit";
 import bcrypt from "bcrypt";
-import { sendBrokerDeactivationRequestEmail, sendBrokerLeadEmail, sendPasswordResetEmail, sendWebsiteLeadEmail, sendWelcomeEmail } from "./emailService";
+import { sendBrokerDeactivationRequestEmail, sendBrokerLeadEmail, sendPasswordResetEmail, sendWebsiteLeadEmail, sendWelcomeEmail, sendSuperAdminNotificationEmail } from "./emailService";
 import { getDocumentAccessTarget, persistDocumentFile, removeStoredDocument } from "./documentStorage";
 import { 
   generateFinancierasTemplate, 
@@ -91,7 +91,7 @@ async function ensureCommissionRecord(params: {
   masterBrokerId?: string | null;
   commissionType: string;
   amount: number;
-  recipient: "broker" | "master_broker";
+  recipient: "broker" | "master_broker" | "super_admin" | "plataforma";
 }): Promise<boolean> {
   const { creditId, brokerId, masterBrokerId, commissionType, amount, recipient } = params;
   const safeAmount = Number.isFinite(amount) && amount >= 0 ? amount : 0;
@@ -103,10 +103,18 @@ async function ensureCommissionRecord(params: {
     }
 
     if (recipient === "broker") {
-      return c.brokerId === brokerId && c.brokerShare !== null && c.brokerShare !== undefined;
+      return c.brokerId === brokerId && c.brokerShare !== null && c.brokerShare !== undefined && parseFloat(c.brokerShare) > 0;
     }
 
-    return c.masterBrokerId === masterBrokerId && c.masterBrokerShare !== null && c.masterBrokerShare !== undefined;
+    if (recipient === "master_broker") {
+      return c.masterBrokerId === masterBrokerId && c.masterBrokerShare !== null && c.masterBrokerShare !== undefined && parseFloat(c.masterBrokerShare) > 0;
+    }
+
+    if (recipient === "super_admin" || recipient === "plataforma") {
+      return c.appShare !== null && c.appShare !== undefined && parseFloat(c.appShare) > 0;
+    }
+
+    return false;
   });
 
   if (isDuplicate) {
@@ -120,20 +128,32 @@ async function ensureCommissionRecord(params: {
     amount: safeAmount.toFixed(2),
     brokerShare: recipient === "broker" ? safeAmount.toFixed(2) : "0.00",
     masterBrokerShare: recipient === "master_broker" ? safeAmount.toFixed(2) : "0.00",
-    appShare: "0.00",
+    appShare: (recipient === "super_admin" || recipient === "plataforma") ? safeAmount.toFixed(2) : "0.00",
     status: "pending",
     commissionType,
   });
 
   // Notify recipient immediately upon dispersion
   try {
-    const targetUserId = recipient === "master_broker" ? masterBrokerId : brokerId;
+    let targetUserId: string | null | undefined = null;
+    if (recipient === "master_broker") {
+      targetUserId = masterBrokerId;
+    } else if (recipient === "broker") {
+      targetUserId = brokerId;
+    } else if (recipient === "super_admin" || recipient === "plataforma") {
+      const allUsers = await storage.getAllUsers();
+      const superAdminUser = allUsers.find(u => u.role === 'super_admin' || u.role === 'admin' || u.email === 'fcb@creditonegocios.com.mx');
+      targetUserId = superAdminUser?.id;
+    }
+
     if (targetUserId) {
       await storage.createNotification({
         userId: targetUserId,
         type: 'commission_paid',
-        title: 'Nueva comisión generada (Pendiente)',
-        message: `Se ha registrado una comisión de ${commissionType} por $${safeAmount.toLocaleString('es-MX', { minimumFractionDigits: 2 })} MXN en estatus pendiente de liquidación.`,
+        title: recipient === 'super_admin' || recipient === 'plataforma' ? 'Comisión de Plataforma Generada' : 'Nueva comisión generada (Pendiente)',
+        message: recipient === 'super_admin' || recipient === 'plataforma'
+          ? `Se ha registrado una comisión para Crédito Negocios por $${safeAmount.toLocaleString('es-MX', { minimumFractionDigits: 2 })} MXN al dispersar el crédito.`
+          : `Se ha registrado una comisión de ${commissionType} por $${safeAmount.toLocaleString('es-MX', { minimumFractionDigits: 2 })} MXN en estatus pendiente de liquidación.`,
         relatedEntityType: 'commission',
         relatedEntityId: commission.id,
       });
@@ -1869,6 +1889,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 commissionType: 'apertura',
                 amount: masterAmount,
                 recipient: 'master_broker',
+              });
+            }
+
+            const superAdminRate = parseFloat(commissionRates.financiera?.apertura || commissionRates.superAdmin?.apertura || instRates.financiera?.apertura || instRates.superAdmin?.apertura || '0');
+            const superAdminAmount = (approvedAmount * superAdminRate) / 100;
+            if (superAdminAmount > 0 || superAdminRate > 0) {
+              await ensureCommissionRecord({
+                creditId: credit.id,
+                brokerId: credit.brokerId,
+                masterBrokerId: masterBrokerId || null,
+                commissionType: 'apertura',
+                amount: superAdminAmount,
+                recipient: 'super_admin',
               });
             }
           }
@@ -4044,7 +4077,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Notify Admin / Super Admin, Master Broker (if applicable), and Broker
       try {
         const client = await storage.getClient(submission.clientId);
-        const clientName = client ? (client.type === 'persona_moral' ? client.businessName : `${client.firstName} ${client.lastName}`.trim()) : 'Cliente';
+        const clientName: string = (client ? (client.type === 'persona_moral' ? client.businessName : `${client.firstName} ${client.lastName}`.trim()) : null) || 'Cliente';
         const formattedAmount = `$${parseFloat(submission.requestedAmount.toString()).toLocaleString('es-MX')} MXN`;
 
         const allUsers = await storage.getAllUsers();
@@ -4064,6 +4097,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
           broadcastToUser(admin.id, { type: 'notification', notification: adminNotif });
           broadcastToUser(admin.id, { type: 'submission_created', submissionId: submission.id });
         }
+
+        // Send email alert to Super Admin (fcb@creditonegocios.com.mx)
+        sendSuperAdminNotificationEmail({
+          title: `Nueva Solicitud de Crédito: ${clientName}`,
+          message: `Se ha recibido una nueva solicitud de crédito para ${clientName} por ${formattedAmount}. Registrada por el broker ${user.firstName} ${user.lastName || ''}. Requiere revisión administrativa y visto bueno para enviarse a financieras.`,
+          type: 'credit_submission_created',
+          clientName,
+          brokerName: `${user.firstName} ${user.lastName || ''}`.trim(),
+          amount: formattedAmount,
+          actionUrl: '/solicitudes-pendientes',
+          details: {
+            'ID de Solicitud': submission.id,
+            'Propósito': submission.purpose || 'Crédito Empresarial',
+            'Financieras Seleccionadas': Array.isArray(req.body.financialInstitutionIds) ? req.body.financialInstitutionIds.length : '1 o más',
+          }
+        }).catch(e => console.error('[Email] Error sending super admin notification on submission created:', e));
 
         // 2. Notify Master Broker if applicable
         if (user.masterBrokerId) {
@@ -4599,6 +4648,31 @@ export async function registerRoutes(app: Express): Promise<Server> {
         console.error("[NOTIF] Error sending institution proposal notification:", notifError);
       }
 
+      // Notify Super Admin via email about received proposal
+      try {
+        const inst = await storage.getFinancialInstitution(rawTarget.financialInstitutionId);
+        const reqItem = await storage.getCreditSubmissionRequest(rawTarget.requestId);
+        const clItem = reqItem ? await storage.getClient(reqItem.clientId) : null;
+        const clName: string = (clItem ? (clItem.type === 'persona_moral' ? clItem.businessName : `${clItem.firstName} ${clItem.lastName}`) : null) || 'Cliente';
+
+        sendSuperAdminNotificationEmail({
+          title: `Propuesta Aprobada de Financiera: ${inst?.name || 'Financiera'}`,
+          message: `La financiera ${inst?.name || 'Financiera'} ha emitido una propuesta aprobada para ${clName} por un monto de $${proposal.approvedAmount.toLocaleString('es-MX', { minimumFractionDigits: 2 })} MXN con tasa de ${proposal.interestRate}% a un plazo de ${proposal.term} meses.`,
+          type: 'proposal_received',
+          clientName: clName,
+          financialInstitutionName: inst?.name,
+          amount: proposal.approvedAmount,
+          actionUrl: '/solicitudes-pendientes',
+          details: {
+            'Tasa de Interés': `${proposal.interestRate}%`,
+            'Plazo': `${proposal.term} meses`,
+            'Comisión Apertura': `${proposal.openingCommission || 0}%`,
+          }
+        }).catch(e => console.error('[Email] Failed to send proposal notification email to super admin:', e));
+      } catch (emailErr) {
+        console.error("[Email] Error dispatching proposal email:", emailErr);
+      }
+
       const target = await enrichCreditSubmissionTarget(rawTarget);
       res.json(target);
     } catch (error) {
@@ -4750,7 +4824,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           ? await storage.getFinancialInstitution(target.financialInstitutionId) 
           : null;
         const client = await storage.getClient(request.clientId);
-        const clientName = client ? (client.type === 'persona_moral' ? client.businessName : `${client.firstName} ${client.lastName}`) : 'Cliente';
+        const clientName: string = (client ? (client.type === 'persona_moral' ? client.businessName : `${client.firstName} ${client.lastName}`) : null) || 'Cliente';
         const formattedAmount = proposal?.approvedAmount 
           ? `$${parseFloat(proposal.approvedAmount.toString()).toLocaleString('es-MX')} MXN` 
           : `$${parseFloat(request.requestedAmount.toString()).toLocaleString('es-MX')} MXN`;
@@ -4770,6 +4844,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
           });
           broadcastToUser(admin.id, { type: 'notification', notification });
         }
+
+        // Send email alert to Super Admin for winning proposal
+        sendSuperAdminNotificationEmail({
+          title: `🏆 Oferta Ganadora Seleccionada: ${clientName}`,
+          message: `Se seleccionó la oferta de ${institution?.name || 'la Financiera'} por ${formattedAmount} para el cliente ${clientName}. La solicitud se encuentra lista para su dispersión final en el módulo de Aprobaciones.`,
+          type: 'winner_selected',
+          clientName,
+          financialInstitutionName: institution?.name,
+          amount: formattedAmount,
+          actionUrl: '/solicitudes-pendientes',
+          details: {
+            'Tasa de Interés': `${proposal?.interestRate || 0}%`,
+            'Plazo': `${proposal?.term || 12} meses`,
+            'Comisión Apertura': `${proposal?.openingCommission || 0}%`,
+          }
+        }).catch(e => console.error('[Email] Failed to send super admin winner notification email:', e));
       } catch (notifErr) {
         console.error("Error creating notifications for admins on winner selection:", notifErr);
       }
@@ -4891,14 +4981,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
           console.log(`[Commission] Created opening commission for broker ${request.brokerId}: $${brokerOpeningAmount.toFixed(2)} (${brokerOpeningRate}%)`);
           
           // Calculate opening commission for master broker if exists (even if 0%)
+          let masterOpeningRate = 0;
+          let masterOpeningAmount = 0;
           if (masterBrokerId) {
-            const masterOpeningRate = parseFloat(
+            masterOpeningRate = parseFloat(
               commissionRates.masterBroker?.apertura ||
               (institution as any)?.masterBrokerCommissionRate ||
               '0'
             );
 
-            const masterOpeningAmount = (approvedAmount * masterOpeningRate) / 100;
+            masterOpeningAmount = (approvedAmount * masterOpeningRate) / 100;
             
             await ensureCommissionRecord({
               creditId: credit!.id,
@@ -4911,6 +5003,46 @@ export async function registerRoutes(app: Express): Promise<Server> {
             
             console.log(`[Commission] Created opening commission for master broker ${masterBrokerId}: $${masterOpeningAmount.toFixed(2)} (${masterOpeningRate}%)`);
           }
+
+          // Calculate opening commission for Super Admin / Plataforma
+          const superAdminOpeningRate = parseFloat(
+            commissionRates.financiera?.apertura ||
+            commissionRates.superAdmin?.apertura ||
+            (institution as any)?.commissionRate ||
+            '0'
+          );
+
+          const superAdminOpeningAmount = (approvedAmount * superAdminOpeningRate) / 100;
+          if (superAdminOpeningAmount > 0 || superAdminOpeningRate > 0) {
+            await ensureCommissionRecord({
+              creditId: credit!.id,
+              brokerId: request.brokerId,
+              masterBrokerId: masterBrokerId || null,
+              amount: superAdminOpeningAmount,
+              recipient: 'super_admin',
+              commissionType: 'apertura',
+            });
+            console.log(`[Commission] Created opening commission for super_admin: $${superAdminOpeningAmount.toFixed(2)} (${superAdminOpeningRate}%)`);
+          }
+
+          // Send email alert to Super Admin for dispersed credit
+          const client = await storage.getClient(request.clientId);
+          const clientName: string = (client ? (client.type === 'persona_moral' ? client.businessName : `${client.firstName} ${client.lastName || ''}`.trim()) : null) || 'Cliente';
+          sendSuperAdminNotificationEmail({
+            title: `Crédito Dispersado: ${clientName}`,
+            message: `El crédito para ${clientName} por $${approvedAmount.toLocaleString('es-MX', { minimumFractionDigits: 2 })} MXN con ${institution?.name || 'Financiera'} ha sido marcado como DISPERSADO. Se han generado las comisiones correspondientes.`,
+            type: 'credit_dispersed',
+            clientName,
+            brokerName: `${broker.firstName} ${broker.lastName || ''}`.trim(),
+            financialInstitutionName: institution?.name,
+            amount: approvedAmount,
+            actionUrl: `/comisiones?creditId=${credit!.id}`,
+            details: {
+              'Comisión Plataforma / Super Admin': `$${superAdminOpeningAmount.toLocaleString('es-MX', { minimumFractionDigits: 2 })} MXN (${superAdminOpeningRate}%)`,
+              'Comisión Bróker': `$${brokerOpeningAmount.toLocaleString('es-MX', { minimumFractionDigits: 2 })} MXN (${brokerOpeningRate}%)`,
+              ...(masterBrokerId ? { 'Comisión Master Bróker': `$${masterOpeningAmount.toLocaleString('es-MX', { minimumFractionDigits: 2 })} MXN (${masterOpeningRate}%)` } : {}),
+            }
+          }).catch(e => console.error('[Email] Failed to send super admin dispersion email:', e));
         }
       } catch (commErr) {
         console.error("[Commission] Error generating commissions on mark-dispersed:", commErr);

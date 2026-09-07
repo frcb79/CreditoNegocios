@@ -5,6 +5,7 @@ const resend = process.env.RESEND_API_KEY ? new Resend(process.env.RESEND_API_KE
 const FROM_EMAIL = process.env.EMAIL_FROM || 'Crédito Negocios <noreply@creditonegocios.com.mx>';
 const APP_NAME = 'Crédito Negocios';
 const INTERNAL_EMAIL_TO = process.env.INTERNAL_EMAIL_TO || process.env.BROKER_LEADS_TO || 'info@creditonegocios.com.mx';
+export const SUPERADMIN_NOTIFICATION_EMAIL = process.env.SUPERADMIN_NOTIFICATION_EMAIL || 'fcb@creditonegocios.com.mx';
 
 type BrokerLeadPayload = {
   name: string;
@@ -512,6 +513,175 @@ Fecha: ${new Date().toISOString()}
     return { success: true };
   } catch (error: any) {
     console.error('Error sending deactivation request email:', error);
+    return { success: false, error: error.message || 'Error desconocido' };
+  }
+}
+
+export interface SuperAdminNotificationPayload {
+  title: string;
+  message: string;
+  type?: string;
+  clientName?: string;
+  brokerName?: string;
+  amount?: string | number;
+  financialInstitutionName?: string;
+  actionUrl?: string;
+  details?: Record<string, any>;
+}
+
+const notificationDedupeCache = new Map<string, number>();
+
+export async function sendSuperAdminNotificationEmail(
+  payload: SuperAdminNotificationPayload
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const dedupeKey = `${payload.type || ''}_${payload.title}_${payload.clientName || ''}_${payload.amount || ''}_${payload.actionUrl || ''}`;
+    const now = Date.now();
+    const lastSent = notificationDedupeCache.get(dedupeKey);
+    if (lastSent && now - lastSent < 10000) {
+      console.log(`[Email] Deduplicated super admin notification within 10s: "${payload.title}"`);
+      return { success: true };
+    }
+    notificationDedupeCache.set(dedupeKey, now);
+
+    if (notificationDedupeCache.size > 200) {
+      notificationDedupeCache.forEach((timestamp, key) => {
+        if (now - timestamp > 60000) notificationDedupeCache.delete(key);
+      });
+    }
+
+    if (!resend) {
+      console.warn(`[Email] Super admin email skipped (RESEND_API_KEY missing): "${payload.title}" -> ${SUPERADMIN_NOTIFICATION_EMAIL}`);
+      return { success: true };
+    }
+
+    let baseUrl = process.env.FRONTEND_BASE_URL || 'https://app.creditonegocios.com.mx';
+    const targetUrl = payload.actionUrl 
+      ? `${baseUrl.replace(/\/$/, '')}/${payload.actionUrl.replace(/^\//, '')}`
+      : baseUrl;
+
+    let formattedAmount: string | null = null;
+    if (payload.amount !== undefined && payload.amount !== null && payload.amount !== '') {
+      if (typeof payload.amount === 'number') {
+        formattedAmount = `$${payload.amount.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} MXN`;
+      } else {
+        const raw = String(payload.amount).trim();
+        if (raw.startsWith('$')) {
+          formattedAmount = raw;
+        } else {
+          const num = parseFloat(raw);
+          formattedAmount = isNaN(num) ? raw : `$${num.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} MXN`;
+        }
+      }
+    }
+
+    const { data, error } = await resend.emails.send({
+      from: FROM_EMAIL,
+      to: [SUPERADMIN_NOTIFICATION_EMAIL],
+      subject: `[Alerta Plataforma] ${payload.title}`,
+      html: `
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <meta charset="utf-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1.0">
+          <title>${payload.title}</title>
+        </head>
+        <body style="font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, Roboto, sans-serif; line-height: 1.6; color: #1e293b; max-width: 650px; margin: 0 auto; padding: 20px; background-color: #f1f5f9;">
+          <div style="background-color: #ffffff; border-radius: 16px; overflow: hidden; box-shadow: 0 4px 20px rgba(0,0,0,0.08); border: 1px solid #e2e8f0;">
+            <!-- Header con gradiente institucional -->
+            <div style="background: linear-gradient(135deg, #065f46 0%, #0f766e 50%, #1e3a8a 100%); color: white; padding: 28px 32px;">
+              <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
+                <span style="font-size: 11px; text-transform: uppercase; letter-spacing: 0.15em; font-weight: 700; color: #a7f3d0; background: rgba(255,255,255,0.15); padding: 4px 10px; rounded-full: 9999px; border-radius: 20px;">
+                  Panel Super Admin
+                </span>
+                <span style="font-size: 12px; color: #cbd5e1;">${new Date().toLocaleDateString('es-MX', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</span>
+              </div>
+              <h1 style="margin: 0; font-size: 24px; font-weight: 800; color: #ffffff; line-height: 1.2;">
+                ${payload.title}
+              </h1>
+              <p style="margin: 6px 0 0 0; font-size: 13px; color: #ccfbf1;">
+                Notificación automática de actividad en Crédito Negocios
+              </p>
+            </div>
+
+            <!-- Cuerpo del mensaje -->
+            <div style="padding: 28px 32px;">
+              <p style="font-size: 15px; color: #334155; margin-top: 0; margin-bottom: 24px; font-weight: 500;">
+                ${payload.message}
+              </p>
+
+              <!-- Tabla de datos estructurados -->
+              <table style="width: 100%; border-collapse: collapse; margin-bottom: 24px; background: #f8fafc; border-radius: 12px; overflow: hidden; border: 1px solid #e2e8f0;">
+                ${payload.clientName ? `
+                <tr>
+                  <td style="padding: 12px 16px; border-bottom: 1px solid #e2e8f0; font-size: 13px; font-weight: 600; color: #64748b; width: 140px;">Cliente</td>
+                  <td style="padding: 12px 16px; border-bottom: 1px solid #e2e8f0; font-size: 14px; font-weight: 700; color: #0f172a;">${payload.clientName}</td>
+                </tr>` : ''}
+                ${formattedAmount ? `
+                <tr>
+                  <td style="padding: 12px 16px; border-bottom: 1px solid #e2e8f0; font-size: 13px; font-weight: 600; color: #64748b;">Monto</td>
+                  <td style="padding: 12px 16px; border-bottom: 1px solid #e2e8f0; font-size: 16px; font-weight: 800; color: #059669;">${formattedAmount}</td>
+                </tr>` : ''}
+                ${payload.brokerName ? `
+                <tr>
+                  <td style="padding: 12px 16px; border-bottom: 1px solid #e2e8f0; font-size: 13px; font-weight: 600; color: #64748b;">Bróker Originador</td>
+                  <td style="padding: 12px 16px; border-bottom: 1px solid #e2e8f0; font-size: 14px; color: #1e293b; font-weight: 600;">${payload.brokerName}</td>
+                </tr>` : ''}
+                ${payload.financialInstitutionName ? `
+                <tr>
+                  <td style="padding: 12px 16px; border-bottom: 1px solid #e2e8f0; font-size: 13px; font-weight: 600; color: #64748b;">Financiera</td>
+                  <td style="padding: 12px 16px; border-bottom: 1px solid #e2e8f0; font-size: 14px; color: #1e293b; font-weight: 600;">${payload.financialInstitutionName}</td>
+                </tr>` : ''}
+                ${payload.details ? Object.entries(payload.details).map(([k, v]) => `
+                <tr>
+                  <td style="padding: 10px 16px; border-bottom: 1px solid #e2e8f0; font-size: 13px; font-weight: 600; color: #64748b;">${k}</td>
+                  <td style="padding: 10px 16px; border-bottom: 1px solid #e2e8f0; font-size: 13px; color: #334155;">${String(v)}</td>
+                </tr>`).join('') : ''}
+              </table>
+
+              <!-- Botón de acción -->
+              <div style="text-align: center; margin: 32px 0 16px 0;">
+                <a href="${targetUrl}" 
+                   style="display: inline-block; background: linear-gradient(135deg, #059669 0%, #0d9488 100%); color: #ffffff; text-decoration: none; padding: 14px 28px; border-radius: 10px; font-weight: 700; font-size: 14px; box-shadow: 0 4px 12px rgba(5, 150, 105, 0.3);">
+                  Gestionar en la Plataforma &rarr;
+                </a>
+              </div>
+              <p style="text-align: center; font-size: 11px; color: #94a3b8; margin: 0;">
+                Enlace directo: <a href="${targetUrl}" style="color: #0d9488; word-break: break-all;">${targetUrl}</a>
+              </p>
+            </div>
+
+            <!-- Footer -->
+            <div style="padding: 16px 32px; background-color: #f8fafc; border-top: 1px solid #e2e8f0; text-align: center; font-size: 12px; color: #64748b;">
+              <p style="margin: 0;">Crédito Negocios &bull; Enviado automáticamente a <strong>${SUPERADMIN_NOTIFICATION_EMAIL}</strong></p>
+            </div>
+          </div>
+        </body>
+        </html>
+      `,
+      text: `
+[Alerta Plataforma] ${payload.title}
+
+${payload.message}
+
+${payload.clientName ? `Cliente: ${payload.clientName}\n` : ''}${formattedAmount ? `Monto: ${formattedAmount}\n` : ''}${payload.brokerName ? `Broker: ${payload.brokerName}\n` : ''}${payload.financialInstitutionName ? `Financiera: ${payload.financialInstitutionName}\n` : ''}
+Ir a la plataforma: ${targetUrl}
+
+--
+Crédito Negocios - Notificación para ${SUPERADMIN_NOTIFICATION_EMAIL}
+      `.trim(),
+    });
+
+    if (error) {
+      console.error('[Email] Resend super admin notification error:', error);
+      return { success: false, error: error.message };
+    }
+
+    console.log(`[Email] Super admin email notification sent to ${SUPERADMIN_NOTIFICATION_EMAIL}: "${payload.title}"`);
+    return { success: true };
+  } catch (error: any) {
+    console.error('[Email] Error sending super admin notification email:', error);
     return { success: false, error: error.message || 'Error desconocido' };
   }
 }

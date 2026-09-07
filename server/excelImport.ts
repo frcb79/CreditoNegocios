@@ -79,6 +79,9 @@ const FINANCIERA_HEADERS = [
   'giros_prohibidos',
   'presencia',
   'tiempo_respuesta',
+  'comision_apertura_superadmin',
+  'comision_sobretasa_superadmin',
+  'comision_renovacion_superadmin',
   'comision_apertura_broker',
   'comision_sobretasa_broker',
   'comision_renovacion_broker',
@@ -253,9 +256,10 @@ export function generateFinancierasTemplate(): Buffer {
     ['- presencia: Estados/regiones con presencia (ej: Nacional o CDMX; Jalisco; Nuevo León)'],
     ['- tiempo_respuesta: Tiempo estimado de respuesta (ej: 24-48 horas)'],
     [''],
-    ['COMISIONES BROKER/MASTER (%):'],
-    ['- comision_apertura_broker, comision_sobretasa_broker, comision_renovacion_broker'],
-    ['- comision_apertura_master, comision_sobretasa_master, comision_renovacion_master'],
+    ['COMISIONES SUPER ADMIN / MASTER / BROKER (%):'],
+    ['- comision_apertura_superadmin, comision_sobretasa_superadmin, comision_renovacion_superadmin (Comisión otorgada a Crédito Negocios / Super Admin)'],
+    ['- comision_apertura_master, comision_sobretasa_master, comision_renovacion_master (Comisión asignada al Master Broker)'],
+    ['- comision_apertura_broker, comision_sobretasa_broker, comision_renovacion_broker (Comisión asignada al Broker originador)'],
     [''],
     ['CONTACTO:'],
     ['- contacto: Nombre del contacto principal'],
@@ -301,6 +305,9 @@ export function generateFinancierasTemplate(): Buffer {
       'Casinos; Casas de empeño',
       'Nacional',
       '24-48 horas',
+      '4.0',
+      '1.5',
+      '2.0',
       '2.5',
       '1.0',
       '1.5',
@@ -343,6 +350,9 @@ export function generateFinancierasTemplate(): Buffer {
       'Casinos',
       'Nacional',
       '24-48 horas',
+      '3.5',
+      '1.2',
+      '1.8',
       '2.5',
       '1.0',
       '1.5',
@@ -385,6 +395,9 @@ export function generateFinancierasTemplate(): Buffer {
       '',
       'CDMX; Jalisco; Nuevo León',
       '3-5 días',
+      '5.0',
+      '1.0',
+      '2.5',
       '3.0',
       '0.5',
       '2.0',
@@ -738,6 +751,7 @@ export async function importFinancieras(buffer: Buffer, userId: string): Promise
   const updatedRequirements: Record<string, any> = {};
   const updatedProfiles: Record<string, Set<string>> = {};
   const templateProfileUpdates: Record<string, Set<string>> = {};
+  const updatedCommissionRates: Record<string, any> = {};
   
   for (let i = 0; i < dataRows.length; i++) {
     const row = dataRows[i];
@@ -777,19 +791,50 @@ export async function importFinancieras(buffer: Buffer, userId: string): Promise
       const fiKey = String(nombreFinanciera).toLowerCase().trim();
       let financiera = financieraCache[fiKey];
       
+      const superApertura = String(getValue('comision_apertura_superadmin') || getValue('comision_apertura_financiera') || getValue('comision_apertura_plataforma') || '0');
+      const superSobretasa = String(getValue('comision_sobretasa_superadmin') || getValue('comision_sobretasa_financiera') || getValue('comision_sobretasa_plataforma') || '0');
+      const superRenovacion = String(getValue('comision_renovacion_superadmin') || getValue('comision_renovacion_financiera') || getValue('comision_renovacion_plataforma') || '0');
+      const superTotal = String((parseFloat(superApertura || '0') + parseFloat(superSobretasa || '0')).toFixed(2));
+
+      const brokerApertura = String(getValue('comision_apertura_broker') || '0');
+      const brokerSobretasa = String(getValue('comision_sobretasa_broker') || '0');
+      const brokerRenovacion = String(getValue('comision_renovacion_broker') || '0');
+      const brokerTotal = String((parseFloat(brokerApertura || '0') + parseFloat(brokerSobretasa || '0')).toFixed(2));
+
+      const masterApertura = String(getValue('comision_apertura_master') || '0');
+      const masterSobretasa = String(getValue('comision_sobretasa_master') || '0');
+      const masterRenovacion = String(getValue('comision_renovacion_master') || '0');
+      const masterTotal = String((parseFloat(masterApertura || '0') + parseFloat(masterSobretasa || '0')).toFixed(2));
+
+      const rowCommissionRates: any = {
+        financiera: {
+          total: superTotal,
+          apertura: superApertura,
+          sobretasa: superSobretasa,
+          renovacion: superRenovacion,
+        },
+        superAdmin: {
+          total: superTotal,
+          apertura: superApertura,
+          sobretasa: superSobretasa,
+          renovacion: superRenovacion,
+        },
+        broker: {
+          total: brokerTotal,
+          apertura: brokerApertura,
+          sobretasa: brokerSobretasa,
+          renovacion: brokerRenovacion,
+        },
+        masterBroker: {
+          total: masterTotal,
+          apertura: masterApertura,
+          sobretasa: masterSobretasa,
+          renovacion: masterRenovacion,
+        }
+      };
+
       if (!financiera) {
-        const commissionRates: any = {
-          broker: {
-            apertura: String(getValue('comision_apertura_broker') || '0'),
-            sobretasa: String(getValue('comision_sobretasa_broker') || '0'),
-            renovacion: String(getValue('comision_renovacion_broker') || '0'),
-          },
-          masterBroker: {
-            apertura: String(getValue('comision_apertura_master') || '0'),
-            sobretasa: String(getValue('comision_sobretasa_master') || '0'),
-            renovacion: String(getValue('comision_renovacion_master') || '0'),
-          }
-        };
+        const commissionRates = rowCommissionRates;
         
         const tiempoResp = cleanEmptyString(getValue('tiempo_respuesta'));
         const estimatedTimeframes = tiempoResp ? { analysis: tiempoResp, approval: '', dispersion: '' } : {};
@@ -821,6 +866,42 @@ export async function importFinancieras(buffer: Buffer, userId: string): Promise
           updatedProfiles[financiera.id] = new Set(financiera.acceptedProfiles || []);
         }
         updatedProfiles[financiera.id].add(normalizedProfile);
+
+        if (superApertura !== '0' || superSobretasa !== '0' || brokerApertura !== '0' || masterApertura !== '0') {
+          const currentRates = (financiera.commissionRates as any) || {};
+          const mergedRates = {
+            ...currentRates,
+            financiera: {
+              ...(currentRates.financiera || {}),
+              total: superTotal !== '0.00' ? superTotal : (currentRates.financiera?.total || '0'),
+              apertura: superApertura !== '0' ? superApertura : (currentRates.financiera?.apertura || '0'),
+              sobretasa: superSobretasa !== '0' ? superSobretasa : (currentRates.financiera?.sobretasa || '0'),
+              renovacion: superRenovacion !== '0' ? superRenovacion : (currentRates.financiera?.renovacion || '0'),
+            },
+            superAdmin: {
+              ...(currentRates.superAdmin || {}),
+              total: superTotal !== '0.00' ? superTotal : (currentRates.superAdmin?.total || '0'),
+              apertura: superApertura !== '0' ? superApertura : (currentRates.superAdmin?.apertura || '0'),
+              sobretasa: superSobretasa !== '0' ? superSobretasa : (currentRates.superAdmin?.sobretasa || '0'),
+              renovacion: superRenovacion !== '0' ? superRenovacion : (currentRates.superAdmin?.renovacion || '0'),
+            },
+            broker: {
+              ...(currentRates.broker || {}),
+              total: brokerTotal !== '0.00' ? brokerTotal : (currentRates.broker?.total || '0'),
+              apertura: brokerApertura !== '0' ? brokerApertura : (currentRates.broker?.apertura || '0'),
+              sobretasa: brokerSobretasa !== '0' ? brokerSobretasa : (currentRates.broker?.sobretasa || '0'),
+              renovacion: brokerRenovacion !== '0' ? brokerRenovacion : (currentRates.broker?.renovacion || '0'),
+            },
+            masterBroker: {
+              ...(currentRates.masterBroker || {}),
+              total: masterTotal !== '0.00' ? masterTotal : (currentRates.masterBroker?.total || '0'),
+              apertura: masterApertura !== '0' ? masterApertura : (currentRates.masterBroker?.apertura || '0'),
+              sobretasa: masterSobretasa !== '0' ? masterSobretasa : (currentRates.masterBroker?.sobretasa || '0'),
+              renovacion: masterRenovacion !== '0' ? masterRenovacion : (currentRates.masterBroker?.renovacion || '0'),
+            }
+          };
+          updatedCommissionRates[financiera.id] = mergedRates;
+        }
       }
       
       const ranges: Record<string, any> = {};
@@ -1069,6 +1150,7 @@ export async function importFinancieras(buffer: Buffer, userId: string): Promise
       const profiles = updatedProfiles[fiId] ? Array.from(updatedProfiles[fiId]) : undefined;
       const updateData: any = { requirements: reqs };
       if (profiles) updateData.acceptedProfiles = profiles;
+      if (updatedCommissionRates[fiId]) updateData.commissionRates = updatedCommissionRates[fiId];
       await storage.updateFinancialInstitution(fiId, updateData);
     } catch (error: any) {
       warnings.push(`No se pudo actualizar requirements de financiera ${fiId}: ${error.message}`);
