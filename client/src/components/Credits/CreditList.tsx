@@ -93,6 +93,7 @@ export default function CreditList() {
       queryClient.invalidateQueries({ queryKey: ["/api/credit-submissions"] });
       queryClient.invalidateQueries({ queryKey: ["/api/credits"] });
       queryClient.invalidateQueries({ queryKey: ["/api/commissions"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/dashboard/metrics"] });
     },
     onError: (err: any) => {
       toast({

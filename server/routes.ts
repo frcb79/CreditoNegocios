@@ -1818,91 +1818,105 @@ export async function registerRoutes(app: Express): Promise<Server> {
         console.log(`[Commission Trigger] Credit ${id} status changed to ${credit.status}, calculating commissions...`);
         
         // Check if credit comes from a winning submission target
+        // If so, skip commission calculation here — commissions are handled by the target dispersal endpoint (PATCH mark-dispersed)
         const submissionTarget = await storage.getCreditSubmissionTargetByCreditId(id);
-        if (submissionTarget) {
-          // Only calculate commissions if this is a winning target that has been dispersed
-          if (!submissionTarget.isWinner || submissionTarget.status !== 'dispersed') {
-            console.warn(`[Commission Trigger] Credit ${id} comes from submission target but not winner or not dispersed yet, skipping commission calculation`);
-            return res.json(credit);
-          }
-          console.log(`[Commission Trigger] Credit ${id} comes from winning submission target ${submissionTarget.id}, proceeding with commission calculation`);
+        const skipCommissionCalc = submissionTarget && (!submissionTarget.isWinner || submissionTarget.status !== 'dispersed');
+        if (skipCommissionCalc) {
+          console.warn(`[Commission Trigger] Credit ${id} comes from submission target but not winner or not dispersed yet, skipping commission calculation (handled by target dispersal flow)`);
         }
         
-        // Get broker and master broker
-        const broker = await storage.getUser(credit.brokerId);
-        if (broker) {
-          const masterBrokerId = broker.masterBrokerId;
-          const finalProposal = credit.finalProposal as any;
-          const approvedAmount = parseFloat(finalProposal?.approvedAmount || credit.amount || '0');
-          const commissionsToApply = finalProposal?.commissionsToApply || [];
-          const commissionRates = finalProposal?.commissionRates || {};
-          const institution = credit.financialInstitutionId ? await storage.getFinancialInstitution(credit.financialInstitutionId) : null;
-          const instRates = (institution?.commissionRates as any) || {};
+        if (!skipCommissionCalc) {
+          // Get broker and master broker
+          const broker = await storage.getUser(credit.brokerId);
+          if (broker) {
+            const masterBrokerId = broker.masterBrokerId;
+            const finalProposal = credit.finalProposal as any;
+            const approvedAmount = parseFloat(finalProposal?.approvedAmount || credit.amount || '0');
+            const commissionsToApply = finalProposal?.commissionsToApply || [];
+            const commissionRates = finalProposal?.commissionRates || {};
+            const institution = credit.financialInstitutionId ? await storage.getFinancialInstitution(credit.financialInstitutionId) : null;
+            const instRates = (institution?.commissionRates as any) || {};
 
-          if (commissionsToApply.length > 0) {
-            for (const commissionKey of commissionsToApply) {
-              const [role, type] = commissionKey.split('_');
-              if (role === 'masterBroker' && masterBrokerId) {
-                const rate = parseFloat(commissionRates.masterBroker?.[type] || '0');
-                const amount = approvedAmount * rate / 100;
-                await ensureCommissionRecord({
-                  creditId: credit.id,
-                  brokerId: credit.brokerId,
-                  masterBrokerId,
-                  commissionType: type,
-                  amount,
-                  recipient: 'master_broker',
-                });
-              } else if (role === 'broker') {
-                const rate = parseFloat(commissionRates.broker?.[type] || '0');
-                const amount = approvedAmount * rate / 100;
+            if (commissionsToApply.length > 0) {
+              for (const commissionKey of commissionsToApply) {
+                const [role, type] = commissionKey.split('_');
+                if (role === 'masterBroker' && masterBrokerId) {
+                  const rate = parseFloat(commissionRates.masterBroker?.[type] || '0');
+                  const amount = approvedAmount * rate / 100;
+                  await ensureCommissionRecord({
+                    creditId: credit.id,
+                    brokerId: credit.brokerId,
+                    masterBrokerId,
+                    commissionType: type,
+                    amount,
+                    recipient: 'master_broker',
+                  });
+                } else if (role === 'broker') {
+                  const rate = parseFloat(commissionRates.broker?.[type] || '0');
+                  const amount = approvedAmount * rate / 100;
+                  await ensureCommissionRecord({
+                    creditId: credit.id,
+                    brokerId: credit.brokerId,
+                    masterBrokerId: masterBrokerId || null,
+                    commissionType: type,
+                    amount,
+                    recipient: 'broker',
+                  });
+                }
+              }
+
+              // Always create super_admin commission even when commissionsToApply is populated
+              // (commissionsToApply only includes broker/masterBroker keys, not superAdmin)
+              const superAdminRate = parseFloat(commissionRates.financiera?.apertura || commissionRates.superAdmin?.apertura || instRates.financiera?.apertura || instRates.superAdmin?.apertura || '0');
+              const superAdminAmount = (approvedAmount * superAdminRate) / 100;
+              if (superAdminAmount > 0 || superAdminRate > 0) {
                 await ensureCommissionRecord({
                   creditId: credit.id,
                   brokerId: credit.brokerId,
                   masterBrokerId: masterBrokerId || null,
-                  commissionType: type,
-                  amount,
-                  recipient: 'broker',
+                  commissionType: 'apertura',
+                  amount: superAdminAmount,
+                  recipient: 'super_admin',
                 });
               }
-            }
-          } else {
-            // Default to apertura commission (even if 0%)
-            const brokerRate = parseFloat(commissionRates.broker?.apertura || instRates.broker?.apertura || (institution as any)?.brokerCommissionRate || (institution as any)?.commissionRate || '0');
-            const brokerAmount = (approvedAmount * brokerRate) / 100;
-            await ensureCommissionRecord({
-              creditId: credit.id,
-              brokerId: credit.brokerId,
-              masterBrokerId: masterBrokerId || null,
-              commissionType: 'apertura',
-              amount: brokerAmount,
-              recipient: 'broker',
-            });
-
-            if (masterBrokerId) {
-              const masterRate = parseFloat(commissionRates.masterBroker?.apertura || instRates.masterBroker?.apertura || (institution as any)?.masterBrokerCommissionRate || '0');
-              const masterAmount = (approvedAmount * masterRate) / 100;
-              await ensureCommissionRecord({
-                creditId: credit.id,
-                brokerId: credit.brokerId,
-                masterBrokerId,
-                commissionType: 'apertura',
-                amount: masterAmount,
-                recipient: 'master_broker',
-              });
-            }
-
-            const superAdminRate = parseFloat(commissionRates.financiera?.apertura || commissionRates.superAdmin?.apertura || instRates.financiera?.apertura || instRates.superAdmin?.apertura || '0');
-            const superAdminAmount = (approvedAmount * superAdminRate) / 100;
-            if (superAdminAmount > 0 || superAdminRate > 0) {
+            } else {
+              // Default to apertura commission (even if 0%)
+              const brokerRate = parseFloat(commissionRates.broker?.apertura || instRates.broker?.apertura || (institution as any)?.brokerCommissionRate || (institution as any)?.commissionRate || '0');
+              const brokerAmount = (approvedAmount * brokerRate) / 100;
               await ensureCommissionRecord({
                 creditId: credit.id,
                 brokerId: credit.brokerId,
                 masterBrokerId: masterBrokerId || null,
                 commissionType: 'apertura',
-                amount: superAdminAmount,
-                recipient: 'super_admin',
+                amount: brokerAmount,
+                recipient: 'broker',
               });
+
+              if (masterBrokerId) {
+                const masterRate = parseFloat(commissionRates.masterBroker?.apertura || instRates.masterBroker?.apertura || (institution as any)?.masterBrokerCommissionRate || '0');
+                const masterAmount = (approvedAmount * masterRate) / 100;
+                await ensureCommissionRecord({
+                  creditId: credit.id,
+                  brokerId: credit.brokerId,
+                  masterBrokerId,
+                  commissionType: 'apertura',
+                  amount: masterAmount,
+                  recipient: 'master_broker',
+                });
+              }
+
+              const superAdminRate = parseFloat(commissionRates.financiera?.apertura || commissionRates.superAdmin?.apertura || instRates.financiera?.apertura || instRates.superAdmin?.apertura || '0');
+              const superAdminAmount = (approvedAmount * superAdminRate) / 100;
+              if (superAdminAmount > 0 || superAdminRate > 0) {
+                await ensureCommissionRecord({
+                  creditId: credit.id,
+                  brokerId: credit.brokerId,
+                  masterBrokerId: masterBrokerId || null,
+                  commissionType: 'apertura',
+                  amount: superAdminAmount,
+                  recipient: 'super_admin',
+                });
+              }
             }
           }
         }

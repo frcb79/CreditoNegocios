@@ -40,7 +40,15 @@ export default function Commissions() {
     }
     return "";
   });
-  const [filterStatus, setFilterStatus] = useState<string>("all");
+  const [filterStatus, setFilterStatus] = useState<string>(() => {
+    if (typeof window !== "undefined") {
+      const params = new URLSearchParams(window.location.search);
+      const filter = params.get("filter");
+      if (filter === "pending") return "pending";
+      if (filter === "paid") return "paid";
+    }
+    return "all";
+  });
   const [selectedCommission, setSelectedCommission] = useState<any | null>(null);
   const [viewingCommission, setViewingCommission] = useState<any | null>(null);
   const [accountNumber, setAccountNumber] = useState("");
