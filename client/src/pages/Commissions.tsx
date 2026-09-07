@@ -167,15 +167,78 @@ export default function Commissions() {
     return matchesSearch && matchesStatus;
   });
 
-  const totalPending = commissions.filter(c => c.status === 'pending').reduce((sum, c) => sum + safeFloat(c.amount), 0);
-  const totalPaid = commissions.filter(c => c.status === 'paid').reduce((sum, c) => sum + safeFloat(c.amount), 0);
-
-  // Super Admin specific analytics (#11 & #13)
   const isSuperAdmin = user?.role === 'admin' || user?.role === 'super_admin';
+  const isMasterBrokerRole = user?.role === 'master_broker';
+  const isBrokerRole = user?.role === 'broker';
 
-  // Total overRate generated
+  // Helper for network payout (Option B: To Master Broker if exists, else to Broker)
+  const getPayoutAmount = (c: any): number => {
+    const isMb = c.masterBrokerId && safeFloat(c.masterBrokerShare) > 0;
+    return isMb 
+      ? (safeFloat(c.masterBrokerShare) + safeFloat(c.brokerShare)) 
+      : (safeFloat(c.brokerShare) || safeFloat(c.amount));
+  };
+
+  // Super Admin figures
+  const totalGrossFinancieras = useMemo(() => {
+    return commissions.reduce((sum, c) => sum + safeFloat(c.amount), 0);
+  }, [commissions]);
+
+  const totalPendingPayout = useMemo(() => {
+    return commissions.filter(c => c.status === 'pending').reduce((sum, c) => sum + getPayoutAmount(c), 0);
+  }, [commissions]);
+
+  const totalPaidPayout = useMemo(() => {
+    return commissions.filter(c => c.status === 'paid').reduce((sum, c) => sum + getPayoutAmount(c), 0);
+  }, [commissions]);
+
+  // Master Broker figures
+  const mbGrossFromPlatform = useMemo(() => {
+    return commissions.reduce((sum, c) => sum + safeFloat(c.masterBrokerShare) + safeFloat(c.brokerShare), 0);
+  }, [commissions]);
+
+  const mbOwedToBrokers = useMemo(() => {
+    return commissions.reduce((sum, c) => sum + safeFloat(c.brokerShare), 0);
+  }, [commissions]);
+
+  const mbNetEarnings = useMemo(() => {
+    return commissions.reduce((sum, c) => sum + safeFloat(c.masterBrokerShare), 0);
+  }, [commissions]);
+
+  const mbNetPending = useMemo(() => {
+    return commissions.filter(c => c.status === 'pending').reduce((sum, c) => sum + safeFloat(c.masterBrokerShare), 0);
+  }, [commissions]);
+
+  const mbNetPaid = useMemo(() => {
+    return commissions.filter(c => c.status === 'paid').reduce((sum, c) => sum + safeFloat(c.masterBrokerShare), 0);
+  }, [commissions]);
+
+  // Broker Direct figures
+  const brokerTotalPending = useMemo(() => {
+    return commissions.filter(c => c.status === 'pending').reduce((sum, c) => sum + safeFloat(c.brokerShare || (c.masterBrokerShare ? '0' : c.amount)), 0);
+  }, [commissions]);
+
+  const brokerTotalPaid = useMemo(() => {
+    return commissions.filter(c => c.status === 'paid').reduce((sum, c) => sum + safeFloat(c.brokerShare || (c.masterBrokerShare ? '0' : c.amount)), 0);
+  }, [commissions]);
+
+  const brokerTotal = brokerTotalPending + brokerTotalPaid;
+
+  // Active callout pending amounts:
+  const totalPending = isSuperAdmin
+    ? totalPendingPayout
+    : (isMasterBrokerRole ? mbNetPending : brokerTotalPending);
+
+  const totalPaid = isSuperAdmin
+    ? totalPaidPayout
+    : (isMasterBrokerRole ? mbNetPaid : brokerTotalPaid);
+
+  // Total overRate generated uniquely per credit
   const totalSobretasa = useMemo(() => {
+    const seenCredits = new Set<string>();
     return commissions.reduce((sum, c) => {
+      if (c.creditId && seenCredits.has(c.creditId)) return sum;
+      if (c.creditId) seenCredits.add(c.creditId);
       const creditAmount = safeFloat(c.credit?.amount);
       const overRate = safeFloat(c.financialInstitution?.overRate, 1.0);
       return sum + (creditAmount * (overRate / 100));
@@ -184,7 +247,10 @@ export default function Commissions() {
 
   // Monthly recurring overRate across all credits
   const totalMonthlySobretasaSinIva = useMemo(() => {
+    const seenCredits = new Set<string>();
     return commissions.reduce((sum, c) => {
+      if (c.creditId && seenCredits.has(c.creditId)) return sum;
+      if (c.creditId) seenCredits.add(c.creditId);
       const creditAmount = safeFloat(c.credit?.amount);
       const overRate = safeFloat(c.financialInstitution?.overRate, 1.0);
       const term = safeFloat(c.credit?.term, 12);
@@ -375,21 +441,21 @@ export default function Commissions() {
             <>
               {/* KPIs de Comisiones */}
               {isSuperAdmin ? (
-                /* Super Admin Dashboard Analítico de Comisiones (#13) */
+                /* Super Admin Dashboard Analítico de Comisiones con Transparencia Financiera */
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
                   <Card className="border border-purple-200 bg-purple-50/50 shadow-sm">
                     <CardContent className="p-5">
                       <div className="flex items-center justify-between">
                         <div className="space-y-1">
                           <p className="text-xs font-bold text-purple-900 uppercase tracking-wide">
-                            Ganancia Plataforma (Total)
+                            Ganancia Plataforma (Neta)
                           </p>
                           <p className="text-2xl font-black text-purple-900">
                             ${totalPlatformEarnings.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                           </p>
                           <div className="text-[11px] text-purple-700 font-medium pt-1 space-y-0.5">
+                            <p>• Margen Apertura: ${platformApertura.toLocaleString('es-MX', { maximumFractionDigits: 0 })} MXN</p>
                             <p>• Sobretasas: ${totalSobretasa.toLocaleString('es-MX', { maximumFractionDigits: 0 })} MXN</p>
-                            <p>• Comisión Apertura: ${platformApertura.toLocaleString('es-MX', { maximumFractionDigits: 0 })} MXN</p>
                           </div>
                         </div>
                         <div className="w-12 h-12 bg-purple-200/80 rounded-xl flex items-center justify-center text-purple-900 shadow-inner">
@@ -404,18 +470,17 @@ export default function Commissions() {
                       <div className="flex items-center justify-between">
                         <div className="space-y-1">
                           <p className="text-xs font-bold text-blue-900 uppercase tracking-wide">
-                            Master Brokers
+                            Ingreso Total Financieras
                           </p>
                           <p className="text-2xl font-black text-blue-900">
-                            ${(totalPaidToMB + totalPendingToMB).toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                            ${totalGrossFinancieras.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                           </p>
                           <div className="text-[11px] text-blue-700 font-medium pt-1 space-y-0.5">
-                            <p className="text-emerald-700 font-semibold">✓ Pagadas: ${totalPaidToMB.toLocaleString('es-MX', { maximumFractionDigits: 0 })}</p>
-                            <p className="text-amber-700 font-semibold">⏳ Pendientes: ${totalPendingToMB.toLocaleString('es-MX', { maximumFractionDigits: 0 })}</p>
+                            <p>Total otorgado por apertura en créditos</p>
                           </div>
                         </div>
                         <div className="w-12 h-12 bg-blue-200/80 rounded-xl flex items-center justify-center text-blue-900 shadow-inner">
-                          <i className="fas fa-sitemap text-xl"></i>
+                          <i className="fas fa-university text-xl"></i>
                         </div>
                       </div>
                     </CardContent>
@@ -426,18 +491,18 @@ export default function Commissions() {
                       <div className="flex items-center justify-between">
                         <div className="space-y-1">
                           <p className="text-xs font-bold text-amber-900 uppercase tracking-wide">
-                            Brokers Directos
+                            Por Pagar a la Red (STP)
                           </p>
                           <p className="text-2xl font-black text-amber-900">
-                            ${(totalPaidToBrokers + totalPendingToBrokers).toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                            ${totalPendingPayout.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                           </p>
                           <div className="text-[11px] text-amber-800 font-medium pt-1 space-y-0.5">
-                            <p className="text-emerald-700 font-semibold">✓ Pagadas: ${totalPaidToBrokers.toLocaleString('es-MX', { maximumFractionDigits: 0 })}</p>
-                            <p className="text-amber-700 font-semibold">⏳ Pendientes: ${totalPendingToBrokers.toLocaleString('es-MX', { maximumFractionDigits: 0 })}</p>
+                            <p className="text-emerald-700 font-semibold">✓ Dispersado: ${totalPaidPayout.toLocaleString('es-MX', { maximumFractionDigits: 0 })}</p>
+                            <p className="text-amber-700 font-semibold">⏳ Adeudo Pendiente: ${totalPendingPayout.toLocaleString('es-MX', { maximumFractionDigits: 0 })}</p>
                           </div>
                         </div>
                         <div className="w-12 h-12 bg-amber-200/80 rounded-xl flex items-center justify-center text-amber-900 shadow-inner">
-                          <i className="fas fa-user-tie text-xl"></i>
+                          <i className="fas fa-sitemap text-xl"></i>
                         </div>
                       </div>
                     </CardContent>
@@ -448,14 +513,14 @@ export default function Commissions() {
                       <div className="flex items-center justify-between">
                         <div className="space-y-1">
                           <p className="text-xs font-bold text-emerald-900 uppercase tracking-wide">
-                            Total Pagado / Por Pagar
+                            Estatus de Pagos Red
                           </p>
                           <p className="text-2xl font-black text-emerald-900">
-                            ${(totalPaid + totalPending).toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                            ${(totalPaidPayout + totalPendingPayout).toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                           </p>
                           <div className="text-[11px] text-emerald-700 font-medium pt-1 space-y-0.5">
-                            <p>• {commissions.filter(c => c.status === 'paid').length} comisiones pagadas</p>
-                            <p>• {commissions.filter(c => c.status === 'pending').length} comisiones por liquidar</p>
+                            <p>• {commissions.filter(c => c.status === 'paid').length} créditos liquidados</p>
+                            <p>• {commissions.filter(c => c.status === 'pending').length} transferencias por realizar</p>
                           </div>
                         </div>
                         <div className="w-12 h-12 bg-emerald-200/80 rounded-xl flex items-center justify-center text-emerald-900 shadow-inner">
@@ -465,59 +530,119 @@ export default function Commissions() {
                     </CardContent>
                   </Card>
                 </div>
-              ) : (
-                /* Broker / Master Broker Cards */
+              ) : isMasterBrokerRole ? (
+                /* Master Broker Cards con Transparencia de Red */
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-                  <Card className="border border-gray-200">
+                  <Card className="border border-blue-200 bg-blue-50/50 shadow-sm">
                     <CardContent className="p-6">
                       <div className="flex items-center justify-between">
-                        <div>
-                          <p className="text-neutral text-sm font-medium">Comisiones Pendientes</p>
-                          <p className="text-2xl font-bold text-warning">
-                            ${totalPending.toLocaleString('es-MX')}
+                        <div className="space-y-1">
+                          <p className="text-xs font-bold text-blue-900 uppercase tracking-wide">Ingreso Bruto de Red</p>
+                          <p className="text-2xl font-black text-blue-900">
+                            ${mbGrossFromPlatform.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                           </p>
-                          <p className="text-xs text-neutral mt-1">
-                            {commissions?.filter(c => c.status === 'pending').length || 0} pagos pendientes
+                          <p className="text-xs text-blue-700 mt-1">
+                            Monto total dispersado por plataforma a tu red
                           </p>
                         </div>
-                        <div className="w-12 h-12 bg-warning/10 rounded-lg flex items-center justify-center">
-                          <i className="fas fa-clock text-warning text-lg"></i>
+                        <div className="w-12 h-12 bg-blue-200/80 rounded-xl flex items-center justify-center text-blue-900">
+                          <i className="fas fa-hand-holding-usd text-xl"></i>
                         </div>
                       </div>
                     </CardContent>
                   </Card>
 
-                  <Card className="border border-gray-200">
+                  <Card className="border border-amber-200 bg-amber-50/50 shadow-sm">
+                    <CardContent className="p-6">
+                      <div className="flex items-center justify-between">
+                        <div className="space-y-1">
+                          <p className="text-xs font-bold text-amber-900 uppercase tracking-wide">Por Pagar a Brókers</p>
+                          <p className="text-2xl font-black text-amber-900">
+                            ${mbOwedToBrokers.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                          </p>
+                          <p className="text-xs text-amber-700 mt-1">
+                            Comisiones asignadas a tus originadores
+                          </p>
+                        </div>
+                        <div className="w-12 h-12 bg-amber-200/80 rounded-xl flex items-center justify-center text-amber-900">
+                          <i className="fas fa-users text-xl"></i>
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+
+                  <Card className="border border-emerald-200 bg-emerald-50/50 shadow-sm">
+                    <CardContent className="p-6">
+                      <div className="flex items-center justify-between">
+                        <div className="space-y-1">
+                          <p className="text-xs font-bold text-emerald-900 uppercase tracking-wide">Tu Ganancia Neta de Red</p>
+                          <p className="text-2xl font-black text-emerald-900">
+                            ${mbNetEarnings.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                          </p>
+                          <div className="text-[11px] text-emerald-700 font-medium pt-0.5 space-y-0.5">
+                            <p>✓ Pagado: ${mbNetPaid.toLocaleString('es-MX', { maximumFractionDigits: 0 })} • ⏳ Pendiente: ${mbNetPending.toLocaleString('es-MX', { maximumFractionDigits: 0 })}</p>
+                          </div>
+                        </div>
+                        <div className="w-12 h-12 bg-emerald-200/80 rounded-xl flex items-center justify-center text-emerald-900">
+                          <i className="fas fa-chart-line text-xl"></i>
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                </div>
+              ) : (
+                /* Broker Directo Cards */
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+                  <Card className="border border-amber-200 bg-amber-50/30 shadow-sm">
                     <CardContent className="p-6">
                       <div className="flex items-center justify-between">
                         <div>
-                          <p className="text-neutral text-sm font-medium">Comisiones Pagadas</p>
-                          <p className="text-2xl font-bold text-success">
-                            ${totalPaid.toLocaleString('es-MX')}
+                          <p className="text-xs font-bold text-amber-900 uppercase tracking-wide">Comisiones Pendientes</p>
+                          <p className="text-2xl font-black text-amber-900">
+                            ${brokerTotalPending.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                           </p>
-                          <p className="text-xs text-neutral mt-1">
+                          <p className="text-xs text-amber-700 mt-1">
+                            {commissions?.filter(c => c.status === 'pending').length || 0} pagos por recibir
+                          </p>
+                        </div>
+                        <div className="w-12 h-12 bg-amber-100 rounded-xl flex items-center justify-center text-amber-800">
+                          <i className="fas fa-clock text-xl"></i>
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+
+                  <Card className="border border-emerald-200 bg-emerald-50/30 shadow-sm">
+                    <CardContent className="p-6">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <p className="text-xs font-bold text-emerald-900 uppercase tracking-wide">Comisiones Pagadas</p>
+                          <p className="text-2xl font-black text-emerald-900">
+                            ${brokerTotalPaid.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                          </p>
+                          <p className="text-xs text-emerald-700 mt-1">
                             {commissions?.filter(c => c.status === 'paid').length || 0} pagos completados
                           </p>
                         </div>
-                        <div className="w-12 h-12 bg-success/10 rounded-lg flex items-center justify-center">
-                          <i className="fas fa-check-circle text-success text-lg"></i>
+                        <div className="w-12 h-12 bg-emerald-100 rounded-xl flex items-center justify-center text-emerald-800">
+                          <i className="fas fa-check-circle text-xl"></i>
                         </div>
                       </div>
                     </CardContent>
                   </Card>
 
-                  <Card className="border border-gray-200">
+                  <Card className="border border-gray-200 shadow-sm">
                     <CardContent className="p-6">
                       <div className="flex items-center justify-between">
                         <div>
-                          <p className="text-neutral text-sm font-medium">Total Comisiones</p>
-                          <p className="text-2xl font-bold text-primary">
-                            ${(totalPending + totalPaid).toLocaleString('es-MX')}
+                          <p className="text-xs font-bold text-gray-700 uppercase tracking-wide">Total Comisiones</p>
+                          <p className="text-2xl font-black text-primary">
+                            ${brokerTotal.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                           </p>
-                          <p className="text-xs text-neutral mt-1">Registradas</p>
+                          <p className="text-xs text-gray-500 mt-1">Registradas</p>
                         </div>
-                        <div className="w-12 h-12 bg-primary/10 rounded-lg flex items-center justify-center">
-                          <i className="fas fa-dollar-sign text-primary text-lg"></i>
+                        <div className="w-12 h-12 bg-primary/10 rounded-xl flex items-center justify-center text-primary">
+                          <i className="fas fa-dollar-sign text-xl"></i>
                         </div>
                       </div>
                     </CardContent>
@@ -668,12 +793,14 @@ export default function Commissions() {
                     const masterBrokerShare = safeFloat(commission.masterBrokerShare);
                     const appShare = safeFloat(commission.appShare);
                     const totalAmount = safeFloat(commission.amount);
+                    const isMb = commission.masterBrokerId && masterBrokerShare > 0;
+                    const payoutToNetwork = isMb ? (masterBrokerShare + brokerShare) : brokerShare;
 
                     // User role specific share calculation
                     const isOwnCreditAsMB = isMasterBrokerRole && (commission.brokerId === user?.id || !commission.masterBrokerId);
                     const profileSpecificAmount = isBrokerRole 
                       ? brokerShare 
-                      : (isMasterBrokerRole ? (isOwnCreditAsMB ? brokerShare : masterBrokerShare) : totalAmount);
+                      : (isMasterBrokerRole ? (isOwnCreditAsMB ? brokerShare : masterBrokerShare) : payoutToNetwork);
 
                     return (
                       <div
@@ -714,7 +841,12 @@ export default function Commissions() {
                                     ? 'text-emerald-700 bg-emerald-50 border-emerald-200' 
                                     : 'text-indigo-700 bg-indigo-50 border-indigo-200'
                                 }`}>
-                                  {isOwnCreditAsMB ? 'Tu Comisión Directa' : 'Tu Comisión de Red'}
+                                  {isOwnCreditAsMB ? 'Tu Comisión Directa' : 'Tu Ganancia Neta de Red'}
+                                </span>
+                              )}
+                              {isSuperAdminRole && (
+                                <span className="text-xs font-semibold text-amber-800 bg-amber-50 px-2 py-0.5 rounded border border-amber-200">
+                                  A Dispersar a Red {isMb ? '(Vía Master Bróker)' : '(Bróker Directo)'}
                                 </span>
                               )}
                             </div>
@@ -742,32 +874,31 @@ export default function Commissions() {
                               <span>Tipo: {commissionTypeLabels[commission.commissionType || ""] || (commission.commissionType || "Apertura")}</span>
                             </div>
 
-                            {/* Desglose de Repartición de acuerdo al perfil (#27 / Requerimiento de Perfil) */}
+                            {/* Desglose de Repartición en Cascada (#27 / Requerimiento de Perfil) */}
                             {isSuperAdminRole ? (
-                              <div className="flex items-center gap-1.5 flex-wrap text-[11px] mt-2 p-1.5 bg-white/90 rounded border border-gray-200">
-                                <span className="font-bold text-gray-700">Repartición por Perfil:</span>
-                                <span className="text-blue-800 bg-blue-50 px-1.5 py-0.5 rounded font-medium border border-blue-200">
-                                  👤 Bróker: ${brokerShare.toLocaleString('es-MX', { minimumFractionDigits: 2 })} MXN
+                              <div className="flex items-center gap-1.5 flex-wrap text-[11px] mt-2 p-2 bg-purple-50/70 rounded-lg border border-purple-200">
+                                <span className="font-bold text-purple-950">Cascada Financiera:</span>
+                                <span className="text-blue-900 bg-white px-2 py-0.5 rounded font-medium border border-blue-200">
+                                  📥 Financiera: ${totalAmount.toLocaleString('es-MX', { minimumFractionDigits: 2 })} MXN
                                 </span>
-                                {masterBrokerShare > 0 && (
-                                  <span className="text-purple-800 bg-purple-50 px-1.5 py-0.5 rounded font-medium border border-purple-200">
-                                    🌐 Master Bróker: ${masterBrokerShare.toLocaleString('es-MX', { minimumFractionDigits: 2 })} MXN
-                                  </span>
-                                )}
-                                {appShare > 0 && (
-                                  <span className="text-emerald-800 bg-emerald-50 px-1.5 py-0.5 rounded font-medium border border-emerald-200">
-                                    🏢 Plataforma: ${appShare.toLocaleString('es-MX', { minimumFractionDigits: 2 })} MXN
-                                  </span>
-                                )}
+                                <span className="text-amber-900 bg-white px-2 py-0.5 rounded font-medium border border-amber-200">
+                                  📤 Dispersión Red: -${payoutToNetwork.toLocaleString('es-MX', { minimumFractionDigits: 2 })} MXN
+                                </span>
+                                <span className="text-emerald-900 bg-emerald-100 px-2 py-0.5 rounded font-bold border border-emerald-300">
+                                  💰 Margen Plataforma: ${appShare.toLocaleString('es-MX', { minimumFractionDigits: 2 })} MXN
+                                </span>
                               </div>
                             ) : isMasterBrokerRole && !isOwnCreditAsMB ? (
-                              <div className="flex items-center gap-1.5 flex-wrap text-[11px] mt-1.5 text-gray-600">
-                                <span className="text-gray-500">Bróker Originador de Red:</span>
-                                <span className="font-semibold text-gray-800">
-                                  {commission.broker ? `${commission.broker.firstName} ${commission.broker.lastName}` : 'Bróker'}
+                              <div className="flex items-center gap-1.5 flex-wrap text-[11px] mt-2 p-2 bg-blue-50/70 rounded-lg border border-blue-200">
+                                <span className="font-bold text-blue-950">Desglose de Red:</span>
+                                <span className="text-indigo-900 bg-white px-2 py-0.5 rounded font-medium border border-indigo-200">
+                                  📥 Cobro Plataforma: ${(masterBrokerShare + brokerShare).toLocaleString('es-MX', { minimumFractionDigits: 2 })} MXN
                                 </span>
-                                <span className="text-blue-700 bg-blue-50 px-1.5 py-0.5 rounded border border-blue-200 font-medium">
-                                  Comisión Bróker: ${brokerShare.toLocaleString('es-MX', { minimumFractionDigits: 2 })} MXN
+                                <span className="text-amber-900 bg-white px-2 py-0.5 rounded font-medium border border-amber-200">
+                                  📤 Pago a Bróker: -${brokerShare.toLocaleString('es-MX', { minimumFractionDigits: 2 })} MXN
+                                </span>
+                                <span className="text-emerald-900 bg-emerald-100 px-2 py-0.5 rounded font-bold border border-emerald-300">
+                                  💰 Tu Ganancia Neta: ${masterBrokerShare.toLocaleString('es-MX', { minimumFractionDigits: 2 })} MXN
                                 </span>
                               </div>
                             ) : null}
@@ -818,7 +949,7 @@ export default function Commissions() {
                                 size="sm"
                                 className="bg-success text-white hover:bg-green-700 text-xs font-semibold shadow-sm"
                                 onClick={() => {
-                                  setSelectedCommission(commission);
+                                  setSelectedCommission({ ...commission, payoutAmount: payoutToNetwork });
                                   setAccountNumber(commission.effectiveBankAccount?.clabe || "");
                                 }}
                                 data-testid={`button-pay-${commission.id}`}
@@ -1258,9 +1389,16 @@ export default function Commissions() {
               <div className="space-y-4 pt-2">
                 <div className="bg-primary/5 p-4 rounded-lg flex items-center justify-between">
                   <div>
-                    <p className="text-xs text-neutral">Monto de Comisión</p>
+                    <p className="text-xs text-neutral">
+                      {isSuperAdmin ? 'Total Financiera' : isMasterBrokerRole ? 'Tu Comisión Neta (Master)' : 'Tu Comisión'}
+                    </p>
                     <p className="text-2xl font-bold text-primary">
-                      ${safeFloat(viewingCommission.amount).toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} MXN
+                      ${(isSuperAdmin 
+                        ? (safeFloat(viewingCommission.totalGrossAmount) || (safeFloat(viewingCommission.appShare) + safeFloat(viewingCommission.masterBrokerShare) + safeFloat(viewingCommission.brokerShare)) || safeFloat(viewingCommission.amount))
+                        : isMasterBrokerRole 
+                          ? (safeFloat(viewingCommission.masterBrokerShare) || safeFloat(viewingCommission.amount))
+                          : (safeFloat(viewingCommission.brokerShare) || safeFloat(viewingCommission.amount))
+                      ).toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} MXN
                     </p>
                   </div>
                   <Badge className={statusConfig[viewingCommission.status as keyof typeof statusConfig]?.color || "bg-gray-100 text-gray-800"}>
@@ -1310,25 +1448,65 @@ export default function Commissions() {
                     </div>
                   )}
 
-                  {/* Desglose de Repartición de acuerdo al perfil */}
-                  <div className="bg-gray-50 p-3 rounded-lg border border-gray-200 text-xs space-y-1.5 mt-2">
-                    <p className="font-bold text-gray-800">Distribución de Comisión:</p>
-                    <div className="flex justify-between text-blue-900">
-                      <span>👤 Asignado a Bróker:</span>
-                      <span className="font-semibold">${safeFloat(viewingCommission.brokerShare || (viewingCommission.masterBrokerShare ? '0' : viewingCommission.amount)).toLocaleString('es-MX', { minimumFractionDigits: 2 })} MXN</span>
+                  {/* Desglose de Repartición en Cascada */}
+                  <div className="bg-gray-50 p-3.5 rounded-lg border border-gray-200 text-xs space-y-2 mt-2">
+                    <p className="font-bold text-gray-800 flex items-center gap-1.5">
+                      <i className="fas fa-sitemap text-primary"></i>
+                      Desglose de Repartición (Cascada):
+                    </p>
+                    
+                    {isSuperAdmin && (
+                      <div className="space-y-1.5 bg-white p-2.5 rounded border border-gray-200">
+                        <div className="flex justify-between text-blue-950 font-semibold">
+                          <span>📥 Otorgado por Financiera:</span>
+                          <span>${(safeFloat(viewingCommission.totalGrossAmount) || (safeFloat(viewingCommission.appShare) + safeFloat(viewingCommission.masterBrokerShare) + safeFloat(viewingCommission.brokerShare))).toLocaleString('es-MX', { minimumFractionDigits: 2 })} MXN</span>
+                        </div>
+                        <div className="flex justify-between text-amber-900">
+                          <span>📤 Dispersión a la Red:</span>
+                          <span>-${(safeFloat(viewingCommission.masterBrokerShare) + safeFloat(viewingCommission.brokerShare)).toLocaleString('es-MX', { minimumFractionDigits: 2 })} MXN</span>
+                        </div>
+                        <div className="flex justify-between text-emerald-900 font-bold border-t pt-1">
+                          <span>💰 Margen Plataforma:</span>
+                          <span>${safeFloat(viewingCommission.appShare).toLocaleString('es-MX', { minimumFractionDigits: 2 })} MXN</span>
+                        </div>
+                      </div>
+                    )}
+
+                    {isMasterBrokerRole && (
+                      <div className="space-y-1.5 bg-white p-2.5 rounded border border-gray-200">
+                        <div className="flex justify-between text-indigo-950 font-semibold">
+                          <span>📥 Ingreso Red de Plataforma:</span>
+                          <span>${(safeFloat(viewingCommission.masterBrokerShare) + safeFloat(viewingCommission.brokerShare)).toLocaleString('es-MX', { minimumFractionDigits: 2 })} MXN</span>
+                        </div>
+                        <div className="flex justify-between text-amber-900">
+                          <span>📤 Repartición a Bróker:</span>
+                          <span>-${safeFloat(viewingCommission.brokerShare).toLocaleString('es-MX', { minimumFractionDigits: 2 })} MXN</span>
+                        </div>
+                        <div className="flex justify-between text-emerald-900 font-bold border-t pt-1">
+                          <span>💰 Tu Ganancia Neta:</span>
+                          <span>${safeFloat(viewingCommission.masterBrokerShare).toLocaleString('es-MX', { minimumFractionDigits: 2 })} MXN</span>
+                        </div>
+                      </div>
+                    )}
+
+                    <div className="pt-1 text-[11px] text-gray-500 space-y-1 border-t">
+                      <div className="flex justify-between">
+                        <span>👤 Cuota Bróker:</span>
+                        <span className="font-semibold text-gray-700">${safeFloat(viewingCommission.brokerShare).toLocaleString('es-MX', { minimumFractionDigits: 2 })} MXN</span>
+                      </div>
+                      {safeFloat(viewingCommission.masterBrokerShare) > 0 && (
+                        <div className="flex justify-between">
+                          <span>🌐 Cuota Master Bróker:</span>
+                          <span className="font-semibold text-gray-700">${safeFloat(viewingCommission.masterBrokerShare).toLocaleString('es-MX', { minimumFractionDigits: 2 })} MXN</span>
+                        </div>
+                      )}
+                      {safeFloat(viewingCommission.appShare) > 0 && (
+                        <div className="flex justify-between">
+                          <span>🏢 Cuota Plataforma:</span>
+                          <span className="font-semibold text-gray-700">${safeFloat(viewingCommission.appShare).toLocaleString('es-MX', { minimumFractionDigits: 2 })} MXN</span>
+                        </div>
+                      )}
                     </div>
-                    {safeFloat(viewingCommission.masterBrokerShare) > 0 && (
-                      <div className="flex justify-between text-purple-900">
-                        <span>🌐 Asignado a Master Bróker:</span>
-                        <span className="font-semibold">${safeFloat(viewingCommission.masterBrokerShare).toLocaleString('es-MX', { minimumFractionDigits: 2 })} MXN</span>
-                      </div>
-                    )}
-                    {safeFloat(viewingCommission.appShare) > 0 && (
-                      <div className="flex justify-between text-emerald-900">
-                        <span>🏢 Plataforma / Retención:</span>
-                        <span className="font-semibold">${safeFloat(viewingCommission.appShare).toLocaleString('es-MX', { minimumFractionDigits: 2 })} MXN</span>
-                      </div>
-                    )}
                   </div>
                 </div>
 
@@ -1370,9 +1548,9 @@ export default function Commissions() {
               <div className="space-y-4 pt-1">
                 <div className="bg-primary/5 p-3.5 rounded-lg flex items-center justify-between">
                   <div>
-                    <p className="text-xs text-neutral">Monto de Comisión a Dispersar:</p>
+                    <p className="text-xs text-neutral">Monto de Comisión a Dispersar (STP):</p>
                     <p className="text-xl text-primary font-bold">
-                      ${safeFloat(selectedCommission.amount).toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} MXN
+                      ${safeFloat(selectedCommission.payoutAmount || selectedCommission.amount).toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} MXN
                     </p>
                   </div>
                   <Badge className="bg-blue-100 text-blue-800 border-blue-200">
@@ -1380,10 +1558,28 @@ export default function Commissions() {
                   </Badge>
                 </div>
 
+                {/* Desglose de Retención y Margen Plataforma para Super Admin */}
+                {(safeFloat(selectedCommission.totalGrossAmount) > 0 || safeFloat(selectedCommission.appShare) > 0) && (
+                  <div className="bg-purple-50/70 border border-purple-200 p-2.5 rounded-lg text-xs space-y-1">
+                    <div className="flex justify-between text-purple-950 font-semibold">
+                      <span>Total Otorgado por Financiera:</span>
+                      <span>${safeFloat(selectedCommission.totalGrossAmount || (safeFloat(selectedCommission.appShare) + safeFloat(selectedCommission.payoutAmount || selectedCommission.amount))).toLocaleString('es-MX', { minimumFractionDigits: 2 })} MXN</span>
+                    </div>
+                    <div className="flex justify-between text-amber-900">
+                      <span>Monto a Dispersar a la Red (STP):</span>
+                      <span className="font-semibold">-${safeFloat(selectedCommission.payoutAmount || selectedCommission.amount).toLocaleString('es-MX', { minimumFractionDigits: 2 })} MXN</span>
+                    </div>
+                    <div className="flex justify-between text-emerald-900 border-t border-purple-200/80 pt-1 font-bold">
+                      <span>Margen de Ganancia Plataforma:</span>
+                      <span>${safeFloat(selectedCommission.appShare).toLocaleString('es-MX', { minimumFractionDigits: 2 })} MXN</span>
+                    </div>
+                  </div>
+                )}
+
                 {/* Información Bancaria Pre-cargada */}
                 <div className="p-3 bg-gray-50 rounded-lg border border-gray-200 space-y-2 text-xs">
                   <p className="font-bold text-gray-700 uppercase tracking-wider text-[10px]">
-                    Cuenta Destino {selectedCommission.effectiveBankAccount?.beneficiaryType === 'master_broker' ? '(Master Broker)' : '(Broker Directo)'}
+                    Cuenta Destino {selectedCommission.effectiveBankAccount?.beneficiaryType === 'master_broker' ? '(Master Broker - Se encarga de repartir a su Red)' : '(Bróker Directo)'}
                   </p>
                   <div className="grid grid-cols-2 gap-2">
                     <div>
