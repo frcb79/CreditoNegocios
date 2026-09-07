@@ -514,111 +514,113 @@ export default function FinancieraDetail() {
                       Estructura de Comisiones
                     </h3>
                     {commissionRates ? (
-                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                        {/* Financiera - Solo visible para admin/super_admin */}
-                        {isAdmin && (commissionRates as any).financiera && (
-                          <Card data-testid="card-commission-financiera" className="bg-primary/5 border-primary/20">
-                            <CardHeader>
-                              <CardTitle className="text-lg flex items-center">
-                                <i className="fas fa-building text-primary mr-2"></i>
-                                Financiera
-                              </CardTitle>
-                            </CardHeader>
-                            <CardContent className="space-y-2">
-                              <div className="flex justify-between items-center">
-                                <span className="text-sm text-gray-600" data-testid="text-commission-financiera-total">Total:</span>
-                                <span className="font-semibold">{(commissionRates as any).financiera.total}%</span>
-                              </div>
-                              <div className="flex justify-between items-center">
-                                <span className="text-sm text-gray-600" data-testid="text-commission-financiera-apertura">Apertura:</span>
-                                <span className="font-semibold">{(commissionRates as any).financiera.apertura}%</span>
-                              </div>
-                              <div className="flex justify-between items-center">
-                                <span className="text-sm text-gray-600" data-testid="text-commission-financiera-sobretasa">Sobretasa:</span>
-                                <span className="font-semibold">{(commissionRates as any).financiera.sobretasa}%</span>
-                              </div>
-                              <div className="flex justify-between items-center">
-                                <span className="text-sm text-gray-600" data-testid="text-commission-financiera-renovacion">Renovación:</span>
-                                <span className="font-semibold">{(commissionRates as any).financiera.renovacion}%</span>
-                              </div>
-                            </CardContent>
-                          </Card>
-                        )}
+                      <>
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                          {/* Financiera - Solo visible para admin/super_admin */}
+                          {isAdmin && (commissionRates as any).financiera && (
+                            <Card data-testid="card-commission-financiera" className="bg-primary/5 border-primary/20">
+                              <CardHeader>
+                                <CardTitle className="text-lg flex items-center">
+                                  <i className="fas fa-building text-primary mr-2"></i>
+                                  Financiera
+                                </CardTitle>
+                              </CardHeader>
+                              <CardContent className="space-y-2">
+                                <div className="flex justify-between items-center">
+                                  <span className="text-sm text-gray-600" data-testid="text-commission-financiera-total">Total:</span>
+                                  <span className="font-semibold">{(commissionRates as any).financiera.total}%</span>
+                                </div>
+                                <div className="flex justify-between items-center">
+                                  <span className="text-sm text-gray-600" data-testid="text-commission-financiera-apertura">Apertura:</span>
+                                  <span className="font-semibold">{(commissionRates as any).financiera.apertura}%</span>
+                                </div>
+                                <div className="flex justify-between items-center">
+                                  <span className="text-sm text-gray-600" data-testid="text-commission-financiera-sobretasa">Sobretasa:</span>
+                                  <span className="font-semibold">{(commissionRates as any).financiera.sobretasa}%</span>
+                                </div>
+                                <div className="flex justify-between items-center">
+                                  <span className="text-sm text-gray-600" data-testid="text-commission-financiera-renovacion">Renovación:</span>
+                                  <span className="font-semibold">{(commissionRates as any).financiera.renovacion}%</span>
+                                </div>
+                              </CardContent>
+                            </Card>
+                          )}
 
-                        {/* Master Broker - Hidden for broker role */}
-                        {!isBroker && (commissionRates as any).masterBroker && (
-                          <Card data-testid="card-commission-masterbroker" className="bg-green-50 border-green-200">
-                            <CardHeader>
-                              <CardTitle className="text-lg flex items-center">
-                                <i className="fas fa-users text-green-600 mr-2"></i>
-                                Master Broker (Techo de Red)
-                              </CardTitle>
-                            </CardHeader>
-                            <CardContent className="space-y-2">
-                              {/* Total y Sobretasa solo visibles para admin */}
-                              {isAdmin && (
+                          {/* Master Broker - Hidden for broker role */}
+                          {!isBroker && (commissionRates as any).masterBroker && (
+                            <Card data-testid="card-commission-masterbroker" className="bg-green-50 border-green-200">
+                              <CardHeader>
+                                <CardTitle className="text-lg flex items-center">
+                                  <i className="fas fa-users text-green-600 mr-2"></i>
+                                  Master Broker (Techo de Red)
+                                </CardTitle>
+                              </CardHeader>
+                              <CardContent className="space-y-2">
+                                {/* Total y Sobretasa solo visibles para admin */}
+                                {isAdmin && (
+                                  <div className="flex justify-between items-center">
+                                    <span className="text-sm text-gray-600" data-testid="text-commission-masterbroker-total">Total:</span>
+                                    <span className="font-semibold">{(commissionRates as any).masterBroker.total}%</span>
+                                  </div>
+                                )}
                                 <div className="flex justify-between items-center">
-                                  <span className="text-sm text-gray-600" data-testid="text-commission-masterbroker-total">Total:</span>
-                                  <span className="font-semibold">{(commissionRates as any).masterBroker.total}%</span>
+                                  <span className="text-sm text-gray-600" data-testid="text-commission-masterbroker-apertura">Apertura:</span>
+                                  <span className="font-semibold">{(commissionRates as any).masterBroker.apertura}%</span>
                                 </div>
-                              )}
-                              <div className="flex justify-between items-center">
-                                <span className="text-sm text-gray-600" data-testid="text-commission-masterbroker-apertura">Apertura:</span>
-                                <span className="font-semibold">{(commissionRates as any).masterBroker.apertura}%</span>
-                              </div>
-                              {isAdmin && (
+                                {isAdmin && (
+                                  <div className="flex justify-between items-center">
+                                    <span className="text-sm text-gray-600" data-testid="text-commission-masterbroker-sobretasa">Sobretasa:</span>
+                                    <span className="font-semibold">{(commissionRates as any).masterBroker.sobretasa}%</span>
+                                  </div>
+                                )}
                                 <div className="flex justify-between items-center">
-                                  <span className="text-sm text-gray-600" data-testid="text-commission-masterbroker-sobretasa">Sobretasa:</span>
-                                  <span className="font-semibold">{(commissionRates as any).masterBroker.sobretasa}%</span>
+                                  <span className="text-sm text-gray-600" data-testid="text-commission-masterbroker-renovacion">Renovación:</span>
+                                  <span className="font-semibold">{(commissionRates as any).masterBroker.renovacion}%</span>
                                 </div>
-                              )}
-                              <div className="flex justify-between items-center">
-                                <span className="text-sm text-gray-600" data-testid="text-commission-masterbroker-renovacion">Renovación:</span>
-                                <span className="font-semibold">{(commissionRates as any).masterBroker.renovacion}%</span>
-                              </div>
-                            </CardContent>
-                          </Card>
-                        )}
+                              </CardContent>
+                            </Card>
+                          )}
 
-                        {/* Broker */}
-                        {(commissionRates as any).broker && (
-                          <Card data-testid="card-commission-broker" className="bg-blue-50 border-blue-200">
-                            <CardHeader>
-                              <CardTitle className="text-lg flex items-center">
-                                <i className="fas fa-user text-blue-600 mr-2"></i>
-                                Bróker Directo (Sin Master)
-                              </CardTitle>
-                            </CardHeader>
-                            <CardContent className="space-y-2">
-                              {/* Total y Sobretasa solo visibles para admin */}
-                              {isAdmin && (
+                          {/* Broker */}
+                          {(commissionRates as any).broker && (
+                            <Card data-testid="card-commission-broker" className="bg-blue-50 border-blue-200">
+                              <CardHeader>
+                                <CardTitle className="text-lg flex items-center">
+                                  <i className="fas fa-user text-blue-600 mr-2"></i>
+                                  Bróker Directo (Sin Master)
+                                </CardTitle>
+                              </CardHeader>
+                              <CardContent className="space-y-2">
+                                {/* Total y Sobretasa solo visibles para admin */}
+                                {isAdmin && (
+                                  <div className="flex justify-between items-center">
+                                    <span className="text-sm text-gray-600" data-testid="text-commission-broker-total">Total:</span>
+                                    <span className="font-semibold">{(commissionRates as any).broker.total}%</span>
+                                  </div>
+                                )}
                                 <div className="flex justify-between items-center">
-                                  <span className="text-sm text-gray-600" data-testid="text-commission-broker-total">Total:</span>
-                                  <span className="font-semibold">{(commissionRates as any).broker.total}%</span>
+                                  <span className="text-sm text-gray-600" data-testid="text-commission-broker-apertura">Apertura:</span>
+                                  <span className="font-semibold">{(commissionRates as any).broker.apertura}%</span>
                                 </div>
-                              )}
-                              <div className="flex justify-between items-center">
-                                <span className="text-sm text-gray-600" data-testid="text-commission-broker-apertura">Apertura:</span>
-                                <span className="font-semibold">{(commissionRates as any).broker.apertura}%</span>
-                              </div>
-                              {isAdmin && (
+                                {isAdmin && (
+                                  <div className="flex justify-between items-center">
+                                    <span className="text-sm text-gray-600" data-testid="text-commission-broker-sobretasa">Sobretasa:</span>
+                                    <span className="font-semibold">{(commissionRates as any).broker.sobretasa}%</span>
+                                  </div>
+                                )}
                                 <div className="flex justify-between items-center">
-                                  <span className="text-sm text-gray-600" data-testid="text-commission-broker-sobretasa">Sobretasa:</span>
-                                  <span className="font-semibold">{(commissionRates as any).broker.sobretasa}%</span>
+                                  <span className="text-sm text-gray-600" data-testid="text-commission-broker-renovacion">Renovación:</span>
+                                  <span className="font-semibold">{(commissionRates as any).broker.renovacion}%</span>
                                 </div>
-                              )}
-                              <div className="flex justify-between items-center">
-                                <span className="text-sm text-gray-600" data-testid="text-commission-broker-renovacion">Renovación:</span>
-                                <span className="font-semibold">{(commissionRates as any).broker.renovacion}%</span>
-                              </div>
-                            </CardContent>
-                          </Card>
-                        )}
-                      </div>
-                      <p className="text-xs text-neutral mt-3 italic bg-gray-50 p-2.5 rounded-lg border border-gray-200">
-                        <i className="fas fa-info-circle text-primary mr-1.5"></i>
-                        <strong>Autonomía de Red:</strong> Los Master Brokers configuran de forma autónoma desde la sección de <em>Red de Brokers</em> el porcentaje que asignan a su equipo a partir de su techo otorgado.
-                      </p>
+                              </CardContent>
+                            </Card>
+                          )}
+                        </div>
+                        <p className="text-xs text-neutral mt-3 italic bg-gray-50 p-2.5 rounded-lg border border-gray-200">
+                          <i className="fas fa-info-circle text-primary mr-1.5"></i>
+                          <strong>Autonomía de Red:</strong> Los Master Brokers configuran de forma autónoma desde la sección de <em>Red de Brokers</em> el porcentaje que asignan a su equipo a partir de su techo otorgado.
+                        </p>
+                      </>
                     ) : (
                       <div className="text-center py-12">
                         <i className="fas fa-percent text-6xl text-gray-300 mb-4"></i>
