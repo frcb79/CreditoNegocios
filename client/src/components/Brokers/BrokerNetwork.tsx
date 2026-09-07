@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useState, useEffect } from "react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -9,9 +9,284 @@ import { Input } from "@/components/ui/input";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { User } from "@shared/schema";
 import { useAuth } from "@/hooks/useAuth";
+import { useToast } from "@/hooks/use-toast";
+import { apiRequest } from "@/lib/queryClient";
 import { formatDistanceToNow } from "date-fns";
 import { es } from "date-fns/locale";
 import InviteBrokerModal from "@/components/Modals/InviteBrokerModal";
+
+function MasterBrokerRatesConfig({ user }: { user: any }) {
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+  const [ratesForm, setRatesForm] = useState<Record<string, { apertura: string; sobretasa?: string; renovacion?: string }>>({});
+  const [hasChanges, setHasChanges] = useState(false);
+
+  const { data: ratesData, isLoading } = useQuery<{
+    rates: Record<string, any>;
+    items: Array<{
+      institutionId: string;
+      institutionName: string;
+      logoUrl?: string;
+      category?: string;
+      masterCeiling: { total: number; apertura: number; sobretasa: number; renovacion: number };
+      defaultBroker: { total: number; apertura: number; sobretasa: number; renovacion: number };
+      assignedRate: { apertura: number; sobretasa?: number; renovacion?: number } | null;
+    }>;
+  }>({
+    queryKey: ["/api/master-broker/network-rates"],
+  });
+
+  // Initialize form when data loads
+  useEffect(() => {
+    if (ratesData?.items) {
+      const initial: Record<string, { apertura: string; sobretasa?: string; renovacion?: string }> = {};
+      ratesData.items.forEach(item => {
+        const assigned = item.assignedRate;
+        initial[item.institutionId] = {
+          apertura: assigned?.apertura !== undefined ? String(assigned.apertura) : String(item.defaultBroker.apertura || ''),
+          sobretasa: assigned?.sobretasa !== undefined ? String(assigned.sobretasa) : String(item.defaultBroker.sobretasa || ''),
+          renovacion: assigned?.renovacion !== undefined ? String(assigned.renovacion) : String(item.defaultBroker.renovacion || ''),
+        };
+      });
+      setRatesForm(initial);
+      setHasChanges(false);
+    }
+  }, [ratesData]);
+
+  const saveMutation = useMutation({
+    mutationFn: async (payload: any) => {
+      const res = await apiRequest("PUT", "/api/master-broker/network-rates", { rates: payload });
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/master-broker/network-rates"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/financial-institutions"] });
+      setHasChanges(false);
+      toast({
+        title: "Comisiones de Red Guardadas",
+        description: "El esquema de comisiones para tu equipo ha sido actualizado.",
+      });
+    },
+    onError: (err: any) => {
+      toast({
+        title: "Error al guardar",
+        description: err.message || "No se pudieron guardar las comisiones",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const handleRateChange = (instId: string, field: 'apertura' | 'sobretasa' | 'renovacion', value: string) => {
+    setRatesForm(prev => ({
+      ...prev,
+      [instId]: {
+        ...prev[instId],
+        [field]: value,
+      }
+    }));
+    setHasChanges(true);
+  };
+
+  const handleSave = () => {
+    if (ratesData?.items) {
+      for (const item of ratesData.items) {
+        const val = parseFloat(ratesForm[item.institutionId]?.apertura || '0');
+        const ceiling = item.masterCeiling.apertura;
+        if (val > ceiling && ceiling > 0) {
+          toast({
+            title: "Tasa no permitida",
+            description: `Para ${item.institutionName}, la comisión (${val}%) no puede superar tu techo de ${ceiling}%.`,
+            variant: "destructive",
+          });
+          return;
+        }
+      }
+    }
+    saveMutation.mutate(ratesForm);
+  };
+
+  if (isLoading) {
+    return (
+      <div className="space-y-3 py-6">
+        <Skeleton className="h-10 w-full" />
+        <Skeleton className="h-16 w-full" />
+        <Skeleton className="h-16 w-full" />
+      </div>
+    );
+  }
+
+  const items = ratesData?.items || [];
+
+  return (
+    <div className="space-y-6">
+      {/* Banner explicativo */}
+      <div className="bg-gradient-to-r from-blue-50 to-indigo-50 p-4 rounded-xl border border-blue-200 flex items-start justify-between gap-3 flex-wrap">
+        <div className="flex items-start gap-3 flex-1 min-w-[280px]">
+          <div className="w-9 h-9 rounded-full bg-blue-100 flex items-center justify-center flex-shrink-0 text-blue-700 mt-0.5">
+            <i className="fas fa-sitemap"></i>
+          </div>
+          <div className="text-xs">
+            <h4 className="font-bold text-blue-950 text-sm mb-1">
+              Autonomía de Comisiones para tu Red de Brókers
+            </h4>
+            <p className="text-blue-900 leading-relaxed">
+              Crédito Negocios te otorga un <strong>porcentaje techo</strong> por cada financiera. Aquí tú decides con total libertad qué porcentaje le compartes a los brókers de tu equipo. Tu <strong>Margen Neto</strong> se calcula automáticamente y es lo que recibes directamente en cada crédito colocado.
+            </p>
+          </div>
+        </div>
+        {hasChanges && (
+          <Button
+            size="sm"
+            onClick={handleSave}
+            disabled={saveMutation.isPending}
+            className="bg-success text-white hover:bg-green-700 shadow-sm text-xs flex-shrink-0 self-center"
+          >
+            {saveMutation.isPending && <i className="fas fa-spinner fa-spin mr-1.5"></i>}
+            <i className="fas fa-save mr-1.5"></i>
+            Guardar Cambios
+          </Button>
+        )}
+      </div>
+
+      <Card>
+        <CardHeader className="pb-3 border-b flex flex-row items-center justify-between flex-wrap gap-2">
+          <div>
+            <CardTitle className="text-base font-bold text-gray-900">
+              Esquema de Comisiones por Financiera ({items.length} Financieras Activas)
+            </CardTitle>
+            <p className="text-xs text-neutral mt-0.5">
+              Ajusta la comisión de apertura para tu equipo. El margen retenido se actualiza en tiempo real.
+            </p>
+          </div>
+          <Button
+            size="sm"
+            onClick={handleSave}
+            disabled={!hasChanges || saveMutation.isPending}
+            className="bg-primary text-white hover:bg-primary-dark text-xs"
+          >
+            {saveMutation.isPending && <i className="fas fa-spinner fa-spin mr-1.5"></i>}
+            <i className="fas fa-save mr-1.5"></i>
+            Guardar Comisiones de Red
+          </Button>
+        </CardHeader>
+        <CardContent className="p-0">
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm text-left">
+              <thead className="bg-gray-100/80 text-gray-700 text-xs font-semibold uppercase tracking-wider">
+                <tr>
+                  <th className="p-3.5">Financiera</th>
+                  <th className="p-3.5 text-center bg-blue-50/70 text-blue-950">
+                    Techo Otorgado (MB)
+                  </th>
+                  <th className="p-3.5 text-center bg-amber-50/70 text-amber-950 w-44">
+                    Comisión para tu Red (%)
+                  </th>
+                  <th className="p-3.5 text-center bg-emerald-50/70 text-emerald-950">
+                    Tu Margen Neto
+                  </th>
+                  <th className="p-3.5 text-center">Acciones</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-200">
+                {items.length === 0 ? (
+                  <tr>
+                    <td colSpan={5} className="text-center py-8 text-neutral">
+                      No hay financieras activas registradas en la plataforma.
+                    </td>
+                  </tr>
+                ) : (
+                  items.map((item) => {
+                    const ceiling = item.masterCeiling.apertura;
+                    const currentVal = ratesForm[item.institutionId]?.apertura ?? '';
+                    const parsedVal = parseFloat(currentVal || '0');
+                    const isOverCeiling = parsedVal > ceiling && ceiling > 0;
+                    const netMargin = Math.max(0, ceiling - parsedVal);
+
+                    return (
+                      <tr key={item.institutionId} className="hover:bg-gray-50/80 transition-colors">
+                        <td className="p-3.5 font-medium text-gray-900">
+                          <div className="flex items-center gap-2.5">
+                            <div className="w-8 h-8 rounded-lg bg-gray-100 flex items-center justify-center text-primary font-bold text-xs border border-gray-200">
+                              <i className="fas fa-building"></i>
+                            </div>
+                            <div>
+                              <p className="font-semibold text-gray-900">{item.institutionName}</p>
+                              {item.category && (
+                                <p className="text-[11px] text-gray-400 capitalize">{item.category}</p>
+                              )}
+                            </div>
+                          </div>
+                        </td>
+
+                        <td className="p-3.5 text-center bg-blue-50/30">
+                          <Badge className="bg-blue-100 text-blue-900 border-blue-200 font-bold">
+                            {ceiling.toFixed(2)}% Apertura
+                          </Badge>
+                          {item.masterCeiling.renovacion > 0 && (
+                            <p className="text-[10px] text-blue-700 mt-0.5">
+                              Renovación: {item.masterCeiling.renovacion}%
+                            </p>
+                          )}
+                        </td>
+
+                        <td className="p-3.5 text-center bg-amber-50/30">
+                          <div className="max-w-[140px] mx-auto space-y-1">
+                            <div className="relative">
+                              <Input
+                                type="number"
+                                step="0.1"
+                                min="0"
+                                max={ceiling || 100}
+                                value={currentVal}
+                                onChange={(e) => handleRateChange(item.institutionId, 'apertura', e.target.value)}
+                                className={`text-center font-bold text-sm h-9 ${isOverCeiling ? 'border-destructive bg-destructive/10 text-destructive' : 'border-amber-300'}`}
+                                placeholder={`${item.defaultBroker.apertura || '0'}`}
+                              />
+                              <span className="absolute right-2.5 top-2 text-xs font-bold text-gray-500 pointer-events-none">%</span>
+                            </div>
+                            {isOverCeiling && (
+                              <p className="text-[10px] text-destructive font-semibold">
+                                Excede tu techo ({ceiling}%)
+                              </p>
+                            )}
+                          </div>
+                        </td>
+
+                        <td className="p-3.5 text-center bg-emerald-50/30">
+                          <Badge className="bg-emerald-100 text-emerald-900 border-emerald-200 font-bold text-xs px-2.5 py-1">
+                            💰 {netMargin.toFixed(2)}% Neto
+                          </Badge>
+                          <p className="text-[10px] text-emerald-700 mt-0.5">
+                            Tu ganancia retenida
+                          </p>
+                        </td>
+
+                        <td className="p-3.5 text-center">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="text-xs text-gray-500 hover:text-gray-800"
+                            onClick={() => {
+                              handleRateChange(item.institutionId, 'apertura', String(item.defaultBroker.apertura || '2.5'));
+                            }}
+                            title="Restablecer a la tasa sugerida por defecto"
+                          >
+                            <i className="fas fa-undo mr-1 text-[10px]"></i>
+                            Sugerida ({item.defaultBroker.apertura}%)
+                          </Button>
+                        </td>
+                      </tr>
+                    );
+                  })
+                )}
+              </tbody>
+            </table>
+          </div>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
 
 export default function BrokerNetworkComponent() {
   const { user, isLoading: isAuthLoading } = useAuth();
@@ -53,127 +328,142 @@ export default function BrokerNetworkComponent() {
   if (!isAdmin) {
     const brokers: User[] = Array.isArray(networkData) ? networkData : [];
 
-    if (brokers.length === 0) {
-      return (
-        <Card>
-          <CardHeader>
-            <CardTitle>Mi Red de Brokers</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-center py-8">
-              <i className="fas fa-network-wired text-4xl text-gray-300 mb-4"></i>
-              <p className="text-neutral mb-4">Aún no tienes brokers en tu red</p>
-              <Button 
-                className="bg-primary text-white hover:bg-primary-dark"
-                onClick={() => {
-                  setInviteMasterBrokerId(user?.id || null);
-                  setShowInviteModal(true);
-                }}
-              >
-                <i className="fas fa-plus mr-2"></i>
-                Invitar Broker
-              </Button>
-            </div>
-          </CardContent>
-          <InviteBrokerModal 
-            isOpen={showInviteModal}
-            onClose={() => setShowInviteModal(false)}
-          />
-        </Card>
-      );
-    }
-
     return (
       <div className="space-y-6">
-        <Card>
-          <CardHeader>
-            <CardTitle>Resumen de mi Red</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-              <div className="text-center">
-                <div className="w-16 h-16 bg-primary/10 rounded-full flex items-center justify-center mx-auto mb-3">
-                  <i className="fas fa-users text-primary text-2xl"></i>
-                </div>
-                <p className="text-2xl font-bold text-gray-900">{brokers.length}</p>
-                <p className="text-sm text-neutral">Brokers en tu Equipo</p>
-              </div>
-              <div className="text-center">
-                <div className="w-16 h-16 bg-success/10 rounded-full flex items-center justify-center mx-auto mb-3">
-                  <i className="fas fa-dollar-sign text-success text-2xl"></i>
-                </div>
-                <p className="text-2xl font-bold text-gray-900">Activo</p>
-                <p className="text-sm text-neutral">Comisiones de Red Habilitadas</p>
-              </div>
-              <div className="text-center">
-                <div className="w-16 h-16 bg-warning/10 rounded-full flex items-center justify-center mx-auto mb-3">
-                  <i className="fas fa-user-check text-warning text-2xl"></i>
-                </div>
-                <p className="text-2xl font-bold text-gray-900">{brokers.filter(b => b.isActive).length}</p>
-                <p className="text-sm text-neutral">Brokers Activos</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+        <Tabs defaultValue="team" className="space-y-6">
+          <TabsList className="grid w-full grid-cols-2 max-w-md bg-gray-100 p-1 rounded-xl">
+            <TabsTrigger value="team" className="flex items-center gap-2 text-xs font-semibold data-[state=active]:bg-white data-[state=active]:shadow-sm">
+              <i className="fas fa-users"></i>
+              Mi Equipo de Brokers ({brokers.length})
+            </TabsTrigger>
+            <TabsTrigger value="rates" className="flex items-center gap-2 text-xs font-semibold data-[state=active]:bg-white data-[state=active]:shadow-sm">
+              <i className="fas fa-percentage"></i>
+              Comisiones de mi Red
+            </TabsTrigger>
+          </TabsList>
 
-        <Card>
-          <CardHeader>
-            <div className="flex items-center justify-between">
-              <CardTitle>Brokers en mi Red</CardTitle>
-              <Button 
-                className="bg-primary text-white hover:bg-primary-dark"
-                onClick={() => {
-                  setInviteMasterBrokerId(user?.id || null);
-                  setShowInviteModal(true);
-                }}
-                data-testid="button-invite-broker"
-              >
-                <i className="fas fa-user-plus mr-2"></i>
-                Invitar Broker
-              </Button>
-            </div>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-4">
-              {brokers.map((broker) => (
-                <div
-                  key={broker.id}
-                  className="flex items-center justify-between p-4 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
-                  data-testid={`broker-${broker.id}`}
-                >
-                  <div className="flex items-center space-x-4">
-                    <Avatar className="h-12 w-12">
-                      <AvatarFallback className="bg-primary text-white font-semibold">
-                        {broker.firstName?.[0]}{broker.lastName?.[0]}
-                      </AvatarFallback>
-                    </Avatar>
-                    <div>
-                      <h3 className="font-semibold text-gray-900">
-                        {broker.firstName} {broker.lastName}
-                      </h3>
-                      <p className="text-sm text-neutral">{broker.email}</p>
-                      <p className="text-xs text-neutral">
-                        Unido {broker.createdAt ? formatDistanceToNow(new Date(broker.createdAt), { 
-                          addSuffix: true, 
-                          locale: es 
-                        }) : 'Reciente'}
-                      </p>
-                    </div>
-                  </div>
-                  
-                  <div className="text-right">
-                    <Badge 
-                      variant={broker.isActive ? "default" : "secondary"}
-                      className={broker.isActive ? "bg-success/10 text-success" : ""}
+          <TabsContent value="team" className="space-y-6 mt-4">
+            {brokers.length === 0 ? (
+              <Card>
+                <CardHeader>
+                  <CardTitle>Mi Red de Brokers</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="text-center py-8">
+                    <i className="fas fa-network-wired text-4xl text-gray-300 mb-4"></i>
+                    <p className="text-neutral mb-4">Aún no tienes brokers en tu red</p>
+                    <Button 
+                      className="bg-primary text-white hover:bg-primary-dark"
+                      onClick={() => {
+                        setInviteMasterBrokerId(user?.id || null);
+                        setShowInviteModal(true);
+                      }}
                     >
-                      {broker.isActive ? "Activo" : "Inactivo"}
-                    </Badge>
+                      <i className="fas fa-plus mr-2"></i>
+                      Invitar Broker
+                    </Button>
                   </div>
-                </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
+                </CardContent>
+              </Card>
+            ) : (
+              <>
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Resumen de mi Red</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                      <div className="text-center">
+                        <div className="w-16 h-16 bg-primary/10 rounded-full flex items-center justify-center mx-auto mb-3">
+                          <i className="fas fa-users text-primary text-2xl"></i>
+                        </div>
+                        <p className="text-2xl font-bold text-gray-900">{brokers.length}</p>
+                        <p className="text-sm text-neutral">Brokers en tu Equipo</p>
+                      </div>
+                      <div className="text-center">
+                        <div className="w-16 h-16 bg-success/10 rounded-full flex items-center justify-center mx-auto mb-3">
+                          <i className="fas fa-dollar-sign text-success text-2xl"></i>
+                        </div>
+                        <p className="text-2xl font-bold text-gray-900">Activo</p>
+                        <p className="text-sm text-neutral">Comisiones de Red Habilitadas</p>
+                      </div>
+                      <div className="text-center">
+                        <div className="w-16 h-16 bg-warning/10 rounded-full flex items-center justify-center mx-auto mb-3">
+                          <i className="fas fa-user-check text-warning text-2xl"></i>
+                        </div>
+                        <p className="text-2xl font-bold text-gray-900">{brokers.filter(b => b.isActive).length}</p>
+                        <p className="text-sm text-neutral">Brokers Activos</p>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+
+                <Card>
+                  <CardHeader>
+                    <div className="flex items-center justify-between">
+                      <CardTitle>Brokers en mi Red</CardTitle>
+                      <Button 
+                        className="bg-primary text-white hover:bg-primary-dark"
+                        onClick={() => {
+                          setInviteMasterBrokerId(user?.id || null);
+                          setShowInviteModal(true);
+                        }}
+                        data-testid="button-invite-broker"
+                      >
+                        <i className="fas fa-user-plus mr-2"></i>
+                        Invitar Broker
+                      </Button>
+                    </div>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="space-y-4">
+                      {brokers.map((broker) => (
+                        <div
+                          key={broker.id}
+                          className="flex items-center justify-between p-4 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
+                          data-testid={`broker-${broker.id}`}
+                        >
+                          <div className="flex items-center space-x-4">
+                            <Avatar className="h-12 w-12">
+                              <AvatarFallback className="bg-primary text-white font-semibold">
+                                {broker.firstName?.[0]}{broker.lastName?.[0]}
+                              </AvatarFallback>
+                            </Avatar>
+                            <div>
+                              <h3 className="font-semibold text-gray-900">
+                                {broker.firstName} {broker.lastName}
+                              </h3>
+                              <p className="text-sm text-neutral">{broker.email}</p>
+                              <p className="text-xs text-neutral">
+                                Unido {broker.createdAt ? formatDistanceToNow(new Date(broker.createdAt), { 
+                                  addSuffix: true, 
+                                  locale: es 
+                                }) : 'Reciente'}
+                              </p>
+                            </div>
+                          </div>
+                          
+                          <div className="text-right">
+                            <Badge 
+                              variant={broker.isActive ? "default" : "secondary"}
+                              className={broker.isActive ? "bg-success/10 text-success" : ""}
+                            >
+                              {broker.isActive ? "Activo" : "Inactivo"}
+                            </Badge>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </CardContent>
+                </Card>
+              </>
+            )}
+          </TabsContent>
+
+          <TabsContent value="rates" className="space-y-6 mt-4">
+            <MasterBrokerRatesConfig user={user} />
+          </TabsContent>
+        </Tabs>
 
         <InviteBrokerModal 
           isOpen={showInviteModal}

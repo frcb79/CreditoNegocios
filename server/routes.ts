@@ -94,12 +94,37 @@ async function createCascadingCommissionRecord(params: {
   financieraRate: number;
   masterBrokerRate: number;
   brokerRate: number;
+  financialInstitutionId?: string | null;
 }): Promise<any> {
-  const { creditId, brokerId, masterBrokerId, commissionType, approvedAmount, financieraRate, masterBrokerRate, brokerRate } = params;
+  const { creditId, brokerId, masterBrokerId, commissionType, approvedAmount, financieraRate, masterBrokerRate, brokerRate, financialInstitutionId } = params;
 
-  const safeBrokerRate = Number.isFinite(brokerRate) && brokerRate > 0 ? brokerRate : 0;
+  let safeBrokerRate = Number.isFinite(brokerRate) && brokerRate > 0 ? brokerRate : 0;
   const safeMasterRate = Number.isFinite(masterBrokerRate) && masterBrokerRate > 0 ? masterBrokerRate : 0;
   const safeFinRate = Number.isFinite(financieraRate) && financieraRate > 0 ? financieraRate : 0;
+
+  // If credit belongs to a Master Broker's network, check if the Master Broker configured custom network rates
+  if (masterBrokerId) {
+    try {
+      const mbUser = await storage.getUser(masterBrokerId);
+      const networkRates = (mbUser?.networkCommissionRates as any) || {};
+
+      let finId = financialInstitutionId;
+      if (!finId && creditId) {
+        const credit = await storage.getCredit(creditId);
+        finId = credit?.financialInstitutionId;
+      }
+
+      if (finId && networkRates[finId]) {
+        const customRate = networkRates[finId][commissionType] ?? networkRates[finId].apertura;
+        if (customRate !== undefined && !isNaN(parseFloat(customRate))) {
+          safeBrokerRate = Math.min(safeMasterRate, Math.max(0, parseFloat(customRate)));
+          console.log(`[Commission] Applied Master Broker custom network rate: ${safeBrokerRate}% (Ceiling: ${safeMasterRate}%)`);
+        }
+      }
+    } catch (mbErr) {
+      console.warn('[Commission] Could not read MB network rates:', mbErr);
+    }
+  }
 
   // Cascading breakdown calculation:
   // 1. Broker gets their direct assigned rate
@@ -1981,6 +2006,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
               financieraRate: superAdminOpeningRate,
               masterBrokerRate: masterOpeningRate,
               brokerRate: brokerOpeningRate,
+              financialInstitutionId: credit.financialInstitutionId || null,
             });
           }
         }
@@ -2049,8 +2075,36 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Financial Institutions
   app.get('/api/financial-institutions', isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user?.claims?.sub;
+      const userId = req.user?.claims?.sub || req.user?.id;
+      const user = await storage.getUser(userId);
       const institutions = await storage.getFinancialInstitutions(userId);
+
+      // If user is a broker belonging to a Master Broker, customize broker commission rates with their MB's assigned rates
+      if (user?.role === 'broker' && user?.masterBrokerId) {
+        const masterBroker = await storage.getUser(user.masterBrokerId);
+        const networkRates = (masterBroker?.networkCommissionRates as any) || {};
+
+        const customized = institutions.map((inst: any) => {
+          const custom = networkRates[inst.id];
+          if (custom && custom.apertura !== undefined) {
+            return {
+              ...inst,
+              commissionRates: {
+                ...inst.commissionRates,
+                broker: {
+                  ...(inst.commissionRates as any)?.broker,
+                  apertura: custom.apertura,
+                  sobretasa: custom.sobretasa ?? (inst.commissionRates as any)?.broker?.sobretasa,
+                  renovacion: custom.renovacion ?? (inst.commissionRates as any)?.broker?.renovacion,
+                }
+              }
+            };
+          }
+          return inst;
+        });
+        return res.json(customized);
+      }
+
       res.json(institutions);
     } catch (error) {
       console.error("Error fetching financial institutions:", error);
@@ -2062,10 +2116,35 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get('/api/financial-institutions/:id', isAuthenticated, async (req: any, res) => {
     try {
       const { id } = req.params;
-      const institution = await storage.getFinancialInstitution(id);
+      const userId = req.user?.claims?.sub || req.user?.id;
+      const user = await storage.getUser(userId);
+      const institution: any = await storage.getFinancialInstitution(id);
       
       if (!institution) {
         return res.status(404).json({ message: 'Financial institution not found' });
+      }
+
+      // If user is a broker belonging to a Master Broker, customize broker rates
+      if (user?.role === 'broker' && user?.masterBrokerId) {
+        const masterBroker = await storage.getUser(user.masterBrokerId);
+        const networkRates = (masterBroker?.networkCommissionRates as any) || {};
+        const custom = networkRates[id];
+
+        if (custom && custom.apertura !== undefined) {
+          const customized = {
+            ...institution,
+            commissionRates: {
+              ...institution.commissionRates,
+              broker: {
+                ...(institution.commissionRates as any)?.broker,
+                apertura: custom.apertura,
+                sobretasa: custom.sobretasa ?? (institution.commissionRates as any)?.broker?.sobretasa,
+                renovacion: custom.renovacion ?? (institution.commissionRates as any)?.broker?.renovacion,
+              }
+            }
+          };
+          return res.json(customized);
+        }
       }
       
       res.json(institution);
@@ -2999,6 +3078,116 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Error sending broker invitation:", error);
       res.status(500).json({ message: "Failed to send broker invitation" });
+    }
+  });
+
+  // Master Broker Network Commission Rates
+  app.get('/api/master-broker/network-rates', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub || req.user?.id;
+      const user = await storage.getUser(userId);
+
+      if (!user || (user.role !== 'master_broker' && user.role !== 'admin' && user.role !== 'super_admin')) {
+        return res.status(403).json({ message: "Solo Master Brokers y Administradores pueden gestionar comisiones de red" });
+      }
+
+      const allInstitutions = await storage.getFinancialInstitutions();
+      const activeInstitutions = allInstitutions.filter((f: any) => f.isActive !== false);
+      const networkRates = (user.networkCommissionRates as any) || {};
+
+      const items = activeInstitutions.map((inst: any) => {
+        const comm = inst.commissionRates || {};
+        const mb = comm.masterBroker || {};
+        const brk = comm.broker || {};
+
+        return {
+          institutionId: inst.id,
+          institutionName: inst.name,
+          logoUrl: inst.logoUrl,
+          category: inst.category,
+          masterCeiling: {
+            total: parseFloat(mb.total || '0'),
+            apertura: parseFloat(mb.apertura || '0'),
+            sobretasa: parseFloat(mb.sobretasa || '0'),
+            renovacion: parseFloat(mb.renovacion || '0'),
+          },
+          defaultBroker: {
+            total: parseFloat(brk.total || '0'),
+            apertura: parseFloat(brk.apertura || '0'),
+            sobretasa: parseFloat(brk.sobretasa || '0'),
+            renovacion: parseFloat(brk.renovacion || '0'),
+          },
+          assignedRate: networkRates[inst.id] || null,
+        };
+      });
+
+      res.json({
+        rates: networkRates,
+        items,
+      });
+    } catch (error) {
+      console.error("Error fetching master broker network rates:", error);
+      res.status(500).json({ message: "Error al consultar comisiones de red" });
+    }
+  });
+
+  app.put('/api/master-broker/network-rates', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub || req.user?.id;
+      const user = await storage.getUser(userId);
+
+      if (!user || user.role !== 'master_broker') {
+        return res.status(403).json({ message: "Solo Master Brokers pueden guardar sus comisiones de red" });
+      }
+
+      const { rates } = req.body;
+      if (!rates || typeof rates !== 'object') {
+        return res.status(400).json({ message: "Formato de tasas inválido" });
+      }
+
+      const allInstitutions = await storage.getFinancialInstitutions();
+      const instMap = new Map(allInstitutions.map((i: any) => [i.id, i]));
+      const sanitizedRates: Record<string, any> = {};
+
+      for (const [instId, rateObj] of Object.entries(rates)) {
+        const inst: any = instMap.get(instId);
+        if (!inst) continue;
+
+        const comm = inst.commissionRates || {};
+        const mb = comm.masterBroker || {};
+        const mbCeilingApertura = parseFloat(mb.apertura || '0');
+        const mbCeilingSobretasa = parseFloat(mb.sobretasa || '0');
+        const mbCeilingRenovacion = parseFloat(mb.renovacion || '0');
+
+        const aperturaVal = Math.max(0, parseFloat((rateObj as any)?.apertura || '0'));
+        const sobretasaVal = Math.max(0, parseFloat((rateObj as any)?.sobretasa || '0'));
+        const renovacionVal = Math.max(0, parseFloat((rateObj as any)?.renovacion || '0'));
+
+        if (aperturaVal > mbCeilingApertura && mbCeilingApertura > 0) {
+          return res.status(400).json({ 
+            message: `La comisión de apertura asignada a tu red (${aperturaVal}%) para ${inst.name} no puede superar tu techo de ${mbCeilingApertura}%` 
+          });
+        }
+
+        sanitizedRates[instId] = {
+          apertura: aperturaVal,
+          sobretasa: mbCeilingSobretasa > 0 ? Math.min(sobretasaVal, mbCeilingSobretasa) : sobretasaVal,
+          renovacion: mbCeilingRenovacion > 0 ? Math.min(renovacionVal, mbCeilingRenovacion) : renovacionVal,
+          updatedAt: new Date().toISOString(),
+        };
+      }
+
+      const updatedUser = await storage.updateUser(userId, {
+        networkCommissionRates: sanitizedRates,
+      });
+
+      res.json({
+        message: "Comisiones de red actualizadas exitosamente",
+        rates: updatedUser?.networkCommissionRates || sanitizedRates,
+      });
+    } catch (error) {
+      console.error("Error updating master broker network rates:", error);
+      res.status(500).json({ message: "Error al actualizar comisiones de red" });
     }
   });
 
@@ -5083,7 +5272,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             '0'
           );
 
-          await createCascadingCommissionRecord({
+          const createdComm = await createCascadingCommissionRecord({
             creditId: credit!.id,
             brokerId: request.brokerId,
             masterBrokerId: masterBrokerId || null,
@@ -5092,18 +5281,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
             financieraRate: superAdminOpeningRate,
             masterBrokerRate: masterOpeningRate,
             brokerRate: brokerOpeningRate,
+            financialInstitutionId: request.financialInstitutionId || (target as any)?.institutionId || (institution as any)?.id || null,
           });
 
           // Send email alert to Super Admin for dispersed credit with cascading breakdown
           const client = await storage.getClient(request.clientId);
           const clientName: string = (client ? (client.type === 'persona_moral' ? client.businessName : `${client.firstName} ${client.lastName || ''}`.trim()) : null) || 'Cliente';
           
-          const netMb = masterBrokerId ? Math.max(0, masterOpeningRate - brokerOpeningRate) : 0;
-          const netApp = Math.max(0, superAdminOpeningRate - (masterBrokerId && masterOpeningRate > 0 ? masterOpeningRate : brokerOpeningRate));
-          const totalGross = (approvedAmount * superAdminOpeningRate) / 100;
-          const mbGross = masterBrokerId ? (approvedAmount * masterOpeningRate) / 100 : 0;
-          const brkAmount = (approvedAmount * brokerOpeningRate) / 100;
-          const appAmount = (approvedAmount * netApp) / 100;
+          const commBrkAmount = parseFloat(createdComm?.brokerShare || '0');
+          const commMbAmount = parseFloat(createdComm?.masterBrokerShare || '0');
+          const commAppAmount = parseFloat(createdComm?.appShare || '0');
+          const commTotalGross = parseFloat(createdComm?.amount || '0');
+          const mbGrossPayout = commMbAmount + commBrkAmount;
 
           sendSuperAdminNotificationEmail({
             title: `Crédito Dispersado: ${clientName}`,
@@ -5115,14 +5304,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
             amount: approvedAmount,
             actionUrl: `/comisiones?creditId=${credit!.id}`,
             details: {
-              'Total Otorgado por Financiera': `$${totalGross.toLocaleString('es-MX', { minimumFractionDigits: 2 })} MXN (${superAdminOpeningRate}%)`,
-              'Ganancia Neta Plataforma': `$${appAmount.toLocaleString('es-MX', { minimumFractionDigits: 2 })} MXN (${netApp}%)`,
+              'Total Otorgado por Financiera': `$${commTotalGross.toLocaleString('es-MX', { minimumFractionDigits: 2 })} MXN (${superAdminOpeningRate}%)`,
+              'Ganancia Neta Plataforma': `$${commAppAmount.toLocaleString('es-MX', { minimumFractionDigits: 2 })} MXN`,
               ...(masterBrokerId ? {
-                'Monto a Dispersar a Master Bróker (STP)': `$${mbGross.toLocaleString('es-MX', { minimumFractionDigits: 2 })} MXN (${masterOpeningRate}%)`,
-                'Margen Neto Master Bróker': `$${((approvedAmount * netMb) / 100).toLocaleString('es-MX', { minimumFractionDigits: 2 })} MXN (${netMb}%)`,
-                'Comisión a Pagar al Bróker': `$${brkAmount.toLocaleString('es-MX', { minimumFractionDigits: 2 })} MXN (${brokerOpeningRate}%)`,
+                'Monto a Dispersar a Master Bróker (STP)': `$${mbGrossPayout.toLocaleString('es-MX', { minimumFractionDigits: 2 })} MXN`,
+                'Margen Neto Master Bróker': `$${commMbAmount.toLocaleString('es-MX', { minimumFractionDigits: 2 })} MXN`,
+                'Comisión a Pagar al Bróker': `$${commBrkAmount.toLocaleString('es-MX', { minimumFractionDigits: 2 })} MXN`,
               } : {
-                'Monto a Dispersar a Bróker Directo (STP)': `$${brkAmount.toLocaleString('es-MX', { minimumFractionDigits: 2 })} MXN (${brokerOpeningRate}%)`,
+                'Monto a Dispersar a Bróker Directo (STP)': `$${commBrkAmount.toLocaleString('es-MX', { minimumFractionDigits: 2 })} MXN`,
               }),
             }
           }).catch(e => console.error('[Email] Failed to send super admin dispersion email:', e));

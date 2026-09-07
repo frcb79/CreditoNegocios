@@ -551,7 +551,7 @@ export default function FinancieraDetail() {
                             <CardHeader>
                               <CardTitle className="text-lg flex items-center">
                                 <i className="fas fa-users text-green-600 mr-2"></i>
-                                Master Broker
+                                Master Broker (Techo de Red)
                               </CardTitle>
                             </CardHeader>
                             <CardContent className="space-y-2">
@@ -586,7 +586,7 @@ export default function FinancieraDetail() {
                             <CardHeader>
                               <CardTitle className="text-lg flex items-center">
                                 <i className="fas fa-user text-blue-600 mr-2"></i>
-                                Broker
+                                Bróker Directo (Sin Master)
                               </CardTitle>
                             </CardHeader>
                             <CardContent className="space-y-2">
@@ -615,6 +615,10 @@ export default function FinancieraDetail() {
                           </Card>
                         )}
                       </div>
+                      <p className="text-xs text-neutral mt-3 italic bg-gray-50 p-2.5 rounded-lg border border-gray-200">
+                        <i className="fas fa-info-circle text-primary mr-1.5"></i>
+                        <strong>Autonomía de Red:</strong> Los Master Brokers configuran de forma autónoma desde la sección de <em>Red de Brokers</em> el porcentaje que asignan a su equipo a partir de su techo otorgado.
+                      </p>
                     ) : (
                       <div className="text-center py-12">
                         <i className="fas fa-percent text-6xl text-gray-300 mb-4"></i>

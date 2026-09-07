@@ -55,6 +55,8 @@ export const users = pgTable("users", {
   bankName: varchar("bank_name"),
   clabe: varchar("clabe"), // 18-digit CLABE interbancaria
   accountHolder: varchar("account_holder"), // Nombre del titular
+  // Custom commission rates assigned by Master Broker to their network per institution
+  networkCommissionRates: jsonb("network_commission_rates").default('{}'),
   isActive: boolean("is_active").default(true),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),

@@ -2178,10 +2178,10 @@ export default function ProductConfigurationModal({
               <div className="border border-blue-300 bg-blue-50 rounded-lg p-4">
                 <h5 className="font-semibold text-gray-900 mb-2 flex items-center">
                   <i className="fas fa-user-tie mr-2 text-blue-600"></i>
-                  Comisiones Master Broker (Otorga el Admin)
+                  Comisión Techo Master Broker (Otorgada por Crédito Negocios)
                 </h5>
                 <p className="text-xs text-gray-600 mb-4">
-                  Parte de la comisión de la financiera que el admin distribuye a master brokers.
+                  Porcentaje techo que la plataforma otorga a los Master Brokers. Cada Master Broker decide autónomamente en su panel qué parte de este techo asigna a su red.
                 </p>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
@@ -2262,10 +2262,10 @@ export default function ProductConfigurationModal({
               <div className="border border-green-300 bg-green-50 rounded-lg p-4">
                 <h5 className="font-semibold text-gray-900 mb-2 flex items-center">
                   <i className="fas fa-user mr-2 text-green-600"></i>
-                  Comisiones Broker (Otorga el Admin o Master Broker)
+                  Comisión Bróker Directo (Sin Master Bróker)
                 </h5>
                 <p className="text-xs text-gray-600 mb-4">
-                  Parte de la comisión que se distribuye a brokers individuales.
+                  Aplica para brókers independientes que colocan directamente con Crédito Negocios sin pertenecer a la red de un Master Bróker.
                 </p>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
