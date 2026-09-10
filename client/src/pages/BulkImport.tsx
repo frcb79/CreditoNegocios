@@ -14,6 +14,7 @@ import { Upload, Download, FileSpreadsheet, Building2, Users, CheckCircle2, XCir
 import MainLayout from "@/components/MainLayout";
 import Header from "@/components/Header";
 import { downloadFinancierasTemplateClient } from "@/lib/excelTemplates";
+import CommissionBulkUploader from "@/components/Commissions/CommissionBulkUploader";
 
 interface ImportError {
   row: number;
@@ -51,6 +52,51 @@ export default function BulkImport() {
   
   const [isPreviewingFinancieras, setIsPreviewingFinancieras] = useState(false);
   const [isPreviewingClients, setIsPreviewingClients] = useState(false);
+
+  const [isSyncingSoc, setIsSyncingSoc] = useState(false);
+  const [socResult, setSocResult] = useState<any | null>(null);
+
+  const handleSyncSoc = async (file?: File) => {
+    setIsSyncingSoc(true);
+    try {
+      let res;
+      if (file) {
+        const formData = new FormData();
+        formData.append('file', file);
+        res = await fetch('/api/import/financieras-soc', {
+          method: 'POST',
+          body: formData,
+          credentials: 'include'
+        });
+      } else {
+        res = await fetch('/api/import/financieras-soc', {
+          method: 'POST',
+          credentials: 'include'
+        });
+      }
+
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.message || 'Error al sincronizar SOC');
+      }
+
+      const data = await res.json();
+      setSocResult(data);
+      queryClient.invalidateQueries({ queryKey: ['/api/financial-institutions'] });
+      toast({
+        title: "Sincronización Exitosa de Fichas SOC",
+        description: `Se sincronizaron ${data.createdCount} creadas, ${data.updatedCount} actualizadas, y ${data.totalProductsCount} productos vinculados.`,
+      });
+    } catch (error: any) {
+      toast({
+        title: "Error al sincronizar SOC",
+        description: error.message,
+        variant: "destructive",
+      });
+    } finally {
+      setIsSyncingSoc(false);
+    }
+  };
 
   const handleDownloadTemplate = async (type: 'financieras' | 'clients') => {
     try {
@@ -430,11 +476,15 @@ export default function BulkImport() {
       <main className="flex-1 p-4 sm:p-6 lg:p-8 overflow-y-auto space-y-6">
 
       <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList className="grid w-full grid-cols-2 max-w-md">
+        <TabsList className="grid w-full grid-cols-3 max-w-xl">
           <TabsTrigger value="financieras" className="gap-2">
             <Building2 className="w-4 h-4" />
             <span className="hidden sm:inline">Financieras y Productos</span>
             <span className="sm:hidden">Financieras</span>
+          </TabsTrigger>
+          <TabsTrigger value="comisiones" className="gap-2">
+            <FileSpreadsheet className="w-4 h-4" />
+            <span>Comisiones de Red</span>
           </TabsTrigger>
           <TabsTrigger value="clients" className="gap-2">
             <Users className="w-4 h-4" />
@@ -442,7 +492,100 @@ export default function BulkImport() {
           </TabsTrigger>
         </TabsList>
 
-        <TabsContent value="financieras" className="mt-6">
+        <TabsContent value="financieras" className="mt-6 space-y-6">
+          {/* Fichas Técnicas Oficiales SOC Banner Card */}
+          <Card className="border-2 border-primary/30 bg-gradient-to-br from-primary/5 via-background to-blue-500/5 shadow-sm">
+            <CardHeader className="pb-3">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                <div className="flex items-center gap-2.5">
+                  <div className="p-2 rounded-lg bg-primary/10 text-primary">
+                    <Building2 className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <CardTitle className="text-base font-bold flex items-center gap-2">
+                      Fichas Técnicas Financieras SOC (Oficial)
+                      <Badge className="bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300 border-emerald-300 text-[10px]">
+                        17 Financieras • 31 Productos
+                      </Badge>
+                    </CardTitle>
+                    <CardDescription className="text-xs">
+                      Sincroniza y migra directamente las políticas comerciales, productos de crédito (Simple, Revolvente, Arrendamiento, Factoraje, Hipotecario, Anticipo) y requisitos oficiales entregados por SOC.
+                    </CardDescription>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Badge variant="outline" className="text-xs text-muted-foreground border-border bg-background">
+                    <ShieldCheck className="w-3.5 h-3.5 mr-1 text-emerald-600" />
+                    Respaldo JSON automático
+                  </Badge>
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
+                <Button
+                  onClick={() => handleSyncSoc()}
+                  disabled={isSyncingSoc}
+                  className="bg-primary hover:bg-primary/90 text-primary-foreground font-semibold shadow-sm text-xs sm:text-sm"
+                  data-testid="button-sync-soc"
+                >
+                  {isSyncingSoc ? (
+                    <>
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      Sincronizando Fichas SOC...
+                    </>
+                  ) : (
+                    <>
+                      <Sparkles className="w-4 h-4 mr-2" />
+                      Sincronizar Archivo Oficial (Fichas técnicas fiancieras SOC.xlsx)
+                    </>
+                  )}
+                </Button>
+
+                <label className="inline-flex items-center justify-center rounded-md border border-input bg-background px-3 py-2 text-xs font-medium ring-offset-background hover:bg-muted hover:text-accent-foreground cursor-pointer transition-colors">
+                  <Upload className="w-3.5 h-3.5 mr-1.5 text-muted-foreground" />
+                  <span>Subir otra versión de Fichas SOC</span>
+                  <input
+                    type="file"
+                    accept=".xlsx,.xls"
+                    className="hidden"
+                    onChange={(e) => {
+                      const f = e.target.files?.[0];
+                      if (f) handleSyncSoc(f);
+                    }}
+                  />
+                </label>
+              </div>
+
+              {socResult && (
+                <div className="p-4 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-xs space-y-2">
+                  <div className="flex items-center gap-2 text-emerald-800 dark:text-emerald-300 font-bold">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                    Sincronización de Fichas SOC Completada con Éxito
+                  </div>
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-1 font-mono text-muted-foreground">
+                    <div className="bg-background/80 p-2 rounded border">
+                      <span className="text-[10px] uppercase text-muted-foreground block font-sans">Nuevas Financieras</span>
+                      <strong className="text-foreground text-sm">{socResult.createdCount}</strong>
+                    </div>
+                    <div className="bg-background/80 p-2 rounded border">
+                      <span className="text-[10px] uppercase text-muted-foreground block font-sans">Actualizadas</span>
+                      <strong className="text-foreground text-sm">{socResult.updatedCount}</strong>
+                    </div>
+                    <div className="bg-background/80 p-2 rounded border">
+                      <span className="text-[10px] uppercase text-muted-foreground block font-sans">Productos Vinculados</span>
+                      <strong className="text-foreground text-sm">{socResult.totalProductsCount}</strong>
+                    </div>
+                    <div className="bg-background/80 p-2 rounded border truncate" title={socResult.backupPath}>
+                      <span className="text-[10px] uppercase text-muted-foreground block font-sans">Archivo de Respaldo</span>
+                      <span className="text-[10px] text-muted-foreground truncate block">{socResult.backupPath?.split(/[\\/]/).pop()}</span>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
           <div className="grid gap-6 lg:grid-cols-2">
             <Card>
               <CardHeader>
@@ -721,6 +864,10 @@ export default function BulkImport() {
               </CardContent>
             </Card>
           </div>
+        </TabsContent>
+
+        <TabsContent value="comisiones" className="mt-6">
+          <CommissionBulkUploader />
         </TabsContent>
       </Tabs>
       </main>

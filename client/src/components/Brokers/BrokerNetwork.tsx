@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { Link } from "wouter";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -400,19 +401,28 @@ export default function BrokerNetworkComponent() {
 
                 <Card>
                   <CardHeader>
-                    <div className="flex items-center justify-between">
+                    <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
                       <CardTitle>Brokers en mi Red</CardTitle>
-                      <Button 
-                        className="bg-primary text-white hover:bg-primary-dark"
-                        onClick={() => {
-                          setInviteMasterBrokerId(user?.id || null);
-                          setShowInviteModal(true);
-                        }}
-                        data-testid="button-invite-broker"
-                      >
-                        <i className="fas fa-user-plus mr-2"></i>
-                        Invitar Broker
-                      </Button>
+                      <div className="flex items-center gap-2">
+                        <Link href="/admin/usuarios">
+                          <Button variant="outline" size="sm" className="text-xs">
+                            <i className="fas fa-users-cog mr-1.5 text-primary"></i>
+                            Roles y Permisos Granulares
+                          </Button>
+                        </Link>
+                        <Button 
+                          className="bg-primary text-white hover:bg-primary-dark text-xs"
+                          size="sm"
+                          onClick={() => {
+                            setInviteMasterBrokerId(user?.id || null);
+                            setShowInviteModal(true);
+                          }}
+                          data-testid="button-invite-broker"
+                        >
+                          <i className="fas fa-user-plus mr-1.5"></i>
+                          Invitar Broker
+                        </Button>
+                      </div>
                     </div>
                   </CardHeader>
                   <CardContent>

@@ -58,9 +58,40 @@ export default function Sidebar() {
     ? navigation 
     : navigation.filter(item => !item.adminOnly);
   
-  const allNavigationItems = isFullAdmin 
-    ? [...filteredNavigation, ...adminNavigation] 
-    : filteredNavigation;
+  const adminItems = isFullAdmin 
+    ? adminNavigation 
+    : (user?.role === 'master_broker' ? [{ name: 'Mi Equipo / Usuarios', href: '/admin/usuarios', icon: 'fas fa-users-cog', adminOnly: true }] : []);
+
+  const baseItems = [...filteredNavigation, ...adminItems];
+
+  // Granular module filtering based on user.permissions.modules
+  const userPermissions = (user?.permissions as any) || {};
+  const allowedModules: string[] | undefined = Array.isArray(userPermissions.modules) ? userPermissions.modules : undefined;
+
+  const hrefToModule: Record<string, string> = {
+    '/': 'dashboard',
+    '/clientes': 'clientes',
+    '/creditos': 'creditos',
+    '/mis-solicitudes': 'creditos',
+    '/re-gestion': 'creditos',
+    '/red-brokers': 'red_brokers',
+    '/solicitudes-pendientes': 'aprobaciones',
+    '/comisiones': 'comisiones',
+    '/financieras': 'financieras',
+    '/sistema-productos': 'sistema_productos',
+    '/documentos': 'documentos',
+    '/reportes': 'reportes',
+    '/importacion-masiva': 'importacion',
+    '/admin/usuarios': 'usuarios',
+    '/configuracion': 'configuracion',
+  };
+
+  const allNavigationItems = (user?.role === 'super_admin' || !allowedModules || allowedModules.length === 0)
+    ? baseItems
+    : baseItems.filter(item => {
+        const modKey = hrefToModule[item.href];
+        return !modKey || allowedModules.includes(modKey);
+      });
 
   useEffect(() => {
     setIsMobileOpen(false);

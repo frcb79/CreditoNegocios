@@ -51,6 +51,7 @@ interface FinancialInstitution {
   isActive: boolean;
   requirements?: any;
   acceptedProfiles?: string[];
+  products?: any[];
 }
 
 interface CreditRequestModalProps {
@@ -296,8 +297,15 @@ export default function CreditRequestModal({ isOpen, onClose, preselectedClientI
     const institutionProduct = institutionProducts?.find(
       (p: any) => p.institutionId === institution.id && p.templateId === selectedTemplateId
     );
+
+    // Fallback: also check if institution offers this category in its products array
+    const hasCategoryProduct = (institution.products as any[])?.some(
+      (p: any) => p.category === selectedTemplate?.category || 
+                 p.name?.toLowerCase().includes(selectedTemplate?.name?.toLowerCase() || '') ||
+                 (selectedTemplate?.category && p.category?.includes(selectedTemplate.category))
+    );
     
-    if (!institutionProduct && selectedTemplateId) {
+    if (!institutionProduct && !hasCategoryProduct && selectedTemplateId) {
       return {
         score: 0,
         category: 'other',

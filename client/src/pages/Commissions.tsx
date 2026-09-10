@@ -15,6 +15,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/useAuth";
 import { formatDistanceToNow } from "date-fns";
 import { es } from "date-fns/locale";
+import CommissionBulkUploader from "@/components/Commissions/CommissionBulkUploader";
 
 const statusConfig = {
   pending: { label: "Pendiente", color: "bg-amber-100 text-amber-800 border-amber-300" },
@@ -55,7 +56,7 @@ export default function Commissions() {
   const [showRatesModal, setShowRatesModal] = useState(false);
   const [ratesSearchTerm, setRatesSearchTerm] = useState("");
   const [, setLocation] = useLocation();
-  const [activeTab, setActiveTab] = useState<'commissions' | 'sobretasa'>('commissions');
+  const [activeTab, setActiveTab] = useState<'commissions' | 'sobretasa' | 'importar-comisiones'>('commissions');
 
   const safeFloat = (val: any, fallback = 0): number => {
     if (val === null || val === undefined || val === '') return fallback;
@@ -414,7 +415,7 @@ export default function Commissions() {
 
           {/* Selector de Pestañas para Super Admin */}
           {(user?.role === 'admin' || user?.role === 'super_admin') && (
-            <div className="flex gap-2 mb-6 border-b pb-3">
+            <div className="flex gap-2 mb-6 border-b pb-3 flex-wrap">
               <Button
                 variant={activeTab === 'commissions' ? 'default' : 'outline'}
                 size="sm"
@@ -432,6 +433,15 @@ export default function Commissions() {
               >
                 <i className="fas fa-percentage mr-2"></i>
                 Control de Sobretasa (Financieras)
+              </Button>
+              <Button
+                variant={activeTab === 'importar-comisiones' ? 'default' : 'outline'}
+                size="sm"
+                onClick={() => setActiveTab('importar-comisiones')}
+                className={activeTab === 'importar-comisiones' ? 'bg-blue-700 text-white hover:bg-blue-800' : 'text-blue-800 border-blue-300'}
+              >
+                <i className="fas fa-file-excel mr-2"></i>
+                Carga Masiva de Comisiones (Excel)
               </Button>
             </div>
           )}
@@ -1238,6 +1248,11 @@ export default function Commissions() {
               </Card>
             </div>
           ) : null}
+
+          {/* Vista de Carga Masiva de Comisiones para Super Admin */}
+          {activeTab === 'importar-comisiones' && (user?.role === 'admin' || user?.role === 'super_admin') && (
+            <CommissionBulkUploader />
+          )}
         </main>
 
         {/* Modal de Esquema de Comisiones por Financiera */}

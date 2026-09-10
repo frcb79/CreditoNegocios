@@ -57,6 +57,9 @@ export const users = pgTable("users", {
   accountHolder: varchar("account_holder"), // Nombre del titular
   // Custom commission rates assigned by Master Broker to their network per institution
   networkCommissionRates: jsonb("network_commission_rates").default('{}'),
+  // Granular RBAC Permissions & Custom Role Title
+  customRoleTitle: varchar("custom_role_title"), // e.g. "Mesa de Control", "Analista de Crédito", "Gerente Operativo"
+  permissions: jsonb("permissions").default('{}'), // { modules: string[], actions: string[], scope?: 'global' | 'network' | 'own' }
   isActive: boolean("is_active").default(true),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),

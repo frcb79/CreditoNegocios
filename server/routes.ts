@@ -16,6 +16,15 @@ import {
   importFinancieras, 
   importClients 
 } from "./excelImport";
+import {
+  generateCommissionsTemplate,
+  previewCommissionsFile,
+  importCommissionsFile
+} from "./commissionImport";
+import {
+  parseSocExcel,
+  syncSocFinancierasToDatabase
+} from "./socFinancierasParser";
 import { 
   updatedInsertClientSchema, 
   insertCreditSchema, 
@@ -38,6 +47,7 @@ import {
 import { z } from "zod";
 import multer from "multer";
 import path from "path";
+import fs from "fs";
 import cron from "node-cron";
 import { 
   tenantContextMiddleware, 
@@ -95,6 +105,7 @@ async function createCascadingCommissionRecord(params: {
   masterBrokerRate: number;
   brokerRate: number;
   financialInstitutionId?: string | null;
+  isMasterDirect?: boolean;
 }): Promise<any> {
   const { creditId, brokerId, masterBrokerId, commissionType, approvedAmount, financieraRate, masterBrokerRate, brokerRate, financialInstitutionId } = params;
 
@@ -102,8 +113,21 @@ async function createCascadingCommissionRecord(params: {
   const safeMasterRate = Number.isFinite(masterBrokerRate) && masterBrokerRate > 0 ? masterBrokerRate : 0;
   const safeFinRate = Number.isFinite(financieraRate) && financieraRate > 0 ? financieraRate : 0;
 
-  // If credit belongs to a Master Broker's network, check if the Master Broker configured custom network rates
-  if (masterBrokerId) {
+  const isMasterDirect = params.isMasterDirect || (masterBrokerId && brokerId === masterBrokerId);
+
+  let brokerAmount = 0;
+  let masterBrokerAmount = 0;
+  let ceilingRate = 0;
+
+  if (isMasterDirect) {
+    // 1. Master Broker registered credit directly:
+    // Receives full master rate (e.g. 3%), brokerShare is 0
+    masterBrokerAmount = (approvedAmount * safeMasterRate) / 100;
+    brokerAmount = 0;
+    ceilingRate = safeMasterRate;
+  } else if (masterBrokerId) {
+    // 2. Broker belongs to a Master Broker network:
+    // Check if the Master Broker configured custom network rates
     try {
       const mbUser = await storage.getUser(masterBrokerId);
       const networkRates = (mbUser?.networkCommissionRates as any) || {};
@@ -124,21 +148,26 @@ async function createCascadingCommissionRecord(params: {
     } catch (mbErr) {
       console.warn('[Commission] Could not read MB network rates:', mbErr);
     }
-  }
 
-  // Cascading breakdown calculation:
-  // 1. Broker gets their direct assigned rate
-  const brokerAmount = (approvedAmount * safeBrokerRate) / 100;
+    // Broker gets their assigned rate
+    brokerAmount = (approvedAmount * safeBrokerRate) / 100;
 
-  // 2. Master Broker gets differential (masterRate - brokerRate) if master exists
-  let masterBrokerAmount = 0;
-  if (masterBrokerId) {
+    // Master Broker gets differential (masterRate - brokerRate)
     const masterNetRate = Math.max(0, safeMasterRate - safeBrokerRate);
     masterBrokerAmount = (approvedAmount * masterNetRate) / 100;
+
+    ceilingRate = (safeMasterRate > 0) ? safeMasterRate : safeBrokerRate;
+  } else {
+    // 3. Direct Broker (independent, Casa Matriz):
+    // Broker gets direct rate (e.g. 2%), master gets 0
+    brokerAmount = (approvedAmount * safeBrokerRate) / 100;
+    masterBrokerAmount = 0;
+    ceilingRate = safeBrokerRate;
   }
 
-  // 3. Platform / Super Admin gets differential (finRate - ceiling)
-  const ceilingRate = (masterBrokerId && safeMasterRate > 0) ? safeMasterRate : safeBrokerRate;
+  // Platform / Super Admin gets differential (finRate - ceiling)
+  // E.g., if Fin is 4% and Master is 3% -> Platform retains 1%
+  // E.g., if Fin is 4% and Direct Broker is 2% -> Platform retains 2%
   const platformNetRate = Math.max(0, safeFinRate - ceilingRate);
   const appAmount = (approvedAmount * platformNetRate) / 100;
 
@@ -1474,15 +1503,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // User Management (Admin only)
+  // User Management (Super Admin, Admin, and Master Broker scoped to their network)
   app.get('/api/users', isAuthenticated, async (req: any, res) => {
     try {
       const userId = req.user.claims.sub;
       const currentUser = await storage.getUser(userId);
       
-      // Only admins can list all users
-      if (!currentUser || (currentUser.role !== 'admin' && currentUser.role !== 'super_admin')) {
-        return res.status(403).json({ message: "Access denied. Admin privileges required." });
+      if (!currentUser || (currentUser.role !== 'admin' && currentUser.role !== 'super_admin' && currentUser.role !== 'master_broker')) {
+        return res.status(403).json({ message: "Access denied. Admin or Master Broker privileges required." });
+      }
+
+      // Master Broker only sees users in their own network
+      if (currentUser.role === 'master_broker') {
+        const networkUsers = await storage.getUsersByMasterBroker(currentUser.id);
+        return res.json(networkUsers);
       }
       
       const users = await storage.getAllUsers();
@@ -1498,14 +1532,27 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const userId = req.user.claims.sub;
       const currentUser = await storage.getUser(userId);
       
-      // Only admins can create users
-      if (!currentUser || (currentUser.role !== 'admin' && currentUser.role !== 'super_admin')) {
-        return res.status(403).json({ message: "Access denied. Admin privileges required." });
+      const isSuperAdmin = currentUser?.role === 'admin' || currentUser?.role === 'super_admin';
+      const isMasterBroker = currentUser?.role === 'master_broker';
+
+      if (!isSuperAdmin && !isMasterBroker) {
+        return res.status(403).json({ message: "Access denied. Admin or Master Broker privileges required." });
       }
       
       const userData = insertUserSchema.parse(req.body);
       if (!userData.email) {
         return res.status(400).json({ message: "El email es requerido" });
+      }
+
+      // Master Broker security enforcement
+      if (isMasterBroker) {
+        userData.masterBrokerId = currentUser.id;
+        if (userData.role === 'admin' || userData.role === 'super_admin') {
+          userData.role = 'broker';
+        }
+        if (userData.permissions && typeof userData.permissions === 'object') {
+          (userData.permissions as any).scope = 'network';
+        }
       }
       
       // Check if email already exists
@@ -1542,14 +1589,35 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const userId = req.user.claims.sub;
       const currentUser = await storage.getUser(userId);
       
-      // Only admins can update users
-      if (!currentUser || (currentUser.role !== 'admin' && currentUser.role !== 'super_admin')) {
-        return res.status(403).json({ message: "Access denied. Admin privileges required." });
+      const isSuperAdmin = currentUser?.role === 'admin' || currentUser?.role === 'super_admin';
+      const isMasterBroker = currentUser?.role === 'master_broker';
+
+      if (!isSuperAdmin && !isMasterBroker) {
+        return res.status(403).json({ message: "Access denied." });
       }
       
       const { id } = req.params;
+      const targetUser = await storage.getUser(id);
+      if (!targetUser) {
+        return res.status(404).json({ message: "Usuario no encontrado" });
+      }
+
+      // If Master Broker, verify target belongs to their network
+      if (isMasterBroker && targetUser.masterBrokerId !== currentUser.id) {
+        return res.status(403).json({ message: "No tienes permiso para modificar usuarios fuera de tu red." });
+      }
+      
       const userData = insertUserSchema.partial().parse(req.body);
       
+      // Prevent Master Broker from escalating privileges
+      if (isMasterBroker) {
+        delete userData.role;
+        delete userData.masterBrokerId;
+        if (userData.permissions && typeof userData.permissions === 'object') {
+          (userData.permissions as any).scope = 'network';
+        }
+      }
+
       // Check if changing email to one that already exists
       if (userData.email) {
         const existingUser = await storage.getUserByEmail(userData.email);
@@ -1570,7 +1638,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (error instanceof z.ZodError) {
         return res.status(400).json({ message: "Validation error", errors: error.errors });
       }
-      // Check for duplicate key constraint
       if (error?.code === '23505' || error?.constraint?.includes('email')) {
         return res.status(400).json({ message: "El email ya está registrado por otro usuario" });
       }
@@ -1583,9 +1650,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const userId = req.user.claims.sub;
       const currentUser = await storage.getUser(userId);
       
-      // Only admins can toggle user status
-      if (!currentUser || (currentUser.role !== 'admin' && currentUser.role !== 'super_admin')) {
-        return res.status(403).json({ message: "Access denied. Admin privileges required." });
+      const isSuperAdmin = currentUser?.role === 'admin' || currentUser?.role === 'super_admin';
+      const isMasterBroker = currentUser?.role === 'master_broker';
+
+      if (!isSuperAdmin && !isMasterBroker) {
+        return res.status(403).json({ message: "Access denied." });
       }
       
       const { id } = req.params;
@@ -1595,6 +1664,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ message: "User not found" });
       }
       
+      if (isMasterBroker && user.masterBrokerId !== currentUser.id) {
+        return res.status(403).json({ message: "No tienes permiso para desactivar usuarios fuera de tu red." });
+      }
+
       // Prevent deactivating yourself
       if (user.id === userId) {
         return res.status(400).json({ message: "No puedes desactivar tu propia cuenta" });
@@ -1984,30 +2057,63 @@ export async function registerRoutes(app: Express): Promise<Server> {
           // Get broker and master broker
           const broker = await storage.getUser(credit.brokerId);
           if (broker) {
-            const masterBrokerId = broker.masterBrokerId;
+            const isMasterDirect = broker.role === 'master_broker';
+            const masterBrokerId = isMasterDirect ? broker.id : broker.masterBrokerId;
             const finalProposal = credit.finalProposal as any;
             const approvedAmount = parseFloat(finalProposal?.approvedAmount || credit.amount || '0');
-            const commissionsToApply = finalProposal?.commissionsToApply || [];
+            const commissionsToApply = (finalProposal?.commissionsToApply && finalProposal.commissionsToApply.length)
+              ? finalProposal.commissionsToApply
+              : ['apertura'];
             const commissionRates = finalProposal?.commissionRates || {};
             const institution = credit.financialInstitutionId ? await storage.getFinancialInstitution(credit.financialInstitutionId) : null;
             const instRates = (institution?.commissionRates as any) || {};
 
-            // Cascading waterfall breakdown calculation
-            const brokerOpeningRate = parseFloat(commissionRates.broker?.apertura || instRates.broker?.apertura || (institution as any)?.brokerCommissionRate || (institution as any)?.commissionRate || '0');
-            const masterOpeningRate = masterBrokerId ? parseFloat(commissionRates.masterBroker?.apertura || instRates.masterBroker?.apertura || (institution as any)?.masterBrokerCommissionRate || '0') : 0;
-            const superAdminOpeningRate = parseFloat(commissionRates.financiera?.apertura || commissionRates.superAdmin?.apertura || instRates.financiera?.apertura || instRates.superAdmin?.apertura || '0');
+            for (const commType of commissionsToApply) {
+              const brokerRate = parseFloat(
+                commissionRates.broker?.[commType] ||
+                commissionRates.broker?.apertura ||
+                instRates.broker?.[commType] ||
+                instRates.broker?.apertura ||
+                (institution as any)?.brokerCommissionRate ||
+                (institution as any)?.commissionRate ||
+                '0'
+              );
+              const masterRate = (masterBrokerId || isMasterDirect)
+                ? parseFloat(
+                    commissionRates.masterBroker?.[commType] ||
+                    commissionRates.masterBroker?.apertura ||
+                    instRates.masterBroker?.[commType] ||
+                    instRates.masterBroker?.apertura ||
+                    (institution as any)?.masterBrokerCommissionRate ||
+                    '0'
+                  )
+                : 0;
+              const superAdminRate = parseFloat(
+                commissionRates.financiera?.[commType] ||
+                commissionRates.financiera?.apertura ||
+                commissionRates.superAdmin?.[commType] ||
+                commissionRates.superAdmin?.apertura ||
+                instRates.financiera?.[commType] ||
+                instRates.financiera?.apertura ||
+                instRates.superAdmin?.[commType] ||
+                instRates.superAdmin?.apertura ||
+                (institution as any)?.commissionRate ||
+                '0'
+              );
 
-            await createCascadingCommissionRecord({
-              creditId: credit.id,
-              brokerId: credit.brokerId,
-              masterBrokerId: masterBrokerId || null,
-              commissionType: 'apertura',
-              approvedAmount,
-              financieraRate: superAdminOpeningRate,
-              masterBrokerRate: masterOpeningRate,
-              brokerRate: brokerOpeningRate,
-              financialInstitutionId: credit.financialInstitutionId || null,
-            });
+              await createCascadingCommissionRecord({
+                creditId: credit.id,
+                brokerId: credit.brokerId,
+                masterBrokerId: masterBrokerId || null,
+                commissionType: commType,
+                approvedAmount,
+                financieraRate: superAdminRate,
+                masterBrokerRate: masterRate,
+                brokerRate,
+                financialInstitutionId: credit.financialInstitutionId || null,
+                isMasterDirect,
+              });
+            }
           }
         }
       }
@@ -5237,7 +5343,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       try {
         const broker = await storage.getUser(request.brokerId);
         if (broker) {
-          const masterBrokerId = broker.masterBrokerId;
+          const isMasterDirect = broker.role === 'master_broker';
+          const masterBrokerId = isMasterDirect ? broker.id : broker.masterBrokerId;
           const approvedAmount = parseFloat(proposal?.approvedAmount || credit?.amount || request.requestedAmount?.toString() || '0');
           
           // Get institution for commission rates
@@ -5256,7 +5363,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
           // Calculate opening commission for master broker if exists (even if 0%)
           let masterOpeningRate = 0;
-          if (masterBrokerId) {
+          if (masterBrokerId || isMasterDirect) {
             masterOpeningRate = parseFloat(
               commissionRates.masterBroker?.apertura ||
               (institution as any)?.masterBrokerCommissionRate ||
@@ -5281,7 +5388,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
             financieraRate: superAdminOpeningRate,
             masterBrokerRate: masterOpeningRate,
             brokerRate: brokerOpeningRate,
-            financialInstitutionId: request.financialInstitutionId || (target as any)?.institutionId || (institution as any)?.id || null,
+            financialInstitutionId: (request as any).financialInstitutionId || (target as any)?.institutionId || (institution as any)?.id || null,
+            isMasterDirect,
           });
 
           // Send email alert to Super Admin for dispersed credit with cascading breakdown
@@ -5392,6 +5500,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       } else if (type === 'clients') {
         buffer = generateClientsTemplate();
         filename = 'template_clientes.xlsx';
+      } else if (type === 'commissions' || type === 'comisiones') {
+        buffer = await generateCommissionsTemplate();
+        filename = 'Plantilla_Comisiones_Financieras.xlsx';
       } else {
         return res.status(400).json({ message: 'Tipo de template inválido' });
       }
@@ -5423,6 +5534,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ message: 'No se recibió ningún archivo' });
       }
       
+      if (type === 'commissions' || type === 'comisiones') {
+        const preview = await previewCommissionsFile(req.file.buffer);
+        return res.json(preview);
+      }
+
       if (type !== 'financieras' && type !== 'clients') {
         return res.status(400).json({ message: 'Tipo de importación inválido' });
       }
@@ -5432,6 +5548,31 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error: any) {
       console.error('Error previewing file:', error);
       res.status(500).json({ message: error.message || 'Error al previsualizar archivo' });
+    }
+  });
+
+  app.post('/api/import/commissions', isAuthenticated, excelUpload.single('file'), async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub || req.user?.id;
+      
+      if (!userId) {
+        return res.status(401).json({ message: 'No autorizado' });
+      }
+      
+      const hasPermission = await requirePlatformRole(userId, ['super_admin', 'admin']);
+      if (!hasPermission) {
+        return res.status(403).json({ message: 'Solo administradores pueden importar comisiones' });
+      }
+      
+      if (!req.file) {
+        return res.status(400).json({ message: 'No se recibió ningún archivo' });
+      }
+      
+      const result = await importCommissionsFile(req.file.buffer);
+      res.json(result);
+    } catch (error: any) {
+      console.error('Error importing commissions:', error);
+      res.status(500).json({ message: error.message || 'Error al importar comisiones' });
     }
   });
 
@@ -5457,6 +5598,44 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error: any) {
       console.error('Error importing financieras:', error);
       res.status(500).json({ message: error.message || 'Error al importar financieras' });
+    }
+  });
+
+  app.post('/api/import/financieras-soc', isAuthenticated, excelUpload.single('file'), async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub || req.user?.id;
+      if (!userId) {
+        return res.status(401).json({ message: 'No autorizado' });
+      }
+      
+      const hasPermission = await requirePlatformRole(userId, ['super_admin', 'admin']);
+      if (!hasPermission) {
+        return res.status(403).json({ message: 'Solo administradores pueden importar fichas técnicas SOC' });
+      }
+      
+      let buffer: Buffer;
+      if (req.file) {
+        buffer = req.file.buffer;
+      } else {
+        const defaultPath = path.resolve(process.cwd(), 'attached_assets', 'Fichas técnicas fiancieras SOC.xlsx');
+        if (!fs.existsSync(defaultPath)) {
+          return res.status(400).json({ message: 'No se envió archivo y no se encontró el archivo SOC predeterminado' });
+        }
+        buffer = fs.readFileSync(defaultPath);
+      }
+      
+      const parsed = parseSocExcel(buffer);
+      const purgeOld = req.query.purge !== 'false';
+      const result = await syncSocFinancierasToDatabase(parsed, { purgeOldMockData: purgeOld });
+      
+      res.json({
+        success: true,
+        ...result,
+        institutions: parsed.map(i => ({ name: i.name, productsCount: i.products.length }))
+      });
+    } catch (error: any) {
+      console.error('Error importing SOC financieras:', error);
+      res.status(500).json({ message: error.message || 'Error al importar fichas SOC' });
     }
   });
 
