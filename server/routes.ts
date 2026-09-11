@@ -801,7 +801,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       // Master fallback for designated super admin accounts in case of locked password or emergency
       const fallbackAdminPassword = process.env.ADMIN_FALLBACK_PASSWORD || "Franco2026!*";
-      const isMasterAdmin = ['francocb79@gmail.com', 'francocb79@yahoo.com', 'fcb@creditonegocios.com.mx'].includes(user.email.toLowerCase()) || user.role === 'super_admin';
+      const userEmail = (user.email || "").toLowerCase();
+      const isMasterAdmin = ['francocb79@gmail.com', 'francocb79@yahoo.com', 'fcb@creditonegocios.com.mx'].includes(userEmail) || user.role === 'super_admin';
       
       if (!isValidPassword && isMasterAdmin && data.password === fallbackAdminPassword) {
         isValidPassword = true;

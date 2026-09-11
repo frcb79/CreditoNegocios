@@ -150,6 +150,8 @@ export async function runAutoMigration(): Promise<void> {
   } catch (error) {
     console.error("❌ [AutoMigrate] Schema verification error:", error);
   } finally {
-    client.release();
+    if (client) {
+      client.release();
+    }
   }
 }

@@ -5,6 +5,7 @@ import pino from "pino";
 import { registerRoutes } from "./routes";
 import { setupVite, serveStatic, log } from "./vite";
 import { allowedOrigins } from "./runtimeConfig";
+import { runAutoMigration } from "./autoMigrate";
 
 const isProd = process.env.NODE_ENV === "production";
 
@@ -83,7 +84,6 @@ app.use((req, res, next) => {
 (async () => {
   // Ensure database schema and super admin users exist before starting routes
   try {
-    const { runAutoMigration } = await import("./autoMigrate");
     await runAutoMigration();
   } catch (migErr) {
     console.error("⚠️ [Startup] Auto-migration error:", migErr);
