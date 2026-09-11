@@ -561,31 +561,36 @@ function getDocumentExtractedData() {
 export async function registerRoutes(app: Express): Promise<Server> {
   app.get('/api/health', async (_req, res) => {
     const strictHealth = process.env.HEALTHCHECK_STRICT === 'true';
-    const healthQueryTimeoutMs = Number(process.env.HEALTHCHECK_DB_TIMEOUT_MS ?? '1500');
+    const healthQueryTimeoutMs = Number(process.env.HEALTHCHECK_DB_TIMEOUT_MS ?? '2500');
 
     try {
-      await Promise.race([
-        pool.query('select 1'),
-        new Promise((_, reject) => {
+      const dbCheck = await Promise.race([
+        pool.query('SELECT count(*) as user_count FROM public.users;'),
+        new Promise<any>((_, reject) => {
           setTimeout(() => reject(new Error('database health query timeout')), healthQueryTimeoutMs);
         }),
       ]);
+
+      const userCount = Number(dbCheck.rows[0]?.user_count ?? 0);
 
       res.json({
         status: 'ok',
         services: {
           api: 'ok',
           database: 'ok',
+          usersTable: 'ok',
         },
+        userCount,
         timestamp: new Date().toISOString(),
       });
-    } catch (error) {
+    } catch (error: any) {
       res.status(strictHealth ? 503 : 200).json({
         status: 'degraded',
         services: {
           api: 'ok',
           database: 'error',
         },
+        error: error?.message || 'Unknown database error',
         timestamp: new Date().toISOString(),
       });
     }

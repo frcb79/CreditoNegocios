@@ -1,4 +1,4 @@
-import { db } from "./db";
+import { db, pool } from "./db";
 import { 
   users, clients, credits, financialInstitutions, 
   commissions, notifications, documents, tenants, 
@@ -156,25 +156,79 @@ export class DbStorage implements IStorage {
   }
   
   // ===== USER OPERATIONS =====
+  private mapRawUser(r: any): User {
+    return {
+      id: r.id,
+      email: r.email,
+      password: r.password,
+      authMethod: r.auth_method || "local",
+      resetToken: r.reset_token,
+      resetTokenExpiry: r.reset_token_expiry ? new Date(r.reset_token_expiry) : null,
+      firstName: r.first_name,
+      lastName: r.last_name,
+      profileImageUrl: r.profile_image_url,
+      role: r.role || "broker",
+      masterBrokerId: r.master_broker_id,
+      referralCode: r.referral_code,
+      customLogo: r.custom_logo,
+      brandName: r.brand_name,
+      primaryColor: r.primary_color,
+      secondaryColor: r.secondary_color,
+      isWhiteLabel: Boolean(r.is_white_label),
+      autoRegisterBrokers: Boolean(r.auto_register_brokers),
+      profileType: r.profile_type,
+      profileData: r.profile_data || {},
+      commercialReferences: r.commercial_references || [],
+      bankName: r.bank_name,
+      clabe: r.clabe,
+      accountHolder: r.account_holder,
+      networkCommissionRates: r.network_commission_rates || {},
+      customRoleTitle: r.custom_role_title,
+      permissions: r.permissions || {},
+      isActive: r.is_active !== false,
+      createdAt: r.created_at ? new Date(r.created_at) : new Date(),
+      updatedAt: r.updated_at ? new Date(r.updated_at) : new Date(),
+    } as User;
+  }
+
   async getUser(id: string): Promise<User | undefined> {
     try {
       const result = await db.select().from(users).where(eq(users.id, id)).limit(1);
-      return result[0];
+      if (result && result.length > 0) return result[0];
     } catch (error) {
-      console.error("Error fetching user:", error);
-      return undefined;
+      console.warn("⚠️ [DBStorage] Drizzle error fetching user by ID, using raw SQL fallback:", error);
     }
+    try {
+      const raw = await pool.query(`SELECT * FROM public.users WHERE id = $1 LIMIT 1`, [id]);
+      if (raw.rows && raw.rows.length > 0) {
+        return this.mapRawUser(raw.rows[0]);
+      }
+    } catch (rawError) {
+      console.error("❌ [DBStorage] Raw SQL fallback error fetching user by ID:", rawError);
+    }
+    return undefined;
   }
 
   async getUserByEmail(email: string): Promise<User | undefined> {
+    const normalizedEmail = email.trim().toLowerCase();
     try {
-      const normalizedEmail = email.trim().toLowerCase();
       const result = await db.select().from(users).where(eq(sql`LOWER(${users.email})`, normalizedEmail)).limit(1);
-      return result[0];
+      if (result && result.length > 0) return result[0];
     } catch (error) {
-      console.error("Error fetching user by email:", error);
-      return undefined;
+      console.warn("⚠️ [DBStorage] Drizzle error fetching user by email, using raw SQL fallback:", error);
     }
+    try {
+      const raw = await pool.query(
+        `SELECT * FROM public.users WHERE LOWER(TRIM(email)) = LOWER(TRIM($1)) LIMIT 1`,
+        [normalizedEmail]
+      );
+      if (raw.rows && raw.rows.length > 0) {
+        return this.mapRawUser(raw.rows[0]);
+      }
+    } catch (rawError) {
+      console.error("❌ [DBStorage] Raw SQL fallback error fetching user by email:", rawError);
+    }
+    return undefined;
   }
 
   async getAllUsers(): Promise<User[]> {

@@ -14,6 +14,7 @@ export default function Landing() {
   const [showForgotPassword, setShowForgotPassword] = useState(false);
   const [forgotPasswordEmail, setForgotPasswordEmail] = useState("");
   const [resetEmailSent, setResetEmailSent] = useState(false);
+  const [directResetUrl, setDirectResetUrl] = useState<string | null>(null);
   
   // Login form state
   const [loginEmail, setLoginEmail] = useState("");
@@ -121,15 +122,13 @@ export default function Landing() {
       }
       
       setResetEmailSent(true);
+      if (data.resetUrl) {
+        setDirectResetUrl(data.resetUrl);
+      }
       toast({
-        title: "Solicitud enviada",
+        title: "Solicitud procesada",
         description: data.message,
       });
-      
-      // If we have a reset URL in development mode, show it
-      if (data.resetUrl) {
-        console.log("Reset URL (dev mode):", data.resetUrl);
-      }
     } catch (error: any) {
       toast({
         title: "Error",
@@ -144,6 +143,7 @@ export default function Landing() {
   const handleBackToLogin = () => {
     setShowForgotPassword(false);
     setResetEmailSent(false);
+    setDirectResetUrl(null);
     setForgotPasswordEmail("");
   };
 
@@ -183,6 +183,19 @@ export default function Landing() {
                       Si el email existe en nuestro sistema, recibirás un enlace para restablecer tu contraseña.
                     </p>
                   </div>
+                  {directResetUrl && (
+                    <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg text-center space-y-2">
+                      <p className="text-blue-900 text-xs font-medium">
+                        Acceso directo de recuperación disponible:
+                      </p>
+                      <Button 
+                        className="w-full bg-blue-600 hover:bg-blue-700 text-white" 
+                        onClick={() => { window.location.href = directResetUrl; }}
+                      >
+                        Restablecer Contraseña Directamente
+                      </Button>
+                    </div>
+                  )}
                   <Button 
                     variant="outline" 
                     className="w-full" 
