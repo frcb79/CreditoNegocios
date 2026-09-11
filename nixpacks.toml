@@ -1,0 +1,6 @@
+# Nixpacks configuration for Railway
+[variables]
+NPM_CONFIG_PRODUCTION = "false"
+
+[phases.install]
+cmds = ["npm ci --include=dev"]
