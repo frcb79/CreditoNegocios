@@ -156,7 +156,14 @@ export async function runAutoMigration(): Promise<void> {
           ADD COLUMN IF NOT EXISTS notes TEXT,
           ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT NOW();
       `);
-      console.log("✅ [AutoMigrate] Financial institutions table columns verified");
+
+      // Ensure all financial institutions are active
+      await client.query(`
+        UPDATE public.financial_institutions
+        SET is_active = TRUE, updated_at = NOW()
+        WHERE is_active IS NOT TRUE;
+      `);
+      console.log("✅ [AutoMigrate] Financial institutions table columns verified and all institutions activated");
     } catch (err) {
       console.error("⚠️ [AutoMigrate] Error verifying financial institutions columns:", err);
     }

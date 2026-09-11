@@ -43,7 +43,8 @@ import {
   Package,
   Search,
   AlertTriangle,
-  AlertCircle
+  AlertCircle,
+  ExternalLink
 } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import MatchingComparisonTable from "@/components/MatchingAnalysis/MatchingComparisonTable";
@@ -916,9 +917,20 @@ export default function PendingRequests() {
                                           Capturar Propuesta
                                         </Button>
                                         {target.proposalDocument && (
-                                          <Badge variant="outline" className="bg-green-50 text-green-700">
-                                            Documento subido
-                                          </Badge>
+                                          <>
+                                            <Button
+                                              size="sm"
+                                              variant="outline"
+                                              className="border-green-300 text-green-700 hover:bg-green-50"
+                                              onClick={() => window.open(buildApiUrl(`/api/credit-submission-targets/${target.id}/proposal-document`), '_blank')}
+                                            >
+                                              <ExternalLink className="w-4 h-4 mr-1" />
+                                              Ver Propuesta
+                                            </Button>
+                                            <Badge variant="outline" className="bg-green-50 text-green-700">
+                                              Documento subido
+                                            </Badge>
+                                          </>
                                         )}
                                       </div>
                                     )}
@@ -1009,9 +1021,20 @@ export default function PendingRequests() {
                                           </Button>
                                           
                                           {target.proposalDocument && (
-                                            <Badge variant="outline" className="bg-emerald-50 text-emerald-700 border-emerald-200 self-center">
-                                              ✓ Carátula / Documento cargado
-                                            </Badge>
+                                            <>
+                                              <Button
+                                                size="sm"
+                                                variant="outline"
+                                                className="border-emerald-300 text-emerald-700 hover:bg-emerald-50"
+                                                onClick={() => window.open(buildApiUrl(`/api/credit-submission-targets/${target.id}/proposal-document`), '_blank')}
+                                              >
+                                                <ExternalLink className="w-4 h-4 mr-1.5" />
+                                                Ver Documento
+                                              </Button>
+                                              <Badge variant="outline" className="bg-emerald-50 text-emerald-700 border-emerald-200 self-center">
+                                                ✓ Carátula / Documento cargado
+                                              </Badge>
+                                            </>
                                           )}
                                         </div>
                                       </div>

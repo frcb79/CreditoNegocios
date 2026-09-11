@@ -34,6 +34,7 @@ import { submissionStatusConfig, creditStatusConfig, targetStatusConfig, getSubm
 import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
+import { buildApiUrl } from "@/lib/runtimeConfig";
 
 type UnifiedCreditItem = {
   id: string;
@@ -141,7 +142,35 @@ export default function CreditList() {
     enabled: !!selectedSubmissionId,
   });
 
+  const { data: productTemplates } = useQuery<any[]>({
+    queryKey: ["/api/product-templates"],
+  });
+
   const isLoading = creditsLoading || submissionsLoading;
+
+  const getProductName = (target?: any, submission?: any) => {
+    if (target?.institutionProduct?.customName) return target.institutionProduct.customName;
+    if (target?.productTemplate?.name) return target.productTemplate.name;
+    if (submission?.productTemplate?.name) return submission.productTemplate.name;
+    const templateId = target?.productTemplateId || submission?.productTemplateId;
+    if (templateId && productTemplates) {
+      const found = productTemplates.find((pt: any) => pt.id === templateId);
+      if (found?.name) return found.name;
+    }
+    const purpose = target?.purpose || submission?.purpose;
+    if (purpose) {
+      const purposeMap: Record<string, string> = {
+        'capital_trabajo': 'Crédito Capital de Trabajo',
+        'adquisicion_activos': 'Crédito Adquisición de Activos',
+        'refinanciamiento': 'Crédito Refinanciamiento',
+        'expansion': 'Crédito Expansión',
+        'liquidez': 'Crédito de Liquidez',
+        'arrendamiento': 'Arrendamiento Puro / Financiero',
+      };
+      if (purposeMap[purpose]) return purposeMap[purpose];
+    }
+    return 'Crédito Empresarial';
+  };
 
   const getClientName = (clientId: string) => {
     const client = clients?.find(c => c.id === clientId);
@@ -238,7 +267,7 @@ export default function CreditList() {
           dispersedTargets,
           status: effectiveStatus,
           createdAt: sub.createdAt,
-          productTemplateName: sub.productTemplate?.name || sub.targets?.find((t: any) => t.productTemplate?.name)?.productTemplate?.name || sub.purpose || 'Crédito Empresarial',
+          productTemplateName: getProductName(sub.targets?.find((t: any) => t.productTemplate?.name), sub),
           targetsCount,
           proposalsCount,
           statusSummary,
@@ -916,7 +945,7 @@ export default function CreditList() {
                                       {institution?.name || 'Cargando...'}
                                     </h4>
                                     <p className="text-xs text-gray-600">
-                                      {target.institutionProduct?.customName || selectedSubmission.productTemplate?.name || 'Producto no especificado'}
+                                      {getProductName(target, selectedSubmission)}
                                     </p>
                                   </div>
                                 </div>
@@ -996,6 +1025,23 @@ export default function CreditList() {
                                         <div className="col-span-2">
                                           <p className="text-xs text-green-700">Notas</p>
                                           <p className="text-sm text-green-900">{target.institutionProposal.notes}</p>
+                                        </div>
+                                      )}
+                                      {target.proposalDocument && (
+                                        <div className="col-span-2 pt-2 border-t border-green-200 flex items-center justify-between">
+                                          <span className="text-xs text-green-800 font-medium flex items-center gap-1.5">
+                                            <FileText className="w-3.5 h-3.5 text-green-700" />
+                                            Documento oficial de propuesta disponible
+                                          </span>
+                                          <Button
+                                            size="sm"
+                                            variant="outline"
+                                            className="text-xs h-7 gap-1 border-green-300 text-green-800 hover:bg-green-100"
+                                            onClick={() => window.open(buildApiUrl(`/api/credit-submission-targets/${target.id}/proposal-document`), '_blank')}
+                                          >
+                                            <ExternalLink className="w-3.5 h-3.5" />
+                                            Ver Documento Oficial
+                                          </Button>
                                         </div>
                                       )}
                                     </CardContent>

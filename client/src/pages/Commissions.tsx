@@ -64,6 +64,22 @@ export default function Commissions() {
     return isNaN(n) ? fallback : n;
   };
 
+  const getSobretasaRate = (c: any): number => {
+    const proposalRate = c.credit?.finalProposal?.commissionRates?.superAdmin?.sobretasa;
+    if (proposalRate !== undefined && proposalRate !== null && !isNaN(Number(proposalRate))) {
+      return Number(proposalRate);
+    }
+    const instSuperAdminRate = c.financialInstitution?.commissionRates?.superAdmin?.sobretasa;
+    if (instSuperAdminRate !== undefined && instSuperAdminRate !== null && !isNaN(Number(instSuperAdminRate))) {
+      return Number(instSuperAdminRate);
+    }
+    const instOverRate = c.financialInstitution?.overrateCommissionRate || c.financialInstitution?.overRate;
+    if (instOverRate !== undefined && instOverRate !== null && !isNaN(Number(instOverRate))) {
+      return Number(instOverRate);
+    }
+    return 5.0; // Default standard sobretasa in the platform (5.0%)
+  };
+
   const { data: commissionsData, isLoading, isError, error, refetch } = useQuery<any[]>({
     queryKey: ["/api/commissions"],
   });
@@ -240,8 +256,8 @@ export default function Commissions() {
     return commissions.reduce((sum, c) => {
       if (c.creditId && seenCredits.has(c.creditId)) return sum;
       if (c.creditId) seenCredits.add(c.creditId);
-      const creditAmount = safeFloat(c.credit?.amount);
-      const overRate = safeFloat(c.financialInstitution?.overRate, 1.0);
+      const creditAmount = safeFloat(c.credit?.amount || c.amount);
+      const overRate = getSobretasaRate(c);
       return sum + (creditAmount * (overRate / 100));
     }, 0);
   }, [commissions]);
@@ -252,8 +268,8 @@ export default function Commissions() {
     return commissions.reduce((sum, c) => {
       if (c.creditId && seenCredits.has(c.creditId)) return sum;
       if (c.creditId) seenCredits.add(c.creditId);
-      const creditAmount = safeFloat(c.credit?.amount);
-      const overRate = safeFloat(c.financialInstitution?.overRate, 1.0);
+      const creditAmount = safeFloat(c.credit?.amount || c.amount);
+      const overRate = getSobretasaRate(c);
       const term = safeFloat(c.credit?.term, 12);
       const totalOver = creditAmount * (overRate / 100);
       return sum + (term > 0 ? totalOver / term : totalOver);
@@ -1187,8 +1203,8 @@ export default function Commissions() {
                           </tr>
                         ) : (
                           commissions.map((c) => {
-                            const creditAmount = safeFloat(c.credit?.amount);
-                            const overRate = safeFloat(c.financialInstitution?.overRate, 1.0);
+                            const creditAmount = safeFloat(c.credit?.amount || c.amount);
+                            const overRate = getSobretasaRate(c);
                             const term = safeFloat(c.credit?.term, 12);
                             const totalOverRate = creditAmount * (overRate / 100);
                             const monthlySinIva = term > 0 ? (totalOverRate / term) : totalOverRate;

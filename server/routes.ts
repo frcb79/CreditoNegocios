@@ -67,6 +67,15 @@ import {
   getEffectivePermissions
 } from "./middleware/rbacMiddleware";
 
+// Ensure upload directory exists
+if (!fs.existsSync('uploads')) {
+  try {
+    fs.mkdirSync('uploads', { recursive: true });
+  } catch (err) {
+    console.error("Error creating uploads directory:", err);
+  }
+}
+
 // Multer configuration for file uploads
 const upload = multer({
   dest: 'uploads/',
@@ -5079,6 +5088,38 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // 3b. Serve proposal document safely
+  app.get('/api/credit-submission-targets/:id/proposal-document', isAuthenticated, async (req: any, res) => {
+    try {
+      const { id } = req.params;
+      const target = await storage.getCreditSubmissionTarget(id);
+      if (!target || !target.proposalDocument) {
+        return res.status(404).json({ message: "No se encontró el documento de propuesta" });
+      }
+
+      const filePath = path.resolve(target.proposalDocument);
+      if (!fs.existsSync(filePath)) {
+        return res.status(404).json({ message: "Archivo de propuesta no encontrado en el servidor" });
+      }
+
+      const ext = path.extname(filePath).toLowerCase();
+      let contentType = 'application/octet-stream';
+      if (ext === '.pdf') contentType = 'application/pdf';
+      else if (ext === '.png') contentType = 'image/png';
+      else if (ext === '.jpg' || ext === '.jpeg') contentType = 'image/jpeg';
+      else if (ext === '.doc') contentType = 'application/msword';
+      else if (ext === '.docx') contentType = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+
+      res.setHeader('Content-Type', contentType);
+      res.setHeader('Content-Disposition', `inline; filename="propuesta-${id}${ext || '.pdf'}"`);
+      const fileStream = fs.createReadStream(filePath);
+      fileStream.pipe(res);
+    } catch (error) {
+      console.error("Error serving proposal document:", error);
+      res.status(500).json({ message: "Error al cargar documento de propuesta" });
+    }
+  });
+
   // 4. Save institution proposal - Admins only
   app.post('/api/credit-submission-targets/:id/institution-proposal', isAuthenticated, async (req: any, res) => {
     try {
@@ -5548,6 +5589,35 @@ export async function registerRoutes(app: Express): Promise<Server> {
           notes: `Crédito dispersado exitosamente el ${new Date().toLocaleDateString('es-MX')}. Financiera: ${institution?.name || 'N/A'}. Folio: ${credit!.id.slice(-8)}.`,
         });
         console.log(`[CreditHistory] Auto-created credit history for client ${request.clientId}`);
+
+        // Also update client.creditosVigentesDetalles in real time
+        try {
+          const currentClient = await storage.getClient(request.clientId);
+          if (currentClient) {
+            let vigentesList: any[] = [];
+            if (Array.isArray(currentClient.creditosVigentesDetalles)) {
+              vigentesList = [...currentClient.creditosVigentesDetalles];
+            } else if (typeof currentClient.creditosVigentesDetalles === 'string') {
+              try { vigentesList = JSON.parse(currentClient.creditosVigentesDetalles); } catch (e) { vigentesList = []; }
+            }
+            vigentesList.push({
+              id: credit!.id,
+              institucion: institution?.name || 'Financiera',
+              tipo: prod?.name || 'Crédito Empresarial',
+              monto: grantedAmount,
+              plazo: term,
+              tasa: rate,
+              fechaDispersado: new Date().toISOString(),
+            });
+            await storage.updateClient(request.clientId, {
+              creditosVigentesDetalles: vigentesList,
+              creditosVigentes: vigentesList.length.toString(),
+            });
+            console.log(`[CreditHistory] Updated creditosVigentesDetalles for client ${request.clientId}`);
+          }
+        } catch (vigentesErr) {
+          console.error("[CreditHistory] Error updating client creditosVigentesDetalles:", vigentesErr);
+        }
       } catch (historyErr) {
         console.error("[CreditHistory] Error auto-creating credit history:", historyErr);
       }

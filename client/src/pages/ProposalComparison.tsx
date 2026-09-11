@@ -19,6 +19,7 @@ import {
   FileText,
   Download
 } from "lucide-react";
+import { buildApiUrl } from "@/lib/runtimeConfig";
 
 interface CreditSubmissionTarget {
   id: string;
@@ -79,6 +80,12 @@ export default function ProposalComparison() {
     enabled: !!requestId,
   });
 
+  const clientId = request?.clientId || (allTargets?.[0] as any)?.clientId;
+  const { data: fetchedClient } = useQuery<any>({
+    queryKey: ['/api/clients', clientId],
+    enabled: !!clientId && !request?.client,
+  });
+
   const targetsList = allTargets || [];
 
   const selectWinnerMutation = useMutation({
@@ -107,7 +114,7 @@ export default function ProposalComparison() {
 
   const handleDownloadPDF = async (targetId: string) => {
     try {
-      const response = await fetch(`/api/credit-submission-targets/${targetId}/generate-pdf`, {
+      const response = await fetch(buildApiUrl(`/api/credit-submission-targets/${targetId}/generate-pdf`), {
         method: 'POST',
         credentials: 'include',
       });
@@ -222,7 +229,8 @@ export default function ProposalComparison() {
     return <Badge className="bg-gray-100 text-gray-700">En Proceso</Badge>;
   };
 
-  const clientName = getClientDisplayName(request?.client);
+  const clientObj = request?.client || fetchedClient || (allTargets?.[0] as any)?.client || (allTargets?.[0] as any)?.request?.client;
+  const clientName = getClientDisplayName(clientObj);
   const requestedAmountFormatted = request?.requestedAmount 
     ? `$${Number(request.requestedAmount).toLocaleString('es-MX')} MXN` 
     : '';
@@ -365,7 +373,7 @@ export default function ProposalComparison() {
                                 variant="outline"
                                 size="sm"
                                 className="w-full text-xs border-emerald-300 text-emerald-700 hover:bg-emerald-50 h-8"
-                                onClick={() => window.open(target.proposalDocument, '_blank')}
+                                onClick={() => window.open(buildApiUrl(`/api/credit-submission-targets/${target.id}/proposal-document`), '_blank')}
                                 title="Abrir carátula o documento oficial subido por la financiera"
                               >
                                 <FileText className="w-3.5 h-3.5 mr-1.5" />

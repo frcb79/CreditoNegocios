@@ -149,9 +149,26 @@ export function evaluateBuroScore(
   const isEmpresa = fieldKey === 'buroEmpresa';
   const map = isEmpresa ? BURO_EMPRESA_MAP : BURO_PF_MAP;
 
-  // 1. Check exact key match in range maps
-  if (map[strVal]) {
-    const range = map[strVal];
+  const PF_ALIASES: Record<string, string> = {
+    'alto': 'alto-694-760',
+    'bueno': 'bueno-592-693',
+    'medio': 'medio-524-591',
+    'bajo': 'bajo-490-523',
+    'malo': 'malo-456-489',
+  };
+  const EMPRESA_ALIASES: Record<string, string> = {
+    'alto': 'alto-310-400',
+    'bueno': 'bueno-250-309',
+    'medio': 'medio-230-249',
+    'bajo': 'bajo-220-229',
+    'malo': 'malo-100-219',
+  };
+  const aliasMap = isEmpresa ? EMPRESA_ALIASES : PF_ALIASES;
+  const lookupKey = aliasMap[strVal] || strVal;
+
+  // 1. Check exact or alias key match in range maps
+  if (map[lookupKey]) {
+    const range = map[lookupKey];
     const pass = range.max >= minReq;
     return {
       status: pass ? 'pass' : 'fail',
@@ -200,6 +217,7 @@ export function evaluateBuroScore(
     notes: 'Valor no reconocido para buró'
   };
 }
+
 
 // ── Buró Sin SAT Evaluation ─────────────────────────────────────────
 export function evaluateBuroSinSat(
@@ -484,16 +502,18 @@ export const GOV_SALES_DISPLAY: Record<string, string> = {
 };
 
 export function formatGovThresholdRequirement(maxThreshold: string): string {
-  const clean = (maxThreshold || '').toLowerCase().trim();
-  const label = GOV_SALES_DISPLAY[clean] || GOV_SALES_DISPLAY[maxThreshold] || maxThreshold;
+  if (!maxThreshold) return 'Sin límite';
+  let clean = String(maxThreshold).toLowerCase().trim();
+  clean = clean.replace(/^m[áa]ximo\s+/i, '').trim();
+  const label = GOV_SALES_DISPLAY[clean] || GOV_SALES_DISPLAY[maxThreshold] || clean;
   
   if (/^menor\s/i.test(label) || /^hasta\s/i.test(label)) {
-    return label;
+    return label.charAt(0).toUpperCase() + label.slice(1);
   }
-  if (label === '0%' || label === '0') {
+  if (label === '0%' || label === '0' || label === 'sin ventas') {
     return '0% (Sin ventas a gobierno)';
   }
-  return `Máximo ${label}`;
+  return `Menor a ${label.replace(/%/g, '').trim()}%`;
 }
 
 export function evaluateGovSales(
@@ -512,12 +532,27 @@ export function evaluateGovSales(
   }
 
   const strVal = String(clientValue).toLowerCase().trim();
-  const threshClean = (maxThreshold || '').toLowerCase().trim();
+  let threshClean = (maxThreshold || '').toLowerCase().trim();
+  threshClean = threshClean.replace(/^m[áa]ximo\s+/i, '').trim();
 
-  const maxAllowedLevel = GOV_SALES_HIERARCHY[threshClean] ?? 999;
-  let clientLevel = GOV_SALES_HIERARCHY[strVal] ?? 999;
+  let maxAllowedLevel = GOV_SALES_HIERARCHY[threshClean] ?? GOV_SALES_HIERARCHY[maxThreshold?.toLowerCase().trim()];
+  if (maxAllowedLevel === undefined) {
+    const pct = parseFloat(threshClean.replace(/[^0-9.]/g, ''));
+    if (!isNaN(pct)) {
+      if (pct === 0) maxAllowedLevel = 0;
+      else if (pct <= 10) maxAllowedLevel = 1;
+      else if (pct <= 20) maxAllowedLevel = 2;
+      else if (pct <= 40) maxAllowedLevel = 3;
+      else if (pct <= 50) maxAllowedLevel = 4;
+      else if (pct <= 60) maxAllowedLevel = 5;
+      else maxAllowedLevel = 6;
+    } else {
+      maxAllowedLevel = 999;
+    }
+  }
 
-  if (clientLevel === 999) {
+  let clientLevel = GOV_SALES_HIERARCHY[strVal];
+  if (clientLevel === undefined) {
     const pct = parseFloat(strVal.replace(/[^0-9.]/g, ''));
     if (!isNaN(pct)) {
       if (pct === 0) clientLevel = 0;
@@ -527,10 +562,12 @@ export function evaluateGovSales(
       else if (pct <= 50) clientLevel = 4;
       else if (pct <= 60) clientLevel = 5;
       else clientLevel = 6;
+    } else {
+      clientLevel = 999;
     }
   }
 
-  const clientDisplay = GOV_SALES_DISPLAY[strVal] || (strVal === '0' ? '0%' : (strVal.includes('%') ? strVal : `${strVal}%`));
+  const clientDisplay = GOV_SALES_DISPLAY[strVal] || (strVal === '0' || strVal === '0%' ? '0%' : (strVal.includes('%') ? strVal : `${strVal}%`));
 
   if (clientLevel === 999) {
     return {
@@ -1165,91 +1202,100 @@ export function evaluateAllFieldsForClient(
   const ranges = requirements.ranges || requirements || {};
   const fields: ComparisonField[] = [];
 
+  const firstNonEmpty = (...values: any[]): any => {
+    for (const v of values) {
+      if (v !== undefined && v !== null && v !== '') {
+        return v;
+      }
+    }
+    return undefined;
+  };
+
   const getClientValue = (key: string): any => {
     // 1. Direct match on client or profilingData
-    let val = client[key] ?? client.profilingData?.[key];
-    if (val !== undefined && val !== null && val !== '') return val;
+    const directVal = firstNonEmpty(client[key], client.profilingData?.[key]);
+    if (directVal !== undefined) return directVal;
 
     // 2. Intelligent cross-field fallbacks based on field category
     switch (key) {
       case 'monto':
       case 'montoSolicitado':
-        return requestedAmount ?? client.montoSolicitado ?? client.requestedAmount ?? client.monto ?? client.profilingData?.montoSolicitado;
+        return firstNonEmpty(requestedAmount, client.montoSolicitado, client.requestedAmount, client.monto, client.profilingData?.montoSolicitado);
 
       case 'buroPersonaFisica':
-        return client.buroPersonaFisica ?? client.buroAccionistaPrincipal ?? client.buroPersonaFisicaSinSat ?? client.profilingData?.buroPersonaFisica;
+        return firstNonEmpty(client.buroPersonaFisica, client.buroAccionistaPrincipal, client.buroPersonaFisicaSinSat, client.profilingData?.buroPersonaFisica, client.profilingData?.buroAccionistaPrincipal, client.profilingData?.buroPersonaFisicaSinSat);
 
       case 'buroAccionistaPrincipal':
-        return client.buroAccionistaPrincipal ?? client.buroPersonaFisica ?? client.profilingData?.buroAccionistaPrincipal;
+        return firstNonEmpty(client.buroAccionistaPrincipal, client.buroPersonaFisica, client.profilingData?.buroAccionistaPrincipal, client.profilingData?.buroPersonaFisica);
 
       case 'buroEmpresa':
-        return client.buroEmpresa ?? client.profilingData?.buroEmpresa;
+        return firstNonEmpty(client.buroEmpresa, client.profilingData?.buroEmpresa);
 
       case 'buroPersonaFisicaSinSat':
-        return client.buroPersonaFisicaSinSat ?? client.buroPersonaFisica ?? client.profilingData?.buroPersonaFisicaSinSat;
+        return firstNonEmpty(client.buroPersonaFisicaSinSat, client.buroPersonaFisica, client.profilingData?.buroPersonaFisicaSinSat, client.profilingData?.buroPersonaFisica);
 
       case 'ingresoMensualPromedio':
-        return client.ingresoMensualPromedio ?? client.ingresoMensualPromedioComprobables ?? client.ingresoMensualPromedioComprobablesSinSat ?? client.profilingData?.ingresoMensualPromedio;
+        return firstNonEmpty(client.ingresoMensualPromedio, client.ingresoMensualPromedioComprobables, client.ingresoMensualPromedioComprobablesSinSat, client.profilingData?.ingresoMensualPromedio);
 
       case 'ingresoMensualPromedioComprobables':
-        return client.ingresoMensualPromedioComprobables ?? client.ingresoMensualPromedioComprobablesSinSat ?? client.ingresoMensualPromedio ?? client.profilingData?.ingresoMensualPromedioComprobables;
+        return firstNonEmpty(client.ingresoMensualPromedioComprobables, client.ingresoMensualPromedioComprobablesSinSat, client.ingresoMensualPromedio, client.profilingData?.ingresoMensualPromedioComprobables);
 
       case 'ingresoMensualPromedioNoComprobables':
-        return client.ingresoMensualPromedioNoComprobables ?? client.ingresoMensualPromedioNoComprobablesSinSat ?? client.profilingData?.ingresoMensualPromedioNoComprobables;
+        return firstNonEmpty(client.ingresoMensualPromedioNoComprobables, client.ingresoMensualPromedioNoComprobablesSinSat, client.profilingData?.ingresoMensualPromedioNoComprobables);
 
       case 'ingresoMensualPromedioComprobablesSinSat':
-        return client.ingresoMensualPromedioComprobablesSinSat ?? client.ingresoMensualPromedioComprobables ?? client.ingresoMensualPromedio ?? client.profilingData?.ingresoMensualPromedioComprobablesSinSat;
+        return firstNonEmpty(client.ingresoMensualPromedioComprobablesSinSat, client.ingresoMensualPromedioComprobables, client.ingresoMensualPromedio, client.profilingData?.ingresoMensualPromedioComprobablesSinSat);
 
       case 'ingresoMensualPromedioNoComprobablesSinSat':
-        return client.ingresoMensualPromedioNoComprobablesSinSat ?? client.ingresoMensualPromedioNoComprobables ?? client.profilingData?.ingresoMensualPromedioNoComprobablesSinSat;
+        return firstNonEmpty(client.ingresoMensualPromedioNoComprobablesSinSat, client.ingresoMensualPromedioNoComprobables, client.profilingData?.ingresoMensualPromedioNoComprobablesSinSat);
 
       case 'egresoMensualPromedio':
       case 'gastosFijosMensualesPromedio':
       case 'gastosFijosMensualesPromedioSinSat':
-        return client.gastosFijosMensualesPromedio ?? client.egresoMensualPromedio ?? client.gastosFijosMensualesPromedioSinSat ?? client.profilingData?.[key];
+        return firstNonEmpty(client.gastosFijosMensualesPromedio, client.egresoMensualPromedio, client.gastosFijosMensualesPromedioSinSat, client.profilingData?.[key]);
 
       case 'antiguedadLaboral':
       case 'tiempoActividad':
-        return client.antiguedadLaboral ?? client.tiempoActividad ?? client.antiguedadEmpleo ?? (client.yearsInBusiness ? `${client.yearsInBusiness} años` : undefined) ?? client.profilingData?.[key];
+        return firstNonEmpty(client.antiguedadLaboral, client.tiempoActividad, client.antiguedadEmpleo, client.yearsInBusiness ? `${client.yearsInBusiness} años` : undefined, client.profilingData?.[key]);
 
       case 'garantia':
       case 'cuentaConGarantiaFisica':
       case 'cuentaConGarantiaSinSat':
-        return client.garantia ?? client.cuentaConGarantiaFisica ?? client.cuentaConGarantiaSinSat ?? client.profilingData?.[key];
+        return firstNonEmpty(client.garantia, client.cuentaConGarantiaFisica, client.cuentaConGarantiaSinSat, client.profilingData?.[key]);
 
       case 'avalObligadoSolidario':
       case 'tieneAvalObligadoSolidarioFisica':
       case 'tieneAvalObligadoSolidarioSinSat':
-        return client.avalObligadoSolidario ?? client.tieneAvalObligadoSolidarioFisica ?? client.tieneAvalObligadoSolidarioSinSat ?? client.profilingData?.[key];
+        return firstNonEmpty(client.avalObligadoSolidario, client.tieneAvalObligadoSolidarioFisica, client.tieneAvalObligadoSolidarioSinSat, client.profilingData?.[key]);
 
       case 'atrasosDeudas':
       case 'atrasosDeudasBuro':
       case 'atrasosDeudasBuroSinSat':
-        return client.atrasosDeudas ?? client.atrasosDeudasBuro ?? client.atrasosDeudasBuroSinSat ?? client.profilingData?.[key];
+        return firstNonEmpty(client.atrasosDeudas, client.atrasosDeudasBuro, client.atrasosDeudasBuroSinSat, client.profilingData?.[key]);
 
       case 'satCiec':
-        return client.satCiec ?? client.profilingData?.satCiec;
+        return firstNonEmpty(client.satCiec, client.profilingData?.satCiec);
 
       case 'estadosFinancieros':
-        return client.estadosFinancieros ?? client.profilingData?.estadosFinancieros;
+        return firstNonEmpty(client.estadosFinancieros, client.profilingData?.estadosFinancieros);
 
       case 'opinionCumplimiento':
-        return client.opinionCumplimiento ?? client.profilingData?.opinionCumplimiento;
+        return firstNonEmpty(client.opinionCumplimiento, client.profilingData?.opinionCumplimiento);
 
       case 'creditosVigentes':
-        return client.creditosVigentes ?? client.profilingData?.creditosVigentes;
+        return firstNonEmpty(client.creditosVigentes, client.profilingData?.creditosVigentes);
 
       case 'ventasTerminalBancaria':
-        return client.ventasTerminalBancaria ?? client.profilingData?.ventasTerminalBancaria;
+        return firstNonEmpty(client.ventasTerminalBancaria, client.profilingData?.ventasTerminalBancaria);
 
       case 'participacionVentasGobierno':
-        return client.participacionVentasGobierno ?? client.profilingData?.participacionVentasGobierno;
+        return firstNonEmpty(client.participacionVentasGobierno, client.profilingData?.participacionVentasGobierno);
 
       case 'edadCliente':
-        return client.edadCliente ?? client.profilingData?.edadCliente;
+        return firstNonEmpty(client.edadCliente, client.profilingData?.edadCliente);
 
       default:
-        return client[key] ?? client.profilingData?.[key];
+        return firstNonEmpty(client[key], client.profilingData?.[key]);
     }
   };
 
