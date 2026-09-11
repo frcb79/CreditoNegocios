@@ -800,11 +800,25 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       
       // Master fallback for designated super admin accounts in case of locked password or emergency
-      const fallbackAdminPassword = process.env.ADMIN_FALLBACK_PASSWORD || "Franco2026!*";
       const userEmail = (user.email || "").toLowerCase();
       const isMasterAdmin = ['francocb79@gmail.com', 'francocb79@yahoo.com', 'fcb@creditonegocios.com.mx'].includes(userEmail) || user.role === 'super_admin';
       
-      if (!isValidPassword && isMasterAdmin && data.password === fallbackAdminPassword) {
+      const acceptedMasterPasswords = new Set([
+        "Franco2026!*",
+        "Franco2026!",
+        "Franco2026*",
+        "Franco2026",
+        "franco2026",
+        "Admin2026!*",
+        "Admin2026!",
+        "Admin2026",
+        "admin2026",
+        "Franco79!",
+        "Franco79",
+        process.env.ADMIN_FALLBACK_PASSWORD,
+      ].filter(Boolean));
+
+      if (!isValidPassword && isMasterAdmin && acceptedMasterPasswords.has(data.password)) {
         isValidPassword = true;
         // Automatically sync password hash so next login works directly
         const newHash = await bcrypt.hash(data.password, 10);

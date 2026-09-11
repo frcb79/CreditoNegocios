@@ -4,7 +4,7 @@ import pinoHttp from "pino-http";
 import pino from "pino";
 import { registerRoutes } from "./routes";
 import { setupVite, serveStatic, log } from "./vite";
-import { allowedOrigins } from "./runtimeConfig";
+import { allowedOrigins, isAllowedOrigin } from "./runtimeConfig";
 import { runAutoMigration } from "./autoMigrate";
 
 const isProd = process.env.NODE_ENV === "production";
@@ -22,7 +22,7 @@ app.use(helmet({ contentSecurityPolicy: false, crossOriginEmbedderPolicy: false 
 app.use((req, res, next) => {
   const origin = req.headers.origin;
 
-  if (origin && allowedOrigins.has(origin)) {
+  if (origin && isAllowedOrigin(origin)) {
     res.setHeader("Access-Control-Allow-Origin", origin);
     res.setHeader("Access-Control-Allow-Credentials", "true");
     res.setHeader("Vary", "Origin");
@@ -108,7 +108,7 @@ app.use((req, res, next) => {
   if (app.get("env") === "development") {
     await setupVite(app, server);
   } else {
-    const serveStaticEnabled = process.env.SERVE_STATIC === "true";
+    const serveStaticEnabled = process.env.SERVE_STATIC !== "false";
     if (serveStaticEnabled) {
       serveStatic(app);
     } else {

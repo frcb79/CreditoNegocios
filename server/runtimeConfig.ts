@@ -19,6 +19,11 @@ const defaultOrigins = [
   "http://localhost:5173",
   "http://127.0.0.1:3000",
   "http://127.0.0.1:5173",
+  "https://credito-negocios-staging.vercel.app",
+  "https://creditonegocios.com.mx",
+  "https://www.creditonegocios.com.mx",
+  "https://app.creditonegocios.com.mx",
+  "https://creditonegocios-staging.up.railway.app",
 ];
 
 export const frontendBaseUrl = process.env.FRONTEND_BASE_URL
@@ -32,6 +37,15 @@ export const allowedOrigins = new Set(
     ...(frontendBaseUrl ? [frontendBaseUrl] : []),
   ].filter(Boolean),
 );
+
+export function isAllowedOrigin(origin?: string): boolean {
+  if (!origin) return true;
+  const norm = normalizeOrigin(origin);
+  if (allowedOrigins.has(norm)) return true;
+  if (norm.endsWith(".vercel.app")) return true;
+  if (norm.includes("creditonegocios")) return true;
+  return false;
+}
 
 export const replitAuthEnabled = Boolean(
   process.env.REPLIT_DOMAINS && process.env.REPL_ID,
