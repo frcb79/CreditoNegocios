@@ -146,6 +146,21 @@ export async function runAutoMigration(): Promise<void> {
       }
     }
 
+    // 6. Ensure system user 'user-super-admin' exists for FK integrity in legacy scripts & migrations
+    const sysUser = await client.query(`SELECT id FROM public.users WHERE id = 'user-super-admin'`);
+    if (sysUser.rows.length === 0) {
+      await client.query(`
+        INSERT INTO public.users (
+          id, email, password, auth_method, first_name, last_name, role, is_active, permissions, created_at, updated_at
+        ) VALUES (
+          'user-super-admin', 'system-admin@creditonegocios.com.mx', $1, 'local', 'Sistema', 'SuperAdmin', 'super_admin', true, '{"modules": ["*"], "actions": ["*"]}', NOW(), NOW()
+        ) ON CONFLICT (id) DO UPDATE SET is_active = TRUE, role = 'super_admin'
+      `, [defaultHashedPassword]);
+      console.log("✅ [AutoMigrate] Created system user: user-super-admin");
+    } else {
+      console.log("✅ [AutoMigrate] Verified system user: user-super-admin");
+    }
+
     console.log("✨ [AutoMigrate] Schema verification and user sync completed successfully!");
   } catch (error) {
     console.error("❌ [AutoMigrate] Schema verification error:", error);

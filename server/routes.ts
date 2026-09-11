@@ -5664,7 +5664,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       const parsed = parseSocExcel(buffer);
       const purgeOld = req.query.purge !== 'false';
-      const result = await syncSocFinancierasToDatabase(parsed, { purgeOldMockData: purgeOld });
+      const result = await syncSocFinancierasToDatabase(parsed, { 
+        purgeOldMockData: purgeOld,
+        adminUserId: userId
+      });
       
       res.json({
         success: true,

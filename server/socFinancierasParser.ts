@@ -354,7 +354,7 @@ export const UNIFIED_PRODUCT_TEMPLATES = [
  */
 export async function syncSocFinancierasToDatabase(
   parsedInstitutions: SocInstitutionParsed[],
-  options: { purgeOldMockData?: boolean } = {}
+  options: { purgeOldMockData?: boolean; adminUserId?: string } = {}
 ): Promise<{
   createdCount: number;
   updatedCount: number;
@@ -367,6 +367,48 @@ export async function syncSocFinancierasToDatabase(
   let createdCount = 0;
   let updatedCount = 0;
   let totalProductsCount = 0;
+
+  // Resolve a valid user ID that exists in PostgreSQL users table for foreign key constraints
+  let effectiveUserId = options.adminUserId;
+  if (effectiveUserId) {
+    try {
+      const userCheck = await storage.getUser(effectiveUserId);
+      if (!userCheck) {
+        effectiveUserId = undefined;
+      }
+    } catch (_) {
+      effectiveUserId = undefined;
+    }
+  }
+
+  if (!effectiveUserId) {
+    try {
+      const adminUser = (await storage.getUserByEmail('francocb79@gmail.com')) ||
+                        (await storage.getUserByEmail('fcb@creditonegocios.com.mx')) ||
+                        (await storage.getUserByEmail('francocb79@yahoo.com'));
+      if (adminUser?.id) {
+        effectiveUserId = adminUser.id;
+      }
+    } catch (_) {}
+  }
+
+  if (!effectiveUserId) {
+    try {
+      const allUsers = await storage.getAllUsers();
+      const superAdmin = allUsers.find(u => u.role === 'super_admin' || u.role === 'admin');
+      if (superAdmin?.id) {
+        effectiveUserId = superAdmin.id;
+      } else if (allUsers.length > 0) {
+        effectiveUserId = allUsers[0].id;
+      }
+    } catch (_) {}
+  }
+
+  if (!effectiveUserId) {
+    effectiveUserId = 'user-super-admin';
+  }
+
+  console.log(`[SOC Sync] Sincronizando con usuario creador: ${effectiveUserId}`);
 
   // 2. Ensure the 6 Unified Product Templates exist in product_templates
   const existingTemplates = await storage.getProductTemplates();
@@ -384,7 +426,7 @@ export async function syncSocFinancierasToDatabase(
         category: unified.category,
         targetProfiles: unified.targetProfiles,
         isActive: true,
-        createdBy: "user-super-admin",
+        createdBy: effectiveUserId,
       });
       console.log(`[Product Templates] Plantilla unificada creada: ${unified.name}`);
     }
@@ -467,6 +509,8 @@ export async function syncSocFinancierasToDatabase(
         requirements: parsed.requirements,
         acceptedProfiles: parsed.acceptedProfiles,
         isActive: true,
+        createdBy: effectiveUserId,
+        createdByAdmin: true,
       });
       instId = newInst.id;
       createdCount++;
@@ -494,11 +538,11 @@ export async function syncSocFinancierasToDatabase(
                 interestRate: p.tasaInteres,
                 openingCommission: p.comisionApertura,
               },
-              createdBy: "user-super-admin",
+              createdBy: effectiveUserId,
             });
           }
         } catch (err) {
-          // Continue if already mapped
+          console.warn(`[SOC Sync] Aviso al vincular producto ${parsed.name} - ${p.productType}:`, err);
         }
       }
     }
