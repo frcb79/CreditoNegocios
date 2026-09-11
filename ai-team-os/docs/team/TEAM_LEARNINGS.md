@@ -21,6 +21,9 @@ Se actualiza via sync desde cada proyecto al master.
 - **En desarrollo de Landings:** Considerar SIEMPRE desde el día 1 la mejor tecnología para maximizar rendimiento de ADS, SEO y SEM. (Ej: SSR/SSG en vez de SPAs pesadas).
 - **Lógica condicional imperativa en JSX:** Todo bloque JSX que utilice `const`, `let`, `if/return` para renderizado dinámico debe estar obligatoriamente envuelto en un IIFE `{(() => { ... })()}`. esbuild y los minificadores de Vercel/Vite no admiten declaraciones sueltas dentro de árboles JSX y rompen el build con error de sintaxis críptico (`Unexpected "const"`).
 - **Multi-Dispersión en Fintech:** Los flujos de crédito deben soportar que el requerimiento de un cliente se satisfaga en partes por múltiples instituciones (préstamos sindicados o paralelos). La entidad padre no debe cerrarse prematuramente mientras existan propuestas hermanas en evaluación o aceptación.
+- **Sincronización Estricta Drizzle ORM vs PostgreSQL:** Todo campo nuevo declarado en un `pgTable` de `schema.ts` (ej. `referral_code`) DEBE tener de inmediato su sentencia `ADD COLUMN IF NOT EXISTS` en `autoMigrate.ts`. Drizzle siempre genera `SELECT` con todas las columnas del modelo; si una sola columna falta en la tabla física de Postgres, PostgreSQL cancela la consulta con `error: column does not exist`, retornando `undefined` silencioso en repositorios y bloqueando por completo el Login y Forgot-Password.
+- **Capa de Resiliencia en Autenticación con SQL Nativo:** Las funciones críticas de lectura de usuario (`getUser`, `getUserByEmail`) deben tener siempre un bloque de respaldo en SQL directo (`pool.query('SELECT * FROM users WHERE LOWER(email) = ...')`). De esta forma, cualquier discrepancia futura de esquema en el ORM no dejará al CEO ni a los clientes fuera del sistema.
+- **Builds en Railway / Nixpacks con `NODE_ENV=production`:** Cuando Railway inyecta `NODE_ENV=production`, `npm ci` omite las `devDependencies`. Toda herramienta requerida para el build (`vite`, `@vitejs/plugin-react`, `esbuild`, `typescript`, `tailwindcss`) debe estar en `dependencies` de `package.json` o forzarse vía `nixpacks.toml` con `NPM_CONFIG_PRODUCTION="false"` y `npm ci --include=dev`.
 
 ## ERRORES FRECUENTES — NO REPETIR
 - Empezar proyectos desde cero sin reutilizar aprendizajes previos.
@@ -32,6 +35,9 @@ Se actualiza via sync desde cada proyecto al master.
 - **No tener rol de monitoreo continuo** — los bugs en producción se descubren cuando el cliente se queja.
 - **Declaraciones `const` sin encapsular en JSX:** Olvidar la apertura `{(() => {` al hacer refactor de badges o condicionales dentro de un componente React.
 - **Asumir que un crédito siempre tiene un solo desembolso:** Limitar la lógica a un único ganador rompe la experiencia comercial cuando el cliente requiere montos mayores y los fondea con varias financieras.
+- **Agregar columnas a `schema.ts` sin sincronizar `autoMigrate.ts`:** Provoca que Drizzle falle en todas las queries que lean esa tabla al no encontrar la columna en la BD viva de PostgreSQL.
+- **Sobrescribir roles RBAC masivamente en scripts de migración:** Modificar roles a ciegas en un bucle (`SET role = 'super_admin'`) destruye la matriz de pruebas de la plataforma. Cada cuenta debe mantener su rol explícito (`super_admin`, `master_broker`, `broker`).
+- **Depender al 100% de la entrega de correo sin fallback en UI:** Si el proveedor de correo (Resend) sufre latencia o restricciones de DNS, el usuario queda incomunicado. Exponer el enlace de reseteo directo en el log y en la interfaz para cuentas de prueba garantiza continuidad operativa.
 
 ## PATRONES QUE FUNCIONAN MUY BIEN
 - Framework comun de roles + protocolos + memoria de proyecto.
@@ -42,3 +48,5 @@ Se actualiza via sync desde cada proyecto al master.
 - **Handoffs explícitos con formato** — reduce ambigüedad y pérdida de contexto entre roles.
 - **ERROR_LOG estructurado** — con IDs, severidad, área, estado y causa raíz para trazabilidad.
 - **Vistas segmentadas 3-en-1 para administración:** Dividir redes complejas en tabs claras (Master Brokers con acordeón, Independientes, Red Directa) para evitar tablas sobrecargadas y mantener control granular.
+- **Fallback SQL nativo en autenticación:** Asegurar que `getUser` y `getUserByEmail` consulten la base de datos con SQL crudo si el ORM falla, blindando el acceso al sistema.
+- **Aislamiento de pasos en auto-migración:** Envolver cada sentencia `ALTER TABLE` o actualización de usuario en bloques independientes `try/catch` para que una advertencia secundaria nunca aborte el proceso general.
