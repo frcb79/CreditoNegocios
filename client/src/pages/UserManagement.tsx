@@ -146,6 +146,23 @@ export const ROLE_PRESETS = [
     modules: ['dashboard', 'clientes', 'creditos', 'documentos', 'sistema_productos'],
     actions: ['view', 'edit', 'submit_proposals'],
   },
+  {
+    name: "Organización (Líder)",
+    badge: "Empresa / Red",
+    role: "master_broker",
+    title: "Líder de Organización",
+    modules: ['dashboard', 'clientes', 'creditos', 'comisiones', 'red_brokers', 'documentos', 'reportes', 'usuarios'],
+    actions: ['view', 'edit', 'submit_proposals', 'manage_commissions', 'manage_users', 'export_reports'],
+    adminOnly: true,
+  },
+  {
+    name: "Bróker Independiente",
+    badge: "Independiente",
+    role: "broker",
+    title: "Bróker Independiente",
+    modules: ['dashboard', 'clientes', 'creditos', 'documentos', 'sistema_productos', 'comisiones'],
+    actions: ['view', 'edit', 'submit_proposals'],
+  },
 ];
 
 const userFormSchema = z.object({
@@ -155,6 +172,7 @@ const userFormSchema = z.object({
   role: z.enum(["broker", "master_broker", "admin", "super_admin"]),
   customRoleTitle: z.string().optional(),
   masterBrokerId: z.string().optional(),
+  referralCode: z.string().optional(),
   modules: z.array(z.string()).default([]),
   actions: z.array(z.string()).default([]),
 });
@@ -696,6 +714,12 @@ export default function UserManagement() {
                                 <span className="text-xs font-medium text-primary flex items-center gap-1 bg-primary/5 px-2 py-0.5 rounded border border-primary/20">
                                   <Sparkles className="w-2.5 h-2.5" />
                                   {u.customRoleTitle}
+                                </span>
+                              )}
+                              {(u as any).referralCode && (
+                                <span className="text-xs font-mono font-medium text-amber-700 dark:text-amber-300 flex items-center gap-1 bg-amber-50 dark:bg-amber-950/40 px-2 py-0.5 rounded border border-amber-300/40" title="Clave de Franquicia para afiliar brokers">
+                                  <Key className="w-2.5 h-2.5" />
+                                  Clave: {(u as any).referralCode}
                                 </span>
                               )}
                             </div>

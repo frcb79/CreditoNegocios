@@ -250,6 +250,8 @@ export class DbStorage implements IStorage {
     lastName: string;
     authMethod: string;
     role: string;
+    masterBrokerId?: string;
+    referralCode?: string;
   }): Promise<User> {
     try {
       const [created] = await db
@@ -261,6 +263,8 @@ export class DbStorage implements IStorage {
           lastName: userData.lastName,
           authMethod: userData.authMethod,
           role: userData.role,
+          masterBrokerId: userData.masterBrokerId || null,
+          referralCode: userData.referralCode || null,
           createdAt: new Date(),
           updatedAt: new Date(),
         })

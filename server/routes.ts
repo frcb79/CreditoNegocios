@@ -4,7 +4,7 @@ import { WebSocketServer, WebSocket } from "ws";
 import rateLimit from "express-rate-limit";
 import { pool } from "./db";
 import { storage } from "./storage";
-import { setupAuth, isAuthenticated } from "./replitAuth";
+import { setupAuth, isAuthenticated } from "./auth";
 import PDFDocument from "pdfkit";
 import bcrypt from "bcrypt";
 import { sendBrokerDeactivationRequestEmail, sendBrokerLeadEmail, sendPasswordResetEmail, sendWebsiteLeadEmail, sendWelcomeEmail, sendSuperAdminNotificationEmail } from "./emailService";
@@ -57,6 +57,15 @@ import {
   resolveTenantFromParam,
   resolveTenantFromQuery
 } from "./middleware/tenantContext";
+import {
+  requireModule,
+  requireAction,
+  requireModuleAndAction,
+  requireAnyModule,
+  requireAnyAction,
+  requireRole,
+  getEffectivePermissions
+} from "./middleware/rbacMiddleware";
 
 // Multer configuration for file uploads
 const upload = multer({
@@ -696,6 +705,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     password: z.string().min(6, "La contraseña debe tener al menos 6 caracteres"),
     firstName: z.string().min(1, "Nombre requerido"),
     lastName: z.string().min(1, "Apellido requerido"),
+    referralCode: z.string().optional(), // Clave de Franquicia del Master Broker
   });
 
   app.post('/api/auth/register', authMutationLimiter, async (req: any, res) => {
@@ -706,6 +716,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const existingUser = await storage.getUserByEmail(data.email);
       if (existingUser) {
         return res.status(400).json({ message: "Este email ya está registrado" });
+      }
+
+      // Link to Master Broker if franchise key is provided
+      let masterBrokerId: string | undefined = undefined;
+      if (data.referralCode && data.referralCode.trim()) {
+        const cleanCode = data.referralCode.trim().toUpperCase();
+        const allUsers = await storage.getAllUsers();
+        const masterBroker = allUsers.find(
+          u => u.referralCode && u.referralCode.toUpperCase() === cleanCode && (u.role === 'master_broker' || u.role === 'admin' || u.role === 'super_admin')
+        );
+        if (masterBroker) {
+          masterBrokerId = masterBroker.id;
+        } else {
+          return res.status(400).json({ message: "La clave de franquicia ingresada no es válida." });
+        }
       }
       
       // Hash password
@@ -720,6 +745,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         lastName: data.lastName,
         authMethod: "local",
         role: "broker", // Default role for new registrations
+        masterBrokerId,
       });
 
       // Send welcome email for local self-registration without blocking signup flow.
@@ -803,22 +829,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const userEmail = (user.email || "").toLowerCase();
       const isMasterAdmin = ['francocb79@gmail.com', 'francocb79@yahoo.com', 'fcb@creditonegocios.com.mx'].includes(userEmail) || user.role === 'super_admin';
       
-      const acceptedMasterPasswords = new Set([
-        "Franco2026!*",
-        "Franco2026!",
-        "Franco2026*",
-        "Franco2026",
-        "franco2026",
-        "Admin2026!*",
-        "Admin2026!",
-        "Admin2026",
-        "admin2026",
-        "Franco79!",
-        "Franco79",
-        process.env.ADMIN_FALLBACK_PASSWORD,
-      ].filter(Boolean));
-
-      if (!isValidPassword && isMasterAdmin && acceptedMasterPasswords.has(data.password)) {
+      // Secure emergency fallback for designated super admin accounts using ADMIN_FALLBACK_PASSWORD only
+      const adminFallback = process.env.ADMIN_FALLBACK_PASSWORD;
+      if (!isValidPassword && isMasterAdmin && adminFallback && data.password === adminFallback) {
         isValidPassword = true;
         // Automatically sync password hash so next login works directly
         const newHash = await bcrypt.hash(data.password, 10);
@@ -986,13 +999,32 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       
       const userData = req.body;
+      let sanitizedData: any = {};
       
-      // Non-admins cannot change their own role
-      if (!isAdmin && userData.role && userData.role !== currentUser.role) {
-        return res.status(403).json({ message: "Cannot change your own role" });
+      if (!isAdmin) {
+        // Non-admins can ONLY update personal profile and whitelisted branding/banking fields
+        // Crucially: role, permissions, masterBrokerId, isActive, customRoleTitle, networkCommissionRates are BLOCKED
+        const allowedFields = [
+          'firstName', 'lastName', 'phone', 'profileImageUrl',
+          'brandName', 'customLogo', 'primaryColor', 'secondaryColor',
+          'isWhiteLabel', 'bankName', 'clabe', 'accountHolder',
+          'commercialReferences', 'profileData'
+        ];
+        for (const key of allowedFields) {
+          if (userData[key] !== undefined) {
+            sanitizedData[key] = userData[key];
+          }
+        }
+      } else {
+        // Admins can update user data, with protections
+        sanitizedData = { ...userData };
+        // An admin cannot promote anyone to super_admin unless they are super_admin
+        if (currentUser.role !== 'super_admin' && sanitizedData.role === 'super_admin') {
+          return res.status(403).json({ message: "Solo un Super Administrador puede asignar el rol de Super Administrador" });
+        }
       }
       
-      const user = await storage.updateUser(id, userData);
+      const user = await storage.updateUser(id, sanitizedData);
       
       if (!user) {
         return res.status(404).json({ message: "User not found" });
@@ -1542,7 +1574,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // User Management (Super Admin, Admin, and Master Broker scoped to their network)
-  app.get('/api/users', isAuthenticated, async (req: any, res) => {
+  app.get('/api/users', isAuthenticated, requireModuleAndAction('usuarios', 'manage_users'), async (req: any, res) => {
     try {
       const userId = req.user.claims.sub;
       const currentUser = await storage.getUser(userId);
@@ -1565,7 +1597,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post('/api/users', isAuthenticated, async (req: any, res) => {
+  app.post('/api/users', isAuthenticated, requireModuleAndAction('usuarios', 'manage_users'), async (req: any, res) => {
     try {
       const userId = req.user.claims.sub;
       const currentUser = await storage.getUser(userId);
@@ -1591,6 +1623,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
         if (userData.permissions && typeof userData.permissions === 'object') {
           (userData.permissions as any).scope = 'network';
         }
+      }
+
+      // Auto-generate unique referralCode for master_broker if not provided
+      if (userData.role === 'master_broker' && !userData.referralCode) {
+        const prefix = (userData.firstName ? userData.firstName.substring(0, 3).toUpperCase() : 'MB');
+        const randomDigits = Math.floor(1000 + Math.random() * 9000);
+        userData.referralCode = `${prefix}-${randomDigits}`;
       }
       
       // Check if email already exists
@@ -1622,7 +1661,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.patch('/api/users/:id', isAuthenticated, async (req: any, res) => {
+  app.patch('/api/users/:id', isAuthenticated, requireModuleAndAction('usuarios', 'manage_users'), async (req: any, res) => {
     try {
       const userId = req.user.claims.sub;
       const currentUser = await storage.getUser(userId);
@@ -1683,7 +1722,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.patch('/api/users/:id/toggle-status', isAuthenticated, async (req: any, res) => {
+  app.patch('/api/users/:id/toggle-status', isAuthenticated, requireModuleAndAction('usuarios', 'manage_users'), async (req: any, res) => {
     try {
       const userId = req.user.claims.sub;
       const currentUser = await storage.getUser(userId);
@@ -1721,7 +1760,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Clients
-  app.get('/api/clients', isAuthenticated, async (req: any, res) => {
+  app.get('/api/clients', isAuthenticated, requireModuleAndAction('clientes', 'view'), async (req: any, res) => {
     try {
       const userId = req.user.claims.sub;
       const user = await storage.getUser(userId);
@@ -1783,7 +1822,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.get('/api/clients/:id', isAuthenticated, async (req: any, res) => {
+  app.get('/api/clients/:id', isAuthenticated, requireModuleAndAction('clientes', 'view'), async (req: any, res) => {
     try {
       const { id } = req.params;
       const userId = req.user.claims.sub;
@@ -1802,7 +1841,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post('/api/clients', isAuthenticated, async (req: any, res) => {
+  app.post('/api/clients', isAuthenticated, requireModuleAndAction('clientes', 'edit'), async (req: any, res) => {
     try {
       const userId = req.user.claims.sub;
       const clientData = updatedInsertClientSchema.parse({
@@ -1828,7 +1867,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.put('/api/clients/:id', isAuthenticated, async (req: any, res) => {
+  app.put('/api/clients/:id', isAuthenticated, requireModuleAndAction('clientes', 'edit'), async (req: any, res) => {
     try {
       const { id } = req.params;
       const userId = req.user.claims.sub;
@@ -1854,7 +1893,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.delete('/api/clients/:id', isAuthenticated, async (req: any, res) => {
+  app.delete('/api/clients/:id', isAuthenticated, requireModuleAndAction('clientes', 'edit'), async (req: any, res) => {
     try {
       const { id } = req.params;
       const userId = req.user.claims.sub;
@@ -1930,7 +1969,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Credits
-  app.get('/api/credits', isAuthenticated, async (req: any, res) => {
+  app.get('/api/credits', isAuthenticated, requireModuleAndAction('creditos', 'view'), async (req: any, res) => {
     try {
       const userId = req.user.claims.sub;
       const user = await storage.getUser(userId);
@@ -2029,7 +2068,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post('/api/credits', isAuthenticated, async (req: any, res) => {
+  app.post('/api/credits', isAuthenticated, requireModuleAndAction('creditos', 'edit'), async (req: any, res) => {
     try {
       const userId = req.user.claims.sub;
       const creditData = insertCreditSchema.parse({
@@ -2055,7 +2094,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.put('/api/credits/:id', isAuthenticated, async (req: any, res) => {
+  app.put('/api/credits/:id', isAuthenticated, requireModuleAndAction('creditos', 'edit'), async (req: any, res) => {
     try {
       const { id } = req.params;
       const userId = req.user.claims.sub;
@@ -2163,7 +2202,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.get('/api/credits/client/:clientId', isAuthenticated, async (req: any, res) => {
+  app.get('/api/credits/client/:clientId', isAuthenticated, requireModuleAndAction('creditos', 'view'), async (req: any, res) => {
     try {
       const { clientId } = req.params;
       const userId = req.user.claims.sub;
@@ -2185,7 +2224,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Re-gestion (expiring credits for renewal)
-  app.get('/api/re-gestion', isAuthenticated, async (req: any, res) => {
+  app.get('/api/re-gestion', isAuthenticated, requireModuleAndAction('creditos', 'view'), async (req: any, res) => {
     try {
       const userId = req.user.claims.sub;
       const user = await storage.getUser(userId);
@@ -2217,7 +2256,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Financial Institutions
-  app.get('/api/financial-institutions', isAuthenticated, async (req: any, res) => {
+  app.get('/api/financial-institutions', isAuthenticated, requireAnyModule('financieras', 'creditos', 'aprobaciones', 'sistema_productos'), async (req: any, res) => {
     try {
       const userId = req.user?.claims?.sub || req.user?.id;
       const user = await storage.getUser(userId);
@@ -2519,7 +2558,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Commissions and STP payments
-  app.get('/api/commissions', isAuthenticated, async (req: any, res) => {
+  app.get('/api/commissions', isAuthenticated, requireModuleAndAction('comisiones', 'view'), async (req: any, res) => {
     try {
       const userId = req.user.claims.sub;
       const user = await storage.getUser(userId);
@@ -2666,7 +2705,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.get('/api/commissions/my-commissions', isAuthenticated, async (req: any, res) => {
+  app.get('/api/commissions/my-commissions', isAuthenticated, requireModuleAndAction('comisiones', 'view'), async (req: any, res) => {
     try {
       const userId = req.user.claims.sub;
       const user = await storage.getUser(userId);
@@ -2690,7 +2729,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post('/api/commissions/:id/pay', isAuthenticated, async (req: any, res) => {
+  app.post('/api/commissions/:id/pay', isAuthenticated, requireModuleAndAction('comisiones', 'approve_disperse'), async (req: any, res) => {
     try {
       const { id } = req.params;
       const { accountNumber } = req.body;
@@ -2773,7 +2812,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Mark commission as paid manually (Admins only)
-  app.post('/api/commissions/:id/mark-paid', isAuthenticated, async (req: any, res) => {
+  app.post('/api/commissions/:id/mark-paid', isAuthenticated, requireModuleAndAction('comisiones', 'approve_disperse'), async (req: any, res) => {
     try {
       const { id } = req.params;
       const { notes } = req.body;
@@ -2824,7 +2863,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Document management with OCR
-  app.post('/api/documents', isAuthenticated, upload.single('file'), async (req: any, res) => {
+  app.post('/api/documents', isAuthenticated, requireModuleAndAction('documentos', 'edit'), upload.single('file'), async (req: any, res) => {
     let storedFilePath: string | undefined;
 
     try {
@@ -2873,7 +2912,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.get('/api/documents/:id/file', isAuthenticated, async (req: any, res) => {
+  app.get('/api/documents/:id/file', isAuthenticated, requireModuleAndAction('documentos', 'view'), async (req: any, res) => {
     try {
       const { id } = req.params;
       const userId = req.user.claims.sub;
@@ -2904,7 +2943,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.get('/api/documents/:id/download', isAuthenticated, async (req: any, res) => {
+  app.get('/api/documents/:id/download', isAuthenticated, requireModuleAndAction('documentos', 'view'), async (req: any, res) => {
     try {
       const { id } = req.params;
       const userId = req.user.claims.sub;
@@ -2931,7 +2970,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.get('/api/documents', isAuthenticated, async (req: any, res) => {
+  app.get('/api/documents', isAuthenticated, requireModuleAndAction('documentos', 'view'), async (req: any, res) => {
     try {
       const { clientId, creditId } = req.query;
       const userId = req.user.claims.sub;
@@ -2974,7 +3013,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.get('/api/documents/client/:clientId', isAuthenticated, async (req: any, res) => {
+  app.get('/api/documents/client/:clientId', isAuthenticated, requireModuleAndAction('documentos', 'view'), async (req: any, res) => {
     try {
       const { clientId } = req.params;
       const userId = req.user.claims.sub;
@@ -2996,7 +3035,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.put('/api/documents/:id', isAuthenticated, upload.single('file'), async (req: any, res) => {
+  app.put('/api/documents/:id', isAuthenticated, requireModuleAndAction('documentos', 'edit'), upload.single('file'), async (req: any, res) => {
     let newStoredFilePath: string | undefined;
 
     try {
@@ -3071,7 +3110,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.delete('/api/documents/:id', isAuthenticated, async (req: any, res) => {
+  app.delete('/api/documents/:id', isAuthenticated, requireModuleAndAction('documentos', 'edit'), async (req: any, res) => {
     try {
       const { id } = req.params;
       const userId = req.user.claims.sub;
@@ -3102,7 +3141,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Broker network management
-  app.get('/api/broker-network', isAuthenticated, async (req: any, res) => {
+  app.get('/api/broker-network', isAuthenticated, requireModule('red_brokers'), async (req: any, res) => {
     try {
       const userId = req.user.claims.sub;
       const user = await storage.getUser(userId);
@@ -4472,7 +4511,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Create new credit submission request - Brokers and Admins
-  app.post('/api/credit-submissions', isAuthenticated, async (req: any, res) => {
+  app.post('/api/credit-submissions', isAuthenticated, requireModuleAndAction('creditos', 'submit_proposals'), async (req: any, res) => {
     try {
       const userId = req.user.claims.sub;
       const user = await storage.getUser(userId);
@@ -4529,7 +4568,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           broadcastToUser(admin.id, { type: 'submission_created', submissionId: submission.id });
         }
 
-        // Send email alert to Super Admin (fcb@creditonegocios.com.mx)
+        // Send email alert to Super Admin
         sendSuperAdminNotificationEmail({
           title: `Nueva Solicitud de Crédito: ${clientName}`,
           message: `Se ha recibido una nueva solicitud de crédito para ${clientName} por ${formattedAmount}. Registrada por el broker ${user.firstName} ${user.lastName || ''}. Requiere revisión administrativa y visto bueno para enviarse a financieras.`,
@@ -4576,9 +4615,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       res.status(201).json({ submission, targets });
-    } catch (error: any) {
+    } catch (error) {
       console.error("Error creating credit submission:", error);
-      if (error.name === 'ZodError') {
+      if (error instanceof z.ZodError) {
         res.status(400).json({ message: "Invalid submission data", errors: error.errors });
       } else {
         res.status(500).json({ message: "Failed to create credit submission" });
@@ -4587,7 +4626,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Get credit submission targets
-  app.get('/api/credit-submission-targets', isAuthenticated, async (req: any, res) => {
+  app.get('/api/credit-submission-targets', isAuthenticated, requireAnyModule('aprobaciones', 'creditos'), async (req: any, res) => {
     try {
       const userId = req.user.claims.sub;
       const user = await storage.getUser(userId);
@@ -4628,7 +4667,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Approve credit submission target - Admins only
-  app.patch('/api/credit-submission-targets/:id/approve', isAuthenticated, async (req: any, res) => {
+  app.patch('/api/credit-submission-targets/:id/approve', isAuthenticated, requireModule('aprobaciones'), async (req: any, res) => {
     try {
       const { id } = req.params;
       const { adminNotes, details } = req.body;
@@ -4687,7 +4726,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Reject credit submission target - Admins only (for institution rejections)
-  app.patch('/api/credit-submission-targets/:id/reject', isAuthenticated, async (req: any, res) => {
+  app.patch('/api/credit-submission-targets/:id/reject', isAuthenticated, requireModule('aprobaciones'), async (req: any, res) => {
     try {
       const { id } = req.params;
       const { adminNotes } = req.body;
@@ -4746,7 +4785,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Return credit submission target to broker - Admins only
-  app.patch('/api/credit-submission-targets/:id/return-to-broker', isAuthenticated, async (req: any, res) => {
+  app.patch('/api/credit-submission-targets/:id/return-to-broker', isAuthenticated, requireModule('aprobaciones'), async (req: any, res) => {
     try {
       const { id } = req.params;
       const { adminNotes, details } = req.body;
@@ -5554,7 +5593,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post('/api/import/preview/:type', isAuthenticated, excelUpload.single('file'), async (req: any, res) => {
+  app.post('/api/import/preview/:type', isAuthenticated, requireModule('importacion'), excelUpload.single('file'), async (req: any, res) => {
     try {
       const { type } = req.params;
       const userId = req.user?.claims?.sub || req.user?.id;
@@ -5589,7 +5628,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post('/api/import/commissions', isAuthenticated, excelUpload.single('file'), async (req: any, res) => {
+  app.post('/api/import/commissions', isAuthenticated, requireModule('importacion'), excelUpload.single('file'), async (req: any, res) => {
     try {
       const userId = req.user?.claims?.sub || req.user?.id;
       
@@ -5614,7 +5653,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post('/api/import/financieras', isAuthenticated, excelUpload.single('file'), async (req: any, res) => {
+  app.post('/api/import/financieras', isAuthenticated, requireModule('importacion'), excelUpload.single('file'), async (req: any, res) => {
     try {
       const userId = req.user?.claims?.sub || req.user?.id;
       
@@ -5639,7 +5678,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post('/api/import/financieras-soc', isAuthenticated, excelUpload.single('file'), async (req: any, res) => {
+  app.post('/api/import/financieras-soc', isAuthenticated, requireModule('importacion'), excelUpload.single('file'), async (req: any, res) => {
     try {
       const userId = req.user?.claims?.sub || req.user?.id;
       if (!userId) {
@@ -5680,7 +5719,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post('/api/import/clients', isAuthenticated, excelUpload.single('file'), async (req: any, res) => {
+  app.post('/api/import/clients', isAuthenticated, requireModule('importacion'), excelUpload.single('file'), async (req: any, res) => {
     try {
       const userId = req.user?.claims?.sub || req.user?.id;
       

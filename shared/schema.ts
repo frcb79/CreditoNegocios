@@ -26,12 +26,12 @@ export const sessions = pgTable(
   (table) => [index("IDX_session_expire").on(table.expire)],
 );
 
-// User storage table (mandatory for Replit Auth)
+// User storage table
 export const users = pgTable("users", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   email: varchar("email").unique(),
-  password: varchar("password"), // Hashed password for local auth (null for Replit Auth users)
-  authMethod: varchar("auth_method").default("replit"), // "replit" or "local"
+  password: varchar("password"), // Hashed password for local auth
+  authMethod: varchar("auth_method").default("local"), // "local"
   resetToken: varchar("reset_token"), // Token for password reset
   resetTokenExpiry: timestamp("reset_token_expiry"), // When the reset token expires
   firstName: varchar("first_name"),
@@ -39,6 +39,7 @@ export const users = pgTable("users", {
   profileImageUrl: varchar("profile_image_url"),
   role: varchar("role").notNull().default("broker"), // "super_admin", "admin", "master_broker", "broker"
   masterBrokerId: varchar("master_broker_id"),
+  referralCode: varchar("referral_code").unique(), // Clave única de franquicia para afiliar brokers a su red
   // White label fields for master brokers
   customLogo: varchar("custom_logo"), // URL to custom logo
   brandName: varchar("brand_name"), // Custom brand name

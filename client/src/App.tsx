@@ -33,6 +33,7 @@ import UserManagement from "@/pages/UserManagement";
 import DesignPreview from "@/pages/DesignPreview";
 import BulkImport from "@/pages/BulkImport";
 import Notifications from "@/pages/Notifications";
+import { ProtectedRoute } from "@/components/ProtectedRoute";
 
 function Router() {
   const { isAuthenticated, isLoading } = useAuth();
@@ -74,25 +75,25 @@ function Router() {
         <Route path="/" component={Landing} />
       ) : (
         <>
-          <Route path="/" component={Dashboard} />
-          <Route path="/clientes" component={Clients} />
-          <Route path="/clientes/:clientId" component={ClientDetailPage} />
-          <Route path="/creditos" component={Credits} />
-          <Route path="/re-gestion" component={ReGestion} />
-          <Route path="/red-brokers" component={BrokerNetwork} />
-          <Route path="/comisiones" component={Commissions} />
-          <Route path="/financieras/:id" component={FinancieraDetail} />
-          <Route path="/financieras" component={Financieras} />
-          <Route path="/documentos" component={Documents} />
-          <Route path="/reportes" component={Reports} />
-          <Route path="/configuracion" component={Settings} />
-          <Route path="/sistema-productos" component={ProductSystem} />
-          <Route path="/solicitudes-pendientes" component={PendingRequests} />
-          <Route path="/mis-solicitudes" component={MySubmissions} />
-          <Route path="/comparar-propuestas/:requestId" component={ProposalComparison} />
-          <Route path="/admin/usuarios" component={UserManagement} />
-          <Route path="/notificaciones" component={Notifications} />
-          <Route path="/importacion-masiva" component={BulkImport} />
+          <ProtectedRoute path="/" component={Dashboard} requiredModule="dashboard" />
+          <ProtectedRoute path="/clientes" component={Clients} requiredModule="clientes" />
+          <ProtectedRoute path="/clientes/:clientId" component={ClientDetailPage} requiredModule="clientes" />
+          <ProtectedRoute path="/creditos" component={Credits} requiredModule="creditos" />
+          <ProtectedRoute path="/re-gestion" component={ReGestion} requiredModule="creditos" />
+          <ProtectedRoute path="/red-brokers" component={BrokerNetwork} allowedRoles={['admin', 'super_admin', 'master_broker']} requiredModule="red_brokers" />
+          <ProtectedRoute path="/comisiones" component={Commissions} requiredModule="comisiones" />
+          <ProtectedRoute path="/financieras/:id" component={FinancieraDetail} requiredModule="financieras" />
+          <ProtectedRoute path="/financieras" component={Financieras} requiredModule="financieras" />
+          <ProtectedRoute path="/documentos" component={Documents} requiredModule="documentos" />
+          <ProtectedRoute path="/reportes" component={Reports} allowedRoles={['admin', 'super_admin', 'master_broker']} requiredModule="reportes" />
+          <ProtectedRoute path="/configuracion" component={Settings} />
+          <ProtectedRoute path="/sistema-productos" component={ProductSystem} requiredModule="sistema_productos" />
+          <ProtectedRoute path="/solicitudes-pendientes" component={PendingRequests} allowedRoles={['admin', 'super_admin']} requiredModule="aprobaciones" />
+          <ProtectedRoute path="/mis-solicitudes" component={MySubmissions} requiredModule="creditos" />
+          <ProtectedRoute path="/comparar-propuestas/:requestId" component={ProposalComparison} requiredModule="creditos" />
+          <ProtectedRoute path="/admin/usuarios" component={UserManagement} allowedRoles={['admin', 'super_admin', 'master_broker']} requiredModule="usuarios" />
+          <ProtectedRoute path="/notificaciones" component={Notifications} />
+          <ProtectedRoute path="/importacion-masiva" component={BulkImport} allowedRoles={['admin', 'super_admin']} requiredModule="importacion" />
         </>
       )}
       <Route component={NotFound} />

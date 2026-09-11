@@ -70,7 +70,7 @@ export interface IStorage {
   getUserByEmail(email: string): Promise<User | undefined>;
   getAllUsers(): Promise<User[]>;
   createUser(userData: UpsertUser): Promise<User>;
-  createLocalUser(userData: { email: string; password: string; firstName: string; lastName: string; authMethod: string; role: string }): Promise<User>;
+  createLocalUser(userData: { email: string; password: string; firstName: string; lastName: string; authMethod: string; role: string; masterBrokerId?: string; referralCode?: string }): Promise<User>;
   upsertUser(user: UpsertUser & { id: string }, replitId?: string): Promise<User>;
   updateUser(id: string, userData: Partial<UpsertUser>): Promise<User | undefined>;
   getUsersByMasterBroker(masterBrokerId: string): Promise<User[]>;
@@ -303,7 +303,7 @@ export class MemStorage implements IStorage {
       id: data.id,
       email: data.email,
       password: data.password ?? null,
-      authMethod: data.authMethod ?? "replit",
+      authMethod: data.authMethod ?? "local",
       resetToken: data.resetToken ?? null,
       resetTokenExpiry: data.resetTokenExpiry ?? null,
       firstName: data.firstName,
@@ -1215,7 +1215,7 @@ export class MemStorage implements IStorage {
     return user;
   }
 
-  async createLocalUser(userData: { email: string; password: string; firstName: string; lastName: string; authMethod: string; role: string }): Promise<User> {
+  async createLocalUser(userData: { email: string; password: string; firstName: string; lastName: string; authMethod: string; role: string; masterBrokerId?: string; referralCode?: string }): Promise<User> {
     const id = randomUUID();
     const user: User = {
       id,
@@ -1226,7 +1226,8 @@ export class MemStorage implements IStorage {
       lastName: userData.lastName,
       role: userData.role,
       profileImageUrl: null,
-      masterBrokerId: null,
+      masterBrokerId: userData.masterBrokerId || null,
+      referralCode: userData.referralCode || null,
       customLogo: null,
       brandName: null,
       primaryColor: null,

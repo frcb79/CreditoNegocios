@@ -5,7 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Loader2, Mail, Lock, User, ArrowLeft } from "lucide-react";
+import { Loader2, Mail, Lock, User, ArrowLeft, Key } from "lucide-react";
 
 export default function Landing() {
   const { toast } = useToast();
@@ -24,6 +24,7 @@ export default function Landing() {
   const [registerPassword, setRegisterPassword] = useState("");
   const [registerFirstName, setRegisterFirstName] = useState("");
   const [registerLastName, setRegisterLastName] = useState("");
+  const [registerReferralCode, setRegisterReferralCode] = useState("");
 
   const handleLocalLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -73,6 +74,7 @@ export default function Landing() {
           password: registerPassword,
           firstName: registerFirstName,
           lastName: registerLastName,
+          referralCode: registerReferralCode || undefined,
         }),
         credentials: "include",
       });
@@ -421,6 +423,29 @@ export default function Landing() {
                         data-testid="input-register-password"
                       />
                     </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="register-referral" className="flex items-center justify-between">
+                      <span>Clave de Franquicia / Master</span>
+                      <span className="text-muted-foreground text-xs font-normal">Opcional</span>
+                    </Label>
+                    <div className="relative">
+                      <Key className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
+                      <Input
+                        id="register-referral"
+                        type="text"
+                        placeholder="Ej. MB-1234"
+                        value={registerReferralCode}
+                        onChange={(e) => setRegisterReferralCode(e.target.value)}
+                        className="pl-10 uppercase font-mono"
+                        disabled={isLoading}
+                        data-testid="input-register-referral"
+                      />
+                    </div>
+                    <p className="text-[11px] text-muted-foreground">
+                      Si te refirió un Master Broker u Organización, ingresa su clave para ligarte a su red.
+                    </p>
                   </div>
                   
                   <Button 
