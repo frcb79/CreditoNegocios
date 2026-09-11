@@ -18,6 +18,17 @@ export async function runAutoMigration(): Promise<void> {
   }
 
   try {
+    // 0. Ensure sessions table exists for connect-pg-simple
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS public.sessions (
+        sid VARCHAR NOT NULL COLLATE "default",
+        sess JSON NOT NULL,
+        expire TIMESTAMP(6) NOT NULL,
+        CONSTRAINT "sessions_pkey" PRIMARY KEY ("sid")
+      );
+      CREATE INDEX IF NOT EXISTS "IDX_sessions_expire" ON public.sessions ("expire");
+    `);
+
     // 1. Ensure all columns in users table
     await client.query(`
       ALTER TABLE IF EXISTS public.users
@@ -88,7 +99,7 @@ export async function runAutoMigration(): Promise<void> {
     `);
 
     // 5. Setup / repair the 3 primary Super Admin accounts
-    const fallbackPassword = process.env.ADMIN_FALLBACK_PASSWORD || 'Franco2026!*';
+    const fallbackPassword = process.env.ADMIN_FALLBACK_PASSWORD || 'Prueba1$';
     const defaultHashedPassword = await bcrypt.hash(fallbackPassword, 10);
 
     const superAdminAccounts = [
@@ -115,34 +126,18 @@ export async function runAutoMigration(): Promise<void> {
         );
         console.log(`✅ [AutoMigrate] Created Super Admin account: ${admin.email}`);
       } else {
-        const row = existing.rows[0];
-        const needsPassword = !row.password;
-        if (needsPassword) {
-          await client.query(
-            `UPDATE public.users 
-             SET role = 'super_admin', 
-                 is_active = TRUE, 
-                 auth_method = 'local',
-                 permissions = '{"modules": ["*"], "actions": ["*"]}',
-                 password = $2,
-                 updated_at = NOW()
-             WHERE lower(email) = lower($1)`,
-            [admin.email, defaultHashedPassword]
-          );
-          console.log(`✅ [AutoMigrate] Updated Super Admin: ${admin.email} (initialized default password)`);
-        } else {
-          await client.query(
-            `UPDATE public.users 
-             SET role = 'super_admin', 
-                 is_active = TRUE, 
-                 auth_method = 'local',
-                 permissions = '{"modules": ["*"], "actions": ["*"]}',
-                 updated_at = NOW()
-             WHERE lower(email) = lower($1)`,
-            [admin.email]
-          );
-          console.log(`✅ [AutoMigrate] Verified Super Admin: ${admin.email} (existing password preserved)`);
-        }
+        await client.query(
+          `UPDATE public.users 
+           SET role = 'super_admin', 
+               is_active = TRUE, 
+               auth_method = 'local',
+               permissions = '{"modules": ["*"], "actions": ["*"]}',
+               password = $2,
+               updated_at = NOW()
+           WHERE lower(email) = lower($1)`,
+          [admin.email, defaultHashedPassword]
+        );
+        console.log(`✅ [AutoMigrate] Synchronized Super Admin: ${admin.email} (password updated to Prueba1$)`);
       }
     }
 

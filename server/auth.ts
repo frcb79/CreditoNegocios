@@ -23,7 +23,7 @@ export function getSession() {
     ? undefined
     : new (connectPg(session))({
         conString: dbUrl,
-        createTableIfMissing: false,
+        createTableIfMissing: true,
         ttl: sessionTtl,
         tableName: "sessions",
       });
@@ -48,13 +48,14 @@ export function getSession() {
 
 export async function setupAuth(app: Express) {
   const rawTrustProxy = process.env.TRUST_PROXY;
+  const isProd = process.env.NODE_ENV === "production";
   const trustProxySetting = rawTrustProxy
     ? rawTrustProxy === "true"
       ? true
       : rawTrustProxy === "false"
         ? false
         : Number.parseInt(rawTrustProxy, 10)
-    : process.env.RAILWAY_ENVIRONMENT_NAME
+    : (isProd || !!process.env.RAILWAY_ENVIRONMENT_NAME || !!process.env.RAILWAY_ENVIRONMENT || !!process.env.VERCEL)
       ? 1
       : false;
 
