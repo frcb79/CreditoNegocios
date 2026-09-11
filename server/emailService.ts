@@ -150,35 +150,12 @@ Sistema de Gestión de Brokers
       `.trim(),
     });
 
-    if (error && (error.message?.toLowerCase().includes('domain') || error.message?.toLowerCase().includes('verify') || error.message?.toLowerCase().includes('validation_error'))) {
-      console.warn(`[Email] Retrying reset email with fallback onboarding@resend.dev due to: ${error.message}`);
-      const fallbackResult = await resend.emails.send({
-        from: 'Crédito Negocios <onboarding@resend.dev>',
-        to: [to],
-        subject: `Restablecer contraseña - ${APP_NAME}`,
-        html: `
-          <div style="font-family: sans-serif; padding: 20px; max-width: 600px; margin: 0 auto;">
-            <h2>Restablecer Contraseña - ${APP_NAME}</h2>
-            <p>${greeting}</p>
-            <p>Haz clic en el siguiente enlace para restablecer tu contraseña:</p>
-            <p><a href="${resetUrl}" style="background-color: #3182ce; color: white; padding: 10px 20px; text-decoration: none; border-radius: 4px; display: inline-block;">Restablecer Contraseña</a></p>
-            <p>O copia y pega: ${resetUrl}</p>
-          </div>
-        `,
-        text: `${greeting}\n\nPara restablecer tu contraseña en ${APP_NAME}, visita:\n${resetUrl}`,
-      });
-      if (!fallbackResult.error) {
-        data = fallbackResult.data;
-        error = null;
-      }
-    }
-
     if (error) {
-      console.error('Resend email error:', error);
+      console.error('❌ [Email] Resend password reset email error:', error);
       return { success: false, error: error.message };
     }
 
-    console.log('Password reset email sent successfully:', data?.id);
+    console.log('✅ [Email] Password reset email sent successfully via Resend:', data?.id);
     return { success: true };
   } catch (error: any) {
     console.error('Error sending password reset email:', error);

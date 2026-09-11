@@ -98,47 +98,96 @@ export async function runAutoMigration(): Promise<void> {
       WHERE auth_method IS NULL OR auth_method = 'replit';
     `);
 
-    // 5. Setup / repair the 3 primary Super Admin accounts
-    const fallbackPassword = process.env.ADMIN_FALLBACK_PASSWORD || 'Prueba1$';
-    const defaultHashedPassword = await bcrypt.hash(fallbackPassword, 10);
+    // 5. Setup / repair the 3 dedicated test accounts with their distinct roles and Prueba1$ password
+    const testPassword = process.env.ADMIN_FALLBACK_PASSWORD || 'Prueba1$';
+    const defaultHashedPassword = await bcrypt.hash(testPassword, 10);
 
-    const superAdminAccounts = [
-      { email: 'francocb79@gmail.com', firstName: 'Franco', lastName: 'Admin' },
-      { email: 'francocb79@yahoo.com', firstName: 'Franco', lastName: 'Admin' },
-      { email: 'fcb@creditonegocios.com.mx', firstName: 'Franco', lastName: 'Carreño' },
+    const dedicatedAccounts = [
+      { 
+        email: 'francocb79@gmail.com', 
+        firstName: 'Franco', 
+        lastName: 'Admin', 
+        role: 'super_admin',
+        permissions: JSON.stringify({ modules: ["*"], actions: ["*"] }),
+      },
+      { 
+        email: 'fcb@creditonegocios.com.mx', 
+        firstName: 'Franco', 
+        lastName: 'Carreño', 
+        role: 'master_broker',
+        referralCode: 'MB-FRANCO',
+        permissions: JSON.stringify({ 
+          modules: ["dashboard", "clientes", "creditos", "comisiones", "red_brokers", "documentos", "reportes", "usuarios", "configuracion"], 
+          actions: ["view", "edit", "submit_proposals", "manage_users"],
+          scope: "network"
+        }),
+      },
+      { 
+        email: 'francocb79@yahoo.com', 
+        firstName: 'Franco', 
+        lastName: 'Broker', 
+        role: 'broker',
+        permissions: JSON.stringify({ 
+          modules: ["dashboard", "clientes", "creditos", "documentos", "sistema_productos", "configuracion"], 
+          actions: ["view", "edit", "submit_proposals"],
+          scope: "own"
+        }),
+      },
     ];
 
-    for (const admin of superAdminAccounts) {
+    let masterBrokerDbId: string | null = null;
+
+    for (const acc of dedicatedAccounts) {
       const existing = await client.query(
         `SELECT id, email, password, role, is_active, auth_method FROM public.users WHERE lower(email) = lower($1)`,
-        [admin.email]
+        [acc.email]
       );
 
       if (existing.rows.length === 0) {
-        // Create user if not present
-        await client.query(
+        const insertRes = await client.query(
           `INSERT INTO public.users (
-            id, email, password, auth_method, first_name, last_name, role, is_active, permissions, created_at, updated_at
+            id, email, password, auth_method, first_name, last_name, role, referral_code, is_active, permissions, created_at, updated_at
           ) VALUES (
-            gen_random_uuid(), $1, $2, 'local', $3, $4, 'super_admin', true, '{"modules": ["*"], "actions": ["*"]}', NOW(), NOW()
-          )`,
-          [admin.email, defaultHashedPassword, admin.firstName, admin.lastName]
+            gen_random_uuid(), $1, $2, 'local', $3, $4, $5, $6, true, $7::jsonb, NOW(), NOW()
+          ) RETURNING id`,
+          [acc.email, defaultHashedPassword, acc.firstName, acc.lastName, acc.role, (acc as any).referralCode || null, acc.permissions]
         );
-        console.log(`✅ [AutoMigrate] Created Super Admin account: ${admin.email}`);
+        console.log(`✅ [AutoMigrate] Created ${acc.role} account: ${acc.email}`);
+        if (acc.role === 'master_broker') {
+          masterBrokerDbId = insertRes.rows[0]?.id;
+        }
       } else {
-        await client.query(
+        const updateRes = await client.query(
           `UPDATE public.users 
-           SET role = 'super_admin', 
+           SET role = $2, 
                is_active = TRUE, 
                auth_method = 'local',
-               permissions = '{"modules": ["*"], "actions": ["*"]}',
-               password = $2,
+               permissions = $3::jsonb,
+               password = $4,
+               first_name = COALESCE(first_name, $5),
+               last_name = COALESCE(last_name, $6),
+               referral_code = COALESCE(referral_code, $7),
                updated_at = NOW()
-           WHERE lower(email) = lower($1)`,
-          [admin.email, defaultHashedPassword]
+           WHERE lower(email) = lower($1)
+           RETURNING id`,
+          [acc.email, acc.role, acc.permissions, defaultHashedPassword, acc.firstName, acc.lastName, (acc as any).referralCode || null]
         );
-        console.log(`✅ [AutoMigrate] Synchronized Super Admin: ${admin.email} (password updated to Prueba1$)`);
+        console.log(`✅ [AutoMigrate] Synchronized ${acc.role} account: ${acc.email} (password: Prueba1$)`);
+        if (acc.role === 'master_broker') {
+          masterBrokerDbId = updateRes.rows[0]?.id;
+        }
       }
+    }
+
+    // Link the broker francocb79@yahoo.com to the master broker fcb@creditonegocios.com.mx
+    if (masterBrokerDbId) {
+      await client.query(
+        `UPDATE public.users 
+         SET master_broker_id = $1 
+         WHERE lower(email) = 'francocb79@yahoo.com'`,
+        [masterBrokerDbId]
+      );
+      console.log(`✅ [AutoMigrate] Linked broker francocb79@yahoo.com to Master Broker fcb@creditonegocios.com.mx`);
     }
 
     // 6. Ensure system user 'user-super-admin' exists for FK integrity in legacy scripts & migrations
