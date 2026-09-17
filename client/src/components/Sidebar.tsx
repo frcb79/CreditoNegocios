@@ -54,13 +54,21 @@ export default function Sidebar() {
     (t: any) => t.status === 'pending_admin'
   ).length || 0;
 
+  const { data: userTenants } = useQuery<any[]>({
+    queryKey: ["/api/tenants"],
+    enabled: !!user,
+  });
+  const hasTenantOrg = Boolean(userTenants && userTenants.length > 0);
+
   const filteredNavigation = isAdmin 
     ? navigation 
     : navigation.filter(item => !item.adminOnly);
   
   const adminItems = isFullAdmin 
     ? adminNavigation 
-    : (user?.role === 'master_broker' ? [{ name: 'Mi Equipo / Usuarios', href: '/admin/usuarios', icon: 'fas fa-users-cog', adminOnly: true }] : []);
+    : (hasTenantOrg 
+        ? [{ name: 'Mi Organización', href: '/admin/usuarios', icon: 'fas fa-users-cog' }] 
+        : []);
 
   const baseItems = [...filteredNavigation, ...adminItems];
 
@@ -89,6 +97,7 @@ export default function Sidebar() {
   const allNavigationItems = (user?.role === 'super_admin' || !allowedModules || allowedModules.length === 0)
     ? baseItems
     : baseItems.filter(item => {
+        if (item.href === '/admin/usuarios' && hasTenantOrg) return true;
         const modKey = hrefToModule[item.href];
         return !modKey || allowedModules.includes(modKey);
       });

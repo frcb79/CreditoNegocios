@@ -42,7 +42,9 @@ import {
   insertCreditSubmissionTargetSchema,
   insertClientCreditHistorySchema,
   insertUserSchema,
-  insertFinancialInstitutionRequestSchema
+  insertFinancialInstitutionRequestSchema,
+  createTenantMemberSchema,
+  updateTenantMemberSchema
 } from "../shared/schema";
 import { z } from "zod";
 import multer from "multer";
@@ -3694,6 +3696,418 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Error deleting tenant member:", error);
       res.status(500).json({ message: "Failed to delete tenant member" });
+    }
+  });
+
+  // =====================================================================
+  // ORGANIZATIONAL MULTI-USER ROUTES (BLOQUE 3)
+  // /api/tenants/:tenantId/members
+  // =====================================================================
+
+  // 1. List organization members with user details
+  app.get('/api/tenants/:tenantId/members', isAuthenticated, resolveTenantFromParam('tenantId'), async (req: any, res) => {
+    try {
+      const { tenantId } = req.params;
+      const isSuperAdmin = Boolean(req.tenantContext?.isPlatformAdmin || req.user?.role === 'super_admin');
+
+      // Tenant active check (super_admin can bypass for reactivation)
+      if (!isSuperAdmin && req.tenantContext?.tenant?.isActive === false) {
+        return res.status(403).json({ message: "Access denied. Tenant is inactive." });
+      }
+
+      // Check caller membership and role in this specific tenant
+      if (!isSuperAdmin) {
+        const callerMembership = req.tenantContext?.membership;
+        if (!callerMembership || !callerMembership.isActive) {
+          return res.status(403).json({ message: "Access denied. No perteneces a esta organización." });
+        }
+        if (callerMembership.role !== 'owner' && callerMembership.role !== 'admin') {
+          return res.status(403).json({ message: "Access denied. Se requiere rol de propietario o administrador." });
+        }
+      }
+
+      const members = await storage.getTenantMembersWithUsers(tenantId);
+      res.json(members);
+    } catch (error) {
+      console.error("Error listing organization members:", error);
+      res.status(500).json({ message: "Failed to list organization members" });
+    }
+  });
+
+  // 2. Get specific organization member
+  app.get('/api/tenants/:tenantId/members/:memberId', isAuthenticated, resolveTenantFromParam('tenantId'), async (req: any, res) => {
+    try {
+      const { tenantId, memberId } = req.params;
+      const isSuperAdmin = Boolean(req.tenantContext?.isPlatformAdmin || req.user?.role === 'super_admin');
+
+      if (!isSuperAdmin && req.tenantContext?.tenant?.isActive === false) {
+        return res.status(403).json({ message: "Access denied. Tenant is inactive." });
+      }
+
+      if (!isSuperAdmin) {
+        const callerMembership = req.tenantContext?.membership;
+        if (!callerMembership || !callerMembership.isActive) {
+          return res.status(403).json({ message: "Access denied. No perteneces a esta organización." });
+        }
+        if (callerMembership.role !== 'owner' && callerMembership.role !== 'admin') {
+          return res.status(403).json({ message: "Access denied. Se requiere rol de propietario o administrador." });
+        }
+      }
+
+      const member = await storage.getTenantMemberWithUser(tenantId, memberId);
+      if (!member) {
+        return res.status(404).json({ message: "Miembro de la organización no encontrado" });
+      }
+
+      res.json(member);
+    } catch (error) {
+      console.error("Error getting organization member:", error);
+      res.status(500).json({ message: "Failed to get organization member" });
+    }
+  });
+
+  // 3. Create / Invite organization member (Atomic)
+  app.post('/api/tenants/:tenantId/members', isAuthenticated, resolveTenantFromParam('tenantId'), async (req: any, res) => {
+    try {
+      const { tenantId } = req.params;
+      const isSuperAdmin = Boolean(req.tenantContext?.isPlatformAdmin || req.user?.role === 'super_admin');
+      const tenant = req.tenantContext?.tenant;
+
+      if (!tenant) {
+        return res.status(404).json({ message: "Organización no encontrada" });
+      }
+
+      if (!isSuperAdmin && tenant.isActive === false) {
+        return res.status(403).json({ message: "Access denied. Tenant is inactive." });
+      }
+
+      // Role check for caller
+      let callerRole: 'owner' | 'admin' | 'super_admin' = 'super_admin';
+      if (!isSuperAdmin) {
+        const callerMembership = req.tenantContext?.membership;
+        if (!callerMembership || !callerMembership.isActive) {
+          return res.status(403).json({ message: "Access denied. No perteneces a esta organización." });
+        }
+        if (callerMembership.role !== 'owner' && callerMembership.role !== 'admin') {
+          return res.status(403).json({ message: "Access denied. Se requiere rol de propietario o administrador para agregar usuarios." });
+        }
+        callerRole = callerMembership.role;
+      }
+
+      // Parse and validate request
+      const data = createTenantMemberSchema.parse(req.body);
+
+      // Hierarchical restriction: Admin CANNOT create owner or admin
+      if (callerRole === 'admin' && (data.role === 'owner' || data.role === 'admin')) {
+        return res.status(403).json({ 
+          message: "Los administradores solo pueden crear colaboradores con rol 'member'." 
+        });
+      }
+
+      // Determine legacy users.role based on tenant type
+      let userRole: string;
+      if (tenant.type === 'broker') {
+        userRole = 'broker';
+      } else if (tenant.type === 'master_broker') {
+        userRole = 'master_broker';
+      } else if (tenant.type === 'platform') {
+        userRole = (data.role === 'owner' && isSuperAdmin) ? 'super_admin' : 'admin';
+      } else {
+        userRole = 'broker';
+      }
+
+      // Generate secure invitation token
+      const crypto = await import('crypto');
+      const resetToken = crypto.randomBytes(32).toString('hex');
+      const resetTokenExpiry = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 hours
+
+      // Hash password if provided
+      let hashedPassword: string | null = null;
+      if (data.password) {
+        hashedPassword = await bcrypt.hash(data.password, 10);
+      }
+
+      // Atomic execution
+      const { user, member } = await storage.createTenantMemberWithUser({
+        tenantId,
+        email: data.email.toLowerCase().trim(),
+        firstName: data.firstName.trim(),
+        lastName: data.lastName.trim(),
+        internalRole: data.role,
+        userRole,
+        customRoleTitle: data.customRoleTitle || null,
+        permissions: data.permissions || {},
+        password: hashedPassword,
+        authMethod: 'local',
+        resetToken,
+        resetTokenExpiry,
+      });
+
+      // Construct reset / invite URL
+      const baseUrl = process.env.FRONTEND_BASE_URL || (process.env.RAILWAY_STATIC_URL ? `https://${process.env.RAILWAY_STATIC_URL}` : 'https://creditonegocios-staging.up.railway.app');
+      const inviteUrl = `${baseUrl.replace(/\/$/, '')}/reset-password?token=${resetToken}`;
+
+      // Dispatch invitation email if requested
+      let inviteSent = false;
+      if (data.sendInvite) {
+        try {
+          const emailResult = await sendPasswordResetEmail(user.email!, resetToken, user.firstName || undefined);
+          inviteSent = emailResult.success;
+        } catch (emailErr) {
+          console.warn("Could not dispatch invitation email:", emailErr);
+        }
+      }
+
+      // Return response without exposing secrets
+      const responsePayload: any = {
+        message: "Usuario creado y asociado a la organización exitosamente",
+        user: {
+          id: user.id,
+          email: user.email,
+          firstName: user.firstName,
+          lastName: user.lastName,
+          role: user.role,
+          customRoleTitle: user.customRoleTitle,
+          isActive: user.isActive,
+        },
+        member: {
+          id: member.id,
+          tenantId: member.tenantId,
+          userId: member.userId,
+          role: member.role,
+          isActive: member.isActive,
+          joinedAt: member.joinedAt,
+        },
+        inviteSent,
+      };
+
+      // In non-production environments (staging/dev), return inviteUrl for test execution
+      if (process.env.NODE_ENV !== 'production') {
+        responsePayload.inviteUrl = inviteUrl;
+      }
+
+      res.status(201).json(responsePayload);
+    } catch (error: any) {
+      console.error("Error creating organization member:", error);
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Validation error", errors: error.errors });
+      }
+      if (error?.message?.includes('ya es miembro')) {
+        return res.status(409).json({ message: error.message });
+      }
+      if (error?.message?.includes('already exists') || error?.code === '23505') {
+        return res.status(409).json({ message: "El email ya está registrado en el sistema" });
+      }
+      res.status(500).json({ message: error.message || "Failed to create organization member" });
+    }
+  });
+
+  // 4. Update organization member (role, customRoleTitle, permissions)
+  app.patch('/api/tenants/:tenantId/members/:memberId', isAuthenticated, resolveTenantFromParam('tenantId'), async (req: any, res) => {
+    try {
+      const { tenantId, memberId } = req.params;
+      const isSuperAdmin = Boolean(req.tenantContext?.isPlatformAdmin || req.user?.role === 'super_admin');
+      const tenant = req.tenantContext?.tenant;
+
+      if (!tenant) {
+        return res.status(404).json({ message: "Organización no encontrada" });
+      }
+
+      if (!isSuperAdmin && tenant.isActive === false) {
+        return res.status(403).json({ message: "Access denied. Tenant is inactive." });
+      }
+
+      const targetMember = await storage.getTenantMemberWithUser(tenantId, memberId);
+      if (!targetMember) {
+        return res.status(404).json({ message: "Miembro no encontrado en esta organización" });
+      }
+
+      // Check caller authorization
+      let callerRole: 'owner' | 'admin' | 'super_admin' = 'super_admin';
+      if (!isSuperAdmin) {
+        const callerMembership = req.tenantContext?.membership;
+        if (!callerMembership || !callerMembership.isActive) {
+          return res.status(403).json({ message: "Access denied. No perteneces a esta organización." });
+        }
+        if (callerMembership.role !== 'owner' && callerMembership.role !== 'admin') {
+          return res.status(403).json({ message: "Access denied. Se requiere rol de propietario o administrador." });
+        }
+        callerRole = callerMembership.role;
+
+        // Admin restrictions:
+        if (callerRole === 'admin') {
+          if (targetMember.role !== 'member') {
+            return res.status(403).json({ message: "Los administradores no pueden modificar a propietarios ni a otros administradores." });
+          }
+          if (req.body.role && req.body.role !== 'member') {
+            return res.status(403).json({ message: "Los administradores no pueden cambiar el rol a propietario o administrador." });
+          }
+        }
+      }
+
+      const data = updateTenantMemberSchema.parse(req.body);
+
+      // Last owner protection on degradation
+      if (data.role && targetMember.role === 'owner' && data.role !== 'owner') {
+        const activeOwners = await storage.countActiveOwners(tenantId);
+        if (activeOwners <= 1) {
+          return res.status(400).json({ message: "No se puede degradar al único propietario activo de la organización." });
+        }
+      }
+
+      // Update membership if role or isActive provided
+      if (data.role !== undefined || data.isActive !== undefined) {
+        await storage.updateTenantMember(memberId, {
+          role: data.role,
+          isActive: data.isActive,
+        });
+      }
+
+      // Update user details if customRoleTitle or permissions provided
+      if (data.customRoleTitle !== undefined || data.permissions !== undefined) {
+        const userUpdates: any = {};
+        if (data.customRoleTitle !== undefined) userUpdates.customRoleTitle = data.customRoleTitle;
+        if (data.permissions !== undefined) userUpdates.permissions = data.permissions;
+        await storage.updateUser(targetMember.userId, userUpdates);
+      }
+
+      const updated = await storage.getTenantMemberWithUser(tenantId, memberId);
+      res.json({ message: "Miembro actualizado exitosamente", member: updated });
+    } catch (error: any) {
+      console.error("Error updating organization member:", error);
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Validation error", errors: error.errors });
+      }
+      res.status(500).json({ message: error.message || "Failed to update organization member" });
+    }
+  });
+
+  // 5. Toggle or set member status (Activate / Deactivate with Last Owner & N:M protection)
+  app.patch('/api/tenants/:tenantId/members/:memberId/status', isAuthenticated, resolveTenantFromParam('tenantId'), async (req: any, res) => {
+    try {
+      const { tenantId, memberId } = req.params;
+      const isSuperAdmin = Boolean(req.tenantContext?.isPlatformAdmin || req.user?.role === 'super_admin');
+      const tenant = req.tenantContext?.tenant;
+
+      if (!tenant) {
+        return res.status(404).json({ message: "Organización no encontrada" });
+      }
+
+      if (!isSuperAdmin && tenant.isActive === false) {
+        return res.status(403).json({ message: "Access denied. Tenant is inactive." });
+      }
+
+      const targetMember = await storage.getTenantMemberWithUser(tenantId, memberId);
+      if (!targetMember) {
+        return res.status(404).json({ message: "Miembro no encontrado en esta organización" });
+      }
+
+      // Check caller authorization
+      if (!isSuperAdmin) {
+        const callerMembership = req.tenantContext?.membership;
+        if (!callerMembership || !callerMembership.isActive) {
+          return res.status(403).json({ message: "Access denied. No perteneces a esta organización." });
+        }
+        if (callerMembership.role !== 'owner' && callerMembership.role !== 'admin') {
+          return res.status(403).json({ message: "Access denied. Se requiere rol de propietario o administrador." });
+        }
+        if (callerMembership.role === 'admin' && targetMember.role !== 'member') {
+          return res.status(403).json({ message: "Los administradores no pueden cambiar el estado de propietarios ni de otros administradores." });
+        }
+      }
+
+      // Determine new status
+      const newStatus = typeof req.body.isActive === 'boolean' ? req.body.isActive : !targetMember.isActive;
+
+      if (!newStatus) {
+        // Deactivation flow
+        try {
+          const result = await storage.deactivateTenantMember(tenantId, memberId);
+          return res.json({
+            message: "Membresía desactivada exitosamente",
+            member: result.member,
+            userDeactivatedGlobally: result.userDeactivatedGlobally,
+          });
+        } catch (deactError: any) {
+          return res.status(400).json({ message: deactError.message });
+        }
+      } else {
+        // Activation flow
+        const result = await storage.activateTenantMember(tenantId, memberId);
+        return res.json({
+          message: "Membresía activada exitosamente",
+          member: result.member,
+        });
+      }
+    } catch (error: any) {
+      console.error("Error updating member status:", error);
+      res.status(500).json({ message: error.message || "Failed to update member status" });
+    }
+  });
+
+  // 6. Resend invitation / password reset token for member
+  app.post('/api/tenants/:tenantId/members/:memberId/resend-invite', isAuthenticated, resolveTenantFromParam('tenantId'), async (req: any, res) => {
+    try {
+      const { tenantId, memberId } = req.params;
+      const isSuperAdmin = Boolean(req.tenantContext?.isPlatformAdmin || req.user?.role === 'super_admin');
+      const tenant = req.tenantContext?.tenant;
+
+      if (!tenant) {
+        return res.status(404).json({ message: "Organización no encontrada" });
+      }
+
+      if (!isSuperAdmin && tenant.isActive === false) {
+        return res.status(403).json({ message: "Access denied. Tenant is inactive." });
+      }
+
+      const targetMember = await storage.getTenantMemberWithUser(tenantId, memberId);
+      if (!targetMember) {
+        return res.status(404).json({ message: "Miembro no encontrado en esta organización" });
+      }
+
+      // Check caller authorization
+      if (!isSuperAdmin) {
+        const callerMembership = req.tenantContext?.membership;
+        if (!callerMembership || !callerMembership.isActive) {
+          return res.status(403).json({ message: "Access denied. No perteneces a esta organización." });
+        }
+        if (callerMembership.role !== 'owner' && callerMembership.role !== 'admin') {
+          return res.status(403).json({ message: "Access denied. Se requiere rol de propietario o administrador." });
+        }
+      }
+
+      // Generate new token
+      const crypto = await import('crypto');
+      const resetToken = crypto.randomBytes(32).toString('hex');
+      const resetTokenExpiry = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 hours
+
+      await storage.setPasswordResetToken(targetMember.userId, resetToken, resetTokenExpiry);
+
+      const baseUrl = process.env.FRONTEND_BASE_URL || (process.env.RAILWAY_STATIC_URL ? `https://${process.env.RAILWAY_STATIC_URL}` : 'https://creditonegocios-staging.up.railway.app');
+      const inviteUrl = `${baseUrl.replace(/\/$/, '')}/reset-password?token=${resetToken}`;
+
+      let inviteSent = false;
+      if (targetMember.user.email) {
+        try {
+          const emailResult = await sendPasswordResetEmail(targetMember.user.email, resetToken, targetMember.user.firstName || undefined);
+          inviteSent = emailResult.success;
+        } catch (e) {
+          console.warn("Could not dispatch invitation email:", e);
+        }
+      }
+
+      const responsePayload: any = {
+        message: inviteSent ? "Invitación enviada por correo" : "Enlace de activación generado exitosamente",
+        inviteSent,
+      };
+      if (process.env.NODE_ENV !== 'production') {
+        responsePayload.inviteUrl = inviteUrl;
+      }
+
+      res.json(responsePayload);
+    } catch (error: any) {
+      console.error("Error resending invite:", error);
+      res.status(500).json({ message: error.message || "Failed to resend invite" });
     }
   });
 

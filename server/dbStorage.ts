@@ -13,6 +13,7 @@ import {
   type InsertFinancialInstitution, type Commission, type InsertCommission,
   type Notification, type InsertNotification, type Document, type InsertDocument,
   type Tenant, type InsertTenant, type TenantMember, type InsertTenantMember,
+  type TenantMemberWithUser, type TenantMemberRole,
   type ProductVariable, type InsertProductVariable, type ProductTemplate,
   type InsertProductTemplate, type InstitutionProduct, type InsertInstitutionProduct,
   type InstitutionProductWithTemplate,
@@ -1440,6 +1441,257 @@ export class DbStorage implements IStorage {
       console.error("Error getting user tenant membership:", error);
       return undefined;
     }
+  }
+
+  async getTenantMembersWithUsers(tenantId: string): Promise<TenantMemberWithUser[]> {
+    try {
+      const rows = await db
+        .select({
+          id: tenantMembers.id,
+          tenantId: tenantMembers.tenantId,
+          userId: tenantMembers.userId,
+          role: tenantMembers.role,
+          isActive: tenantMembers.isActive,
+          joinedAt: tenantMembers.joinedAt,
+          updatedAt: tenantMembers.updatedAt,
+          user: {
+            id: users.id,
+            email: users.email,
+            firstName: users.firstName,
+            lastName: users.lastName,
+            role: users.role,
+            customRoleTitle: users.customRoleTitle,
+            permissions: users.permissions,
+            isActive: users.isActive,
+            profileImageUrl: users.profileImageUrl,
+            updatedAt: users.updatedAt,
+          },
+        })
+        .from(tenantMembers)
+        .innerJoin(users, eq(tenantMembers.userId, users.id))
+        .where(eq(tenantMembers.tenantId, tenantId))
+        .orderBy(asc(tenantMembers.joinedAt));
+
+      return rows as TenantMemberWithUser[];
+    } catch (error) {
+      console.error("Error getting tenant members with users:", error);
+      return [];
+    }
+  }
+
+  async getTenantMemberWithUser(tenantId: string, memberId: string): Promise<TenantMemberWithUser | undefined> {
+    try {
+      const [row] = await db
+        .select({
+          id: tenantMembers.id,
+          tenantId: tenantMembers.tenantId,
+          userId: tenantMembers.userId,
+          role: tenantMembers.role,
+          isActive: tenantMembers.isActive,
+          joinedAt: tenantMembers.joinedAt,
+          updatedAt: tenantMembers.updatedAt,
+          user: {
+            id: users.id,
+            email: users.email,
+            firstName: users.firstName,
+            lastName: users.lastName,
+            role: users.role,
+            customRoleTitle: users.customRoleTitle,
+            permissions: users.permissions,
+            isActive: users.isActive,
+            profileImageUrl: users.profileImageUrl,
+            updatedAt: users.updatedAt,
+          },
+        })
+        .from(tenantMembers)
+        .innerJoin(users, eq(tenantMembers.userId, users.id))
+        .where(and(eq(tenantMembers.id, memberId), eq(tenantMembers.tenantId, tenantId)));
+
+      return row as TenantMemberWithUser | undefined;
+    } catch (error) {
+      console.error("Error getting tenant member with user:", error);
+      return undefined;
+    }
+  }
+
+  async countActiveOwners(tenantId: string): Promise<number> {
+    try {
+      const [result] = await db
+        .select({ count: sql<number>`count(*)::int` })
+        .from(tenantMembers)
+        .where(
+          and(
+            eq(tenantMembers.tenantId, tenantId),
+            eq(tenantMembers.role, "owner"),
+            eq(tenantMembers.isActive, true)
+          )
+        );
+      return result?.count || 0;
+    } catch (error) {
+      console.error("Error counting active owners:", error);
+      return 0;
+    }
+  }
+
+  async createTenantMemberWithUser(params: {
+    tenantId: string;
+    email: string;
+    firstName: string;
+    lastName: string;
+    internalRole: TenantMemberRole;
+    userRole: string;
+    customRoleTitle?: string | null;
+    permissions?: unknown;
+    password?: string | null;
+    authMethod?: string;
+    resetToken?: string | null;
+    resetTokenExpiry?: Date | null;
+  }): Promise<{ user: User; member: TenantMember }> {
+    return await db.transaction(async (tx) => {
+      // 1. Verify tenant exists
+      const [tenant] = await tx.select().from(tenants).where(eq(tenants.id, params.tenantId));
+      if (!tenant) {
+        throw new Error(`Tenant '${params.tenantId}' does not exist`);
+      }
+
+      // 2. Check if user already exists
+      const [existingUser] = await tx.select().from(users).where(eq(users.email, params.email));
+      let user: User;
+
+      if (existingUser) {
+        const [existingMembership] = await tx
+          .select()
+          .from(tenantMembers)
+          .where(and(eq(tenantMembers.userId, existingUser.id), eq(tenantMembers.tenantId, params.tenantId)));
+        if (existingMembership) {
+          throw new Error(`El usuario con email '${params.email}' ya es miembro de esta organización`);
+        }
+        user = existingUser;
+      } else {
+        const userId = randomUUID();
+        const [createdUser] = await tx
+          .insert(users)
+          .values({
+            id: userId,
+            email: params.email,
+            firstName: params.firstName,
+            lastName: params.lastName,
+            role: params.userRole,
+            customRoleTitle: params.customRoleTitle || null,
+            permissions: params.permissions || {},
+            password: params.password || null,
+            authMethod: params.authMethod || "local",
+            resetToken: params.resetToken || null,
+            resetTokenExpiry: params.resetTokenExpiry || null,
+            masterBrokerId: null,
+            isActive: true,
+          })
+          .returning();
+        user = createdUser;
+      }
+
+      // 3. Create membership
+      const memberId = randomUUID();
+      const [createdMember] = await tx
+        .insert(tenantMembers)
+        .values({
+          id: memberId,
+          tenantId: params.tenantId,
+          userId: user.id,
+          role: params.internalRole,
+          isActive: true,
+          joinedAt: new Date(),
+          updatedAt: new Date(),
+        })
+        .returning();
+
+      return { user, member: createdMember };
+    });
+  }
+
+  async deactivateTenantMember(tenantId: string, memberId: string): Promise<{ member: TenantMember; userDeactivatedGlobally: boolean }> {
+    return await db.transaction(async (tx) => {
+      const [member] = await tx
+        .select()
+        .from(tenantMembers)
+        .where(and(eq(tenantMembers.id, memberId), eq(tenantMembers.tenantId, tenantId)));
+
+      if (!member) {
+        throw new Error("Membresía no encontrada");
+      }
+
+      if (member.role === "owner" && member.isActive) {
+        const [activeOwners] = await tx
+          .select({ count: sql<number>`count(*)::int` })
+          .from(tenantMembers)
+          .where(
+            and(
+              eq(tenantMembers.tenantId, tenantId),
+              eq(tenantMembers.role, "owner"),
+              eq(tenantMembers.isActive, true)
+            )
+          );
+
+        if ((activeOwners?.count || 0) <= 1) {
+          throw new Error("No se puede desactivar al último propietario activo de la organización");
+        }
+      }
+
+      const [updatedMember] = await tx
+        .update(tenantMembers)
+        .set({ isActive: false, updatedAt: new Date() })
+        .where(eq(tenantMembers.id, memberId))
+        .returning();
+
+      // Check other active memberships
+      const [otherActive] = await tx
+        .select({ count: sql<number>`count(*)::int` })
+        .from(tenantMembers)
+        .where(
+          and(
+            eq(tenantMembers.userId, member.userId),
+            sql`${tenantMembers.tenantId} != ${tenantId}`,
+            eq(tenantMembers.isActive, true)
+          )
+        );
+
+      let userDeactivatedGlobally = false;
+      if ((otherActive?.count || 0) === 0) {
+        await tx
+          .update(users)
+          .set({ isActive: false, updatedAt: new Date() })
+          .where(eq(users.id, member.userId));
+        userDeactivatedGlobally = true;
+      }
+
+      return { member: updatedMember, userDeactivatedGlobally };
+    });
+  }
+
+  async activateTenantMember(tenantId: string, memberId: string): Promise<{ member: TenantMember }> {
+    return await db.transaction(async (tx) => {
+      const [member] = await tx
+        .select()
+        .from(tenantMembers)
+        .where(and(eq(tenantMembers.id, memberId), eq(tenantMembers.tenantId, tenantId)));
+
+      if (!member) {
+        throw new Error("Membresía no encontrada");
+      }
+
+      const [updatedMember] = await tx
+        .update(tenantMembers)
+        .set({ isActive: true, updatedAt: new Date() })
+        .where(eq(tenantMembers.id, memberId))
+        .returning();
+
+      await tx
+        .update(users)
+        .set({ isActive: true, updatedAt: new Date() })
+        .where(eq(users.id, member.userId));
+
+      return { member: updatedMember };
+    });
   }
 
   // Legacy product operations

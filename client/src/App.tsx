@@ -91,7 +91,7 @@ function Router() {
           <ProtectedRoute path="/solicitudes-pendientes" component={PendingRequests} allowedRoles={['admin', 'super_admin']} requiredModule="aprobaciones" />
           <ProtectedRoute path="/mis-solicitudes" component={MySubmissions} requiredModule="creditos" />
           <ProtectedRoute path="/comparar-propuestas/:requestId" component={ProposalComparison} requiredModule="creditos" />
-          <ProtectedRoute path="/admin/usuarios" component={UserManagement} allowedRoles={['admin', 'super_admin', 'master_broker']} requiredModule="usuarios" />
+          <ProtectedRoute path="/admin/usuarios" component={UserManagement} />
           <ProtectedRoute path="/notificaciones" component={Notifications} />
           <ProtectedRoute path="/importacion-masiva" component={BulkImport} allowedRoles={['admin', 'super_admin']} requiredModule="importacion" />
         </>

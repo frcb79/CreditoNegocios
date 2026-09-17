@@ -31,6 +31,8 @@ import {
   type InsertTenant,
   type TenantMember,
   type InsertTenantMember,
+  type TenantMemberWithUser,
+  type TenantMemberRole,
   type ProductVariable,
   type InsertProductVariable,
   type ProductTemplate,
@@ -141,6 +143,27 @@ export interface IStorage {
   deleteTenantMember(id: string): Promise<boolean>;
   getTenantMembersByUser(userId: string): Promise<TenantMember[]>;
   getUserTenantMembership(userId: string, tenantId: string): Promise<TenantMember | undefined>;
+
+  // Organization Member operations (Multi-user Block 3)
+  getTenantMembersWithUsers(tenantId: string): Promise<TenantMemberWithUser[]>;
+  getTenantMemberWithUser(tenantId: string, memberId: string): Promise<TenantMemberWithUser | undefined>;
+  createTenantMemberWithUser(params: {
+    tenantId: string;
+    email: string;
+    firstName: string;
+    lastName: string;
+    internalRole: TenantMemberRole;
+    userRole: string;
+    customRoleTitle?: string | null;
+    permissions?: unknown;
+    password?: string | null;
+    authMethod?: string;
+    resetToken?: string | null;
+    resetTokenExpiry?: Date | null;
+  }): Promise<{ user: User; member: TenantMember }>;
+  countActiveOwners(tenantId: string): Promise<number>;
+  deactivateTenantMember(tenantId: string, memberId: string): Promise<{ member: TenantMember; userDeactivatedGlobally: boolean }>;
+  activateTenantMember(tenantId: string, memberId: string): Promise<{ member: TenantMember }>;
 
   // Product Variables operations
   getProductVariables(): Promise<ProductVariable[]>;
@@ -2071,6 +2094,197 @@ export class MemStorage implements IStorage {
   async getUserTenantMembership(userId: string, tenantId: string): Promise<TenantMember | undefined> {
     return Array.from(this.tenantMembers.values())
       .find(m => m.userId === userId && m.tenantId === tenantId);
+  }
+
+  async getTenantMembersWithUsers(tenantId: string): Promise<TenantMemberWithUser[]> {
+    const members = Array.from(this.tenantMembers.values())
+      .filter(m => m.tenantId === tenantId);
+
+    const result: TenantMemberWithUser[] = [];
+    for (const m of members) {
+      const u = this.users.get(m.userId);
+      result.push({
+        id: m.id,
+        tenantId: m.tenantId,
+        userId: m.userId,
+        role: m.role as TenantMemberRole,
+        isActive: m.isActive,
+        joinedAt: m.joinedAt,
+        updatedAt: m.updatedAt,
+        user: {
+          id: u ? u.id : m.userId,
+          email: u?.email ?? null,
+          firstName: u?.firstName ?? null,
+          lastName: u?.lastName ?? null,
+          role: u?.role ?? "broker",
+          customRoleTitle: u?.customRoleTitle ?? null,
+          permissions: u?.permissions ?? {},
+          isActive: u?.isActive ?? null,
+          profileImageUrl: u?.profileImageUrl ?? null,
+          updatedAt: u?.updatedAt ?? null,
+        },
+      });
+    }
+
+    return result.sort((a, b) => {
+      const aTime = a.joinedAt ? new Date(a.joinedAt).getTime() : 0;
+      const bTime = b.joinedAt ? new Date(b.joinedAt).getTime() : 0;
+      return aTime - bTime;
+    });
+  }
+
+  async getTenantMemberWithUser(tenantId: string, memberId: string): Promise<TenantMemberWithUser | undefined> {
+    const member = this.tenantMembers.get(memberId);
+    if (!member || member.tenantId !== tenantId) return undefined;
+
+    const u = this.users.get(member.userId);
+    return {
+      id: member.id,
+      tenantId: member.tenantId,
+      userId: member.userId,
+      role: member.role as TenantMemberRole,
+      isActive: member.isActive,
+      joinedAt: member.joinedAt,
+      updatedAt: member.updatedAt,
+      user: {
+        id: u ? u.id : member.userId,
+        email: u?.email ?? null,
+        firstName: u?.firstName ?? null,
+        lastName: u?.lastName ?? null,
+        role: u?.role ?? "broker",
+        customRoleTitle: u?.customRoleTitle ?? null,
+        permissions: u?.permissions ?? {},
+        isActive: u?.isActive ?? null,
+        profileImageUrl: u?.profileImageUrl ?? null,
+        updatedAt: u?.updatedAt ?? null,
+      },
+    };
+  }
+
+  async createTenantMemberWithUser(params: {
+    tenantId: string;
+    email: string;
+    firstName: string;
+    lastName: string;
+    internalRole: TenantMemberRole;
+    userRole: string;
+    customRoleTitle?: string | null;
+    permissions?: unknown;
+    password?: string | null;
+    authMethod?: string;
+    resetToken?: string | null;
+    resetTokenExpiry?: Date | null;
+  }): Promise<{ user: User; member: TenantMember }> {
+    const tenant = this.tenants.get(params.tenantId);
+    if (!tenant) {
+      throw new Error(`Tenant '${params.tenantId}' does not exist`);
+    }
+
+    let existingUser = await this.getUserByEmail(params.email);
+    let user: User;
+
+    if (existingUser) {
+      const existingMembership = await this.getUserTenantMembership(existingUser.id, params.tenantId);
+      if (existingMembership) {
+        throw new Error(`El usuario con email '${params.email}' ya es miembro de esta organización`);
+      }
+      user = existingUser;
+    } else {
+      const userId = randomUUID();
+      user = {
+        id: userId,
+        email: params.email,
+        firstName: params.firstName,
+        lastName: params.lastName,
+        role: params.userRole,
+        customRoleTitle: params.customRoleTitle || null,
+        permissions: params.permissions || {},
+        password: params.password || null,
+        authMethod: params.authMethod || "local",
+        resetToken: params.resetToken || null,
+        resetTokenExpiry: params.resetTokenExpiry || null,
+        masterBrokerId: null,
+        isActive: true,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      } as User;
+      this.users.set(userId, user);
+    }
+
+    const memberId = randomUUID();
+    const member: TenantMember = {
+      id: memberId,
+      tenantId: params.tenantId,
+      userId: user.id,
+      role: params.internalRole,
+      isActive: true,
+      joinedAt: new Date(),
+      updatedAt: new Date(),
+    };
+    this.tenantMembers.set(memberId, member);
+
+    return { user, member };
+  }
+
+  async countActiveOwners(tenantId: string): Promise<number> {
+    return Array.from(this.tenantMembers.values())
+      .filter(m => m.tenantId === tenantId && m.role === "owner" && m.isActive)
+      .length;
+  }
+
+  async deactivateTenantMember(tenantId: string, memberId: string): Promise<{ member: TenantMember; userDeactivatedGlobally: boolean }> {
+    const member = this.tenantMembers.get(memberId);
+    if (!member || member.tenantId !== tenantId) {
+      throw new Error("Membresía no encontrada");
+    }
+
+    if (member.role === "owner" && member.isActive) {
+      const activeOwners = await this.countActiveOwners(tenantId);
+      if (activeOwners <= 1) {
+        throw new Error("No se puede desactivar al último propietario activo de la organización");
+      }
+    }
+
+    member.isActive = false;
+    member.updatedAt = new Date();
+    this.tenantMembers.set(memberId, member);
+
+    // Check if user has active memberships in other tenants
+    const otherActive = Array.from(this.tenantMembers.values())
+      .filter(m => m.userId === member.userId && m.tenantId !== tenantId && m.isActive);
+
+    let userDeactivatedGlobally = false;
+    if (otherActive.length === 0) {
+      const u = this.users.get(member.userId);
+      if (u) {
+        u.isActive = false;
+        u.updatedAt = new Date();
+        this.users.set(member.userId, u);
+        userDeactivatedGlobally = true;
+      }
+    }
+
+    return { member, userDeactivatedGlobally };
+  }
+
+  async activateTenantMember(tenantId: string, memberId: string): Promise<{ member: TenantMember }> {
+    const member = this.tenantMembers.get(memberId);
+    if (!member || member.tenantId !== tenantId) {
+      throw new Error("Membresía no encontrada");
+    }
+
+    member.isActive = true;
+    member.updatedAt = new Date();
+    this.tenantMembers.set(memberId, member);
+
+    const u = this.users.get(member.userId);
+    if (u) {
+      u.isActive = true;
+      u.updatedAt = new Date();
+      this.users.set(member.userId, u);
+    }
+
+    return { member };
   }
 
   // Product Variables operations

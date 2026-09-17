@@ -577,6 +577,10 @@ export const tenants = pgTable("tenants", {
   updatedAt: timestamp("updated_at").defaultNow(),
 });
 
+// Tenant member role catalogue
+export const TENANT_MEMBER_ROLES = ["owner", "admin", "member"] as const;
+export type TenantMemberRole = (typeof TENANT_MEMBER_ROLES)[number];
+
 // Tenant Members table - Users belonging to tenants with roles
 export const tenantMembers = pgTable("tenant_members", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
@@ -591,6 +595,52 @@ export const tenantMembers = pgTable("tenant_members", {
   index("tenant_members_user_idx").on(table.userId),
   index("tenant_members_tenant_idx").on(table.tenantId),
 ]);
+
+// Organization member with user data
+export interface TenantMemberWithUser {
+  id: string;
+  tenantId: string;
+  userId: string;
+  role: TenantMemberRole;
+  isActive: boolean;
+  joinedAt: Date | null;
+  updatedAt: Date | null;
+  user: {
+    id: string;
+    email: string | null;
+    firstName: string | null;
+    lastName: string | null;
+    role: string;
+    customRoleTitle: string | null;
+    permissions: unknown;
+    isActive: boolean | null;
+    profileImageUrl: string | null;
+    updatedAt: Date | null;
+  };
+}
+
+// Schemas for organizational member operations
+export const createTenantMemberSchema = z.object({
+  email: z.string().email("Email inválido"),
+  firstName: z.string().min(1, "El nombre es requerido"),
+  lastName: z.string().min(1, "El apellido es requerido"),
+  role: z.enum(TENANT_MEMBER_ROLES).default("member"),
+  customRoleTitle: z.string().optional(),
+  permissions: z.record(z.any()).optional(),
+  password: z.string().min(6, "La contraseña debe tener al menos 6 caracteres").optional(),
+  sendInvite: z.boolean().default(true),
+});
+
+export type CreateTenantMemberInput = z.infer<typeof createTenantMemberSchema>;
+
+export const updateTenantMemberSchema = z.object({
+  role: z.enum(TENANT_MEMBER_ROLES).optional(),
+  customRoleTitle: z.string().nullable().optional(),
+  permissions: z.record(z.any()).optional(),
+  isActive: z.boolean().optional(),
+});
+
+export type UpdateTenantMemberInput = z.infer<typeof updateTenantMemberSchema>;
 
 // Financial Institution Requests table - Broker requests to add new institutions
 export const financialInstitutionRequests = pgTable("financial_institution_requests", {
