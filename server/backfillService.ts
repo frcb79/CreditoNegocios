@@ -1,9 +1,107 @@
 import { randomUUID } from "node:crypto";
+import { asc, eq } from "drizzle-orm";
 import type { IStorage } from "./storage";
-import type { User, Tenant, TenantMember, InsertTenant, InsertTenantMember } from "../shared/schema";
+import {
+  users,
+  tenants,
+  tenantMembers,
+  type User,
+  type Tenant,
+  type TenantMember,
+  type InsertTenant,
+  type InsertTenantMember,
+} from "../shared/schema";
+
+export interface IBackfillStorage {
+  getAllUsers(): Promise<User[]>;
+  getTenants(): Promise<Tenant[]>;
+  getTenantMembers(): Promise<TenantMember[]>;
+  createTenant(tenantData: InsertTenant): Promise<Tenant>;
+  createTenantMember(memberData: InsertTenantMember): Promise<TenantMember>;
+  deleteTenantMember?(id: string): Promise<boolean>;
+  deleteTenant?(id: string): Promise<boolean>;
+}
+
+/**
+ * Storage adapter that executes all reads and writes within an active PostgreSQL/Drizzle transaction.
+ * Provides ACID atomicity: if an error occurs, the transaction rolls back completely.
+ */
+export class PostgreSqlTransactionStorage implements IBackfillStorage {
+  constructor(private tx: any) {}
+
+  async getAllUsers(): Promise<User[]> {
+    return await this.tx.select().from(users).orderBy(asc(users.createdAt));
+  }
+
+  async getTenants(): Promise<Tenant[]> {
+    return await this.tx.select().from(tenants).orderBy(asc(tenants.createdAt));
+  }
+
+  async getTenantMembers(): Promise<TenantMember[]> {
+    return await this.tx.select().from(tenantMembers).orderBy(asc(tenantMembers.joinedAt));
+  }
+
+  async createTenant(tenantData: InsertTenant): Promise<Tenant> {
+    const id = randomUUID();
+    const [created] = await this.tx
+      .insert(tenants)
+      .values({
+        ...tenantData,
+        id,
+        parentTenantId: tenantData.parentTenantId ?? null,
+        settings: tenantData.settings || {},
+        isActive: tenantData.isActive ?? true,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      })
+      .returning();
+    return created;
+  }
+
+  async createTenantMember(memberData: InsertTenantMember): Promise<TenantMember> {
+    const id = randomUUID();
+    const [created] = await this.tx
+      .insert(tenantMembers)
+      .values({
+        ...memberData,
+        id,
+        isActive: memberData.isActive ?? true,
+        joinedAt: new Date(),
+        updatedAt: new Date(),
+      })
+      .returning();
+    return created;
+  }
+}
+
+/**
+ * Read-only check to verify that the required tables exist in the public schema.
+ * Executes purely a SELECT query; does NOT execute DDL, INSERT, or repair schema.
+ */
+export async function checkRequiredTablesExist(pool: any): Promise<{
+  allExist: boolean;
+  missingTables: string[];
+}> {
+  const required = ["users", "tenants", "tenant_members"];
+  const res = await pool.query(
+    `
+    SELECT table_name 
+    FROM information_schema.tables 
+    WHERE table_schema = 'public' 
+      AND table_name = ANY($1::text[])
+  `,
+    [required]
+  );
+  const found = new Set(res.rows.map((r: any) => r.table_name));
+  const missingTables = required.filter((t) => !found.has(t));
+  return {
+    allExist: missingTables.length === 0,
+    missingTables,
+  };
+}
 
 export interface BackfillOptions {
-  storage: IStorage;
+  storage: IBackfillStorage;
   dryRun?: boolean;
   onLog?: (msg: string) => void;
 }
@@ -481,12 +579,16 @@ export async function executeBackfill(options: BackfillOptions): Promise<Backfil
       );
       for (const mId of createdMemberIds) {
         try {
-          await storage.deleteTenantMember(mId);
+          if (storage.deleteTenantMember) {
+            await storage.deleteTenantMember(mId);
+          }
         } catch (_) {}
       }
       for (const tId of createdTenantIds) {
         try {
-          await storage.deleteTenant(tId);
+          if (storage.deleteTenant) {
+            await storage.deleteTenant(tId);
+          }
         } catch (_) {}
       }
     }
@@ -497,7 +599,7 @@ export async function executeBackfill(options: BackfillOptions): Promise<Backfil
 /**
  * Validates post-backfill conditions (Requirement 9).
  */
-export async function validatePostBackfill(storage: IStorage): Promise<{
+export async function validatePostBackfill(storage: IBackfillStorage): Promise<{
   valid: boolean;
   errors: string[];
 }> {

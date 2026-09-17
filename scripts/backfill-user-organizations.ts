@@ -1,14 +1,21 @@
 #!/usr/bin/env node
-import { executeBackfill, validatePostBackfill } from "../server/backfillService";
+import {
+  executeBackfill,
+  validatePostBackfill,
+  checkRequiredTablesExist,
+  PostgreSqlTransactionStorage,
+  type BackfillResult,
+} from "../server/backfillService";
 
 console.log("======================================================================");
-console.log("  BLOQUE 2: BACKFILL DE ORGANIZACIONES Y MEMBRESÍAS DE USUARIOS");
+console.log("  BLOQUE 2.1: BACKFILL DE ORGANIZACIONES Y MEMBRESÍAS (READ-ONLY / ACID)");
 console.log("======================================================================\n");
 
 // Parse CLI flags
 const args = process.argv.slice(2);
 const isApply = args.includes("--apply");
 const isJson = args.includes("--json");
+const modeText = isApply ? "APPLY (EJECUCIÓN REAL CON ESCRITURA ATÓMICA)" : "DRY RUN (ESTRICTAMENTE READ-ONLY)";
 
 // 1. Verificación estricta de seguridad de entorno
 const targetUrl = process.env.STAGING_DATABASE_URL || process.env.TEST_DATABASE_URL;
@@ -33,33 +40,88 @@ if (lowerUrl.includes("prod") || process.env.NODE_ENV === "production") {
   process.exit(1);
 }
 
-// Configurar URL en entorno para que DbStorage conecte a este destino
+// 2. Extraer Host y Database Name sin exponer credenciales (Requirement 5)
+let hostDisplay = "desconocido";
+let dbNameDisplay = "desconocido";
+try {
+  const parsed = new URL(targetUrl);
+  hostDisplay = parsed.host;
+  dbNameDisplay = parsed.pathname.replace(/^\//, "") || "default";
+} catch {
+  // En caso de que la cadena use sintaxis no estándar
+  hostDisplay = "configurado";
+  dbNameDisplay = "configurado";
+}
+
+console.log("[CONFIGURACIÓN DE CONEXIÓN SEGURA]");
+console.log(`  • Host:              ${hostDisplay}`);
+console.log(`  • Base de datos:     ${dbNameDisplay}`);
+console.log(`  • Modo:              ${modeText}`);
+console.log(`  • Credenciales:      [PROTEGIDAS - NO SE EXPONEN]\n`);
+
+// Configurar URL en entorno para inicializar Pool
 process.env.DATABASE_URL = targetUrl;
 delete process.env.USE_MEMORY_STORAGE;
 
 (async () => {
-  const { pool } = await import("../server/db");
+  const { pool, db } = await import("../server/db");
   const { DbStorage } = await import("../server/dbStorage");
-  const { runAutoMigration } = await import("../server/autoMigrate");
-
-  const modeText = isApply ? "APPLY (EJECUCIÓN REAL CON ESCRITURA)" : "DRY RUN (SOLO LECTURA - SIMULACIÓN)";
-  console.log(`[MODO] ${modeText}\n`);
 
   try {
-    console.log("[1/4] Verificando tablas DDL mediante auto-migración...");
-    await runAutoMigration();
-    console.log("  ✓ Tablas y estructura verificadas.\n");
+    // 3. Comprobación estrictamente READ-ONLY de que las tablas requeridas existen (Requirement 1)
+    console.log("[1/3] Comprobando existencia de tablas requeridas (verificación 100% read-only)...");
+    const tableCheck = await checkRequiredTablesExist(pool);
+    if (!tableCheck.allExist) {
+      console.error("\n❌ ERROR DE PRERREQUISITO DE ESQUEMA:");
+      console.error(`   Faltan las siguientes tablas requeridas en la base de datos: ${tableCheck.missingTables.join(", ")}`);
+      console.error("   El modo DRY RUN no repara ni modifica el esquema silenciosamente.");
+      console.error("   Ejecute previamente la preparación del esquema (ej: migración DDL correspondiente).\n");
+      process.exit(1);
+    }
+    console.log("  ✓ Tablas 'users', 'tenants' y 'tenant_members' verificadas sin escrituras ni DDL.\n");
 
-    const storage = new DbStorage();
+    let result: BackfillResult;
 
-    console.log("[2/4] Ejecutando análisis de usuarios y organizaciones...");
-    const result = await executeBackfill({
-      storage,
-      dryRun: !isApply,
-      onLog: (msg) => console.log(`  ${msg}`),
-    });
+    if (!isApply) {
+      // ----------------------------------------------------
+      // MODO DRY RUN: 100% solo lectura, cero escrituras
+      // ----------------------------------------------------
+      console.log("[2/3] Ejecutando análisis de usuarios y proyección organizacional (DRY RUN)...");
+      const readOnlyStorage = new DbStorage();
+      result = await executeBackfill({
+        storage: readOnlyStorage,
+        dryRun: true,
+        onLog: (msg) => console.log(`  ${msg}`),
+      });
+    } else {
+      // ----------------------------------------------------
+      // MODO APPLY: Transacción PostgreSQL / Drizzle real y atómica (Requirement 2)
+      // ----------------------------------------------------
+      console.log("[2/3] Ejecutando APPLY dentro de una transacción PostgreSQL real (ACID)...");
+      await db.transaction(async (tx) => {
+        console.log("  [TX BEGIN] Transacción iniciada en PostgreSQL...");
+        const txStorage = new PostgreSqlTransactionStorage(tx);
 
-    const s = result.summary;
+        result = await executeBackfill({
+          storage: txStorage,
+          dryRun: false,
+          onLog: (msg) => console.log(`  ${msg}`),
+        });
+
+        console.log("  [TX VALIDATION] Ejecutando validaciones post-backfill dentro de la transacción...");
+        const validation = await validatePostBackfill(txStorage);
+        if (!validation.valid) {
+          throw new Error(
+            `Fallo en la validación post-backfill dentro de la transacción: ${validation.errors.join("; ")}`
+          );
+        }
+
+        console.log("  [TX COMMIT] Validaciones superadas al 100%. Confirmando transacción en PostgreSQL...");
+      });
+      console.log("  ✓ Transacción completada y confirmada exitosamente.\n");
+    }
+
+    const s = result!.summary;
 
     console.log("\n======================== REPORTE DE AUDITORÍA ========================");
     console.log(`Total Usuarios analizados:               ${s.totalUsers}`);
@@ -98,30 +160,37 @@ delete process.env.USE_MEMORY_STORAGE;
     }
 
     if (isApply) {
-      console.log("[3/4] Validando integridad post-migración...");
-      const validation = await validatePostBackfill(storage);
-      if (!validation.valid) {
+      console.log("[3/3] Validando estado final de la base de datos...");
+      const finalCheckStorage = new DbStorage();
+      const finalValidation = await validatePostBackfill(finalCheckStorage);
+      if (!finalValidation.valid) {
         console.error("❌ ERRORES DE INTEGRIDAD POST-BACKFILL:");
-        for (const err of validation.errors) {
+        for (const err of finalValidation.errors) {
           console.error(`  - ${err}`);
         }
         process.exitCode = 1;
       } else {
-        console.log("  ✓ Todas las 10 validaciones de integridad pasaron al 100%.");
+        console.log("  ✓ Verificación post-commit completada con 100% de éxito.");
       }
-
-      console.log("\n[4/4] Proceso APPLY finalizado exitosamente.");
     } else {
-      console.log("[3/4] Modo DRY RUN completado. No se realizaron cambios en la base de datos.");
-      console.log("      Para aplicar estos cambios en la base de staging, ejecute con --apply.\n");
+      console.log("[3/3] Modo DRY RUN finalizado. Base de datos no modificada (0 escrituras / 0 DDL).");
+      if (s.anomalies.some((a) => a.type === "invalid_master_broker")) {
+        console.log("ℹ️  Revisar advertencias de masterBrokerId antes de ejecutar --apply si se desea afiliar a otro Master.");
+      }
+      console.log("      Para aplicar estos cambios atómicamente en staging, ejecute con --apply.\n");
     }
 
     if (isJson) {
       console.log("\n--- JSON OUTPUT ---");
-      console.log(JSON.stringify(result, null, 2));
+      console.log(JSON.stringify(result!, null, 2));
     }
-  } catch (error) {
-    console.error("\n❌ ERROR DURANTE EL BACKFILL:", error);
+  } catch (error: any) {
+    if (error?.code === "ECONNREFUSED" || error?.errors?.[0]?.code === "ECONNREFUSED") {
+      console.error(`\n❌ ERROR DE CONEXIÓN: No se pudo conectar al host '${hostDisplay}'.`);
+      console.error("   Verifique que la URL de base de datos de Staging sea correcta y que la red permita la conexión.");
+    } else {
+      console.error("\n❌ ERROR DURANTE EL BACKFILL:", error);
+    }
     process.exitCode = 1;
   } finally {
     await pool.end();

@@ -1,6 +1,11 @@
 import assert from "node:assert";
 import { MemStorage } from "../server/storage";
-import { executeBackfill, validatePostBackfill } from "../server/backfillService";
+import {
+  executeBackfill,
+  validatePostBackfill,
+  checkRequiredTablesExist,
+  PostgreSqlTransactionStorage,
+} from "../server/backfillService";
 
 console.log("=== INICIANDO VERIFICACIÓN DE BACKFILL DE ORGANIZACIONES (BLOQUE 2) ===");
 
@@ -245,8 +250,69 @@ console.log("=== INICIANDO VERIFICACIÓN DE BACKFILL DE ORGANIZACIONES (BLOQUE 2
     assert.strictEqual(reloadedBroker?.masterBrokerId, masterAlfa.id, "masterBrokerId legacy intacto");
     console.log("  ✓ users.role y users.masterBrokerId permanecen 100% intactos");
 
+    // ----------------------------------------------------
+    // 8. Verificación de checkRequiredTablesExist (100% read-only)
+    // ----------------------------------------------------
+    console.log("\n[TEST 8] Verificando comprobación read-only de tablas requeridas (checkRequiredTablesExist)...");
+    const mockPoolSuccess = {
+      async query(_sql: string, _params: any[]) {
+        return { rows: [{ table_name: "users" }, { table_name: "tenants" }, { table_name: "tenant_members" }] };
+      },
+    };
+    const check1 = await checkRequiredTablesExist(mockPoolSuccess);
+    assert.strictEqual(check1.allExist, true);
+    assert.strictEqual(check1.missingTables.length, 0);
+
+    const mockPoolMissing = {
+      async query(_sql: string, _params: any[]) {
+        return { rows: [{ table_name: "users" }] };
+      },
+    };
+    const check2 = await checkRequiredTablesExist(mockPoolMissing);
+    assert.strictEqual(check2.allExist, false);
+    assert.deepStrictEqual(check2.missingTables, ["tenants", "tenant_members"]);
+    console.log("  ✓ checkRequiredTablesExist detecta esquemas completos e incompletos en modo read-only");
+
+    // ----------------------------------------------------
+    // 9. Verificación de PostgreSqlTransactionStorage (adaptador transaccional)
+    // ----------------------------------------------------
+    console.log("\n[TEST 9] Verificando PostgreSqlTransactionStorage (adaptador transaccional)...");
+    const mockTxInserts: any[] = [];
+    const mockTx = {
+      select() {
+        return {
+          from(_table: any) {
+            return {
+              orderBy() { return []; }
+            };
+          }
+        };
+      },
+      insert(_table: any) {
+        return {
+          values(val: any) {
+            mockTxInserts.push(val);
+            return {
+              returning() { return [{ id: "tx-created-id", ...val }]; }
+            };
+          }
+        };
+      }
+    };
+    const txStorage = new PostgreSqlTransactionStorage(mockTx);
+    const createdInTx = await txStorage.createTenant({
+      name: "TX Tenant",
+      slug: "tx-tenant",
+      type: "broker",
+      isActive: true,
+      settings: {},
+    });
+    assert.strictEqual(createdInTx.name, "TX Tenant");
+    assert.strictEqual(mockTxInserts.length, 1);
+    console.log("  ✓ PostgreSqlTransactionStorage canaliza las escrituras dentro de la transacción");
+
     console.log("\n=======================================================");
-    console.log("✓ TODOS LOS TESTS DE BACKFILL PASARON EXITOSAMENTE (7/7)");
+    console.log("✓ TODOS LOS TESTS DE BACKFILL PASARON EXITOSAMENTE (9/9)");
     console.log("=======================================================\n");
   } catch (error) {
     console.error("\n❌ ERROR EN TEST DE BACKFILL:", error);
