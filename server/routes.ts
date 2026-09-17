@@ -68,6 +68,10 @@ import {
   requireRole,
   getEffectivePermissions
 } from "./middleware/rbacMiddleware";
+import {
+  validateTenantMemberPermissions,
+  checkTransactionalCreationAllowed
+} from "./tenantPermissions";
 
 // Ensure upload directory exists
 if (!fs.existsSync('uploads')) {
@@ -1878,6 +1882,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post('/api/clients', isAuthenticated, requireModuleAndAction('clientes', 'edit'), async (req: any, res) => {
     try {
       const userId = req.user.claims.sub;
+
+      const transCheck = await checkTransactionalCreationAllowed(userId);
+      if (!transCheck.allowed) {
+        return res.status(403).json({ message: transCheck.message });
+      }
+
       const clientData = updatedInsertClientSchema.parse({
         ...req.body,
         brokerId: userId,
@@ -2105,6 +2115,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post('/api/credits', isAuthenticated, requireModuleAndAction('creditos', 'edit'), async (req: any, res) => {
     try {
       const userId = req.user.claims.sub;
+
+      const transCheck = await checkTransactionalCreationAllowed(userId);
+      if (!transCheck.allowed) {
+        return res.status(403).json({ message: transCheck.message });
+      }
+
       const creditData = insertCreditSchema.parse({
         ...req.body,
         brokerId: userId,
@@ -3700,7 +3716,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // =====================================================================
-  // ORGANIZATIONAL MULTI-USER ROUTES (BLOQUE 3)
+  // ORGANIZATIONAL MULTI-USER ROUTES (BLOQUE 3 & BLOQUE 3.1)
   // /api/tenants/:tenantId/members
   // =====================================================================
 
@@ -3730,7 +3746,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json(members);
     } catch (error) {
       console.error("Error listing organization members:", error);
-      res.status(500).json({ message: "Failed to list organization members" });
+      res.status(500).json({ message: "Error interno del servidor al procesar la solicitud." });
     }
   });
 
@@ -3762,7 +3778,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json(member);
     } catch (error) {
       console.error("Error getting organization member:", error);
-      res.status(500).json({ message: "Failed to get organization member" });
+      res.status(500).json({ message: "Error interno del servidor al procesar la solicitud." });
     }
   });
 
@@ -3802,6 +3818,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(403).json({ 
           message: "Los administradores solo pueden crear colaboradores con rol 'member'." 
         });
+      }
+
+      // Validate permissions & prevent privilege escalation
+      const callerUserId = req.user?.claims?.sub || req.user?.id || (req as any).dbUser?.id;
+      const callerUser = await storage.getUser(callerUserId);
+      const permValidation = await validateTenantMemberPermissions({
+        permissions: data.permissions,
+        tenantType: tenant.type,
+        callerUser,
+        callerRole,
+        isSuperAdmin,
+      });
+
+      if (!permValidation.valid) {
+        return res.status(403).json({ message: permValidation.error });
       }
 
       // Determine legacy users.role based on tenant type
@@ -3898,7 +3929,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (error?.message?.includes('already exists') || error?.code === '23505') {
         return res.status(409).json({ message: "El email ya está registrado en el sistema" });
       }
-      res.status(500).json({ message: error.message || "Failed to create organization member" });
+      res.status(500).json({ message: "Error interno del servidor al procesar la solicitud." });
     }
   });
 
@@ -3947,6 +3978,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       const data = updateTenantMemberSchema.parse(req.body);
 
+      // Validate permissions & prevent privilege escalation
+      if (data.permissions !== undefined) {
+        const callerUserId = req.user?.claims?.sub || req.user?.id || (req as any).dbUser?.id;
+        const callerUser = await storage.getUser(callerUserId);
+        const permValidation = await validateTenantMemberPermissions({
+          permissions: data.permissions,
+          tenantType: tenant.type,
+          callerUser,
+          callerRole,
+          isSuperAdmin,
+        });
+
+        if (!permValidation.valid) {
+          return res.status(403).json({ message: permValidation.error });
+        }
+      }
+
       // Last owner protection on degradation
       if (data.role && targetMember.role === 'owner' && data.role !== 'owner') {
         const activeOwners = await storage.countActiveOwners(tenantId);
@@ -3955,11 +4003,24 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
       }
 
-      // Update membership if role or isActive provided
-      if (data.role !== undefined || data.isActive !== undefined) {
+      // Enforce status changes strictly through deactivateTenantMember / activateTenantMember
+      // so the last owner rule can NEVER be bypassed
+      if (req.body.isActive !== undefined) {
+        if (req.body.isActive === false) {
+          try {
+            await storage.deactivateTenantMember(tenantId, memberId);
+          } catch (err: any) {
+            return res.status(400).json({ message: err.message });
+          }
+        } else if (req.body.isActive === true) {
+          await storage.activateTenantMember(tenantId, memberId);
+        }
+      }
+
+      // Update membership role if provided
+      if (data.role !== undefined) {
         await storage.updateTenantMember(memberId, {
           role: data.role,
-          isActive: data.isActive,
         });
       }
 
@@ -3978,7 +4039,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (error instanceof z.ZodError) {
         return res.status(400).json({ message: "Validation error", errors: error.errors });
       }
-      res.status(500).json({ message: error.message || "Failed to update organization member" });
+      if (error?.message?.includes('último propietario activo') || error?.message?.includes('único propietario activo')) {
+        return res.status(400).json({ message: error.message });
+      }
+      res.status(500).json({ message: "Error interno del servidor al procesar la solicitud." });
     }
   });
 
@@ -4041,7 +4105,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
     } catch (error: any) {
       console.error("Error updating member status:", error);
-      res.status(500).json({ message: error.message || "Failed to update member status" });
+      if (error?.message?.includes('último propietario activo') || error?.message?.includes('único propietario activo')) {
+        return res.status(400).json({ message: error.message });
+      }
+      res.status(500).json({ message: "Error interno del servidor al procesar la solicitud." });
     }
   });
 
@@ -4107,7 +4174,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json(responsePayload);
     } catch (error: any) {
       console.error("Error resending invite:", error);
-      res.status(500).json({ message: error.message || "Failed to resend invite" });
+      res.status(500).json({ message: "Error interno del servidor al procesar la solicitud." });
     }
   });
 

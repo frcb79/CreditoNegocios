@@ -3,8 +3,10 @@ process.env.DATABASE_URL = process.env.DATABASE_URL || "postgresql://dummy:dummy
 
 import assert from "node:assert";
 import { randomUUID } from "node:crypto";
+import { tenantMemberPermissionsSchema, updateTenantMemberSchema } from "../shared/schema";
+import { validateTenantMemberPermissions, checkTransactionalCreationAllowed } from "../server/tenantPermissions";
 
-console.log("=== INICIANDO SUITE DE VERIFICACIÓN: BLOQUE 3 (ORGANIZACIÓN MULTIUSUARIO) ===\n");
+console.log("=== INICIANDO SUITE DE VERIFICACIÓN: BLOQUE 3 Y 3.1 (ORGANIZACIÓN MULTIUSUARIO Y SEGURIDAD) ===\n");
 
 async function runTests() {
   const { MemStorage } = await import("../server/storage");
@@ -469,8 +471,191 @@ async function runTests() {
   assert.strictEqual(isNormalUserBlocked, true, "Usuario normal debe ser bloqueado con 403 si tenant está inactivo");
   console.log("  ✓ Tenant inactivo bloquea usuarios estándar (403) y permite acceso a Super Admin.");
 
+  // =========================================================================
+  // TEST 19: Generic PATCH cannot deactivate last active owner
+  // =========================================================================
+  console.log("\n[CASO 19] Intento de desactivar al último owner activo vía PATCH genérico...");
+  // 1. Verify schema does not expose isActive
+  assert.strictEqual(
+    (updateTenantMemberSchema as any).shape.isActive,
+    undefined,
+    "updateTenantMemberSchema no debe exponer isActive en el endpoint PATCH genérico"
+  );
+
+  // 2. Test route-level enforcement: if body contains isActive: false, routes pass through storage.deactivateTenantMember
+  // Broker B currently has 1 active owner (secondOwnerB is active, brokerBOwnerMember is inactive from Test 11)
+  const activeOwnersInBrokerB = await storage.countActiveOwners(brokerBTenant.id);
+  assert.strictEqual(activeOwnersInBrokerB, 1, "Broker B tiene exactamente 1 owner activo");
+
+  let genericPatchDeactError: string | null = null;
+  // Simulate the protected route logic for PATCH with isActive: false
+  try {
+    const patchBody = { isActive: false };
+    if (patchBody.isActive === false) {
+      await storage.deactivateTenantMember(brokerBTenant.id, secondOwnerB.member.id);
+    }
+  } catch (err: any) {
+    genericPatchDeactError = err.message;
+  }
+  assert.ok(genericPatchDeactError !== null, "Debe rechazar la desactivación del último owner");
+  assert.ok(
+    genericPatchDeactError.includes("último propietario activo"),
+    "El error debe especificar la protección del último propietario activo"
+  );
+  // Verify member remains active
+  const membersBList = await storage.getTenantMembers(brokerBTenant.id);
+  const verifiedOwnerB = membersBList.find(m => m.id === secondOwnerB.member.id);
+  assert.strictEqual(verifiedOwnerB?.isActive, true, "El owner debe permanecer activo");
+  console.log("  ✓ Bypass de último owner bloqueado: ningún PATCH genérico puede desactivarlo.");
+
+  // =========================================================================
+  // TEST 20: Broker tenant cannot assign scope: 'global'
+  // =========================================================================
+  console.log("\n[CASO 20] Validación de permisos: Broker tenant no puede recibir scope 'global'...");
+  const permTest20 = validateTenantMemberPermissions({
+    permissions: { modules: ["clientes"], actions: ["view"], scope: "global" },
+    tenantType: "broker",
+    callerUser: brokerAOwnerUser,
+    callerRole: "owner",
+    isSuperAdmin: false,
+  });
+  assert.strictEqual(permTest20.valid, false);
+  assert.ok(permTest20.error?.includes("no pueden recibir scope 'global'"));
+  console.log(`  ✓ Restricción validada: "${permTest20.error}"`);
+
+  // =========================================================================
+  // TEST 21: Broker tenant cannot assign scope: 'network'
+  // =========================================================================
+  console.log("\n[CASO 21] Validación de permisos: Broker tenant no puede recibir scope 'network'...");
+  const permTest21 = validateTenantMemberPermissions({
+    permissions: { modules: ["clientes"], actions: ["view"], scope: "network" },
+    tenantType: "broker",
+    callerUser: brokerAOwnerUser,
+    callerRole: "owner",
+    isSuperAdmin: false,
+  });
+  assert.strictEqual(permTest21.valid, false);
+  assert.ok(permTest21.error?.includes("no pueden recibir scope 'global' ni 'network'"));
+  console.log(`  ✓ Restricción validada: "${permTest21.error}"`);
+
+  // =========================================================================
+  // TEST 22: Master Broker tenant cannot assign scope: 'global'
+  // =========================================================================
+  console.log("\n[CASO 22] Validación de permisos: Master Broker tenant no puede recibir scope 'global'...");
+  const permTest22 = validateTenantMemberPermissions({
+    permissions: { modules: ["clientes", "red_brokers"], actions: ["view"], scope: "global" },
+    tenantType: "master_broker",
+    callerUser: masterOwnerUser,
+    callerRole: "owner",
+    isSuperAdmin: false,
+  });
+  assert.strictEqual(permTest22.valid, false);
+  assert.ok(permTest22.error?.includes("no pueden recibir scope 'global'"));
+  console.log(`  ✓ Restricción validada: "${permTest22.error}"`);
+
+  // =========================================================================
+  // TEST 23: Privilege escalation prevention (unassigned modules / actions)
+  // =========================================================================
+  console.log("\n[CASO 23] Prevención de escalación de privilegios...");
+  // 1. Caller with limited broker permissions tries to grant platform-reserved module "financieras"
+  const permTest23a = validateTenantMemberPermissions({
+    permissions: { modules: ["clientes", "financieras"], actions: ["view"] },
+    tenantType: "broker",
+    callerUser: brokerAOwnerUser,
+    callerRole: "owner",
+    isSuperAdmin: false,
+  });
+  assert.strictEqual(permTest23a.valid, false);
+  assert.ok(permTest23a.error?.includes("módulos reservados de plataforma") || permTest23a.error?.includes("no tienes asignados"));
+  console.log(`  ✓ Módulos no autorizados / reservados bloqueados: "${permTest23a.error}"`);
+
+  // 2. Caller tries to grant an action they do not possess (e.g. approve_disperse)
+  const permTest23b = validateTenantMemberPermissions({
+    permissions: { modules: ["clientes"], actions: ["approve_disperse"] },
+    tenantType: "broker",
+    callerUser: brokerAOwnerUser, // default broker only has ["view", "edit", "submit_proposals"]
+    callerRole: "owner",
+    isSuperAdmin: false,
+  });
+  assert.strictEqual(permTest23b.valid, false);
+  assert.ok(permTest23b.error?.toLowerCase().includes("no puedes conceder facultades que no tienes asignadas"));
+  console.log(`  ✓ Acciones no asignadas bloqueadas: "${permTest23b.error}"`);
+
+  // 3. Super Admin CAN grant reserved modules and scope 'global'
+  const permTest23c = validateTenantMemberPermissions({
+    permissions: { modules: ["financieras", "sistema_productos"], actions: ["view", "edit"], scope: "global" },
+    tenantType: "platform",
+    callerUser: superAdminUser,
+    callerRole: "super_admin",
+    isSuperAdmin: true,
+  });
+  assert.strictEqual(permTest23c.valid, true);
+  console.log("  ✓ Super Admin tiene facultades para conceder módulos reservados y scope 'global'.");
+
+  // =========================================================================
+  // TEST 24: Strict Zod validation of permissions
+  // =========================================================================
+  console.log("\n[CASO 24] Validación estricta con Zod de permissions (módulos/acciones/scopes)...");
+  // 1. Unknown module
+  const zodUnknownModule = tenantMemberPermissionsSchema.safeParse({
+    modules: ["modulo_fantasma_invalido"],
+    actions: ["view"],
+  });
+  assert.strictEqual(zodUnknownModule.success, false, "Debe rechazar módulos desconocidos");
+
+  // 2. Unknown action
+  const zodUnknownAction = tenantMemberPermissionsSchema.safeParse({
+    modules: ["clientes"],
+    actions: ["drop_tables"],
+  });
+  assert.strictEqual(zodUnknownAction.success, false, "Debe rechazar acciones desconocidas");
+
+  // 3. Unknown scope
+  const zodUnknownScope = tenantMemberPermissionsSchema.safeParse({
+    modules: ["clientes"],
+    actions: ["view"],
+    scope: "unrestricted_root",
+  });
+  assert.strictEqual(zodUnknownScope.success, false, "Debe rechazar scopes no permitidos");
+
+  // 4. Valid payload
+  const zodValid = tenantMemberPermissionsSchema.safeParse({
+    modules: ["clientes", "creditos"],
+    actions: ["view", "edit"],
+    scope: "standard",
+  });
+  assert.strictEqual(zodValid.success, true, "Debe aceptar combinaciones válidas del catálogo");
+  console.log("  ✓ Zod Schema valida estrictamente módulos, acciones y scopes contra el catálogo cerrado.");
+
+  // =========================================================================
+  // TEST 25: Transactional creation restricted for non-owner internal collaborators
+  // =========================================================================
+  console.log("\n[CASO 25] Restricción transaccional: originación de clientes y créditos...");
+  // 1. Internal collaborator with 'member' role (analyst) -> BLOCKED
+  const transCheckMember = await checkTransactionalCreationAllowed(result1.user.id, storage);
+  assert.strictEqual(transCheckMember.allowed, false, "Colaborador interno 'member' debe estar bloqueado");
+  assert.ok(transCheckMember.message?.includes("Operación restringida"));
+  assert.ok(transCheckMember.message?.includes("reservada al titular comercial"));
+  console.log(`  ✓ Colaborador interno 'member' bloqueado (403): "${transCheckMember.message}"`);
+
+  // 2. Internal collaborator with 'admin' role -> BLOCKED
+  const transCheckAdmin = await checkTransactionalCreationAllowed(result2.user.id, storage);
+  assert.strictEqual(transCheckAdmin.allowed, false, "Colaborador interno 'admin' debe estar bloqueado");
+  assert.ok(transCheckAdmin.message?.includes("Operación restringida"));
+  console.log("  ✓ Colaborador interno 'admin' bloqueado (403).");
+
+  // 3. Titular owner of Broker A -> ALLOWED
+  const transCheckOwner = await checkTransactionalCreationAllowed(brokerAOwnerUser.id, storage);
+  assert.strictEqual(transCheckOwner.allowed, true, "Titular commercial owner debe tener acceso libre a originación");
+  console.log("  ✓ Titular comercial (Owner) permitido para originar clientes y créditos.");
+
+  // 4. Super Admin -> ALLOWED
+  const transCheckSuper = await checkTransactionalCreationAllowed(superAdminUser.id, storage);
+  assert.strictEqual(transCheckSuper.allowed, true, "Super Admin debe tener acceso libre");
+  console.log("  ✓ Super Admin permitido para originar clientes y créditos.");
+
   console.log("\n============================================================");
-  console.log("✅ TODAS LAS 18 PRUEBAS DE VERIFICACIÓN DE BLOQUE 3 PASARON EXITOSAMENTE");
+  console.log("✅ TODAS LAS 25 PRUEBAS DE VERIFICACIÓN (BLOQUE 3 Y 3.1) PASARON EXITOSAMENTE");
   console.log("============================================================\n");
 }
 

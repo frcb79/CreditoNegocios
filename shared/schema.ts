@@ -619,6 +619,55 @@ export interface TenantMemberWithUser {
   };
 }
 
+// Valid RBAC modules, actions and scopes for tenant members
+export const VALID_PERMISSIONS_MODULES = [
+  "dashboard",
+  "clientes",
+  "creditos",
+  "aprobaciones",
+  "comisiones",
+  "financieras",
+  "sistema_productos",
+  "red_brokers",
+  "documentos",
+  "reportes",
+  "importacion",
+  "usuarios",
+  "configuracion",
+] as const;
+
+export type ValidPermissionsModule = typeof VALID_PERMISSIONS_MODULES[number];
+
+export const VALID_PERMISSIONS_ACTIONS = [
+  "view",
+  "edit",
+  "submit_proposals",
+  "approve_disperse",
+  "manage_commissions",
+  "manage_users",
+  "export_reports",
+] as const;
+
+export type ValidPermissionsAction = typeof VALID_PERMISSIONS_ACTIONS[number];
+
+export const VALID_PERMISSIONS_SCOPES = [
+  "global",
+  "network",
+  "standard",
+  "own",
+  "tenant",
+] as const;
+
+export type ValidPermissionsScope = typeof VALID_PERMISSIONS_SCOPES[number];
+
+export const tenantMemberPermissionsSchema = z.object({
+  modules: z.array(z.enum(VALID_PERMISSIONS_MODULES)).default([]),
+  actions: z.array(z.enum(VALID_PERMISSIONS_ACTIONS)).default([]),
+  scope: z.enum(VALID_PERMISSIONS_SCOPES).optional(),
+});
+
+export type TenantMemberPermissions = z.infer<typeof tenantMemberPermissionsSchema>;
+
 // Schemas for organizational member operations
 export const createTenantMemberSchema = z.object({
   email: z.string().email("Email inválido"),
@@ -626,7 +675,7 @@ export const createTenantMemberSchema = z.object({
   lastName: z.string().min(1, "El apellido es requerido"),
   role: z.enum(TENANT_MEMBER_ROLES).default("member"),
   customRoleTitle: z.string().optional(),
-  permissions: z.record(z.any()).optional(),
+  permissions: tenantMemberPermissionsSchema.optional(),
   password: z.string().min(6, "La contraseña debe tener al menos 6 caracteres").optional(),
   sendInvite: z.boolean().default(true),
 });
@@ -636,8 +685,7 @@ export type CreateTenantMemberInput = z.infer<typeof createTenantMemberSchema>;
 export const updateTenantMemberSchema = z.object({
   role: z.enum(TENANT_MEMBER_ROLES).optional(),
   customRoleTitle: z.string().nullable().optional(),
-  permissions: z.record(z.any()).optional(),
-  isActive: z.boolean().optional(),
+  permissions: tenantMemberPermissionsSchema.optional(),
 });
 
 export type UpdateTenantMemberInput = z.infer<typeof updateTenantMemberSchema>;
