@@ -582,7 +582,11 @@ export const tenantMembers = pgTable("tenant_members", {
   isActive: boolean("is_active").default(true),
   joinedAt: timestamp("joined_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
-});
+}, (table) => [
+  uniqueIndex("tenant_members_tenant_user_unique").on(table.tenantId, table.userId),
+  index("tenant_members_user_idx").on(table.userId),
+  index("tenant_members_tenant_idx").on(table.tenantId),
+]);
 
 // Financial Institution Requests table - Broker requests to add new institutions
 export const financialInstitutionRequests = pgTable("financial_institution_requests", {

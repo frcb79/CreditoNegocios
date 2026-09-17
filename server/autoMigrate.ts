@@ -93,6 +93,53 @@ export async function runAutoMigration(): Promise<void> {
       console.error("⚠️ [AutoMigrate] Error verifying users table/columns:", err);
     }
 
+    // 2b. Ensure tenants and tenant_members tables and indexes exist
+    try {
+      await client.query(`
+        CREATE TABLE IF NOT EXISTS public.tenants (
+          id VARCHAR PRIMARY KEY DEFAULT gen_random_uuid(),
+          type VARCHAR NOT NULL,
+          name VARCHAR NOT NULL,
+          slug VARCHAR NOT NULL,
+          parent_tenant_id VARCHAR,
+          settings JSONB DEFAULT '{}',
+          is_active BOOLEAN DEFAULT TRUE,
+          created_at TIMESTAMP DEFAULT NOW(),
+          updated_at TIMESTAMP DEFAULT NOW(),
+          CONSTRAINT "tenants_slug_unique" UNIQUE("slug")
+        );
+      `);
+      console.log("✅ [AutoMigrate] Tenants table verified");
+    } catch (err) {
+      console.error("⚠️ [AutoMigrate] Error verifying tenants table:", err);
+    }
+
+    try {
+      await client.query(`
+        CREATE TABLE IF NOT EXISTS public.tenant_members (
+          id VARCHAR PRIMARY KEY DEFAULT gen_random_uuid(),
+          tenant_id VARCHAR NOT NULL,
+          user_id VARCHAR NOT NULL,
+          role VARCHAR NOT NULL,
+          is_active BOOLEAN DEFAULT TRUE,
+          joined_at TIMESTAMP DEFAULT NOW(),
+          updated_at TIMESTAMP DEFAULT NOW()
+        );
+
+        CREATE UNIQUE INDEX IF NOT EXISTS "tenant_members_tenant_user_unique" 
+        ON public.tenant_members ("tenant_id", "user_id");
+
+        CREATE INDEX IF NOT EXISTS "tenant_members_user_idx" 
+        ON public.tenant_members ("user_id");
+
+        CREATE INDEX IF NOT EXISTS "tenant_members_tenant_idx" 
+        ON public.tenant_members ("tenant_id");
+      `);
+      console.log("✅ [AutoMigrate] Tenant members table and indexes verified");
+    } catch (err) {
+      console.error("⚠️ [AutoMigrate] Error verifying tenant_members table/indexes:", err);
+    }
+
     // 3. Ensure clients table columns exist
     try {
       await client.query(`

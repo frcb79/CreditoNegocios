@@ -37,7 +37,7 @@ declare global {
  */
 export const tenantContextMiddleware: RequestHandler = async (req: any, res, next) => {
   try {
-    const userId = req.user?.claims?.sub;
+    const userId = req.user?.claims?.sub || req.user?.id;
     
     // Initialize context with defaults
     req.tenantContext = {
@@ -53,7 +53,12 @@ export const tenantContextMiddleware: RequestHandler = async (req: any, res, nex
 
     // Check if user is platform admin
     const user = await storage.getUser(userId);
-    req.tenantContext.isPlatformAdmin = user?.role === "super_admin" || user?.role === "admin";
+    req.tenantContext.isPlatformAdmin = Boolean(
+      user?.role === "super_admin" ||
+      user?.role === "admin" ||
+      req.user?.role === "super_admin" ||
+      req.user?.role === "admin"
+    );
 
     // Try to resolve tenant from various sources
     let tenantSlug: string | undefined;
@@ -131,19 +136,25 @@ export const requireTenantContext: RequestHandler = (req: any, res, next) => {
  * Use after tenantContextMiddleware when user must be a member of the tenant
  */
 export const requireTenantMembership: RequestHandler = (req: any, res, next) => {
-  const { tenant, membership, isPlatformAdmin } = req.tenantContext;
-  
-  if (!tenant) {
-    return res.status(400).json({ 
-      message: "Tenant context required" 
-    });
-  }
+  const isPlatformAdmin = Boolean(
+    req.tenantContext?.isPlatformAdmin ||
+    req.user?.role === "super_admin" ||
+    req.user?.role === "admin"
+  );
   
   // Platform admins can access any tenant
   if (isPlatformAdmin) {
     return next();
   }
   
+  const tenant = req.tenantContext?.tenant;
+  if (!tenant) {
+    return res.status(400).json({ 
+      message: "Tenant context required" 
+    });
+  }
+  
+  const membership = req.tenantContext?.membership;
   // Regular users need active membership
   if (!membership || !membership.isActive) {
     return res.status(403).json({ 
@@ -160,15 +171,20 @@ export const requireTenantMembership: RequestHandler = (req: any, res, next) => 
  */
 export const requireTenantRole = (allowedRoles: ("owner" | "admin" | "member")[]): RequestHandler => {
   return (req: any, res, next) => {
-    const { membership, isPlatformAdmin } = req.tenantContext;
+    const isPlatformAdmin = Boolean(
+      req.tenantContext?.isPlatformAdmin ||
+      req.user?.role === "super_admin" ||
+      req.user?.role === "admin"
+    );
     
     // Platform admins can access any resource
     if (isPlatformAdmin) {
       return next();
     }
     
-    // Check if user has required role
-    if (!membership || !allowedRoles.includes(membership.role)) {
+    const membership = req.tenantContext?.membership;
+    // Check if user has active membership with required role
+    if (!membership || !membership.isActive || !allowedRoles.includes(membership.role)) {
       return res.status(403).json({ 
         message: `Access denied. Required roles: ${allowedRoles.join(", ")}` 
       });
@@ -187,7 +203,7 @@ export const resolveTenantFromParam = (paramName: string = 'id'): RequestHandler
   return async (req: any, res, next) => {
     try {
       const tenantId = req.params[paramName];
-      const userId = req.user?.claims?.sub;
+      const userId = req.user?.claims?.sub || req.user?.id;
       
       if (!tenantId) {
         return res.status(400).json({ message: `Missing ${paramName} parameter` });
@@ -227,7 +243,7 @@ export const resolveTenantFromQuery = (queryParam: string = 'tenantId'): Request
   return async (req: any, res, next) => {
     try {
       const tenantId = req.query[queryParam];
-      const userId = req.user?.claims?.sub;
+      const userId = req.user?.claims?.sub || req.user?.id;
       
       if (!tenantId) {
         return res.status(400).json({ message: `Missing ${queryParam} query parameter` });

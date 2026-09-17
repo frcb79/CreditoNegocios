@@ -2011,6 +2011,24 @@ export class MemStorage implements IStorage {
   }
 
   async createTenantMember(tenantMemberData: InsertTenantMember): Promise<TenantMember> {
+    // 1. Verify tenant exists
+    const tenant = await this.getTenant(tenantMemberData.tenantId);
+    if (!tenant) {
+      throw new Error(`Tenant '${tenantMemberData.tenantId}' does not exist`);
+    }
+
+    // 2. Verify user exists
+    const user = await this.getUser(tenantMemberData.userId);
+    if (!user) {
+      throw new Error(`User '${tenantMemberData.userId}' does not exist`);
+    }
+
+    // 3. Prevent duplicate membership
+    const existingMembership = await this.getUserTenantMembership(tenantMemberData.userId, tenantMemberData.tenantId);
+    if (existingMembership) {
+      throw new Error(`User '${tenantMemberData.userId}' is already a member of tenant '${tenantMemberData.tenantId}'`);
+    }
+
     const id = randomUUID();
     const tenantMember: TenantMember = {
       ...tenantMemberData,
@@ -2030,6 +2048,7 @@ export class MemStorage implements IStorage {
     const updated = {
       ...existing,
       ...tenantMemberData,
+      updatedAt: new Date(),
     };
     this.tenantMembers.set(id, updated);
     return updated;

@@ -1238,22 +1238,209 @@ export class DbStorage implements IStorage {
   }
 
   // Tenant operations
-  async getTenants(): Promise<Tenant[]> { return []; }
-  async getTenant(id: string): Promise<Tenant | undefined> { return undefined; }
-  async getTenantBySlug(slug: string): Promise<Tenant | undefined> { return undefined; }
-  async createTenant(tenant: InsertTenant): Promise<Tenant> { throw new Error("Not implemented"); }
-  async updateTenant(id: string, tenant: Partial<InsertTenant>): Promise<Tenant | undefined> { return undefined; }
-  async deleteTenant(id: string): Promise<boolean> { return false; }
-  async getTenantsByParent(parentTenantId: string): Promise<Tenant[]> { return []; }
+  async getTenants(): Promise<Tenant[]> {
+    try {
+      return await db.select().from(tenants).orderBy(asc(tenants.createdAt));
+    } catch (error) {
+      console.error("Error getting tenants:", error);
+      return [];
+    }
+  }
+
+  async getTenant(id: string): Promise<Tenant | undefined> {
+    try {
+      const [tenant] = await db.select().from(tenants).where(eq(tenants.id, id));
+      return tenant;
+    } catch (error) {
+      console.error("Error getting tenant by id:", error);
+      return undefined;
+    }
+  }
+
+  async getTenantBySlug(slug: string): Promise<Tenant | undefined> {
+    try {
+      const [tenant] = await db.select().from(tenants).where(eq(tenants.slug, slug));
+      return tenant;
+    } catch (error) {
+      console.error("Error getting tenant by slug:", error);
+      return undefined;
+    }
+  }
+
+  async createTenant(tenantData: InsertTenant): Promise<Tenant> {
+    try {
+      const existing = await this.getTenantBySlug(tenantData.slug);
+      if (existing) {
+        throw new Error(`Tenant with slug '${tenantData.slug}' already exists`);
+      }
+
+      const id = randomUUID();
+      const [created] = await db.insert(tenants).values({
+        ...tenantData,
+        id,
+        parentTenantId: tenantData.parentTenantId ?? null,
+        settings: tenantData.settings || {},
+        isActive: tenantData.isActive ?? true,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      }).returning();
+      return created;
+    } catch (error) {
+      console.error("Error creating tenant:", error);
+      throw error;
+    }
+  }
+
+  async updateTenant(id: string, tenantData: Partial<InsertTenant>): Promise<Tenant | undefined> {
+    try {
+      if (tenantData.slug) {
+        const existingWithSlug = await this.getTenantBySlug(tenantData.slug);
+        if (existingWithSlug && existingWithSlug.id !== id) {
+          throw new Error(`Tenant with slug '${tenantData.slug}' already exists`);
+        }
+      }
+
+      const [updated] = await db.update(tenants)
+        .set({
+          ...tenantData,
+          updatedAt: new Date(),
+        })
+        .where(eq(tenants.id, id))
+        .returning();
+      return updated;
+    } catch (error) {
+      console.error("Error updating tenant:", error);
+      return undefined;
+    }
+  }
+
+  async deleteTenant(id: string): Promise<boolean> {
+    try {
+      await db.delete(tenantMembers).where(eq(tenantMembers.tenantId, id));
+      const result = await db.delete(tenants).where(eq(tenants.id, id)).returning();
+      return result.length > 0;
+    } catch (error) {
+      console.error("Error deleting tenant:", error);
+      return false;
+    }
+  }
+
+  async getTenantsByParent(parentTenantId: string): Promise<Tenant[]> {
+    try {
+      return await db.select().from(tenants)
+        .where(eq(tenants.parentTenantId, parentTenantId))
+        .orderBy(asc(tenants.createdAt));
+    } catch (error) {
+      console.error("Error getting tenants by parent:", error);
+      return [];
+    }
+  }
 
   // Tenant member operations
-  async getTenantMembers(tenantId?: string): Promise<TenantMember[]> { return []; }
-  async getTenantMember(id: string): Promise<TenantMember | undefined> { return undefined; }
-  async createTenantMember(member: InsertTenantMember): Promise<TenantMember> { throw new Error("Not implemented"); }
-  async updateTenantMember(id: string, member: Partial<InsertTenantMember>): Promise<TenantMember | undefined> { return undefined; }
-  async deleteTenantMember(id: string): Promise<boolean> { return false; }
-  async getTenantMembersByUser(userId: string): Promise<TenantMember[]> { return []; }
-  async getUserTenantMembership(userId: string, tenantId: string): Promise<TenantMember | undefined> { return undefined; }
+  async getTenantMembers(tenantId?: string): Promise<TenantMember[]> {
+    try {
+      const query = tenantId
+        ? db.select().from(tenantMembers).where(eq(tenantMembers.tenantId, tenantId)).orderBy(asc(tenantMembers.joinedAt))
+        : db.select().from(tenantMembers).orderBy(asc(tenantMembers.joinedAt));
+      return await query;
+    } catch (error) {
+      console.error("Error getting tenant members:", error);
+      return [];
+    }
+  }
+
+  async getTenantMember(id: string): Promise<TenantMember | undefined> {
+    try {
+      const [member] = await db.select().from(tenantMembers).where(eq(tenantMembers.id, id));
+      return member;
+    } catch (error) {
+      console.error("Error getting tenant member:", error);
+      return undefined;
+    }
+  }
+
+  async createTenantMember(memberData: InsertTenantMember): Promise<TenantMember> {
+    try {
+      // 1. Verify tenant exists
+      const tenant = await this.getTenant(memberData.tenantId);
+      if (!tenant) {
+        throw new Error(`Tenant '${memberData.tenantId}' does not exist`);
+      }
+
+      // 2. Verify user exists
+      const user = await this.getUser(memberData.userId);
+      if (!user) {
+        throw new Error(`User '${memberData.userId}' does not exist`);
+      }
+
+      // 3. Prevent duplicate membership
+      const existingMembership = await this.getUserTenantMembership(memberData.userId, memberData.tenantId);
+      if (existingMembership) {
+        throw new Error(`User '${memberData.userId}' is already a member of tenant '${memberData.tenantId}'`);
+      }
+
+      const id = randomUUID();
+      const [created] = await db.insert(tenantMembers).values({
+        ...memberData,
+        id,
+        isActive: memberData.isActive ?? true,
+        joinedAt: new Date(),
+        updatedAt: new Date(),
+      }).returning();
+      return created;
+    } catch (error) {
+      console.error("Error creating tenant member:", error);
+      throw error;
+    }
+  }
+
+  async updateTenantMember(id: string, memberData: Partial<InsertTenantMember>): Promise<TenantMember | undefined> {
+    try {
+      const [updated] = await db.update(tenantMembers)
+        .set({
+          ...memberData,
+          updatedAt: new Date(),
+        })
+        .where(eq(tenantMembers.id, id))
+        .returning();
+      return updated;
+    } catch (error) {
+      console.error("Error updating tenant member:", error);
+      return undefined;
+    }
+  }
+
+  async deleteTenantMember(id: string): Promise<boolean> {
+    try {
+      const result = await db.delete(tenantMembers).where(eq(tenantMembers.id, id)).returning();
+      return result.length > 0;
+    } catch (error) {
+      console.error("Error deleting tenant member:", error);
+      return false;
+    }
+  }
+
+  async getTenantMembersByUser(userId: string): Promise<TenantMember[]> {
+    try {
+      return await db.select().from(tenantMembers)
+        .where(eq(tenantMembers.userId, userId))
+        .orderBy(asc(tenantMembers.joinedAt));
+    } catch (error) {
+      console.error("Error getting tenant members by user:", error);
+      return [];
+    }
+  }
+
+  async getUserTenantMembership(userId: string, tenantId: string): Promise<TenantMember | undefined> {
+    try {
+      const [membership] = await db.select().from(tenantMembers)
+        .where(and(eq(tenantMembers.userId, userId), eq(tenantMembers.tenantId, tenantId)));
+      return membership;
+    } catch (error) {
+      console.error("Error getting user tenant membership:", error);
+      return undefined;
+    }
+  }
 
   // Legacy product operations
   async getProducts(institutionId?: string): Promise<Product[]> { return []; }

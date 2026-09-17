@@ -3453,7 +3453,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post('/api/tenants', isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const userId = req.user?.claims?.sub || req.user?.id;
       
       // Check platform role permissions
       const hasPermission = await requirePlatformRole(userId, ['super_admin', 'admin', 'master_broker']);
@@ -3542,7 +3542,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get('/api/tenant-members/:id', isAuthenticated, async (req: any, res) => {
     try {
       const { id } = req.params;
-      const userId = req.user.claims.sub;
+      const userId = req.user?.claims?.sub || req.user?.id;
       
       const tenantMember = await storage.getTenantMember(id);
       
@@ -3571,7 +3571,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post('/api/tenant-members', isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const userId = req.user?.claims?.sub || req.user?.id;
       
       const tenantMemberData = insertTenantMemberSchema.parse(req.body);
       
@@ -3612,6 +3612,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       console.error("Error creating tenant member:", error);
       if (error instanceof z.ZodError) {
         res.status(400).json({ message: 'Invalid data', errors: error.errors });
+      } else if (error instanceof Error && error.message.includes('already a member')) {
+        res.status(409).json({ message: error.message });
+      } else if (error instanceof Error && error.message.includes('does not exist')) {
+        res.status(404).json({ message: error.message });
       } else {
         res.status(500).json({ message: "Failed to create tenant member" });
       }
@@ -3621,7 +3625,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.put('/api/tenant-members/:id', isAuthenticated, async (req: any, res) => {
     try {
       const { id } = req.params;
-      const userId = req.user.claims.sub;
+      const userId = req.user?.claims?.sub || req.user?.id;
       
       const existingMember = await storage.getTenantMember(id);
       if (!existingMember) {
@@ -3661,7 +3665,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.delete('/api/tenant-members/:id', isAuthenticated, async (req: any, res) => {
     try {
       const { id } = req.params;
-      const userId = req.user.claims.sub;
+      const userId = req.user?.claims?.sub || req.user?.id;
       
       const existingMember = await storage.getTenantMember(id);
       if (!existingMember) {
