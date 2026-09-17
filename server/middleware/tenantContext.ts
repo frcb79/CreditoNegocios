@@ -142,7 +142,7 @@ export const requireTenantMembership: RequestHandler = (req: any, res, next) => 
     req.user?.role === "admin"
   );
   
-  // Platform admins can access any tenant
+  // Platform admins can access any tenant (including inactive ones for administration/reactivation)
   if (isPlatformAdmin) {
     return next();
   }
@@ -151,6 +151,13 @@ export const requireTenantMembership: RequestHandler = (req: any, res, next) => 
   if (!tenant) {
     return res.status(400).json({ 
       message: "Tenant context required" 
+    });
+  }
+
+  // Block normal users if tenant is inactive
+  if (tenant.isActive === false) {
+    return res.status(403).json({ 
+      message: "Access denied. Tenant is inactive." 
     });
   }
   
@@ -177,9 +184,17 @@ export const requireTenantRole = (allowedRoles: ("owner" | "admin" | "member")[]
       req.user?.role === "admin"
     );
     
-    // Platform admins can access any resource
+    // Platform admins can access any resource (including inactive tenants)
     if (isPlatformAdmin) {
       return next();
+    }
+
+    const tenant = req.tenantContext?.tenant;
+    // Block normal users if tenant is inactive
+    if (tenant && tenant.isActive === false) {
+      return res.status(403).json({ 
+        message: "Access denied. Tenant is inactive." 
+      });
     }
     
     const membership = req.tenantContext?.membership;

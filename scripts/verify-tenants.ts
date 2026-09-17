@@ -41,13 +41,22 @@ async function testMiddleware(middleware: any, req: any): Promise<{ status?: num
     const tenant1 = await storage.createTenant({
       name: "Brokerage Alfa",
       slug: "brokerage-alfa",
-      type: "brokerage",
+      type: "broker",
       isActive: true,
       settings: { theme: "dark" },
     });
     assert.ok(tenant1.id, "Tenant 1 debe tener un ID asignado");
     assert.strictEqual(tenant1.slug, "brokerage-alfa");
     assert.strictEqual(tenant1.isActive, true);
+
+    const tenantInactive = await storage.createTenant({
+      name: "Brokerage Inactivo",
+      slug: "brokerage-inactivo",
+      type: "broker",
+      isActive: false,
+      settings: {},
+    });
+    assert.strictEqual(tenantInactive.isActive, false);
 
     const fetchedTenant = await storage.getTenant(tenant1.id);
     assert.strictEqual(fetchedTenant?.id, tenant1.id);
@@ -176,6 +185,16 @@ async function testMiddleware(middleware: any, req: any): Promise<{ status?: num
     assert.ok(mInactive.id);
     assert.strictEqual(mInactive.isActive, false);
 
+    // Membresía activa dentro de un tenant inactivo
+    const mActiveInInactiveTenant = await storage.createTenantMember({
+      tenantId: tenantInactive.id,
+      userId: userMember.id,
+      role: "member",
+      isActive: true,
+    });
+    assert.ok(mActiveInInactiveTenant.id);
+    assert.strictEqual(mActiveInInactiveTenant.isActive, true);
+
     // Intentar membresía duplicada
     await assert.rejects(
       async () => {
@@ -193,7 +212,7 @@ async function testMiddleware(middleware: any, req: any): Promise<{ status?: num
 
     // Verificar consultas de miembros
     const members = await storage.getTenantMembers(tenant1.id);
-    assert.strictEqual(members.length, 4, "Debe haber 4 miembros en el tenant");
+    assert.strictEqual(members.length, 4, "Debe haber 4 miembros en el tenant 1");
 
     const ownerMembership = await storage.getUserTenantMembership(userOwner.id, tenant1.id);
     assert.strictEqual(ownerMembership?.id, mOwner.id);
@@ -249,6 +268,98 @@ async function testMiddleware(middleware: any, req: any): Promise<{ status?: num
     assert.strictEqual(resInactiveMember.nextCalled, false, "Miembro inactivo NO debe pasar");
     assert.strictEqual(resInactiveMember.status, 403, "Debe retornar 403");
     console.log("  ✓ Escenario 3 APROBADO: Miembro inactivo recibe 403");
+
+    // ----------------------------------------------------
+    // BLOQUE 1.1: 4 combinaciones explícitas de estado (Tenant / Membresía)
+    // ----------------------------------------------------
+    console.log("\n[TEST 7B] BLOQUE 1.1: Verificando las 4 combinaciones explícitas de Tenant / Membresía...");
+
+    // 1. Tenant activo + miembro activo → acceso
+    const resCombo1 = await testMiddleware(
+      requireTenantMembership,
+      {
+        tenantContext: {
+          tenant: tenant1, // isActive: true
+          membership: mMember, // isActive: true
+          isPlatformAdmin: false,
+        },
+      }
+    );
+    assert.strictEqual(resCombo1.nextCalled, true, "Combo 1: tenant activo + miembro activo debe tener acceso");
+    console.log("  ✓ 1. Tenant activo + miembro activo → acceso");
+
+    // 2. Tenant inactivo + miembro activo → 403
+    const resCombo2 = await testMiddleware(
+      requireTenantMembership,
+      {
+        tenantContext: {
+          tenant: tenantInactive, // isActive: false
+          membership: mActiveInInactiveTenant, // isActive: true
+          isPlatformAdmin: false,
+        },
+      }
+    );
+    assert.strictEqual(resCombo2.nextCalled, false, "Combo 2: tenant inactivo debe bloquear al miembro activo");
+    assert.strictEqual(resCombo2.status, 403, "Combo 2: debe retornar 403");
+
+    // También con requireTenantRole
+    const resCombo2Role = await testMiddleware(
+      requireTenantRole(["member"]),
+      {
+        tenantContext: {
+          tenant: tenantInactive, // isActive: false
+          membership: mActiveInInactiveTenant,
+          isPlatformAdmin: false,
+        },
+      }
+    );
+    assert.strictEqual(resCombo2Role.nextCalled, false);
+    assert.strictEqual(resCombo2Role.status, 403);
+    console.log("  ✓ 2. Tenant inactivo + miembro activo → 403");
+
+    // 3. Tenant inactivo + super_admin → permitido
+    const resCombo3 = await testMiddleware(
+      requireTenantMembership,
+      {
+        user: { id: userSuperAdmin.id, role: "super_admin" },
+        tenantContext: {
+          tenant: tenantInactive, // isActive: false
+          membership: null,
+          isPlatformAdmin: true,
+        },
+      }
+    );
+    assert.strictEqual(resCombo3.nextCalled, true, "Combo 3: super_admin debe tener bypass en tenant inactivo");
+
+    // También con requireTenantRole
+    const resCombo3Role = await testMiddleware(
+      requireTenantRole(["owner"]),
+      {
+        user: { id: userSuperAdmin.id, role: "super_admin" },
+        tenantContext: {
+          tenant: tenantInactive, // isActive: false
+          membership: null,
+          isPlatformAdmin: true,
+        },
+      }
+    );
+    assert.strictEqual(resCombo3Role.nextCalled, true);
+    console.log("  ✓ 3. Tenant inactivo + super_admin → permitido (bypass de administración)");
+
+    // 4. Tenant activo + miembro inactivo → 403
+    const resCombo4 = await testMiddleware(
+      requireTenantMembership,
+      {
+        tenantContext: {
+          tenant: tenant1, // isActive: true
+          membership: mInactive, // isActive: false
+          isPlatformAdmin: false,
+        },
+      }
+    );
+    assert.strictEqual(resCombo4.nextCalled, false, "Combo 4: miembro inactivo en tenant activo debe ser bloqueado");
+    assert.strictEqual(resCombo4.status, 403, "Combo 4: debe retornar 403");
+    console.log("  ✓ 4. Tenant activo + miembro inactivo → 403");
 
     console.log("\n[TEST 8] Escenario 4: Roles owner y admin acceden a operaciones restringidas...");
     const resOwnerRole = await testMiddleware(

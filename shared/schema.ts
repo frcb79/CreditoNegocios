@@ -560,10 +560,14 @@ export const updatedInsertClientSchema = insertClientSchema.extend({
   creditosVigentesDetalles: z.array(creditItemSchema).optional(),
 });
 
+// Tenant organization types catalogue
+export const TENANT_TYPES = ["platform", "master_broker", "broker"] as const;
+export type TenantType = (typeof TENANT_TYPES)[number];
+
 // Tenants table - Multi-tenant organizations
 export const tenants = pgTable("tenants", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  type: varchar("type").notNull(), // "platform", "master_broker", "organization", "independent_broker", "independent"
+  type: varchar("type").notNull(), // "platform", "master_broker", "broker"
   name: varchar("name").notNull(),
   slug: varchar("slug").unique().notNull(), // For subdomains/URLs
   parentTenantId: varchar("parent_tenant_id"), // Self-reference, will be constrained later if needed

@@ -7,6 +7,7 @@ import {
 
 describe("Tenant and Membership Base Layer (Bloque 1)", () => {
   let testTenant: any;
+  let inactiveTenant: any;
   let ownerUser: any;
   let adminUser: any;
   let memberUser: any;
@@ -16,13 +17,22 @@ describe("Tenant and Membership Base Layer (Bloque 1)", () => {
   let adminMember: any;
   let normalMember: any;
   let inactiveMember: any;
+  let activeInInactiveMember: any;
 
   beforeAll(async () => {
     testTenant = await storage.createTenant({
       name: "Acme Financial",
       slug: "acme-financial",
-      type: "brokerage",
+      type: "broker",
       isActive: true,
+      settings: {},
+    });
+
+    inactiveTenant = await storage.createTenant({
+      name: "Acme Inactive",
+      slug: "acme-inactive",
+      type: "broker",
+      isActive: false,
       settings: {},
     });
 
@@ -87,6 +97,13 @@ describe("Tenant and Membership Base Layer (Bloque 1)", () => {
       userId: inactiveUser.id,
       role: "member",
       isActive: false,
+    });
+
+    activeInInactiveMember = await storage.createTenantMember({
+      tenantId: inactiveTenant.id,
+      userId: memberUser.id,
+      role: "member",
+      isActive: true,
     });
   });
 
@@ -242,6 +259,77 @@ describe("Tenant and Membership Base Layer (Bloque 1)", () => {
       const roleMiddleware = requireTenantRole(["owner"]);
       await roleMiddleware(req, res, nextRole);
       expect(nextRole).toHaveBeenCalled();
+    });
+
+    describe("Bloque 1.1 Explicit Activation Combinations", () => {
+      it("1. Tenant activo + miembro activo -> acceso", async () => {
+        const req = {
+          tenantContext: {
+            tenant: testTenant, // isActive: true
+            membership: normalMember, // isActive: true
+            isPlatformAdmin: false,
+          },
+        } as any;
+        const res = { status: jest.fn().mockReturnThis(), json: jest.fn() } as any;
+        const next = jest.fn();
+
+        await requireTenantMembership(req, res, next);
+        expect(next).toHaveBeenCalled();
+        expect(res.status).not.toHaveBeenCalled();
+      });
+
+      it("2. Tenant inactivo + miembro activo -> 403", async () => {
+        const req = {
+          tenantContext: {
+            tenant: inactiveTenant, // isActive: false
+            membership: activeInInactiveMember, // isActive: true
+            isPlatformAdmin: false,
+          },
+        } as any;
+        const res = { status: jest.fn().mockReturnThis(), json: jest.fn() } as any;
+        const next = jest.fn();
+
+        await requireTenantMembership(req, res, next);
+        expect(next).not.toHaveBeenCalled();
+        expect(res.status).toHaveBeenCalledWith(403);
+      });
+
+      it("3. Tenant inactivo + super_admin -> permitido", async () => {
+        const req = {
+          user: { id: superAdminUser.id, role: "super_admin" },
+          tenantContext: {
+            tenant: inactiveTenant, // isActive: false
+            membership: null,
+            isPlatformAdmin: true,
+          },
+        } as any;
+        const res = { status: jest.fn().mockReturnThis(), json: jest.fn() } as any;
+        const next = jest.fn();
+
+        await requireTenantMembership(req, res, next);
+        expect(next).toHaveBeenCalled();
+
+        const nextRole = jest.fn();
+        const roleMiddleware = requireTenantRole(["owner"]);
+        await roleMiddleware(req, res, nextRole);
+        expect(nextRole).toHaveBeenCalled();
+      });
+
+      it("4. Tenant activo + miembro inactivo -> 403", async () => {
+        const req = {
+          tenantContext: {
+            tenant: testTenant, // isActive: true
+            membership: inactiveMember, // isActive: false
+            isPlatformAdmin: false,
+          },
+        } as any;
+        const res = { status: jest.fn().mockReturnThis(), json: jest.fn() } as any;
+        const next = jest.fn();
+
+        await requireTenantMembership(req, res, next);
+        expect(next).not.toHaveBeenCalled();
+        expect(res.status).toHaveBeenCalledWith(403);
+      });
     });
   });
 });
