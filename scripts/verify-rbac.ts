@@ -27,6 +27,9 @@ const mbPerms = getEffectivePermissions({ role: "master_broker", permissions: {}
 assert.strictEqual(mbPerms.scope, "network");
 assert.ok(mbPerms.modules.includes("red_brokers"), "master_broker debe tener red_brokers");
 assert.ok(mbPerms.modules.includes("usuarios"), "master_broker debe tener usuarios");
+assert.ok(mbPerms.modules.includes("comisiones"), "master_broker debe tener comisiones");
+assert.ok(mbPerms.modules.includes("financieras"), "master_broker debe tener financieras");
+assert.ok(mbPerms.modules.includes("sistema_productos"), "master_broker debe tener sistema_productos");
 assert.ok(!mbPerms.modules.includes("aprobaciones"), "master_broker NO debe tener aprobaciones por defecto");
 console.log("  ✓ master_broker tiene scope network y módulos correctos");
 
@@ -35,11 +38,14 @@ const brokerPerms = getEffectivePermissions({ role: "broker", permissions: {} })
 assert.strictEqual(brokerPerms.scope, "own");
 assert.ok(brokerPerms.modules.includes("clientes"), "broker debe tener clientes");
 assert.ok(brokerPerms.modules.includes("creditos"), "broker debe tener creditos");
+assert.ok(brokerPerms.modules.includes("comisiones"), "broker debe tener comisiones");
+assert.ok(brokerPerms.modules.includes("financieras"), "broker debe tener financieras");
+assert.ok(brokerPerms.modules.includes("sistema_productos"), "broker debe tener sistema_productos");
 assert.ok(!brokerPerms.modules.includes("usuarios"), "broker NO debe tener usuarios");
 assert.ok(!brokerPerms.modules.includes("red_brokers"), "broker NO debe tener red_brokers");
 assert.ok(brokerPerms.actions.includes("view"), "broker debe tener view");
 assert.ok(!brokerPerms.actions.includes("manage_users"), "broker NO debe tener manage_users");
-console.log("  ✓ broker estándar tiene scope own y módulos restringidos");
+console.log("  ✓ broker estándar tiene scope own y módulos correctos con comisiones y consultas");
 
 // Broker con Permisos Granulares Personalizados (ej: Mesa de Control)
 const mesaControlPerms = getEffectivePermissions({

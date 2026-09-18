@@ -26,11 +26,12 @@ const DEFAULT_ROLE_MODULES: Record<string, string[]> = {
   ],
   master_broker: [
     "dashboard", "clientes", "creditos", "comisiones",
-    "red_brokers", "documentos", "reportes", "usuarios", "configuracion"
+    "financieras", "sistema_productos", "red_brokers",
+    "documentos", "reportes", "usuarios", "configuracion"
   ],
   broker: [
-    "dashboard", "clientes", "creditos", "documentos",
-    "sistema_productos", "configuracion"
+    "dashboard", "clientes", "creditos", "comisiones",
+    "financieras", "sistema_productos", "documentos", "configuracion"
   ],
 };
 

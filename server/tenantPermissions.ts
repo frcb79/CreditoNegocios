@@ -75,7 +75,7 @@ export function validateTenantMemberPermissions(params: ValidationParams): {
     }
 
     // Platform reserved capabilities check:
-    const platformReservedModules = ["financieras", "sistema_productos", "importacion"];
+    const platformReservedModules = ["importacion"];
     if (tenantType !== "platform") {
       const forbiddenPlatformModules = (permissions.modules || []).filter(
         (m: string) => platformReservedModules.includes(m)

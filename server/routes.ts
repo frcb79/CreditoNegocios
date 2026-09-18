@@ -2757,6 +2757,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const userId = req.user.claims.sub;
       const user = await storage.getUser(userId);
       
+      // Commercial origination check: collaborators with canOriginate: false cannot access commissions
+      const activeMembership = req.tenantContext?.membership;
+      if (activeMembership && activeMembership.canOriginate === false && activeMembership.role !== 'owner' && user?.role !== 'super_admin' && user?.role !== 'admin') {
+        return res.status(403).json({
+          message: "Operación restringida: Los colaboradores no originadores no tienen acceso al módulo de comisiones comerciales."
+        });
+      }
+
       // Admin and super_admin can see all commissions
       const isAdmin = user?.role === 'admin' || user?.role === 'super_admin';
       let rawCommissions: any[] = [];
@@ -2903,6 +2911,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const userId = req.user.claims.sub;
       const user = await storage.getUser(userId);
+
+      // Commercial origination check: collaborators with canOriginate: false cannot access commissions
+      const activeMembership = req.tenantContext?.membership;
+      if (activeMembership && activeMembership.canOriginate === false && activeMembership.role !== 'owner' && user?.role !== 'super_admin' && user?.role !== 'admin') {
+        return res.status(403).json({
+          message: "Operación restringida: Los colaboradores no originadores no tienen acceso al módulo de comisiones comerciales."
+        });
+      }
 
       let rawCommissions: any[] = [];
       if (user?.role === 'master_broker') {

@@ -25,6 +25,9 @@ describe("RBAC Permissions and Middleware Tests", () => {
       const perms = getEffectivePermissions(user);
       expect(perms.modules).toContain("clientes");
       expect(perms.modules).toContain("creditos");
+      expect(perms.modules).toContain("comisiones");
+      expect(perms.modules).toContain("financieras");
+      expect(perms.modules).toContain("sistema_productos");
       expect(perms.modules).not.toContain("usuarios");
       expect(perms.modules).not.toContain("aprobaciones");
       expect(perms.actions).toContain("view");

@@ -36,7 +36,8 @@ const DEFAULT_ROLE_PERMISSIONS: Record<string, EffectivePermissions> = {
   master_broker: {
     modules: [
       "dashboard", "clientes", "creditos", "comisiones",
-      "red_brokers", "documentos", "reportes", "usuarios", "configuracion"
+      "financieras", "sistema_productos", "red_brokers",
+      "documentos", "reportes", "usuarios", "configuracion"
     ],
     actions: [
       "view", "edit", "submit_proposals", "manage_commissions",
@@ -46,8 +47,8 @@ const DEFAULT_ROLE_PERMISSIONS: Record<string, EffectivePermissions> = {
   },
   broker: {
     modules: [
-      "dashboard", "clientes", "creditos", "documentos",
-      "sistema_productos", "configuracion"
+      "dashboard", "clientes", "creditos", "comisiones",
+      "financieras", "sistema_productos", "documentos", "configuracion"
     ],
     actions: ["view", "edit", "submit_proposals"],
     scope: "own",

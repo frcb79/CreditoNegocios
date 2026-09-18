@@ -145,8 +145,17 @@ export const ROLE_PRESETS = [
     role: "broker",
     memberRole: "member" as TenantMemberRole,
     title: "Bróker Originador",
-    modules: ['dashboard', 'clientes', 'creditos', 'documentos', 'sistema_productos'],
+    modules: ['dashboard', 'clientes', 'creditos', 'comisiones', 'financieras', 'sistema_productos', 'documentos'],
     actions: ['view', 'edit', 'submit_proposals'],
+  },
+  {
+    name: "Master Broker",
+    badge: "Master Franquicia",
+    role: "master_broker",
+    memberRole: "owner" as TenantMemberRole,
+    title: "Master Broker Titular",
+    modules: ['dashboard', 'clientes', 'creditos', 'comisiones', 'financieras', 'sistema_productos', 'red_brokers', 'documentos', 'reportes', 'usuarios'],
+    actions: ['view', 'edit', 'submit_proposals', 'manage_commissions', 'manage_users', 'export_reports'],
   },
   {
     name: "Líder de Organización",
@@ -154,7 +163,7 @@ export const ROLE_PRESETS = [
     role: "broker",
     memberRole: "owner" as TenantMemberRole,
     title: "Líder / Socio Director",
-    modules: ['dashboard', 'clientes', 'creditos', 'comisiones', 'red_brokers', 'documentos', 'reportes', 'usuarios'],
+    modules: ['dashboard', 'clientes', 'creditos', 'comisiones', 'financieras', 'sistema_productos', 'red_brokers', 'documentos', 'reportes', 'usuarios'],
     actions: ['view', 'edit', 'submit_proposals', 'manage_commissions', 'manage_users', 'export_reports'],
   },
 ];
@@ -274,7 +283,7 @@ export default function UserManagement() {
       customRoleTitle: "",
       password: "",
       sendInvite: true,
-      modules: ['dashboard', 'clientes', 'creditos', 'documentos'],
+      modules: ['dashboard', 'clientes', 'creditos', 'comisiones', 'financieras', 'sistema_productos', 'documentos'],
       actions: ['view', 'edit', 'submit_proposals'],
     },
   });
@@ -284,8 +293,8 @@ export default function UserManagement() {
     defaultValues: {
       role: "member",
       customRoleTitle: "",
-      modules: ['dashboard', 'clientes', 'creditos', 'documentos'],
-      actions: ['view', 'edit'],
+      modules: ['dashboard', 'clientes', 'creditos', 'comisiones', 'financieras', 'sistema_productos', 'documentos'],
+      actions: ['view', 'edit', 'submit_proposals'],
     },
   });
 
@@ -298,8 +307,8 @@ export default function UserManagement() {
       role: "broker",
       customRoleTitle: "",
       masterBrokerId: "",
-      modules: ['dashboard', 'clientes', 'creditos'],
-      actions: ['view', 'edit'],
+      modules: ['dashboard', 'clientes', 'creditos', 'comisiones', 'financieras', 'sistema_productos'],
+      actions: ['view', 'edit', 'submit_proposals'],
     },
   });
 
@@ -478,7 +487,7 @@ export default function UserManagement() {
       customRoleTitle: "",
       password: "",
       sendInvite: true,
-      modules: ['dashboard', 'clientes', 'creditos', 'documentos'],
+      modules: ['dashboard', 'clientes', 'creditos', 'comisiones', 'financieras', 'sistema_productos', 'documentos'],
       actions: ['view', 'edit', 'submit_proposals'],
     });
     setShowCreateModal(true);
@@ -490,8 +499,14 @@ export default function UserManagement() {
     setSelectedPreset(null);
     setModalTab("basic");
     const perms = (member.user?.permissions as any) || {};
-    const modules = Array.isArray(perms.modules) ? perms.modules : ['dashboard', 'clientes', 'creditos'];
-    const actions = Array.isArray(perms.actions) ? perms.actions : ['view', 'edit'];
+    const defaultMods = member.user?.role === 'master_broker'
+      ? ['dashboard', 'clientes', 'creditos', 'comisiones', 'financieras', 'sistema_productos', 'red_brokers', 'documentos', 'reportes', 'usuarios']
+      : (member.role === 'owner' || member.canOriginate)
+        ? ['dashboard', 'clientes', 'creditos', 'comisiones', 'financieras', 'sistema_productos', 'documentos']
+        : ['dashboard', 'clientes', 'creditos', 'financieras', 'sistema_productos', 'documentos'];
+
+    const modules = Array.isArray(perms.modules) && perms.modules.length > 0 ? perms.modules : defaultMods;
+    const actions = Array.isArray(perms.actions) && perms.actions.length > 0 ? perms.actions : ['view', 'edit', 'submit_proposals'];
 
     editMemberForm.reset({
       role: member.role,
@@ -574,6 +589,29 @@ export default function UserManagement() {
           <Skeleton className="h-24 w-full" />
           <Skeleton className="h-96 w-full" />
         </main>
+      </MainLayout>
+    );
+  }
+
+  // Access guard: if not platform admin and has no tenant organizations
+  if (!isPlatformAdmin && (!tenants || tenants.length === 0)) {
+    return (
+      <MainLayout>
+        <Header 
+          title="Gestión de Organización" 
+          subtitle="Control de acceso organizacional" 
+        />
+        <div className="flex flex-col items-center justify-center min-h-[50vh] p-6 text-center">
+          <div className="w-16 h-16 rounded-full bg-muted border border-border flex items-center justify-center mb-4 text-muted-foreground shadow-sm">
+            <Lock className="w-8 h-8" />
+          </div>
+          <h2 className="text-xl font-bold tracking-tight text-foreground mb-2">
+            Sin Organización Asignada
+          </h2>
+          <p className="text-muted-foreground max-w-md mb-6 text-sm">
+            Tu cuenta no pertenece a ninguna organización activa. Contacta a un administrador de plataforma para vincular tu cuenta a un equipo.
+          </p>
+        </div>
       </MainLayout>
     );
   }

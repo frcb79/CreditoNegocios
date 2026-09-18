@@ -14,7 +14,7 @@ const navigation = [
   { name: 'Mis Créditos', href: '/mis-solicitudes', icon: 'fas fa-coins', brokerOnly: true },
   { name: 'Renovaciones', href: '/re-gestion', icon: 'fas fa-recycle' },
   { name: 'Red de Brokers', href: '/red-brokers', icon: 'fas fa-network-wired', adminOnly: true },
-  { name: 'Aprobaciones', href: '/solicitudes-pendientes', icon: 'fas fa-clock', adminOnly: true },
+  { name: 'Aprobaciones', href: '/solicitudes-pendientes', icon: 'fas fa-clock', platformAdminOnly: true },
   { name: 'Comisiones', href: '/comisiones', icon: 'fas fa-dollar-sign' },
   { name: 'Financieras', href: '/financieras', icon: 'fas fa-building' },
   { name: 'Productos', href: '/sistema-productos', icon: 'fas fa-layer-group' },
@@ -60,9 +60,12 @@ export default function Sidebar() {
   });
   const hasTenantOrg = Boolean(userTenants && userTenants.length > 0);
 
-  const filteredNavigation = isAdmin 
-    ? navigation 
-    : navigation.filter(item => !item.adminOnly);
+  const filteredNavigation = navigation.filter(item => {
+    if ((item as any).platformAdminOnly && !isFullAdmin) return false;
+    if (item.adminOnly && !isAdmin) return false;
+    if (item.brokerOnly && isFullAdmin) return false;
+    return true;
+  });
   
   const adminItems = isFullAdmin 
     ? adminNavigation 
