@@ -2600,6 +2600,34 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
     }
   });
+
+  // Delete financial institution (Admin / SuperAdmin only)
+  app.delete('/api/financial-institutions/:id', isAuthenticated, async (req: any, res) => {
+    try {
+      const { id } = req.params;
+      const userId = req.user?.claims?.sub || req.user?.id;
+      const user = await storage.getUser(userId);
+
+      if (!user || (user.role !== 'super_admin' && user.role !== 'admin')) {
+        return res.status(403).json({ message: 'Insufficient permissions' });
+      }
+
+      const institution = await storage.getFinancialInstitution(id);
+      if (!institution) {
+        return res.status(404).json({ message: 'Financial institution not found' });
+      }
+
+      const success = await storage.deleteFinancialInstitution(id);
+      if (!success) {
+        return res.status(500).json({ message: 'Failed to delete financial institution' });
+      }
+
+      res.json({ success: true, message: `Institución ${institution.name} eliminada exitosamente` });
+    } catch (error) {
+      console.error("Error deleting financial institution:", error);
+      res.status(500).json({ message: "Failed to delete financial institution" });
+    }
+  });
   
   // Commission calculation endpoint
   app.get('/api/financial-institutions/:id/commission-calculation', isAuthenticated, async (req: any, res) => {

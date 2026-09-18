@@ -821,6 +821,26 @@ export class DbStorage implements IStorage {
     }
   }
 
+  async deleteFinancialInstitution(id: string): Promise<boolean> {
+    try {
+      // 1. Unlink foreign key references
+      await db.update(credits).set({ financialInstitutionId: null }).where(eq(credits.financialInstitutionId, id));
+      await db.update(productRequests).set({ existingInstitutionId: null }).where(eq(productRequests.existingInstitutionId, id));
+      
+      // 2. Delete dependent targets and products
+      await db.delete(creditSubmissionTargets).where(eq(creditSubmissionTargets.financialInstitutionId, id));
+      await db.delete(institutionProducts).where(eq(institutionProducts.institutionId, id));
+      await db.delete(products).where(eq(products.institutionId, id));
+      
+      // 3. Delete financial institution
+      const result = await db.delete(financialInstitutions).where(eq(financialInstitutions.id, id));
+      return (result.rowCount ?? 0) > 0;
+    } catch (error) {
+      console.error("Error deleting financial institution:", error);
+      return false;
+    }
+  }
+
   // ===== CLIENT OPERATIONS =====
   
   async getClients(filters?: string | { brokerId?: string; tenantId?: string; tenantIds?: string[] }): Promise<Client[]> {

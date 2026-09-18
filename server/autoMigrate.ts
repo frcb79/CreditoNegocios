@@ -403,6 +403,49 @@ export async function runAutoMigration(): Promise<void> {
       console.error("⚠️ [AutoMigrate] Error verifying user-super-admin:", sysErr);
     }
 
+    // 9. Clean up obsolete test financial institutions (E2E and dummy test records)
+    try {
+      const deleteResult = await client.query(`
+        WITH test_insts AS (
+          SELECT id FROM public.financial_institutions
+          WHERE name ILIKE 'E2E Flujo Completo%' 
+             OR name IN ('Financiera Demo', 'Financiera Prueba Franco')
+        ),
+        del_targets AS (
+          DELETE FROM public.credit_submission_targets
+          WHERE financial_institution_id IN (SELECT id FROM test_insts)
+        ),
+        upd_credits AS (
+          UPDATE public.credits
+          SET financial_institution_id = NULL
+          WHERE financial_institution_id IN (SELECT id FROM test_insts)
+        ),
+        upd_prod_reqs AS (
+          UPDATE public.product_requests
+          SET existing_institution_id = NULL
+          WHERE existing_institution_id IN (SELECT id FROM test_insts)
+        ),
+        del_inst_prods AS (
+          DELETE FROM public.institution_products
+          WHERE institution_id IN (SELECT id FROM test_insts)
+        ),
+        del_prods AS (
+          DELETE FROM public.products
+          WHERE institution_id IN (SELECT id FROM test_insts)
+        )
+        DELETE FROM public.financial_institutions
+        WHERE id IN (SELECT id FROM test_insts)
+        RETURNING id, name;
+      `);
+      if (deleteResult.rowCount && deleteResult.rowCount > 0) {
+        console.log(`🧹 [AutoMigrate] Cleaned up ${deleteResult.rowCount} test financial institutions:`, deleteResult.rows.map(r => r.name).join(', '));
+      } else {
+        console.log("✅ [AutoMigrate] Financial institutions catalog verified clean (no obsolete test records found).");
+      }
+    } catch (cleanErr) {
+      console.error("⚠️ [AutoMigrate] Error cleaning test financial institutions:", cleanErr);
+    }
+
     console.log("✨ [AutoMigrate] Schema verification and user sync completed successfully!");
   } catch (error) {
     console.error("❌ [AutoMigrate] General schema verification error:", error);

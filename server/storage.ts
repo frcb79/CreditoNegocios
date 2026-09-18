@@ -107,6 +107,7 @@ export interface IStorage {
   getFinancialInstitution(id: string): Promise<FinancialInstitution | undefined>;
   createFinancialInstitution(institution: InsertFinancialInstitution): Promise<FinancialInstitution>;
   updateFinancialInstitution(id: string, institution: Partial<InsertFinancialInstitution>): Promise<FinancialInstitution | undefined>;
+  deleteFinancialInstitution(id: string): Promise<boolean>;
 
   // Commission operations
   getCommissions(filters?: { brokerId?: string; masterBrokerId?: string; includeNetwork?: boolean; status?: string; from?: Date; to?: Date }): Promise<Commission[]>;
@@ -1798,6 +1799,28 @@ export class MemStorage implements IStorage {
     };
     this.financialInstitutions.set(id, updated);
     return updated;
+  }
+
+  async deleteFinancialInstitution(id: string): Promise<boolean> {
+    // Unlink credits
+    for (const [creditId, credit] of this.credits.entries()) {
+      if (credit.financialInstitutionId === id) {
+        this.credits.set(creditId, { ...credit, financialInstitutionId: null });
+      }
+    }
+    // Delete linked institution products
+    for (const [ipId, ip] of this.institutionProducts.entries()) {
+      if (ip.institutionId === id) {
+        this.institutionProducts.delete(ipId);
+      }
+    }
+    // Delete linked products
+    for (const [pId, p] of this.products.entries()) {
+      if (p.institutionId === id) {
+        this.products.delete(pId);
+      }
+    }
+    return this.financialInstitutions.delete(id);
   }
 
   // Commission operations

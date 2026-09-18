@@ -35,11 +35,42 @@ export default function Financieras() {
   const [showRequestModal, setShowRequestModal] = useState(false);
   const [configModal, setConfigModal] = useState<{ show: boolean; financiera?: FinancialInstitution }>({ show: false });
   const [confirmDialog, setConfirmDialog] = useState<{ show: boolean; financiera?: FinancialInstitution }>({ show: false });
+  const [deleteDialog, setDeleteDialog] = useState<{ show: boolean; financiera?: FinancialInstitution }>({ show: false });
   const { toast } = useToast();
   const { user } = useAuth();
   
   const isAdmin = user?.role === 'admin' || user?.role === 'super_admin';
   const isBroker = user?.role === 'broker' || user?.role === 'master_broker';
+
+  // Delete financial institution permanently
+  const deleteMutation = useMutation({
+    mutationFn: async (institutionId: string) => {
+      const response = await fetch(`/api/financial-institutions/${institutionId}`, {
+        method: 'DELETE',
+        credentials: 'include',
+      });
+      if (!response.ok) {
+        const err = await response.json();
+        throw new Error(err.message || 'Error al eliminar financiera');
+      }
+      return response.json();
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/financial-institutions"] });
+      toast({
+        title: "Financiera eliminada",
+        description: data.message || "Institución eliminada exitosamente.",
+      });
+      setDeleteDialog({ show: false });
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Error",
+        description: error?.message || "No se pudo eliminar la financiera.",
+        variant: "destructive",
+      });
+    },
+  });
 
   const { data: financialInstitutions, isLoading } = useQuery<FinancialInstitution[]>({
     queryKey: ["/api/financial-institutions"],
@@ -433,6 +464,21 @@ export default function Financieras() {
                                 <i className="fas fa-pause"></i>
                               )}
                             </Button>
+
+                            {/* Delete Button */}
+                            <Button 
+                              size="sm"
+                              variant="outline"
+                              onClick={() => {
+                                setDeleteDialog({ show: true, financiera: institution });
+                              }}
+                              disabled={deleteMutation.isPending}
+                              title="Eliminar financiera permanentemente"
+                              className="bg-red-50 border-red-200 text-red-700 hover:bg-red-100 px-2"
+                              data-testid={`button-delete-${institution.id}`}
+                            >
+                              <i className="fas fa-trash-alt"></i>
+                            </Button>
                           </>
                         ) : (
                           <>
@@ -466,6 +512,21 @@ export default function Financieras() {
                               data-testid={`button-view-config-${institution.id}`}
                             >
                               <i className="fas fa-eye"></i>
+                            </Button>
+
+                            {/* Delete Button */}
+                            <Button 
+                              size="sm"
+                              variant="outline"
+                              onClick={() => {
+                                setDeleteDialog({ show: true, financiera: institution });
+                              }}
+                              disabled={deleteMutation.isPending}
+                              title="Eliminar financiera permanentemente"
+                              className="bg-red-50 border-red-200 text-red-700 hover:bg-red-100 px-2"
+                              data-testid={`button-delete-inactive-${institution.id}`}
+                            >
+                              <i className="fas fa-trash-alt"></i>
                             </Button>
                           </>
                         )}
@@ -530,6 +591,37 @@ export default function Financieras() {
                   }
                 >
                   {confirmDialog.financiera?.isActive ? 'Desactivar' : 'Activar'}
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
+        )}
+
+        {/* Delete Confirmation Dialog */}
+        {deleteDialog.show && (
+          <AlertDialog open={deleteDialog.show} onOpenChange={(open) => !open && setDeleteDialog({ show: false })}>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle className="text-red-600 flex items-center">
+                  <i className="fas fa-exclamation-triangle mr-2"></i>
+                  Eliminar Financiera
+                </AlertDialogTitle>
+                <AlertDialogDescription>
+                  ¿Estás seguro de que deseas eliminar permanentemente a <strong>"{deleteDialog.financiera?.name}"</strong>?
+                  <br /><br />
+                  Esta acción es irreversible y eliminará también los productos vinculados a esta financiera en el sistema.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel onClick={() => setDeleteDialog({ show: false })}>
+                  Cancelar
+                </AlertDialogCancel>
+                <AlertDialogAction
+                  onClick={() => deleteDialog.financiera && deleteMutation.mutate(deleteDialog.financiera.id)}
+                  className="bg-red-600 hover:bg-red-700 focus:ring-red-600 text-white"
+                  disabled={deleteMutation.isPending}
+                >
+                  {deleteMutation.isPending ? "Eliminando..." : "Eliminar Permanentemente"}
                 </AlertDialogAction>
               </AlertDialogFooter>
             </AlertDialogContent>
