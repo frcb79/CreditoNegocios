@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Dialog,
@@ -107,6 +108,7 @@ export const ROLE_PRESETS = [
     badge: "Acceso Completo",
     role: "admin",
     memberRole: "admin" as TenantMemberRole,
+    canOriginate: true,
     title: "Administrador General",
     modules: ['dashboard', 'clientes', 'creditos', 'aprobaciones', 'comisiones', 'financieras', 'sistema_productos', 'red_brokers', 'documentos', 'reportes', 'importacion', 'usuarios'],
     actions: ['view', 'edit', 'submit_proposals', 'approve_disperse', 'manage_commissions', 'manage_users', 'export_reports'],
@@ -117,8 +119,9 @@ export const ROLE_PRESETS = [
     badge: "Operaciones",
     role: "broker",
     memberRole: "member" as TenantMemberRole,
+    canOriginate: false,
     title: "Mesa de Control y Operaciones",
-    modules: ['dashboard', 'clientes', 'creditos', 'aprobaciones', 'documentos', 'financieras', 'sistema_productos'],
+    modules: ['dashboard', 'clientes', 'creditos', 'documentos', 'financieras', 'sistema_productos'],
     actions: ['view', 'edit', 'submit_proposals', 'export_reports'],
   },
   {
@@ -126,24 +129,17 @@ export const ROLE_PRESETS = [
     badge: "Análisis",
     role: "broker",
     memberRole: "member" as TenantMemberRole,
+    canOriginate: false,
     title: "Analista de Crédito",
-    modules: ['dashboard', 'clientes', 'creditos', 'documentos', 'sistema_productos'],
+    modules: ['dashboard', 'clientes', 'creditos', 'documentos', 'financieras', 'sistema_productos'],
     actions: ['view', 'edit', 'submit_proposals'],
-  },
-  {
-    name: "Auditor Financiero",
-    badge: "Finanzas",
-    role: "broker",
-    memberRole: "member" as TenantMemberRole,
-    title: "Auditor Financiero",
-    modules: ['dashboard', 'comisiones', 'reportes', 'aprobaciones'],
-    actions: ['view', 'approve_disperse', 'export_reports'],
   },
   {
     name: "Bróker Originador",
     badge: "Comercial",
     role: "broker",
     memberRole: "member" as TenantMemberRole,
+    canOriginate: true,
     title: "Bróker Originador",
     modules: ['dashboard', 'clientes', 'creditos', 'comisiones', 'financieras', 'sistema_productos', 'documentos'],
     actions: ['view', 'edit', 'submit_proposals'],
@@ -153,6 +149,7 @@ export const ROLE_PRESETS = [
     badge: "Master Franquicia",
     role: "master_broker",
     memberRole: "owner" as TenantMemberRole,
+    canOriginate: true,
     title: "Master Broker Titular",
     modules: ['dashboard', 'clientes', 'creditos', 'comisiones', 'financieras', 'sistema_productos', 'red_brokers', 'documentos', 'reportes', 'usuarios'],
     actions: ['view', 'edit', 'submit_proposals', 'manage_commissions', 'manage_users', 'export_reports'],
@@ -162,8 +159,9 @@ export const ROLE_PRESETS = [
     badge: "Líder / Dueño",
     role: "broker",
     memberRole: "owner" as TenantMemberRole,
+    canOriginate: true,
     title: "Líder / Socio Director",
-    modules: ['dashboard', 'clientes', 'creditos', 'comisiones', 'financieras', 'sistema_productos', 'red_brokers', 'documentos', 'reportes', 'usuarios'],
+    modules: ['dashboard', 'clientes', 'creditos', 'comisiones', 'financieras', 'sistema_productos', 'usuarios', 'documentos'],
     actions: ['view', 'edit', 'submit_proposals', 'manage_commissions', 'manage_users', 'export_reports'],
   },
 ];
@@ -174,6 +172,7 @@ const memberCreateSchema = z.object({
   firstName: z.string().min(1, "Nombre requerido"),
   lastName: z.string().min(1, "Apellido requerido"),
   role: z.enum(TENANT_MEMBER_ROLES),
+  canOriginate: z.boolean().default(true),
   customRoleTitle: z.string().optional(),
   password: z.string().optional(),
   sendInvite: z.boolean().default(true),
@@ -185,6 +184,7 @@ type MemberCreateFormData = z.infer<typeof memberCreateSchema>;
 
 const memberEditSchema = z.object({
   role: z.enum(TENANT_MEMBER_ROLES),
+  canOriginate: z.boolean().default(true),
   customRoleTitle: z.string().optional(),
   modules: z.array(z.string()).default([]),
   actions: z.array(z.string()).default([]),
@@ -244,6 +244,26 @@ export default function UserManagement() {
   }, [tenants, selectedTenantId]);
 
   const currentTenant = tenants?.find(t => t.id === selectedTenantId);
+  const tenantType = currentTenant?.type || (currentUser?.role === 'master_broker' ? 'master_broker' : 'broker');
+
+  // Determine delegable modules strictly according to administrator profile & organization
+  const getDelegableModules = (canOriginate: boolean) => {
+    return SYSTEM_MODULES.filter((mod) => {
+      // 1. Platform-only modules
+      if (['aprobaciones', 'importacion'].includes(mod.id)) {
+        return isSuperAdmin;
+      }
+      // 2. Master Broker organization specific
+      if (['red_brokers', 'reportes'].includes(mod.id)) {
+        if (!isSuperAdmin && tenantType !== 'master_broker') return false;
+      }
+      // 3. Comisiones: only allowed if canOriginate is true
+      if (mod.id === 'comisiones') {
+        if (!canOriginate) return false;
+      }
+      return true;
+    });
+  };
 
   // 2. Fetch members of selected tenant
   const { 
@@ -280,6 +300,7 @@ export default function UserManagement() {
       firstName: "",
       lastName: "",
       role: "member",
+      canOriginate: true,
       customRoleTitle: "",
       password: "",
       sendInvite: true,
@@ -292,6 +313,7 @@ export default function UserManagement() {
     resolver: zodResolver(memberEditSchema),
     defaultValues: {
       role: "member",
+      canOriginate: true,
       customRoleTitle: "",
       modules: ['dashboard', 'clientes', 'creditos', 'comisiones', 'financieras', 'sistema_productos', 'documentos'],
       actions: ['view', 'edit', 'submit_proposals'],
@@ -314,8 +336,11 @@ export default function UserManagement() {
 
   const watchedCreateModules = createMemberForm.watch("modules") || [];
   const watchedCreateActions = createMemberForm.watch("actions") || [];
+  const watchedCreateCanOriginate = createMemberForm.watch("canOriginate");
+
   const watchedEditModules = editMemberForm.watch("modules") || [];
   const watchedEditActions = editMemberForm.watch("actions") || [];
+  const watchedEditCanOriginate = editMemberForm.watch("canOriginate");
 
   // Member Mutations
   const createMemberMutation = useMutation({
@@ -325,6 +350,7 @@ export default function UserManagement() {
         firstName: data.firstName,
         lastName: data.lastName,
         role: data.role,
+        canOriginate: data.canOriginate,
         customRoleTitle: data.customRoleTitle || undefined,
         password: data.password || undefined,
         sendInvite: data.sendInvite,
@@ -368,6 +394,7 @@ export default function UserManagement() {
     mutationFn: async ({ memberId, data }: { memberId: string; data: MemberEditFormData }) => {
       const payload: any = {
         role: data.role,
+        canOriginate: data.canOriginate,
         customRoleTitle: data.customRoleTitle || null,
         permissions: {
           modules: data.modules,
@@ -457,11 +484,16 @@ export default function UserManagement() {
     } else {
       createMemberForm.setValue("role", "member");
     }
-    createMemberForm.setValue("modules", [...preset.modules]);
+    const presetCanOriginate = preset.canOriginate ?? true;
+    createMemberForm.setValue("canOriginate", presetCanOriginate);
+
+    const delegable = getDelegableModules(presetCanOriginate).map(m => m.id);
+    const filteredModules = preset.modules.filter(m => delegable.includes(m));
+    createMemberForm.setValue("modules", [...filteredModules]);
     createMemberForm.setValue("actions", [...preset.actions]);
     toast({
       title: `Plantilla: ${preset.name}`,
-      description: `Módulos (${preset.modules.length}) y facultades (${preset.actions.length}) configurados`,
+      description: `Módulos (${filteredModules.length}) y facultades (${preset.actions.length}) configurados`,
     });
   };
 
@@ -471,7 +503,12 @@ export default function UserManagement() {
     if (isOwnerOrSuper) {
       editMemberForm.setValue("role", preset.memberRole);
     }
-    editMemberForm.setValue("modules", [...preset.modules]);
+    const presetCanOriginate = preset.canOriginate ?? true;
+    editMemberForm.setValue("canOriginate", presetCanOriginate);
+
+    const delegable = getDelegableModules(presetCanOriginate).map(m => m.id);
+    const filteredModules = preset.modules.filter(m => delegable.includes(m));
+    editMemberForm.setValue("modules", [...filteredModules]);
     editMemberForm.setValue("actions", [...preset.actions]);
   };
 
@@ -479,15 +516,17 @@ export default function UserManagement() {
   const handleOpenCreateModal = () => {
     setSelectedPreset(null);
     setModalTab("basic");
+    const delegable = getDelegableModules(true).map(m => m.id);
     createMemberForm.reset({
       email: "",
       firstName: "",
       lastName: "",
       role: "member",
+      canOriginate: true,
       customRoleTitle: "",
       password: "",
       sendInvite: true,
-      modules: ['dashboard', 'clientes', 'creditos', 'comisiones', 'financieras', 'sistema_productos', 'documentos'],
+      modules: delegable,
       actions: ['view', 'edit', 'submit_proposals'],
     });
     setShowCreateModal(true);
@@ -499,17 +538,22 @@ export default function UserManagement() {
     setSelectedPreset(null);
     setModalTab("basic");
     const perms = (member.user?.permissions as any) || {};
+    const memberCanOriginate = member.role === 'owner' || (member.canOriginate ?? true);
+    const delegable = getDelegableModules(memberCanOriginate).map(m => m.id);
+
     const defaultMods = member.user?.role === 'master_broker'
       ? ['dashboard', 'clientes', 'creditos', 'comisiones', 'financieras', 'sistema_productos', 'red_brokers', 'documentos', 'reportes', 'usuarios']
-      : (member.role === 'owner' || member.canOriginate)
+      : memberCanOriginate
         ? ['dashboard', 'clientes', 'creditos', 'comisiones', 'financieras', 'sistema_productos', 'documentos']
         : ['dashboard', 'clientes', 'creditos', 'financieras', 'sistema_productos', 'documentos'];
 
-    const modules = Array.isArray(perms.modules) && perms.modules.length > 0 ? perms.modules : defaultMods;
+    const rawModules: string[] = Array.isArray(perms.modules) && perms.modules.length > 0 ? perms.modules : defaultMods;
+    const modules = rawModules.filter((m: string) => delegable.includes(m));
     const actions = Array.isArray(perms.actions) && perms.actions.length > 0 ? perms.actions : ['view', 'edit', 'submit_proposals'];
 
     editMemberForm.reset({
       role: member.role,
+      canOriginate: memberCanOriginate,
       customRoleTitle: member.user?.customRoleTitle || "",
       modules,
       actions,
@@ -1285,6 +1329,37 @@ export default function UserManagement() {
                         </FormItem>
                       )}
                     />
+                    <FormField
+                      control={createMemberForm.control}
+                      name="canOriginate"
+                      render={({ field }) => (
+                        <FormItem className="flex items-center justify-between p-3.5 rounded-xl border border-border/80 bg-background/50">
+                          <div className="space-y-0.5 pr-4">
+                            <FormLabel className="text-xs font-bold text-foreground flex items-center gap-1.5">
+                              <i className="fas fa-coins text-amber-500" />
+                              Facultad de Originación Comercial (Bróker)
+                            </FormLabel>
+                            <FormDescription className="text-[11px] text-muted-foreground leading-snug">
+                              {field.value
+                                ? "Permite al colaborador capturar expedientes y consultar sus comisiones generadas."
+                                : "Personal operativo/analista (Mesa de Control) sin comisiones comerciales."}
+                            </FormDescription>
+                          </div>
+                          <FormControl>
+                            <Switch
+                              checked={field.value}
+                              onCheckedChange={(val) => {
+                                field.onChange(val);
+                                if (!val) {
+                                  const curMods = createMemberForm.getValues("modules") || [];
+                                  createMemberForm.setValue("modules", curMods.filter(m => m !== 'comisiones'));
+                                }
+                              }}
+                            />
+                          </FormControl>
+                        </FormItem>
+                      )}
+                    />
                   </div>
 
                   {/* Password / Invitation Option */}
@@ -1340,7 +1415,7 @@ export default function UserManagement() {
                     <div>
                       <h4 className="text-sm font-bold text-foreground">Acceso a Vistas y Módulos</h4>
                       <p className="text-xs text-muted-foreground">
-                        El colaborador solo verá en su menú lateral los módulos que selecciones aquí.
+                        Módulos delegables según el perfil de tu organización y originación comercial.
                       </p>
                     </div>
                     <div className="flex gap-2">
@@ -1348,7 +1423,7 @@ export default function UserManagement() {
                         type="button"
                         variant="outline"
                         size="sm"
-                        onClick={() => createMemberForm.setValue("modules", SYSTEM_MODULES.map(m => m.id))}
+                        onClick={() => createMemberForm.setValue("modules", getDelegableModules(watchedCreateCanOriginate).map(m => m.id))}
                         className="text-xs h-7"
                       >
                         Marcar Todos
@@ -1365,8 +1440,15 @@ export default function UserManagement() {
                     </div>
                   </div>
 
+                  {!watchedCreateCanOriginate && (
+                    <div className="p-2.5 bg-amber-500/10 border border-amber-500/30 rounded-lg flex items-center gap-2 text-xs text-amber-700 dark:text-amber-300">
+                      <i className="fas fa-info-circle text-sm flex-shrink-0" />
+                      <span>El módulo de <strong>Comisiones</strong> está oculto porque este colaborador no tiene facultades de originación comercial (canOriginate = false).</span>
+                    </div>
+                  )}
+
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-h-[340px] overflow-y-auto pr-1">
-                    {SYSTEM_MODULES.map((mod) => {
+                    {getDelegableModules(watchedCreateCanOriginate).map((mod) => {
                       const isChecked = watchedCreateModules.includes(mod.id);
                       return (
                         <div
@@ -1623,11 +1705,74 @@ export default function UserManagement() {
                         )}
                       />
                     </div>
+
+                    <FormField
+                      control={editMemberForm.control}
+                      name="canOriginate"
+                      render={({ field }) => (
+                        <FormItem className="flex flex-row items-center justify-between rounded-lg border p-3 shadow-xs">
+                          <div className="space-y-0.5">
+                            <FormLabel className="text-xs font-semibold">Originador Comercial</FormLabel>
+                            <FormDescription className="text-[11px]">
+                              Si está activo, el colaborador puede originar créditos y tener acceso a sus comisiones.
+                            </FormDescription>
+                          </div>
+                          <FormControl>
+                            <Switch
+                              checked={field.value}
+                              onCheckedChange={(checked) => {
+                                field.onChange(checked);
+                                if (!checked) {
+                                  const currentMods = editMemberForm.getValues("modules") || [];
+                                  editMemberForm.setValue("modules", currentMods.filter(m => m !== 'comisiones'));
+                                }
+                              }}
+                            />
+                          </FormControl>
+                        </FormItem>
+                      )}
+                    />
                   </TabsContent>
 
                   <TabsContent value="modules" className="space-y-4 pt-4">
+                    <div className="flex items-center justify-between pb-2 border-b">
+                      <div>
+                        <h4 className="text-sm font-bold text-foreground">Acceso a Vistas y Módulos</h4>
+                        <p className="text-xs text-muted-foreground">
+                          Módulos delegables según el perfil de tu organización y originación comercial.
+                        </p>
+                      </div>
+                      <div className="flex gap-2">
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={() => editMemberForm.setValue("modules", getDelegableModules(watchedEditCanOriginate).map(m => m.id))}
+                          className="text-xs h-7"
+                        >
+                          Marcar Todos
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => editMemberForm.setValue("modules", [])}
+                          className="text-xs h-7 text-muted-foreground"
+                        >
+                          Desmarcar
+                        </Button>
+                      </div>
+                    </div>
+
+                    {!watchedEditCanOriginate && (
+                      <div className="p-2.5 bg-amber-500/10 border border-amber-500/30 rounded-lg flex items-center gap-2 text-xs text-amber-700 dark:text-amber-300">
+                        <i className="fas fa-info-circle text-sm flex-shrink-0" />
+                        <span>El módulo de <strong>Comisiones</strong> está oculto porque este colaborador no tiene facultades de originación comercial (canOriginate = false).</span>
+                      </div>
+                    )}
+
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-h-[340px] overflow-y-auto pr-1">
-                      {SYSTEM_MODULES.map((mod) => {
+                      {getDelegableModules(watchedEditCanOriginate).map((mod) => {
                         const isChecked = watchedEditModules.includes(mod.id);
                         return (
                           <div

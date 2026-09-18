@@ -678,7 +678,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ message: "User not found" });
       }
       
-      res.json(user);
+      const memberships = await storage.getTenantMembersByUser(userId);
+      res.json({
+        ...user,
+        memberships,
+      });
     } catch (error) {
       console.error("Error fetching user:", error);
       res.status(500).json({ message: "Failed to fetch user" });
@@ -1866,6 +1870,24 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Error toggling user status:", error);
       res.status(500).json({ message: "Failed to toggle user status" });
+    }
+  });
+
+  // 🔹 ADMIN: Execute RBAC and Commissions sanitization
+  app.post('/api/admin/sanitize-rbac', isAuthenticated, async (req: any, res) => {
+    try {
+      const user = req.user?.claims ? await storage.getUser(req.user.claims.sub) : req.dbUser;
+      if (user?.role !== 'super_admin') {
+        return res.status(403).json({ message: "Se requieren privilegios de Super Administrador." });
+      }
+
+      const dryRun = req.body?.dryRun !== false;
+      const { runSanitization } = await import("../scripts/sanitize-rbac-commissions");
+      const summary = await runSanitization({ dryRun });
+      res.json(summary);
+    } catch (error) {
+      console.error("Error running RBAC sanitization:", error);
+      res.status(500).json({ message: "Error ejecutando saneamiento de permisos" });
     }
   });
 
@@ -4023,6 +4045,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         callerUser,
         callerRole,
         isSuperAdmin,
+        targetCanOriginate: data.canOriginate,
       });
 
       if (!permValidation.valid) {
@@ -4176,12 +4199,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (data.permissions !== undefined) {
         const callerUserId = req.user?.claims?.sub || req.user?.id || (req as any).dbUser?.id;
         const callerUser = await storage.getUser(callerUserId);
+        const effectiveCanOriginate = data.canOriginate !== undefined ? data.canOriginate : targetMember.canOriginate;
         const permValidation = await validateTenantMemberPermissions({
           permissions: data.permissions,
           tenantType: tenant.type,
           callerUser,
           callerRole,
           isSuperAdmin,
+          targetCanOriginate: effectiveCanOriginate,
         });
 
         if (!permValidation.valid) {

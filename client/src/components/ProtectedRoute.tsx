@@ -75,15 +75,28 @@ function GuardedContent({
 
   // 2. Check granular module permission
   if (isAuthorized && requiredModule) {
-    const permissions = (user.permissions as any) || {};
-    const hasCustomModules = Array.isArray(permissions.modules) && permissions.modules.length > 0;
-    const allowedModules = hasCustomModules
-      ? permissions.modules
-      : (DEFAULT_ROLE_MODULES[user.role] || DEFAULT_ROLE_MODULES.broker);
+    if (requiredModule === "comisiones") {
+      const userMemberships = (user as any)?.memberships || [];
+      const isNonOriginatorOnly = userMemberships.length > 0 &&
+        userMemberships.every((m: any) => m.role === 'member' && m.canOriginate === false) &&
+        user.role !== 'super_admin' && user.role !== 'admin' && user.role !== 'master_broker';
+      if (isNonOriginatorOnly) {
+        isAuthorized = false;
+        denialReason = "El módulo de comisiones está reservado exclusivamente para originadores autorizados (canOriginate: true).";
+      }
+    }
 
-    if (!allowedModules.includes(requiredModule)) {
-      isAuthorized = false;
-      denialReason = `Tu cuenta no tiene habilitado el módulo '${requiredModule}'. Contacta al administrador para solicitar acceso.`;
+    if (isAuthorized) {
+      const permissions = (user.permissions as any) || {};
+      const hasCustomModules = Array.isArray(permissions.modules) && permissions.modules.length > 0;
+      const allowedModules = hasCustomModules
+        ? permissions.modules
+        : (DEFAULT_ROLE_MODULES[user.role] || DEFAULT_ROLE_MODULES.broker);
+
+      if (!allowedModules.includes(requiredModule)) {
+        isAuthorized = false;
+        denialReason = `Tu cuenta no tiene habilitado el módulo '${requiredModule}'. Contacta al administrador para solicitar acceso.`;
+      }
     }
   }
 

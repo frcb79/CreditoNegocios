@@ -8,6 +8,7 @@ export interface ValidationParams {
   callerUser: any;
   callerRole: "owner" | "admin" | "super_admin";
   isSuperAdmin: boolean;
+  targetCanOriginate?: boolean | null;
 }
 
 export function validateTenantMemberPermissions(params: ValidationParams): {
@@ -15,7 +16,7 @@ export function validateTenantMemberPermissions(params: ValidationParams): {
   error?: string;
   permissions?: any;
 } {
-  const { permissions, tenantType, callerUser, isSuperAdmin } = params;
+  const { permissions, tenantType, callerUser, isSuperAdmin, targetCanOriginate } = params;
   if (!permissions) {
     return { valid: true, permissions: {} };
   }
@@ -46,7 +47,42 @@ export function validateTenantMemberPermissions(params: ValidationParams): {
     };
   }
 
-  // 2. Privilege escalation check against caller's effective permissions
+  // 2. Commercial origination restriction: non-originators cannot have comisiones
+  if (targetCanOriginate === false && Array.isArray(permissions.modules) && permissions.modules.includes("comisiones")) {
+    return {
+      valid: false,
+      error: "No se puede asignar el módulo de comisiones a un colaborador no originador (canOriginate: false).",
+    };
+  }
+
+  // 3. Tenant-level module boundary checks
+  if (tenantType !== "platform") {
+    const platformReservedModules = ["aprobaciones", "importacion"];
+    const forbiddenPlatformModules = (permissions.modules || []).filter(
+      (m: string) => platformReservedModules.includes(m)
+    );
+    if (forbiddenPlatformModules.length > 0 && !isSuperAdmin) {
+      return {
+        valid: false,
+        error: `Los módulos reservados de plataforma (${forbiddenPlatformModules.join(", ")}) no pueden ser asignados dentro de esta organización.`,
+      };
+    }
+
+    if (tenantType === "broker") {
+      const brokerDisallowedModules = ["red_brokers", "reportes"];
+      const forbiddenBrokerModules = (permissions.modules || []).filter(
+        (m: string) => brokerDisallowedModules.includes(m)
+      );
+      if (forbiddenBrokerModules.length > 0 && !isSuperAdmin) {
+        return {
+          valid: false,
+          error: `Los módulos (${forbiddenBrokerModules.join(", ")}) no están permitidos para el perfil de una organización Broker.`,
+        };
+      }
+    }
+  }
+
+  // 4. Privilege escalation check against caller's effective permissions
   if (!isSuperAdmin && callerUser) {
     const callerEffective = getEffectivePermissions(callerUser);
 
@@ -70,20 +106,6 @@ export function validateTenantMemberPermissions(params: ValidationParams): {
         return {
           valid: false,
           error: `No puedes conceder facultades que no tienes asignadas: ${unauthorizedActions.join(", ")}.`,
-        };
-      }
-    }
-
-    // Platform reserved capabilities check:
-    const platformReservedModules = ["importacion"];
-    if (tenantType !== "platform") {
-      const forbiddenPlatformModules = (permissions.modules || []).filter(
-        (m: string) => platformReservedModules.includes(m)
-      );
-      if (forbiddenPlatformModules.length > 0) {
-        return {
-          valid: false,
-          error: `Los módulos reservados de plataforma (${forbiddenPlatformModules.join(", ")}) solo pueden ser concedidos por Super Admin.`,
         };
       }
     }

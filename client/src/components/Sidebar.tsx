@@ -97,9 +97,16 @@ export default function Sidebar() {
     '/configuracion': 'configuracion',
   };
 
+  // Non-originator check: Collaborators with canOriginate: false do not see Comisiones
+  const userMemberships = (user as any)?.memberships || [];
+  const isNonOriginatorOnly = userMemberships.length > 0 &&
+    userMemberships.every((m: any) => m.role === 'member' && m.canOriginate === false) &&
+    !isFullAdmin && user?.role !== 'master_broker';
+
   const allNavigationItems = (user?.role === 'super_admin' || !allowedModules || allowedModules.length === 0)
-    ? baseItems
+    ? baseItems.filter(item => !(item.href === '/comisiones' && isNonOriginatorOnly))
     : baseItems.filter(item => {
+        if (item.href === '/comisiones' && isNonOriginatorOnly) return false;
         if (item.href === '/admin/usuarios' && hasTenantOrg) return true;
         const modKey = hrefToModule[item.href];
         return !modKey || allowedModules.includes(modKey);

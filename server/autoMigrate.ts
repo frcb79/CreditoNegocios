@@ -302,7 +302,10 @@ export async function runAutoMigration(): Promise<void> {
         role: 'master_broker',
         referralCode: 'MB-FRANCO',
         permissions: JSON.stringify({ 
-          modules: ["dashboard", "clientes", "creditos", "comisiones", "red_brokers", "documentos", "reportes", "usuarios", "configuracion"], 
+          modules: [
+            "dashboard", "clientes", "creditos", "comisiones", "financieras",
+            "sistema_productos", "red_brokers", "documentos", "reportes", "usuarios", "configuracion"
+          ], 
           actions: ["view", "edit", "submit_proposals", "manage_users"],
           scope: "network"
         }),
@@ -314,7 +317,10 @@ export async function runAutoMigration(): Promise<void> {
         role: 'broker',
         referralCode: null,
         permissions: JSON.stringify({ 
-          modules: ["dashboard", "clientes", "creditos", "documentos", "sistema_productos", "configuracion"], 
+          modules: [
+            "dashboard", "clientes", "creditos", "comisiones", "financieras",
+            "sistema_productos", "documentos", "configuracion"
+          ], 
           actions: ["view", "edit", "submit_proposals"],
           scope: "own"
         }),
@@ -382,6 +388,73 @@ export async function runAutoMigration(): Promise<void> {
       } catch (linkErr) {
         console.error("⚠️ [AutoMigrate] Error linking broker to master broker:", linkErr);
       }
+    }
+
+    // 7B. Auto-sanitization across the database for RBAC modules & comisiones
+    try {
+      // Restore comisiones, financieras, sistema_productos to all brokers & master_brokers
+      const sanitizeRes = await client.query(`
+        SELECT id, email, role, permissions 
+        FROM public.users 
+        WHERE role IN ('broker', 'master_broker') 
+          AND permissions IS NOT NULL 
+          AND permissions != '{}'::jsonb
+      `);
+
+      for (const row of sanitizeRes.rows) {
+        const perms = row.permissions || {};
+        if (Array.isArray(perms.modules) && perms.modules.length > 0) {
+          const mods = new Set<string>(perms.modules);
+          let changed = false;
+
+          if (!mods.has('comisiones')) {
+            mods.add('comisiones');
+            changed = true;
+          }
+          if (!mods.has('financieras')) {
+            mods.add('financieras');
+            changed = true;
+          }
+          if (!mods.has('sistema_productos')) {
+            mods.add('sistema_productos');
+            changed = true;
+          }
+
+          if (changed) {
+            perms.modules = Array.from(mods);
+            await client.query(
+              `UPDATE public.users SET permissions = $1::jsonb, updated_at = NOW() WHERE id = $2`,
+              [JSON.stringify(perms), row.id]
+            );
+            console.log(`🛡️ [AutoMigrate] Sanitized permissions for user ${row.email || row.id} (${row.role})`);
+          }
+        }
+      }
+
+      // Ensure non-originators (can_originate = false) NEVER have comisiones in permissions
+      const nonOrigRes = await client.query(`
+        SELECT tm.user_id, u.permissions
+        FROM public.tenant_members tm
+        JOIN public.users u ON tm.user_id = u.id
+        WHERE tm.is_active = true 
+          AND tm.can_originate = false 
+          AND tm.role = 'member'
+          AND u.role NOT IN ('super_admin', 'admin')
+      `);
+
+      for (const row of nonOrigRes.rows) {
+        const perms = row.permissions || {};
+        if (Array.isArray(perms.modules) && perms.modules.includes('comisiones')) {
+          perms.modules = perms.modules.filter((m: string) => m !== 'comisiones');
+          await client.query(
+            `UPDATE public.users SET permissions = $1::jsonb, updated_at = NOW() WHERE id = $2`,
+            [JSON.stringify(perms), row.user_id]
+          );
+          console.log(`🛡️ [AutoMigrate] Removed comisiones for non-originating collaborator ${row.user_id}`);
+        }
+      }
+    } catch (sanErr) {
+      console.warn("⚠️ [AutoMigrate] Notice during auto-sanitization:", (sanErr as any)?.message);
     }
 
     // 8. Ensure system user 'user-super-admin' exists for FK integrity in legacy scripts & migrations

@@ -54,129 +54,119 @@ export default function ProductSystem() {
   return (
     <MainLayout>
       <Header 
-        title="Productos"
-        subtitle="Administra el catálogo completo de productos crediticios y su asignación a financieras"
+        title="Catálogo de Productos"
+        subtitle={isAdmin 
+          ? "Administra el catálogo completo de productos crediticios y su asignación a financieras"
+          : "Explora las opciones de financiamiento por categoría y consulta las condiciones de las financieras"}
       />
         
         <main className="flex-1 p-4 sm:p-6 lg:p-8 overflow-y-auto space-y-6">
-          {/* Overview Cards */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
-            <Card className="border shadow-sm">
-              <CardContent className="p-5">
-                <div className="flex items-center space-x-3">
-                  <div className="p-3 bg-blue-100 text-blue-700 rounded-xl">
-                    <i className="fas fa-building text-lg"></i>
+          {/* Overview Cards (Platform Admins only) */}
+          {isAdmin && (
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
+              <Card className="border shadow-sm">
+                <CardContent className="p-5">
+                  <div className="flex items-center space-x-3">
+                    <div className="p-3 bg-blue-100 text-blue-700 rounded-xl">
+                      <i className="fas fa-building text-lg"></i>
+                    </div>
+                    <div>
+                      <p className="text-xs font-medium text-gray-500">Financieras Activas</p>
+                      <p className="text-2xl font-black text-gray-900" data-testid="text-institutions-count">
+                        {activeInstitutionsCount}
+                      </p>
+                      <p className="text-[11px] text-gray-400">Registradas en sistema</p>
+                    </div>
                   </div>
-                  <div>
-                    <p className="text-xs font-medium text-gray-500">Financieras Activas</p>
-                    <p className="text-2xl font-black text-gray-900" data-testid="text-institutions-count">
-                      {activeInstitutionsCount}
-                    </p>
-                    <p className="text-[11px] text-gray-400">Registradas en sistema</p>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
+                </CardContent>
+              </Card>
 
-            <Card className="border shadow-sm">
-              <CardContent className="p-5">
-                <div className="flex items-center space-x-3">
-                  <div className="p-3 bg-emerald-100 text-emerald-700 rounded-xl">
-                    <i className="fas fa-layer-group text-lg"></i>
+              <Card className="border shadow-sm">
+                <CardContent className="p-5">
+                  <div className="flex items-center space-x-3">
+                    <div className="p-3 bg-emerald-100 text-emerald-700 rounded-xl">
+                      <i className="fas fa-layer-group text-lg"></i>
+                    </div>
+                    <div>
+                      <p className="text-xs font-medium text-gray-500">Plantillas Producto</p>
+                      <p className="text-2xl font-black text-gray-900" data-testid="text-templates-count">
+                        {templates ? templates.length : '-'}
+                      </p>
+                      <p className="text-[11px] text-gray-400">Productos base</p>
+                    </div>
                   </div>
-                  <div>
-                    <p className="text-xs font-medium text-gray-500">Plantillas Producto</p>
-                    <p className="text-2xl font-black text-gray-900" data-testid="text-templates-count">
-                      {templates ? templates.length : '-'}
-                    </p>
-                    <p className="text-[11px] text-gray-400">Productos base</p>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
+                </CardContent>
+              </Card>
 
-            <Card className="border shadow-sm">
-              <CardContent className="p-5">
-                <div className="flex items-center space-x-3">
-                  <div className="p-3 bg-purple-100 text-purple-700 rounded-xl">
-                    <i className="fas fa-link text-lg"></i>
+              <Card className="border shadow-sm">
+                <CardContent className="p-5">
+                  <div className="flex items-center space-x-3">
+                    <div className="p-3 bg-purple-100 text-purple-700 rounded-xl">
+                      <i className="fas fa-link text-lg"></i>
+                    </div>
+                    <div>
+                      <p className="text-xs font-medium text-gray-500">Asignaciones</p>
+                      <p className="text-2xl font-black text-gray-900" data-testid="text-institution-products-count">
+                        {institutionProducts ? institutionProducts.length : '-'}
+                      </p>
+                      <p className="text-[11px] text-gray-400">Productos vinculados</p>
+                    </div>
                   </div>
-                  <div>
-                    <p className="text-xs font-medium text-gray-500">Asignaciones</p>
-                    <p className="text-2xl font-black text-gray-900" data-testid="text-institution-products-count">
-                      {institutionProducts ? institutionProducts.length : '-'}
-                    </p>
-                    <p className="text-[11px] text-gray-400">Productos vinculados</p>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
+                </CardContent>
+              </Card>
 
-            <Card className="border shadow-sm">
-              <CardContent className="p-5">
-                <div className="flex items-center space-x-3">
-                  <div className="p-3 bg-orange-100 text-orange-700 rounded-xl">
-                    <i className="fas fa-users text-lg"></i>
+              <Card className="border shadow-sm">
+                <CardContent className="p-5">
+                  <div className="flex items-center space-x-3">
+                    <div className="p-3 bg-orange-100 text-orange-700 rounded-xl">
+                      <i className="fas fa-users text-lg"></i>
+                    </div>
+                    <div>
+                      <p className="text-xs font-medium text-gray-500">Catálogo Red</p>
+                      <p className="text-2xl font-black text-gray-900" data-testid="text-tenant-products-count">
+                        {tenantProducts ? tenantProducts.length : (isAdmin ? 'Todos' : '-')}
+                      </p>
+                      <p className="text-[11px] text-gray-400">Disponibles para brókers</p>
+                    </div>
                   </div>
-                  <div>
-                    <p className="text-xs font-medium text-gray-500">Catálogo Red</p>
-                    <p className="text-2xl font-black text-gray-900" data-testid="text-tenant-products-count">
-                      {tenantProducts ? tenantProducts.length : (isAdmin ? 'Todos' : '-')}
-                    </p>
-                    <p className="text-[11px] text-gray-400">Disponibles para brókers</p>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          </div>
+                </CardContent>
+              </Card>
+            </div>
+          )}
 
-          {/* Tabs for different product levels */}
-          <Card className="border shadow-sm">
-            <CardContent className="p-0">
-              <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as TabValue)} className="w-full">
-                <div className="border-b border-border bg-card px-6 py-4">
-                  <TabsList className={`grid w-full ${isAdmin ? 'grid-cols-2' : 'grid-cols-1'}`}>
-                    {isAdmin && (
+          {/* Admin Management Tabs vs Broker Commercial Experience */}
+          {isAdmin ? (
+            <Card className="border shadow-sm">
+              <CardContent className="p-0">
+                <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as TabValue)} className="w-full">
+                  <div className="border-b border-border bg-card px-6 py-4">
+                    <TabsList className="grid w-full grid-cols-2">
                       <TabsTrigger value="templates" data-testid="tab-templates" className="font-semibold">
                         <i className="fas fa-layer-group mr-2"></i>
                         Plantillas de Producto
                       </TabsTrigger>
-                    )}
-                    {isAdmin && (
                       <TabsTrigger value="institution" data-testid="tab-institution" className="font-semibold">
                         <i className="fas fa-building mr-2"></i>
                         Asignación a Financieras
                       </TabsTrigger>
-                    )}
-                    {!isAdmin && (
-                      <TabsTrigger value="tenant" data-testid="tab-tenant" className="font-semibold">
-                        <i className="fas fa-users mr-2"></i>
-                        Mi Catálogo
-                      </TabsTrigger>
-                    )}
-                  </TabsList>
-                </div>
+                    </TabsList>
+                  </div>
 
-                {isAdmin && (
                   <TabsContent value="templates" className="p-6">
                     <ProductTemplates />
                   </TabsContent>
-                )}
 
-                {isAdmin && (
                   <TabsContent value="institution" className="p-6">
                     <InstitutionProducts />
                   </TabsContent>
-                )}
-
-                {!isAdmin && (
-                  <TabsContent value="tenant" className="p-6">
-                    <BrokerProducts />
-                  </TabsContent>
-                )}
-              </Tabs>
-            </CardContent>
-          </Card>
+                </Tabs>
+              </CardContent>
+            </Card>
+          ) : (
+            <div className="space-y-6">
+              <BrokerProducts />
+            </div>
+          )}
 
           {/* Optional Advanced Variables Section for Admins */}
           {isAdmin && (
