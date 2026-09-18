@@ -120,18 +120,73 @@ function parseCommissionRate(value: unknown): number {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
 }
 
-async function createCascadingCommissionRecord(params: {
-  creditId: string;
-  brokerId: string;
-  masterBrokerId?: string | null;
-  commissionType: string;
-  approvedAmount: number;
-  financieraRate: number;
-  masterBrokerRate: number;
-  brokerRate: number;
-  financialInstitutionId?: string | null;
-  isMasterDirect?: boolean;
-}): Promise<any> {
+export async function createCascadingCommissionRecord(
+  arg1: any,
+  institutionArg?: any,
+  amountArg?: string | number,
+  commTypeArg?: string
+): Promise<any> {
+  let params: {
+    creditId: string;
+    brokerId: string;
+    masterBrokerId?: string | null;
+    commissionType: string;
+    approvedAmount: number;
+    financieraRate: number;
+    masterBrokerRate: number;
+    brokerRate: number;
+    financialInstitutionId?: string | null;
+    isMasterDirect?: boolean;
+    performedBy?: string | null;
+  };
+
+  if (arg1 && typeof arg1 === "object" && "creditId" in arg1) {
+    params = arg1;
+  } else {
+    const credit = arg1;
+    const institution = institutionArg;
+    const approvedAmount = parseFloat(String(amountArg || credit?.amount || "0"));
+    const commType = commTypeArg || "apertura";
+
+    const brokerUser = credit?.brokerId ? await storage.getUser(credit.brokerId) : null;
+    const isMasterDirect = brokerUser?.role === "master_broker";
+    const masterBrokerId = isMasterDirect ? brokerUser.id : brokerUser?.masterBrokerId;
+
+    const commissionRates = (institution as any)?.commissionRates || {};
+    const superAdminRate = parseFloat(
+      commissionRates.financiera?.[commType] ||
+      commissionRates.financiera?.apertura ||
+      (institution as any)?.openingCommissionRate ||
+      (institution as any)?.commissionRate ||
+      "0"
+    );
+    const masterRate = parseFloat(
+      commissionRates.masterBroker?.[commType] ||
+      commissionRates.masterBroker?.apertura ||
+      (institution as any)?.masterBrokerCommissionRate ||
+      "0"
+    );
+    const brokerRate = parseFloat(
+      commissionRates.broker?.[commType] ||
+      commissionRates.broker?.apertura ||
+      (institution as any)?.brokerCommissionRate ||
+      "0"
+    );
+
+    params = {
+      creditId: credit?.id,
+      brokerId: credit?.brokerId,
+      masterBrokerId: masterBrokerId || null,
+      commissionType: commType,
+      approvedAmount,
+      financieraRate: superAdminRate,
+      masterBrokerRate: masterRate,
+      brokerRate,
+      financialInstitutionId: credit?.financialInstitutionId || (institution as any)?.id || null,
+      isMasterDirect,
+    };
+  }
+
   const { creditId, brokerId, masterBrokerId, commissionType, approvedAmount, financieraRate, masterBrokerRate, brokerRate, financialInstitutionId } = params;
 
   let safeBrokerRate = Number.isFinite(brokerRate) && brokerRate > 0 ? brokerRate : 0;
@@ -146,9 +201,9 @@ async function createCascadingCommissionRecord(params: {
 
   if (isMasterDirect) {
     // 1. Master Broker registered credit directly:
-    // Receives full master rate (e.g. 3%), brokerShare is 0
+    // Receives full master rate (e.g. 3%), and both brokerShare & masterBrokerShare reflect earned amount
     masterBrokerAmount = (approvedAmount * safeMasterRate) / 100;
-    brokerAmount = 0;
+    brokerAmount = masterBrokerAmount;
     ceilingRate = safeMasterRate;
   } else if (masterBrokerId) {
     // 2. Broker belongs to a Master Broker network:
@@ -191,20 +246,48 @@ async function createCascadingCommissionRecord(params: {
   }
 
   // Platform / Super Admin gets differential (finRate - ceiling)
-  // E.g., if Fin is 4% and Master is 3% -> Platform retains 1%
-  // E.g., if Fin is 4% and Direct Broker is 2% -> Platform retains 2%
   const platformNetRate = Math.max(0, safeFinRate - ceilingRate);
   const appAmount = (approvedAmount * platformNetRate) / 100;
 
   // Total gross commission granted by the financial institution
-  const totalGrossAmount = Math.max(brokerAmount + masterBrokerAmount + appAmount, (approvedAmount * safeFinRate) / 100);
+  const totalGrossAmount = Math.max(
+    isMasterDirect ? masterBrokerAmount + appAmount : brokerAmount + masterBrokerAmount + appAmount,
+    (approvedAmount * safeFinRate) / 100
+  );
 
   // Check if a commission record already exists for this credit and type
-  const existing = await storage.getCommissions({ brokerId });
-  const duplicate = existing.find((c) => c.creditId === creditId && c.commissionType === commissionType);
+  const existing = await storage.getCommissions({ creditId });
+  const duplicate = existing.find((c) => c.commissionType === commissionType);
 
   let commission;
   if (duplicate) {
+    // Inmutabilidad estricta: comisiones aprobadas, en dispersión o pagadas no pueden recalcularse
+    if (['approved', 'dispersing', 'paid'].includes(duplicate.status)) {
+      console.warn(`[Commission Inmutabilidad] La comisión ${duplicate.id} está en estado '${duplicate.status}'. Queda congelada contra recálculo.`);
+      if (Math.abs(parseFloat(duplicate.amount || '0') - parseFloat(totalGrossAmount.toFixed(2))) > 0.01) {
+        try {
+          await storage.createCommissionAuditLog({
+            commissionId: duplicate.id,
+            action: 'credit_modified_incident',
+            performedBy: params.performedBy || null,
+            previousStatus: duplicate.status,
+            newStatus: duplicate.status,
+            details: {
+              reason: "Intento de recálculo sobre comisión congelada por edición del crédito",
+              frozenAmount: duplicate.frozenAmount || duplicate.amount,
+              attemptedGrossAmount: totalGrossAmount.toFixed(2),
+              attemptedBrokerShare: brokerAmount.toFixed(2),
+              attemptedMasterShare: masterBrokerAmount.toFixed(2),
+            }
+          });
+        } catch (logErr) {
+          console.error('[Commission] Error registrando log de incidencia:', logErr);
+        }
+      }
+      return duplicate;
+    }
+
+    // Si está en 'generated', se permite el recálculo
     commission = await storage.updateCommission(duplicate.id, {
       amount: totalGrossAmount.toFixed(2),
       brokerShare: brokerAmount.toFixed(2),
@@ -212,35 +295,73 @@ async function createCascadingCommissionRecord(params: {
       appShare: appAmount.toFixed(2),
     });
     if (!commission) commission = duplicate;
+
+    try {
+      await storage.createCommissionAuditLog({
+        commissionId: duplicate.id,
+        action: 'recalculated',
+        performedBy: params.performedBy || null,
+        previousStatus: duplicate.status,
+        newStatus: duplicate.status,
+        details: {
+          amount: totalGrossAmount.toFixed(2),
+          brokerShare: brokerAmount.toFixed(2),
+          masterBrokerShare: masterBrokerAmount.toFixed(2),
+          appShare: appAmount.toFixed(2),
+        }
+      });
+    } catch (e) {}
   } else {
+    const linkedCredit = await storage.getCredit(creditId);
     commission = await storage.createCommission({
       creditId,
+      tenantId: linkedCredit?.tenantId || null,
       brokerId,
       masterBrokerId: masterBrokerId || null,
       amount: totalGrossAmount.toFixed(2),
       brokerShare: brokerAmount.toFixed(2),
       masterBrokerShare: masterBrokerAmount.toFixed(2),
       appShare: appAmount.toFixed(2),
-      status: "pending",
+      status: "generated",
       commissionType,
     });
+
+    try {
+      await storage.createCommissionAuditLog({
+        commissionId: commission.id,
+        action: 'created',
+        performedBy: params.performedBy || null,
+        previousStatus: null,
+        newStatus: 'generated',
+        details: {
+          creditId,
+          tenantId: linkedCredit?.tenantId || null,
+          commissionType,
+          amount: totalGrossAmount.toFixed(2),
+          brokerShare: brokerAmount.toFixed(2),
+          masterBrokerShare: masterBrokerAmount.toFixed(2),
+          appShare: appAmount.toFixed(2),
+          isMasterDirect,
+        }
+      });
+    } catch (e) {}
   }
 
-  // Notifications
+  // Notificaciones transparentes con monto real
   if (brokerAmount > 0) {
     try {
       await storage.createNotification({
         userId: brokerId,
         type: 'commission_paid',
-        title: 'Nueva comisión generada (Pendiente)',
-        message: `Se ha registrado tu comisión de ${commissionType} por $${brokerAmount.toLocaleString('es-MX', { minimumFractionDigits: 2 })} MXN en estatus pendiente de liquidación.`,
+        title: 'Nueva comisión generada (Por Aprobar)',
+        message: `Se ha generado tu comisión de ${commissionType} por $${brokerAmount.toLocaleString('es-MX', { minimumFractionDigits: 2 })} MXN en estatus 'Por Aprobar'.`,
         relatedEntityType: 'commission',
         relatedEntityId: commission.id,
       });
       broadcastToUser(brokerId, {
         type: 'commission_update',
         commissionId: commission.id,
-        status: 'pending',
+        status: commission.status || 'generated',
         amount: brokerAmount,
       });
     } catch (notifErr) {
@@ -249,20 +370,19 @@ async function createCascadingCommissionRecord(params: {
   }
 
   if (masterBrokerId && (masterBrokerAmount > 0 || brokerAmount > 0)) {
-    const grossMb = brokerAmount + masterBrokerAmount;
     try {
       await storage.createNotification({
         userId: masterBrokerId,
         type: 'commission_paid',
         title: 'Nueva comisión de red generada',
-        message: `Se ha registrado una comisión de red de ${commissionType}: $${grossMb.toLocaleString('es-MX', { minimumFractionDigits: 2 })} MXN ($${masterBrokerAmount.toLocaleString('es-MX', { minimumFractionDigits: 2 })} tu ganancia neta).`,
+        message: `Se ha generado una comisión de red de ${commissionType}: $${masterBrokerAmount.toLocaleString('es-MX', { minimumFractionDigits: 2 })} MXN de ganancia neta para tu red.`,
         relatedEntityType: 'commission',
         relatedEntityId: commission.id,
       });
       broadcastToUser(masterBrokerId, {
         type: 'commission_update',
         commissionId: commission.id,
-        status: 'pending',
+        status: commission.status || 'generated',
         amount: masterBrokerAmount,
       });
     } catch (notifErr) {
@@ -286,7 +406,7 @@ async function createCascadingCommissionRecord(params: {
         broadcastToUser(superAdminUser.id, {
           type: 'commission_update',
           commissionId: commission.id,
-          status: 'pending',
+          status: commission.status || 'generated',
           amount: appAmount,
         });
       }
@@ -1392,9 +1512,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
             : parseFloat(c.brokerShare || c.amount || '0');
         }
         if (isMasterBroker) {
-          // If Master Broker's own credit, they get brokerShare; if network, they get their net masterBrokerShare
-          const isOwn = c.brokerId === userId || !c.masterBrokerId;
-          return parseFloat(isOwn ? (c.brokerShare || c.amount || '0') : (c.masterBrokerShare || '0'));
+          // If Master Broker's own credit, they get full amount or brokerShare; if network, they get their net masterBrokerShare
+          const isOwn = c.brokerId === userId;
+          const mbShare = parseFloat(c.masterBrokerShare || '0');
+          const brkShare = parseFloat(c.brokerShare || '0');
+          const baseAmt = parseFloat(c.amount || '0');
+          if (isOwn) {
+            return mbShare > 0 ? mbShare : (brkShare > 0 ? brkShare : baseAmt);
+          }
+          return mbShare;
         }
         // Broker gets brokerShare
         return parseFloat(c.brokerShare || (c.masterBrokerShare ? '0' : c.amount) || '0');
@@ -1409,10 +1535,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
         .reduce((sum, c) => sum + getRoleCommAmount(c), 0);
 
       const pendingCommissions = commissions
-        .filter(c => c.status === 'pending')
+        .filter(c => ['pending', 'generated', 'approved', 'dispersing'].includes(c.status))
         .reduce((sum, c) => sum + getRoleCommAmount(c), 0);
 
-      const pendingCommissionsCount = commissions.filter(c => c.status === 'pending' && getRoleCommAmount(c) > 0).length;
+      const pendingCommissionsCount = commissions.filter(c => ['pending', 'generated', 'approved', 'dispersing'].includes(c.status) && getRoleCommAmount(c) > 0).length;
 
       // 5. Dynamic trends (solving the static "Sin cambios" bug #27)
       const lastMonthSubmissions = userSubmissions.filter(s =>
@@ -2791,8 +2917,34 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const isAdmin = user?.role === 'admin' || user?.role === 'super_admin';
       let rawCommissions: any[] = [];
       
+      const { 
+        status, 
+        institutionId, 
+        financialInstitutionId, 
+        masterBrokerId, 
+        brokerId, 
+        from, 
+        to, 
+        tenantId 
+      } = req.query;
+
       if (isAdmin) {
-        rawCommissions = await storage.getCommissions();
+        const filters: any = {};
+        if (brokerId) filters.brokerId = String(brokerId);
+        if (masterBrokerId) filters.masterBrokerId = String(masterBrokerId);
+        if (tenantId) filters.tenantId = String(tenantId);
+        if (status) {
+          const statusStr = String(status);
+          if (statusStr.includes(',')) {
+            filters.statuses = statusStr.split(',').map(s => s.trim());
+          } else {
+            filters.status = statusStr;
+          }
+        }
+        if (from) filters.from = new Date(String(from));
+        if (to) filters.to = new Date(String(to));
+
+        rawCommissions = await storage.getCommissions(filters);
       } else if (user?.role === 'master_broker') {
         const mbComms = await storage.getCommissions({
           masterBrokerId: userId,
@@ -2806,7 +2958,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         rawCommissions = Array.from(commMap.values()).filter(c => {
           const mbNet = parseFloat(c.masterBrokerShare || '0');
           const brkShare = parseFloat(c.brokerShare || '0');
-          if (c.brokerId === userId) return brkShare > 0;
+          if (c.brokerId === userId) return brkShare > 0 || parseFloat(c.amount || '0') > 0;
           return mbNet > 0 || brkShare > 0;
         });
       } else {
@@ -2889,13 +3041,39 @@ export async function registerRoutes(app: Express): Promise<Server> {
           }
 
           const isMb = comm.masterBrokerId && parseFloat(comm.masterBrokerShare || '0') > 0;
-          const payoutAmount = isMb
-            ? (parseFloat(comm.brokerShare || '0') + parseFloat(comm.masterBrokerShare || '0'))
-            : parseFloat(comm.brokerShare || comm.amount || '0');
+          const payoutAmount = comm.frozenAmount 
+            ? parseFloat(comm.frozenAmount)
+            : (isMb
+                ? (parseFloat(comm.brokerShare || '0') + parseFloat(comm.masterBrokerShare || '0'))
+                : parseFloat(comm.brokerShare || comm.amount || '0'));
+
+          const effectiveBeneficiary = isMb && masterBroker
+            ? {
+                id: masterBroker.id,
+                name: masterBroker.accountHolder || `${masterBroker.firstName || ''} ${masterBroker.lastName || ''}`.trim() || masterBroker.brandName,
+                email: masterBroker.email,
+                role: 'master_broker',
+                bankName: masterBroker.bankName,
+                clabe: masterBroker.clabe,
+                accountHolder: masterBroker.accountHolder,
+                isMasterBroker: true,
+              }
+            : (broker ? {
+                id: broker.id,
+                name: broker.accountHolder || `${broker.firstName || ''} ${broker.lastName || ''}`.trim() || broker.email,
+                email: broker.email,
+                role: 'broker',
+                bankName: broker.bankName,
+                clabe: broker.clabe,
+                accountHolder: broker.accountHolder,
+                isMasterBroker: false,
+              } : null);
 
           return {
             ...comm,
             payoutAmount,
+            isNetworkPayout: !!isMb,
+            effectiveBeneficiary,
             credit: credit ? {
               id: credit.id,
               amount: credit.amount,
@@ -2922,7 +3100,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
         })
       );
 
-      res.json(enrichedCommissions);
+      // Additional in-memory filtering for criteria like institutionId
+      const targetInstId = institutionId || financialInstitutionId;
+      const filtered = targetInstId
+        ? enrichedCommissions.filter(c => c.financialInstitution?.id === String(targetInstId))
+        : enrichedCommissions;
+
+      res.json(filtered);
     } catch (error) {
       console.error("Error fetching commissions:", error);
       res.status(500).json({ message: "Failed to fetch commissions" });
@@ -2961,10 +3145,200 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Get commission audit logs
+  app.get('/api/commissions/:id/audit-logs', isAuthenticated, requireModuleAndAction('comisiones', 'view'), async (req: any, res) => {
+    try {
+      const { id } = req.params;
+      const logs = await storage.getCommissionAuditLogs(id);
+      res.json(logs);
+    } catch (error) {
+      console.error("Error fetching commission audit logs:", error);
+      res.status(500).json({ message: "Error al consultar la bitácora de auditoría" });
+    }
+  });
+
+  // Approve a commission (Admins only)
+  app.post('/api/commissions/:id/approve', isAuthenticated, requireModuleAndAction('comisiones', 'approve_disperse'), async (req: any, res) => {
+    try {
+      const { id } = req.params;
+      const userId = req.user.claims.sub;
+      const user = await storage.getUser(userId);
+
+      if (!user || (user.role !== 'admin' && user.role !== 'super_admin')) {
+        return res.status(403).json({ message: "Solo los administradores pueden aprobar comisiones" });
+      }
+
+      const commission = await storage.getCommission(id);
+      if (!commission) {
+        return res.status(404).json({ message: "Comisión no encontrada" });
+      }
+
+      if (commission.status === 'approved') {
+        return res.json({ message: "La comisión ya se encuentra aprobada", commission });
+      }
+
+      if (['paid', 'dispersing', 'cancelled'].includes(commission.status)) {
+        return res.status(400).json({
+          message: `No se puede aprobar una comisión en estado '${commission.status}'`
+        });
+      }
+
+      // Calculate and freeze final payout amount
+      const isMb = commission.masterBrokerId && parseFloat(commission.masterBrokerShare || '0') > 0;
+      const payoutAmount = isMb
+        ? (parseFloat(commission.brokerShare || '0') + parseFloat(commission.masterBrokerShare || '0'))
+        : parseFloat(commission.brokerShare || commission.amount || '0');
+
+      const updated = await storage.updateCommission(id, {
+        status: 'approved',
+        approvedAt: new Date(),
+        approvedBy: userId,
+        frozenAmount: payoutAmount.toFixed(2),
+      });
+
+      await storage.createCommissionAuditLog({
+        commissionId: id,
+        performedBy: userId,
+        action: 'approved',
+        previousStatus: commission.status,
+        newStatus: 'approved',
+        details: {
+          actorRole: user.role,
+          frozenAmount: payoutAmount.toFixed(2),
+          approvedBy: userId,
+        },
+      });
+
+      res.json({ message: "Comisión aprobada exitosamente", commission: updated });
+    } catch (error) {
+      console.error("Error approving commission:", error);
+      res.status(500).json({ message: "Error al aprobar la comisión" });
+    }
+  });
+
+  // Bulk approve commissions (Admins only)
+  app.post('/api/commissions/bulk-approve', isAuthenticated, requireModuleAndAction('comisiones', 'approve_disperse'), async (req: any, res) => {
+    try {
+      const { ids } = req.body;
+      const userId = req.user.claims.sub;
+      const user = await storage.getUser(userId);
+
+      if (!user || (user.role !== 'admin' && user.role !== 'super_admin')) {
+        return res.status(403).json({ message: "Solo los administradores pueden aprobar comisiones" });
+      }
+
+      if (!Array.isArray(ids) || ids.length === 0) {
+        return res.status(400).json({ message: "Se requiere un arreglo de identificadores 'ids'" });
+      }
+
+      const successful: string[] = [];
+      const failed: { id: string; reason: string }[] = [];
+
+      for (const id of ids) {
+        try {
+          const comm = await storage.getCommission(id);
+          if (!comm) {
+            failed.push({ id, reason: "Comisión no encontrada" });
+            continue;
+          }
+          if (comm.status === 'approved') {
+            successful.push(id);
+            continue;
+          }
+          if (['paid', 'dispersing', 'cancelled'].includes(comm.status)) {
+            failed.push({ id, reason: `Estado '${comm.status}' no permite aprobación` });
+            continue;
+          }
+
+          const isMb = comm.masterBrokerId && parseFloat(comm.masterBrokerShare || '0') > 0;
+          const payoutAmount = isMb
+            ? (parseFloat(comm.brokerShare || '0') + parseFloat(comm.masterBrokerShare || '0'))
+            : parseFloat(comm.brokerShare || comm.amount || '0');
+
+          await storage.updateCommission(id, {
+            status: 'approved',
+            approvedAt: new Date(),
+            approvedBy: userId,
+            frozenAmount: payoutAmount.toFixed(2),
+          });
+
+          await storage.createCommissionAuditLog({
+            commissionId: id,
+            performedBy: userId,
+            action: 'approved',
+            previousStatus: comm.status,
+            newStatus: 'approved',
+            details: { actorRole: user.role, frozenAmount: payoutAmount.toFixed(2), bulk: true },
+          });
+
+          successful.push(id);
+        } catch (err: any) {
+          failed.push({ id, reason: err.message || "Error al procesar aprobación" });
+        }
+      }
+
+      res.json({ successful, failed, count: successful.length });
+    } catch (error) {
+      console.error("Error bulk approving commissions:", error);
+      res.status(500).json({ message: "Error al procesar aprobación masiva" });
+    }
+  });
+
+  // Cancel a commission (Admins only)
+  app.post('/api/commissions/:id/cancel', isAuthenticated, requireModuleAndAction('comisiones', 'approve_disperse'), async (req: any, res) => {
+    try {
+      const { id } = req.params;
+      const { reason } = req.body;
+      const userId = req.user.claims.sub;
+      const user = await storage.getUser(userId);
+
+      if (!user || (user.role !== 'admin' && user.role !== 'super_admin')) {
+        return res.status(403).json({ message: "Solo los administradores pueden cancelar comisiones" });
+      }
+
+      if (!reason || typeof reason !== 'string' || reason.trim().length === 0) {
+        return res.status(400).json({ message: "El motivo de cancelación es obligatorio" });
+      }
+
+      const commission = await storage.getCommission(id);
+      if (!commission) {
+        return res.status(404).json({ message: "Comisión no encontrada" });
+      }
+
+      if (['paid', 'dispersing'].includes(commission.status)) {
+        return res.status(400).json({
+          message: `No se puede cancelar una comisión en estado '${commission.status}'`
+        });
+      }
+
+      const updated = await storage.updateCommission(id, {
+        status: 'cancelled',
+        notes: (commission.notes ? commission.notes + ' | ' : '') + `Cancelado: ${reason.trim()}`,
+      });
+
+      await storage.createCommissionAuditLog({
+        commissionId: id,
+        performedBy: userId,
+        action: 'cancelled',
+        previousStatus: commission.status,
+        newStatus: 'cancelled',
+        details: { actorRole: user.role, reason: reason.trim() },
+      });
+
+      res.json({ message: "Comisión cancelada exitosamente", commission: updated });
+    } catch (error) {
+      console.error("Error cancelling commission:", error);
+      res.status(500).json({ message: "Error al cancelar la comisión" });
+    }
+  });
+
+  // Single STP payout with concurrency lock and idempotency protection
   app.post('/api/commissions/:id/pay', isAuthenticated, requireModuleAndAction('comisiones', 'approve_disperse'), async (req: any, res) => {
     try {
       const { id } = req.params;
       const { accountNumber } = req.body;
+      const rawIdempotencyKey = req.headers['idempotency-key'] || req.body.idempotencyKey;
+      const idempotencyKey = rawIdempotencyKey ? String(rawIdempotencyKey).trim() : null;
       const userId = req.user.claims.sub;
       const user = await storage.getUser(userId);
 
@@ -2973,14 +3347,24 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(403).json({ message: "Only admins can process commission payments" });
       }
 
-      if (!accountNumber || !/^\d{18}$/.test(String(accountNumber))) {
-        return res.status(400).json({ message: "Número de cuenta inválido. Debe ser CLABE de 18 dígitos." });
+      // 1. Idempotency Key check: if an existing paid commission has this key, return it immediately
+      if (idempotencyKey) {
+        const existingKeyComms = await storage.getCommissions({ idempotencyKey });
+        const alreadyProcessed = existingKeyComms.find(c => c.status === 'paid');
+        if (alreadyProcessed) {
+          return res.json({
+            message: "Commission already processed with this idempotency key",
+            transactionId: alreadyProcessed.trackingKey,
+            alreadyPaid: true,
+            paidAt: alreadyProcessed.paidAt,
+            payoutAmount: parseFloat(alreadyProcessed.frozenAmount || alreadyProcessed.brokerShare || alreadyProcessed.amount || '0'),
+            commission: alreadyProcessed,
+          });
+        }
       }
-      
-      const commission = await storage.getCommissions().then(comms => 
-        comms.find(c => c.id === id)
-      );
-      
+
+      // 2. Fetch current commission state
+      const commission = await storage.getCommission(id);
       if (!commission) {
         return res.status(404).json({ message: "Commission not found" });
       }
@@ -2988,54 +3372,163 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (commission.status === 'paid') {
         return res.json({
           message: "Commission already paid",
-          transactionId: null,
+          transactionId: commission.trackingKey || null,
           alreadyPaid: true,
           paidAt: commission.paidAt,
+          payoutAmount: parseFloat(commission.frozenAmount || commission.brokerShare || commission.amount || '0'),
+          commission,
         });
       }
 
-      if (commission.status !== 'pending') {
+      if (commission.status === 'dispersing') {
+        return res.status(409).json({
+          message: "Commission dispersion is currently in progress",
+          inProgress: true,
+        });
+      }
+
+      if (!['approved', 'pending', 'failed'].includes(commission.status)) {
         return res.status(400).json({
-          message: `Commission cannot be paid from status '${commission.status}'`,
+          message: `Commission cannot be paid from status '${commission.status}'. Debe estar aprobada primero.`,
         });
       }
-      
-      // Calculate amount to payout via STP (Option B: To Master Broker if exists, else to Broker)
-      const isMbCredit = commission.masterBrokerId && parseFloat(commission.masterBrokerShare || '0') > 0;
-      const payoutAmount = isMbCredit
-        ? (parseFloat(commission.brokerShare || '0') + parseFloat(commission.masterBrokerShare || '0'))
-        : parseFloat(commission.brokerShare || commission.amount || '0');
 
-      // Process STP payment with payoutAmount
-      const paymentResult = await processStpPayment(payoutAmount.toFixed(2), accountNumber);
-      
+      // 3. Resolve beneficiary and 18-digit CLABE
+      const isMbCredit = commission.masterBrokerId && parseFloat(commission.masterBrokerShare || '0') > 0;
+      let effectiveClabe: string | null = accountNumber || null;
+      let effectiveBankName: string | null = null;
+      let effectiveAccountHolder: string | null = null;
+
+      const targetUserId = isMbCredit ? commission.masterBrokerId! : commission.brokerId;
+      const targetUser = await storage.getUser(targetUserId);
+
+      if (!effectiveClabe && targetUser) {
+        effectiveClabe = targetUser.clabe || null;
+        effectiveBankName = targetUser.bankName || null;
+        effectiveAccountHolder = targetUser.accountHolder || `${targetUser.firstName || ''} ${targetUser.lastName || ''}`.trim() || null;
+      }
+
+      if (!effectiveClabe || !/^\d{18}$/.test(String(effectiveClabe))) {
+        return res.status(400).json({
+          message: "El beneficiario no cuenta con una CLABE interbancaria válida de 18 dígitos para dispersión STP."
+        });
+      }
+
+      // 4. Atomic concurrency lock: transition status to 'dispersing'
+      const lockedComm = await storage.transitionCommissionStatus(
+        id,
+        ['approved', 'pending', 'failed'],
+        'dispersing',
+        {
+          idempotencyKey: idempotencyKey || null,
+          clabe: effectiveClabe,
+          bankName: effectiveBankName,
+          accountHolder: effectiveAccountHolder,
+        }
+      );
+
+      if (!lockedComm) {
+        return res.status(409).json({
+          message: "Conflicto de concurrencia: la comisión ya está en dispersión o fue pagada por otro proceso.",
+          conflict: true,
+        });
+      }
+
+      // 5. Calculate payout amount (use frozenAmount if set, else net Option B)
+      const payoutAmount = lockedComm.frozenAmount
+        ? parseFloat(lockedComm.frozenAmount)
+        : (isMbCredit
+            ? (parseFloat(lockedComm.brokerShare || '0') + parseFloat(lockedComm.masterBrokerShare || '0'))
+            : parseFloat(lockedComm.brokerShare || lockedComm.amount || '0'));
+
+      // 6. Process STP payment
+      const paymentResult = await processStpPayment(payoutAmount.toFixed(2), effectiveClabe);
+
       if (paymentResult.success) {
-        await storage.updateCommission(id, {
+        const updated = await storage.updateCommission(id, {
           status: 'paid',
           paidAt: new Date(),
+          paidBy: userId,
+          paymentMethod: 'stp',
+          clabe: effectiveClabe,
+          bankName: effectiveBankName,
+          accountHolder: effectiveAccountHolder,
+          trackingKey: paymentResult.transactionId,
+          providerResponse: paymentResult,
         });
 
-        // Notify beneficiary
-        const beneficiaryId = isMbCredit ? commission.masterBrokerId! : commission.brokerId;
+        await storage.createCommissionAuditLog({
+          commissionId: id,
+          performedBy: userId,
+          action: 'dispersed',
+          previousStatus: 'dispersing',
+          newStatus: 'paid',
+          details: {
+            actorRole: user.role,
+            method: 'stp',
+            amount: payoutAmount,
+            trackingKey: paymentResult.transactionId,
+            clabe: effectiveClabe,
+            providerResponse: paymentResult,
+          },
+        });
 
+        // Notify beneficiary with real net payout amount
+        const beneficiaryId = isMbCredit ? lockedComm.masterBrokerId! : lockedComm.brokerId;
         const paidNotification = await storage.createNotification({
           userId: beneficiaryId,
           type: 'commission_paid',
           title: 'Comisión dispersada vía STP',
-          message: `Se ha procesado exitosamente la transferencia STP por $${payoutAmount.toLocaleString('es-MX', { minimumFractionDigits: 2 })} MXN (${commission.commissionType || 'Apertura'}).`,
+          message: `Se ha procesado exitosamente la transferencia STP por $${payoutAmount.toLocaleString('es-MX', { minimumFractionDigits: 2 })} MXN (${lockedComm.commissionType || 'Apertura'}).`,
           relatedEntityType: 'commission',
-          relatedEntityId: commission.id,
+          relatedEntityId: lockedComm.id,
           priority: 'high',
         });
         broadcastToUser(beneficiaryId, { type: 'notification', notification: paidNotification });
-        
-        res.json({
+
+        // If network credit, also notify origin broker with their net share
+        if (isMbCredit && lockedComm.brokerId && lockedComm.brokerId !== lockedComm.masterBrokerId) {
+          const brkShare = parseFloat(lockedComm.brokerShare || '0');
+          const brkNotif = await storage.createNotification({
+            userId: lockedComm.brokerId,
+            type: 'commission_paid',
+            title: 'Comisión dispersada a Master Broker',
+            message: `La comisión correspondiente a tu originación por $${brkShare.toLocaleString('es-MX', { minimumFractionDigits: 2 })} MXN fue dispersada a tu Master Broker para liquidación.`,
+            relatedEntityType: 'commission',
+            relatedEntityId: lockedComm.id,
+            priority: 'normal',
+          });
+          broadcastToUser(lockedComm.brokerId, { type: 'notification', notification: brkNotif });
+        }
+
+        return res.json({
           message: "Payment processed successfully",
           transactionId: paymentResult.transactionId,
           payoutAmount,
+          commission: updated,
         });
       } else {
-        res.status(400).json({ message: "Payment processing failed" });
+        // Payment failed: mark as failed and log
+        const failedUpdated = await storage.updateCommission(id, {
+          status: 'failed',
+          notes: `Fallo en dispersión STP: ${(paymentResult as any)?.message || 'Rechazo de pasarela'}`,
+          providerResponse: paymentResult,
+        });
+
+        await storage.createCommissionAuditLog({
+          commissionId: id,
+          performedBy: userId,
+          action: 'dispersion_failed',
+          previousStatus: 'dispersing',
+          newStatus: 'failed',
+          details: { actorRole: user.role, ...(paymentResult as any) },
+        });
+
+        return res.status(400).json({
+          message: "Payment processing failed",
+          commission: failedUpdated,
+          details: paymentResult,
+        });
       }
     } catch (error) {
       console.error("Error processing payment:", error);
@@ -3043,11 +3536,160 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Batch STP payout (Admins only)
+  app.post('/api/commissions/bulk-pay', isAuthenticated, requireModuleAndAction('comisiones', 'approve_disperse'), async (req: any, res) => {
+    try {
+      const { ids } = req.body;
+      const userId = req.user.claims.sub;
+      const user = await storage.getUser(userId);
+
+      if (!user || (user.role !== 'admin' && user.role !== 'super_admin')) {
+        return res.status(403).json({ message: "Solo los administradores pueden procesar dispersiones masivas" });
+      }
+
+      if (!Array.isArray(ids) || ids.length === 0) {
+        return res.status(400).json({ message: "Se requiere un arreglo de identificadores 'ids'" });
+      }
+
+      const successful: any[] = [];
+      const failed: { id: string; reason: string }[] = [];
+      let totalAmount = 0;
+
+      for (const id of ids) {
+        try {
+          const commission = await storage.getCommission(id);
+          if (!commission) {
+            failed.push({ id, reason: "Comisión no encontrada" });
+            continue;
+          }
+
+          if (commission.status === 'paid') {
+            successful.push({ id, status: 'already_paid', payoutAmount: parseFloat(commission.frozenAmount || commission.brokerShare || commission.amount || '0') });
+            continue;
+          }
+
+          if (!['approved', 'pending', 'failed'].includes(commission.status)) {
+            failed.push({ id, reason: `Estado '${commission.status}' no permite dispersión. Debe estar aprobada.` });
+            continue;
+          }
+
+          const isMbCredit = commission.masterBrokerId && parseFloat(commission.masterBrokerShare || '0') > 0;
+          const targetUserId = isMbCredit ? commission.masterBrokerId! : commission.brokerId;
+          const targetUser = await storage.getUser(targetUserId);
+
+          const effectiveClabe = targetUser?.clabe;
+          if (!effectiveClabe || !/^\d{18}$/.test(String(effectiveClabe))) {
+            failed.push({ id, reason: "Beneficiario sin CLABE válida de 18 dígitos" });
+            continue;
+          }
+
+          const locked = await storage.transitionCommissionStatus(
+            id,
+            ['approved', 'pending', 'failed'],
+            'dispersing',
+            {
+              clabe: effectiveClabe,
+              bankName: targetUser?.bankName || null,
+              accountHolder: targetUser?.accountHolder || `${targetUser?.firstName || ''} ${targetUser?.lastName || ''}`.trim() || null,
+            }
+          );
+
+          if (!locked) {
+            failed.push({ id, reason: "Bloqueo concurrente: la comisión ya está en proceso de dispersión" });
+            continue;
+          }
+
+          const payoutAmount = locked.frozenAmount
+            ? parseFloat(locked.frozenAmount)
+            : (isMbCredit
+                ? (parseFloat(locked.brokerShare || '0') + parseFloat(locked.masterBrokerShare || '0'))
+                : parseFloat(locked.brokerShare || locked.amount || '0'));
+
+          const paymentResult = await processStpPayment(payoutAmount.toFixed(2), effectiveClabe);
+
+          if (paymentResult.success) {
+            await storage.updateCommission(id, {
+              status: 'paid',
+              paidAt: new Date(),
+              paidBy: userId,
+              paymentMethod: 'stp',
+              clabe: effectiveClabe,
+              bankName: targetUser?.bankName || null,
+              accountHolder: targetUser?.accountHolder || `${targetUser?.firstName || ''} ${targetUser?.lastName || ''}`.trim() || null,
+              trackingKey: paymentResult.transactionId,
+              providerResponse: paymentResult,
+            });
+
+            await storage.createCommissionAuditLog({
+              commissionId: id,
+              performedBy: userId,
+              action: 'dispersed',
+              previousStatus: 'dispersing',
+              newStatus: 'paid',
+              details: {
+                actorRole: user.role,
+                method: 'stp',
+                amount: payoutAmount,
+                trackingKey: paymentResult.transactionId,
+                clabe: effectiveClabe,
+                bulk: true,
+              },
+            });
+
+            const beneficiaryId = isMbCredit ? locked.masterBrokerId! : locked.brokerId;
+            const notif = await storage.createNotification({
+              userId: beneficiaryId,
+              type: 'commission_paid',
+              title: 'Comisión dispersada vía STP',
+              message: `Se ha procesado exitosamente la transferencia STP por $${payoutAmount.toLocaleString('es-MX', { minimumFractionDigits: 2 })} MXN (${locked.commissionType || 'Apertura'}).`,
+              relatedEntityType: 'commission',
+              relatedEntityId: locked.id,
+              priority: 'high',
+            });
+            broadcastToUser(beneficiaryId, { type: 'notification', notification: notif });
+
+            successful.push({ id, transactionId: paymentResult.transactionId, payoutAmount });
+            totalAmount += payoutAmount;
+          } else {
+            await storage.updateCommission(id, {
+              status: 'failed',
+              notes: `Fallo en dispersión STP masiva: ${(paymentResult as any)?.message || 'Error'}`,
+              providerResponse: paymentResult,
+            });
+
+            await storage.createCommissionAuditLog({
+              commissionId: id,
+              performedBy: userId,
+              action: 'dispersion_failed',
+              previousStatus: 'dispersing',
+              newStatus: 'failed',
+              details: { actorRole: user.role, ...(paymentResult as any) },
+            });
+
+            failed.push({ id, reason: (paymentResult as any)?.message || "Fallo en pasarela STP" });
+          }
+        } catch (err: any) {
+          failed.push({ id, reason: err.message || "Error inesperado al dispersar" });
+        }
+      }
+
+      res.json({
+        successful,
+        failed,
+        totalProcessed: successful.length,
+        totalAmount,
+      });
+    } catch (error) {
+      console.error("Error in bulk pay commissions:", error);
+      res.status(500).json({ message: "Error al procesar dispersión masiva" });
+    }
+  });
+
   // Mark commission as paid manually (Admins only)
   app.post('/api/commissions/:id/mark-paid', isAuthenticated, requireModuleAndAction('comisiones', 'approve_disperse'), async (req: any, res) => {
     try {
       const { id } = req.params;
-      const { notes } = req.body;
+      const { notes, reference } = req.body;
       const userId = req.user.claims.sub;
       const user = await storage.getUser(userId);
 
@@ -3055,8 +3697,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(403).json({ message: "Solo los administradores pueden marcar comisiones como pagadas" });
       }
 
-      const allComms = await storage.getCommissions();
-      const commission = allComms.find(c => c.id === id);
+      if (!notes || typeof notes !== 'string' || notes.trim().length === 0) {
+        return res.status(400).json({
+          message: "La justificación o nota explicativa es obligatoria para marcar una comisión como pagada manualmente."
+        });
+      }
+
+      const commission = await storage.getCommission(id);
 
       if (!commission) {
         return res.status(404).json({ message: "Comisión no encontrada" });
@@ -3066,21 +3713,45 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.json({ message: "La comisión ya estaba marcada como pagada", commission });
       }
 
+      const isMbCredit = commission.masterBrokerId && parseFloat(commission.masterBrokerShare || '0') > 0;
+      const payoutAmount = commission.frozenAmount
+        ? parseFloat(commission.frozenAmount)
+        : (isMbCredit
+            ? (parseFloat(commission.brokerShare || '0') + parseFloat(commission.masterBrokerShare || '0'))
+            : parseFloat(commission.brokerShare || commission.amount || '0'));
+
       const updated = await storage.updateCommission(id, {
         status: 'paid',
         paidAt: new Date(),
+        paidBy: userId,
+        paymentMethod: 'manual',
+        trackingKey: reference ? String(reference).trim() : null,
+        notes: notes.trim(),
       });
 
-      // Notify beneficiary
-      const beneficiaryId = parseFloat(commission.masterBrokerShare || '0') > 0 && commission.masterBrokerId
-        ? commission.masterBrokerId
-        : commission.brokerId;
+      await storage.createCommissionAuditLog({
+        commissionId: id,
+        performedBy: userId,
+        action: 'marked_paid_manually',
+        previousStatus: commission.status,
+        newStatus: 'paid',
+        details: {
+          actorRole: user.role,
+          paidBy: userId,
+          notes: notes.trim(),
+          reference: reference || null,
+          payoutAmount,
+        },
+      });
+
+      // Notify beneficiary with real net amount (never gross amount)
+      const beneficiaryId = isMbCredit ? commission.masterBrokerId! : commission.brokerId;
 
       const paidNotification = await storage.createNotification({
         userId: beneficiaryId,
         type: 'commission_paid',
-        title: 'Comisión pagada',
-        message: `Se marcó como pagada la comisión de $${parseFloat(commission.amount || '0').toLocaleString('es-MX')} (${commission.commissionType || 'sin tipo'}). ${notes ? `Nota: ${notes}` : ''}`,
+        title: 'Comisión pagada (Liquidación manual)',
+        message: `Se registró el pago manual por $${payoutAmount.toLocaleString('es-MX', { minimumFractionDigits: 2 })} MXN (${commission.commissionType || 'Apertura'}). Justificación: ${notes.trim()}`,
         relatedEntityType: 'commission',
         relatedEntityId: commission.id,
         priority: 'high',

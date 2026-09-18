@@ -225,19 +225,90 @@ export async function runAutoMigration(): Promise<void> {
       console.error("⚠️ [AutoMigrate] Error verifying credit_submission_requests columns/indexes:", err);
     }
 
-    // 4. Ensure all columns in commissions table
+    // 4. Ensure all columns in commissions table and audit logging (Bloque 6)
     try {
       await client.query(`
         ALTER TABLE IF EXISTS public.commissions
+          ADD COLUMN IF NOT EXISTS tenant_id VARCHAR,
           ADD COLUMN IF NOT EXISTS master_broker_id VARCHAR,
           ADD COLUMN IF NOT EXISTS commission_type VARCHAR,
           ADD COLUMN IF NOT EXISTS broker_share NUMERIC(15, 2),
           ADD COLUMN IF NOT EXISTS master_broker_share NUMERIC(15, 2),
-          ADD COLUMN IF NOT EXISTS app_share NUMERIC(15, 2);
+          ADD COLUMN IF NOT EXISTS app_share NUMERIC(15, 2),
+          ADD COLUMN IF NOT EXISTS frozen_amount NUMERIC(15, 2),
+          ADD COLUMN IF NOT EXISTS approved_at TIMESTAMP,
+          ADD COLUMN IF NOT EXISTS approved_by VARCHAR,
+          ADD COLUMN IF NOT EXISTS paid_by VARCHAR,
+          ADD COLUMN IF NOT EXISTS payment_method VARCHAR,
+          ADD COLUMN IF NOT EXISTS clabe VARCHAR,
+          ADD COLUMN IF NOT EXISTS bank_name VARCHAR,
+          ADD COLUMN IF NOT EXISTS account_holder VARCHAR,
+          ADD COLUMN IF NOT EXISTS idempotency_key VARCHAR,
+          ADD COLUMN IF NOT EXISTS tracking_key VARCHAR,
+          ADD COLUMN IF NOT EXISTS provider_response JSONB DEFAULT '{}',
+          ADD COLUMN IF NOT EXISTS notes TEXT,
+          ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT now();
       `);
-      console.log("✅ [AutoMigrate] Commissions table columns verified");
+
+      // Safe deduplication before applying unique index (keep paid or most recent)
+      await client.query(`
+        DELETE FROM public.commissions
+        WHERE id IN (
+          SELECT id FROM (
+            SELECT id, ROW_NUMBER() OVER (
+              PARTITION BY credit_id, commission_type 
+              ORDER BY CASE WHEN status = 'paid' THEN 0 ELSE 1 END, created_at DESC
+            ) as rn
+            FROM public.commissions
+            WHERE credit_id IS NOT NULL AND commission_type IS NOT NULL
+          ) t WHERE t.rn > 1
+        );
+      `);
+
+      // Ensure indexes and unique constraints
+      await client.query(`
+        CREATE UNIQUE INDEX IF NOT EXISTS commissions_credit_type_unique 
+          ON public.commissions (credit_id, commission_type);
+        CREATE UNIQUE INDEX IF NOT EXISTS commissions_idempotency_key_unique 
+          ON public.commissions (idempotency_key) WHERE idempotency_key IS NOT NULL;
+        CREATE INDEX IF NOT EXISTS commissions_tenant_idx ON public.commissions (tenant_id);
+        CREATE INDEX IF NOT EXISTS commissions_status_idx ON public.commissions (status);
+      `);
+
+      // Create commission_audit_logs table
+      await client.query(`
+        CREATE TABLE IF NOT EXISTS public.commission_audit_logs (
+          id VARCHAR PRIMARY KEY DEFAULT gen_random_uuid(),
+          commission_id VARCHAR NOT NULL REFERENCES public.commissions(id) ON DELETE CASCADE,
+          action VARCHAR NOT NULL,
+          performed_by VARCHAR,
+          previous_status VARCHAR,
+          new_status VARCHAR,
+          details JSONB DEFAULT '{}',
+          created_at TIMESTAMP DEFAULT now()
+        );
+        CREATE INDEX IF NOT EXISTS comm_audit_commission_idx ON public.commission_audit_logs (commission_id);
+        CREATE INDEX IF NOT EXISTS comm_audit_created_at_idx ON public.commission_audit_logs (created_at);
+      `);
+
+      // Backfill status: 'pending' -> 'generated', preserve 'paid'
+      await client.query(`
+        UPDATE public.commissions
+        SET status = 'generated'
+        WHERE status = 'pending';
+      `);
+
+      // Backfill tenant_id from linked credits
+      await client.query(`
+        UPDATE public.commissions c
+        SET tenant_id = cr.tenant_id
+        FROM public.credits cr
+        WHERE c.credit_id = cr.id AND c.tenant_id IS NULL AND cr.tenant_id IS NOT NULL;
+      `);
+
+      console.log("✅ [AutoMigrate] Commissions table, audit logs and indexes verified (Bloque 6)");
     } catch (err) {
-      console.error("⚠️ [AutoMigrate] Error verifying commissions columns:", err);
+      console.error("⚠️ [AutoMigrate] Error verifying commissions columns/indexes:", err);
     }
 
     // 5. Ensure all columns in financial_institutions table

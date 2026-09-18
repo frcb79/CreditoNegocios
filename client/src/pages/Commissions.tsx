@@ -17,9 +17,14 @@ import { formatDistanceToNow } from "date-fns";
 import { es } from "date-fns/locale";
 import CommissionBulkUploader from "@/components/Commissions/CommissionBulkUploader";
 
-const statusConfig = {
-  pending: { label: "Pendiente", color: "bg-amber-100 text-amber-800 border-amber-300" },
-  paid: { label: "Pagado", color: "bg-emerald-100 text-emerald-800 border-emerald-300" },
+const statusConfig: Record<string, { label: string; color: string }> = {
+  generated: { label: "Generada", color: "bg-amber-50 text-amber-900 border-amber-300" },
+  pending: { label: "Por Aprobar", color: "bg-amber-100 text-amber-800 border-amber-300" },
+  approved: { label: "Aprobada", color: "bg-blue-100 text-blue-800 border-blue-300" },
+  dispersing: { label: "En Dispersión", color: "bg-indigo-100 text-indigo-800 border-indigo-300 animate-pulse" },
+  paid: { label: "Pagada", color: "bg-emerald-100 text-emerald-800 border-emerald-300" },
+  failed: { label: "Fallida", color: "bg-rose-100 text-rose-800 border-rose-300" },
+  cancelled: { label: "Cancelada", color: "bg-slate-100 text-slate-700 border-slate-300" },
   advance_requested: { label: "Adelanto Solicitado", color: "bg-blue-100 text-blue-800 border-blue-300" },
   advance_paid: { label: "Adelanto Pagado", color: "bg-purple-100 text-purple-800 border-purple-300" },
 };
@@ -34,6 +39,10 @@ const commissionTypeLabels: Record<string, string> = {
 export default function Commissions() {
   const { user } = useAuth();
   const canProcessPayments = user?.role === 'admin' || user?.role === 'super_admin';
+  const isSuperAdmin = user?.role === 'admin' || user?.role === 'super_admin';
+  const isMasterBrokerRole = user?.role === 'master_broker';
+  const isBrokerRole = user?.role === 'broker';
+
   const [searchTerm, setSearchTerm] = useState(() => {
     if (typeof window !== "undefined") {
       const params = new URLSearchParams(window.location.search);
@@ -57,6 +66,17 @@ export default function Commissions() {
   const [ratesSearchTerm, setRatesSearchTerm] = useState("");
   const [, setLocation] = useLocation();
   const [activeTab, setActiveTab] = useState<'commissions' | 'sobretasa' | 'importar-comisiones'>('commissions');
+  
+  // Bloque 6: Subpestañas operativas de Super Admin
+  const [adminSubTab, setAdminSubTab] = useState<'por_aprobar' | 'dispersion' | 'historial'>('por_aprobar');
+  const [selectedApproveIds, setSelectedApproveIds] = useState<string[]>([]);
+  const [selectedDisperseIds, setSelectedDisperseIds] = useState<string[]>([]);
+  const [cancellingCommission, setCancellingCommission] = useState<any | null>(null);
+  const [cancelReason, setCancelReason] = useState("");
+  const [manualPaidCommission, setManualPaidCommission] = useState<any | null>(null);
+  const [manualPaidNotes, setManualPaidNotes] = useState("");
+  const [manualPaidReference, setManualPaidReference] = useState("");
+  const [viewingAuditLogsCommission, setViewingAuditLogsCommission] = useState<any | null>(null);
 
   const safeFloat = (val: any, fallback = 0): number => {
     if (val === null || val === undefined || val === '') return fallback;
@@ -104,22 +124,22 @@ export default function Commissions() {
   const queryClient = useQueryClient();
 
   const paymentMutation = useMutation({
-    mutationFn: async ({ id, accountNumber }: { id: string; accountNumber: string }) => {
-      const response = await apiRequest("POST", `/api/commissions/${id}/pay`, { accountNumber });
+    mutationFn: async ({ id, accountNumber, idempotencyKey }: { id: string; accountNumber?: string; idempotencyKey?: string }) => {
+      const response = await apiRequest("POST", `/api/commissions/${id}/pay`, { accountNumber, idempotencyKey });
       return response.json();
     },
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ["/api/commissions"] });
       toast({
-        title: "Pago procesado",
-        description: `Transacción: ${data.transactionId}`,
+        title: data.alreadyPaid ? "Comisión ya pagada" : "Pago procesado vía STP",
+        description: `Transacción SPEI: ${data.transactionId || 'Confirmada'}`,
       });
       setSelectedCommission(null);
       setAccountNumber("");
     },
     onError: (error: Error) => {
       toast({
-        title: "Error en el pago",
+        title: "Error en la dispersión STP",
         description: error.message,
         variant: "destructive",
       });
@@ -127,32 +147,135 @@ export default function Commissions() {
   });
 
   const markPaidMutation = useMutation({
-    mutationFn: async ({ id, notes }: { id: string; notes?: string }) => {
-      const response = await apiRequest("POST", `/api/commissions/${id}/mark-paid`, { notes });
+    mutationFn: async ({ id, notes, reference }: { id: string; notes: string; reference?: string }) => {
+      const response = await apiRequest("POST", `/api/commissions/${id}/mark-paid`, { notes, reference });
       return response.json();
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/commissions"] });
       toast({
         title: "Comisión Pagada",
-        description: "La comisión fue marcada como pagada correctamente",
+        description: "La comisión fue marcada como pagada correctamente.",
       });
       setSelectedCommission(null);
+      setManualPaidCommission(null);
+      setManualPaidNotes("");
+      setManualPaidReference("");
     },
     onError: (error: Error) => {
       toast({
-        title: "Error",
+        title: "Error al liquidar comisión",
         description: error.message || "No se pudo actualizar el estado de la comisión",
         variant: "destructive",
       });
     },
   });
 
+  const approveMutation = useMutation({
+    mutationFn: async (id: string) => {
+      const res = await apiRequest("POST", `/api/commissions/${id}/approve`, {});
+      return res.json();
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/commissions"] });
+      toast({
+        title: "Comisión Aprobada",
+        description: data.message || "La comisión quedó aprobada y congelada para dispersión.",
+      });
+      setSelectedApproveIds(prev => prev.filter(id => id !== data.commission?.id));
+    },
+    onError: (err: Error) => {
+      toast({
+        title: "Error al aprobar comisión",
+        description: err.message,
+        variant: "destructive",
+      });
+    },
+  });
+
+  const bulkApproveMutation = useMutation({
+    mutationFn: async (ids: string[]) => {
+      const res = await apiRequest("POST", `/api/commissions/bulk-approve`, { ids });
+      return res.json();
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/commissions"] });
+      toast({
+        title: "Aprobación Masiva Completada",
+        description: `Se aprobaron exitosamente ${data.count} comisiones.`,
+      });
+      setSelectedApproveIds([]);
+    },
+    onError: (err: Error) => {
+      toast({
+        title: "Error en aprobación masiva",
+        description: err.message,
+        variant: "destructive",
+      });
+    },
+  });
+
+  const cancelMutation = useMutation({
+    mutationFn: async ({ id, reason }: { id: string; reason: string }) => {
+      const res = await apiRequest("POST", `/api/commissions/${id}/cancel`, { reason });
+      return res.json();
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/commissions"] });
+      toast({
+        title: "Comisión Cancelada",
+        description: data.message || "La comisión ha sido cancelada.",
+      });
+      setCancellingCommission(null);
+      setCancelReason("");
+    },
+    onError: (err: Error) => {
+      toast({
+        title: "Error al cancelar comisión",
+        description: err.message,
+        variant: "destructive",
+      });
+    },
+  });
+
+  const bulkPayMutation = useMutation({
+    mutationFn: async (ids: string[]) => {
+      const res = await apiRequest("POST", `/api/commissions/bulk-pay`, { ids });
+      return res.json();
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/commissions"] });
+      toast({
+        title: "Dispersión Masiva Completada",
+        description: `Se dispersaron exitosamente ${data.totalProcessed} comisiones por $${Number(data.totalAmount).toLocaleString('es-MX')} MXN.`,
+      });
+      setSelectedDisperseIds([]);
+    },
+    onError: (err: Error) => {
+      toast({
+        title: "Error en dispersión masiva",
+        description: err.message,
+        variant: "destructive",
+      });
+    },
+  });
+
+  const { data: auditLogs = [], isLoading: isLoadingAuditLogs } = useQuery<any[]>({
+    queryKey: [`/api/commissions/${viewingAuditLogsCommission?.id}/audit-logs`],
+    queryFn: async () => {
+      if (!viewingAuditLogsCommission?.id) return [];
+      const res = await apiRequest("GET", `/api/commissions/${viewingAuditLogsCommission.id}/audit-logs`);
+      return res.json();
+    },
+    enabled: !!viewingAuditLogsCommission?.id,
+  });
+
   const handlePayment = () => {
     if (selectedCommission && accountNumber) {
       paymentMutation.mutate({ 
         id: selectedCommission.id, 
-        accountNumber 
+        accountNumber,
+        idempotencyKey: `pay-${selectedCommission.id}-${Date.now()}`
       });
     }
   };
@@ -184,12 +307,9 @@ export default function Commissions() {
     return matchesSearch && matchesStatus;
   });
 
-  const isSuperAdmin = user?.role === 'admin' || user?.role === 'super_admin';
-  const isMasterBrokerRole = user?.role === 'master_broker';
-  const isBrokerRole = user?.role === 'broker';
-
   // Helper for network payout (Option B: To Master Broker if exists, else to Broker)
   const getPayoutAmount = (c: any): number => {
+    if (c.frozenAmount) return safeFloat(c.frozenAmount);
     const isMb = c.masterBrokerId && safeFloat(c.masterBrokerShare) > 0;
     return isMb 
       ? (safeFloat(c.masterBrokerShare) + safeFloat(c.brokerShare)) 
@@ -202,7 +322,9 @@ export default function Commissions() {
   }, [commissions]);
 
   const totalPendingPayout = useMemo(() => {
-    return commissions.filter(c => c.status === 'pending').reduce((sum, c) => sum + getPayoutAmount(c), 0);
+    return commissions
+      .filter(c => ['pending', 'generated', 'approved', 'dispersing'].includes(c.status))
+      .reduce((sum, c) => sum + getPayoutAmount(c), 0);
   }, [commissions]);
 
   const totalPaidPayout = useMemo(() => {
@@ -223,7 +345,9 @@ export default function Commissions() {
   }, [commissions]);
 
   const mbNetPending = useMemo(() => {
-    return commissions.filter(c => c.status === 'pending').reduce((sum, c) => sum + safeFloat(c.masterBrokerShare), 0);
+    return commissions
+      .filter(c => ['pending', 'generated', 'approved', 'dispersing'].includes(c.status))
+      .reduce((sum, c) => sum + safeFloat(c.masterBrokerShare), 0);
   }, [commissions]);
 
   const mbNetPaid = useMemo(() => {
@@ -232,7 +356,9 @@ export default function Commissions() {
 
   // Broker Direct figures
   const brokerTotalPending = useMemo(() => {
-    return commissions.filter(c => c.status === 'pending').reduce((sum, c) => sum + safeFloat(c.brokerShare || (c.masterBrokerShare ? '0' : c.amount)), 0);
+    return commissions
+      .filter(c => ['pending', 'generated', 'approved', 'dispersing'].includes(c.status))
+      .reduce((sum, c) => sum + safeFloat(c.brokerShare || (c.masterBrokerShare ? '0' : c.amount)), 0);
   }, [commissions]);
 
   const brokerTotalPaid = useMemo(() => {
@@ -249,6 +375,33 @@ export default function Commissions() {
   const totalPaid = isSuperAdmin
     ? totalPaidPayout
     : (isMasterBrokerRole ? mbNetPaid : brokerTotalPaid);
+
+  // Subtab counts and filtered lists for Super Admin
+  const countPorAprobar = useMemo(() => {
+    return commissions.filter(c => c.status === 'generated' || c.status === 'pending').length;
+  }, [commissions]);
+
+  const countDispersion = useMemo(() => {
+    return commissions.filter(c => c.status === 'approved' || c.status === 'dispersing' || c.status === 'failed').length;
+  }, [commissions]);
+
+  const countHistorial = useMemo(() => {
+    return commissions.filter(c => c.status === 'paid' || c.status === 'cancelled').length;
+  }, [commissions]);
+
+  const displayCommissions = useMemo(() => {
+    if (!isSuperAdmin) return filteredCommissions;
+    if (adminSubTab === 'por_aprobar') {
+      return filteredCommissions.filter(c => c.status === 'generated' || c.status === 'pending');
+    }
+    if (adminSubTab === 'dispersion') {
+      return filteredCommissions.filter(c => c.status === 'approved' || c.status === 'dispersing' || c.status === 'failed');
+    }
+    if (adminSubTab === 'historial') {
+      return filteredCommissions.filter(c => c.status === 'paid' || c.status === 'cancelled');
+    }
+    return filteredCommissions;
+  }, [filteredCommissions, isSuperAdmin, adminSubTab]);
 
   // Total overRate generated uniquely per credit
   const totalSobretasa = useMemo(() => {
@@ -756,71 +909,174 @@ export default function Commissions() {
             </CardContent>
           </Card>
 
-          {/* Commissions List */}
-          <Card>
-            <CardHeader className="pb-3">
-              <div className="flex items-center justify-between flex-wrap gap-2">
-                <CardTitle>Historial de Comisiones ({filteredCommissions.length})</CardTitle>
-                <div className="flex items-center gap-2">
-                  <Badge variant="outline" className="text-xs bg-amber-50 text-amber-900 border-amber-300 font-semibold">
-                    ⏳ Pendientes: {commissions.filter(c => c.status === 'pending').length}
-                  </Badge>
-                  <Badge variant="outline" className="text-xs bg-emerald-50 text-emerald-900 border-emerald-300 font-semibold">
-                    ✓ Pagadas: {commissions.filter(c => c.status === 'paid').length}
-                  </Badge>
+          {/* Commissions List with Super Admin Operational Tabs */}
+          <Card className="shadow-sm border">
+            <CardHeader className="pb-3 border-b bg-gray-50/50">
+              <div className="flex items-center justify-between flex-wrap gap-3">
+                <div>
+                  <CardTitle className="text-lg font-bold text-gray-900">
+                    {isSuperAdmin ? 'Gestión Operativa de Comisiones' : 'Mis Comisiones'}
+                  </CardTitle>
+                  <p className="text-xs text-gray-500 mt-0.5">
+                    {isSuperAdmin 
+                      ? 'Flujo de aprobación, dispersión STP SPEI y conciliación financiera' 
+                      : 'Consulta el estado de tus comisiones y montos a recibir'}
+                  </p>
                 </div>
+
+                {isSuperAdmin && (
+                  <div className="flex gap-1.5 flex-wrap">
+                    <Button
+                      variant={adminSubTab === 'por_aprobar' ? 'default' : 'outline'}
+                      size="sm"
+                      onClick={() => {
+                        setAdminSubTab('por_aprobar');
+                        setSelectedApproveIds([]);
+                      }}
+                      className={adminSubTab === 'por_aprobar' ? 'bg-amber-600 hover:bg-amber-700 text-white font-semibold' : 'text-xs'}
+                    >
+                      <i className="fas fa-clipboard-check mr-1.5"></i>
+                      Por Aprobar
+                      <Badge className="ml-1.5 bg-amber-200 text-amber-950 text-xs px-1.5 py-0 border-none font-bold">
+                        {countPorAprobar}
+                      </Badge>
+                    </Button>
+                    <Button
+                      variant={adminSubTab === 'dispersion' ? 'default' : 'outline'}
+                      size="sm"
+                      onClick={() => {
+                        setAdminSubTab('dispersion');
+                        setSelectedDisperseIds([]);
+                      }}
+                      className={adminSubTab === 'dispersion' ? 'bg-blue-600 hover:bg-blue-700 text-white font-semibold' : 'text-xs'}
+                    >
+                      <i className="fas fa-paper-plane mr-1.5"></i>
+                      Centro de Dispersión
+                      <Badge className="ml-1.5 bg-blue-200 text-blue-950 text-xs px-1.5 py-0 border-none font-bold">
+                        {countDispersion}
+                      </Badge>
+                    </Button>
+                    <Button
+                      variant={adminSubTab === 'historial' ? 'default' : 'outline'}
+                      size="sm"
+                      onClick={() => setAdminSubTab('historial')}
+                      className={adminSubTab === 'historial' ? 'bg-emerald-700 hover:bg-emerald-800 text-white font-semibold' : 'text-xs'}
+                    >
+                      <i className="fas fa-history mr-1.5"></i>
+                      Historial & Conciliación
+                      <Badge className="ml-1.5 bg-emerald-200 text-emerald-950 text-xs px-1.5 py-0 border-none font-bold">
+                        {countHistorial}
+                      </Badge>
+                    </Button>
+                  </div>
+                )}
               </div>
             </CardHeader>
-            <CardContent>
-              {/* Callout destacado de Adeudos Activos */}
-              {commissions.some(c => c.status === 'pending') && filterStatus !== 'paid' && (
-                <div className="mb-4 p-3.5 bg-amber-50/90 border-2 border-amber-300 rounded-xl flex items-center justify-between flex-wrap gap-3 shadow-sm">
-                  <div className="flex items-center gap-3">
-                    <div className="w-9 h-9 rounded-full bg-amber-200 text-amber-900 flex items-center justify-center font-bold text-sm shadow-inner">
-                      {commissions.filter(c => c.status === 'pending').length}
-                    </div>
-                    <div>
-                      <p className="text-xs font-bold text-amber-950 flex items-center gap-1.5">
-                        <i className="fas fa-exclamation-circle text-amber-600"></i>
-                        {canProcessPayments ? 'Adeudos de comisiones pendientes por liquidar' : 'Comisiones pendientes por recibir'}
-                      </p>
-                      <p className="text-[11px] text-amber-800">
-                        {canProcessPayments 
-                          ? 'Se generaron automáticamente al dispersar los créditos. Requieren ser liquidadas vía STP.' 
-                          : 'Se generaron automáticamente al dispersarse tus créditos colocados. Pendiente de pago por la administración.'}
-                      </p>
-                    </div>
+            <CardContent className="pt-4">
+              {/* Context Banner per SubTab */}
+              {isSuperAdmin && adminSubTab === 'por_aprobar' && (
+                <div className="mb-4 p-3 bg-amber-50/80 border border-amber-200 rounded-lg text-xs text-amber-900 flex items-center justify-between flex-wrap gap-2">
+                  <div className="flex items-center gap-2">
+                    <i className="fas fa-info-circle text-amber-600"></i>
+                    <span>Comisiones pendientes de revisión y congelamiento. Al aprobar, el monto a liquidar queda congelado frente a modificaciones posteriores del crédito.</span>
                   </div>
-                  <div className="text-right">
-                    <span className="text-xs text-amber-900 font-medium">Monto adeudado: </span>
-                    <span className="text-base font-black text-amber-950">
-                      ${totalPending.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} MXN
-                    </span>
-                  </div>
+                  {selectedApproveIds.length > 0 && (
+                    <Button
+                      size="sm"
+                      className="bg-amber-600 hover:bg-amber-700 text-white font-semibold text-xs h-8"
+                      onClick={() => bulkApproveMutation.mutate(selectedApproveIds)}
+                      disabled={bulkApproveMutation.isPending}
+                    >
+                      {bulkApproveMutation.isPending ? <i className="fas fa-spinner fa-spin mr-1"></i> : <i className="fas fa-check-double mr-1"></i>}
+                      Aprobar seleccionadas ({selectedApproveIds.length})
+                    </Button>
+                  )}
                 </div>
               )}
 
-              {filteredCommissions.length === 0 ? (
-                <div className="text-center py-8">
-                  <i className="fas fa-dollar-sign text-4xl text-gray-300 mb-4"></i>
-                  <p className="text-neutral mb-4">
-                    {commissions.length === 0 ? "No tienes comisiones registradas" : "No se encontraron comisiones"}
+              {isSuperAdmin && adminSubTab === 'dispersion' && (
+                <div className="mb-4 p-3 bg-blue-50/80 border border-blue-200 rounded-lg text-xs text-blue-900 flex items-center justify-between flex-wrap gap-2">
+                  <div className="flex items-center gap-2">
+                    <i className="fas fa-paper-plane text-blue-600"></i>
+                    <span>Comisiones formalmente aprobadas. Puedes dispersar individual o masivamente vía STP SPEI o registrar liquidación manual con justificación.</span>
+                  </div>
+                  {selectedDisperseIds.length > 0 && (
+                    <Button
+                      size="sm"
+                      className="bg-blue-600 hover:bg-blue-700 text-white font-semibold text-xs h-8"
+                      onClick={() => bulkPayMutation.mutate(selectedDisperseIds)}
+                      disabled={bulkPayMutation.isPending}
+                    >
+                      {bulkPayMutation.isPending ? <i className="fas fa-spinner fa-spin mr-1"></i> : <i className="fas fa-paper-plane mr-1"></i>}
+                      Dispersar vía STP ({selectedDisperseIds.length})
+                    </Button>
+                  )}
+                </div>
+              )}
+
+              {isSuperAdmin && adminSubTab === 'historial' && (
+                <div className="mb-4 p-3 bg-emerald-50/80 border border-emerald-200 rounded-lg text-xs text-emerald-900 flex items-center gap-2">
+                  <i className="fas fa-shield-alt text-emerald-700"></i>
+                  <span>Registro histórico inmutable y trazabilidad auditada de comisiones liquidadas y canceladas.</span>
+                </div>
+              )}
+
+              {displayCommissions.length === 0 ? (
+                <div className="text-center py-12">
+                  <i className="fas fa-folder-open text-4xl text-gray-300 mb-3"></i>
+                  <p className="text-gray-500 font-medium text-sm">
+                    {isSuperAdmin 
+                      ? (adminSubTab === 'por_aprobar' ? "No hay comisiones pendientes de aprobación" : adminSubTab === 'dispersion' ? "No hay comisiones en espera de dispersión" : "No hay registros en el historial") 
+                      : "No tienes comisiones registradas con los filtros actuales"}
                   </p>
                 </div>
               ) : (
                 <div className="space-y-3">
-                  {filteredCommissions.map((commission) => {
-                    const isPending = commission.status === 'pending';
-                    const isBrokerRole = user?.role === 'broker';
-                    const isMasterBrokerRole = user?.role === 'master_broker';
-                    const isSuperAdminRole = user?.role === 'admin' || user?.role === 'super_admin';
+                  {/* Select all header for Por Aprobar / Dispersion */}
+                  {isSuperAdmin && (adminSubTab === 'por_aprobar' || adminSubTab === 'dispersion') && (
+                    <div className="flex items-center justify-between px-3 py-1.5 bg-gray-100 rounded-md text-xs font-semibold text-gray-700">
+                      <label className="flex items-center gap-2 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          className="rounded text-primary focus:ring-primary h-4 w-4 cursor-pointer"
+                          checked={
+                            adminSubTab === 'por_aprobar'
+                              ? selectedApproveIds.length === displayCommissions.length && displayCommissions.length > 0
+                              : selectedDisperseIds.length === displayCommissions.length && displayCommissions.length > 0
+                          }
+                          onChange={(e) => {
+                            if (adminSubTab === 'por_aprobar') {
+                              setSelectedApproveIds(e.target.checked ? displayCommissions.map(c => c.id) : []);
+                            } else {
+                              setSelectedDisperseIds(e.target.checked ? displayCommissions.map(c => c.id) : []);
+                            }
+                          }}
+                        />
+                        <span>Seleccionar todas ({displayCommissions.length})</span>
+                      </label>
+                      <span className="text-[11px] text-gray-500">
+                        {adminSubTab === 'por_aprobar' ? `${selectedApproveIds.length} seleccionadas` : `${selectedDisperseIds.length} seleccionadas`}
+                      </span>
+                    </div>
+                  )}
+
+                  {displayCommissions.map((commission) => {
+                    const statusInfo = statusConfig[commission.status] || { label: commission.status, color: "bg-gray-100 text-gray-800" };
+                    const isGenerated = commission.status === 'generated' || commission.status === 'pending';
+                    const isApproved = commission.status === 'approved';
+                    const isDispersing = commission.status === 'dispersing';
+                    const isPaid = commission.status === 'paid';
+                    const isFailed = commission.status === 'failed';
+                    const isCancelled = commission.status === 'cancelled';
 
                     const brokerShare = safeFloat(commission.brokerShare || (commission.masterBrokerShare ? '0' : commission.amount));
                     const masterBrokerShare = safeFloat(commission.masterBrokerShare);
                     const appShare = safeFloat(commission.appShare);
                     const totalAmount = safeFloat(commission.amount);
                     const isMb = commission.masterBrokerId && masterBrokerShare > 0;
-                    const payoutToNetwork = isMb ? (masterBrokerShare + brokerShare) : brokerShare;
+                    const payoutToNetwork = commission.frozenAmount 
+                      ? safeFloat(commission.frozenAmount)
+                      : (isMb ? (masterBrokerShare + brokerShare) : brokerShare);
 
                     // User role specific share calculation
                     const isOwnCreditAsMB = isMasterBrokerRole && (commission.brokerId === user?.id || !commission.masterBrokerId);
@@ -828,32 +1084,79 @@ export default function Commissions() {
                       ? brokerShare 
                       : (isMasterBrokerRole ? (isOwnCreditAsMB ? brokerShare : masterBrokerShare) : payoutToNetwork);
 
+                    const hasValidClabe = commission.effectiveBankAccount?.clabe && /^\d{18}$/.test(commission.effectiveBankAccount.clabe);
+
                     return (
                       <div
                         key={commission.id}
                         className={`flex items-center justify-between p-4 border rounded-xl transition-all cursor-pointer ${
-                          isPending 
-                            ? 'border-amber-300 bg-amber-50/30 hover:bg-amber-50/60 shadow-sm' 
-                            : 'border-gray-200 hover:bg-gray-50/80'
+                          isGenerated
+                            ? 'border-amber-300 bg-amber-50/30 hover:bg-amber-50/60 shadow-sm'
+                            : isApproved
+                              ? 'border-blue-300 bg-blue-50/20 hover:bg-blue-50/40 shadow-sm'
+                              : isDispersing
+                                ? 'border-indigo-300 bg-indigo-50/30 animate-pulse'
+                                : isFailed
+                                  ? 'border-rose-300 bg-rose-50/30'
+                                  : isCancelled
+                                    ? 'border-gray-200 bg-gray-50/50 opacity-75'
+                                    : 'border-gray-200 hover:bg-gray-50/80'
                         }`}
                         onClick={() => setViewingCommission(commission)}
                         data-testid={`commission-${commission.id}`}
                       >
-                        <div className="flex items-center space-x-4">
-                          <div className={`w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0 ${
-                            isPending ? 'bg-amber-100 text-amber-700' : 'bg-primary/10 text-primary'
+                        <div className="flex items-center space-x-3 sm:space-x-4">
+                          {/* Checkbox for batch selection */}
+                          {isSuperAdmin && (adminSubTab === 'por_aprobar' || adminSubTab === 'dispersion') && (
+                            <div onClick={(e) => e.stopPropagation()} className="pr-1">
+                              <input
+                                type="checkbox"
+                                className="rounded text-primary focus:ring-primary h-4 w-4 cursor-pointer"
+                                checked={
+                                  adminSubTab === 'por_aprobar'
+                                    ? selectedApproveIds.includes(commission.id)
+                                    : selectedDisperseIds.includes(commission.id)
+                                }
+                                onChange={(e) => {
+                                  if (adminSubTab === 'por_aprobar') {
+                                    setSelectedApproveIds(prev =>
+                                      e.target.checked ? [...prev, commission.id] : prev.filter(id => id !== commission.id)
+                                    );
+                                  } else {
+                                    setSelectedDisperseIds(prev =>
+                                      e.target.checked ? [...prev, commission.id] : prev.filter(id => id !== commission.id)
+                                    );
+                                  }
+                                }}
+                              />
+                            </div>
+                          )}
+
+                          <div className={`w-11 h-11 rounded-xl flex items-center justify-center flex-shrink-0 ${
+                            isGenerated ? 'bg-amber-100 text-amber-800' :
+                            isApproved ? 'bg-blue-100 text-blue-800' :
+                            isDispersing ? 'bg-indigo-100 text-indigo-800' :
+                            isPaid ? 'bg-emerald-100 text-emerald-800' :
+                            isFailed ? 'bg-rose-100 text-rose-800' : 'bg-gray-100 text-gray-700'
                           }`}>
-                            <i className={`fas ${isPending ? 'fa-clock' : 'fa-dollar-sign'} text-lg`}></i>
+                            <i className={`fas ${
+                              isGenerated ? 'fa-clock' :
+                              isApproved ? 'fa-clipboard-check' :
+                              isDispersing ? 'fa-spinner fa-spin' :
+                              isPaid ? 'fa-check-circle' :
+                              isFailed ? 'fa-exclamation-triangle' : 'fa-ban'
+                            } text-base`}></i>
                           </div>
+
                           <div>
                             {/* Monto de acuerdo al perfil del usuario */}
                             <div className="flex items-baseline gap-2 flex-wrap">
                               <h3 className="font-bold text-gray-950 text-base">
                                 ${profileSpecificAmount.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} MXN
                               </h3>
-                              {totalAmount === 0 && (
-                                <Badge variant="outline" className="text-[10px] text-gray-500 border-gray-300 bg-white">
-                                  Tasa 0% al dispersar
+                              {commission.frozenAmount && (
+                                <Badge variant="outline" className="text-[10px] text-blue-700 border-blue-300 bg-blue-50 font-mono">
+                                  Congelado
                                 </Badge>
                               )}
                               {isBrokerRole && (
@@ -870,9 +1173,9 @@ export default function Commissions() {
                                   {isOwnCreditAsMB ? 'Tu Comisión Directa' : 'Tu Ganancia Neta de Red'}
                                 </span>
                               )}
-                              {isSuperAdminRole && (
-                                <span className="text-xs font-semibold text-amber-800 bg-amber-50 px-2 py-0.5 rounded border border-amber-200">
-                                  A Dispersar a Red {isMb ? '(Vía Master Bróker)' : '(Bróker Directo)'}
+                              {isSuperAdmin && (
+                                <span className="text-xs font-semibold text-gray-700 bg-gray-100 px-2 py-0.5 rounded border">
+                                  Beneficiario: {commission.effectiveBeneficiary?.name || commission.broker?.firstName || 'Broker'} {isMb ? '(Master)' : '(Directo)'}
                                 </span>
                               )}
                             </div>
@@ -900,96 +1203,151 @@ export default function Commissions() {
                               <span>Tipo: {commissionTypeLabels[commission.commissionType || ""] || (commission.commissionType || "Apertura")}</span>
                             </div>
 
-                            {/* Desglose de Repartición en Cascada (#27 / Requerimiento de Perfil) */}
-                            {isSuperAdminRole ? (
-                              <div className="flex items-center gap-1.5 flex-wrap text-[11px] mt-2 p-2 bg-purple-50/70 rounded-lg border border-purple-200">
-                                <span className="font-bold text-purple-950">Cascada Financiera:</span>
+                            {/* Cascada financiera */}
+                            {isSuperAdmin && (
+                              <div className="flex items-center gap-1.5 flex-wrap text-[11px] mt-2 p-1.5 bg-gray-50 rounded-lg border border-gray-200">
+                                <span className="font-bold text-gray-800">Desglose:</span>
                                 <span className="text-blue-900 bg-white px-2 py-0.5 rounded font-medium border border-blue-200">
-                                  📥 Financiera: ${totalAmount.toLocaleString('es-MX', { minimumFractionDigits: 2 })} MXN
+                                  📥 Financiera: ${totalAmount.toLocaleString('es-MX', { minimumFractionDigits: 2 })}
                                 </span>
                                 <span className="text-amber-900 bg-white px-2 py-0.5 rounded font-medium border border-amber-200">
-                                  📤 Dispersión Red: -${payoutToNetwork.toLocaleString('es-MX', { minimumFractionDigits: 2 })} MXN
+                                  📤 Dispersión: -${payoutToNetwork.toLocaleString('es-MX', { minimumFractionDigits: 2 })}
                                 </span>
-                                <span className="text-emerald-900 bg-emerald-100 px-2 py-0.5 rounded font-bold border border-emerald-300">
-                                  💰 Margen Plataforma: ${appShare.toLocaleString('es-MX', { minimumFractionDigits: 2 })} MXN
-                                </span>
-                              </div>
-                            ) : isMasterBrokerRole && !isOwnCreditAsMB ? (
-                              <div className="flex items-center gap-1.5 flex-wrap text-[11px] mt-2 p-2 bg-blue-50/70 rounded-lg border border-blue-200">
-                                <span className="font-bold text-blue-950">Desglose de Red:</span>
-                                <span className="text-indigo-900 bg-white px-2 py-0.5 rounded font-medium border border-indigo-200">
-                                  📥 Cobro Plataforma: ${(masterBrokerShare + brokerShare).toLocaleString('es-MX', { minimumFractionDigits: 2 })} MXN
-                                </span>
-                                <span className="text-amber-900 bg-white px-2 py-0.5 rounded font-medium border border-amber-200">
-                                  📤 Pago a Bróker: -${brokerShare.toLocaleString('es-MX', { minimumFractionDigits: 2 })} MXN
-                                </span>
-                                <span className="text-emerald-900 bg-emerald-100 px-2 py-0.5 rounded font-bold border border-emerald-300">
-                                  💰 Tu Ganancia Neta: ${masterBrokerShare.toLocaleString('es-MX', { minimumFractionDigits: 2 })} MXN
+                                <span className="text-emerald-900 bg-emerald-50 px-2 py-0.5 rounded font-bold border border-emerald-300">
+                                  💰 Plataforma: ${appShare.toLocaleString('es-MX', { minimumFractionDigits: 2 })}
                                 </span>
                               </div>
-                            ) : null}
+                            )}
 
-                            <p className="text-[11px] text-gray-400 mt-1">
-                              ID: {String(commission.id || "").slice(-8)} • Dispersado/Generado {commission.createdAt ? formatDistanceToNow(new Date(commission.createdAt), { 
-                                addSuffix: true, 
-                                locale: es 
-                              }) : 'recientemente'}
-                            </p>
+                            {/* Trazabilidad de cuenta bancaria o clave de rastreo */}
+                            <div className="flex items-center gap-2 flex-wrap text-[11px] text-gray-500 mt-1.5">
+                              <span>ID: {String(commission.id || "").slice(-8)}</span>
+                              {commission.trackingKey && (
+                                <>
+                                  <span>•</span>
+                                  <span className="font-mono text-emerald-800 bg-emerald-50 px-1.5 py-0.2 rounded border border-emerald-200">
+                                    Rastreo: {commission.trackingKey}
+                                  </span>
+                                </>
+                              )}
+                              {commission.paymentMethod && (
+                                <>
+                                  <span>•</span>
+                                  <span className="font-semibold capitalize text-gray-700">
+                                    Método: {commission.paymentMethod === 'stp' ? 'STP SPEI' : 'Liquidación Manual'}
+                                  </span>
+                                </>
+                              )}
+                              {commission.paidAt && (
+                                <>
+                                  <span>•</span>
+                                  <span className="text-emerald-700 font-medium">
+                                    Pagado el {new Date(commission.paidAt).toLocaleDateString('es-MX')}
+                                  </span>
+                                </>
+                              )}
+                            </div>
                           </div>
                         </div>
-                        
-                        <div className="text-right space-y-2 flex flex-col items-end" onClick={(e) => e.stopPropagation()}>
-                          {isPending ? (
-                            <Badge 
-                              className="bg-amber-500 hover:bg-amber-600 text-white font-semibold text-xs animate-pulse shadow-sm"
-                              data-testid={`commission-status-${commission.id}`}
-                            >
-                              <i className="fas fa-clock mr-1"></i>
-                              {canProcessPayments ? '🔴 ADEUDO ACTIVO (No Pagada)' : '⏳ Pendiente por Recibir'}
+
+                        {/* Columna derecha: Estatus y Acciones */}
+                        <div className="text-right space-y-2 flex flex-col items-end flex-shrink-0" onClick={(e) => e.stopPropagation()}>
+                          <div className="flex items-center gap-1.5">
+                            <Badge className={`${statusInfo.color} font-semibold text-xs shadow-sm`}>
+                              {statusInfo.label}
                             </Badge>
-                          ) : (
-                            <Badge 
-                              className="bg-emerald-600 hover:bg-emerald-700 text-white font-medium text-xs shadow-sm"
-                              data-testid={`commission-status-${commission.id}`}
-                            >
-                              <i className="fas fa-check-circle mr-1"></i>
-                              Pagada
-                            </Badge>
-                          )}
-                          
-                          {isPending && canProcessPayments && (
-                            <div className="flex items-center gap-2">
-                              <Button 
+                            {isSuperAdmin && adminSubTab === 'dispersion' && (
+                              hasValidClabe ? (
+                                <Badge className="bg-emerald-100 text-emerald-800 border-emerald-300 text-[10px]">
+                                  <i className="fas fa-university mr-1"></i> CLABE: {commission.effectiveBankAccount?.clabe.slice(-4)}
+                                </Badge>
+                              ) : (
+                                <Badge className="bg-rose-100 text-rose-800 border-rose-300 text-[10px]">
+                                  <i className="fas fa-exclamation-triangle mr-1"></i> Sin CLABE
+                                </Badge>
+                              )
+                            )}
+                          </div>
+
+                          {/* Acciones para Super Admin según la subpestaña */}
+                          {isSuperAdmin && (
+                            <div className="flex items-center gap-1.5 flex-wrap justify-end">
+                              {/* Botones de Por Aprobar */}
+                              {isGenerated && (
+                                <>
+                                  <Button
+                                    size="sm"
+                                    className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold h-8"
+                                    onClick={() => approveMutation.mutate(commission.id)}
+                                    disabled={approveMutation.isPending}
+                                  >
+                                    <i className="fas fa-check mr-1"></i> Aprobar
+                                  </Button>
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    className="text-rose-600 border-rose-300 hover:bg-rose-50 text-xs font-semibold h-8"
+                                    onClick={() => {
+                                      setCancellingCommission(commission);
+                                      setCancelReason("");
+                                    }}
+                                  >
+                                    <i className="fas fa-times mr-1"></i> Cancelar
+                                  </Button>
+                                </>
+                              )}
+
+                              {/* Botones de Centro de Dispersión */}
+                              {(isApproved || isFailed) && (
+                                <>
+                                  <Button
+                                    size="sm"
+                                    className="bg-primary text-white hover:bg-primary/90 text-xs font-semibold h-8"
+                                    onClick={() => {
+                                      setSelectedCommission(commission);
+                                      setAccountNumber(commission.effectiveBankAccount?.clabe || "");
+                                    }}
+                                  >
+                                    <i className="fas fa-paper-plane mr-1"></i> Pagar STP
+                                  </Button>
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    className="border-emerald-600 text-emerald-700 hover:bg-emerald-50 text-xs font-semibold h-8"
+                                    onClick={() => {
+                                      setManualPaidCommission(commission);
+                                      setManualPaidNotes("");
+                                      setManualPaidReference("");
+                                    }}
+                                  >
+                                    <i className="fas fa-hand-holding-usd mr-1"></i> Manual
+                                  </Button>
+                                  <Button
+                                    size="sm"
+                                    variant="ghost"
+                                    className="text-rose-600 hover:bg-rose-50 text-xs h-8 px-2"
+                                    title="Cancelar comisión"
+                                    onClick={() => {
+                                      setCancellingCommission(commission);
+                                      setCancelReason("");
+                                    }}
+                                  >
+                                    <i className="fas fa-times"></i>
+                                  </Button>
+                                </>
+                              )}
+
+                              {/* Botón de Auditoría para todas las comisiones */}
+                              <Button
                                 size="sm"
                                 variant="outline"
-                                className="text-xs border-success text-success hover:bg-success/10 font-semibold"
-                                onClick={() => markPaidMutation.mutate({ id: commission.id })}
-                                disabled={markPaidMutation.isPending}
-                                title="Marcar como pagada sin procesar transferencia STP"
-                                data-testid={`button-mark-paid-${commission.id}`}
+                                className="text-xs border-indigo-300 text-indigo-700 hover:bg-indigo-50 h-8"
+                                onClick={() => setViewingAuditLogsCommission(commission)}
+                                title="Ver bitácora de auditoría"
                               >
-                                <i className="fas fa-check mr-1"></i>
-                                Marcar Pagada
-                              </Button>
-                              <Button 
-                                size="sm"
-                                className="bg-success text-white hover:bg-green-700 text-xs font-semibold shadow-sm"
-                                onClick={() => {
-                                  setSelectedCommission({ ...commission, payoutAmount: payoutToNetwork });
-                                  setAccountNumber(commission.effectiveBankAccount?.clabe || "");
-                                }}
-                                data-testid={`button-pay-${commission.id}`}
-                              >
-                                <i className="fas fa-credit-card mr-1"></i>
-                                Pagar STP
+                                <i className="fas fa-shield-alt mr-1"></i> Auditoría
                               </Button>
                             </div>
-                          )}
-                          
-                          {commission.paidAt && (
-                            <p className="text-[11px] text-success font-medium">
-                              Pagado el {new Date(commission.paidAt).toLocaleDateString('es-MX')}
-                            </p>
                           )}
                         </div>
                       </div>
@@ -1111,6 +1469,17 @@ export default function Commissions() {
           {/* Vista de Sobretasas para Super Admin (#11) */}
           {activeTab === 'sobretasa' && (user?.role === 'admin' || user?.role === 'super_admin') ? (
             <div className="space-y-6">
+              {/* Disclaimer informativo sobre Sobretasas */}
+              <div className="p-4 bg-purple-50 border-2 border-purple-200 rounded-xl flex items-start gap-3 shadow-sm">
+                <i className="fas fa-info-circle text-purple-700 text-xl mt-0.5"></i>
+                <div className="text-xs text-purple-900">
+                  <p className="font-bold text-sm">Módulo Analítico y de Proyección de Sobretasas</p>
+                  <p className="mt-1 text-purple-800 leading-relaxed">
+                    Este panel proyecta las estimaciones de sobretasa pactadas con financieras por crédito colocado para análisis comercial. En esta fase operativa, la emisión de facturación fiscal CFDI y dispersiones automáticas fiscales no forman parte de este ciclo comercial.
+                  </p>
+                </div>
+              </div>
+
               {/* Resumen de Sobretasa */}
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                 <Card className="border border-purple-200 bg-purple-50/50 shadow-sm">
@@ -1547,11 +1916,12 @@ export default function Commissions() {
                       size="sm"
                       className="bg-success text-white hover:bg-green-700 text-xs"
                       onClick={() => {
-                        const targetId = viewingCommission.id;
+                        const comm = viewingCommission;
                         setViewingCommission(null);
-                        markPaidMutation.mutate({ id: targetId });
+                        setManualPaidCommission(comm);
+                        setManualPaidNotes("");
+                        setManualPaidReference("");
                       }}
-                      disabled={markPaidMutation.isPending}
                     >
                       <i className="fas fa-check mr-1.5"></i>
                       Marcar Comisión como Pagada
@@ -1674,6 +2044,170 @@ export default function Commissions() {
                 </div>
               </div>
             )}
+          </DialogContent>
+        </Dialog>
+
+        {/* Modal de Cancelación de Comisión */}
+        <Dialog open={!!cancellingCommission} onOpenChange={(open) => !open && setCancellingCommission(null)}>
+          <DialogContent className="max-w-md">
+            <DialogHeader>
+              <DialogTitle className="text-base font-bold flex items-center gap-2 text-rose-700">
+                <i className="fas fa-exclamation-triangle"></i>
+                Cancelar Comisión #{cancellingCommission?.id?.slice(-8)}
+              </DialogTitle>
+            </DialogHeader>
+            <div className="space-y-4 pt-2">
+              <p className="text-xs text-muted-foreground">
+                Esta acción cancelará permanentemente la comisión y registrará un evento inmutable en la bitácora de auditoría.
+              </p>
+              <div>
+                <label className="block text-xs font-semibold text-gray-700 mb-1">
+                  Motivo de Cancelación (Obligatorio)
+                </label>
+                <Input
+                  placeholder="Ej. Crédito cancelado por la financiera / Ajuste comercial"
+                  value={cancelReason}
+                  onChange={(e) => setCancelReason(e.target.value)}
+                  className="text-xs"
+                />
+              </div>
+              <div className="flex justify-end gap-2 pt-2">
+                <Button variant="outline" size="sm" onClick={() => setCancellingCommission(null)}>
+                  Volver
+                </Button>
+                <Button
+                  size="sm"
+                  className="bg-rose-600 hover:bg-rose-700 text-white text-xs"
+                  disabled={!cancelReason.trim() || cancelMutation.isPending}
+                  onClick={() => {
+                    if (cancellingCommission) {
+                      cancelMutation.mutate({ id: cancellingCommission.id, reason: cancelReason });
+                    }
+                  }}
+                >
+                  {cancelMutation.isPending && <i className="fas fa-spinner fa-spin mr-1.5"></i>}
+                  Confirmar Cancelación
+                </Button>
+              </div>
+            </div>
+          </DialogContent>
+        </Dialog>
+
+        {/* Modal de Liquidación Manual */}
+        <Dialog open={!!manualPaidCommission} onOpenChange={(open) => !open && setManualPaidCommission(null)}>
+          <DialogContent className="max-w-md">
+            <DialogHeader>
+              <DialogTitle className="text-base font-bold flex items-center gap-2 text-emerald-800">
+                <i className="fas fa-hand-holding-usd"></i>
+                Registrar Liquidación Manual de Comisión
+              </DialogTitle>
+            </DialogHeader>
+            <div className="space-y-3 pt-2 text-xs">
+              <div className="bg-emerald-50 p-3 rounded-lg border border-emerald-200">
+                <div className="flex justify-between font-bold text-emerald-950">
+                  <span>Monto a Liquidar:</span>
+                  <span>${safeFloat(manualPaidCommission?.frozenAmount || manualPaidCommission?.payoutAmount || manualPaidCommission?.amount).toLocaleString('es-MX', { minimumFractionDigits: 2 })} MXN</span>
+                </div>
+                <p className="text-[11px] text-emerald-800 mt-1">
+                  Beneficiario: {manualPaidCommission?.effectiveBeneficiary?.name || manualPaidCommission?.broker?.firstName || 'Broker'}
+                </p>
+              </div>
+              <div>
+                <label className="block font-semibold text-gray-700 mb-1">
+                  Justificación / Notas Operativas (Obligatorio)
+                </label>
+                <Input
+                  placeholder="Ej. Transferencia manual vía portal Banorte con folio 98234"
+                  value={manualPaidNotes}
+                  onChange={(e) => setManualPaidNotes(e.target.value)}
+                  className="text-xs"
+                />
+              </div>
+              <div>
+                <label className="block font-semibold text-gray-700 mb-1">
+                  Referencia Bancaria / Folio de Rastreo (Opcional)
+                </label>
+                <Input
+                  placeholder="Ej. REF-2026-09-012"
+                  value={manualPaidReference}
+                  onChange={(e) => setManualPaidReference(e.target.value)}
+                  className="text-xs font-mono"
+                />
+              </div>
+              <div className="flex justify-end gap-2 pt-2">
+                <Button variant="outline" size="sm" onClick={() => setManualPaidCommission(null)}>
+                  Cancelar
+                </Button>
+                <Button
+                  size="sm"
+                  className="bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-semibold"
+                  disabled={!manualPaidNotes.trim() || markPaidMutation.isPending}
+                  onClick={() => {
+                    if (manualPaidCommission) {
+                      markPaidMutation.mutate({
+                        id: manualPaidCommission.id,
+                        notes: manualPaidNotes.trim(),
+                        reference: manualPaidReference.trim(),
+                      });
+                    }
+                  }}
+                >
+                  {markPaidMutation.isPending && <i className="fas fa-spinner fa-spin mr-1.5"></i>}
+                  Confirmar Liquidación
+                </Button>
+              </div>
+            </div>
+          </DialogContent>
+        </Dialog>
+
+        {/* Modal de Bitácora de Auditoría */}
+        <Dialog open={!!viewingAuditLogsCommission} onOpenChange={(open) => !open && setViewingAuditLogsCommission(null)}>
+          <DialogContent className="max-w-2xl max-h-[80vh] flex flex-col">
+            <DialogHeader>
+              <DialogTitle className="text-base font-bold flex items-center gap-2">
+                <i className="fas fa-shield-alt text-indigo-700"></i>
+                Bitácora de Auditoría — Comisión #{viewingAuditLogsCommission?.id?.slice(-8)}
+              </DialogTitle>
+            </DialogHeader>
+            <div className="flex-1 overflow-y-auto space-y-3 pt-2 text-xs">
+              {isLoadingAuditLogs ? (
+                <div className="py-8 text-center text-muted-foreground">
+                  <i className="fas fa-spinner fa-spin mr-2"></i> Cargando eventos de auditoría...
+                </div>
+              ) : auditLogs.length === 0 ? (
+                <div className="py-8 text-center text-muted-foreground">
+                  No hay registros de auditoría para esta comisión.
+                </div>
+              ) : (
+                <div className="divide-y border rounded-lg">
+                  {auditLogs.map((log: any) => (
+                    <div key={log.id} className="p-3 space-y-1 hover:bg-gray-50/80">
+                      <div className="flex items-center justify-between flex-wrap gap-1">
+                        <span className="font-bold text-gray-900 uppercase">
+                          {log.action}
+                        </span>
+                        <span className="text-gray-400 text-[11px]">
+                          {log.createdAt ? new Date(log.createdAt).toLocaleString('es-MX') : ''}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-2 text-gray-600">
+                        <span>Rol: <strong className="capitalize">{log.actorRole || 'Sistema'}</strong></span>
+                        {log.previousStatus && (
+                          <span>
+                            Transición: <Badge variant="outline" className="text-[10px]">{log.previousStatus}</Badge> → <Badge variant="outline" className="text-[10px] font-bold">{log.newStatus}</Badge>
+                          </span>
+                        )}
+                      </div>
+                      {log.details && Object.keys(log.details).length > 0 && (
+                        <div className="p-2 bg-gray-100 rounded text-[11px] font-mono text-gray-700 mt-1 overflow-x-auto">
+                          {JSON.stringify(log.details, null, 2)}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
           </DialogContent>
         </Dialog>
       </MainLayout>

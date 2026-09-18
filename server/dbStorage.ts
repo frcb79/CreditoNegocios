@@ -1,7 +1,7 @@
 import { db, pool } from "./db";
 import { 
   users, clients, credits, financialInstitutions, 
-  commissions, notifications, documents, tenants, 
+  commissions, commissionAuditLogs, notifications, documents, tenants, 
   tenantMembers, productVariables, productTemplates,
   institutionProducts, products, productRequests,
   financialInstitutionRequests,
@@ -11,6 +11,7 @@ import {
   type User, type UpsertUser, type Client, type InsertClient,
   type Credit, type InsertCredit, type FinancialInstitution,
   type InsertFinancialInstitution, type Commission, type InsertCommission,
+  type CommissionAuditLog, type InsertCommissionAuditLog,
   type Notification, type InsertNotification, type Document, type InsertDocument,
   type Tenant, type InsertTenant, type TenantMember, type InsertTenantMember,
   type TenantMemberWithUser, type TenantMemberRole,
@@ -1082,7 +1083,29 @@ export class DbStorage implements IStorage {
   }
 
   // Commission operations
-  async getCommissions(filtersOrBrokerId?: { brokerId?: string; masterBrokerId?: string; includeNetwork?: boolean; status?: string; from?: Date; to?: Date } | string): Promise<Commission[]> {
+  async getCommission(id: string): Promise<Commission | undefined> {
+    try {
+      const [commission] = await db.select().from(commissions).where(eq(commissions.id, id));
+      return commission;
+    } catch (error) {
+      console.error("Error fetching commission by id:", error);
+      return undefined;
+    }
+  }
+
+  async getCommissions(filtersOrBrokerId?: {
+    brokerId?: string;
+    masterBrokerId?: string;
+    includeNetwork?: boolean;
+    status?: string;
+    statuses?: string[];
+    from?: Date;
+    to?: Date;
+    tenantId?: string;
+    tenantIds?: string[];
+    creditId?: string;
+    idempotencyKey?: string;
+  } | string): Promise<Commission[]> {
     try {
       const filters = typeof filtersOrBrokerId === "string"
         ? { brokerId: filtersOrBrokerId }
@@ -1093,6 +1116,22 @@ export class DbStorage implements IStorage {
       }
 
       const conditions: any[] = [];
+
+      if (filters.creditId) {
+        conditions.push(eq(commissions.creditId, filters.creditId));
+      }
+
+      if (filters.tenantId) {
+        conditions.push(eq(commissions.tenantId, filters.tenantId));
+      }
+
+      if (filters.tenantIds && filters.tenantIds.length > 0) {
+        conditions.push(inArray(commissions.tenantId, filters.tenantIds));
+      }
+
+      if (filters.idempotencyKey) {
+        conditions.push(eq(commissions.idempotencyKey, filters.idempotencyKey));
+      }
 
       if (filters.brokerId) {
         conditions.push(eq(commissions.brokerId, filters.brokerId));
@@ -1118,6 +1157,10 @@ export class DbStorage implements IStorage {
 
       if (filters.status) {
         conditions.push(eq(commissions.status, filters.status));
+      }
+
+      if (filters.statuses && filters.statuses.length > 0) {
+        conditions.push(inArray(commissions.status, filters.statuses));
       }
 
       if (filters.from) {
@@ -1153,17 +1196,68 @@ export class DbStorage implements IStorage {
     }
   }
 
-  async updateCommission(id: string, commissionData: Partial<InsertCommission>): Promise<Commission | undefined> {
+  async updateCommission(id: string, commissionData: Partial<Commission>): Promise<Commission | undefined> {
     try {
       const [updated] = await db
         .update(commissions)
-        .set(commissionData)
+        .set({ ...commissionData, updatedAt: new Date() })
         .where(eq(commissions.id, id))
         .returning();
       return updated;
     } catch (error) {
       console.error("Error updating commission:", error);
       return undefined;
+    }
+  }
+
+  async transitionCommissionStatus(
+    id: string,
+    fromStatuses: string[],
+    toStatus: string,
+    additionalUpdates?: Partial<Commission>
+  ): Promise<Commission | null> {
+    try {
+      const [updated] = await db
+        .update(commissions)
+        .set({
+          ...additionalUpdates,
+          status: toStatus as any,
+          updatedAt: new Date(),
+        })
+        .where(
+          and(
+            eq(commissions.id, id),
+            inArray(commissions.status, fromStatuses as any)
+          )
+        )
+        .returning();
+      return updated || null;
+    } catch (error) {
+      console.error("Error transitioning commission status:", error);
+      return null;
+    }
+  }
+
+  async createCommissionAuditLog(logData: InsertCommissionAuditLog): Promise<CommissionAuditLog> {
+    try {
+      const [created] = await db.insert(commissionAuditLogs).values(logData).returning();
+      return created;
+    } catch (error) {
+      console.error("Error creating commission audit log:", error);
+      throw error;
+    }
+  }
+
+  async getCommissionAuditLogs(commissionId: string): Promise<CommissionAuditLog[]> {
+    try {
+      return await db
+        .select()
+        .from(commissionAuditLogs)
+        .where(eq(commissionAuditLogs.commissionId, commissionId))
+        .orderBy(desc(commissionAuditLogs.createdAt));
+    } catch (error) {
+      console.error("Error fetching commission audit logs:", error);
+      return [];
     }
   }
 

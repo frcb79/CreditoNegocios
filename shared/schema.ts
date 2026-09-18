@@ -347,9 +347,20 @@ export const credits = pgTable("credits", {
 ]);
 
 
+export const COMMISSION_STATUSES = [
+  "generated",
+  "approved",
+  "dispersing",
+  "paid",
+  "failed",
+  "cancelled",
+] as const;
+export type CommissionStatus = (typeof COMMISSION_STATUSES)[number];
+
 // Commissions table
 export const commissions = pgTable("commissions", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  tenantId: varchar("tenant_id").references(() => tenants.id),
   creditId: varchar("credit_id").notNull().references(() => credits.id),
   brokerId: varchar("broker_id").notNull().references(() => users.id),
   masterBrokerId: varchar("master_broker_id").references(() => users.id),
@@ -358,10 +369,45 @@ export const commissions = pgTable("commissions", {
   brokerShare: decimal("broker_share", { precision: 15, scale: 2 }),
   masterBrokerShare: decimal("master_broker_share", { precision: 15, scale: 2 }),
   appShare: decimal("app_share", { precision: 15, scale: 2 }),
-  status: varchar("status").notNull().default("pending"), // "pending", "paid", "advance_requested", "advance_paid"
+  frozenAmount: decimal("frozen_amount", { precision: 15, scale: 2 }), // Monto neto congelado al aprobarse
+  status: varchar("status").notNull().default("generated"), // "generated", "approved", "dispersing", "paid", "failed", "cancelled"
+  approvedAt: timestamp("approved_at"),
+  approvedBy: varchar("approved_by").references(() => users.id),
   paidAt: timestamp("paid_at"),
+  paidBy: varchar("paid_by").references(() => users.id),
+  paymentMethod: varchar("payment_method"), // "stp", "manual"
+  clabe: varchar("clabe"),
+  bankName: varchar("bank_name"),
+  accountHolder: varchar("account_holder"),
+  idempotencyKey: varchar("idempotency_key"),
+  trackingKey: varchar("tracking_key"),
+  providerResponse: jsonb("provider_response").default('{}'),
+  notes: text("notes"),
   createdAt: timestamp("created_at").defaultNow(),
-});
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => [
+  index("commissions_tenant_idx").on(table.tenantId),
+  index("commissions_credit_idx").on(table.creditId),
+  index("commissions_broker_idx").on(table.brokerId),
+  index("commissions_status_idx").on(table.status),
+  uniqueIndex("commissions_credit_type_unique").on(table.creditId, table.commissionType),
+  uniqueIndex("commissions_idempotency_key_unique").on(table.idempotencyKey),
+]);
+
+// Commission Audit Logs table
+export const commissionAuditLogs = pgTable("commission_audit_logs", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  commissionId: varchar("commission_id").notNull().references(() => commissions.id, { onDelete: 'cascade' }),
+  action: varchar("action").notNull(), // "created", "recalculated", "approved", "cancelled", "dispersion_attempt", "dispersion_success", "dispersion_failed", "marked_paid", "credit_modified_incident"
+  performedBy: varchar("performed_by").references(() => users.id),
+  previousStatus: varchar("previous_status"),
+  newStatus: varchar("new_status"),
+  details: jsonb("details").default('{}'),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => [
+  index("comm_audit_commission_idx").on(table.commissionId),
+  index("comm_audit_created_at_idx").on(table.createdAt),
+]);
 
 // Notifications table
 export const notifications = pgTable("notifications", {
@@ -613,6 +659,12 @@ export const insertFinancialInstitutionSchema = createInsertSchema(financialInst
 export const insertCommissionSchema = createInsertSchema(commissions).omit({
   id: true,
   createdAt: true,
+  updatedAt: true,
+});
+
+export const insertCommissionAuditLogSchema = createInsertSchema(commissionAuditLogs).omit({
+  id: true,
+  createdAt: true,
 });
 
 export const insertNotificationSchema = createInsertSchema(notifications).omit({
@@ -823,6 +875,8 @@ export type InsertFinancialInstitution = z.infer<typeof insertFinancialInstituti
 export type FinancialInstitution = typeof financialInstitutions.$inferSelect;
 export type InsertCommission = z.infer<typeof insertCommissionSchema>;
 export type Commission = typeof commissions.$inferSelect;
+export type InsertCommissionAuditLog = z.infer<typeof insertCommissionAuditLogSchema>;
+export type CommissionAuditLog = typeof commissionAuditLogs.$inferSelect;
 export type InsertNotification = z.infer<typeof insertNotificationSchema>;
 export type Notification = typeof notifications.$inferSelect;
 export type InsertDocument = z.infer<typeof insertDocumentSchema>;

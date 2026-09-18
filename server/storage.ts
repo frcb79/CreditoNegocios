@@ -23,6 +23,8 @@ import {
   type InsertFinancialInstitutionRequest,
   type Commission,
   type InsertCommission,
+  type CommissionAuditLog,
+  type InsertCommissionAuditLog,
   type Notification,
   type InsertNotification,
   type Document,
@@ -110,9 +112,30 @@ export interface IStorage {
   deleteFinancialInstitution(id: string): Promise<boolean>;
 
   // Commission operations
-  getCommissions(filters?: { brokerId?: string; masterBrokerId?: string; includeNetwork?: boolean; status?: string; from?: Date; to?: Date }): Promise<Commission[]>;
+  getCommission(id: string): Promise<Commission | undefined>;
+  getCommissions(filters?: {
+    brokerId?: string;
+    masterBrokerId?: string;
+    includeNetwork?: boolean;
+    status?: string;
+    statuses?: string[];
+    from?: Date;
+    to?: Date;
+    tenantId?: string;
+    tenantIds?: string[];
+    creditId?: string;
+    idempotencyKey?: string;
+  } | string): Promise<Commission[]>;
   createCommission(commission: InsertCommission): Promise<Commission>;
-  updateCommission(id: string, commission: Partial<InsertCommission>): Promise<Commission | undefined>;
+  updateCommission(id: string, commission: Partial<Commission>): Promise<Commission | undefined>;
+  transitionCommissionStatus(
+    id: string,
+    fromStatuses: string[],
+    toStatus: string,
+    additionalUpdates?: Partial<Commission>
+  ): Promise<Commission | null>;
+  createCommissionAuditLog(logData: InsertCommissionAuditLog): Promise<CommissionAuditLog>;
+  getCommissionAuditLogs(commissionId: string): Promise<CommissionAuditLog[]>;
 
   // Notification operations
   getNotifications(userId: string): Promise<Notification[]>;
@@ -237,6 +260,7 @@ export class MemStorage implements IStorage {
   // Bank analysis report storage
   private bankAnalysisReports: Map<string, BankAnalysisReport> = new Map();
   private commissions: Map<string, Commission> = new Map();
+  private commissionAuditLogs: Map<string, CommissionAuditLog> = new Map();
   private notifications: Map<string, Notification> = new Map();
   private documents: Map<string, Document> = new Map();
   private tenants: Map<string, Tenant> = new Map();
@@ -1824,74 +1848,155 @@ export class MemStorage implements IStorage {
   }
 
   // Commission operations
-  async getCommissions(filtersOrBrokerId?: { brokerId?: string; masterBrokerId?: string; includeNetwork?: boolean; status?: string; from?: Date; to?: Date } | string): Promise<Commission[]> {
-    let commissions = Array.from(this.commissions.values());
-    
-    // Backward compatibility: handle string brokerId parameter
-    const filters = typeof filtersOrBrokerId === 'string' 
-      ? { brokerId: filtersOrBrokerId } 
-      : filtersOrBrokerId;
-    
-    if (!filters) return commissions;
-    
-    // Filter by broker or master broker network
+  async getCommission(id: string): Promise<Commission | undefined> {
+    return this.commissions.get(id);
+  }
+
+  async getCommissions(filtersOrBrokerId?: {
+    brokerId?: string;
+    masterBrokerId?: string;
+    includeNetwork?: boolean;
+    status?: string;
+    statuses?: string[];
+    from?: Date;
+    to?: Date;
+    tenantId?: string;
+    tenantIds?: string[];
+    creditId?: string;
+    idempotencyKey?: string;
+  } | string): Promise<Commission[]> {
+    let commissions = Array.from(this.commissions.values()).sort(
+      (a, b) => new Date(b.createdAt!).getTime() - new Date(a.createdAt!).getTime()
+    );
+
+    if (!filtersOrBrokerId) return commissions;
+
+    const filters = typeof filtersOrBrokerId === "string" ? { brokerId: filtersOrBrokerId } : filtersOrBrokerId;
+
+    if (filters.creditId) {
+      commissions = commissions.filter(c => c.creditId === filters.creditId);
+    }
+    if (filters.tenantId) {
+      commissions = commissions.filter(c => c.tenantId === filters.tenantId);
+    }
+    if (filters.tenantIds && filters.tenantIds.length > 0) {
+      commissions = commissions.filter(c => c.tenantId && filters.tenantIds!.includes(c.tenantId));
+    }
+    if (filters.idempotencyKey) {
+      commissions = commissions.filter(c => c.idempotencyKey === filters.idempotencyKey);
+    }
     if (filters.brokerId) {
       commissions = commissions.filter(c => c.brokerId === filters.brokerId);
     } else if (filters.masterBrokerId) {
       if (filters.includeNetwork) {
-        // Get all brokers in the network
         const networkBrokers = await this.getUsersByMasterBroker(filters.masterBrokerId);
         const brokerIds = [...networkBrokers.map(b => b.id), filters.masterBrokerId];
         commissions = commissions.filter(c => c.masterBrokerId === filters.masterBrokerId || brokerIds.includes(c.brokerId));
       } else {
-        // Only master broker's own commissions
         commissions = commissions.filter(c => c.masterBrokerId === filters.masterBrokerId || c.brokerId === filters.masterBrokerId);
       }
     }
-    
-    // Filter by status
     if (filters.status) {
       commissions = commissions.filter(c => c.status === filters.status);
     }
-    
-    // Filter by date range
+    if (filters.statuses && filters.statuses.length > 0) {
+      commissions = commissions.filter(c => filters.statuses!.includes(c.status));
+    }
     if (filters.from) {
       commissions = commissions.filter(c => c.createdAt && new Date(c.createdAt) >= filters.from!);
     }
     if (filters.to) {
       commissions = commissions.filter(c => c.createdAt && new Date(c.createdAt) <= filters.to!);
     }
-    
+
     return commissions;
   }
 
   async createCommission(commissionData: InsertCommission): Promise<Commission> {
     const id = randomUUID();
+    const now = new Date();
     const commission: Commission = {
       ...commissionData,
       id,
+      tenantId: commissionData.tenantId ?? null,
       masterBrokerId: commissionData.masterBrokerId ?? null,
+      commissionType: commissionData.commissionType ?? null,
       brokerShare: commissionData.brokerShare ?? null,
       masterBrokerShare: commissionData.masterBrokerShare ?? null,
       appShare: commissionData.appShare ?? null,
+      frozenAmount: commissionData.frozenAmount ?? null,
+      status: commissionData.status || "generated",
+      approvedAt: commissionData.approvedAt ?? null,
+      approvedBy: commissionData.approvedBy ?? null,
       paidAt: commissionData.paidAt ?? null,
-      status: commissionData.status || 'pending',
-      createdAt: new Date(),
+      paidBy: commissionData.paidBy ?? null,
+      paymentMethod: commissionData.paymentMethod ?? null,
+      clabe: commissionData.clabe ?? null,
+      bankName: commissionData.bankName ?? null,
+      accountHolder: commissionData.accountHolder ?? null,
+      idempotencyKey: commissionData.idempotencyKey ?? null,
+      trackingKey: commissionData.trackingKey ?? null,
+      providerResponse: commissionData.providerResponse ?? {},
+      notes: commissionData.notes ?? null,
+      createdAt: now,
+      updatedAt: now,
     };
     this.commissions.set(id, commission);
     return commission;
   }
 
-  async updateCommission(id: string, commissionData: Partial<InsertCommission>): Promise<Commission | undefined> {
+  async updateCommission(id: string, commissionData: Partial<Commission>): Promise<Commission | undefined> {
     const existing = this.commissions.get(id);
     if (!existing) return undefined;
 
-    const updated = {
+    const updated: Commission = {
       ...existing,
       ...commissionData,
+      updatedAt: new Date(),
     };
     this.commissions.set(id, updated);
     return updated;
+  }
+
+  async transitionCommissionStatus(
+    id: string,
+    fromStatuses: string[],
+    toStatus: string,
+    additionalUpdates?: Partial<Commission>
+  ): Promise<Commission | null> {
+    const existing = this.commissions.get(id);
+    if (!existing) return null;
+    if (!fromStatuses.includes(existing.status)) return null;
+
+    const updated: Commission = {
+      ...existing,
+      ...additionalUpdates,
+      status: toStatus as any,
+      updatedAt: new Date(),
+    };
+    this.commissions.set(id, updated);
+    return updated;
+  }
+
+  async createCommissionAuditLog(logData: InsertCommissionAuditLog): Promise<CommissionAuditLog> {
+    const id = randomUUID();
+    const log: CommissionAuditLog = {
+      ...logData,
+      id,
+      performedBy: logData.performedBy ?? null,
+      previousStatus: logData.previousStatus ?? null,
+      newStatus: logData.newStatus ?? null,
+      details: logData.details || {},
+      createdAt: new Date(),
+    };
+    this.commissionAuditLogs.set(id, log);
+    return log;
+  }
+
+  async getCommissionAuditLogs(commissionId: string): Promise<CommissionAuditLog[]> {
+    return Array.from(this.commissionAuditLogs.values())
+      .filter(l => l.commissionId === commissionId)
+      .sort((a, b) => new Date(b.createdAt!).getTime() - new Date(a.createdAt!).getTime());
   }
 
   // Notification operations
