@@ -66,10 +66,73 @@ export const users = pgTable("users", {
   updatedAt: timestamp("updated_at").defaultNow(),
 });
 
+// Tenant organization types catalogue
+export const TENANT_TYPES = ["platform", "master_broker", "broker"] as const;
+export type TenantType = (typeof TENANT_TYPES)[number];
+
+// Tenants table - Multi-tenant organizations
+export const tenants = pgTable("tenants", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  type: varchar("type").notNull(), // "platform", "master_broker", "broker"
+  name: varchar("name").notNull(),
+  slug: varchar("slug").unique().notNull(), // For subdomains/URLs
+  parentTenantId: varchar("parent_tenant_id"), // Self-reference, will be constrained later if needed
+  settings: jsonb("settings").default('{}'), // White-label, branding, configurations
+  isActive: boolean("is_active").default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+// Tenant member role catalogue
+export const TENANT_MEMBER_ROLES = ["owner", "admin", "member"] as const;
+export type TenantMemberRole = (typeof TENANT_MEMBER_ROLES)[number];
+
+// Tenant Members table - Users belonging to tenants with roles
+export const tenantMembers = pgTable("tenant_members", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  tenantId: varchar("tenant_id").notNull().references(() => tenants.id),
+  userId: varchar("user_id").notNull().references(() => users.id),
+  role: varchar("role", { enum: ["owner", "admin", "member"] }).notNull(), // Role within this specific tenant
+  canOriginate: boolean("can_originate").default(false), // Capacidad de actuar como broker originador y percibir comisiones
+  isActive: boolean("is_active").default(true),
+  joinedAt: timestamp("joined_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => [
+  uniqueIndex("tenant_members_tenant_user_unique").on(table.tenantId, table.userId),
+  index("tenant_members_user_idx").on(table.userId),
+  index("tenant_members_tenant_idx").on(table.tenantId),
+]);
+
+// Organization member with user data
+export interface TenantMemberWithUser {
+  id: string;
+  tenantId: string;
+  userId: string;
+  role: TenantMemberRole;
+  canOriginate?: boolean | null;
+  isActive: boolean;
+  joinedAt: Date | null;
+  updatedAt: Date | null;
+  user: {
+    id: string;
+    email: string | null;
+    firstName: string | null;
+    lastName: string | null;
+    role: string;
+    customRoleTitle: string | null;
+    permissions: unknown;
+    isActive: boolean | null;
+    profileImageUrl: string | null;
+    updatedAt: Date | null;
+  };
+}
+
 // Clients table
 export const clients = pgTable("clients", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  tenantId: varchar("tenant_id").references(() => tenants.id),
   brokerId: varchar("broker_id").notNull().references(() => users.id),
+  createdBy: varchar("created_by").references(() => users.id),
   type: varchar("type").notNull(), // "persona_moral" | "fisica_empresarial" | "fisica" | "sin_sat"
   businessName: varchar("business_name"),
   firstName: varchar("first_name"),
@@ -174,7 +237,10 @@ export const clients = pgTable("clients", {
   isActive: boolean("is_active").default(true),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
-});
+}, (table) => [
+  index("clients_tenant_idx").on(table.tenantId),
+  index("clients_broker_idx").on(table.brokerId),
+]);
 
 // Client Credit Histories table - Historial crediticio de clientes (manual y automático)
 export const clientCreditHistories = pgTable("client_credit_histories", {
@@ -247,8 +313,10 @@ export const financialInstitutions = pgTable("financial_institutions", {
 // Credits table
 export const credits = pgTable("credits", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  tenantId: varchar("tenant_id").references(() => tenants.id),
   clientId: varchar("client_id").notNull().references(() => clients.id),
   brokerId: varchar("broker_id").notNull().references(() => users.id),
+  createdBy: varchar("created_by").references(() => users.id),
   financialInstitutionId: varchar("financial_institution_id").references(() => financialInstitutions.id),
   productTemplateId: varchar("product_template_id").references(() => productTemplates.id), // Tipo de crédito
   linkedSubmissionId: varchar("linked_submission_id").references(() => creditSubmissionRequests.id), // Link to original submission request
@@ -272,7 +340,11 @@ export const credits = pgTable("credits", {
   notes: text("notes"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
-});
+}, (table) => [
+  index("credits_tenant_idx").on(table.tenantId),
+  index("credits_client_idx").on(table.clientId),
+  index("credits_broker_idx").on(table.brokerId),
+]);
 
 
 // Commissions table
@@ -307,9 +379,11 @@ export const notifications = pgTable("notifications", {
 // Documents table
 export const documents = pgTable("documents", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  tenantId: varchar("tenant_id").references(() => tenants.id),
   clientId: varchar("client_id").references(() => clients.id),
   creditId: varchar("credit_id").references(() => credits.id),
   brokerId: varchar("broker_id").references(() => users.id),
+  uploadedBy: varchar("uploaded_by").references(() => users.id),
   type: varchar("type").notNull(), // "rfc", "curp", "proof_of_address", "income_statement", etc.
   fileName: varchar("file_name").notNull(),
   filePath: varchar("file_path").notNull(),
@@ -319,7 +393,9 @@ export const documents = pgTable("documents", {
   isValid: boolean("is_valid").default(true),
   expiresAt: date("expires_at"),
   uploadedAt: timestamp("uploaded_at").defaultNow(),
-});
+}, (table) => [
+  index("documents_tenant_idx").on(table.tenantId),
+]);
 
 // Product Templates - Productos genéricos creados por super admin
 export const productTemplates = pgTable("product_templates", {
@@ -477,8 +553,10 @@ export const insertClientCreditHistorySchema = createInsertSchema(clientCreditHi
 // Credit submission system for broker → admin → financiera approval flow
 export const creditSubmissionRequests = pgTable("credit_submission_requests", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  tenantId: varchar("tenant_id").references(() => tenants.id),
   clientId: varchar("client_id").notNull().references(() => clients.id),
   brokerId: varchar("broker_id").notNull().references(() => users.id),
+  createdBy: varchar("created_by").references(() => users.id),
   productTemplateId: varchar("product_template_id").references(() => productTemplates.id), // Plantilla de producto solicitada
   requestedAmount: decimal("requested_amount", { precision: 15, scale: 2 }).notNull(),
   purpose: text("purpose"), // Purpose of the credit
@@ -486,7 +564,9 @@ export const creditSubmissionRequests = pgTable("credit_submission_requests", {
   status: varchar("status").notNull().default("pending_admin"), // "pending_admin", "partially_approved", "completed", "cancelled"
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
-});
+}, (table) => [
+  index("credit_submissions_tenant_idx").on(table.tenantId),
+]);
 
 export const creditSubmissionTargets = pgTable("credit_submission_targets", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
@@ -560,65 +640,6 @@ export const updatedInsertClientSchema = insertClientSchema.extend({
   creditosVigentesDetalles: z.array(creditItemSchema).optional(),
 });
 
-// Tenant organization types catalogue
-export const TENANT_TYPES = ["platform", "master_broker", "broker"] as const;
-export type TenantType = (typeof TENANT_TYPES)[number];
-
-// Tenants table - Multi-tenant organizations
-export const tenants = pgTable("tenants", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  type: varchar("type").notNull(), // "platform", "master_broker", "broker"
-  name: varchar("name").notNull(),
-  slug: varchar("slug").unique().notNull(), // For subdomains/URLs
-  parentTenantId: varchar("parent_tenant_id"), // Self-reference, will be constrained later if needed
-  settings: jsonb("settings").default('{}'), // White-label, branding, configurations
-  isActive: boolean("is_active").default(true),
-  createdAt: timestamp("created_at").defaultNow(),
-  updatedAt: timestamp("updated_at").defaultNow(),
-});
-
-// Tenant member role catalogue
-export const TENANT_MEMBER_ROLES = ["owner", "admin", "member"] as const;
-export type TenantMemberRole = (typeof TENANT_MEMBER_ROLES)[number];
-
-// Tenant Members table - Users belonging to tenants with roles
-export const tenantMembers = pgTable("tenant_members", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  tenantId: varchar("tenant_id").notNull().references(() => tenants.id),
-  userId: varchar("user_id").notNull().references(() => users.id),
-  role: varchar("role", { enum: ["owner", "admin", "member"] }).notNull(), // Role within this specific tenant
-  isActive: boolean("is_active").default(true),
-  joinedAt: timestamp("joined_at").defaultNow(),
-  updatedAt: timestamp("updated_at").defaultNow(),
-}, (table) => [
-  uniqueIndex("tenant_members_tenant_user_unique").on(table.tenantId, table.userId),
-  index("tenant_members_user_idx").on(table.userId),
-  index("tenant_members_tenant_idx").on(table.tenantId),
-]);
-
-// Organization member with user data
-export interface TenantMemberWithUser {
-  id: string;
-  tenantId: string;
-  userId: string;
-  role: TenantMemberRole;
-  isActive: boolean;
-  joinedAt: Date | null;
-  updatedAt: Date | null;
-  user: {
-    id: string;
-    email: string | null;
-    firstName: string | null;
-    lastName: string | null;
-    role: string;
-    customRoleTitle: string | null;
-    permissions: unknown;
-    isActive: boolean | null;
-    profileImageUrl: string | null;
-    updatedAt: Date | null;
-  };
-}
-
 // Valid RBAC modules, actions and scopes for tenant members
 export const VALID_PERMISSIONS_MODULES = [
   "dashboard",
@@ -674,6 +695,7 @@ export const createTenantMemberSchema = z.object({
   firstName: z.string().min(1, "El nombre es requerido"),
   lastName: z.string().min(1, "El apellido es requerido"),
   role: z.enum(TENANT_MEMBER_ROLES).default("member"),
+  canOriginate: z.boolean().default(false),
   customRoleTitle: z.string().optional(),
   permissions: tenantMemberPermissionsSchema.optional(),
   password: z.string().min(6, "La contraseña debe tener al menos 6 caracteres").optional(),
@@ -684,6 +706,7 @@ export type CreateTenantMemberInput = z.infer<typeof createTenantMemberSchema>;
 
 export const updateTenantMemberSchema = z.object({
   role: z.enum(TENANT_MEMBER_ROLES).optional(),
+  canOriginate: z.boolean().optional(),
   customRoleTitle: z.string().nullable().optional(),
   permissions: tenantMemberPermissionsSchema.optional(),
 });

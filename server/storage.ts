@@ -82,7 +82,7 @@ export interface IStorage {
   updateUserPassword(userId: string, hashedPassword: string): Promise<void>;
 
   // Client operations
-  getClients(brokerId?: string): Promise<Client[]>;
+  getClients(filters?: string | { brokerId?: string; tenantId?: string; tenantIds?: string[] }): Promise<Client[]>;
   getClient(id: string): Promise<Client | undefined>;
   createClient(client: InsertClient): Promise<Client>;
   updateClient(id: string, client: Partial<InsertClient>): Promise<Client | undefined>;
@@ -93,7 +93,7 @@ export interface IStorage {
   getClientCreditHistories(clientId: string): Promise<ClientCreditHistory[]>;
 
   // Credit operations
-  getCredits(filters?: { brokerId?: string; clientId?: string; statuses?: string[]; from?: Date; to?: Date }): Promise<Credit[]>;
+  getCredits(filters?: { brokerId?: string; clientId?: string; status?: string; statuses?: string[]; from?: Date; to?: Date; tenantId?: string; tenantIds?: string[] }): Promise<Credit[]>;
   getCredit(id: string): Promise<Credit | undefined>;
   createCredit(credit: InsertCredit): Promise<Credit>;
   updateCredit(id: string, credit: Partial<InsertCredit>): Promise<Credit | undefined>;
@@ -120,7 +120,7 @@ export interface IStorage {
   getUnreadNotificationCount(userId: string): Promise<number>;
 
   // Document operations
-  getDocuments(filters?: { clientId?: string; creditId?: string; brokerId?: string }): Promise<Document[]>;
+  getDocuments(filters?: { clientId?: string; creditId?: string; brokerId?: string; tenantId?: string; tenantIds?: string[] }): Promise<Document[]>;
   getDocument(id: string): Promise<Document | undefined>;
   createDocument(document: InsertDocument): Promise<Document>;
   updateDocument(id: string, document: Partial<InsertDocument>): Promise<Document | undefined>;
@@ -209,7 +209,7 @@ export interface IStorage {
   updateFinancialInstitutionRequest(id: string, requestData: Partial<FinancialInstitutionRequest>): Promise<FinancialInstitutionRequest | undefined>;
 
   // Credit Submission Requests operations (broker → admin approval flow)
-  getCreditSubmissionRequests(filters?: { status?: string; brokerId?: string; brokerIds?: string[]; clientId?: string }): Promise<CreditSubmissionRequest[]>;
+  getCreditSubmissionRequests(filters?: { status?: string; brokerId?: string; brokerIds?: string[]; clientId?: string; tenantId?: string; tenantIds?: string[] }): Promise<CreditSubmissionRequest[]>;
   getCreditSubmissionRequest(id: string): Promise<CreditSubmissionRequest | undefined>;
   createCreditSubmissionRequest(requestData: InsertCreditSubmissionRequest): Promise<CreditSubmissionRequest>;
   updateCreditSubmissionRequest(id: string, requestData: Partial<InsertCreditSubmissionRequest>): Promise<CreditSubmissionRequest | undefined>;
@@ -1420,9 +1420,21 @@ export class MemStorage implements IStorage {
   }
 
   // Client operations
-  async getClients(brokerId?: string): Promise<Client[]> {
-    const allClients = Array.from(this.clients.values());
-    return brokerId ? allClients.filter(c => c.brokerId === brokerId) : allClients;
+  async getClients(filters?: string | { brokerId?: string; tenantId?: string; tenantIds?: string[] }): Promise<Client[]> {
+    let allClients = Array.from(this.clients.values());
+    if (!filters) return allClients;
+    if (typeof filters === "string") {
+      return allClients.filter(c => c.brokerId === filters);
+    }
+    if (filters.tenantIds && filters.tenantIds.length > 0) {
+      allClients = allClients.filter(c => c.tenantId && filters.tenantIds!.includes(c.tenantId));
+    } else if (filters.tenantId) {
+      allClients = allClients.filter(c => c.tenantId === filters.tenantId);
+    }
+    if (filters.brokerId) {
+      allClients = allClients.filter(c => c.brokerId === filters.brokerId);
+    }
+    return allClients;
   }
 
   async getClient(id: string): Promise<Client | undefined> {
@@ -1434,6 +1446,8 @@ export class MemStorage implements IStorage {
     const client: Client = {
       ...clientData,
       id,
+      tenantId: clientData.tenantId ?? null,
+      createdBy: clientData.createdBy ?? null,
       email: clientData.email ?? null,
       phone: clientData.phone ?? null,
       street: clientData.street ?? null,
@@ -1569,9 +1583,15 @@ export class MemStorage implements IStorage {
   }
 
   // Credit operations
-  async getCredits(filters?: { brokerId?: string; clientId?: string; status?: string; statuses?: string[]; from?: Date; to?: Date }): Promise<Credit[]> {
+  async getCredits(filters?: { brokerId?: string; clientId?: string; status?: string; statuses?: string[]; from?: Date; to?: Date; tenantId?: string; tenantIds?: string[] }): Promise<Credit[]> {
     let credits = Array.from(this.credits.values());
     
+    if (filters?.tenantIds && filters.tenantIds.length > 0) {
+      credits = credits.filter(c => c.tenantId && filters.tenantIds!.includes(c.tenantId));
+    } else if (filters?.tenantId) {
+      credits = credits.filter(c => c.tenantId === filters.tenantId);
+    }
+
     // Backward compatibility: convert status to statuses
     const normalizedStatuses = filters?.statuses || (filters?.status ? [filters.status] : undefined);
     
@@ -1603,6 +1623,8 @@ export class MemStorage implements IStorage {
     const credit: Credit = {
       ...creditData,
       id,
+      tenantId: creditData.tenantId ?? null,
+      createdBy: creditData.createdBy ?? null,
       financialInstitutionId: creditData.financialInstitutionId ?? null,
       interestRate: creditData.interestRate ?? null,
       term: creditData.term ?? null,
@@ -1885,9 +1907,15 @@ export class MemStorage implements IStorage {
   }
 
   // Document operations
-  async getDocuments(filters?: { clientId?: string; creditId?: string; brokerId?: string }): Promise<Document[]> {
+  async getDocuments(filters?: { clientId?: string; creditId?: string; brokerId?: string; tenantId?: string; tenantIds?: string[] }): Promise<Document[]> {
     let documents = Array.from(this.documents.values());
     
+    if (filters?.tenantIds && filters.tenantIds.length > 0) {
+      documents = documents.filter(d => d.tenantId && filters.tenantIds!.includes(d.tenantId));
+    } else if (filters?.tenantId) {
+      documents = documents.filter(d => d.tenantId === filters.tenantId);
+    }
+
     if (filters?.clientId) {
       documents = documents.filter(d => d.clientId === filters.clientId);
     }
@@ -1910,6 +1938,8 @@ export class MemStorage implements IStorage {
     const document: Document = {
       ...documentData,
       id,
+      tenantId: documentData.tenantId ?? null,
+      uploadedBy: documentData.uploadedBy ?? null,
       clientId: documentData.clientId ?? null,
       creditId: documentData.creditId ?? null,
       brokerId: documentData.brokerId ?? null,
@@ -2698,9 +2728,15 @@ export class MemStorage implements IStorage {
   }
 
   // Credit Submission Requests operations
-  async getCreditSubmissionRequests(filters?: { status?: string; brokerId?: string; brokerIds?: string[]; clientId?: string }): Promise<CreditSubmissionRequest[]> {
+  async getCreditSubmissionRequests(filters?: { status?: string; brokerId?: string; brokerIds?: string[]; clientId?: string; tenantId?: string; tenantIds?: string[] }): Promise<CreditSubmissionRequest[]> {
     let requests = Array.from(this.creditSubmissionRequests.values());
     
+    if (filters?.tenantIds && filters.tenantIds.length > 0) {
+      requests = requests.filter(r => r.tenantId && filters.tenantIds!.includes(r.tenantId));
+    } else if (filters?.tenantId) {
+      requests = requests.filter(r => r.tenantId === filters.tenantId);
+    }
+
     if (filters?.status) {
       requests = requests.filter(r => r.status === filters.status);
     }
@@ -2731,6 +2767,8 @@ export class MemStorage implements IStorage {
     const request: CreditSubmissionRequest = {
       ...requestData,
       id,
+      tenantId: requestData.tenantId ?? null,
+      createdBy: requestData.createdBy ?? null,
       purpose: requestData.purpose ?? null,
       brokerNotes: requestData.brokerNotes ?? null,
       status: requestData.status ?? "pending_admin",

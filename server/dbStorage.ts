@@ -823,22 +823,31 @@ export class DbStorage implements IStorage {
 
   // ===== CLIENT OPERATIONS =====
   
-  async getClients(brokerId?: string): Promise<Client[]> {
+  async getClients(filters?: string | { brokerId?: string; tenantId?: string; tenantIds?: string[] }): Promise<Client[]> {
     try {
-      if (brokerId) {
-        const result = await db
+      if (typeof filters === "string") {
+        return await db
           .select()
           .from(clients)
-          .where(eq(clients.brokerId, brokerId))
+          .where(eq(clients.brokerId, filters))
           .orderBy(desc(clients.createdAt));
-        return result;
-      } else {
-        const result = await db
-          .select()
-          .from(clients)
-          .orderBy(desc(clients.createdAt));
-        return result;
       }
+
+      const conditions = [];
+      if (filters?.tenantIds && filters.tenantIds.length > 0) {
+        conditions.push(inArray(clients.tenantId, filters.tenantIds));
+      } else if (filters?.tenantId) {
+        conditions.push(eq(clients.tenantId, filters.tenantId));
+      }
+      if (filters?.brokerId) {
+        conditions.push(eq(clients.brokerId, filters.brokerId));
+      }
+
+      const query = conditions.length > 0
+        ? db.select().from(clients).where(and(...conditions)).orderBy(desc(clients.createdAt))
+        : db.select().from(clients).orderBy(desc(clients.createdAt));
+
+      return await query;
     } catch (error) {
       console.error("Error fetching clients:", error);
       return [];
@@ -928,12 +937,17 @@ export class DbStorage implements IStorage {
   }
 
   // Credit operations
-  async getCredits(filters?: { brokerId?: string; clientId?: string; status?: string; statuses?: string[]; from?: Date; to?: Date }): Promise<Credit[]> {
+  async getCredits(filters?: { brokerId?: string; clientId?: string; status?: string; statuses?: string[]; from?: Date; to?: Date; tenantId?: string; tenantIds?: string[] }): Promise<Credit[]> {
     try {
       let query = db.select().from(credits);
       
       if (filters) {
         const conditions = [];
+        if (filters.tenantIds && filters.tenantIds.length > 0) {
+          conditions.push(inArray(credits.tenantId, filters.tenantIds));
+        } else if (filters.tenantId) {
+          conditions.push(eq(credits.tenantId, filters.tenantId));
+        }
         if (filters.brokerId) conditions.push(eq(credits.brokerId, filters.brokerId));
         if (filters.clientId) conditions.push(eq(credits.clientId, filters.clientId));
         
@@ -1174,9 +1188,14 @@ export class DbStorage implements IStorage {
   }
 
   // Document operations
-  async getDocuments(filters?: { clientId?: string; creditId?: string; brokerId?: string }): Promise<Document[]> {
+  async getDocuments(filters?: { clientId?: string; creditId?: string; brokerId?: string; tenantId?: string; tenantIds?: string[] }): Promise<Document[]> {
     try {
       const conditions = [];
+      if (filters?.tenantIds && filters.tenantIds.length > 0) {
+        conditions.push(inArray(documents.tenantId, filters.tenantIds));
+      } else if (filters?.tenantId) {
+        conditions.push(eq(documents.tenantId, filters.tenantId));
+      }
       if (filters?.clientId) {
         conditions.push(eq(documents.clientId, filters.clientId));
       }
@@ -1782,9 +1801,14 @@ export class DbStorage implements IStorage {
   }
 
   // Credit Submission Requests operations
-  async getCreditSubmissionRequests(filters?: { status?: string; brokerId?: string; brokerIds?: string[]; clientId?: string }): Promise<CreditSubmissionRequest[]> {
+  async getCreditSubmissionRequests(filters?: { status?: string; brokerId?: string; brokerIds?: string[]; clientId?: string; tenantId?: string; tenantIds?: string[] }): Promise<CreditSubmissionRequest[]> {
     try {
       const conditions = [];
+      if (filters?.tenantIds && filters.tenantIds.length > 0) {
+        conditions.push(inArray(creditSubmissionRequests.tenantId, filters.tenantIds));
+      } else if (filters?.tenantId) {
+        conditions.push(eq(creditSubmissionRequests.tenantId, filters.tenantId));
+      }
       if (filters?.status) {
         conditions.push(eq(creditSubmissionRequests.status, filters.status));
       }

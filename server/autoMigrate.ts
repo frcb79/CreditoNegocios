@@ -134,6 +134,13 @@ export async function runAutoMigration(): Promise<void> {
 
         CREATE INDEX IF NOT EXISTS "tenant_members_tenant_idx" 
         ON public.tenant_members ("tenant_id");
+
+        ALTER TABLE IF EXISTS public.tenant_members
+          ADD COLUMN IF NOT EXISTS can_originate BOOLEAN DEFAULT false;
+
+        UPDATE public.tenant_members
+          SET can_originate = true
+          WHERE role = 'owner' AND can_originate IS NOT TRUE;
       `);
       console.log("✅ [AutoMigrate] Tenant members table and indexes verified");
     } catch (err) {
@@ -144,6 +151,8 @@ export async function runAutoMigration(): Promise<void> {
     try {
       await client.query(`
         ALTER TABLE IF EXISTS public.clients
+          ADD COLUMN IF NOT EXISTS tenant_id VARCHAR,
+          ADD COLUMN IF NOT EXISTS created_by VARCHAR,
           ADD COLUMN IF NOT EXISTS profiling_data JSONB DEFAULT '{}',
           ADD COLUMN IF NOT EXISTS ingreso_mensual_promedio VARCHAR,
           ADD COLUMN IF NOT EXISTS edad_cliente VARCHAR,
@@ -163,10 +172,57 @@ export async function runAutoMigration(): Promise<void> {
           ADD COLUMN IF NOT EXISTS interior_negocio VARCHAR,
           ADD COLUMN IF NOT EXISTS codigo_postal_negocio VARCHAR,
           ADD COLUMN IF NOT EXISTS estado_negocio VARCHAR;
+
+        CREATE INDEX IF NOT EXISTS "clients_tenant_idx" ON public.clients ("tenant_id");
+        CREATE INDEX IF NOT EXISTS "clients_broker_idx" ON public.clients ("broker_id");
       `);
       console.log("✅ [AutoMigrate] Clients table columns verified");
     } catch (err) {
       console.error("⚠️ [AutoMigrate] Error verifying clients columns:", err);
+    }
+
+    // 3b. Ensure credits table columns and indexes exist
+    try {
+      await client.query(`
+        ALTER TABLE IF EXISTS public.credits
+          ADD COLUMN IF NOT EXISTS tenant_id VARCHAR,
+          ADD COLUMN IF NOT EXISTS created_by VARCHAR;
+
+        CREATE INDEX IF NOT EXISTS "credits_tenant_idx" ON public.credits ("tenant_id");
+        CREATE INDEX IF NOT EXISTS "credits_broker_idx" ON public.credits ("broker_id");
+        CREATE INDEX IF NOT EXISTS "credits_client_idx" ON public.credits ("client_id");
+      `);
+      console.log("✅ [AutoMigrate] Credits table columns and indexes verified");
+    } catch (err) {
+      console.error("⚠️ [AutoMigrate] Error verifying credits columns/indexes:", err);
+    }
+
+    // 3c. Ensure documents table columns and indexes exist
+    try {
+      await client.query(`
+        ALTER TABLE IF EXISTS public.documents
+          ADD COLUMN IF NOT EXISTS tenant_id VARCHAR,
+          ADD COLUMN IF NOT EXISTS uploaded_by VARCHAR;
+
+        CREATE INDEX IF NOT EXISTS "documents_tenant_idx" ON public.documents ("tenant_id");
+      `);
+      console.log("✅ [AutoMigrate] Documents table columns and indexes verified");
+    } catch (err) {
+      console.error("⚠️ [AutoMigrate] Error verifying documents columns/indexes:", err);
+    }
+
+    // 3d. Ensure credit_submission_requests table columns and indexes exist
+    try {
+      await client.query(`
+        ALTER TABLE IF EXISTS public.credit_submission_requests
+          ADD COLUMN IF NOT EXISTS tenant_id VARCHAR,
+          ADD COLUMN IF NOT EXISTS created_by VARCHAR;
+
+        CREATE INDEX IF NOT EXISTS "credit_submissions_tenant_idx" ON public.credit_submission_requests ("tenant_id");
+      `);
+      console.log("✅ [AutoMigrate] Credit submission requests table columns and indexes verified");
+    } catch (err) {
+      console.error("⚠️ [AutoMigrate] Error verifying credit_submission_requests columns/indexes:", err);
     }
 
     // 4. Ensure all columns in commissions table

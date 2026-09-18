@@ -70,7 +70,8 @@ import {
 } from "./middleware/rbacMiddleware";
 import {
   validateTenantMemberPermissions,
-  checkTransactionalCreationAllowed
+  checkTransactionalCreationAllowed,
+  validateCommercialOrigination
 } from "./tenantPermissions";
 
 // Ensure upload directory exists
@@ -348,26 +349,56 @@ async function ensureCommissionRecord(params: {
   return true;
 }
 
-// Authorization helper for broker-owned resources
-// Validates that a user has permission to access a resource based on brokerId
-async function authorizeBrokerResource(params: {
+// Authorization helper for tenant-owned and broker-owned resources (Bloque 4)
+// Validates that a user has permission to access a resource based on tenantId and/or brokerId
+async function authorizeTenantOrBrokerResource(params: {
   currentUserId: string;
   resourceBrokerId: string;
+  resourceTenantId?: string | null;
   currentUserRole?: string;
+  tenantContext?: any;
 }): Promise<{ authorized: boolean; reason?: string }> {
-  const { currentUserId, resourceBrokerId, currentUserRole } = params;
+  const { currentUserId, resourceBrokerId, resourceTenantId, currentUserRole, tenantContext } = params;
   
-  // Admins and super_admins have full access
+  // 1. Admins and super_admins have full access
   if (currentUserRole === 'admin' || currentUserRole === 'super_admin') {
     return { authorized: true };
   }
-  
-  // Same user owns the resource
+
+  // 2. Tenant-based authorization (organizational boundary)
+  if (resourceTenantId) {
+    // If active tenant matches resource tenant
+    if (tenantContext?.tenant?.id === resourceTenantId) {
+      return { authorized: true };
+    }
+    
+    // Check if user is an active member of the resource's tenant
+    const membership = await storage.getUserTenantMembership(currentUserId, resourceTenantId);
+    if (membership && membership.isActive) {
+      return { authorized: true };
+    }
+
+    // Master broker hierarchy: check if user belongs to a parent master broker tenant
+    const callerMemberships = await storage.getTenantMembersByUser(currentUserId);
+    for (const m of callerMemberships) {
+      if (m.isActive) {
+        const callerTenant = await storage.getTenant(m.tenantId);
+        if (callerTenant && callerTenant.type === 'master_broker') {
+          const subordinates = await storage.getTenantsByParent(callerTenant.id);
+          if (subordinates.some(sub => sub.id === resourceTenantId)) {
+            return { authorized: true };
+          }
+        }
+      }
+    }
+  }
+
+  // 3. Same user owns the resource directly (broker attribution)
   if (currentUserId === resourceBrokerId) {
     return { authorized: true };
   }
   
-  // Master brokers can access resources owned by their network brokers
+  // 4. Master brokers can access resources owned by their network brokers (legacy)
   if (currentUserRole === 'master_broker') {
     const resourceBroker = await storage.getUser(resourceBrokerId);
     if (resourceBroker && resourceBroker.masterBrokerId === currentUserId) {
@@ -375,68 +406,85 @@ async function authorizeBrokerResource(params: {
     }
   }
   
-  return { authorized: false, reason: 'Access denied. You can only access your own resources.' };
+  return { authorized: false, reason: 'Access denied. You can only access resources within your organization.' };
+}
+
+async function authorizeBrokerResource(params: {
+  currentUserId: string;
+  resourceBrokerId: string;
+  resourceTenantId?: string | null;
+  currentUserRole?: string;
+  tenantContext?: any;
+}): Promise<{ authorized: boolean; reason?: string }> {
+  return authorizeTenantOrBrokerResource(params);
 }
 
 // Helper to check if user can access a client
-async function authorizeClientAccess(userId: string, userRole: string, clientId: string): Promise<{ authorized: boolean; client?: any; reason?: string }> {
+async function authorizeClientAccess(userId: string, userRole: string, clientId: string, tenantContext?: any): Promise<{ authorized: boolean; client?: any; reason?: string }> {
   const client = await storage.getClient(clientId);
   if (!client) {
     return { authorized: false, reason: 'Client not found' };
   }
   
-  const authResult = await authorizeBrokerResource({
+  const authResult = await authorizeTenantOrBrokerResource({
     currentUserId: userId,
     resourceBrokerId: client.brokerId,
+    resourceTenantId: client.tenantId,
     currentUserRole: userRole,
+    tenantContext,
   });
   
   return { ...authResult, client };
 }
 
 // Helper to check if user can access a credit
-async function authorizeCreditAccess(userId: string, userRole: string, creditId: string): Promise<{ authorized: boolean; credit?: any; reason?: string }> {
+async function authorizeCreditAccess(userId: string, userRole: string, creditId: string, tenantContext?: any): Promise<{ authorized: boolean; credit?: any; reason?: string }> {
   const credit = await storage.getCredit(creditId);
   if (!credit) {
     return { authorized: false, reason: 'Credit not found' };
   }
   
-  const authResult = await authorizeBrokerResource({
+  const authResult = await authorizeTenantOrBrokerResource({
     currentUserId: userId,
     resourceBrokerId: credit.brokerId,
+    resourceTenantId: credit.tenantId,
     currentUserRole: userRole,
+    tenantContext,
   });
   
   return { ...authResult, credit };
 }
 
 // Helper to check if user can access a document
-async function authorizeDocumentAccess(userId: string, userRole: string, documentId: string): Promise<{ authorized: boolean; document?: any; reason?: string }> {
+async function authorizeDocumentAccess(userId: string, userRole: string, documentId: string, tenantContext?: any): Promise<{ authorized: boolean; document?: any; reason?: string }> {
   const document = await storage.getDocument(documentId);
   if (!document) {
     return { authorized: false, reason: 'Document not found' };
   }
 
   // If the document is linked to a client, client ownership is the source of truth.
-  // This prevents stale brokerId on document records from denying valid access.
   if (document.clientId) {
     const client = await storage.getClient(document.clientId);
     if (client) {
-      const authResult = await authorizeBrokerResource({
+      const authResult = await authorizeTenantOrBrokerResource({
         currentUserId: userId,
         resourceBrokerId: client.brokerId,
+        resourceTenantId: client.tenantId || document.tenantId,
         currentUserRole: userRole,
+        tenantContext,
       });
       return { ...authResult, document };
     }
   }
   
-  // Document has brokerId
-  if (document.brokerId) {
-    const authResult = await authorizeBrokerResource({
+  // Document has tenantId or brokerId
+  if (document.tenantId || document.brokerId) {
+    const authResult = await authorizeTenantOrBrokerResource({
       currentUserId: userId,
-      resourceBrokerId: document.brokerId,
+      resourceBrokerId: document.brokerId || '',
+      resourceTenantId: document.tenantId,
       currentUserRole: userRole,
+      tenantContext,
     });
     return { ...authResult, document };
   }
@@ -1257,11 +1305,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // 2. Fetch all submissions relevant for user
       const allSubmissions = await storage.getCreditSubmissionRequests({});
-      const userSubmissions = isAdmin
-        ? allSubmissions
-        : isMasterBroker
-          ? allSubmissions.filter(s => networkBrokerIds.includes(s.brokerId))
-          : allSubmissions.filter(s => s.brokerId === userId);
+      let userSubmissions: any[] = [];
+      if (isAdmin) {
+        userSubmissions = allSubmissions;
+      } else if (req.tenantContext?.tenant) {
+        const tenant = req.tenantContext.tenant;
+        if (tenant.type === 'master_broker') {
+          const subordinates = await storage.getTenantsByParent(tenant.id);
+          const tenantIds = [tenant.id, ...subordinates.map(t => t.id)];
+          userSubmissions = allSubmissions.filter(s => (s.tenantId && tenantIds.includes(s.tenantId)) || networkBrokerIds.includes(s.brokerId));
+        } else {
+          userSubmissions = allSubmissions.filter(s => s.tenantId === tenant.id || s.brokerId === userId);
+        }
+      } else if (isMasterBroker) {
+        userSubmissions = allSubmissions.filter(s => networkBrokerIds.includes(s.brokerId));
+      } else {
+        userSubmissions = allSubmissions.filter(s => s.brokerId === userId);
+      }
 
       // Active pipeline requests (in progress)
       const activePipelineSubmissions = userSubmissions.filter(s =>
@@ -1272,11 +1332,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // 3. Fetch credits (dispersed / active loans)
       const allCredits = await storage.getCredits({});
-      const userCredits = isAdmin
-        ? allCredits
-        : isMasterBroker
-          ? allCredits.filter(c => networkBrokerIds.includes(c.brokerId))
-          : allCredits.filter(c => c.brokerId === userId);
+      let userCredits: any[] = [];
+      if (isAdmin) {
+        userCredits = allCredits;
+      } else if (req.tenantContext?.tenant) {
+        const tenant = req.tenantContext.tenant;
+        if (tenant.type === 'master_broker') {
+          const subordinates = await storage.getTenantsByParent(tenant.id);
+          const tenantIds = [tenant.id, ...subordinates.map(t => t.id)];
+          userCredits = allCredits.filter(c => (c.tenantId && tenantIds.includes(c.tenantId)) || networkBrokerIds.includes(c.brokerId));
+        } else {
+          userCredits = allCredits.filter(c => c.tenantId === tenant.id || c.brokerId === userId);
+        }
+      } else if (isMasterBroker) {
+        userCredits = allCredits.filter(c => networkBrokerIds.includes(c.brokerId));
+      } else {
+        userCredits = allCredits.filter(c => c.brokerId === userId);
+      }
 
       const disbursedCredits = userCredits.filter(c =>
         c.status === 'disbursed' || c.status === 'dispersed' || c.status === 'dispersado' || c.status === 'active'
@@ -1808,6 +1880,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
       let rawClients: any[] = [];
       if (isAdmin) {
         rawClients = await storage.getClients();
+      } else if (req.tenantContext?.tenant) {
+        const tenant = req.tenantContext.tenant;
+        if (tenant.type === 'master_broker') {
+          const subordinates = await storage.getTenantsByParent(tenant.id);
+          const tenantIds = [tenant.id, ...subordinates.map(t => t.id)];
+          rawClients = await storage.getClients({ tenantIds });
+        } else {
+          rawClients = await storage.getClients({ tenantId: tenant.id });
+        }
       } else if (user?.role === 'master_broker') {
         const networkBrokers = await storage.getUsersByMasterBroker(userId);
         const brokerIds = [userId, ...networkBrokers.map(b => b.id)];
@@ -1866,8 +1947,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const userId = req.user.claims.sub;
       const user = await storage.getUser(userId);
       
-      // Authorization check - broker can only access own clients
-      const authResult = await authorizeClientAccess(userId, user?.role || '', id);
+      // Authorization check - broker/tenant access
+      const authResult = await authorizeClientAccess(userId, user?.role || '', id, req.tenantContext);
       if (!authResult.authorized) {
         return res.status(authResult.reason === 'Client not found' ? 404 : 403).json({ message: authResult.reason });
       }
@@ -1882,15 +1963,24 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post('/api/clients', isAuthenticated, requireModuleAndAction('clientes', 'edit'), async (req: any, res) => {
     try {
       const userId = req.user.claims.sub;
+      const user = await storage.getUser(userId);
 
-      const transCheck = await checkTransactionalCreationAllowed(userId);
-      if (!transCheck.allowed) {
-        return res.status(403).json({ message: transCheck.message });
+      const originationCheck = await validateCommercialOrigination({
+        callerUser: user,
+        callerMembership: req.tenantContext?.membership,
+        tenantId: req.tenantContext?.tenant?.id,
+        requestedBrokerId: req.body.brokerId,
+      });
+
+      if (!originationCheck.allowed) {
+        return res.status(403).json({ message: originationCheck.message });
       }
 
       const clientData = updatedInsertClientSchema.parse({
         ...req.body,
-        brokerId: userId,
+        tenantId: req.tenantContext?.tenant?.id || null,
+        brokerId: originationCheck.brokerId,
+        createdBy: userId,
       });
       
       const client = await storage.createClient(clientData);
@@ -1917,8 +2007,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const userId = req.user.claims.sub;
       const user = await storage.getUser(userId);
       
-      // Authorization check - broker can only update own clients
-      const authResult = await authorizeClientAccess(userId, user?.role || '', id);
+      // Authorization check - broker/tenant access
+      const authResult = await authorizeClientAccess(userId, user?.role || '', id, req.tenantContext);
       if (!authResult.authorized) {
         return res.status(authResult.reason === 'Client not found' ? 404 : 403).json({ message: authResult.reason });
       }
@@ -1943,8 +2033,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const userId = req.user.claims.sub;
       const user = await storage.getUser(userId);
       
-      // Authorization check - broker can only delete own clients
-      const authResult = await authorizeClientAccess(userId, user?.role || '', id);
+      // Authorization check - broker/tenant access
+      const authResult = await authorizeClientAccess(userId, user?.role || '', id, req.tenantContext);
       if (!authResult.authorized) {
         return res.status(authResult.reason === 'Client not found' ? 404 : 403).json({ message: authResult.reason });
       }
@@ -2027,6 +2117,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
           clientId: clientId as string,
           status: status as string,
         });
+      } else if (req.tenantContext?.tenant) {
+        const tenant = req.tenantContext.tenant;
+        if (tenant.type === 'master_broker') {
+          const subordinates = await storage.getTenantsByParent(tenant.id);
+          const tenantIds = [tenant.id, ...subordinates.map(t => t.id)];
+          rawCredits = await storage.getCredits({
+            tenantIds,
+            clientId: clientId as string,
+            status: status as string,
+          });
+        } else {
+          rawCredits = await storage.getCredits({
+            tenantId: tenant.id,
+            clientId: clientId as string,
+            status: status as string,
+          });
+        }
       } else if (user?.role === 'master_broker') {
         const networkBrokers = await storage.getUsersByMasterBroker(userId);
         const brokerIds = [userId, ...networkBrokers.map(b => b.id)];
@@ -2115,15 +2222,24 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post('/api/credits', isAuthenticated, requireModuleAndAction('creditos', 'edit'), async (req: any, res) => {
     try {
       const userId = req.user.claims.sub;
+      const user = await storage.getUser(userId);
 
-      const transCheck = await checkTransactionalCreationAllowed(userId);
-      if (!transCheck.allowed) {
-        return res.status(403).json({ message: transCheck.message });
+      const originationCheck = await validateCommercialOrigination({
+        callerUser: user,
+        callerMembership: req.tenantContext?.membership,
+        tenantId: req.tenantContext?.tenant?.id,
+        requestedBrokerId: req.body.brokerId,
+      });
+
+      if (!originationCheck.allowed) {
+        return res.status(403).json({ message: originationCheck.message });
       }
 
       const creditData = insertCreditSchema.parse({
         ...req.body,
-        brokerId: userId,
+        tenantId: req.tenantContext?.tenant?.id || null,
+        brokerId: originationCheck.brokerId,
+        createdBy: userId,
       });
       
       const credit = await storage.createCredit(creditData);
@@ -2150,8 +2266,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const userId = req.user.claims.sub;
       const user = await storage.getUser(userId);
       
-      // Authorization check - broker can only update own credits
-      const authResult = await authorizeCreditAccess(userId, user?.role || '', id);
+      // Authorization check - broker/tenant access
+      const authResult = await authorizeCreditAccess(userId, user?.role || '', id, req.tenantContext);
       if (!authResult.authorized) {
         return res.status(authResult.reason === 'Credit not found' ? 404 : 403).json({ message: authResult.reason });
       }
@@ -2924,10 +3040,27 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (!file) {
         return res.status(400).json({ message: "No file uploaded" });
       }
+
+      // Inherit tenant from client, credit, or active tenant
+      let documentTenantId = req.tenantContext?.tenant?.id || null;
+      let documentBrokerId = userId;
+      if (clientId) {
+        const client = await storage.getClient(clientId);
+        if (client) {
+          if (client.tenantId) documentTenantId = client.tenantId;
+          if (client.brokerId) documentBrokerId = client.brokerId;
+        }
+      } else if (creditId) {
+        const credit = await storage.getCredit(creditId);
+        if (credit) {
+          if (credit.tenantId) documentTenantId = credit.tenantId;
+          if (credit.brokerId) documentBrokerId = credit.brokerId;
+        }
+      }
       
       const extractedData = getDocumentExtractedData();
       const storedFile = await persistDocumentFile(file, {
-        brokerId: userId,
+        brokerId: documentBrokerId,
         clientId: clientId || null,
         creditId: creditId || null,
         type,
@@ -2935,9 +3068,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
       storedFilePath = storedFile.filePath;
       
       const documentData = insertDocumentSchema.parse({
+        tenantId: documentTenantId,
         clientId: clientId || null,
         creditId: creditId || null,
-        brokerId: userId,
+        brokerId: documentBrokerId,
+        uploadedBy: userId,
         type,
         fileName: file.originalname,
         filePath: storedFile.filePath,
@@ -2968,7 +3103,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const userId = req.user.claims.sub;
       const user = await storage.getUser(userId);
 
-      const authResult = await authorizeDocumentAccess(userId, user?.role || '', id);
+      const authResult = await authorizeDocumentAccess(userId, user?.role || '', id, req.tenantContext);
       if (!authResult.authorized || !authResult.document) {
         return res.status(authResult.reason === 'Document not found' ? 404 : 403).json({ message: authResult.reason || 'Access denied' });
       }
@@ -2999,7 +3134,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const userId = req.user.claims.sub;
       const user = await storage.getUser(userId);
 
-      const authResult = await authorizeDocumentAccess(userId, user?.role || '', id);
+      const authResult = await authorizeDocumentAccess(userId, user?.role || '', id, req.tenantContext);
       if (!authResult.authorized || !authResult.document) {
         return res.status(authResult.reason === 'Document not found' ? 404 : 403).json({ message: authResult.reason || 'Access denied' });
       }
@@ -3035,10 +3170,26 @@ export async function registerRoutes(app: Express): Promise<Server> {
           creditId: creditId as string,
         });
         return res.json(documents);
-      }
-      
-      // Master brokers can see their own documents + their network's documents
-      if (user?.role === 'master_broker') {
+      } else if (req.tenantContext?.tenant) {
+        const tenant = req.tenantContext.tenant;
+        if (tenant.type === 'master_broker') {
+          const subordinates = await storage.getTenantsByParent(tenant.id);
+          const tenantIds = [tenant.id, ...subordinates.map(t => t.id)];
+          const documents = await storage.getDocuments({
+            tenantIds,
+            clientId: clientId as string,
+            creditId: creditId as string,
+          });
+          return res.json(documents);
+        } else {
+          const documents = await storage.getDocuments({
+            tenantId: tenant.id,
+            clientId: clientId as string,
+            creditId: creditId as string,
+          });
+          return res.json(documents);
+        }
+      } else if (user?.role === 'master_broker') {
         const networkBrokers = await storage.getUsersByMasterBroker(userId);
         const brokerIds = [userId, ...networkBrokers.map(b => b.id)];
         const allDocuments = await storage.getDocuments({
@@ -3047,16 +3198,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
         const filteredDocuments = allDocuments.filter(d => d.brokerId && brokerIds.includes(d.brokerId));
         return res.json(filteredDocuments);
+      } else {
+        const documents = await storage.getDocuments({
+          clientId: clientId as string,
+          creditId: creditId as string,
+          brokerId: userId,
+        });
+        return res.json(documents);
       }
-      
-      // Regular brokers only see their own documents
-      const documents = await storage.getDocuments({
-        clientId: clientId as string,
-        creditId: creditId as string,
-        brokerId: userId,
-      });
-      
-      res.json(documents);
     } catch (error) {
       console.error("Error fetching documents:", error);
       res.status(500).json({ message: "Failed to fetch documents" });
@@ -3070,7 +3219,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const user = await storage.getUser(userId);
       
       // First check if user can access this client
-      const authResult = await authorizeClientAccess(userId, user?.role || '', clientId);
+      const authResult = await authorizeClientAccess(userId, user?.role || '', clientId, req.tenantContext);
       if (!authResult.authorized) {
         return res.status(authResult.reason === 'Client not found' ? 404 : 403).json({ message: authResult.reason });
       }
@@ -3093,8 +3242,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const userId = req.user.claims.sub;
       const user = await storage.getUser(userId);
       
-      // Authorization check - broker can only update own documents
-      const authResult = await authorizeDocumentAccess(userId, user?.role || '', id);
+      // Authorization check - broker/tenant access
+      const authResult = await authorizeDocumentAccess(userId, user?.role || '', id, req.tenantContext);
       if (!authResult.authorized) {
         return res.status(authResult.reason === 'Document not found' ? 404 : 403).json({ message: authResult.reason });
       }
@@ -3138,7 +3287,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ message: "Document not found" });
       }
 
-      if (newStoredFilePath && authResult.document.filePath !== newStoredFilePath) {
+      // Clean up previous file if replaced
+      if (file && authResult.document?.filePath && authResult.document.filePath !== newStoredFilePath) {
         try {
           await removeStoredDocument(authResult.document.filePath);
         } catch (cleanupError) {
@@ -3166,8 +3316,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const userId = req.user.claims.sub;
       const user = await storage.getUser(userId);
       
-      // Authorization check - broker can only delete own documents
-      const authResult = await authorizeDocumentAccess(userId, user?.role || '', id);
+      // Authorization check - broker/tenant access
+      const authResult = await authorizeDocumentAccess(userId, user?.role || '', id, req.tenantContext);
       if (!authResult.authorized) {
         return res.status(authResult.reason === 'Document not found' ? 404 : 403).json({ message: authResult.reason });
       }
@@ -4909,7 +5059,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ message: "User not found" });
       }
 
-      const submissions = await storage.getCreditSubmissionRequests({ brokerId: userId });
+      let submissions: any[] = [];
+      if (req.tenantContext?.tenant) {
+        const tenant = req.tenantContext.tenant;
+        if (tenant.type === 'master_broker') {
+          const subordinates = await storage.getTenantsByParent(tenant.id);
+          const tenantIds = [tenant.id, ...subordinates.map(t => t.id)];
+          submissions = await storage.getCreditSubmissionRequests({ tenantIds });
+        } else {
+          submissions = await storage.getCreditSubmissionRequests({ tenantId: tenant.id });
+        }
+      } else {
+        submissions = await storage.getCreditSubmissionRequests({ brokerId: userId });
+      }
       
       const submissionsWithEnrichedData = await Promise.all(
         submissions.map(async (submission) => {
@@ -4964,8 +5126,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ message: "Submission request not found" });
       }
 
-      // Authorization check - brokers can only see their own submissions, admins can see all
-      if ((user.role === 'broker' || user.role === 'master_broker') && submission.brokerId !== userId) {
+      // Authorization check - tenant/broker access
+      const authResult = await authorizeTenantOrBrokerResource({
+        currentUserId: userId,
+        resourceBrokerId: submission.brokerId,
+        resourceTenantId: submission.tenantId,
+        currentUserRole: user.role,
+        tenantContext: req.tenantContext,
+      });
+      if (!authResult.authorized) {
         return res.status(403).json({ message: "Access denied" });
       }
 
@@ -5039,9 +5208,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(403).json({ message: "You don't have permission to create credit submissions" });
       }
 
+      const originationCheck = await validateCommercialOrigination({
+        callerUser: user,
+        callerMembership: req.tenantContext?.membership,
+        tenantId: req.tenantContext?.tenant?.id,
+        requestedBrokerId: req.body.brokerId,
+      });
+
+      if (!originationCheck.allowed) {
+        return res.status(403).json({ message: originationCheck.message });
+      }
+
       const submissionData = insertCreditSubmissionRequestSchema.parse({
         ...req.body,
-        brokerId: userId,
+        tenantId: req.tenantContext?.tenant?.id || null,
+        brokerId: originationCheck.brokerId,
+        createdBy: userId,
         status: 'pending_admin'
       });
 

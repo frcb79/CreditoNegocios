@@ -14,6 +14,7 @@ export interface TenantContext {
   membership: {
     id: string;
     role: "owner" | "admin" | "member";
+    canOriginate?: boolean | null;
     isActive: boolean;
   } | null;
   isPlatformAdmin: boolean;
@@ -34,6 +35,7 @@ declare global {
  * 2. slug query parameter 
  * 3. Path parameters (tenantSlug, slug, tenant, organizationSlug)
  * 4. URL path pattern extraction (e.g., /api/tenants/slug/:slug)
+ * 5. Auto-resolution if user has exactly 1 active organization membership
  */
 export const tenantContextMiddleware: RequestHandler = async (req: any, res, next) => {
   try {
@@ -96,6 +98,25 @@ export const tenantContextMiddleware: RequestHandler = async (req: any, res, nex
       tenantSlug = "platform";
     }
 
+    // Auto-resolve tenant if user has exactly 1 active organization membership
+    if (!tenantSlug && !req.tenantContext.isPlatformAdmin) {
+      const userMemberships = await storage.getTenantMembersByUser(userId);
+      const activeMemberships = (userMemberships || []).filter((m) => m.isActive);
+      if (activeMemberships.length === 1) {
+        const singleTenant = await storage.getTenant(activeMemberships[0].tenantId);
+        if (singleTenant && singleTenant.isActive) {
+          req.tenantContext.tenant = singleTenant;
+          req.tenantContext.membership = {
+            id: activeMemberships[0].id,
+            role: activeMemberships[0].role,
+            canOriginate: (activeMemberships[0] as any).canOriginate ?? (activeMemberships[0].role === "owner"),
+            isActive: activeMemberships[0].isActive,
+          };
+        }
+      }
+      // If activeMemberships.length > 1, do NOT select arbitrarily; keep tenant as null so explicit selection is required
+    }
+
     // Resolve tenant if slug is available
     if (tenantSlug) {
       const tenant = await storage.getTenantBySlug(tenantSlug);
@@ -106,7 +127,12 @@ export const tenantContextMiddleware: RequestHandler = async (req: any, res, nex
         // Get user's membership in this tenant
         const membership = await storage.getUserTenantMembership(userId, tenant.id);
         if (membership) {
-          req.tenantContext.membership = membership;
+          req.tenantContext.membership = {
+            id: membership.id,
+            role: membership.role,
+            canOriginate: (membership as any).canOriginate ?? (membership.role === "owner"),
+            isActive: membership.isActive,
+          };
         }
       }
     }

@@ -92,6 +92,106 @@ export function validateTenantMemberPermissions(params: ValidationParams): {
   return { valid: true, permissions };
 }
 
+export interface CommercialOriginationParams {
+  callerUser: any;
+  callerMembership?: {
+    role: "owner" | "admin" | "member";
+    canOriginate?: boolean | null;
+    isActive?: boolean | null;
+  } | null;
+  tenantId?: string | null;
+  requestedBrokerId?: string | null;
+}
+
+/**
+ * Validates organizational commercial origination and commission attribution (Bloque 4)
+ * Rule:
+ * - tenantId = active organization
+ * - brokerId = accredited broker who commercially originated and earns commission
+ * - createdBy = user capturing/creating the record
+ * - An admin/member with canOriginate: true can originate under their own name.
+ * - An admin/member with canOriginate: false can collaborate/capture records on behalf
+ *   of an accredited broker in the organization, but cannot self-adjudicate commissions.
+ */
+export async function validateCommercialOrigination(
+  params: CommercialOriginationParams,
+  targetStorage: IStorage = storage
+): Promise<{
+  allowed: boolean;
+  message?: string;
+  brokerId?: string;
+}> {
+  const { callerUser, callerMembership, tenantId, requestedBrokerId } = params;
+
+  if (!callerUser) {
+    return { allowed: false, message: "Usuario no autenticado" };
+  }
+
+  // 1. Super admin and platform admin can specify any brokerId or self
+  if (callerUser.role === "super_admin" || callerUser.role === "admin") {
+    return {
+      allowed: true,
+      brokerId: requestedBrokerId || callerUser.id,
+    };
+  }
+
+  // 2. Legacy standalone user without membership
+  if (!callerMembership) {
+    return {
+      allowed: true,
+      brokerId: requestedBrokerId || callerUser.id,
+    };
+  }
+
+  const isOwner = callerMembership.role === "owner";
+  const callerCanOriginate = isOwner || callerMembership.canOriginate === true;
+
+  // Case A: The caller wants to originate in their own name (or brokerId not specified)
+  if (!requestedBrokerId || requestedBrokerId === callerUser.id) {
+    if (!callerCanOriginate) {
+      return {
+        allowed: false,
+        message:
+          "Operación restringida: Para originar una operación y percibir la comisión correspondiente, la capacidad de broker originador está reservada al titular comercial (Owner) o a miembros con capacidad de broker habilitada en tu organización.",
+      };
+    }
+    return {
+      allowed: true,
+      brokerId: callerUser.id,
+    };
+  }
+
+  // Case B: The caller is capturing/collaborating on behalf of another accredited broker in the organization
+  if (tenantId) {
+    const targetMembership = await targetStorage.getUserTenantMembership(requestedBrokerId, tenantId);
+    if (!targetMembership || !targetMembership.isActive) {
+      return {
+        allowed: false,
+        message: "El broker asignado no pertenece como miembro activo a esta organización.",
+      };
+    }
+    const targetCanOriginate = targetMembership.role === "owner" || (targetMembership as any).canOriginate === true;
+    if (!targetCanOriginate) {
+      return {
+        allowed: false,
+        message: "El usuario seleccionado no está habilitado como broker originador en esta organización.",
+      };
+    }
+    return {
+      allowed: true,
+      brokerId: requestedBrokerId,
+    };
+  }
+
+  return {
+    allowed: true,
+    brokerId: requestedBrokerId,
+  };
+}
+
+/**
+ * Backward compatibility wrapper for Bloque 3 checks
+ */
 export async function checkTransactionalCreationAllowed(
   userId: string,
   targetStorage: IStorage = storage
@@ -100,28 +200,14 @@ export async function checkTransactionalCreationAllowed(
   if (!user) {
     return { allowed: false, message: "Usuario no encontrado" };
   }
-  // Super admin and platform admin are never restricted
-  if (user.role === "super_admin" || user.role === "admin") {
-    return { allowed: true };
-  }
-
-  // Check memberships in organizations
   const memberships = await targetStorage.getTenantMembersByUser(userId);
-  if (!memberships || memberships.length === 0) {
-    // Legacy standalone user without organization membership yet
-    return { allowed: true };
-  }
-
-  // Titular owners of any organization are the commercial brokers
-  const isTitularOwner = memberships.some((m) => m.isActive && m.role === "owner");
-  if (isTitularOwner) {
-    return { allowed: true };
-  }
-
-  // Internal non-owner collaborator (member or admin)
-  return {
-    allowed: false,
-    message:
-      "Operación restringida: Los colaboradores internos de la organización tienen perfil operativo/análisis. La originación de clientes y créditos está reservada al titular comercial de la organización hasta la activación del ownership organizacional (Bloque 4).",
-  };
+  const activeMembership = memberships.find((m) => m.isActive);
+  return validateCommercialOrigination(
+    {
+      callerUser: user,
+      callerMembership: activeMembership,
+      tenantId: activeMembership?.tenantId,
+    },
+    targetStorage
+  );
 }
