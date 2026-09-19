@@ -240,6 +240,7 @@ export const clients = pgTable("clients", {
   tieneAvalObligadoSolidarioSinSat: varchar("tiene_aval_obligado_solidario_sin_sat"),
   observacionesAdicionalesSinSat: text("observaciones_adicionales_sin_sat"),
   
+  originOpportunity: varchar("origin_opportunity"), // "hipotecario_vivienda" | "credito_empresarial" | null (legacy sin default)
   notes: text("notes"),
   isActive: boolean("is_active").default(true),
   createdAt: timestamp("created_at").defaultNow(),
@@ -343,6 +344,7 @@ export const credits = pgTable("credits", {
   
   // Final proposal data (set by admin when credit is approved)
   finalProposal: jsonb("final_proposal").default('{}'), // { approvedAmount, term, commissionRates: { masterBroker: {...}, broker: {...} }, commissionsToApply: ['apertura', 'sobretasa'] }
+  mortgageData: jsonb("mortgage_data").default('{}'), // Datos de operación para hipotecario vivienda
   
   notes: text("notes"),
   createdAt: timestamp("created_at").defaultNow(),
@@ -614,6 +616,7 @@ export const creditSubmissionRequests = pgTable("credit_submission_requests", {
   requestedAmount: decimal("requested_amount", { precision: 15, scale: 2 }).notNull(),
   purpose: text("purpose"), // Purpose of the credit
   brokerNotes: text("broker_notes"), // Initial notes from broker
+  mortgageData: jsonb("mortgage_data").default('{}'), // Datos de operación para hipotecario vivienda
   status: varchar("status").notNull().default("pending_admin"), // "pending_admin", "partially_approved", "completed", "cancelled"
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),

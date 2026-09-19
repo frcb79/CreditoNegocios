@@ -29,7 +29,7 @@ const documentTypes = [
   { value: "income_statement", label: "Estado de Cuenta" },
   { value: "bank_statement", label: "Estado de Cuenta Bancario" },
   { value: "tax_return", label: "Declaración Anual" },
-  { value: "other", label: "Otro" },
+  { value: "other", label: "Otro documento" },
 ];
 
 export default function Documents() {
@@ -306,6 +306,11 @@ export default function Documents() {
                           </CardTitle>
                           <p className="text-xs text-neutral">
                             {getDocumentTypeLabel(document.type)}
+                            {(document.extractedData as any)?.customDocumentName && (
+                              <span className="ml-1 font-semibold text-gray-800" data-testid={`text-custom-name-${document.id}`}>
+                                • {(document.extractedData as any).customDocumentName}
+                              </span>
+                            )}
                           </p>
                         </div>
                       </div>

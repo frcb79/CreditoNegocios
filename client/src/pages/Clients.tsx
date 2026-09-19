@@ -5,6 +5,8 @@ import MainLayout from "@/components/MainLayout";
 import Header from "@/components/Header";
 import ClientList from "@/components/Clients/ClientList";
 import ClientForm from "@/components/Clients/ClientForm";
+import NewOpportunityTypeModal from "@/components/Modals/NewOpportunityTypeModal";
+import MortgageLeadModal from "@/components/Modals/MortgageLeadModal";
 import { Client } from "@shared/schema";
 
 type ViewMode = "list" | "form";
@@ -12,6 +14,8 @@ type ViewMode = "list" | "form";
 export default function Clients() {
   const [viewMode, setViewMode] = useState<ViewMode>("list");
   const [editingClient, setEditingClient] = useState<Client | null>(null);
+  const [isTypeModalOpen, setIsTypeModalOpen] = useState(false);
+  const [isMortgageModalOpen, setIsMortgageModalOpen] = useState(false);
   const [, setLocation] = useLocation();
   
   // Check URL for edit query param
@@ -36,8 +40,7 @@ export default function Clients() {
   }, [editClientId, allClients]);
 
   const handleNewClient = () => {
-    setEditingClient(null);
-    setViewMode("form");
+    setIsTypeModalOpen(true);
   };
 
   const handleSelectClient = (client: Client) => {
@@ -76,6 +79,29 @@ export default function Clients() {
           />
         )}
       </main>
+
+      {/* Modal para bifurcación: Crédito Empresarial vs Hipotecario Vivienda */}
+      <NewOpportunityTypeModal
+        isOpen={isTypeModalOpen}
+        onClose={() => setIsTypeModalOpen(false)}
+        onSelectEmpresarial={() => {
+          setEditingClient(null);
+          setViewMode("form");
+        }}
+        onSelectHipotecario={() => {
+          setIsMortgageModalOpen(true);
+        }}
+      />
+
+      {/* Modal unificado para Alta Ágil de Hipotecario Vivienda (Camino A) */}
+      <MortgageLeadModal
+        isOpen={isMortgageModalOpen}
+        onClose={() => setIsMortgageModalOpen(false)}
+        onSuccess={() => {
+          setViewMode("list");
+        }}
+      />
     </MainLayout>
   );
 }
+

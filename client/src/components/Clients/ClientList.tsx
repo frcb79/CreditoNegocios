@@ -237,21 +237,41 @@ export default function ClientList({ onSelectClient, onNewClient }: ClientListPr
                 </div>
                 
                 <div className="text-right flex flex-col items-end space-y-1">
-                  <Badge 
-                    variant="outline"
-                    className={
-                      client.type === 'persona_moral' ? 'bg-blue-50 text-blue-700 border-blue-200' :
-                      client.type === 'fisica_empresarial' ? 'bg-purple-50 text-purple-700 border-purple-200' :
-                      client.type === 'fisica' ? 'bg-green-50 text-green-700 border-green-200' :
-                      'bg-orange-50 text-orange-700 border-orange-200'
-                    }
-                    data-testid={`client-type-${client.id}`}
-                  >
-                    {client.type === 'persona_moral' ? 'PM' :
-                     client.type === 'fisica_empresarial' ? 'PFAE' :
-                     client.type === 'fisica' ? 'PF' :
-                     'Sin SAT'}
-                  </Badge>
+                  <div className="flex items-center gap-1.5 flex-wrap justify-end">
+                    <Badge 
+                      variant="outline"
+                      className={
+                        client.type === 'persona_moral' ? 'bg-blue-50 text-blue-700 border-blue-200' :
+                        client.type === 'fisica_empresarial' ? 'bg-purple-50 text-purple-700 border-purple-200' :
+                        client.type === 'fisica' ? 'bg-green-50 text-green-700 border-green-200' :
+                        'bg-orange-50 text-orange-700 border-orange-200'
+                      }
+                      data-testid={`client-type-${client.id}`}
+                    >
+                      {client.type === 'persona_moral' ? 'PM' :
+                       client.type === 'fisica_empresarial' ? 'PFAE' :
+                       client.type === 'fisica' ? 'PF' :
+                       'Sin SAT'}
+                    </Badge>
+                    {client.originOpportunity === 'hipotecario_vivienda' && (
+                      <Badge
+                        variant="outline"
+                        className="bg-amber-50 text-amber-800 border-amber-300 text-[10px]"
+                        data-testid={`client-origin-${client.id}`}
+                      >
+                        🏠 Hipotecario
+                      </Badge>
+                    )}
+                    {client.originOpportunity === 'credito_empresarial' && (
+                      <Badge
+                        variant="outline"
+                        className="bg-blue-50 text-blue-800 border-blue-200 text-[10px]"
+                        data-testid={`client-origin-${client.id}`}
+                      >
+                        🏢 Empresarial
+                      </Badge>
+                    )}
+                  </div>
                   {client.type === 'fisica' && client.puesto && (
                     <p className="text-xs text-neutral">{client.puesto}</p>
                   )}

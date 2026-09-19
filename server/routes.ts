@@ -2557,6 +2557,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       const clientData = updatedInsertClientSchema.parse({
         ...req.body,
+        originOpportunity: req.body.originOpportunity || 'credito_empresarial',
         tenantId: req.tenantContext?.tenant?.id || null,
         brokerId: originationCheck.brokerId,
         createdBy: userId,
@@ -2577,6 +2578,73 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Error creating client:", error);
       res.status(500).json({ message: "Failed to create client" });
+    }
+  });
+
+  // Check for potential duplicate clients without cross-tenant leak
+  app.post('/api/clients/check-duplicates', isAuthenticated, async (req: any, res) => {
+    try {
+      const { rfc, phone, email } = req.body;
+      if (!rfc && !phone && !email) {
+        return res.json({ hasDuplicate: false });
+      }
+
+      const userId = req.user.claims.sub;
+      const user = await storage.getUser(userId);
+      const userTenantId = req.tenantContext?.tenant?.id || null;
+
+      const cleanRfc = rfc ? String(rfc).trim().toUpperCase() : null;
+      const cleanPhone = phone ? String(phone).replace(/[^0-9]/g, '') : null;
+      const cleanEmail = email ? String(email).trim().toLowerCase() : null;
+
+      // 1. Check in user's tenant / portfolio
+      const tenantClients = await storage.getClients(userTenantId ? { tenantId: userTenantId } : { brokerId: userId });
+      const sameTenantMatch = tenantClients.find(c => {
+        if (cleanRfc && c.rfc && c.rfc.trim().toUpperCase() === cleanRfc) return true;
+        if (cleanPhone && c.phone && c.phone.replace(/[^0-9]/g, '') === cleanPhone) return true;
+        if (cleanEmail && c.email && c.email.trim().toLowerCase() === cleanEmail) return true;
+        return false;
+      });
+
+      if (sameTenantMatch) {
+        return res.json({
+          hasDuplicate: true,
+          isSameTenant: true,
+          existingClient: {
+            id: sameTenantMatch.id,
+            firstName: sameTenantMatch.firstName,
+            lastName: sameTenantMatch.lastName,
+            businessName: sameTenantMatch.businessName,
+            phone: sameTenantMatch.phone,
+            email: sameTenantMatch.email,
+            rfc: sameTenantMatch.rfc,
+            type: sameTenantMatch.type,
+          }
+        });
+      }
+
+      // 2. Check cross-tenant globally (without exposing other tenant data)
+      const allClients = await storage.getClients();
+      const crossMatch = allClients.find(c => {
+        if (userTenantId && c.tenantId === userTenantId) return false;
+        if (!userTenantId && c.brokerId === userId) return false;
+        if (cleanRfc && c.rfc && c.rfc.trim().toUpperCase() === cleanRfc) return true;
+        if (cleanPhone && c.phone && c.phone.replace(/[^0-9]/g, '') === cleanPhone) return true;
+        if (cleanEmail && c.email && c.email.trim().toLowerCase() === cleanEmail) return true;
+        return false;
+      });
+
+      if (crossMatch) {
+        return res.json({
+          hasDuplicate: true,
+          isSameTenant: false,
+        });
+      }
+
+      return res.json({ hasDuplicate: false });
+    } catch (error: any) {
+      console.error("Error checking client duplicates:", error);
+      res.status(500).json({ message: "Error al verificar duplicados" });
     }
   });
 
@@ -4252,7 +4320,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
     try {
       const userId = req.user.claims.sub;
-      const { clientId, creditId, type } = req.body;
+      const { clientId, creditId, type, customDocumentName } = req.body;
       const file = req.file;
       
       if (!file) {
@@ -4276,7 +4344,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
       }
       
-      const extractedData = getDocumentExtractedData();
+      const extractedData = {
+        ...getDocumentExtractedData(),
+        ...(customDocumentName ? { customDocumentName: String(customDocumentName).trim() } : {}),
+      };
       const storedFile = await persistDocumentFile(file, {
         brokerId: documentBrokerId,
         clientId: clientId || null,
@@ -6551,6 +6622,292 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Helper function to find or create the official Hipotecario Vivienda product template
+  async function ensureHipotecarioViviendaTemplate(): Promise<any> {
+    const templates = await storage.getProductTemplates();
+    const existing = templates.find(t => 
+      t.name?.toLowerCase().trim() === 'hipotecario vivienda' ||
+      (t.category === 'hipotecario' && !t.name?.toLowerCase().includes('garantía inmobiliaria') && !t.name?.toLowerCase().includes('garantia inmobiliaria'))
+    );
+    if (existing) return existing;
+
+    const allUsers = await storage.getAllUsers();
+    const admin = allUsers.find(u => u.role === 'super_admin' || u.role === 'admin');
+    const createdBy = admin?.id || 'user-super-admin';
+
+    return await storage.createProductTemplate({
+      name: 'Hipotecario Vivienda',
+      description: 'Crédito hipotecario para adquisición de vivienda residencial (casa o departamento).',
+      category: 'hipotecario',
+      targetProfiles: ['fisica', 'fisica_empresarial'],
+      availableVariables: {
+        valor_inmueble: { type: 'number', label: 'Valor del Inmueble' },
+        enganche: { type: 'number', label: 'Enganche' },
+        plazo_meses: { type: 'number', label: 'Plazo en Meses' },
+      },
+      baseConfiguration: {
+        maxLTV: 90,
+        minTermMonths: 60,
+        maxTermMonths: 360,
+      },
+      isActive: true,
+      createdBy,
+    });
+  }
+
+  // POST /api/mortgage-leads - Atomic registration of Hipotecario Vivienda opportunity
+  // Camino A (New prospect): Creates Client + Oportunidad vinculada in 1 atomic operation
+  // Camino B (Existing client): Reuses Client and creates Oportunidad vinculada without duplicate client
+  // EVENT 1: Registers opportunity. Targets are NOT created unless explicitly selected/channeled.
+  app.post('/api/mortgage-leads', isAuthenticated, requireModuleAndAction('creditos', 'submit_proposals'), async (req: any, res) => {
+    let createdClientId: string | null = null;
+    try {
+      const userId = req.user.claims.sub;
+      const user = await storage.getUser(userId);
+
+      const allowedRoles = ['broker', 'master_broker', 'admin', 'super_admin'];
+      if (!user || !allowedRoles.includes(user.role)) {
+        return res.status(403).json({ message: "No tienes permiso para registrar operaciones hipotecarias" });
+      }
+
+      const originationCheck = await validateCommercialOrigination({
+        callerUser: user,
+        callerMembership: req.tenantContext?.membership,
+        tenantId: req.tenantContext?.tenant?.id,
+        requestedBrokerId: req.body.brokerId,
+      });
+
+      if (!originationCheck.allowed) {
+        return res.status(403).json({ message: originationCheck.message });
+      }
+
+      const tenantId = req.tenantContext?.tenant?.id || null;
+      const brokerId = originationCheck.brokerId;
+
+      const {
+        clientId, // Camino B if present
+        firstName,
+        lastName,
+        phone,
+        email,
+        rfc,
+        propertyValue,
+        requestedAmount,
+        downPayment,
+        financedPercentage,
+        propertyLocation,
+        requestedTermMonths,
+        monthlyIncome,
+        incomeType,
+        hasCoBorrower,
+        coBorrowerIncome,
+        brokerNotes,
+        financialInstitutionIds, // Optional: if provided, targets are created (Event 2)
+      } = req.body;
+
+      if (!requestedAmount || parseFloat(requestedAmount.toString()) <= 0) {
+        return res.status(400).json({ message: "El monto solicitado es requerido y debe ser mayor a cero" });
+      }
+
+      // Ensure Hipotecario Vivienda template exists
+      const hipoTemplate = await ensureHipotecarioViviendaTemplate();
+
+      let finalClientId = clientId;
+
+      // Camino A: Nuevo cliente
+      if (!finalClientId) {
+        if (!firstName || !phone || !email) {
+          return res.status(400).json({ message: "Nombre, teléfono y correo electrónico son requeridos para dar de alta al prospecto" });
+        }
+
+        const clientType = incomeType === 'empresario' ? 'fisica_empresarial' : 'fisica';
+        const clientData = updatedInsertClientSchema.parse({
+          tenantId,
+          brokerId,
+          createdBy: userId,
+          type: clientType,
+          firstName: String(firstName).trim(),
+          lastName: lastName ? String(lastName).trim() : '',
+          phone: String(phone).trim(),
+          email: String(email).trim(),
+          rfc: rfc ? String(rfc).trim().toUpperCase() : null,
+          originOpportunity: 'hipotecario_vivienda',
+          ingresoMensualPromedio: monthlyIncome ? monthlyIncome.toString() : null,
+          montoSolicitado: requestedAmount.toString(),
+          address: propertyLocation || null,
+          street: propertyLocation || null,
+        });
+
+        const newClient = await storage.createClient(clientData);
+        finalClientId = newClient.id;
+        createdClientId = newClient.id; // Retained for rollback if submission creation fails
+      } else {
+        // Camino B: Validar cliente existente
+        const existingClient = await storage.getClient(finalClientId);
+        if (!existingClient) {
+          return res.status(404).json({ message: "Cliente no encontrado" });
+        }
+      }
+
+      const mortgageData = {
+        propertyValue: propertyValue || null,
+        requestedAmount: requestedAmount || null,
+        downPayment: downPayment || null,
+        financedPercentage: financedPercentage || null,
+        propertyLocation: propertyLocation || null,
+        requestedTermMonths: requestedTermMonths || null,
+        monthlyIncome: monthlyIncome || null,
+        incomeType: incomeType || 'asalariado',
+        hasCoBorrower: !!hasCoBorrower,
+        coBorrowerIncome: hasCoBorrower ? (coBorrowerIncome || null) : null,
+      };
+
+      const purpose = "Adquisición de Vivienda / Crédito Hipotecario";
+
+      const submissionData = insertCreditSubmissionRequestSchema.parse({
+        tenantId,
+        clientId: finalClientId,
+        brokerId,
+        createdBy: userId,
+        productTemplateId: hipoTemplate.id,
+        requestedAmount: requestedAmount.toString(),
+        purpose,
+        brokerNotes: brokerNotes || `Solicitud Hipotecario Vivienda. Ubicación: ${propertyLocation || 'No especificada'}`,
+        mortgageData,
+        status: 'pending_admin',
+      });
+
+      let submission;
+      try {
+        submission = await storage.createCreditSubmissionRequest(submissionData);
+      } catch (subErr) {
+        // Rollback: if client was just created, delete it so we don't leave orphaned clients
+        if (createdClientId) {
+          try {
+            await storage.deleteClient(createdClientId);
+            console.log(`[Rollback] Eliminado cliente huérfano ${createdClientId} tras fallo en creación de solicitud`);
+          } catch (delErr) {
+            console.error("[Rollback] Error al eliminar cliente huérfano:", delErr);
+          }
+        }
+        throw subErr;
+      }
+
+      // EVENT 2: Targets created only if explicitly selected/channeled
+      const targets = [];
+      if (Array.isArray(financialInstitutionIds) && financialInstitutionIds.length > 0) {
+        for (const institutionId of financialInstitutionIds) {
+          const target = await storage.createCreditSubmissionTarget({
+            requestId: submission.id,
+            financialInstitutionId: institutionId,
+            status: 'pending_admin',
+          });
+          targets.push(target);
+        }
+      }
+
+      // Notifications
+      try {
+        const client = await storage.getClient(finalClientId);
+        const clientName = client ? `${client.firstName || ''} ${client.lastName || ''}`.trim() : 'Prospecto Hipotecario';
+        const formattedAmount = `$${parseFloat(requestedAmount.toString()).toLocaleString('es-MX')} MXN`;
+
+        const allUsers = await storage.getAllUsers();
+        const admins = allUsers.filter(u => u.role === 'admin' || u.role === 'super_admin');
+
+        for (const admin of admins) {
+          const adminNotif = await storage.createNotification({
+            userId: admin.id,
+            type: 'credit_submission_created',
+            title: 'Nueva oportunidad Hipotecario Vivienda',
+            message: `Oportunidad hipotecaria para ${clientName} por ${formattedAmount}. Registrada por ${user.firstName} ${user.lastName || ''}.`,
+            relatedEntityType: 'credit_submission',
+            relatedEntityId: submission.id,
+            priority: 'high',
+          });
+          broadcastToUser(admin.id, { type: 'notification', notification: adminNotif });
+          broadcastToUser(admin.id, { type: 'submission_created', submissionId: submission.id });
+        }
+
+        if (user.masterBrokerId) {
+          const mbNotif = await storage.createNotification({
+            userId: user.masterBrokerId,
+            type: 'credit_submission_created',
+            title: 'Nueva oportunidad hipotecaria en tu red',
+            message: `${user.firstName} ${user.lastName || ''} registró una oportunidad hipotecaria para ${clientName} por ${formattedAmount}.`,
+            relatedEntityType: 'credit_submission',
+            relatedEntityId: submission.id,
+            priority: 'normal',
+          });
+          broadcastToUser(user.masterBrokerId, { type: 'notification', notification: mbNotif });
+          broadcastToUser(user.masterBrokerId, { type: 'submission_created', submissionId: submission.id });
+        }
+      } catch (notifErr) {
+        console.error("Error creating notifications for mortgage lead:", notifErr);
+      }
+
+      const finalClient = await storage.getClient(finalClientId);
+      res.status(201).json({
+        client: finalClient,
+        submission,
+        targets,
+        message: targets.length > 0
+          ? "Oportunidad hipotecaria registrada y canalizada exitosamente"
+          : "Oportunidad hipotecaria registrada exitosamente para revisión y canalización"
+      });
+    } catch (error: any) {
+      if (createdClientId) {
+        try {
+          await storage.deleteClient(createdClientId);
+        } catch (delErr) {
+          console.error("[Rollback] Error al revertir cliente:", delErr);
+        }
+      }
+      console.error("Error creating mortgage lead:", error);
+      res.status(500).json({ message: error.message || "Error al registrar la oportunidad hipotecaria" });
+    }
+  });
+
+  // POST /api/credit-submissions/:id/targets - Channel submission to institutions (EVENT 2)
+  app.post('/api/credit-submissions/:id/targets', isAuthenticated, requireModuleAndAction('creditos', 'submit_proposals'), async (req: any, res) => {
+    try {
+      const { id } = req.params;
+      const { financialInstitutionIds } = req.body;
+
+      if (!Array.isArray(financialInstitutionIds) || financialInstitutionIds.length === 0) {
+        return res.status(400).json({ message: "Debes seleccionar al menos una institución financiera para canalizar" });
+      }
+
+      const submission = await storage.getCreditSubmissionRequest(id);
+      if (!submission) {
+        return res.status(404).json({ message: "Solicitud de crédito no encontrada" });
+      }
+
+      const existingTargets = await storage.getCreditSubmissionTargets({ requestId: id });
+      const existingInstIds = new Set(existingTargets.map(t => t.financialInstitutionId));
+
+      const newTargets = [];
+      for (const institutionId of financialInstitutionIds) {
+        if (!existingInstIds.has(institutionId)) {
+          const target = await storage.createCreditSubmissionTarget({
+            requestId: id,
+            financialInstitutionId: institutionId,
+            status: 'pending_admin',
+          });
+          newTargets.push(target);
+        }
+      }
+
+      res.status(201).json({
+        message: `Solicitud canalizada a ${newTargets.length} financiera(s)`,
+        targets: newTargets,
+      });
+    } catch (error: any) {
+      console.error("Error channeling submission:", error);
+      res.status(500).json({ message: "Error al canalizar la solicitud" });
+    }
+  });
+
   // Get credit submission targets
   app.get('/api/credit-submission-targets', isAuthenticated, requireAnyModule('aprobaciones', 'creditos'), async (req: any, res) => {
     try {
@@ -7242,6 +7599,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         interestRate: proposal.interestRate?.toString(),
         term: proposal.term,
         purpose: request.purpose,
+        mortgageData: request.mortgageData || {},
         status: 'approved',
       });
 
@@ -7349,6 +7707,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           ...(resolvedTenantId ? { tenantId: resolvedTenantId } : {}),
           linkedSubmissionId: request.id, // Backfill link to original submission
           productTemplateId: request.productTemplateId, // Backfill product template
+          mortgageData: request.mortgageData || {},
         });
       } else {
         // Create new credit in credits table with linked submission
@@ -7363,6 +7722,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           interestRate: proposal.interestRate?.toString(),
           term: proposal.term,
           purpose: request.purpose,
+          mortgageData: request.mortgageData || {},
           status: 'disbursed', // Start as disbursed since we're dispersing it
         });
       }

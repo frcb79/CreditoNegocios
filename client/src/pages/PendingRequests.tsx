@@ -713,6 +713,11 @@ export default function PendingRequests() {
                                 </Badge>
                               )}
                               {getStatusBadge(predominantStatus)}
+                              {(((submission as any).mortgageData && Object.keys((submission as any).mortgageData).length > 0) || submission.productTemplate?.name?.toLowerCase().includes("hipotecario")) && (
+                                <Badge variant="outline" className="bg-amber-50 text-amber-800 border-amber-300 text-xs font-semibold" data-testid={`badge-mortgage-${requestId}`}>
+                                  🏠 Hipotecario Vivienda
+                                </Badge>
+                              )}
                             </div>
                             
                             {/* Grid de información principal del submission */}

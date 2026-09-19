@@ -476,6 +476,11 @@ export default function CreditList() {
                       ) : null}
                       {item.term && <span className="text-xs text-neutral">• {item.term} meses</span>}
                       {item.productTemplateName && <span className="text-xs text-neutral">• {item.productTemplateName}</span>}
+                      {(item.productTemplateName?.toLowerCase().includes("hipotecario") || (item.rawSubmission?.mortgageData && Object.keys(item.rawSubmission.mortgageData).length > 0) || (item.rawCredit?.mortgageData && Object.keys(item.rawCredit.mortgageData).length > 0)) && (
+                        <Badge variant="outline" className="bg-amber-50 text-amber-800 border-amber-300 text-xs font-semibold" data-testid={`badge-mortgage-${item.id}`}>
+                          🏠 Hipotecario Vivienda
+                        </Badge>
+                      )}
                     </div>
                     <p className="text-xs text-neutral mt-0.5">
                       {item.type === 'submission' ? 'Solicitud' : 'Crédito'} • Creado {formatDistanceToNow(new Date(item.createdAt), { 

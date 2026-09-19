@@ -247,6 +247,11 @@ export default function MySubmissions() {
                             <Badge className={getStatusBadgeClass(credit.status)}>
                               {getStatusLabel(credit.status)}
                             </Badge>
+                            {(((credit as any).mortgageData && Object.keys((credit as any).mortgageData).length > 0) || credit.productTemplate?.name?.toLowerCase().includes("hipotecario")) && (
+                              <Badge variant="outline" className="bg-amber-50 text-amber-800 border-amber-300 text-xs font-semibold" data-testid={`badge-mortgage-${credit.id}`}>
+                                🏠 Hipotecario Vivienda
+                              </Badge>
+                            )}
                             {isMasterBroker && activeTab === 'network' && (
                               <Badge variant="outline" className="bg-purple-50 text-purple-800 border-purple-200 text-xs">
                                 <User className="w-3 h-3 mr-1" />
@@ -460,6 +465,35 @@ export default function MySubmissions() {
                     )}
                   </div>
                 </div>
+
+                {/* Datos de la Operación Hipotecaria si aplica */}
+                {(selectedCredit as any).mortgageData && Object.keys((selectedCredit as any).mortgageData).length > 0 && (
+                  <div className="p-4 bg-amber-50/60 rounded-xl border border-amber-200/80 space-y-3" data-testid="mortgage-data-details">
+                    <h4 className="text-xs font-bold text-amber-900 uppercase flex items-center gap-1.5">
+                      <span>🏠</span> Datos de la Operación Hipotecaria
+                    </h4>
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 text-xs">
+                      {(selectedCredit as any).mortgageData.propertyValue && (
+                        <div>
+                          <span className="text-gray-500">Valor Inmueble:</span>
+                          <p className="font-semibold text-gray-900">${parseFloat((selectedCredit as any).mortgageData.propertyValue).toLocaleString('es-MX')} MXN</p>
+                        </div>
+                      )}
+                      {(selectedCredit as any).mortgageData.financedPercentage && (
+                        <div>
+                          <span className="text-gray-500">Aforo / Financiado:</span>
+                          <p className="font-semibold text-amber-800">{(selectedCredit as any).mortgageData.financedPercentage}%</p>
+                        </div>
+                      )}
+                      {(selectedCredit as any).mortgageData.propertyLocation && (
+                        <div className="col-span-2">
+                          <span className="text-gray-500">Ubicación Inmueble:</span>
+                          <p className="font-medium text-gray-800">{(selectedCredit as any).mortgageData.propertyLocation}</p>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
 
                 {/* Financieras y Propuestas de la Solicitud */}
                 {selectedCredit.targets && selectedCredit.targets.length > 0 && (

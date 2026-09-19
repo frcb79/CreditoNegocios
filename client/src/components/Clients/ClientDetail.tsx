@@ -35,6 +35,8 @@ import {
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import CreditRequestModal from "@/components/Modals/CreditRequestModal";
+import NewOpportunityTypeModal from "@/components/Modals/NewOpportunityTypeModal";
+import MortgageLeadModal from "@/components/Modals/MortgageLeadModal";
 
 interface ClientDetailProps {
   clientId: string;
@@ -45,6 +47,8 @@ interface ClientDetailProps {
 export default function ClientDetail({ clientId, onEdit, onClose }: ClientDetailProps) {
   const [showHistoryForm, setShowHistoryForm] = useState(false);
   const [showCreditRequestModal, setShowCreditRequestModal] = useState(false);
+  const [showOpportunityTypeModal, setShowOpportunityTypeModal] = useState(false);
+  const [showMortgageLeadModal, setShowMortgageLeadModal] = useState(false);
   const { toast } = useToast();
 
   const formatCurrency = (value: string | number | null | undefined): string => {
@@ -148,6 +152,16 @@ export default function ClientDetail({ clientId, onEdit, onClose }: ClientDetail
                 <Badge className={getClientTypeColor(client.type)} data-testid="client-type-badge">
                   {getClientTypeLabel(client.type)}
                 </Badge>
+                {client.originOpportunity === 'hipotecario_vivienda' && (
+                  <Badge variant="outline" className="bg-amber-50 text-amber-800 border-amber-300 flex items-center gap-1 text-xs" data-testid="client-origin-badge">
+                    <span>🏠</span> Origen: Hipotecario Vivienda
+                  </Badge>
+                )}
+                {client.originOpportunity === 'credito_empresarial' && (
+                  <Badge variant="outline" className="bg-blue-50 text-blue-800 border-blue-200 flex items-center gap-1 text-xs" data-testid="client-origin-badge">
+                    <span>🏢</span> Origen: Crédito Empresarial
+                  </Badge>
+                )}
                 <Badge 
                   variant={client.isActive ? "default" : "secondary"}
                   className={client.isActive ? "bg-green-100 text-green-800" : ""}
@@ -183,11 +197,11 @@ export default function ClientDetail({ clientId, onEdit, onClose }: ClientDetail
           </Button>
           <Button 
             className="bg-green-600 text-white hover:bg-green-700"
-            onClick={() => setShowCreditRequestModal(true)}
+            onClick={() => setShowOpportunityTypeModal(true)}
             data-testid="button-new-credit"
           >
             <CreditCard className="h-4 w-4 mr-2" />
-            Nuevo Crédito
+            Nueva Oportunidad
           </Button>
           <Button 
             variant="outline"
@@ -581,11 +595,26 @@ export default function ClientDetail({ clientId, onEdit, onClose }: ClientDetail
         clientId={clientId}
       />
 
-      {/* Credit Request Modal */}
+      {/* Credit Request Modal (Empresarial) */}
       <CreditRequestModal
         isOpen={showCreditRequestModal}
         onClose={() => setShowCreditRequestModal(false)}
         preselectedClientId={clientId}
+      />
+
+      {/* New Opportunity Type Modal (Bifurcación) */}
+      <NewOpportunityTypeModal
+        isOpen={showOpportunityTypeModal}
+        onClose={() => setShowOpportunityTypeModal(false)}
+        onSelectEmpresarial={() => setShowCreditRequestModal(true)}
+        onSelectHipotecario={() => setShowMortgageLeadModal(true)}
+      />
+
+      {/* Mortgage Lead Modal (Camino B con existingClient) */}
+      <MortgageLeadModal
+        isOpen={showMortgageLeadModal}
+        onClose={() => setShowMortgageLeadModal(false)}
+        existingClient={client}
       />
     </div>
   );

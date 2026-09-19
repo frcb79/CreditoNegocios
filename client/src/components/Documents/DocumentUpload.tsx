@@ -24,13 +24,14 @@ const documentTypes = [
   { value: "income_statement", label: "Estado de Cuenta" },
   { value: "bank_statement", label: "Estado de Cuenta Bancario" },
   { value: "tax_return", label: "Declaración Anual" },
-  { value: "other", label: "Otro" },
+  { value: "other", label: "Otro documento" },
 ];
 
 const uploadSchema = z.object({
   clientId: z.string().optional(),
   creditId: z.string().optional(),
   type: z.string().min(1, "Tipo de documento requerido"),
+  customDocumentName: z.string().optional(),
   file: z.any().optional(),
 });
 
@@ -60,6 +61,7 @@ export default function DocumentUpload({
       clientId: editingDocument?.clientId || preselectedClientId || "no-client",
       creditId: editingDocument?.creditId || preselectedCreditId || "no-client",
       type: editingDocument?.type || "",
+      customDocumentName: editingDocument?.extractedData?.customDocumentName || "",
       file: null,
     },
   });
@@ -108,6 +110,9 @@ export default function DocumentUpload({
     }
     
     formData.append("type", data.type);
+    if (data.customDocumentName) {
+      formData.append("customDocumentName", data.customDocumentName);
+    }
     if (data.clientId && data.clientId !== "no-client") {
       formData.append("clientId", data.clientId);
     }
@@ -196,6 +201,26 @@ export default function DocumentUpload({
                 )}
               />
             </div>
+
+            {form.watch("type") === "other" && (
+              <FormField
+                control={form.control}
+                name="customDocumentName"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Nombre del documento *</FormLabel>
+                    <FormControl>
+                      <Input
+                        placeholder="Ej: Escritura pública del inmueble, Boleta predial, etc."
+                        {...field}
+                        data-testid="input-custom-document-name"
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            )}
 
             <FormField
               control={form.control}
