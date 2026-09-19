@@ -8,7 +8,7 @@ if (!fs.existsSync(SCREENSHOT_DIR)) {
 }
 
 // Staging or local URL
-const BASE_URL = process.env.BASE_URL || process.env.E2E_BASE_URL || 'http://127.0.0.1:5050';
+const BASE_URL = process.env.STAGING_URL || process.env.BACKEND_URL || process.env.BASE_URL || process.env.E2E_BASE_URL || 'https://creditonegocios-staging.up.railway.app';
 
 const SA_EMAIL = process.env.STAGING_ADMIN_EMAIL || 'francocb79@gmail.com';
 const SA_PASSWORD = process.env.STAGING_ADMIN_PASSWORD || 'Prueba1$';

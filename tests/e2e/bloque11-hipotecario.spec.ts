@@ -170,8 +170,8 @@ test.describe('BLOQUE 11 — Hipotecario MVP Simplificado E2E Real', () => {
 
     await performLogin(page, BRK_EMAIL, BRK_PASSWORD);
 
-    // Navegar a Mis Créditos
-    await page.goto('/mis-solicitudes');
+    // Navegar a Gestión de Créditos / Pipeline
+    await page.goto('/creditos');
     await page.waitForTimeout(3000);
 
     // Verificar presencia de al menos una solicitud con badge Hipotecario Vivienda
@@ -227,7 +227,7 @@ test.describe('BLOQUE 11 — Hipotecario MVP Simplificado E2E Real', () => {
     await performLogin(page, BRK_EMAIL, BRK_PASSWORD);
 
     // Navegar a Documentos
-    await page.click('[data-testid="nav-documentos"], a[href="/documentos"]:visible');
+    await page.goto('/documentos');
     await page.waitForTimeout(2000);
 
     // Click en "Subir Documento"

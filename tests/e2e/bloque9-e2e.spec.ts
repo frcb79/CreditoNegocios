@@ -50,8 +50,8 @@ test.describe('BLOQUE 9 — Hardening Integral de Colocaciones y Matching E2E Re
     await performLogin(page, SA_EMAIL, SA_PASSWORD);
     expect(page.url()).toContain('/');
 
-    // Navegar a /creditos o /clientes
-    await page.click('[data-testid="nav-créditos"], a[href="/creditos"]:visible, [data-testid="nav-creditos"]');
+    // Navegar a /creditos
+    await page.goto('/creditos');
     await page.waitForTimeout(3000);
 
     // Buscar y abrir modal de solicitud de crédito

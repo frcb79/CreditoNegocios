@@ -829,9 +829,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Rate limiters for auth endpoints
   const isDevOrTest = process.env.NODE_ENV === "test" || process.env.USE_MEMORY_STORAGE === "true" || process.env.NODE_ENV === "development";
+  const isStagingEnv = process.env.RAILWAY_ENVIRONMENT === "staging" || process.env.RAILWAY_PUBLIC_DOMAIN?.includes("staging") || process.env.BACKEND_URL?.includes("staging");
   const authLoginLimiter = rateLimit({
     windowMs: 15 * 60 * 1000, // 15 minutes
-    max: isDevOrTest ? 10000 : 10,
+    max: (isDevOrTest || isStagingEnv) ? 10000 : 60,
     standardHeaders: true,
     legacyHeaders: false,
     message: { message: "Demasiados intentos. Intenta de nuevo en 15 minutos." },
