@@ -4,6 +4,7 @@
 export const ALL_STATUS_LABELS: Record<string, string> = {
   pending_admin: "Pendiente de revisión",
   under_review: "En revisión",
+  in_review: "En revisión",
   en_revision: "En revisión",
   evaluating: "En evaluación",
   submitted: "En validación",
@@ -57,6 +58,7 @@ export const submissionStatusConfig: Record<string, { label: string; color: stri
   submitted: { label: "En validación", color: "bg-blue-50 text-blue-700 border-blue-200 font-medium" },
   pending_admin: { label: "Pendiente de revisión", color: "bg-amber-100 text-amber-800 border-amber-300 font-semibold" },
   under_review: { label: "En revisión", color: "bg-amber-100 text-amber-800 border-amber-300 font-medium" },
+  in_review: { label: "En revisión", color: "bg-amber-100 text-amber-800 border-amber-300 font-medium" },
   returned_to_broker: { label: "Devuelto al broker", color: "bg-orange-100 text-orange-800 border-orange-300 font-medium" },
   sent_to_institutions: { label: "Enviado a financieras", color: "bg-blue-100 text-blue-800 border-blue-300 font-semibold" },
   sent: { label: "Enviado a financieras", color: "bg-blue-100 text-blue-800 border-blue-300 font-semibold" },
@@ -70,6 +72,8 @@ export const submissionStatusConfig: Record<string, { label: string; color: stri
 
 export const targetStatusConfig: Record<string, { label: string; color: string }> = {
   pending_admin: { label: "Pendiente de revisión", color: "bg-amber-100 text-amber-800 border-amber-300 font-semibold" },
+  under_review: { label: "En revisión", color: "bg-amber-100 text-amber-800 border-amber-300 font-medium" },
+  in_review: { label: "En revisión", color: "bg-amber-100 text-amber-800 border-amber-300 font-medium" },
   approved: { label: "Aprobado", color: "bg-emerald-50 text-emerald-700 border-emerald-300 font-medium" },
   returned_to_broker: { label: "Devuelto al broker", color: "bg-orange-100 text-orange-800 border-orange-300 font-medium" },
   sent: { label: "Enviado a financieras", color: "bg-blue-100 text-blue-800 border-blue-300 font-semibold" },
@@ -87,6 +91,7 @@ export const targetStatusConfig: Record<string, { label: string; color: string }
 export const creditStatusConfig: Record<string, { label: string; color: string }> = {
   pending_admin: { label: "Pendiente de revisión", color: "bg-amber-100 text-amber-800 border-amber-300 font-semibold" },
   under_review: { label: "En revisión", color: "bg-amber-100 text-amber-800 border-amber-300 font-medium" },
+  in_review: { label: "En revisión", color: "bg-amber-100 text-amber-800 border-amber-300 font-medium" },
   approved: { label: "Aprobado", color: "bg-emerald-100 text-emerald-800 border-emerald-300 font-medium" },
   sent: { label: "Enviado a financieras", color: "bg-blue-100 text-blue-800 border-blue-300 font-semibold" },
   sent_to_institutions: { label: "Enviado a financieras", color: "bg-blue-100 text-blue-800 border-blue-300 font-semibold" },

@@ -14,6 +14,7 @@ vite.config.ts.*
 flujo-1a1-report.json
 flujo-completo-report.json
 smoke-report-prod.json
+audit-staging-report.json
 backups/
 coverage/
 playwright-report/

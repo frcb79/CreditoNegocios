@@ -318,9 +318,17 @@ export async function createCascadingCommissionRecord(
     } catch (e) {}
   } else {
     const linkedCredit = await storage.getCredit(creditId);
+    let resolvedTenantId = linkedCredit?.tenantId || null;
+    if (!resolvedTenantId && brokerId) {
+      try {
+        const memberships = await storage.getTenantMembersByUser(brokerId);
+        const activeMem = memberships.find((m: any) => m.isActive);
+        if (activeMem) resolvedTenantId = activeMem.tenantId;
+      } catch (e) {}
+    }
     commission = await storage.createCommission({
       creditId,
-      tenantId: linkedCredit?.tenantId || null,
+      tenantId: resolvedTenantId,
       brokerId,
       masterBrokerId: masterBrokerId || null,
       amount: totalGrossAmount.toFixed(2),
@@ -6802,8 +6810,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
         status: 'selected_winner',
       });
 
+      const client = await storage.getClient(request.clientId);
+      const resolvedTenantId = request.tenantId || client?.tenantId || null;
       const proposal = target.institutionProposal as any;
       const credit = await storage.createCredit({
+        tenantId: resolvedTenantId,
         clientId: request.clientId,
         brokerId: request.brokerId,
         financialInstitutionId: target.financialInstitutionId,
@@ -6909,18 +6920,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       let credit;
       const proposal = target.institutionProposal as any;
+      const client = await storage.getClient(request.clientId);
+      const resolvedTenantId = request.tenantId || client?.tenantId || null;
       
       // Check if credit already exists (from select-winner flow)
       if (target.creditId) {
         // Reuse existing credit, update status AND backfill linked fields
         credit = await storage.updateCredit(target.creditId, {
           status: 'disbursed',
+          ...(resolvedTenantId ? { tenantId: resolvedTenantId } : {}),
           linkedSubmissionId: request.id, // Backfill link to original submission
           productTemplateId: request.productTemplateId, // Backfill product template
         });
       } else {
         // Create new credit in credits table with linked submission
         credit = await storage.createCredit({
+          tenantId: resolvedTenantId,
           clientId: request.clientId,
           brokerId: request.brokerId,
           financialInstitutionId: target.financialInstitutionId,
