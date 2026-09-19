@@ -44,7 +44,12 @@ import {
   insertUserSchema,
   insertFinancialInstitutionRequestSchema,
   createTenantMemberSchema,
-  updateTenantMemberSchema
+  updateTenantMemberSchema,
+  insertPromoCodeSchema,
+  insertPromoRedemptionSchema,
+  redeemPromoCodeSchema,
+  validatePromoCodeSchema,
+  updateUserAccessStatusSchema
 } from "../shared/schema";
 import { z } from "zod";
 import multer from "multer";
@@ -823,9 +828,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Rate limiters for auth endpoints
+  const isDevOrTest = process.env.NODE_ENV === "test" || process.env.USE_MEMORY_STORAGE === "true" || process.env.NODE_ENV === "development";
   const authLoginLimiter = rateLimit({
     windowMs: 15 * 60 * 1000, // 15 minutes
-    max: 10,
+    max: isDevOrTest ? 10000 : 10,
     standardHeaders: true,
     legacyHeaders: false,
     message: { message: "Demasiados intentos. Intenta de nuevo en 15 minutos." },
@@ -833,7 +839,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   const authMutationLimiter = rateLimit({
     windowMs: 15 * 60 * 1000,
-    max: 5,
+    max: isDevOrTest ? 10000 : 5,
     standardHeaders: true,
     legacyHeaders: false,
     message: { message: "Demasiados intentos. Intenta de nuevo en 15 minutos." },
@@ -914,6 +920,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     firstName: z.string().min(1, "Nombre requerido"),
     lastName: z.string().min(1, "Apellido requerido"),
     referralCode: z.string().optional(), // Clave de Franquicia del Master Broker
+    promoCode: z.string().optional(), // Código promocional (beneficio comercial)
   });
 
   app.post('/api/auth/register', authMutationLimiter, async (req: any, res) => {
@@ -940,6 +947,43 @@ export async function registerRoutes(app: Express): Promise<Server> {
           return res.status(400).json({ message: "La clave de franquicia ingresada no es válida." });
         }
       }
+
+      // Validate promotional code if provided
+      let validatedPromo: any = null;
+      let targetAccessStatus = "free";
+      let targetExpiresAt: Date | null = null;
+
+      if (data.promoCode && data.promoCode.trim()) {
+        const cleanPromo = data.promoCode.trim().toUpperCase();
+        const promo = await storage.getPromoCodeByCode(cleanPromo);
+        if (!promo || !promo.isActive) {
+          return res.status(400).json({ message: "El código promocional no es válido o está inactivo." });
+        }
+        if (new Date(promo.startsAt) > new Date()) {
+          return res.status(400).json({ message: "El código promocional aún no está vigente." });
+        }
+        if (promo.expiresAt && new Date(promo.expiresAt) < new Date()) {
+          return res.status(400).json({ message: "El código promocional ha expirado." });
+        }
+        if (promo.maxUses !== null && promo.maxUses !== undefined && (promo.currentUses || 0) >= promo.maxUses) {
+          return res.status(400).json({ message: "El código promocional ha alcanzado el límite máximo de usos." });
+        }
+
+        validatedPromo = promo;
+        if (promo.benefitType === "permanent_free") {
+          targetAccessStatus = "complimentary";
+          targetExpiresAt = null;
+        } else if (promo.benefitType === "free_months") {
+          targetAccessStatus = "promotional";
+          targetExpiresAt = new Date(Date.now() + (promo.durationMonths || 1) * 30 * 24 * 60 * 60 * 1000);
+        } else if (promo.benefitType === "free") {
+          targetAccessStatus = "free";
+          targetExpiresAt = null;
+        } else {
+          targetAccessStatus = "promotional";
+          targetExpiresAt = promo.durationMonths ? new Date(Date.now() + promo.durationMonths * 30 * 24 * 60 * 60 * 1000) : null;
+        }
+      }
       
       // Hash password
       const saltRounds = 10;
@@ -955,6 +999,31 @@ export async function registerRoutes(app: Express): Promise<Server> {
         role: "broker", // Default role for new registrations
         masterBrokerId,
       });
+
+      // Apply promotional redemption if promo was supplied
+      if (validatedPromo) {
+        try {
+          await storage.createPromoRedemption({
+            promoCodeId: validatedPromo.id,
+            userId: user.id,
+            tenantId: (user as any).tenantId || null,
+            startsAt: new Date(),
+            expiresAt: targetExpiresAt,
+            status: "active",
+            metadata: { registeredWithPromo: true, code: validatedPromo.code }
+          });
+
+          await storage.updateUserAccessStatus(
+            user.id,
+            targetAccessStatus,
+            targetExpiresAt,
+            `Canjeado al registrarse con código: ${validatedPromo.code}`,
+            validatedPromo.id
+          );
+        } catch (promoErr) {
+          console.error(`[PROMO] Failed to apply promo ${validatedPromo.code} for user ${user.id}:`, promoErr);
+        }
+      }
 
       // Send welcome email for local self-registration without blocking signup flow.
       try {
@@ -1364,6 +1433,355 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Error creating deactivation request:", error);
       res.status(500).json({ message: "Failed to create deactivation request" });
+    }
+  });
+
+  // ==========================================
+  // BLOQUE 10: PROMO CODES & ACCESS STATUS API
+  // ==========================================
+
+  // Helper to resolve authenticated user ID
+  const getAuthUserId = (req: any): string | undefined => {
+    return req.user?.claims?.sub || req.user?.id || (req as any).dbUser?.id;
+  };
+
+  // Helper to check platform admin privileges
+  const isPlatformAdmin = async (userId?: string): Promise<boolean> => {
+    if (!userId) return false;
+    const user = await storage.getUser(userId);
+    return Boolean(user && (user.role === 'admin' || user.role === 'super_admin'));
+  };
+
+  // 1. Validate promo code (public/semi-public endpoint)
+  app.post('/api/promos/validate', async (req: any, res) => {
+    try {
+      const { code } = validatePromoCodeSchema.parse(req.body);
+      const cleanCode = code.trim().toUpperCase();
+
+      const promo = await storage.getPromoCodeByCode(cleanCode);
+      if (!promo || !promo.isActive) {
+        return res.status(404).json({ valid: false, message: "Código promocional inválido o inactivo." });
+      }
+
+      const now = new Date();
+      if (new Date(promo.startsAt) > now) {
+        return res.status(400).json({ valid: false, message: "Este código promocional aún no está vigente." });
+      }
+
+      if (promo.expiresAt && new Date(promo.expiresAt) < now) {
+        return res.status(400).json({ valid: false, message: "Este código promocional ha expirado." });
+      }
+
+      if (promo.maxUses !== null && promo.maxUses !== undefined && (promo.currentUses || 0) >= promo.maxUses) {
+        return res.status(400).json({ valid: false, message: "Este código promocional ha alcanzado el límite de usos permitidos." });
+      }
+
+      res.json({
+        valid: true,
+        promo: {
+          id: promo.id,
+          code: promo.code,
+          name: promo.name,
+          description: promo.description,
+          benefitType: promo.benefitType,
+          benefitValue: promo.benefitValue,
+          durationMonths: promo.durationMonths,
+          targetScope: promo.targetScope,
+          expiresAt: promo.expiresAt,
+        }
+      });
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ valid: false, message: error.errors[0].message });
+      }
+      console.error("[PROMO VALIDATE] Error:", error);
+      res.status(500).json({ valid: false, message: "Error al validar el código promocional." });
+    }
+  });
+
+  // 2. Redeem promo code for authenticated user
+  app.post('/api/promos/redeem', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = getAuthUserId(req);
+      if (!userId) {
+        return res.status(401).json({ message: "No autenticado." });
+      }
+
+      const user = await storage.getUser(userId);
+      if (!user) {
+        return res.status(404).json({ message: "Usuario no encontrado." });
+      }
+
+      const { code } = redeemPromoCodeSchema.parse(req.body);
+      const cleanCode = code.trim().toUpperCase();
+
+      const promo = await storage.getPromoCodeByCode(cleanCode);
+      if (!promo || !promo.isActive) {
+        return res.status(400).json({ message: "El código promocional no es válido o está inactivo." });
+      }
+
+      const now = new Date();
+      if (new Date(promo.startsAt) > now) {
+        return res.status(400).json({ message: "Este código promocional aún no está vigente." });
+      }
+
+      if (promo.expiresAt && new Date(promo.expiresAt) < now) {
+        return res.status(400).json({ message: "Este código promocional ha expirado." });
+      }
+
+      if (promo.maxUses !== null && promo.maxUses !== undefined && (promo.currentUses || 0) >= promo.maxUses) {
+        return res.status(400).json({ message: "Este código promocional ha alcanzado el límite de usos permitidos." });
+      }
+
+      // Check if user has already redeemed this specific promo code
+      const existingRedemptions = await storage.getPromoRedemptions({ promoCodeId: promo.id, userId });
+      if (existingRedemptions.length > 0) {
+        return res.status(400).json({ message: "Ya has canjeado este código promocional anteriormente." });
+      }
+
+      // Determine target accessStatus and expiration
+      let targetAccessStatus: string = "promotional";
+      let targetExpiresAt: Date | null = null;
+
+      if (promo.benefitType === "permanent_free") {
+        targetAccessStatus = "complimentary";
+        targetExpiresAt = null;
+      } else if (promo.benefitType === "free_months") {
+        targetAccessStatus = "promotional";
+        targetExpiresAt = new Date(Date.now() + (promo.durationMonths || 1) * 30 * 24 * 60 * 60 * 1000);
+      } else if (promo.benefitType === "free") {
+        targetAccessStatus = "free";
+        targetExpiresAt = null;
+      } else {
+        // percentage_discount or fixed_discount
+        targetAccessStatus = "promotional";
+        targetExpiresAt = promo.durationMonths ? new Date(Date.now() + promo.durationMonths * 30 * 24 * 60 * 60 * 1000) : null;
+      }
+
+      const redemption = await storage.createPromoRedemption({
+        promoCodeId: promo.id,
+        userId,
+        tenantId: (req.tenantContext?.tenant?.id as string) || null,
+        startsAt: now,
+        expiresAt: targetExpiresAt,
+        status: "active",
+        metadata: { code: promo.code, benefitType: promo.benefitType, source: "user_settings" }
+      });
+
+      const updatedUser = await storage.updateUserAccessStatus(
+        userId,
+        targetAccessStatus,
+        targetExpiresAt,
+        `Canjeado código promocional: ${promo.code}`,
+        promo.id
+      );
+
+      res.json({
+        message: "¡Código promocional aplicado exitosamente!",
+        redemption,
+        accessStatus: updatedUser?.accessStatus || targetAccessStatus,
+        accessStatusExpiresAt: updatedUser?.accessStatusExpiresAt || targetExpiresAt,
+        promo: {
+          code: promo.code,
+          name: promo.name,
+          benefitType: promo.benefitType,
+          benefitValue: promo.benefitValue,
+          durationMonths: promo.durationMonths
+        }
+      });
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: error.errors[0].message });
+      }
+      console.error("[PROMO REDEEM] Error:", error);
+      res.status(500).json({ message: "Error al aplicar el código promocional." });
+    }
+  });
+
+  // 3. User's active benefits & commercial access status
+  app.get('/api/promos/my-benefits', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = getAuthUserId(req);
+      if (!userId) {
+        return res.status(401).json({ message: "No autenticado." });
+      }
+
+      const user = await storage.getUser(userId);
+      if (!user) {
+        return res.status(404).json({ message: "Usuario no encontrado." });
+      }
+
+      const active = await storage.getUserActiveRedemption(userId);
+
+      res.json({
+        accessStatus: user.accessStatus || "free",
+        accessStatusExpiresAt: user.accessStatusExpiresAt,
+        accessStatusNotes: user.accessStatusNotes,
+        activePromo: active ? {
+          id: active.promoCode.id,
+          code: active.promoCode.code,
+          name: active.promoCode.name,
+          description: active.promoCode.description,
+          benefitType: active.promoCode.benefitType,
+          benefitValue: active.promoCode.benefitValue,
+          durationMonths: active.promoCode.durationMonths,
+          appliedAt: active.redemption.appliedAt,
+          expiresAt: active.redemption.expiresAt,
+        } : null,
+        nonBlocking: true,
+        message: "Acceso total sin bloqueos operativos para colocación de créditos y gestión de comisiones."
+      });
+    } catch (error) {
+      console.error("[MY BENEFITS] Error:", error);
+      res.status(500).json({ message: "Error al consultar beneficios." });
+    }
+  });
+
+  // 4. Admin: List all promo codes with stats
+  app.get('/api/admin/promos', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = getAuthUserId(req);
+      if (!(await isPlatformAdmin(userId))) {
+        return res.status(403).json({ message: "Acceso denegado. Privilegios de administrador requeridos." });
+      }
+
+      const promos = await storage.getPromoCodes();
+      res.json(promos);
+    } catch (error) {
+      console.error("[ADMIN PROMOS GET] Error:", error);
+      res.status(500).json({ message: "Error al obtener códigos promocionales." });
+    }
+  });
+
+  // 5. Admin: Create new promo code
+  app.post('/api/admin/promos', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = getAuthUserId(req);
+      if (!(await isPlatformAdmin(userId))) {
+        return res.status(403).json({ message: "Acceso denegado. Privilegios de administrador requeridos." });
+      }
+
+      const data = insertPromoCodeSchema.parse(req.body);
+      const cleanCode = data.code.trim().toUpperCase();
+
+      const existing = await storage.getPromoCodeByCode(cleanCode);
+      if (existing) {
+        return res.status(400).json({ message: `El código promocional "${cleanCode}" ya existe.` });
+      }
+
+      const newPromo = await storage.createPromoCode({
+        ...data,
+        code: cleanCode,
+        createdBy: userId,
+      });
+
+      res.status(201).json(newPromo);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: error.errors[0].message });
+      }
+      console.error("[ADMIN PROMOS POST] Error:", error);
+      res.status(500).json({ message: "Error al crear el código promocional." });
+    }
+  });
+
+  // 6. Admin: Update / toggle promo code
+  app.patch('/api/admin/promos/:id', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = getAuthUserId(req);
+      if (!(await isPlatformAdmin(userId))) {
+        return res.status(403).json({ message: "Acceso denegado. Privilegios de administrador requeridos." });
+      }
+
+      const { id } = req.params;
+      const existing = await storage.getPromoCode(id);
+      if (!existing) {
+        return res.status(404).json({ message: "Código promocional no encontrado." });
+      }
+
+      const updated = await storage.updatePromoCode(id, req.body);
+      res.json(updated);
+    } catch (error) {
+      console.error("[ADMIN PROMOS PATCH] Error:", error);
+      res.status(500).json({ message: "Error al actualizar código promocional." });
+    }
+  });
+
+  // 7. Admin: Get redemptions for a specific promo code
+  app.get('/api/admin/promos/:id/redemptions', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = getAuthUserId(req);
+      if (!(await isPlatformAdmin(userId))) {
+        return res.status(403).json({ message: "Acceso denegado. Privilegios de administrador requeridos." });
+      }
+
+      const { id } = req.params;
+      const redemptions = await storage.getPromoRedemptions({ promoCodeId: id });
+      
+      const allUsers = await storage.getAllUsers();
+      const userMap = new Map(allUsers.map(u => [u.id, u]));
+
+      const enriched = redemptions.map(r => {
+        const u = userMap.get(r.userId);
+        return {
+          ...r,
+          user: u ? {
+            id: u.id,
+            email: u.email,
+            firstName: u.firstName,
+            lastName: u.lastName,
+            role: u.role,
+            accessStatus: u.accessStatus
+          } : null
+        };
+      });
+
+      res.json(enriched);
+    } catch (error) {
+      console.error("[ADMIN PROMO REDEMPTIONS] Error:", error);
+      res.status(500).json({ message: "Error al consultar canjes." });
+    }
+  });
+
+  // 8. Admin: Manually update user access status
+  app.patch('/api/admin/users/:id/access-status', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = getAuthUserId(req);
+      if (!(await isPlatformAdmin(userId))) {
+        return res.status(403).json({ message: "Acceso denegado. Privilegios de administrador requeridos." });
+      }
+
+      const targetUserId = req.params.id;
+      const data = updateUserAccessStatusSchema.parse(req.body);
+
+      const targetUser = await storage.getUser(targetUserId);
+      if (!targetUser) {
+        return res.status(404).json({ message: "Usuario no encontrado." });
+      }
+
+      const updated = await storage.updateUserAccessStatus(
+        targetUserId,
+        data.accessStatus,
+        data.expiresAt,
+        data.notes || `Modificado manualmente por admin`
+      );
+
+      res.json({
+        message: "Estado de acceso actualizado correctamente.",
+        user: {
+          id: updated?.id,
+          email: updated?.email,
+          accessStatus: updated?.accessStatus,
+          accessStatusExpiresAt: updated?.accessStatusExpiresAt,
+          accessStatusNotes: updated?.accessStatusNotes
+        }
+      });
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: error.errors[0].message });
+      }
+      console.error("[ADMIN ACCESS STATUS PATCH] Error:", error);
+      res.status(500).json({ message: "Error al actualizar estado de acceso del usuario." });
     }
   });
 

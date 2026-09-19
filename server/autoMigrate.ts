@@ -78,6 +78,10 @@ export async function runAutoMigration(): Promise<void> {
           ADD COLUMN IF NOT EXISTS network_commission_rates JSONB DEFAULT '{}',
           ADD COLUMN IF NOT EXISTS custom_role_title VARCHAR,
           ADD COLUMN IF NOT EXISTS permissions JSONB DEFAULT '{}',
+          ADD COLUMN IF NOT EXISTS access_status VARCHAR DEFAULT 'free',
+          ADD COLUMN IF NOT EXISTS access_status_expires_at TIMESTAMP,
+          ADD COLUMN IF NOT EXISTS access_status_notes TEXT,
+          ADD COLUMN IF NOT EXISTS active_promo_id VARCHAR,
           ADD COLUMN IF NOT EXISTS is_active BOOLEAN DEFAULT TRUE,
           ADD COLUMN IF NOT EXISTS created_at TIMESTAMP DEFAULT NOW(),
           ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT NOW();
@@ -108,6 +112,12 @@ export async function runAutoMigration(): Promise<void> {
           updated_at TIMESTAMP DEFAULT NOW(),
           CONSTRAINT "tenants_slug_unique" UNIQUE("slug")
         );
+      `);
+
+      await client.query(`
+        ALTER TABLE IF EXISTS public.tenants
+          ADD COLUMN IF NOT EXISTS access_status VARCHAR DEFAULT 'free',
+          ADD COLUMN IF NOT EXISTS access_status_expires_at TIMESTAMP;
       `);
       console.log("✅ [AutoMigrate] Tenants table verified");
     } catch (err) {
@@ -588,6 +598,53 @@ export async function runAutoMigration(): Promise<void> {
       }
     } catch (cleanErr) {
       console.error("⚠️ [AutoMigrate] Error cleaning test financial institutions:", cleanErr);
+    }
+
+    // 10. Ensure promo_codes and promo_redemptions tables exist (Bloque 10)
+    try {
+      await client.query(`
+        CREATE TABLE IF NOT EXISTS public.promo_codes (
+          id VARCHAR PRIMARY KEY DEFAULT gen_random_uuid(),
+          code VARCHAR UNIQUE NOT NULL,
+          name VARCHAR NOT NULL,
+          description TEXT,
+          benefit_type VARCHAR NOT NULL,
+          benefit_value NUMERIC(10, 2) DEFAULT 0.00,
+          duration_months INTEGER,
+          starts_at TIMESTAMP NOT NULL DEFAULT NOW(),
+          expires_at TIMESTAMP,
+          is_active BOOLEAN NOT NULL DEFAULT TRUE,
+          max_uses INTEGER,
+          current_uses INTEGER NOT NULL DEFAULT 0,
+          target_scope VARCHAR NOT NULL DEFAULT 'global',
+          target_entity_id VARCHAR,
+          created_by VARCHAR REFERENCES public.users(id),
+          created_at TIMESTAMP DEFAULT NOW(),
+          updated_at TIMESTAMP DEFAULT NOW()
+        );
+
+        CREATE INDEX IF NOT EXISTS "promo_codes_code_idx" ON public.promo_codes ("code");
+        CREATE INDEX IF NOT EXISTS "promo_codes_is_active_idx" ON public.promo_codes ("is_active");
+
+        CREATE TABLE IF NOT EXISTS public.promo_redemptions (
+          id VARCHAR PRIMARY KEY DEFAULT gen_random_uuid(),
+          promo_code_id VARCHAR NOT NULL REFERENCES public.promo_codes(id) ON DELETE CASCADE,
+          user_id VARCHAR NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
+          tenant_id VARCHAR REFERENCES public.tenants(id),
+          applied_at TIMESTAMP NOT NULL DEFAULT NOW(),
+          starts_at TIMESTAMP NOT NULL DEFAULT NOW(),
+          expires_at TIMESTAMP,
+          status VARCHAR NOT NULL DEFAULT 'active',
+          metadata JSONB DEFAULT '{}',
+          created_at TIMESTAMP DEFAULT NOW()
+        );
+
+        CREATE INDEX IF NOT EXISTS "promo_redemptions_user_idx" ON public.promo_redemptions ("user_id");
+        CREATE INDEX IF NOT EXISTS "promo_redemptions_promo_idx" ON public.promo_redemptions ("promo_code_id");
+      `);
+      console.log("✅ [AutoMigrate] Promo codes and redemptions tables verified (Bloque 10)");
+    } catch (promoErr) {
+      console.error("⚠️ [AutoMigrate] Error verifying promo tables:", promoErr);
     }
 
     console.log("✨ [AutoMigrate] Schema verification and user sync completed successfully!");

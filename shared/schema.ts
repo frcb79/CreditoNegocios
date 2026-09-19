@@ -61,6 +61,11 @@ export const users = pgTable("users", {
   // Granular RBAC Permissions & Custom Role Title
   customRoleTitle: varchar("custom_role_title"), // e.g. "Mesa de Control", "Analista de Crédito", "Gerente Operativo"
   permissions: jsonb("permissions").default('{}'), // { modules: string[], actions: string[], scope?: 'global' | 'network' | 'own' }
+  // Commercial Access Status & Active Promo
+  accessStatus: varchar("access_status").notNull().default("free"), // "free", "promotional", "trial", "active", "complimentary", "expired", "suspended"
+  accessStatusExpiresAt: timestamp("access_status_expires_at"),
+  accessStatusNotes: text("access_status_notes"),
+  activePromoId: varchar("active_promo_id"),
   isActive: boolean("is_active").default(true),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
@@ -78,6 +83,8 @@ export const tenants = pgTable("tenants", {
   slug: varchar("slug").unique().notNull(), // For subdomains/URLs
   parentTenantId: varchar("parent_tenant_id"), // Self-reference, will be constrained later if needed
   settings: jsonb("settings").default('{}'), // White-label, branding, configurations
+  accessStatus: varchar("access_status").default("free"),
+  accessStatusExpiresAt: timestamp("access_status_expires_at"),
   isActive: boolean("is_active").default(true),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
@@ -796,6 +803,76 @@ export const bankAnalysisReports = pgTable("bank_analysis_reports", {
   updatedAt: timestamp("updated_at").defaultNow(),
 });
 
+// Promo codes catalogue & benefit types
+export const PROMO_BENEFIT_TYPES = [
+  "free",
+  "percentage_discount",
+  "fixed_discount",
+  "free_months",
+  "permanent_free"
+] as const;
+export type PromoBenefitType = (typeof PROMO_BENEFIT_TYPES)[number];
+
+export const PROMO_TARGET_SCOPES = [
+  "global",
+  "master_broker",
+  "broker",
+  "organization",
+  "alliance",
+  "campaign"
+] as const;
+export type PromoTargetScope = (typeof PROMO_TARGET_SCOPES)[number];
+
+export const ACCESS_STATUSES = [
+  "free",
+  "promotional",
+  "trial",
+  "active",
+  "complimentary",
+  "expired",
+  "suspended"
+] as const;
+export type AccessStatus = (typeof ACCESS_STATUSES)[number];
+
+export const promoCodes = pgTable("promo_codes", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  code: varchar("code").unique().notNull(), // Uppercase promo code string, e.g. ALIANZA-2026
+  name: varchar("name").notNull(),
+  description: text("description"),
+  benefitType: varchar("benefit_type").notNull(), // "free", "percentage_discount", "fixed_discount", "free_months", "permanent_free"
+  benefitValue: decimal("benefit_value", { precision: 10, scale: 2 }).default("0.00"), // e.g. 100, 500, 3
+  durationMonths: integer("duration_months"), // null for permanent
+  startsAt: timestamp("starts_at").defaultNow().notNull(),
+  expiresAt: timestamp("expires_at"), // optional code expiration
+  isActive: boolean("is_active").default(true).notNull(),
+  maxUses: integer("max_uses"), // optional max redemptions limit
+  currentUses: integer("current_uses").default(0).notNull(),
+  targetScope: varchar("target_scope").default("global").notNull(), // "global", "master_broker", "broker", "organization", "alliance", "campaign"
+  targetEntityId: varchar("target_entity_id"), // Specific organization, user, or campaign tag
+  createdBy: varchar("created_by").references(() => users.id),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => [
+  index("promo_codes_code_idx").on(table.code),
+  index("promo_codes_is_active_idx").on(table.isActive),
+]);
+
+export const promoRedemptions = pgTable("promo_redemptions", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  promoCodeId: varchar("promo_code_id").notNull().references(() => promoCodes.id, { onDelete: 'cascade' }),
+  userId: varchar("user_id").notNull().references(() => users.id, { onDelete: 'cascade' }),
+  tenantId: varchar("tenant_id").references(() => tenants.id),
+  appliedAt: timestamp("applied_at").defaultNow().notNull(),
+  startsAt: timestamp("starts_at").defaultNow().notNull(),
+  expiresAt: timestamp("expires_at"),
+  status: varchar("status").notNull().default("active"), // "active", "expired", "revoked"
+  metadata: jsonb("metadata").default('{}'),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => [
+  index("promo_redemptions_user_idx").on(table.userId),
+  index("promo_redemptions_promo_idx").on(table.promoCodeId),
+]);
+
 // Create insert schemas for bank analysis reports
 export const insertBankAnalysisReportSchema = createInsertSchema(bankAnalysisReports).omit({
   id: true,
@@ -928,4 +1005,47 @@ export type FinancialInstitutionRequest = typeof financialInstitutionRequests.$i
 
 export type InsertBankAnalysisReport = z.infer<typeof insertBankAnalysisReportSchema>;
 export type BankAnalysisReport = typeof bankAnalysisReports.$inferSelect;
+
+// Promo Code insert schemas
+export const insertPromoCodeSchema = createInsertSchema(promoCodes).omit({
+  id: true,
+  currentUses: true,
+  createdAt: true,
+  updatedAt: true,
+}).extend({
+  code: z.string().min(3, "El código debe tener al menos 3 caracteres").transform(c => c.trim().toUpperCase()),
+  name: z.string().min(2, "El nombre es requerido"),
+  benefitType: z.enum(PROMO_BENEFIT_TYPES),
+  benefitValue: z.union([z.string(), z.number()]).transform(v => String(v)),
+  durationMonths: z.number().int().positive().nullable().optional(),
+  targetScope: z.enum(PROMO_TARGET_SCOPES).default("global"),
+  maxUses: z.number().int().positive().nullable().optional(),
+  expiresAt: z.coerce.date().nullable().optional(),
+  startsAt: z.coerce.date().optional(),
+});
+
+export const insertPromoRedemptionSchema = createInsertSchema(promoRedemptions).omit({
+  id: true,
+  appliedAt: true,
+  createdAt: true,
+});
+
+export const redeemPromoCodeSchema = z.object({
+  code: z.string().min(1, "El código es requerido").transform(c => c.trim().toUpperCase()),
+});
+
+export const validatePromoCodeSchema = z.object({
+  code: z.string().min(1, "El código es requerido").transform(c => c.trim().toUpperCase()),
+});
+
+export const updateUserAccessStatusSchema = z.object({
+  accessStatus: z.enum(ACCESS_STATUSES),
+  expiresAt: z.coerce.date().nullable().optional(),
+  notes: z.string().optional(),
+});
+
+export type InsertPromoCode = z.infer<typeof insertPromoCodeSchema>;
+export type PromoCode = typeof promoCodes.$inferSelect;
+export type InsertPromoRedemption = z.infer<typeof insertPromoRedemptionSchema>;
+export type PromoRedemption = typeof promoRedemptions.$inferSelect;
 

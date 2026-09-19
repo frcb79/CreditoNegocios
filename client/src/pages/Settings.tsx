@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { z } from "zod";
 import MainLayout from "@/components/MainLayout";
 import Header from "@/components/Header";
@@ -15,8 +15,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage, FormDescription } from "@/components/ui/form";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Separator } from "@/components/ui/separator";
+import { Badge } from "@/components/ui/badge";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { Tag, Gift, CheckCircle, ShieldCheck, Clock, AlertCircle, Sparkles, Check, Info, ArrowRight, Loader2 } from "lucide-react";
 
 const profileSchema = z.object({
   firstName: z.string().min(1, "Nombre requerido"),
@@ -80,6 +82,96 @@ export default function Settings() {
   const [showPasswordModal, setShowPasswordModal] = useState(false);
   const [avatarPreview, setAvatarPreview] = useState<string | null>((user?.profileImageUrl as string) || null);
   const avatarInputRef = useRef<HTMLInputElement>(null);
+
+  // Benefits & Promo Codes (Bloque 10)
+  const [promoCodeInput, setPromoCodeInput] = useState("");
+  const [isValidatingPromo, setIsValidatingPromo] = useState(false);
+  const [validatedPromoPreview, setValidatedPromoPreview] = useState<any>(null);
+  const [isRedeemingPromo, setIsRedeemingPromo] = useState(false);
+
+  const { data: myBenefits, isLoading: isLoadingBenefits, refetch: refetchBenefits } = useQuery<{
+    accessStatus: string;
+    accessStatusExpiresAt: string | null;
+    accessStatusNotes: string | null;
+    activePromo: {
+      id: string;
+      code: string;
+      name: string;
+      description?: string | null;
+      benefitType: string;
+      benefitValue: string;
+      durationMonths?: number | null;
+      appliedAt: string;
+      expiresAt?: string | null;
+    } | null;
+    nonBlocking: boolean;
+    message: string;
+  }>({
+    queryKey: ['/api/promos/my-benefits'],
+  });
+
+  const handleValidatePromo = async () => {
+    if (!promoCodeInput.trim()) {
+      toast({
+        title: "Código requerido",
+        description: "Por favor escribe un código promocional.",
+        variant: "destructive"
+      });
+      return;
+    }
+    setIsValidatingPromo(true);
+    setValidatedPromoPreview(null);
+    try {
+      const res = await apiRequest('POST', '/api/promos/validate', { code: promoCodeInput.trim() });
+      const data = await res.json();
+      if (data.valid) {
+        setValidatedPromoPreview(data.promo);
+        toast({
+          title: "Código válido",
+          description: `Promoción: ${data.promo.name}`,
+        });
+      } else {
+        toast({
+          title: "Código no válido",
+          description: data.message || "El código no es válido o ha expirado.",
+          variant: "destructive"
+        });
+      }
+    } catch (err: any) {
+      toast({
+        title: "Código inválido",
+        description: err.message || "No se pudo validar el código promocional.",
+        variant: "destructive"
+      });
+    } finally {
+      setIsValidatingPromo(false);
+    }
+  };
+
+  const handleRedeemPromo = async () => {
+    if (!promoCodeInput.trim()) return;
+    setIsRedeemingPromo(true);
+    try {
+      const res = await apiRequest('POST', '/api/promos/redeem', { code: promoCodeInput.trim() });
+      const data = await res.json();
+      toast({
+        title: "¡Beneficio aplicado con éxito!",
+        description: data.message || "Tu código ha sido activado.",
+      });
+      setPromoCodeInput("");
+      setValidatedPromoPreview(null);
+      refetchBenefits();
+      queryClient.invalidateQueries({ queryKey: ['/api/auth/user'] });
+    } catch (err: any) {
+      toast({
+        title: "Error al aplicar beneficio",
+        description: err.message || "No se pudo canjear el código.",
+        variant: "destructive"
+      });
+    } finally {
+      setIsRedeemingPromo(false);
+    }
+  };
 
   useEffect(() => {
     setAvatarPreview((user?.profileImageUrl as string) || null);
@@ -419,12 +511,13 @@ export default function Settings() {
       <main className="flex-1 p-4 sm:p-6 lg:p-8 overflow-y-auto">
           <div className="max-w-4xl mx-auto">
             <Tabs value={activeTab} onValueChange={setActiveTab}>
-              <TabsList className="grid w-full grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 h-auto gap-1">
+              <TabsList className="grid w-full grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 h-auto gap-1">
                 <TabsTrigger value="profile" data-testid="tab-profile" className="text-xs sm:text-sm py-2">Perfil</TabsTrigger>
                 <TabsTrigger value="notifications" data-testid="tab-notifications" className="text-xs sm:text-sm py-2">Notificaciones</TabsTrigger>
                 <TabsTrigger value="business" data-testid="tab-business" className="text-xs sm:text-sm py-2">Negocio</TabsTrigger>
                 <TabsTrigger value="profiling" data-testid="tab-profiling" className="text-xs sm:text-sm py-2">Perfilamiento</TabsTrigger>
                 <TabsTrigger value="security" data-testid="tab-security" className="text-xs sm:text-sm py-2">Seguridad</TabsTrigger>
+                <TabsTrigger value="benefits" data-testid="tab-benefits" className="text-xs sm:text-sm py-2">Beneficios y Acceso</TabsTrigger>
               </TabsList>
 
               {/* Profile Settings */}
@@ -1439,6 +1532,175 @@ export default function Settings() {
                         </Button>
                       </div>
                     </div>
+                  </CardContent>
+                </Card>
+              </TabsContent>
+
+              {/* Beneficios y Acceso Comercial (Bloque 10) */}
+              <TabsContent value="benefits" className="space-y-6">
+                {/* Status & Active Benefit Card */}
+                <Card className="border-blue-100 shadow-sm">
+                  <CardHeader className="pb-3">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                      <div>
+                        <CardTitle className="text-xl flex items-center gap-2">
+                          <Gift className="h-5 w-5 text-primary" />
+                          Estado de Acceso y Beneficios
+                        </CardTitle>
+                        <CardDescription>
+                          Información de tu esquema comercial y promociones activas
+                        </CardDescription>
+                      </div>
+
+                      {/* Access Status Badge */}
+                      <div>
+                        {(() => {
+                          const status = myBenefits?.accessStatus || user?.accessStatus || "free";
+                          if (status === "complimentary") {
+                            return <Badge className="bg-emerald-600 text-white hover:bg-emerald-700 py-1 px-3 text-sm flex items-center gap-1.5"><Sparkles className="h-3.5 w-3.5" /> Cortesía Permanente</Badge>;
+                          }
+                          if (status === "promotional") {
+                            return <Badge className="bg-indigo-600 text-white hover:bg-indigo-700 py-1 px-3 text-sm flex items-center gap-1.5"><Tag className="h-3.5 w-3.5" /> Acceso Promocional</Badge>;
+                          }
+                          if (status === "trial") {
+                            return <Badge className="bg-amber-600 text-white hover:bg-amber-700 py-1 px-3 text-sm flex items-center gap-1.5"><Clock className="h-3.5 w-3.5" /> Periodo de Prueba</Badge>;
+                          }
+                          if (status === "active") {
+                            return <Badge className="bg-blue-600 text-white hover:bg-blue-700 py-1 px-3 text-sm flex items-center gap-1.5"><CheckCircle className="h-3.5 w-3.5" /> Acceso Activo</Badge>;
+                          }
+                          if (status === "expired") {
+                            return <Badge className="bg-orange-600 text-white hover:bg-orange-700 py-1 px-3 text-sm flex items-center gap-1.5"><AlertCircle className="h-3.5 w-3.5" /> Promoción Finalizada (Acceso Estándar)</Badge>;
+                          }
+                          return <Badge className="bg-green-600 text-white hover:bg-green-700 py-1 px-3 text-sm flex items-center gap-1.5"><CheckCircle className="h-3.5 w-3.5" /> Acceso Estándar Gratuito</Badge>;
+                        })()}
+                      </div>
+                    </div>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    {/* Active Promo Display if exists */}
+                    {myBenefits?.activePromo ? (
+                      <div className="p-4 bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-lg">
+                        <div className="flex items-start justify-between">
+                          <div>
+                            <span className="text-xs font-semibold text-primary uppercase tracking-wider">Promoción Vigente</span>
+                            <h4 className="text-lg font-bold text-gray-900 mt-0.5">
+                              {myBenefits.activePromo.name}
+                            </h4>
+                            <p className="text-sm text-gray-600 mt-1">
+                              {myBenefits.activePromo.description || "Beneficio comercial activo en tu cuenta."}
+                            </p>
+                          </div>
+                          <Badge variant="outline" className="font-mono text-xs border-blue-400 bg-white text-blue-800">
+                            {myBenefits.activePromo.code}
+                          </Badge>
+                        </div>
+
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-4 pt-4 border-t border-blue-200/60 text-sm">
+                          <div>
+                            <span className="text-gray-500 text-xs">Tipo de Beneficio:</span>
+                            <p className="font-medium text-gray-800 capitalize">
+                              {myBenefits.activePromo.benefitType.replace('_', ' ')}
+                            </p>
+                          </div>
+                          {myBenefits.activePromo.expiresAt && (
+                            <div>
+                              <span className="text-gray-500 text-xs">Vigencia hasta:</span>
+                              <p className="font-medium text-gray-800">
+                                {new Date(myBenefits.activePromo.expiresAt).toLocaleDateString('es-MX', { year: 'numeric', month: 'long', day: 'numeric' })}
+                              </p>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="p-4 bg-gray-50 border border-gray-200 rounded-lg text-sm text-gray-600">
+                        <p className="font-medium text-gray-800">No cuentas con un código promocional aplicado actualmente.</p>
+                        <p className="text-xs text-gray-500 mt-1">
+                          Tu cuenta opera bajo el esquema estándar con acceso integral a todas las herramientas de colocación y matching.
+                        </p>
+                      </div>
+                    )}
+
+                    {/* Operational Continuance Guarantee Banner */}
+                    <div className="p-4 bg-emerald-50 border border-emerald-200 rounded-lg flex items-start gap-3">
+                      <ShieldCheck className="h-5 w-5 text-emerald-600 flex-shrink-0 mt-0.5" />
+                      <div className="text-xs text-emerald-900 leading-relaxed">
+                        <span className="font-semibold block text-sm text-emerald-950 mb-0.5">
+                          Garantía de continuidad operativa (No-bloqueo)
+                        </span>
+                        Crédito Negocios prioriza la colocación efectiva de créditos. El estado de acceso comercial o vencimiento de promociones <strong>NUNCA</strong> bloquea ni suspende el alta de clientes, el motor de matching con financieras, el seguimiento de solicitudes ni la liquidación y dispersión puntual de tus comisiones ganadas.
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+
+                {/* Redeem New Promo Code Card */}
+                <Card className="shadow-sm">
+                  <CardHeader>
+                    <CardTitle className="text-lg flex items-center gap-2">
+                      <Tag className="h-5 w-5 text-indigo-600" />
+                      Canjear Código Promocional
+                    </CardTitle>
+                    <CardDescription>
+                      Si dispones de un código de descuento, meses gratuitos o convenio de alianza, aplícalo aquí.
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    <div className="flex flex-col sm:flex-row gap-3">
+                      <div className="relative flex-1">
+                        <Tag className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
+                        <Input
+                          placeholder="Ingresa tu código (Ej. ALIANZA-2026)"
+                          value={promoCodeInput}
+                          onChange={(e) => {
+                            setPromoCodeInput(e.target.value.toUpperCase());
+                            setValidatedPromoPreview(null);
+                          }}
+                          className="pl-10 uppercase font-mono"
+                          disabled={isValidatingPromo || isRedeemingPromo}
+                          data-testid="input-settings-promocode"
+                        />
+                      </div>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={handleValidatePromo}
+                        disabled={isValidatingPromo || isRedeemingPromo || !promoCodeInput.trim()}
+                        data-testid="button-validate-promocode"
+                      >
+                        {isValidatingPromo ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
+                        Validar
+                      </Button>
+                      <Button
+                        type="button"
+                        onClick={handleRedeemPromo}
+                        disabled={isRedeemingPromo || !promoCodeInput.trim()}
+                        data-testid="button-redeem-promocode"
+                      >
+                        {isRedeemingPromo ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Gift className="h-4 w-4 mr-2" />}
+                        Canjear Beneficio
+                      </Button>
+                    </div>
+
+                    {/* Preview box if code was validated */}
+                    {validatedPromoPreview && (
+                      <div className="p-3 bg-indigo-50/70 border border-indigo-200 rounded-md text-xs text-indigo-900 flex items-center justify-between">
+                        <div>
+                          <span className="font-semibold text-sm block">{validatedPromoPreview.name}</span>
+                          <span className="text-indigo-700">
+                            {validatedPromoPreview.description || `Beneficio: ${validatedPromoPreview.benefitType}`}
+                            {validatedPromoPreview.durationMonths ? ` por ${validatedPromoPreview.durationMonths} meses` : ''}
+                          </span>
+                        </div>
+                        <Badge className="bg-indigo-600 text-white font-normal text-xs">
+                          Listo para canjear
+                        </Badge>
+                      </div>
+                    )}
+
+                    <p className="text-xs text-gray-500">
+                      * Nota: Los códigos promocionales otorgan beneficios comerciales temporales o permanentes y no sustituyen las claves de franquicia de Master Broker.
+                    </p>
                   </CardContent>
                 </Card>
               </TabsContent>

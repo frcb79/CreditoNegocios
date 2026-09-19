@@ -53,7 +53,11 @@ import {
   type ClientCreditHistory,
   type InsertClientCreditHistory,
   type InsertBankAnalysisReport,
-  type BankAnalysisReport
+  type BankAnalysisReport,
+  type PromoCode,
+  type InsertPromoCode,
+  type PromoRedemption,
+  type InsertPromoRedemption
 } from "../shared/schema";
 
 
@@ -249,6 +253,19 @@ export interface IStorage {
   rejectCreditSubmissionTarget(targetId: string, adminId: string, adminNotes?: string): Promise<CreditSubmissionTarget | undefined>;
   returnCreditSubmissionTargetToBroker(targetId: string, adminId: string, details?: string, adminNotes?: string): Promise<CreditSubmissionTarget | undefined>;
 
+  // Promo codes & redemptions operations (Bloque 10)
+  getPromoCodes(filters?: { isActive?: boolean; targetScope?: string }): Promise<PromoCode[]>;
+  getPromoCode(id: string): Promise<PromoCode | undefined>;
+  getPromoCodeByCode(code: string): Promise<PromoCode | undefined>;
+  createPromoCode(data: InsertPromoCode & { createdBy?: string }): Promise<PromoCode>;
+  updatePromoCode(id: string, data: Partial<InsertPromoCode> & { currentUses?: number; isActive?: boolean }): Promise<PromoCode | undefined>;
+  getPromoRedemptions(filters?: { promoCodeId?: string; userId?: string; tenantId?: string }): Promise<PromoRedemption[]>;
+  getPromoRedemption(id: string): Promise<PromoRedemption | undefined>;
+  createPromoRedemption(data: InsertPromoRedemption): Promise<PromoRedemption>;
+  getUserActiveRedemption(userId: string): Promise<{ redemption: PromoRedemption; promoCode: PromoCode } | undefined>;
+  updateUserAccessStatus(userId: string, accessStatus: string, expiresAt?: Date | null, notes?: string | null, activePromoId?: string | null): Promise<User | undefined>;
+  updateTenantAccessStatus(tenantId: string, accessStatus: string, expiresAt?: Date | null): Promise<Tenant | undefined>;
+
 }
 
 export class MemStorage implements IStorage {
@@ -280,6 +297,8 @@ export class MemStorage implements IStorage {
   // Configuration system storage
   
   // Credit submission system storage
+  private promoCodes: Map<string, PromoCode> = new Map();
+  private promoRedemptions: Map<string, PromoRedemption> = new Map();
 
   // Implement BankAnalysisReport methods
   async createBankAnalysisReport(report: InsertBankAnalysisReport): Promise<BankAnalysisReport> {
@@ -3028,6 +3047,150 @@ export class MemStorage implements IStorage {
       updatedAt: new Date(),
     };
     this.creditSubmissionTargets.set(targetId, updated);
+    return updated;
+  }
+
+  // Promo codes & redemptions operations (Bloque 10)
+  async getPromoCodes(filters?: { isActive?: boolean; targetScope?: string }): Promise<PromoCode[]> {
+    let list = Array.from(this.promoCodes.values());
+    if (filters) {
+      if (filters.isActive !== undefined) {
+        list = list.filter(p => p.isActive === filters.isActive);
+      }
+      if (filters.targetScope) {
+        list = list.filter(p => p.targetScope === filters.targetScope);
+      }
+    }
+    return list.sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
+  }
+
+  async getPromoCode(id: string): Promise<PromoCode | undefined> {
+    return this.promoCodes.get(id);
+  }
+
+  async getPromoCodeByCode(code: string): Promise<PromoCode | undefined> {
+    const clean = code.trim().toUpperCase();
+    return Array.from(this.promoCodes.values()).find(p => p.code.toUpperCase() === clean);
+  }
+
+  async createPromoCode(data: InsertPromoCode & { createdBy?: string }): Promise<PromoCode> {
+    const id = (data as any).id || randomUUID();
+    const cleanCode = data.code.trim().toUpperCase();
+    const promo: PromoCode = {
+      id,
+      code: cleanCode,
+      name: data.name,
+      description: data.description || null,
+      benefitType: data.benefitType,
+      benefitValue: String(data.benefitValue || "0.00"),
+      durationMonths: data.durationMonths !== undefined ? data.durationMonths : null,
+      startsAt: data.startsAt ? new Date(data.startsAt) : new Date(),
+      expiresAt: data.expiresAt ? new Date(data.expiresAt) : null,
+      isActive: data.isActive !== undefined ? data.isActive : true,
+      maxUses: data.maxUses !== undefined ? data.maxUses : null,
+      currentUses: 0,
+      targetScope: data.targetScope || "global",
+      targetEntityId: data.targetEntityId || null,
+      createdBy: data.createdBy || null,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
+    this.promoCodes.set(id, promo);
+    return promo;
+  }
+
+  async updatePromoCode(id: string, data: Partial<InsertPromoCode> & { currentUses?: number; isActive?: boolean }): Promise<PromoCode | undefined> {
+    const existing = this.promoCodes.get(id);
+    if (!existing) return undefined;
+    const updated: PromoCode = {
+      ...existing,
+      ...data,
+      code: data.code ? data.code.trim().toUpperCase() : existing.code,
+      benefitValue: data.benefitValue !== undefined ? String(data.benefitValue) : existing.benefitValue,
+      updatedAt: new Date(),
+    };
+    this.promoCodes.set(id, updated);
+    return updated;
+  }
+
+  async getPromoRedemptions(filters?: { promoCodeId?: string; userId?: string; tenantId?: string }): Promise<PromoRedemption[]> {
+    let list = Array.from(this.promoRedemptions.values());
+    if (filters) {
+      if (filters.promoCodeId) list = list.filter(r => r.promoCodeId === filters.promoCodeId);
+      if (filters.userId) list = list.filter(r => r.userId === filters.userId);
+      if (filters.tenantId) list = list.filter(r => r.tenantId === filters.tenantId);
+    }
+    return list.sort((a, b) => new Date(b.appliedAt || 0).getTime() - new Date(a.appliedAt || 0).getTime());
+  }
+
+  async getPromoRedemption(id: string): Promise<PromoRedemption | undefined> {
+    return this.promoRedemptions.get(id);
+  }
+
+  async createPromoRedemption(data: InsertPromoRedemption): Promise<PromoRedemption> {
+    const id = (data as any).id || randomUUID();
+    const redemption: PromoRedemption = {
+      id,
+      promoCodeId: data.promoCodeId,
+      userId: data.userId,
+      tenantId: data.tenantId || null,
+      appliedAt: new Date(),
+      startsAt: data.startsAt ? new Date(data.startsAt) : new Date(),
+      expiresAt: data.expiresAt ? new Date(data.expiresAt) : null,
+      status: data.status || "active",
+      metadata: data.metadata || {},
+      createdAt: new Date(),
+    };
+    this.promoRedemptions.set(id, redemption);
+    
+    // Increment promo currentUses
+    const promo = this.promoCodes.get(data.promoCodeId);
+    if (promo) {
+      promo.currentUses = (promo.currentUses || 0) + 1;
+      promo.updatedAt = new Date();
+      this.promoCodes.set(promo.id, promo);
+    }
+
+    return redemption;
+  }
+
+  async getUserActiveRedemption(userId: string): Promise<{ redemption: PromoRedemption; promoCode: PromoCode } | undefined> {
+    const userRedemptions = Array.from(this.promoRedemptions.values())
+      .filter(r => r.userId === userId && r.status === "active")
+      .sort((a, b) => new Date(b.appliedAt || 0).getTime() - new Date(a.appliedAt || 0).getTime());
+    
+    if (userRedemptions.length === 0) return undefined;
+    const redemption = userRedemptions[0];
+    const promoCode = this.promoCodes.get(redemption.promoCodeId);
+    if (!promoCode) return undefined;
+    return { redemption, promoCode };
+  }
+
+  async updateUserAccessStatus(userId: string, accessStatus: string, expiresAt?: Date | null, notes?: string | null, activePromoId?: string | null): Promise<User | undefined> {
+    const user = this.users.get(userId);
+    if (!user) return undefined;
+    const updated: User = {
+      ...user,
+      accessStatus,
+      accessStatusExpiresAt: expiresAt !== undefined ? expiresAt : user.accessStatusExpiresAt,
+      accessStatusNotes: notes !== undefined ? notes : user.accessStatusNotes,
+      activePromoId: activePromoId !== undefined ? activePromoId : user.activePromoId,
+      updatedAt: new Date(),
+    };
+    this.users.set(userId, updated);
+    return updated;
+  }
+
+  async updateTenantAccessStatus(tenantId: string, accessStatus: string, expiresAt?: Date | null): Promise<Tenant | undefined> {
+    const tenant = this.tenants.get(tenantId);
+    if (!tenant) return undefined;
+    const updated: Tenant = {
+      ...tenant,
+      accessStatus,
+      accessStatusExpiresAt: expiresAt !== undefined ? expiresAt : tenant.accessStatusExpiresAt,
+      updatedAt: new Date(),
+    };
+    this.tenants.set(tenantId, updated);
     return updated;
   }
 

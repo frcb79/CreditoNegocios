@@ -8,6 +8,7 @@ import {
   creditSubmissionRequests, creditSubmissionTargets,
   clientCreditHistories,
   bankAnalysisReports,
+  promoCodes, promoRedemptions,
   type User, type UpsertUser, type Client, type InsertClient,
   type Credit, type InsertCredit, type FinancialInstitution,
   type InsertFinancialInstitution, type Commission, type InsertCommission,
@@ -23,7 +24,9 @@ import {
   type CreditSubmissionRequest, type InsertCreditSubmissionRequest,
   type CreditSubmissionTarget, type InsertCreditSubmissionTarget,
   type ClientCreditHistory, type InsertClientCreditHistory,
-  type BankAnalysisReport, type InsertBankAnalysisReport
+  type BankAnalysisReport, type InsertBankAnalysisReport,
+  type PromoCode, type InsertPromoCode,
+  type PromoRedemption, type InsertPromoRedemption
 } from "../shared/schema";
 import { eq, desc, asc, like, and, or, inArray, sql } from "drizzle-orm";
 
@@ -2219,6 +2222,218 @@ export class DbStorage implements IStorage {
       return result[0];
     } catch (error) {
       console.error("Error returning credit submission target to broker:", error);
+      return undefined;
+    }
+  }
+
+  // Promo codes & redemptions operations (Bloque 10)
+  async getPromoCodes(filters?: { isActive?: boolean; targetScope?: string }): Promise<PromoCode[]> {
+    try {
+      const conditions = [];
+      if (filters?.isActive !== undefined) {
+        conditions.push(eq(promoCodes.isActive, filters.isActive));
+      }
+      if (filters?.targetScope) {
+        conditions.push(eq(promoCodes.targetScope, filters.targetScope));
+      }
+
+      if (conditions.length > 0) {
+        return await db.select().from(promoCodes).where(and(...conditions)).orderBy(desc(promoCodes.createdAt));
+      }
+      return await db.select().from(promoCodes).orderBy(desc(promoCodes.createdAt));
+    } catch (error) {
+      console.error("Error getting promo codes:", error);
+      return [];
+    }
+  }
+
+  async getPromoCode(id: string): Promise<PromoCode | undefined> {
+    try {
+      const result = await db.select().from(promoCodes).where(eq(promoCodes.id, id)).limit(1);
+      return result[0];
+    } catch (error) {
+      console.error("Error getting promo code by id:", error);
+      return undefined;
+    }
+  }
+
+  async getPromoCodeByCode(code: string): Promise<PromoCode | undefined> {
+    try {
+      const normalized = code.trim().toUpperCase();
+      const result = await db.select().from(promoCodes).where(eq(promoCodes.code, normalized)).limit(1);
+      return result[0];
+    } catch (error) {
+      console.error("Error getting promo code by code:", error);
+      return undefined;
+    }
+  }
+
+  async createPromoCode(data: InsertPromoCode & { createdBy?: string }): Promise<PromoCode> {
+    const id = randomUUID();
+    const normalizedCode = data.code.trim().toUpperCase();
+    const newPromo = {
+      id,
+      code: normalizedCode,
+      name: data.name,
+      description: data.description || null,
+      benefitType: data.benefitType,
+      benefitValue: data.benefitValue !== undefined && data.benefitValue !== null ? String(data.benefitValue) : "0",
+      durationMonths: data.durationMonths ?? null,
+      maxUses: data.maxUses ?? null,
+      currentUses: 0,
+      targetScope: data.targetScope || "all",
+      startsAt: data.startsAt ? new Date(data.startsAt) : new Date(),
+      expiresAt: data.expiresAt ? new Date(data.expiresAt) : null,
+      isActive: data.isActive !== undefined ? data.isActive : true,
+      targetEntityId: data.targetEntityId || null,
+      createdBy: data.createdBy || null,
+      createdAt: new Date(),
+      updatedAt: new Date()
+    };
+    const result = await db.insert(promoCodes).values(newPromo).returning();
+    return result[0];
+  }
+
+  async updatePromoCode(id: string, data: Partial<InsertPromoCode> & { currentUses?: number; isActive?: boolean }): Promise<PromoCode | undefined> {
+    try {
+      const updateData: any = {
+        ...data,
+        updatedAt: new Date()
+      };
+      if (data.code) {
+        updateData.code = data.code.trim().toUpperCase();
+      }
+      if (data.benefitValue !== undefined) {
+        updateData.benefitValue = String(data.benefitValue);
+      }
+      if (data.startsAt) {
+        updateData.startsAt = new Date(data.startsAt);
+      }
+      if (data.expiresAt !== undefined) {
+        updateData.expiresAt = data.expiresAt ? new Date(data.expiresAt) : null;
+      }
+      const result = await db.update(promoCodes).set(updateData).where(eq(promoCodes.id, id)).returning();
+      return result[0];
+    } catch (error) {
+      console.error("Error updating promo code:", error);
+      return undefined;
+    }
+  }
+
+  async getPromoRedemptions(filters?: { promoCodeId?: string; userId?: string; tenantId?: string }): Promise<PromoRedemption[]> {
+    try {
+      const conditions = [];
+      if (filters?.promoCodeId) {
+        conditions.push(eq(promoRedemptions.promoCodeId, filters.promoCodeId));
+      }
+      if (filters?.userId) {
+        conditions.push(eq(promoRedemptions.userId, filters.userId));
+      }
+      if (filters?.tenantId) {
+        conditions.push(eq(promoRedemptions.tenantId, filters.tenantId));
+      }
+
+      if (conditions.length > 0) {
+        return await db.select().from(promoRedemptions).where(and(...conditions)).orderBy(desc(promoRedemptions.appliedAt));
+      }
+      return await db.select().from(promoRedemptions).orderBy(desc(promoRedemptions.appliedAt));
+    } catch (error) {
+      console.error("Error getting promo redemptions:", error);
+      return [];
+    }
+  }
+
+  async getPromoRedemption(id: string): Promise<PromoRedemption | undefined> {
+    try {
+      const result = await db.select().from(promoRedemptions).where(eq(promoRedemptions.id, id)).limit(1);
+      return result[0];
+    } catch (error) {
+      console.error("Error getting promo redemption:", error);
+      return undefined;
+    }
+  }
+
+  async createPromoRedemption(data: InsertPromoRedemption): Promise<PromoRedemption> {
+    const id = (data as any).id || randomUUID();
+    const newRedemption = {
+      id,
+      promoCodeId: data.promoCodeId,
+      userId: data.userId,
+      tenantId: data.tenantId || null,
+      appliedAt: new Date(),
+      startsAt: data.startsAt ? new Date(data.startsAt) : new Date(),
+      expiresAt: data.expiresAt ? new Date(data.expiresAt) : null,
+      status: data.status || "active",
+      metadata: data.metadata || {},
+      createdAt: new Date()
+    };
+    const result = await db.insert(promoRedemptions).values(newRedemption).returning();
+    
+    // Increment promo currentUses
+    await db.update(promoCodes)
+      .set({
+        currentUses: sql`${promoCodes.currentUses} + 1`,
+        updatedAt: new Date()
+      })
+      .where(eq(promoCodes.id, data.promoCodeId));
+
+    return result[0];
+  }
+
+  async getUserActiveRedemption(userId: string): Promise<{ redemption: PromoRedemption; promoCode: PromoCode } | undefined> {
+    try {
+      const redemptions = await db.select().from(promoRedemptions)
+        .where(and(eq(promoRedemptions.userId, userId), eq(promoRedemptions.status, "active")))
+        .orderBy(desc(promoRedemptions.appliedAt))
+        .limit(1);
+
+      if (!redemptions || redemptions.length === 0) return undefined;
+      const redemption = redemptions[0];
+      const promo = await this.getPromoCode(redemption.promoCodeId);
+      if (!promo) return undefined;
+      return { redemption, promoCode: promo };
+    } catch (error) {
+      console.error("Error getting user active redemption:", error);
+      return undefined;
+    }
+  }
+
+  async updateUserAccessStatus(userId: string, accessStatus: string, expiresAt?: Date | null, notes?: string | null, activePromoId?: string | null): Promise<User | undefined> {
+    try {
+      const updateData: any = {
+        accessStatus,
+        updatedAt: new Date()
+      };
+      if (expiresAt !== undefined) {
+        updateData.accessStatusExpiresAt = expiresAt;
+      }
+      if (notes !== undefined) {
+        updateData.accessStatusNotes = notes;
+      }
+      if (activePromoId !== undefined) {
+        updateData.activePromoId = activePromoId;
+      }
+      const result = await db.update(users).set(updateData).where(eq(users.id, userId)).returning();
+      return result[0];
+    } catch (error) {
+      console.error("Error updating user access status:", error);
+      return undefined;
+    }
+  }
+
+  async updateTenantAccessStatus(tenantId: string, accessStatus: string, expiresAt?: Date | null): Promise<Tenant | undefined> {
+    try {
+      const updateData: any = {
+        accessStatus,
+        updatedAt: new Date()
+      };
+      if (expiresAt !== undefined) {
+        updateData.accessStatusExpiresAt = expiresAt;
+      }
+      const result = await db.update(tenants).set(updateData).where(eq(tenants.id, tenantId)).returning();
+      return result[0];
+    } catch (error) {
+      console.error("Error updating tenant access status:", error);
       return undefined;
     }
   }

@@ -68,7 +68,14 @@ import {
   Mail,
   RefreshCw,
   Send,
-  AlertTriangle
+  AlertTriangle,
+  Tag,
+  Gift,
+  Plus,
+  Calendar,
+  UserCheck,
+  Eye,
+  Loader2
 } from "lucide-react";
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
@@ -227,6 +234,14 @@ export default function UserManagement() {
   const { toast } = useToast();
   const { user: currentUser } = useAuth();
 
+  // Promo codes management state (Bloque 10)
+  const [showCreatePromoModal, setShowCreatePromoModal] = useState(false);
+  const [selectedPromoForRedemptions, setSelectedPromoForRedemptions] = useState<any>(null);
+  const [userToEditAccess, setUserToEditAccess] = useState<User | null>(null);
+  const [accessStatusSelection, setAccessStatusSelection] = useState<string>("free");
+  const [accessExpiresAtSelection, setAccessExpiresAtSelection] = useState<string>("");
+  const [accessNotesInput, setAccessNotesInput] = useState<string>("");
+
   const isSuperAdmin = currentUser?.role === 'super_admin';
   const isPlatformAdmin = currentUser?.role === 'admin' || isSuperAdmin;
 
@@ -234,6 +249,104 @@ export default function UserManagement() {
   const { data: tenants, isLoading: isLoadingTenants } = useQuery<Tenant[]>({
     queryKey: ["/api/tenants"],
     staleTime: 30000,
+  });
+
+  // Queries for Promos
+  const { data: adminPromos = [], refetch: refetchAdminPromos, isLoading: isLoadingPromos } = useQuery<any[]>({
+    queryKey: ['/api/admin/promos'],
+    enabled: isPlatformAdmin,
+  });
+
+  const { data: promoRedemptions = [], isLoading: isLoadingRedemptions } = useQuery<any[]>({
+    queryKey: ['/api/admin/promos', selectedPromoForRedemptions?.id, 'redemptions'],
+    enabled: Boolean(selectedPromoForRedemptions?.id),
+  });
+
+  // Toggle Promo active mutation
+  const togglePromoMutation = useMutation({
+    mutationFn: async ({ id, isActive }: { id: string; isActive: boolean }) => {
+      const res = await apiRequest('PATCH', `/api/admin/promos/${id}`, { isActive });
+      return res.json();
+    },
+    onSuccess: () => {
+      toast({ title: "Código actualizado", description: "Estado actualizado exitosamente." });
+      refetchAdminPromos();
+    },
+    onError: (err: any) => {
+      toast({ title: "Error", description: err.message || "No se pudo actualizar el código.", variant: "destructive" });
+    }
+  });
+
+  // Create Promo Form Schema
+  const promoFormSchema = z.object({
+    code: z.string().min(3, "Mínimo 3 caracteres"),
+    name: z.string().min(2, "Nombre requerido"),
+    description: z.string().optional(),
+    benefitType: z.enum(["free", "percentage_discount", "fixed_discount", "free_months", "permanent_free"]),
+    benefitValue: z.string().default("0"),
+    durationMonths: z.coerce.number().optional().nullable(),
+    maxUses: z.coerce.number().optional().nullable(),
+    targetScope: z.enum(["global", "master_broker", "broker", "organization", "alliance", "campaign"]).default("global"),
+    expiresAt: z.string().optional(),
+  });
+
+  const createPromoForm = useForm<z.infer<typeof promoFormSchema>>({
+    resolver: zodResolver(promoFormSchema),
+    defaultValues: {
+      code: "",
+      name: "",
+      description: "",
+      benefitType: "free_months",
+      benefitValue: "1",
+      durationMonths: 1,
+      targetScope: "global",
+    }
+  });
+
+  const onCreatePromoSubmit = async (values: z.infer<typeof promoFormSchema>) => {
+    try {
+      const payload: any = {
+        code: values.code.trim().toUpperCase(),
+        name: values.name.trim(),
+        description: values.description || null,
+        benefitType: values.benefitType,
+        benefitValue: values.benefitValue,
+        durationMonths: values.durationMonths || null,
+        maxUses: values.maxUses || null,
+        targetScope: values.targetScope,
+        expiresAt: values.expiresAt ? new Date(values.expiresAt).toISOString() : null,
+      };
+      const res = await apiRequest('POST', '/api/admin/promos', payload);
+      if (!res.ok) {
+        const errData = await res.json();
+        throw new Error(errData.message || "Error al crear el código promocional");
+      }
+      toast({ title: "¡Código Promocional Creado!", description: `Código ${payload.code} activo.` });
+      setShowCreatePromoModal(false);
+      createPromoForm.reset();
+      refetchAdminPromos();
+    } catch (err: any) {
+      toast({ title: "Error al crear", description: err.message || "No se pudo crear el código", variant: "destructive" });
+    }
+  };
+
+  const updateUserAccessMutation = useMutation({
+    mutationFn: async ({ userId, accessStatus, expiresAt, notes }: any) => {
+      const res = await apiRequest('PATCH', `/api/admin/users/${userId}/access-status`, {
+        accessStatus,
+        expiresAt: expiresAt ? new Date(expiresAt).toISOString() : null,
+        notes
+      });
+      return res.json();
+    },
+    onSuccess: () => {
+      toast({ title: "Acceso Comercial Actualizado", description: "Se actualizó el estado comercial del usuario." });
+      setUserToEditAccess(null);
+      refetchLegacyUsers();
+    },
+    onError: (err: any) => {
+      toast({ title: "Error", description: err.message || "No se pudo actualizar el acceso comercial.", variant: "destructive" });
+    }
   });
 
   // Auto-select first tenant when available
@@ -287,7 +400,7 @@ export default function UserManagement() {
   const isOwnerOrSuper = isSuperAdmin || callerRoleInTenant === 'owner';
 
   // 4. Fetch legacy users for platform admin global tab
-  const { data: legacyUsers, isLoading: isLoadingLegacyUsers } = useQuery<User[]>({
+  const { data: legacyUsers, isLoading: isLoadingLegacyUsers, refetch: refetchLegacyUsers } = useQuery<User[]>({
     queryKey: ["/api/users"],
     enabled: isPlatformAdmin,
   });
@@ -677,7 +790,7 @@ export default function UserManagement() {
             : "Control de identidades, perfiles y permisos de la organización"
         }
       >
-        {canManageMembers && (
+        {canManageMembers && activeTab !== "promos" && (
           <Button
             onClick={handleOpenCreateModal}
             className="bg-primary hover:bg-primary/90 text-primary-foreground shadow-sm ml-3"
@@ -687,6 +800,16 @@ export default function UserManagement() {
             Nuevo Colaborador
           </Button>
         )}
+        {isPlatformAdmin && activeTab === "promos" && (
+          <Button
+            onClick={() => setShowCreatePromoModal(true)}
+            className="bg-primary hover:bg-primary/90 text-primary-foreground shadow-sm ml-3"
+            data-testid="button-new-promo"
+          >
+            <Tag className="w-4 h-4 mr-2" />
+            Nuevo Código Promocional
+          </Button>
+        )}
       </Header>
 
       <main className="flex-1 p-4 sm:p-6 lg:p-8 overflow-y-auto space-y-6">
@@ -694,14 +817,18 @@ export default function UserManagement() {
         {/* Navigation Tabs for Platform Admins */}
         {isPlatformAdmin && (
           <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-            <TabsList className="grid grid-cols-2 max-w-md bg-muted/60 p-1">
-              <TabsTrigger value="organization" className="text-xs font-semibold flex items-center gap-2">
+            <TabsList className="grid grid-cols-3 max-w-2xl bg-muted/60 p-1">
+              <TabsTrigger value="organization" data-testid="tab-organization" className="text-xs font-semibold flex items-center gap-2">
                 <Building2 className="w-4 h-4 text-primary" />
-                Miembros por Organización
+                Organización
               </TabsTrigger>
-              <TabsTrigger value="global" className="text-xs font-semibold flex items-center gap-2">
+              <TabsTrigger value="global" data-testid="tab-global" className="text-xs font-semibold flex items-center gap-2">
                 <Users className="w-4 h-4" />
                 Directorio Global ({legacyUsers?.length || 0})
+              </TabsTrigger>
+              <TabsTrigger value="promos" data-testid="tab-promos" className="text-xs font-semibold flex items-center gap-2">
+                <Tag className="w-4 h-4 text-primary" />
+                Códigos Promocionales ({adminPromos?.length || 0})
               </TabsTrigger>
             </TabsList>
           </Tabs>
@@ -1100,10 +1227,12 @@ export default function UserManagement() {
                     <tr>
                       <th className="py-3 px-6 text-left font-semibold">Usuario</th>
                       <th className="py-3 px-4 text-left font-semibold">Email</th>
-                      <th className="py-3 px-4 text-left font-semibold">Rol Legacy</th>
+                      <th className="py-3 px-4 text-left font-semibold">Rol</th>
                       <th className="py-3 px-4 text-left font-semibold">Puesto</th>
-                      <th className="py-3 px-4 text-left font-semibold">Estado</th>
+                      <th className="py-3 px-4 text-left font-semibold">Estado Cuenta</th>
+                      <th className="py-3 px-4 text-left font-semibold">Acceso Comercial</th>
                       <th className="py-3 px-4 text-left font-semibold">Creado</th>
+                      <th className="py-3 px-6 text-right font-semibold">Acciones</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-border/60">
@@ -1129,8 +1258,50 @@ export default function UserManagement() {
                             {u.isActive ? "Activo" : "Inactivo"}
                           </Badge>
                         </td>
+                        <td className="py-3 px-4">
+                          <div className="flex flex-col gap-0.5">
+                            <Badge variant="outline" className={`text-xs w-fit ${
+                              u.accessStatus === 'complimentary' ? 'bg-emerald-50 text-emerald-700 border-emerald-300' :
+                              u.accessStatus === 'promotional' ? 'bg-indigo-50 text-indigo-700 border-indigo-300' :
+                              u.accessStatus === 'trial' ? 'bg-amber-50 text-amber-700 border-amber-300' :
+                              u.accessStatus === 'active' ? 'bg-blue-50 text-blue-700 border-blue-300' :
+                              u.accessStatus === 'expired' ? 'bg-orange-50 text-orange-700 border-orange-300' :
+                              'bg-green-50 text-green-700 border-green-300'
+                            }`}>
+                              {u.accessStatus === 'complimentary' ? 'Cortesía' :
+                               u.accessStatus === 'promotional' ? 'Promocional' :
+                               u.accessStatus === 'trial' ? 'Prueba' :
+                               u.accessStatus === 'active' ? 'Activo' :
+                               u.accessStatus === 'expired' ? 'Finalizado' :
+                               'Gratuito'}
+                            </Badge>
+                            {u.accessStatusExpiresAt && (
+                              <span className="text-[10px] text-muted-foreground">
+                                Vence: {format(new Date(u.accessStatusExpiresAt), "dd/MM/yyyy")}
+                              </span>
+                            )}
+                          </div>
+                        </td>
                         <td className="py-3 px-4 text-xs text-muted-foreground">
                           {u.createdAt ? format(new Date(u.createdAt), "dd/MM/yyyy") : "-"}
+                        </td>
+                        <td className="py-3 px-6 text-right">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => {
+                              setUserToEditAccess(u);
+                              setAccessStatusSelection(u.accessStatus || "free");
+                              setAccessExpiresAtSelection(u.accessStatusExpiresAt ? format(new Date(u.accessStatusExpiresAt), "yyyy-MM-dd") : "");
+                              setAccessNotesInput(u.accessStatusNotes || "");
+                            }}
+                            className="h-8 text-xs text-primary hover:text-primary hover:bg-primary/10"
+                            title="Modificar acceso comercial"
+                            data-testid={`button-edit-access-${u.id}`}
+                          >
+                            <Tag className="h-3.5 w-3.5 mr-1" />
+                            Acceso
+                          </Button>
                         </td>
                       </tr>
                     ))}
@@ -1141,7 +1312,427 @@ export default function UserManagement() {
           </Card>
         )}
 
+        {/* Tab 3: Promotional Codes Management (Bloque 10) */}
+        {activeTab === "promos" && isPlatformAdmin && (
+          <div className="space-y-6">
+            <Card className="border border-border/60 shadow-sm">
+              <CardHeader className="py-4 px-6 border-b flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                <div>
+                  <CardTitle className="text-base font-semibold flex items-center gap-2">
+                    <Tag className="w-4 h-4 text-primary" />
+                    Catálogo de Códigos Promocionales y Alianzas
+                  </CardTitle>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    Define códigos de descuento, meses de gracia o cortesías. Los códigos son independientes de las claves de franquicia (referralCode).
+                  </p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Badge variant="secondary" className="font-mono text-xs">
+                    {adminPromos?.length || 0} Códigos
+                  </Badge>
+                  <Button
+                    onClick={() => setShowCreatePromoModal(true)}
+                    size="sm"
+                    className="h-8 text-xs font-semibold"
+                    data-testid="button-create-promo-inside"
+                  >
+                    <Plus className="w-3.5 h-3.5 mr-1" />
+                    Nuevo Código
+                  </Button>
+                </div>
+              </CardHeader>
+              <CardContent className="p-0">
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead className="bg-muted/40 border-b text-xs uppercase text-muted-foreground">
+                      <tr>
+                        <th className="py-3 px-6 text-left font-semibold">Código</th>
+                        <th className="py-3 px-4 text-left font-semibold">Nombre y Detalle</th>
+                        <th className="py-3 px-4 text-left font-semibold">Beneficio</th>
+                        <th className="py-3 px-4 text-left font-semibold">Alcance</th>
+                        <th className="py-3 px-4 text-left font-semibold">Usos</th>
+                        <th className="py-3 px-4 text-left font-semibold">Vigencia</th>
+                        <th className="py-3 px-4 text-left font-semibold">Activo</th>
+                        <th className="py-3 px-6 text-right font-semibold">Acciones</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-border/60">
+                      {adminPromos?.length === 0 ? (
+                        <tr>
+                          <td colSpan={8} className="py-8 text-center text-sm text-muted-foreground">
+                            No hay códigos promocionales registrados todavía. Crea uno para comenzar.
+                          </td>
+                        </tr>
+                      ) : (
+                        adminPromos?.map((promo: any) => (
+                          <tr key={promo.id} className="hover:bg-muted/30">
+                            <td className="py-3 px-6">
+                              <Badge variant="outline" className="font-mono text-xs font-bold bg-primary/5 text-primary border-primary/30">
+                                {promo.code}
+                              </Badge>
+                            </td>
+                            <td className="py-3 px-4">
+                              <div className="font-medium text-xs text-foreground">{promo.name}</div>
+                              {promo.description && (
+                                <div className="text-[11px] text-muted-foreground truncate max-w-xs">{promo.description}</div>
+                              )}
+                            </td>
+                            <td className="py-3 px-4">
+                              <Badge className={`text-xs ${
+                                promo.benefitType === 'permanent_free' ? 'bg-emerald-600 text-white' :
+                                promo.benefitType === 'free_months' ? 'bg-indigo-600 text-white' :
+                                promo.benefitType === 'percentage_discount' ? 'bg-blue-600 text-white' :
+                                promo.benefitType === 'fixed_discount' ? 'bg-blue-700 text-white' :
+                                'bg-green-600 text-white'
+                              }`}>
+                                {promo.benefitType === 'free_months' ? `${promo.durationMonths || 1} meses gratis` :
+                                 promo.benefitType === 'percentage_discount' ? `${promo.benefitValue}% desc.` :
+                                 promo.benefitType === 'fixed_discount' ? `$${promo.benefitValue} desc.` :
+                                 promo.benefitType === 'permanent_free' ? 'Permanente' : 'Gratis'}
+                              </Badge>
+                            </td>
+                            <td className="py-3 px-4 text-xs capitalize text-muted-foreground">
+                              {promo.targetScope}
+                            </td>
+                            <td className="py-3 px-4 text-xs font-mono">
+                              <span className="font-semibold text-foreground">{promo.currentUses}</span>
+                              <span className="text-muted-foreground"> / {promo.maxUses ?? '∞'}</span>
+                            </td>
+                            <td className="py-3 px-4 text-xs text-muted-foreground">
+                              {promo.expiresAt ? format(new Date(promo.expiresAt), "dd/MM/yyyy") : "Sin vencimiento"}
+                            </td>
+                            <td className="py-3 px-4">
+                              <Switch
+                                checked={promo.isActive}
+                                onCheckedChange={(checked) => togglePromoMutation.mutate({ id: promo.id, isActive: checked })}
+                                disabled={togglePromoMutation.isPending}
+                                data-testid={`switch-promo-active-${promo.id}`}
+                              />
+                            </td>
+                            <td className="py-3 px-6 text-right">
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => setSelectedPromoForRedemptions(promo)}
+                                className="h-8 text-xs text-muted-foreground hover:text-foreground"
+                                data-testid={`button-view-redemptions-${promo.id}`}
+                              >
+                                <Eye className="h-3.5 w-3.5 mr-1" />
+                                Canjes ({promo.currentUses})
+                              </Button>
+                            </td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        )}
+
       </main>
+
+      {/* MODAL 1: CREATE PROMO CODE */}
+      <Dialog open={showCreatePromoModal} onOpenChange={setShowCreatePromoModal}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Tag className="h-5 w-5 text-primary" />
+              Crear Nuevo Código Promocional
+            </DialogTitle>
+            <DialogDescription>
+              Configura el beneficio comercial y condiciones de canje.
+            </DialogDescription>
+          </DialogHeader>
+
+          <form onSubmit={createPromoForm.handleSubmit(onCreatePromoSubmit)} className="space-y-4 pt-2">
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <label className="text-xs font-medium">Código Único</label>
+                <Input
+                  placeholder="EJ. ALIANZA-2026"
+                  {...createPromoForm.register("code")}
+                  className="uppercase font-mono text-sm"
+                  data-testid="input-promo-code"
+                />
+                {createPromoForm.formState.errors.code && (
+                  <p className="text-[11px] text-destructive">{createPromoForm.formState.errors.code.message}</p>
+                )}
+              </div>
+              <div className="space-y-1">
+                <label className="text-xs font-medium">Nombre de Promoción</label>
+                <Input
+                  placeholder="Alianza Especial"
+                  {...createPromoForm.register("name")}
+                  className="text-sm"
+                  data-testid="input-promo-name"
+                />
+                {createPromoForm.formState.errors.name && (
+                  <p className="text-[11px] text-destructive">{createPromoForm.formState.errors.name.message}</p>
+                )}
+              </div>
+            </div>
+
+            <div className="space-y-1">
+              <label className="text-xs font-medium">Descripción (Opcional)</label>
+              <Input
+                placeholder="Beneficio especial acordado con la red..."
+                {...createPromoForm.register("description")}
+                className="text-sm"
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <label className="text-xs font-medium">Tipo de Beneficio</label>
+                <Select
+                  value={createPromoForm.watch("benefitType")}
+                  onValueChange={(val: any) => createPromoForm.setValue("benefitType", val)}
+                >
+                  <SelectTrigger className="text-xs" data-testid="select-benefit-type">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="free_months">Meses Gratuitos</SelectItem>
+                    <SelectItem value="percentage_discount">Porcentaje Descuento (%)</SelectItem>
+                    <SelectItem value="fixed_discount">Descuento Fijo ($)</SelectItem>
+                    <SelectItem value="permanent_free">Cortesía Permanente</SelectItem>
+                    <SelectItem value="free">Acceso Gratuito Estándar</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-xs font-medium">Valor del Beneficio</label>
+                <Input
+                  type="number"
+                  placeholder="0"
+                  {...createPromoForm.register("benefitValue")}
+                  className="text-sm"
+                  data-testid="input-benefit-value"
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <label className="text-xs font-medium">Duración (Meses)</label>
+                <Input
+                  type="number"
+                  placeholder="Ej. 3 (opcional)"
+                  {...createPromoForm.register("durationMonths")}
+                  className="text-sm"
+                  data-testid="input-duration-months"
+                />
+                <span className="text-[10px] text-muted-foreground">Vacío = sin plazo fijo</span>
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-xs font-medium">Límite de Canjes (Máx.)</label>
+                <Input
+                  type="number"
+                  placeholder="Ej. 50 (opcional)"
+                  {...createPromoForm.register("maxUses")}
+                  className="text-sm"
+                  data-testid="input-max-uses"
+                />
+                <span className="text-[10px] text-muted-foreground">Vacío = ilimitado</span>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <label className="text-xs font-medium">Alcance Objetivo</label>
+                <Select
+                  value={createPromoForm.watch("targetScope")}
+                  onValueChange={(val: any) => createPromoForm.setValue("targetScope", val)}
+                >
+                  <SelectTrigger className="text-xs">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="global">Global (Todos)</SelectItem>
+                    <SelectItem value="broker">Brokers</SelectItem>
+                    <SelectItem value="master_broker">Master Brokers</SelectItem>
+                    <SelectItem value="alliance">Alianza Comercial</SelectItem>
+                    <SelectItem value="campaign">Campaña Temporal</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-xs font-medium">Fecha de Expiración</label>
+                <Input
+                  type="date"
+                  {...createPromoForm.register("expiresAt")}
+                  className="text-sm"
+                  data-testid="input-expires-at"
+                />
+              </div>
+            </div>
+
+            <div className="pt-3 flex justify-end gap-2 border-t">
+              <Button type="button" variant="outline" onClick={() => setShowCreatePromoModal(false)}>
+                Cancelar
+              </Button>
+              <Button type="submit" data-testid="button-submit-promo">
+                Guardar Código
+              </Button>
+            </div>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* MODAL 2: VIEW PROMO REDEMPTIONS */}
+      <Dialog open={Boolean(selectedPromoForRedemptions)} onOpenChange={(open) => !open && setSelectedPromoForRedemptions(null)}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Gift className="h-5 w-5 text-primary" />
+              Canjes de: {selectedPromoForRedemptions?.code}
+            </DialogTitle>
+            <DialogDescription>
+              {selectedPromoForRedemptions?.name} · Total de canjes: {selectedPromoForRedemptions?.currentUses}
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="max-h-[60vh] overflow-y-auto">
+            {isLoadingRedemptions ? (
+              <div className="p-8 text-center text-sm text-muted-foreground">Cargando canjes...</div>
+            ) : promoRedemptions.length === 0 ? (
+              <div className="p-8 text-center text-sm text-muted-foreground">
+                Ningún usuario ha canjeado este código aún.
+              </div>
+            ) : (
+              <table className="w-full text-xs">
+                <thead className="bg-muted/40 border-b uppercase text-muted-foreground">
+                  <tr>
+                    <th className="py-2.5 px-3 text-left">Usuario</th>
+                    <th className="py-2.5 px-3 text-left">Email</th>
+                    <th className="py-2.5 px-3 text-left">Rol</th>
+                    <th className="py-2.5 px-3 text-left">Fecha Canje</th>
+                    <th className="py-2.5 px-3 text-left">Vigencia</th>
+                    <th className="py-2.5 px-3 text-left">Estado</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y">
+                  {promoRedemptions.map((r: any) => (
+                    <tr key={r.id}>
+                      <td className="py-2 px-3 font-medium">
+                        {r.user ? `${r.user.firstName} ${r.user.lastName}` : "Usuario"}
+                      </td>
+                      <td className="py-2 px-3 text-muted-foreground font-mono">
+                        {r.user?.email || "-"}
+                      </td>
+                      <td className="py-2 px-3 capitalize">
+                        {r.user?.role || "-"}
+                      </td>
+                      <td className="py-2 px-3">
+                        {r.appliedAt ? format(new Date(r.appliedAt), "dd/MM/yyyy HH:mm") : "-"}
+                      </td>
+                      <td className="py-2 px-3">
+                        {r.expiresAt ? format(new Date(r.expiresAt), "dd/MM/yyyy") : "Permanente"}
+                      </td>
+                      <td className="py-2 px-3">
+                        <Badge variant="outline" className="text-[10px] bg-emerald-50 text-emerald-700">
+                          {r.status}
+                        </Badge>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* MODAL 3: EDIT USER ACCESS STATUS */}
+      <Dialog open={Boolean(userToEditAccess)} onOpenChange={(open) => !open && setUserToEditAccess(null)}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <UserCheck className="h-5 w-5 text-primary" />
+              Modificar Acceso Comercial
+            </DialogTitle>
+            <DialogDescription>
+              {userToEditAccess?.firstName} {userToEditAccess?.lastName} ({userToEditAccess?.email})
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 pt-2">
+            <div className="space-y-1">
+              <label className="text-xs font-medium">Estado de Acceso Comercial</label>
+              <Select value={accessStatusSelection} onValueChange={setAccessStatusSelection}>
+                <SelectTrigger className="text-xs" data-testid="select-user-access-status">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="free">Gratuito / Estándar</SelectItem>
+                  <SelectItem value="promotional">Promocional</SelectItem>
+                  <SelectItem value="trial">Periodo de Prueba</SelectItem>
+                  <SelectItem value="active">Activo Comercial</SelectItem>
+                  <SelectItem value="complimentary">Cortesía Permanente</SelectItem>
+                  <SelectItem value="expired">Expirado / Finalizado</SelectItem>
+                  <SelectItem value="suspended">Suspendido Comercial</SelectItem>
+                </SelectContent>
+              </Select>
+              <p className="text-[11px] text-muted-foreground">
+                * Nota: Incluso en estado "Expirado", la plataforma garantiza operatividad continua para colocación y comisiones.
+              </p>
+            </div>
+
+            <div className="space-y-1">
+              <label className="text-xs font-medium">Fecha de Expiración del Beneficio (Opcional)</label>
+              <Input
+                type="date"
+                value={accessExpiresAtSelection}
+                onChange={(e) => setAccessExpiresAtSelection(e.target.value)}
+                className="text-xs"
+                data-testid="input-user-access-expires"
+              />
+              <span className="text-[10px] text-muted-foreground">Vacío = sin expiración fijada</span>
+            </div>
+
+            <div className="space-y-1">
+              <label className="text-xs font-medium">Notas Administrativas</label>
+              <Input
+                placeholder="Ej. Promoción extendida por acuerdo comercial"
+                value={accessNotesInput}
+                onChange={(e) => setAccessNotesInput(e.target.value)}
+                className="text-xs"
+                data-testid="input-user-access-notes"
+              />
+            </div>
+
+            <div className="pt-3 flex justify-end gap-2 border-t">
+              <Button type="button" variant="outline" onClick={() => setUserToEditAccess(null)}>
+                Cancelar
+              </Button>
+              <Button
+                type="button"
+                onClick={() => {
+                  if (userToEditAccess) {
+                    updateUserAccessMutation.mutate({
+                      userId: userToEditAccess.id,
+                      accessStatus: accessStatusSelection,
+                      expiresAt: accessExpiresAtSelection || null,
+                      notes: accessNotesInput
+                    });
+                  }
+                }}
+                disabled={updateUserAccessMutation.isPending}
+                data-testid="button-save-user-access"
+              >
+                {updateUserAccessMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : null}
+                Guardar Cambios
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* CREATE MEMBER MODAL */}
       <Dialog open={showCreateModal} onOpenChange={setShowCreateModal}>

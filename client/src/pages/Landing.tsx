@@ -5,7 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Loader2, Mail, Lock, User, ArrowLeft, Key } from "lucide-react";
+import { Loader2, Mail, Lock, User, ArrowLeft, Key, Tag } from "lucide-react";
 
 export default function Landing() {
   const { toast } = useToast();
@@ -26,6 +26,7 @@ export default function Landing() {
   const [registerFirstName, setRegisterFirstName] = useState("");
   const [registerLastName, setRegisterLastName] = useState("");
   const [registerReferralCode, setRegisterReferralCode] = useState("");
+  const [registerPromoCode, setRegisterPromoCode] = useState("");
 
   const handleLocalLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -76,6 +77,7 @@ export default function Landing() {
           firstName: registerFirstName,
           lastName: registerLastName,
           referralCode: registerReferralCode || undefined,
+          promoCode: registerPromoCode || undefined,
         }),
         credentials: "include",
       });
@@ -458,6 +460,29 @@ export default function Landing() {
                     </div>
                     <p className="text-[11px] text-muted-foreground">
                       Si te refirió un Master Broker u Organización, ingresa su clave para ligarte a su red.
+                    </p>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="register-promocode" className="flex items-center justify-between">
+                      <span>Código Promocional / Beneficio</span>
+                      <span className="text-muted-foreground text-xs font-normal">Opcional</span>
+                    </Label>
+                    <div className="relative">
+                      <Tag className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
+                      <Input
+                        id="register-promocode"
+                        type="text"
+                        placeholder="Ej. LANZAMIENTO2026"
+                        value={registerPromoCode}
+                        onChange={(e) => setRegisterPromoCode(e.target.value)}
+                        className="pl-10 uppercase font-mono"
+                        disabled={isLoading}
+                        data-testid="input-register-promocode"
+                      />
+                    </div>
+                    <p className="text-[11px] text-muted-foreground">
+                      Aplica beneficios como meses gratuitos o descuentos. No define tu relación o red broker.
                     </p>
                   </div>
                   

@@ -291,6 +291,8 @@ export async function executeBackfill(options: BackfillOptions): Promise<Backfil
         ...platformData,
         parentTenantId: null,
         settings: platformData.settings as any,
+        accessStatus: "free",
+        accessStatusExpiresAt: null,
         isActive: true,
         createdAt: new Date(),
         updatedAt: new Date(),
@@ -299,7 +301,7 @@ export async function executeBackfill(options: BackfillOptions): Promise<Backfil
     }
   }
 
-  const platformId = platformTenant.id;
+  const platformId = platformTenant!.id;
 
   // 3. Process Master Brokers
   let masterTenantsExisting = 0;
@@ -347,6 +349,8 @@ export async function executeBackfill(options: BackfillOptions): Promise<Backfil
           ...tenantData,
           parentTenantId: platformId,
           settings: tenantData.settings as any,
+          accessStatus: "free",
+          accessStatusExpiresAt: null,
           isActive: true,
           createdAt: new Date(),
           updatedAt: new Date(),
@@ -449,6 +453,8 @@ export async function executeBackfill(options: BackfillOptions): Promise<Backfil
           ...tenantData,
           parentTenantId,
           settings: tenantData.settings as any,
+          accessStatus: "free",
+          accessStatusExpiresAt: null,
           isActive: true,
           createdAt: new Date(),
           updatedAt: new Date(),
