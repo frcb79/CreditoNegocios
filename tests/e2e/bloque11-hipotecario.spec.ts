@@ -25,7 +25,18 @@ async function setupPage(context: any) {
       return origGet.apply(this, [key] as any);
     };
   });
-  return await context.newPage();
+  const page = await context.newPage();
+  page.on('console', (msg: any) => console.log(`[PAGE ${msg.type()}]:`, msg.text()));
+  page.on('pageerror', (err: any) => console.log('[PAGE ERROR]:', err.message));
+  page.on('response', async (res: any) => {
+    if (res.status() >= 400) {
+      try {
+        const body = await res.text();
+        console.log(`[HTTP ${res.status()}] ${res.url()} ->`, body);
+      } catch {}
+    }
+  });
+  return page;
 }
 
 async function performLogin(page: any, email: string, pass: string) {

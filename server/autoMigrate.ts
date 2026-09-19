@@ -181,7 +181,8 @@ export async function runAutoMigration(): Promise<void> {
           ADD COLUMN IF NOT EXISTS numero_negocio VARCHAR,
           ADD COLUMN IF NOT EXISTS interior_negocio VARCHAR,
           ADD COLUMN IF NOT EXISTS codigo_postal_negocio VARCHAR,
-          ADD COLUMN IF NOT EXISTS estado_negocio VARCHAR;
+          ADD COLUMN IF NOT EXISTS estado_negocio VARCHAR,
+          ADD COLUMN IF NOT EXISTS origin_opportunity VARCHAR;
 
         CREATE INDEX IF NOT EXISTS "clients_tenant_idx" ON public.clients ("tenant_id");
         CREATE INDEX IF NOT EXISTS "clients_broker_idx" ON public.clients ("broker_id");
@@ -196,7 +197,8 @@ export async function runAutoMigration(): Promise<void> {
       await client.query(`
         ALTER TABLE IF EXISTS public.credits
           ADD COLUMN IF NOT EXISTS tenant_id VARCHAR,
-          ADD COLUMN IF NOT EXISTS created_by VARCHAR;
+          ADD COLUMN IF NOT EXISTS created_by VARCHAR,
+          ADD COLUMN IF NOT EXISTS mortgage_data JSONB DEFAULT '{}';
 
         CREATE INDEX IF NOT EXISTS "credits_tenant_idx" ON public.credits ("tenant_id");
         CREATE INDEX IF NOT EXISTS "credits_broker_idx" ON public.credits ("broker_id");
@@ -226,7 +228,8 @@ export async function runAutoMigration(): Promise<void> {
       await client.query(`
         ALTER TABLE IF EXISTS public.credit_submission_requests
           ADD COLUMN IF NOT EXISTS tenant_id VARCHAR,
-          ADD COLUMN IF NOT EXISTS created_by VARCHAR;
+          ADD COLUMN IF NOT EXISTS created_by VARCHAR,
+          ADD COLUMN IF NOT EXISTS mortgage_data JSONB DEFAULT '{}';
 
         CREATE INDEX IF NOT EXISTS "credit_submissions_tenant_idx" ON public.credit_submission_requests ("tenant_id");
       `);
