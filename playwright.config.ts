@@ -8,10 +8,10 @@ export default defineConfig({
   timeout: 45000,
   reporter: [['list'], ['html', { open: 'never' }]],
   use: {
-    baseURL: process.env.E2E_BASE_URL || 'http://localhost:5000',
+    baseURL: process.env.STAGING_URL || process.env.BACKEND_URL || process.env.E2E_BASE_URL || 'https://creditonegocios-staging.up.railway.app',
     trace: 'retain-on-failure',
     headless: true,
-    screenshot: 'only-on-failure',
+    screenshot: 'on',
   },
   projects: [
     {
