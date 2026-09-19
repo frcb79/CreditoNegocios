@@ -6713,6 +6713,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const hipoTemplate = await ensureHipotecarioViviendaTemplate();
 
       let finalClientId = clientId;
+      let clientData: any = undefined;
 
       // Camino A: Nuevo cliente
       if (!finalClientId) {
@@ -6721,7 +6722,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
 
         const clientType = incomeType === 'empresario' ? 'fisica_empresarial' : 'fisica';
-        const clientData = updatedInsertClientSchema.parse({
+        clientData = updatedInsertClientSchema.parse({
           tenantId,
           brokerId,
           createdBy: userId,
@@ -6737,10 +6738,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
           address: propertyLocation || null,
           street: propertyLocation || null,
         });
-
-        const newClient = await storage.createClient(clientData);
-        finalClientId = newClient.id;
-        createdClientId = newClient.id; // Retained for rollback if submission creation fails
       } else {
         // Camino B: Validar cliente existente
         const existingClient = await storage.getClient(finalClientId);
@@ -6764,9 +6761,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       const purpose = "Adquisición de Vivienda / Crédito Hipotecario";
 
-      const submissionData = insertCreditSubmissionRequestSchema.parse({
+      const submissionData = insertCreditSubmissionRequestSchema.omit({ clientId: true }).parse({
         tenantId,
-        clientId: finalClientId,
         brokerId,
         createdBy: userId,
         productTemplateId: hipoTemplate.id,
@@ -6777,39 +6773,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
         status: 'pending_admin',
       });
 
-      let submission;
-      try {
-        submission = await storage.createCreditSubmissionRequest(submissionData);
-      } catch (subErr) {
-        // Rollback: if client was just created, delete it so we don't leave orphaned clients
-        if (createdClientId) {
-          try {
-            await storage.deleteClient(createdClientId);
-            console.log(`[Rollback] Eliminado cliente huérfano ${createdClientId} tras fallo en creación de solicitud`);
-          } catch (delErr) {
-            console.error("[Rollback] Error al eliminar cliente huérfano:", delErr);
-          }
-        }
-        throw subErr;
-      }
-
-      // EVENT 2: Targets created only if explicitly selected/channeled
-      const targets = [];
-      if (Array.isArray(financialInstitutionIds) && financialInstitutionIds.length > 0) {
-        for (const institutionId of financialInstitutionIds) {
-          const target = await storage.createCreditSubmissionTarget({
-            requestId: submission.id,
-            financialInstitutionId: institutionId,
-            status: 'pending_admin',
-          });
-          targets.push(target);
-        }
-      }
+      // Execute atomic DB transaction: BEGIN -> create client (if Camino A) -> create submission -> create targets -> COMMIT
+      // Any failure automatically triggers ROLLBACK with zero orphaned records
+      const { client, submission, targets } = await storage.createMortgageLeadTransactional({
+        clientData: !finalClientId ? clientData : undefined,
+        clientId: finalClientId ? finalClientId : undefined,
+        submissionData,
+        financialInstitutionIds: Array.isArray(financialInstitutionIds) ? financialInstitutionIds : [],
+      });
 
       // Notifications
       try {
-        const client = await storage.getClient(finalClientId);
-        const clientName = client ? `${client.firstName || ''} ${client.lastName || ''}`.trim() : 'Prospecto Hipotecario';
+        const clientName = `${client.firstName || ''} ${client.lastName || ''}`.trim() || 'Prospecto Hipotecario';
         const formattedAmount = `$${parseFloat(requestedAmount.toString()).toLocaleString('es-MX')} MXN`;
 
         const allUsers = await storage.getAllUsers();
@@ -6846,9 +6821,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         console.error("Error creating notifications for mortgage lead:", notifErr);
       }
 
-      const finalClient = await storage.getClient(finalClientId);
       res.status(201).json({
-        client: finalClient,
+        client,
         submission,
         targets,
         message: targets.length > 0
@@ -6856,13 +6830,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
           : "Oportunidad hipotecaria registrada exitosamente para revisión y canalización"
       });
     } catch (error: any) {
-      if (createdClientId) {
-        try {
-          await storage.deleteClient(createdClientId);
-        } catch (delErr) {
-          console.error("[Rollback] Error al revertir cliente:", delErr);
-        }
-      }
       console.error("Error creating mortgage lead:", error);
       res.status(500).json({ message: error.message || "Error al registrar la oportunidad hipotecaria" });
     }

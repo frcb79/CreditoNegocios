@@ -253,6 +253,18 @@ export interface IStorage {
   rejectCreditSubmissionTarget(targetId: string, adminId: string, adminNotes?: string): Promise<CreditSubmissionTarget | undefined>;
   returnCreditSubmissionTargetToBroker(targetId: string, adminId: string, details?: string, adminNotes?: string): Promise<CreditSubmissionTarget | undefined>;
 
+  // Bloque 11: Real Transactional Mortgage Lead creation
+  createMortgageLeadTransactional(params: {
+    clientData?: InsertClient;
+    clientId?: string;
+    submissionData: Omit<InsertCreditSubmissionRequest, 'clientId'>;
+    financialInstitutionIds?: string[];
+  }): Promise<{
+    client: Client;
+    submission: CreditSubmissionRequest;
+    targets: CreditSubmissionTarget[];
+  }>;
+
   // Promo codes & redemptions operations (Bloque 10)
   getPromoCodes(filters?: { isActive?: boolean; targetScope?: string }): Promise<PromoCode[]>;
   getPromoCode(id: string): Promise<PromoCode | undefined>;
@@ -3050,6 +3062,61 @@ export class MemStorage implements IStorage {
     };
     this.creditSubmissionTargets.set(targetId, updated);
     return updated;
+  }
+
+  // Bloque 11: Real Transactional Mortgage Lead creation in MemStorage
+  async createMortgageLeadTransactional(params: {
+    clientData?: InsertClient;
+    clientId?: string;
+    submissionData: Omit<InsertCreditSubmissionRequest, 'clientId'>;
+    financialInstitutionIds?: string[];
+  }): Promise<{
+    client: Client;
+    submission: CreditSubmissionRequest;
+    targets: CreditSubmissionTarget[];
+  }> {
+    const clientsBackup = new Map(this.clients);
+    const submissionsBackup = new Map(this.creditSubmissionRequests);
+    const targetsBackup = new Map(this.creditSubmissionTargets);
+
+    try {
+      let client: Client;
+      if (params.clientData) {
+        client = await this.createClient(params.clientData);
+      } else if (params.clientId) {
+        const existing = await this.getClient(params.clientId);
+        if (!existing) {
+          throw new Error("Cliente no encontrado");
+        }
+        client = existing;
+      } else {
+        throw new Error("Se requiere clientData (Camino A) o clientId (Camino B)");
+      }
+
+      const submission = await this.createCreditSubmissionRequest({
+        ...params.submissionData,
+        clientId: client.id,
+      } as InsertCreditSubmissionRequest);
+
+      const targets: CreditSubmissionTarget[] = [];
+      if (Array.isArray(params.financialInstitutionIds) && params.financialInstitutionIds.length > 0) {
+        for (const institutionId of params.financialInstitutionIds) {
+          const target = await this.createCreditSubmissionTarget({
+            requestId: submission.id,
+            financialInstitutionId: institutionId,
+            status: 'pending_admin',
+          });
+          targets.push(target);
+        }
+      }
+
+      return { client, submission, targets };
+    } catch (error) {
+      this.clients = clientsBackup;
+      this.creditSubmissionRequests = submissionsBackup;
+      this.creditSubmissionTargets = targetsBackup;
+      throw error;
+    }
   }
 
   // Promo codes & redemptions operations (Bloque 10)

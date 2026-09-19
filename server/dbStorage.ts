@@ -2226,6 +2226,80 @@ export class DbStorage implements IStorage {
     }
   }
 
+  // Bloque 11: Real PostgreSQL Transaction for Mortgage Lead Creation
+  // Executes BEGIN -> (Insert Client if Camino A) -> Insert CreditSubmissionRequest -> (Insert Targets if any) -> COMMIT
+  // On error: automatic ROLLBACK by PostgreSQL via db.transaction
+  async createMortgageLeadTransactional(params: {
+    clientData?: InsertClient;
+    clientId?: string;
+    submissionData: Omit<InsertCreditSubmissionRequest, 'clientId'>;
+    financialInstitutionIds?: string[];
+  }): Promise<{
+    client: Client;
+    submission: CreditSubmissionRequest;
+    targets: CreditSubmissionTarget[];
+  }> {
+    return await db.transaction(async (tx) => {
+      let client: Client;
+
+      if (params.clientData) {
+        // Camino A: insert new client within transaction
+        const [createdClient] = await tx
+          .insert(clients)
+          .values({
+            ...params.clientData,
+            createdAt: new Date(),
+            updatedAt: new Date(),
+          })
+          .returning();
+        client = createdClient;
+      } else if (params.clientId) {
+        // Camino B: select existing client within transaction
+        const [existingClient] = await tx
+          .select()
+          .from(clients)
+          .where(eq(clients.id, params.clientId));
+        if (!existingClient) {
+          throw new Error("Cliente no encontrado");
+        }
+        client = existingClient;
+      } else {
+        throw new Error("Se requiere clientData (Camino A) o clientId (Camino B)");
+      }
+
+      // Insert credit submission request within transaction
+      const [submission] = await tx
+        .insert(creditSubmissionRequests)
+        .values({
+          ...params.submissionData,
+          clientId: client.id,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        })
+        .returning();
+
+      // Insert targets within transaction if provided
+      const targets: CreditSubmissionTarget[] = [];
+      if (Array.isArray(params.financialInstitutionIds) && params.financialInstitutionIds.length > 0) {
+        for (const institutionId of params.financialInstitutionIds) {
+          const [target] = await tx
+            .insert(creditSubmissionTargets)
+            .values({
+              requestId: submission.id,
+              financialInstitutionId: institutionId,
+              status: 'pending_admin',
+              createdAt: new Date(),
+              updatedAt: new Date(),
+            })
+            .returning();
+          targets.push(target);
+        }
+      }
+
+      return { client, submission, targets };
+    });
+  }
+
   // Promo codes & redemptions operations (Bloque 10)
   async getPromoCodes(filters?: { isActive?: boolean; targetScope?: string }): Promise<PromoCode[]> {
     try {
