@@ -165,7 +165,7 @@ export default function MortgageLeadModal({
       setSimInterestRate("11.5");
       setSimTermMonths("240");
     }
-  }, [isOpen, existingClient, form]);
+  }, [isOpen, existingClient?.id]);
 
   // Chequeo de duplicados en tiempo real (solo para prospecto nuevo)
   const checkDuplicates = async () => {
@@ -343,7 +343,7 @@ export default function MortgageLeadModal({
         </DialogHeader>
 
         <Form {...form}>
-          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6 mt-4">
+          <form onSubmit={form.handleSubmit(onSubmit, (errors) => console.error("[MortgageLeadModal] Validation errors:", errors))} className="space-y-6 mt-4">
             {/* SECCIÓN 1: DATOS DE CONTACTO */}
             <div className="bg-gray-50 border border-gray-200 rounded-xl p-4 space-y-4">
               <div className="flex items-center justify-between border-b border-gray-200 pb-2">

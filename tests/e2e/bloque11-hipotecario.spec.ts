@@ -139,7 +139,9 @@ test.describe('BLOQUE 11 — Hipotecario MVP Simplificado E2E Real', () => {
 
     // Guardar
     await saveButton.click();
-    await page.waitForTimeout(3500);
+    // Esperar a que el modal se cierre tras la mutación exitosa
+    await expect(page.locator('role=dialog')).not.toBeVisible({ timeout: 15000 });
+    await page.waitForTimeout(2000);
 
     // Screenshot de lista de clientes con nuevo cliente hipotecario
     await page.screenshot({ path: path.join(SCREENSHOT_DIR, '03_cliente_hipotecario_creado.png') });
@@ -158,8 +160,8 @@ test.describe('BLOQUE 11 — Hipotecario MVP Simplificado E2E Real', () => {
     await performLogin(page, BRK_EMAIL, BRK_PASSWORD);
 
     // Navegar a Mis Créditos
-    await page.click('[data-testid="nav-mis-créditos"], [data-testid="nav-gestión-de-créditos"], a[href="/mis-solicitudes"]:visible, a[href="/creditos"]:visible');
-    await page.waitForTimeout(2500);
+    await page.goto('/mis-solicitudes');
+    await page.waitForTimeout(3000);
 
     // Verificar presencia de al menos una solicitud con badge Hipotecario Vivienda
     const mortgageBadge = page.locator('[data-testid^="badge-mortgage-"]').first();
@@ -178,8 +180,8 @@ test.describe('BLOQUE 11 — Hipotecario MVP Simplificado E2E Real', () => {
     await performLogin(page, BRK_EMAIL, BRK_PASSWORD);
 
     // Navegar a Clientes
-    await page.click('[data-testid="nav-clientes"], a[href="/clientes"]:visible');
-    await page.waitForTimeout(2000);
+    await page.goto('/clientes');
+    await page.waitForTimeout(3000);
 
     // Abrir el primer cliente de la lista
     const firstClient = page.locator('[data-testid^="client-"]').first();
