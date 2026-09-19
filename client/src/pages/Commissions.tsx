@@ -10,9 +10,10 @@ import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Commission } from "@shared/schema";
-import { apiRequest } from "@/lib/queryClient";
+import { apiRequest, invalidateAllCreditQueries } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/useAuth";
+import { getStatusLabel, getStatusBadgeClass } from "@/lib/statusConfig";
 import { formatDistanceToNow } from "date-fns";
 import { es } from "date-fns/locale";
 import CommissionBulkUploader from "@/components/Commissions/CommissionBulkUploader";
@@ -129,7 +130,7 @@ export default function Commissions() {
       return response.json();
     },
     onSuccess: (data) => {
-      queryClient.invalidateQueries({ queryKey: ["/api/commissions"] });
+      invalidateAllCreditQueries(queryClient);
       toast({
         title: data.alreadyPaid ? "Comisión ya pagada" : "Pago procesado vía STP",
         description: `Transacción SPEI: ${data.transactionId || 'Confirmada'}`,
@@ -152,7 +153,7 @@ export default function Commissions() {
       return response.json();
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/commissions"] });
+      invalidateAllCreditQueries(queryClient);
       toast({
         title: "Comisión Pagada",
         description: "La comisión fue marcada como pagada correctamente.",
@@ -177,7 +178,7 @@ export default function Commissions() {
       return res.json();
     },
     onSuccess: (data) => {
-      queryClient.invalidateQueries({ queryKey: ["/api/commissions"] });
+      invalidateAllCreditQueries(queryClient);
       toast({
         title: "Comisión Aprobada",
         description: data.message || "La comisión quedó aprobada y congelada para dispersión.",
@@ -199,7 +200,7 @@ export default function Commissions() {
       return res.json();
     },
     onSuccess: (data) => {
-      queryClient.invalidateQueries({ queryKey: ["/api/commissions"] });
+      invalidateAllCreditQueries(queryClient);
       toast({
         title: "Aprobación Masiva Completada",
         description: `Se aprobaron exitosamente ${data.count} comisiones.`,
@@ -221,7 +222,7 @@ export default function Commissions() {
       return res.json();
     },
     onSuccess: (data) => {
-      queryClient.invalidateQueries({ queryKey: ["/api/commissions"] });
+      invalidateAllCreditQueries(queryClient);
       toast({
         title: "Comisión Cancelada",
         description: data.message || "La comisión ha sido cancelada.",
@@ -244,7 +245,7 @@ export default function Commissions() {
       return res.json();
     },
     onSuccess: (data) => {
-      queryClient.invalidateQueries({ queryKey: ["/api/commissions"] });
+      invalidateAllCreditQueries(queryClient);
       toast({
         title: "Dispersión Masiva Completada",
         description: `Se dispersaron exitosamente ${data.totalProcessed} comisiones por $${Number(data.totalAmount).toLocaleString('es-MX')} MXN.`,
@@ -310,6 +311,10 @@ export default function Commissions() {
   // Helper for network payout (Option B: To Master Broker if exists, else to Broker)
   const getPayoutAmount = (c: any): number => {
     if (c.frozenAmount) return safeFloat(c.frozenAmount);
+    const isMasterDirect = c.masterBrokerId && String(c.brokerId) === String(c.masterBrokerId);
+    if (isMasterDirect) {
+      return safeFloat(c.masterBrokerShare) || safeFloat(c.brokerShare) || safeFloat(c.amount);
+    }
     const isMb = c.masterBrokerId && safeFloat(c.masterBrokerShare) > 0;
     return isMb 
       ? (safeFloat(c.masterBrokerShare) + safeFloat(c.brokerShare)) 
@@ -333,7 +338,13 @@ export default function Commissions() {
 
   // Master Broker figures
   const mbGrossFromPlatform = useMemo(() => {
-    return commissions.reduce((sum, c) => sum + safeFloat(c.masterBrokerShare) + safeFloat(c.brokerShare), 0);
+    return commissions.reduce((sum, c) => {
+      const isMasterDirect = c.masterBrokerId && String(c.brokerId) === String(c.masterBrokerId);
+      if (isMasterDirect) {
+        return sum + (safeFloat(c.masterBrokerShare) || safeFloat(c.brokerShare) || safeFloat(c.amount));
+      }
+      return sum + safeFloat(c.masterBrokerShare) + safeFloat(c.brokerShare);
+    }, 0);
   }, [commissions]);
 
   const mbOwedToBrokers = useMemo(() => {
@@ -1269,86 +1280,132 @@ export default function Commissions() {
                             )}
                           </div>
 
-                          {/* Acciones para Super Admin según la subpestaña */}
-                          {isSuperAdmin && (
-                            <div className="flex items-center gap-1.5 flex-wrap justify-end">
-                              {/* Botones de Por Aprobar */}
-                              {isGenerated && (
-                                <>
-                                  <Button
-                                    size="sm"
-                                    className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold h-8"
-                                    onClick={() => approveMutation.mutate(commission.id)}
-                                    disabled={approveMutation.isPending}
-                                  >
-                                    <i className="fas fa-check mr-1"></i> Aprobar
-                                  </Button>
-                                  <Button
-                                    size="sm"
-                                    variant="outline"
-                                    className="text-rose-600 border-rose-300 hover:bg-rose-50 text-xs font-semibold h-8"
-                                    onClick={() => {
-                                      setCancellingCommission(commission);
-                                      setCancelReason("");
-                                    }}
-                                  >
-                                    <i className="fas fa-times mr-1"></i> Cancelar
-                                  </Button>
-                                </>
-                              )}
+                          <div className="flex items-center gap-1.5 flex-wrap justify-end">
+                            {/* Botón Ver Detalle para todas las comisiones */}
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="text-xs border-gray-300 text-gray-700 hover:bg-gray-100 h-8"
+                              onClick={() => setViewingCommission(commission)}
+                              title="Ver detalle de comisión"
+                            >
+                              <i className="fas fa-eye mr-1"></i> Ver detalle
+                            </Button>
 
-                              {/* Botones de Centro de Dispersión */}
-                              {(isApproved || isFailed) && (
-                                <>
-                                  <Button
-                                    size="sm"
-                                    className="bg-primary text-white hover:bg-primary/90 text-xs font-semibold h-8"
-                                    onClick={() => {
-                                      setSelectedCommission(commission);
-                                      setAccountNumber(commission.effectiveBankAccount?.clabe || "");
-                                    }}
-                                  >
-                                    <i className="fas fa-paper-plane mr-1"></i> Pagar STP
-                                  </Button>
-                                  <Button
-                                    size="sm"
-                                    variant="outline"
-                                    className="border-emerald-600 text-emerald-700 hover:bg-emerald-50 text-xs font-semibold h-8"
-                                    onClick={() => {
-                                      setManualPaidCommission(commission);
-                                      setManualPaidNotes("");
-                                      setManualPaidReference("");
-                                    }}
-                                  >
-                                    <i className="fas fa-hand-holding-usd mr-1"></i> Manual
-                                  </Button>
-                                  <Button
-                                    size="sm"
-                                    variant="ghost"
-                                    className="text-rose-600 hover:bg-rose-50 text-xs h-8 px-2"
-                                    title="Cancelar comisión"
-                                    onClick={() => {
-                                      setCancellingCommission(commission);
-                                      setCancelReason("");
-                                    }}
-                                  >
-                                    <i className="fas fa-times"></i>
-                                  </Button>
-                                </>
-                              )}
+                            {/* Acciones para Super Admin según estado */}
+                            {isSuperAdmin && isGenerated && (
+                              <>
+                                <Button
+                                  size="sm"
+                                  className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold h-8"
+                                  onClick={() => approveMutation.mutate(commission.id)}
+                                  disabled={approveMutation.isPending}
+                                >
+                                  <i className="fas fa-check mr-1"></i> Aprobar
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  className="text-rose-600 border-rose-300 hover:bg-rose-50 text-xs font-semibold h-8"
+                                  onClick={() => {
+                                    setCancellingCommission(commission);
+                                    setCancelReason("");
+                                  }}
+                                >
+                                  <i className="fas fa-times mr-1"></i> Cancelar
+                                </Button>
+                              </>
+                            )}
 
-                              {/* Botón de Auditoría para todas las comisiones */}
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                className="text-xs border-indigo-300 text-indigo-700 hover:bg-indigo-50 h-8"
-                                onClick={() => setViewingAuditLogsCommission(commission)}
-                                title="Ver bitácora de auditoría"
-                              >
-                                <i className="fas fa-shield-alt mr-1"></i> Auditoría
-                              </Button>
-                            </div>
-                          )}
+                            {isSuperAdmin && isApproved && (
+                              <>
+                                <Button
+                                  size="sm"
+                                  className="bg-primary text-white hover:bg-primary/90 text-xs font-semibold h-8"
+                                  onClick={() => {
+                                    setSelectedCommission(commission);
+                                    setAccountNumber(commission.effectiveBankAccount?.clabe || "");
+                                  }}
+                                >
+                                  <i className="fas fa-paper-plane mr-1"></i> Pagar STP
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  className="border-emerald-600 text-emerald-700 hover:bg-emerald-50 text-xs font-semibold h-8"
+                                  onClick={() => {
+                                    setManualPaidCommission(commission);
+                                    setManualPaidNotes("");
+                                    setManualPaidReference("");
+                                  }}
+                                >
+                                  <i className="fas fa-hand-holding-usd mr-1"></i> Manual
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  className="text-rose-600 hover:bg-rose-50 text-xs h-8 px-2"
+                                  title="Cancelar comisión"
+                                  onClick={() => {
+                                    setCancellingCommission(commission);
+                                    setCancelReason("");
+                                  }}
+                                >
+                                  <i className="fas fa-times"></i>
+                                </Button>
+                              </>
+                            )}
+
+                            {isDispersing && (
+                              <Badge className="bg-indigo-50 text-indigo-800 border-indigo-300 text-xs py-1">
+                                <i className="fas fa-spinner fa-spin mr-1"></i> En proceso STP
+                              </Badge>
+                            )}
+
+                            {isPaid && commission.trackingKey && (
+                              <Badge variant="outline" className="text-[11px] bg-emerald-50 text-emerald-800 border-emerald-200">
+                                Ref: {commission.trackingKey.slice(-8)}
+                              </Badge>
+                            )}
+
+                            {isSuperAdmin && isFailed && (
+                              <>
+                                <Button
+                                  size="sm"
+                                  className="bg-rose-600 hover:bg-rose-700 text-white text-xs font-semibold h-8"
+                                  onClick={() => {
+                                    setSelectedCommission(commission);
+                                    setAccountNumber(commission.effectiveBankAccount?.clabe || "");
+                                  }}
+                                >
+                                  <i className="fas fa-redo mr-1"></i> Reintentar STP
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  className="border-emerald-600 text-emerald-700 hover:bg-emerald-50 text-xs font-semibold h-8"
+                                  onClick={() => {
+                                    setManualPaidCommission(commission);
+                                    setManualPaidNotes("");
+                                    setManualPaidReference("");
+                                  }}
+                                >
+                                  <i className="fas fa-hand-holding-usd mr-1"></i> Manual
+                                </Button>
+                              </>
+                            )}
+
+                            {/* Botón de Historial de Movimientos para todas las comisiones */}
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="text-xs border-indigo-300 text-indigo-700 hover:bg-indigo-50 h-8"
+                              onClick={() => setViewingAuditLogsCommission(commission)}
+                              title="Ver historial de movimientos"
+                            >
+                              <i className="fas fa-history mr-1"></i> Historial de movimientos
+                            </Button>
+                          </div>
                         </div>
                       </div>
                     );
@@ -1822,15 +1879,40 @@ export default function Commissions() {
                   {viewingCommission.financialInstitution && (
                     <div className="flex justify-between py-1 border-b">
                       <span className="text-neutral">Financiera:</span>
-                      <span className="font-medium">{viewingCommission.financialInstitution.name}</span>
+                      <span className="font-semibold text-gray-900">{viewingCommission.financialInstitution.name}</span>
+                    </div>
+                  )}
+                  {(viewingCommission.productName || viewingCommission.credit?.productTemplate?.name) && (
+                    <div className="flex justify-between py-1 border-b">
+                      <span className="text-neutral">Producto:</span>
+                      <span className="font-medium text-gray-800">{viewingCommission.productName || viewingCommission.credit?.productTemplate?.name}</span>
                     </div>
                   )}
                   {viewingCommission.credit && (
                     <div className="flex justify-between py-1 border-b">
                       <span className="text-neutral">Monto del Crédito:</span>
-                      <span className="font-medium">${safeFloat(viewingCommission.credit.amount).toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} MXN</span>
+                      <span className="font-semibold text-gray-900">${safeFloat(viewingCommission.credit.amount).toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} MXN</span>
                     </div>
                   )}
+                  <div className="bg-blue-50/50 p-2.5 rounded border border-blue-100 text-xs space-y-1">
+                    <p className="font-bold text-blue-950 flex items-center gap-1">
+                      <i className="fas fa-percentage text-blue-700"></i> Origen y Porcentajes de Comisión:
+                    </p>
+                    <div className="flex justify-between text-blue-900">
+                      <span>• Tasa Pagada por Financiera a CN:</span>
+                      <span className="font-semibold">{viewingCommission.financialInstitutionRate || viewingCommission.rate || viewingCommission.financialInstitution?.commissionRates?.financiera?.apertura || '4.0'}%</span>
+                    </div>
+                    {safeFloat(viewingCommission.masterBrokerShare) > 0 && (
+                      <div className="flex justify-between text-blue-900">
+                        <span>• Tasa Asignada a Master Broker:</span>
+                        <span className="font-semibold">{viewingCommission.masterRate || viewingCommission.financialInstitution?.commissionRates?.masterBroker?.apertura || '3.0'}%</span>
+                      </div>
+                    )}
+                    <div className="flex justify-between text-blue-900">
+                      <span>• Tasa Final Asignada al Bróker:</span>
+                      <span className="font-semibold">{viewingCommission.brokerRate || viewingCommission.brokerNetworkRate || viewingCommission.financialInstitution?.commissionRates?.broker?.apertura || '2.0'}%</span>
+                    </div>
+                  </div>
                   {viewingCommission.broker && (
                     <div className="flex justify-between py-1 border-b">
                       <span className="text-neutral">Broker:</span>
@@ -2160,51 +2242,91 @@ export default function Commissions() {
           </DialogContent>
         </Dialog>
 
-        {/* Modal de Bitácora de Auditoría */}
+        {/* Modal de Historial de Movimientos */}
         <Dialog open={!!viewingAuditLogsCommission} onOpenChange={(open) => !open && setViewingAuditLogsCommission(null)}>
           <DialogContent className="max-w-2xl max-h-[80vh] flex flex-col">
             <DialogHeader>
               <DialogTitle className="text-base font-bold flex items-center gap-2">
-                <i className="fas fa-shield-alt text-indigo-700"></i>
-                Bitácora de Auditoría — Comisión #{viewingAuditLogsCommission?.id?.slice(-8)}
+                <i className="fas fa-history text-indigo-700"></i>
+                Historial de movimientos — Comisión #{viewingAuditLogsCommission?.id?.slice(-8)}
               </DialogTitle>
             </DialogHeader>
             <div className="flex-1 overflow-y-auto space-y-3 pt-2 text-xs">
               {isLoadingAuditLogs ? (
                 <div className="py-8 text-center text-muted-foreground">
-                  <i className="fas fa-spinner fa-spin mr-2"></i> Cargando eventos de auditoría...
+                  <i className="fas fa-spinner fa-spin mr-2"></i> Cargando historial de movimientos...
                 </div>
               ) : auditLogs.length === 0 ? (
                 <div className="py-8 text-center text-muted-foreground">
-                  No hay registros de auditoría para esta comisión.
+                  No hay movimientos registrados para esta comisión.
                 </div>
               ) : (
-                <div className="divide-y border rounded-lg">
-                  {auditLogs.map((log: any) => (
-                    <div key={log.id} className="p-3 space-y-1 hover:bg-gray-50/80">
-                      <div className="flex items-center justify-between flex-wrap gap-1">
-                        <span className="font-bold text-gray-900 uppercase">
-                          {log.action}
-                        </span>
-                        <span className="text-gray-400 text-[11px]">
-                          {log.createdAt ? new Date(log.createdAt).toLocaleString('es-MX') : ''}
-                        </span>
-                      </div>
-                      <div className="flex items-center gap-2 text-gray-600">
-                        <span>Rol: <strong className="capitalize">{log.actorRole || 'Sistema'}</strong></span>
-                        {log.previousStatus && (
-                          <span>
-                            Transición: <Badge variant="outline" className="text-[10px]">{log.previousStatus}</Badge> → <Badge variant="outline" className="text-[10px] font-bold">{log.newStatus}</Badge>
+                <div className="space-y-3">
+                  {auditLogs.map((log: any) => {
+                    const actionMap: Record<string, string> = {
+                      create: 'Generación inicial',
+                      generate: 'Generación inicial',
+                      approve: 'Aprobación de comisión',
+                      bulk_approve: 'Aprobación masiva',
+                      disperse_stp: 'Dispersión STP iniciada',
+                      pay: 'Pago STP enviado',
+                      mark_paid: 'Liquidación manual registrada',
+                      manual_paid: 'Liquidación manual',
+                      cancel: 'Cancelación de comisión',
+                      fail: 'Error en dispersión',
+                      freeze: 'Congelamiento de tasas',
+                    };
+                    const actionLabel = actionMap[log.action] || log.action;
+                    const reference = log.details?.reference || log.details?.referenceNumber || log.details?.trackingKey || log.details?.transactionId;
+                    const notes = log.details?.notes || log.details?.reason;
+                    const error = log.details?.error || log.details?.errorMessage;
+
+                    return (
+                      <div key={log.id} className="p-3.5 bg-white border border-gray-200 rounded-lg shadow-sm space-y-2">
+                        <div className="flex items-center justify-between flex-wrap gap-1 border-b border-gray-100 pb-2">
+                          <span className="font-bold text-gray-900 text-sm flex items-center gap-1.5">
+                            <span className="w-2 h-2 rounded-full bg-indigo-600"></span>
+                            {actionLabel}
                           </span>
+                          <span className="text-gray-500 text-xs">
+                            {log.createdAt ? new Date(log.createdAt).toLocaleString('es-MX', { dateStyle: 'medium', timeStyle: 'short' }) : ''}
+                          </span>
+                        </div>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-gray-600 pt-1">
+                          <div>
+                            <span className="text-gray-400">Usuario / Actor: </span>
+                            <strong className="text-gray-800">{log.actorName || log.actorRole || 'Sistema'}</strong>
+                          </div>
+                          {log.previousStatus && (
+                            <div className="flex items-center gap-1.5">
+                              <span className="text-gray-400">Transición: </span>
+                              <Badge variant="outline" className="text-[10px] bg-gray-50">{getStatusLabel(log.previousStatus)}</Badge>
+                              <span>→</span>
+                              <Badge className="text-[10px] font-semibold bg-blue-100 text-blue-800 border-blue-200">{getStatusLabel(log.newStatus)}</Badge>
+                            </div>
+                          )}
+                        </div>
+                        {reference && (
+                          <div className="bg-emerald-50 text-emerald-900 p-2 rounded text-[11px] border border-emerald-200 flex items-center gap-2">
+                            <i className="fas fa-receipt text-emerald-700"></i>
+                            <span>Referencia / Rastreo: <strong className="font-mono">{reference}</strong></span>
+                          </div>
+                        )}
+                        {notes && (
+                          <div className="bg-gray-50 text-gray-700 p-2 rounded text-[11px] border border-gray-200">
+                            <span className="font-semibold text-gray-500">Nota / Motivo: </span>
+                            <span>{notes}</span>
+                          </div>
+                        )}
+                        {error && (
+                          <div className="bg-rose-50 text-rose-900 p-2 rounded text-[11px] border border-rose-200 flex items-center gap-2">
+                            <i className="fas fa-exclamation-circle text-rose-600"></i>
+                            <span>Error: {error}</span>
+                          </div>
                         )}
                       </div>
-                      {log.details && Object.keys(log.details).length > 0 && (
-                        <div className="p-2 bg-gray-100 rounded text-[11px] font-mono text-gray-700 mt-1 overflow-x-auto">
-                          {JSON.stringify(log.details, null, 2)}
-                        </div>
-                      )}
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
             </div>

@@ -279,6 +279,207 @@ const profileLabels: Record<string, string> = {
   sin_sat: "Sin SAT",
 };
 
+interface InstitutionCommercialCardProps {
+  institution: FinancialInstitution;
+  products: InstitutionProductWithTemplate[];
+  onSelectProduct: (prod: InstitutionProductWithTemplate) => void;
+  onStartRequest: () => void;
+}
+
+function InstitutionCommercialCard({
+  institution,
+  products,
+  onSelectProduct,
+  onStartRequest,
+}: InstitutionCommercialCardProps) {
+  const [activeIdx, setActiveIdx] = useState(0);
+  const currentProd = products[activeIdx] || products[0];
+  const config = (currentProd?.configuration || {}) as Record<string, any>;
+  const minAmount = config.montoMinimo || config.montoMin;
+  const maxAmount = config.montoMaximo || config.montoMax;
+  const term = config.plazo || config.plazoMax;
+  const rate = config.tasaInteres || config.tasa;
+  const fee = config.comisionApertura || config.comision;
+  const prohibitedGiros = config.girosProhibidos;
+  const presence = config.presencia;
+  const destinos = config.destinos;
+
+  return (
+    <Card
+      className="overflow-hidden border hover:border-primary/60 hover:shadow-md transition-all flex flex-col justify-between bg-card"
+      data-testid={`financiera-card-${institution.id}`}
+    >
+      <div>
+        {/* Card Header: Institution & Product Selector */}
+        <div className="p-5 pb-4 border-b bg-muted/20">
+          <div className="flex items-start justify-between gap-2">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-lg bg-primary/10 border border-primary/20 flex items-center justify-center font-bold text-primary text-sm flex-shrink-0">
+                {institution?.name ? institution.name.substring(0, 2).toUpperCase() : "FI"}
+              </div>
+              <div>
+                <h4 className="text-base font-bold text-foreground leading-tight flex items-center gap-1.5" data-testid={`financiera-name-${institution.id}`}>
+                  {institution?.name || "Financiera"}
+                </h4>
+                <span className="text-xs text-muted-foreground line-clamp-1">
+                  {currentProd?.customName || currentProd?.template?.name || "Crédito Empresarial"}
+                </span>
+              </div>
+            </div>
+
+            <div className="flex flex-col items-end gap-1">
+              {(institution as any)?.type && (
+                <Badge variant="secondary" className="text-[10px] uppercase font-semibold px-2 py-0.5">
+                  {(institution as any).type}
+                </Badge>
+              )}
+              {products.length > 1 && (
+                <Badge variant="outline" className="text-[10px] bg-primary/10 text-primary border-primary/30">
+                  {products.length} productos
+                </Badge>
+              )}
+            </div>
+          </div>
+
+          {/* If institution has multiple products in this category, provide quick tabs */}
+          {products.length > 1 && (
+            <div className="mt-3 pt-2 border-t border-border/60">
+              <span className="text-[11px] font-semibold text-muted-foreground block mb-1.5">
+                Productos disponibles en esta categoría:
+              </span>
+              <div className="flex flex-wrap gap-1.5">
+                {products.map((p, idx) => (
+                  <Button
+                    key={p.id}
+                    type="button"
+                    variant={idx === activeIdx ? "default" : "outline"}
+                    size="sm"
+                    onClick={() => setActiveIdx(idx)}
+                    className="h-7 text-xs px-2.5 py-0 rounded-md"
+                  >
+                    {p.customName || p.template?.name || `Opción ${idx + 1}`}
+                  </Button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Profiles */}
+          <div className="flex flex-wrap gap-1.5 mt-3">
+            {(currentProd?.targetProfiles || []).map((prof) => (
+              <Badge
+                key={prof}
+                variant="outline"
+                className="text-[10px] px-1.5 py-0 bg-background text-muted-foreground border-border"
+              >
+                {profileLabels[prof] || prof}
+              </Badge>
+            ))}
+          </div>
+        </div>
+
+        {/* Commercial Conditions Matrix */}
+        <div className="p-5 space-y-4">
+          <div className="grid grid-cols-2 gap-3 p-3 rounded-lg bg-muted/30 border text-xs">
+            <div>
+              <span className="text-[11px] text-muted-foreground flex items-center gap-1 font-medium">
+                <DollarSign className="w-3 h-3 text-primary" />
+                Rango de Monto
+              </span>
+              <p className="text-xs font-bold text-foreground mt-0.5">
+                {minAmount || maxAmount
+                  ? `${formatMoney(minAmount)} - ${formatMoney(maxAmount)}`
+                  : "A convenir"}
+              </p>
+            </div>
+
+            <div>
+              <span className="text-[11px] text-muted-foreground flex items-center gap-1 font-medium">
+                <Calendar className="w-3 h-3 text-primary" />
+                Plazo
+              </span>
+              <p className="text-xs font-bold text-foreground mt-0.5">
+                {term ? `Hasta ${formatPlazo(term)}` : "A convenir"}
+              </p>
+            </div>
+
+            <div>
+              <span className="text-[11px] text-muted-foreground flex items-center gap-1 font-medium">
+                <Percent className="w-3 h-3 text-primary" />
+                Tasa Indicativa
+              </span>
+              <p className="text-xs font-bold text-emerald-600 dark:text-emerald-400 mt-0.5">
+                {rate ? `Desde ${formatRate(rate)}` : "Según análisis"}
+              </p>
+            </div>
+
+            <div>
+              <span className="text-[11px] text-muted-foreground flex items-center gap-1 font-medium">
+                <Coins className="w-3 h-3 text-primary" />
+                Comisión Apertura
+              </span>
+              <p className="text-xs font-bold text-foreground mt-0.5">
+                {fee ? formatFee(fee) : "Consultar"}
+              </p>
+            </div>
+          </div>
+
+          {/* Highlights / Destinos */}
+          {Array.isArray(destinos) && destinos.length > 0 && (
+            <div className="text-xs space-y-1">
+              <span className="text-[11px] font-semibold text-muted-foreground">Destinos permitidos:</span>
+              <p className="text-xs text-foreground line-clamp-1">
+                {destinos.join(", ")}
+              </p>
+            </div>
+          )}
+
+          {/* Cobertura */}
+          {presence && (
+            <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+              <MapPin className="w-3.5 h-3.5 text-primary flex-shrink-0" />
+              <span className="truncate">{presence}</span>
+            </div>
+          )}
+
+          {/* Giros Prohibidos Warning */}
+          {prohibitedGiros && (
+            <div className="p-2 bg-amber-500/10 border border-amber-500/20 rounded-md text-[11px] text-amber-800 dark:text-amber-300 flex items-start gap-1.5">
+              <ShieldAlert className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" />
+              <span className="line-clamp-2">
+                <strong>Restricciones:</strong> {prohibitedGiros}
+              </span>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Card Action Buttons */}
+      <div className="p-4 pt-0 border-t bg-muted/10 flex items-center gap-2">
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          onClick={() => onSelectProduct(currentProd)}
+          className="flex-1 text-xs h-9"
+          data-testid={`button-view-product-${currentProd?.id}`}
+        >
+          Ver Ficha Completa
+        </Button>
+        <Button
+          type="button"
+          size="sm"
+          onClick={onStartRequest}
+          className="flex-1 text-xs h-9 bg-primary hover:bg-primary/90 text-primary-foreground gap-1"
+        >
+          Iniciar Solicitud
+          <ArrowUpRight className="w-3.5 h-3.5" />
+        </Button>
+      </div>
+    </Card>
+  );
+}
+
 export default function BrokerProducts() {
   const [, setLocation] = useLocation();
   const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(null);
@@ -351,6 +552,25 @@ export default function BrokerProducts() {
 
     return list;
   }, [selectedCategoryId, productsByCategory, selectedProfileFilter, globalSearch, institutionsMap]);
+
+  // Group category products by institution so that 1 institution = 1 main card
+  const groupedInstitutions = useMemo(() => {
+    const map = new Map<string, {
+      institution: FinancialInstitution;
+      products: InstitutionProductWithTemplate[];
+    }>();
+
+    categoryProducts.forEach((prod) => {
+      const inst = institutionsMap.get(prod.institutionId);
+      if (!inst) return;
+      if (!map.has(inst.id)) {
+        map.set(inst.id, { institution: inst, products: [] });
+      }
+      map.get(inst.id)!.products.push(prod);
+    });
+
+    return Array.from(map.values());
+  }, [categoryProducts, institutionsMap]);
 
   if (isLoadingProducts || isLoadingInstitutions) {
     return (
@@ -554,7 +774,7 @@ export default function BrokerProducts() {
 
         <div className="flex items-center gap-2">
           <Badge variant="outline" className={`text-xs ${currentCategory?.colorClass.badge}`}>
-            {categoryProducts.length} {categoryProducts.length === 1 ? "opción disponible" : "opciones disponibles"}
+            {groupedInstitutions.length} {groupedInstitutions.length === 1 ? "financiera disponible" : "financieras disponibles"} ({categoryProducts.length} {categoryProducts.length === 1 ? "producto" : "productos"})
           </Badge>
         </div>
       </div>
@@ -597,7 +817,7 @@ export default function BrokerProducts() {
       </div>
 
       {/* Financieras & Products List */}
-      {categoryProducts.length === 0 ? (
+      {groupedInstitutions.length === 0 ? (
         <Card className="border-dashed">
           <CardContent className="p-12 text-center space-y-3">
             <Building className="w-12 h-12 text-muted-foreground mx-auto opacity-40" />
@@ -621,162 +841,15 @@ export default function BrokerProducts() {
         </Card>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
-          {categoryProducts.map((prod) => {
-            const inst = institutionsMap.get(prod.institutionId);
-            const config = (prod.configuration || {}) as Record<string, any>;
-            const minAmount = config.montoMinimo || config.montoMin;
-            const maxAmount = config.montoMaximo || config.montoMax;
-            const term = config.plazo || config.plazoMax;
-            const rate = config.tasaInteres || config.tasa;
-            const fee = config.comisionApertura || config.comision;
-            const prohibitedGiros = config.girosProhibidos;
-            const presence = config.presencia;
-            const destinos = config.destinos;
-
-            return (
-              <Card
-                key={prod.id}
-                className="overflow-hidden border hover:border-primary/60 hover:shadow-md transition-all flex flex-col justify-between bg-card"
-              >
-                <div>
-                  {/* Card Header: Institution & Product */}
-                  <div className="p-5 pb-4 border-b bg-muted/20">
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-lg bg-primary/10 border border-primary/20 flex items-center justify-center font-bold text-primary text-sm flex-shrink-0">
-                          {inst?.name ? inst.name.substring(0, 2).toUpperCase() : "FI"}
-                        </div>
-                        <div>
-                          <h4 className="text-base font-bold text-foreground leading-tight flex items-center gap-1.5">
-                            {inst?.name || "Financiera"}
-                          </h4>
-                          <span className="text-xs text-muted-foreground line-clamp-1">
-                            {prod.customName || prod.template?.name || "Crédito Empresarial"}
-                          </span>
-                        </div>
-                      </div>
-
-                      {(inst as any)?.type && (
-                        <Badge variant="secondary" className="text-[10px] uppercase font-semibold px-2 py-0.5">
-                          {(inst as any).type}
-                        </Badge>
-                      )}
-                    </div>
-
-                    {/* Profiles */}
-                    <div className="flex flex-wrap gap-1.5 mt-3">
-                      {(prod.targetProfiles || []).map((prof) => (
-                        <Badge
-                          key={prof}
-                          variant="outline"
-                          className="text-[10px] px-1.5 py-0 bg-background text-muted-foreground border-border"
-                        >
-                          {profileLabels[prof] || prof}
-                        </Badge>
-                      ))}
-                    </div>
-                  </div>
-
-                  {/* Commercial Conditions Matrix */}
-                  <div className="p-5 space-y-4">
-                    <div className="grid grid-cols-2 gap-3 p-3 rounded-lg bg-muted/30 border text-xs">
-                      <div>
-                        <span className="text-[11px] text-muted-foreground flex items-center gap-1 font-medium">
-                          <DollarSign className="w-3 h-3 text-primary" />
-                          Rango de Monto
-                        </span>
-                        <p className="text-xs font-bold text-foreground mt-0.5">
-                          {minAmount || maxAmount
-                            ? `${formatMoney(minAmount)} - ${formatMoney(maxAmount)}`
-                            : "A convenir"}
-                        </p>
-                      </div>
-
-                      <div>
-                        <span className="text-[11px] text-muted-foreground flex items-center gap-1 font-medium">
-                          <Calendar className="w-3 h-3 text-primary" />
-                          Plazo
-                        </span>
-                        <p className="text-xs font-bold text-foreground mt-0.5">
-                          {term ? `Hasta ${formatPlazo(term)}` : "A convenir"}
-                        </p>
-                      </div>
-
-                      <div>
-                        <span className="text-[11px] text-muted-foreground flex items-center gap-1 font-medium">
-                          <Percent className="w-3 h-3 text-primary" />
-                          Tasa Indicativa
-                        </span>
-                        <p className="text-xs font-bold text-emerald-600 dark:text-emerald-400 mt-0.5">
-                          {rate ? `Desde ${formatRate(rate)}` : "Según análisis"}
-                        </p>
-                      </div>
-
-                      <div>
-                        <span className="text-[11px] text-muted-foreground flex items-center gap-1 font-medium">
-                          <Coins className="w-3 h-3 text-primary" />
-                          Comisión Apertura
-                        </span>
-                        <p className="text-xs font-bold text-foreground mt-0.5">
-                          {fee ? formatFee(fee) : "Consultar"}
-                        </p>
-                      </div>
-                    </div>
-
-                    {/* Highlights / Destinos */}
-                    {Array.isArray(destinos) && destinos.length > 0 && (
-                      <div className="text-xs space-y-1">
-                        <span className="text-[11px] font-semibold text-muted-foreground">Destinos permitidos:</span>
-                        <p className="text-xs text-foreground line-clamp-1">
-                          {destinos.join(", ")}
-                        </p>
-                      </div>
-                    )}
-
-                    {/* Cobertura */}
-                    {presence && (
-                      <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                        <MapPin className="w-3.5 h-3.5 text-primary flex-shrink-0" />
-                        <span className="truncate">{presence}</span>
-                      </div>
-                    )}
-
-                    {/* Giros Prohibidos Warning */}
-                    {prohibitedGiros && (
-                      <div className="p-2 bg-amber-500/10 border border-amber-500/20 rounded-md text-[11px] text-amber-800 dark:text-amber-300 flex items-start gap-1.5">
-                        <ShieldAlert className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" />
-                        <span className="line-clamp-2">
-                          <strong>Restricciones:</strong> {prohibitedGiros}
-                        </span>
-                      </div>
-                    )}
-                  </div>
-                </div>
-
-                {/* Card Action Buttons */}
-                <div className="p-4 pt-0 border-t bg-muted/10 flex items-center gap-2">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setSelectedProduct(prod)}
-                    className="flex-1 text-xs h-9"
-                  >
-                    Ver Ficha Completa
-                  </Button>
-                  <Button
-                    type="button"
-                    size="sm"
-                    onClick={() => setLocation("/creditos")}
-                    className="flex-1 text-xs h-9 bg-primary hover:bg-primary/90 text-primary-foreground gap-1"
-                  >
-                    Iniciar Solicitud
-                    <ArrowUpRight className="w-3.5 h-3.5" />
-                  </Button>
-                </div>
-              </Card>
-            );
-          })}
+          {groupedInstitutions.map(({ institution, products }) => (
+            <InstitutionCommercialCard
+              key={institution.id}
+              institution={institution}
+              products={products}
+              onSelectProduct={(p) => setSelectedProduct(p)}
+              onStartRequest={() => setLocation("/creditos")}
+            />
+          ))}
         </div>
       )}
 

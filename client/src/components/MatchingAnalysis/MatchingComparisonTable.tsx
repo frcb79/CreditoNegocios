@@ -127,19 +127,51 @@ export default function MatchingComparisonTable({
 
   return (
     <div className="space-y-4">
-      {/* Overview Banner */}
-      <div className="bg-blue-50/80 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-900 rounded-lg p-3">
-        <div className="flex items-start justify-between">
-          <div className="flex items-start space-x-2">
-            <Info className="w-4 h-4 text-blue-600 dark:text-blue-400 mt-0.5 flex-shrink-0" />
-            <div className="text-xs text-blue-900 dark:text-blue-300">
-              <p className="font-semibold mb-0.5">Análisis de Compatibilidad ({matchResult.score}%)</p>
-              <p className="text-blue-700 dark:text-blue-400">
-                Comparación detallada de los requisitos de la financiera vs. los datos del cliente.
-              </p>
+      {/* 3-State Matching Overview Banner */}
+      <div className={`p-4 rounded-xl border ${
+        matchResult.matchStatus === 'not_compatible'
+          ? 'bg-red-50/80 border-red-200 text-red-950 dark:bg-red-950/40 dark:border-red-900 dark:text-red-200'
+          : matchResult.matchStatus === 'insufficient_data'
+          ? 'bg-amber-50/80 border-amber-200 text-amber-950 dark:bg-amber-950/40 dark:border-amber-900 dark:text-amber-200'
+          : 'bg-emerald-50/80 border-emerald-200 text-emerald-950 dark:bg-emerald-950/40 dark:border-emerald-900 dark:text-emerald-200'
+      }`}>
+        <div className="flex items-start justify-between gap-3">
+          <div className="space-y-1.5 flex-1">
+            <div className="flex items-center gap-2">
+              <span className="font-bold text-sm">
+                {matchResult.matchStatusLabel || (matchResult.matchStatus === 'not_compatible' ? 'No Compatible' : matchResult.matchStatus === 'insufficient_data' ? 'Información Insuficiente' : 'Compatible')}
+              </span>
+              <Badge variant="outline" className="text-xs bg-background/80 font-bold">
+                Score: {matchResult.score}%
+              </Badge>
             </div>
+
+            {/* Why it matches */}
+            {matchResult.reasons.length > 0 && (
+              <div className="text-xs">
+                <span className="font-semibold text-emerald-800 dark:text-emerald-300">✓ Cumple: </span>
+                <span>{matchResult.reasons.slice(0, 3).join(' • ')}{matchResult.reasons.length > 3 ? '...' : ''}</span>
+              </div>
+            )}
+
+            {/* Why it fails */}
+            {matchResult.unmetRequirements && matchResult.unmetRequirements.length > 0 && (
+              <div className="text-xs">
+                <span className="font-semibold text-red-800 dark:text-red-300">✕ Regla incumplida: </span>
+                <span>{matchResult.unmetRequirements.join(' • ')}</span>
+              </div>
+            )}
+
+            {/* Missing data */}
+            {matchResult.missingData && matchResult.missingData.length > 0 && (
+              <div className="text-xs">
+                <span className="font-semibold text-amber-800 dark:text-amber-300">⚠ Faltan datos para evaluar: </span>
+                <span>{matchResult.missingData.join(' • ')}</span>
+              </div>
+            )}
           </div>
-          <Badge variant="outline" className="text-xs bg-card border-border font-medium">
+
+          <Badge variant="outline" className="text-xs bg-card border-border font-medium flex-shrink-0">
             {institution.name}
           </Badge>
         </div>

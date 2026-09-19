@@ -24,7 +24,7 @@ import {
 } from "@/components/ui/collapsible";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { useToast } from "@/hooks/use-toast";
-import { apiRequest } from "@/lib/queryClient";
+import { apiRequest, invalidateAllCreditQueries } from "@/lib/queryClient";
 import { buildApiUrl } from "@/lib/runtimeConfig";
 import { 
   CheckCircle, 
@@ -207,8 +207,7 @@ export default function PendingRequests() {
         title: `Solicitud ${actionText}`,
         description,
       });
-      queryClient.invalidateQueries({ queryKey: ['/api/credit-submission-targets'] });
-      queryClient.invalidateQueries({ queryKey: ['/api/credit-submissions'] });
+      invalidateAllCreditQueries(queryClient);
       setShowReviewModal(false);
       setSelectedTarget(null);
       setReviewAction(null);
@@ -232,8 +231,7 @@ export default function PendingRequests() {
         title: "Marcado como enviado",
         description: "La solicitud ha sido marcada como enviada a la financiera",
       });
-      queryClient.invalidateQueries({ queryKey: ['/api/credit-submission-targets'] });
-      queryClient.invalidateQueries({ queryKey: ['/api/credit-submissions'] });
+      invalidateAllCreditQueries(queryClient);
     },
   });
 
@@ -246,7 +244,7 @@ export default function PendingRequests() {
         title: "Propuesta guardada",
         description: "La propuesta de la financiera ha sido guardada exitosamente",
       });
-      queryClient.invalidateQueries({ queryKey: ['/api/credit-submission-targets'] });
+      invalidateAllCreditQueries(queryClient);
       setShowProposalModal(false);
       setSelectedTarget(null);
       proposalForm.reset();
@@ -273,9 +271,7 @@ export default function PendingRequests() {
         title: "Documento subido exitosamente",
         description: "El documento de propuesta ha sido cargado y asociado a la financiera.",
       });
-      queryClient.invalidateQueries({ queryKey: ['/api/credit-submission-targets'] });
-      queryClient.invalidateQueries({ queryKey: ['/api/credit-submissions'] });
-      queryClient.invalidateQueries({ queryKey: ['/api/credits'] });
+      invalidateAllCreditQueries(queryClient);
     },
     onError: (error: any) => {
       toast({
@@ -295,10 +291,7 @@ export default function PendingRequests() {
         title: "Marcado como dispersado",
         description: "El crédito ha sido marcado como dispersado y la comisión fue generada exitosamente",
       });
-      queryClient.invalidateQueries({ queryKey: ['/api/credit-submission-targets'] });
-      queryClient.invalidateQueries({ queryKey: ['/api/credit-submissions'] });
-      queryClient.invalidateQueries({ queryKey: ['/api/credits'] });
-      queryClient.invalidateQueries({ queryKey: ['/api/commissions'] });
+      invalidateAllCreditQueries(queryClient);
     },
   });
 

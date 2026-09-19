@@ -152,10 +152,15 @@ export async function createCascadingCommissionRecord(
     const isMasterDirect = brokerUser?.role === "master_broker";
     const masterBrokerId = isMasterDirect ? brokerUser.id : brokerUser?.masterBrokerId;
 
-    const commissionRates = (institution as any)?.commissionRates || {};
+    const finalProposal = credit?.finalProposal;
+    const proposalCommRates = (finalProposal as any)?.commissionRates;
+
+    const commissionRates = proposalCommRates || (institution as any)?.commissionRates || {};
     const superAdminRate = parseFloat(
       commissionRates.financiera?.[commType] ||
       commissionRates.financiera?.apertura ||
+      commissionRates.superAdmin?.[commType] ||
+      commissionRates.superAdmin?.apertura ||
       (institution as any)?.openingCommissionRate ||
       (institution as any)?.commissionRate ||
       "0"
@@ -2265,31 +2270,31 @@ export async function registerRoutes(app: Express): Promise<Server> {
           clientId: clientId as string,
           status: status as string,
         });
-      } else if (req.tenantContext?.tenant) {
-        const tenant = req.tenantContext.tenant;
-        if (tenant.type === 'master_broker') {
-          const subordinates = await storage.getTenantsByParent(tenant.id);
-          const tenantIds = [tenant.id, ...subordinates.map(t => t.id)];
-          rawCredits = await storage.getCredits({
-            tenantIds,
-            clientId: clientId as string,
-            status: status as string,
-          });
-        } else {
-          rawCredits = await storage.getCredits({
-            tenantId: tenant.id,
-            clientId: clientId as string,
-            status: status as string,
-          });
-        }
       } else if (user?.role === 'master_broker') {
         const networkBrokers = await storage.getUsersByMasterBroker(userId);
         const brokerIds = [userId, ...networkBrokers.map(b => b.id)];
+        let tenantIds: string[] = [];
+        if (req.tenantContext?.tenant) {
+          const subordinates = await storage.getTenantsByParent(req.tenantContext.tenant.id);
+          tenantIds = [req.tenantContext.tenant.id, ...subordinates.map(t => t.id)];
+        }
         const allCredits = await storage.getCredits({
           clientId: clientId as string,
           status: status as string,
         });
-        rawCredits = allCredits.filter(c => brokerIds.includes(c.brokerId));
+        rawCredits = allCredits.filter(c => 
+          c.brokerId === userId || 
+          (c as any).masterBrokerId === userId || 
+          brokerIds.includes(c.brokerId) ||
+          (c.tenantId && tenantIds.includes(c.tenantId))
+        );
+      } else if (req.tenantContext?.tenant) {
+        const tenant = req.tenantContext.tenant;
+        const allCredits = await storage.getCredits({
+          clientId: clientId as string,
+          status: status as string,
+        });
+        rawCredits = allCredits.filter(c => c.brokerId === userId || c.tenantId === tenant.id);
       } else {
         rawCredits = await storage.getCredits({
           brokerId: userId,
@@ -2736,6 +2741,47 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // Parse update data directly from request body
       const updateData = req.body;
+
+      // Validate rate hierarchies and bounds if commissionRates or commissionRate is provided
+      if (updateData.commissionRates || updateData.commissionRate !== undefined) {
+        const finRate = parseFloat(
+          updateData.commissionRate ?? 
+          updateData.commissionRates?.financiera?.apertura ?? 
+          updateData.commissionRates?.superAdmin?.apertura ?? 
+          (institution as any).commissionRates?.financiera?.apertura ?? 
+          (institution as any).commissionRates?.superAdmin?.apertura ?? 
+          (institution as any).commissionRate ?? 
+          '0'
+        );
+        const mbRate = parseFloat(
+          updateData.commissionRates?.masterBroker?.apertura ?? 
+          (institution as any).commissionRates?.masterBroker?.apertura ?? 
+          '0'
+        );
+        const brkRate = parseFloat(
+          updateData.commissionRates?.broker?.apertura ?? 
+          (institution as any).commissionRates?.broker?.apertura ?? 
+          '0'
+        );
+
+        if (finRate < 0 || mbRate < 0 || brkRate < 0 || isNaN(finRate) || isNaN(mbRate) || isNaN(brkRate)) {
+          return res.status(400).json({ message: 'Los porcentajes de comisión no pueden ser negativos o inválidos' });
+        }
+
+        if (finRate > 0) {
+          if (mbRate > finRate) {
+            return res.status(400).json({ 
+              message: `La tasa para Master Broker (${mbRate}%) no puede ser superior a la comisión que paga la financiera a Crédito Negocios (${finRate}%)` 
+            });
+          }
+          if (brkRate > finRate) {
+            return res.status(400).json({ 
+              message: `La tasa para Broker Directo (${brkRate}%) no puede ser superior a la comisión que paga la financiera a Crédito Negocios (${finRate}%)` 
+            });
+          }
+        }
+      }
+
       const updatedInstitution = await storage.updateFinancialInstitution(id, updateData);
 
       res.json(updatedInstitution);
@@ -3040,12 +3086,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
             }
           }
 
+          const isMasterDirect = comm.masterBrokerId && comm.brokerId === comm.masterBrokerId;
           const isMb = comm.masterBrokerId && parseFloat(comm.masterBrokerShare || '0') > 0;
           const payoutAmount = comm.frozenAmount 
             ? parseFloat(comm.frozenAmount)
-            : (isMb
-                ? (parseFloat(comm.brokerShare || '0') + parseFloat(comm.masterBrokerShare || '0'))
-                : parseFloat(comm.brokerShare || comm.amount || '0'));
+            : (isMasterDirect
+                ? parseFloat(comm.masterBrokerShare || comm.brokerShare || '0')
+                : (isMb
+                    ? (parseFloat(comm.brokerShare || '0') + parseFloat(comm.masterBrokerShare || '0'))
+                    : parseFloat(comm.brokerShare || comm.amount || '0')));
 
           const effectiveBeneficiary = isMb && masterBroker
             ? {
@@ -3184,10 +3233,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       // Calculate and freeze final payout amount
+      const isMasterDirect = commission.masterBrokerId && commission.brokerId === commission.masterBrokerId;
       const isMb = commission.masterBrokerId && parseFloat(commission.masterBrokerShare || '0') > 0;
-      const payoutAmount = isMb
-        ? (parseFloat(commission.brokerShare || '0') + parseFloat(commission.masterBrokerShare || '0'))
-        : parseFloat(commission.brokerShare || commission.amount || '0');
+      const payoutAmount = isMasterDirect
+        ? parseFloat(commission.masterBrokerShare || commission.brokerShare || '0')
+        : (isMb
+            ? (parseFloat(commission.brokerShare || '0') + parseFloat(commission.masterBrokerShare || '0'))
+            : parseFloat(commission.brokerShare || commission.amount || '0'));
 
       const updated = await storage.updateCommission(id, {
         status: 'approved',
@@ -3250,10 +3302,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
             continue;
           }
 
+          const isMasterDirect = comm.masterBrokerId && comm.brokerId === comm.masterBrokerId;
           const isMb = comm.masterBrokerId && parseFloat(comm.masterBrokerShare || '0') > 0;
-          const payoutAmount = isMb
-            ? (parseFloat(comm.brokerShare || '0') + parseFloat(comm.masterBrokerShare || '0'))
-            : parseFloat(comm.brokerShare || comm.amount || '0');
+          const payoutAmount = isMasterDirect
+            ? parseFloat(comm.masterBrokerShare || comm.brokerShare || '0')
+            : (isMb
+                ? (parseFloat(comm.brokerShare || '0') + parseFloat(comm.masterBrokerShare || '0'))
+                : parseFloat(comm.brokerShare || comm.amount || '0'));
 
           await storage.updateCommission(id, {
             status: 'approved',
@@ -4279,20 +4334,26 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const mbCeilingSobretasa = parseFloat(mb.sobretasa || '0');
         const mbCeilingRenovacion = parseFloat(mb.renovacion || '0');
 
-        const aperturaVal = Math.max(0, parseFloat((rateObj as any)?.apertura || '0'));
-        const sobretasaVal = Math.max(0, parseFloat((rateObj as any)?.sobretasa || '0'));
-        const renovacionVal = Math.max(0, parseFloat((rateObj as any)?.renovacion || '0'));
+        const rawApertura = typeof rateObj === 'number' ? rateObj : parseFloat((rateObj as any)?.apertura ?? (rateObj as any)?.rate ?? '0');
+        const rawSobretasa = typeof rateObj === 'number' ? 0 : parseFloat((rateObj as any)?.sobretasa ?? '0');
+        const rawRenovacion = typeof rateObj === 'number' ? 0 : parseFloat((rateObj as any)?.renovacion ?? '0');
 
-        if (aperturaVal > mbCeilingApertura && mbCeilingApertura > 0) {
+        if (isNaN(rawApertura) || rawApertura < 0 || isNaN(rawSobretasa) || rawSobretasa < 0 || isNaN(rawRenovacion) || rawRenovacion < 0) {
           return res.status(400).json({ 
-            message: `La comisión de apertura asignada a tu red (${aperturaVal}%) para ${inst.name} no puede superar tu techo de ${mbCeilingApertura}%` 
+            message: `Las comisiones asignadas para ${inst.name} no pueden ser negativas o inválidas` 
+          });
+        }
+
+        if (rawApertura > mbCeilingApertura && mbCeilingApertura > 0) {
+          return res.status(400).json({ 
+            message: `La comisión de apertura asignada a tu red (${rawApertura}%) para ${inst.name} no puede superar tu techo de ${mbCeilingApertura}%` 
           });
         }
 
         sanitizedRates[instId] = {
-          apertura: aperturaVal,
-          sobretasa: mbCeilingSobretasa > 0 ? Math.min(sobretasaVal, mbCeilingSobretasa) : sobretasaVal,
-          renovacion: mbCeilingRenovacion > 0 ? Math.min(renovacionVal, mbCeilingRenovacion) : renovacionVal,
+          apertura: rawApertura,
+          sobretasa: mbCeilingSobretasa > 0 ? Math.min(rawSobretasa, mbCeilingSobretasa) : rawSobretasa,
+          renovacion: mbCeilingRenovacion > 0 ? Math.min(rawRenovacion, mbCeilingRenovacion) : rawRenovacion,
           updatedAt: new Date().toISOString(),
         };
       }
@@ -6900,8 +6961,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
           const commissionRates = (institution?.commissionRates as any) || {};
           
           // Calculate opening commission for broker (even if 0%)
+          // IMPORTANT: proposal.openingCommission is the opening fee charged by the bank to the BORROWER.
+          // It MUST NEVER be used as the commission rate paid to brokers. Internal rates only.
           const brokerOpeningRate = parseFloat(
-            proposal?.openingCommission ||
             commissionRates.broker?.apertura ||
             (institution as any)?.brokerCommissionRate ||
             (institution as any)?.commissionRate ||

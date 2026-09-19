@@ -16,3 +16,5 @@ flujo-completo-report.json
 smoke-report-prod.json
 backups/
 coverage/
+playwright-report/
+test-results/

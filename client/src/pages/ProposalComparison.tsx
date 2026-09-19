@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
-import { apiRequest } from "@/lib/queryClient";
+import { apiRequest, invalidateAllCreditQueries } from "@/lib/queryClient";
 import { 
   Building2, 
   DollarSign,
@@ -99,9 +99,7 @@ export default function ProposalComparison() {
         title: "Propuesta seleccionada",
         description: "La propuesta ha sido seleccionada como ganadora exitosamente",
       });
-      queryClient.invalidateQueries({ queryKey: ['/api/credit-submission-targets'] });
-      queryClient.invalidateQueries({ queryKey: ['/api/credit-submissions'] });
-      queryClient.invalidateQueries({ queryKey: ['/api/credits'] });
+      invalidateAllCreditQueries(queryClient);
     },
     onError: (error: any) => {
       toast({

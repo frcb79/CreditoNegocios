@@ -1,52 +1,103 @@
 // Configuración compartida de estados para submissions y targets
 // Centraliza labels y colores para mantener consistencia en toda la aplicación
 
+export const ALL_STATUS_LABELS: Record<string, string> = {
+  pending_admin: "Pendiente de revisión",
+  under_review: "En revisión",
+  en_revision: "En revisión",
+  evaluating: "En evaluación",
+  submitted: "En validación",
+  offers_received: "Propuestas listas",
+  proposals_received: "Propuestas recibidas",
+  in_progress: "En trámite",
+  validacion_juridica: "En validación",
+  en_mesa_control: "En mesa de control",
+  approved: "Aprobado",
+  aprobado: "Aprobado",
+  sent_to_institutions: "Enviado a financieras",
+  sent: "Enviado a financieras",
+  winner_selected: "Ganador seleccionado",
+  selected_winner: "Ganador seleccionado",
+  por_firmar: "Por firmar",
+  disbursed: "Dispersado",
+  dispersed: "Dispersado",
+  dispersado: "Dispersado",
+  partially_dispersed: "Dispersión parcial",
+  active: "Activo",
+  rejected: "Rechazado",
+  rechazado: "Rechazado",
+  returned_to_broker: "Devuelto al broker",
+  draft: "Borrador",
+  generated: "Generada",
+  dispersing: "Dispersando",
+  paid: "Pagada",
+  failed: "Fallida",
+  cancelled: "Cancelada",
+  completed: "Completado",
+  defaulted: "En mora",
+  institution_approved: "Propuesta recibida",
+  proposal_received: "Propuesta recibida",
+  institution_rejected: "Rechazada por financiera",
+};
+
+export function getStatusLabel(status: string): string {
+  if (!status) return "Desconocido";
+  const normalized = status.toLowerCase().trim();
+  return ALL_STATUS_LABELS[normalized] || creditStatusConfig[normalized]?.label || submissionStatusConfig[normalized]?.label || status;
+}
+
+export function getStatusBadgeClass(status: string): string {
+  if (!status) return "bg-gray-100 text-gray-700 border-gray-200";
+  const normalized = status.toLowerCase().trim();
+  return creditStatusConfig[normalized]?.color || submissionStatusConfig[normalized]?.color || "bg-gray-100 text-gray-700 border-gray-200";
+}
+
 export const submissionStatusConfig: Record<string, { label: string; color: string }> = {
   draft: { label: "Borrador", color: "bg-gray-100 text-gray-700 border-gray-200" },
-  submitted: { label: "Enviado", color: "bg-blue-50 text-blue-700 border-blue-200 font-medium" },
-  pending_admin: { label: "Pendiente Admin", color: "bg-amber-100 text-amber-800 border-amber-300 font-semibold" },
-  under_review: { label: "En Revisión", color: "bg-amber-100 text-amber-800 border-amber-300 font-medium" },
-  returned_to_broker: { label: "Devuelto", color: "bg-orange-100 text-orange-800 border-orange-300 font-medium" },
-  sent_to_institutions: { label: "Enviado a Financieras", color: "bg-blue-100 text-blue-800 border-blue-300 font-semibold" },
-  sent: { label: "Enviado a Financieras", color: "bg-blue-100 text-blue-800 border-blue-300 font-semibold" },
-  proposals_received: { label: "Propuestas Recibidas", color: "bg-indigo-100 text-indigo-800 border-indigo-200 font-medium" },
-  winner_selected: { label: "Ganador Seleccionado", color: "bg-purple-100 text-purple-800 border-purple-300 font-semibold" },
-  selected_winner: { label: "Ganador Seleccionado", color: "bg-purple-100 text-purple-800 border-purple-300 font-semibold" },
+  submitted: { label: "En validación", color: "bg-blue-50 text-blue-700 border-blue-200 font-medium" },
+  pending_admin: { label: "Pendiente de revisión", color: "bg-amber-100 text-amber-800 border-amber-300 font-semibold" },
+  under_review: { label: "En revisión", color: "bg-amber-100 text-amber-800 border-amber-300 font-medium" },
+  returned_to_broker: { label: "Devuelto al broker", color: "bg-orange-100 text-orange-800 border-orange-300 font-medium" },
+  sent_to_institutions: { label: "Enviado a financieras", color: "bg-blue-100 text-blue-800 border-blue-300 font-semibold" },
+  sent: { label: "Enviado a financieras", color: "bg-blue-100 text-blue-800 border-blue-300 font-semibold" },
+  proposals_received: { label: "Propuestas recibidas", color: "bg-indigo-100 text-indigo-800 border-indigo-200 font-medium" },
+  winner_selected: { label: "Ganador seleccionado", color: "bg-purple-100 text-purple-800 border-purple-300 font-semibold" },
+  selected_winner: { label: "Ganador seleccionado", color: "bg-purple-100 text-purple-800 border-purple-300 font-semibold" },
   dispersed: { label: "Dispersado", color: "bg-emerald-600 text-white font-semibold" },
   disbursed: { label: "Dispersado", color: "bg-emerald-600 text-white font-semibold" },
-  partially_dispersed: { label: "Dispersión Parcial", color: "bg-teal-600 text-white font-semibold" },
+  partially_dispersed: { label: "Dispersión parcial", color: "bg-teal-600 text-white font-semibold" },
 };
 
 export const targetStatusConfig: Record<string, { label: string; color: string }> = {
-  pending_admin: { label: "Pendiente Admin", color: "bg-amber-100 text-amber-800 border-amber-300 font-semibold" },
-  approved: { label: "Visto Bueno", color: "bg-emerald-50 text-emerald-700 border-emerald-300 font-medium" },
-  returned_to_broker: { label: "Devuelto", color: "bg-orange-100 text-orange-800 border-orange-300 font-medium" },
-  sent: { label: "Enviado a Financiera", color: "bg-blue-100 text-blue-800 border-blue-300 font-semibold" },
-  sent_to_institutions: { label: "Enviado a Financiera", color: "bg-blue-100 text-blue-800 border-blue-300 font-semibold" },
-  institution_approved: { label: "Propuesta Recibida", color: "bg-emerald-100 text-emerald-800 border-emerald-300 font-medium" },
-  proposal_received: { label: "Propuesta Recibida", color: "bg-emerald-100 text-emerald-800 border-emerald-300 font-medium" },
-  institution_rejected: { label: "Rechazada por Financiera", color: "bg-red-100 text-red-800 border-red-300 font-medium" },
+  pending_admin: { label: "Pendiente de revisión", color: "bg-amber-100 text-amber-800 border-amber-300 font-semibold" },
+  approved: { label: "Aprobado", color: "bg-emerald-50 text-emerald-700 border-emerald-300 font-medium" },
+  returned_to_broker: { label: "Devuelto al broker", color: "bg-orange-100 text-orange-800 border-orange-300 font-medium" },
+  sent: { label: "Enviado a financieras", color: "bg-blue-100 text-blue-800 border-blue-300 font-semibold" },
+  sent_to_institutions: { label: "Enviado a financieras", color: "bg-blue-100 text-blue-800 border-blue-300 font-semibold" },
+  institution_approved: { label: "Propuesta recibida", color: "bg-emerald-100 text-emerald-800 border-emerald-300 font-medium" },
+  proposal_received: { label: "Propuesta recibida", color: "bg-emerald-100 text-emerald-800 border-emerald-300 font-medium" },
+  institution_rejected: { label: "Rechazada por financiera", color: "bg-red-100 text-red-800 border-red-300 font-medium" },
   rejected: { label: "Rechazada", color: "bg-red-100 text-red-800 border-red-300 font-medium" },
-  selected_winner: { label: "Ganador", color: "bg-purple-100 text-purple-800 border-purple-300 font-semibold" },
+  selected_winner: { label: "Ganador seleccionado", color: "bg-purple-100 text-purple-800 border-purple-300 font-semibold" },
   winner: { label: "Ganador", color: "bg-purple-100 text-purple-800 border-purple-300 font-semibold" },
   dispersed: { label: "Dispersado", color: "bg-emerald-600 text-white font-semibold" },
   disbursed: { label: "Dispersado", color: "bg-emerald-600 text-white font-semibold" },
 };
 
 export const creditStatusConfig: Record<string, { label: string; color: string }> = {
-  pending_admin: { label: "Pendiente Admin", color: "bg-amber-100 text-amber-800 border-amber-300 font-semibold" },
-  under_review: { label: "En Revisión", color: "bg-amber-100 text-amber-800 border-amber-300 font-medium" },
+  pending_admin: { label: "Pendiente de revisión", color: "bg-amber-100 text-amber-800 border-amber-300 font-semibold" },
+  under_review: { label: "En revisión", color: "bg-amber-100 text-amber-800 border-amber-300 font-medium" },
   approved: { label: "Aprobado", color: "bg-emerald-100 text-emerald-800 border-emerald-300 font-medium" },
-  sent: { label: "Enviado a Financieras", color: "bg-blue-100 text-blue-800 border-blue-300 font-semibold" },
-  sent_to_institutions: { label: "Enviado a Financieras", color: "bg-blue-100 text-blue-800 border-blue-300 font-semibold" },
-  winner_selected: { label: "Ganador Seleccionado", color: "bg-purple-100 text-purple-800 border-purple-300 font-semibold" },
-  selected_winner: { label: "Ganador Seleccionado", color: "bg-purple-100 text-purple-800 border-purple-300 font-semibold" },
+  sent: { label: "Enviado a financieras", color: "bg-blue-100 text-blue-800 border-blue-300 font-semibold" },
+  sent_to_institutions: { label: "Enviado a financieras", color: "bg-blue-100 text-blue-800 border-blue-300 font-semibold" },
+  winner_selected: { label: "Ganador seleccionado", color: "bg-purple-100 text-purple-800 border-purple-300 font-semibold" },
+  selected_winner: { label: "Ganador seleccionado", color: "bg-purple-100 text-purple-800 border-purple-300 font-semibold" },
   rejected: { label: "Rechazado", color: "bg-red-100 text-red-800 border-red-300 font-medium" },
   disbursed: { label: "Dispersado", color: "bg-emerald-600 text-white font-semibold" },
   dispersed: { label: "Dispersado", color: "bg-emerald-600 text-white font-semibold" },
   active: { label: "Activo", color: "bg-emerald-50 text-emerald-700 border-emerald-300 font-semibold" },
   completed: { label: "Completado", color: "bg-gray-100 text-gray-700 border-gray-200" },
-  defaulted: { label: "En Mora", color: "bg-red-100 text-red-800 border-red-300 font-semibold" },
+  defaulted: { label: "En mora", color: "bg-red-100 text-red-800 border-red-300 font-semibold" },
 };
 
 // Helper para obtener resumen de estados cuando hay múltiples targets

@@ -4,6 +4,7 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { formatDistanceToNow } from "date-fns";
 import { es } from "date-fns/locale";
+import { getStatusLabel, getStatusBadgeClass } from "@/lib/statusConfig";
 
 interface PipelineData {
   pipeline: {
@@ -150,10 +151,10 @@ export default function CreditPipeline() {
                 </div>
                 <div className="text-right">
                   <Badge 
-                    className={statusConfig[creditCase.status as keyof typeof statusConfig]?.color || "bg-muted text-muted-foreground"}
+                    className={getStatusBadgeClass(creditCase.status)}
                     data-testid={`case-status-${creditCase.id}`}
                   >
-                    {statusConfig[creditCase.status as keyof typeof statusConfig]?.label || creditCase.status}
+                    {getStatusLabel(creditCase.status)}
                   </Badge>
                   <p className="text-xs text-muted-foreground mt-1" data-testid={`case-time-${creditCase.id}`}>
                     {formatDistanceToNow(new Date(creditCase.updatedAt), { 

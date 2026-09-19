@@ -9,14 +9,17 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { 
   Clock, 
-  DollarSign,
-  Package,
-  Building2,
-  Calendar,
-  Percent,
-  User,
-  Info
+  DollarSign, 
+  Package, 
+  Building2, 
+  Calendar, 
+  Percent, 
+  User, 
+  Info,
+  Users,
+  Filter
 } from "lucide-react";
+import { getStatusLabel, getStatusBadgeClass } from "@/lib/statusConfig";
 
 interface Credit {
   id: string;
@@ -89,14 +92,29 @@ export default function MySubmissions() {
 
   const isLoading = creditsLoading || commissionsLoading;
 
-  // Filter only broker's dispersed/disbursed credits (or all if admin)
-  const myCredits = allCredits?.filter(credit => {
-    const isDispersed = credit.status === 'dispersed' || credit.status === 'disbursed';
-    if (user?.role === 'admin' || user?.role === 'super_admin') {
-      return isDispersed;
-    }
-    return credit.brokerId === user?.id && isDispersed;
+  const isMasterBroker = user?.role === 'master_broker';
+  const isAdmin = user?.role === 'admin' || user?.role === 'super_admin';
+  const [activeTab, setActiveTab] = useState<'direct' | 'network'>('direct');
+  const [statusFilter, setStatusFilter] = useState<string>('all');
+
+  const directCredits = allCredits?.filter(credit => {
+    if (isAdmin) return true;
+    return credit.brokerId === user?.id;
   }) || [];
+
+  const networkCredits = allCredits?.filter(credit => {
+    return credit.brokerId !== user?.id;
+  }) || [];
+
+  const currentList = (isMasterBroker && activeTab === 'network') ? networkCredits : directCredits;
+
+  const filteredCredits = currentList.filter(credit => {
+    if (statusFilter === 'all') return true;
+    if (statusFilter === 'dispersed') return credit.status === 'dispersed' || credit.status === 'disbursed';
+    if (statusFilter === 'approved') return credit.status === 'approved';
+    if (statusFilter === 'in_progress') return credit.status !== 'dispersed' && credit.status !== 'disbursed' && credit.status !== 'approved';
+    return credit.status === statusFilter;
+  });
 
   const getCommissionForCredit = (creditId: string) => {
     return commissions?.find(c => c.creditId === creditId);
@@ -107,7 +125,7 @@ export default function MySubmissions() {
       <MainLayout>
         <Header 
           title="Mis Créditos"
-          subtitle="Revisa tus créditos dispersados y comisiones"
+          subtitle="Revisa tus créditos y comisiones"
         />
         <main className="flex-1 p-4 sm:p-6 lg:p-8 overflow-y-auto">
           <div className="space-y-6">
@@ -130,25 +148,77 @@ export default function MySubmissions() {
     <MainLayout>
       <Header 
         title="Mis Créditos"
-        subtitle={`${myCredits.length} crédito${myCredits.length !== 1 ? 's' : ''} dispersado${myCredits.length !== 1 ? 's' : ''}`}
+        subtitle={`${filteredCredits.length} crédito${filteredCredits.length !== 1 ? 's' : ''} registrado${filteredCredits.length !== 1 ? 's' : ''}`}
       />
+
+      {isMasterBroker && (
+        <div className="flex border-b border-gray-200 bg-white px-6 pt-3 gap-6 shadow-sm">
+          <button
+            onClick={() => setActiveTab('direct')}
+            className={`pb-3 text-sm font-semibold border-b-2 flex items-center gap-2 transition-colors ${
+              activeTab === 'direct'
+                ? 'border-primary text-primary'
+                : 'border-transparent text-gray-500 hover:text-gray-700'
+            }`}
+          >
+            <Package className="w-4 h-4" />
+            Mis Créditos Directos ({directCredits.length})
+          </button>
+          <button
+            onClick={() => setActiveTab('network')}
+            className={`pb-3 text-sm font-semibold border-b-2 flex items-center gap-2 transition-colors ${
+              activeTab === 'network'
+                ? 'border-primary text-primary'
+                : 'border-transparent text-gray-500 hover:text-gray-700'
+            }`}
+          >
+            <Users className="w-4 h-4" />
+            Créditos de mi Red ({networkCredits.length})
+          </button>
+        </div>
+      )}
       
       <main className="flex-1 p-4 sm:p-6 lg:p-8 overflow-y-auto">
           <div className="space-y-6">
-            {myCredits.length === 0 ? (
+            {/* Filtros de estado */}
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="text-xs text-gray-500 font-medium mr-1 flex items-center">
+                <Filter className="w-3.5 h-3.5 mr-1" /> Estado:
+              </span>
+              {[
+                { id: 'all', label: `Todos (${currentList.length})` },
+                { id: 'dispersed', label: `Dispersados (${currentList.filter(c => c.status === 'dispersed' || c.status === 'disbursed').length})` },
+                { id: 'approved', label: `Aprobados (${currentList.filter(c => c.status === 'approved').length})` },
+                { id: 'in_progress', label: `En Trámite (${currentList.filter(c => c.status !== 'dispersed' && c.status !== 'disbursed' && c.status !== 'approved').length})` },
+              ].map((f) => (
+                <Button
+                  key={f.id}
+                  variant={statusFilter === f.id ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => setStatusFilter(f.id)}
+                  className="text-xs h-7 px-3 rounded-full"
+                >
+                  {f.label}
+                </Button>
+              ))}
+            </div>
+
+            {filteredCredits.length === 0 ? (
               <Card>
                 <CardContent className="p-12 text-center">
                   <Package className="w-16 h-16 text-gray-300 mx-auto mb-4" />
                   <h3 className="text-lg font-medium text-gray-900 mb-2">
-                    No tienes créditos dispersados
+                    No se encontraron créditos
                   </h3>
                   <p className="text-gray-600">
-                    Cuando se dispersen créditos de tus solicitudes, aparecerán aquí con toda la información y seguimiento de comisiones.
+                    {isMasterBroker && activeTab === 'direct'
+                      ? "Aún no has originado créditos directos. Los créditos que tramites directamente aparecerán aquí."
+                      : "No hay créditos que coincidan con los filtros seleccionados."}
                   </p>
                 </CardContent>
               </Card>
             ) : (
-              myCredits.map((credit) => {
+              filteredCredits.map((credit) => {
                 const commission = getCommissionForCredit(credit.id);
                 const clientName = credit.client?.type === 'persona_moral' 
                   ? credit.client?.businessName || 'Sin razón social'
@@ -174,10 +244,15 @@ export default function MySubmissions() {
                                 {credit.financialInstitution.name}
                               </Badge>
                             )}
-                            <Badge className="bg-emerald-600 text-white">
-                              <Package className="w-3 h-3 mr-1" />
-                              Dispersado
+                            <Badge className={getStatusBadgeClass(credit.status)}>
+                              {getStatusLabel(credit.status)}
                             </Badge>
+                            {isMasterBroker && activeTab === 'network' && (
+                              <Badge variant="outline" className="bg-purple-50 text-purple-800 border-purple-200 text-xs">
+                                <User className="w-3 h-3 mr-1" />
+                                Red
+                              </Badge>
+                            )}
                             {commission?.status === 'paid' && (
                               <Badge className="bg-green-700 text-white border-green-800">
                                 <DollarSign className="w-3 h-3 mr-0.5" />
@@ -188,7 +263,7 @@ export default function MySubmissions() {
                           
                           <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-sm mt-2">
                             <div>
-                              <span className="text-gray-500 text-xs">Monto Dispersado:</span>
+                              <span className="text-gray-500 text-xs">Monto:</span>
                               <p className="font-semibold text-base text-green-700" data-testid={`text-amount-${credit.id}`}>
                                 ${Number(credit.amount).toLocaleString('es-MX')} MXN
                               </p>
@@ -219,7 +294,7 @@ export default function MySubmissions() {
                           </div>
 
                           <div className="text-xs text-gray-400 flex items-center gap-2">
-                            <span>Dispersado el {new Date(credit.createdAt).toLocaleDateString('es-MX')}</span>
+                            <span>Registrado el {new Date(credit.createdAt).toLocaleDateString('es-MX')}</span>
                             <span>•</span>
                             <span className="text-primary font-medium flex items-center">
                               <Info className="w-3 h-3 mr-1" /> Clic para ver detalles completos

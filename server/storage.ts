@@ -1779,7 +1779,7 @@ export class MemStorage implements IStorage {
   }
 
   async createFinancialInstitution(institutionData: InsertFinancialInstitution): Promise<FinancialInstitution> {
-    const id = randomUUID();
+    const id = (institutionData as any).id || randomUUID();
     const institution: FinancialInstitution = {
       ...institutionData,
       id,

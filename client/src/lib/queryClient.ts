@@ -117,7 +117,7 @@ export const queryClient = new QueryClient({
       queryFn: getQueryFn({ on401: "returnNull" }),
       refetchInterval: false,
       refetchOnWindowFocus: false,
-      staleTime: Infinity,
+      staleTime: 15000,
       retry: shouldRetry,
       retryDelay: (attemptIndex) => Math.min(1000 * 2 ** attemptIndex, 10000),
     },
@@ -128,4 +128,27 @@ export const queryClient = new QueryClient({
   },
 });
 
+export function invalidateAllCreditQueries(client: QueryClient = queryClient) {
+  const creditPrefixes = [
+    '/api/credit-submissions',
+    '/api/credit-submission-targets',
+    '/api/credits',
+    '/api/mis-solicitudes',
+    '/api/dashboard',
+    '/api/commissions',
+    '/api/clients',
+    '/api/proposals'
+  ];
+
+  creditPrefixes.forEach(prefix => {
+    client.invalidateQueries({
+      predicate: (query) => {
+        const firstKey = query.queryKey[0];
+        return typeof firstKey === 'string' && firstKey.startsWith(prefix);
+      }
+    });
+  });
+}
+
 export { ApiError };
+

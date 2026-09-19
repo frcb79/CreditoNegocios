@@ -32,9 +32,14 @@ export interface ComprehensiveMatchResult {
   warningChecks: number;
   failedChecks: number;
   infoChecks: number;
-  category: 'recommended' | 'compatible' | 'other';
+  category: 'recommended' | 'compatible' | 'other' | 'insufficient_data';
+  matchStatus: 'compatible' | 'not_compatible' | 'insufficient_data';
+  matchStatusLabel: string;
   reasons: string[];
+  unmetRequirements: string[];
+  missingData: string[];
   warnings: string[];
+  insufficientData?: boolean;
 }
 
 // ── Buró de Crédito Maps ──────────────────────────────────────────────
@@ -1616,24 +1621,62 @@ export function evaluateAllFieldsForClient(
   const warnings = fields.filter(f => f.status === 'warning').length;
   const fails = fields.filter(f => f.status === 'fail').length;
   const infos = fields.filter(f => f.status === 'info').length;
-  const evaluable = fields.filter(f => f.status !== 'info').length;
 
   const reasons = fields.filter(f => f.status === 'pass').map(f => `${f.label}: ${f.clientValue}`);
+  const unmetRequirements = fields.filter(f => f.status === 'fail').map(f => f.notes || `${f.label}: incumplido`);
+
+  // Detect critical requirements that are missing data (e.g. tenure, bureau, financials)
+  const coreTenureBuroKeys = [
+    'antiguedadLaboral', 'tiempoActividad', 'antiguedadEmpleo', 
+    'buroEmpresa', 'buroPersonaFisica', 'buroAccionistaPrincipal', 'buroPersonaFisicaSinSat',
+    'estadosFinancieros'
+  ];
+
+  const configuredCoreFields = fields.filter(f =>
+    coreTenureBuroKeys.includes(f.fieldName) &&
+    f.requirementValue &&
+    f.requirementValue !== 'Sin límite' &&
+    !f.requirementValue.toLowerCase().includes('todos')
+  );
+
+  const missingCoreFields = configuredCoreFields.filter(f =>
+    f.status === 'warning' &&
+    (f.clientValue === 'No proporcionado' || f.clientValue === 'No especificado' || f.clientValue === '-')
+  );
+
+  const missingData = missingCoreFields.map(f => `Falta ${f.label} (Requisito: ${f.requirementValue})`);
+
+  // Rule of 3 outcomes:
+  // A. No compatible: If there is at least 1 explicit rule failure
+  // B. Información insuficiente: If no fails, but core required data is unprovided
+  // C. Compatible: If no fails and sufficient core data is provided
+  let matchStatus: 'compatible' | 'not_compatible' | 'insufficient_data';
+  let matchStatusLabel: string;
+  let category: 'recommended' | 'compatible' | 'other' | 'insufficient_data';
+  let score: number;
+
   const warningList = fields
     .filter(f => f.status === 'fail' || (f.status === 'warning' && f.clientValue !== 'No proporcionado'))
     .map(f => `${f.label}: ${f.notes || f.clientValue}`);
 
-  // Calculate score percentage
-  const score = evaluable > 0 ? Math.round((passed / evaluable) * 100) : 50;
-
-  // Categorize
-  let category: 'recommended' | 'compatible' | 'other';
-  if (score >= 80 && fails === 0) {
-    category = 'recommended';
-  } else if (score >= 50 && fails === 0) {
-    category = 'compatible';
-  } else {
+  if (fails > 0) {
+    matchStatus = 'not_compatible';
+    matchStatusLabel = 'No compatible';
     category = 'other';
+    // Score reflects proportion of non-failed checks among provided data
+    score = (passed + fails) > 0 ? Math.round((passed / (passed + fails)) * 100) : 0;
+  } else if (missingCoreFields.length > 0 || passed === 0) {
+    matchStatus = 'insufficient_data';
+    matchStatusLabel = 'Información insuficiente';
+    category = 'insufficient_data';
+    // Do NOT tank the score to 0 or penalize missing fields
+    score = (passed + fails) > 0 ? Math.round((passed / (passed + fails)) * 100) : 70;
+    warningList.push(`Información insuficiente: ${missingData.join('; ')}`);
+  } else {
+    matchStatus = 'compatible';
+    matchStatusLabel = 'Compatible';
+    score = (passed + fails) > 0 ? Math.round((passed / (passed + fails)) * 100) : 85;
+    category = score >= 80 ? 'recommended' : 'compatible';
   }
 
   return {
@@ -1645,7 +1688,12 @@ export function evaluateAllFieldsForClient(
     failedChecks: fails,
     infoChecks: infos,
     category,
+    matchStatus,
+    matchStatusLabel,
     reasons,
+    unmetRequirements,
+    missingData,
     warnings: warningList,
+    insufficientData: matchStatus === 'insufficient_data',
   };
 }

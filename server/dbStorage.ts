@@ -782,7 +782,7 @@ export class DbStorage implements IStorage {
         .insert(financialInstitutions)
         .values({
           ...institutionData,
-          id: randomUUID(),
+          id: (institutionData as any).id || randomUUID(),
           contactPerson: institutionData.contactPerson ?? null,
           email: institutionData.email ?? null,
           phone: institutionData.phone ?? null,

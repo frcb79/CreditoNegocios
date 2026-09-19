@@ -24,7 +24,7 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
-import { Building2, User, DollarSign, Send, AlertCircle, CheckCircle, AlertTriangle, Info, HelpCircle } from "lucide-react";
+import { Building2, User, DollarSign, Send, AlertCircle, CheckCircle, AlertTriangle, Info, HelpCircle, XCircle } from "lucide-react";
 import { evaluateAllFieldsForClient } from "@/components/MatchingAnalysis/matchingRules";
 
 interface Client {
@@ -62,8 +62,12 @@ interface CreditRequestModalProps {
 
 interface MatchResult {
   score: number;
-  category: 'recommended' | 'compatible' | 'other' | 'unconfigured';
+  category: 'recommended' | 'compatible' | 'other' | 'unconfigured' | 'insufficient_data';
+  matchStatus?: 'compatible' | 'not_compatible' | 'insufficient_data';
+  matchStatusLabel?: string;
   reasons: string[];
+  unmetRequirements?: string[];
+  missingData?: string[];
   warnings: string[];
   isConfigured?: boolean;
   // Shadow mode AI fields (not displayed, used for ground truth collection)
@@ -454,17 +458,16 @@ export default function CreditRequestModal({ isOpen, onClose, preselectedClientI
     // Weighted blend: rule engine is authoritative (70%), AI heuristic adds signal (30%)
     const finalScore = Math.round(0.7 * ruleScore + 0.3 * aiScore);
 
-    // Re-categorize:
-    // If the institution has hard failures (failedChecks > 0), it goes to other/advertencia
-    let finalCategory: 'recommended' | 'compatible' | 'other';
-    if (fullEval.failedChecks > 0) {
+    // Re-categorize using 3-state engine
+    let finalCategory: 'recommended' | 'compatible' | 'other' | 'insufficient_data';
+    if (fullEval.matchStatus === 'not_compatible' || fullEval.failedChecks > 0) {
       finalCategory = 'other';
-    } else if (finalScore >= 80 && fullEval.warningChecks === 0) {
+    } else if (fullEval.matchStatus === 'insufficient_data') {
+      finalCategory = 'insufficient_data';
+    } else if (finalScore >= 80) {
       finalCategory = 'recommended';
-    } else if (finalScore >= 50) {
-      finalCategory = 'compatible';
     } else {
-      finalCategory = 'other';
+      finalCategory = 'compatible';
     }
 
     // Ground truth logging (shadow mode — no UI impact)
@@ -483,7 +486,11 @@ export default function CreditRequestModal({ isOpen, onClose, preselectedClientI
     return {
       score: finalScore,
       category: finalCategory,
+      matchStatus: fullEval.matchStatus,
+      matchStatusLabel: fullEval.matchStatusLabel,
       reasons: fullEval.reasons,
+      unmetRequirements: fullEval.unmetRequirements,
+      missingData: fullEval.missingData,
       warnings: fullEval.warnings,
       isConfigured: true,
       ruleScore,
@@ -500,10 +507,13 @@ export default function CreditRequestModal({ isOpen, onClose, preselectedClientI
   })).sort((a, b) => b.match.score - a.match.score);
 
   const compatibleInstitutions = institutionsWithMatch.filter(
-    i => i.match.isConfigured !== false && i.match.warnings.length === 0 && (i.match.category === 'recommended' || i.match.category === 'compatible' || i.match.score >= 70)
+    i => i.match.isConfigured !== false && (i.match.matchStatus === 'compatible' || i.match.category === 'recommended' || i.match.category === 'compatible')
+  );
+  const insufficientInstitutions = institutionsWithMatch.filter(
+    i => i.match.isConfigured !== false && (i.match.matchStatus === 'insufficient_data' || i.match.category === 'insufficient_data')
   );
   const warningInstitutions = institutionsWithMatch.filter(
-    i => i.match.isConfigured !== false && !compatibleInstitutions.includes(i)
+    i => i.match.isConfigured !== false && !compatibleInstitutions.includes(i) && !insufficientInstitutions.includes(i)
   );
   const unconfiguredInstitutions = institutionsWithMatch.filter(
     i => i.match.isConfigured === false
@@ -528,27 +538,34 @@ export default function CreditRequestModal({ isOpen, onClose, preselectedClientI
         </Badge>
       );
       categoryIcon = <HelpCircle className="w-4 h-4 text-gray-500" />;
-    } else if (match.warnings.length === 0 && (match.category === 'recommended' || match.score >= 80)) {
+    } else if (match.matchStatus === 'not_compatible' || match.category === 'other') {
       categoryBadge = (
-        <Badge variant="outline" className="bg-emerald-50 text-emerald-700 border-emerald-300 text-xs">
+        <Badge variant="outline" className="bg-red-50 text-red-700 border-red-300 text-xs font-semibold">
+          ✕ No Compatible
+        </Badge>
+      );
+      categoryIcon = <AlertTriangle className="w-4 h-4 text-red-600" />;
+    } else if (match.matchStatus === 'insufficient_data' || match.category === 'insufficient_data') {
+      categoryBadge = (
+        <Badge variant="outline" className="bg-amber-50 text-amber-800 border-amber-300 text-xs font-semibold">
+          ⚠ Información Insuficiente
+        </Badge>
+      );
+      categoryIcon = <AlertTriangle className="w-4 h-4 text-amber-600" />;
+    } else if (match.category === 'recommended' || match.score >= 80) {
+      categoryBadge = (
+        <Badge variant="outline" className="bg-emerald-50 text-emerald-700 border-emerald-300 text-xs font-semibold">
           ⭐ Recomendada
         </Badge>
       );
       categoryIcon = <CheckCircle className="w-4 h-4 text-emerald-600" />;
-    } else if (match.warnings.length === 0 && match.score >= 70) {
+    } else {
       categoryBadge = (
-        <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-300 text-xs">
+        <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-300 text-xs font-semibold">
           ✓ Compatible
         </Badge>
       );
       categoryIcon = <CheckCircle className="w-4 h-4 text-blue-600" />;
-    } else {
-      categoryBadge = (
-        <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-300 text-xs">
-          {match.score === 0 ? '✕ No Compatible' : '⚠ Advertencia'}
-        </Badge>
-      );
-      categoryIcon = <AlertTriangle className="w-4 h-4 text-amber-600" />;
     }
 
     return (
@@ -596,7 +613,7 @@ export default function CreditRequestModal({ isOpen, onClose, preselectedClientI
               <p className="font-semibold text-sm">Score de compatibilidad: {match.score}%</p>
               {match.reasons.length > 0 && (
                 <div>
-                  <p className="text-xs font-medium text-green-600">✓ Cumple:</p>
+                  <p className="text-xs font-medium text-green-600">✓ Por qué hace match:</p>
                   <ul className="text-xs list-disc list-inside">
                     {match.reasons.map((reason, idx) => (
                       <li key={idx}>{reason}</li>
@@ -604,12 +621,22 @@ export default function CreditRequestModal({ isOpen, onClose, preselectedClientI
                   </ul>
                 </div>
               )}
-              {match.warnings.length > 0 && (
+              {match.unmetRequirements && match.unmetRequirements.length > 0 && (
                 <div>
-                  <p className="text-xs font-medium text-yellow-600">⚠ Advertencias:</p>
+                  <p className="text-xs font-medium text-red-600">✕ Por qué NO hace match:</p>
                   <ul className="text-xs list-disc list-inside">
-                    {match.warnings.map((warning, idx) => (
-                      <li key={idx}>{warning}</li>
+                    {match.unmetRequirements.map((unmet, idx) => (
+                      <li key={idx}>{unmet}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+              {match.missingData && match.missingData.length > 0 && (
+                <div>
+                  <p className="text-xs font-medium text-amber-600">⚠ Información insuficiente (datos faltantes):</p>
+                  <ul className="text-xs list-disc list-inside">
+                    {match.missingData.map((missing, idx) => (
+                      <li key={idx}>{missing}</li>
                     ))}
                   </ul>
                 </div>
@@ -819,15 +846,33 @@ export default function CreditRequestModal({ isOpen, onClose, preselectedClientI
                       </div>
                     )}
 
-                    {/* 2. Con Advertencias / No Compatibles */}
-                    {warningInstitutions.length > 0 && (
+                    {/* 2. Información Insuficiente */}
+                    {insufficientInstitutions.length > 0 && (
                       <div className="space-y-2">
                         <div className="flex items-center space-x-2">
                           <AlertTriangle className="w-4 h-4 text-amber-600" />
                           <h4 className="font-semibold text-sm text-amber-900">
-                            Con Advertencias / No Compatibles ({warningInstitutions.length})
+                            Información Insuficiente ({insufficientInstitutions.length})
                           </h4>
-                          <span className="text-xs text-muted-foreground">Presentan requisitos no cumplidos, perfil no admitido o advertencias</span>
+                          <span className="text-xs text-muted-foreground">Falta información para evaluar compatibilidad definitiva</span>
+                        </div>
+                        <div className="grid grid-cols-1 gap-2 max-h-48 overflow-y-auto">
+                          {insufficientInstitutions.map(({ institution, match }) => 
+                            renderInstitutionCard(institution, match)
+                          )}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* 3. No Compatibles */}
+                    {warningInstitutions.length > 0 && (
+                      <div className="space-y-2">
+                        <div className="flex items-center space-x-2">
+                          <XCircle className="w-4 h-4 text-red-600" />
+                          <h4 className="font-semibold text-sm text-red-900">
+                            No Compatibles ({warningInstitutions.length})
+                          </h4>
+                          <span className="text-xs text-muted-foreground">Incumplen al menos una regla comercial o de perfil</span>
                         </div>
                         <div className="grid grid-cols-1 gap-2 max-h-48 overflow-y-auto">
                           {warningInstitutions.map(({ institution, match }) => 
