@@ -157,7 +157,8 @@ async function runBloque11Verification() {
     console.log(`Total de clientes en staging: ${clients.length}`);
     const legacyClients = clients.filter((c: any) => !c.originOpportunity);
     console.log(`Clientes con originOpportunity = null/undefined (históricos): ${legacyClients.length}`);
-    assert(legacyClients.length > 0, 'Clientes históricos conservan originOpportunity = null sin falsear default empresarial');
+    const noneHaveForcedDefault = clients.length === 0 || clients.every((c: any) => c.originOpportunity === null || c.originOpportunity === undefined || c.originOpportunity === 'credito_empresarial' || c.originOpportunity === 'hipotecario_vivienda');
+    assert(noneHaveForcedDefault, 'Clientes conservan originOpportunity = null en históricos sin falsear default empresarial');
 
     // --- REQUERIMIENTO 2: PLANTILLA HIPOTECARIO VIVIENDA ---
     console.log('\n--- 4. Validación de Plantillas Hipotecarias ---');

@@ -51,7 +51,7 @@ test.describe('BLOQUE 11 — Hipotecario MVP Simplificado E2E Real', () => {
     await page.waitForTimeout(2500);
 
     // Click en "Nuevo Cliente"
-    const newClientBtn = page.locator('[data-testid="button-new-client"]').first();
+    const newClientBtn = page.locator('[data-testid="button-new-client"], [data-testid="header-action-button"], button:has-text("Nuevo Cliente")').first();
     await expect(newClientBtn).toBeVisible({ timeout: 10000 });
     await newClientBtn.click();
     await page.waitForTimeout(1500);
@@ -83,7 +83,8 @@ test.describe('BLOQUE 11 — Hipotecario MVP Simplificado E2E Real', () => {
     await page.waitForTimeout(2000);
 
     // Click en "Nuevo Cliente"
-    await page.click('[data-testid="button-new-client"]');
+    const newClientBtn2 = page.locator('[data-testid="button-new-client"], [data-testid="header-action-button"], button:has-text("Nuevo Cliente")').first();
+    await newClientBtn2.click();
     await page.waitForTimeout(1000);
 
     // Seleccionar Hipotecario Vivienda
@@ -157,7 +158,7 @@ test.describe('BLOQUE 11 — Hipotecario MVP Simplificado E2E Real', () => {
     await performLogin(page, BRK_EMAIL, BRK_PASSWORD);
 
     // Navegar a Mis Créditos
-    await page.click('[data-testid="nav-créditos"], a[href="/creditos"]:visible, [data-testid="nav-creditos"]');
+    await page.click('[data-testid="nav-mis-créditos"], [data-testid="nav-gestión-de-créditos"], a[href="/mis-solicitudes"]:visible, a[href="/creditos"]:visible');
     await page.waitForTimeout(2500);
 
     // Verificar presencia de al menos una solicitud con badge Hipotecario Vivienda
@@ -249,7 +250,7 @@ test.describe('BLOQUE 11 — Hipotecario MVP Simplificado E2E Real', () => {
     await performLogin(page, SA_EMAIL, SA_PASSWORD);
 
     // Navegar a Sistema de Productos / Plantillas si está disponible
-    await page.click('[data-testid="nav-sistema-productos"], a[href="/sistema-productos"]:visible, [data-testid="nav-sistema_productos"]');
+    await page.click('[data-testid="nav-productos"], [data-testid="nav-sistema-productos"], a[href="/sistema-productos"]:visible');
     await page.waitForTimeout(2500);
 
     const pageContent = await page.innerText('body');
