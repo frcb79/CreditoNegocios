@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -9,6 +9,12 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { 
+  DropdownMenu, 
+  DropdownMenuTrigger, 
+  DropdownMenuContent, 
+  DropdownMenuItem 
+} from "@/components/ui/dropdown-menu";
 import { Credit, Client } from "@shared/schema";
 import { formatDistanceToNow, format } from "date-fns";
 import { es } from "date-fns/locale";
@@ -26,15 +32,20 @@ import {
   Percent,
   CheckCircle,
   Package,
-  Clock
+  Clock,
+  Search,
+  MoreHorizontal,
+  Home,
+  Users
 } from "lucide-react";
 import FinalProposalModal from "@/components/Modals/FinalProposalModal";
 import MatchingComparisonTable from "@/components/MatchingAnalysis/MatchingComparisonTable";
-import { submissionStatusConfig, creditStatusConfig, targetStatusConfig, getSubmissionStatusSummary } from "@/lib/statusConfig";
+import { submissionStatusConfig, creditStatusConfig, targetStatusConfig, getSubmissionStatusSummary, getStatusLabel } from "@/lib/statusConfig";
 import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 import { buildApiUrl } from "@/lib/runtimeConfig";
+import { cn } from "@/lib/utils";
 
 type UnifiedCreditItem = {
   id: string;
@@ -70,11 +81,13 @@ type UnifiedCreditItem = {
 export default function CreditList() {
   const { user } = useAuth();
   const isAdmin = user?.role === 'admin' || user?.role === 'super_admin';
+  const isMasterBroker = user?.role === 'master_broker';
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
   const [searchTerm, setSearchTerm] = useState("");
   const [filterStatus, setFilterStatus] = useState<string>("all");
+  const [masterTab, setMasterTab] = useState<'direct' | 'network'>('direct');
   const [proposalCredit, setProposalCredit] = useState<Credit | null>(null);
   const [selectedSubmissionId, setSelectedSubmissionId] = useState<string | null>(null);
   const [selectedCreditItem, setSelectedCreditItem] = useState<UnifiedCreditItem | null>(null);
@@ -329,26 +342,160 @@ export default function CreditList() {
     );
   }, [submissions, credits, commissions]);
 
-  const filteredItems = unifiedItems.filter(item => {
-    const clientName = getClientName(item.clientId);
-    const brokerName = item.broker ? `${item.broker.firstName || ''} ${item.broker.lastName || ''}`.trim() : '';
-    const matchesSearch = 
-      clientName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      brokerName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      item.id.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      item.amount.toString().includes(searchTerm);
-    
-    // For submissions with status summary, check if any target status matches the filter
-    let matchesStatus = filterStatus === "all";
-    if (!matchesStatus && item.type === 'submission' && item.statusSummary) {
-      const uniqueStatuses = Object.keys(item.statusSummary.statusCounts);
-      matchesStatus = uniqueStatuses.includes(filterStatus) || item.status === filterStatus;
-    } else if (!matchesStatus) {
-      matchesStatus = item.status === filterStatus;
+  const directItemsCount = useMemo(() => {
+    if (!isMasterBroker || !user?.id) return 0;
+    return unifiedItems.filter(item => {
+      const bId = item.broker?.id || item.rawSubmission?.brokerId || item.rawCredit?.brokerId;
+      return bId === user.id;
+    }).length;
+  }, [unifiedItems, isMasterBroker, user?.id]);
+
+  const networkItemsCount = useMemo(() => {
+    if (!isMasterBroker || !user?.id) return 0;
+    return unifiedItems.filter(item => {
+      const bId = item.broker?.id || item.rawSubmission?.brokerId || item.rawCredit?.brokerId;
+      return bId && bId !== user.id;
+    }).length;
+  }, [unifiedItems, isMasterBroker, user?.id]);
+
+  useEffect(() => {
+    if (isMasterBroker && directItemsCount === 0 && networkItemsCount > 0) {
+      setMasterTab('network');
     }
+  }, [isMasterBroker, directItemsCount, networkItemsCount]);
+
+  const filteredItems = useMemo(() => {
+    let list = unifiedItems;
+
+    if (isMasterBroker && user?.id) {
+      if (masterTab === 'direct') {
+        list = list.filter(item => {
+          const bId = item.broker?.id || item.rawSubmission?.brokerId || item.rawCredit?.brokerId;
+          return bId === user.id;
+        });
+      } else if (masterTab === 'network') {
+        list = list.filter(item => {
+          const bId = item.broker?.id || item.rawSubmission?.brokerId || item.rawCredit?.brokerId;
+          return bId && bId !== user.id;
+        });
+      }
+    }
+
+    return list.filter(item => {
+      const clientName = getClientName(item.clientId);
+      const brokerName = item.broker ? `${item.broker.firstName || ''} ${item.broker.lastName || ''}`.trim() : '';
+      const matchesSearch = 
+        clientName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        brokerName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        item.id.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        item.amount.toString().includes(searchTerm);
+      
+      let matchesStatus = filterStatus === "all";
+      if (!matchesStatus && item.type === 'submission' && item.statusSummary) {
+        const uniqueStatuses = Object.keys(item.statusSummary.statusCounts);
+        matchesStatus = uniqueStatuses.includes(filterStatus) || item.status === filterStatus;
+      } else if (!matchesStatus) {
+        matchesStatus = item.status === filterStatus;
+      }
+      
+      return matchesSearch && matchesStatus;
+    });
+  }, [unifiedItems, searchTerm, filterStatus, isMasterBroker, masterTab, user?.id, clients]);
+
+  const getClientSubtitle = (clientId: string) => {
+    const client = clients?.find(c => c.id === clientId);
+    if (!client) return `Exp. #${clientId.slice(-6).toUpperCase()}`;
+    const typeLabel = client.type === 'persona_moral' ? 'PM' : client.type === 'fisica_empresarial' ? 'PFAE' : 'PF';
+    const rfcText = client.rfc ? `RFC: ${client.rfc}` : 'RFC: No proporcionado';
+    return `${typeLabel} • ${rfcText}`;
+  };
+
+  const formatRelativeDate = (dateInput: Date | string) => {
+    try {
+      const d = new Date(dateInput);
+      const now = new Date();
+      const diffMs = now.getTime() - d.getTime();
+      const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
+      
+      if (diffHours < 1) {
+        const diffMins = Math.max(1, Math.floor(diffMs / (1000 * 60)));
+        return `hace ${diffMins}m`;
+      }
+      if (diffHours < 24) {
+        return `hace ${diffHours}h`;
+      }
+      if (diffHours < 48) {
+        return 'ayer';
+      }
+      return format(d, 'd MMM', { locale: es });
+    } catch {
+      return 'Reciente';
+    }
+  };
+
+  const getStatusDisplay = (item: UnifiedCreditItem) => {
+    if (item.dispersedTargets && item.dispersedTargets.length > 0) {
+      if (item.dispersedTargets.length === item.winningTargets?.length) {
+        return {
+          label: "Dispersado",
+          badgeClass: "bg-emerald-50 text-emerald-800 border-emerald-200/80",
+          dotClass: "bg-emerald-500",
+        };
+      }
+      return {
+        label: `Dispersión parcial (${item.dispersedTargets.length})`,
+        badgeClass: "bg-teal-50 text-teal-800 border-teal-200/80",
+        dotClass: "bg-teal-500",
+      };
+    }
+
+    if (item.winningTargets && item.winningTargets.length > 0) {
+      return {
+        label: `Ganador seleccionado (${item.winningTargets.length})`,
+        badgeClass: "bg-purple-50 text-purple-800 border-purple-200/80",
+        dotClass: "bg-purple-500",
+      };
+    }
+
+    const effectiveStatus = (item.type === 'submission' && item.statusSummary?.primaryStatus) 
+      ? item.statusSummary.primaryStatus 
+      : item.status;
     
-    return matchesSearch && matchesStatus;
-  });
+    const label = getStatusLabel(effectiveStatus);
+    const norm = (effectiveStatus || '').toLowerCase();
+
+    if (norm === 'dispersed' || norm === 'disbursed' || norm === 'dispersado') {
+      return { label, badgeClass: "bg-emerald-50 text-emerald-800 border-emerald-200/80", dotClass: "bg-emerald-500" };
+    }
+    if (norm.includes('aprobado') || norm.includes('approved')) {
+      return { label, badgeClass: "bg-emerald-50 text-emerald-800 border-emerald-200/80", dotClass: "bg-emerald-500" };
+    }
+    if (norm.includes('winner') || norm.includes('ganador')) {
+      return { label, badgeClass: "bg-purple-50 text-purple-800 border-purple-200/80", dotClass: "bg-purple-500" };
+    }
+    if (norm.includes('sent') || norm.includes('enviad') || norm.includes('proposals') || norm.includes('propuesta')) {
+      return { label, badgeClass: "bg-blue-50 text-blue-800 border-blue-200/80", dotClass: "bg-blue-500" };
+    }
+    if (norm.includes('pending') || norm.includes('pendient') || norm.includes('review') || norm.includes('revision')) {
+      return { label, badgeClass: "bg-amber-50 text-amber-800 border-amber-200/80", dotClass: "bg-amber-500" };
+    }
+    if (norm.includes('reject') || norm.includes('rechaz') || norm.includes('returned') || norm.includes('devuelt')) {
+      return { label, badgeClass: "bg-rose-50 text-rose-800 border-rose-200/80", dotClass: "bg-rose-500" };
+    }
+    return {
+      label,
+      badgeClass: "bg-slate-50 text-slate-700 border-slate-200/80",
+      dotClass: "bg-slate-400",
+    };
+  };
+
+  const isMortgageItem = (item: UnifiedCreditItem) => {
+    return Boolean(
+      item.productTemplateName?.toLowerCase().includes("hipotecario") ||
+      (item.rawSubmission?.mortgageData && Object.keys(item.rawSubmission.mortgageData).length > 0) ||
+      (item.rawCredit?.mortgageData && Object.keys(item.rawCredit.mortgageData).length > 0)
+    );
+  };
 
   const handleItemClick = (item: UnifiedCreditItem) => {
     setSelectedCreditItem(item);
@@ -374,236 +521,333 @@ export default function CreditList() {
 
   if (isLoading) {
     return (
-      <Card>
-        <CardHeader>
-          <CardTitle>Créditos</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="space-y-4">
-            {Array.from({ length: 5 }).map((_, i) => (
-              <div key={i} className="flex items-center space-x-4 p-4 border rounded-lg">
-                <Skeleton className="h-12 w-12 rounded-full" />
-                <div className="space-y-2 flex-1">
-                  <Skeleton className="h-4 w-48" />
-                  <Skeleton className="h-3 w-32" />
-                </div>
-                <Skeleton className="h-6 w-20" />
+      <div className="bg-white border border-slate-200/80 rounded-xl p-6 space-y-4 shadow-sm">
+        <div className="flex items-center justify-between pb-4 border-b border-slate-100">
+          <Skeleton className="h-6 w-48" />
+          <Skeleton className="h-9 w-64" />
+        </div>
+        <div className="space-y-3">
+          {Array.from({ length: 6 }).map((_, i) => (
+            <div key={i} className="flex items-center justify-between p-3 border-b border-slate-100">
+              <div className="flex items-center space-x-3">
+                <Skeleton className="h-4 w-40" />
+                <Skeleton className="h-4 w-24" />
               </div>
-            ))}
-          </div>
-        </CardContent>
-      </Card>
+              <Skeleton className="h-5 w-28" />
+              <Skeleton className="h-5 w-24" />
+              <Skeleton className="h-8 w-20" />
+            </div>
+          ))}
+        </div>
+      </div>
     );
   }
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Gestión de Créditos ({filteredItems.length})</CardTitle>
-        
-        {/* Filters */}
-        <div className="flex space-x-4 mt-4">
-          <div className="flex-1">
-            <Input
-              placeholder="Buscar por cliente, ID o monto..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              data-testid="input-search-credits"
-              className="placeholder:text-gray-400"
-            />
+    <div className="space-y-4">
+      <div className="bg-white border border-slate-200/80 rounded-xl shadow-sm overflow-hidden">
+        {/* Tabs for Master Broker */}
+        {isMasterBroker && (
+          <div className="flex border-b border-slate-200 bg-slate-50/60 px-6 pt-3 gap-8">
+            <button
+              type="button"
+              onClick={() => setMasterTab('direct')}
+              className={`pb-3 text-sm font-semibold border-b-2 flex items-center gap-2 transition-colors ${
+                masterTab === 'direct'
+                  ? 'border-primary text-primary'
+                  : 'border-transparent text-slate-500 hover:text-slate-800'
+              }`}
+            >
+              <Package className="w-4 h-4" />
+              Mis Créditos Directos ({directItemsCount})
+            </button>
+            <button
+              type="button"
+              onClick={() => setMasterTab('network')}
+              className={`pb-3 text-sm font-semibold border-b-2 flex items-center gap-2 transition-colors ${
+                masterTab === 'network'
+                  ? 'border-primary text-primary'
+                  : 'border-transparent text-slate-500 hover:text-slate-800'
+              }`}
+            >
+              <Users className="w-4 h-4" />
+              Créditos de mi Red ({networkItemsCount})
+            </button>
           </div>
-          <div className="w-48">
-            <Select value={filterStatus} onValueChange={setFilterStatus}>
-              <SelectTrigger data-testid="select-credit-status">
-                <SelectValue placeholder="Estado" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">Todos los estados</SelectItem>
-                <SelectItem value="draft">Borrador</SelectItem>
-                <SelectItem value="submitted">Enviado</SelectItem>
-                <SelectItem value="pending_admin">Pendiente Admin</SelectItem>
-                <SelectItem value="approved">Visto Bueno</SelectItem>
-                <SelectItem value="returned_to_broker">Devuelto</SelectItem>
-                <SelectItem value="sent">Enviada</SelectItem>
-                <SelectItem value="proposal_received">Propuesta Recibida</SelectItem>
-                <SelectItem value="winner">Seleccionada</SelectItem>
-                <SelectItem value="sent_to_institutions">Enviado a Financieras</SelectItem>
-                <SelectItem value="proposals_received">Propuestas Recibidas</SelectItem>
-                <SelectItem value="winner_selected">Ganador Seleccionado</SelectItem>
-                <SelectItem value="dispersed">Dispersado</SelectItem>
-                <SelectItem value="active">Activo</SelectItem>
-                <SelectItem value="completed">Completado</SelectItem>
-                <SelectItem value="defaulted">En Mora</SelectItem>
-              </SelectContent>
-            </Select>
+        )}
+
+        {/* Subheader / Toolbar */}
+        <div className="p-4 sm:p-5 border-b border-slate-100 flex flex-col sm:flex-row gap-4 sm:items-center sm:justify-between bg-white">
+          <div className="flex items-center gap-3">
+            <h2 className="text-base font-semibold text-slate-900 tracking-tight">
+              Operaciones registradas
+            </h2>
+            <span className="text-xs font-medium px-2.5 py-0.5 rounded-full bg-slate-100 text-slate-600 border border-slate-200">
+              {filteredItems.length}
+            </span>
+          </div>
+
+          <div className="flex items-center gap-3 flex-1 sm:max-w-md">
+            <div className="relative flex-1">
+              <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+              <Input
+                placeholder="Buscar por cliente, ID o monto..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                data-testid="input-search-credits"
+                className="pl-9 h-9 text-xs placeholder:text-slate-400 border-slate-200 bg-slate-50/50 focus:bg-white transition-colors"
+              />
+            </div>
+            <div className="w-44">
+              <Select value={filterStatus} onValueChange={setFilterStatus}>
+                <SelectTrigger data-testid="select-credit-status" className="h-9 text-xs border-slate-200 bg-white">
+                  <SelectValue placeholder="Estado" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todos los estados</SelectItem>
+                  <SelectItem value="draft">Borrador</SelectItem>
+                  <SelectItem value="submitted">En validación</SelectItem>
+                  <SelectItem value="pending_admin">Pendiente de revisión</SelectItem>
+                  <SelectItem value="approved">Aprobado</SelectItem>
+                  <SelectItem value="returned_to_broker">Devuelto</SelectItem>
+                  <SelectItem value="sent_to_institutions">Enviado a Financieras</SelectItem>
+                  <SelectItem value="proposals_received">Propuestas Recibidas</SelectItem>
+                  <SelectItem value="winner_selected">Ganador Seleccionado</SelectItem>
+                  <SelectItem value="dispersed">Dispersado</SelectItem>
+                  <SelectItem value="active">Activo</SelectItem>
+                  <SelectItem value="completed">Completado</SelectItem>
+                  <SelectItem value="defaulted">En Mora</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
           </div>
         </div>
-      </CardHeader>
-      
-      <CardContent>
+
+        {/* Table Content */}
         {filteredItems.length === 0 ? (
-          <div className="text-center py-8">
-            <i className="fas fa-credit-card text-4xl text-gray-300 mb-4"></i>
-            <p className="text-neutral mb-4">
-              {unifiedItems.length === 0 ? "No hay créditos ni solicitudes. Usa 'Solicitar Crédito' para comenzar." : "No se encontraron resultados"}
+          <div className="text-center py-16 px-4">
+            <div className="w-12 h-12 rounded-full bg-slate-100 text-slate-400 flex items-center justify-center mx-auto mb-3">
+              <FileText className="w-6 h-6" />
+            </div>
+            <h3 className="text-sm font-semibold text-slate-900 mb-1">
+              {unifiedItems.length === 0 ? "No hay operaciones registradas" : "Sin resultados para tu búsqueda"}
+            </h3>
+            <p className="text-xs text-slate-500 max-w-sm mx-auto">
+              {unifiedItems.length === 0
+                ? "Inicia un nuevo expediente utilizando el botón Nueva Solicitud en la parte superior."
+                : "Intenta ajustar el término de búsqueda o limpia los filtros para ver los expedientes."}
             </p>
           </div>
         ) : (
-          <div className="space-y-3">
-            {filteredItems.map((item) => (
-              <div
-                key={item.id}
-                onClick={() => handleItemClick(item)}
-                className="flex items-center justify-between p-4 border border-gray-200 rounded-lg cursor-pointer hover:bg-gray-50 transition-colors"
-                data-testid={`item-${item.id}`}
-              >
-                <div className="flex items-center space-x-4">
-                  <div className={`w-12 h-12 rounded-full flex items-center justify-center font-bold ${getClientAvatarColor(item.clientId)}`}>
-                    {getClientInitials(item.clientId)}
-                  </div>
-                  <div>
-                    <h3 className="font-semibold text-gray-900" data-testid={`item-client-${item.id}`}>
-                      {getClientName(item.clientId)}
-                    </h3>
-                    <div className="flex items-center gap-2 flex-wrap text-sm">
-                      <span className="font-semibold text-gray-800">
-                        ${parseFloat(item.amount).toLocaleString('es-MX')} MXN Solicitado
-                      </span>
-                      {item.totalApprovedAmount && item.totalApprovedAmount > 0 ? (
-                        <Badge className="bg-emerald-50 text-emerald-800 border border-emerald-300 text-[11px] font-medium">
-                          ${item.totalApprovedAmount.toLocaleString('es-MX')} MXN Aprobado ({item.winningTargets?.length || 1} oferta{item.winningTargets?.length === 1 ? '' : 's'})
-                        </Badge>
-                      ) : null}
-                      {item.term && <span className="text-xs text-neutral">• {item.term} meses</span>}
-                      {item.productTemplateName && <span className="text-xs text-neutral">• {item.productTemplateName}</span>}
-                      {(item.productTemplateName?.toLowerCase().includes("hipotecario") || (item.rawSubmission?.mortgageData && Object.keys(item.rawSubmission.mortgageData).length > 0) || (item.rawCredit?.mortgageData && Object.keys(item.rawCredit.mortgageData).length > 0)) && (
-                        <Badge variant="outline" className="bg-amber-50 text-amber-800 border-amber-300 text-xs font-semibold" data-testid={`badge-mortgage-${item.id}`}>
-                          🏠 Hipotecario Vivienda
-                        </Badge>
-                      )}
-                    </div>
-                    <p className="text-xs text-neutral mt-0.5">
-                      {item.type === 'submission' ? 'Solicitud' : 'Crédito'} • Creado {formatDistanceToNow(new Date(item.createdAt), { 
-                        addSuffix: true, 
-                        locale: es 
-                      })}
-                    </p>
-                    <div className="flex items-center gap-1.5 mt-1.5 flex-wrap">
-                      {item.broker ? (
-                        <Badge variant="outline" className="text-xs py-0.5 px-2 bg-blue-50 text-blue-800 border-blue-200 font-medium">
-                          <User className="w-3 h-3 mr-1 text-blue-600 inline" />
-                          Bróker: {item.broker.firstName} {item.broker.lastName || ''}
-                        </Badge>
-                      ) : (
-                        <Badge variant="outline" className="text-xs py-0.5 px-2 bg-gray-50 text-gray-600 border-gray-200">
-                          <User className="w-3 h-3 mr-1 inline text-gray-400" />
-                          Bróker: No asignado
-                        </Badge>
-                      )}
-                      {item.masterBroker && (
-                        <Badge variant="outline" className="text-xs py-0.5 px-2 bg-purple-50 text-purple-700 border-purple-200">
-                          <Building2 className="w-3 h-3 mr-1 inline text-purple-600" />
-                          MB: {item.masterBroker.brandName || `${item.masterBroker.firstName} ${item.masterBroker.lastName}`}
-                        </Badge>
-                      )}
-                    </div>
-                  </div>
-                </div>
-                
-                <div className="flex items-center space-x-3">
-                  <div className="text-right">
-                    <div className="flex items-center gap-1.5 justify-end flex-wrap">
-                      {item.dispersedTargets && item.dispersedTargets.length > 0 ? (
-                        item.dispersedTargets.length === item.winningTargets?.length ? (
-                          <Badge className="bg-emerald-600 text-white font-bold text-xs shadow-sm">
-                            ✓ Dispersado ({item.dispersedTargets.length})
-                          </Badge>
-                        ) : (
-                          <Badge className="bg-teal-600 text-white font-bold text-xs shadow-sm">
-                            Dispersión Parcial ({item.dispersedTargets.length}/{item.winningTargets?.length})
-                          </Badge>
-                        )
-                      ) : item.winningTargets && item.winningTargets.length > 0 ? (
-                        <Badge className="bg-amber-500 hover:bg-amber-600 text-white font-bold animate-pulse shadow-sm text-xs">
-                          🏆 {item.winningTargets.length} Ganadora{item.winningTargets.length > 1 ? 's' : ''} (Por Dispersar)
-                        </Badge>
-                      ) : item.type === 'submission' && item.statusSummary ? (
-                        <Badge 
-                          className={targetStatusConfig[item.statusSummary.primaryStatus as keyof typeof targetStatusConfig]?.color || submissionStatusConfig[item.status as keyof typeof submissionStatusConfig]?.color || "bg-gray-100 text-gray-800"}
-                          data-testid={`item-status-${item.id}`}
-                        >
-                          {targetStatusConfig[item.statusSummary.primaryStatus as keyof typeof targetStatusConfig]?.label || item.status}
-                        </Badge>
-                      ) : (
-                        <Badge 
-                          className={creditStatusConfig[item.status as keyof typeof creditStatusConfig]?.color || "bg-gray-100 text-gray-800"}
-                          data-testid={`item-status-${item.id}`}
-                        >
-                          {creditStatusConfig[item.status as keyof typeof creditStatusConfig]?.label || item.status}
-                        </Badge>
-                      )}
+          <div className="overflow-x-auto">
+            <table className="w-full text-left border-collapse">
+              <thead>
+                <tr className="border-b border-slate-200 bg-slate-50/80 text-[11px] font-semibold uppercase tracking-wider text-slate-500 select-none">
+                  <th className="py-3 px-4">Cliente / Expediente</th>
+                  <th className="py-3 px-4">Producto / Vertical</th>
+                  <th className="py-3 px-4 text-right">Monto</th>
+                  <th className="py-3 px-4">Financiera</th>
+                  <th className="py-3 px-4 text-center">Estado</th>
+                  <th className="py-3 px-4">Originador</th>
+                  <th className="py-3 px-3 text-center">Actualizado</th>
+                  <th className="py-3 px-3 text-right">Acciones</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {filteredItems.map((item) => {
+                  const isMortgage = isMortgageItem(item);
+                  const statusInfo = getStatusDisplay(item);
+                  return (
+                    <tr
+                      key={item.id}
+                      onClick={() => handleItemClick(item)}
+                      className="hover:bg-slate-50/70 transition-colors cursor-pointer group h-[60px]"
+                      data-testid={`item-${item.id}`}
+                    >
+                      {/* 1. Cliente / Expediente */}
+                      <td className="py-2.5 px-4">
+                        <div className="flex flex-col min-w-0 max-w-[220px]">
+                          <span 
+                            className="text-sm font-semibold text-slate-900 truncate group-hover:text-primary transition-colors" 
+                            data-testid={`item-client-${item.id}`}
+                            title={getClientName(item.clientId)}
+                          >
+                            {getClientName(item.clientId)}
+                          </span>
+                          <span className="text-[11px] text-slate-500 font-mono truncate">
+                            {getClientSubtitle(item.clientId)}
+                          </span>
+                        </div>
+                      </td>
 
-                      {item.isCommissionPaid ? (
-                        <Badge className="bg-emerald-700 text-white border-emerald-800 text-xs">
-                          <DollarSign className="w-3 h-3 mr-0.5 inline" />
-                          Comisión Pagada
-                        </Badge>
-                      ) : item.hasPendingCommission ? (
-                        <div className="flex flex-col items-end gap-1">
-                          <Badge className="bg-amber-500 text-white border-amber-600 text-xs animate-pulse">
-                            <Clock className="w-3 h-3 mr-0.5 inline" />
-                            {item.totalCommissionsCount && item.totalCommissionsCount > 1 && item.paidCommissionsCount !== undefined
-                              ? `Comisión Pendiente (${item.paidCommissionsCount}/${item.totalCommissionsCount} pagadas)`
-                              : "Comisión Pendiente"}
-                          </Badge>
-                          {isAdmin && (
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              className="text-[11px] h-6 px-2 bg-amber-50 text-amber-800 border-amber-300 hover:bg-amber-100 hover:text-amber-900 font-medium"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                const creditIdParam = item.dispersedTargets?.[0]?.creditId || item.id;
-                                setLocation(`/comisiones?creditId=${creditIdParam}`);
-                              }}
-                              data-testid={`button-pay-commission-item-${item.id}`}
-                            >
-                              <DollarSign className="w-3 h-3 mr-0.5" />
-                              Pagar Comisión
-                            </Button>
+                      {/* 2. Producto / Vertical */}
+                      <td className="py-2.5 px-4">
+                        {isMortgage ? (
+                          <span 
+                            data-testid={`badge-mortgage-${item.id}`} 
+                            className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded text-xs font-medium bg-amber-50 text-amber-900 border border-amber-200/80"
+                          >
+                            <Home className="w-3.5 h-3.5 text-amber-700 shrink-0" />
+                            <span className="truncate">Hipotecario Vivienda</span>
+                          </span>
+                        ) : (
+                          <div className="flex flex-col max-w-[180px]">
+                            <span className="text-xs font-medium text-slate-800 truncate" title={item.productTemplateName || 'Crédito Simple'}>
+                              {item.productTemplateName || 'Crédito Simple'}
+                            </span>
+                            {item.term ? (
+                              <span className="text-[11px] text-slate-400">
+                                {item.term} meses {item.frequency ? `• ${item.frequency === 'monthly' ? 'Mensual' : item.frequency}` : ''}
+                              </span>
+                            ) : null}
+                          </div>
+                        )}
+                      </td>
+
+                      {/* 3. Monto */}
+                      <td className="py-2.5 px-4 text-right">
+                        <div className="flex flex-col items-end tabular-nums">
+                          <span className="text-sm font-semibold text-slate-900 font-mono whitespace-nowrap">
+                            ${parseFloat(item.amount || '0').toLocaleString('es-MX', { minimumFractionDigits: 0, maximumFractionDigits: 0 })} MXN
+                          </span>
+                          {item.totalApprovedAmount && item.totalApprovedAmount > 0 ? (
+                            <span className="text-[11px] text-emerald-700 font-medium whitespace-nowrap">
+                              Aprobado: ${item.totalApprovedAmount.toLocaleString('es-MX', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+                            </span>
+                          ) : (
+                            <span className="text-[11px] text-slate-400">Solicitado</span>
                           )}
                         </div>
-                      ) : null}
-                    </div>
-                    {item.targetsCount !== undefined && item.targetsCount > 0 && (
-                      <div className="text-[11px] text-gray-500 font-medium mt-1 space-y-0.5">
-                        <p>{item.targetsCount} financiera{item.targetsCount !== 1 ? 's' : ''} selec.</p>
-                        <div className="flex gap-1.5 justify-end flex-wrap">
-                          {item.proposalsCount !== undefined && item.proposalsCount > 0 && (
-                            <span className="text-green-600 font-semibold">{item.proposalsCount} prop.</span>
+                      </td>
+
+                      {/* 4. Financiera */}
+                      <td className="py-2.5 px-4">
+                        {(() => {
+                          if (item.winningTargets && item.winningTargets.length > 0) {
+                            const instName = item.winningTargets[0].financialInstitution?.name || 'Financiera Ganadora';
+                            const count = item.winningTargets.length;
+                            return (
+                              <div className="flex flex-col max-w-[160px]">
+                                <span className="text-xs font-medium text-slate-800 truncate" title={instName}>{instName}</span>
+                                {count > 1 && <span className="text-[11px] text-slate-500">+{count - 1} oferta adicional</span>}
+                              </div>
+                            );
+                          }
+                          if (item.financialInstitutionName) {
+                            return <span className="text-xs font-medium text-slate-800 truncate block max-w-[160px]" title={item.financialInstitutionName}>{item.financialInstitutionName}</span>;
+                          }
+                          if (item.targetsCount && item.targetsCount > 0) {
+                            return (
+                              <div className="flex flex-col">
+                                <span className="text-xs text-slate-700 font-medium">{item.targetsCount} financiera{item.targetsCount !== 1 ? 's' : ''}</span>
+                                <span className="text-[11px] text-slate-400">{item.proposalsCount || 0} propuestas</span>
+                              </div>
+                            );
+                          }
+                          return <span className="text-xs text-slate-400 italic">Por asignar</span>;
+                        })()}
+                      </td>
+
+                      {/* 5. Estado */}
+                      <td className="py-2.5 px-4 text-center">
+                        <div className="flex flex-col items-center justify-center gap-0.5">
+                          <span 
+                            data-testid={`item-status-${item.id}`}
+                            className={cn(
+                              "inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium border whitespace-nowrap",
+                              statusInfo.badgeClass
+                            )}
+                          >
+                            <span className={cn("w-1.5 h-1.5 rounded-full shrink-0", statusInfo.dotClass)} />
+                            <span>{statusInfo.label}</span>
+                          </span>
+                          {item.isCommissionPaid ? (
+                            <span className="text-[10px] font-medium text-emerald-700">Comisión pagada</span>
+                          ) : item.hasPendingCommission ? (
+                            <span className="text-[10px] font-medium text-amber-700">Comisión pendiente</span>
+                          ) : null}
+                        </div>
+                      </td>
+
+                      {/* 6. Originador */}
+                      <td className="py-2.5 px-4">
+                        <div className="flex flex-col text-xs max-w-[150px]">
+                          {item.broker ? (
+                            <span className="font-medium text-slate-800 truncate" title={`${item.broker.firstName} ${item.broker.lastName || ''}`}>
+                              {item.broker.firstName} {item.broker.lastName || ''}
+                            </span>
+                          ) : (
+                            <span className="text-slate-400 italic">No asignado</span>
                           )}
-                          {item.statusSummary?.statusCounts?.returned_to_broker && item.statusSummary.statusCounts.returned_to_broker > 0 && (
-                            <span className="text-orange-600">{item.statusSummary.statusCounts.returned_to_broker} dev.</span>
-                          )}
-                          {item.statusSummary?.statusCounts?.institution_rejected && item.statusSummary.statusCounts.institution_rejected > 0 && (
-                            <span className="text-red-600">{item.statusSummary.statusCounts.institution_rejected} rech.</span>
+                          {item.masterBroker && (
+                            <span className="text-[11px] text-slate-500 truncate" title={`MB: ${item.masterBroker.brandName || item.masterBroker.firstName}`}>
+                              MB: {item.masterBroker.brandName || item.masterBroker.firstName}
+                            </span>
                           )}
                         </div>
-                      </div>
-                    )}
-                    {item.type === 'credit' && item.frequency && (
-                      <p className="text-xs text-neutral mt-1">
-                        {item.frequency === 'weekly' ? 'Semanal' : 
-                         item.frequency === 'biweekly' ? 'Quincenal' : 'Mensual'}
-                      </p>
-                    )}
-                  </div>
-                </div>
-              </div>
-            ))}
+                      </td>
+
+                      {/* 7. Actualizado */}
+                      <td className="py-2.5 px-3 text-center">
+                        <span 
+                          className="text-xs text-slate-500 whitespace-nowrap"
+                          title={format(new Date(item.createdAt), "dd 'de' MMMM, yyyy HH:mm", { locale: es })}
+                        >
+                          {formatRelativeDate(item.createdAt)}
+                        </span>
+                      </td>
+
+                      {/* 8. Acciones */}
+                      <td className="py-2.5 px-3 text-right" onClick={(e) => e.stopPropagation()}>
+                        <div className="flex items-center justify-end gap-1">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="h-7 px-2.5 text-xs font-medium text-slate-700 hover:text-slate-900 border-slate-200 hover:bg-slate-50"
+                            onClick={() => handleItemClick(item)}
+                          >
+                            Gestionar
+                          </Button>
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button variant="ghost" size="sm" className="h-7 w-7 p-0 text-slate-400 hover:text-slate-700">
+                                <MoreHorizontal className="w-4 h-4" />
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end" className="w-44 text-xs">
+                              <DropdownMenuItem onClick={() => handleItemClick(item)}>
+                                Ver expediente completo
+                              </DropdownMenuItem>
+                              {item.clientId && (
+                                <DropdownMenuItem onClick={() => setLocation(`/clientes/${item.clientId}`)}>
+                                  Ver cliente
+                                </DropdownMenuItem>
+                              )}
+                              {isAdmin && item.hasPendingCommission && (
+                                <DropdownMenuItem 
+                                  data-testid={`button-pay-commission-item-${item.id}`}
+                                  onClick={() => {
+                                    const creditIdParam = item.dispersedTargets?.[0]?.creditId || item.id;
+                                    setLocation(`/comisiones?creditId=${creditIdParam}`);
+                                  }}
+                                  className="text-emerald-700 focus:text-emerald-800"
+                                >
+                                  <DollarSign className="w-3.5 h-3.5 mr-1 text-emerald-600" />
+                                  Pagar comisión
+                                </DropdownMenuItem>
+                              )}
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
           </div>
         )}
-      </CardContent>
+      </div>
 
       <FinalProposalModal 
         credit={proposalCredit} 
@@ -1263,6 +1507,6 @@ export default function CreditList() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </Card>
+    </div>
   );
 }

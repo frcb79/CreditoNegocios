@@ -5,7 +5,7 @@ import CreditList from "@/components/Credits/CreditList";
 import CreditRequestModal from "@/components/Modals/CreditRequestModal";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/hooks/useAuth";
-import { Send } from "lucide-react";
+import { Plus } from "lucide-react";
 
 export default function Credits() {
   const [showRequestModal, setShowRequestModal] = useState(false);
@@ -17,18 +17,19 @@ export default function Credits() {
     <MainLayout>
       <Header 
         title="Gestión de Créditos"
-        subtitle="Administra el pipeline completo de créditos"
+        subtitle="Supervisión de operaciones, solicitudes y dispersiones activas"
       >
         {/* Action button for brokers and admins */}
         {canRequestCredit && (
           <div className="flex space-x-2 ml-3">
             <Button
               onClick={() => setShowRequestModal(true)}
-              className="bg-primary hover:bg-primary-dark text-primary-foreground"
+              className="bg-primary hover:bg-primary-dark text-primary-foreground text-sm font-medium h-9 shadow-sm"
               data-testid="button-request-credit"
             >
-              <Send className="w-4 h-4 mr-2" />
-              Solicitar Crédito
+              <Plus className="w-4 h-4 mr-1.5" />
+              <span>Nueva Solicitud</span>
+              <span className="sr-only">Solicitar Crédito</span>
             </Button>
           </div>
         )}
