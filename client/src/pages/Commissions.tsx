@@ -9,25 +9,56 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Commission } from "@shared/schema";
 import { apiRequest, invalidateAllCreditQueries } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/useAuth";
 import { getStatusLabel, getStatusBadgeClass } from "@/lib/statusConfig";
-import { formatDistanceToNow } from "date-fns";
+import { formatDistanceToNow, format } from "date-fns";
 import { es } from "date-fns/locale";
 import CommissionBulkUploader from "@/components/Commissions/CommissionBulkUploader";
+import { cn } from "@/lib/utils";
+import { 
+  Search, 
+  Clock, 
+  Send, 
+  CheckCircle2, 
+  AlertTriangle, 
+  Eye, 
+  MoreHorizontal, 
+  History, 
+  X, 
+  Check, 
+  HandCoins, 
+  Building2, 
+  User, 
+  Users, 
+  ArrowUpRight, 
+  Layers, 
+  DollarSign, 
+  FileSpreadsheet, 
+  SlidersHorizontal,
+  RefreshCw,
+  Wallet
+} from "lucide-react";
 
-const statusConfig: Record<string, { label: string; color: string }> = {
-  generated: { label: "Generada", color: "bg-amber-50 text-amber-900 border-amber-300" },
-  pending: { label: "Por Aprobar", color: "bg-amber-100 text-amber-800 border-amber-300" },
-  approved: { label: "Aprobada", color: "bg-blue-100 text-blue-800 border-blue-300" },
-  dispersing: { label: "En Dispersión", color: "bg-indigo-100 text-indigo-800 border-indigo-300 animate-pulse" },
-  paid: { label: "Pagada", color: "bg-emerald-100 text-emerald-800 border-emerald-300" },
-  failed: { label: "Fallida", color: "bg-rose-100 text-rose-800 border-rose-300" },
-  cancelled: { label: "Cancelada", color: "bg-slate-100 text-slate-700 border-slate-300" },
-  advance_requested: { label: "Adelanto Solicitado", color: "bg-blue-100 text-blue-800 border-blue-300" },
-  advance_paid: { label: "Adelanto Pagado", color: "bg-purple-100 text-purple-800 border-purple-300" },
+const statusConfig: Record<string, { label: string; badgeClass: string; dotClass: string }> = {
+  generated: { label: "Generada", badgeClass: "bg-amber-50 text-amber-800 border-amber-200/80", dotClass: "bg-amber-500" },
+  pending: { label: "Por Aprobar", badgeClass: "bg-amber-50 text-amber-800 border-amber-200/80", dotClass: "bg-amber-500" },
+  approved: { label: "Aprobada", badgeClass: "bg-blue-50 text-blue-800 border-blue-200/80", dotClass: "bg-blue-500" },
+  dispersing: { label: "En Dispersión", badgeClass: "bg-indigo-50 text-indigo-800 border-indigo-200/80", dotClass: "bg-indigo-500 animate-pulse" },
+  paid: { label: "Pagada", badgeClass: "bg-emerald-50 text-emerald-800 border-emerald-200/80", dotClass: "bg-emerald-500" },
+  failed: { label: "Fallida", badgeClass: "bg-rose-50 text-rose-800 border-rose-200/80", dotClass: "bg-rose-500" },
+  cancelled: { label: "Cancelada", badgeClass: "bg-slate-100 text-slate-700 border-slate-200/80", dotClass: "bg-slate-400" },
+  advance_requested: { label: "Adelanto Solicitado", badgeClass: "bg-blue-50 text-blue-800 border-blue-200/80", dotClass: "bg-blue-500" },
+  advance_paid: { label: "Adelanto Pagado", badgeClass: "bg-purple-50 text-purple-800 border-purple-200/80", dotClass: "bg-purple-500" },
 };
 
 const commissionTypeLabels: Record<string, string> = {
@@ -400,6 +431,31 @@ export default function Commissions() {
     return commissions.filter(c => c.status === 'paid' || c.status === 'cancelled').length;
   }, [commissions]);
 
+  // Operational amounts for Super Admin KPIs
+  const saPorAprobarAmount = useMemo(() => {
+    return commissions
+      .filter(c => c.status === 'generated' || c.status === 'pending')
+      .reduce((sum, c) => sum + getPayoutAmount(c), 0);
+  }, [commissions]);
+
+  const saAprobadoDispersionAmount = useMemo(() => {
+    return commissions
+      .filter(c => c.status === 'approved')
+      .reduce((sum, c) => sum + getPayoutAmount(c), 0);
+  }, [commissions]);
+
+  const saEnDispersionAmount = useMemo(() => {
+    return commissions
+      .filter(c => c.status === 'dispersing')
+      .reduce((sum, c) => sum + getPayoutAmount(c), 0);
+  }, [commissions]);
+
+  const saPagadoAmount = useMemo(() => {
+    return commissions
+      .filter(c => c.status === 'paid')
+      .reduce((sum, c) => sum + getPayoutAmount(c), 0);
+  }, [commissions]);
+
   const displayCommissions = useMemo(() => {
     if (!isSuperAdmin) return filteredCommissions;
     if (adminSubTab === 'por_aprobar') {
@@ -630,899 +686,954 @@ export default function Commissions() {
           {activeTab === 'commissions' && (
             <>
               {/* KPIs de Comisiones */}
+                  {/* KPIs de Comisiones — Fintech Institucional (Máximo 3-4 métricas sobrias) */}
               {isSuperAdmin ? (
-                /* Super Admin Dashboard Analítico de Comisiones con Transparencia Financiera */
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-                  <Card className="border border-purple-200 bg-purple-50/50 shadow-sm">
-                    <CardContent className="p-5">
-                      <div className="flex items-center justify-between">
-                        <div className="space-y-1">
-                          <p className="text-xs font-bold text-purple-900 uppercase tracking-wide">
-                            Ganancia Plataforma (Neta)
-                          </p>
-                          <p className="text-2xl font-black text-purple-900">
-                            ${totalPlatformEarnings.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                          </p>
-                          <div className="text-[11px] text-purple-700 font-medium pt-1 space-y-0.5">
-                            <p>• Margen Apertura: ${platformApertura.toLocaleString('es-MX', { maximumFractionDigits: 0 })} MXN</p>
-                            <p>• Sobretasas: ${totalSobretasa.toLocaleString('es-MX', { maximumFractionDigits: 0 })} MXN</p>
-                          </div>
-                        </div>
-                        <div className="w-12 h-12 bg-purple-200/80 rounded-xl flex items-center justify-center text-purple-900 shadow-inner">
-                          <i className="fas fa-crown text-xl"></i>
-                        </div>
-                      </div>
-                    </CardContent>
-                  </Card>
-
-                  <Card className="border border-blue-200 bg-blue-50/50 shadow-sm">
-                    <CardContent className="p-5">
-                      <div className="flex items-center justify-between">
-                        <div className="space-y-1">
-                          <p className="text-xs font-bold text-blue-900 uppercase tracking-wide">
-                            Ingreso Total Financieras
-                          </p>
-                          <p className="text-2xl font-black text-blue-900">
-                            ${totalGrossFinancieras.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                          </p>
-                          <div className="text-[11px] text-blue-700 font-medium pt-1 space-y-0.5">
-                            <p>Total otorgado por apertura en créditos</p>
-                          </div>
-                        </div>
-                        <div className="w-12 h-12 bg-blue-200/80 rounded-xl flex items-center justify-center text-blue-900 shadow-inner">
-                          <i className="fas fa-university text-xl"></i>
-                        </div>
-                      </div>
-                    </CardContent>
-                  </Card>
-
-                  <Card className="border border-amber-200 bg-amber-50/50 shadow-sm">
-                    <CardContent className="p-5">
-                      <div className="flex items-center justify-between">
-                        <div className="space-y-1">
-                          <p className="text-xs font-bold text-amber-900 uppercase tracking-wide">
-                            Por Pagar a la Red (STP)
-                          </p>
-                          <p className="text-2xl font-black text-amber-900">
-                            ${totalPendingPayout.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                          </p>
-                          <div className="text-[11px] text-amber-800 font-medium pt-1 space-y-0.5">
-                            <p className="text-emerald-700 font-semibold">✓ Dispersado: ${totalPaidPayout.toLocaleString('es-MX', { maximumFractionDigits: 0 })}</p>
-                            <p className="text-amber-700 font-semibold">⏳ Adeudo Pendiente: ${totalPendingPayout.toLocaleString('es-MX', { maximumFractionDigits: 0 })}</p>
-                          </div>
-                        </div>
-                        <div className="w-12 h-12 bg-amber-200/80 rounded-xl flex items-center justify-center text-amber-900 shadow-inner">
-                          <i className="fas fa-sitemap text-xl"></i>
-                        </div>
-                      </div>
-                    </CardContent>
-                  </Card>
-
-                  <Card className="border border-emerald-200 bg-emerald-50/50 shadow-sm">
-                    <CardContent className="p-5">
-                      <div className="flex items-center justify-between">
-                        <div className="space-y-1">
-                          <p className="text-xs font-bold text-emerald-900 uppercase tracking-wide">
-                            Estatus de Pagos Red
-                          </p>
-                          <p className="text-2xl font-black text-emerald-900">
-                            ${(totalPaidPayout + totalPendingPayout).toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                          </p>
-                          <div className="text-[11px] text-emerald-700 font-medium pt-1 space-y-0.5">
-                            <p>• {commissions.filter(c => c.status === 'paid').length} créditos liquidados</p>
-                            <p>• {commissions.filter(c => c.status === 'pending').length} transferencias por realizar</p>
-                          </div>
-                        </div>
-                        <div className="w-12 h-12 bg-emerald-200/80 rounded-xl flex items-center justify-center text-emerald-900 shadow-inner">
-                          <i className="fas fa-wallet text-xl"></i>
-                        </div>
-                      </div>
-                    </CardContent>
-                  </Card>
-                </div>
-              ) : isMasterBrokerRole ? (
-                /* Master Broker Cards con Transparencia de Red */
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-                  <Card className="border border-blue-200 bg-blue-50/50 shadow-sm">
-                    <CardContent className="p-6">
-                      <div className="flex items-center justify-between">
-                        <div className="space-y-1">
-                          <p className="text-xs font-bold text-blue-900 uppercase tracking-wide">Ingreso Bruto de Red</p>
-                          <p className="text-2xl font-black text-blue-900">
-                            ${mbGrossFromPlatform.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                          </p>
-                          <p className="text-xs text-blue-700 mt-1">
-                            Monto total dispersado por plataforma a tu red
-                          </p>
-                        </div>
-                        <div className="w-12 h-12 bg-blue-200/80 rounded-xl flex items-center justify-center text-blue-900">
-                          <i className="fas fa-hand-holding-usd text-xl"></i>
-                        </div>
-                      </div>
-                    </CardContent>
-                  </Card>
-
-                  <Card className="border border-amber-200 bg-amber-50/50 shadow-sm">
-                    <CardContent className="p-6">
-                      <div className="flex items-center justify-between">
-                        <div className="space-y-1">
-                          <p className="text-xs font-bold text-amber-900 uppercase tracking-wide">Por Pagar a Brókers</p>
-                          <p className="text-2xl font-black text-amber-900">
-                            ${mbOwedToBrokers.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                          </p>
-                          <p className="text-xs text-amber-700 mt-1">
-                            Comisiones asignadas a tus originadores
-                          </p>
-                        </div>
-                        <div className="w-12 h-12 bg-amber-200/80 rounded-xl flex items-center justify-center text-amber-900">
-                          <i className="fas fa-users text-xl"></i>
-                        </div>
-                      </div>
-                    </CardContent>
-                  </Card>
-
-                  <Card className="border border-emerald-200 bg-emerald-50/50 shadow-sm">
-                    <CardContent className="p-6">
-                      <div className="flex items-center justify-between">
-                        <div className="space-y-1">
-                          <p className="text-xs font-bold text-emerald-900 uppercase tracking-wide">Tu Ganancia Neta de Red</p>
-                          <p className="text-2xl font-black text-emerald-900">
-                            ${mbNetEarnings.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                          </p>
-                          <div className="text-[11px] text-emerald-700 font-medium pt-0.5 space-y-0.5">
-                            <p>✓ Pagado: ${mbNetPaid.toLocaleString('es-MX', { maximumFractionDigits: 0 })} • ⏳ Pendiente: ${mbNetPending.toLocaleString('es-MX', { maximumFractionDigits: 0 })}</p>
-                          </div>
-                        </div>
-                        <div className="w-12 h-12 bg-emerald-200/80 rounded-xl flex items-center justify-center text-emerald-900">
-                          <i className="fas fa-chart-line text-xl"></i>
-                        </div>
-                      </div>
-                    </CardContent>
-                  </Card>
-                </div>
-              ) : (
-                /* Broker Directo Cards */
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-                  <Card className="border border-amber-200 bg-amber-50/30 shadow-sm">
-                    <CardContent className="p-6">
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <p className="text-xs font-bold text-amber-900 uppercase tracking-wide">Comisiones Pendientes</p>
-                          <p className="text-2xl font-black text-amber-900">
-                            ${brokerTotalPending.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                          </p>
-                          <p className="text-xs text-amber-700 mt-1">
-                            {commissions?.filter(c => c.status === 'pending').length || 0} pagos por recibir
-                          </p>
-                        </div>
-                        <div className="w-12 h-12 bg-amber-100 rounded-xl flex items-center justify-center text-amber-800">
-                          <i className="fas fa-clock text-xl"></i>
-                        </div>
-                      </div>
-                    </CardContent>
-                  </Card>
-
-                  <Card className="border border-emerald-200 bg-emerald-50/30 shadow-sm">
-                    <CardContent className="p-6">
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <p className="text-xs font-bold text-emerald-900 uppercase tracking-wide">Comisiones Pagadas</p>
-                          <p className="text-2xl font-black text-emerald-900">
-                            ${brokerTotalPaid.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                          </p>
-                          <p className="text-xs text-emerald-700 mt-1">
-                            {commissions?.filter(c => c.status === 'paid').length || 0} pagos completados
-                          </p>
-                        </div>
-                        <div className="w-12 h-12 bg-emerald-100 rounded-xl flex items-center justify-center text-emerald-800">
-                          <i className="fas fa-check-circle text-xl"></i>
-                        </div>
-                      </div>
-                    </CardContent>
-                  </Card>
-
-                  <Card className="border border-gray-200 shadow-sm">
-                    <CardContent className="p-6">
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <p className="text-xs font-bold text-gray-700 uppercase tracking-wide">Total Comisiones</p>
-                          <p className="text-2xl font-black text-primary">
-                            ${brokerTotal.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                          </p>
-                          <p className="text-xs text-gray-500 mt-1">Registradas</p>
-                        </div>
-                        <div className="w-12 h-12 bg-primary/10 rounded-xl flex items-center justify-center text-primary">
-                          <i className="fas fa-dollar-sign text-xl"></i>
-                        </div>
-                      </div>
-                    </CardContent>
-                  </Card>
-                </div>
-              )}
-
-          {/* Filters and Actions */}
-          <Card className="mb-8">
-            <CardContent className="p-6">
-              <div className="flex justify-between items-center">
-                <div className="flex space-x-4">
-                  <div className="relative w-80">
-                    <Input
-                      placeholder="Buscar por ID, cliente, financiera o monto..."
-                      value={searchTerm}
-                      onChange={(e) => setSearchTerm(e.target.value)}
-                      data-testid="input-search-commissions"
-                      className={searchTerm ? "pr-8" : ""}
-                    />
-                    {searchTerm && (
-                      <button
-                        onClick={() => {
-                          setSearchTerm("");
-                          if (typeof window !== "undefined") {
-                            window.history.replaceState({}, '', window.location.pathname);
-                          }
-                        }}
-                        className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 text-xs font-bold"
-                        title="Limpiar búsqueda"
-                      >
-                        ✕
-                      </button>
-                    )}
-                  </div>
-                  <div className="flex space-x-2">
-                    <Button
-                      variant={filterStatus === "all" ? "default" : "outline"}
-                      onClick={() => setFilterStatus("all")}
-                      size="sm"
-                    >
-                      Todos
-                    </Button>
-                    <Button
-                      variant={filterStatus === "pending" ? "default" : "outline"}
-                      onClick={() => setFilterStatus("pending")}
-                      size="sm"
-                      className={filterStatus === "pending" ? "bg-amber-600 hover:bg-amber-700 text-white" : ""}
-                    >
-                      Pendientes
-                    </Button>
-                    <Button
-                      variant={filterStatus === "paid" ? "default" : "outline"}
-                      onClick={() => setFilterStatus("paid")}
-                      size="sm"
-                      className={filterStatus === "paid" ? "bg-emerald-600 hover:bg-emerald-700 text-white" : ""}
-                    >
-                      Pagados
-                    </Button>
-                  </div>
-                </div>
-                
-                <div className="flex gap-2">
-                  <Button 
-                    variant="outline"
-                    className="border-primary text-primary hover:bg-primary/10"
-                    onClick={() => setShowRatesModal(true)}
-                    data-testid="button-view-commission-rates"
-                  >
-                    <i className="fas fa-table mr-2"></i>
-                    Esquema de Comisiones
-                  </Button>
-
-                  <Button 
-                    className="bg-primary text-white hover:bg-primary-dark"
-                    onClick={() => {
-                      alert("⏳ Próximamente\n\nEsta opción estará disponible pronto. Estamos trabajando para que puedas solicitar adelantos sobre tus comisiones directamente desde la plataforma.");
-                    }}
-                  >
-                    <i className="fas fa-bolt mr-2"></i>
-                    Solicitar Adelanto
-                  </Button>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Commissions List with Super Admin Operational Tabs */}
-          <Card className="shadow-sm border">
-            <CardHeader className="pb-3 border-b bg-gray-50/50">
-              <div className="flex items-center justify-between flex-wrap gap-3">
-                <div>
-                  <CardTitle className="text-lg font-bold text-gray-900">
-                    {isSuperAdmin ? 'Gestión Operativa de Comisiones' : 'Mis Comisiones'}
-                  </CardTitle>
-                  <p className="text-xs text-gray-500 mt-0.5">
-                    {isSuperAdmin 
-                      ? 'Flujo de aprobación, dispersión STP SPEI y conciliación financiera' 
-                      : 'Consulta el estado de tus comisiones y montos a recibir'}
-                  </p>
-                </div>
-
-                {isSuperAdmin && (
-                  <div className="flex gap-1.5 flex-wrap">
-                    <Button
-                      variant={adminSubTab === 'por_aprobar' ? 'default' : 'outline'}
-                      size="sm"
-                      onClick={() => {
-                        setAdminSubTab('por_aprobar');
-                        setSelectedApproveIds([]);
-                      }}
-                      className={adminSubTab === 'por_aprobar' ? 'bg-amber-600 hover:bg-amber-700 text-white font-semibold' : 'text-xs'}
-                    >
-                      <i className="fas fa-clipboard-check mr-1.5"></i>
-                      Por Aprobar
-                      <Badge className="ml-1.5 bg-amber-200 text-amber-950 text-xs px-1.5 py-0 border-none font-bold">
-                        {countPorAprobar}
-                      </Badge>
-                    </Button>
-                    <Button
-                      variant={adminSubTab === 'dispersion' ? 'default' : 'outline'}
-                      size="sm"
-                      onClick={() => {
-                        setAdminSubTab('dispersion');
-                        setSelectedDisperseIds([]);
-                      }}
-                      className={adminSubTab === 'dispersion' ? 'bg-blue-600 hover:bg-blue-700 text-white font-semibold' : 'text-xs'}
-                    >
-                      <i className="fas fa-paper-plane mr-1.5"></i>
-                      Centro de Dispersión
-                      <Badge className="ml-1.5 bg-blue-200 text-blue-950 text-xs px-1.5 py-0 border-none font-bold">
-                        {countDispersion}
-                      </Badge>
-                    </Button>
-                    <Button
-                      variant={adminSubTab === 'historial' ? 'default' : 'outline'}
-                      size="sm"
-                      onClick={() => setAdminSubTab('historial')}
-                      className={adminSubTab === 'historial' ? 'bg-emerald-700 hover:bg-emerald-800 text-white font-semibold' : 'text-xs'}
-                    >
-                      <i className="fas fa-history mr-1.5"></i>
-                      Historial & Conciliación
-                      <Badge className="ml-1.5 bg-emerald-200 text-emerald-950 text-xs px-1.5 py-0 border-none font-bold">
-                        {countHistorial}
-                      </Badge>
-                    </Button>
-                  </div>
-                )}
-              </div>
-            </CardHeader>
-            <CardContent className="pt-4">
-              {/* Context Banner per SubTab */}
-              {isSuperAdmin && adminSubTab === 'por_aprobar' && (
-                <div className="mb-4 p-3 bg-amber-50/80 border border-amber-200 rounded-lg text-xs text-amber-900 flex items-center justify-between flex-wrap gap-2">
-                  <div className="flex items-center gap-2">
-                    <i className="fas fa-info-circle text-amber-600"></i>
-                    <span>Comisiones pendientes de revisión y congelamiento. Al aprobar, el monto a liquidar queda congelado frente a modificaciones posteriores del crédito.</span>
-                  </div>
-                  {selectedApproveIds.length > 0 && (
-                    <Button
-                      size="sm"
-                      className="bg-amber-600 hover:bg-amber-700 text-white font-semibold text-xs h-8"
-                      onClick={() => bulkApproveMutation.mutate(selectedApproveIds)}
-                      disabled={bulkApproveMutation.isPending}
-                    >
-                      {bulkApproveMutation.isPending ? <i className="fas fa-spinner fa-spin mr-1"></i> : <i className="fas fa-check-double mr-1"></i>}
-                      Aprobar seleccionadas ({selectedApproveIds.length})
-                    </Button>
-                  )}
-                </div>
-              )}
-
-              {isSuperAdmin && adminSubTab === 'dispersion' && (
-                <div className="mb-4 p-3 bg-blue-50/80 border border-blue-200 rounded-lg text-xs text-blue-900 flex items-center justify-between flex-wrap gap-2">
-                  <div className="flex items-center gap-2">
-                    <i className="fas fa-paper-plane text-blue-600"></i>
-                    <span>Comisiones formalmente aprobadas. Puedes dispersar individual o masivamente vía STP SPEI o registrar liquidación manual con justificación.</span>
-                  </div>
-                  {selectedDisperseIds.length > 0 && (
-                    <Button
-                      size="sm"
-                      className="bg-blue-600 hover:bg-blue-700 text-white font-semibold text-xs h-8"
-                      onClick={() => bulkPayMutation.mutate(selectedDisperseIds)}
-                      disabled={bulkPayMutation.isPending}
-                    >
-                      {bulkPayMutation.isPending ? <i className="fas fa-spinner fa-spin mr-1"></i> : <i className="fas fa-paper-plane mr-1"></i>}
-                      Dispersar vía STP ({selectedDisperseIds.length})
-                    </Button>
-                  )}
-                </div>
-              )}
-
-              {isSuperAdmin && adminSubTab === 'historial' && (
-                <div className="mb-4 p-3 bg-emerald-50/80 border border-emerald-200 rounded-lg text-xs text-emerald-900 flex items-center gap-2">
-                  <i className="fas fa-shield-alt text-emerald-700"></i>
-                  <span>Registro histórico inmutable y trazabilidad auditada de comisiones liquidadas y canceladas.</span>
-                </div>
-              )}
-
-              {displayCommissions.length === 0 ? (
-                <div className="text-center py-12">
-                  <i className="fas fa-folder-open text-4xl text-gray-300 mb-3"></i>
-                  <p className="text-gray-500 font-medium text-sm">
-                    {isSuperAdmin 
-                      ? (adminSubTab === 'por_aprobar' ? "No hay comisiones pendientes de aprobación" : adminSubTab === 'dispersion' ? "No hay comisiones en espera de dispersión" : "No hay registros en el historial") 
-                      : "No tienes comisiones registradas con los filtros actuales"}
-                  </p>
-                </div>
-              ) : (
-                <div className="space-y-3">
-                  {/* Select all header for Por Aprobar / Dispersion */}
-                  {isSuperAdmin && (adminSubTab === 'por_aprobar' || adminSubTab === 'dispersion') && (
-                    <div className="flex items-center justify-between px-3 py-1.5 bg-gray-100 rounded-md text-xs font-semibold text-gray-700">
-                      <label className="flex items-center gap-2 cursor-pointer">
-                        <input
-                          type="checkbox"
-                          className="rounded text-primary focus:ring-primary h-4 w-4 cursor-pointer"
-                          checked={
-                            adminSubTab === 'por_aprobar'
-                              ? selectedApproveIds.length === displayCommissions.length && displayCommissions.length > 0
-                              : selectedDisperseIds.length === displayCommissions.length && displayCommissions.length > 0
-                          }
-                          onChange={(e) => {
-                            if (adminSubTab === 'por_aprobar') {
-                              setSelectedApproveIds(e.target.checked ? displayCommissions.map(c => c.id) : []);
-                            } else {
-                              setSelectedDisperseIds(e.target.checked ? displayCommissions.map(c => c.id) : []);
-                            }
-                          }}
-                        />
-                        <span>Seleccionar todas ({displayCommissions.length})</span>
-                      </label>
-                      <span className="text-[11px] text-gray-500">
-                        {adminSubTab === 'por_aprobar' ? `${selectedApproveIds.length} seleccionadas` : `${selectedDisperseIds.length} seleccionadas`}
+                /* Super Admin: 4 métricas operativas clave */
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+                  {/* KPI 1: Por Aprobar */}
+                  <div className="bg-white border border-slate-200/80 rounded-xl p-4 shadow-sm flex flex-col justify-between">
+                    <div className="flex items-center justify-between text-xs font-medium text-slate-500 mb-1.5">
+                      <span className="flex items-center gap-1.5">
+                        <span className="w-2 h-2 rounded-full bg-amber-500" />
+                        Por Aprobar
+                      </span>
+                      <span className="text-[11px] font-semibold text-amber-700 bg-amber-50 border border-amber-200/80 px-2 py-0.5 rounded-full">
+                        {countPorAprobar} pendientes
                       </span>
                     </div>
-                  )}
+                    <div className="mt-1">
+                      <div className="text-2xl font-bold text-slate-900 tracking-tight">
+                        ${saPorAprobarAmount.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        <span className="text-xs font-normal text-slate-500 ml-1">MXN</span>
+                      </div>
+                      <p className="text-[11px] text-slate-500 mt-1">
+                        Comisiones congelables previas a dispersión
+                      </p>
+                    </div>
+                  </div>
 
-                  {displayCommissions.map((commission) => {
-                    const statusInfo = statusConfig[commission.status] || { label: commission.status, color: "bg-gray-100 text-gray-800" };
-                    const isGenerated = commission.status === 'generated' || commission.status === 'pending';
-                    const isApproved = commission.status === 'approved';
-                    const isDispersing = commission.status === 'dispersing';
-                    const isPaid = commission.status === 'paid';
-                    const isFailed = commission.status === 'failed';
-                    const isCancelled = commission.status === 'cancelled';
+                  {/* KPI 2: Aprobado para Dispersión */}
+                  <div className="bg-white border border-slate-200/80 rounded-xl p-4 shadow-sm flex flex-col justify-between">
+                    <div className="flex items-center justify-between text-xs font-medium text-slate-500 mb-1.5">
+                      <span className="flex items-center gap-1.5">
+                        <span className="w-2 h-2 rounded-full bg-blue-500" />
+                        Listo para Dispersión
+                      </span>
+                      <span className="text-[11px] font-semibold text-blue-700 bg-blue-50 border border-blue-200/80 px-2 py-0.5 rounded-full">
+                        {commissions.filter(c => c.status === 'approved').length} listos
+                      </span>
+                    </div>
+                    <div className="mt-1">
+                      <div className="text-2xl font-bold text-slate-900 tracking-tight">
+                        ${saAprobadoDispersionAmount.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        <span className="text-xs font-normal text-slate-500 ml-1">MXN</span>
+                      </div>
+                      <p className="text-[11px] text-slate-500 mt-1">
+                        Aprobado formalmente para envío STP
+                      </p>
+                    </div>
+                  </div>
 
-                    const brokerShare = safeFloat(commission.brokerShare || (commission.masterBrokerShare ? '0' : commission.amount));
-                    const masterBrokerShare = safeFloat(commission.masterBrokerShare);
-                    const appShare = safeFloat(commission.appShare);
-                    const totalAmount = safeFloat(commission.amount);
-                    const isMb = commission.masterBrokerId && masterBrokerShare > 0;
-                    const payoutToNetwork = commission.frozenAmount 
-                      ? safeFloat(commission.frozenAmount)
-                      : (isMb ? (masterBrokerShare + brokerShare) : brokerShare);
+                  {/* KPI 3: En Dispersión */}
+                  <div className="bg-white border border-slate-200/80 rounded-xl p-4 shadow-sm flex flex-col justify-between">
+                    <div className="flex items-center justify-between text-xs font-medium text-slate-500 mb-1.5">
+                      <span className="flex items-center gap-1.5">
+                        <span className="w-2 h-2 rounded-full bg-indigo-500 animate-pulse" />
+                        En Dispersión STP
+                      </span>
+                      <span className="text-[11px] font-semibold text-indigo-700 bg-indigo-50 border border-indigo-200/80 px-2 py-0.5 rounded-full">
+                        {commissions.filter(c => c.status === 'dispersing').length} en proceso
+                      </span>
+                    </div>
+                    <div className="mt-1">
+                      <div className="text-2xl font-bold text-slate-900 tracking-tight">
+                        ${saEnDispersionAmount.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        <span className="text-xs font-normal text-slate-500 ml-1">MXN</span>
+                      </div>
+                      <p className="text-[11px] text-slate-500 mt-1">
+                        Procesándose en enlace bancario SPEI
+                      </p>
+                    </div>
+                  </div>
 
-                    // User role specific share calculation
-                    const isOwnCreditAsMB = isMasterBrokerRole && (commission.brokerId === user?.id || !commission.masterBrokerId);
-                    const profileSpecificAmount = isBrokerRole 
-                      ? brokerShare 
-                      : (isMasterBrokerRole ? (isOwnCreditAsMB ? brokerShare : masterBrokerShare) : payoutToNetwork);
+                  {/* KPI 4: Pagado */}
+                  <div className="bg-white border border-slate-200/80 rounded-xl p-4 shadow-sm flex flex-col justify-between">
+                    <div className="flex items-center justify-between text-xs font-medium text-slate-500 mb-1.5">
+                      <span className="flex items-center gap-1.5">
+                        <span className="w-2 h-2 rounded-full bg-emerald-500" />
+                        Pagado a la Red
+                      </span>
+                      <span className="text-[11px] font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200/80 px-2 py-0.5 rounded-full">
+                        {commissions.filter(c => c.status === 'paid').length} liquidados
+                      </span>
+                    </div>
+                    <div className="mt-1">
+                      <div className="text-2xl font-bold text-emerald-700 tracking-tight">
+                        ${totalPaidPayout.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        <span className="text-xs font-normal text-slate-500 ml-1">MXN</span>
+                      </div>
+                      <p className="text-[11px] text-slate-500 mt-1">
+                        Liquidadas exitosamente a brokers y redes
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              ) : isMasterBrokerRole ? (
+                /* Master Broker: 3 métricas de red institucional */
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+                  {/* MB KPI 1: Ingreso Bruto Red */}
+                  <div className="bg-white border border-slate-200/80 rounded-xl p-4 shadow-sm flex flex-col justify-between">
+                    <div className="flex items-center justify-between text-xs font-medium text-slate-500 mb-1.5">
+                      <span className="flex items-center gap-1.5">
+                        <span className="w-2 h-2 rounded-full bg-blue-500" />
+                        Ingreso Bruto de Red
+                      </span>
+                      <span className="text-[11px] font-medium text-slate-500">Plataforma</span>
+                    </div>
+                    <div className="mt-1">
+                      <div className="text-2xl font-bold text-slate-900 tracking-tight">
+                        ${mbGrossFromPlatform.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        <span className="text-xs font-normal text-slate-500 ml-1">MXN</span>
+                      </div>
+                      <p className="text-[11px] text-slate-500 mt-1">
+                        Monto asignado por la plataforma para tu red
+                      </p>
+                    </div>
+                  </div>
 
-                    const hasValidClabe = commission.effectiveBankAccount?.clabe && /^\d{18}$/.test(commission.effectiveBankAccount.clabe);
+                  {/* MB KPI 2: Por Pagar a Brokers */}
+                  <div className="bg-white border border-slate-200/80 rounded-xl p-4 shadow-sm flex flex-col justify-between">
+                    <div className="flex items-center justify-between text-xs font-medium text-slate-500 mb-1.5">
+                      <span className="flex items-center gap-1.5">
+                        <span className="w-2 h-2 rounded-full bg-amber-500" />
+                        Corresponde a Originadores
+                      </span>
+                      <span className="text-[11px] font-medium text-amber-700">Subordinados</span>
+                    </div>
+                    <div className="mt-1">
+                      <div className="text-2xl font-bold text-slate-900 tracking-tight">
+                        ${mbOwedToBrokers.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        <span className="text-xs font-normal text-slate-500 ml-1">MXN</span>
+                      </div>
+                      <p className="text-[11px] text-slate-500 mt-1">
+                        Comisiones a transferir a originadores de tu red
+                      </p>
+                    </div>
+                  </div>
 
-                    return (
-                      <div
-                        key={commission.id}
-                        className={`flex items-center justify-between p-4 border rounded-xl transition-all cursor-pointer ${
-                          isGenerated
-                            ? 'border-amber-300 bg-amber-50/30 hover:bg-amber-50/60 shadow-sm'
-                            : isApproved
-                              ? 'border-blue-300 bg-blue-50/20 hover:bg-blue-50/40 shadow-sm'
-                              : isDispersing
-                                ? 'border-indigo-300 bg-indigo-50/30 animate-pulse'
-                                : isFailed
-                                  ? 'border-rose-300 bg-rose-50/30'
-                                  : isCancelled
-                                    ? 'border-gray-200 bg-gray-50/50 opacity-75'
-                                    : 'border-gray-200 hover:bg-gray-50/80'
-                        }`}
-                        onClick={() => setViewingCommission(commission)}
-                        data-testid={`commission-${commission.id}`}
+                  {/* MB KPI 3: Ganancia Neta Master */}
+                  <div className="bg-white border border-slate-200/80 rounded-xl p-4 shadow-sm flex flex-col justify-between">
+                    <div className="flex items-center justify-between text-xs font-medium text-slate-500 mb-1.5">
+                      <span className="flex items-center gap-1.5">
+                        <span className="w-2 h-2 rounded-full bg-emerald-500" />
+                        Tu Ganancia Neta
+                      </span>
+                      <span className="text-[11px] font-semibold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200/80">
+                        Neto
+                      </span>
+                    </div>
+                    <div className="mt-1">
+                      <div className="text-2xl font-bold text-emerald-700 tracking-tight">
+                        ${mbNetEarnings.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        <span className="text-xs font-normal text-slate-500 ml-1">MXN</span>
+                      </div>
+                      <p className="text-[11px] text-slate-500 mt-1">
+                        Pagado: ${mbNetPaid.toLocaleString('es-MX', { maximumFractionDigits: 0 })} • Pendiente: ${mbNetPending.toLocaleString('es-MX', { maximumFractionDigits: 0 })}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                /* Broker Directo: 3 métricas sobrias */
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+                  {/* Broker KPI 1: Pendientes */}
+                  <div className="bg-white border border-slate-200/80 rounded-xl p-4 shadow-sm flex flex-col justify-between">
+                    <div className="flex items-center justify-between text-xs font-medium text-slate-500 mb-1.5">
+                      <span className="flex items-center gap-1.5">
+                        <span className="w-2 h-2 rounded-full bg-amber-500" />
+                        Comisiones Pendientes
+                      </span>
+                      <span className="text-[11px] font-semibold text-amber-700 bg-amber-50 border border-amber-200/80 px-2 py-0.5 rounded-full">
+                        {commissions?.filter(c => c.status === 'pending' || c.status === 'generated' || c.status === 'approved' || c.status === 'dispersing').length || 0}
+                      </span>
+                    </div>
+                    <div className="mt-1">
+                      <div className="text-2xl font-bold text-slate-900 tracking-tight">
+                        ${brokerTotalPending.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        <span className="text-xs font-normal text-slate-500 ml-1">MXN</span>
+                      </div>
+                      <p className="text-[11px] text-slate-500 mt-1">
+                        En trámite de aprobación o dispersión
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Broker KPI 2: Pagadas */}
+                  <div className="bg-white border border-slate-200/80 rounded-xl p-4 shadow-sm flex flex-col justify-between">
+                    <div className="flex items-center justify-between text-xs font-medium text-slate-500 mb-1.5">
+                      <span className="flex items-center gap-1.5">
+                        <span className="w-2 h-2 rounded-full bg-emerald-500" />
+                        Comisiones Pagadas
+                      </span>
+                      <span className="text-[11px] font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200/80 px-2 py-0.5 rounded-full">
+                        {commissions?.filter(c => c.status === 'paid').length || 0}
+                      </span>
+                    </div>
+                    <div className="mt-1">
+                      <div className="text-2xl font-bold text-emerald-700 tracking-tight">
+                        ${brokerTotalPaid.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        <span className="text-xs font-normal text-slate-500 ml-1">MXN</span>
+                      </div>
+                      <p className="text-[11px] text-slate-500 mt-1">
+                        Transferidas a tu cuenta bancaria
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Broker KPI 3: Total Acumulado */}
+                  <div className="bg-white border border-slate-200/80 rounded-xl p-4 shadow-sm flex flex-col justify-between">
+                    <div className="flex items-center justify-between text-xs font-medium text-slate-500 mb-1.5">
+                      <span className="flex items-center gap-1.5">
+                        <span className="w-2 h-2 rounded-full bg-slate-400" />
+                        Total Generado
+                      </span>
+                      <span className="text-[11px] font-medium text-slate-500">Histórico</span>
+                    </div>
+                    <div className="mt-1">
+                      <div className="text-2xl font-bold text-slate-900 tracking-tight">
+                        ${brokerTotal.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        <span className="text-xs font-normal text-slate-500 ml-1">MXN</span>
+                      </div>
+                      <p className="text-[11px] text-slate-500 mt-1">
+                        Total de comisiones registradas
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Main Commissions Table Container */}
+              <div className="bg-white border border-slate-200/80 rounded-xl shadow-sm overflow-hidden mb-8">
+                {/* Subheader Toolbar & Subtabs */}
+                <div className="p-4 sm:p-5 border-b border-slate-100 flex flex-col gap-4">
+                  <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
+                    <div>
+                      <div className="flex items-center gap-2.5">
+                        <h2 className="text-base font-semibold text-slate-900 tracking-tight">
+                          {isSuperAdmin ? 'Gestión Operativa de Comisiones' : 'Mis Comisiones'}
+                        </h2>
+                        <span className="text-xs font-medium px-2.5 py-0.5 rounded-full bg-slate-100 text-slate-600 border border-slate-200">
+                          {displayCommissions.length}
+                        </span>
+                      </div>
+                      <p className="text-xs text-slate-500 mt-0.5">
+                        {isSuperAdmin 
+                          ? 'Control de aprobación, dispersión vía STP SPEI y conciliación financiera' 
+                          : 'Consulta el estado de tus comisiones y montos a recibir'}
+                      </p>
+                    </div>
+
+                    {/* Operational Subtabs for Super Admin */}
+                    {isSuperAdmin && (
+                      <div className="flex items-center gap-1.5 p-1 bg-slate-100/80 rounded-lg border border-slate-200/80 self-start md:self-auto">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setAdminSubTab('por_aprobar');
+                            setSelectedApproveIds([]);
+                          }}
+                          className={cn(
+                            "inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-all",
+                            adminSubTab === 'por_aprobar'
+                              ? "bg-white text-slate-900 font-semibold shadow-sm"
+                              : "text-slate-600 hover:text-slate-900 hover:bg-slate-200/50"
+                          )}
+                        >
+                          <span>Por Aprobar</span>
+                          <span className="text-[10px] font-bold px-1.5 py-0.2 rounded-full bg-amber-100 text-amber-900">
+                            {countPorAprobar}
+                          </span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setAdminSubTab('dispersion');
+                            setSelectedDisperseIds([]);
+                          }}
+                          className={cn(
+                            "inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-all",
+                            adminSubTab === 'dispersion'
+                              ? "bg-white text-slate-900 font-semibold shadow-sm"
+                              : "text-slate-600 hover:text-slate-900 hover:bg-slate-200/50"
+                          )}
+                        >
+                          <span>Centro de Dispersión</span>
+                          <span className="text-[10px] font-bold px-1.5 py-0.2 rounded-full bg-blue-100 text-blue-900">
+                            {countDispersion}
+                          </span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setAdminSubTab('historial')}
+                          className={cn(
+                            "inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-all",
+                            adminSubTab === 'historial'
+                              ? "bg-white text-slate-900 font-semibold shadow-sm"
+                              : "text-slate-600 hover:text-slate-900 hover:bg-slate-200/50"
+                          )}
+                        >
+                          <span>Historial & Conciliación</span>
+                          <span className="text-[10px] font-bold px-1.5 py-0.2 rounded-full bg-emerald-100 text-emerald-900">
+                            {countHistorial}
+                          </span>
+                        </button>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Filter & Search Bar */}
+                  <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 pt-2 border-t border-slate-100">
+                    <div className="flex items-center gap-2 flex-1 max-w-lg">
+                      <div className="relative flex-1">
+                        <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                        <Input
+                          placeholder="Buscar por ID, cliente, financiera o monto..."
+                          value={searchTerm}
+                          onChange={(e) => setSearchTerm(e.target.value)}
+                          data-testid="input-search-commissions"
+                          className="pl-9 h-9 text-xs placeholder:text-slate-400 border-slate-200 bg-slate-50/50 focus:bg-white transition-colors"
+                        />
+                        {searchTerm && (
+                          <button
+                            onClick={() => {
+                              setSearchTerm("");
+                              if (typeof window !== "undefined") {
+                                window.history.replaceState({}, '', window.location.pathname);
+                              }
+                            }}
+                            className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 text-xs font-bold"
+                            title="Limpiar búsqueda"
+                          >
+                            ✕
+                          </button>
+                        )}
+                      </div>
+
+                      {/* Status Filter buttons */}
+                      <div className="flex items-center gap-1 border border-slate-200 rounded-lg p-0.5 bg-slate-50/50">
+                        <Button
+                          variant={filterStatus === "all" ? "default" : "ghost"}
+                          onClick={() => setFilterStatus("all")}
+                          size="sm"
+                          className={cn("h-7 px-2.5 text-xs", filterStatus === "all" ? "bg-slate-800 text-white" : "text-slate-600")}
+                        >
+                          Todos
+                        </Button>
+                        <Button
+                          variant={filterStatus === "pending" ? "default" : "ghost"}
+                          onClick={() => setFilterStatus("pending")}
+                          size="sm"
+                          className={cn("h-7 px-2.5 text-xs", filterStatus === "pending" ? "bg-amber-600 text-white hover:bg-amber-700" : "text-slate-600")}
+                        >
+                          Pendientes
+                        </Button>
+                        <Button
+                          variant={filterStatus === "paid" ? "default" : "ghost"}
+                          onClick={() => setFilterStatus("paid")}
+                          size="sm"
+                          className={cn("h-7 px-2.5 text-xs", filterStatus === "paid" ? "bg-emerald-600 text-white hover:bg-emerald-700" : "text-slate-600")}
+                        >
+                          Pagados
+                        </Button>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-2 self-end sm:self-auto">
+                      <Button 
+                        variant="outline"
+                        size="sm"
+                        className="h-9 text-xs border-slate-200 text-slate-700 hover:bg-slate-50"
+                        onClick={() => setShowRatesModal(true)}
+                        data-testid="button-view-commission-rates"
                       >
-                        <div className="flex items-center space-x-3 sm:space-x-4">
-                          {/* Checkbox for batch selection */}
+                        <Layers className="w-3.5 h-3.5 mr-1.5 text-slate-500" />
+                        Esquema de Comisiones
+                      </Button>
+
+                      <Button 
+                        size="sm"
+                        className="h-9 text-xs bg-primary hover:bg-primary-dark text-white shadow-sm"
+                        onClick={() => {
+                          alert("⏳ Próximamente\n\nEsta opción estará disponible pronto. Estamos trabajando para que puedas solicitar adelantos sobre tus comisiones directamente desde la plataforma.");
+                        }}
+                      >
+                        <ArrowUpRight className="w-3.5 h-3.5 mr-1 text-white" />
+                        Solicitar Adelanto
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Subtab Operational Banner */}
+                {isSuperAdmin && adminSubTab === 'por_aprobar' && (
+                  <div className="px-5 py-2.5 bg-amber-50/60 border-b border-amber-200/80 text-xs text-amber-900 flex items-center justify-between flex-wrap gap-2">
+                    <div className="flex items-center gap-2">
+                      <Clock className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                      <span>Comisiones pendientes de revisión y congelamiento. Al aprobar, el monto a liquidar queda congelado frente a modificaciones posteriores del crédito.</span>
+                    </div>
+                    {selectedApproveIds.length > 0 && (
+                      <Button
+                        size="sm"
+                        className="bg-amber-600 hover:bg-amber-700 text-white font-semibold text-xs h-7 px-3"
+                        onClick={() => bulkApproveMutation.mutate(selectedApproveIds)}
+                        disabled={bulkApproveMutation.isPending}
+                      >
+                        {bulkApproveMutation.isPending ? <RefreshCw className="w-3 h-3 mr-1 animate-spin" /> : <Check className="w-3 h-3 mr-1" />}
+                        Aprobar seleccionadas ({selectedApproveIds.length})
+                      </Button>
+                    )}
+                  </div>
+                )}
+
+                {isSuperAdmin && adminSubTab === 'dispersion' && (
+                  <div className="px-5 py-2.5 bg-blue-50/60 border-b border-blue-200/80 text-xs text-blue-900 flex items-center justify-between flex-wrap gap-2">
+                    <div className="flex items-center gap-2">
+                      <Send className="w-3.5 h-3.5 text-blue-600 shrink-0" />
+                      <span>Comisiones formalmente aprobadas. Puedes dispersar vía STP SPEI o registrar liquidación manual con bitácora inmutable.</span>
+                    </div>
+                    {selectedDisperseIds.length > 0 && (
+                      <Button
+                        size="sm"
+                        className="bg-blue-600 hover:bg-blue-700 text-white font-semibold text-xs h-7 px-3"
+                        onClick={() => bulkPayMutation.mutate(selectedDisperseIds)}
+                        disabled={bulkPayMutation.isPending}
+                      >
+                        {bulkPayMutation.isPending ? <RefreshCw className="w-3 h-3 mr-1 animate-spin" /> : <Send className="w-3 h-3 mr-1" />}
+                        Dispersar vía STP ({selectedDisperseIds.length})
+                      </Button>
+                    )}
+                  </div>
+                )}
+
+                {isSuperAdmin && adminSubTab === 'historial' && (
+                  <div className="px-5 py-2.5 bg-emerald-50/60 border-b border-emerald-200/80 text-xs text-emerald-900 flex items-center gap-2">
+                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-700 shrink-0" />
+                    <span>Registro histórico inmutable y trazabilidad auditada de comisiones liquidadas y canceladas.</span>
+                  </div>
+                )}
+
+                {/* Table Content */}
+                {displayCommissions.length === 0 ? (
+                  <div className="text-center py-16 px-4">
+                    <div className="w-12 h-12 rounded-full bg-slate-100 text-slate-400 flex items-center justify-center mx-auto mb-3">
+                      <Wallet className="w-6 h-6" />
+                    </div>
+                    <h3 className="text-sm font-semibold text-slate-900 mb-1">
+                      {isSuperAdmin 
+                        ? (adminSubTab === 'por_aprobar' ? "No hay comisiones pendientes de aprobación" : adminSubTab === 'dispersion' ? "No hay comisiones en espera de dispersión" : "No hay registros en el historial") 
+                        : "No tienes comisiones registradas con los filtros actuales"}
+                    </h3>
+                    <p className="text-xs text-slate-500 max-w-sm mx-auto">
+                      {isSuperAdmin 
+                        ? "Las operaciones originadas y formalizadas por la red aparecerán aquí para control financiero."
+                        : "Las comisiones generadas por tus créditos formalizados aparecerán listadas en esta sección."}
+                    </p>
+                  </div>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left border-collapse">
+                      <thead>
+                        <tr className="border-b border-slate-200 bg-slate-50/80 text-[11px] font-semibold uppercase tracking-wider text-slate-500 select-none">
                           {isSuperAdmin && (adminSubTab === 'por_aprobar' || adminSubTab === 'dispersion') && (
-                            <div onClick={(e) => e.stopPropagation()} className="pr-1">
+                            <th className="py-3 px-3 text-center w-10">
                               <input
                                 type="checkbox"
-                                className="rounded text-primary focus:ring-primary h-4 w-4 cursor-pointer"
+                                className="rounded text-primary focus:ring-primary h-3.5 w-3.5 cursor-pointer"
                                 checked={
                                   adminSubTab === 'por_aprobar'
-                                    ? selectedApproveIds.includes(commission.id)
-                                    : selectedDisperseIds.includes(commission.id)
+                                    ? selectedApproveIds.length === displayCommissions.length && displayCommissions.length > 0
+                                    : selectedDisperseIds.length === displayCommissions.length && displayCommissions.length > 0
                                 }
                                 onChange={(e) => {
                                   if (adminSubTab === 'por_aprobar') {
-                                    setSelectedApproveIds(prev =>
-                                      e.target.checked ? [...prev, commission.id] : prev.filter(id => id !== commission.id)
-                                    );
+                                    setSelectedApproveIds(e.target.checked ? displayCommissions.map(c => c.id) : []);
                                   } else {
-                                    setSelectedDisperseIds(prev =>
-                                      e.target.checked ? [...prev, commission.id] : prev.filter(id => id !== commission.id)
-                                    );
+                                    setSelectedDisperseIds(e.target.checked ? displayCommissions.map(c => c.id) : []);
                                   }
                                 }}
+                                title="Seleccionar todas"
                               />
-                            </div>
+                            </th>
                           )}
-
-                          <div className={`w-11 h-11 rounded-xl flex items-center justify-center flex-shrink-0 ${
-                            isGenerated ? 'bg-amber-100 text-amber-800' :
-                            isApproved ? 'bg-blue-100 text-blue-800' :
-                            isDispersing ? 'bg-indigo-100 text-indigo-800' :
-                            isPaid ? 'bg-emerald-100 text-emerald-800' :
-                            isFailed ? 'bg-rose-100 text-rose-800' : 'bg-gray-100 text-gray-700'
-                          }`}>
-                            <i className={`fas ${
-                              isGenerated ? 'fa-clock' :
-                              isApproved ? 'fa-clipboard-check' :
-                              isDispersing ? 'fa-spinner fa-spin' :
-                              isPaid ? 'fa-check-circle' :
-                              isFailed ? 'fa-exclamation-triangle' : 'fa-ban'
-                            } text-base`}></i>
-                          </div>
-
-                          <div>
-                            {/* Monto de acuerdo al perfil del usuario */}
-                            <div className="flex items-baseline gap-2 flex-wrap">
-                              <h3 className="font-bold text-gray-950 text-base">
-                                ${profileSpecificAmount.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} MXN
-                              </h3>
-                              {commission.frozenAmount && (
-                                <Badge variant="outline" className="text-[10px] text-blue-700 border-blue-300 bg-blue-50 font-mono">
-                                  Congelado
-                                </Badge>
-                              )}
-                              {isBrokerRole && (
-                                <span className="text-xs font-semibold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
-                                  Tu Comisión
-                                </span>
-                              )}
-                              {isMasterBrokerRole && (
-                                <span className={`text-xs font-semibold px-2 py-0.5 rounded border ${
-                                  isOwnCreditAsMB 
-                                    ? 'text-emerald-700 bg-emerald-50 border-emerald-200' 
-                                    : 'text-indigo-700 bg-indigo-50 border-indigo-200'
-                                }`}>
-                                  {isOwnCreditAsMB ? 'Tu Comisión Directa' : 'Tu Ganancia Neta de Red'}
-                                </span>
-                              )}
-                              {isSuperAdmin && (
-                                <span className="text-xs font-semibold text-gray-700 bg-gray-100 px-2 py-0.5 rounded border">
-                                  Beneficiario: {commission.effectiveBeneficiary?.name || commission.broker?.firstName || 'Broker'} {isMb ? '(Master)' : '(Directo)'}
-                                </span>
-                              )}
-                            </div>
-
-                            {/* Datos de Crédito, Cliente y Financiera */}
-                            <div className="flex items-center gap-2 flex-wrap text-xs text-neutral mt-1">
-                              <span className="font-semibold text-gray-800">
-                                {commission.client ? (commission.client.businessName || `${commission.client.firstName || ''} ${commission.client.lastName || ''}`.trim()) : 'Cliente'}
-                              </span>
-                              {commission.financialInstitution && (
-                                <>
-                                  <span>•</span>
-                                  <span className="text-gray-600 font-medium">{commission.financialInstitution.name}</span>
-                                </>
-                              )}
-                              {commission.credit && (
-                                <>
-                                  <span>•</span>
-                                  <span className="text-gray-700 font-medium">
-                                    Crédito: ${safeFloat(commission.credit.amount).toLocaleString('es-MX')} MXN
-                                  </span>
-                                </>
-                              )}
-                              <span>•</span>
-                              <span>Tipo: {commissionTypeLabels[commission.commissionType || ""] || (commission.commissionType || "Apertura")}</span>
-                            </div>
-
-                            {/* Cascada financiera */}
-                            {isSuperAdmin && (
-                              <div className="flex items-center gap-1.5 flex-wrap text-[11px] mt-2 p-1.5 bg-gray-50 rounded-lg border border-gray-200">
-                                <span className="font-bold text-gray-800">Desglose:</span>
-                                <span className="text-blue-900 bg-white px-2 py-0.5 rounded font-medium border border-blue-200">
-                                  📥 Financiera: ${totalAmount.toLocaleString('es-MX', { minimumFractionDigits: 2 })}
-                                </span>
-                                <span className="text-amber-900 bg-white px-2 py-0.5 rounded font-medium border border-amber-200">
-                                  📤 Dispersión: -${payoutToNetwork.toLocaleString('es-MX', { minimumFractionDigits: 2 })}
-                                </span>
-                                <span className="text-emerald-900 bg-emerald-50 px-2 py-0.5 rounded font-bold border border-emerald-300">
-                                  💰 Plataforma: ${appShare.toLocaleString('es-MX', { minimumFractionDigits: 2 })}
-                                </span>
-                              </div>
-                            )}
-
-                            {/* Trazabilidad de cuenta bancaria o clave de rastreo */}
-                            <div className="flex items-center gap-2 flex-wrap text-[11px] text-gray-500 mt-1.5">
-                              <span>ID: {String(commission.id || "").slice(-8)}</span>
-                              {commission.trackingKey && (
-                                <>
-                                  <span>•</span>
-                                  <span className="font-mono text-emerald-800 bg-emerald-50 px-1.5 py-0.2 rounded border border-emerald-200">
-                                    Rastreo: {commission.trackingKey}
-                                  </span>
-                                </>
-                              )}
-                              {commission.paymentMethod && (
-                                <>
-                                  <span>•</span>
-                                  <span className="font-semibold capitalize text-gray-700">
-                                    Método: {commission.paymentMethod === 'stp' ? 'STP SPEI' : 'Liquidación Manual'}
-                                  </span>
-                                </>
-                              )}
-                              {commission.paidAt && (
-                                <>
-                                  <span>•</span>
-                                  <span className="text-emerald-700 font-medium">
-                                    Pagado el {new Date(commission.paidAt).toLocaleDateString('es-MX')}
-                                  </span>
-                                </>
-                              )}
-                            </div>
-                          </div>
-                        </div>
-
-                        {/* Columna derecha: Estatus y Acciones */}
-                        <div className="text-right space-y-2 flex flex-col items-end flex-shrink-0" onClick={(e) => e.stopPropagation()}>
-                          <div className="flex items-center gap-1.5">
-                            <Badge className={`${statusInfo.color} font-semibold text-xs shadow-sm`}>
-                              {statusInfo.label}
-                            </Badge>
-                            {isSuperAdmin && adminSubTab === 'dispersion' && (
-                              hasValidClabe ? (
-                                <Badge className="bg-emerald-100 text-emerald-800 border-emerald-300 text-[10px]">
-                                  <i className="fas fa-university mr-1"></i> CLABE: {commission.effectiveBankAccount?.clabe.slice(-4)}
-                                </Badge>
-                              ) : (
-                                <Badge className="bg-rose-100 text-rose-800 border-rose-300 text-[10px]">
-                                  <i className="fas fa-exclamation-triangle mr-1"></i> Sin CLABE
-                                </Badge>
-                              )
-                            )}
-                          </div>
-
-                          <div className="flex items-center gap-1.5 flex-wrap justify-end">
-                            {/* Botón Ver Detalle para todas las comisiones */}
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              className="text-xs border-gray-300 text-gray-700 hover:bg-gray-100 h-8"
-                              onClick={() => setViewingCommission(commission)}
-                              title="Ver detalle de comisión"
-                            >
-                              <i className="fas fa-eye mr-1"></i> Ver detalle
-                            </Button>
-
-                            {/* Acciones para Super Admin según estado */}
-                            {isSuperAdmin && isGenerated && (
-                              <>
-                                <Button
-                                  size="sm"
-                                  className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold h-8"
-                                  onClick={() => approveMutation.mutate(commission.id)}
-                                  disabled={approveMutation.isPending}
-                                >
-                                  <i className="fas fa-check mr-1"></i> Aprobar
-                                </Button>
-                                <Button
-                                  size="sm"
-                                  variant="outline"
-                                  className="text-rose-600 border-rose-300 hover:bg-rose-50 text-xs font-semibold h-8"
-                                  onClick={() => {
-                                    setCancellingCommission(commission);
-                                    setCancelReason("");
-                                  }}
-                                >
-                                  <i className="fas fa-times mr-1"></i> Cancelar
-                                </Button>
-                              </>
-                            )}
-
-                            {isSuperAdmin && isApproved && (
-                              <>
-                                <Button
-                                  size="sm"
-                                  className="bg-primary text-white hover:bg-primary/90 text-xs font-semibold h-8"
-                                  onClick={() => {
-                                    setSelectedCommission(commission);
-                                    setAccountNumber(commission.effectiveBankAccount?.clabe || "");
-                                  }}
-                                >
-                                  <i className="fas fa-paper-plane mr-1"></i> Pagar STP
-                                </Button>
-                                <Button
-                                  size="sm"
-                                  variant="outline"
-                                  className="border-emerald-600 text-emerald-700 hover:bg-emerald-50 text-xs font-semibold h-8"
-                                  onClick={() => {
-                                    setManualPaidCommission(commission);
-                                    setManualPaidNotes("");
-                                    setManualPaidReference("");
-                                  }}
-                                >
-                                  <i className="fas fa-hand-holding-usd mr-1"></i> Manual
-                                </Button>
-                                <Button
-                                  size="sm"
-                                  variant="ghost"
-                                  className="text-rose-600 hover:bg-rose-50 text-xs h-8 px-2"
-                                  title="Cancelar comisión"
-                                  onClick={() => {
-                                    setCancellingCommission(commission);
-                                    setCancelReason("");
-                                  }}
-                                >
-                                  <i className="fas fa-times"></i>
-                                </Button>
-                              </>
-                            )}
-
-                            {isDispersing && (
-                              <Badge className="bg-indigo-50 text-indigo-800 border-indigo-300 text-xs py-1">
-                                <i className="fas fa-spinner fa-spin mr-1"></i> En proceso STP
-                              </Badge>
-                            )}
-
-                            {isPaid && commission.trackingKey && (
-                              <Badge variant="outline" className="text-[11px] bg-emerald-50 text-emerald-800 border-emerald-200">
-                                Ref: {commission.trackingKey.slice(-8)}
-                              </Badge>
-                            )}
-
-                            {isSuperAdmin && isFailed && (
-                              <>
-                                <Button
-                                  size="sm"
-                                  className="bg-rose-600 hover:bg-rose-700 text-white text-xs font-semibold h-8"
-                                  onClick={() => {
-                                    setSelectedCommission(commission);
-                                    setAccountNumber(commission.effectiveBankAccount?.clabe || "");
-                                  }}
-                                >
-                                  <i className="fas fa-redo mr-1"></i> Reintentar STP
-                                </Button>
-                                <Button
-                                  size="sm"
-                                  variant="outline"
-                                  className="border-emerald-600 text-emerald-700 hover:bg-emerald-50 text-xs font-semibold h-8"
-                                  onClick={() => {
-                                    setManualPaidCommission(commission);
-                                    setManualPaidNotes("");
-                                    setManualPaidReference("");
-                                  }}
-                                >
-                                  <i className="fas fa-hand-holding-usd mr-1"></i> Manual
-                                </Button>
-                              </>
-                            )}
-
-                            {/* Botón de Historial de Movimientos para todas las comisiones */}
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              className="text-xs border-indigo-300 text-indigo-700 hover:bg-indigo-50 h-8"
-                              onClick={() => setViewingAuditLogsCommission(commission)}
-                              title="Ver historial de movimientos"
-                            >
-                              <i className="fas fa-history mr-1"></i> Historial de movimientos
-                            </Button>
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-            </CardContent>
-          </Card>
-
-          {/* Ranking y Analítica de Colocadores para Super Admin (#13) */}
-          {isSuperAdmin && (
-            <Card className="border-2 border-indigo-200 bg-white shadow-sm mt-8">
-              <CardHeader className="bg-indigo-50/50 pb-3 border-b">
-                <div className="flex items-center justify-between flex-wrap gap-2">
-                  <div>
-                    <CardTitle className="text-base font-bold text-indigo-950 flex items-center gap-2">
-                      <i className="fas fa-trophy text-amber-500 text-lg"></i>
-                      Ranking y Rendimiento de Colocadores (Brokers & Master Brokers)
-                    </CardTitle>
-                    <p className="text-xs text-indigo-800 mt-0.5">
-                      Identifica a los mejores originadores para otorgar bonos, evaluar retención o renegociar esquemas de comisión.
-                    </p>
-                  </div>
-                  <Badge className="bg-indigo-700 text-white text-xs font-semibold">
-                    {brokerRankings.length} Colocador{brokerRankings.length !== 1 ? 'es' : ''}
-                  </Badge>
-                </div>
-              </CardHeader>
-              <CardContent className="pt-4">
-                <div className="overflow-x-auto">
-                  <table className="w-full text-sm text-left border-collapse">
-                    <thead className="bg-gray-100 text-gray-700 text-xs font-semibold uppercase">
-                      <tr>
-                        <th className="p-3 border-b text-center w-16">Posición</th>
-                        <th className="p-3 border-b">Broker Originador</th>
-                        <th className="p-3 border-b">Red / Master Broker</th>
-                        <th className="p-3 border-b text-center">Créditos</th>
-                        <th className="p-3 border-b text-right">Volumen Colocado</th>
-                        <th className="p-3 border-b text-right font-bold text-indigo-950">Comisiones Totales</th>
-                        <th className="p-3 border-b text-center">Estatus Pago</th>
-                        <th className="p-3 border-b text-center">Incentivo Sugerido</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {brokerRankings.length === 0 ? (
-                        <tr>
-                          <td colSpan={8} className="p-8 text-center text-gray-500">
-                            No se han registrado colocaciones de brokers aún.
-                          </td>
+                          <th className="py-3 px-4">Operación / Cliente</th>
+                          <th className="py-3 px-3">Financiera</th>
+                          <th className="py-3 px-4">Beneficiario Efectivo</th>
+                          <th className="py-3 px-3 text-center">Tipo / Origen</th>
+                          <th className="py-3 px-3 text-right">Monto Base</th>
+                          <th className="py-3 px-2 text-center">%</th>
+                          <th className="py-3 px-4 text-right">Comisión</th>
+                          <th className="py-3 px-3 text-center">Estado</th>
+                          <th className="py-3 px-3 text-center">Fecha</th>
+                          <th className="py-3 px-4 text-right">Acciones</th>
                         </tr>
-                      ) : (
-                        brokerRankings.map((brk, index) => {
-                          const medal = index === 0 ? '🥇' : index === 1 ? '🥈' : index === 2 ? '🥉' : `${index + 1}°`;
-                          const isTop = index === 0 || brk.totalVolume >= 1000000;
+                      </thead>
+                      <tbody className="divide-y divide-slate-100">
+                        {displayCommissions.map((commission) => {
+                          const statusInfo = statusConfig[commission.status] || { 
+                            label: commission.status, 
+                            badgeClass: "bg-slate-100 text-slate-700 border-slate-200/80", 
+                            dotClass: "bg-slate-400" 
+                          };
+                          const isGenerated = commission.status === 'generated' || commission.status === 'pending';
+                          const isApproved = commission.status === 'approved';
+                          const isDispersing = commission.status === 'dispersing';
+                          const isPaid = commission.status === 'paid';
+                          const isFailed = commission.status === 'failed';
+                          const isCancelled = commission.status === 'cancelled';
+
+                          const brokerShare = safeFloat(commission.brokerShare || (commission.masterBrokerShare ? '0' : commission.amount));
+                          const masterBrokerShare = safeFloat(commission.masterBrokerShare);
+                          const appShare = safeFloat(commission.appShare);
+                          const totalGrossAmount = safeFloat(commission.amount);
+                          const isMb = commission.masterBrokerId && masterBrokerShare > 0;
+                          const payoutToNetwork = commission.frozenAmount 
+                            ? safeFloat(commission.frozenAmount)
+                            : (isMb ? (masterBrokerShare + brokerShare) : brokerShare);
+
+                          // Profile specific commission amount protagonist
+                          const isOwnCreditAsMB = isMasterBrokerRole && (commission.brokerId === user?.id || !commission.masterBrokerId);
+                          const profileSpecificAmount = isBrokerRole 
+                            ? brokerShare 
+                            : (isMasterBrokerRole ? (isOwnCreditAsMB ? brokerShare : masterBrokerShare) : payoutToNetwork);
+
+                          const hasValidClabe = commission.effectiveBankAccount?.clabe && /^\d{18}$/.test(commission.effectiveBankAccount.clabe);
+                          const clientObj = commission.client || commission.credit?.client;
+                          const clientDisplayName = clientObj ? (clientObj.businessName || `${clientObj.firstName || ''} ${clientObj.lastName || ''}`.trim()) : 'Cliente';
+                          const creditAmount = safeFloat(commission.credit?.amount || commission.amount);
+                          const appliedRate = commission.brokerRate || commission.rate || commission.financialInstitutionRate || (isMasterBrokerRole ? commission.masterRate : null);
 
                           return (
-                            <tr key={brk.brokerId} className="border-b hover:bg-gray-50/80 transition-colors">
-                              <td className="p-3 text-center font-bold text-base">
-                                {medal}
-                              </td>
-                              <td className="p-3">
-                                <p className="font-bold text-gray-900">{brk.name}</p>
-                                <p className="text-xs text-gray-500">{brk.email}</p>
-                              </td>
-                              <td className="p-3 text-xs text-gray-700 font-medium">
-                                {brk.masterBrokerName}
-                              </td>
-                              <td className="p-3 text-center">
-                                <Badge variant="outline" className="bg-blue-50 text-blue-800 font-semibold border-blue-200">
-                                  {brk.creditsCount} crédito{brk.creditsCount !== 1 ? 's' : ''}
-                                </Badge>
-                              </td>
-                              <td className="p-3 text-right font-bold text-gray-900">
-                                ${brk.totalVolume.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} MXN
-                              </td>
-                              <td className="p-3 text-right font-black text-indigo-900">
-                                ${brk.totalCommissions.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} MXN
-                              </td>
-                              <td className="p-3 text-center text-xs">
-                                <div className="space-y-0.5">
-                                  <span className="text-emerald-700 font-medium block">
-                                    Pagado: ${brk.paidCommissions.toLocaleString('es-MX', { maximumFractionDigits: 0 })}
+                            <tr
+                              key={commission.id}
+                              onClick={() => setViewingCommission(commission)}
+                              className="hover:bg-slate-50/70 transition-colors cursor-pointer group h-[60px]"
+                              data-testid={`commission-${commission.id}`}
+                            >
+                              {/* Batch Checkbox (SA only in por_aprobar or dispersion) */}
+                              {isSuperAdmin && (adminSubTab === 'por_aprobar' || adminSubTab === 'dispersion') && (
+                                <td className="py-3 px-3 text-center" onClick={(e) => e.stopPropagation()}>
+                                  <input
+                                    type="checkbox"
+                                    className="rounded text-primary focus:ring-primary h-3.5 w-3.5 cursor-pointer"
+                                    checked={
+                                      adminSubTab === 'por_aprobar'
+                                        ? selectedApproveIds.includes(commission.id)
+                                        : selectedDisperseIds.includes(commission.id)
+                                    }
+                                    onChange={(e) => {
+                                      if (adminSubTab === 'por_aprobar') {
+                                        setSelectedApproveIds(prev =>
+                                          e.target.checked ? [...prev, commission.id] : prev.filter(id => id !== commission.id)
+                                        );
+                                      } else {
+                                        setSelectedDisperseIds(prev =>
+                                          e.target.checked ? [...prev, commission.id] : prev.filter(id => id !== commission.id)
+                                        );
+                                      }
+                                    }}
+                                  />
+                                </td>
+                              )}
+
+                              {/* 1. Operación / Cliente */}
+                              <td className="py-3 px-4">
+                                <div className="flex flex-col min-w-0 max-w-[190px]">
+                                  <span 
+                                    className="text-sm font-semibold text-slate-900 group-hover:text-primary transition-colors truncate"
+                                    title={clientDisplayName}
+                                  >
+                                    {clientDisplayName}
                                   </span>
-                                  {brk.pendingCommissions > 0 && (
-                                    <span className="text-amber-700 font-semibold block">
-                                      Pend: ${brk.pendingCommissions.toLocaleString('es-MX', { maximumFractionDigits: 0 })}
+                                  <div className="flex items-center gap-1.5 text-[11px] text-slate-500 font-mono mt-0.5">
+                                    <span>#{String(commission.creditId || commission.id || "").slice(-8)}</span>
+                                    {commission.trackingKey && (
+                                      <>
+                                        <span className="text-slate-300">•</span>
+                                        <span className="text-emerald-700 font-medium truncate" title={`Rastreo: ${commission.trackingKey}`}>
+                                          STP: {String(commission.trackingKey).slice(-6)}
+                                        </span>
+                                      </>
+                                    )}
+                                  </div>
+                                </div>
+                              </td>
+
+                              {/* 2. Financiera */}
+                              <td className="py-3 px-3">
+                                <div className="flex flex-col text-xs max-w-[140px]">
+                                  <span className="font-medium text-slate-800 truncate" title={commission.financialInstitution?.name || 'Financiera'}>
+                                    {commission.financialInstitution?.name || 'Financiera'}
+                                  </span>
+                                  <span className="text-[11px] text-slate-400 capitalize truncate">
+                                    {commission.productName || commission.credit?.productTemplate?.name || 'Crédito'}
+                                  </span>
+                                </div>
+                              </td>
+
+                              {/* 3. Beneficiario Efectivo */}
+                              <td className="py-3 px-4">
+                                <div className="flex flex-col text-xs max-w-[180px]">
+                                  {isSuperAdmin ? (
+                                    <>
+                                      <div className="flex items-center gap-1.5">
+                                        <span className="font-semibold text-slate-900 truncate" title={commission.effectiveBeneficiary?.name || commission.broker?.firstName || 'Broker'}>
+                                          {commission.effectiveBeneficiary?.name || `${commission.broker?.firstName || ''} ${commission.broker?.lastName || ''}`.trim() || 'Broker'}
+                                        </span>
+                                        <span className={cn(
+                                          "px-1.5 py-0.2 rounded text-[10px] font-semibold border shrink-0",
+                                          isMb 
+                                            ? "bg-indigo-50 text-indigo-700 border-indigo-200/80"
+                                            : "bg-slate-100 text-slate-700 border-slate-200/80"
+                                        )}>
+                                          {isMb ? 'Master' : 'Directo'}
+                                        </span>
+                                      </div>
+                                      {isMb && (
+                                        <span className="text-[10px] text-slate-500 truncate mt-0.5" title={`Incluye $${brokerShare.toLocaleString('es-MX')} para ${commission.broker?.firstName || 'Broker'}`}>
+                                          Incluye ${brokerShare.toLocaleString('es-MX', { maximumFractionDigits: 0 })} p/ {commission.broker?.firstName || 'red'}
+                                        </span>
+                                      )}
+                                    </>
+                                  ) : isMasterBrokerRole ? (
+                                    <>
+                                      <span className="font-semibold text-slate-900 truncate">
+                                        {isOwnCreditAsMB ? 'Tu Colocación Directa' : `${commission.broker?.firstName || 'Broker'} ${commission.broker?.lastName || ''}`.trim()}
+                                      </span>
+                                      <span className="text-[10px] text-slate-500 truncate">
+                                        {isOwnCreditAsMB ? 'Cobras 100% de la comisión' : `Originador de tu red`}
+                                      </span>
+                                    </>
+                                  ) : (
+                                    <>
+                                      <span className="font-semibold text-slate-900 truncate">
+                                        {user?.firstName} {user?.lastName}
+                                      </span>
+                                      <span className="text-[10px] text-emerald-700 font-medium truncate">
+                                        Pago a tu CLABE
+                                      </span>
+                                    </>
+                                  )}
+                                </div>
+                              </td>
+
+                              {/* 4. Tipo / Origen */}
+                              <td className="py-3 px-3 text-center">
+                                <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-slate-100 text-slate-700 border border-slate-200/80 whitespace-nowrap">
+                                  {commissionTypeLabels[commission.commissionType || ""] || (commission.commissionType || "Apertura")}
+                                </span>
+                              </td>
+
+                              {/* 5. Monto Base Colocado */}
+                              <td className="py-3 px-3 text-right">
+                                <span className="text-xs font-medium text-slate-600 whitespace-nowrap">
+                                  ${creditAmount.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                </span>
+                              </td>
+
+                              {/* 6. Porcentaje Aplicado */}
+                              <td className="py-3 px-2 text-center">
+                                <span className="text-xs font-semibold text-slate-500 font-mono">
+                                  {appliedRate !== null && appliedRate !== undefined ? `${appliedRate}%` : '—'}
+                                </span>
+                              </td>
+
+                              {/* 7. Monto Comisión (PROTAGONISTA) */}
+                              <td className="py-3 px-4 text-right">
+                                <div className="flex flex-col items-end">
+                                  <span className="text-sm font-bold text-slate-900 whitespace-nowrap">
+                                    ${profileSpecificAmount.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                  </span>
+                                  {commission.frozenAmount ? (
+                                    <span className="text-[10px] font-mono text-blue-700 font-medium">
+                                      Congelado
+                                    </span>
+                                  ) : (
+                                    <span className="text-[10px] text-slate-400 font-mono">
+                                      MXN
                                     </span>
                                   )}
                                 </div>
                               </td>
-                              <td className="p-3 text-center">
-                                {isTop ? (
-                                  <Badge className="bg-amber-500 hover:bg-amber-600 text-white text-[11px] font-bold shadow-sm">
-                                    ⭐ Candidato a Bono
-                                  </Badge>
-                                ) : brk.creditsCount > 1 ? (
-                                  <Badge variant="outline" className="bg-emerald-50 text-emerald-800 border-emerald-300 text-[11px]">
-                                    🔥 Buen Desempeño
-                                  </Badge>
-                                ) : (
-                                  <Badge variant="outline" className="bg-gray-100 text-gray-700 text-[11px]">
-                                    Activo
-                                  </Badge>
-                                )}
+
+                              {/* 8. Estado */}
+                              <td className="py-3 px-3 text-center">
+                                <span 
+                                  className={cn(
+                                    "inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium border whitespace-nowrap",
+                                    statusInfo.badgeClass
+                                  )}
+                                >
+                                  <span className={cn("w-1.5 h-1.5 rounded-full shrink-0", statusInfo.dotClass)} />
+                                  <span>{statusInfo.label}</span>
+                                </span>
+                              </td>
+
+                              {/* 9. Fecha */}
+                              <td className="py-3 px-3 text-center">
+                                <span 
+                                  className="text-xs text-slate-500 whitespace-nowrap"
+                                  title={commission.createdAt ? format(new Date(commission.createdAt), "dd/MM/yyyy HH:mm", { locale: es }) : undefined}
+                                >
+                                  {commission.createdAt ? format(new Date(commission.createdAt), "dd/MM/yyyy") : "—"}
+                                </span>
+                              </td>
+
+                              {/* 10. Acciones (1 Primaria + ... Menú Secundario) */}
+                              <td className="py-3 px-4 text-right" onClick={(e) => e.stopPropagation()}>
+                                <div className="flex items-center justify-end gap-1.5">
+                                  {/* Primary Actions based on role & status */}
+                                  {isSuperAdmin && isGenerated && (
+                                    <Button
+                                      size="sm"
+                                      className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-medium h-7 px-2.5 shadow-sm"
+                                      onClick={() => approveMutation.mutate(commission.id)}
+                                      disabled={approveMutation.isPending}
+                                      title="Aprobar y congelar comisión"
+                                    >
+                                      {approveMutation.isPending ? <RefreshCw className="w-3 h-3 animate-spin mr-1" /> : <Check className="w-3 h-3 mr-1" />}
+                                      Aprobar
+                                    </Button>
+                                  )}
+
+                                  {isSuperAdmin && isApproved && (
+                                    <Button
+                                      size="sm"
+                                      className="bg-primary hover:bg-primary-dark text-white text-xs font-medium h-7 px-2.5 shadow-sm"
+                                      onClick={() => {
+                                        setSelectedCommission(commission);
+                                        setAccountNumber(commission.effectiveBankAccount?.clabe || "");
+                                      }}
+                                      title="Dispersar transferencia vía STP SPEI"
+                                    >
+                                      <Send className="w-3 h-3 mr-1 text-white" />
+                                      Pagar STP
+                                    </Button>
+                                  )}
+
+                                  {isSuperAdmin && isFailed && (
+                                    <Button
+                                      size="sm"
+                                      className="bg-rose-600 hover:bg-rose-700 text-white text-xs font-medium h-7 px-2.5 shadow-sm"
+                                      onClick={() => {
+                                        setSelectedCommission(commission);
+                                        setAccountNumber(commission.effectiveBankAccount?.clabe || "");
+                                      }}
+                                      title="Reintentar dispersión STP"
+                                    >
+                                      <RefreshCw className="w-3 h-3 mr-1" />
+                                      Reintentar
+                                    </Button>
+                                  )}
+
+                                  {/* Default primary action for view details when no pending admin action */}
+                                  {(!isSuperAdmin || (!isGenerated && !isApproved && !isFailed)) && (
+                                    <Button
+                                      variant="outline"
+                                      size="sm"
+                                      className="h-7 px-2.5 text-xs font-medium text-slate-700 hover:text-slate-900 border-slate-200 hover:bg-slate-50"
+                                      onClick={() => setViewingCommission(commission)}
+                                      title="Ver desglose completo de la comisión"
+                                    >
+                                      Ver detalle
+                                    </Button>
+                                  )}
+
+                                  {/* Secondary Actions Dropdown (...) */}
+                                  <DropdownMenu>
+                                    <DropdownMenuTrigger asChild>
+                                      <Button 
+                                        variant="ghost" 
+                                        size="sm" 
+                                        className="h-7 w-7 p-0 text-slate-500 hover:text-slate-900 hover:bg-slate-100 rounded-md"
+                                        title="Más opciones"
+                                      >
+                                        <MoreHorizontal className="w-4 h-4" />
+                                        <span className="sr-only">Acciones</span>
+                                      </Button>
+                                    </DropdownMenuTrigger>
+                                    <DropdownMenuContent align="end" className="w-48 text-xs">
+                                      <DropdownMenuItem 
+                                        onClick={() => setViewingCommission(commission)}
+                                        className="cursor-pointer gap-2"
+                                      >
+                                        <Eye className="w-3.5 h-3.5 text-slate-500" />
+                                        <span>Ver detalle completo</span>
+                                      </DropdownMenuItem>
+
+                                      <DropdownMenuItem 
+                                        onClick={() => setViewingAuditLogsCommission(commission)}
+                                        className="cursor-pointer gap-2"
+                                      >
+                                        <History className="w-3.5 h-3.5 text-indigo-600" />
+                                        <span>Bitácora de movimientos</span>
+                                      </DropdownMenuItem>
+
+                                      {/* Super Admin manual pay / cancel options */}
+                                      {isSuperAdmin && (isApproved || isFailed) && (
+                                        <>
+                                          <DropdownMenuSeparator />
+                                          <DropdownMenuItem 
+                                            onClick={() => {
+                                              setManualPaidCommission(commission);
+                                              setManualPaidNotes("");
+                                              setManualPaidReference("");
+                                            }}
+                                            className="cursor-pointer gap-2 text-emerald-700 focus:text-emerald-800"
+                                          >
+                                            <HandCoins className="w-3.5 h-3.5 text-emerald-600" />
+                                            <span>Registrar pago manual</span>
+                                          </DropdownMenuItem>
+                                        </>
+                                      )}
+
+                                      {isSuperAdmin && (isGenerated || isApproved) && (
+                                        <>
+                                          <DropdownMenuSeparator />
+                                          <DropdownMenuItem 
+                                            onClick={() => {
+                                              setCancellingCommission(commission);
+                                              setCancelReason("");
+                                            }}
+                                            className="cursor-pointer gap-2 text-rose-600 focus:text-rose-700"
+                                          >
+                                            <X className="w-3.5 h-3.5 text-rose-600" />
+                                            <span>Cancelar comisión</span>
+                                          </DropdownMenuItem>
+                                        </>
+                                      )}
+                                    </DropdownMenuContent>
+                                  </DropdownMenu>
+                                </div>
                               </td>
                             </tr>
                           );
-                        })
-                      )}
-                    </tbody>
-                  </table>
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+
+              {/* Ranking y Rendimiento de Colocadores para Super Admin — Harmonized Styling */}
+              {isSuperAdmin && (
+                <div className="bg-white border border-slate-200/80 rounded-xl shadow-sm overflow-hidden mb-8">
+                  <div className="p-4 sm:p-5 border-b border-slate-100 flex items-center justify-between flex-wrap gap-2">
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <h3 className="text-base font-semibold text-slate-900 tracking-tight">
+                          Ranking y Rendimiento de Colocadores
+                        </h3>
+                        <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 border border-slate-200">
+                          {brokerRankings.length} originador{brokerRankings.length !== 1 ? 'es' : ''}
+                        </span>
+                      </div>
+                      <p className="text-xs text-slate-500 mt-0.5">
+                        Consolidado de colocación por broker y red para incentivos y retención comercial
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left border-collapse text-xs">
+                      <thead>
+                        <tr className="border-b border-slate-200 bg-slate-50/80 text-[11px] font-semibold uppercase tracking-wider text-slate-500 select-none">
+                          <th className="py-3 px-3 text-center w-14">Lugar</th>
+                          <th className="py-3 px-4">Broker Originador</th>
+                          <th className="py-3 px-3">Red / Master Broker</th>
+                          <th className="py-3 px-3 text-center">Créditos</th>
+                          <th className="py-3 px-4 text-right">Volumen Colocado</th>
+                          <th className="py-3 px-4 text-right font-semibold text-slate-900">Comisiones Totales</th>
+                          <th className="py-3 px-3 text-center">Estatus Pago</th>
+                          <th className="py-3 px-3 text-center">Incentivo</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100">
+                        {brokerRankings.length === 0 ? (
+                          <tr>
+                            <td colSpan={8} className="py-12 text-center text-slate-400">
+                              No se han registrado colocaciones de brokers aún.
+                            </td>
+                          </tr>
+                        ) : (
+                          brokerRankings.map((brk, index) => {
+                            const medal = index === 0 ? '🥇' : index === 1 ? '🥈' : index === 2 ? '🥉' : `${index + 1}°`;
+                            const isTop = index === 0 || brk.totalVolume >= 1000000;
+
+                            return (
+                              <tr key={brk.brokerId} className="hover:bg-slate-50/70 transition-colors h-[56px]">
+                                <td className="py-3 px-3 text-center font-bold text-sm text-slate-700">
+                                  {medal}
+                                </td>
+                                <td className="py-3 px-4">
+                                  <div className="flex flex-col min-w-0 max-w-[180px]">
+                                    <span className="font-semibold text-slate-900 truncate">{brk.name}</span>
+                                    <span className="text-[11px] text-slate-400 truncate">{brk.email}</span>
+                                  </div>
+                                </td>
+                                <td className="py-3 px-3">
+                                  <span className="text-slate-600 font-medium truncate block max-w-[140px]" title={brk.masterBrokerName}>
+                                    {brk.masterBrokerName}
+                                  </span>
+                                </td>
+                                <td className="py-3 px-3 text-center">
+                                  <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-slate-100 text-slate-700 border border-slate-200">
+                                    {brk.creditsCount}
+                                  </span>
+                                </td>
+                                <td className="py-3 px-4 text-right font-medium text-slate-700">
+                                  ${brk.totalVolume.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                </td>
+                                <td className="py-3 px-4 text-right font-bold text-slate-900">
+                                  ${brk.totalCommissions.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                </td>
+                                <td className="py-3 px-3 text-center">
+                                  <div className="flex flex-col items-center text-[11px] space-y-0.5">
+                                    <span className="text-emerald-700 font-medium">
+                                      Pagado: ${brk.paidCommissions.toLocaleString('es-MX', { maximumFractionDigits: 0 })}
+                                    </span>
+                                    {brk.pendingCommissions > 0 && (
+                                      <span className="text-amber-700 font-semibold">
+                                        Pend: ${brk.pendingCommissions.toLocaleString('es-MX', { maximumFractionDigits: 0 })}
+                                      </span>
+                                    )}
+                                  </div>
+                                </td>
+                                <td className="py-3 px-3 text-center">
+                                  {isTop ? (
+                                    <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold bg-amber-50 text-amber-800 border border-amber-200">
+                                      Candidato a Bono
+                                    </span>
+                                  ) : brk.creditsCount > 1 ? (
+                                    <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium bg-emerald-50 text-emerald-800 border border-emerald-200">
+                                      Buen Desempeño
+                                    </span>
+                                  ) : (
+                                    <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium bg-slate-100 text-slate-600 border border-slate-200">
+                                      Activo
+                                    </span>
+                                  )}
+                                </td>
+                              </tr>
+                            );
+                          })
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
                 </div>
-              </CardContent>
-            </Card>
+              )}
+            </>
           )}
-        </>
-      )}
           {/* Vista de Sobretasas para Super Admin (#11) */}
           {activeTab === 'sobretasa' && (user?.role === 'admin' || user?.role === 'super_admin') ? (
             <div className="space-y-6">
@@ -1858,7 +1969,7 @@ export default function Commissions() {
                       ).toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} MXN
                     </p>
                   </div>
-                  <Badge className={statusConfig[viewingCommission.status as keyof typeof statusConfig]?.color || "bg-gray-100 text-gray-800"}>
+                  <Badge className={statusConfig[viewingCommission.status as keyof typeof statusConfig]?.badgeClass || "bg-gray-100 text-gray-800"}>
                     {statusConfig[viewingCommission.status as keyof typeof statusConfig]?.label || viewingCommission.status}
                   </Badge>
                 </div>
