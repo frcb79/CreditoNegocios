@@ -163,15 +163,15 @@ export default function Commissions() {
     onSuccess: (data) => {
       invalidateAllCreditQueries(queryClient);
       toast({
-        title: data.alreadyPaid ? "Comisión ya pagada" : "Pago procesado vía STP",
-        description: `Transacción SPEI: ${data.transactionId || 'Confirmada'}`,
+        title: data.alreadyPaid ? "Comisión ya pagada" : "Dispersión procesada exitosamente",
+        description: `Se dispersó exitosamente por $${Number(data.commission?.payoutAmount || data.commission?.amount).toLocaleString('es-MX')} MXN.`,
       });
       setSelectedCommission(null);
       setAccountNumber("");
     },
     onError: (error: Error) => {
       toast({
-        title: "Error en la dispersión STP",
+        title: "Error en la dispersión",
         description: error.message,
         variant: "destructive",
       });
@@ -621,7 +621,7 @@ export default function Commissions() {
     <MainLayout>
       <Header 
         title="Comisiones"
-        subtitle="Gestiona tus comisiones y pagos STP"
+        subtitle="Gestiona el control de comisiones y dispersiones a la red"
       />
         
         <main className="flex-1 p-4 sm:p-6 lg:p-8 overflow-y-auto">
@@ -720,7 +720,7 @@ export default function Commissions() {
                         Listo para Dispersión
                       </span>
                       <span className="text-[11px] font-semibold text-blue-700 bg-blue-50 border border-blue-200/80 px-2 py-0.5 rounded-full">
-                        {commissions.filter(c => c.status === 'approved').length} listos
+                        {countDispersion} listos
                       </span>
                     </div>
                     <div className="mt-1">
@@ -729,7 +729,7 @@ export default function Commissions() {
                         <span className="text-xs font-normal text-slate-500 ml-1">MXN</span>
                       </div>
                       <p className="text-[11px] text-slate-500 mt-1">
-                        Aprobado formalmente para envío STP
+                        Aprobado formalmente para dispersión
                       </p>
                     </div>
                   </div>
@@ -739,7 +739,7 @@ export default function Commissions() {
                     <div className="flex items-center justify-between text-xs font-medium text-slate-500 mb-1.5">
                       <span className="flex items-center gap-1.5">
                         <span className="w-2 h-2 rounded-full bg-indigo-500 animate-pulse" />
-                        En Dispersión STP
+                        En Dispersión
                       </span>
                       <span className="text-[11px] font-semibold text-indigo-700 bg-indigo-50 border border-indigo-200/80 px-2 py-0.5 rounded-full">
                         {commissions.filter(c => c.status === 'dispersing').length} en proceso
@@ -751,7 +751,7 @@ export default function Commissions() {
                         <span className="text-xs font-normal text-slate-500 ml-1">MXN</span>
                       </div>
                       <p className="text-[11px] text-slate-500 mt-1">
-                        Procesándose en enlace bancario SPEI
+                        Procesándose en cola de dispersión
                       </p>
                     </div>
                   </div>
@@ -928,7 +928,7 @@ export default function Commissions() {
                       </div>
                       <p className="text-xs text-slate-500 mt-0.5">
                         {isSuperAdmin 
-                          ? 'Control de aprobación, dispersión vía STP SPEI y conciliación financiera' 
+                          ? 'Control de aprobación, dispersión y conciliación financiera' 
                           : 'Consulta el estado de tus comisiones y montos a recibir'}
                       </p>
                     </div>
@@ -1099,7 +1099,7 @@ export default function Commissions() {
                   <div className="px-5 py-2.5 bg-blue-50/60 border-b border-blue-200/80 text-xs text-blue-900 flex items-center justify-between flex-wrap gap-2">
                     <div className="flex items-center gap-2">
                       <Send className="w-3.5 h-3.5 text-blue-600 shrink-0" />
-                      <span>Comisiones formalmente aprobadas. Puedes dispersar vía STP SPEI o registrar liquidación manual con bitácora inmutable.</span>
+                      <span>Comisiones formalmente aprobadas. Puedes enviar a dispersión o registrar liquidación manual con bitácora inmutable.</span>
                     </div>
                     {selectedDisperseIds.length > 0 && (
                       <Button
@@ -1109,7 +1109,7 @@ export default function Commissions() {
                         disabled={bulkPayMutation.isPending}
                       >
                         {bulkPayMutation.isPending ? <RefreshCw className="w-3 h-3 mr-1 animate-spin" /> : <Send className="w-3 h-3 mr-1" />}
-                        Dispersar vía STP ({selectedDisperseIds.length})
+                        Enviar a dispersión ({selectedDisperseIds.length})
                       </Button>
                     )}
                   </div>
@@ -1413,10 +1413,10 @@ export default function Commissions() {
                                         setSelectedCommission(commission);
                                         setAccountNumber(commission.effectiveBankAccount?.clabe || "");
                                       }}
-                                      title="Dispersar transferencia vía STP SPEI"
+                                      title="Enviar a dispersión a la red"
                                     >
                                       <Send className="w-3 h-3 mr-1 text-white" />
-                                      Pagar STP
+                                      Enviar a dispersión
                                     </Button>
                                   )}
 
@@ -1428,7 +1428,7 @@ export default function Commissions() {
                                         setSelectedCommission(commission);
                                         setAccountNumber(commission.effectiveBankAccount?.clabe || "");
                                       }}
-                                      title="Reintentar dispersión STP"
+                                      title="Reintentar dispersión"
                                     >
                                       <RefreshCw className="w-3 h-3 mr-1" />
                                       Reintentar
@@ -2129,26 +2129,26 @@ export default function Commissions() {
           </DialogContent>
         </Dialog>
 
-        {/* Modal Único para Dispersión STP */}
+        {/* Modal Único para Dispersión */}
         <Dialog open={!!selectedCommission} onOpenChange={(open) => !open && setSelectedCommission(null)}>
           <DialogContent className="max-w-md">
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2">
                 <i className="fas fa-university text-primary"></i>
-                Procesar Dispersión STP
+                Procesar Dispersión
               </DialogTitle>
             </DialogHeader>
             {selectedCommission && (
               <div className="space-y-4 pt-1">
                 <div className="bg-primary/5 p-3.5 rounded-lg flex items-center justify-between">
                   <div>
-                    <p className="text-xs text-neutral">Monto de Comisión a Dispersar (STP):</p>
+                    <p className="text-xs text-neutral">Monto de Comisión a Dispersar:</p>
                     <p className="text-xl text-primary font-bold">
                       ${safeFloat(selectedCommission.payoutAmount || selectedCommission.amount).toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} MXN
                     </p>
                   </div>
                   <Badge className="bg-blue-100 text-blue-800 border-blue-200">
-                    STP SPEI
+                    Dispersión
                   </Badge>
                 </div>
 
@@ -2160,8 +2160,8 @@ export default function Commissions() {
                       <span>${safeFloat(selectedCommission.totalGrossAmount || (safeFloat(selectedCommission.appShare) + safeFloat(selectedCommission.payoutAmount || selectedCommission.amount))).toLocaleString('es-MX', { minimumFractionDigits: 2 })} MXN</span>
                     </div>
                     <div className="flex justify-between text-amber-900">
-                      <span>Monto a Dispersar a la Red (STP):</span>
-                      <span className="font-semibold">-${safeFloat(selectedCommission.payoutAmount || selectedCommission.amount).toLocaleString('es-MX', { minimumFractionDigits: 2 })} MXN</span>
+                      <span>Monto a Dispersar a la Red:</span>
+                      <span>-${safeFloat(selectedCommission.payoutAmount || selectedCommission.amount).toLocaleString('es-MX', { minimumFractionDigits: 2 })} MXN</span>
                     </div>
                     <div className="flex justify-between text-emerald-900 border-t border-purple-200/80 pt-1 font-bold">
                       <span>Margen de Ganancia Plataforma:</span>
@@ -2232,7 +2232,7 @@ export default function Commissions() {
                     data-testid="button-confirm-payment"
                   >
                     {paymentMutation.isPending && <i className="fas fa-spinner fa-spin mr-1.5"></i>}
-                    Confirmar y Dispersar STP
+                    Confirmar Dispersión
                   </Button>
                 </div>
               </div>
