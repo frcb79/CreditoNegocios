@@ -56,26 +56,23 @@ test.describe('BLOQUE 12.4 — Validación Pantalla Comisiones (Fintech Instituc
     await page.screenshot({ path: path.join(SCREENSHOT_DIR, 'after_comisiones_super_admin.png'), fullPage: true });
 
     // Validar encabezado y KPIs institucionales
-    await expect(page.locator('h1:has-text("Comisiones")')).toBeVisible();
-    await expect(page.locator('text=Por Aprobar')).toBeVisible();
-    await expect(page.locator('text=Listo para Dispersión')).toBeVisible();
+    await expect(page.locator('h2:has-text("Comisiones"), h1:has-text("Comisiones")').first()).toBeVisible();
+    await expect(page.locator('text=Por Aprobar').first()).toBeVisible();
+    await expect(page.locator('text=Listo para Dispersión').first()).toBeVisible();
 
     // Validar subtabs de Super Admin
-    await expect(page.locator('button[role="tab"]:has-text("Por Aprobar")')).toBeVisible();
-    await expect(page.locator('button[role="tab"]:has-text("Centro de Dispersión")')).toBeVisible();
-    await expect(page.locator('button[role="tab"]:has-text("Historial / Conciliación")')).toBeVisible();
+    await expect(page.locator('button:has-text("Por Aprobar")').first()).toBeVisible();
+    await expect(page.locator('button:has-text("Centro de Dispersión")').first()).toBeVisible();
+    await expect(page.locator('button:has-text("Historial & Conciliación")').first()).toBeVisible();
 
-    // Cambiar a Historial para verificar la tabla principal
-    await page.click('button[role="tab"]:has-text("Historial / Conciliación")');
+    // Validar tabla institucional en tab activa Por Aprobar
+    await expect(page.locator('th:has-text("Beneficiario Efectivo")')).toBeVisible();
+    await expect(page.locator('th:has-text("Comisión")')).toBeVisible();
+    await expect(page.locator('th:has-text("Estado")')).toBeVisible();
+
+    // Cambiar a Historial para verificar subtab
+    await page.click('button:has-text("Historial & Conciliación")');
     await page.waitForTimeout(1500);
-
-    // Verificar tabla o estado de lista institucional
-    const tableHeader = page.locator('th:has-text("Operación / Crédito")');
-    if (await tableHeader.isVisible()) {
-      await expect(page.locator('th:has-text("Beneficiario Efectivo")')).toBeVisible();
-      await expect(page.locator('th:has-text("Comisión")')).toBeVisible();
-      await expect(page.locator('th:has-text("Estado")')).toBeVisible();
-    }
 
     await context.close();
   });
@@ -93,8 +90,10 @@ test.describe('BLOQUE 12.4 — Validación Pantalla Comisiones (Fintech Instituc
     // Screenshot after Master Broker Comisiones
     await page.screenshot({ path: path.join(SCREENSHOT_DIR, 'after_comisiones_master_broker.png'), fullPage: true });
 
-    await expect(page.locator('h1:has-text("Mis Comisiones")')).toBeVisible();
-    await expect(page.locator('text=Total Comisiones')).toBeVisible();
+    await expect(page.locator('h2:has-text("Comisiones"), h1:has-text("Comisiones")').first()).toBeVisible();
+    await expect(page.locator('text=Ingreso Bruto de Red').first()).toBeVisible();
+    await expect(page.locator('text=Corresponde a Originadores').first()).toBeVisible();
+    await expect(page.locator('text=Tu Ganancia Neta').first()).toBeVisible();
 
     await context.close();
   });
@@ -112,7 +111,7 @@ test.describe('BLOQUE 12.4 — Validación Pantalla Comisiones (Fintech Instituc
     // Screenshot after Broker Comisiones
     await page.screenshot({ path: path.join(SCREENSHOT_DIR, 'after_comisiones_broker.png'), fullPage: true });
 
-    await expect(page.locator('h1:has-text("Mis Comisiones")')).toBeVisible();
+    await expect(page.locator('h2:has-text("Comisiones"), h1:has-text("Comisiones")').first()).toBeVisible();
 
     await context.close();
   });
