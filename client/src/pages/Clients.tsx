@@ -58,10 +58,6 @@ export default function Clients() {
       <Header 
         title="Gestión de Clientes"
         subtitle="Administra tu cartera completa de clientes"
-        action={{
-          label: "Nuevo Cliente",
-          onClick: handleNewClient
-        }}
       />
       
       <main className="flex-1 p-4 sm:p-6 lg:p-8 overflow-y-auto">
