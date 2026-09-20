@@ -224,7 +224,7 @@ export default function MetricsGrid() {
     {
       title: "Comisiones por Pagar",
       value: formatCurrency(metrics.admin.commissionsPendingTotal || 0),
-      subtitle: `${metrics.admin.commissionsPendingCount || 0} pagos a brokers pendientes`,
+      subtitle: `${metrics.admin.commissionsPendingCount || 0} comisiones pendientes`,
       icon: "fas fa-file-invoice-dollar",
       color: "orange",
       testId: "metric-admin-commissions-pending",
