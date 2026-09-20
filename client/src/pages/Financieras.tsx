@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -6,11 +6,17 @@ import { useAuth } from "@/hooks/useAuth";
 import { Link } from "wouter";
 import MainLayout from "@/components/MainLayout";
 import Header from "@/components/Header";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
+import {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+} from "@/components/ui/dropdown-menu";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -21,10 +27,28 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { FinancialInstitution } from "@shared/schema";
+import { FinancialInstitution, InstitutionProductWithTemplate } from "@shared/schema";
 import NewFinancieraModal from "@/components/Modals/NewFinancieraModal";
 import RequestInstitutionModal from "@/components/Modals/RequestInstitutionModal";
 import ProductConfigurationModal from "@/components/Modals/ProductConfigurationModal";
+import { 
+  Building2, 
+  Search, 
+  Plus, 
+  Send, 
+  MoreHorizontal, 
+  Settings, 
+  Pause, 
+  Play, 
+  Trash2, 
+  Eye, 
+  Layers,
+  ArrowRight,
+  DollarSign,
+  TrendingUp,
+  CreditCard
+} from "lucide-react";
+import { cn } from "@/lib/utils";
 
 type FilterType = 'all' | 'active' | 'inactive';
 
@@ -57,6 +81,7 @@ export default function Financieras() {
     },
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ["/api/financial-institutions"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/institution-products"] });
       toast({
         title: "Financiera eliminada",
         description: data.message || "Institución eliminada exitosamente.",
@@ -72,8 +97,12 @@ export default function Financieras() {
     },
   });
 
-  const { data: financialInstitutions, isLoading } = useQuery<FinancialInstitution[]>({
+  const { data: financialInstitutions, isLoading: institutionsLoading } = useQuery<FinancialInstitution[]>({
     queryKey: ["/api/financial-institutions"],
+  });
+
+  const { data: institutionProducts = [] } = useQuery<InstitutionProductWithTemplate[]>({
+    queryKey: ["/api/institution-products"],
   });
 
   // Toggle status mutation
@@ -94,22 +123,20 @@ export default function Financieras() {
       
       return response.json();
     },
-    onSuccess: (updatedInstitution, institutionId) => {
+    onSuccess: (updatedInstitution) => {
       queryClient.invalidateQueries({ queryKey: ["/api/financial-institutions"] });
       
-      // If we just deactivated an institution and we're viewing active only, switch to all
       if (!updatedInstitution.isActive && activeFilter === 'active') {
         setActiveFilter('all');
         toast({
           title: "Estado actualizado",
-          description: `${updatedInstitution.name} ha sido desactivada exitosamente. Cambiando a vista "Todas" para mostrar el resultado.`,
+          description: `${updatedInstitution.name} ha sido desactivada exitosamente.`,
         });
       } else if (updatedInstitution.isActive && activeFilter === 'inactive') {
-        // If we just activated an institution and we're viewing inactive only, switch to all
         setActiveFilter('all');
         toast({
           title: "Estado actualizado",
-          description: `${updatedInstitution.name} ha sido activada exitosamente. Cambiando a vista "Todas" para mostrar el resultado.`,
+          description: `${updatedInstitution.name} ha sido activada exitosamente.`,
         });
       } else {
         toast({
@@ -132,38 +159,59 @@ export default function Financieras() {
     setConfirmDialog({ show: false });
   };
 
+  // Group products by institution ID
+  const productsByInstitution = useMemo(() => {
+    const map = new Map<string, InstitutionProductWithTemplate[]>();
+    (institutionProducts || []).forEach(p => {
+      if (p.institutionId) {
+        if (!map.has(p.institutionId)) {
+          map.set(p.institutionId, []);
+        }
+        map.get(p.institutionId)!.push(p);
+      }
+    });
+    return map;
+  }, [institutionProducts]);
+
   // Filter by status first, then by search term
-  const filteredInstitutions = financialInstitutions?.filter(institution => {
-    // Filter by status
-    const statusMatch = activeFilter === 'all' ? true : 
-                       activeFilter === 'active' ? institution.isActive : 
-                       !institution.isActive;
-    
-    // Filter by search term
-    const searchMatch = searchTerm === '' ? true : 
-                       institution.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                       (institution.contactPerson ?? '').toLowerCase().includes(searchTerm.toLowerCase());
-    
-    return statusMatch && searchMatch;
-  }) || [];
+  const filteredInstitutions = useMemo(() => {
+    return (financialInstitutions || []).filter(institution => {
+      const statusMatch = activeFilter === 'all' ? true : 
+                         activeFilter === 'active' ? institution.isActive : 
+                         !institution.isActive;
+      
+      const term = searchTerm.toLowerCase();
+      const searchMatch = !searchTerm ? true : 
+                         institution.name.toLowerCase().includes(term) ||
+                         (institution.contactPerson ?? '').toLowerCase().includes(term);
+      
+      return statusMatch && searchMatch;
+    });
+  }, [financialInstitutions, activeFilter, searchTerm]);
 
   // Calculate counts for summary
   const totalCount = financialInstitutions?.length || 0;
   const activeCount = financialInstitutions?.filter(f => f.isActive).length || 0;
   const inactiveCount = totalCount - activeCount;
 
-  if (isLoading) {
+  if (institutionsLoading) {
     return (
       <MainLayout>
         <Header 
-          title="Financieras"
-          subtitle="Gestiona tus instituciones financieras aliadas"
+          title="Instituciones Financieras"
+          subtitle="Administra tu red de financieras aliadas y condiciones operativas"
         />
-        
         <main className="flex-1 p-4 sm:p-6 lg:p-8 overflow-y-auto">
-          <div className="space-y-4">
-            {Array.from({ length: 4 }).map((_, i) => (
-              <Skeleton key={i} className="h-32 w-full" />
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+            {Array.from({ length: 6 }).map((_, i) => (
+              <div key={i} className="bg-white border border-slate-200/80 rounded-xl p-5 space-y-4 shadow-sm">
+                <div className="flex items-center justify-between">
+                  <Skeleton className="h-5 w-36" />
+                  <Skeleton className="h-5 w-16" />
+                </div>
+                <Skeleton className="h-4 w-48" />
+                <Skeleton className="h-8 w-full" />
+              </div>
             ))}
           </div>
         </main>
@@ -175,458 +223,426 @@ export default function Financieras() {
     <MainLayout>
       <Header 
         title="Instituciones Financieras"
-        subtitle="Administra tu red de financieras aliadas"
+        subtitle="Administra tu red de financieras aliadas y condiciones operativas"
       />
         
-        <main className="flex-1 p-4 sm:p-6 lg:p-8 overflow-y-auto">
-          {/* Summary Card */}
-          <Card className="mb-8">
-            <CardContent className="p-6">
-              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-6">
-                <div className="text-center">
-                  <div className="w-16 h-16 bg-primary/10 rounded-full flex items-center justify-center mx-auto mb-3">
-                    <i className="fas fa-building text-primary text-2xl"></i>
-                  </div>
-                  <p className="text-2xl font-bold text-gray-900">{totalCount}</p>
-                  <p className="text-sm text-neutral">Total Financieras</p>
-                </div>
-                <div className="text-center">
-                  <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-3">
-                    <i className="fas fa-check-circle text-green-600 text-2xl"></i>
-                  </div>
-                  <p className="text-2xl font-bold text-gray-900">{activeCount}</p>
-                  <p className="text-sm text-neutral">Activas</p>
-                </div>
-                <div className="text-center">
-                  <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-3">
-                    <i className="fas fa-pause-circle text-red-600 text-2xl"></i>
-                  </div>
-                  <p className="text-2xl font-bold text-gray-900">{inactiveCount}</p>
-                  <p className="text-sm text-neutral">Inactivas</p>
-                </div>
-                <div className="text-center">
-                  <div className="w-16 h-16 bg-success/10 rounded-full flex items-center justify-center mx-auto mb-3">
-                    <i className="fas fa-handshake text-success text-2xl"></i>
-                  </div>
-                  <p className="text-2xl font-bold text-gray-900">0</p>
-                  <p className="text-sm text-neutral">Créditos Enviados</p>
-                </div>
-                <div className="text-center">
-                  <div className="w-16 h-16 bg-warning/10 rounded-full flex items-center justify-center mx-auto mb-3">
-                    <i className="fas fa-percentage text-warning text-2xl"></i>
-                  </div>
-                  <p className="text-2xl font-bold text-gray-900">2.5%</p>
-                  <p className="text-sm text-neutral">Comisión Promedio</p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Filter Tabs and Actions */}
-          <Card className="mb-8">
-            <CardContent className="p-6">
-              {/* Filter Tabs */}
-              <div className="flex items-center justify-between mb-6">
-                <div className="flex space-x-1 bg-gray-100 p-1 rounded-lg">
-                  <button
-                    onClick={() => setActiveFilter('all')}
-                    className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
-                      activeFilter === 'all'
-                        ? 'bg-white text-gray-900 shadow'
-                        : 'text-gray-600 hover:text-gray-900'
-                    }`}
-                    data-testid="filter-all"
-                  >
-                    Todas ({totalCount})
-                  </button>
-                  <button
-                    onClick={() => setActiveFilter('active')}
-                    className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
-                      activeFilter === 'active'
-                        ? 'bg-white text-gray-900 shadow'
-                        : 'text-gray-600 hover:text-gray-900'
-                    }`}
-                    data-testid="filter-active"
-                  >
-                    Activas ({activeCount})
-                  </button>
-                  <button
-                    onClick={() => setActiveFilter('inactive')}
-                    className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
-                      activeFilter === 'inactive'
-                        ? 'bg-white text-gray-900 shadow'
-                        : 'text-gray-600 hover:text-gray-900'
-                    }`}
-                    data-testid="filter-inactive"
-                  >
-                    Inactivas ({inactiveCount})
-                  </button>
-                </div>
-                
-                {isAdmin ? (
-                  <Button 
-                    className="bg-primary text-white hover:bg-primary-dark"
-                    onClick={() => setShowNewModal(true)}
-                    data-testid="button-new-financiera"
-                  >
-                    <i className="fas fa-plus mr-2"></i>
-                    Nueva Financiera
-                  </Button>
-                ) : (
-                  <Button 
-                    className="bg-success text-white hover:bg-success/90"
-                    onClick={() => setShowRequestModal(true)}
-                    data-testid="button-request-financiera"
-                  >
-                    <i className="fas fa-paper-plane mr-2"></i>
-                    Solicitar Nueva Financiera
-                  </Button>
+      <main className="flex-1 p-4 sm:p-6 lg:p-8 overflow-y-auto">
+        {/* Institutional Toolbar */}
+        <div className="bg-white border border-slate-200/80 rounded-xl shadow-sm p-4 sm:p-5 mb-6 flex flex-col md:flex-row gap-4 md:items-center md:justify-between">
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="inline-flex rounded-lg border border-slate-200 bg-slate-50/80 p-1">
+              <button
+                onClick={() => setActiveFilter('active')}
+                className={cn(
+                  "px-3 py-1.5 rounded-md text-xs font-medium transition-all",
+                  activeFilter === 'active'
+                    ? "bg-white text-slate-900 shadow-sm"
+                    : "text-slate-600 hover:text-slate-900"
                 )}
-              </div>
-              
-              {/* Search Bar */}
-              <div className="w-96">
-                <Input
-                  placeholder="Buscar financieras por nombre o contacto..."
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  data-testid="input-search-financieras"
-                  className="placeholder:text-gray-400"
-                />
-              </div>
-            </CardContent>
-          </Card>
+                data-testid="filter-active"
+              >
+                Activas ({activeCount})
+              </button>
+              <button
+                onClick={() => setActiveFilter('all')}
+                className={cn(
+                  "px-3 py-1.5 rounded-md text-xs font-medium transition-all",
+                  activeFilter === 'all'
+                    ? "bg-white text-slate-900 shadow-sm"
+                    : "text-slate-600 hover:text-slate-900"
+                )}
+                data-testid="filter-all"
+              >
+                Todas ({totalCount})
+              </button>
+              <button
+                onClick={() => setActiveFilter('inactive')}
+                className={cn(
+                  "px-3 py-1.5 rounded-md text-xs font-medium transition-all",
+                  activeFilter === 'inactive'
+                    ? "bg-white text-slate-900 shadow-sm"
+                    : "text-slate-600 hover:text-slate-900"
+                )}
+                data-testid="filter-inactive"
+              >
+                Inactivas ({inactiveCount})
+              </button>
+            </div>
+          </div>
 
-          {/* Financial Institutions Grid */}
-          {filteredInstitutions.length === 0 ? (
-            <Card>
-              <CardContent className="p-12">
-                <div className="text-center">
-                  <i className="fas fa-building text-6xl text-gray-300 mb-6"></i>
-                  <h3 className="text-xl font-semibold text-gray-900 mb-2">
-                    {financialInstitutions?.length === 0 
-                      ? "No hay financieras registradas"
-                      : "No se encontraron financieras"
-                    }
-                  </h3>
-                  <p className="text-neutral mb-6">
-                    {financialInstitutions?.length === 0 
-                      ? (isAdmin ? "Agrega tu primera institución financiera para comenzar a enviar expedientes." : "No hay financieras registradas aún.")
-                      : "Intenta con otros términos de búsqueda."
-                    }
-                  </p>
-                  {isAdmin && (
-                    <Button 
-                      className="bg-primary text-white hover:bg-primary-dark"
-                      onClick={() => setShowNewModal(true)}
-                      data-testid="button-add-financiera"
-                    >
-                      <i className="fas fa-plus mr-2"></i>
-                      Agregar Financiera
-                    </Button>
-                  )}
-                </div>
-              </CardContent>
-            </Card>
-          ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {filteredInstitutions.map((institution) => (
-                <Card 
+          <div className="flex items-center gap-3 flex-1 md:max-w-md md:justify-end">
+            <div className="relative flex-1">
+              <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+              <Input
+                placeholder="Buscar por nombre de financiera..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                data-testid="input-search-financieras"
+                className="pl-9 h-9 text-xs placeholder:text-slate-400 border-slate-200 bg-slate-50/50 focus:bg-white transition-colors"
+              />
+            </div>
+
+            {isAdmin ? (
+              <Button 
+                onClick={() => setShowNewModal(true)}
+                className="bg-primary hover:bg-primary-dark text-primary-foreground text-xs font-medium h-9 shadow-sm shrink-0"
+                data-testid="button-new-financiera"
+              >
+                <Plus className="w-3.5 h-3.5 mr-1.5" />
+                <span>Nueva Financiera</span>
+              </Button>
+            ) : (
+              <Button 
+                onClick={() => setShowRequestModal(true)}
+                variant="outline"
+                className="text-xs font-medium h-9 border-slate-200 text-slate-700 hover:bg-slate-50 shrink-0"
+                data-testid="button-request-financiera"
+              >
+                <Send className="w-3.5 h-3.5 mr-1.5 text-primary" />
+                <span>Solicitar Financiera</span>
+              </Button>
+            )}
+          </div>
+        </div>
+
+        {/* Financial Institutions Grid */}
+        {filteredInstitutions.length === 0 ? (
+          <div className="bg-white border border-slate-200/80 rounded-xl shadow-sm text-center py-16 px-4">
+            <div className="w-12 h-12 rounded-full bg-slate-100 text-slate-400 flex items-center justify-center mx-auto mb-3">
+              <Building2 className="w-6 h-6" />
+            </div>
+            <h3 className="text-sm font-semibold text-slate-900 mb-1">
+              {financialInstitutions?.length === 0 
+                ? "No hay financieras registradas"
+                : "Sin resultados para tu búsqueda"
+              }
+            </h3>
+            <p className="text-xs text-slate-500 max-w-sm mx-auto mb-4">
+              {financialInstitutions?.length === 0 
+                ? (isAdmin ? "Agrega tu primera institución financiera para comenzar a operar." : "No hay financieras registradas aún.")
+                : "Intenta cambiar el término de búsqueda o el filtro seleccionado."
+              }
+            </p>
+            {isAdmin && (
+              <Button 
+                onClick={() => setShowNewModal(true)}
+                className="bg-primary hover:bg-primary-dark text-white text-xs h-8"
+                data-testid="button-add-financiera"
+              >
+                <Plus className="w-3.5 h-3.5 mr-1.5" />
+                Agregar Financiera
+              </Button>
+            )}
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+            {filteredInstitutions.map((institution) => {
+              const productsList = productsByInstitution.get(institution.id) || [];
+              const activeProductsCount = productsList.filter(p => p.isActive).length;
+
+              // Extract unique commercial categories or template names from institution products
+              const categories = Array.from(new Set(
+                productsList
+                  .filter(p => p.isActive)
+                  .map(p => p.template?.category || p.template?.name || '')
+                  .filter(Boolean)
+              ));
+
+              // Commission display for Admin only
+              const commissionRates = (institution as any).commissionRates;
+              const totalCommission = commissionRates?.financiera?.total ?? (institution as any).commissionRate;
+
+              return (
+                <div 
                   key={institution.id}
-                  className="border border-gray-200 hover:shadow-lg transition-shadow"
+                  className={cn(
+                    "bg-white border rounded-xl shadow-sm hover:shadow-md transition-all flex flex-col justify-between overflow-hidden",
+                    institution.isActive ? "border-slate-200/90" : "border-slate-200/60 opacity-85 bg-slate-50/40"
+                  )}
                   data-testid={`financiera-${institution.id}`}
                 >
-                  <Link href={`/financieras/${institution.id}`}>
-                    <CardHeader className="pb-3 cursor-pointer hover:bg-gray-50 rounded-t-lg transition-colors">
-                      <div className="flex items-start justify-between">
-                        <div className="flex items-center space-x-3">
-                          <div className="w-12 h-12 bg-primary/10 rounded-lg flex items-center justify-center">
-                            <i className="fas fa-building text-primary text-lg"></i>
-                          </div>
-                          <div>
-                            <CardTitle className="text-lg" data-testid={`financiera-name-${institution.id}`}>
-                              {institution.name}
-                            </CardTitle>
-                            <Badge 
-                              variant={institution.isActive ? "default" : "secondary"}
-                              className={institution.isActive 
-                                ? "bg-green-100 text-green-700 border-green-200" 
-                                : "bg-red-100 text-red-700 border-red-200"
-                              }
-                            >
-                              <i className={`fas ${institution.isActive ? 'fa-check-circle' : 'fa-pause-circle'} mr-1 text-xs`}></i>
-                              {institution.isActive ? "Activa" : "Inactiva"}
-                            </Badge>
-                          </div>
-                        </div>
-                        <i className="fas fa-arrow-right text-gray-400"></i>
-                      </div>
-                    </CardHeader>
-                  </Link>
-                  
-                  <CardContent className="space-y-4">
-                    <div className="space-y-3 text-sm">
-                      {/* Información de contacto - Solo visible para admins */}
-                      {isAdmin && (
-                        <>
-                          <div className="flex justify-between">
-                            <span className="text-neutral">Contacto:</span>
-                            <span className="font-medium">{institution.contactPerson ?? 'No asignado'}</span>
-                          </div>
-                          <div className="flex justify-between">
-                            <span className="text-neutral">Email:</span>
-                            <span className="font-medium text-xs">{institution.email || 'No proporcionado'}</span>
-                          </div>
-                          <div className="flex justify-between">
-                            <span className="text-neutral">Teléfono:</span>
-                            <span className="font-medium">{institution.phone || 'No proporcionado'}</span>
-                          </div>
-                        </>
-                      )}
-                      {/* Comisión solo visible para admin */}
-                      {isAdmin && (
-                        <div className="flex justify-between">
-                          <span className="text-neutral">Comisión:</span>
-                          <span className="text-primary font-semibold" data-testid={`commission-${institution.id}`}>
-                            {(() => {
-                              const commissionRates = (institution as any).commissionRates;
-                              const total = commissionRates?.financiera?.total;
-                              if (total !== null && total !== undefined) {
-                                return `${total}%`;
-                              }
-                              return 'No definida';
-                            })()}
+                  {/* Top card section */}
+                  <div className="p-5">
+                    {/* Header: Name and Status */}
+                    <div className="flex items-start justify-between gap-3 mb-3">
+                      <div className="flex-1 min-w-0">
+                        <Link href={`/financieras/${institution.id}`}>
+                          <h3 
+                            className="font-semibold text-slate-900 text-base hover:text-primary transition-colors cursor-pointer truncate"
+                            data-testid={`financiera-name-${institution.id}`}
+                            title={institution.name}
+                          >
+                            {institution.name}
+                          </h3>
+                        </Link>
+                        {/* Short operational subtitle: active products count */}
+                        <div className="flex items-center gap-1.5 text-xs text-slate-500 mt-0.5">
+                          <Layers className="w-3.5 h-3.5 text-slate-400" />
+                          <span>
+                            {activeProductsCount > 0 
+                              ? `${activeProductsCount} producto${activeProductsCount !== 1 ? 's' : ''} disponible${activeProductsCount !== 1 ? 's' : ''}`
+                              : "Sin productos activos"
+                            }
                           </span>
                         </div>
-                      )}
-                      <div className="pt-2">
-                        <span className="text-neutral text-xs block mb-2">Perfiles Aceptados:</span>
-                        <div className="flex flex-wrap gap-1">
-                          {(institution as any).acceptedProfiles && (institution as any).acceptedProfiles.length > 0 ? (
-                            (institution as any).acceptedProfiles.map((profile: string) => {
-                              const profileMap: Record<string, { label: string; color: string }> = {
-                                'persona_moral': { label: 'PM', color: 'bg-blue-100 text-blue-700' },
-                                'fisica_empresarial': { label: 'PFAE', color: 'bg-green-100 text-green-700' },
-                                'fisica': { label: 'PF', color: 'bg-orange-100 text-orange-700' },
-                                'sin_sat': { label: 'Sin SAT', color: 'bg-gray-100 text-gray-700' },
-                              };
-                              const profileInfo = profileMap[profile] || { label: profile, color: 'bg-gray-100 text-gray-700' };
-                              return (
-                                <Badge 
-                                  key={profile} 
-                                  variant="outline" 
-                                  className={`text-xs ${profileInfo.color}`}
-                                >
-                                  {profileInfo.label}
-                                </Badge>
-                              );
-                            })
-                          ) : (
-                            <span className="text-xs text-gray-400 italic">No configurado</span>
+                      </div>
+
+                      <div className="flex items-center gap-1 shrink-0">
+                        <span 
+                          className={cn(
+                            "inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium border",
+                            institution.isActive 
+                              ? "bg-emerald-50 text-emerald-700 border-emerald-200/80" 
+                              : "bg-slate-100 text-slate-600 border-slate-200"
                           )}
-                        </div>
+                        >
+                          <span 
+                            className={cn(
+                              "w-1.5 h-1.5 rounded-full shrink-0", 
+                              institution.isActive ? "bg-emerald-500" : "bg-slate-400"
+                            )} 
+                          />
+                          <span>{institution.isActive ? "Activa" : "Inactiva"}</span>
+                        </span>
                       </div>
                     </div>
-                    
-                    {isAdmin && (
-                      <div className="flex space-x-2 pt-4 border-t">
-                        {institution.isActive ? (
-                          <>
-                            <Button 
-                              size="sm"
-                              variant="outline"
-                              className="flex-1"
-                              onClick={() => {
-                                setConfigModal({ show: true, financiera: institution });
-                              }}
-                              title="Configurar productos para esta financiera"
-                              data-testid={`button-config-financiera-${institution.id}`}
-                            >
-                              <i className="fas fa-cog mr-1"></i>
-                              Configurar
-                            </Button>
-                            
-                            {/* Deactivate Button */}
-                            <Button 
-                              size="sm"
-                              variant="outline"
-                              onClick={() => {
-                                setConfirmDialog({ show: true, financiera: institution });
-                              }}
-                              disabled={toggleStatusMutation.isPending}
-                              title="Desactivar financiera"
-                              className="bg-red-50 border-red-200 text-red-700 hover:bg-red-100"
-                              data-testid={`button-toggle-status-${institution.id}`}
-                            >
-                              {toggleStatusMutation.isPending && toggleStatusMutation.variables === institution.id ? (
-                                <i className="fas fa-spinner fa-spin"></i>
-                              ) : (
-                                <i className="fas fa-pause"></i>
-                              )}
-                            </Button>
 
-                            {/* Delete Button */}
-                            <Button 
-                              size="sm"
-                              variant="outline"
-                              onClick={() => {
-                                setDeleteDialog({ show: true, financiera: institution });
-                              }}
-                              disabled={deleteMutation.isPending}
-                              title="Eliminar financiera permanentemente"
-                              className="bg-red-50 border-red-200 text-red-700 hover:bg-red-100 px-2"
-                              data-testid={`button-delete-${institution.id}`}
-                            >
-                              <i className="fas fa-trash-alt"></i>
-                            </Button>
-                          </>
-                        ) : (
-                          <>
-                            {/* Reactivate Button - Primary action for inactive */}
-                            <Button 
-                              size="sm"
-                              className="flex-1 bg-green-600 hover:bg-green-700 text-white"
-                              onClick={() => {
-                                setConfirmDialog({ show: true, financiera: institution });
-                              }}
-                              disabled={toggleStatusMutation.isPending}
-                              title="Reactivar financiera"
-                              data-testid={`button-reactivate-${institution.id}`}
-                            >
-                              {toggleStatusMutation.isPending && toggleStatusMutation.variables === institution.id ? (
-                                <i className="fas fa-spinner fa-spin mr-1"></i>
-                              ) : (
-                                <i className="fas fa-play mr-1"></i>
-                              )}
-                              Reactivar
-                            </Button>
-                            
-                            {/* View Configuration (Read-only) */}
-                            <Button 
-                              size="sm"
-                              variant="outline"
-                              onClick={() => {
-                                setConfigModal({ show: true, financiera: institution });
-                              }}
-                              title="Ver configuración"
-                              data-testid={`button-view-config-${institution.id}`}
-                            >
-                              <i className="fas fa-eye"></i>
-                            </Button>
+                    {/* Admin info row: only display when commission or contact actually exists */}
+                    {isAdmin && (totalCommission !== null && totalCommission !== undefined || institution.contactPerson) && (
+                      <div className="flex items-center justify-between py-2 px-2.5 bg-slate-50/80 rounded-lg border border-slate-100 text-xs mb-3">
+                        {totalCommission !== null && totalCommission !== undefined ? (
+                          <div className="flex items-center gap-1 text-slate-600">
+                            <span className="text-slate-400">Comisión:</span>
+                            <span className="font-semibold text-slate-900" data-testid={`commission-${institution.id}`}>
+                              {totalCommission}%
+                            </span>
+                          </div>
+                        ) : <div />}
 
-                            {/* Delete Button */}
-                            <Button 
-                              size="sm"
-                              variant="outline"
-                              onClick={() => {
-                                setDeleteDialog({ show: true, financiera: institution });
-                              }}
-                              disabled={deleteMutation.isPending}
-                              title="Eliminar financiera permanentemente"
-                              className="bg-red-50 border-red-200 text-red-700 hover:bg-red-100 px-2"
-                              data-testid={`button-delete-inactive-${institution.id}`}
-                            >
-                              <i className="fas fa-trash-alt"></i>
-                            </Button>
-                          </>
-                        )}
+                        {institution.contactPerson ? (
+                          <div className="flex items-center gap-1 text-slate-600 truncate max-w-[180px]">
+                            <span className="text-slate-400">Contacto:</span>
+                            <span className="font-medium text-slate-800 truncate" title={institution.contactPerson}>
+                              {institution.contactPerson}
+                            </span>
+                          </div>
+                        ) : null}
                       </div>
                     )}
-                  </CardContent>
-                </Card>
-              ))}
-            </div>
-          )}
-        </main>
 
-        {/* Modals */}
-        {isAdmin ? (
-          <NewFinancieraModal 
-            isOpen={showNewModal}
-            onClose={() => setShowNewModal(false)}
-            onFinancieraCreated={(financiera) => {
-              // Abrir configuración automáticamente
-              setConfigModal({ show: true, financiera });
-            }}
-          />
-        ) : (
-          <RequestInstitutionModal 
-            isOpen={showRequestModal}
-            onClose={() => setShowRequestModal(false)}
-          />
-        )}
-        
-        {configModal.financiera && isAdmin && (
-          <ProductConfigurationModal 
-            isOpen={configModal.show}
-            onClose={() => setConfigModal({ show: false })}
-            financiera={configModal.financiera}
-          />
-        )}
+                    {/* Categories / Accepted Profiles */}
+                    <div className="space-y-1.5">
+                      {categories.length > 0 ? (
+                        <div className="flex flex-wrap gap-1">
+                          {categories.slice(0, 3).map((cat, idx) => (
+                            <span 
+                              key={idx}
+                              className="text-[11px] px-2 py-0.5 rounded bg-slate-100/90 text-slate-700 border border-slate-200/60 font-medium"
+                            >
+                              {cat}
+                            </span>
+                          ))}
+                          {categories.length > 3 && (
+                            <span className="text-[10px] px-1.5 py-0.5 text-slate-400 font-medium">
+                              +{categories.length - 3} más
+                            </span>
+                          )}
+                        </div>
+                      ) : (
+                        <span className="text-[11px] text-slate-400 italic">
+                          Catálogo de productos general
+                        </span>
+                      )}
 
-        {/* Confirmation Dialog */}
-        {confirmDialog.show && (
-          <AlertDialog open={confirmDialog.show} onOpenChange={(open) => !open && setConfirmDialog({ show: false })}>
-            <AlertDialogContent>
-              <AlertDialogHeader>
-                <AlertDialogTitle>
-                  {confirmDialog.financiera?.isActive ? 'Desactivar' : 'Activar'} Financiera
-                </AlertDialogTitle>
-                <AlertDialogDescription>
-                  {confirmDialog.financiera?.isActive 
-                    ? `¿Estás seguro de que deseas desactivar "${confirmDialog.financiera?.name}"? Esta acción hará que la financiera no esté disponible para nuevos créditos.`
-                    : `¿Estás seguro de que deseas activar "${confirmDialog.financiera?.name}"? Esta acción hará que la financiera esté disponible para nuevos créditos.`
-                  }
-                </AlertDialogDescription>
-              </AlertDialogHeader>
-              <AlertDialogFooter>
-                <AlertDialogCancel onClick={() => setConfirmDialog({ show: false })}>
-                  Cancelar
-                </AlertDialogCancel>
-                <AlertDialogAction
-                  onClick={() => confirmDialog.financiera && handleToggleStatus(confirmDialog.financiera)}
-                  className={confirmDialog.financiera?.isActive 
-                    ? 'bg-red-600 hover:bg-red-700 focus:ring-red-600' 
-                    : 'bg-green-600 hover:bg-green-700 focus:ring-green-600'
-                  }
-                >
-                  {confirmDialog.financiera?.isActive ? 'Desactivar' : 'Activar'}
-                </AlertDialogAction>
-              </AlertDialogFooter>
-            </AlertDialogContent>
-          </AlertDialog>
-        )}
+                      {/* Client Profiles tags if specified */}
+                      {Array.isArray((institution as any).acceptedProfiles) && (institution as any).acceptedProfiles.length > 0 && (
+                        <div className="flex items-center gap-1 pt-1 flex-wrap">
+                          <span className="text-[10px] uppercase font-semibold text-slate-400 tracking-wider mr-1">
+                            Perfiles:
+                          </span>
+                          {(institution as any).acceptedProfiles.map((profile: string) => {
+                            const profileShort: Record<string, string> = {
+                              'persona_moral': 'PM',
+                              'fisica_empresarial': 'PFAE',
+                              'fisica': 'PF',
+                              'sin_sat': 'Sin SAT',
+                            };
+                            return (
+                              <span
+                                key={profile}
+                                className="text-[10px] px-1.5 py-0.2 rounded font-medium bg-slate-50 text-slate-600 border border-slate-200"
+                              >
+                                {profileShort[profile] || profile}
+                              </span>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  </div>
 
-        {/* Delete Confirmation Dialog */}
-        {deleteDialog.show && (
-          <AlertDialog open={deleteDialog.show} onOpenChange={(open) => !open && setDeleteDialog({ show: false })}>
-            <AlertDialogContent>
-              <AlertDialogHeader>
-                <AlertDialogTitle className="text-red-600 flex items-center">
-                  <i className="fas fa-exclamation-triangle mr-2"></i>
-                  Eliminar Financiera
-                </AlertDialogTitle>
-                <AlertDialogDescription>
-                  ¿Estás seguro de que deseas eliminar permanentemente a <strong>"{deleteDialog.financiera?.name}"</strong>?
-                  <br /><br />
-                  Esta acción es irreversible y eliminará también los productos vinculados a esta financiera en el sistema.
-                </AlertDialogDescription>
-              </AlertDialogHeader>
-              <AlertDialogFooter>
-                <AlertDialogCancel onClick={() => setDeleteDialog({ show: false })}>
-                  Cancelar
-                </AlertDialogCancel>
-                <AlertDialogAction
-                  onClick={() => deleteDialog.financiera && deleteMutation.mutate(deleteDialog.financiera.id)}
-                  className="bg-red-600 hover:bg-red-700 focus:ring-red-600 text-white"
-                  disabled={deleteMutation.isPending}
-                >
-                  {deleteMutation.isPending ? "Eliminando..." : "Eliminar Permanentemente"}
-                </AlertDialogAction>
-              </AlertDialogFooter>
-            </AlertDialogContent>
-          </AlertDialog>
+                  {/* Bottom card footer with single primary action and grouped dropdown */}
+                  <div className="px-5 py-3 border-t border-slate-100 bg-slate-50/40 flex items-center justify-between gap-2">
+                    <Link href={`/financieras/${institution.id}`} className="flex-1">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="w-full text-xs font-medium h-8 bg-white border-slate-200 text-slate-700 hover:bg-slate-50 hover:text-slate-900 shadow-none justify-between"
+                      >
+                        <span>Ver productos y detalle</span>
+                        <ArrowRight className="w-3.5 h-3.5 ml-1 text-slate-400" />
+                      </Button>
+                    </Link>
+
+                    {isAdmin && (
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-8 w-8 p-0 text-slate-400 hover:text-slate-700"
+                            data-testid={`menu-financiera-${institution.id}`}
+                          >
+                            <MoreHorizontal className="w-4 h-4" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end" className="w-48 text-xs">
+                          <DropdownMenuItem 
+                            onClick={() => setConfigModal({ show: true, financiera: institution })}
+                            data-testid={`button-config-financiera-${institution.id}`}
+                          >
+                            <Settings className="w-3.5 h-3.5 mr-2 text-slate-500" />
+                            Configurar productos
+                          </DropdownMenuItem>
+
+                          {institution.isActive ? (
+                            <DropdownMenuItem 
+                              onClick={() => setConfirmDialog({ show: true, financiera: institution })}
+                              data-testid={`button-toggle-status-${institution.id}`}
+                              className="text-amber-700 focus:text-amber-800"
+                            >
+                              <Pause className="w-3.5 h-3.5 mr-2 text-amber-600" />
+                              Desactivar financiera
+                            </DropdownMenuItem>
+                          ) : (
+                            <DropdownMenuItem 
+                              onClick={() => setConfirmDialog({ show: true, financiera: institution })}
+                              data-testid={`button-reactivate-${institution.id}`}
+                              className="text-emerald-700 focus:text-emerald-800"
+                            >
+                              <Play className="w-3.5 h-3.5 mr-2 text-emerald-600" />
+                              Reactivar financiera
+                            </DropdownMenuItem>
+                          )}
+
+                          <DropdownMenuSeparator />
+
+                          <DropdownMenuItem 
+                            onClick={() => setDeleteDialog({ show: true, financiera: institution })}
+                            data-testid={`button-delete-${institution.id}`}
+                            className="text-red-600 focus:text-red-700"
+                          >
+                            <Trash2 className="w-3.5 h-3.5 mr-2 text-red-500" />
+                            Eliminar financiera
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
         )}
-      </MainLayout>
-    );
-  }
+      </main>
+
+      {/* Modals */}
+      {isAdmin ? (
+        <NewFinancieraModal 
+          isOpen={showNewModal}
+          onClose={() => setShowNewModal(false)}
+          onFinancieraCreated={(financiera) => {
+            setConfigModal({ show: true, financiera });
+          }}
+        />
+      ) : (
+        <RequestInstitutionModal 
+          isOpen={showRequestModal}
+          onClose={() => setShowRequestModal(false)}
+        />
+      )}
+      
+      {configModal.financiera && isAdmin && (
+        <ProductConfigurationModal 
+          isOpen={configModal.show}
+          onClose={() => setConfigModal({ show: false })}
+          financiera={configModal.financiera}
+        />
+      )}
+
+      {/* Confirmation Dialog */}
+      {confirmDialog.show && (
+        <AlertDialog open={confirmDialog.show} onOpenChange={(open) => !open && setConfirmDialog({ show: false })}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>
+                {confirmDialog.financiera?.isActive ? 'Desactivar' : 'Activar'} Financiera
+              </AlertDialogTitle>
+              <AlertDialogDescription>
+                {confirmDialog.financiera?.isActive 
+                  ? `¿Estás seguro de que deseas desactivar "${confirmDialog.financiera?.name}"? Esta acción hará que la financiera no esté disponible para nuevos créditos.`
+                  : `¿Estás seguro de que deseas activar "${confirmDialog.financiera?.name}"? Esta acción hará que la financiera esté disponible para nuevos créditos.`
+                }
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel onClick={() => setConfirmDialog({ show: false })}>
+                Cancelar
+              </AlertDialogCancel>
+              <AlertDialogAction
+                onClick={() => confirmDialog.financiera && handleToggleStatus(confirmDialog.financiera)}
+                className={confirmDialog.financiera?.isActive 
+                  ? 'bg-amber-600 hover:bg-amber-700 focus:ring-amber-600 text-white' 
+                  : 'bg-emerald-600 hover:bg-emerald-700 focus:ring-emerald-600 text-white'
+                }
+              >
+                {confirmDialog.financiera?.isActive ? 'Desactivar' : 'Activar'}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+      )}
+
+      {/* Delete Confirmation Dialog */}
+      {deleteDialog.show && (
+        <AlertDialog open={deleteDialog.show} onOpenChange={(open) => !open && setDeleteDialog({ show: false })}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle className="text-red-600 flex items-center">
+                <Trash2 className="w-5 h-5 mr-2 text-red-600" />
+                Eliminar Financiera
+              </AlertDialogTitle>
+              <AlertDialogDescription>
+                ¿Estás seguro de que deseas eliminar permanentemente a <strong>"{deleteDialog.financiera?.name}"</strong>?
+                <br /><br />
+                Esta acción es irreversible y eliminará también los productos vinculados a esta financiera en el sistema.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel onClick={() => setDeleteDialog({ show: false })}>
+                Cancelar
+              </AlertDialogCancel>
+              <AlertDialogAction
+                onClick={() => deleteDialog.financiera && deleteMutation.mutate(deleteDialog.financiera.id)}
+                className="bg-red-600 hover:bg-red-700 focus:ring-red-600 text-white"
+                disabled={deleteMutation.isPending}
+              >
+                {deleteMutation.isPending ? "Eliminando..." : "Eliminar Permanentemente"}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+      )}
+    </MainLayout>
+  );
+}
