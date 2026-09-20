@@ -665,34 +665,34 @@ export default function CreditList() {
                       data-testid={`item-${item.id}`}
                     >
                       {/* 1. Cliente / Expediente */}
-                      <td className="py-2.5 px-4">
-                        <div className="flex flex-col min-w-0 max-w-[220px]">
+                      <td className="py-3 px-4">
+                        <div className="flex flex-col min-w-0">
                           <span 
-                            className="text-sm font-semibold text-slate-900 truncate group-hover:text-primary transition-colors" 
+                            className="text-sm font-semibold text-slate-900 group-hover:text-primary transition-colors" 
                             data-testid={`item-client-${item.id}`}
                             title={getClientName(item.clientId)}
                           >
                             {getClientName(item.clientId)}
                           </span>
-                          <span className="text-[11px] text-slate-500 font-mono truncate">
+                          <span className="text-[11px] text-slate-500">
                             {getClientSubtitle(item.clientId)}
                           </span>
                         </div>
                       </td>
 
                       {/* 2. Producto / Vertical */}
-                      <td className="py-2.5 px-4">
+                      <td className="py-3 px-4">
                         {isMortgage ? (
                           <span 
                             data-testid={`badge-mortgage-${item.id}`} 
-                            className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded text-xs font-medium bg-amber-50 text-amber-900 border border-amber-200/80"
+                            className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded text-xs font-medium bg-amber-50 text-amber-900 border border-amber-200/80 whitespace-nowrap"
                           >
                             <Home className="w-3.5 h-3.5 text-amber-700 shrink-0" />
-                            <span className="truncate">Hipotecario Vivienda</span>
+                            <span>Hipotecario Vivienda</span>
                           </span>
                         ) : (
-                          <div className="flex flex-col max-w-[180px]">
-                            <span className="text-xs font-medium text-slate-800 truncate" title={item.productTemplateName || 'Crédito Simple'}>
+                          <div className="flex flex-col">
+                            <span className="text-xs font-medium text-slate-800" title={item.productTemplateName || 'Crédito Simple'}>
                               {item.productTemplateName || 'Crédito Simple'}
                             </span>
                             {item.term ? (
@@ -705,14 +705,14 @@ export default function CreditList() {
                       </td>
 
                       {/* 3. Monto */}
-                      <td className="py-2.5 px-4 text-right">
-                        <div className="flex flex-col items-end tabular-nums">
-                          <span className="text-sm font-semibold text-slate-900 font-mono whitespace-nowrap">
-                            ${parseFloat(item.amount || '0').toLocaleString('es-MX', { minimumFractionDigits: 0, maximumFractionDigits: 0 })} MXN
+                      <td className="py-3 px-4 text-right">
+                        <div className="flex flex-col items-end whitespace-nowrap">
+                          <span className="text-sm font-semibold text-slate-900 tabular-nums">
+                            ${parseFloat(item.amount || '0').toLocaleString('es-MX')} MXN
                           </span>
                           {item.totalApprovedAmount && item.totalApprovedAmount > 0 ? (
-                            <span className="text-[11px] text-emerald-700 font-medium whitespace-nowrap">
-                              Aprobado: ${item.totalApprovedAmount.toLocaleString('es-MX', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+                            <span className="text-[11px] text-emerald-700 font-medium tabular-nums">
+                              Aprobado: ${item.totalApprovedAmount.toLocaleString('es-MX')}
                             </span>
                           ) : (
                             <span className="text-[11px] text-slate-400">Solicitado</span>
