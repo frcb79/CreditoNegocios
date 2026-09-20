@@ -277,8 +277,7 @@ export default function ClientList({ onSelectClient, onNewClient }: ClientListPr
             data-testid="button-new-client"
           >
             <Plus className="w-3.5 h-3.5 mr-1.5" />
-            <span>+ Nuevo Cliente / Prospecto</span>
-            <span className="sr-only">Nuevo Cliente</span>
+            <span>Nuevo Cliente</span>
           </Button>
         </div>
       </div>
