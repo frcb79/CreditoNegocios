@@ -1,93 +1,87 @@
-import { Card, CardContent } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
 
-const quickActions = [
+const upcomingFeatures = [
   {
     title: "Calculadora de Créditos",
-    description: "Simula diferentes escenarios para tus clientes",
+    description: "Simulación de escenarios de financiamiento, CAT y amortización para prospectos.",
     icon: "fas fa-calculator",
-    iconColor: "text-primary",
-    bgColor: "bg-primary/10",
-    action: "Abrir calculadora →",
-    actionColor: "text-primary",
-    featureName: "Calculadora de Créditos",
+    iconColor: "text-blue-600 dark:text-blue-400",
+    bgColor: "bg-blue-500/10",
   },
   {
-    title: "Escáner OCR",
-    description: "Extrae información de documentos automáticamente",
-    icon: "fas fa-scan",
-    iconColor: "text-success",
-    bgColor: "bg-success/10",
-    action: "Escanear documento →",
-    actionColor: "text-success",
-    featureName: "Escáner OCR de documentos",
+    title: "Escáner OCR de Expedientes",
+    description: "Extracción automática de datos desde constancias de situación fiscal y estados de cuenta.",
+    icon: "fas fa-file-invoice",
+    iconColor: "text-emerald-600 dark:text-emerald-400",
+    bgColor: "bg-emerald-500/10",
   },
   {
     title: "Portal del Cliente",
-    description: "Comparte links seguros para actualización de datos",
-    icon: "fas fa-share-alt",
-    iconColor: "text-accent",
-    bgColor: "bg-accent/10",
-    action: "Generar link →",
-    actionColor: "text-accent",
-    featureName: "Portal Autónomo de Clientes",
+    description: "Espacio de autogestión remota y carga documental directa para solicitantes.",
+    icon: "fas fa-user-shield",
+    iconColor: "text-indigo-600 dark:text-indigo-400",
+    bgColor: "bg-indigo-500/10",
   },
   {
     title: "Adelanto de Comisión",
-    description: "Solicita adelantos sobre comisiones futuras",
+    description: "Dispersión anticipada de comisiones operadas sobre créditos aprobados.",
     icon: "fas fa-bolt",
-    iconColor: "text-warning",
-    bgColor: "bg-warning/10",
-    action: "Solicitar adelanto →",
-    actionColor: "text-warning",
-    featureName: "Adelanto de Comisiones",
+    iconColor: "text-amber-600 dark:text-amber-400",
+    bgColor: "bg-amber-500/10",
   },
 ];
 
 export default function QuickActionsGrid() {
-  const handleFeatureClick = (featureName: string) => {
-    alert(`⏳ Próximamente\n\nLa función "${featureName}" estará disponible muy pronto. Estamos finalizando los detalles para ofrecerte la mejor experiencia.`);
-  };
-
   return (
-    <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6">
-      {quickActions.map((action, index) => (
-        <Card 
-          key={index}
-          className="border border-border hover:shadow-md hover:border-primary/30 transition-all cursor-pointer relative overflow-hidden"
-          onClick={() => handleFeatureClick(action.featureName)}
-          data-testid={`quick-action-${index}`}
-        >
-          <CardContent className="p-6">
-            <div className="flex justify-between items-start mb-4">
-              <div className={`w-12 h-12 ${action.bgColor} rounded-lg flex items-center justify-center`}>
-                <i className={`${action.icon} ${action.iconColor} text-lg`}></i>
-              </div>
-              <span className="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 bg-muted text-muted-foreground border border-border rounded-full">
-                Próximamente
-              </span>
-            </div>
-            <h3 className="font-semibold text-foreground mb-2" data-testid={`action-title-${index}`}>
-              {action.title}
-            </h3>
-            <p className="text-sm text-muted-foreground mb-4" data-testid={`action-description-${index}`}>
-              {action.description}
-            </p>
-            <Button 
-              variant="ghost"
-              className={`${action.actionColor} font-medium text-sm hover:bg-transparent hover:underline p-0 h-auto`}
-              data-testid={`action-button-${index}`}
-              onClick={(e) => {
-                e.stopPropagation();
-                handleFeatureClick(action.featureName);
-              }}
+    <Card className="border border-border/70 bg-card/60 shadow-2xs" data-testid="upcoming-features-card">
+      <CardHeader className="p-4 pb-2 border-b border-border/40">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center space-x-2">
+            <CardTitle className="text-sm font-semibold text-foreground tracking-tight">
+              Lo que viene en Crédito Negocios
+            </CardTitle>
+            <span className="text-[11px] text-muted-foreground">
+              (Evolución del producto y próximas herramientas operativas)
+            </span>
+          </div>
+          <Badge variant="outline" className="text-[10px] text-muted-foreground border-border/60 font-normal">
+            Hoja de ruta
+          </Badge>
+        </div>
+      </CardHeader>
+
+      <CardContent className="p-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+          {upcomingFeatures.map((feature, index) => (
+            <div
+              key={index}
+              className="border border-border/50 rounded-md p-3 bg-muted/15 flex flex-col justify-between"
+              data-testid={`quick-action-${index}`}
             >
-              {action.action}
-            </Button>
-          </CardContent>
-        </Card>
-      ))}
-    </div>
+              <div>
+                <div className="flex items-center justify-between gap-2 mb-2">
+                  <div className={`w-7 h-7 rounded flex items-center justify-center flex-shrink-0 ${feature.bgColor}`}>
+                    <i className={`${feature.icon} ${feature.iconColor} text-xs`}></i>
+                  </div>
+                  <Badge
+                    variant="outline"
+                    className="text-[9px] uppercase tracking-wider font-medium text-muted-foreground border-border/60 bg-muted/40 px-1.5 py-0"
+                  >
+                    Próximamente
+                  </Badge>
+                </div>
+                <h4 className="text-xs font-semibold text-foreground mb-1" data-testid={`action-title-${index}`}>
+                  {feature.title}
+                </h4>
+                <p className="text-[11px] text-muted-foreground leading-relaxed" data-testid={`action-description-${index}`}>
+                  {feature.description}
+                </p>
+              </div>
+            </div>
+          ))}
+        </div>
+      </CardContent>
+    </Card>
   );
 }
-
