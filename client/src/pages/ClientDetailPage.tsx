@@ -53,6 +53,7 @@ import NewOpportunityTypeModal from "@/components/Modals/NewOpportunityTypeModal
 import MortgageLeadModal from "@/components/Modals/MortgageLeadModal";
 import DocumentUpload from "@/components/Documents/DocumentUpload";
 import { targetStatusConfig, getSubmissionStatusSummary } from "@/lib/statusConfig";
+import { cn } from "@/lib/utils";
 
 const vigenteFormSchema = z.object({
   tipo: z.string().min(1, "El tipo de crédito es requerido"),
@@ -210,13 +211,17 @@ export default function ClientDetailPage() {
       <MainLayout>
         <Header 
           title="Cliente no encontrado"
-          subtitle="El cliente especificado no existe"
+          subtitle="El cliente especificado no existe o la ruta es inválida"
         />
-        <main className="flex-1 p-8">
-          <div className="text-center">
-            <p className="text-muted-foreground mb-4">No se encontró el cliente</p>
-            <Button onClick={handleGoBack}>
-              <ArrowLeft className="h-4 w-4 mr-2" />
+        <main className="flex-1 p-4 sm:p-6 lg:p-8 overflow-y-auto">
+          <div className="max-w-xl mx-auto bg-white border border-slate-200/80 rounded-xl p-8 text-center shadow-xs">
+            <div className="w-12 h-12 rounded-full bg-slate-100 flex items-center justify-center mx-auto mb-3 text-slate-400">
+              <User className="h-6 w-6" />
+            </div>
+            <h3 className="text-base font-semibold text-slate-900 mb-1">Cliente no encontrado</h3>
+            <p className="text-xs text-slate-500 mb-5">El identificador de cliente no corresponde a ningún registro activo.</p>
+            <Button onClick={handleGoBack} variant="outline" className="text-xs h-8 border-slate-200">
+              <ArrowLeft className="h-3.5 w-3.5 mr-1.5" />
               Volver a Clientes
             </Button>
           </div>
@@ -232,17 +237,23 @@ export default function ClientDetailPage() {
           title="Cargando..."
           subtitle="Obteniendo información del cliente"
         />
-        <main className="flex-1 p-8">
+        <main className="flex-1 p-4 sm:p-6 lg:p-8 overflow-y-auto">
           <div className="space-y-6">
-            <div className="flex items-center justify-between">
-              <Skeleton className="h-8 w-64" />
-              <Skeleton className="h-8 w-8" />
+            <div className="bg-white border border-slate-200/80 rounded-xl p-6 shadow-xs flex items-center justify-between">
+              <div className="flex items-center space-x-4">
+                <Skeleton className="h-14 w-14 rounded-xl" />
+                <div className="space-y-2">
+                  <Skeleton className="h-6 w-56" />
+                  <Skeleton className="h-4 w-32" />
+                </div>
+              </div>
+              <Skeleton className="h-8 w-24" />
             </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <Skeleton className="h-48" />
-              <Skeleton className="h-48" />
-              <Skeleton className="h-48" />
-              <Skeleton className="h-48" />
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+              <Skeleton className="h-64 rounded-xl" />
+              <Skeleton className="h-64 rounded-xl" />
+              <Skeleton className="h-64 rounded-xl" />
+              <Skeleton className="h-64 rounded-xl" />
             </div>
           </div>
         </main>
@@ -255,13 +266,17 @@ export default function ClientDetailPage() {
       <MainLayout>
         <Header 
           title="Cliente no encontrado"
-          subtitle="El cliente especificado no existe"
+          subtitle="El cliente especificado no existe o fue dado de baja"
         />
-        <main className="flex-1 p-8">
-          <div className="text-center">
-            <p className="text-muted-foreground mb-4">No se encontró el cliente</p>
-            <Button onClick={handleGoBack}>
-              <ArrowLeft className="h-4 w-4 mr-2" />
+        <main className="flex-1 p-4 sm:p-6 lg:p-8 overflow-y-auto">
+          <div className="max-w-xl mx-auto bg-white border border-slate-200/80 rounded-xl p-8 text-center shadow-xs">
+            <div className="w-12 h-12 rounded-full bg-slate-100 flex items-center justify-center mx-auto mb-3 text-slate-400">
+              <User className="h-6 w-6" />
+            </div>
+            <h3 className="text-base font-semibold text-slate-900 mb-1">Cliente no encontrado</h3>
+            <p className="text-xs text-slate-500 mb-5">El cliente no existe o no se tienen permisos para visualizarlo.</p>
+            <Button onClick={handleGoBack} variant="outline" className="text-xs h-8 border-slate-200">
+              <ArrowLeft className="h-3.5 w-3.5 mr-1.5" />
               Volver a Clientes
             </Button>
           </div>
@@ -275,759 +290,815 @@ export default function ClientDetailPage() {
     ? client.businessName?.slice(0, 2).toUpperCase()
     : `${client.firstName?.[0]}${client.lastName?.[0]}`;
 
-  const getClientTypeLabel = (type: string) => {
-    const types = {
-      'persona_moral': 'PM',
-      'fisica_empresarial': 'PFAE',
-      'fisica': 'PF',
-      'sin_sat': 'Sin SAT'
-    };
-    return types[type as keyof typeof types] || type;
+  const getClientTypeBadge = (type: string) => {
+    switch (type) {
+      case 'persona_moral':
+        return {
+          label: 'PM',
+          title: 'Persona Moral',
+          badgeClass: 'bg-blue-50 text-blue-700 border-blue-200/80',
+          dotClass: 'bg-blue-500'
+        };
+      case 'fisica_empresarial':
+        return {
+          label: 'PFAE',
+          title: 'Persona Física con Actividad Empresarial',
+          badgeClass: 'bg-purple-50 text-purple-700 border-purple-200/80',
+          dotClass: 'bg-purple-500'
+        };
+      case 'fisica':
+        return {
+          label: 'PF',
+          title: 'Persona Física',
+          badgeClass: 'bg-emerald-50 text-emerald-700 border-emerald-200/80',
+          dotClass: 'bg-emerald-500'
+        };
+      default:
+        return {
+          label: 'Sin SAT',
+          title: 'Sin registro SAT',
+          badgeClass: 'bg-slate-50 text-slate-700 border-slate-200/80',
+          dotClass: 'bg-slate-400'
+        };
+    }
   };
 
-  const getClientTypeColor = (type: string) => {
-    const colors = {
-      'persona_moral': 'bg-blue-100 text-blue-800',
-      'fisica_empresarial': 'bg-purple-100 text-purple-800',
-      'fisica': 'bg-green-100 text-green-800',
-      'sin_sat': 'bg-orange-100 text-orange-800'
-    };
-    return colors[type as keyof typeof colors] || 'bg-gray-100 text-gray-800';
-  };
+  const typeBadgeInfo = getClientTypeBadge(client.type);
 
   return (
     <MainLayout>
       <Header 
         title={clientName || "Cliente"}
-        subtitle={`RFC: ${client.rfc}`}
-      />
+        subtitle={`Expediente comercial • RFC: ${client.rfc || 'No registrado'}`}
+      >
+        <div className="flex items-center space-x-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleGoBack}
+            className="h-8 text-xs font-medium text-slate-600 border-slate-200 hover:bg-slate-50"
+            data-testid="button-back-to-clients"
+          >
+            <ArrowLeft className="h-3.5 w-3.5 mr-1.5" />
+            Volver
+          </Button>
+          <Button 
+            onClick={() => handleEditClient(client)}
+            variant="outline"
+            size="sm"
+            className="h-8 text-xs font-medium border-slate-200 hover:bg-slate-50"
+            data-testid="button-edit-client"
+          >
+            <FileText className="h-3.5 w-3.5 mr-1.5 text-slate-500" />
+            Editar
+          </Button>
+          <Button 
+            size="sm"
+            className="h-8 text-xs font-medium bg-primary hover:bg-primary-dark text-white shadow-xs"
+            onClick={() => setShowOpportunityTypeModal(true)}
+            data-testid="button-new-credit"
+          >
+            <Plus className="h-3.5 w-3.5 mr-1.5" />
+            Nueva Oportunidad
+          </Button>
+        </div>
+      </Header>
         
-        <main className="flex-1 overflow-y-auto">
-          <div className="bg-gray-50">
-            {/* Header */}
-            <div className="bg-white border-b border-gray-200 p-6">
-              <div className="flex items-start justify-between mb-4">
-                <div className="flex items-center space-x-4">
-                  <div className={`w-16 h-16 rounded-xl flex items-center justify-center shadow-lg ${
-                    client.type === 'persona_moral' ? 'bg-blue-100 text-blue-700' :
-                    client.type === 'fisica_empresarial' ? 'bg-purple-100 text-purple-700' :
-                    client.type === 'fisica' ? 'bg-green-100 text-green-700' :
-                    'bg-orange-100 text-orange-700'
-                  }`}>
-                    <span className="font-bold text-xl" data-testid="client-initials">
-                      {initials}
-                    </span>
-                  </div>
-                  <div>
-                    <div className="flex items-center space-x-3">
-                      <h2 className="text-2xl font-bold text-gray-900" data-testid="client-name">
-                        {clientName}
-                      </h2>
-                      <Badge className={getClientTypeColor(client.type)} data-testid="client-type-badge">
-                        {getClientTypeLabel(client.type)}
-                      </Badge>
-                      {client.originOpportunity === 'hipotecario_vivienda' && (
-                        <Badge variant="outline" className="bg-amber-50 text-amber-800 border-amber-300 flex items-center gap-1 text-xs" data-testid="client-origin-badge">
-                          <span>🏠</span> Origen: Hipotecario Vivienda
-                        </Badge>
-                      )}
-                      {client.originOpportunity === 'credito_empresarial' && (
-                        <Badge variant="outline" className="bg-blue-50 text-blue-800 border-blue-200 flex items-center gap-1 text-xs" data-testid="client-origin-badge">
-                          <span>🏢</span> Origen: Crédito Empresarial
-                        </Badge>
-                      )}
-                      <Badge 
-                        variant={client.isActive ? "default" : "secondary"}
-                        className={client.isActive ? "bg-green-100 text-green-800" : ""}
-                        data-testid="client-status"
-                      >
-                        {client.isActive ? "Activo" : "Inactivo"}
-                      </Badge>
-                    </div>
-                    <p className="text-neutral mt-1" data-testid="client-rfc">
-                      RFC: {client.rfc}
-                    </p>
-                  </div>
-                </div>
-                <Button
-                  variant="outline"
-                  onClick={handleGoBack}
-                  data-testid="button-back-to-clients"
-                >
-                  <ArrowLeft className="h-4 w-4 mr-2" />
-                  Volver
-                </Button>
+      <main className="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8 space-y-6">
+        {/* Institutional Profile Header Card */}
+        <div className="bg-white border border-slate-200/80 rounded-xl p-5 shadow-xs">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div className="flex items-center space-x-4">
+              <div className="w-13 h-13 rounded-xl bg-slate-100 border border-slate-200 flex items-center justify-center text-slate-700 font-bold text-lg shadow-xs flex-shrink-0">
+                <span data-testid="client-initials">{initials}</span>
               </div>
+              <div className="min-w-0">
+                <div className="flex flex-wrap items-center gap-2 mb-1">
+                  <h2 className="text-xl font-bold text-slate-900 truncate" data-testid="client-name">
+                    {clientName}
+                  </h2>
+                  <span
+                    className={cn(
+                      "inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium border gap-1.5",
+                      typeBadgeInfo.badgeClass
+                    )}
+                    title={typeBadgeInfo.title}
+                    data-testid="client-type-badge"
+                  >
+                    <span className={cn("w-1.5 h-1.5 rounded-full", typeBadgeInfo.dotClass)} />
+                    {typeBadgeInfo.label}
+                  </span>
 
-              {/* Action Buttons */}
-              <div className="flex space-x-3">
-                <Button 
-                  onClick={() => handleEditClient(client)}
-                  className="bg-primary text-white hover:bg-primary/90"
-                  data-testid="button-edit-client"
-                >
-                  <FileText className="h-4 w-4 mr-2" />
-                  Editar Información
-                </Button>
-                <Button 
-                  className="bg-green-600 text-white hover:bg-green-700"
-                  onClick={() => setShowOpportunityTypeModal(true)}
-                  data-testid="button-new-credit"
-                >
-                  <CreditCard className="h-4 w-4 mr-2" />
-                  Nueva Oportunidad
-                </Button>
-                <Button 
-                  variant="outline"
-                  onClick={() => {
-                    toast({
-                      title: "Próximamente",
-                      description: "Esta funcionalidad estará disponible pronto.",
-                    });
-                  }}
-                  data-testid="button-generate-quote"
-                >
-                  <DollarSign className="h-4 w-4 mr-2" />
-                  Generar Cotización
-                </Button>
+                  {client.originOpportunity === 'hipotecario_vivienda' && (
+                    <span className="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-amber-50 text-amber-800 border border-amber-200/80 gap-1" data-testid="client-origin-badge">
+                      <span className="text-[11px]">🏠</span> Hipotecario Vivienda
+                    </span>
+                  )}
+                  {client.originOpportunity === 'credito_empresarial' && (
+                    <span className="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-blue-50 text-blue-800 border border-blue-200/80 gap-1" data-testid="client-origin-badge">
+                      <span className="text-[11px]">🏢</span> Crédito Empresarial
+                    </span>
+                  )}
+                  <span 
+                    className={cn(
+                      "inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium border gap-1",
+                      client.isActive 
+                        ? "bg-emerald-50 text-emerald-700 border-emerald-200/80" 
+                        : "bg-slate-50 text-slate-600 border-slate-200/80"
+                    )}
+                    data-testid="client-status"
+                  >
+                    <span className={cn("w-1.5 h-1.5 rounded-full", client.isActive ? "bg-emerald-500" : "bg-slate-400")} />
+                    {client.isActive ? "Activo" : "Inactivo"}
+                  </span>
+                </div>
+                <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-500">
+                  <span className="font-mono text-slate-700" data-testid="client-rfc">
+                    RFC: {client.rfc}
+                  </span>
+                  {client.phone && (
+                    <span className="flex items-center gap-1">
+                      <Phone className="w-3 h-3 text-slate-400" />
+                      {client.phone}
+                    </span>
+                  )}
+                  {client.email && (
+                    <span className="flex items-center gap-1 truncate max-w-[250px]">
+                      <Mail className="w-3 h-3 text-slate-400" />
+                      {client.email}
+                    </span>
+                  )}
+                </div>
               </div>
             </div>
 
-            {/* Dashboard Cards */}
-            <div className="p-6 space-y-6">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                {/* Información General */}
-                <Card className="border border-gray-200">
-                  <CardHeader className="pb-3">
-                    <CardTitle className="text-lg flex items-center justify-between">
-                      <span className="flex items-center">
-                        {client.type === 'persona_moral' ? <Building2 className="h-5 w-5 mr-2" /> : <User className="h-5 w-5 mr-2" />}
-                        Información General
+            {/* Quick action: Generar cotización (mantener compatibilidad) */}
+            <div className="flex items-center gap-2 self-end sm:self-center">
+              <Button 
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  toast({
+                    title: "Próximamente",
+                    description: "Esta funcionalidad estará disponible pronto.",
+                  });
+                }}
+                className="h-8 text-xs font-medium text-slate-600 border-slate-200 hover:bg-slate-50"
+                data-testid="button-generate-quote"
+              >
+                <DollarSign className="h-3.5 w-3.5 mr-1 text-slate-400" />
+                Cotización
+              </Button>
+            </div>
+          </div>
+        </div>
+
+        {/* Dashboard Cards Grid */}
+        <div className="space-y-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+            {/* 1. Información General */}
+            <Card className="border border-slate-200/80 shadow-xs bg-white rounded-xl">
+              <CardHeader className="p-4 sm:p-5 pb-3 border-b border-slate-100 flex flex-row items-center justify-between space-y-0">
+                <CardTitle className="text-sm font-semibold text-slate-900 flex items-center gap-2">
+                  {client.type === 'persona_moral' ? <Building2 className="h-4 w-4 text-primary" /> : <User className="h-4 w-4 text-primary" />}
+                  <span>Información General</span>
+                </CardTitle>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setShowInfoModal(true)}
+                  data-testid="button-view-more-info"
+                  className="h-7 px-2.5 text-xs font-medium text-primary hover:text-primary-dark hover:bg-primary/5"
+                >
+                  <Eye className="h-3.5 w-3.5 mr-1" />
+                  Ver más
+                </Button>
+              </CardHeader>
+              <CardContent className="p-4 sm:p-5 pt-3 space-y-2.5">
+                {client.type === 'persona_moral' ? (
+                  <>
+                    <div className="flex items-start justify-between py-1.5 border-b border-slate-100/80 text-xs">
+                      <span className="text-slate-500 font-medium">Razón Social</span>
+                      <span className="font-semibold text-slate-800 text-right">{client.businessName}</span>
+                    </div>
+                    <div className="flex items-start justify-between py-1.5 border-b border-slate-100/80 text-xs">
+                      <span className="text-slate-500 font-medium">Industria</span>
+                      <span className="font-medium text-slate-800 text-right">{client.industry || 'No especificada'}</span>
+                    </div>
+                    <div className="flex items-start justify-between py-1.5 border-b border-slate-100/80 text-xs">
+                      <span className="text-slate-500 font-medium">Años en operación</span>
+                      <span className="font-medium text-slate-800">{client.yearsInBusiness || 0} años</span>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <div className="flex items-start justify-between py-1.5 border-b border-slate-100/80 text-xs">
+                      <span className="text-slate-500 font-medium">Nombre completo</span>
+                      <span className="font-semibold text-slate-800 text-right">{client.firstName} {client.lastName}</span>
+                    </div>
+                    <div className="flex items-start justify-between py-1.5 border-b border-slate-100/80 text-xs">
+                      <span className="text-slate-500 font-medium">CURP</span>
+                      <span className="font-mono text-slate-800">{client.curp || 'No proporcionada'}</span>
+                    </div>
+                    {(client.type === 'fisica_empresarial' || client.type === 'fisica' || client.type === 'sin_sat') && (
+                      <div className="flex items-start justify-between py-1.5 border-b border-slate-100/80 text-xs">
+                        <span className="text-slate-500 font-medium">Estado Civil</span>
+                        <span className="font-medium text-slate-800 text-right">{client.estadoCivil || 'No especificado'}</span>
+                      </div>
+                    )}
+                  </>
+                )}
+                <div className="flex items-start justify-between py-1.5 border-b border-slate-100/80 text-xs">
+                  <span className="text-slate-500 font-medium">RFC</span>
+                  <span className="font-mono font-medium text-slate-800">{client.rfc}</span>
+                </div>
+                <div className="flex items-center justify-between py-1.5 border-b border-slate-100/80 text-xs">
+                  <span className="text-slate-500 font-medium flex items-center gap-1.5">
+                    <Phone className="h-3.5 w-3.5 text-slate-400" />
+                    Teléfono
+                  </span>
+                  <span className="font-medium text-slate-800">{client.phone || 'No proporcionado'}</span>
+                </div>
+                <div className="flex items-center justify-between py-1.5 text-xs">
+                  <span className="text-slate-500 font-medium flex items-center gap-1.5">
+                    <Mail className="h-3.5 w-3.5 text-slate-400" />
+                    Email
+                  </span>
+                  <span className="font-medium text-slate-800 text-right break-all">{client.email || 'No proporcionado'}</span>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* 2. Perfil Financiero */}
+            <Card className="border border-slate-200/80 shadow-xs bg-white rounded-xl">
+              <CardHeader className="p-4 sm:p-5 pb-3 border-b border-slate-100 flex flex-row items-center justify-between space-y-0">
+                <CardTitle className="text-sm font-semibold text-slate-900 flex items-center gap-2">
+                  <TrendingUp className="h-4 w-4 text-emerald-600" />
+                  <span>Perfil Financiero</span>
+                </CardTitle>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setShowFinancialModal(true)}
+                  data-testid="button-view-more-financial"
+                  className="h-7 px-2.5 text-xs font-medium text-primary hover:text-primary-dark hover:bg-primary/5"
+                >
+                  <Eye className="h-3.5 w-3.5 mr-1" />
+                  Ver más
+                </Button>
+              </CardHeader>
+              <CardContent className="p-4 sm:p-5 pt-3 space-y-2.5">
+                {client.type === 'persona_moral' && (
+                  <>
+                    <div className="flex items-start justify-between py-1.5 border-b border-slate-100/80 text-xs">
+                      <span className="text-slate-500 font-medium">Ingresos anuales</span>
+                      <span className="font-semibold text-slate-900">
+                        {client.ingresoAnual ? `$${parseFloat(client.ingresoAnual || '0').toLocaleString('es-MX', { maximumFractionDigits: 0 })} MXN` : 'No especificado'}
                       </span>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => setShowInfoModal(true)}
-                        data-testid="button-view-more-info"
-                        className="text-blue-500 hover:text-blue-700"
-                      >
-                        <Eye className="h-4 w-4 mr-1" />
-                        Ver más
-                      </Button>
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent className="space-y-3">
-                    {client.type === 'persona_moral' ? (
-                      <>
-                        <div className="flex items-start justify-between py-2 border-b border-gray-100">
-                          <span className="text-sm text-neutral">Razón Social</span>
-                          <span className="text-sm font-medium text-right">{client.businessName}</span>
-                        </div>
-                        <div className="flex items-start justify-between py-2 border-b border-gray-100">
-                          <span className="text-sm text-neutral">Industria</span>
-                          <span className="text-sm font-medium text-right">{client.industry || 'No especificada'}</span>
-                        </div>
-                        <div className="flex items-start justify-between py-2 border-b border-gray-100">
-                          <span className="text-sm text-neutral">Años en operación</span>
-                          <span className="text-sm font-medium">{client.yearsInBusiness || 0} años</span>
-                        </div>
-                      </>
-                    ) : (
-                      <>
-                        <div className="flex items-start justify-between py-2 border-b border-gray-100">
-                          <span className="text-sm text-neutral">Nombre completo</span>
-                          <span className="text-sm font-medium text-right">{client.firstName} {client.lastName}</span>
-                        </div>
-                        <div className="flex items-start justify-between py-2 border-b border-gray-100">
-                          <span className="text-sm text-neutral">CURP</span>
-                          <span className="text-sm font-medium">{client.curp || 'No proporcionada'}</span>
-                        </div>
-                        {(client.type === 'fisica_empresarial' || client.type === 'fisica' || client.type === 'sin_sat') && (
-                          <div className="flex items-start justify-between py-2 border-b border-gray-100">
-                            <span className="text-sm text-neutral">Estado Civil</span>
-                            <span className="text-sm font-medium text-right">{client.estadoCivil || 'No especificado'}</span>
+                    </div>
+                    <div className="flex items-start justify-between py-1.5 border-b border-slate-100/80 text-xs">
+                      <span className="text-slate-500 font-medium">Egresos mensuales</span>
+                      <span className="font-medium text-slate-800">
+                        {client.egresoMensualPromedio ? `$${parseFloat(client.egresoMensualPromedio || '0').toLocaleString('es-MX', { maximumFractionDigits: 0 })} MXN` : 'No especificado'}
+                      </span>
+                    </div>
+                    <div className="flex items-start justify-between py-1.5 border-b border-slate-100/80 text-xs">
+                      <span className="text-slate-500 font-medium">Ventas gobierno</span>
+                      <span className="font-medium text-slate-800 text-right">{formatDisplayValue(client.participacionVentasGobierno)}</span>
+                    </div>
+                    <div className="flex items-start justify-between py-1.5 border-b border-slate-100/80 text-xs">
+                      <span className="text-slate-500 font-medium">Buró accionista principal</span>
+                      <span className="font-medium text-slate-800 text-right">{formatDisplayValue(client.buroAccionistaPrincipal)}</span>
+                    </div>
+                    <div className="flex items-start justify-between py-1.5 border-b border-slate-100/80 text-xs">
+                      <span className="text-slate-500 font-medium">Buró empresa</span>
+                      <span className="font-medium text-slate-800 text-right">{formatDisplayValue(client.buroEmpresa)}</span>
+                    </div>
+                    <div className="flex items-start justify-between py-1.5 text-xs">
+                      <span className="text-slate-500 font-medium">Sector económico</span>
+                      <span className="font-medium text-slate-800 text-right">{formatDisplayValue(client.sectoreEconomico)}</span>
+                    </div>
+                  </>
+                )}
+                {(client.type === 'fisica_empresarial' || client.type === 'fisica') && (
+                  <>
+                    <div className="flex items-start justify-between py-1.5 border-b border-slate-100/80 text-xs">
+                      <span className="text-slate-500 font-medium">Puesto</span>
+                      <span className="font-medium text-slate-800 text-right">{formatDisplayValue(client.puesto)}</span>
+                    </div>
+                    <div className="flex items-start justify-between py-1.5 border-b border-slate-100/80 text-xs">
+                      <span className="text-slate-500 font-medium">Antigüedad laboral</span>
+                      <span className="font-medium text-slate-800 text-right">{formatDisplayValue(client.antiguedadLaboral)}</span>
+                    </div>
+                    <div className="flex items-start justify-between py-1.5 border-b border-slate-100/80 text-xs">
+                      <span className="text-slate-500 font-medium">Ingresos comprobables</span>
+                      <span className="font-semibold text-slate-900">
+                        {client.ingresoMensualPromedioComprobables ? `$${parseFloat(client.ingresoMensualPromedioComprobables || '0').toLocaleString('es-MX', { maximumFractionDigits: 0 })} MXN` : 'No especificado'}
+                      </span>
+                    </div>
+                    <div className="flex items-start justify-between py-1.5 border-b border-slate-100/80 text-xs">
+                      <span className="text-slate-500 font-medium">Ingresos no comprobables</span>
+                      <span className="font-medium text-slate-800">
+                        {client.ingresoMensualPromedioNoComprobables ? `$${parseFloat(client.ingresoMensualPromedioNoComprobables || '0').toLocaleString('es-MX', { maximumFractionDigits: 0 })} MXN` : 'No especificado'}
+                      </span>
+                    </div>
+                    <div className="flex items-start justify-between py-1.5 border-b border-slate-100/80 text-xs">
+                      <span className="text-slate-500 font-medium">Gastos fijos mensuales</span>
+                      <span className="font-medium text-slate-800">
+                        {client.gastosFijosMensualesPromedio ? `$${parseFloat(client.gastosFijosMensualesPromedio || '0').toLocaleString('es-MX', { maximumFractionDigits: 0 })} MXN` : 'No especificado'}
+                      </span>
+                    </div>
+                    <div className="flex items-start justify-between py-1.5 text-xs">
+                      <span className="text-slate-500 font-medium">Buró persona física</span>
+                      <span className="font-medium text-slate-800 text-right">{formatDisplayValue(client.buroPersonaFisica)}</span>
+                    </div>
+                  </>
+                )}
+                {client.type === 'sin_sat' && (
+                  <>
+                    <div className="flex items-start justify-between py-1.5 border-b border-slate-100/80 text-xs">
+                      <span className="text-slate-500 font-medium">Nombre comercial</span>
+                      <span className="font-medium text-slate-800 text-right">{formatDisplayValue(client.nombreComercial)}</span>
+                    </div>
+                    <div className="flex items-start justify-between py-1.5 border-b border-slate-100/80 text-xs">
+                      <span className="text-slate-500 font-medium">Ocupación</span>
+                      <span className="font-medium text-slate-800 text-right">{formatDisplayValue(client.ocupacion)}</span>
+                    </div>
+                    <div className="flex items-start justify-between py-1.5 border-b border-slate-100/80 text-xs">
+                      <span className="text-slate-500 font-medium">Ingresos comprobables</span>
+                      <span className="font-semibold text-slate-900">
+                        {client.ingresoMensualPromedioComprobablesSinSat ? `$${parseFloat(client.ingresoMensualPromedioComprobablesSinSat || '0').toLocaleString('es-MX', { maximumFractionDigits: 0 })} MXN` : 'No especificado'}
+                      </span>
+                    </div>
+                    <div className="flex items-start justify-between py-1.5 border-b border-slate-100/80 text-xs">
+                      <span className="text-slate-500 font-medium">Ingresos no comprobables</span>
+                      <span className="font-medium text-slate-800">
+                        {client.ingresoMensualPromedioNoComprobablesSinSat ? `$${parseFloat(client.ingresoMensualPromedioNoComprobablesSinSat || '0').toLocaleString('es-MX', { maximumFractionDigits: 0 })} MXN` : 'No especificado'}
+                      </span>
+                    </div>
+                    <div className="flex items-start justify-between py-1.5 border-b border-slate-100/80 text-xs">
+                      <span className="text-slate-500 font-medium">Gastos fijos mensuales</span>
+                      <span className="font-medium text-slate-800">
+                        {client.gastosFijosMensualesPromedioSinSat ? `$${parseFloat(client.gastosFijosMensualesPromedioSinSat || '0').toLocaleString('es-MX', { maximumFractionDigits: 0 })} MXN` : 'No especificado'}
+                      </span>
+                    </div>
+                    <div className="flex items-start justify-between py-1.5 text-xs">
+                      <span className="text-slate-500 font-medium">Buró persona física</span>
+                      <span className="font-medium text-slate-800 text-right">{formatDisplayValue(client.buroPersonaFisicaSinSat)}</span>
+                    </div>
+                  </>
+                )}
+              </CardContent>
+            </Card>
+
+            {/* 3. Documentos Recientes */}
+            <Card className="border border-slate-200/80 shadow-xs bg-white rounded-xl">
+              <CardHeader className="p-4 sm:p-5 pb-3 border-b border-slate-100 flex flex-row items-center justify-between space-y-0">
+                <CardTitle className="text-sm font-semibold text-slate-900 flex items-center gap-2">
+                  <FileText className="h-4 w-4 text-blue-600" />
+                  <span>Bóveda Documental</span>
+                </CardTitle>
+                <div className="flex items-center gap-2">
+                  <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-slate-100 text-slate-700">
+                    {documents?.length || 0}
+                  </span>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setShowDocumentUploadModal(true)}
+                    data-testid="button-upload-document"
+                    className="h-7 px-2.5 text-xs font-medium text-slate-700 border-slate-200 hover:bg-slate-50"
+                  >
+                    <Plus className="h-3.5 w-3.5 mr-1 text-slate-500" />
+                    Subir
+                  </Button>
+                </div>
+              </CardHeader>
+              <CardContent className="p-4 sm:p-5">
+                {!documents || documents.length === 0 ? (
+                  <div className="text-center py-7 border border-dashed border-slate-200 rounded-lg">
+                    <FileText className="h-9 w-9 text-slate-300 mx-auto mb-2" />
+                    <p className="text-xs font-medium text-slate-700 mb-1">Sin documentos registrados</p>
+                    <p className="text-[11px] text-slate-400 mb-3">Sube los comprobantes fiscales o identificación</p>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setShowDocumentUploadModal(true)}
+                      data-testid="button-upload-first-document"
+                      className="h-7 text-xs border-slate-200"
+                    >
+                      <Plus className="h-3.5 w-3.5 mr-1" />
+                      Subir primer documento
+                    </Button>
+                  </div>
+                ) : (
+                  <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
+                    {documents.slice(0, 5).map((doc) => (
+                      <div key={doc.id} className="flex items-center justify-between p-2.5 bg-slate-50/80 border border-slate-100 rounded-lg gap-2 hover:bg-slate-50 transition-colors">
+                        <div className="flex items-center space-x-2.5 flex-1 min-w-0">
+                          <div className="w-7 h-7 rounded-md bg-blue-50 border border-blue-100 flex items-center justify-center flex-shrink-0 text-blue-600">
+                            <FileText className="h-3.5 w-3.5" />
                           </div>
-                        )}
-                      </>
-                    )}
-                    <div className="flex items-start justify-between py-2 border-b border-gray-100">
-                      <span className="text-sm text-neutral">RFC</span>
-                      <span className="text-sm font-medium">{client.rfc}</span>
-                    </div>
-                    <div className="flex items-center justify-between py-2 border-b border-gray-100">
-                      <span className="text-sm text-neutral flex items-center">
-                        <Phone className="h-4 w-4 mr-2" />
-                        Teléfono
-                      </span>
-                      <span className="text-sm font-medium">{client.phone || 'No proporcionado'}</span>
-                    </div>
-                    <div className="flex items-center justify-between py-2">
-                      <span className="text-sm text-neutral flex items-center">
-                        <Mail className="h-4 w-4 mr-2" />
-                        Email
-                      </span>
-                      <span className="text-sm font-medium text-right break-all">{client.email || 'No proporcionado'}</span>
-                    </div>
-                  </CardContent>
-                </Card>
-
-                {/* Perfil Financiero */}
-                <Card className="border border-gray-200">
-                  <CardHeader className="pb-3">
-                    <CardTitle className="text-lg flex items-center justify-between">
-                      <span className="flex items-center">
-                        <TrendingUp className="h-5 w-5 mr-2" />
-                        Perfil Financiero
-                      </span>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => setShowFinancialModal(true)}
-                        data-testid="button-view-more-financial"
-                        className="text-blue-500 hover:text-blue-700"
-                      >
-                        <Eye className="h-4 w-4 mr-1" />
-                        Ver más
-                      </Button>
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent className="space-y-3">
-                    {client.type === 'persona_moral' && (
-                      <>
-                        <div className="flex items-start justify-between py-2 border-b border-gray-100">
-                          <span className="text-sm text-neutral">Ingresos anuales</span>
-                          <span className="text-sm font-medium">
-                            {client.ingresoAnual ? `$${parseFloat(client.ingresoAnual || '0').toLocaleString('es-MX', { maximumFractionDigits: 0 })} MXN` : 'No especificado'}
+                          <div className="flex-1 min-w-0">
+                            <p className="text-xs font-semibold text-slate-800 truncate" title={doc.fileName}>
+                              {doc.fileName}
+                            </p>
+                            <p className="text-[11px] text-slate-500 capitalize truncate">{doc.type.replace('_', ' ')}</p>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-1.5 flex-shrink-0">
+                          <span 
+                            className={cn(
+                              "inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium border gap-1",
+                              doc.isValid 
+                                ? "bg-emerald-50 text-emerald-700 border-emerald-200/80" 
+                                : "bg-amber-50 text-amber-700 border-amber-200/80"
+                            )}
+                          >
+                            <span className={cn("w-1 h-1 rounded-full", doc.isValid ? "bg-emerald-500" : "bg-amber-500")} />
+                            {doc.isValid ? "Válido" : "Pendiente"}
                           </span>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="h-7 w-7 p-0 text-slate-500 hover:text-slate-800 hover:bg-slate-200/60 rounded-md"
+                            onClick={() => {
+                              setPreviewDocument(doc);
+                            }}
+                            title="Visualizar documento"
+                            data-testid={`button-view-doc-${doc.id}`}
+                          >
+                            <Eye className="h-3.5 w-3.5" />
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="h-7 w-7 p-0 text-slate-500 hover:text-slate-800 hover:bg-slate-200/60 rounded-md"
+                            onClick={() => {
+                              window.open(buildApiUrl(`/api/documents/${doc.id}/download`), '_blank', 'noopener,noreferrer');
+                            }}
+                            title="Descargar documento"
+                            data-testid={`button-download-doc-${doc.id}`}
+                          >
+                            <Download className="h-3.5 w-3.5" />
+                          </Button>
                         </div>
-                        <div className="flex items-start justify-between py-2 border-b border-gray-100">
-                          <span className="text-sm text-neutral">Egresos mensuales</span>
-                          <span className="text-sm font-medium">
-                            {client.egresoMensualPromedio ? `$${parseFloat(client.egresoMensualPromedio || '0').toLocaleString('es-MX', { maximumFractionDigits: 0 })} MXN` : 'No especificado'}
-                          </span>
-                        </div>
-                        <div className="flex items-start justify-between py-2 border-b border-gray-100">
-                          <span className="text-sm text-neutral">Participación ventas gobierno</span>
-                          <span className="text-sm font-medium text-right">{formatDisplayValue(client.participacionVentasGobierno)}</span>
-                        </div>
-                        <div className="flex items-start justify-between py-2 border-b border-gray-100">
-                          <span className="text-sm text-neutral">Buró accionista principal</span>
-                          <span className="text-sm font-medium text-right">{formatDisplayValue(client.buroAccionistaPrincipal)}</span>
-                        </div>
-                        <div className="flex items-start justify-between py-2 border-b border-gray-100">
-                          <span className="text-sm text-neutral">Buró empresa</span>
-                          <span className="text-sm font-medium text-right">{formatDisplayValue(client.buroEmpresa)}</span>
-                        </div>
-                        <div className="flex items-start justify-between py-2 border-b border-gray-100">
-                          <span className="text-sm text-neutral">Sector económico</span>
-                          <span className="text-sm font-medium text-right">{formatDisplayValue(client.sectoreEconomico)}</span>
-                        </div>
-                      </>
-                    )}
-                    {(client.type === 'fisica_empresarial' || client.type === 'fisica') && (
-                      <>
-                        <div className="flex items-start justify-between py-2 border-b border-gray-100">
-                          <span className="text-sm text-neutral">Puesto</span>
-                          <span className="text-sm font-medium text-right">{formatDisplayValue(client.puesto)}</span>
-                        </div>
-                        <div className="flex items-start justify-between py-2 border-b border-gray-100">
-                          <span className="text-sm text-neutral">Antigüedad laboral</span>
-                          <span className="text-sm font-medium text-right">{formatDisplayValue(client.antiguedadLaboral)}</span>
-                        </div>
-                        <div className="flex items-start justify-between py-2 border-b border-gray-100">
-                          <span className="text-sm text-neutral">Ingresos comprobables</span>
-                          <span className="text-sm font-medium">
-                            {client.ingresoMensualPromedioComprobables ? `$${parseFloat(client.ingresoMensualPromedioComprobables || '0').toLocaleString('es-MX', { maximumFractionDigits: 0 })} MXN` : 'No especificado'}
-                          </span>
-                        </div>
-                        <div className="flex items-start justify-between py-2 border-b border-gray-100">
-                          <span className="text-sm text-neutral">Ingresos no comprobables</span>
-                          <span className="text-sm font-medium">
-                            {client.ingresoMensualPromedioNoComprobables ? `$${parseFloat(client.ingresoMensualPromedioNoComprobables || '0').toLocaleString('es-MX', { maximumFractionDigits: 0 })} MXN` : 'No especificado'}
-                          </span>
-                        </div>
-                        <div className="flex items-start justify-between py-2 border-b border-gray-100">
-                          <span className="text-sm text-neutral">Gastos fijos mensuales</span>
-                          <span className="text-sm font-medium">
-                            {client.gastosFijosMensualesPromedio ? `$${parseFloat(client.gastosFijosMensualesPromedio || '0').toLocaleString('es-MX', { maximumFractionDigits: 0 })} MXN` : 'No especificado'}
-                          </span>
-                        </div>
-                        <div className="flex items-start justify-between py-2 border-b border-gray-100">
-                          <span className="text-sm text-neutral">Buró persona física</span>
-                          <span className="text-sm font-medium text-right">{formatDisplayValue(client.buroPersonaFisica)}</span>
-                        </div>
-                      </>
-                    )}
-                    {client.type === 'sin_sat' && (
-                      <>
-                        <div className="flex items-start justify-between py-2 border-b border-gray-100">
-                          <span className="text-sm text-neutral">Nombre comercial</span>
-                          <span className="text-sm font-medium text-right">{formatDisplayValue(client.nombreComercial)}</span>
-                        </div>
-                        <div className="flex items-start justify-between py-2 border-b border-gray-100">
-                          <span className="text-sm text-neutral">Ocupación</span>
-                          <span className="text-sm font-medium text-right">{formatDisplayValue(client.ocupacion)}</span>
-                        </div>
-                        <div className="flex items-start justify-between py-2 border-b border-gray-100">
-                          <span className="text-sm text-neutral">Ingresos comprobables</span>
-                          <span className="text-sm font-medium">
-                            {client.ingresoMensualPromedioComprobablesSinSat ? `$${parseFloat(client.ingresoMensualPromedioComprobablesSinSat || '0').toLocaleString('es-MX', { maximumFractionDigits: 0 })} MXN` : 'No especificado'}
-                          </span>
-                        </div>
-                        <div className="flex items-start justify-between py-2 border-b border-gray-100">
-                          <span className="text-sm text-neutral">Ingresos no comprobables</span>
-                          <span className="text-sm font-medium">
-                            {client.ingresoMensualPromedioNoComprobablesSinSat ? `$${parseFloat(client.ingresoMensualPromedioNoComprobablesSinSat || '0').toLocaleString('es-MX', { maximumFractionDigits: 0 })} MXN` : 'No especificado'}
-                          </span>
-                        </div>
-                        <div className="flex items-start justify-between py-2 border-b border-gray-100">
-                          <span className="text-sm text-neutral">Gastos fijos mensuales</span>
-                          <span className="text-sm font-medium">
-                            {client.gastosFijosMensualesPromedioSinSat ? `$${parseFloat(client.gastosFijosMensualesPromedioSinSat || '0').toLocaleString('es-MX', { maximumFractionDigits: 0 })} MXN` : 'No especificado'}
-                          </span>
-                        </div>
-                        <div className="flex items-start justify-between py-2 border-b border-gray-100">
-                          <span className="text-sm text-neutral">Buró persona física</span>
-                          <span className="text-sm font-medium text-right">{formatDisplayValue(client.buroPersonaFisicaSinSat)}</span>
-                        </div>
-                      </>
-                    )}
-                  </CardContent>
-                </Card>
-
-                {/* Documentos Recientes */}
-                <Card className="border border-gray-200">
-                  <CardHeader className="pb-3">
-                    <CardTitle className="text-lg flex items-center justify-between">
-                      <span className="flex items-center">
-                        <FileText className="h-5 w-5 mr-2" />
-                        Documentos
-                      </span>
-                      <div className="flex items-center gap-2">
-                        <Badge variant="secondary">{documents?.length || 0}</Badge>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => setShowDocumentUploadModal(true)}
-                          data-testid="button-upload-document"
-                          className="text-blue-500 hover:text-blue-700"
-                        >
-                          <Plus className="h-4 w-4 mr-1" />
-                          Subir
-                        </Button>
                       </div>
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    {!documents || documents.length === 0 ? (
-                      <div className="text-center py-8">
-                        <FileText className="h-12 w-12 text-gray-300 mx-auto mb-3" />
-                        <p className="text-sm text-neutral mb-3">No hay documentos subidos</p>
+                    ))}
+                    {documents && documents.length > 5 && (
+                      <p className="text-[11px] text-center text-slate-500 pt-1 font-medium">
+                        +{documents.length - 5} documentos adicionales en bóveda
+                      </p>
+                    )}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
+            {/* 4. Historial Crediticio con Tabs */}
+            <Card className="border border-slate-200/80 shadow-xs bg-white rounded-xl">
+              <CardHeader className="p-4 sm:p-5 pb-3 border-b border-slate-100 flex flex-row items-center justify-between space-y-0">
+                <CardTitle className="text-sm font-semibold text-slate-900 flex items-center gap-2">
+                  <History className="h-4 w-4 text-purple-600" />
+                  <span>Historial Crediticio</span>
+                </CardTitle>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setShowHistoryModal(true)}
+                  data-testid="button-view-more-history"
+                  className="h-7 px-2.5 text-xs font-medium text-primary hover:text-primary-dark hover:bg-primary/5"
+                >
+                  <Eye className="h-3.5 w-3.5 mr-1" />
+                  Ver más
+                </Button>
+              </CardHeader>
+              <CardContent className="p-4 sm:p-5 pt-3">
+                <Tabs defaultValue="gestion" className="w-full">
+                  <TabsList className="grid w-full grid-cols-3 h-8 bg-slate-100/80 p-0.5 rounded-lg">
+                    <TabsTrigger value="gestion" data-testid="tab-en-gestion" className="text-xs h-7 data-[state=active]:bg-white data-[state=active]:text-slate-900 data-[state=active]:shadow-xs">
+                      En Gestión ({submissions?.length || 0})
+                    </TabsTrigger>
+                    <TabsTrigger value="vigentes" data-testid="tab-creditos-vigentes" className="text-xs h-7 data-[state=active]:bg-white data-[state=active]:text-slate-900 data-[state=active]:shadow-xs">
+                      Vigentes ({(() => {
+                        const today = new Date();
+                        today.setHours(0, 0, 0, 0);
+                        const allVigentes = (client?.creditosVigentesDetalles as any[]) || [];
+                        return allVigentes.filter((credito: any) => {
+                          if (!credito.fechaTermino) return true;
+                          const endDate = new Date(credito.fechaTermino);
+                          endDate.setHours(0, 0, 0, 0);
+                          return endDate >= today;
+                        }).length;
+                      })()})
+                    </TabsTrigger>
+                    <TabsTrigger value="pasados" data-testid="tab-creditos-pasados" className="text-xs h-7 data-[state=active]:bg-white data-[state=active]:text-slate-900 data-[state=active]:shadow-xs">
+                      Pasados ({creditHistories?.length || 0})
+                    </TabsTrigger>
+                  </TabsList>
+
+                  {/* Tab Créditos Vigentes */}
+                  <TabsContent value="vigentes" className="mt-3">
+                    <div className="flex justify-end mb-2.5">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => setShowVigentesForm(true)}
+                        data-testid="button-add-vigente"
+                        className="h-7 text-xs font-medium text-slate-700 border-slate-200 hover:bg-slate-50"
+                      >
+                        <Plus className="h-3.5 w-3.5 mr-1" />
+                        Agregar
+                      </Button>
+                    </div>
+                    
+                    {showVigentesForm ? (
+                      <VigenteForm
+                        clientId={clientId}
+                        onCancel={() => setShowVigentesForm(false)}
+                        onSuccess={() => setShowVigentesForm(false)}
+                      />
+                    ) : (
+                      <>
+                        {(() => {
+                          const today = new Date();
+                          today.setHours(0, 0, 0, 0);
+                          const allVigentes = (client?.creditosVigentesDetalles as any[]) || [];
+                          const vigentes = allVigentes.filter((credito: any) => {
+                            if (!credito.fechaTermino) return true;
+                            const endDate = new Date(credito.fechaTermino);
+                            endDate.setHours(0, 0, 0, 0);
+                            return endDate >= today;
+                          });
+                          
+                          return vigentes.length === 0 ? (
+                            <div className="text-center py-7 border border-dashed border-slate-200 rounded-lg">
+                              <CreditCard className="h-9 w-9 text-slate-300 mx-auto mb-2" />
+                              <p className="text-xs font-medium text-slate-700 mb-1">Sin créditos vigentes</p>
+                              <p className="text-[11px] text-slate-400">
+                                Los créditos vigentes se registran para análisis de capacidad de pago
+                              </p>
+                            </div>
+                          ) : (
+                            <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
+                              {vigentes.map((credito: any, index: number) => (
+                                <div key={index} className="p-2.5 bg-slate-50/80 border border-slate-100 rounded-lg" data-testid={`vigente-item-${index}`}>
+                                  <div className="flex items-start justify-between gap-2">
+                                    <div className="flex-1 min-w-0">
+                                      <div className="flex items-center gap-1.5 mb-1">
+                                        <p className="text-xs font-bold text-slate-900">
+                                          ${parseFloat(credito.saldo || credito.monto || '0').toLocaleString('es-MX', { maximumFractionDigits: 0 })} MXN
+                                        </p>
+                                        {credito.tipo && (
+                                          <span className="inline-flex items-center px-1.5 py-0.2 rounded text-[10px] font-medium bg-slate-100 text-slate-700 border border-slate-200/60">
+                                            {credito.tipo}
+                                          </span>
+                                        )}
+                                      </div>
+                                      {credito.institucion && (
+                                        <p className="text-[11px] text-slate-500 truncate">
+                                          Financiera: <span className="text-slate-700 font-medium">{credito.institucion}</span>
+                                        </p>
+                                      )}
+                                      {credito.saldoOriginal && (
+                                        <p className="text-[11px] text-slate-500">
+                                          Saldo Original: ${parseFloat(credito.saldoOriginal || '0').toLocaleString('es-MX', { maximumFractionDigits: 0 })} MXN
+                                        </p>
+                                      )}
+                                      <div className="flex gap-3 mt-1.5 text-[10px] text-slate-500">
+                                        {credito.fechaInicio && (
+                                          <span data-testid={`fecha-inicio-${index}`}>
+                                            Inicio: {format(new Date(credito.fechaInicio), 'dd/MM/yyyy')}
+                                          </span>
+                                        )}
+                                        {credito.fechaTermino && (
+                                          <span data-testid={`fecha-termino-${index}`}>
+                                            Término: {format(new Date(credito.fechaTermino), 'dd/MM/yyyy')}
+                                          </span>
+                                        )}
+                                      </div>
+                                    </div>
+                                    <div className="flex items-center gap-1.5 flex-shrink-0">
+                                      <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-emerald-50 text-emerald-700 border border-emerald-200/80">
+                                        Vigente
+                                      </span>
+                                      <Button
+                                        size="sm"
+                                        variant="ghost"
+                                        className="h-7 w-7 p-0 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-md"
+                                        onClick={() => {
+                                          const origIndex = allVigentes.indexOf(credito);
+                                          if (confirm("¿Estás seguro de eliminar este crédito vigente?")) {
+                                            deleteVigenteMutation.mutate(origIndex !== -1 ? origIndex : index);
+                                          }
+                                        }}
+                                        disabled={deleteVigenteMutation.isPending}
+                                        title="Eliminar crédito vigente"
+                                        data-testid={`button-delete-vigente-${index}`}
+                                      >
+                                        <Trash2 className="h-3.5 w-3.5" />
+                                      </Button>
+                                    </div>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          );
+                        })()}
+                      </>
+                    )}
+                  </TabsContent>
+
+                  {/* Tab Créditos Pasados */}
+                  <TabsContent value="pasados" className="mt-3">
+                    <div className="flex justify-end mb-2.5">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => setShowHistoryForm(true)}
+                        data-testid="button-add-credit-history"
+                        className="h-7 text-xs font-medium text-slate-700 border-slate-200 hover:bg-slate-50"
+                      >
+                        <Plus className="h-3.5 w-3.5 mr-1" />
+                        Agregar
+                      </Button>
+                    </div>
+                    {isLoadingHistories ? (
+                      <div className="space-y-2">
+                        <Skeleton className="h-16 rounded-lg" />
+                        <Skeleton className="h-16 rounded-lg" />
+                      </div>
+                    ) : !creditHistories || creditHistories.length === 0 ? (
+                      <div className="text-center py-7 border border-dashed border-slate-200 rounded-lg">
+                        <History className="h-9 w-9 text-slate-300 mx-auto mb-2" />
+                        <p className="text-xs font-medium text-slate-700 mb-1">Sin historial previo registrado</p>
+                        <p className="text-[11px] text-slate-400 mb-3">
+                          Puedes capturar referencias o créditos liquidados
+                        </p>
                         <Button
-                          variant="outline"
                           size="sm"
-                          onClick={() => setShowDocumentUploadModal(true)}
-                          data-testid="button-upload-first-document"
+                          onClick={() => setShowHistoryForm(true)}
+                          data-testid="button-add-first-history"
+                          className="h-7 text-xs"
                         >
-                          <Plus className="h-4 w-4 mr-1" />
-                          Subir primer documento
+                          <Plus className="h-3.5 w-3.5 mr-1" />
+                          Agregar Historial
                         </Button>
                       </div>
                     ) : (
-                      <div className="space-y-3 max-h-64 overflow-y-auto">
-                        {documents.slice(0, 5).map((doc) => (
-                          <div key={doc.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg gap-2">
-                            <div className="flex items-center space-x-2 flex-1 min-w-0">
-                              <FileText className="h-4 w-4 text-primary flex-shrink-0" />
+                      <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
+                        {creditHistories.map((history) => (
+                          <div key={history.id} className="p-2.5 bg-slate-50/80 border border-slate-100 rounded-lg" data-testid={`history-item-${history.id}`}>
+                            <div className="flex items-start justify-between gap-2">
                               <div className="flex-1 min-w-0">
-                                <p className="text-xs sm:text-sm font-medium text-gray-900 truncate max-w-[150px] sm:max-w-[200px]" title={doc.fileName}>
-                                  {doc.fileName}
+                                <div className="flex items-center gap-1.5 mb-1">
+                                  <p className="text-xs font-bold text-slate-900">
+                                    ${parseFloat(history.amountGranted || '0').toLocaleString('es-MX', { maximumFractionDigits: 0 })} MXN
+                                  </p>
+                                  <span className="inline-flex items-center px-1.5 py-0.2 rounded text-[10px] font-medium bg-slate-100 text-slate-700 border border-slate-200/60">
+                                    {history.creditType}
+                                  </span>
+                                </div>
+                                <p className="text-[11px] text-slate-500">
+                                  {history.termMonths} meses • Tasa: <span className="font-semibold text-slate-700">{history.interestRate}%</span>
                                 </p>
-                                <p className="text-[11px] text-neutral capitalize truncate">{doc.type.replace('_', ' ')}</p>
+                                {history.financialInstitution && (
+                                  <p className="text-[11px] text-slate-500 truncate">
+                                    Financiera: <span className="text-slate-700 font-medium">{history.financialInstitution}</span>
+                                  </p>
+                                )}
+                                {history.notes && (
+                                  <p className="text-[11px] text-slate-600 mt-1 italic line-clamp-2">
+                                    {history.notes}
+                                  </p>
+                                )}
                               </div>
+                              <span 
+                                className={cn(
+                                  "inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium border flex-shrink-0",
+                                  history.source === 'manual' 
+                                    ? "bg-blue-50 text-blue-700 border-blue-200/80" 
+                                    : "bg-emerald-50 text-emerald-700 border-emerald-200/80"
+                                )}
+                              >
+                                {history.source === 'manual' ? 'Manual' : 'Sistema'}
+                              </span>
                             </div>
-                            <div className="flex items-center gap-1 flex-shrink-0">
-                              <Badge 
-                                variant={doc.isValid ? "default" : "secondary"}
-                                className={doc.isValid ? "bg-green-100 text-green-800 text-[11px] px-1.5 py-0.5" : "bg-yellow-100 text-yellow-800 text-[11px] px-1.5 py-0.5"}
-                              >
-                                {doc.isValid ? "Válido" : "Pendiente"}
-                              </Badge>
-                              <Button
-                                size="sm"
-                                variant="ghost"
-                                className="h-7 w-7 p-0 text-primary hover:text-primary-dark hover:bg-primary/10 rounded-full"
-                                onClick={() => {
-                                  setPreviewDocument(doc);
-                                }}
-                                title="Visualizar documento"
-                                data-testid={`button-view-doc-${doc.id}`}
-                              >
-                                <Eye className="h-4 w-4" />
-                              </Button>
-                              <Button
-                                size="sm"
-                                variant="ghost"
-                                className="h-7 w-7 p-0 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-full"
-                                onClick={() => {
-                                  window.open(buildApiUrl(`/api/documents/${doc.id}/download`), '_blank', 'noopener,noreferrer');
-                                }}
-                                title="Descargar documento"
-                                data-testid={`button-download-doc-${doc.id}`}
-                              >
-                                <Download className="h-3.5 w-3.5" />
-                              </Button>
-                            </div>
+                            <p className="text-[10px] text-slate-400 mt-1">
+                              Registrado {formatDistanceToNow(new Date(history.createdAt!), { 
+                                addSuffix: true, 
+                                locale: es 
+                              })}
+                            </p>
                           </div>
                         ))}
-                        {documents && documents.length > 5 && (
-                          <p className="text-xs text-center text-neutral">
-                            +{documents.length - 5} documentos más
-                          </p>
-                        )}
                       </div>
                     )}
-                  </CardContent>
-                </Card>
+                  </TabsContent>
 
-                {/* Historial Crediticio con Tabs */}
-                <Card className="border border-gray-200">
-                  <CardHeader className="pb-3">
-                    <CardTitle className="text-lg flex items-center justify-between">
-                      <span className="flex items-center">
-                        <History className="h-5 w-5 mr-2" />
-                        Historial Crediticio
-                      </span>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => setShowHistoryModal(true)}
-                        data-testid="button-view-more-history"
-                        className="text-blue-500 hover:text-blue-700"
-                      >
-                        <Eye className="h-4 w-4 mr-1" />
-                        Ver más
-                      </Button>
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <Tabs defaultValue="gestion" className="w-full">
-                      <TabsList className="grid w-full grid-cols-3">
-                        <TabsTrigger value="gestion" data-testid="tab-en-gestion">
-                          En Gestión ({submissions?.length || 0})
-                        </TabsTrigger>
-                        <TabsTrigger value="vigentes" data-testid="tab-creditos-vigentes">
-                          Vigentes ({(() => {
-                            const today = new Date();
-                            today.setHours(0, 0, 0, 0);
-                            const allVigentes = (client?.creditosVigentesDetalles as any[]) || [];
-                            return allVigentes.filter((credito: any) => {
-                              if (!credito.fechaTermino) return true;
-                              const endDate = new Date(credito.fechaTermino);
-                              endDate.setHours(0, 0, 0, 0);
-                              return endDate >= today;
-                            }).length;
-                          })()})
-                        </TabsTrigger>
-                        <TabsTrigger value="pasados" data-testid="tab-creditos-pasados">
-                          Pasados ({creditHistories?.length || 0})
-                        </TabsTrigger>
-                      </TabsList>
-
-                      {/* Tab Créditos Vigentes */}
-                      <TabsContent value="vigentes" className="mt-4">
-                        <div className="flex justify-end mb-3">
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => setShowVigentesForm(true)}
-                            data-testid="button-add-vigente"
-                          >
-                            <Plus className="h-4 w-4 mr-1" />
-                            Agregar
-                          </Button>
-                        </div>
-                        
-                        {showVigentesForm ? (
-                          <VigenteForm
-                            clientId={clientId}
-                            onCancel={() => setShowVigentesForm(false)}
-                            onSuccess={() => setShowVigentesForm(false)}
-                          />
-                        ) : (
-                          <>
-                            {(() => {
-                              const today = new Date();
-                              today.setHours(0, 0, 0, 0);
-                              const allVigentes = (client?.creditosVigentesDetalles as any[]) || [];
-                              const vigentes = allVigentes.filter((credito: any) => {
-                                if (!credito.fechaTermino) return true;
-                                const endDate = new Date(credito.fechaTermino);
-                                endDate.setHours(0, 0, 0, 0);
-                                return endDate >= today;
-                              });
-                              
-                              return vigentes.length === 0 ? (
-                                <div className="text-center py-8">
-                                  <CreditCard className="h-12 w-12 text-gray-300 mx-auto mb-3" />
-                                  <p className="text-sm text-neutral mb-2">No hay créditos vigentes</p>
-                                  <p className="text-xs text-neutral">
-                                    Los créditos vigentes se registran en el perfil del cliente
-                                  </p>
-                                </div>
-                              ) : (
-                                <div className="space-y-3 max-h-64 overflow-y-auto">
-                                  {vigentes.map((credito: any, index: number) => (
-                                    <div key={index} className="p-3 bg-gray-50 rounded-lg" data-testid={`vigente-item-${index}`}>
-                                      <div className="flex items-start justify-between mb-2">
-                                        <div className="flex-1">
-                                          <div className="flex items-center gap-2 mb-1">
-                                            <p className="text-sm font-semibold text-gray-900">
-                                              ${parseFloat(credito.saldo || credito.monto || '0').toLocaleString('es-MX', { maximumFractionDigits: 0 })} MXN
-                                            </p>
-                                            {credito.tipo && (
-                                              <Badge variant="outline" className="text-xs">
-                                                {credito.tipo}
-                                              </Badge>
-                                            )}
-                                          </div>
-                                          {credito.institucion && (
-                                            <p className="text-xs text-neutral">
-                                              Financiera: {credito.institucion}
-                                            </p>
-                                          )}
-                                          {credito.saldoOriginal && (
-                                            <p className="text-xs text-neutral">
-                                              Saldo Original: ${parseFloat(credito.saldoOriginal || '0').toLocaleString('es-MX', { maximumFractionDigits: 0 })} MXN
-                                            </p>
-                                          )}
-                                          <div className="flex gap-4 mt-2">
-                                            {credito.fechaInicio && (
-                                              <p className="text-xs text-neutral" data-testid={`fecha-inicio-${index}`}>
-                                                Inicio: {format(new Date(credito.fechaInicio), 'dd/MM/yyyy')}
-                                              </p>
-                                            )}
-                                            {credito.fechaTermino && (
-                                              <p className="text-xs text-neutral" data-testid={`fecha-termino-${index}`}>
-                                                Término: {format(new Date(credito.fechaTermino), 'dd/MM/yyyy')}
-                                              </p>
-                                            )}
-                                          </div>
-                                        </div>
-                                        <div className="flex items-center gap-2 flex-shrink-0">
-                                          <Badge variant="default" className="bg-green-100 text-green-800">
-                                            Vigente
-                                          </Badge>
-                                          <Button
-                                            size="sm"
-                                            variant="ghost"
-                                            className="h-7 w-7 p-0 text-red-500 hover:text-red-700 hover:bg-red-50 rounded-full"
-                                            onClick={() => {
-                                              const origIndex = allVigentes.indexOf(credito);
-                                              if (confirm("¿Estás seguro de eliminar este crédito vigente?")) {
-                                                deleteVigenteMutation.mutate(origIndex !== -1 ? origIndex : index);
-                                              }
-                                            }}
-                                            disabled={deleteVigenteMutation.isPending}
-                                            title="Eliminar crédito vigente"
-                                            data-testid={`button-delete-vigente-${index}`}
-                                          >
-                                            <Trash2 className="h-3.5 w-3.5" />
-                                          </Button>
-                                        </div>
-                                      </div>
-                                    </div>
-                                  ))}
-                                </div>
-                              );
-                            })()}
-                          </>
-                        )}
-                      </TabsContent>
-
-                      {/* Tab Créditos Pasados */}
-                      <TabsContent value="pasados" className="mt-4">
-                        <div className="flex justify-end mb-3">
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => setShowHistoryForm(true)}
-                            data-testid="button-add-credit-history"
-                          >
-                            <Plus className="h-4 w-4 mr-1" />
-                            Agregar
-                          </Button>
-                        </div>
-                        {isLoadingHistories ? (
-                          <div className="space-y-3">
-                            <Skeleton className="h-20" />
-                            <Skeleton className="h-20" />
-                          </div>
-                        ) : !creditHistories || creditHistories.length === 0 ? (
-                          <div className="text-center py-8">
-                            <History className="h-12 w-12 text-gray-300 mx-auto mb-3" />
-                            <p className="text-sm text-neutral mb-2">No hay historial crediticio registrado</p>
-                            <p className="text-xs text-neutral mb-3">
-                              Si el cliente tiene créditos anteriores, puede ingresarlos manualmente
-                            </p>
-                            <Button
-                              size="sm"
-                              onClick={() => setShowHistoryForm(true)}
-                              data-testid="button-add-first-history"
-                            >
-                              <Plus className="h-4 w-4 mr-1" />
-                              Agregar Historial
-                            </Button>
-                          </div>
-                        ) : (
-                          <div className="space-y-3 max-h-64 overflow-y-auto">
-                            {creditHistories.map((history) => (
-                              <div key={history.id} className="p-3 bg-gray-50 rounded-lg" data-testid={`history-item-${history.id}`}>
-                                <div className="flex items-start justify-between mb-2">
-                                  <div className="flex-1">
-                                    <div className="flex items-center gap-2 mb-1">
-                                      <p className="text-sm font-semibold text-gray-900">
-                                        ${parseFloat(history.amountGranted || '0').toLocaleString('es-MX', { maximumFractionDigits: 0 })} MXN
-                                      </p>
-                                      <Badge variant="outline" className="text-xs">
-                                        {history.creditType}
-                                      </Badge>
-                                    </div>
-                                    <p className="text-xs text-neutral">
-                                      {history.termMonths} meses • Tasa: {history.interestRate}%
+                  {/* Tab En Gestión */}
+                  <TabsContent value="gestion" className="mt-3">
+                    {!submissions || submissions.length === 0 ? (
+                      <div className="text-center py-7 border border-dashed border-slate-200 rounded-lg">
+                        <FileText className="h-9 w-9 text-slate-300 mx-auto mb-2" />
+                        <p className="text-xs font-medium text-slate-700 mb-1">Sin créditos en gestión</p>
+                        <p className="text-[11px] text-slate-400">
+                          Las solicitudes y propuestas activas se visualizarán aquí
+                        </p>
+                      </div>
+                    ) : (
+                      <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
+                        {submissions.map((submission) => {
+                          const approvedCount = submission.targets?.filter((t: any) => t.institutionProposal).length || 0;
+                          const totalTargets = submission.targets?.length || 0;
+                          
+                          return (
+                            <div key={submission.id} className="p-2.5 bg-slate-50/80 border border-slate-100 rounded-lg" data-testid={`submission-item-${submission.id}`}>
+                              <div className="flex items-start justify-between gap-2 mb-1">
+                                <div className="flex-1 min-w-0">
+                                  <div className="flex items-center gap-1.5 mb-1">
+                                    <p className="text-xs font-bold text-slate-900">
+                                      ${submission.requestedAmount ? Number(submission.requestedAmount).toLocaleString('es-MX') : '0'} MXN
                                     </p>
-                                    {history.financialInstitution && (
-                                      <p className="text-xs text-neutral mt-1">
-                                        Financiera: {history.financialInstitution}
-                                      </p>
-                                    )}
-                                    {history.notes && (
-                                      <p className="text-xs text-gray-600 mt-2 italic">
-                                        {history.notes}
-                                      </p>
-                                    )}
+                                    <span 
+                                      className={cn(
+                                        "inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium border",
+                                        submission.status === 'dispersed' ? 'bg-blue-50 text-blue-700 border-blue-200/80' :
+                                        submission.status === 'returned_to_broker' ? 'bg-orange-50 text-orange-700 border-orange-200/80' :
+                                        approvedCount > 0 ? 'bg-emerald-50 text-emerald-700 border-emerald-200/80' :
+                                        submission.status === 'sent_to_institutions' ? 'bg-amber-50 text-amber-700 border-amber-200/80' :
+                                        'bg-slate-50 text-slate-700 border-slate-200/80'
+                                      )}
+                                    >
+                                      {submission.status === 'pending_admin' ? 'Pendiente Admin' :
+                                       submission.status === 'returned_to_broker' ? 'Devuelto' :
+                                       submission.status === 'sent_to_institutions' ? `En Revisión (${totalTargets})` :
+                                       submission.status === 'dispersed' ? 'Dispersado' :
+                                       submission.status}
+                                    </span>
                                   </div>
-                                  <Badge 
-                                    variant="secondary"
-                                    className={history.source === 'manual' ? 'bg-blue-100 text-blue-800' : 'bg-green-100 text-green-800'}
-                                  >
-                                    {history.source === 'manual' ? 'Manual' : 'Sistema'}
-                                  </Badge>
+                                  {submission.productTemplate?.name && (
+                                    <p className="text-[11px] text-slate-500 truncate">
+                                      Producto: <span className="text-slate-700 font-medium">{submission.productTemplate.name}</span>
+                                    </p>
+                                  )}
+                                  {submission.purpose && (
+                                    <p className="text-[11px] text-slate-500 mt-0.5 line-clamp-1">
+                                      Propósito: {submission.purpose}
+                                    </p>
+                                  )}
+                                  {approvedCount > 0 && (
+                                    <p className="text-[11px] text-emerald-700 mt-1 font-semibold flex items-center gap-1">
+                                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                                      {approvedCount} propuesta{approvedCount > 1 ? 's' : ''} recibida{approvedCount > 1 ? 's' : ''}
+                                    </p>
+                                  )}
+                                  {submission.status === 'returned_to_broker' && submission.targets && submission.targets.length > 0 && (
+                                    <>
+                                      {submission.targets.map((target: any) => (
+                                        target.status === 'returned_to_broker' && target.details && (
+                                          <div key={target.id} className="mt-1.5 p-2 bg-orange-50/80 border border-orange-200 rounded-md">
+                                            <p className="text-[11px] font-semibold text-orange-900 mb-0.5">Comentarios del Admin:</p>
+                                            <p className="text-[11px] text-orange-800">{target.details}</p>
+                                          </div>
+                                        )
+                                      ))}
+                                    </>
+                                  )}
                                 </div>
-                                <p className="text-xs text-neutral">
-                                  Registrado {formatDistanceToNow(new Date(history.createdAt!), { 
-                                    addSuffix: true, 
-                                    locale: es 
-                                  })}
-                                </p>
                               </div>
-                            ))}
-                          </div>
-                        )}
-                      </TabsContent>
+                              <p className="text-[10px] text-slate-400 mt-1">
+                                Creado {formatDistanceToNow(new Date(submission.createdAt!), { 
+                                  addSuffix: true, 
+                                  locale: es 
+                                })}
+                              </p>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </TabsContent>
+                </Tabs>
+              </CardContent>
+            </Card>
+          </div>
 
-                      {/* Tab En Gestión */}
-                      <TabsContent value="gestion" className="mt-4">
-                        {!submissions || submissions.length === 0 ? (
-                          <div className="text-center py-8">
-                            <FileText className="h-12 w-12 text-gray-300 mx-auto mb-3" />
-                            <p className="text-sm text-neutral mb-2">No hay créditos en gestión</p>
-                            <p className="text-xs text-neutral">
-                              Los créditos en gestión aparecerán aquí cuando se registren en el sistema
-                            </p>
-                          </div>
-                        ) : (
-                          <div className="space-y-3 max-h-64 overflow-y-auto">
-                            {submissions.map((submission) => {
-                              const approvedCount = submission.targets?.filter((t: any) => t.institutionProposal).length || 0;
-                              const totalTargets = submission.targets?.length || 0;
-                              
-                              return (
-                                <div key={submission.id} className="p-3 bg-gray-50 rounded-lg" data-testid={`submission-item-${submission.id}`}>
-                                  <div className="flex items-start justify-between mb-2">
-                                    <div className="flex-1">
-                                      <div className="flex items-center gap-2 mb-1">
-                                        <p className="text-sm font-semibold text-gray-900">
-                                          ${submission.requestedAmount ? Number(submission.requestedAmount).toLocaleString('es-MX') : '0'} MXN
-                                        </p>
-                                        <Badge 
-                                          variant="outline" 
-                                          className={
-                                            submission.status === 'dispersed' ? 'bg-blue-100 text-blue-800' :
-                                            submission.status === 'returned_to_broker' ? 'bg-orange-100 text-orange-800' :
-                                            approvedCount > 0 ? 'bg-green-100 text-green-800' :
-                                            submission.status === 'sent_to_institutions' ? 'bg-yellow-100 text-yellow-800' :
-                                            'bg-gray-100 text-gray-800'
-                                          }
-                                        >
-                                          {submission.status === 'pending_admin' ? 'Pendiente Admin' :
-                                           submission.status === 'returned_to_broker' ? 'Devuelto' :
-                                           submission.status === 'sent_to_institutions' ? `En Revisión (${totalTargets})` :
-                                           submission.status === 'dispersed' ? 'Dispersado' :
-                                           submission.status}
-                                        </Badge>
-                                      </div>
-                                      {submission.productTemplate?.name && (
-                                        <p className="text-xs text-neutral">
-                                          Producto: {submission.productTemplate.name}
-                                        </p>
-                                      )}
-                                      {submission.purpose && (
-                                        <p className="text-xs text-neutral mt-1">
-                                          Propósito: {submission.purpose}
-                                        </p>
-                                      )}
-                                      {approvedCount > 0 && (
-                                        <p className="text-xs text-green-700 mt-1 font-medium">
-                                          {approvedCount} propuesta{approvedCount > 1 ? 's' : ''} recibida{approvedCount > 1 ? 's' : ''}
-                                        </p>
-                                      )}
-                                      {submission.status === 'returned_to_broker' && submission.targets && submission.targets.length > 0 && (
-                                        <>
-                                          {submission.targets.map((target: any) => (
-                                            target.status === 'returned_to_broker' && target.details && (
-                                              <div key={target.id} className="mt-2 p-2 bg-orange-50 border border-orange-200 rounded">
-                                                <p className="text-xs font-semibold text-orange-800 mb-1">Comentarios del Admin:</p>
-                                                <p className="text-xs text-orange-700">{target.details}</p>
-                                              </div>
-                                            )
-                                          ))}
-                                        </>
-                                      )}
-                                    </div>
-                                  </div>
-                                  <p className="text-xs text-neutral">
-                                    Creado {formatDistanceToNow(new Date(submission.createdAt!), { 
-                                      addSuffix: true, 
-                                      locale: es 
-                                    })}
-                                  </p>
-                                </div>
-                              );
-                            })}
-                          </div>
-                        )}
-                      </TabsContent>
-                    </Tabs>
-                  </CardContent>
-                </Card>
-              </div>
-
-              {/* Notas adicionales */}
-              {client.notes && (
-                <Card>
-                  <CardHeader className="pb-3">
-                    <CardTitle className="text-lg flex items-center">
-                      <FileText className="h-5 w-5 mr-2" />
-                      Notas adicionales
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <p className="text-sm text-gray-700">{client.notes}</p>
-                  </CardContent>
-                </Card>
-              )}
-            </div>
+          {/* Notas adicionales */}
+          {client.notes && (
+            <Card className="border border-slate-200/80 shadow-xs bg-white rounded-xl">
+              <CardHeader className="p-4 sm:p-5 pb-3 border-b border-slate-100 flex flex-row items-center space-y-0">
+                <CardTitle className="text-sm font-semibold text-slate-900 flex items-center gap-2">
+                  <FileText className="h-4 w-4 text-slate-500" />
+                  <span>Notas Adicionales del Expediente</span>
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="p-4 sm:p-5">
+                <p className="text-xs text-slate-700 whitespace-pre-wrap leading-relaxed">{client.notes}</p>
+              </CardContent>
+            </Card>
+          )}
+        </div>
 
             {/* Dialog para agregar historial crediticio */}
             <CreditHistoryDialog
