@@ -17,7 +17,13 @@ import {
   CheckCircle,
   ArrowLeft,
   FileText,
-  Download
+  Download,
+  Trophy,
+  Percent,
+  Clock,
+  Info,
+  ShieldCheck,
+  Check
 } from "lucide-react";
 import { buildApiUrl } from "@/lib/runtimeConfig";
 
@@ -152,18 +158,23 @@ export default function ProposalComparison() {
     return (
       <MainLayout>
         <Header title="Error" subtitle="Solicitud no encontrada" />
-        <main className="flex-1 p-8">
-          <Card>
-            <CardContent className="p-12 text-center">
-              <p className="text-muted-foreground">La solicitud que buscas no existe.</p>
-              <Button
-                className="mt-4"
-                onClick={() => setLocation('/creditos')}
-              >
-                Volver a Gestión de Créditos
-              </Button>
-            </CardContent>
-          </Card>
+        <main className="flex-1 p-6 sm:p-8">
+          <div className="bg-white border border-slate-200/80 rounded-xl p-12 text-center shadow-xs max-w-lg mx-auto">
+            <div className="h-12 w-12 rounded-xl bg-slate-100/80 text-slate-400 flex items-center justify-center mx-auto mb-3 border border-slate-200/60">
+              <Info className="w-5 h-5" />
+            </div>
+            <h3 className="text-sm font-semibold text-slate-900 mb-1">Solicitud no encontrada</h3>
+            <p className="text-xs text-slate-500 mb-5">El identificador proporcionado no corresponde a ninguna solicitud activa.</p>
+            <Button
+              variant="outline"
+              size="sm"
+              className="text-xs border-slate-200 text-slate-700 hover:bg-slate-50"
+              onClick={() => setLocation('/creditos')}
+            >
+              <ArrowLeft className="w-3.5 h-3.5 mr-1.5" />
+              Volver a Gestión de Créditos
+            </Button>
+          </div>
         </main>
       </MainLayout>
     );
@@ -193,13 +204,30 @@ export default function ProposalComparison() {
           title="Comparar Propuestas"
           subtitle="Cargando información..."
         />
-        <main className="flex-1 p-8">
-          <Card className="animate-pulse">
-            <CardContent className="p-12">
-              <div className="h-8 bg-muted rounded mb-4"></div>
-              <div className="h-64 bg-muted rounded"></div>
-            </CardContent>
-          </Card>
+        <main className="flex-1 p-4 sm:p-6 lg:p-8 overflow-y-auto">
+          <div className="space-y-6">
+            <div className="flex items-center justify-between">
+              <div className="h-8 w-36 bg-slate-200 rounded-lg animate-pulse"></div>
+              <div className="h-4 w-28 bg-slate-200 rounded animate-pulse"></div>
+            </div>
+            <div className="grid gap-5 md:grid-cols-2 lg:grid-cols-3">
+              {Array.from({ length: 3 }).map((_, i) => (
+                <div key={i} className="bg-white border border-slate-200/80 rounded-xl p-5 shadow-xs animate-pulse space-y-4">
+                  <div className="flex items-center justify-between">
+                    <div className="h-5 bg-slate-200 rounded w-36"></div>
+                    <div className="h-5 bg-slate-200 rounded w-20"></div>
+                  </div>
+                  <div className="h-20 bg-slate-100 rounded-lg"></div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="h-12 bg-slate-100 rounded-lg"></div>
+                    <div className="h-12 bg-slate-100 rounded-lg"></div>
+                  </div>
+                  <div className="h-14 bg-slate-100 rounded-lg"></div>
+                  <div className="h-9 bg-slate-200 rounded-lg"></div>
+                </div>
+              ))}
+            </div>
+          </div>
         </main>
       </MainLayout>
     );
@@ -207,24 +235,56 @@ export default function ProposalComparison() {
 
   const getTargetStatusBadge = (target: CreditSubmissionTarget) => {
     if (target.status === 'dispersed') {
-      return <Badge className="bg-success text-white">Dispersada</Badge>;
+      return (
+        <Badge variant="outline" className="bg-emerald-50 text-emerald-700 border-emerald-200 text-xs font-semibold">
+          <Check className="w-3 h-3 mr-1" />
+          Dispersada
+        </Badge>
+      );
     }
     if (target.isWinner || target.status === 'selected_winner' || target.status === 'winner') {
-      return <Badge className="bg-purple-600 text-white">Seleccionada (Ganadora)</Badge>;
+      return (
+        <Badge variant="outline" className="bg-purple-50 text-purple-700 border-purple-200 text-xs font-semibold">
+          <Trophy className="w-3 h-3 mr-1 text-purple-600" />
+          Seleccionada (Ganadora)
+        </Badge>
+      );
     }
     if (target.status === 'returned_to_broker') {
-      return <Badge className="bg-orange-100 text-orange-800 border-orange-300">Devuelta</Badge>;
+      return (
+        <Badge variant="outline" className="bg-amber-50 text-amber-800 border-amber-300 text-xs font-medium">
+          <Clock className="w-3 h-3 mr-1 text-amber-600" />
+          Devuelta
+        </Badge>
+      );
     }
     if (target.status === 'institution_rejected' || target.status === 'rejected') {
-      return <Badge className="bg-red-100 text-red-800 border-red-300">Rechazada</Badge>;
+      return (
+        <Badge variant="outline" className="bg-red-50 text-red-700 border-red-200 text-xs font-medium">
+          Rechazada
+        </Badge>
+      );
     }
     if (target.status === 'institution_approved' || target.institutionProposal) {
-      return <Badge className="bg-emerald-100 text-emerald-800 border-emerald-300">Propuesta Recibida</Badge>;
+      return (
+        <Badge variant="outline" className="bg-emerald-50 text-emerald-700 border-emerald-200 text-xs font-medium">
+          <CheckCircle className="w-3 h-3 mr-1 text-emerald-600" />
+          Propuesta Recibida
+        </Badge>
+      );
     }
     if (target.status === 'sent') {
-      return <Badge className="bg-blue-100 text-blue-800 border-blue-300">Enviada a Financiera</Badge>;
+      return (
+        <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200 text-xs font-medium">
+          Enviada a Financiera
+        </Badge>
+      );
     }
-    return <Badge className="bg-gray-100 text-gray-700">En Proceso</Badge>;
+    return (
+      <Badge variant="outline" className="bg-slate-50 text-slate-700 border-slate-200 text-xs font-medium">
+        En Proceso
+      </Badge>
+    );
   };
 
   const clientObj = request?.client || fetchedClient || (allTargets?.[0] as any)?.client || (allTargets?.[0] as any)?.request?.client;
@@ -241,30 +301,36 @@ export default function ProposalComparison() {
       />
         
       <main className="flex-1 p-4 sm:p-6 lg:p-8 overflow-y-auto">
-        <div className="space-y-6">
-          <div className="flex items-center justify-between">
+        <div className="max-w-7xl mx-auto space-y-6">
+          {/* Barra superior de navegación y conteo */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-2 border-b border-slate-200/70">
             <Button
               variant="outline"
+              size="sm"
               onClick={() => setLocation('/creditos')}
               data-testid="button-back"
+              className="h-8 text-xs border-slate-200 text-slate-700 hover:bg-slate-50 w-fit"
             >
-              <ArrowLeft className="w-4 h-4 mr-2" />
+              <ArrowLeft className="w-3.5 h-3.5 mr-1.5" />
               Volver a Gestión de Créditos
             </Button>
             
-            <div className="text-sm text-muted-foreground font-medium">
-              {targetsList.length} financiera{targetsList.length !== 1 ? 's' : ''} en esta solicitud
+            <div className="text-xs text-slate-500 font-medium flex items-center gap-1.5">
+              <span className="inline-block w-2 h-2 rounded-full bg-primary/60"></span>
+              <span>{targetsList.length} financiera{targetsList.length !== 1 ? 's' : ''} en esta solicitud</span>
             </div>
           </div>
 
           {targetsList.length === 0 ? (
-            <Card>
-              <CardContent className="p-12 text-center">
-                <p className="text-muted-foreground">No hay financieras seleccionadas para esta solicitud.</p>
-              </CardContent>
-            </Card>
+            <div className="bg-white border border-slate-200/80 rounded-xl p-12 text-center shadow-xs">
+              <div className="w-12 h-12 rounded-full bg-slate-100 flex items-center justify-center mx-auto mb-3 text-slate-400">
+                <Building2 className="w-6 h-6" />
+              </div>
+              <p className="text-sm font-semibold text-slate-800">Sin financieras asignadas</p>
+              <p className="text-xs text-slate-500 mt-1">No hay financieras seleccionadas para esta solicitud de crédito.</p>
+            </div>
           ) : (
-            <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+            <div className="grid gap-5 md:grid-cols-2 lg:grid-cols-3">
               {targetsList.map((target) => {
                 const proposal = target.institutionProposal;
                 const hasProposal = Boolean(proposal && proposal.approvedAmount);
@@ -282,90 +348,104 @@ export default function ProposalComparison() {
                   proposal!.openingCommission
                 ) : 0;
 
+                const isDispersed = target.status === 'dispersed';
+                const isWinner = Boolean(target.isWinner || target.status === 'selected_winner' || target.status === 'winner');
+                const isReturned = target.status === 'returned_to_broker';
+                const isRejected = target.status === 'institution_rejected' || target.status === 'rejected';
+
+                let cardBorderClass = 'border-slate-200/80 hover:border-slate-300';
+                if (isDispersed) {
+                  cardBorderClass = 'border-emerald-300 ring-1 ring-emerald-200/70 bg-gradient-to-b from-white to-emerald-50/20';
+                } else if (isWinner) {
+                  cardBorderClass = 'border-purple-300 ring-1 ring-purple-200/70 bg-gradient-to-b from-white to-purple-50/20';
+                } else if (isReturned) {
+                  cardBorderClass = 'border-amber-300/80 bg-amber-50/20';
+                } else if (isRejected) {
+                  cardBorderClass = 'border-slate-200 opacity-80';
+                }
+
                 return (
-                  <Card 
+                  <div 
                     key={target.id} 
-                    className={`hover:shadow-lg transition-shadow flex flex-col justify-between ${
-                      target.status === 'dispersed' 
-                        ? 'border-green-500 border-2 bg-green-50/10' 
-                        : target.isWinner 
-                          ? 'border-purple-600 border-2 bg-purple-50/10' 
-                          : target.status === 'returned_to_broker'
-                            ? 'border-orange-300 bg-orange-50/20'
-                            : ''
-                    }`}
+                    className={`bg-white border rounded-xl shadow-xs transition-all flex flex-col justify-between overflow-hidden ${cardBorderClass}`}
                   >
-                    <CardHeader className="pb-3">
-                      <div className="flex items-start justify-between gap-2">
-                        <div className="space-y-1.5 flex-1">
-                          <div className="flex items-center space-x-2">
-                            <Building2 className="w-5 h-5 text-primary flex-shrink-0" />
-                            <CardTitle className="text-lg truncate font-bold">
-                              {target.institution?.name || 'Financiera'}
-                            </CardTitle>
+                    {/* Header de la tarjeta de propuesta */}
+                    <div className="p-4 sm:p-5 pb-3 border-b border-slate-100 space-y-3">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="flex items-center gap-2.5 min-w-0">
+                          <div className="h-8 w-8 rounded-lg bg-slate-100/90 text-slate-700 flex items-center justify-center shrink-0 border border-slate-200/60">
+                            <Building2 className="w-4 h-4" />
                           </div>
-                          <div>
-                            {getTargetStatusBadge(target)}
-                          </div>
+                          <h3 className="text-sm sm:text-base font-bold text-slate-900 truncate">
+                            {target.institution?.name || 'Financiera'}
+                          </h3>
                         </div>
                       </div>
-                    </CardHeader>
+                      <div>
+                        {getTargetStatusBadge(target)}
+                      </div>
+                    </div>
                     
-                    <CardContent className="space-y-4 flex-1 flex flex-col justify-between">
+                    {/* Cuerpo de la tarjeta con datos financieros */}
+                    <div className="p-4 sm:p-5 pt-3 space-y-4 flex-1 flex flex-col justify-between">
                       {hasProposal ? (
                         <div className="space-y-3">
-                          <div className="flex items-start justify-between p-3 bg-emerald-50 rounded-lg border border-emerald-100">
-                            <div className="flex items-center space-x-2">
-                              <DollarSign className="w-4 h-4 text-emerald-600" />
-                              <span className="text-xs text-emerald-800 font-medium">Monto Aprobado</span>
+                          {/* Monto Aprobado */}
+                          <div className="flex items-center justify-between p-3 bg-slate-50/80 rounded-lg border border-slate-100">
+                            <div className="flex items-center gap-1.5">
+                              <DollarSign className="w-3.5 h-3.5 text-slate-500" />
+                              <span className="text-xs text-slate-600 font-medium">Monto Aprobado</span>
                             </div>
-                            <p className="text-xl font-bold text-emerald-700">
+                            <span className="text-lg font-bold text-emerald-700 tracking-tight">
                               ${proposal!.approvedAmount.toLocaleString('es-MX')} MXN
-                            </p>
+                            </span>
                           </div>
 
-                          <div className="grid grid-cols-2 gap-3">
-                            <div className="p-2.5 bg-muted/50 rounded-lg">
-                              <div className="flex items-center space-x-1 mb-1">
-                                <TrendingUp className="w-3 h-3 text-muted-foreground" />
-                                <span className="text-xs text-muted-foreground">Tasa Anual</span>
+                          {/* Grid Tasa y Plazo */}
+                          <div className="grid grid-cols-2 gap-2.5">
+                            <div className="p-2.5 bg-white rounded-lg border border-slate-200/70 shadow-2xs">
+                              <div className="flex items-center gap-1 mb-0.5">
+                                <TrendingUp className="w-3 h-3 text-slate-400" />
+                                <span className="text-[11px] text-slate-500 font-medium">Tasa Anual</span>
                               </div>
-                              <p className="font-semibold text-sm">{proposal!.interestRate}%</p>
+                              <p className="font-semibold text-xs sm:text-sm text-slate-800">{proposal!.interestRate}%</p>
                             </div>
 
-                            <div className="p-2.5 bg-muted/50 rounded-lg">
-                              <div className="flex items-center space-x-1 mb-1">
-                                <Calendar className="w-3 h-3 text-muted-foreground" />
-                                <span className="text-xs text-muted-foreground">Plazo</span>
+                            <div className="p-2.5 bg-white rounded-lg border border-slate-200/70 shadow-2xs">
+                              <div className="flex items-center gap-1 mb-0.5">
+                                <Calendar className="w-3 h-3 text-slate-400" />
+                                <span className="text-[11px] text-slate-500 font-medium">Plazo</span>
                               </div>
-                              <p className="font-semibold text-sm">{proposal!.term} meses</p>
+                              <p className="font-semibold text-xs sm:text-sm text-slate-800">{proposal!.term} meses</p>
                             </div>
                           </div>
 
+                          {/* Comisión por Apertura si aplica */}
                           {proposal!.openingCommission !== undefined && (
-                            <div className="p-2 bg-amber-50 rounded-lg flex justify-between items-center text-xs border border-amber-100">
-                              <span className="text-amber-900">Comisión Apertura:</span>
-                              <span className="font-semibold text-amber-700">{proposal!.openingCommission}%</span>
+                            <div className="p-2 bg-amber-50/60 rounded-lg flex justify-between items-center text-xs border border-amber-200/60">
+                              <span className="text-amber-900 font-medium">Comisión por Apertura:</span>
+                              <span className="font-bold text-amber-800">{proposal!.openingCommission}%</span>
                             </div>
                           )}
 
-                          <div className="pt-2 border-t border-border space-y-1.5 text-xs">
-                            <div className="flex justify-between">
-                              <span className="text-muted-foreground">Pago Mensual Estimado:</span>
-                              <span className="font-semibold">
+                          {/* Resumen de Costos */}
+                          <div className="pt-2 border-t border-slate-100 space-y-1.5 text-xs">
+                            <div className="flex justify-between items-center">
+                              <span className="text-slate-500">Pago Mensual Estimado:</span>
+                              <span className="font-semibold text-slate-800">
                                 ${monthlyPayment.toLocaleString('es-MX', { maximumFractionDigits: 2 })}
                               </span>
                             </div>
-                            <div className="flex justify-between">
-                              <span className="text-muted-foreground">Costo Total Estimado:</span>
-                              <span className="font-semibold text-primary">
+                            <div className="flex justify-between items-center">
+                              <span className="text-slate-500">Costo Total Estimado:</span>
+                              <span className="font-bold text-slate-900">
                                 ${totalCost.toLocaleString('es-MX', { maximumFractionDigits: 2 })}
                               </span>
                             </div>
                           </div>
 
                           {/* Documentos de Propuesta */}
-                          <div className="pt-2 border-t border-border space-y-1.5">
+                          <div className="pt-2 border-t border-slate-100 space-y-1.5">
                             {target.proposalDocument && (
                               <Button
                                 variant="outline"
@@ -381,7 +461,7 @@ export default function ProposalComparison() {
                             <Button
                               variant="ghost"
                               size="sm"
-                              className="w-full text-xs text-muted-foreground hover:text-foreground h-8"
+                              className="w-full text-xs text-slate-600 hover:text-slate-900 hover:bg-slate-100/70 h-8"
                               onClick={() => handleDownloadPDF(target.id)}
                             >
                               <Download className="w-3.5 h-3.5 mr-1.5" />
@@ -390,42 +470,45 @@ export default function ProposalComparison() {
                           </div>
                         </div>
                       ) : (
-                        <div className="p-4 bg-muted/40 rounded-lg border border-dashed border-border text-center space-y-2 my-auto">
+                        <div className="p-4 bg-slate-50/70 rounded-lg border border-dashed border-slate-200 text-center space-y-1.5 my-auto">
                           {target.status === 'returned_to_broker' ? (
                             <>
-                              <p className="text-xs font-semibold text-orange-800">Solicitud Devuelta</p>
-                              <p className="text-xs text-muted-foreground italic">
+                              <p className="text-xs font-semibold text-amber-900">Solicitud Devuelta</p>
+                              <p className="text-xs text-slate-600 italic">
                                 {(target as any).details || (target as any).adminNotes || 'La solicitud requiere correcciones antes de ser aprobada por esta institución.'}
                               </p>
                             </>
                           ) : target.status === 'institution_rejected' ? (
                             <>
-                              <p className="text-xs font-semibold text-destructive">Propuesta Declinada</p>
-                              <p className="text-xs text-muted-foreground">La institución no aprobó la propuesta de financiamiento.</p>
+                              <p className="text-xs font-semibold text-red-700">Propuesta Declinada</p>
+                              <p className="text-xs text-slate-500">La institución no aprobó la propuesta de financiamiento.</p>
                             </>
                           ) : (
                             <>
-                              <p className="text-xs font-medium text-foreground">Pendiente de propuesta</p>
-                              <p className="text-xs text-muted-foreground">Aún no se ha registrado una oferta de esta financiera.</p>
+                              <p className="text-xs font-semibold text-slate-700">Pendiente de propuesta</p>
+                              <p className="text-xs text-slate-500">Aún no se ha registrado una oferta formal de esta financiera.</p>
                             </>
                           )}
                         </div>
                       )}
 
-                      <div className="pt-3">
+                      {/* Botón o Estado Operativo Inferior */}
+                      <div className="pt-3 border-t border-slate-100">
                         {target.status === 'dispersed' ? (
-                          <div className="p-2.5 bg-green-100 text-green-900 rounded-lg text-center text-xs font-semibold">
-                            ✓ Crédito Dispersado el {target.dispersedAt ? new Date(target.dispersedAt).toLocaleDateString('es-MX') : ''}
+                          <div className="p-2.5 bg-emerald-50 text-emerald-800 border border-emerald-200/80 rounded-lg text-center text-xs font-semibold flex items-center justify-center gap-1.5">
+                            <Check className="w-3.5 h-3.5 text-emerald-600" />
+                            <span>Crédito Dispersado el {target.dispersedAt ? new Date(target.dispersedAt).toLocaleDateString('es-MX') : ''}</span>
                           </div>
                         ) : target.isWinner ? (
                           <div className="space-y-2">
-                            <div className="p-2.5 bg-purple-100 text-purple-900 rounded-lg text-center text-xs font-semibold">
-                              🏆 Propuesta Seleccionada (Ganadora)
+                            <div className="p-2.5 bg-purple-50 text-purple-900 border border-purple-200/80 rounded-lg text-center text-xs font-semibold flex items-center justify-center gap-1.5">
+                              <Trophy className="w-3.5 h-3.5 text-purple-600" />
+                              <span>Propuesta Seleccionada (Ganadora)</span>
                             </div>
                             <Button
                               variant="outline"
                               size="sm"
-                              className="w-full text-xs text-purple-700 border-purple-300 hover:bg-purple-50 h-8"
+                              className="w-full text-xs text-purple-700 border-purple-200 hover:bg-purple-50 h-8"
                               onClick={() => setSelectedWinnerModalTarget(target)}
                             >
                               Ver Detalle de Selección
@@ -433,7 +516,7 @@ export default function ProposalComparison() {
                           </div>
                         ) : hasProposal ? (
                           <Button
-                            className="w-full bg-purple-600 hover:bg-purple-700 text-white text-xs h-9 font-medium"
+                            className="w-full bg-primary hover:bg-primary/90 text-white text-xs h-9 font-medium shadow-xs"
                             onClick={() => selectWinnerMutation.mutate(target.id)}
                             disabled={selectWinnerMutation.isPending}
                             data-testid={`button-select-winner-${target.id}`}
@@ -443,23 +526,34 @@ export default function ProposalComparison() {
                           </Button>
                         ) : null}
                       </div>
-                    </CardContent>
-                  </Card>
+                    </div>
+                  </div>
                 );
               })}
             </div>
           )}
 
-          <Card className="bg-primary/5 border-primary/20">
-            <CardContent className="p-4 sm:p-6">
-              <h3 className="font-semibold text-foreground mb-2 text-sm">Información y Reglas de Propuestas</h3>
-              <ul className="text-xs text-muted-foreground space-y-1">
-                <li>• Puedes comparar todas las financieras seleccionadas y visualizar las ofertas registradas.</li>
-                <li>• Al aceptar una propuesta, se asigna como seleccionada y se habilita para su posterior dispersión en Aprobaciones.</li>
-                <li>• <strong>Financiamiento Combinado:</strong> Si el cliente requiere complementar su crédito con otra oferta, puedes seleccionar más de una propuesta aprobada. Cada una genera su respectiva dispersión y comisión.</li>
-              </ul>
-            </CardContent>
-          </Card>
+          {/* Información y Reglas Institucionales */}
+          <div className="bg-slate-50/80 border border-slate-200/80 rounded-xl p-4 sm:p-5 shadow-2xs">
+            <h3 className="font-semibold text-slate-900 mb-2 text-xs sm:text-sm flex items-center gap-1.5">
+              <ShieldCheck className="w-4 h-4 text-primary" />
+              <span>Información y Reglas de Propuestas</span>
+            </h3>
+            <ul className="text-xs text-slate-600 space-y-1.5">
+              <li className="flex items-start gap-1.5">
+                <span className="text-slate-400 mt-0.5">•</span>
+                <span>Puedes comparar todas las financieras seleccionadas y visualizar las ofertas registradas.</span>
+              </li>
+              <li className="flex items-start gap-1.5">
+                <span className="text-slate-400 mt-0.5">•</span>
+                <span>Al aceptar una propuesta, se asigna como seleccionada y se habilita para su posterior dispersión en Aprobaciones.</span>
+              </li>
+              <li className="flex items-start gap-1.5">
+                <span className="text-slate-400 mt-0.5">•</span>
+                <span><strong>Financiamiento Combinado:</strong> Si el cliente requiere complementar su crédito con otra oferta, puedes seleccionar más de una propuesta aprobada. Cada una genera su respectiva dispersión y comisión.</span>
+              </li>
+            </ul>
+          </div>
         </div>
       </main>
 
