@@ -2346,7 +2346,6 @@ export default function ClientDetailPage() {
                 </div>
               </DialogContent>
             </Dialog>
-          </div>
         </main>
 
       {/* Credit Request Modal (Empresarial) */}
