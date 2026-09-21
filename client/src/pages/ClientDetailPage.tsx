@@ -1155,8 +1155,8 @@ export default function ClientDetailPage() {
                     </div>
                     <div className="space-y-2">
                       <Label className="text-sm font-semibold text-neutral">Tipo de Cliente</Label>
-                      <Badge className={getClientTypeColor(client.type)}>
-                        {getClientTypeLabel(client.type)}
+                      <Badge className={getClientTypeBadge(client.type).badgeClass}>
+                        {getClientTypeBadge(client.type).label}
                       </Badge>
                     </div>
                     <div className="space-y-2">
