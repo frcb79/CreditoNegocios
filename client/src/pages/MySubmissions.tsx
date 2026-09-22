@@ -17,7 +17,10 @@ import {
   User, 
   Info,
   Users,
-  Filter
+  Filter,
+  CreditCard,
+  ChevronRight,
+  TrendingUp
 } from "lucide-react";
 import { getStatusLabel, getStatusBadgeClass } from "@/lib/statusConfig";
 
@@ -128,15 +131,20 @@ export default function MySubmissions() {
           subtitle="Revisa tus créditos y comisiones"
         />
         <main className="flex-1 p-4 sm:p-6 lg:p-8 overflow-y-auto">
-          <div className="space-y-6">
+          <div className="max-w-7xl mx-auto space-y-4">
             {Array.from({ length: 3 }).map((_, i) => (
-              <Card key={i} className="animate-pulse">
-                <CardContent className="p-6">
-                  <div className="h-4 bg-muted rounded mb-2"></div>
-                  <div className="h-3 bg-muted rounded w-3/4 mb-4"></div>
-                  <div className="h-8 bg-muted rounded"></div>
-                </CardContent>
-              </Card>
+              <div key={i} className="bg-white border border-slate-200/80 rounded-xl p-5 shadow-xs animate-pulse space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="h-5 bg-slate-200 rounded w-1/4"></div>
+                  <div className="h-5 bg-slate-100 rounded w-20"></div>
+                </div>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-2">
+                  <div className="h-10 bg-slate-100 rounded"></div>
+                  <div className="h-10 bg-slate-100 rounded"></div>
+                  <div className="h-10 bg-slate-100 rounded"></div>
+                  <div className="h-10 bg-slate-100 rounded"></div>
+                </div>
+              </div>
             ))}
           </div>
         </main>
@@ -152,208 +160,225 @@ export default function MySubmissions() {
       />
 
       {isMasterBroker && (
-        <div className="flex border-b border-gray-200 bg-white px-6 pt-3 gap-6 shadow-sm">
-          <button
-            onClick={() => setActiveTab('direct')}
-            className={`pb-3 text-sm font-semibold border-b-2 flex items-center gap-2 transition-colors ${
-              activeTab === 'direct'
-                ? 'border-primary text-primary'
-                : 'border-transparent text-gray-500 hover:text-gray-700'
-            }`}
-          >
-            <Package className="w-4 h-4" />
-            Mis Créditos Directos ({directCredits.length})
-          </button>
-          <button
-            onClick={() => setActiveTab('network')}
-            className={`pb-3 text-sm font-semibold border-b-2 flex items-center gap-2 transition-colors ${
-              activeTab === 'network'
-                ? 'border-primary text-primary'
-                : 'border-transparent text-gray-500 hover:text-gray-700'
-            }`}
-          >
-            <Users className="w-4 h-4" />
-            Créditos de mi Red ({networkCredits.length})
-          </button>
+        <div className="border-b border-slate-200/80 bg-white">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex gap-6">
+            <button
+              onClick={() => setActiveTab('direct')}
+              className={`py-3 text-xs sm:text-sm font-semibold border-b-2 flex items-center gap-2 transition-colors ${
+                activeTab === 'direct'
+                  ? 'border-primary text-primary'
+                  : 'border-transparent text-slate-500 hover:text-slate-700'
+              }`}
+            >
+              <Package className="w-4 h-4" />
+              Mis Créditos Directos ({directCredits.length})
+            </button>
+            <button
+              onClick={() => setActiveTab('network')}
+              className={`py-3 text-xs sm:text-sm font-semibold border-b-2 flex items-center gap-2 transition-colors ${
+                activeTab === 'network'
+                  ? 'border-primary text-primary'
+                  : 'border-transparent text-slate-500 hover:text-slate-700'
+              }`}
+            >
+              <Users className="w-4 h-4" />
+              Créditos de mi Red ({networkCredits.length})
+            </button>
+          </div>
         </div>
       )}
       
       <main className="flex-1 p-4 sm:p-6 lg:p-8 overflow-y-auto">
-          <div className="space-y-6">
-            {/* Filtros de estado */}
-            <div className="flex items-center gap-2 flex-wrap">
-              <span className="text-xs text-gray-500 font-medium mr-1 flex items-center">
-                <Filter className="w-3.5 h-3.5 mr-1" /> Estado:
+        <div className="max-w-7xl mx-auto space-y-5">
+          {/* Filtros de estado */}
+          <div className="flex items-center justify-between gap-3 flex-wrap bg-white border border-slate-200/80 rounded-xl p-3 shadow-2xs">
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <span className="text-xs text-slate-500 font-medium mr-1 flex items-center gap-1">
+                <Filter className="w-3.5 h-3.5 text-slate-400" /> Estado:
               </span>
               {[
                 { id: 'all', label: `Todos (${currentList.length})` },
                 { id: 'dispersed', label: `Dispersados (${currentList.filter(c => c.status === 'dispersed' || c.status === 'disbursed').length})` },
                 { id: 'approved', label: `Aprobados (${currentList.filter(c => c.status === 'approved').length})` },
                 { id: 'in_progress', label: `En Trámite (${currentList.filter(c => c.status !== 'dispersed' && c.status !== 'disbursed' && c.status !== 'approved').length})` },
-              ].map((f) => (
-                <Button
-                  key={f.id}
-                  variant={statusFilter === f.id ? "default" : "outline"}
-                  size="sm"
-                  onClick={() => setStatusFilter(f.id)}
-                  className="text-xs h-7 px-3 rounded-full"
-                >
-                  {f.label}
-                </Button>
-              ))}
+              ].map((f) => {
+                const isActive = statusFilter === f.id;
+                return (
+                  <button
+                    key={f.id}
+                    onClick={() => setStatusFilter(f.id)}
+                    className={`text-xs font-medium h-7 px-3 rounded-full transition-all border ${
+                      isActive 
+                        ? 'bg-slate-900 text-white border-slate-900 shadow-2xs' 
+                        : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100 hover:text-slate-900'
+                    }`}
+                  >
+                    {f.label}
+                  </button>
+                );
+              })}
             </div>
+            
+            <div className="text-xs text-slate-500 font-medium">
+              Mostrando <span className="font-semibold text-slate-900">{filteredCredits.length}</span> registros
+            </div>
+          </div>
 
-            {filteredCredits.length === 0 ? (
-              <Card>
-                <CardContent className="p-12 text-center">
-                  <Package className="w-16 h-16 text-gray-300 mx-auto mb-4" />
-                  <h3 className="text-lg font-medium text-gray-900 mb-2">
-                    No se encontraron créditos
-                  </h3>
-                  <p className="text-gray-600">
-                    {isMasterBroker && activeTab === 'direct'
-                      ? "Aún no has originado créditos directos. Los créditos que tramites directamente aparecerán aquí."
-                      : "No hay créditos que coincidan con los filtros seleccionados."}
-                  </p>
-                </CardContent>
-              </Card>
-            ) : (
-              filteredCredits.map((credit) => {
+          {filteredCredits.length === 0 ? (
+            <div className="bg-white border border-slate-200/80 rounded-xl p-12 text-center shadow-xs">
+              <div className="w-12 h-12 rounded-full bg-slate-100 flex items-center justify-center mx-auto mb-3 text-slate-400">
+                <Package className="w-6 h-6" />
+              </div>
+              <h3 className="text-sm sm:text-base font-bold text-slate-800 mb-1">
+                No se encontraron créditos
+              </h3>
+              <p className="text-xs text-slate-500 max-w-md mx-auto">
+                {isMasterBroker && activeTab === 'direct'
+                  ? "Aún no has originado créditos directos. Los créditos que tramites directamente aparecerán aquí."
+                  : "No hay créditos registrados que coincidan con los filtros seleccionados."}
+              </p>
+            </div>
+          ) : (
+            <div className="space-y-3.5">
+              {filteredCredits.map((credit) => {
                 const commission = getCommissionForCredit(credit.id);
                 const clientName = credit.client?.type === 'persona_moral' 
                   ? credit.client?.businessName || 'Sin razón social'
                   : `${credit.client?.firstName || ''} ${credit.client?.lastName || ''}`.trim() || 'Cliente';
                 
+                const isMortgage = Boolean(
+                  ((credit as any).mortgageData && Object.keys((credit as any).mortgageData).length > 0) || 
+                  credit.productTemplate?.name?.toLowerCase().includes("hipotecario")
+                );
+
                 return (
-                  <Card 
+                  <div 
                     key={credit.id} 
-                    className="hover:shadow-md transition-shadow cursor-pointer border border-gray-200"
+                    className="bg-white border border-slate-200/80 rounded-xl shadow-xs hover:border-slate-300 hover:shadow-sm transition-all cursor-pointer overflow-hidden group"
                     onClick={() => setSelectedCredit(credit)}
                     data-testid={`credit-card-${credit.id}`}
                   >
-                    <CardHeader className="pb-4">
-                      <div className="flex items-start justify-between gap-2">
-                        <div className="space-y-2 flex-1">
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <CardTitle className="text-lg text-gray-900" data-testid={`text-client-${credit.id}`}>
-                              {clientName}
-                            </CardTitle>
-                            {credit.financialInstitution && (
-                              <Badge variant="outline" className="bg-blue-50 text-blue-800 border-blue-200 font-medium">
-                                <Building2 className="w-3 h-3 mr-1" />
-                                {credit.financialInstitution.name}
-                              </Badge>
-                            )}
-                            <Badge className={getStatusBadgeClass(credit.status)}>
-                              {getStatusLabel(credit.status)}
+                    <div className="p-4 sm:p-5 space-y-3.5">
+                      {/* Header de la tarjeta */}
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 pb-3 border-b border-slate-100">
+                        <div className="flex items-center gap-2 flex-wrap min-w-0">
+                          <div className="w-8 h-8 rounded-lg bg-slate-100 text-slate-700 flex items-center justify-center shrink-0 border border-slate-200/60">
+                            <CreditCard className="w-4 h-4 text-primary" />
+                          </div>
+                          <h3 className="text-sm sm:text-base font-bold text-slate-900 group-hover:text-primary transition-colors truncate" data-testid={`text-client-${credit.id}`}>
+                            {clientName}
+                          </h3>
+                          {credit.financialInstitution && (
+                            <Badge variant="outline" className="bg-slate-50 text-slate-700 border-slate-200 text-xs font-medium">
+                              <Building2 className="w-3 h-3 mr-1 text-slate-500" />
+                              {credit.financialInstitution.name}
                             </Badge>
-                            {(((credit as any).mortgageData && Object.keys((credit as any).mortgageData).length > 0) || credit.productTemplate?.name?.toLowerCase().includes("hipotecario")) && (
-                              <Badge variant="outline" className="bg-amber-50 text-amber-800 border-amber-300 text-xs font-semibold" data-testid={`badge-mortgage-${credit.id}`}>
-                                🏠 Hipotecario Vivienda
-                              </Badge>
-                            )}
-                            {isMasterBroker && activeTab === 'network' && (
-                              <Badge variant="outline" className="bg-purple-50 text-purple-800 border-purple-200 text-xs">
-                                <User className="w-3 h-3 mr-1" />
-                                Red
-                              </Badge>
-                            )}
-                            {commission?.status === 'paid' && (
-                              <Badge className="bg-green-700 text-white border-green-800">
-                                <DollarSign className="w-3 h-3 mr-0.5" />
-                                Comisión Pagada
-                              </Badge>
-                            )}
-                          </div>
-                          
-                          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-sm mt-2">
-                            <div>
-                              <span className="text-gray-500 text-xs">Monto:</span>
-                              <p className="font-semibold text-base text-green-700" data-testid={`text-amount-${credit.id}`}>
-                                ${Number(credit.amount).toLocaleString('es-MX')} MXN
-                              </p>
-                            </div>
-                            
-                            {credit.term && (
-                              <div>
-                                <span className="text-gray-500 text-xs">Plazo:</span>
-                                <p className="font-medium text-gray-800">{credit.term} meses</p>
-                              </div>
-                            )}
-                            
-                            {credit.interestRate && (
-                              <div>
-                                <span className="text-gray-500 text-xs">Tasa de Interés:</span>
-                                <p className="font-medium text-gray-800">{credit.interestRate}%</p>
-                              </div>
-                            )}
-                            
-                            {credit.productTemplate && (
-                              <div>
-                                <span className="text-gray-500 text-xs">Producto:</span>
-                                <p className="font-medium text-gray-800 truncate" data-testid={`text-product-${credit.id}`}>
-                                  {credit.productTemplate.name}
-                                </p>
-                              </div>
-                            )}
-                          </div>
+                          )}
+                          {isMortgage && (
+                            <Badge variant="outline" className="bg-amber-50 text-amber-800 border-amber-300 text-xs font-semibold" data-testid={`badge-mortgage-${credit.id}`}>
+                              🏠 Hipotecario Vivienda
+                            </Badge>
+                          )}
+                          {isMasterBroker && activeTab === 'network' && (
+                            <Badge variant="outline" className="bg-purple-50 text-purple-700 border-purple-200 text-xs font-medium">
+                              <User className="w-3 h-3 mr-1" />
+                              Red
+                            </Badge>
+                          )}
+                        </div>
 
-                          <div className="text-xs text-gray-400 flex items-center gap-2">
-                            <span>Registrado el {new Date(credit.createdAt).toLocaleDateString('es-MX')}</span>
-                            <span>•</span>
-                            <span className="text-primary font-medium flex items-center">
-                              <Info className="w-3 h-3 mr-1" /> Clic para ver detalles completos
-                            </span>
-                          </div>
+                        <div className="flex items-center gap-2 self-start sm:self-auto shrink-0">
+                          <Badge className={`text-xs px-2.5 py-0.5 font-semibold ${getStatusBadgeClass(credit.status)}`}>
+                            {getStatusLabel(credit.status)}
+                          </Badge>
+                          {commission?.status === 'paid' && (
+                            <Badge className="bg-emerald-50 text-emerald-700 border border-emerald-200 font-semibold text-xs">
+                              <DollarSign className="w-3 h-3 mr-0.5 text-emerald-600" />
+                              Comisión Pagada
+                            </Badge>
+                          )}
+                          <ChevronRight className="w-4 h-4 text-slate-400 group-hover:text-slate-600 transition-colors hidden sm:block" />
                         </div>
                       </div>
-                    </CardHeader>
-                    
-                    {commission && (
-                      <CardContent className="pt-0" onClick={(e) => e.stopPropagation()}>
-                        <div className="bg-blue-50/70 p-3.5 rounded-lg border border-blue-200/80">
-                          <h4 className="font-semibold text-xs text-blue-900 mb-2 flex items-center">
-                            <DollarSign className="w-3.5 h-3.5 mr-1" />
-                            Comisión Asociada
-                          </h4>
-                          <div className="grid grid-cols-3 gap-3 text-xs">
-                            <div>
-                              <span className="text-blue-700">Comisión Total:</span>
-                              <p className="font-bold text-blue-900 text-sm">
-                                ${Number(commission.amount).toLocaleString('es-MX')}
-                              </p>
-                            </div>
-                            {commission.brokerShare && (
-                              <div>
-                                <span className="text-blue-700">Tu Participación:</span>
-                                <p className="font-bold text-blue-900 text-sm">
-                                  ${Number(commission.brokerShare).toLocaleString('es-MX')}
-                                </p>
-                              </div>
-                            )}
-                            <div>
-                              <span className="text-blue-700">Estatus:</span>
-                              <div className="mt-0.5">
-                                {commission.paidAt ? (
-                                  <Badge className="bg-green-600 text-white text-[10px]">Pagada</Badge>
-                                ) : (
-                                  <Badge variant="outline" className="bg-yellow-50 text-yellow-800 border-yellow-300 text-[10px]">
-                                    <Clock className="w-2.5 h-2.5 mr-1" />
-                                    Pendiente
-                                  </Badge>
-                                )}
-                              </div>
-                            </div>
-                          </div>
+
+                      {/* Grid de Datos Financieros */}
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
+                        <div className="p-2.5 bg-slate-50/70 rounded-lg border border-slate-100">
+                          <span className="text-[11px] text-slate-500 font-medium block mb-0.5">Monto del Crédito</span>
+                          <p className="font-bold text-sm sm:text-base text-emerald-700 tracking-tight" data-testid={`text-amount-${credit.id}`}>
+                            ${Number(credit.amount).toLocaleString('es-MX')} MXN
+                          </p>
                         </div>
-                      </CardContent>
+                        
+                        <div className="p-2.5 bg-slate-50/70 rounded-lg border border-slate-100">
+                          <span className="text-[11px] text-slate-500 font-medium block mb-0.5">Plazo</span>
+                          <p className="font-semibold text-xs sm:text-sm text-slate-800">
+                            {credit.term ? `${credit.term} meses` : 'Por definir'}
+                          </p>
+                        </div>
+                        
+                        <div className="p-2.5 bg-slate-50/70 rounded-lg border border-slate-100">
+                          <span className="text-[11px] text-slate-500 font-medium block mb-0.5">Tasa de Interés</span>
+                          <p className="font-semibold text-xs sm:text-sm text-slate-800">
+                            {credit.interestRate ? `${credit.interestRate}%` : 'Por definir'}
+                          </p>
+                        </div>
+                        
+                        <div className="p-2.5 bg-slate-50/70 rounded-lg border border-slate-100">
+                          <span className="text-[11px] text-slate-500 font-medium block mb-0.5">Producto</span>
+                          <p className="font-semibold text-xs sm:text-sm text-slate-800 truncate" data-testid={`text-product-${credit.id}`}>
+                            {credit.productTemplate?.name || 'Crédito Estándar'}
+                          </p>
+                        </div>
+                      </div>
+
+                      {/* Footer de la tarjeta con fecha y tip */}
+                      <div className="flex items-center justify-between text-[11px] text-slate-400 pt-1">
+                        <span className="flex items-center gap-1">
+                          <Calendar className="w-3 h-3 text-slate-400" />
+                          Registrado el {new Date(credit.createdAt).toLocaleDateString('es-MX')}
+                        </span>
+                        <span className="text-primary font-medium flex items-center group-hover:underline">
+                          <Info className="w-3 h-3 mr-1" /> Ver detalle completo
+                        </span>
+                      </div>
+                    </div>
+                    
+                    {/* Snippet de Comisión si existe */}
+                    {commission && (
+                      <div className="bg-slate-50/80 px-4 sm:px-5 py-3 border-t border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs" onClick={(e) => e.stopPropagation()}>
+                        <div className="flex items-center gap-2">
+                          <span className="text-slate-500 font-medium">Comisión Asociada:</span>
+                          <span className="font-bold text-slate-900">
+                            ${Number(commission.amount).toLocaleString('es-MX')} MXN
+                          </span>
+                          {commission.brokerShare && (
+                            <span className="text-slate-500 text-[11px]">
+                              (Tu parte: <strong className="text-emerald-700">${Number(commission.brokerShare).toLocaleString('es-MX')}</strong>)
+                            </span>
+                          )}
+                        </div>
+                        <div>
+                          {commission.paidAt ? (
+                            <Badge className="bg-emerald-50 text-emerald-700 border border-emerald-200 text-[10px] font-semibold">
+                              Pagada el {new Date(commission.paidAt).toLocaleDateString('es-MX')}
+                            </Badge>
+                          ) : (
+                            <Badge variant="outline" className="bg-amber-50 text-amber-800 border-amber-300 text-[10px] font-medium">
+                              <Clock className="w-2.5 h-2.5 mr-1 text-amber-600" />
+                              Liquidación Pendiente
+                            </Badge>
+                          )}
+                        </div>
+                      </div>
                     )}
-                  </Card>
+                  </div>
                 );
-              })
-            )}
-          </div>
-        </main>
+              })}
+            </div>
+          )}
+        </div>
+      </main>
 
         {/* Modal de Detalle Completo del Crédito */}
         <Dialog open={!!selectedCredit} onOpenChange={(open) => !open && setSelectedCredit(null)}>
