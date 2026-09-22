@@ -255,10 +255,10 @@ function formatPlazo(val: any): string {
   return `${num} meses`;
 }
 
-function formatRate(val: any): string {
-  if (val === undefined || val === null || val === "") return "Variable";
+function formatRate(val: any): string | null {
+  if (val === undefined || val === null || val === "") return null;
   const num = typeof val === "number" ? val : parseFloat(String(val).replace(/[^0-9.-]+/g, ""));
-  if (isNaN(num)) return String(val);
+  if (isNaN(num)) return null;
   return `${num}% anual`;
 }
 
@@ -594,34 +594,35 @@ export default function BrokerProducts() {
   if (!selectedCategoryId) {
     return (
       <div className="space-y-6">
-        {/* Banner Comercial Institucional */}
-        <div className="relative overflow-hidden rounded-2xl bg-slate-900 border border-slate-800 p-6 sm:p-7 text-white shadow-sm">
-          <div className="max-w-3xl space-y-2.5">
-            <Badge variant="outline" className="bg-blue-500/10 text-blue-400 border-blue-400/20 text-xs px-2.5 py-0.5 font-semibold">
-              Catálogo Comercial Multifinanciera
-            </Badge>
-            <h2 className="text-xl sm:text-2xl font-bold tracking-tight text-slate-100">
+        {/* Banner Comercial Institucional Compactado */}
+        <div className="relative overflow-hidden rounded-xl bg-slate-900 border border-slate-800 p-4 sm:p-5 text-white shadow-xs">
+          <div className="max-w-3xl space-y-1.5">
+            <div className="flex items-center gap-2">
+              <Badge variant="outline" className="bg-blue-500/10 text-blue-400 border-blue-400/20 text-[11px] px-2 py-0.2 font-semibold">
+                Catálogo Multifinanciera
+              </Badge>
+            </div>
+            <h2 className="text-lg sm:text-xl font-bold tracking-tight text-slate-100">
               ¿Qué tipo de financiamiento necesita tu cliente?
             </h2>
-            <p className="text-xs sm:text-sm text-slate-300 leading-relaxed font-normal">
-              Selecciona la categoría adecuada para consultar las financieras disponibles, sus rangos de monto, tasas
-              indicativas y condiciones comerciales.
+            <p className="text-xs text-slate-300 leading-normal font-normal">
+              Selecciona una categoría comercial para comparar montos, plazos, tasas indicativas y financieras autorizadas.
             </p>
           </div>
 
           {/* Quick Search */}
-          <div className="mt-5 flex flex-col sm:flex-row gap-2.5 max-w-xl">
+          <div className="mt-3.5 flex flex-col sm:flex-row gap-2 max-w-lg">
             <div className="relative flex-1">
-              <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" />
               <Input
                 placeholder="Buscar por financiera (ej. Hey Banco, Banorte, Konfío)..."
                 value={globalSearch}
                 onChange={(e) => setGlobalSearch(e.target.value)}
-                className="pl-9 h-9 text-xs bg-slate-800/80 border-slate-700 text-slate-100 placeholder:text-slate-400 focus-visible:ring-slate-500"
+                className="pl-8 h-8 text-xs bg-slate-800/80 border-slate-700 text-slate-100 placeholder:text-slate-400 focus-visible:ring-slate-500"
               />
             </div>
             {globalSearch && (
-              <Button variant="ghost" size="sm" onClick={() => setGlobalSearch("")} className="text-xs h-9 text-slate-300 hover:text-white hover:bg-slate-800">
+              <Button variant="ghost" size="sm" onClick={() => setGlobalSearch("")} className="text-xs h-8 text-slate-300 hover:text-white hover:bg-slate-800">
                 Limpiar
               </Button>
             )}
@@ -820,7 +821,7 @@ export default function BrokerProducts() {
         </div>
       </div>
 
-      {/* Financieras & Products List */}
+      {/* Financieras & Products Comparison: Desktop Table + Mobile Summary */}
       {groupedInstitutions.length === 0 ? (
         <Card className="border border-dashed border-slate-200 bg-slate-50/50">
           <CardContent className="p-10 text-center space-y-2.5">
@@ -844,17 +845,232 @@ export default function BrokerProducts() {
           </CardContent>
         </Card>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-          {groupedInstitutions.map(({ institution, products }) => (
-            <InstitutionCommercialCard
-              key={institution.id}
-              institution={institution}
-              products={products}
-              onSelectProduct={(p) => setSelectedProduct(p)}
-              onStartRequest={() => setLocation("/creditos")}
-            />
-          ))}
-        </div>
+        <>
+          {/* Desktop High-Density Comparative Table (md+ only) */}
+          <div className="hidden md:block bg-white border border-slate-200/80 rounded-xl shadow-xs overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full text-left border-collapse">
+                <thead>
+                  <tr className="border-b border-slate-100 bg-slate-50/75 text-[11px] font-semibold text-slate-500 uppercase tracking-wider">
+                    <th className="py-3 px-4">Financiera y Producto</th>
+                    <th className="py-3 px-3">Rango de Monto</th>
+                    <th className="py-3 px-3">Plazo</th>
+                    <th className="py-3 px-3">Tasa Indicativa</th>
+                    <th className="py-3 px-3">Perfiles</th>
+                    <th className="py-3 px-4 text-right">Acciones</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 text-xs">
+                  {groupedInstitutions.map(({ institution, products }) => {
+                    return products.map((prod, pIdx) => {
+                      const config = (prod.configuration || {}) as Record<string, any>;
+                      const minAmount = config.montoMinimo || config.montoMin;
+                      const maxAmount = config.montoMaximo || config.montoMax;
+                      const term = config.plazo || config.plazoMax;
+                      const rate = config.tasaInteres || config.tasa;
+                      const prodName = prod.customName || prod.template?.name || "Crédito Empresarial";
+
+                      return (
+                        <tr 
+                          key={`${institution.id}-${prod.id}`}
+                          className="transition-colors hover:bg-slate-50/70"
+                          data-testid={`financiera-product-row-${prod.id}`}
+                        >
+                          {/* 1. Institution + Product */}
+                          <td className="py-3 px-4 max-w-[260px]">
+                            <div className="flex items-center gap-2.5">
+                              <div className="w-8 h-8 rounded-lg bg-slate-900 border border-slate-800 flex items-center justify-center font-bold text-white text-[11px] shrink-0">
+                                {institution.name ? institution.name.substring(0, 2).toUpperCase() : "FI"}
+                              </div>
+                              <div className="min-w-0">
+                                <span 
+                                  className="font-semibold text-slate-900 block leading-tight text-xs truncate"
+                                  data-testid={`financiera-name-${institution.id}`}
+                                  title={institution.name}
+                                >
+                                  {institution.name}
+                                </span>
+                                <span className="text-[11px] text-slate-500 truncate block mt-0.5" title={prodName}>
+                                  {prodName}
+                                </span>
+                              </div>
+                            </div>
+                          </td>
+
+                          {/* 2. Monto */}
+                          <td className="py-3 px-3 font-semibold text-slate-800 whitespace-nowrap text-xs">
+                            {minAmount || maxAmount
+                              ? `${formatMoney(minAmount)} - ${formatMoney(maxAmount)}`
+                              : "A convenir"}
+                          </td>
+
+                          {/* 3. Plazo */}
+                          <td className="py-3 px-3 text-slate-700 whitespace-nowrap text-xs">
+                            {term ? `Hasta ${formatPlazo(term)}` : "A convenir"}
+                          </td>
+
+                          {/* 4. Tasa */}
+                          <td className="py-3 px-3 whitespace-nowrap">
+                            {rate ? (
+                              <span className="font-semibold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded text-[11px] border border-emerald-200/60">
+                                {formatRate(rate)}
+                              </span>
+                            ) : (
+                              <span className="text-slate-400 text-xs italic">—</span>
+                            )}
+                          </td>
+
+                          {/* 5. Perfiles */}
+                          <td className="py-3 px-3">
+                            <div className="flex flex-wrap gap-1 max-w-[170px]">
+                              {(prod.targetProfiles || []).map((prof) => (
+                                <Badge
+                                  key={prof}
+                                  variant="outline"
+                                  className="text-[10px] px-1.5 py-0 bg-slate-50 text-slate-600 border-slate-200 font-medium"
+                                >
+                                  {profileLabels[prof] || prof}
+                                </Badge>
+                              ))}
+                            </div>
+                          </td>
+
+                          {/* 6. Acciones */}
+                          <td className="py-3 px-4 text-right whitespace-nowrap">
+                            <div className="flex items-center justify-end gap-1.5">
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                onClick={() => setSelectedProduct(prod)}
+                                className="h-7 text-xs px-2.5 font-medium border-slate-200 text-slate-700 hover:bg-slate-50"
+                                data-testid={`button-view-product-${prod.id}`}
+                              >
+                                Ficha
+                              </Button>
+                              <Button
+                                type="button"
+                                size="sm"
+                                onClick={() => setLocation("/creditos")}
+                                className="h-7 text-xs px-2.5 font-medium bg-slate-900 hover:bg-slate-800 text-white gap-1 shadow-xs"
+                                data-testid={`button-start-request-${prod.id}`}
+                              >
+                                <span>Solicitar</span>
+                                <ArrowUpRight className="w-3 h-3" />
+                              </Button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    });
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          {/* Mobile Compact Cards (hidden on md+) */}
+          <div className="md:hidden space-y-3">
+            {groupedInstitutions.map(({ institution, products }) => (
+              <div 
+                key={institution.id}
+                className="bg-white border border-slate-200/80 rounded-xl shadow-xs p-4 space-y-3"
+                data-testid={`financiera-mobile-${institution.id}`}
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <div className="w-8 h-8 rounded-lg bg-slate-900 border border-slate-800 flex items-center justify-center font-bold text-white text-[11px] shrink-0">
+                      {institution.name ? institution.name.substring(0, 2).toUpperCase() : "FI"}
+                    </div>
+                    <div className="min-w-0">
+                      <h4 className="text-xs font-bold text-slate-900 truncate" data-testid={`financiera-name-mobile-${institution.id}`}>
+                        {institution.name}
+                      </h4>
+                      <p className="text-[11px] text-slate-500 truncate">
+                        {products.length} {products.length === 1 ? 'opción de crédito' : 'opciones de crédito'}
+                      </p>
+                    </div>
+                  </div>
+
+                  {(institution as any)?.type && (
+                    <Badge variant="outline" className="text-[10px] uppercase font-semibold px-1.5 py-0 bg-slate-50 text-slate-600 border-slate-200 shrink-0">
+                      {(institution as any).type}
+                    </Badge>
+                  )}
+                </div>
+
+                {/* Sub-rows for each product */}
+                <div className="space-y-2 pt-2 border-t border-slate-100">
+                  {products.map((prod) => {
+                    const config = (prod.configuration || {}) as Record<string, any>;
+                    const minAmount = config.montoMinimo || config.montoMin;
+                    const maxAmount = config.montoMaximo || config.montoMax;
+                    const term = config.plazo || config.plazoMax;
+                    const rate = config.tasaInteres || config.tasa;
+                    const prodName = prod.customName || prod.template?.name || "Crédito Empresarial";
+
+                    return (
+                      <div key={prod.id} className="p-2.5 rounded-lg bg-slate-50/70 border border-slate-200/60 space-y-2">
+                        <div className="flex items-start justify-between gap-2">
+                          <span className="font-semibold text-slate-800 text-xs block leading-tight">
+                            {prodName}
+                          </span>
+                          {rate ? (
+                            <span className="text-[11px] font-bold text-emerald-700 shrink-0">
+                              {formatRate(rate)}
+                            </span>
+                          ) : (
+                            <span className="text-[11px] text-slate-400 italic shrink-0">
+                              Tasa: —
+                            </span>
+                          )}
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-1 text-[11px] text-slate-600">
+                          <div>
+                            <span className="text-slate-400 block text-[10px]">Monto:</span>
+                            <span className="font-semibold text-slate-900">
+                              {minAmount || maxAmount ? `${formatMoney(minAmount)} - ${formatMoney(maxAmount)}` : "A convenir"}
+                            </span>
+                          </div>
+                          <div>
+                            <span className="text-slate-400 block text-[10px]">Plazo:</span>
+                            <span className="font-semibold text-slate-900">
+                              {term ? `Hasta ${formatPlazo(term)}` : "A convenir"}
+                            </span>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-2 pt-1 border-t border-slate-200/60">
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            onClick={() => setSelectedProduct(prod)}
+                            className="flex-1 h-7 text-xs font-medium border-slate-200 bg-white"
+                            data-testid={`button-view-product-mobile-${prod.id}`}
+                          >
+                            Ficha
+                          </Button>
+                          <Button
+                            type="button"
+                            size="sm"
+                            onClick={() => setLocation("/creditos")}
+                            className="flex-1 h-7 text-xs font-semibold bg-slate-900 text-white gap-1"
+                            data-testid={`button-start-request-mobile-${prod.id}`}
+                          >
+                            <span>Solicitar</span>
+                            <ArrowUpRight className="w-3 h-3" />
+                          </Button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
+          </div>
+        </>
       )}
 
       {/* ========================================== */}

@@ -501,114 +501,147 @@ export default function ProductTemplates() {
         </CardContent>
       </Card>
 
-      {/* Templates Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+      {/* Templates Compact Table */}
+      <div className="bg-white border border-slate-200/80 rounded-xl shadow-xs overflow-hidden">
         {filteredTemplates && filteredTemplates.length > 0 ? (
-          filteredTemplates.map((template) => (
-            <Card 
-              key={template.id} 
-              className={`border border-slate-200/80 shadow-xs hover:border-slate-300 transition-all bg-white flex flex-col justify-between ${
-                !template.isActive 
-                  ? 'opacity-65 bg-slate-50' 
-                  : ''
-              }`}
-            >
-              <CardHeader className="p-4 pb-3 border-b border-slate-100 bg-slate-50/50">
-                <div className="flex justify-between items-start gap-2">
-                  <CardTitle className="text-sm font-semibold text-slate-900" data-testid={`text-template-name-${template.id}`}>
-                    {template.name}
-                  </CardTitle>
-                  <Badge 
-                    variant="outline" 
-                    className={template.isActive 
-                      ? "bg-emerald-50 text-emerald-700 border-emerald-200 text-[10px] font-semibold" 
-                      : "bg-slate-100 text-slate-600 border-slate-200 text-[10px] font-semibold"}
-                  >
-                    {template.isActive ? "Activa" : "Inactiva"}
-                  </Badge>
-                </div>
-              </CardHeader>
-              <CardContent className="p-4 space-y-3">
-                {template.description && (
-                  <p className="text-xs text-slate-500 line-clamp-2 leading-relaxed" data-testid={`text-template-description-${template.id}`}>
-                    {template.description}
-                  </p>
-                )}
-                
-                {/* Display target profiles badges */}
-                {template.targetProfiles && template.targetProfiles.length > 0 && (
-                  <div className="flex flex-wrap gap-1.5">
-                    {template.targetProfiles.map((profile) => (
-                      <Badge 
-                        key={profile}
-                        variant="outline" 
-                        className={`text-[10px] px-2 py-0.5 font-medium ${getCategoryBadgeColor(profile)}`}
-                        data-testid={`badge-profile-${profile}-${template.id}`}
-                      >
-                        {getCategoryDisplayName(profile)}
-                      </Badge>
-                    ))}
-                  </div>
-                )}
-                
-                {/* Fallback for old templates with category field */}
-                {template.category && (!template.targetProfiles || template.targetProfiles.length === 0) && (
-                  <Badge variant="outline" className="text-[10px]">
-                    {getCategoryDisplayName(template.category)}
-                  </Badge>
-                )}
+          <div className="overflow-x-auto">
+            <table className="w-full text-left border-collapse">
+              <thead>
+                <tr className="border-b border-slate-100 bg-slate-50/75 text-[11px] font-semibold text-slate-500 uppercase tracking-wider">
+                  <th className="py-3 px-4">Plantilla / Esquema</th>
+                  <th className="py-3 px-3 text-center">Estado</th>
+                  <th className="py-3 px-3">Perfiles Objetivo</th>
+                  <th className="py-3 px-3">Variables y Parámetros</th>
+                  <th className="py-3 px-4 text-right">Acciones</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100 text-xs">
+                {filteredTemplates.map((template) => {
+                  const varsCount = template.availableVariables ? Object.keys(template.availableVariables).length : 0;
+                  const configCount = template.baseConfiguration ? Object.keys(template.baseConfiguration).length : 0;
 
-                <div className="text-[11px] text-slate-500 pt-1 space-y-0.5 border-t border-slate-100">
-                  <p><strong className="text-slate-700">Variables:</strong> {template.availableVariables ? Object.keys(template.availableVariables).length : 0}</p>
-                  <p><strong className="text-slate-700">Configuración:</strong> {template.baseConfiguration ? Object.keys(template.baseConfiguration).length : 0} parámetros</p>
-                </div>
+                  return (
+                    <tr 
+                      key={template.id} 
+                      className={`transition-colors hover:bg-slate-50/70 ${!template.isActive ? 'bg-slate-50/30 opacity-75' : ''}`}
+                      data-testid={`template-row-${template.id}`}
+                    >
+                      {/* Name & Description */}
+                      <td className="py-3 px-4 max-w-sm">
+                        <span 
+                          className="font-semibold text-slate-900 block leading-tight text-sm truncate"
+                          data-testid={`text-template-name-${template.id}`}
+                          title={template.name}
+                        >
+                          {template.name}
+                        </span>
+                        {template.description ? (
+                          <span 
+                            className="text-[11px] text-slate-500 line-clamp-1 mt-0.5"
+                            data-testid={`text-template-description-${template.id}`}
+                            title={template.description}
+                          >
+                            {template.description}
+                          </span>
+                        ) : (
+                          <span className="text-[11px] text-slate-400 italic">Sin descripción</span>
+                        )}
+                      </td>
 
-                <div className="flex space-x-2 pt-2 border-t border-slate-100">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => handleEdit(template)}
-                    data-testid={`button-edit-template-${template.id}`}
-                    className="h-7 text-xs px-2.5 font-semibold text-slate-700 border-slate-200 hover:bg-slate-50"
-                  >
-                    <Edit className="h-3.5 w-3.5 mr-1" />
-                    Editar
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => deleteMutation.mutate(template.id)}
-                    disabled={deleteMutation.isPending}
-                    data-testid={`button-delete-template-${template.id}`}
-                    className="h-7 text-xs px-2.5 text-rose-600 hover:text-rose-700 hover:bg-rose-50 border-rose-200"
-                  >
-                    <Trash2 className="h-3.5 w-3.5" />
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
-          ))
+                      {/* Status */}
+                      <td className="py-3 px-3 text-center whitespace-nowrap">
+                        <Badge 
+                          variant="outline" 
+                          className={template.isActive 
+                            ? "bg-emerald-50 text-emerald-700 border-emerald-200 text-[10px] font-semibold" 
+                            : "bg-slate-100 text-slate-600 border-slate-200 text-[10px] font-semibold"}
+                        >
+                          {template.isActive ? "Activa" : "Inactiva"}
+                        </Badge>
+                      </td>
+
+                      {/* Target Profiles */}
+                      <td className="py-3 px-3">
+                        {template.targetProfiles && template.targetProfiles.length > 0 ? (
+                          <div className="flex flex-wrap gap-1">
+                            {template.targetProfiles.map((profile) => (
+                              <Badge 
+                                key={profile}
+                                variant="outline" 
+                                className={`text-[10px] px-1.5 py-0.2 font-medium ${getCategoryBadgeColor(profile)}`}
+                                data-testid={`badge-profile-${profile}-${template.id}`}
+                              >
+                                {getCategoryDisplayName(profile)}
+                              </Badge>
+                            ))}
+                          </div>
+                        ) : template.category ? (
+                          <Badge variant="outline" className="text-[10px]">
+                            {getCategoryDisplayName(template.category)}
+                          </Badge>
+                        ) : (
+                          <span className="text-[11px] text-slate-400 italic">Todos</span>
+                        )}
+                      </td>
+
+                      {/* Variables & Configuration */}
+                      <td className="py-3 px-3 whitespace-nowrap text-slate-600 text-[11px]">
+                        <span className="font-semibold text-slate-800">{varsCount}</span> variables
+                        <span className="text-slate-300 mx-1.5">•</span>
+                        <span className="font-semibold text-slate-800">{configCount}</span> parámetros
+                      </td>
+
+                      {/* Actions */}
+                      <td className="py-3 px-4 text-right whitespace-nowrap">
+                        <div className="flex items-center justify-end gap-1.5">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handleEdit(template)}
+                            data-testid={`button-edit-template-${template.id}`}
+                            className="h-7 text-xs px-2.5 font-semibold text-slate-700 border-slate-200 hover:bg-slate-50"
+                          >
+                            <Edit className="h-3.5 w-3.5 mr-1" />
+                            Editar
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => deleteMutation.mutate(template.id)}
+                            disabled={deleteMutation.isPending}
+                            data-testid={`button-delete-template-${template.id}`}
+                            className="h-7 text-xs px-2 text-rose-600 hover:text-rose-700 hover:bg-rose-50 border-rose-200"
+                            title="Eliminar plantilla"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </Button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
         ) : (
-          <div className="col-span-full text-center py-12 border border-dashed border-slate-200 rounded-xl bg-slate-50/50">
-            <div className="text-center space-y-2">
-              <Layers className="w-10 h-10 text-slate-300 mx-auto" />
-              <h3 className="text-sm font-semibold text-slate-800">
-                {templates && templates.length > 0 
-                  ? 'No se encontraron plantillas' 
-                  : 'No hay plantillas'}
-              </h3>
-              <p className="text-xs text-slate-500 max-w-sm mx-auto">
-                {templates && templates.length > 0
-                  ? 'No hay plantillas que coincidan con los filtros seleccionados'
-                  : 'Crea tu primera plantilla de producto para comenzar el catálogo'}
-              </p>
-              {(!templates || templates.length === 0) && (
-                <Button onClick={handleNew} data-testid="button-first-template" className="h-8 text-xs font-semibold bg-slate-900 text-white gap-1.5 mt-2">
-                  <Plus className="h-3.5 w-3.5" />
-                  Crear Primera Plantilla
-                </Button>
-              )}
-            </div>
+          <div className="text-center py-12 px-4 bg-slate-50/50">
+            <Layers className="w-10 h-10 text-slate-300 mx-auto mb-2" />
+            <h3 className="text-sm font-semibold text-slate-800">
+              {templates && templates.length > 0 
+                ? 'No se encontraron plantillas' 
+                : 'No hay plantillas'}
+            </h3>
+            <p className="text-xs text-slate-500 max-w-sm mx-auto mb-3">
+              {templates && templates.length > 0
+                ? 'No hay plantillas que coincidan con los filtros seleccionados'
+                : 'Crea tu primera plantilla de producto para comenzar el catálogo'}
+            </p>
+            {(!templates || templates.length === 0) && (
+              <Button onClick={handleNew} data-testid="button-first-template" className="h-8 text-xs font-semibold bg-slate-900 text-white gap-1.5">
+                <Plus className="h-3.5 w-3.5" />
+                Crear Primera Plantilla
+              </Button>
+            )}
           </div>
         )}
       </div>
