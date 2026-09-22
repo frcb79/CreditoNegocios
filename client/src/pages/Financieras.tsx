@@ -305,7 +305,7 @@ export default function Financieras() {
           </div>
         </div>
 
-        {/* Financial Institutions Grid */}
+        {/* Financial Institutions Catalog: Desktop Table + Mobile Cards */}
         {filteredInstitutions.length === 0 ? (
           <div className="bg-white border border-slate-200/80 rounded-xl shadow-sm text-center py-16 px-4">
             <div className="w-12 h-12 rounded-full bg-slate-100 text-slate-400 flex items-center justify-center mx-auto mb-3">
@@ -335,224 +335,417 @@ export default function Financieras() {
             )}
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-            {filteredInstitutions.map((institution) => {
-              const productsList = productsByInstitution.get(institution.id) || [];
-              const activeProductsCount = productsList.filter(p => p.isActive).length;
+          <>
+            {/* Desktop Operational Table (hidden on mobile, visible on md+) */}
+            <div className="hidden md:block bg-white border border-slate-200/80 rounded-xl shadow-sm overflow-hidden">
+              <table className="w-full text-left border-collapse">
+                <thead>
+                  <tr className="border-b border-slate-100 bg-slate-50/75 text-[11px] font-semibold text-slate-500 uppercase tracking-wider">
+                    <th className="py-3 px-4">Financiera</th>
+                    <th className="py-3 px-3 text-center">Estado</th>
+                    <th className="py-3 px-3">Perfiles Aceptados</th>
+                    <th className="py-3 px-3">Productos y Categorías</th>
+                    {isAdmin && <th className="py-3 px-3 text-center">Comisión</th>}
+                    <th className="py-3 px-3">Contacto</th>
+                    <th className="py-3 px-4 text-right">Acción</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 text-xs">
+                  {filteredInstitutions.map((institution) => {
+                    const productsList = productsByInstitution.get(institution.id) || [];
+                    const activeProductsCount = productsList.filter(p => p.isActive).length;
 
-              // Extract unique commercial categories or template names from institution products
-              const categories = Array.from(new Set(
-                productsList
-                  .filter(p => p.isActive)
-                  .map(p => p.template?.category || p.template?.name || '')
-                  .filter(Boolean)
-              ));
+                    // Extract unique categories or templates
+                    const categories = Array.from(new Set(
+                      productsList
+                        .filter(p => p.isActive)
+                        .map(p => p.template?.category || p.template?.name || '')
+                        .filter(Boolean)
+                    ));
 
-              // Commission display for Admin only
-              const commissionRates = (institution as any).commissionRates;
-              const totalCommission = commissionRates?.financiera?.total ?? (institution as any).commissionRate;
+                    // Commission display for Admin only
+                    const commissionRates = (institution as any).commissionRates;
+                    const totalCommission = commissionRates?.financiera?.total ?? (institution as any).commissionRate;
+                    const acceptedProfiles: string[] = (institution as any).acceptedProfiles || [];
 
-              return (
-                <div 
-                  key={institution.id}
-                  className={cn(
-                    "bg-white border rounded-xl shadow-sm hover:shadow-md transition-all flex flex-col justify-between overflow-hidden",
-                    institution.isActive ? "border-slate-200/90" : "border-slate-200/60 opacity-85 bg-slate-50/40"
-                  )}
-                  data-testid={`financiera-${institution.id}`}
-                >
-                  {/* Top card section */}
-                  <div className="p-5">
-                    {/* Header: Name and Status */}
-                    <div className="flex items-start justify-between gap-3 mb-3">
-                      <div className="flex-1 min-w-0">
+                    const profileShort: Record<string, string> = {
+                      'persona_moral': 'PM',
+                      'fisica_empresarial': 'PFAE',
+                      'fisica': 'PF',
+                      'sin_sat': 'Sin SAT',
+                    };
+
+                    return (
+                      <tr 
+                        key={institution.id}
+                        className={cn(
+                          "transition-colors hover:bg-slate-50/70",
+                          !institution.isActive && "bg-slate-50/30 opacity-75"
+                        )}
+                        data-testid={`financiera-${institution.id}`}
+                      >
+                        {/* 1. Name & Subtitle */}
+                        <td className="py-3 px-4 font-medium text-slate-900">
+                          <Link href={`/financieras/${institution.id}`}>
+                            <span 
+                              className="font-semibold text-slate-900 hover:text-primary transition-colors cursor-pointer block leading-tight text-sm truncate max-w-[200px] lg:max-w-[260px]"
+                              data-testid={`financiera-name-${institution.id}`}
+                              title={institution.name}
+                            >
+                              {institution.name}
+                            </span>
+                          </Link>
+                          {(institution as any).type && (
+                            <span className="text-[10px] text-slate-400 font-medium uppercase tracking-wider block mt-0.5">
+                              {(institution as any).type}
+                            </span>
+                          )}
+                        </td>
+
+                        {/* 2. Status Pill */}
+                        <td className="py-3 px-3 text-center whitespace-nowrap">
+                          <span 
+                            className={cn(
+                              "inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[11px] font-medium border",
+                              institution.isActive 
+                                ? "bg-emerald-50 text-emerald-700 border-emerald-200/80" 
+                                : "bg-slate-100 text-slate-600 border-slate-200"
+                            )}
+                          >
+                            <span 
+                              className={cn(
+                                "w-1.5 h-1.5 rounded-full shrink-0", 
+                                institution.isActive ? "bg-emerald-500" : "bg-slate-400"
+                              )} 
+                            />
+                            <span>{institution.isActive ? "Activa" : "Inactiva"}</span>
+                          </span>
+                        </td>
+
+                        {/* 3. Accepted Profiles */}
+                        <td className="py-3 px-3">
+                          {acceptedProfiles.length > 0 ? (
+                            <div className="flex flex-wrap gap-1">
+                              {acceptedProfiles.map((profile: string) => (
+                                <span
+                                  key={profile}
+                                  className="text-[10px] px-1.5 py-0.2 rounded font-medium bg-slate-100 text-slate-700 border border-slate-200/70"
+                                >
+                                  {profileShort[profile] || profile}
+                                </span>
+                              ))}
+                            </div>
+                          ) : (
+                            <span className="text-[11px] text-slate-400 italic">Todos</span>
+                          )}
+                        </td>
+
+                        {/* 4. Products & Categories */}
+                        <td className="py-3 px-3">
+                          <div className="flex items-center gap-1.5">
+                            <span className="font-semibold text-slate-800 shrink-0">
+                              {activeProductsCount} {activeProductsCount === 1 ? 'producto' : 'productos'}
+                            </span>
+                            {categories.length > 0 && (
+                              <div className="hidden lg:flex items-center gap-1 overflow-hidden">
+                                <span className="text-slate-300">•</span>
+                                {categories.slice(0, 2).map((cat, idx) => (
+                                  <span 
+                                    key={idx}
+                                    className="text-[10px] px-1.5 py-0.5 rounded bg-slate-50 text-slate-600 border border-slate-200/60 truncate max-w-[100px]"
+                                    title={cat}
+                                  >
+                                    {cat}
+                                  </span>
+                                ))}
+                                {categories.length > 2 && (
+                                  <span className="text-[10px] text-slate-400 font-medium">
+                                    +{categories.length - 2}
+                                  </span>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        </td>
+
+                        {/* 5. Commission (Admin only) */}
+                        {isAdmin && (
+                          <td className="py-3 px-3 text-center whitespace-nowrap">
+                            {totalCommission !== null && totalCommission !== undefined ? (
+                              <span 
+                                className="font-semibold text-slate-900 bg-slate-100 px-2 py-0.5 rounded text-xs border border-slate-200/60"
+                                data-testid={`commission-${institution.id}`}
+                              >
+                                {totalCommission}%
+                              </span>
+                            ) : (
+                              <span className="text-slate-400 text-[11px]">N/D</span>
+                            )}
+                          </td>
+                        )}
+
+                        {/* 6. Contact */}
+                        <td className="py-3 px-3 text-slate-600 max-w-[150px] truncate" title={institution.contactPerson || "Sin contacto registrado"}>
+                          {institution.contactPerson ? (
+                            <span className="text-xs text-slate-700 truncate block">
+                              {institution.contactPerson}
+                            </span>
+                          ) : (
+                            <span className="text-[11px] text-slate-400 italic">—</span>
+                          )}
+                        </td>
+
+                        {/* 7. Action */}
+                        <td className="py-3 px-4 text-right whitespace-nowrap">
+                          <div className="flex items-center justify-end gap-1.5">
+                            <Link href={`/financieras/${institution.id}`}>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className="h-7 text-xs px-2.5 font-medium border-slate-200 text-slate-700 hover:bg-slate-50 hover:text-slate-900 shadow-none gap-1"
+                                data-testid={`button-view-financiera-${institution.id}`}
+                              >
+                                <span>Ver productos y detalle</span>
+                                <ArrowRight className="w-3 h-3 text-slate-400" />
+                              </Button>
+                            </Link>
+
+                            {isAdmin && (
+                              <DropdownMenu>
+                                <DropdownMenuTrigger asChild>
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    className="h-7 w-7 p-0 text-slate-400 hover:text-slate-700"
+                                    data-testid={`menu-financiera-${institution.id}`}
+                                  >
+                                    <MoreHorizontal className="w-3.5 h-3.5" />
+                                  </Button>
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent align="end" className="w-48 text-xs">
+                                  <DropdownMenuItem 
+                                    onClick={() => setConfigModal({ show: true, financiera: institution })}
+                                    data-testid={`button-config-financiera-${institution.id}`}
+                                  >
+                                    <Settings className="w-3.5 h-3.5 mr-2 text-slate-500" />
+                                    Configurar productos
+                                  </DropdownMenuItem>
+
+                                  {institution.isActive ? (
+                                    <DropdownMenuItem 
+                                      onClick={() => setConfirmDialog({ show: true, financiera: institution })}
+                                      data-testid={`button-toggle-status-${institution.id}`}
+                                      className="text-amber-700 focus:text-amber-800"
+                                    >
+                                      <Pause className="w-3.5 h-3.5 mr-2 text-amber-600" />
+                                      Desactivar financiera
+                                    </DropdownMenuItem>
+                                  ) : (
+                                    <DropdownMenuItem 
+                                      onClick={() => setConfirmDialog({ show: true, financiera: institution })}
+                                      data-testid={`button-reactivate-${institution.id}`}
+                                      className="text-emerald-700 focus:text-emerald-800"
+                                    >
+                                      <Play className="w-3.5 h-3.5 mr-2 text-emerald-600" />
+                                      Reactivar financiera
+                                    </DropdownMenuItem>
+                                  )}
+
+                                  <DropdownMenuSeparator />
+
+                                  <DropdownMenuItem 
+                                    onClick={() => setDeleteDialog({ show: true, financiera: institution })}
+                                    data-testid={`button-delete-${institution.id}`}
+                                    className="text-red-600 focus:text-red-700"
+                                  >
+                                    <Trash2 className="w-3.5 h-3.5 mr-2 text-red-500" />
+                                    Eliminar financiera
+                                  </DropdownMenuItem>
+                                </DropdownMenuContent>
+                              </DropdownMenu>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Mobile Compact Cards (visible only on mobile, hidden on md+) */}
+            <div className="md:hidden space-y-3">
+              {filteredInstitutions.map((institution) => {
+                const productsList = productsByInstitution.get(institution.id) || [];
+                const activeProductsCount = productsList.filter(p => p.isActive).length;
+
+                const categories = Array.from(new Set(
+                  productsList
+                    .filter(p => p.isActive)
+                    .map(p => p.template?.category || p.template?.name || '')
+                    .filter(Boolean)
+                ));
+
+                const commissionRates = (institution as any).commissionRates;
+                const totalCommission = commissionRates?.financiera?.total ?? (institution as any).commissionRate;
+                const acceptedProfiles: string[] = (institution as any).acceptedProfiles || [];
+
+                const profileShort: Record<string, string> = {
+                  'persona_moral': 'PM',
+                  'fisica_empresarial': 'PFAE',
+                  'fisica': 'PF',
+                  'sin_sat': 'Sin SAT',
+                };
+
+                return (
+                  <div 
+                    key={institution.id}
+                    className={cn(
+                      "bg-white border rounded-xl shadow-xs p-4 flex flex-col gap-2.5",
+                      institution.isActive ? "border-slate-200/90" : "border-slate-200/60 opacity-85 bg-slate-50/40"
+                    )}
+                    data-testid={`financiera-mobile-${institution.id}`}
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0 flex-1">
                         <Link href={`/financieras/${institution.id}`}>
                           <h3 
-                            className="font-semibold text-slate-900 text-base hover:text-primary transition-colors cursor-pointer truncate"
-                            data-testid={`financiera-name-${institution.id}`}
-                            title={institution.name}
+                            className="font-semibold text-slate-900 text-sm hover:text-primary transition-colors cursor-pointer truncate"
+                            data-testid={`financiera-name-mobile-${institution.id}`}
                           >
                             {institution.name}
                           </h3>
                         </Link>
-                        {/* Short operational subtitle: active products count */}
                         <div className="flex items-center gap-1.5 text-xs text-slate-500 mt-0.5">
-                          <Layers className="w-3.5 h-3.5 text-slate-400" />
+                          <Layers className="w-3 h-3 text-slate-400" />
                           <span>
                             {activeProductsCount > 0 
-                              ? `${activeProductsCount} producto${activeProductsCount !== 1 ? 's' : ''} disponible${activeProductsCount !== 1 ? 's' : ''}`
+                              ? `${activeProductsCount} producto${activeProductsCount !== 1 ? 's' : ''}`
                               : "Sin productos activos"
                             }
                           </span>
                         </div>
                       </div>
 
-                      <div className="flex items-center gap-1 shrink-0">
+                      <span 
+                        className={cn(
+                          "inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium border shrink-0",
+                          institution.isActive 
+                            ? "bg-emerald-50 text-emerald-700 border-emerald-200/80" 
+                            : "bg-slate-100 text-slate-600 border-slate-200"
+                        )}
+                      >
                         <span 
                           className={cn(
-                            "inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium border",
-                            institution.isActive 
-                              ? "bg-emerald-50 text-emerald-700 border-emerald-200/80" 
-                              : "bg-slate-100 text-slate-600 border-slate-200"
-                          )}
-                        >
-                          <span 
-                            className={cn(
-                              "w-1.5 h-1.5 rounded-full shrink-0", 
-                              institution.isActive ? "bg-emerald-500" : "bg-slate-400"
-                            )} 
-                          />
-                          <span>{institution.isActive ? "Activa" : "Inactiva"}</span>
-                        </span>
-                      </div>
+                            "w-1.5 h-1.5 rounded-full shrink-0", 
+                            institution.isActive ? "bg-emerald-500" : "bg-slate-400"
+                          )} 
+                        />
+                        <span>{institution.isActive ? "Activa" : "Inactiva"}</span>
+                      </span>
                     </div>
 
-                    {/* Admin info row: only display when commission or contact actually exists */}
-                    {isAdmin && (totalCommission !== null && totalCommission !== undefined || institution.contactPerson) && (
-                      <div className="flex items-center justify-between py-2 px-2.5 bg-slate-50/80 rounded-lg border border-slate-100 text-xs mb-3">
-                        {totalCommission !== null && totalCommission !== undefined ? (
-                          <div className="flex items-center gap-1 text-slate-600">
-                            <span className="text-slate-400">Comisión:</span>
-                            <span className="font-semibold text-slate-900" data-testid={`commission-${institution.id}`}>
-                              {totalCommission}%
-                            </span>
-                          </div>
-                        ) : <div />}
-
-                        {institution.contactPerson ? (
-                          <div className="flex items-center gap-1 text-slate-600 truncate max-w-[180px]">
-                            <span className="text-slate-400">Contacto:</span>
-                            <span className="font-medium text-slate-800 truncate" title={institution.contactPerson}>
-                              {institution.contactPerson}
-                            </span>
-                          </div>
-                        ) : null}
-                      </div>
-                    )}
-
-                    {/* Categories / Accepted Profiles */}
-                    <div className="space-y-1.5">
-                      {categories.length > 0 ? (
+                    {/* Metadata chips: Profiles & Commission */}
+                    <div className="flex items-center justify-between gap-2 flex-wrap text-xs pt-1 border-t border-slate-100">
+                      {acceptedProfiles.length > 0 ? (
                         <div className="flex flex-wrap gap-1">
-                          {categories.slice(0, 3).map((cat, idx) => (
-                            <span 
-                              key={idx}
-                              className="text-[11px] px-2 py-0.5 rounded bg-slate-100/90 text-slate-700 border border-slate-200/60 font-medium"
+                          {acceptedProfiles.map((profile: string) => (
+                            <span
+                              key={profile}
+                              className="text-[10px] px-1.5 py-0.2 rounded font-medium bg-slate-100 text-slate-700 border border-slate-200"
                             >
-                              {cat}
+                              {profileShort[profile] || profile}
                             </span>
                           ))}
-                          {categories.length > 3 && (
-                            <span className="text-[10px] px-1.5 py-0.5 text-slate-400 font-medium">
-                              +{categories.length - 3} más
-                            </span>
-                          )}
                         </div>
                       ) : (
-                        <span className="text-[11px] text-slate-400 italic">
-                          Catálogo de productos general
-                        </span>
+                        <span className="text-[11px] text-slate-400 italic">Todos los perfiles</span>
                       )}
 
-                      {/* Client Profiles tags if specified */}
-                      {Array.isArray((institution as any).acceptedProfiles) && (institution as any).acceptedProfiles.length > 0 && (
-                        <div className="flex items-center gap-1 pt-1 flex-wrap">
-                          <span className="text-[10px] uppercase font-semibold text-slate-400 tracking-wider mr-1">
-                            Perfiles:
-                          </span>
-                          {(institution as any).acceptedProfiles.map((profile: string) => {
-                            const profileShort: Record<string, string> = {
-                              'persona_moral': 'PM',
-                              'fisica_empresarial': 'PFAE',
-                              'fisica': 'PF',
-                              'sin_sat': 'Sin SAT',
-                            };
-                            return (
-                              <span
-                                key={profile}
-                                className="text-[10px] px-1.5 py-0.2 rounded font-medium bg-slate-50 text-slate-600 border border-slate-200"
+                      {isAdmin && totalCommission !== null && totalCommission !== undefined && (
+                        <span 
+                          className="text-[11px] font-semibold text-slate-700 bg-slate-100 px-2 py-0.5 rounded"
+                          data-testid={`commission-mobile-${institution.id}`}
+                        >
+                          Comisión: {totalCommission}%
+                        </span>
+                      )}
+                    </div>
+
+                    {/* Actions */}
+                    <div className="flex items-center justify-between gap-2 pt-1">
+                      <Link href={`/financieras/${institution.id}`} className="flex-1">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="w-full text-xs font-medium h-7 bg-white border-slate-200 text-slate-700 shadow-none justify-between"
+                          data-testid={`button-view-financiera-mobile-${institution.id}`}
+                        >
+                          <span>Ver detalle</span>
+                          <ArrowRight className="w-3 h-3 text-slate-400" />
+                        </Button>
+                      </Link>
+
+                      {isAdmin && (
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-7 w-7 p-0 text-slate-400 hover:text-slate-700"
+                              data-testid={`menu-financiera-mobile-${institution.id}`}
+                            >
+                              <MoreHorizontal className="w-3.5 h-3.5" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end" className="w-48 text-xs">
+                            <DropdownMenuItem 
+                              onClick={() => setConfigModal({ show: true, financiera: institution })}
+                              data-testid={`button-config-financiera-mobile-${institution.id}`}
+                            >
+                              <Settings className="w-3.5 h-3.5 mr-2 text-slate-500" />
+                              Configurar productos
+                            </DropdownMenuItem>
+
+                            {institution.isActive ? (
+                              <DropdownMenuItem 
+                                onClick={() => setConfirmDialog({ show: true, financiera: institution })}
+                                data-testid={`button-toggle-status-mobile-${institution.id}`}
+                                className="text-amber-700 focus:text-amber-800"
                               >
-                                {profileShort[profile] || profile}
-                              </span>
-                            );
-                          })}
-                        </div>
+                                <Pause className="w-3.5 h-3.5 mr-2 text-amber-600" />
+                                Desactivar financiera
+                              </DropdownMenuItem>
+                            ) : (
+                              <DropdownMenuItem 
+                                onClick={() => setConfirmDialog({ show: true, financiera: institution })}
+                                data-testid={`button-reactivate-mobile-${institution.id}`}
+                                className="text-emerald-700 focus:text-emerald-800"
+                              >
+                                <Play className="w-3.5 h-3.5 mr-2 text-emerald-600" />
+                                Reactivar financiera
+                              </DropdownMenuItem>
+                            )}
+
+                            <DropdownMenuSeparator />
+
+                            <DropdownMenuItem 
+                              onClick={() => setDeleteDialog({ show: true, financiera: institution })}
+                              data-testid={`button-delete-mobile-${institution.id}`}
+                              className="text-red-600 focus:text-red-700"
+                            >
+                              <Trash2 className="w-3.5 h-3.5 mr-2 text-red-500" />
+                              Eliminar financiera
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
                       )}
                     </div>
                   </div>
-
-                  {/* Bottom card footer with single primary action and grouped dropdown */}
-                  <div className="px-5 py-3 border-t border-slate-100 bg-slate-50/40 flex items-center justify-between gap-2">
-                    <Link href={`/financieras/${institution.id}`} className="flex-1">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="w-full text-xs font-medium h-8 bg-white border-slate-200 text-slate-700 hover:bg-slate-50 hover:text-slate-900 shadow-none justify-between"
-                      >
-                        <span>Ver productos y detalle</span>
-                        <ArrowRight className="w-3.5 h-3.5 ml-1 text-slate-400" />
-                      </Button>
-                    </Link>
-
-                    {isAdmin && (
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="h-8 w-8 p-0 text-slate-400 hover:text-slate-700"
-                            data-testid={`menu-financiera-${institution.id}`}
-                          >
-                            <MoreHorizontal className="w-4 h-4" />
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end" className="w-48 text-xs">
-                          <DropdownMenuItem 
-                            onClick={() => setConfigModal({ show: true, financiera: institution })}
-                            data-testid={`button-config-financiera-${institution.id}`}
-                          >
-                            <Settings className="w-3.5 h-3.5 mr-2 text-slate-500" />
-                            Configurar productos
-                          </DropdownMenuItem>
-
-                          {institution.isActive ? (
-                            <DropdownMenuItem 
-                              onClick={() => setConfirmDialog({ show: true, financiera: institution })}
-                              data-testid={`button-toggle-status-${institution.id}`}
-                              className="text-amber-700 focus:text-amber-800"
-                            >
-                              <Pause className="w-3.5 h-3.5 mr-2 text-amber-600" />
-                              Desactivar financiera
-                            </DropdownMenuItem>
-                          ) : (
-                            <DropdownMenuItem 
-                              onClick={() => setConfirmDialog({ show: true, financiera: institution })}
-                              data-testid={`button-reactivate-${institution.id}`}
-                              className="text-emerald-700 focus:text-emerald-800"
-                            >
-                              <Play className="w-3.5 h-3.5 mr-2 text-emerald-600" />
-                              Reactivar financiera
-                            </DropdownMenuItem>
-                          )}
-
-                          <DropdownMenuSeparator />
-
-                          <DropdownMenuItem 
-                            onClick={() => setDeleteDialog({ show: true, financiera: institution })}
-                            data-testid={`button-delete-${institution.id}`}
-                            className="text-red-600 focus:text-red-700"
-                          >
-                            <Trash2 className="w-3.5 h-3.5 mr-2 text-red-500" />
-                            Eliminar financiera
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    )}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
+                );
+              })}
+            </div>
+          </>
         )}
       </main>
 
