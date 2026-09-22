@@ -4,7 +4,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
@@ -14,7 +14,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Checkbox } from "@/components/ui/checkbox";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
-import { Trash2, Edit, Plus, Eye } from "lucide-react";
+import { Trash2, Edit, Plus, Eye, Search, Layers } from "lucide-react";
 
 // Form schema for ProductTemplate
 const productTemplateSchema = z.object({
@@ -447,26 +447,29 @@ export default function ProductTemplates() {
       </div>
 
       {/* Filters */}
-      <Card>
-        <CardContent className="p-6">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <Card className="border border-slate-200/80 shadow-xs bg-white">
+        <CardContent className="p-4">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Buscar</label>
-              <Input
-                placeholder="Buscar por nombre o descripción..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                data-testid="input-search-templates"
-                className="placeholder:text-gray-400"
-              />
+              <label className="block text-xs font-semibold text-slate-700 mb-1.5">Buscar</label>
+              <div className="relative">
+                <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                <Input
+                  placeholder="Buscar por nombre o descripción..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  data-testid="input-search-templates"
+                  className="pl-9 h-8 text-xs border-slate-200 rounded-lg placeholder:text-slate-400"
+                />
+              </div>
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Categoría de Cliente</label>
+              <label className="block text-xs font-semibold text-slate-700 mb-1.5">Perfil de Cliente</label>
               <Select
                 value={filterCategory}
                 onValueChange={(value) => setFilterCategory(value)}
               >
-                <SelectTrigger data-testid="select-category-filter">
+                <SelectTrigger data-testid="select-category-filter" className="h-8 text-xs border-slate-200 rounded-lg">
                   <SelectValue placeholder="Todas las categorías" />
                 </SelectTrigger>
                 <SelectContent>
@@ -479,12 +482,12 @@ export default function ProductTemplates() {
               </Select>
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Estado</label>
+              <label className="block text-xs font-semibold text-slate-700 mb-1.5">Estado</label>
               <Select
                 value={filterStatus}
                 onValueChange={(value) => setFilterStatus(value)}
               >
-                <SelectTrigger data-testid="select-status-filter">
+                <SelectTrigger data-testid="select-status-filter" className="h-8 text-xs border-slate-200 rounded-lg">
                   <SelectValue placeholder="Todos los estados" />
                 </SelectTrigger>
                 <SelectContent>
@@ -499,103 +502,109 @@ export default function ProductTemplates() {
       </Card>
 
       {/* Templates Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         {filteredTemplates && filteredTemplates.length > 0 ? (
           filteredTemplates.map((template) => (
             <Card 
               key={template.id} 
-              className={`hover:shadow-lg transition-shadow ${
+              className={`border border-slate-200/80 shadow-xs hover:border-slate-300 transition-all bg-white flex flex-col justify-between ${
                 !template.isActive 
-                  ? 'opacity-60 bg-gray-50 border-gray-300 border-2' 
+                  ? 'opacity-65 bg-slate-50' 
                   : ''
               }`}
             >
-              <CardHeader className="pb-3">
-                <div className="flex justify-between items-start">
-                  <CardTitle className="text-lg" data-testid={`text-template-name-${template.id}`}>
+              <CardHeader className="p-4 pb-3 border-b border-slate-100 bg-slate-50/50">
+                <div className="flex justify-between items-start gap-2">
+                  <CardTitle className="text-sm font-semibold text-slate-900" data-testid={`text-template-name-${template.id}`}>
                     {template.name}
                   </CardTitle>
-                  <Badge variant={template.isActive ? "default" : "secondary"}>
+                  <Badge 
+                    variant="outline" 
+                    className={template.isActive 
+                      ? "bg-emerald-50 text-emerald-700 border-emerald-200 text-[10px] font-semibold" 
+                      : "bg-slate-100 text-slate-600 border-slate-200 text-[10px] font-semibold"}
+                  >
                     {template.isActive ? "Activa" : "Inactiva"}
                   </Badge>
                 </div>
               </CardHeader>
-              <CardContent>
-                <div className="space-y-3">
-                  {template.description && (
-                    <p className="text-sm text-gray-600" data-testid={`text-template-description-${template.id}`}>
-                      {template.description}
-                    </p>
-                  )}
-                  
-                  {/* Display target profiles badges */}
-                  {template.targetProfiles && template.targetProfiles.length > 0 && (
-                    <div className="flex flex-wrap gap-2">
-                      {template.targetProfiles.map((profile) => (
-                        <Badge 
-                          key={profile}
-                          variant="outline" 
-                          className={`text-xs ${getCategoryBadgeColor(profile)}`}
-                          data-testid={`badge-profile-${profile}-${template.id}`}
-                        >
-                          {getCategoryDisplayName(profile)}
-                        </Badge>
-                      ))}
-                    </div>
-                  )}
-                  
-                  {/* Fallback for old templates with category field */}
-                  {template.category && (!template.targetProfiles || template.targetProfiles.length === 0) && (
-                    <Badge variant="outline" className="text-xs">
-                      {getCategoryDisplayName(template.category)}
-                    </Badge>
-                  )}
-
-                  <div className="text-sm text-gray-500">
-                    <p><strong>Variables:</strong> {template.availableVariables ? Object.keys(template.availableVariables).length : 0}</p>
-                    <p><strong>Configuración:</strong> {template.baseConfiguration ? Object.keys(template.baseConfiguration).length : 0} items</p>
+              <CardContent className="p-4 space-y-3">
+                {template.description && (
+                  <p className="text-xs text-slate-500 line-clamp-2 leading-relaxed" data-testid={`text-template-description-${template.id}`}>
+                    {template.description}
+                  </p>
+                )}
+                
+                {/* Display target profiles badges */}
+                {template.targetProfiles && template.targetProfiles.length > 0 && (
+                  <div className="flex flex-wrap gap-1.5">
+                    {template.targetProfiles.map((profile) => (
+                      <Badge 
+                        key={profile}
+                        variant="outline" 
+                        className={`text-[10px] px-2 py-0.5 font-medium ${getCategoryBadgeColor(profile)}`}
+                        data-testid={`badge-profile-${profile}-${template.id}`}
+                      >
+                        {getCategoryDisplayName(profile)}
+                      </Badge>
+                    ))}
                   </div>
+                )}
+                
+                {/* Fallback for old templates with category field */}
+                {template.category && (!template.targetProfiles || template.targetProfiles.length === 0) && (
+                  <Badge variant="outline" className="text-[10px]">
+                    {getCategoryDisplayName(template.category)}
+                  </Badge>
+                )}
 
-                  <div className="flex space-x-2 pt-3">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => handleEdit(template)}
-                      data-testid={`button-edit-template-${template.id}`}
-                    >
-                      <Edit className="h-4 w-4" />
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => deleteMutation.mutate(template.id)}
-                      disabled={deleteMutation.isPending}
-                      data-testid={`button-delete-template-${template.id}`}
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
-                  </div>
+                <div className="text-[11px] text-slate-500 pt-1 space-y-0.5 border-t border-slate-100">
+                  <p><strong className="text-slate-700">Variables:</strong> {template.availableVariables ? Object.keys(template.availableVariables).length : 0}</p>
+                  <p><strong className="text-slate-700">Configuración:</strong> {template.baseConfiguration ? Object.keys(template.baseConfiguration).length : 0} parámetros</p>
+                </div>
+
+                <div className="flex space-x-2 pt-2 border-t border-slate-100">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => handleEdit(template)}
+                    data-testid={`button-edit-template-${template.id}`}
+                    className="h-7 text-xs px-2.5 font-semibold text-slate-700 border-slate-200 hover:bg-slate-50"
+                  >
+                    <Edit className="h-3.5 w-3.5 mr-1" />
+                    Editar
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => deleteMutation.mutate(template.id)}
+                    disabled={deleteMutation.isPending}
+                    data-testid={`button-delete-template-${template.id}`}
+                    className="h-7 text-xs px-2.5 text-rose-600 hover:text-rose-700 hover:bg-rose-50 border-rose-200"
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </Button>
                 </div>
               </CardContent>
             </Card>
           ))
         ) : (
-          <div className="col-span-full text-center py-12">
-            <div className="text-center">
-              <i className="fas fa-search text-4xl text-gray-400 mb-4"></i>
-              <h3 className="text-lg font-semibold text-gray-600 mb-2">
+          <div className="col-span-full text-center py-12 border border-dashed border-slate-200 rounded-xl bg-slate-50/50">
+            <div className="text-center space-y-2">
+              <Layers className="w-10 h-10 text-slate-300 mx-auto" />
+              <h3 className="text-sm font-semibold text-slate-800">
                 {templates && templates.length > 0 
                   ? 'No se encontraron plantillas' 
                   : 'No hay plantillas'}
               </h3>
-              <p className="text-gray-500 mb-4">
+              <p className="text-xs text-slate-500 max-w-sm mx-auto">
                 {templates && templates.length > 0
                   ? 'No hay plantillas que coincidan con los filtros seleccionados'
-                  : 'Crea tu primera plantilla de producto'}
+                  : 'Crea tu primera plantilla de producto para comenzar el catálogo'}
               </p>
               {(!templates || templates.length === 0) && (
-                <Button onClick={handleNew} data-testid="button-first-template">
-                  <Plus className="mr-2 h-4 w-4" />
+                <Button onClick={handleNew} data-testid="button-first-template" className="h-8 text-xs font-semibold bg-slate-900 text-white gap-1.5 mt-2">
+                  <Plus className="h-3.5 w-3.5" />
                   Crear Primera Plantilla
                 </Button>
               )}

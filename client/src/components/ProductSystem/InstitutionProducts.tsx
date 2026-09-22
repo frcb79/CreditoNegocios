@@ -430,54 +430,48 @@ export default function InstitutionProducts() {
       </div>
 
       {/* Stats */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <Card>
-          <CardContent className="p-6">
-            <div className="flex items-center space-x-2">
-              <div className="p-2 bg-blue-100 rounded-lg">
-                <FileText className="w-5 h-5 text-blue-600" />
-              </div>
-              <div>
-                <p className="text-sm font-medium text-gray-600">Plantillas</p>
-                <p className="text-2xl font-bold" data-testid="text-templates-available">
-                  {templates?.length || 0}
-                </p>
-                <p className="text-xs text-gray-500">Disponibles</p>
-              </div>
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <Card className="border border-slate-200/80 shadow-xs bg-white">
+          <CardContent className="p-4 flex items-center justify-between">
+            <div>
+              <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Plantillas Base</p>
+              <p className="text-2xl font-bold text-slate-900 mt-1" data-testid="text-templates-available">
+                {templates?.length || 0}
+              </p>
+              <p className="text-[11px] text-slate-400 mt-0.5">Disponibles</p>
+            </div>
+            <div className="w-10 h-10 rounded-xl bg-blue-50 border border-blue-200 text-blue-700 flex items-center justify-center flex-shrink-0">
+              <FileText className="w-5 h-5" />
             </div>
           </CardContent>
         </Card>
 
-        <Card>
-          <CardContent className="p-6">
-            <div className="flex items-center space-x-2">
-              <div className="p-2 bg-green-100 rounded-lg">
-                <Building2 className="w-5 h-5 text-green-600" />
-              </div>
-              <div>
-                <p className="text-sm font-medium text-gray-600">Financieras</p>
-                <p className="text-2xl font-bold" data-testid="text-institutions-active">
-                  {institutions?.filter(i => i.isActive).length || 0}
-                </p>
-                <p className="text-xs text-gray-500">Activas</p>
-              </div>
+        <Card className="border border-slate-200/80 shadow-xs bg-white">
+          <CardContent className="p-4 flex items-center justify-between">
+            <div>
+              <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Financieras Activas</p>
+              <p className="text-2xl font-bold text-slate-900 mt-1" data-testid="text-institutions-active">
+                {institutions?.filter(i => i.isActive).length || 0}
+              </p>
+              <p className="text-[11px] text-slate-400 mt-0.5">Registradas</p>
+            </div>
+            <div className="w-10 h-10 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-700 flex items-center justify-center flex-shrink-0">
+              <Building2 className="w-5 h-5" />
             </div>
           </CardContent>
         </Card>
 
-        <Card>
-          <CardContent className="p-6">
-            <div className="flex items-center space-x-2">
-              <div className="p-2 bg-purple-100 rounded-lg">
-                <Settings className="w-5 h-5 text-purple-600" />
-              </div>
-              <div>
-                <p className="text-sm font-medium text-gray-600">Productos</p>
-                <p className="text-2xl font-bold" data-testid="text-products-assigned">
-                  {institutionProducts?.length || 0}
-                </p>
-                <p className="text-xs text-gray-500">Asignados</p>
-              </div>
+        <Card className="border border-slate-200/80 shadow-xs bg-white">
+          <CardContent className="p-4 flex items-center justify-between">
+            <div>
+              <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Productos Asignados</p>
+              <p className="text-2xl font-bold text-slate-900 mt-1" data-testid="text-products-assigned">
+                {institutionProducts?.length || 0}
+              </p>
+              <p className="text-[11px] text-slate-400 mt-0.5">En catálogo</p>
+            </div>
+            <div className="w-10 h-10 rounded-xl bg-purple-50 border border-purple-200 text-purple-700 flex items-center justify-center flex-shrink-0">
+              <Settings className="w-5 h-5" />
             </div>
           </CardContent>
         </Card>
@@ -488,14 +482,14 @@ export default function InstitutionProducts() {
         const unassigned = institutions?.filter(i => i.isActive && !institutionProducts?.some(p => p.institutionId === i.id)) || [];
         if (unassigned.length === 0) return null;
         return (
-          <div className="p-4 bg-amber-50 border-2 border-amber-300 rounded-xl flex items-start gap-3 shadow-sm">
-            <AlertTriangle className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
+          <div className="p-3.5 bg-amber-50/80 border border-amber-200/80 rounded-xl flex items-start gap-3 shadow-xs">
+            <AlertTriangle className="w-4 h-4 text-amber-600 flex-shrink-0 mt-0.5" />
             <div className="flex-1">
-              <h4 className="text-sm font-bold text-amber-950">
+              <h4 className="text-xs font-bold text-amber-950">
                 Financieras pendientes de asignación ({unassigned.length})
               </h4>
-              <p className="text-xs text-amber-800 mt-0.5">
-                Las siguientes financieras activas aún no tienen productos asignados: <strong>{unassigned.map(i => i.name).join(', ')}</strong>. Asigna productos para que puedan recibir solicitudes en el matching inteligente.
+              <p className="text-xs text-amber-800 mt-0.5 leading-relaxed">
+                Las siguientes financieras activas aún no tienen productos asignados: <strong>{unassigned.map(i => i.name).join(', ')}</strong>. Asigna productos para que participen en el matching inteligente.
               </p>
             </div>
           </div>
@@ -503,26 +497,30 @@ export default function InstitutionProducts() {
       })()}
 
       {/* Assignment Table Card */}
-      <Card className="border border-gray-200 shadow-sm">
-        <CardHeader className="pb-4">
-          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+      <Card className="border border-slate-200/80 shadow-xs bg-white overflow-hidden">
+        <CardHeader className="p-5 pb-4 border-b border-slate-100 bg-slate-50/40">
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
             <div>
-              <CardTitle className="text-lg font-bold text-gray-900 flex items-center gap-2">
-                <SlidersHorizontal className="w-5 h-5 text-primary" />
+              <CardTitle className="text-sm font-semibold text-slate-900 flex items-center gap-2">
+                <SlidersHorizontal className="w-4 h-4 text-slate-600" />
                 Matriz de Asignaciones (Financieras y Productos)
               </CardTitle>
-              <p className="text-xs text-gray-500 mt-1">
-                Consulta y audita qué productos tiene asignados cada financiera antes o después de darla de alta.
+              <p className="text-xs text-slate-500 mt-0.5">
+                Consulta y audita los esquemas crediticios vinculados a cada financiera participante.
               </p>
             </div>
 
             {/* View Mode Toggle */}
-            <div className="flex items-center gap-2 bg-gray-100 p-1 rounded-lg border border-gray-200">
+            <div className="flex items-center gap-1.5 bg-slate-100 p-1 rounded-xl border border-slate-200/60">
               <Button
                 variant={viewMode === 'by_institution' ? 'default' : 'ghost'}
                 size="sm"
                 onClick={() => setViewMode('by_institution')}
-                className="text-xs font-semibold h-8"
+                className={`text-xs font-semibold h-7 px-3 rounded-lg ${
+                  viewMode === 'by_institution' 
+                    ? 'bg-white text-slate-900 shadow-xs' 
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
                 data-testid="toggle-view-by-institution"
               >
                 <Building2 className="w-3.5 h-3.5 mr-1.5" />
@@ -532,7 +530,11 @@ export default function InstitutionProducts() {
                 variant={viewMode === 'by_product' ? 'default' : 'ghost'}
                 size="sm"
                 onClick={() => setViewMode('by_product')}
-                className="text-xs font-semibold h-8"
+                className={`text-xs font-semibold h-7 px-3 rounded-lg ${
+                  viewMode === 'by_product' 
+                    ? 'bg-white text-slate-900 shadow-xs' 
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
                 data-testid="toggle-view-by-product"
               >
                 <FileText className="w-3.5 h-3.5 mr-1.5" />
@@ -542,21 +544,21 @@ export default function InstitutionProducts() {
           </div>
 
           {/* Filters Bar */}
-          <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 pt-3 mt-3 border-t border-gray-100">
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 pt-3 mt-3 border-t border-slate-100">
             <div className="relative flex-1 max-w-sm">
-              <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+              <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
               <Input
                 placeholder={viewMode === 'by_institution' ? "Buscar por financiera..." : "Buscar por producto..."}
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="pl-9 text-xs h-9"
+                className="pl-9 text-xs h-8 border-slate-200 rounded-lg bg-white"
                 data-testid="input-search-assignments"
               />
             </div>
 
             {viewMode === 'by_institution' && (
               <Select value={statusFilter} onValueChange={(val: any) => setStatusFilter(val)}>
-                <SelectTrigger className="w-full sm:w-[220px] h-9 text-xs" data-testid="select-assignment-filter">
+                <SelectTrigger className="w-full sm:w-[220px] h-8 text-xs border-slate-200 rounded-lg" data-testid="select-assignment-filter">
                   <SelectValue placeholder="Filtrar asignaciones..." />
                 </SelectTrigger>
                 <SelectContent>
@@ -568,7 +570,6 @@ export default function InstitutionProducts() {
             )}
           </div>
         </CardHeader>
-
         <CardContent className="p-0">
           {viewMode === 'by_institution' ? (
             /* Vista 1: Por Financiera */

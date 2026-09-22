@@ -67,10 +67,10 @@ const COMMERCIAL_CATEGORIES: CategoryDefinition[] = [
     icon: Coins,
     colorClass: {
       bg: "bg-blue-600",
-      text: "text-blue-600 dark:text-blue-400",
-      border: "border-blue-200 dark:border-blue-800",
-      lightBg: "bg-blue-50 dark:bg-blue-950/40",
-      badge: "bg-blue-100 text-blue-700 dark:bg-blue-900/50 dark:text-blue-300",
+      text: "text-blue-700",
+      border: "border-blue-200",
+      lightBg: "bg-blue-50/70",
+      badge: "bg-blue-50 text-blue-700 border-blue-200",
     },
   },
   {
@@ -82,10 +82,10 @@ const COMMERCIAL_CATEGORIES: CategoryDefinition[] = [
     icon: Briefcase,
     colorClass: {
       bg: "bg-emerald-600",
-      text: "text-emerald-600 dark:text-emerald-400",
-      border: "border-emerald-200 dark:border-emerald-800",
-      lightBg: "bg-emerald-50 dark:bg-emerald-950/40",
-      badge: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/50 dark:text-emerald-300",
+      text: "text-emerald-700",
+      border: "border-emerald-200",
+      lightBg: "bg-emerald-50/70",
+      badge: "bg-emerald-50 text-emerald-700 border-emerald-200",
     },
   },
   {
@@ -96,11 +96,11 @@ const COMMERCIAL_CATEGORIES: CategoryDefinition[] = [
     description: "Línea de crédito disponible permanentemente con disposiciones y pagos continuos según requerimientos.",
     icon: RefreshCw,
     colorClass: {
-      bg: "bg-purple-600",
-      text: "text-purple-600 dark:text-purple-400",
-      border: "border-purple-200 dark:border-purple-800",
-      lightBg: "bg-purple-50 dark:bg-purple-950/40",
-      badge: "bg-purple-100 text-purple-700 dark:bg-purple-900/50 dark:text-purple-300",
+      bg: "bg-indigo-600",
+      text: "text-indigo-700",
+      border: "border-indigo-200",
+      lightBg: "bg-indigo-50/70",
+      badge: "bg-indigo-50 text-indigo-700 border-indigo-200",
     },
   },
   {
@@ -112,10 +112,10 @@ const COMMERCIAL_CATEGORIES: CategoryDefinition[] = [
     icon: Building2,
     colorClass: {
       bg: "bg-amber-600",
-      text: "text-amber-600 dark:text-amber-400",
-      border: "border-amber-200 dark:border-amber-800",
-      lightBg: "bg-amber-50 dark:bg-amber-950/40",
-      badge: "bg-amber-100 text-amber-700 dark:bg-amber-900/50 dark:text-amber-300",
+      text: "text-amber-800",
+      border: "border-amber-200",
+      lightBg: "bg-amber-50/70",
+      badge: "bg-amber-50 text-amber-800 border-amber-200",
     },
   },
   {
@@ -127,10 +127,10 @@ const COMMERCIAL_CATEGORIES: CategoryDefinition[] = [
     icon: CreditCard,
     colorClass: {
       bg: "bg-cyan-600",
-      text: "text-cyan-600 dark:text-cyan-400",
-      border: "border-cyan-200 dark:border-cyan-800",
-      lightBg: "bg-cyan-50 dark:bg-cyan-950/40",
-      badge: "bg-cyan-100 text-cyan-700 dark:bg-cyan-900/50 dark:text-cyan-300",
+      text: "text-cyan-800",
+      border: "border-cyan-200",
+      lightBg: "bg-cyan-50/70",
+      badge: "bg-cyan-50 text-cyan-800 border-cyan-200",
     },
   },
   {
@@ -142,10 +142,10 @@ const COMMERCIAL_CATEGORIES: CategoryDefinition[] = [
     icon: Tractor,
     colorClass: {
       bg: "bg-teal-600",
-      text: "text-teal-600 dark:text-teal-400",
-      border: "border-teal-200 dark:border-teal-800",
-      lightBg: "bg-teal-50 dark:bg-teal-950/40",
-      badge: "bg-teal-100 text-teal-700 dark:bg-teal-900/50 dark:text-teal-300",
+      text: "text-teal-800",
+      border: "border-teal-200",
+      lightBg: "bg-teal-50/70",
+      badge: "bg-teal-50 text-teal-800 border-teal-200",
     },
   },
   {
@@ -156,11 +156,11 @@ const COMMERCIAL_CATEGORIES: CategoryDefinition[] = [
     description: "Arrendamiento puro o financiero para flotillas, maquinaria pesada y tecnología con deducción al 100%.",
     icon: FileSpreadsheet,
     colorClass: {
-      bg: "bg-slate-600",
-      text: "text-slate-600 dark:text-slate-400",
-      border: "border-slate-200 dark:border-slate-800",
-      lightBg: "bg-slate-50 dark:bg-slate-950/40",
-      badge: "bg-slate-100 text-slate-700 dark:bg-slate-900/50 dark:text-slate-300",
+      bg: "bg-slate-700",
+      text: "text-slate-800",
+      border: "border-slate-200",
+      lightBg: "bg-slate-100",
+      badge: "bg-slate-100 text-slate-800 border-slate-200",
     },
   },
   {
@@ -172,10 +172,10 @@ const COMMERCIAL_CATEGORIES: CategoryDefinition[] = [
     icon: ArrowRightLeft,
     colorClass: {
       bg: "bg-rose-600",
-      text: "text-rose-600 dark:text-rose-400",
-      border: "border-rose-200 dark:border-rose-800",
-      lightBg: "bg-rose-50 dark:bg-rose-950/40",
-      badge: "bg-rose-100 text-rose-700 dark:bg-rose-900/50 dark:text-rose-300",
+      text: "text-rose-800",
+      border: "border-rose-200",
+      lightBg: "bg-rose-50/70",
+      badge: "bg-rose-50 text-rose-800 border-rose-200",
     },
   },
   {
@@ -187,10 +187,10 @@ const COMMERCIAL_CATEGORIES: CategoryDefinition[] = [
     icon: Construction,
     colorClass: {
       bg: "bg-sky-600",
-      text: "text-sky-600 dark:text-sky-400",
-      border: "border-sky-200 dark:border-sky-800",
-      lightBg: "bg-sky-50 dark:bg-sky-950/40",
-      badge: "bg-sky-100 text-sky-700 dark:bg-sky-900/50 dark:text-sky-300",
+      text: "text-sky-800",
+      border: "border-sky-200",
+      lightBg: "bg-sky-50/70",
+      badge: "bg-sky-50 text-sky-800 border-sky-200",
     },
   },
 ];
@@ -306,22 +306,22 @@ function InstitutionCommercialCard({
 
   return (
     <Card
-      className="overflow-hidden border hover:border-primary/60 hover:shadow-md transition-all flex flex-col justify-between bg-card"
+      className="overflow-hidden border border-slate-200/80 hover:border-slate-300 hover:shadow-xs transition-all flex flex-col justify-between bg-white"
       data-testid={`financiera-card-${institution.id}`}
     >
       <div>
         {/* Card Header: Institution & Product Selector */}
-        <div className="p-5 pb-4 border-b bg-muted/20">
+        <div className="p-4 pb-3 border-b border-slate-100 bg-slate-50/50">
           <div className="flex items-start justify-between gap-2">
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-lg bg-primary/10 border border-primary/20 flex items-center justify-center font-bold text-primary text-sm flex-shrink-0">
+              <div className="w-10 h-10 rounded-xl bg-slate-900 border border-slate-800 flex items-center justify-center font-bold text-white text-xs flex-shrink-0">
                 {institution?.name ? institution.name.substring(0, 2).toUpperCase() : "FI"}
               </div>
               <div>
-                <h4 className="text-base font-bold text-foreground leading-tight flex items-center gap-1.5" data-testid={`financiera-name-${institution.id}`}>
+                <h4 className="text-sm font-semibold text-slate-900 leading-tight flex items-center gap-1.5" data-testid={`financiera-name-${institution.id}`}>
                   {institution?.name || "Financiera"}
                 </h4>
-                <span className="text-xs text-muted-foreground line-clamp-1">
+                <span className="text-xs text-slate-500 line-clamp-1 mt-0.5">
                   {currentProd?.customName || currentProd?.template?.name || "Crédito Empresarial"}
                 </span>
               </div>
@@ -329,13 +329,13 @@ function InstitutionCommercialCard({
 
             <div className="flex flex-col items-end gap-1">
               {(institution as any)?.type && (
-                <Badge variant="secondary" className="text-[10px] uppercase font-semibold px-2 py-0.5">
+                <Badge variant="outline" className="text-[10px] uppercase font-semibold px-2 py-0.5 bg-slate-100 text-slate-700 border-slate-200">
                   {(institution as any).type}
                 </Badge>
               )}
               {products.length > 1 && (
-                <Badge variant="outline" className="text-[10px] bg-primary/10 text-primary border-primary/30">
-                  {products.length} productos
+                <Badge variant="outline" className="text-[10px] bg-blue-50 text-blue-700 border-blue-200 font-semibold">
+                  {products.length} opciones
                 </Badge>
               )}
             </div>
@@ -343,9 +343,9 @@ function InstitutionCommercialCard({
 
           {/* If institution has multiple products in this category, provide quick tabs */}
           {products.length > 1 && (
-            <div className="mt-3 pt-2 border-t border-border/60">
-              <span className="text-[11px] font-semibold text-muted-foreground block mb-1.5">
-                Productos disponibles en esta categoría:
+            <div className="mt-3 pt-2 border-t border-slate-200/60">
+              <span className="text-[11px] font-medium text-slate-400 block mb-1.5">
+                Opciones en esta categoría:
               </span>
               <div className="flex flex-wrap gap-1.5">
                 {products.map((p, idx) => (
@@ -355,7 +355,7 @@ function InstitutionCommercialCard({
                     variant={idx === activeIdx ? "default" : "outline"}
                     size="sm"
                     onClick={() => setActiveIdx(idx)}
-                    className="h-7 text-xs px-2.5 py-0 rounded-md"
+                    className={`h-7 text-xs px-2.5 py-0 rounded-lg ${idx === activeIdx ? 'bg-slate-900 text-white' : 'border-slate-200 text-slate-600'}`}
                   >
                     {p.customName || p.template?.name || `Opción ${idx + 1}`}
                   </Button>
@@ -365,12 +365,12 @@ function InstitutionCommercialCard({
           )}
 
           {/* Profiles */}
-          <div className="flex flex-wrap gap-1.5 mt-3">
+          <div className="flex flex-wrap gap-1.5 mt-2.5">
             {(currentProd?.targetProfiles || []).map((prof) => (
               <Badge
                 key={prof}
                 variant="outline"
-                className="text-[10px] px-1.5 py-0 bg-background text-muted-foreground border-border"
+                className="text-[10px] px-2 py-0.5 bg-white text-slate-600 border-slate-200 font-medium"
               >
                 {profileLabels[prof] || prof}
               </Badge>
@@ -379,14 +379,14 @@ function InstitutionCommercialCard({
         </div>
 
         {/* Commercial Conditions Matrix */}
-        <div className="p-5 space-y-4">
-          <div className="grid grid-cols-2 gap-3 p-3 rounded-lg bg-muted/30 border text-xs">
+        <div className="p-4 space-y-3.5">
+          <div className="grid grid-cols-2 gap-2.5 p-3 rounded-xl bg-slate-50/70 border border-slate-200/60 text-xs">
             <div>
-              <span className="text-[11px] text-muted-foreground flex items-center gap-1 font-medium">
-                <DollarSign className="w-3 h-3 text-primary" />
+              <span className="text-[11px] text-slate-400 flex items-center gap-1 font-medium">
+                <DollarSign className="w-3 h-3 text-slate-500" />
                 Rango de Monto
               </span>
-              <p className="text-xs font-bold text-foreground mt-0.5">
+              <p className="text-xs font-bold text-slate-900 mt-0.5">
                 {minAmount || maxAmount
                   ? `${formatMoney(minAmount)} - ${formatMoney(maxAmount)}`
                   : "A convenir"}
@@ -394,31 +394,31 @@ function InstitutionCommercialCard({
             </div>
 
             <div>
-              <span className="text-[11px] text-muted-foreground flex items-center gap-1 font-medium">
-                <Calendar className="w-3 h-3 text-primary" />
+              <span className="text-[11px] text-slate-400 flex items-center gap-1 font-medium">
+                <Calendar className="w-3 h-3 text-slate-500" />
                 Plazo
               </span>
-              <p className="text-xs font-bold text-foreground mt-0.5">
+              <p className="text-xs font-bold text-slate-900 mt-0.5">
                 {term ? `Hasta ${formatPlazo(term)}` : "A convenir"}
               </p>
             </div>
 
             <div>
-              <span className="text-[11px] text-muted-foreground flex items-center gap-1 font-medium">
-                <Percent className="w-3 h-3 text-primary" />
+              <span className="text-[11px] text-slate-400 flex items-center gap-1 font-medium">
+                <Percent className="w-3 h-3 text-emerald-600" />
                 Tasa Indicativa
               </span>
-              <p className="text-xs font-bold text-emerald-600 dark:text-emerald-400 mt-0.5">
+              <p className="text-xs font-bold text-emerald-700 mt-0.5">
                 {rate ? `Desde ${formatRate(rate)}` : "Según análisis"}
               </p>
             </div>
 
             <div>
-              <span className="text-[11px] text-muted-foreground flex items-center gap-1 font-medium">
-                <Coins className="w-3 h-3 text-primary" />
+              <span className="text-[11px] text-slate-400 flex items-center gap-1 font-medium">
+                <Coins className="w-3 h-3 text-slate-500" />
                 Comisión Apertura
               </span>
-              <p className="text-xs font-bold text-foreground mt-0.5">
+              <p className="text-xs font-bold text-slate-900 mt-0.5">
                 {fee ? formatFee(fee) : "Consultar"}
               </p>
             </div>
@@ -426,9 +426,9 @@ function InstitutionCommercialCard({
 
           {/* Highlights / Destinos */}
           {Array.isArray(destinos) && destinos.length > 0 && (
-            <div className="text-xs space-y-1">
-              <span className="text-[11px] font-semibold text-muted-foreground">Destinos permitidos:</span>
-              <p className="text-xs text-foreground line-clamp-1">
+            <div className="text-xs space-y-0.5">
+              <span className="text-[11px] font-medium text-slate-400">Destinos autorizados:</span>
+              <p className="text-xs text-slate-700 line-clamp-1">
                 {destinos.join(", ")}
               </p>
             </div>
@@ -436,18 +436,18 @@ function InstitutionCommercialCard({
 
           {/* Cobertura */}
           {presence && (
-            <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-              <MapPin className="w-3.5 h-3.5 text-primary flex-shrink-0" />
+            <div className="flex items-center gap-1.5 text-xs text-slate-500">
+              <MapPin className="w-3.5 h-3.5 text-slate-400 flex-shrink-0" />
               <span className="truncate">{presence}</span>
             </div>
           )}
 
           {/* Giros Prohibidos Warning */}
           {prohibitedGiros && (
-            <div className="p-2 bg-amber-500/10 border border-amber-500/20 rounded-md text-[11px] text-amber-800 dark:text-amber-300 flex items-start gap-1.5">
-              <ShieldAlert className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" />
+            <div className="p-2.5 bg-amber-50/80 border border-amber-200/80 rounded-lg text-[11px] text-amber-900 flex items-start gap-1.5">
+              <ShieldAlert className="w-3.5 h-3.5 text-amber-600 flex-shrink-0 mt-0.5" />
               <span className="line-clamp-2">
-                <strong>Restricciones:</strong> {prohibitedGiros}
+                <strong className="font-semibold text-amber-950">Restricciones:</strong> {prohibitedGiros}
               </span>
             </div>
           )}
@@ -455,13 +455,13 @@ function InstitutionCommercialCard({
       </div>
 
       {/* Card Action Buttons */}
-      <div className="p-4 pt-0 border-t bg-muted/10 flex items-center gap-2">
+      <div className="p-4 pt-0 border-t border-slate-100 flex items-center gap-2 bg-slate-50/30">
         <Button
           type="button"
           variant="outline"
           size="sm"
           onClick={() => onSelectProduct(currentProd)}
-          className="flex-1 text-xs h-9"
+          className="flex-1 text-xs h-8 font-semibold text-slate-700 border-slate-200 hover:bg-slate-100"
           data-testid={`button-view-product-${currentProd?.id}`}
         >
           Ver Ficha Completa
@@ -470,7 +470,7 @@ function InstitutionCommercialCard({
           type="button"
           size="sm"
           onClick={onStartRequest}
-          className="flex-1 text-xs h-9 bg-primary hover:bg-primary/90 text-primary-foreground gap-1"
+          className="flex-1 text-xs h-8 font-semibold bg-slate-900 hover:bg-slate-800 text-white gap-1 shadow-xs"
         >
           Iniciar Solicitud
           <ArrowUpRight className="w-3.5 h-3.5" />
@@ -593,35 +593,35 @@ export default function BrokerProducts() {
   // ==========================================
   if (!selectedCategoryId) {
     return (
-      <div className="space-y-8">
-        {/* Banner Comercial */}
-        <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-primary/15 via-primary/5 to-background border border-primary/20 p-6 sm:p-8">
-          <div className="max-w-3xl space-y-3">
-            <Badge className="bg-primary/20 text-primary border-primary/30 text-xs px-2.5 py-0.5">
+      <div className="space-y-6">
+        {/* Banner Comercial Institucional */}
+        <div className="relative overflow-hidden rounded-2xl bg-slate-900 border border-slate-800 p-6 sm:p-7 text-white shadow-sm">
+          <div className="max-w-3xl space-y-2.5">
+            <Badge variant="outline" className="bg-blue-500/10 text-blue-400 border-blue-400/20 text-xs px-2.5 py-0.5 font-semibold">
               Catálogo Comercial Multifinanciera
             </Badge>
-            <h2 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-foreground">
+            <h2 className="text-xl sm:text-2xl font-bold tracking-tight text-slate-100">
               ¿Qué tipo de financiamiento necesita tu cliente?
             </h2>
-            <p className="text-sm sm:text-base text-muted-foreground leading-relaxed">
+            <p className="text-xs sm:text-sm text-slate-300 leading-relaxed font-normal">
               Selecciona la categoría adecuada para consultar las financieras disponibles, sus rangos de monto, tasas
               indicativas y condiciones comerciales.
             </p>
           </div>
 
           {/* Quick Search */}
-          <div className="mt-6 flex flex-col sm:flex-row gap-3 max-w-xl">
+          <div className="mt-5 flex flex-col sm:flex-row gap-2.5 max-w-xl">
             <div className="relative flex-1">
-              <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+              <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
               <Input
                 placeholder="Buscar por financiera (ej. Hey Banco, Banorte, Konfío)..."
                 value={globalSearch}
                 onChange={(e) => setGlobalSearch(e.target.value)}
-                className="pl-10 h-11 bg-background/90 shadow-xs"
+                className="pl-9 h-9 text-xs bg-slate-800/80 border-slate-700 text-slate-100 placeholder:text-slate-400 focus-visible:ring-slate-500"
               />
             </div>
             {globalSearch && (
-              <Button variant="ghost" size="sm" onClick={() => setGlobalSearch("")} className="text-xs h-11">
+              <Button variant="ghost" size="sm" onClick={() => setGlobalSearch("")} className="text-xs h-9 text-slate-300 hover:text-white hover:bg-slate-800">
                 Limpiar
               </Button>
             )}
@@ -629,18 +629,18 @@ export default function BrokerProducts() {
         </div>
 
         {/* Categories Grid */}
-        <div className="space-y-4">
+        <div className="space-y-3.5">
           <div className="flex items-center justify-between">
-            <h3 className="text-lg font-bold text-foreground flex items-center gap-2">
-              <SlidersHorizontal className="w-5 h-5 text-primary" />
+            <h3 className="text-sm font-semibold text-slate-900 flex items-center gap-2">
+              <SlidersHorizontal className="w-4 h-4 text-slate-600" />
               Categorías de Crédito
             </h3>
-            <span className="text-xs text-muted-foreground font-medium">
-              {institutionProducts.length} productos registrados en {institutions.length} financieras
+            <span className="text-xs text-slate-500 font-medium">
+              {institutionProducts.length} productos en {institutions.length} financieras
             </span>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {COMMERCIAL_CATEGORIES.map((cat) => {
               const Icon = cat.icon;
               const prods = productsByCategory[cat.id] || [];
@@ -666,61 +666,61 @@ export default function BrokerProducts() {
                 <Card
                   key={cat.id}
                   onClick={() => setSelectedCategoryId(cat.id)}
-                  className={`group relative overflow-hidden transition-all duration-200 cursor-pointer border hover:shadow-md hover:border-primary/50 flex flex-col justify-between ${
-                    hasProducts ? "bg-card" : "bg-muted/10 opacity-75 hover:opacity-100"
+                  className={`group relative overflow-hidden transition-all duration-200 cursor-pointer border border-slate-200/80 hover:shadow-sm hover:border-slate-300 flex flex-col justify-between ${
+                    hasProducts ? "bg-white" : "bg-slate-50/50 opacity-80 hover:opacity-100"
                   }`}
                 >
-                  <CardHeader className="pb-3">
+                  <CardHeader className="p-4 pb-3">
                     <div className="flex items-start justify-between gap-3">
-                      <div className={`p-3 rounded-xl ${cat.colorClass.lightBg} ${cat.colorClass.text}`}>
-                        <Icon className="w-6 h-6" />
+                      <div className={`w-9 h-9 rounded-xl flex items-center justify-center border border-slate-200/80 ${cat.colorClass.lightBg} ${cat.colorClass.text}`}>
+                        <Icon className="w-4 h-4" />
                       </div>
                       {hasProducts ? (
-                        <Badge variant="outline" className={`text-xs font-semibold ${cat.colorClass.badge}`}>
+                        <Badge variant="outline" className={`text-[11px] font-semibold ${cat.colorClass.badge}`}>
                           {instCount} {instCount === 1 ? "financiera" : "financieras"} · {prods.length} {prods.length === 1 ? "opción" : "opciones"}
                         </Badge>
                       ) : (
-                        <Badge variant="outline" className="text-xs text-muted-foreground bg-muted/30">
+                        <Badge variant="outline" className="text-[11px] text-slate-500 bg-slate-50 border-slate-200">
                           En integración
                         </Badge>
                       )}
                     </div>
 
-                    <CardTitle className="text-lg font-bold text-foreground mt-3 group-hover:text-primary transition-colors flex items-center justify-between">
+                    <CardTitle className="text-sm font-semibold text-slate-900 mt-2.5 group-hover:text-slate-950 transition-colors flex items-center justify-between">
                       <span>{cat.name}</span>
-                      <ChevronRight className="w-4 h-4 text-muted-foreground group-hover:text-primary group-hover:translate-x-1 transition-transform" />
+                      <ChevronRight className="w-4 h-4 text-slate-400 group-hover:text-slate-700 group-hover:translate-x-0.5 transition-transform" />
                     </CardTitle>
-                    <CardDescription className="text-xs text-muted-foreground line-clamp-2 mt-1">
+                    <CardDescription className="text-xs text-slate-500 line-clamp-2 mt-1 leading-relaxed">
                       {cat.description}
                     </CardDescription>
                   </CardHeader>
 
-                  <CardContent className="pt-0 pb-4">
+                  <CardContent className="p-4 pt-0">
                     {hasProducts ? (
-                      <div className="mt-2 pt-3 border-t border-border/60 flex items-center justify-between text-xs">
+                      <div className="pt-3 border-t border-slate-100 flex items-center justify-between text-xs">
                         <div className="flex -space-x-1 overflow-hidden">
                           {Array.from(new Set(prods.map((p) => institutionsMap.get(p.institutionId)?.name).filter(Boolean)))
                             .slice(0, 3)
                             .map((name, idx) => (
                               <span
                                 key={idx}
-                                className="inline-block px-1.5 py-0.5 bg-muted text-[10px] font-medium text-foreground rounded border border-background truncate max-w-[90px]"
+                                className="inline-block px-1.5 py-0.5 bg-slate-100 text-[10px] font-medium text-slate-700 rounded border border-white truncate max-w-[85px]"
                               >
                                 {name}
                               </span>
                             ))}
                           {instCount > 3 && (
-                            <span className="inline-block px-1 py-0.5 bg-primary/10 text-primary text-[10px] font-bold rounded">
+                            <span className="inline-block px-1 py-0.5 bg-slate-100 text-slate-600 text-[10px] font-bold rounded">
                               +{instCount - 3}
                             </span>
                           )}
                         </div>
-                        <span className="text-[11px] font-semibold text-primary flex items-center gap-1 group-hover:underline">
+                        <span className="text-[11px] font-semibold text-slate-700 flex items-center gap-1 group-hover:text-slate-900">
                           Ver financieras
                         </span>
                       </div>
                     ) : (
-                      <div className="mt-2 pt-3 border-t border-border/40 text-[11px] text-muted-foreground italic flex items-center gap-1">
+                      <div className="pt-3 border-t border-slate-100 text-[11px] text-slate-400 italic flex items-center gap-1">
                         <Info className="w-3.5 h-3.5" />
                         Próximamente disponible
                       </div>
@@ -743,7 +743,7 @@ export default function BrokerProducts() {
   return (
     <div className="space-y-6">
       {/* Navigation Top Bar */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-2 border-b">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-3 border-b border-slate-100">
         <div className="flex items-center gap-3">
           <Button
             variant="outline"
@@ -753,54 +753,54 @@ export default function BrokerProducts() {
               setGlobalSearch("");
               setSelectedProfileFilter("all");
             }}
-            className="h-9 gap-1.5 text-xs font-semibold"
+            className="h-8 gap-1.5 text-xs font-semibold text-slate-700 border-slate-200 hover:bg-slate-50"
           >
-            <ArrowLeft className="w-4 h-4" />
+            <ArrowLeft className="w-3.5 h-3.5" />
             Volver a Categorías
           </Button>
 
-          <div className="h-5 w-px bg-border" />
+          <div className="h-4 w-px bg-slate-200" />
 
-          <div className="flex items-center gap-2">
-            <div className={`p-1.5 rounded-lg ${currentCategory?.colorClass.lightBg} ${currentCategory?.colorClass.text}`}>
+          <div className="flex items-center gap-2.5">
+            <div className={`w-8 h-8 rounded-lg flex items-center justify-center border border-slate-200/80 ${currentCategory?.colorClass.lightBg} ${currentCategory?.colorClass.text}`}>
               <CatIcon className="w-4 h-4" />
             </div>
             <div>
-              <h3 className="text-base font-bold text-foreground leading-none">{currentCategory?.name}</h3>
-              <p className="text-xs text-muted-foreground mt-0.5">{currentCategory?.tagline}</p>
+              <h3 className="text-sm font-semibold text-slate-900 leading-tight">{currentCategory?.name}</h3>
+              <p className="text-[11px] text-slate-400 mt-0.5">{currentCategory?.tagline}</p>
             </div>
           </div>
         </div>
 
         <div className="flex items-center gap-2">
-          <Badge variant="outline" className={`text-xs ${currentCategory?.colorClass.badge}`}>
-            {groupedInstitutions.length} {groupedInstitutions.length === 1 ? "financiera disponible" : "financieras disponibles"} ({categoryProducts.length} {categoryProducts.length === 1 ? "producto" : "productos"})
+          <Badge variant="outline" className={`text-xs font-semibold ${currentCategory?.colorClass.badge}`}>
+            {groupedInstitutions.length} {groupedInstitutions.length === 1 ? "financiera disponible" : "financieras disponibles"} ({categoryProducts.length} {categoryProducts.length === 1 ? "opción" : "opciones"})
           </Badge>
         </div>
       </div>
 
       {/* Description Callout */}
-      <div className="p-4 rounded-xl bg-muted/40 border border-border/80 flex items-start gap-3 text-xs text-muted-foreground">
-        <Info className="w-4 h-4 text-primary flex-shrink-0 mt-0.5" />
-        <div className="flex-1">
-          <strong className="text-foreground">Enfoque Comercial:</strong> {currentCategory?.description}
+      <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200/80 flex items-start gap-2.5 text-xs text-slate-600">
+        <Info className="w-4 h-4 text-blue-600 flex-shrink-0 mt-0.5" />
+        <div className="flex-1 leading-relaxed">
+          <strong className="text-slate-900 font-semibold">Enfoque Comercial:</strong> {currentCategory?.description}
         </div>
       </div>
 
       {/* Filters Bar */}
       <div className="flex flex-col sm:flex-row gap-3 items-center justify-between">
         <div className="relative w-full sm:w-80">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
           <Input
             placeholder="Filtrar por financiera o producto..."
             value={globalSearch}
             onChange={(e) => setGlobalSearch(e.target.value)}
-            className="pl-9 h-9 text-xs"
+            className="pl-9 h-8 text-xs border-slate-200 rounded-lg bg-white"
           />
         </div>
 
-        <div className="flex items-center gap-2 w-full sm:w-auto overflow-x-auto pb-1 sm:pb-0">
-          <span className="text-xs font-medium text-muted-foreground flex-shrink-0">Perfil de cliente:</span>
+        <div className="flex items-center gap-1.5 w-full sm:w-auto overflow-x-auto pb-1 sm:pb-0">
+          <span className="text-xs font-medium text-slate-400 flex-shrink-0 mr-1">Perfil:</span>
           {["all", "persona_moral", "fisica_empresarial", "fisica"].map((prof) => (
             <Button
               key={prof}
@@ -808,7 +808,11 @@ export default function BrokerProducts() {
               variant={selectedProfileFilter === prof ? "default" : "outline"}
               size="sm"
               onClick={() => setSelectedProfileFilter(prof)}
-              className="h-8 text-xs flex-shrink-0"
+              className={`h-7 text-xs px-2.5 rounded-lg flex-shrink-0 font-medium ${
+                selectedProfileFilter === prof 
+                  ? "bg-slate-900 text-white" 
+                  : "border-slate-200 text-slate-600 hover:bg-slate-50"
+              }`}
             >
               {prof === "all" ? "Todos" : profileLabels[prof] || prof}
             </Button>
@@ -818,11 +822,11 @@ export default function BrokerProducts() {
 
       {/* Financieras & Products List */}
       {groupedInstitutions.length === 0 ? (
-        <Card className="border-dashed">
-          <CardContent className="p-12 text-center space-y-3">
-            <Building className="w-12 h-12 text-muted-foreground mx-auto opacity-40" />
-            <h4 className="text-base font-bold text-foreground">No hay financieras disponibles con estos filtros</h4>
-            <p className="text-xs text-muted-foreground max-w-md mx-auto">
+        <Card className="border border-dashed border-slate-200 bg-slate-50/50">
+          <CardContent className="p-10 text-center space-y-2.5">
+            <Building className="w-10 h-10 text-slate-300 mx-auto" />
+            <h4 className="text-sm font-semibold text-slate-900">No hay financieras disponibles con estos filtros</h4>
+            <p className="text-xs text-slate-500 max-w-md mx-auto">
               Actualmente no se encontraron opciones en la categoría &ldquo;{currentCategory?.name}&rdquo; con los
               criterios de búsqueda seleccionados.
             </p>
@@ -833,14 +837,14 @@ export default function BrokerProducts() {
                 setGlobalSearch("");
                 setSelectedProfileFilter("all");
               }}
-              className="text-xs mt-2"
+              className="text-xs mt-2 border-slate-200 text-slate-700"
             >
               Restablecer Filtros
             </Button>
           </CardContent>
         </Card>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
           {groupedInstitutions.map(({ institution, products }) => (
             <InstitutionCommercialCard
               key={institution.id}
