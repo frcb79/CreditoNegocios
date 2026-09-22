@@ -49,6 +49,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
+import { cn } from "@/lib/utils";
 import { 
   UserPlus, 
   Edit, 
@@ -812,22 +813,22 @@ export default function UserManagement() {
         )}
       </Header>
 
-      <main className="flex-1 p-4 sm:p-6 lg:p-8 overflow-y-auto space-y-6">
+      <main className="flex-1 p-4 sm:p-6 lg:p-8 overflow-y-auto space-y-4">
         
         {/* Navigation Tabs for Platform Admins */}
         {isPlatformAdmin && (
           <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-            <TabsList className="grid grid-cols-3 max-w-2xl bg-muted/60 p-1">
+            <TabsList className="grid grid-cols-3 max-w-2xl bg-slate-100 dark:bg-slate-800 p-1 border border-slate-200 dark:border-slate-700">
               <TabsTrigger value="organization" data-testid="tab-organization" className="text-xs font-semibold flex items-center gap-2">
-                <Building2 className="w-4 h-4 text-primary" />
+                <Building2 className="w-3.5 h-3.5 text-primary" />
                 Organización
               </TabsTrigger>
               <TabsTrigger value="global" data-testid="tab-global" className="text-xs font-semibold flex items-center gap-2">
-                <Users className="w-4 h-4" />
+                <Users className="w-3.5 h-3.5" />
                 Directorio Global ({legacyUsers?.length || 0})
               </TabsTrigger>
               <TabsTrigger value="promos" data-testid="tab-promos" className="text-xs font-semibold flex items-center gap-2">
-                <Tag className="w-4 h-4 text-primary" />
+                <Tag className="w-3.5 h-3.5 text-primary" />
                 Códigos Promocionales ({adminPromos?.length || 0})
               </TabsTrigger>
             </TabsList>
@@ -837,374 +838,479 @@ export default function UserManagement() {
         {/* Tab 1: Organization Members View */}
         {activeTab === "organization" && (
           <>
-            {/* Organization Selector Bar (Visible if multiple tenants or platform admin) */}
-            <Card className="border border-border/70 shadow-sm bg-card/60 backdrop-blur-xs">
-              <CardContent className="p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-                <div className="flex items-center gap-3 w-full sm:w-auto">
-                  <div className="p-2.5 rounded-xl bg-primary/10 text-primary shrink-0">
-                    <Building2 className="h-5 w-5" />
-                  </div>
-                  <div className="flex-1 min-w-[200px]">
-                    <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-                      Organización Activa
-                    </div>
-                    {tenants && tenants.length > 1 ? (
-                      <Select 
-                        value={selectedTenantId} 
-                        onValueChange={setSelectedTenantId}
-                      >
-                        <SelectTrigger 
-                          className="h-9 mt-1 font-semibold text-sm border-primary/40 min-w-[260px]" 
-                          data-testid="select-tenant"
-                        >
-                          <SelectValue placeholder="Seleccionar organización..." />
-                        </SelectTrigger>
-                        <SelectContent className="max-h-[300px]">
-                          {tenants.map((t) => (
-                            <SelectItem key={t.id} value={t.id}>
-                              <div className="flex items-center gap-2">
-                                <span className="font-semibold">{t.name}</span>
-                                {getTenantTypeBadge(t.type)}
-                              </div>
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    ) : (
-                      <div className="flex items-center gap-2 mt-0.5">
-                        <span className="font-bold text-base text-foreground">
-                          {currentTenant?.name || "Mi Organización"}
-                        </span>
-                        {currentTenant && getTenantTypeBadge(currentTenant.type)}
-                      </div>
-                    )}
-                  </div>
+            {/* Organization Selector Bar (Compact Institutional Style) */}
+            <div className="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-xl shadow-xs p-3 sm:p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+              <div className="flex items-center gap-3 w-full sm:w-auto">
+                <div className="p-2 rounded-lg bg-primary/10 text-primary shrink-0">
+                  <Building2 className="h-4 w-4" />
                 </div>
-
-                {/* Caller Role Status in this Organization */}
-                <div className="flex items-center gap-2 text-xs bg-muted/40 px-3 py-2 rounded-lg border border-border/60 self-stretch sm:self-auto justify-between sm:justify-start">
-                  <span className="text-muted-foreground">Tu rol en esta organización:</span>
-                  {isSuperAdmin ? (
-                    <Badge className="bg-purple-100 text-purple-800 text-xs">Super Admin (Plataforma)</Badge>
-                  ) : userMembershipInSelectedTenant ? (
-                    getMemberRoleBadge(userMembershipInSelectedTenant.role)
+                <div className="flex-1 min-w-[200px]">
+                  <div className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">
+                    Organización Activa
+                  </div>
+                  {tenants && tenants.length > 1 ? (
+                    <Select 
+                      value={selectedTenantId} 
+                      onValueChange={setSelectedTenantId}
+                    >
+                      <SelectTrigger 
+                        className="h-8 mt-0.5 font-semibold text-xs border-slate-300 min-w-[240px]" 
+                        data-testid="select-tenant"
+                      >
+                        <SelectValue placeholder="Seleccionar organización..." />
+                      </SelectTrigger>
+                      <SelectContent className="max-h-[300px]">
+                        {tenants.map((t) => (
+                          <SelectItem key={t.id} value={t.id}>
+                            <div className="flex items-center gap-2">
+                              <span className="font-semibold text-xs">{t.name}</span>
+                              {getTenantTypeBadge(t.type)}
+                            </div>
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                   ) : (
-                    <Badge variant="outline" className="text-xs">Sin membresía directa</Badge>
+                    <div className="flex items-center gap-2 mt-0.5">
+                      <span className="font-bold text-sm text-foreground">
+                        {currentTenant?.name || "Mi Organización"}
+                      </span>
+                      {currentTenant && getTenantTypeBadge(currentTenant.type)}
+                    </div>
                   )}
                 </div>
-              </CardContent>
-            </Card>
+              </div>
 
-            {/* Metrics Row */}
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-              <Card className="border border-border/60 shadow-sm">
-                <CardHeader className="pb-1 pt-4 px-4">
-                  <CardTitle className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                    Total Miembros
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="px-4 pb-4">
-                  <div className="flex items-center justify-between">
-                    <div className="text-2xl font-extrabold">{totalMembers}</div>
-                    <div className="p-2 rounded-lg bg-blue-500/10 text-blue-600">
-                      <Users className="h-5 w-5" />
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-
-              <Card className="border border-border/60 shadow-sm">
-                <CardHeader className="pb-1 pt-4 px-4">
-                  <CardTitle className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                    Activos
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="px-4 pb-4">
-                  <div className="flex items-center justify-between">
-                    <div className="text-2xl font-extrabold text-emerald-600">{activeCount}</div>
-                    <div className="p-2 rounded-lg bg-emerald-500/10 text-emerald-600">
-                      <Power className="h-5 w-5" />
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-
-              <Card className="border border-border/60 shadow-sm">
-                <CardHeader className="pb-1 pt-4 px-4">
-                  <CardTitle className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                    Líderes / Owners
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="px-4 pb-4">
-                  <div className="flex items-center justify-between">
-                    <div className="text-2xl font-extrabold text-purple-600">{ownerCount}</div>
-                    <div className="p-2 rounded-lg bg-purple-500/10 text-purple-600">
-                      <Crown className="h-5 w-5" />
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-
-              <Card className="border border-border/60 shadow-sm">
-                <CardHeader className="pb-1 pt-4 px-4">
-                  <CardTitle className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                    Colaboradores
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="px-4 pb-4">
-                  <div className="flex items-center justify-between">
-                    <div className="text-2xl font-extrabold text-slate-700 dark:text-slate-200">
-                      {adminCount + memberCount}
-                    </div>
-                    <div className="p-2 rounded-lg bg-slate-500/10 text-slate-600">
-                      <ShieldCheck className="h-5 w-5" />
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
+              {/* Caller Role Status in this Organization */}
+              <div className="flex items-center gap-2 text-xs bg-slate-50 dark:bg-slate-800/60 px-2.5 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 self-stretch sm:self-auto justify-between sm:justify-start">
+                <span className="text-slate-500">Tu rol:</span>
+                {isSuperAdmin ? (
+                  <Badge className="bg-purple-100 text-purple-800 text-[11px] h-5 px-2">Super Admin (Plataforma)</Badge>
+                ) : userMembershipInSelectedTenant ? (
+                  getMemberRoleBadge(userMembershipInSelectedTenant.role)
+                ) : (
+                  <Badge variant="outline" className="text-[11px] h-5 px-2">Sin membresía directa</Badge>
+                )}
+              </div>
             </div>
 
-            {/* Filter Bar */}
-            <Card className="border border-border/60 shadow-sm">
-              <CardContent className="p-4">
-                <div className="flex flex-col md:flex-row gap-3">
-                  <div className="flex-1 relative">
-                    <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-                    <Input
-                      placeholder="Buscar por nombre, email o cargo (Mesa de Control, Analista)..."
-                      value={searchTerm}
-                      onChange={(e) => setSearchTerm(e.target.value)}
-                      className="pl-9 h-10"
-                      data-testid="input-search-members"
-                    />
-                  </div>
-
-                  <Select value={filterMemberRole} onValueChange={setFilterMemberRole}>
-                    <SelectTrigger className="w-full md:w-48 h-10" data-testid="select-filter-member-role">
-                      <SelectValue placeholder="Rol interno" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">Todos los roles</SelectItem>
-                      <SelectItem value="owner">Propietario / Líder</SelectItem>
-                      <SelectItem value="admin">Administrador</SelectItem>
-                      <SelectItem value="member">Colaborador</SelectItem>
-                    </SelectContent>
-                  </Select>
-
-                  <Select value={filterStatus} onValueChange={setFilterStatus}>
-                    <SelectTrigger className="w-full md:w-40 h-10" data-testid="select-filter-status">
-                      <SelectValue placeholder="Estado" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">Todos</SelectItem>
-                      <SelectItem value="active">Activos</SelectItem>
-                      <SelectItem value="inactive">Inactivos</SelectItem>
-                    </SelectContent>
-                  </Select>
+            {/* Metrics Strip (Compact Institutional Bar) */}
+            <div className="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-xl p-3 shadow-xs grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4 divide-y sm:divide-y-0 sm:divide-x divide-slate-100 dark:divide-slate-800">
+              <div className="flex items-center gap-3 pt-1 sm:pt-0 sm:px-2">
+                <div className="p-2 rounded-lg bg-blue-50 dark:bg-blue-950/40 text-blue-600 shrink-0">
+                  <Users className="h-4 w-4" />
                 </div>
-              </CardContent>
-            </Card>
+                <div>
+                  <div className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Total Miembros</div>
+                  <div className="text-lg font-bold text-slate-900 dark:text-slate-100 leading-tight">{totalMembers}</div>
+                </div>
+              </div>
 
-            {/* Members Table */}
-            <Card className="border border-border/60 shadow-sm">
-              <CardHeader className="py-4 px-6 border-b flex flex-row items-center justify-between">
+              <div className="flex items-center gap-3 pt-1 sm:pt-0 sm:px-4">
+                <div className="p-2 rounded-lg bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 shrink-0">
+                  <Power className="h-4 w-4" />
+                </div>
+                <div>
+                  <div className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Activos</div>
+                  <div className="text-lg font-bold text-emerald-600 leading-tight">{activeCount}</div>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-3 pt-2 sm:pt-0 sm:px-4">
+                <div className="p-2 rounded-lg bg-purple-50 dark:bg-purple-950/40 text-purple-600 shrink-0">
+                  <Crown className="h-4 w-4" />
+                </div>
+                <div>
+                  <div className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Líderes / Owners</div>
+                  <div className="text-lg font-bold text-purple-600 leading-tight">{ownerCount}</div>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-3 pt-2 sm:pt-0 sm:px-4">
+                <div className="p-2 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 shrink-0">
+                  <ShieldCheck className="h-4 w-4" />
+                </div>
+                <div>
+                  <div className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Colaboradores</div>
+                  <div className="text-lg font-bold text-slate-700 dark:text-slate-200 leading-tight">{adminCount + memberCount}</div>
+                </div>
+              </div>
+            </div>
+
+            {/* Filter Bar (Integrated & Compact) */}
+            <div className="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-xl p-3 shadow-xs flex flex-col md:flex-row gap-2.5 items-stretch md:items-center">
+              <div className="flex-1 relative">
+                <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
+                <Input
+                  placeholder="Buscar por colaborador, email o cargo (Mesa de Control, Analista)..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="pl-9 h-9 text-xs bg-slate-50/60 dark:bg-slate-800/40 border-slate-200 dark:border-slate-700"
+                  data-testid="input-search-members"
+                />
+              </div>
+
+              <div className="flex items-center gap-2">
+                <Select value={filterMemberRole} onValueChange={setFilterMemberRole}>
+                  <SelectTrigger className="w-full md:w-44 h-9 text-xs border-slate-200 dark:border-slate-700" data-testid="select-filter-member-role">
+                    <SelectValue placeholder="Rol interno" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Todos los roles</SelectItem>
+                    <SelectItem value="owner">Propietario / Líder</SelectItem>
+                    <SelectItem value="admin">Administrador</SelectItem>
+                    <SelectItem value="member">Colaborador</SelectItem>
+                  </SelectContent>
+                </Select>
+
+                <Select value={filterStatus} onValueChange={setFilterStatus}>
+                  <SelectTrigger className="w-full md:w-36 h-9 text-xs border-slate-200 dark:border-slate-700" data-testid="select-filter-status">
+                    <SelectValue placeholder="Estado" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Todos</SelectItem>
+                    <SelectItem value="active">Activos</SelectItem>
+                    <SelectItem value="inactive">Inactivos</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            {/* Members Section */}
+            <div className="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-xl shadow-xs overflow-hidden">
+              <div className="py-3 px-4 sm:px-5 border-b border-slate-100 dark:border-slate-800 flex flex-row items-center justify-between">
                 <div className="flex items-center gap-2">
-                  <CardTitle className="text-base font-semibold">Miembros del Equipo</CardTitle>
-                  <Badge variant="secondary" className="font-mono text-xs">{filteredMembers.length}</Badge>
+                  <span className="text-sm font-bold text-slate-900 dark:text-slate-100">Miembros del Equipo</span>
+                  <Badge variant="secondary" className="font-mono text-xs h-5 px-1.5">{filteredMembers.length}</Badge>
                 </div>
-                <div className="text-xs text-muted-foreground hidden sm:block">
-                  Cada usuario tiene credenciales únicas y facultades configuradas
+                <div className="text-[11px] text-slate-500 hidden sm:block">
+                  Credenciales únicas y facultades operativas asignadas
                 </div>
-              </CardHeader>
-              <CardContent className="p-0">
+              </div>
+
+              <div>
                 {isLoadingMembers ? (
-                  <div className="p-8 space-y-3">
-                    <Skeleton className="h-12 w-full" />
-                    <Skeleton className="h-12 w-full" />
-                    <Skeleton className="h-12 w-full" />
+                  <div className="p-6 space-y-2.5">
+                    <Skeleton className="h-10 w-full" />
+                    <Skeleton className="h-10 w-full" />
+                    <Skeleton className="h-10 w-full" />
                   </div>
                 ) : filteredMembers.length === 0 ? (
-                  <div className="text-center py-16">
-                    <Users className="mx-auto h-12 w-12 text-muted-foreground/40 mb-3" />
-                    <h4 className="text-sm font-semibold">No se encontraron colaboradores</h4>
-                    <p className="text-xs text-muted-foreground mt-1">
+                  <div className="text-center py-12">
+                    <Users className="mx-auto h-10 w-10 text-slate-300 dark:text-slate-600 mb-2.5" />
+                    <h4 className="text-sm font-semibold text-slate-800 dark:text-slate-200">No se encontraron colaboradores</h4>
+                    <p className="text-xs text-slate-500 mt-0.5">
                       {searchTerm ? "Prueba ajustando los filtros de búsqueda" : "Agrega el primer colaborador de esta organización"}
                     </p>
                     {canManageMembers && !searchTerm && (
                       <Button 
                         size="sm" 
                         onClick={handleOpenCreateModal} 
-                        className="mt-4 text-xs"
+                        className="mt-3.5 h-8 text-xs font-semibold"
                       >
-                        <UserPlus className="w-4 h-4 mr-1.5" />
+                        <UserPlus className="w-3.5 h-3.5 mr-1.5" />
                         Agregar Colaborador
                       </Button>
                     )}
                   </div>
                 ) : (
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-sm">
-                      <thead className="bg-muted/40 border-b text-xs uppercase text-muted-foreground">
-                        <tr>
-                          <th className="py-3 px-6 text-left font-semibold">Colaborador</th>
-                          <th className="py-3 px-4 text-left font-semibold">Email</th>
-                          <th className="py-3 px-4 text-left font-semibold">Rol Interno</th>
-                          <th className="py-3 px-4 text-left font-semibold">Cargo / Puesto</th>
-                          <th className="py-3 px-4 text-left font-semibold">Facultades Asignadas</th>
-                          <th className="py-3 px-4 text-left font-semibold">Estado</th>
-                          <th className="py-3 px-4 text-left font-semibold">Fecha Ingreso</th>
-                          <th className="py-3 px-6 text-right font-semibold">Acciones</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-border/60">
-                        {filteredMembers.map((m) => {
-                          const perms = (m.user?.permissions as any) || {};
-                          const modCount = Array.isArray(perms.modules) ? perms.modules.length : 0;
-                          const actCount = Array.isArray(perms.actions) ? perms.actions.length : 0;
-                          const isFull = m.user?.role === 'super_admin' || modCount === SYSTEM_MODULES.length;
+                  <>
+                    {/* Desktop View: High Density Table */}
+                    <div className="hidden md:block overflow-x-auto">
+                      <table className="w-full text-xs">
+                        <thead className="bg-slate-50/80 dark:bg-slate-800/60 border-b border-slate-100 dark:border-slate-800 text-[11px] uppercase tracking-wider text-slate-500 font-semibold">
+                          <tr>
+                            <th className="py-2.5 px-4 text-left">Colaborador</th>
+                            <th className="py-2.5 px-3 text-left">Rol Interno</th>
+                            <th className="py-2.5 px-3 text-left">Cargo / Puesto</th>
+                            <th className="py-2.5 px-3 text-left">Facultades Asignadas</th>
+                            <th className="py-2.5 px-3 text-center">Estado</th>
+                            <th className="py-2.5 px-3 text-left">Ingreso</th>
+                            <th className="py-2.5 px-4 text-right">Acciones</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                          {filteredMembers.map((m) => {
+                            const perms = (m.user?.permissions as any) || {};
+                            const modCount = Array.isArray(perms.modules) ? perms.modules.length : 0;
+                            const actCount = Array.isArray(perms.actions) ? perms.actions.length : 0;
+                            const isFull = m.user?.role === 'super_admin' || modCount === SYSTEM_MODULES.length;
 
-                          // Protection rules for action buttons
-                          const isSelf = m.userId === currentUser?.id;
-                          const isCallerAdminOnly = callerRoleInTenant === 'admin';
-                          const cannotTouch = isCallerAdminOnly && (m.role === 'owner' || m.role === 'admin');
+                            // Protection rules for action buttons
+                            const isSelf = m.userId === currentUser?.id;
+                            const isCallerAdminOnly = callerRoleInTenant === 'admin';
+                            const cannotTouch = isCallerAdminOnly && (m.role === 'owner' || m.role === 'admin');
 
-                          return (
-                            <tr 
-                              key={m.id} 
-                              className="hover:bg-muted/30 transition-colors"
-                              data-testid={`row-member-${m.id}`}
-                            >
-                              <td className="py-3.5 px-6 font-medium">
-                                <div className="flex items-center gap-3">
-                                  <div className="w-8 h-8 rounded-full bg-primary/10 text-primary flex items-center justify-center font-bold text-xs">
-                                    {(m.user?.firstName?.[0] || 'U').toUpperCase()}
+                            return (
+                              <tr 
+                                key={m.id} 
+                                className="hover:bg-slate-50/60 dark:hover:bg-slate-800/40 transition-colors"
+                                data-testid={`row-member-${m.id}`}
+                              >
+                                <td className="py-2.5 px-4">
+                                  <div className="flex items-center gap-2.5">
+                                    <div className="w-7 h-7 rounded-full bg-primary/10 text-primary flex items-center justify-center font-bold text-xs shrink-0">
+                                      {(m.user?.firstName?.[0] || 'U').toUpperCase()}
+                                    </div>
+                                    <div className="min-w-0">
+                                      <div className="font-semibold text-slate-900 dark:text-slate-100 flex items-center gap-1.5 leading-tight truncate">
+                                        <span>{m.user?.firstName} {m.user?.lastName}</span>
+                                        {isSelf && (
+                                          <Badge variant="outline" className="text-[9px] px-1 py-0 h-3.5 border-primary/40 text-primary font-normal">
+                                            Tú
+                                          </Badge>
+                                        )}
+                                      </div>
+                                      <div className="text-[11px] text-slate-500 font-mono leading-tight truncate">
+                                        {m.user?.email}
+                                      </div>
+                                    </div>
                                   </div>
-                                  <div>
-                                    <div className="font-semibold text-foreground flex items-center gap-1.5">
-                                      {m.user?.firstName} {m.user?.lastName}
-                                      {isSelf && (
-                                        <Badge variant="outline" className="text-[10px] px-1 py-0 border-primary/40 text-primary">
-                                          Tú
-                                        </Badge>
-                                      )}
+                                </td>
+
+                                <td className="py-2.5 px-3">
+                                  {getMemberRoleBadge(m.role)}
+                                </td>
+
+                                <td className="py-2.5 px-3">
+                                  {m.user?.customRoleTitle ? (
+                                    <span className="text-[11px] font-medium text-primary flex items-center gap-1 bg-primary/5 px-2 py-0.5 rounded border border-primary/20 w-fit">
+                                      <Sparkles className="w-2.5 h-2.5" />
+                                      {m.user.customRoleTitle}
+                                    </span>
+                                  ) : (
+                                    <span className="text-[11px] text-slate-400 italic">Estándar</span>
+                                  )}
+                                </td>
+
+                                <td className="py-2.5 px-3">
+                                  {isFull ? (
+                                    <Badge className="bg-purple-50 text-purple-700 dark:bg-purple-900/40 dark:text-purple-300 border border-purple-200 dark:border-purple-800 text-[11px] h-5">
+                                      <Key className="w-2.5 h-2.5 mr-1" />
+                                      Acceso Total ({SYSTEM_MODULES.length})
+                                    </Badge>
+                                  ) : (
+                                    <div className="flex flex-wrap gap-1 items-center">
+                                      <Badge variant="secondary" className="text-[11px] h-5 px-1.5">
+                                        <Layers className="w-2.5 h-2.5 mr-1 text-slate-500" />
+                                        {modCount} mód.
+                                      </Badge>
+                                      <Badge variant="outline" className="text-[11px] h-5 px-1.5 text-slate-600 dark:text-slate-300">
+                                        <Shield className="w-2.5 h-2.5 mr-1 text-slate-400" />
+                                        {actCount} acc.
+                                      </Badge>
                                     </div>
-                                    <div className="text-xs text-muted-foreground sm:hidden">
-                                      {m.user?.email}
-                                    </div>
+                                  )}
+                                </td>
+
+                                <td className="py-2.5 px-3 text-center">
+                                  <Badge 
+                                    variant="outline"
+                                    className={`text-[10px] h-5 px-2 font-medium ${
+                                      m.isActive 
+                                        ? "bg-emerald-50 text-emerald-700 border-emerald-300 dark:bg-emerald-950/40 dark:text-emerald-300" 
+                                        : "bg-slate-100 text-slate-600 border-slate-300 dark:bg-slate-800 dark:text-slate-400"
+                                    }`}
+                                  >
+                                    {m.isActive ? "Activo" : "Inactivo"}
+                                  </Badge>
+                                </td>
+
+                                <td className="py-2.5 px-3 text-slate-500 text-[11px] whitespace-nowrap">
+                                  {m.joinedAt ? format(new Date(m.joinedAt), "dd MMM yyyy", { locale: es }) : "—"}
+                                </td>
+
+                                <td className="py-2.5 px-4 text-right">
+                                  <div className="flex items-center justify-end gap-1">
+                                    {canManageMembers && !cannotTouch && (
+                                      <>
+                                        <Button
+                                          variant="ghost"
+                                          size="sm"
+                                          onClick={() => handleOpenEditModal(m)}
+                                          className="h-7 w-7 p-0 text-slate-600 hover:text-slate-900 hover:bg-slate-100 dark:hover:bg-slate-800"
+                                          title="Editar rol y permisos"
+                                          data-testid={`button-edit-member-${m.id}`}
+                                        >
+                                          <Edit className="h-3.5 w-3.5" />
+                                        </Button>
+
+                                        <Button
+                                          variant="ghost"
+                                          size="sm"
+                                          onClick={() => resendInviteMutation.mutate(m)}
+                                          disabled={resendInviteMutation.isPending}
+                                          className="h-7 w-7 p-0 text-blue-600 hover:text-blue-700 hover:bg-blue-50 dark:hover:bg-blue-950/40"
+                                          title="Reenviar invitación / reset contraseña"
+                                          data-testid={`button-resend-invite-${m.id}`}
+                                        >
+                                          <Send className="h-3.5 w-3.5" />
+                                        </Button>
+
+                                        <Button
+                                          variant="ghost"
+                                          size="sm"
+                                          onClick={() => setToggleDialog({ show: true, member: m })}
+                                          className={`h-7 w-7 p-0 ${
+                                            m.isActive 
+                                              ? "text-rose-600 hover:text-rose-700 hover:bg-rose-50 dark:hover:bg-rose-950/40" 
+                                              : "text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50 dark:hover:bg-emerald-950/40"
+                                          }`}
+                                          title={m.isActive ? "Desactivar miembro" : "Activar miembro"}
+                                          data-testid={`button-toggle-member-${m.id}`}
+                                        >
+                                          <Power className="h-3.5 w-3.5" />
+                                        </Button>
+                                      </>
+                                    )}
+                                  </div>
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+
+                    {/* Mobile View: Compact Cards */}
+                    <div className="md:hidden divide-y divide-slate-100 dark:divide-slate-800">
+                      {filteredMembers.map((m) => {
+                        const perms = (m.user?.permissions as any) || {};
+                        const modCount = Array.isArray(perms.modules) ? perms.modules.length : 0;
+                        const actCount = Array.isArray(perms.actions) ? perms.actions.length : 0;
+                        const isFull = m.user?.role === 'super_admin' || modCount === SYSTEM_MODULES.length;
+
+                        // Protection rules for action buttons
+                        const isSelf = m.userId === currentUser?.id;
+                        const isCallerAdminOnly = callerRoleInTenant === 'admin';
+                        const cannotTouch = isCallerAdminOnly && (m.role === 'owner' || m.role === 'admin');
+
+                        return (
+                          <div 
+                            key={m.id}
+                            className="p-3.5 space-y-2.5"
+                            data-testid={`row-member-${m.id}-mobile`}
+                          >
+                            {/* Card Header: Avatar + Name + Status */}
+                            <div className="flex items-center justify-between gap-2">
+                              <div className="flex items-center gap-2.5 min-w-0">
+                                <div className="w-8 h-8 rounded-full bg-primary/10 text-primary flex items-center justify-center font-bold text-xs shrink-0">
+                                  {(m.user?.firstName?.[0] || 'U').toUpperCase()}
+                                </div>
+                                <div className="min-w-0">
+                                  <div className="font-semibold text-xs text-slate-900 dark:text-slate-100 flex items-center gap-1.5 leading-tight truncate">
+                                    <span>{m.user?.firstName} {m.user?.lastName}</span>
+                                    {isSelf && (
+                                      <Badge variant="outline" className="text-[9px] px-1 py-0 h-3.5 border-primary/40 text-primary font-normal">
+                                        Tú
+                                      </Badge>
+                                    )}
+                                  </div>
+                                  <div className="text-[11px] text-slate-500 font-mono truncate">
+                                    {m.user?.email}
                                   </div>
                                 </div>
-                              </td>
+                              </div>
 
-                              <td className="py-3.5 px-4 text-muted-foreground font-mono text-xs">
-                                {m.user?.email}
-                              </td>
+                              <Badge 
+                                variant="outline"
+                                className={`text-[10px] h-5 px-1.5 shrink-0 ${
+                                  m.isActive 
+                                    ? "bg-emerald-50 text-emerald-700 border-emerald-300 dark:bg-emerald-950/40 dark:text-emerald-300" 
+                                    : "bg-slate-100 text-slate-600 border-slate-300 dark:bg-slate-800 dark:text-slate-400"
+                                }`}
+                              >
+                                {m.isActive ? "Activo" : "Inactivo"}
+                              </Badge>
+                            </div>
 
-                              <td className="py-3.5 px-4">
-                                {getMemberRoleBadge(m.role)}
-                              </td>
-
-                              <td className="py-3.5 px-4">
-                                {m.user?.customRoleTitle ? (
-                                  <span className="text-xs font-medium text-primary flex items-center gap-1 bg-primary/5 px-2 py-0.5 rounded border border-primary/20 w-fit">
-                                    <Sparkles className="w-2.5 h-2.5" />
-                                    {m.user.customRoleTitle}
-                                  </span>
-                                ) : (
-                                  <span className="text-xs text-muted-foreground italic">Estándar</span>
-                                )}
-                              </td>
-
-                              <td className="py-3.5 px-4">
-                                {isFull ? (
-                                  <Badge className="bg-purple-100 text-purple-800 dark:bg-purple-900/60 dark:text-purple-200 border border-purple-300 text-xs">
-                                    <Key className="w-3 h-3 mr-1" />
-                                    Acceso Total ({SYSTEM_MODULES.length})
-                                  </Badge>
-                                ) : (
-                                  <div className="flex flex-wrap gap-1 items-center">
-                                    <Badge variant="secondary" className="text-xs">
-                                      <Layers className="w-3 h-3 mr-1 text-muted-foreground" />
-                                      {modCount} mód.
-                                    </Badge>
-                                    <Badge variant="outline" className="text-xs">
-                                      <Shield className="w-3 h-3 mr-1 text-muted-foreground" />
-                                      {actCount} acc.
-                                    </Badge>
-                                  </div>
-                                )}
-                              </td>
-
-                              <td className="py-3.5 px-4">
-                                <Badge 
-                                  variant="outline"
-                                  className={`text-xs px-2 py-0.5 ${
-                                    m.isActive 
-                                      ? "bg-emerald-50 text-emerald-700 border-emerald-300 dark:bg-emerald-950/40 dark:text-emerald-300" 
-                                      : "bg-gray-100 text-gray-700 border-gray-300 dark:bg-gray-800 dark:text-gray-300"
-                                  }`}
-                                >
-                                  {m.isActive ? "Activo" : "Inactivo"}
-                                </Badge>
-                              </td>
-
-                              <td className="py-3.5 px-4 text-muted-foreground text-xs whitespace-nowrap">
-                                {m.joinedAt ? format(new Date(m.joinedAt), "dd MMM yyyy", { locale: es }) : "-"}
-                              </td>
-
-                              <td className="py-3.5 px-6 text-right">
-                                <div className="flex items-center justify-end gap-1">
-                                  {canManageMembers && !cannotTouch && (
-                                    <>
-                                      <Button
-                                        variant="ghost"
-                                        size="sm"
-                                        onClick={() => handleOpenEditModal(m)}
-                                        className="h-8 w-8 p-0 text-muted-foreground hover:text-foreground hover:bg-muted"
-                                        title="Editar rol y permisos"
-                                        data-testid={`button-edit-member-${m.id}`}
-                                      >
-                                        <Edit className="h-4 w-4" />
-                                      </Button>
-
-                                      <Button
-                                        variant="ghost"
-                                        size="sm"
-                                        onClick={() => resendInviteMutation.mutate(m)}
-                                        disabled={resendInviteMutation.isPending}
-                                        className="h-8 w-8 p-0 text-blue-600 hover:text-blue-700 hover:bg-blue-50 dark:hover:bg-blue-950/40"
-                                        title="Reenviar invitación / reset contraseña"
-                                        data-testid={`button-resend-invite-${m.id}`}
-                                      >
-                                        <Send className="h-4 w-4" />
-                                      </Button>
-
-                                      <Button
-                                        variant="ghost"
-                                        size="sm"
-                                        onClick={() => setToggleDialog({ show: true, member: m })}
-                                        className={`h-8 w-8 p-0 ${
-                                          m.isActive 
-                                            ? "text-rose-600 hover:text-rose-700 hover:bg-rose-50 dark:hover:bg-rose-950/40" 
-                                            : "text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50 dark:hover:bg-emerald-950/40"
-                                        }`}
-                                        title={m.isActive ? "Desactivar miembro" : "Activar miembro"}
-                                        data-testid={`button-toggle-member-${m.id}`}
-                                      >
-                                        <Power className="h-4 w-4" />
-                                      </Button>
-                                    </>
+                            {/* Card Body: Roles, Title, Faculties */}
+                            <div className="grid grid-cols-2 gap-2 text-xs pt-1 border-t border-slate-100 dark:border-slate-800">
+                              <div>
+                                <span className="text-[10px] font-semibold text-slate-400 block uppercase">Rol / Cargo</span>
+                                <div className="mt-0.5 space-y-1">
+                                  {getMemberRoleBadge(m.role)}
+                                  {m.user?.customRoleTitle && (
+                                    <div className="text-[10px] font-medium text-primary truncate">
+                                      {m.user.customRoleTitle}
+                                    </div>
                                   )}
                                 </div>
-                              </td>
-                            </tr>
-                          );
-                        })}
-                      </tbody>
-                    </table>
-                  </div>
+                              </div>
+
+                              <div>
+                                <span className="text-[10px] font-semibold text-slate-400 block uppercase">Facultades</span>
+                                <div className="mt-0.5">
+                                  {isFull ? (
+                                    <Badge className="bg-purple-50 text-purple-700 dark:bg-purple-900/40 dark:text-purple-300 border border-purple-200 dark:border-purple-800 text-[10px] h-5">
+                                      <Key className="w-2.5 h-2.5 mr-1" />
+                                      Total ({SYSTEM_MODULES.length})
+                                    </Badge>
+                                  ) : (
+                                    <span className="text-[11px] text-slate-600 dark:text-slate-300 font-medium">
+                                      {modCount} mód. · {actCount} acc.
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+
+                            {/* Card Footer: Joined Date + Action Buttons */}
+                            <div className="flex items-center justify-between pt-1 text-[11px] text-slate-500">
+                              <span>Ingreso: {m.joinedAt ? format(new Date(m.joinedAt), "dd/MM/yyyy") : "—"}</span>
+                              
+                              <div className="flex items-center gap-1">
+                                {canManageMembers && !cannotTouch && (
+                                  <>
+                                    <Button
+                                      variant="outline"
+                                      size="sm"
+                                      onClick={() => handleOpenEditModal(m)}
+                                      className="h-7 text-xs px-2 text-slate-700"
+                                      data-testid={`button-edit-member-${m.id}-mobile`}
+                                    >
+                                      <Edit className="h-3 w-3 mr-1" />
+                                      Editar
+                                    </Button>
+
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      onClick={() => resendInviteMutation.mutate(m)}
+                                      disabled={resendInviteMutation.isPending}
+                                      className="h-7 w-7 p-0 text-blue-600 hover:text-blue-700"
+                                      title="Reenviar invitación"
+                                      data-testid={`button-resend-invite-${m.id}-mobile`}
+                                    >
+                                      <Send className="h-3.5 w-3.5" />
+                                    </Button>
+
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      onClick={() => setToggleDialog({ show: true, member: m })}
+                                      className={`h-7 w-7 p-0 ${
+                                        m.isActive 
+                                          ? "text-rose-600 hover:text-rose-700" 
+                                          : "text-emerald-600 hover:text-emerald-700"
+                                      }`}
+                                      title={m.isActive ? "Desactivar" : "Activar"}
+                                      data-testid={`button-toggle-member-${m.id}-mobile`}
+                                    >
+                                      <Power className="h-3.5 w-3.5" />
+                                    </Button>
+                                  </>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </>
                 )}
-              </CardContent>
-            </Card>
+              </div>
+            </div>
           </>
         )}
 
