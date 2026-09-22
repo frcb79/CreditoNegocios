@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { Link } from "wouter";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -15,6 +15,27 @@ import { apiRequest } from "@/lib/queryClient";
 import { formatDistanceToNow } from "date-fns";
 import { es } from "date-fns/locale";
 import InviteBrokerModal from "@/components/Modals/InviteBrokerModal";
+import {
+  Network,
+  Users,
+  Building2,
+  Save,
+  RotateCcw,
+  Loader2,
+  UserPlus,
+  Percent,
+  CheckCircle2,
+  DollarSign,
+  Crown,
+  ChevronDown,
+  ChevronUp,
+  Search,
+  Mail,
+  Phone,
+  ShieldCheck,
+  UserCheck,
+  Briefcase
+} from "lucide-react";
 
 function MasterBrokerRatesConfig({ user }: { user: any }) {
   const { toast } = useToast();
@@ -108,10 +129,9 @@ function MasterBrokerRatesConfig({ user }: { user: any }) {
 
   if (isLoading) {
     return (
-      <div className="space-y-3 py-6">
-        <Skeleton className="h-10 w-full" />
-        <Skeleton className="h-16 w-full" />
-        <Skeleton className="h-16 w-full" />
+      <div className="space-y-4 py-4">
+        <Skeleton className="h-12 w-full rounded-xl" />
+        <Skeleton className="h-48 w-full rounded-xl" />
       </div>
     );
   }
@@ -120,18 +140,18 @@ function MasterBrokerRatesConfig({ user }: { user: any }) {
 
   return (
     <div className="space-y-6">
-      {/* Banner explicativo */}
-      <div className="bg-gradient-to-r from-blue-50 to-indigo-50 p-4 rounded-xl border border-blue-200 flex items-start justify-between gap-3 flex-wrap">
-        <div className="flex items-start gap-3 flex-1 min-w-[280px]">
-          <div className="w-9 h-9 rounded-full bg-blue-100 flex items-center justify-center flex-shrink-0 text-blue-700 mt-0.5">
-            <i className="fas fa-sitemap"></i>
+      {/* Banner explicativo fintech institucional */}
+      <div className="bg-slate-900 text-white rounded-2xl p-5 sm:p-6 border border-slate-800 shadow-sm flex items-start justify-between gap-4 flex-wrap">
+        <div className="flex items-start gap-3.5 flex-1 min-w-[280px]">
+          <div className="w-10 h-10 rounded-xl bg-blue-500/10 border border-blue-400/20 flex items-center justify-center flex-shrink-0 text-blue-400 mt-0.5">
+            <Network className="w-5 h-5" />
           </div>
-          <div className="text-xs">
-            <h4 className="font-bold text-blue-950 text-sm mb-1">
+          <div className="space-y-1">
+            <h4 className="font-semibold text-slate-100 text-sm">
               Autonomía de Comisiones para tu Red de Brókers
             </h4>
-            <p className="text-blue-900 leading-relaxed">
-              Crédito Negocios te otorga un <strong>porcentaje techo</strong> por cada financiera. Aquí tú decides con total libertad qué porcentaje le compartes a los brókers de tu equipo. Tu <strong>Margen Neto</strong> se calcula automáticamente y es lo que recibes directamente en cada crédito colocado.
+            <p className="text-xs text-slate-300 leading-relaxed font-normal">
+              Crédito Negocios te otorga un <strong className="text-white font-semibold">porcentaje techo</strong> por cada financiera. Aquí tú decides qué porcentaje compartes a los brókers de tu equipo. Tu <strong className="text-emerald-400 font-semibold">Margen Neto</strong> se calcula automáticamente y es tu retención directa por cada colocación.
             </p>
           </div>
         </div>
@@ -140,58 +160,50 @@ function MasterBrokerRatesConfig({ user }: { user: any }) {
             size="sm"
             onClick={handleSave}
             disabled={saveMutation.isPending}
-            className="bg-success text-white hover:bg-green-700 shadow-sm text-xs flex-shrink-0 self-center"
+            className="bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm text-xs font-semibold flex-shrink-0 self-center gap-1.5"
           >
-            {saveMutation.isPending && <i className="fas fa-spinner fa-spin mr-1.5"></i>}
-            <i className="fas fa-save mr-1.5"></i>
+            {saveMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
             Guardar Cambios
           </Button>
         )}
       </div>
 
-      <Card>
-        <CardHeader className="pb-3 border-b flex flex-row items-center justify-between flex-wrap gap-2">
+      <Card className="border border-slate-200/80 shadow-sm overflow-hidden bg-white">
+        <CardHeader className="p-5 border-b border-slate-100 flex flex-row items-center justify-between flex-wrap gap-3 bg-slate-50/40">
           <div>
-            <CardTitle className="text-base font-bold text-gray-900">
-              Esquema de Comisiones por Financiera ({items.length} Financieras Activas)
+            <CardTitle className="text-base font-semibold text-slate-900">
+              Esquema de Comisiones por Financiera ({items.length} Activas)
             </CardTitle>
-            <p className="text-xs text-neutral mt-0.5">
-              Ajusta la comisión de apertura para tu equipo. El margen retenido se actualiza en tiempo real.
-            </p>
+            <CardDescription className="text-xs text-slate-500 mt-0.5">
+              Ajusta la comisión de apertura asignada a tu equipo. El margen retenido se calcula en tiempo real.
+            </CardDescription>
           </div>
           <Button
             size="sm"
             onClick={handleSave}
             disabled={!hasChanges || saveMutation.isPending}
-            className="bg-primary text-white hover:bg-primary-dark text-xs"
+            className="bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold gap-1.5 disabled:opacity-50"
           >
-            {saveMutation.isPending && <i className="fas fa-spinner fa-spin mr-1.5"></i>}
-            <i className="fas fa-save mr-1.5"></i>
+            {saveMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
             Guardar Comisiones de Red
           </Button>
         </CardHeader>
         <CardContent className="p-0">
           <div className="overflow-x-auto">
-            <table className="w-full text-sm text-left">
-              <thead className="bg-gray-100/80 text-gray-700 text-xs font-semibold uppercase tracking-wider">
+            <table className="w-full text-sm text-left border-collapse">
+              <thead className="bg-slate-50 text-slate-600 text-[11px] font-semibold uppercase tracking-wider border-b border-slate-100">
                 <tr>
-                  <th className="p-3.5">Financiera</th>
-                  <th className="p-3.5 text-center bg-blue-50/70 text-blue-950">
-                    Techo Otorgado (MB)
-                  </th>
-                  <th className="p-3.5 text-center bg-amber-50/70 text-amber-950 w-44">
-                    Comisión para tu Red (%)
-                  </th>
-                  <th className="p-3.5 text-center bg-emerald-50/70 text-emerald-950">
-                    Tu Margen Neto
-                  </th>
-                  <th className="p-3.5 text-center">Acciones</th>
+                  <th className="py-3 px-4">Financiera</th>
+                  <th className="py-3 px-4 text-center">Techo Otorgado (MB)</th>
+                  <th className="py-3 px-4 text-center w-48">Comisión para tu Red (%)</th>
+                  <th className="py-3 px-4 text-center">Tu Margen Neto</th>
+                  <th className="py-3 px-4 text-right">Acción</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-200">
+              <tbody className="divide-y divide-slate-100">
                 {items.length === 0 ? (
                   <tr>
-                    <td colSpan={5} className="text-center py-8 text-neutral">
+                    <td colSpan={5} className="text-center py-10 text-xs text-slate-500">
                       No hay financieras activas registradas en la plataforma.
                     </td>
                   </tr>
@@ -204,33 +216,33 @@ function MasterBrokerRatesConfig({ user }: { user: any }) {
                     const netMargin = Math.max(0, ceiling - parsedVal);
 
                     return (
-                      <tr key={item.institutionId} className="hover:bg-gray-50/80 transition-colors">
-                        <td className="p-3.5 font-medium text-gray-900">
-                          <div className="flex items-center gap-2.5">
-                            <div className="w-8 h-8 rounded-lg bg-gray-100 flex items-center justify-center text-primary font-bold text-xs border border-gray-200">
-                              <i className="fas fa-building"></i>
+                      <tr key={item.institutionId} className="hover:bg-slate-50/70 transition-colors">
+                        <td className="py-3.5 px-4 font-medium text-slate-900">
+                          <div className="flex items-center gap-3">
+                            <div className="w-8 h-8 rounded-lg bg-slate-100 border border-slate-200 flex items-center justify-center text-slate-700 font-semibold text-xs flex-shrink-0">
+                              <Building2 className="w-4 h-4" />
                             </div>
                             <div>
-                              <p className="font-semibold text-gray-900">{item.institutionName}</p>
+                              <p className="font-semibold text-xs text-slate-900">{item.institutionName}</p>
                               {item.category && (
-                                <p className="text-[11px] text-gray-400 capitalize">{item.category}</p>
+                                <p className="text-[11px] text-slate-500 capitalize">{item.category}</p>
                               )}
                             </div>
                           </div>
                         </td>
 
-                        <td className="p-3.5 text-center bg-blue-50/30">
-                          <Badge className="bg-blue-100 text-blue-900 border-blue-200 font-bold">
+                        <td className="py-3.5 px-4 text-center">
+                          <Badge variant="outline" className="bg-slate-50 text-slate-700 border-slate-200 font-semibold text-xs">
                             {ceiling.toFixed(2)}% Apertura
                           </Badge>
                           {item.masterCeiling.renovacion > 0 && (
-                            <p className="text-[10px] text-blue-700 mt-0.5">
+                            <p className="text-[10px] text-slate-500 mt-1">
                               Renovación: {item.masterCeiling.renovacion}%
                             </p>
                           )}
                         </td>
 
-                        <td className="p-3.5 text-center bg-amber-50/30">
+                        <td className="py-3.5 px-4 text-center">
                           <div className="max-w-[140px] mx-auto space-y-1">
                             <div className="relative">
                               <Input
@@ -240,39 +252,39 @@ function MasterBrokerRatesConfig({ user }: { user: any }) {
                                 max={ceiling || 100}
                                 value={currentVal}
                                 onChange={(e) => handleRateChange(item.institutionId, 'apertura', e.target.value)}
-                                className={`text-center font-bold text-sm h-9 ${isOverCeiling ? 'border-destructive bg-destructive/10 text-destructive' : 'border-amber-300'}`}
+                                className={`text-center font-semibold text-xs h-8 pr-6 rounded-lg ${isOverCeiling ? 'border-rose-300 bg-rose-50 text-rose-700 focus-visible:ring-rose-400' : 'border-slate-200'}`}
                                 placeholder={`${item.defaultBroker.apertura || '0'}`}
                               />
-                              <span className="absolute right-2.5 top-2 text-xs font-bold text-gray-500 pointer-events-none">%</span>
+                              <span className="absolute right-2.5 top-2 text-[11px] font-semibold text-slate-400 pointer-events-none">%</span>
                             </div>
                             {isOverCeiling && (
-                              <p className="text-[10px] text-destructive font-semibold">
+                              <p className="text-[10px] text-rose-600 font-medium">
                                 Excede tu techo ({ceiling}%)
                               </p>
                             )}
                           </div>
                         </td>
 
-                        <td className="p-3.5 text-center bg-emerald-50/30">
-                          <Badge className="bg-emerald-100 text-emerald-900 border-emerald-200 font-bold text-xs px-2.5 py-1">
-                            💰 {netMargin.toFixed(2)}% Neto
+                        <td className="py-3.5 px-4 text-center">
+                          <Badge variant="outline" className="bg-emerald-50 text-emerald-700 border-emerald-200 font-bold text-xs px-2.5 py-0.5">
+                            {netMargin.toFixed(2)}% Neto
                           </Badge>
-                          <p className="text-[10px] text-emerald-700 mt-0.5">
-                            Tu ganancia retenida
+                          <p className="text-[10px] text-slate-400 mt-0.5 font-normal">
+                            Retención bruta
                           </p>
                         </td>
 
-                        <td className="p-3.5 text-center">
+                        <td className="py-3.5 px-4 text-right">
                           <Button
                             variant="ghost"
                             size="sm"
-                            className="text-xs text-gray-500 hover:text-gray-800"
+                            className="text-[11px] text-slate-500 hover:text-slate-900 h-7 px-2"
                             onClick={() => {
                               handleRateChange(item.institutionId, 'apertura', String(item.defaultBroker.apertura || '2.5'));
                             }}
                             title="Restablecer a la tasa sugerida por defecto"
                           >
-                            <i className="fas fa-undo mr-1 text-[10px]"></i>
+                            <RotateCcw className="w-3 h-3 mr-1" />
                             Sugerida ({item.defaultBroker.apertura}%)
                           </Button>
                         </td>
@@ -303,23 +315,21 @@ export default function BrokerNetworkComponent() {
 
   if (isLoading || isAuthLoading) {
     return (
-      <Card>
-        <CardHeader>
-          <CardTitle>Red de Brokers</CardTitle>
+      <Card className="border border-slate-200/80 shadow-sm">
+        <CardHeader className="border-b border-slate-100 p-5">
+          <Skeleton className="h-5 w-40" />
         </CardHeader>
-        <CardContent>
-          <div className="space-y-4">
-            {Array.from({ length: 3 }).map((_, i) => (
-              <div key={i} className="flex items-center space-x-4 p-4 border rounded-lg">
-                <Skeleton className="h-12 w-12 rounded-full" />
-                <div className="space-y-2 flex-1">
-                  <Skeleton className="h-4 w-48" />
-                  <Skeleton className="h-3 w-32" />
-                </div>
-                <Skeleton className="h-6 w-20" />
+        <CardContent className="p-5 space-y-4">
+          {Array.from({ length: 3 }).map((_, i) => (
+            <div key={i} className="flex items-center space-x-4 p-4 border border-slate-100 rounded-xl">
+              <Skeleton className="h-10 w-10 rounded-full" />
+              <div className="space-y-2 flex-1">
+                <Skeleton className="h-4 w-44" />
+                <Skeleton className="h-3 w-28" />
               </div>
-            ))}
-          </div>
+              <Skeleton className="h-6 w-16" />
+            </div>
+          ))}
         </CardContent>
       </Card>
     );
@@ -332,131 +342,155 @@ export default function BrokerNetworkComponent() {
     return (
       <div className="space-y-6">
         <Tabs defaultValue="team" className="space-y-6">
-          <TabsList className="grid w-full grid-cols-2 max-w-md bg-gray-100 p-1 rounded-xl">
-            <TabsTrigger value="team" className="flex items-center gap-2 text-xs font-semibold data-[state=active]:bg-white data-[state=active]:shadow-sm">
-              <i className="fas fa-users"></i>
-              Mi Equipo de Brokers ({brokers.length})
+          <TabsList className="bg-slate-100 p-1 rounded-xl h-10 inline-flex w-auto border border-slate-200/60">
+            <TabsTrigger 
+              value="team" 
+              className="flex items-center gap-2 text-xs font-semibold data-[state=active]:bg-white data-[state=active]:text-slate-900 data-[state=active]:shadow-xs rounded-lg px-4 py-1.5 text-slate-600 transition-all"
+            >
+              <Users className="w-3.5 h-3.5" />
+              Mi Equipo ({brokers.length})
             </TabsTrigger>
-            <TabsTrigger value="rates" className="flex items-center gap-2 text-xs font-semibold data-[state=active]:bg-white data-[state=active]:shadow-sm">
-              <i className="fas fa-percentage"></i>
+            <TabsTrigger 
+              value="rates" 
+              className="flex items-center gap-2 text-xs font-semibold data-[state=active]:bg-white data-[state=active]:text-slate-900 data-[state=active]:shadow-xs rounded-lg px-4 py-1.5 text-slate-600 transition-all"
+            >
+              <Percent className="w-3.5 h-3.5" />
               Comisiones de mi Red
             </TabsTrigger>
           </TabsList>
 
           <TabsContent value="team" className="space-y-6 mt-4">
             {brokers.length === 0 ? (
-              <Card>
-                <CardHeader>
-                  <CardTitle>Mi Red de Brokers</CardTitle>
+              <Card className="border border-slate-200/80 shadow-sm bg-white">
+                <CardHeader className="border-b border-slate-100 p-5">
+                  <CardTitle className="text-base font-semibold text-slate-900">Mi Red de Brokers</CardTitle>
                 </CardHeader>
-                <CardContent>
-                  <div className="text-center py-8">
-                    <i className="fas fa-network-wired text-4xl text-gray-300 mb-4"></i>
-                    <p className="text-neutral mb-4">Aún no tienes brokers en tu red</p>
-                    <Button 
-                      className="bg-primary text-white hover:bg-primary-dark"
-                      onClick={() => {
-                        setInviteMasterBrokerId(user?.id || null);
-                        setShowInviteModal(true);
-                      }}
-                    >
-                      <i className="fas fa-plus mr-2"></i>
-                      Invitar Broker
-                    </Button>
+                <CardContent className="p-10 text-center">
+                  <div className="w-12 h-12 rounded-2xl bg-slate-100 border border-slate-200 flex items-center justify-center mx-auto mb-3 text-slate-400">
+                    <Users className="w-6 h-6" />
                   </div>
+                  <h4 className="text-sm font-semibold text-slate-900 mb-1">Aún no tienes brokers en tu equipo</h4>
+                  <p className="text-xs text-slate-500 max-w-sm mx-auto mb-5">
+                    Invita a nuevos brokers para expandir tu red y recibir comisiones por cada colocación de crédito que gestionen.
+                  </p>
+                  <Button 
+                    className="bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold gap-1.5"
+                    onClick={() => {
+                      setInviteMasterBrokerId(user?.id || null);
+                      setShowInviteModal(true);
+                    }}
+                    data-testid="button-invite-broker"
+                  >
+                    <UserPlus className="w-3.5 h-3.5" />
+                    Invitar Primer Broker
+                  </Button>
                 </CardContent>
               </Card>
             ) : (
               <>
-                <Card>
-                  <CardHeader>
-                    <CardTitle>Resumen de mi Red</CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                      <div className="text-center">
-                        <div className="w-16 h-16 bg-primary/10 rounded-full flex items-center justify-center mx-auto mb-3">
-                          <i className="fas fa-users text-primary text-2xl"></i>
-                        </div>
-                        <p className="text-2xl font-bold text-gray-900">{brokers.length}</p>
-                        <p className="text-sm text-neutral">Brokers en tu Equipo</p>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                  <Card className="border border-slate-200/80 shadow-sm bg-white">
+                    <CardContent className="p-4 flex items-center gap-3.5">
+                      <div className="w-10 h-10 rounded-xl bg-slate-100 border border-slate-200 flex items-center justify-center text-slate-700 flex-shrink-0">
+                        <Users className="w-5 h-5" />
                       </div>
-                      <div className="text-center">
-                        <div className="w-16 h-16 bg-success/10 rounded-full flex items-center justify-center mx-auto mb-3">
-                          <i className="fas fa-dollar-sign text-success text-2xl"></i>
-                        </div>
-                        <p className="text-2xl font-bold text-gray-900">Activo</p>
-                        <p className="text-sm text-neutral">Comisiones de Red Habilitadas</p>
+                      <div>
+                        <p className="text-xs text-slate-500 font-medium">Brokers en tu Equipo</p>
+                        <p className="text-xl font-bold text-slate-900">{brokers.length}</p>
                       </div>
-                      <div className="text-center">
-                        <div className="w-16 h-16 bg-warning/10 rounded-full flex items-center justify-center mx-auto mb-3">
-                          <i className="fas fa-user-check text-warning text-2xl"></i>
-                        </div>
-                        <p className="text-2xl font-bold text-gray-900">{brokers.filter(b => b.isActive).length}</p>
-                        <p className="text-sm text-neutral">Brokers Activos</p>
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
+                    </CardContent>
+                  </Card>
 
-                <Card>
-                  <CardHeader>
-                    <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-                      <CardTitle>Brokers en mi Red</CardTitle>
-                      <div className="flex items-center gap-2">
-                        <Link href="/admin/usuarios">
-                          <Button variant="outline" size="sm" className="text-xs">
-                            <i className="fas fa-users-cog mr-1.5 text-primary"></i>
-                            Roles y Permisos Granulares
-                          </Button>
-                        </Link>
-                        <Button 
-                          className="bg-primary text-white hover:bg-primary-dark text-xs"
-                          size="sm"
-                          onClick={() => {
-                            setInviteMasterBrokerId(user?.id || null);
-                            setShowInviteModal(true);
-                          }}
-                          data-testid="button-invite-broker"
-                        >
-                          <i className="fas fa-user-plus mr-1.5"></i>
-                          Invitar Broker
-                        </Button>
+                  <Card className="border border-slate-200/80 shadow-sm bg-white">
+                    <CardContent className="p-4 flex items-center gap-3.5">
+                      <div className="w-10 h-10 rounded-xl bg-emerald-50 border border-emerald-200 flex items-center justify-center text-emerald-700 flex-shrink-0">
+                        <DollarSign className="w-5 h-5" />
                       </div>
+                      <div>
+                        <p className="text-xs text-slate-500 font-medium">Comisiones de Red</p>
+                        <Badge variant="outline" className="bg-emerald-50 text-emerald-700 border-emerald-200 text-[11px] font-semibold mt-0.5">
+                          Habilitadas
+                        </Badge>
+                      </div>
+                    </CardContent>
+                  </Card>
+
+                  <Card className="border border-slate-200/80 shadow-sm bg-white">
+                    <CardContent className="p-4 flex items-center gap-3.5">
+                      <div className="w-10 h-10 rounded-xl bg-blue-50 border border-blue-200 flex items-center justify-center text-blue-700 flex-shrink-0">
+                        <UserCheck className="w-5 h-5" />
+                      </div>
+                      <div>
+                        <p className="text-xs text-slate-500 font-medium">Brokers Activos</p>
+                        <p className="text-xl font-bold text-slate-900">{brokers.filter(b => b.isActive).length}</p>
+                      </div>
+                    </CardContent>
+                  </Card>
+                </div>
+
+                <Card className="border border-slate-200/80 shadow-sm bg-white overflow-hidden">
+                  <CardHeader className="p-5 border-b border-slate-100 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 bg-slate-50/40">
+                    <div>
+                      <CardTitle className="text-base font-semibold text-slate-900">Brokers en mi Red</CardTitle>
+                      <CardDescription className="text-xs text-slate-500 mt-0.5">
+                        Equipo activo de brokers autorizados para originar solicitudes bajo tu supervisión.
+                      </CardDescription>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Link href="/admin/usuarios">
+                        <Button variant="outline" size="sm" className="text-xs font-semibold text-slate-700 border-slate-200 hover:bg-slate-50 gap-1.5">
+                          <Briefcase className="w-3.5 h-3.5 text-slate-500" />
+                          Roles y Permisos
+                        </Button>
+                      </Link>
+                      <Button 
+                        className="bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold gap-1.5 shadow-xs"
+                        size="sm"
+                        onClick={() => {
+                          setInviteMasterBrokerId(user?.id || null);
+                          setShowInviteModal(true);
+                        }}
+                        data-testid="button-invite-broker"
+                      >
+                        <UserPlus className="w-3.5 h-3.5" />
+                        Invitar Broker
+                      </Button>
                     </div>
                   </CardHeader>
-                  <CardContent>
-                    <div className="space-y-4">
+                  <CardContent className="p-5">
+                    <div className="space-y-3">
                       {brokers.map((broker) => (
                         <div
                           key={broker.id}
-                          className="flex items-center justify-between p-4 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
+                          className="flex items-center justify-between p-3.5 border border-slate-200/80 rounded-xl hover:bg-slate-50/60 transition-colors bg-white"
                           data-testid={`broker-${broker.id}`}
                         >
-                          <div className="flex items-center space-x-4">
-                            <Avatar className="h-12 w-12">
-                              <AvatarFallback className="bg-primary text-white font-semibold">
+                          <div className="flex items-center space-x-3.5">
+                            <Avatar className="h-10 w-10 border border-slate-200">
+                              <AvatarFallback className="bg-slate-900 text-white font-semibold text-xs">
                                 {broker.firstName?.[0]}{broker.lastName?.[0]}
                               </AvatarFallback>
                             </Avatar>
                             <div>
-                              <h3 className="font-semibold text-gray-900">
+                              <h3 className="font-semibold text-xs sm:text-sm text-slate-900">
                                 {broker.firstName} {broker.lastName}
                               </h3>
-                              <p className="text-sm text-neutral">{broker.email}</p>
-                              <p className="text-xs text-neutral">
-                                Unido {broker.createdAt ? formatDistanceToNow(new Date(broker.createdAt), { 
+                              <p className="text-xs text-slate-500">{broker.email}</p>
+                              <p className="text-[11px] text-slate-400 mt-0.5">
+                                Registro {broker.createdAt ? formatDistanceToNow(new Date(broker.createdAt), { 
                                   addSuffix: true, 
                                   locale: es 
-                                }) : 'Reciente'}
+                                }) : 'reciente'}
                               </p>
                             </div>
                           </div>
                           
                           <div className="text-right">
                             <Badge 
-                              variant={broker.isActive ? "default" : "secondary"}
-                              className={broker.isActive ? "bg-success/10 text-success" : ""}
+                              variant="outline"
+                              className={broker.isActive 
+                                ? "bg-emerald-50 text-emerald-700 border-emerald-200 font-semibold text-xs" 
+                                : "bg-slate-50 text-slate-600 border-slate-200 font-semibold text-xs"}
                             >
                               {broker.isActive ? "Activo" : "Inactivo"}
                             </Badge>
@@ -487,7 +521,6 @@ export default function BrokerNetworkComponent() {
   const masterBrokers = Array.isArray(networkData?.masterBrokers) ? networkData.masterBrokers : [];
   const independentBrokers = Array.isArray(networkData?.independentBrokers) ? networkData.independentBrokers : [];
   const adminBrokers = Array.isArray(networkData?.adminBrokers) ? networkData.adminBrokers : [];
-  const allBrokers = Array.isArray(networkData?.allBrokers) ? networkData.allBrokers : [];
 
   const filteredMasterBrokers = masterBrokers.filter((mb: any) => {
     if (!mb) return false;
@@ -509,111 +542,120 @@ export default function BrokerNetworkComponent() {
 
   return (
     <div className="space-y-6">
-      {/* Resumen Global para Super Admin */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <Card className="border-purple-200 bg-purple-50/40">
-          <CardContent className="p-5 flex items-center justify-between">
+      {/* Resumen Global Institucional para Super Admin */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <Card className="border border-slate-200/80 shadow-sm bg-white">
+          <CardContent className="p-4 flex items-center justify-between">
             <div>
-              <p className="text-xs font-semibold text-purple-900 uppercase">Master Brokers</p>
-              <p className="text-2xl font-bold text-purple-900 mt-1">{masterBrokers.length}</p>
-              <p className="text-[11px] text-purple-700 mt-0.5">Líderes de red activos</p>
+              <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Master Brokers</p>
+              <p className="text-2xl font-bold text-slate-900 mt-1">{masterBrokers.length}</p>
+              <p className="text-[11px] text-slate-400 mt-0.5 font-normal">Líderes de red autorizados</p>
             </div>
-            <div className="w-12 h-12 rounded-xl bg-purple-200/60 text-purple-800 flex items-center justify-center">
-              <i className="fas fa-network-wired text-xl"></i>
+            <div className="w-10 h-10 rounded-xl bg-slate-100 border border-slate-200 text-slate-700 flex items-center justify-center flex-shrink-0">
+              <Network className="w-5 h-5" />
             </div>
           </CardContent>
         </Card>
 
-        <Card className="border-blue-200 bg-blue-50/40">
-          <CardContent className="p-5 flex items-center justify-between">
+        <Card className="border border-slate-200/80 shadow-sm bg-white">
+          <CardContent className="p-4 flex items-center justify-between">
             <div>
-              <p className="text-xs font-semibold text-blue-900 uppercase">Brokers en Redes MB</p>
-              <p className="text-2xl font-bold text-blue-900 mt-1">
+              <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Brokers en Redes MB</p>
+              <p className="text-2xl font-bold text-slate-900 mt-1">
                 {masterBrokers.reduce((acc: number, mb: any) => acc + (mb.networkBrokers?.length || 0), 0)}
               </p>
-              <p className="text-[11px] text-blue-700 mt-0.5">Pertenecen a un Master Broker</p>
+              <p className="text-[11px] text-slate-400 mt-0.5 font-normal">Asociados a un Master Broker</p>
             </div>
-            <div className="w-12 h-12 rounded-xl bg-blue-200/60 text-blue-800 flex items-center justify-center">
-              <i className="fas fa-users text-xl"></i>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className="border-orange-200 bg-orange-50/40">
-          <CardContent className="p-5 flex items-center justify-between">
-            <div>
-              <p className="text-xs font-semibold text-orange-900 uppercase">Brokers Directos</p>
-              <p className="text-2xl font-bold text-orange-900 mt-1">{independentBrokers.length}</p>
-              <p className="text-[11px] text-orange-700 mt-0.5">Sin Master Broker asignado</p>
-            </div>
-            <div className="w-12 h-12 rounded-xl bg-orange-200/60 text-orange-800 flex items-center justify-center">
-              <i className="fas fa-user-tag text-xl"></i>
+            <div className="w-10 h-10 rounded-xl bg-blue-50 border border-blue-200 text-blue-700 flex items-center justify-center flex-shrink-0">
+              <Users className="w-5 h-5" />
             </div>
           </CardContent>
         </Card>
 
-        <Card className="border-green-200 bg-green-50/40">
-          <CardContent className="p-5 flex items-center justify-between">
+        <Card className="border border-slate-200/80 shadow-sm bg-white">
+          <CardContent className="p-4 flex items-center justify-between">
             <div>
-              <p className="text-xs font-semibold text-green-900 uppercase">Mi Red Directa</p>
-              <p className="text-2xl font-bold text-green-900 mt-1">{adminBrokers.length}</p>
-              <p className="text-[11px] text-green-700 mt-0.5">Casa Matriz / Super Admin</p>
+              <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Brokers Directos</p>
+              <p className="text-2xl font-bold text-slate-900 mt-1">{independentBrokers.length}</p>
+              <p className="text-[11px] text-slate-400 mt-0.5 font-normal">Sin Master Broker asignado</p>
             </div>
-            <div className="w-12 h-12 rounded-xl bg-green-200/60 text-green-800 flex items-center justify-center">
-              <i className="fas fa-crown text-xl"></i>
+            <div className="w-10 h-10 rounded-xl bg-amber-50 border border-amber-200 text-amber-700 flex items-center justify-center flex-shrink-0">
+              <UserCheck className="w-5 h-5" />
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="border border-slate-200/80 shadow-sm bg-white">
+          <CardContent className="p-4 flex items-center justify-between">
+            <div>
+              <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Mi Red Directa</p>
+              <p className="text-2xl font-bold text-slate-900 mt-1">{adminBrokers.length}</p>
+              <p className="text-[11px] text-slate-400 mt-0.5 font-normal">Casa Matriz / Super Admin</p>
+            </div>
+            <div className="w-10 h-10 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-700 flex items-center justify-center flex-shrink-0">
+              <Crown className="w-5 h-5" />
             </div>
           </CardContent>
         </Card>
       </div>
 
       {/* Barra de Búsqueda y Botones de Acción */}
-      <div className="flex items-center justify-between gap-4 flex-wrap">
-        <div className="flex-1 min-w-[280px]">
+      <div className="flex items-center justify-between gap-3 flex-wrap">
+        <div className="flex-1 min-w-[280px] relative">
+          <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5 pointer-events-none" />
           <Input 
             placeholder="Buscar por nombre, email o marca comercial..." 
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full bg-white"
+            className="w-full bg-white pl-9 h-9 text-xs border-slate-200 rounded-lg"
           />
         </div>
-        <div className="flex items-center gap-2">
-          <Button 
-            className="bg-primary text-white hover:bg-primary-dark text-xs"
-            onClick={() => {
-              setInviteMasterBrokerId(user?.id || null);
-              setShowInviteModal(true);
-            }}
-          >
-            <i className="fas fa-user-plus mr-1.5"></i>
-            Invitar Broker a Mi Red
-          </Button>
-        </div>
+        <Button 
+          className="bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold gap-1.5 h-9"
+          onClick={() => {
+            setInviteMasterBrokerId(user?.id || null);
+            setShowInviteModal(true);
+          }}
+          data-testid="button-invite-broker"
+        >
+          <UserPlus className="w-3.5 h-3.5" />
+          Invitar Broker a Mi Red
+        </Button>
       </div>
 
       {/* Pestañas de Gestión de Redes */}
       <Tabs defaultValue="master_brokers" className="w-full">
-        <TabsList className="grid w-full grid-cols-3">
-          <TabsTrigger value="master_brokers" className="text-xs sm:text-sm">
-            <i className="fas fa-sitemap mr-2"></i>
-            1. Master Brokers & Redes ({filteredMasterBrokers.length})
+        <TabsList className="bg-slate-100 p-1 rounded-xl h-10 inline-flex w-auto border border-slate-200/60">
+          <TabsTrigger 
+            value="master_brokers" 
+            className="flex items-center gap-2 text-xs font-semibold data-[state=active]:bg-white data-[state=active]:text-slate-900 data-[state=active]:shadow-xs rounded-lg px-4 py-1.5 text-slate-600 transition-all"
+          >
+            <Network className="w-3.5 h-3.5" />
+            Master Brokers & Redes ({filteredMasterBrokers.length})
           </TabsTrigger>
-          <TabsTrigger value="direct_brokers" className="text-xs sm:text-sm">
-            <i className="fas fa-user-tie mr-2"></i>
-            2. Brokers Directos ({filteredIndependentBrokers.length})
+          <TabsTrigger 
+            value="direct_brokers" 
+            className="flex items-center gap-2 text-xs font-semibold data-[state=active]:bg-white data-[state=active]:text-slate-900 data-[state=active]:shadow-xs rounded-lg px-4 py-1.5 text-slate-600 transition-all"
+          >
+            <Users className="w-3.5 h-3.5" />
+            Brokers Directos ({filteredIndependentBrokers.length})
           </TabsTrigger>
-          <TabsTrigger value="admin_network" className="text-xs sm:text-sm">
-            <i className="fas fa-crown mr-2"></i>
-            3. Mi Red Directa ({filteredAdminBrokers.length})
+          <TabsTrigger 
+            value="admin_network" 
+            className="flex items-center gap-2 text-xs font-semibold data-[state=active]:bg-white data-[state=active]:text-slate-900 data-[state=active]:shadow-xs rounded-lg px-4 py-1.5 text-slate-600 transition-all"
+          >
+            <Crown className="w-3.5 h-3.5" />
+            Mi Red Directa ({filteredAdminBrokers.length})
           </TabsTrigger>
         </TabsList>
 
         {/* 1. VISTA DE MASTER BROKERS Y SUS REDES */}
-        <TabsContent value="master_brokers" className="mt-4 space-y-4">
+        <TabsContent value="master_brokers" className="mt-4 space-y-3">
           {filteredMasterBrokers.length === 0 ? (
-            <Card>
-              <CardContent className="p-8 text-center text-gray-500">
-                <i className="fas fa-users-slash text-3xl mb-2 text-gray-400"></i>
-                <p>No se encontraron Master Brokers registrados.</p>
+            <Card className="border border-slate-200/80 shadow-sm bg-white">
+              <CardContent className="p-8 text-center text-slate-500">
+                <Network className="w-8 h-8 mx-auto mb-2 text-slate-300" />
+                <p className="text-xs font-medium">No se encontraron Master Brokers registrados.</p>
               </CardContent>
             </Card>
           ) : (
@@ -622,42 +664,45 @@ export default function BrokerNetworkComponent() {
               const networkCount = mb.networkBrokers?.length || 0;
 
               return (
-                <Card key={mb.id} className="border border-gray-200 overflow-hidden">
-                  <CardHeader className="bg-gray-50/60 p-4 border-b">
-                    <div className="flex items-center justify-between flex-wrap gap-2">
+                <Card key={mb.id} className="border border-slate-200/80 shadow-sm overflow-hidden bg-white">
+                  <CardHeader className="bg-slate-50/50 p-4 border-b border-slate-100">
+                    <div className="flex items-center justify-between flex-wrap gap-3">
                       <div className="flex items-center space-x-3">
-                        <Avatar className="h-10 w-10 border border-purple-200">
-                          <AvatarFallback className="bg-purple-700 text-white font-bold text-sm">
+                        <Avatar className="h-10 w-10 border border-slate-200">
+                          <AvatarFallback className="bg-slate-900 text-white font-semibold text-xs">
                             {mb.firstName?.[0]}{mb.lastName?.[0]}
                           </AvatarFallback>
                         </Avatar>
                         <div>
                           <div className="flex items-center gap-2">
-                            <h3 className="font-bold text-gray-900 text-sm">
+                            <h3 className="font-semibold text-slate-900 text-xs sm:text-sm">
                               {mb.firstName} {mb.lastName}
                             </h3>
                             {mb.brandName && (
-                              <Badge variant="outline" className="bg-purple-100 text-purple-900 border-purple-300 text-[10px]">
+                              <Badge variant="outline" className="bg-slate-100 text-slate-800 border-slate-300 text-[10px] font-semibold">
                                 {mb.brandName}
                               </Badge>
                             )}
                           </div>
-                          <p className="text-xs text-gray-500">{mb.email} • {mb.phone || 'Sin teléfono'}</p>
+                          <p className="text-xs text-slate-500 flex items-center gap-2 mt-0.5">
+                            <span className="flex items-center gap-1"><Mail className="w-3 h-3 text-slate-400" /> {mb.email}</span>
+                            {mb.phone && <span className="flex items-center gap-1">• <Phone className="w-3 h-3 text-slate-400" /> {mb.phone}</span>}
+                          </p>
                         </div>
                       </div>
 
-                      <div className="flex items-center gap-3">
-                        <Badge className="bg-purple-50 text-purple-700 border border-purple-200 text-xs font-semibold">
+                      <div className="flex items-center gap-2.5">
+                        <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200 text-xs font-semibold">
                           {networkCount} broker{networkCount !== 1 ? 's' : ''} en red
                         </Badge>
                         <Button
                           size="sm"
                           variant="outline"
                           onClick={() => setExpandedMasterBroker(isExpanded ? null : mb.id)}
-                          className="text-xs h-8"
+                          className="text-xs h-8 font-semibold text-slate-700 border-slate-200 hover:bg-slate-100 gap-1"
                         >
-                          <i className={`fas ${isExpanded ? 'fa-chevron-up' : 'fa-chevron-down'} mr-1.5`}></i>
-                          {isExpanded ? 'Ocultar Red' : 'Ver Brokers'}
+                          {isExpanded ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+                          {isExpanded ? 'Ocultar' : 'Ver Brokers'}
                         </Button>
                       </div>
                     </div>
@@ -666,7 +711,7 @@ export default function BrokerNetworkComponent() {
                   {isExpanded && (
                     <CardContent className="p-4 bg-white">
                       {networkCount === 0 ? (
-                        <div className="p-4 bg-gray-50 rounded-lg text-center text-xs text-gray-500">
+                        <div className="p-4 bg-slate-50 rounded-xl text-center text-xs text-slate-500 border border-dashed border-slate-200">
                           Este Master Broker aún no tiene brokers asociados a su red.
                         </div>
                       ) : (
@@ -674,22 +719,28 @@ export default function BrokerNetworkComponent() {
                           {(mb.networkBrokers || []).map((broker: any) => (
                             <div 
                               key={broker.id}
-                              className="p-3 bg-gray-50/70 border border-gray-200 rounded-lg flex items-center justify-between"
+                              className="p-3 bg-slate-50/70 border border-slate-200/80 rounded-xl flex items-center justify-between hover:bg-slate-50 transition-colors"
+                              data-testid={`broker-${broker.id}`}
                             >
                               <div className="flex items-center space-x-3">
-                                <Avatar className="h-8 w-8">
-                                  <AvatarFallback className="bg-primary/20 text-primary text-xs font-semibold">
+                                <Avatar className="h-8 w-8 border border-slate-200">
+                                  <AvatarFallback className="bg-slate-200 text-slate-700 text-xs font-semibold">
                                     {broker.firstName?.[0]}{broker.lastName?.[0]}
                                   </AvatarFallback>
                                 </Avatar>
                                 <div>
-                                  <p className="font-semibold text-xs text-gray-900">
+                                  <p className="font-semibold text-xs text-slate-900">
                                     {broker.firstName} {broker.lastName}
                                   </p>
-                                  <p className="text-[11px] text-gray-500">{broker.email}</p>
+                                  <p className="text-[11px] text-slate-500">{broker.email}</p>
                                 </div>
                               </div>
-                              <Badge variant={broker.isActive ? "default" : "secondary"} className="text-[10px]">
+                              <Badge 
+                                variant="outline" 
+                                className={broker.isActive 
+                                  ? "bg-emerald-50 text-emerald-700 border-emerald-200 text-[10px] font-semibold" 
+                                  : "bg-slate-100 text-slate-600 border-slate-200 text-[10px] font-semibold"}
+                              >
                                 {broker.isActive ? "Activo" : "Inactivo"}
                               </Badge>
                             </div>
@@ -706,23 +757,21 @@ export default function BrokerNetworkComponent() {
 
         {/* 2. VISTA DE BROKERS DIRECTOS INDEPENDIENTES */}
         <TabsContent value="direct_brokers" className="mt-4">
-          <Card>
-            <CardHeader className="pb-3">
-              <div className="flex items-center justify-between">
-                <div>
-                  <CardTitle className="text-base font-bold">Brokers Directos Independientes</CardTitle>
-                  <p className="text-xs text-neutral mt-0.5">
-                    Brokers registrados en la plataforma que operan de forma directa sin pertenecer a la red de un Master Broker.
-                  </p>
-                </div>
-                <Badge variant="outline" className="bg-orange-50 text-orange-800 border-orange-200">
-                  {filteredIndependentBrokers.length} brokers directos
-                </Badge>
+          <Card className="border border-slate-200/80 shadow-sm bg-white overflow-hidden">
+            <CardHeader className="p-5 border-b border-slate-100 flex flex-row items-center justify-between flex-wrap gap-2 bg-slate-50/40">
+              <div>
+                <CardTitle className="text-base font-semibold text-slate-900">Brokers Directos Independientes</CardTitle>
+                <CardDescription className="text-xs text-slate-500 mt-0.5">
+                  Brokers registrados que operan directamente sin pertenecer a la red de un Master Broker.
+                </CardDescription>
               </div>
+              <Badge variant="outline" className="bg-amber-50 text-amber-800 border-amber-200 text-xs font-semibold">
+                {filteredIndependentBrokers.length} brokers directos
+              </Badge>
             </CardHeader>
-            <CardContent>
+            <CardContent className="p-5">
               {filteredIndependentBrokers.length === 0 ? (
-                <div className="text-center py-8 text-gray-500 text-sm">
+                <div className="text-center py-8 text-slate-500 text-xs">
                   No hay brokers directos independientes registrados.
                 </div>
               ) : (
@@ -730,27 +779,35 @@ export default function BrokerNetworkComponent() {
                   {filteredIndependentBrokers.map((broker: any) => (
                     <div 
                       key={broker.id}
-                      className="p-4 border border-gray-200 rounded-lg flex items-center justify-between hover:bg-gray-50 transition-colors"
+                      className="p-3.5 border border-slate-200/80 rounded-xl flex items-center justify-between hover:bg-slate-50/70 transition-colors bg-white"
+                      data-testid={`broker-${broker.id}`}
                     >
                       <div className="flex items-center space-x-3">
-                        <Avatar className="h-10 w-10">
-                          <AvatarFallback className="bg-orange-100 text-orange-800 font-bold">
+                        <Avatar className="h-9 w-9 border border-slate-200">
+                          <AvatarFallback className="bg-amber-100 text-amber-800 font-semibold text-xs">
                             {broker.firstName?.[0]}{broker.lastName?.[0]}
                           </AvatarFallback>
                         </Avatar>
                         <div>
-                          <p className="font-semibold text-sm text-gray-900">
+                          <p className="font-semibold text-xs text-slate-900">
                             {broker.firstName} {broker.lastName}
                           </p>
-                          <p className="text-xs text-neutral">{broker.email}</p>
+                          <p className="text-xs text-slate-500">{broker.email}</p>
                           {broker.clabe ? (
-                            <p className="text-[11px] text-green-700 font-mono mt-0.5">✓ CLABE Registrada</p>
+                            <p className="text-[11px] text-emerald-700 font-medium mt-0.5 flex items-center gap-1">
+                              <ShieldCheck className="w-3 h-3" /> CLABE Registrada
+                            </p>
                           ) : (
-                            <p className="text-[11px] text-orange-600 font-medium mt-0.5">Sin CLABE registrada</p>
+                            <p className="text-[11px] text-slate-400 mt-0.5">Sin CLABE registrada</p>
                           )}
                         </div>
                       </div>
-                      <Badge variant={broker.isActive ? "default" : "secondary"} className="text-xs">
+                      <Badge 
+                        variant="outline" 
+                        className={broker.isActive 
+                          ? "bg-emerald-50 text-emerald-700 border-emerald-200 text-xs font-semibold" 
+                          : "bg-slate-100 text-slate-600 border-slate-200 text-xs font-semibold"}
+                      >
                         {broker.isActive ? "Activo" : "Inactivo"}
                       </Badge>
                     </div>
@@ -763,38 +820,37 @@ export default function BrokerNetworkComponent() {
 
         {/* 3. VISTA DE MI RED DIRECTA (SUPER ADMIN COMO CASA MATRIZ) */}
         <TabsContent value="admin_network" className="mt-4">
-          <Card>
-            <CardHeader className="pb-3">
-              <div className="flex items-center justify-between flex-wrap gap-2">
-                <div>
-                  <CardTitle className="text-base font-bold flex items-center gap-2">
-                    <i className="fas fa-crown text-yellow-500"></i>
-                    Red Directa de Casa Matriz (Super Admin)
-                  </CardTitle>
-                  <p className="text-xs text-neutral mt-0.5">
-                    Brokers que están directamente asociados a tu red interna de administración.
-                  </p>
-                </div>
-                <Button 
-                  size="sm"
-                  className="bg-primary text-white hover:bg-primary-dark text-xs"
-                  onClick={() => {
-                    setInviteMasterBrokerId(user?.id || null);
-                    setShowInviteModal(true);
-                  }}
-                >
-                  <i className="fas fa-user-plus mr-1.5"></i>
-                  Invitar a Mi Red
-                </Button>
+          <Card className="border border-slate-200/80 shadow-sm bg-white overflow-hidden">
+            <CardHeader className="p-5 border-b border-slate-100 flex items-center justify-between flex-wrap gap-3 bg-slate-50/40">
+              <div>
+                <CardTitle className="text-base font-semibold text-slate-900 flex items-center gap-2">
+                  <Crown className="w-4 h-4 text-emerald-600" />
+                  Red Directa de Casa Matriz (Super Admin)
+                </CardTitle>
+                <CardDescription className="text-xs text-slate-500 mt-0.5">
+                  Brokers directamente asociados a la red interna de administración de la plataforma.
+                </CardDescription>
               </div>
+              <Button 
+                size="sm"
+                className="bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold gap-1.5"
+                onClick={() => {
+                  setInviteMasterBrokerId(user?.id || null);
+                  setShowInviteModal(true);
+                }}
+                data-testid="button-invite-broker"
+              >
+                <UserPlus className="w-3.5 h-3.5" />
+                Invitar a Mi Red
+              </Button>
             </CardHeader>
-            <CardContent>
+            <CardContent className="p-5">
               {filteredAdminBrokers.length === 0 ? (
-                <div className="text-center py-10 text-gray-500">
-                  <i className="fas fa-users text-4xl text-gray-300 mb-3"></i>
-                  <p className="font-medium text-gray-700">No tienes brokers directos asignados a tu red.</p>
-                  <p className="text-xs text-neutral mt-1">
-                    Puedes invitar brokers con el botón "Invitar a Mi Red" para que operen directamente bajo Casa Matriz.
+                <div className="text-center py-10 text-slate-500">
+                  <Users className="w-8 h-8 text-slate-300 mx-auto mb-2" />
+                  <p className="font-semibold text-slate-800 text-xs">No tienes brokers directos asignados a tu red.</p>
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    Invita brokers para que operen directamente bajo Casa Matriz.
                   </p>
                 </div>
               ) : (
@@ -802,23 +858,29 @@ export default function BrokerNetworkComponent() {
                   {filteredAdminBrokers.map((broker: any) => (
                     <div 
                       key={broker.id}
-                      className="p-4 border border-green-200 bg-green-50/20 rounded-lg flex items-center justify-between"
+                      className="p-3.5 border border-emerald-100 bg-emerald-50/20 rounded-xl flex items-center justify-between"
+                      data-testid={`broker-${broker.id}`}
                     >
                       <div className="flex items-center space-x-3">
-                        <Avatar className="h-10 w-10 border border-green-300">
-                          <AvatarFallback className="bg-green-700 text-white font-bold">
+                        <Avatar className="h-9 w-9 border border-emerald-200">
+                          <AvatarFallback className="bg-emerald-700 text-white font-semibold text-xs">
                             {broker.firstName?.[0]}{broker.lastName?.[0]}
                           </AvatarFallback>
                         </Avatar>
                         <div>
-                          <p className="font-semibold text-sm text-gray-900">
+                          <p className="font-semibold text-xs text-slate-900">
                             {broker.firstName} {broker.lastName}
                           </p>
-                          <p className="text-xs text-neutral">{broker.email}</p>
-                          <p className="text-[11px] text-green-800 font-semibold mt-0.5">Broker Directo de Casa Matriz</p>
+                          <p className="text-xs text-slate-500">{broker.email}</p>
+                          <p className="text-[11px] text-emerald-800 font-medium mt-0.5">Broker Directo de Casa Matriz</p>
                         </div>
                       </div>
-                      <Badge variant={broker.isActive ? "default" : "secondary"} className="text-xs">
+                      <Badge 
+                        variant="outline" 
+                        className={broker.isActive 
+                          ? "bg-emerald-50 text-emerald-700 border-emerald-200 text-xs font-semibold" 
+                          : "bg-slate-100 text-slate-600 border-slate-200 text-xs font-semibold"}
+                      >
                         {broker.isActive ? "Activo" : "Inactivo"}
                       </Badge>
                     </div>

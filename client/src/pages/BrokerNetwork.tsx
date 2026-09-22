@@ -2,7 +2,9 @@ import MainLayout from "@/components/MainLayout";
 import Header from "@/components/Header";
 import BrokerNetworkComponent from "@/components/Brokers/BrokerNetwork";
 import { useAuth } from "@/hooks/useAuth";
-import { Card, CardContent } from "@/components/ui/card";
+import { ShieldAlert, Users } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Link } from "wouter";
 
 export default function BrokerNetwork() {
   const { user, isLoading } = useAuth();
@@ -15,9 +17,9 @@ export default function BrokerNetwork() {
           subtitle="Gestiona y monitorea tu equipo de brokers"
         />
         <main className="flex-1 p-4 sm:p-6 lg:p-8 overflow-y-auto">
-          <div className="space-y-4">
-            <div className="h-32 bg-gray-100 animate-pulse rounded-lg" />
-            <div className="h-64 bg-gray-100 animate-pulse rounded-lg" />
+          <div className="max-w-7xl mx-auto space-y-6">
+            <div className="h-32 bg-white border border-slate-200/80 rounded-xl p-5 shadow-xs animate-pulse" />
+            <div className="h-64 bg-white border border-slate-200/80 rounded-xl p-5 shadow-xs animate-pulse" />
           </div>
         </main>
       </MainLayout>
@@ -33,19 +35,22 @@ export default function BrokerNetwork() {
         />
         
         <main className="flex-1 p-4 sm:p-6 lg:p-8 overflow-y-auto">
-          <Card>
-            <CardContent className="p-12">
-              <div className="text-center">
-                <i className="fas fa-ban text-4xl text-muted-foreground/50 mb-4"></i>
-                <h3 className="text-xl font-semibold text-foreground mb-2">
-                  Acceso Restringido
-                </h3>
-                <p className="text-muted-foreground">
-                  Esta funcionalidad está disponible solo para Master Brokers.
-                </p>
-              </div>
-            </CardContent>
-          </Card>
+          <div className="max-w-md mx-auto mt-12 bg-white border border-slate-200/80 rounded-xl p-10 text-center shadow-xs">
+            <div className="w-12 h-12 rounded-full bg-amber-50 border border-amber-200/80 text-amber-600 flex items-center justify-center mx-auto mb-3">
+              <ShieldAlert className="w-6 h-6" />
+            </div>
+            <h3 className="text-base font-bold text-slate-900 mb-1">
+              Acceso Restringido
+            </h3>
+            <p className="text-xs text-slate-500 mb-5 leading-relaxed">
+              Esta funcionalidad y la gestión autónoma de comisiones de equipo están disponibles únicamente para perfiles con rango Master Broker y Administradores.
+            </p>
+            <Link href="/dashboard">
+              <Button size="sm" className="h-8 text-xs bg-primary hover:bg-primary/90 text-white shadow-xs">
+                Volver al Panel Principal
+              </Button>
+            </Link>
+          </div>
         </main>
       </MainLayout>
     );
@@ -55,11 +60,13 @@ export default function BrokerNetwork() {
     <MainLayout>
       <Header 
         title="Red de Brokers"
-        subtitle="Gestiona y monitorea tu equipo de brokers"
+        subtitle="Gestiona y monitorea tu equipo de brokers y comisiones"
       />
       
       <main className="flex-1 p-4 sm:p-6 lg:p-8 overflow-y-auto">
-        <BrokerNetworkComponent />
+        <div className="max-w-7xl mx-auto">
+          <BrokerNetworkComponent />
+        </div>
       </main>
     </MainLayout>
   );
