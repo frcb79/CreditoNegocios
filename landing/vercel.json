@@ -1,4 +1,16 @@
 {
   "buildCommand": "npm run build",
-  "outputDirectory": "public"
+  "outputDirectory": "public",
+  "redirects": [
+    {
+      "source": "/brokers",
+      "destination": "https://app.creditonegocios.com.mx/brokers",
+      "permanent": false
+    },
+    {
+      "source": "/app",
+      "destination": "https://app.creditonegocios.com.mx/",
+      "permanent": false
+    }
+  ]
 }

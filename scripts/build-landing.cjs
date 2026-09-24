@@ -4,6 +4,7 @@ const { join, resolve } = require('node:path');
 const landingIndex = resolve('landing', 'index.html');
 const landingLogo = resolve('landing', 'Credito Negocios-07.png');
 const landingLogoJpg = resolve('landing', 'Credito Negocios-07.jpg');
+const landingLogoNormalized = resolve('client', 'public', 'credito-negocios-07.jpg');
 const outputTargets = [
   { outputDir: resolve('public'), htmlTargets: ['index.html', 'landing.html'] },
   { outputDir: resolve('dist', 'public'), htmlTargets: ['landing.html'] },
@@ -17,6 +18,7 @@ if (!existsSync(landingIndex)) {
 for (const { outputDir, htmlTargets } of outputTargets) {
   const outputLogo = join(outputDir, 'Credito Negocios-07.png');
   const outputLogoJpg = join(outputDir, 'Credito Negocios-07.jpg');
+  const outputLogoNormalized = join(outputDir, 'credito-negocios-07.jpg');
   mkdirSync(outputDir, { recursive: true });
 
   for (const htmlTarget of htmlTargets) {
@@ -29,6 +31,10 @@ for (const { outputDir, htmlTargets } of outputTargets) {
 
   if (existsSync(landingLogoJpg)) {
     copyFileSync(landingLogoJpg, outputLogoJpg);
+  }
+
+  if (existsSync(landingLogoNormalized)) {
+    copyFileSync(landingLogoNormalized, outputLogoNormalized);
   }
 
   for (const htmlTarget of htmlTargets) {

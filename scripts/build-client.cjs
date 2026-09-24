@@ -6,6 +6,7 @@ function emitLandingPublic() {
   const landingIndex = resolve('landing', 'index.html');
   const landingLogoPng = resolve('landing', 'Credito Negocios-07.png');
   const landingLogoJpg = resolve('landing', 'Credito Negocios-07.jpg');
+  const landingLogoNormalized = resolve('client', 'public', 'credito-negocios-07.jpg');
   const landingOutputs = [
     { outputDir: resolve('public'), htmlTargets: ['index.html', 'landing.html'] },
     { outputDir: resolve('dist', 'public'), htmlTargets: ['landing.html'] },
@@ -26,6 +27,10 @@ function emitLandingPublic() {
 
     if (existsSync(landingLogoJpg)) {
       copyFileSync(landingLogoJpg, join(outputDir, 'Credito Negocios-07.jpg'));
+    }
+
+    if (existsSync(landingLogoNormalized)) {
+      copyFileSync(landingLogoNormalized, join(outputDir, 'credito-negocios-07.jpg'));
     }
 
     for (const htmlTarget of htmlTargets) {
