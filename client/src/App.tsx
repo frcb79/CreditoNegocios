@@ -66,8 +66,8 @@ function Router() {
     <Switch>
       {/* Reset password route - accessible without auth */}
       <Route path="/reset-password" component={ResetPassword} />
-      {/* Design preview - accessible without auth for testing */}
-      <Route path="/design-preview" component={DesignPreview} />
+      {/* Design preview - accessible only in development for testing */}
+      {import.meta.env.DEV && <Route path="/design-preview" component={DesignPreview} />}
       {/* Broker acquisition page - accessible without auth */}
       <Route path="/brokers" component={BrokersLanding} />
       

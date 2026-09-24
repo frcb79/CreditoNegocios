@@ -24,6 +24,7 @@ import {
   CircleDollarSign,
   Landmark,
   LayoutDashboard,
+  Loader2,
   LogIn,
   Mail,
   MessageSquare,
@@ -271,22 +272,22 @@ export default function BrokersLanding() {
   return (
     <div className="min-h-screen bg-[linear-gradient(180deg,#f5fbff_0%,#edf5fb_40%,#ffffff_100%)] text-slate-900">
       <nav className="sticky top-0 z-50 border-b border-[#173653] bg-[#1F476B] backdrop-blur-xl">
-        <div className="mx-auto grid max-w-[90rem] grid-cols-[auto_1fr_auto] items-center gap-3 px-4 py-3 sm:px-6 lg:px-8">
-          <div className="flex items-center">
+        <div className="mx-auto flex items-center justify-between gap-3 px-4 py-3 sm:px-6 lg:px-8 max-w-[90rem]">
+          <div className="flex items-center flex-shrink-0">
             <img
-              src="/Credito_Negocios-07.png"
+              src="/credito-negocios-07.jpg"
               alt="Credito Negocios"
-              className="h-12 w-auto sm:h-14 lg:h-16"
+              className="h-10 w-auto rounded-sm object-contain sm:h-12 lg:h-14"
             />
           </div>
 
-          <div className="px-2 text-center">
+          <div className="px-2 text-center hidden md:block flex-1">
             <p className="text-sm font-black uppercase tracking-[0.2em] text-white sm:text-base lg:text-xl">
               Programa para Brokers y Referidos
             </p>
           </div>
 
-          <div className="flex items-center justify-end gap-2 sm:gap-3">
+          <div className="flex items-center justify-end gap-2 sm:gap-3 flex-shrink-0">
             <Button asChild size="sm" className="bg-emerald-500 text-white shadow-md hover:bg-emerald-600">
               <a href={whatsappUrl} target="_blank" rel="noreferrer">
                 <MessageSquare className="mr-2 h-4 w-4" />
@@ -521,8 +522,17 @@ export default function BrokersLanding() {
                     className="w-full bg-secondary text-base font-bold shadow-lg shadow-secondary/20 hover:bg-secondary/90"
                     disabled={isSubmitting}
                   >
-                    {isSubmitting ? "Enviando..." : "Solicitar acceso y demo"}
-                    <ArrowRight className="ml-2 h-5 w-5" />
+                    {isSubmitting ? (
+                      <>
+                        <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+                        Enviando...
+                      </>
+                    ) : (
+                      <>
+                        Solicitar acceso y demo
+                        <ArrowRight className="ml-2 h-5 w-5" />
+                      </>
+                    )}
                   </Button>
 
                   <p className="text-center text-xs leading-5 text-slate-500">
@@ -806,10 +816,10 @@ export default function BrokersLanding() {
       <footer className="border-t border-[#173653] bg-[#1F476B] text-white">
         <div className="mx-auto grid max-w-[90rem] grid-cols-1 items-center gap-4 px-4 py-8 text-sm sm:px-6 lg:grid-cols-[auto_1fr_auto] lg:gap-6 lg:px-8">
           <div className="flex items-center justify-center lg:justify-start">
-            <img src="/Credito_Negocios-07.png" alt="Credito Negocios" className="h-16 w-auto sm:h-20" />
+            <img src="/credito-negocios-07.jpg" alt="Credito Negocios" className="h-12 w-auto rounded-sm object-contain sm:h-16" />
           </div>
 
-          <div className="text-center text-base text-blue-100">@ Credito Negocios 2026</div>
+          <div className="text-center text-base text-blue-100">© 2026 Crédito Negocios</div>
 
           <div className="flex flex-wrap items-center justify-center gap-4 text-blue-100 lg:justify-end">
             <a href="mailto:info@creditonegocios.com.mx" className="inline-flex items-center gap-2 hover:text-white">

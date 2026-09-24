@@ -1192,7 +1192,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Determine reset URL and log it for reference
       const baseUrl = process.env.FRONTEND_BASE_URL || (process.env.RAILWAY_STATIC_URL ? `https://${process.env.RAILWAY_STATIC_URL}` : 'https://creditonegocios-staging.up.railway.app');
       const resetUrl = `${baseUrl.replace(/\/$/, '')}/reset-password?token=${resetToken}`;
-      console.log(`🔑 [AUTH RESET URL] Generated reset URL for ${user.email}: ${resetUrl}`);
+      if (process.env.NODE_ENV !== 'production') {
+        console.log(`🔑 [AUTH RESET URL] Generated reset URL for ${user.email}: ${resetUrl}`);
+      }
       
       // Send password reset email
       const userName = user.firstName || undefined;
@@ -1201,15 +1203,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
         ? await sendPasswordResetEmail(user.email, resetToken, userName)
         : { success: false, error: 'User has no email' };
       
-      const isSuperAdminUser = ['francocb79@gmail.com', 'francocb79@yahoo.com', 'fcb@creditonegocios.com.mx'].includes(data.email) || user.role === 'super_admin';
-
       if (!emailResult.success) {
         console.error('⚠️ [AUTH WARNING] Failed to deliver password reset email:');
         console.error('   - Target Email:', user.email);
         console.error('   - Error:', emailResult.error);
-        console.error(`   - Direct Reset URL available: ${resetUrl}`);
+        if (process.env.NODE_ENV !== 'production') {
+          console.error(`   - Direct Reset URL available: ${resetUrl}`);
+        }
 
-        if (isSuperAdminUser || process.env.NODE_ENV !== 'production') {
+        if (process.env.NODE_ENV !== 'production') {
           return res.json({ 
             message: `Solicitud procesada, pero el servicio de correo (Resend) reportó: ${emailResult.error || 'No entregado'}.`,
             resetUrl: resetUrl,
