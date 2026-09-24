@@ -210,17 +210,17 @@ export default function Sidebar() {
   const SidebarContent = ({ collapsed = false, testIdSuffix = '' }: { collapsed?: boolean; testIdSuffix?: string }) => (
     <div className="flex flex-col h-full">
       {/* Brand Header: Only logo/brand */}
-      <div className={cn("border-b border-sidebar-border/70 flex items-center justify-center flex-shrink-0", collapsed ? "p-2 h-14" : "px-4 py-3 h-14")}>
+      <div className={cn("border-b border-sidebar-border/70 flex items-center justify-center flex-shrink-0", collapsed ? "p-2 h-16" : "px-4 py-3 h-16")}>
         {collapsed ? (
-          <div className="w-8 h-8 bg-gradient-to-r from-primary to-secondary rounded-lg flex items-center justify-center shadow-xs">
-            <span className="text-white font-bold text-xs font-mono">CN</span>
+          <div className="w-9 h-9 bg-gradient-to-r from-primary to-secondary rounded-lg flex items-center justify-center shadow-xs">
+            <span className="text-white font-bold text-sm font-mono">CN</span>
           </div>
         ) : (
-          <div className="h-8 w-full flex items-center justify-start overflow-hidden">
+          <div className="h-11 w-full flex items-center justify-center overflow-hidden px-1">
             <img 
               src="/credito-negocios-full-logo.jpg" 
               alt="Credito Negocios" 
-              className="h-8 max-w-[190px] object-contain object-left" 
+              className="h-11 max-h-11 w-auto max-w-[215px] object-contain object-center" 
             />
           </div>
         )}
@@ -228,20 +228,20 @@ export default function Sidebar() {
 
       {/* Grouped Navigation */}
       <nav className={cn(
-        "flex-1 py-2 space-y-3 overflow-y-auto scrollbar-hide",
-        collapsed ? "px-1.5" : "px-2.5"
+        "flex-1 py-3 space-y-2.5 overflow-y-auto scrollbar-hide",
+        collapsed ? "px-2" : "px-3"
       )}>
         {groupedItems.map((grp, grpIdx) => (
-          <div key={grp.section} className="space-y-0.5">
+          <div key={grp.section} className="space-y-1">
             {!collapsed ? (
-              <div className="px-2 pt-1 pb-1 flex items-center justify-between">
-                <span className="text-[10px] font-bold uppercase tracking-wider text-sidebar-foreground/50">
+              <div className="px-2.5 pt-1.5 pb-1 flex items-center justify-between">
+                <span className="text-[11px] font-bold uppercase tracking-wider text-sidebar-foreground/60">
                   {grp.label}
                 </span>
-                {grpIdx > 0 && <span className="h-px flex-1 ml-2 bg-sidebar-border/40" />}
+                {grpIdx > 0 && <span className="h-px flex-1 ml-2.5 bg-sidebar-border/50" />}
               </div>
             ) : grpIdx > 0 ? (
-              <div className="my-1.5 border-t border-sidebar-border/60 mx-1" />
+              <div className="my-2 border-t border-sidebar-border/60 mx-1" />
             ) : null}
 
             {grp.items.map((item) => {
@@ -252,34 +252,34 @@ export default function Sidebar() {
                 <Link key={item.name} href={item.href} onClick={() => setIsMobileOpen(false)}>
                   <div
                     className={cn(
-                      "flex items-center rounded-md font-medium transition-colors cursor-pointer relative",
-                      collapsed ? "justify-center p-2" : "justify-between px-2.5 py-1.5 text-xs",
+                      "flex items-center rounded-lg font-medium transition-colors cursor-pointer relative",
+                      collapsed ? "justify-center p-2.5" : "justify-between px-3 py-2 text-sm",
                       isActive
-                        ? "bg-sidebar-primary text-sidebar-primary-foreground shadow-2xs font-semibold"
+                        ? "bg-sidebar-primary text-sidebar-primary-foreground shadow-xs font-semibold"
                         : "text-sidebar-foreground hover:bg-sidebar-accent/70 hover:text-sidebar-accent-foreground"
                     )}
                     data-testid={`nav-${item.name.toLowerCase().replace(/\s+/g, '-')}${testIdSuffix}`}
                     title={collapsed ? item.name : undefined}
                   >
-                    <div className={cn("flex items-center min-w-0", collapsed ? "" : "gap-2.5")}>
+                    <div className={cn("flex items-center min-w-0", collapsed ? "" : "gap-3")}>
                       <IconComp className={cn(
                         "flex-shrink-0",
-                        collapsed ? "h-4 w-4" : "h-4 w-4",
-                        isActive ? "text-sidebar-primary-foreground" : "text-sidebar-foreground/75"
+                        collapsed ? "h-5 w-5" : "h-[18px] w-[18px]",
+                        isActive ? "text-sidebar-primary-foreground" : "text-sidebar-foreground/80"
                       )} />
                       {!collapsed && (
-                        <span className="truncate text-xs tracking-tight">
+                        <span className="truncate text-sm font-medium tracking-tight">
                           {item.name}
                         </span>
                       )}
                     </div>
                     {!collapsed && item.href === '/solicitudes-pendientes' && winnersPendingDispersal > 0 && (
-                      <span className="ml-auto inline-flex items-center px-1.5 py-0.2 rounded-full text-[10px] font-bold bg-amber-500 text-white animate-pulse shadow-xs" title={`${winnersPendingDispersal} propuesta(s) ganadora(s) por dispersar`}>
+                      <span className="ml-auto inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-500 text-white animate-pulse shadow-xs" title={`${winnersPendingDispersal} propuesta(s) ganadora(s) por dispersar`}>
                         🏆 {winnersPendingDispersal}
                       </span>
                     )}
                     {!collapsed && item.href === '/solicitudes-pendientes' && winnersPendingDispersal === 0 && totalPendingAdmin > 0 && (
-                      <span className="ml-auto inline-flex items-center px-1.5 py-0.2 rounded-full text-[10px] font-semibold bg-amber-500/15 text-amber-800 dark:text-amber-300 font-mono">
+                      <span className="ml-auto inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold bg-amber-500/15 text-amber-800 dark:text-amber-300 font-mono">
                         {totalPendingAdmin}
                       </span>
                     )}
@@ -293,16 +293,16 @@ export default function Sidebar() {
 
       {/* Footer: User Identity + Settings + Logout */}
       <div className={cn(
-        "border-t border-sidebar-border/70 mt-auto flex-shrink-0 bg-sidebar-background/80 space-y-1.5",
-        collapsed ? "p-1.5" : "p-2.5"
+        "border-t border-sidebar-border/70 mt-auto flex-shrink-0 bg-sidebar-background/80 space-y-2",
+        collapsed ? "p-2" : "p-3"
       )}>
         {/* User Identity Mini-Card */}
         <div className={cn(
-          "rounded-md border border-sidebar-border/60 bg-sidebar-accent/30",
-          collapsed ? "p-1 flex justify-center" : "p-2"
+          "rounded-lg border border-sidebar-border/60 bg-sidebar-accent/40 shadow-2xs",
+          collapsed ? "p-1.5 flex justify-center" : "p-2.5"
         )}>
-          <div className={cn("flex items-center", collapsed ? "justify-center" : "gap-2")}>
-            <div className="w-7 h-7 rounded-md flex items-center justify-center flex-shrink-0 overflow-hidden bg-sidebar-accent border border-sidebar-border/70">
+          <div className={cn("flex items-center", collapsed ? "justify-center" : "gap-2.5")}>
+            <div className="w-8 h-8 rounded-md flex items-center justify-center flex-shrink-0 overflow-hidden bg-sidebar-accent border border-sidebar-border/70">
               {user?.profileImageUrl || (user as any)?.customLogo ? (
                 <img
                   src={user?.profileImageUrl || (user as any)?.customLogo}
@@ -314,7 +314,7 @@ export default function Sidebar() {
                 />
               ) : (
                 <div className="w-full h-full bg-gradient-to-br from-primary to-secondary flex items-center justify-center">
-                  <span className="text-white font-semibold text-[10px]">
+                  <span className="text-white font-semibold text-xs">
                     {user?.firstName?.[0]}{user?.lastName?.[0]}
                   </span>
                 </div>
@@ -326,7 +326,7 @@ export default function Sidebar() {
                   {user?.firstName} {user?.lastName}
                 </p>
                 <div className="flex items-center gap-1 mt-0.5">
-                  <span className="text-[9.5px] font-medium tracking-wide text-sidebar-primary bg-sidebar-accent/80 px-1 py-0.2 rounded capitalize inline-block border border-sidebar-border/50 truncate max-w-[130px]">
+                  <span className="text-[10px] font-medium tracking-wide text-sidebar-primary bg-sidebar-accent/80 px-1.5 py-0.5 rounded capitalize inline-block border border-sidebar-border/50 truncate max-w-[140px]">
                     {user?.role?.replace('_', ' ')}
                   </span>
                 </div>
@@ -336,7 +336,7 @@ export default function Sidebar() {
         </div>
 
         {/* Footer Actions: Settings & Logout */}
-        <div className="space-y-0.5">
+        <div className="space-y-1">
           {bottomNavigation.map((item) => {
             const isActive = location === item.href;
             const BottomIcon = item.icon;
@@ -345,17 +345,17 @@ export default function Sidebar() {
               <Link key={item.name} href={item.href} onClick={() => setIsMobileOpen(false)}>
                 <div
                   className={cn(
-                    "flex items-center rounded-md font-medium transition-colors cursor-pointer",
-                    collapsed ? "justify-center p-2" : "gap-2.5 px-2.5 py-1.5 text-xs",
+                    "flex items-center rounded-lg font-medium transition-colors cursor-pointer",
+                    collapsed ? "justify-center p-2.5" : "gap-3 px-3 py-2 text-sm",
                     isActive
-                      ? "bg-sidebar-primary text-sidebar-primary-foreground font-semibold shadow-2xs"
+                      ? "bg-sidebar-primary text-sidebar-primary-foreground font-semibold shadow-xs"
                       : "text-sidebar-foreground hover:bg-sidebar-accent/70 hover:text-sidebar-accent-foreground"
                   )}
                   data-testid={`nav-${item.name.toLowerCase()}${testIdSuffix}`}
                   title={collapsed ? item.name : undefined}
                 >
-                  <BottomIcon className="h-4 w-4 flex-shrink-0" />
-                  {!collapsed && <span className="text-xs tracking-tight">{item.name}</span>}
+                  <BottomIcon className={cn("flex-shrink-0", collapsed ? "h-5 w-5" : "h-[18px] w-[18px]")} />
+                  {!collapsed && <span className="text-sm font-medium tracking-tight">{item.name}</span>}
                 </div>
               </Link>
             );
@@ -363,14 +363,14 @@ export default function Sidebar() {
           <button
             onClick={handleLogout}
             className={cn(
-              "flex items-center rounded-md text-sidebar-foreground hover:bg-destructive/10 hover:text-destructive transition-colors w-full",
-              collapsed ? "justify-center p-2" : "gap-2.5 px-2.5 py-1.5 text-xs"
+              "flex items-center rounded-lg text-sidebar-foreground hover:bg-destructive/10 hover:text-destructive transition-colors w-full",
+              collapsed ? "justify-center p-2.5" : "gap-3 px-3 py-2 text-sm"
             )}
             data-testid={`nav-logout${testIdSuffix}`}
             title={collapsed ? "Cerrar Sesión" : undefined}
           >
-            <LogOut className="h-4 w-4 flex-shrink-0" />
-            {!collapsed && <span className="text-xs tracking-tight">Cerrar Sesión</span>}
+            <LogOut className={cn("flex-shrink-0", collapsed ? "h-5 w-5" : "h-[18px] w-[18px]")} />
+            {!collapsed && <span className="text-sm font-medium tracking-tight">Cerrar Sesión</span>}
           </button>
         </div>
       </div>
