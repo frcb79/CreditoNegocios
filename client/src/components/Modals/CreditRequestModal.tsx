@@ -7,7 +7,8 @@ import {
   Dialog, 
   DialogContent, 
   DialogHeader, 
-  DialogTitle 
+  DialogTitle,
+  DialogFooter 
 } from "@/components/ui/dialog";
 import { 
   Select, 
@@ -24,7 +25,7 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
-import { Building2, User, DollarSign, Send, AlertCircle, CheckCircle, AlertTriangle, Info, HelpCircle, XCircle } from "lucide-react";
+import { Building2, User, DollarSign, Send, AlertCircle, CheckCircle, AlertTriangle, Info, HelpCircle, XCircle, Loader2 } from "lucide-react";
 import { evaluateAllFieldsForClient } from "@/components/MatchingAnalysis/matchingRules";
 
 interface Client {
@@ -945,11 +946,12 @@ export default function CreditRequestModal({ isOpen, onClose, preselectedClientI
             />
 
             {/* Submit Button */}
-            <div className="flex justify-end space-x-3 pt-4 border-t">
+            <DialogFooter className="gap-2 pt-4 border-t border-border/60">
               <Button
                 type="button"
                 variant="outline"
                 onClick={onClose}
+                disabled={submitRequestMutation.isPending}
                 data-testid="button-cancel-request"
               >
                 Cancelar
@@ -957,12 +959,12 @@ export default function CreditRequestModal({ isOpen, onClose, preselectedClientI
               <Button
                 type="submit"
                 disabled={submitRequestMutation.isPending || clientsLoading || institutionsLoading}
-                className="bg-blue-600 hover:bg-blue-700"
+                className="bg-primary text-primary-foreground hover:bg-primary/90"
                 data-testid="button-submit-request"
               >
                 {submitRequestMutation.isPending ? (
                   <>
-                    <i className="fas fa-spinner fa-spin mr-2"></i>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
                     Enviando...
                   </>
                 ) : (
@@ -972,7 +974,7 @@ export default function CreditRequestModal({ isOpen, onClose, preselectedClientI
                   </>
                 )}
               </Button>
-            </div>
+            </DialogFooter>
           </form>
         </Form>
       </DialogContent>

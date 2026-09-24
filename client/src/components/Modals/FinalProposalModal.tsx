@@ -7,7 +7,8 @@ import {
   Dialog, 
   DialogContent, 
   DialogHeader, 
-  DialogTitle 
+  DialogTitle,
+  DialogFooter 
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -17,7 +18,7 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { Credit } from "@shared/schema";
-import { FileCheck, DollarSign, Percent } from "lucide-react";
+import { FileCheck, DollarSign, Percent, Loader2 } from "lucide-react";
 
 interface FinalProposalModalProps {
   credit: Credit | null;
@@ -638,11 +639,12 @@ export default function FinalProposalModal({ credit, isOpen, onClose }: FinalPro
             </div>
 
             {/* Submit Buttons */}
-            <div className="flex justify-end space-x-3 pt-4 border-t">
+            <DialogFooter className="gap-2 pt-4 border-t border-border/60">
               <Button
                 type="button"
                 variant="outline"
                 onClick={onClose}
+                disabled={saveMutation.isPending}
                 data-testid="button-cancel-proposal"
               >
                 Cancelar
@@ -650,11 +652,12 @@ export default function FinalProposalModal({ credit, isOpen, onClose }: FinalPro
               <Button
                 type="submit"
                 disabled={saveMutation.isPending || financieraLoading}
+                className="bg-primary text-primary-foreground hover:bg-primary/90"
                 data-testid="button-submit-proposal"
               >
                 {saveMutation.isPending ? (
                   <>
-                    <i className="fas fa-spinner fa-spin mr-2"></i>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
                     Guardando...
                   </>
                 ) : (
@@ -664,7 +667,7 @@ export default function FinalProposalModal({ credit, isOpen, onClose }: FinalPro
                   </>
                 )}
               </Button>
-            </div>
+            </DialogFooter>
           </form>
         </Form>
       </DialogContent>

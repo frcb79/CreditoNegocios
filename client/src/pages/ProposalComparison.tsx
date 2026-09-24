@@ -566,41 +566,41 @@ export default function ProposalComparison() {
       >
         <DialogContent className="max-w-md">
           <DialogHeader>
-            <DialogTitle className="flex items-center space-x-2 text-purple-700">
-              <CheckCircle className="w-6 h-6 text-purple-600 flex-shrink-0" />
+            <DialogTitle className="flex items-center space-x-2 text-purple-700 dark:text-purple-300">
+              <CheckCircle className="w-5 h-5 text-purple-600 dark:text-purple-400 flex-shrink-0" />
               <span>¡Propuesta Seleccionada con Éxito!</span>
             </DialogTitle>
           </DialogHeader>
 
           <div className="space-y-4 py-2">
-            <div className="p-4 bg-purple-50/80 rounded-lg border border-purple-200">
-              <h4 className="font-bold text-purple-950 text-base">
+            <div className="p-3.5 bg-purple-50/70 dark:bg-purple-950/20 rounded-lg border border-purple-200/80 dark:border-purple-800/40">
+              <h4 className="font-bold text-purple-950 dark:text-purple-100 text-base">
                 {selectedWinnerModalTarget?.institution?.name || 'Financiera Seleccionada'}
               </h4>
               {selectedWinnerModalTarget?.institutionProposal && (
                 <div className="mt-3 grid grid-cols-2 gap-2.5 text-xs">
                   <div>
-                    <span className="text-gray-500">Monto Aprobado:</span>
-                    <p className="font-bold text-sm text-emerald-700">
+                    <span className="text-muted-foreground">Monto Aprobado:</span>
+                    <p className="font-bold text-sm text-emerald-700 dark:text-emerald-400">
                       ${selectedWinnerModalTarget.institutionProposal.approvedAmount?.toLocaleString('es-MX')} MXN
                     </p>
                   </div>
                   <div>
-                    <span className="text-gray-500">Tasa de Interés:</span>
-                    <p className="font-bold text-sm text-gray-800">
+                    <span className="text-muted-foreground">Tasa de Interés:</span>
+                    <p className="font-bold text-sm text-foreground">
                       {selectedWinnerModalTarget.institutionProposal.interestRate}%
                     </p>
                   </div>
                   <div>
-                    <span className="text-gray-500">Plazo:</span>
-                    <p className="font-bold text-sm text-gray-800">
+                    <span className="text-muted-foreground">Plazo:</span>
+                    <p className="font-bold text-sm text-foreground">
                       {selectedWinnerModalTarget.institutionProposal.term} meses
                     </p>
                   </div>
                   {selectedWinnerModalTarget.institutionProposal.openingCommission !== undefined && (
                     <div>
-                      <span className="text-gray-500">Comisión Apertura:</span>
-                      <p className="font-bold text-sm text-amber-700">
+                      <span className="text-muted-foreground">Comisión Apertura:</span>
+                      <p className="font-bold text-sm text-amber-700 dark:text-amber-400">
                         {selectedWinnerModalTarget.institutionProposal.openingCommission}%
                       </p>
                     </div>
@@ -609,17 +609,17 @@ export default function ProposalComparison() {
               )}
             </div>
 
-            <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg text-xs text-blue-900 space-y-1">
+            <div className="p-3 bg-blue-50/70 dark:bg-blue-950/20 border border-blue-200/80 dark:border-blue-800/40 rounded-lg text-xs text-blue-900 dark:text-blue-200 space-y-1">
               <p className="font-semibold flex items-center gap-1">
                 <span>💡</span> ¿El cliente requiere financiamiento adicional?
               </p>
-              <p className="text-blue-800 leading-relaxed">
+              <p className="text-blue-800 dark:text-blue-300 leading-relaxed">
                 Si el monto aprobado no cubre la totalidad o el cliente desea tomar un crédito complementario, puedes <strong>seleccionar otra propuesta aprobada</strong> de la lista.
               </p>
             </div>
           </div>
 
-          <DialogFooter className="flex flex-col sm:flex-row gap-2 pt-2">
+          <DialogFooter className="flex flex-col sm:flex-row gap-2 pt-2 border-t border-border/60">
             <Button
               variant="outline"
               onClick={() => setSelectedWinnerModalTarget(null)}
@@ -629,7 +629,7 @@ export default function ProposalComparison() {
             </Button>
             <Button
               onClick={() => setLocation('/creditos')}
-              className="w-full sm:w-auto bg-purple-600 hover:bg-purple-700 text-white"
+              className="w-full sm:w-auto bg-purple-600 hover:bg-purple-700 dark:bg-purple-600 dark:hover:bg-purple-500 text-white"
             >
               Ir a Gestión de Créditos
             </Button>

@@ -8,6 +8,7 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
+  DialogFooter,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -30,6 +31,7 @@ import {
   Building2,
   HelpCircle,
   Info,
+  Loader2,
 } from "lucide-react";
 import { Client } from "@shared/schema";
 
@@ -946,34 +948,38 @@ export default function MortgageLeadModal({
             />
 
             {/* BOTONES DE ACCIÓN */}
-            <div className="flex items-center justify-between pt-4 border-t border-gray-200">
-              <Button type="button" variant="outline" onClick={onClose} data-testid="button-cancel-mortgage-lead">
+            <DialogFooter className="flex flex-row items-center justify-between pt-4 border-t border-border/60">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={onClose}
+                disabled={saveLeadMutation.isPending}
+                data-testid="button-cancel-mortgage-lead"
+              >
                 Cancelar
               </Button>
 
-              <div className="flex items-center space-x-3">
-                <Button
-                  type="submit"
-                  disabled={saveLeadMutation.isPending}
-                  className="bg-amber-600 hover:bg-amber-700 text-white font-medium"
-                  data-testid="button-save-mortgage-lead"
-                >
-                  {saveLeadMutation.isPending ? (
-                    <>
-                      <i className="fas fa-spinner fa-spin mr-2"></i>
-                      Guardando...
-                    </>
-                  ) : (
-                    <>
-                      <Home className="w-4 h-4 mr-1.5" />
-                      {selectedInstitutions.length > 0
-                        ? `Guardar y Canalizar (${selectedInstitutions.length})`
-                        : "Guardar Prospecto"}
-                    </>
-                  )}
-                </Button>
-              </div>
-            </div>
+              <Button
+                type="submit"
+                disabled={saveLeadMutation.isPending}
+                className="bg-amber-600 hover:bg-amber-700 text-white font-medium"
+                data-testid="button-save-mortgage-lead"
+              >
+                {saveLeadMutation.isPending ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    Guardando...
+                  </>
+                ) : (
+                  <>
+                    <Home className="w-4 h-4 mr-1.5" />
+                    {selectedInstitutions.length > 0
+                      ? `Guardar y Canalizar (${selectedInstitutions.length})`
+                      : "Guardar Prospecto"}
+                  </>
+                )}
+              </Button>
+            </DialogFooter>
           </form>
         </Form>
       </DialogContent>

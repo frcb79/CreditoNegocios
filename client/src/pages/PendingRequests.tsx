@@ -15,7 +15,9 @@ import {
   Dialog, 
   DialogContent, 
   DialogHeader, 
-  DialogTitle 
+  DialogTitle,
+  DialogDescription,
+  DialogFooter 
 } from "@/components/ui/dialog";
 import {
   Collapsible,
@@ -47,7 +49,8 @@ import {
   ExternalLink,
   Trophy,
   Home,
-  Filter
+  Filter,
+  Loader2
 } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import MatchingComparisonTable from "@/components/MatchingAnalysis/MatchingComparisonTable";
@@ -1301,22 +1304,32 @@ export default function PendingRequests() {
                       )}
                     />
                     
-                    <div className="flex justify-end space-x-3">
+                    <DialogFooter className="gap-2 pt-4 border-t border-border/60">
                       <Button
                         type="button"
                         variant="outline"
                         onClick={() => setShowReviewModal(false)}
+                        disabled={reviewMutation.isPending}
                       >
                         Cancelar
                       </Button>
                       <Button
                         type="submit"
                         disabled={reviewMutation.isPending}
-                        className={reviewAction === 'approve' ? 'bg-green-600 hover:bg-green-700' : 'bg-orange-600 hover:bg-orange-700'}
+                        className={reviewAction === 'approve' ? 'bg-emerald-600 hover:bg-emerald-700 text-white' : 'bg-amber-600 hover:bg-amber-700 text-white'}
                       >
-                        {reviewMutation.isPending ? "Procesando..." : reviewAction === 'approve' ? 'Dar Visto Bueno' : 'Devolver al Broker'}
+                        {reviewMutation.isPending ? (
+                          <>
+                            <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                            Procesando...
+                          </>
+                        ) : reviewAction === 'approve' ? (
+                          'Dar Visto Bueno'
+                        ) : (
+                          'Devolver al Broker'
+                        )}
                       </Button>
-                    </div>
+                    </DialogFooter>
                   </form>
                 </Form>
               </DialogContent>
@@ -1404,21 +1417,30 @@ export default function PendingRequests() {
                       )}
                     />
                     
-                    <div className="flex justify-end space-x-3">
+                    <DialogFooter className="gap-2 pt-4 border-t border-border/60">
                       <Button
                         type="button"
                         variant="outline"
                         onClick={() => setShowProposalModal(false)}
+                        disabled={proposalMutation.isPending}
                       >
                         Cancelar
                       </Button>
                       <Button
                         type="submit"
                         disabled={proposalMutation.isPending}
+                        className="bg-primary text-primary-foreground hover:bg-primary/90"
                       >
-                        {proposalMutation.isPending ? "Guardando..." : "Guardar Propuesta"}
+                        {proposalMutation.isPending ? (
+                          <>
+                            <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                            Guardando...
+                          </>
+                        ) : (
+                          'Guardar Propuesta'
+                        )}
                       </Button>
-                    </div>
+                    </DialogFooter>
                   </form>
                 </Form>
               </DialogContent>

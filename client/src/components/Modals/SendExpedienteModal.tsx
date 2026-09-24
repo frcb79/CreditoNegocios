@@ -31,6 +31,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
+import { Info, Loader2 } from "lucide-react";
 import type { Client, Credit, FinancialInstitution } from "@shared/schema";
 
 const expedienteSchema = z.object({
@@ -225,23 +226,24 @@ export default function SendExpedienteModal({
               )}
             />
 
-            <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
+            <div className="p-3 bg-blue-50/70 dark:bg-blue-950/20 border border-blue-200/80 dark:border-blue-800/40 rounded-lg">
               <div className="flex items-center space-x-2">
-                <i className="fas fa-info-circle text-blue-600"></i>
+                <Info className="w-4 h-4 text-blue-600 dark:text-blue-400 shrink-0" />
                 <div className="text-sm">
-                  <p className="font-medium text-blue-800">Financiera: {financiera.name}</p>
+                  <p className="font-medium text-blue-900 dark:text-blue-200">Financiera: {financiera.name}</p>
                   {financiera.commissionRate && (
-                    <p className="text-blue-600">Comisión: {financiera.commissionRate}%</p>
+                    <p className="text-xs text-blue-700 dark:text-blue-300">Comisión: {financiera.commissionRate}%</p>
                   )}
                 </div>
               </div>
             </div>
 
-            <DialogFooter>
+            <DialogFooter className="gap-2 pt-3 border-t border-border/60">
               <Button
                 type="button"
                 variant="outline"
                 onClick={onClose}
+                disabled={sendExpedienteMutation.isPending}
                 data-testid="button-cancel"
               >
                 Cancelar
@@ -249,9 +251,17 @@ export default function SendExpedienteModal({
               <Button
                 type="submit"
                 disabled={sendExpedienteMutation.isPending}
+                className="bg-primary text-primary-foreground hover:bg-primary/90"
                 data-testid="button-send-expediente"
               >
-                {sendExpedienteMutation.isPending ? "Enviando..." : "Enviar Expediente"}
+                {sendExpedienteMutation.isPending ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    Enviando...
+                  </>
+                ) : (
+                  "Enviar Expediente"
+                )}
               </Button>
             </DialogFooter>
           </form>

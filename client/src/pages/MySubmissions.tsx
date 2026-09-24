@@ -6,7 +6,7 @@ import Header from "@/components/Header";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { 
   Clock, 
   DollarSign, 
@@ -611,11 +611,11 @@ export default function MySubmissions() {
                   );
                 })()}
 
-                <div className="flex justify-end pt-2">
-                  <Button variant="outline" onClick={() => setSelectedCredit(null)}>
+                <DialogFooter className="pt-3 border-t border-border/60">
+                  <Button variant="outline" size="sm" className="h-8 text-xs" onClick={() => setSelectedCredit(null)}>
                     Cerrar
                   </Button>
-                </div>
+                </DialogFooter>
               </div>
             )}
           </DialogContent>
