@@ -505,7 +505,7 @@ export default function ProductTemplates() {
       <div className="bg-white border border-slate-200/80 rounded-xl shadow-xs overflow-hidden">
         {filteredTemplates && filteredTemplates.length > 0 ? (
           <div className="overflow-x-auto">
-            <table className="w-full text-left border-collapse">
+            <table className="w-full min-w-[650px] text-left border-collapse">
               <thead>
                 <tr className="border-b border-slate-100 bg-slate-50/75 text-[11px] font-semibold text-slate-500 uppercase tracking-wider">
                   <th className="py-3 px-4">Plantilla / Esquema</th>

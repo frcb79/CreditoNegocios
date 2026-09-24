@@ -190,7 +190,7 @@ function MasterBrokerRatesConfig({ user }: { user: any }) {
         </CardHeader>
         <CardContent className="p-0">
           <div className="overflow-x-auto">
-            <table className="w-full text-sm text-left border-collapse">
+            <table className="w-full min-w-[650px] text-sm text-left border-collapse">
               <thead className="bg-slate-50 text-slate-600 text-[11px] font-semibold uppercase tracking-wider border-b border-slate-100">
                 <tr>
                   <th className="py-3 px-4">Financiera</th>
@@ -342,17 +342,17 @@ export default function BrokerNetworkComponent() {
     return (
       <div className="space-y-6">
         <Tabs defaultValue="team" className="space-y-6">
-          <TabsList className="bg-slate-100 p-1 rounded-xl h-10 inline-flex w-auto border border-slate-200/60">
+          <TabsList className="bg-slate-100 p-1 rounded-xl h-10 inline-flex w-auto border border-slate-200/60 max-w-full overflow-x-auto">
             <TabsTrigger 
               value="team" 
-              className="flex items-center gap-2 text-xs font-semibold data-[state=active]:bg-white data-[state=active]:text-slate-900 data-[state=active]:shadow-xs rounded-lg px-4 py-1.5 text-slate-600 transition-all"
+              className="flex items-center gap-2 text-xs font-semibold data-[state=active]:bg-white data-[state=active]:text-slate-900 data-[state=active]:shadow-xs rounded-lg px-4 py-1.5 text-slate-600 transition-all whitespace-nowrap shrink-0"
             >
               <Users className="w-3.5 h-3.5" />
               Mi Equipo ({brokers.length})
             </TabsTrigger>
             <TabsTrigger 
               value="rates" 
-              className="flex items-center gap-2 text-xs font-semibold data-[state=active]:bg-white data-[state=active]:text-slate-900 data-[state=active]:shadow-xs rounded-lg px-4 py-1.5 text-slate-600 transition-all"
+              className="flex items-center gap-2 text-xs font-semibold data-[state=active]:bg-white data-[state=active]:text-slate-900 data-[state=active]:shadow-xs rounded-lg px-4 py-1.5 text-slate-600 transition-all whitespace-nowrap shrink-0"
             >
               <Percent className="w-3.5 h-3.5" />
               Comisiones de mi Red
@@ -625,24 +625,24 @@ export default function BrokerNetworkComponent() {
 
       {/* Pestañas de Gestión de Redes */}
       <Tabs defaultValue="master_brokers" className="w-full">
-        <TabsList className="bg-slate-100 p-1 rounded-xl h-10 inline-flex w-auto border border-slate-200/60">
+        <TabsList className="bg-slate-100 p-1 rounded-xl h-10 inline-flex w-auto border border-slate-200/60 max-w-full overflow-x-auto">
           <TabsTrigger 
             value="master_brokers" 
-            className="flex items-center gap-2 text-xs font-semibold data-[state=active]:bg-white data-[state=active]:text-slate-900 data-[state=active]:shadow-xs rounded-lg px-4 py-1.5 text-slate-600 transition-all"
+            className="flex items-center gap-2 text-xs font-semibold data-[state=active]:bg-white data-[state=active]:text-slate-900 data-[state=active]:shadow-xs rounded-lg px-4 py-1.5 text-slate-600 transition-all whitespace-nowrap shrink-0"
           >
             <Network className="w-3.5 h-3.5" />
             Master Brokers & Redes ({filteredMasterBrokers.length})
           </TabsTrigger>
           <TabsTrigger 
             value="direct_brokers" 
-            className="flex items-center gap-2 text-xs font-semibold data-[state=active]:bg-white data-[state=active]:text-slate-900 data-[state=active]:shadow-xs rounded-lg px-4 py-1.5 text-slate-600 transition-all"
+            className="flex items-center gap-2 text-xs font-semibold data-[state=active]:bg-white data-[state=active]:text-slate-900 data-[state=active]:shadow-xs rounded-lg px-4 py-1.5 text-slate-600 transition-all whitespace-nowrap shrink-0"
           >
             <Users className="w-3.5 h-3.5" />
             Brokers Directos ({filteredIndependentBrokers.length})
           </TabsTrigger>
           <TabsTrigger 
             value="admin_network" 
-            className="flex items-center gap-2 text-xs font-semibold data-[state=active]:bg-white data-[state=active]:text-slate-900 data-[state=active]:shadow-xs rounded-lg px-4 py-1.5 text-slate-600 transition-all"
+            className="flex items-center gap-2 text-xs font-semibold data-[state=active]:bg-white data-[state=active]:text-slate-900 data-[state=active]:shadow-xs rounded-lg px-4 py-1.5 text-slate-600 transition-all whitespace-nowrap shrink-0"
           >
             <Crown className="w-3.5 h-3.5" />
             Mi Red Directa ({filteredAdminBrokers.length})

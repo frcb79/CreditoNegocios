@@ -200,7 +200,7 @@ export default function ClientList({ onSelectClient, onNewClient }: ClientListPr
           </div>
         </div>
 
-        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5 flex-1 md:max-w-2xl md:justify-end">
+        <div className="flex flex-col sm:flex-row sm:flex-wrap items-stretch sm:items-center gap-2.5 flex-1 md:max-w-none lg:max-w-2xl md:justify-end">
           {/* Search Input */}
           <div className="relative flex-1 min-w-[200px]">
             <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
@@ -306,7 +306,7 @@ export default function ClientList({ onSelectClient, onNewClient }: ClientListPr
         </div>
       ) : (
         <div className="overflow-x-auto">
-          <table className="w-full text-left border-collapse">
+          <table className="w-full min-w-[700px] text-left border-collapse">
             <thead>
               <tr className="border-b border-slate-200 bg-slate-50/80 text-[11px] font-semibold uppercase tracking-wider text-slate-500 select-none">
                 <th className="py-3 px-4">Cliente / Razón Social</th>

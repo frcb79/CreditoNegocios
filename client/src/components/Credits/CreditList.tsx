@@ -549,11 +549,11 @@ export default function CreditList() {
       <div className="bg-white border border-slate-200/80 rounded-xl shadow-sm overflow-hidden">
         {/* Tabs for Master Broker */}
         {isMasterBroker && (
-          <div className="flex border-b border-slate-200 bg-slate-50/60 px-6 pt-3 gap-8">
+          <div className="flex border-b border-slate-200 bg-slate-50/60 px-4 sm:px-6 pt-3 gap-4 sm:gap-8 overflow-x-auto">
             <button
               type="button"
               onClick={() => setMasterTab('direct')}
-              className={`pb-3 text-sm font-semibold border-b-2 flex items-center gap-2 transition-colors ${
+              className={`pb-3 text-sm font-semibold border-b-2 flex items-center gap-2 transition-colors whitespace-nowrap shrink-0 ${
                 masterTab === 'direct'
                   ? 'border-primary text-primary'
                   : 'border-transparent text-slate-500 hover:text-slate-800'
@@ -565,7 +565,7 @@ export default function CreditList() {
             <button
               type="button"
               onClick={() => setMasterTab('network')}
-              className={`pb-3 text-sm font-semibold border-b-2 flex items-center gap-2 transition-colors ${
+              className={`pb-3 text-sm font-semibold border-b-2 flex items-center gap-2 transition-colors whitespace-nowrap shrink-0 ${
                 masterTab === 'network'
                   ? 'border-primary text-primary'
                   : 'border-transparent text-slate-500 hover:text-slate-800'
@@ -641,7 +641,7 @@ export default function CreditList() {
           </div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full text-left border-collapse">
+            <table className="w-full min-w-[850px] text-left border-collapse">
               <thead>
                 <tr className="border-b border-slate-200 bg-slate-50/80 text-[11px] font-semibold uppercase tracking-wider text-slate-500 select-none">
                   <th className="py-3 px-4">Cliente / Expediente</th>

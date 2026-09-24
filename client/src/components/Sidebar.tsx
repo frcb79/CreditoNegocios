@@ -381,11 +381,11 @@ export default function Sidebar() {
     <>
       <button
         onClick={() => setIsMobileOpen(true)}
-        className="fixed top-4 left-4 z-40 lg:hidden bg-card shadow-lg rounded-lg p-2 border border-border"
+        className="fixed top-2.5 left-2.5 sm:left-4 z-40 lg:hidden bg-card/90 hover:bg-muted h-10 w-10 flex items-center justify-center rounded-lg border border-border shadow-xs transition-colors"
         aria-label="Abrir menú de navegación"
         data-testid="button-open-sidebar"
       >
-        <Menu className="h-6 w-6 text-foreground" />
+        <Menu className="h-5 w-5 text-foreground" />
       </button>
 
       {isMobileOpen && (
