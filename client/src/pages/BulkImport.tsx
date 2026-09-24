@@ -317,8 +317,8 @@ export default function BulkImport() {
     
     return (
       <div
-        className={`border-2 border-dashed rounded-lg p-8 text-center transition-colors ${
-          isDragging ? 'border-primary bg-primary/5' : 'border-gray-300 hover:border-gray-400'
+        className={`border-2 border-dashed rounded-lg p-5 sm:p-6 text-center transition-colors cursor-pointer ${
+          isDragging ? 'border-primary bg-primary/5' : 'border-border hover:border-primary/50 bg-muted/20'
         }`}
         onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
         onDragLeave={() => setIsDragging(false)}
@@ -331,27 +331,27 @@ export default function BulkImport() {
           onChange={onFileChange}
           className="hidden"
         />
-        <label htmlFor={`file-${type}`} className="cursor-pointer">
-          <div className="flex flex-col items-center gap-3">
+        <label htmlFor={`file-${type}`} className="cursor-pointer block">
+          <div className="flex flex-col items-center gap-2">
             {file ? (
               <>
-                <FileSpreadsheet className="w-12 h-12 text-green-600" />
+                <FileSpreadsheet className="w-8 h-8 text-emerald-600" />
                 <div>
-                  <p className="font-medium text-gray-900">{file.name}</p>
-                  <p className="text-sm text-gray-500">
-                    {(file.size / 1024).toFixed(1)} KB
+                  <p className="font-semibold text-xs text-foreground">{file.name}</p>
+                  <p className="text-[11px] text-muted-foreground">
+                    {(file.size / 1024).toFixed(1)} KB • Listo para previsualizar
                   </p>
                 </div>
               </>
             ) : (
               <>
-                <Upload className="w-12 h-12 text-gray-400" />
+                <Upload className="w-7 h-7 text-muted-foreground/70" />
                 <div>
-                  <p className="font-medium text-gray-700">
-                    Arrastra tu archivo Excel aquí
+                  <p className="font-semibold text-xs text-foreground">
+                    Arrastra tu archivo Excel (.xlsx, .xls)
                   </p>
-                  <p className="text-sm text-gray-500">
-                    o haz clic para seleccionar (.xlsx, .xls)
+                  <p className="text-[11px] text-muted-foreground mt-0.5">
+                    o haz clic aquí para seleccionarlo
                   </p>
                 </div>
               </>
@@ -368,95 +368,99 @@ export default function BulkImport() {
     );
 
     return (
-      <div className="mt-4 space-y-2">
+      <div className="mt-3 space-y-2">
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <p className="text-xs text-muted-foreground">
+          <p className="text-[11px] text-muted-foreground">
             Mostrando {Math.min(5, preview.rows.length)} de {preview.totalRows} filas detectadas
           </p>
           {hasMatchingFields && (
-            <Badge variant="outline" className="bg-emerald-50 text-emerald-700 border-emerald-300 text-xs">
+            <Badge variant="outline" className="bg-emerald-500/10 text-emerald-800 dark:text-emerald-300 border-emerald-500/30 text-[10px] py-0.5">
               ✓ Columnas de Matching Detectadas
             </Badge>
           )}
         </div>
-        <ScrollArea className="h-64 border rounded-md shadow-inner bg-white">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead className="w-12 bg-gray-50 text-xs font-bold">#</TableHead>
-                {preview.headers.map((header, i) => (
-                  <TableHead key={i} className="bg-gray-50 text-xs whitespace-nowrap font-semibold text-gray-700">
-                    {header}
-                  </TableHead>
-                ))}
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {preview.rows.slice(0, 5).map((row, rowIndex) => (
-                <TableRow key={rowIndex} className="hover:bg-blue-50/30">
-                  <TableCell className="font-mono text-xs text-gray-500">{rowIndex + 1}</TableCell>
-                  {preview.headers.map((header, colIndex) => (
-                    <TableCell key={colIndex} className="whitespace-nowrap text-xs max-w-[200px] truncate">
-                      {row[header] !== undefined && row[header] !== '' ? String(row[header]) : <span className="text-gray-300">-</span>}
-                    </TableCell>
+        <div className="border border-border/80 rounded-lg overflow-hidden bg-card shadow-xs">
+          <ScrollArea className="h-56">
+            <Table>
+              <TableHeader>
+                <TableRow className="bg-muted/40">
+                  <TableHead className="w-10 text-[11px] font-bold text-muted-foreground">#</TableHead>
+                  {preview.headers.map((header, i) => (
+                    <TableHead key={i} className="text-[11px] whitespace-nowrap font-semibold text-muted-foreground">
+                      {header}
+                    </TableHead>
                   ))}
                 </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </ScrollArea>
+              </TableHeader>
+              <TableBody>
+                {preview.rows.slice(0, 5).map((row, rowIndex) => (
+                  <TableRow key={rowIndex} className="hover:bg-muted/30">
+                    <TableCell className="font-mono text-[11px] text-muted-foreground">{rowIndex + 1}</TableCell>
+                    {preview.headers.map((header, colIndex) => (
+                      <TableCell key={colIndex} className="whitespace-nowrap text-xs max-w-[190px] truncate text-foreground">
+                        {row[header] !== undefined && row[header] !== '' ? String(row[header]) : <span className="text-muted-foreground/40">-</span>}
+                      </TableCell>
+                    ))}
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </ScrollArea>
+        </div>
       </div>
     );
   };
 
   const ErrorList = ({ result }: { result: ImportResult }) => (
-    <div className="mt-4 space-y-4">
-      <div className="flex items-center gap-4">
-        <div className="flex items-center gap-2">
-          <CheckCircle2 className="w-5 h-5 text-green-600" />
-          <span className="font-medium">{result.imported} importados</span>
+    <div className="mt-3 space-y-3">
+      <div className="flex items-center gap-3 text-xs">
+        <div className="flex items-center gap-1.5 font-medium text-emerald-800 dark:text-emerald-300">
+          <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+          <span>{result.imported} registros importados</span>
         </div>
         {result.errors.length > 0 && (
-          <div className="flex items-center gap-2">
-            <XCircle className="w-5 h-5 text-red-600" />
-            <span className="font-medium text-red-600">{result.errors.length} errores</span>
+          <div className="flex items-center gap-1.5 font-medium text-destructive">
+            <XCircle className="w-4 h-4 text-destructive" />
+            <span>{result.errors.length} errores encontrados</span>
           </div>
         )}
       </div>
       
       {result.errors.length > 0 && (
-        <ScrollArea className="h-48 border rounded-md">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead className="w-16">Fila</TableHead>
-                <TableHead>Campo</TableHead>
-                <TableHead>Error</TableHead>
-                <TableHead>Valor</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {result.errors.map((error, i) => (
-                <TableRow key={i}>
-                  <TableCell className="font-mono">{error.row}</TableCell>
-                  <TableCell className="font-medium">{error.field}</TableCell>
-                  <TableCell className="text-red-600">{error.message}</TableCell>
-                  <TableCell className="font-mono text-gray-500 truncate max-w-[150px]">
-                    {String(error.value) || '-'}
-                  </TableCell>
+        <div className="border border-destructive/30 rounded-lg overflow-hidden bg-card">
+          <ScrollArea className="h-44">
+            <Table>
+              <TableHeader>
+                <TableRow className="bg-destructive/5">
+                  <TableHead className="w-14 text-[11px] font-bold">Fila</TableHead>
+                  <TableHead className="text-[11px] font-bold">Campo</TableHead>
+                  <TableHead className="text-[11px] font-bold">Error</TableHead>
+                  <TableHead className="text-[11px] font-bold">Valor</TableHead>
                 </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </ScrollArea>
+              </TableHeader>
+              <TableBody>
+                {result.errors.map((error, i) => (
+                  <TableRow key={i} className="hover:bg-destructive/5">
+                    <TableCell className="font-mono text-xs text-muted-foreground">{error.row}</TableCell>
+                    <TableCell className="font-medium text-xs text-foreground">{error.field}</TableCell>
+                    <TableCell className="text-xs text-destructive">{error.message}</TableCell>
+                    <TableCell className="font-mono text-[11px] text-muted-foreground truncate max-w-[140px]">
+                      {String(error.value) || '-'}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </ScrollArea>
+        </div>
       )}
       
       {result.warnings.length > 0 && (
-        <Alert>
+        <Alert className="py-2.5 px-3">
           <AlertCircle className="h-4 w-4" />
-          <AlertTitle>Advertencias</AlertTitle>
+          <AlertTitle className="text-xs font-semibold">Advertencias</AlertTitle>
           <AlertDescription>
-            <ul className="list-disc list-inside text-sm mt-1">
+            <ul className="list-disc list-inside text-xs mt-1 space-y-0.5">
               {result.warnings.map((warning, i) => (
                 <li key={i}>{warning}</li>
               ))}
@@ -471,78 +475,81 @@ export default function BulkImport() {
     <MainLayout>
       <Header 
         title="Importación Masiva"
-        subtitle="Carga financieras, productos y clientes desde archivos Excel"
+        subtitle="Carga y sincroniza financieras, comisiones de red y cartera de clientes desde Excel"
       />
-      <main className="flex-1 p-4 sm:p-6 lg:p-8 overflow-y-auto space-y-6">
+      <main className="flex-1 p-3 sm:p-5 lg:p-6 overflow-y-auto space-y-4">
 
       <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList className="grid w-full grid-cols-3 max-w-xl">
-          <TabsTrigger value="financieras" className="gap-2">
-            <Building2 className="w-4 h-4" />
-            <span className="hidden sm:inline">Financieras y Productos</span>
-            <span className="sm:hidden">Financieras</span>
-          </TabsTrigger>
-          <TabsTrigger value="comisiones" className="gap-2">
-            <FileSpreadsheet className="w-4 h-4" />
-            <span>Comisiones de Red</span>
-          </TabsTrigger>
-          <TabsTrigger value="clients" className="gap-2">
-            <Users className="w-4 h-4" />
-            Clientes
-          </TabsTrigger>
-        </TabsList>
+        <div className="overflow-x-auto pb-1 -mx-1 px-1">
+          <TabsList className="inline-flex w-full min-w-[340px] sm:max-w-md h-9 p-1 bg-muted/70 rounded-lg">
+            <TabsTrigger value="financieras" className="flex-1 text-xs font-medium py-1 px-2 gap-1.5">
+              <Building2 className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">Financieras y Productos</span>
+              <span className="sm:hidden">Financieras</span>
+            </TabsTrigger>
+            <TabsTrigger value="comisiones" className="flex-1 text-xs font-medium py-1 px-2 gap-1.5">
+              <FileSpreadsheet className="w-3.5 h-3.5" />
+              <span>Comisiones Red</span>
+            </TabsTrigger>
+            <TabsTrigger value="clients" className="flex-1 text-xs font-medium py-1 px-2 gap-1.5">
+              <Users className="w-3.5 h-3.5" />
+              <span>Clientes</span>
+            </TabsTrigger>
+          </TabsList>
+        </div>
 
-        <TabsContent value="financieras" className="mt-6 space-y-6">
+        <TabsContent value="financieras" className="mt-4 space-y-4">
           {/* Fichas Técnicas Oficiales SOC Banner Card */}
-          <Card className="border-2 border-primary/30 bg-gradient-to-br from-primary/5 via-background to-blue-500/5 shadow-sm">
-            <CardHeader className="pb-3">
+          <Card className="border border-primary/25 bg-gradient-to-r from-primary/5 via-card to-secondary/5 shadow-xs">
+            <CardHeader className="py-3 px-4 sm:px-5 border-b border-primary/10">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                 <div className="flex items-center gap-2.5">
-                  <div className="p-2 rounded-lg bg-primary/10 text-primary">
-                    <Building2 className="w-5 h-5" />
+                  <div className="p-1.5 rounded-md bg-primary/10 text-primary">
+                    <Building2 className="w-4 h-4" />
                   </div>
                   <div>
-                    <CardTitle className="text-base font-bold flex items-center gap-2">
-                      Fichas Técnicas Financieras SOC (Oficial)
-                      <Badge className="bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300 border-emerald-300 text-[10px]">
+                    <CardTitle className="text-sm sm:text-base font-bold flex flex-wrap items-center gap-1.5">
+                      <span>Fichas Técnicas Financieras SOC (Oficial)</span>
+                      <Badge className="bg-emerald-500/15 text-emerald-800 dark:text-emerald-300 border-emerald-500/30 text-[10px] py-0.5">
                         17 Financieras • 31 Productos
                       </Badge>
                     </CardTitle>
-                    <CardDescription className="text-xs">
-                      Sincroniza y migra directamente las políticas comerciales, productos de crédito (Simple, Revolvente, Arrendamiento, Factoraje, Hipotecario, Anticipo) y requisitos oficiales entregados por SOC.
+                    <CardDescription className="text-xs mt-0.5">
+                      Sincroniza políticas comerciales, productos de crédito y reglas oficiales entregadas por SOC
                     </CardDescription>
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
-                  <Badge variant="outline" className="text-xs text-muted-foreground border-border bg-background">
-                    <ShieldCheck className="w-3.5 h-3.5 mr-1 text-emerald-600" />
-                    Respaldo JSON automático
+                  <Badge variant="outline" className="text-[11px] text-muted-foreground border-border bg-background py-0.5">
+                    <ShieldCheck className="w-3 h-3 mr-1 text-emerald-600" />
+                    Respaldo JSON
                   </Badge>
                 </div>
               </div>
             </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
+            <CardContent className="p-4 sm:p-5 space-y-3">
+              <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5">
                 <Button
                   onClick={() => handleSyncSoc()}
                   disabled={isSyncingSoc}
-                  className="bg-primary hover:bg-primary/90 text-primary-foreground font-semibold shadow-sm text-xs sm:text-sm"
+                  size="sm"
+                  className="bg-primary hover:bg-primary/90 text-primary-foreground font-semibold shadow-xs text-xs h-9"
                   data-testid="button-sync-soc"
                 >
                   {isSyncingSoc ? (
                     <>
-                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />
                       Sincronizando Fichas SOC...
                     </>
                   ) : (
                     <>
-                      <Sparkles className="w-4 h-4 mr-2" />
-                      Sincronizar Archivo Oficial (Fichas técnicas fiancieras SOC.xlsx)
+                      <Sparkles className="w-3.5 h-3.5 mr-1.5" />
+                      Sincronizar Fichas Técnicas SOC Oficial
                     </>
                   )}
                 </Button>
 
-                <label className="inline-flex items-center justify-center rounded-md border border-input bg-background px-3 py-2 text-xs font-medium ring-offset-background hover:bg-muted hover:text-accent-foreground cursor-pointer transition-colors">
+                <label className="inline-flex items-center justify-center rounded-md border border-input bg-background px-3 py-1.5 text-xs font-medium ring-offset-background hover:bg-muted hover:text-accent-foreground cursor-pointer transition-colors h-9">
                   <Upload className="w-3.5 h-3.5 mr-1.5 text-muted-foreground" />
                   <span>Subir otra versión de Fichas SOC</span>
                   <input
@@ -558,25 +565,25 @@ export default function BulkImport() {
               </div>
 
               {socResult && (
-                <div className="p-4 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-xs space-y-2">
-                  <div className="flex items-center gap-2 text-emerald-800 dark:text-emerald-300 font-bold">
-                    <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                <div className="p-3 rounded-lg bg-emerald-500/10 border border-emerald-500/25 text-xs space-y-2">
+                  <div className="flex items-center gap-1.5 text-emerald-800 dark:text-emerald-300 font-bold">
+                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
                     Sincronización de Fichas SOC Completada con Éxito
                   </div>
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-1 font-mono text-muted-foreground">
-                    <div className="bg-background/80 p-2 rounded border">
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-0.5 font-mono text-muted-foreground">
+                    <div className="bg-background/90 p-2 rounded border border-border/60">
                       <span className="text-[10px] uppercase text-muted-foreground block font-sans">Nuevas Financieras</span>
-                      <strong className="text-foreground text-sm">{socResult.createdCount}</strong>
+                      <strong className="text-foreground text-xs">{socResult.createdCount}</strong>
                     </div>
-                    <div className="bg-background/80 p-2 rounded border">
+                    <div className="bg-background/90 p-2 rounded border border-border/60">
                       <span className="text-[10px] uppercase text-muted-foreground block font-sans">Actualizadas</span>
-                      <strong className="text-foreground text-sm">{socResult.updatedCount}</strong>
+                      <strong className="text-foreground text-xs">{socResult.updatedCount}</strong>
                     </div>
-                    <div className="bg-background/80 p-2 rounded border">
+                    <div className="bg-background/90 p-2 rounded border border-border/60">
                       <span className="text-[10px] uppercase text-muted-foreground block font-sans">Productos Vinculados</span>
-                      <strong className="text-foreground text-sm">{socResult.totalProductsCount}</strong>
+                      <strong className="text-foreground text-xs">{socResult.totalProductsCount}</strong>
                     </div>
-                    <div className="bg-background/80 p-2 rounded border truncate" title={socResult.backupPath}>
+                    <div className="bg-background/90 p-2 rounded border border-border/60 truncate" title={socResult.backupPath}>
                       <span className="text-[10px] uppercase text-muted-foreground block font-sans">Archivo de Respaldo</span>
                       <span className="text-[10px] text-muted-foreground truncate block">{socResult.backupPath?.split(/[\\/]/).pop()}</span>
                     </div>
@@ -586,76 +593,63 @@ export default function BulkImport() {
             </CardContent>
           </Card>
 
-          <div className="grid gap-6 lg:grid-cols-2">
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Download className="w-5 h-5" />
+          <div className="grid gap-4 lg:grid-cols-2">
+            <Card className="border border-border/80 shadow-xs flex flex-col justify-between">
+              <CardHeader className="py-3 px-4 sm:px-5 border-b border-border/60">
+                <CardTitle className="text-sm font-semibold flex items-center gap-2">
+                  <Download className="w-4 h-4 text-primary" />
                   Template de Financieras
                 </CardTitle>
-                <CardDescription>
-                  Descarga el template oficial para cargar financieras con sus productos y reglas completas de matching
+                <CardDescription className="text-xs">
+                  Plantilla oficial para cargar financieras con reglas de matching y comisiones
                 </CardDescription>
               </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="bg-gradient-to-br from-blue-50 to-indigo-50 border border-blue-200 rounded-lg p-4 text-sm space-y-3">
-                  <p className="font-semibold text-blue-900 flex items-center gap-2">
-                    <Sparkles className="w-4 h-4 text-blue-600" />
-                    Plantilla Actualizada con Reglas de Matching Completas:
+              <CardContent className="p-4 sm:p-5 space-y-3.5 flex-1 flex flex-col justify-between">
+                <div className="bg-primary/5 border border-primary/15 rounded-lg p-3 text-xs space-y-2">
+                  <p className="font-semibold text-foreground flex items-center gap-1.5">
+                    <Sparkles className="w-3.5 h-3.5 text-primary" />
+                    Reglas de Matching y Comisiones Incluidas:
                   </p>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-xs">
-                    <div className="bg-white/80 p-2.5 rounded border border-blue-100 shadow-xs">
-                      <p className="font-semibold text-blue-950 mb-1">🎯 Criterios de Matching (18 campos):</p>
-                      <ul className="list-disc list-inside text-blue-900 space-y-0.5">
-                        <li>Buró PF, Accionista y Empresa</li>
-                        <li>Ingreso Mensual y Anual</li>
-                        <li>Facturación TPV / Terminal</li>
-                        <li>Tolerancia y Atrasos en Buró</li>
-                        <li>Aval, SAT CIEC y Estados Fin.</li>
-                        <li>Opinión SAT y Ventas Gobierno</li>
-                      </ul>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px]">
+                    <div className="bg-background/80 p-2 rounded border border-border/60">
+                      <p className="font-semibold text-foreground mb-0.5">🎯 Criterios de Matching (18 campos):</p>
+                      <p className="text-muted-foreground leading-relaxed">
+                        Buró PF, PM y Accionista, ingresos, facturación TPV, tolerancia, aval, CIEC y estados fin.
+                      </p>
                     </div>
-                    <div className="bg-white/80 p-2.5 rounded border border-blue-100 shadow-xs">
-                      <p className="font-semibold text-blue-950 mb-1">⚙️ Producto y Comisiones:</p>
-                      <ul className="list-disc list-inside text-blue-900 space-y-0.5">
-                        <li>Monto Min/Max y Plazo</li>
-                        <li>Tasa de Interés y Apertura</li>
-                        <li>Destinos y Giros Prohibidos</li>
-                        <li className="font-semibold text-emerald-800">Comisiones Super Admin, Broker y Master</li>
-                      </ul>
+                    <div className="bg-background/80 p-2 rounded border border-border/60">
+                      <p className="font-semibold text-foreground mb-0.5">⚙️ Producto y Comisiones:</p>
+                      <p className="text-muted-foreground leading-relaxed">
+                        Montos, plazos, tasas y comisiones para Super Admin, Broker y Master.
+                      </p>
                     </div>
                   </div>
-                  <div className="flex items-center gap-2 pt-1">
-                    <Badge variant="outline" className="bg-emerald-100/80 text-emerald-900 border-emerald-300 text-xs font-medium">
-                      ✓ Incluye columnas de Comisión Super Admin (Apertura, Sobretasa, Renovación)
-                    </Badge>
-                  </div>
-                  <p className="text-xs text-blue-700 italic">
-                    💡 Si la financiera ya existe, el sistema actualizará sus requisitos y agregará sus nuevos productos automáticamente sin duplicar.
+                  <p className="text-[10.5px] text-muted-foreground italic">
+                    💡 Si la financiera ya existe, se actualizan sus políticas y productos sin duplicar registros.
                   </p>
                 </div>
                 <Button 
                   onClick={() => handleDownloadTemplate('financieras')}
-                  className="w-full"
+                  className="w-full h-9 text-xs font-medium"
                   variant="outline"
                 >
-                  <Download className="w-4 h-4 mr-2" />
+                  <Download className="w-3.5 h-3.5 mr-1.5" />
                   Descargar Template de Financieras
                 </Button>
               </CardContent>
             </Card>
 
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Upload className="w-5 h-5" />
-                  Cargar Archivo
+            <Card className="border border-border/80 shadow-xs flex flex-col justify-between">
+              <CardHeader className="py-3 px-4 sm:px-5 border-b border-border/60">
+                <CardTitle className="text-sm font-semibold flex items-center gap-2">
+                  <Upload className="w-4 h-4 text-primary" />
+                  Cargar Archivo Excel
                 </CardTitle>
-                <CardDescription>
-                  Sube el archivo Excel con los datos de financieras
+                <CardDescription className="text-xs">
+                  Sube el archivo procesado para validar e importar las instituciones
                 </CardDescription>
               </CardHeader>
-              <CardContent className="space-y-4">
+              <CardContent className="p-4 sm:p-5 space-y-3.5 flex-1 flex flex-col justify-between">
                 <DropZone
                   type="financieras"
                   file={financierasFile}
@@ -666,12 +660,12 @@ export default function BulkImport() {
                   <Button 
                     onClick={() => handlePreview('financieras')}
                     disabled={isPreviewingFinancieras}
-                    className="w-full"
+                    className="w-full h-9 text-xs font-medium"
                     variant="secondary"
                   >
                     {isPreviewingFinancieras ? (
                       <>
-                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                        <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />
                         Procesando...
                       </>
                     ) : (
@@ -683,30 +677,32 @@ export default function BulkImport() {
                 {financierasPreview && (
                   <>
                     <PreviewTable preview={financierasPreview} />
-                    <div className="flex gap-2">
+                    <div className="flex gap-2 pt-1">
                       <Button
                         onClick={() => {
                           setFinancierasFile(null);
                           setFinancierasPreview(null);
                         }}
                         variant="outline"
-                        className="flex-1"
+                        size="sm"
+                        className="flex-1 h-9 text-xs"
                       >
                         Cancelar
                       </Button>
                       <Button
                         onClick={() => importFinancierasMutation.mutate()}
                         disabled={importFinancierasMutation.isPending}
-                        className="flex-1"
+                        size="sm"
+                        className="flex-1 h-9 text-xs font-semibold"
                       >
                         {importFinancierasMutation.isPending ? (
                           <>
-                            <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                            <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />
                             Importando...
                           </>
                         ) : (
                           <>
-                            <Upload className="w-4 h-4 mr-2" />
+                            <Upload className="w-3.5 h-3.5 mr-1.5" />
                             Importar {financierasPreview.totalRows} Registros
                           </>
                         )}
@@ -725,7 +721,8 @@ export default function BulkImport() {
                         setFinancierasResult(null);
                       }}
                       variant="outline"
-                      className="w-full"
+                      size="sm"
+                      className="w-full h-9 text-xs"
                     >
                       Nueva Importación
                     </Button>
@@ -736,56 +733,53 @@ export default function BulkImport() {
           </div>
         </TabsContent>
 
-        <TabsContent value="clients" className="mt-6">
-          <div className="grid gap-6 lg:grid-cols-2">
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Download className="w-5 h-5" />
+        <TabsContent value="clients" className="mt-4">
+          <div className="grid gap-4 lg:grid-cols-2">
+            <Card className="border border-border/80 shadow-xs flex flex-col justify-between">
+              <CardHeader className="py-3 px-4 sm:px-5 border-b border-border/60">
+                <CardTitle className="text-sm font-semibold flex items-center gap-2">
+                  <Download className="w-4 h-4 text-primary" />
                   Template de Clientes
                 </CardTitle>
-                <CardDescription>
-                  Descarga el template para cargar clientes con todos sus datos
+                <CardDescription className="text-xs">
+                  Plantilla estandarizada para cargar prospectos y clientes con régimen fiscal
                 </CardDescription>
               </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="bg-green-50 border border-green-200 rounded-lg p-4 text-sm">
-                  <p className="font-medium text-green-900 mb-2">El template incluye hojas para:</p>
-                  <ul className="list-disc list-inside text-green-800 space-y-1">
-                    <li><Badge variant="outline" className="ml-1">Persona Moral</Badge></li>
-                    <li><Badge variant="outline" className="ml-1">PFAE</Badge> (Persona Física con Actividad Empresarial)</li>
-                    <li><Badge variant="outline" className="ml-1">Persona Física</Badge></li>
-                    <li><Badge variant="outline" className="ml-1">Sin SAT</Badge></li>
-                  </ul>
+              <CardContent className="p-4 sm:p-5 space-y-3.5 flex-1 flex flex-col justify-between">
+                <div className="bg-muted/30 border border-border/70 rounded-lg p-3 text-xs space-y-2">
+                  <p className="font-semibold text-foreground">El archivo incluye pestañas dedicadas:</p>
+                  <div className="flex flex-wrap gap-1.5">
+                    <Badge variant="outline" className="text-[11px] bg-background">Persona Moral</Badge>
+                    <Badge variant="outline" className="text-[11px] bg-background">PFAE</Badge>
+                    <Badge variant="outline" className="text-[11px] bg-background">Persona Física</Badge>
+                    <Badge variant="outline" className="text-[11px] bg-background">Sin SAT</Badge>
+                  </div>
+                  <p className="text-[11px] text-muted-foreground mt-1">
+                    Cada régimen cuenta con sus columnas específicas de perfilamiento. Usa la pestaña correspondiente a cada tipo.
+                  </p>
                 </div>
-                <Alert>
-                  <AlertCircle className="h-4 w-4" />
-                  <AlertDescription className="text-sm">
-                    Cada tipo de cliente tiene campos específicos. Usa la hoja correspondiente para cada tipo.
-                  </AlertDescription>
-                </Alert>
                 <Button 
                   onClick={() => handleDownloadTemplate('clients')}
-                  className="w-full"
+                  className="w-full h-9 text-xs font-medium"
                   variant="outline"
                 >
-                  <Download className="w-4 h-4 mr-2" />
-                  Descargar Template
+                  <Download className="w-3.5 h-3.5 mr-1.5" />
+                  Descargar Template de Clientes
                 </Button>
               </CardContent>
             </Card>
 
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Upload className="w-5 h-5" />
-                  Cargar Archivo
+            <Card className="border border-border/80 shadow-xs flex flex-col justify-between">
+              <CardHeader className="py-3 px-4 sm:px-5 border-b border-border/60">
+                <CardTitle className="text-sm font-semibold flex items-center gap-2">
+                  <Upload className="w-4 h-4 text-primary" />
+                  Cargar Archivo de Clientes
                 </CardTitle>
-                <CardDescription>
-                  Sube el archivo Excel con los datos de clientes
+                <CardDescription className="text-xs">
+                  Sube el archivo Excel con los datos de clientes para validación y alta masiva
                 </CardDescription>
               </CardHeader>
-              <CardContent className="space-y-4">
+              <CardContent className="p-4 sm:p-5 space-y-3.5 flex-1 flex flex-col justify-between">
                 <DropZone
                   type="clients"
                   file={clientsFile}
@@ -796,12 +790,12 @@ export default function BulkImport() {
                   <Button 
                     onClick={() => handlePreview('clients')}
                     disabled={isPreviewingClients}
-                    className="w-full"
+                    className="w-full h-9 text-xs font-medium"
                     variant="secondary"
                   >
                     {isPreviewingClients ? (
                       <>
-                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                        <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />
                         Procesando...
                       </>
                     ) : (
@@ -813,30 +807,32 @@ export default function BulkImport() {
                 {clientsPreview && (
                   <>
                     <PreviewTable preview={clientsPreview} />
-                    <div className="flex gap-2">
+                    <div className="flex gap-2 pt-1">
                       <Button
                         onClick={() => {
                           setClientsFile(null);
                           setClientsPreview(null);
                         }}
                         variant="outline"
-                        className="flex-1"
+                        size="sm"
+                        className="flex-1 h-9 text-xs"
                       >
                         Cancelar
                       </Button>
                       <Button
                         onClick={() => importClientsMutation.mutate()}
                         disabled={importClientsMutation.isPending}
-                        className="flex-1"
+                        size="sm"
+                        className="flex-1 h-9 text-xs font-semibold"
                       >
                         {importClientsMutation.isPending ? (
                           <>
-                            <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                            <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />
                             Importando...
                           </>
                         ) : (
                           <>
-                            <Upload className="w-4 h-4 mr-2" />
+                            <Upload className="w-3.5 h-3.5 mr-1.5" />
                             Importar {clientsPreview.totalRows} Clientes
                           </>
                         )}
@@ -855,7 +851,8 @@ export default function BulkImport() {
                         setClientsResult(null);
                       }}
                       variant="outline"
-                      className="w-full"
+                      size="sm"
+                      className="w-full h-9 text-xs"
                     >
                       Nueva Importación
                     </Button>
@@ -866,7 +863,7 @@ export default function BulkImport() {
           </div>
         </TabsContent>
 
-        <TabsContent value="comisiones" className="mt-6">
+        <TabsContent value="comisiones" className="mt-4">
           <CommissionBulkUploader />
         </TabsContent>
       </Tabs>
