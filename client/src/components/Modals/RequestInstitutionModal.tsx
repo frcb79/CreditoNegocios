@@ -23,6 +23,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
+import { Loader2, Send } from "lucide-react";
 
 const requestInstitutionSchema = z.object({
   institutionName: z.string().min(1, "El nombre de la financiera es requerido"),
@@ -129,7 +130,7 @@ export default function RequestInstitutionModal({ isOpen, onClose }: RequestInst
             />
 
             <div className="border-t pt-4">
-              <h4 className="text-sm font-medium mb-3 text-gray-700">
+              <h4 className="text-sm font-semibold mb-3 text-foreground">
                 Información de Contacto (Opcional)
               </h4>
               
@@ -192,7 +193,7 @@ export default function RequestInstitutionModal({ isOpen, onClose }: RequestInst
               </div>
             </div>
 
-            <DialogFooter className="gap-2">
+            <DialogFooter className="gap-2 pt-4 border-t">
               <Button
                 type="button"
                 variant="outline"
@@ -205,17 +206,17 @@ export default function RequestInstitutionModal({ isOpen, onClose }: RequestInst
               <Button
                 type="submit"
                 disabled={createRequestMutation.isPending}
-                className="bg-primary text-white hover:bg-primary-dark"
+                className="bg-primary text-white hover:bg-primary/90"
                 data-testid="button-submit-request"
               >
                 {createRequestMutation.isPending ? (
                   <>
-                    <i className="fas fa-spinner fa-spin mr-2"></i>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
                     Enviando...
                   </>
                 ) : (
                   <>
-                    <i className="fas fa-paper-plane mr-2"></i>
+                    <Send className="w-4 h-4 mr-2" />
                     Enviar Solicitud
                   </>
                 )}

@@ -16,6 +16,7 @@ import {
   DialogHeader,
   DialogTitle,
   DialogDescription,
+  DialogFooter,
 } from "@/components/ui/dialog";
 import {
   Form,
@@ -76,7 +77,10 @@ import {
   Calendar,
   UserCheck,
   Eye,
-  Loader2
+  Loader2,
+  Coins,
+  Info,
+  Inbox
 } from "lucide-react";
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
@@ -1679,21 +1683,21 @@ export default function UserManagement() {
               </div>
             </div>
 
-            <div className="pt-3 flex justify-end gap-2 border-t">
+            <DialogFooter className="gap-2 pt-3 border-t">
               <Button type="button" variant="outline" onClick={() => setShowCreatePromoModal(false)}>
                 Cancelar
               </Button>
               <Button type="submit" data-testid="button-submit-promo">
                 Guardar Código
               </Button>
-            </div>
+            </DialogFooter>
           </form>
         </DialogContent>
       </Dialog>
 
       {/* MODAL 2: VIEW PROMO REDEMPTIONS */}
       <Dialog open={Boolean(selectedPromoForRedemptions)} onOpenChange={(open) => !open && setSelectedPromoForRedemptions(null)}>
-        <DialogContent className="max-w-2xl">
+        <DialogContent className="max-w-2xl max-h-[85vh] flex flex-col">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Gift className="h-5 w-5 text-primary" />
@@ -1704,54 +1708,67 @@ export default function UserManagement() {
             </DialogDescription>
           </DialogHeader>
 
-          <div className="max-h-[60vh] overflow-y-auto">
+          <div className="flex-1 overflow-y-auto min-h-[160px]">
             {isLoadingRedemptions ? (
-              <div className="p-8 text-center text-sm text-muted-foreground">Cargando canjes...</div>
+              <div className="py-12 text-center text-sm text-muted-foreground flex items-center justify-center gap-2">
+                <Loader2 className="w-4 h-4 animate-spin text-primary" />
+                Cargando canjes...
+              </div>
             ) : promoRedemptions.length === 0 ? (
-              <div className="p-8 text-center text-sm text-muted-foreground">
-                Ningún usuario ha canjeado este código aún.
+              <div className="py-12 text-center text-muted-foreground flex flex-col items-center justify-center">
+                <Gift className="w-10 h-10 text-muted-foreground/30 mb-2" />
+                <p className="text-sm font-medium text-foreground">Ningún usuario ha canjeado este código aún.</p>
+                <p className="text-xs text-muted-foreground mt-1">Los canjes aparecerán aquí cuando los colaboradores apliquen la promoción.</p>
               </div>
             ) : (
-              <table className="w-full text-xs">
-                <thead className="bg-muted/40 border-b uppercase text-muted-foreground">
-                  <tr>
-                    <th className="py-2.5 px-3 text-left">Usuario</th>
-                    <th className="py-2.5 px-3 text-left">Email</th>
-                    <th className="py-2.5 px-3 text-left">Rol</th>
-                    <th className="py-2.5 px-3 text-left">Fecha Canje</th>
-                    <th className="py-2.5 px-3 text-left">Vigencia</th>
-                    <th className="py-2.5 px-3 text-left">Estado</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y">
-                  {promoRedemptions.map((r: any) => (
-                    <tr key={r.id}>
-                      <td className="py-2 px-3 font-medium">
-                        {r.user ? `${r.user.firstName} ${r.user.lastName}` : "Usuario"}
-                      </td>
-                      <td className="py-2 px-3 text-muted-foreground font-mono">
-                        {r.user?.email || "-"}
-                      </td>
-                      <td className="py-2 px-3 capitalize">
-                        {r.user?.role || "-"}
-                      </td>
-                      <td className="py-2 px-3">
-                        {r.appliedAt ? format(new Date(r.appliedAt), "dd/MM/yyyy HH:mm") : "-"}
-                      </td>
-                      <td className="py-2 px-3">
-                        {r.expiresAt ? format(new Date(r.expiresAt), "dd/MM/yyyy") : "Permanente"}
-                      </td>
-                      <td className="py-2 px-3">
-                        <Badge variant="outline" className="text-[10px] bg-emerald-50 text-emerald-700">
-                          {r.status}
-                        </Badge>
-                      </td>
+              <div className="rounded-lg border overflow-hidden">
+                <table className="w-full text-xs">
+                  <thead className="bg-muted/50 border-b uppercase text-muted-foreground font-semibold">
+                    <tr>
+                      <th className="py-2.5 px-3 text-left">Usuario</th>
+                      <th className="py-2.5 px-3 text-left">Email</th>
+                      <th className="py-2.5 px-3 text-left">Rol</th>
+                      <th className="py-2.5 px-3 text-left">Fecha Canje</th>
+                      <th className="py-2.5 px-3 text-left">Vigencia</th>
+                      <th className="py-2.5 px-3 text-left">Estado</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody className="divide-y divide-border">
+                    {promoRedemptions.map((r: any) => (
+                      <tr key={r.id} className="hover:bg-muted/30 transition-colors">
+                        <td className="py-2.5 px-3 font-medium text-foreground">
+                          {r.user ? `${r.user.firstName} ${r.user.lastName}` : "Usuario"}
+                        </td>
+                        <td className="py-2.5 px-3 text-muted-foreground font-mono">
+                          {r.user?.email || "-"}
+                        </td>
+                        <td className="py-2.5 px-3 capitalize">
+                          {r.user?.role || "-"}
+                        </td>
+                        <td className="py-2.5 px-3">
+                          {r.appliedAt ? format(new Date(r.appliedAt), "dd/MM/yyyy HH:mm") : "-"}
+                        </td>
+                        <td className="py-2.5 px-3">
+                          {r.expiresAt ? format(new Date(r.expiresAt), "dd/MM/yyyy") : "Permanente"}
+                        </td>
+                        <td className="py-2.5 px-3">
+                          <Badge variant="outline" className="text-[10px] bg-emerald-500/10 text-emerald-600 border-emerald-500/20">
+                            {r.status}
+                          </Badge>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             )}
           </div>
+
+          <DialogFooter className="pt-3 border-t">
+            <Button variant="outline" size="sm" onClick={() => setSelectedPromoForRedemptions(null)}>
+              Cerrar
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
 
@@ -2033,7 +2050,7 @@ export default function UserManagement() {
                         <FormItem className="flex items-center justify-between p-3.5 rounded-xl border border-border/80 bg-background/50">
                           <div className="space-y-0.5 pr-4">
                             <FormLabel className="text-xs font-bold text-foreground flex items-center gap-1.5">
-                              <i className="fas fa-coins text-amber-500" />
+                              <Coins className="w-4 h-4 text-amber-500 inline" />
                               Facultad de Originación Comercial (Bróker)
                             </FormLabel>
                             <FormDescription className="text-[11px] text-muted-foreground leading-snug">
@@ -2139,7 +2156,7 @@ export default function UserManagement() {
 
                   {!watchedCreateCanOriginate && (
                     <div className="p-2.5 bg-amber-500/10 border border-amber-500/30 rounded-lg flex items-center gap-2 text-xs text-amber-700 dark:text-amber-300">
-                      <i className="fas fa-info-circle text-sm flex-shrink-0" />
+                      <Info className="w-4 h-4 shrink-0 text-amber-600 dark:text-amber-400" />
                       <span>El módulo de <strong>Comisiones</strong> está oculto porque este colaborador no tiene facultades de originación comercial (canOriginate = false).</span>
                     </div>
                   )}
@@ -2463,7 +2480,7 @@ export default function UserManagement() {
 
                     {!watchedEditCanOriginate && (
                       <div className="p-2.5 bg-amber-500/10 border border-amber-500/30 rounded-lg flex items-center gap-2 text-xs text-amber-700 dark:text-amber-300">
-                        <i className="fas fa-info-circle text-sm flex-shrink-0" />
+                        <Info className="w-4 h-4 shrink-0 text-amber-600 dark:text-amber-400" />
                         <span>El módulo de <strong>Comisiones</strong> está oculto porque este colaborador no tiene facultades de originación comercial (canOriginate = false).</span>
                       </div>
                     )}

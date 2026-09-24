@@ -23,6 +23,7 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
+import { Loader2, Info } from "lucide-react";
 
 const inviteBrokerSchema = z.object({
   email: z.string().email("Email inválido"),
@@ -183,21 +184,22 @@ export default function InviteBrokerModal({ isOpen, onClose }: InviteBrokerModal
               )}
             />
 
-            <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
-              <div className="flex items-center space-x-2">
-                <i className="fas fa-info-circle text-blue-600"></i>
-                <div className="text-sm text-blue-800">
-                  <p className="font-medium">¿Cómo funciona?</p>
-                  <p className="text-xs">El broker recibirá un email con instrucciones para unirse a tu red y podrá registrarse automáticamente.</p>
+            <div className="p-3 bg-primary/5 border border-primary/20 rounded-lg">
+              <div className="flex items-center space-x-2.5">
+                <Info className="w-4 h-4 text-primary shrink-0" />
+                <div className="text-sm">
+                  <p className="font-semibold text-foreground text-xs">¿Cómo funciona?</p>
+                  <p className="text-xs text-muted-foreground">El broker recibirá un email con instrucciones para unirse a tu red y podrá registrarse automáticamente.</p>
                 </div>
               </div>
             </div>
 
-            <DialogFooter>
+            <DialogFooter className="gap-2 pt-4 border-t">
               <Button
                 type="button"
                 variant="outline"
                 onClick={onClose}
+                disabled={inviteBrokerMutation.isPending}
                 data-testid="button-cancel"
               >
                 Cancelar
@@ -207,7 +209,14 @@ export default function InviteBrokerModal({ isOpen, onClose }: InviteBrokerModal
                 disabled={inviteBrokerMutation.isPending}
                 data-testid="button-send-invitation"
               >
-                {inviteBrokerMutation.isPending ? "Enviando..." : "Enviar Invitación"}
+                {inviteBrokerMutation.isPending ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    Enviando...
+                  </>
+                ) : (
+                  "Enviar Invitación"
+                )}
               </Button>
             </DialogFooter>
           </form>

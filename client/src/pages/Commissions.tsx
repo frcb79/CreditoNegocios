@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -46,7 +46,15 @@ import {
   FileSpreadsheet, 
   SlidersHorizontal,
   RefreshCw,
-  Wallet
+  Wallet,
+  RotateCcw,
+  Landmark,
+  Percent,
+  Receipt,
+  Network,
+  AlertCircle,
+  Loader2,
+  Info
 } from "lucide-react";
 
 const statusConfig: Record<string, { label: string; badgeClass: string; dotClass: string }> = {
@@ -601,14 +609,14 @@ export default function Commissions() {
           <Card className="border-destructive/30 bg-destructive/5">
             <CardContent className="p-8 text-center space-y-4">
               <div className="w-12 h-12 rounded-full bg-destructive/10 text-destructive flex items-center justify-center mx-auto">
-                <i className="fas fa-exclamation-triangle text-xl"></i>
+                <AlertTriangle className="w-6 h-6" />
               </div>
               <div>
                 <h3 className="text-lg font-bold text-foreground">Error al cargar la información de comisiones</h3>
                 <p className="text-sm text-muted-foreground mt-1">{(error as any)?.message || "Ocurrió un error inesperado al consultar el servidor."}</p>
               </div>
               <Button onClick={() => refetch()} className="bg-primary text-primary-foreground">
-                <i className="fas fa-redo mr-2"></i> Reintentar
+                <RotateCcw className="w-4 h-4 mr-2" /> Reintentar
               </Button>
             </CardContent>
           </Card>
@@ -630,7 +638,7 @@ export default function Commissions() {
             <div className="mb-6 p-4 bg-orange-50 border-2 border-orange-300 rounded-xl flex items-center justify-between flex-wrap gap-3">
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 bg-orange-100 rounded-full flex items-center justify-center flex-shrink-0">
-                  <i className="fas fa-exclamation-triangle text-orange-600 text-lg"></i>
+                  <AlertTriangle className="w-5 h-5 text-orange-600" />
                 </div>
                 <div>
                   <h4 className="font-bold text-orange-900 text-sm">¡Tienes comisiones pendientes por cobrar!</h4>
@@ -643,7 +651,7 @@ export default function Commissions() {
                 className="bg-orange-600 hover:bg-orange-700 text-white text-xs h-9"
                 onClick={() => setLocation('/configuracion')}
               >
-                <i className="fas fa-university mr-1.5"></i>
+                <Landmark className="w-4 h-4 mr-1.5" />
                 Registrar CLABE ahora
               </Button>
             </div>
@@ -658,7 +666,7 @@ export default function Commissions() {
                 onClick={() => setActiveTab('commissions')}
                 className={activeTab === 'commissions' ? 'bg-primary text-white' : ''}
               >
-                <i className="fas fa-users-cog mr-2"></i>
+                <Users className="w-4 h-4 mr-2" />
                 Comisiones de Red & Brokers
               </Button>
               <Button
@@ -667,7 +675,7 @@ export default function Commissions() {
                 onClick={() => setActiveTab('sobretasa')}
                 className={activeTab === 'sobretasa' ? 'bg-purple-700 text-white hover:bg-purple-800' : 'text-purple-800 border-purple-300'}
               >
-                <i className="fas fa-percentage mr-2"></i>
+                <Percent className="w-4 h-4 mr-2" />
                 Control de Sobretasa (Financieras)
               </Button>
               <Button
@@ -676,7 +684,7 @@ export default function Commissions() {
                 onClick={() => setActiveTab('importar-comisiones')}
                 className={activeTab === 'importar-comisiones' ? 'bg-blue-700 text-white hover:bg-blue-800' : 'text-blue-800 border-blue-300'}
               >
-                <i className="fas fa-file-excel mr-2"></i>
+                <FileSpreadsheet className="w-4 h-4 mr-2" />
                 Carga Masiva de Comisiones (Excel)
               </Button>
             </div>
@@ -1639,7 +1647,7 @@ export default function Commissions() {
             <div className="space-y-6">
               {/* Disclaimer informativo sobre Sobretasas */}
               <div className="p-4 bg-purple-50 border-2 border-purple-200 rounded-xl flex items-start gap-3 shadow-sm">
-                <i className="fas fa-info-circle text-purple-700 text-xl mt-0.5"></i>
+                <Info className="w-5 h-5 text-purple-700 shrink-0 mt-0.5" />
                 <div className="text-xs text-purple-900">
                   <p className="font-bold text-sm">Módulo Analítico y de Proyección de Sobretasas</p>
                   <p className="mt-1 text-purple-800 leading-relaxed">
@@ -1691,7 +1699,7 @@ export default function Commissions() {
 
               {/* Explicación / Fórmula Oficial (#11) */}
               <div className="bg-purple-100/70 border border-purple-300 rounded-xl p-4 flex items-start gap-3 text-purple-950 text-xs">
-                <i className="fas fa-info-circle text-purple-700 text-base mt-0.5 flex-shrink-0"></i>
+                <Info className="w-4 h-4 text-purple-700 shrink-0 mt-0.5" />
                 <div className="space-y-1">
                   <p className="font-bold text-sm">Fórmula Oficial de Cálculo de Sobretasas:</p>
                   <p>
@@ -1709,7 +1717,7 @@ export default function Commissions() {
               <Card>
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2">
-                    <i className="fas fa-file-invoice-dollar text-purple-700"></i>
+                    <DollarSign className="w-5 h-5 text-purple-700" />
                     Seguimiento de Pagos de Sobretasa por Financiera
                   </CardTitle>
                 </CardHeader>
@@ -1813,7 +1821,7 @@ export default function Commissions() {
           <DialogContent className="max-w-4xl max-h-[85vh] flex flex-col">
             <DialogHeader>
               <DialogTitle className="text-xl font-bold flex items-center gap-2">
-                <i className="fas fa-percentage text-primary"></i>
+                <Percent className="w-5 h-5 text-primary" />
                 Esquema de Porcentajes de Comisión por Financiera
               </DialogTitle>
             </DialogHeader>
@@ -1881,7 +1889,7 @@ export default function Commissions() {
                           <tr key={fi.id} className="hover:bg-gray-50/80 transition-colors">
                             <td className="p-3 font-medium text-gray-900 whitespace-nowrap">
                               <div className="flex items-center gap-2">
-                                <i className="fas fa-building text-gray-400 text-xs"></i>
+                                <Building2 className="w-3.5 h-3.5 text-muted-foreground" />
                                 {fi.name}
                               </div>
                             </td>
@@ -1940,6 +1948,11 @@ export default function Commissions() {
                 </table>
               </div>
             </div>
+            <DialogFooter className="pt-3 border-t">
+              <Button variant="outline" size="sm" onClick={() => setShowRatesModal(false)}>
+                Cerrar
+              </Button>
+            </DialogFooter>
           </DialogContent>
         </Dialog>
 
@@ -1948,7 +1961,7 @@ export default function Commissions() {
           <DialogContent className="max-w-lg">
             <DialogHeader>
               <DialogTitle className="text-lg font-bold flex items-center gap-2">
-                <i className="fas fa-receipt text-primary"></i>
+                <Receipt className="w-5 h-5 text-primary" />
                 Detalle de Comisión #{viewingCommission?.id?.slice(-8)}
               </DialogTitle>
             </DialogHeader>
@@ -2007,7 +2020,7 @@ export default function Commissions() {
                   )}
                   <div className="bg-blue-50/50 p-2.5 rounded border border-blue-100 text-xs space-y-1">
                     <p className="font-bold text-blue-950 flex items-center gap-1">
-                      <i className="fas fa-percentage text-blue-700"></i> Origen y Porcentajes de Comisión:
+                      <Percent className="w-4 h-4 text-blue-700" /> Origen y Porcentajes de Comisión:
                     </p>
                     <div className="flex justify-between text-blue-900">
                       <span>• Tasa Pagada por Financiera a CN:</span>
@@ -2044,7 +2057,7 @@ export default function Commissions() {
                   {/* Desglose de Repartición en Cascada */}
                   <div className="bg-gray-50 p-3.5 rounded-lg border border-gray-200 text-xs space-y-2 mt-2">
                     <p className="font-bold text-gray-800 flex items-center gap-1.5">
-                      <i className="fas fa-sitemap text-primary"></i>
+                      <Network className="w-4 h-4 text-primary" />
                       Desglose de Repartición (Cascada):
                     </p>
                     
@@ -2103,11 +2116,11 @@ export default function Commissions() {
                   </div>
                 </div>
 
-                <div className="flex justify-between items-center pt-2">
-                  {viewingCommission.status === 'pending' && canProcessPayments && (
+                <DialogFooter className="flex justify-between items-center pt-3 border-t sm:justify-between">
+                  {viewingCommission.status === 'pending' && canProcessPayments ? (
                     <Button 
                       size="sm"
-                      className="bg-success text-white hover:bg-green-700 text-xs"
+                      className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs"
                       onClick={() => {
                         const comm = viewingCommission;
                         setViewingCommission(null);
@@ -2116,14 +2129,14 @@ export default function Commissions() {
                         setManualPaidReference("");
                       }}
                     >
-                      <i className="fas fa-check mr-1.5"></i>
+                      <Check className="w-4 h-4 mr-1.5" />
                       Marcar Comisión como Pagada
                     </Button>
-                  )}
-                  <Button variant="outline" className="ml-auto" onClick={() => setViewingCommission(null)}>
+                  ) : <div />}
+                  <Button variant="outline" size="sm" onClick={() => setViewingCommission(null)}>
                     Cerrar
                   </Button>
-                </div>
+                </DialogFooter>
               </div>
             )}
           </DialogContent>
@@ -2134,7 +2147,7 @@ export default function Commissions() {
           <DialogContent className="max-w-md">
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2">
-                <i className="fas fa-university text-primary"></i>
+                <Landmark className="w-5 h-5 text-primary" />
                 Procesar Dispersión
               </DialogTitle>
             </DialogHeader>
@@ -2201,7 +2214,7 @@ export default function Commissions() {
 
                 {!selectedCommission.effectiveBankAccount?.clabe && (
                   <div className="bg-orange-50 border border-orange-200 p-2.5 rounded-lg text-xs text-orange-800 flex items-start gap-2">
-                    <i className="fas fa-exclamation-triangle mt-0.5 text-orange-600"></i>
+                    <AlertTriangle className="w-4 h-4 mt-0.5 text-orange-600 shrink-0" />
                     <span>El beneficiario aún no ha registrado sus datos bancarios en Configuración. Puedes ingresar la CLABE manualmente a continuación.</span>
                   </div>
                 )}
@@ -2220,21 +2233,21 @@ export default function Commissions() {
                   />
                 </div>
 
-                <div className="flex justify-end space-x-3 pt-2">
-                  <Button variant="outline" size="sm" onClick={() => setSelectedCommission(null)}>
+                <DialogFooter className="gap-2 pt-3 border-t">
+                  <Button variant="outline" size="sm" onClick={() => setSelectedCommission(null)} disabled={paymentMutation.isPending}>
                     Cancelar
                   </Button>
                   <Button 
                     size="sm"
                     onClick={handlePayment}
                     disabled={!accountNumber || accountNumber.length < 18 || paymentMutation.isPending}
-                    className="bg-success text-white hover:bg-green-700 text-xs"
+                    className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs"
                     data-testid="button-confirm-payment"
                   >
-                    {paymentMutation.isPending && <i className="fas fa-spinner fa-spin mr-1.5"></i>}
+                    {paymentMutation.isPending && <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />}
                     Confirmar Dispersión
                   </Button>
-                </div>
+                </DialogFooter>
               </div>
             )}
           </DialogContent>
@@ -2245,7 +2258,7 @@ export default function Commissions() {
           <DialogContent className="max-w-md">
             <DialogHeader>
               <DialogTitle className="text-base font-bold flex items-center gap-2 text-rose-700">
-                <i className="fas fa-exclamation-triangle"></i>
+                <AlertTriangle className="w-5 h-5 text-rose-600" />
                 Cancelar Comisión #{cancellingCommission?.id?.slice(-8)}
               </DialogTitle>
             </DialogHeader>
@@ -2264,8 +2277,8 @@ export default function Commissions() {
                   className="text-xs"
                 />
               </div>
-              <div className="flex justify-end gap-2 pt-2">
-                <Button variant="outline" size="sm" onClick={() => setCancellingCommission(null)}>
+              <DialogFooter className="gap-2 pt-3 border-t">
+                <Button variant="outline" size="sm" onClick={() => setCancellingCommission(null)} disabled={cancelMutation.isPending}>
                   Volver
                 </Button>
                 <Button
@@ -2278,10 +2291,10 @@ export default function Commissions() {
                     }
                   }}
                 >
-                  {cancelMutation.isPending && <i className="fas fa-spinner fa-spin mr-1.5"></i>}
+                  {cancelMutation.isPending && <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />}
                   Confirmar Cancelación
                 </Button>
-              </div>
+              </DialogFooter>
             </div>
           </DialogContent>
         </Dialog>
@@ -2291,7 +2304,7 @@ export default function Commissions() {
           <DialogContent className="max-w-md">
             <DialogHeader>
               <DialogTitle className="text-base font-bold flex items-center gap-2 text-emerald-800">
-                <i className="fas fa-hand-holding-usd"></i>
+                <DollarSign className="w-5 h-5 text-emerald-800" />
                 Registrar Liquidación Manual de Comisión
               </DialogTitle>
             </DialogHeader>
@@ -2327,8 +2340,8 @@ export default function Commissions() {
                   className="text-xs font-mono"
                 />
               </div>
-              <div className="flex justify-end gap-2 pt-2">
-                <Button variant="outline" size="sm" onClick={() => setManualPaidCommission(null)}>
+              <DialogFooter className="gap-2 pt-3 border-t">
+                <Button variant="outline" size="sm" onClick={() => setManualPaidCommission(null)} disabled={markPaidMutation.isPending}>
                   Cancelar
                 </Button>
                 <Button
@@ -2345,10 +2358,10 @@ export default function Commissions() {
                     }
                   }}
                 >
-                  {markPaidMutation.isPending && <i className="fas fa-spinner fa-spin mr-1.5"></i>}
+                  {markPaidMutation.isPending && <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />}
                   Confirmar Liquidación
                 </Button>
-              </div>
+              </DialogFooter>
             </div>
           </DialogContent>
         </Dialog>
@@ -2358,14 +2371,14 @@ export default function Commissions() {
           <DialogContent className="max-w-2xl max-h-[80vh] flex flex-col">
             <DialogHeader>
               <DialogTitle className="text-base font-bold flex items-center gap-2">
-                <i className="fas fa-history text-indigo-700"></i>
+                <History className="w-5 h-5 text-primary" />
                 Historial de movimientos — Comisión #{viewingAuditLogsCommission?.id?.slice(-8)}
               </DialogTitle>
             </DialogHeader>
             <div className="flex-1 overflow-y-auto space-y-3 pt-2 text-xs">
               {isLoadingAuditLogs ? (
                 <div className="py-8 text-center text-muted-foreground">
-                  <i className="fas fa-spinner fa-spin mr-2"></i> Cargando historial de movimientos...
+                  <Loader2 className="w-4 h-4 animate-spin mr-2 inline" /> Cargando historial de movimientos...
                 </div>
               ) : auditLogs.length === 0 ? (
                 <div className="py-8 text-center text-muted-foreground">
@@ -2419,7 +2432,7 @@ export default function Commissions() {
                         </div>
                         {reference && (
                           <div className="bg-emerald-50 text-emerald-900 p-2 rounded text-[11px] border border-emerald-200 flex items-center gap-2">
-                            <i className="fas fa-receipt text-emerald-700"></i>
+                            <Receipt className="w-3.5 h-3.5 text-emerald-700 shrink-0" />
                             <span>Referencia / Rastreo: <strong className="font-mono">{reference}</strong></span>
                           </div>
                         )}
@@ -2431,7 +2444,7 @@ export default function Commissions() {
                         )}
                         {error && (
                           <div className="bg-rose-50 text-rose-900 p-2 rounded text-[11px] border border-rose-200 flex items-center gap-2">
-                            <i className="fas fa-exclamation-circle text-rose-600"></i>
+                            <AlertCircle className="w-3.5 h-3.5 text-rose-600 shrink-0" />
                             <span>Error: {error}</span>
                           </div>
                         )}
@@ -2441,6 +2454,11 @@ export default function Commissions() {
                 </div>
               )}
             </div>
+            <DialogFooter className="pt-3 border-t">
+              <Button variant="outline" size="sm" onClick={() => setViewingAuditLogsCommission(null)}>
+                Cerrar
+              </Button>
+            </DialogFooter>
           </DialogContent>
         </Dialog>
       </MainLayout>

@@ -18,8 +18,8 @@ export default function BrokerNetwork() {
         />
         <main className="flex-1 p-4 sm:p-6 lg:p-8 overflow-y-auto">
           <div className="max-w-7xl mx-auto space-y-6">
-            <div className="h-32 bg-white border border-slate-200/80 rounded-xl p-5 shadow-xs animate-pulse" />
-            <div className="h-64 bg-white border border-slate-200/80 rounded-xl p-5 shadow-xs animate-pulse" />
+            <div className="h-32 bg-card border border-border rounded-xl p-5 shadow-xs animate-pulse" />
+            <div className="h-64 bg-card border border-border rounded-xl p-5 shadow-xs animate-pulse" />
           </div>
         </main>
       </MainLayout>
@@ -35,14 +35,14 @@ export default function BrokerNetwork() {
         />
         
         <main className="flex-1 p-4 sm:p-6 lg:p-8 overflow-y-auto">
-          <div className="max-w-md mx-auto mt-12 bg-white border border-slate-200/80 rounded-xl p-10 text-center shadow-xs">
-            <div className="w-12 h-12 rounded-full bg-amber-50 border border-amber-200/80 text-amber-600 flex items-center justify-center mx-auto mb-3">
+          <div className="max-w-md mx-auto mt-12 bg-card border border-border rounded-xl p-8 text-center shadow-xs">
+            <div className="w-12 h-12 rounded-full bg-amber-500/10 border border-amber-500/20 text-amber-600 flex items-center justify-center mx-auto mb-3">
               <ShieldAlert className="w-6 h-6" />
             </div>
-            <h3 className="text-base font-bold text-slate-900 mb-1">
+            <h3 className="text-base font-bold text-foreground mb-1">
               Acceso Restringido
             </h3>
-            <p className="text-xs text-slate-500 mb-5 leading-relaxed">
+            <p className="text-xs text-muted-foreground mb-5 leading-relaxed">
               Esta funcionalidad y la gestión autónoma de comisiones de equipo están disponibles únicamente para perfiles con rango Master Broker y Administradores.
             </p>
             <Link href="/dashboard">

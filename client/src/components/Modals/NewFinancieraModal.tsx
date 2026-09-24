@@ -23,6 +23,7 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
+import { Loader2 } from "lucide-react";
 
 // Schema with address fields required
 const financieraSchema = z.object({
@@ -193,7 +194,7 @@ export default function NewFinancieraModal({ isOpen, onClose, onFinancieraCreate
             {/* Address Section */}
             <div className="space-y-4">
               <div className="border-t pt-4">
-                <h4 className="font-medium text-gray-900 mb-4">Dirección de la Financiera</h4>
+                <h4 className="font-medium text-foreground mb-4">Dirección de la Financiera</h4>
                 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <FormField
@@ -327,11 +328,12 @@ export default function NewFinancieraModal({ isOpen, onClose, onFinancieraCreate
               )}
             />
 
-            <DialogFooter>
+            <DialogFooter className="gap-2 pt-4 border-t">
               <Button
                 type="button"
                 variant="outline"
                 onClick={onClose}
+                disabled={createFinancieraMutation.isPending}
                 data-testid="button-cancel"
               >
                 Cancelar
@@ -341,7 +343,14 @@ export default function NewFinancieraModal({ isOpen, onClose, onFinancieraCreate
                 disabled={createFinancieraMutation.isPending}
                 data-testid="button-save-financiera"
               >
-                {createFinancieraMutation.isPending ? "Guardando..." : "Crear Financiera"}
+                {createFinancieraMutation.isPending ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    Guardando...
+                  </>
+                ) : (
+                  "Crear Financiera"
+                )}
               </Button>
             </DialogFooter>
           </form>
