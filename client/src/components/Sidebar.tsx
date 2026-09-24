@@ -4,32 +4,74 @@ import { cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/useAuth";
 import { useNotifications } from "@/contexts/NotificationContext";
 import { buildApiUrl } from "@/lib/runtimeConfig";
-import { Menu, X, ChevronLeft, ChevronRight } from "lucide-react";
+import {
+  Menu,
+  X,
+  ChevronLeft,
+  ChevronRight,
+  PieChart,
+  Users,
+  CreditCard,
+  Coins,
+  Repeat,
+  Network,
+  Clock,
+  DollarSign,
+  Building2,
+  Layers,
+  FileText,
+  BarChart3,
+  FileSpreadsheet,
+  Users2,
+  Settings,
+  LogOut,
+  type LucideIcon,
+} from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 
-const navigation = [
-  { name: 'Dashboard', href: '/', icon: 'fas fa-chart-pie' },
-  { name: 'Clientes', href: '/clientes', icon: 'fas fa-users' },
-  { name: 'Gestión de Créditos', href: '/creditos', icon: 'fas fa-credit-card' },
-  { name: 'Mis Créditos', href: '/mis-solicitudes', icon: 'fas fa-coins', brokerOnly: true },
-  { name: 'Renovaciones', href: '/re-gestion', icon: 'fas fa-recycle' },
-  { name: 'Red de Brokers', href: '/red-brokers', icon: 'fas fa-network-wired', adminOnly: true },
-  { name: 'Aprobaciones', href: '/solicitudes-pendientes', icon: 'fas fa-clock', platformAdminOnly: true },
-  { name: 'Comisiones', href: '/comisiones', icon: 'fas fa-dollar-sign' },
-  { name: 'Financieras', href: '/financieras', icon: 'fas fa-building' },
-  { name: 'Productos', href: '/sistema-productos', icon: 'fas fa-layer-group' },
-  { name: 'Documentos', href: '/documentos', icon: 'fas fa-file-alt' },
-  { name: 'Reportes', href: '/reportes', icon: 'fas fa-chart-bar', adminOnly: true },
+interface NavItemDef {
+  name: string;
+  href: string;
+  icon: LucideIcon;
+  section: "operacion" | "catalogos" | "supervision" | "admin";
+  adminOnly?: boolean;
+  platformAdminOnly?: boolean;
+  brokerOnly?: boolean;
+}
+
+const navigation: NavItemDef[] = [
+  // Operación
+  { name: 'Dashboard', href: '/', icon: PieChart, section: "operacion" },
+  { name: 'Clientes', href: '/clientes', icon: Users, section: "operacion" },
+  { name: 'Gestión de Créditos', href: '/creditos', icon: CreditCard, section: "operacion" },
+  { name: 'Mis Créditos', href: '/mis-solicitudes', icon: Coins, brokerOnly: true, section: "operacion" },
+  { name: 'Renovaciones', href: '/re-gestion', icon: Repeat, section: "operacion" },
+  // Catálogos y Productos
+  { name: 'Financieras', href: '/financieras', icon: Building2, section: "catalogos" },
+  { name: 'Productos', href: '/sistema-productos', icon: Layers, section: "catalogos" },
+  { name: 'Comisiones', href: '/comisiones', icon: DollarSign, section: "catalogos" },
+  { name: 'Documentos', href: '/documentos', icon: FileText, section: "catalogos" },
+  // Supervisión y Red
+  { name: 'Aprobaciones', href: '/solicitudes-pendientes', icon: Clock, platformAdminOnly: true, section: "supervision" },
+  { name: 'Red de Brokers', href: '/red-brokers', icon: Network, adminOnly: true, section: "supervision" },
+  { name: 'Reportes', href: '/reportes', icon: BarChart3, adminOnly: true, section: "supervision" },
 ];
 
-const adminNavigation = [
-  { name: 'Importación', href: '/importacion-masiva', icon: 'fas fa-file-import', adminOnly: true },
-  { name: 'Usuarios', href: '/admin/usuarios', icon: 'fas fa-users-cog', adminOnly: true },
+const adminNavigation: NavItemDef[] = [
+  { name: 'Importación', href: '/importacion-masiva', icon: FileSpreadsheet, adminOnly: true, section: "admin" },
+  { name: 'Usuarios', href: '/admin/usuarios', icon: Users2, adminOnly: true, section: "admin" },
 ];
 
 const bottomNavigation = [
-  { name: 'Configuración', href: '/configuracion', icon: 'fas fa-cog' },
+  { name: 'Configuración', href: '/configuracion', icon: Settings },
 ];
+
+const sectionLabels: Record<string, string> = {
+  operacion: "Operación",
+  catalogos: "Catálogos",
+  supervision: "Supervisión",
+  admin: "Administración",
+};
 
 export default function Sidebar() {
   const [location] = useLocation();
@@ -61,16 +103,16 @@ export default function Sidebar() {
   const hasTenantOrg = Boolean(userTenants && userTenants.length > 0);
 
   const filteredNavigation = navigation.filter(item => {
-    if ((item as any).platformAdminOnly && !isFullAdmin) return false;
+    if (item.platformAdminOnly && !isFullAdmin) return false;
     if (item.adminOnly && !isAdmin) return false;
     if (item.brokerOnly && isFullAdmin) return false;
     return true;
   });
   
-  const adminItems = isFullAdmin 
+  const adminItems: NavItemDef[] = isFullAdmin 
     ? adminNavigation 
     : (hasTenantOrg 
-        ? [{ name: 'Mi Organización', href: '/admin/usuarios', icon: 'fas fa-users-cog' }] 
+        ? [{ name: 'Mi Organización', href: '/admin/usuarios', icon: Users2, section: "admin" }] 
         : []);
 
   const baseItems = [...filteredNavigation, ...adminItems];
@@ -111,6 +153,20 @@ export default function Sidebar() {
         const modKey = hrefToModule[item.href];
         return !modKey || allowedModules.includes(modKey);
       });
+
+  // Group items by section preserving order
+  const sectionsOrder: Array<"operacion" | "catalogos" | "supervision" | "admin"> = [
+    "operacion",
+    "catalogos",
+    "supervision",
+    "admin",
+  ];
+
+  const groupedItems = sectionsOrder.map((sec) => ({
+    section: sec,
+    label: sectionLabels[sec],
+    items: allNavigationItems.filter((item) => item.section === sec),
+  })).filter((grp) => grp.items.length > 0);
 
   useEffect(() => {
     setIsMobileOpen(false);
@@ -153,188 +209,170 @@ export default function Sidebar() {
 
   const SidebarContent = ({ collapsed = false, testIdSuffix = '' }: { collapsed?: boolean; testIdSuffix?: string }) => (
     <div className="flex flex-col h-full">
-      <div className={cn("border-b border-sidebar-border", collapsed ? "p-2" : "p-4 lg:p-6")}>
-        <div className={cn("flex flex-col items-center", collapsed ? "space-y-1" : "space-y-2 lg:space-y-3")}>
-          <div className={cn(
-            "rounded-lg flex items-center justify-center overflow-hidden",
-            collapsed ? "w-10 h-10" : "w-24 h-12 lg:w-32 lg:h-16"
-          )}>
-            {collapsed ? (
-              <div className="w-10 h-10 bg-gradient-to-r from-primary to-secondary rounded-lg flex items-center justify-center">
-                <span className="text-white font-bold text-lg">CN</span>
-              </div>
-            ) : (
-              <img 
-                src="/credito-negocios-full-logo.jpg" 
-                alt="Credito Negocios Logo" 
-                className="w-full h-full object-contain" 
-              />
-            )}
+      {/* Brand Header: Only logo/brand */}
+      <div className={cn("border-b border-sidebar-border/70 flex items-center justify-center flex-shrink-0", collapsed ? "p-2 h-14" : "px-4 py-3 h-14")}>
+        {collapsed ? (
+          <div className="w-8 h-8 bg-gradient-to-r from-primary to-secondary rounded-lg flex items-center justify-center shadow-xs">
+            <span className="text-white font-bold text-xs font-mono">CN</span>
           </div>
-          {!collapsed && (
-            <div className="text-center hidden lg:block">
-              <h1 className="text-lg font-semibold tracking-tight text-sidebar-foreground">Plataforma de Gestión Financiera</h1>
-            </div>
-          )}
-        </div>
+        ) : (
+          <div className="h-8 w-full flex items-center justify-start overflow-hidden">
+            <img 
+              src="/credito-negocios-full-logo.jpg" 
+              alt="Credito Negocios" 
+              className="h-8 max-w-[190px] object-contain object-left" 
+            />
+          </div>
+        )}
       </div>
 
-      <div className={cn("border-b border-sidebar-border", collapsed ? "p-2" : "p-3 lg:p-4")}>
-        <div className={cn("flex items-center", collapsed ? "justify-center" : "justify-between space-x-3")}>
-          {!collapsed && (
-            <div className="min-w-0 flex-1">
-              <p className="font-semibold tracking-tight text-sidebar-foreground text-sm lg:text-base truncate">
-                {user?.firstName} {user?.lastName}
-              </p>
-              <p className="text-[11px] font-medium tracking-wide text-sidebar-primary bg-sidebar-accent px-2 py-0.5 lg:py-1 rounded-full capitalize inline-block">
-                {user?.role?.replace('_', ' ')}
-              </p>
-            </div>
-          )}
-          <div className={cn(
-            "rounded-lg flex items-center justify-center flex-shrink-0 overflow-hidden bg-transparent",
-            collapsed ? "w-10 h-10" : "w-10 h-10 lg:w-12 lg:h-12"
-          )}>
-            {user?.profileImageUrl || (user as any)?.customLogo ? (
-              <img
-                src={user?.profileImageUrl || (user as any)?.customLogo}
-                alt="Logo o Foto de perfil"
-                className="w-full h-full object-contain"
-                onError={(event) => {
-                  event.currentTarget.style.display = "none";
-                }}
-              />
-            ) : (
-              <div className="w-full h-full bg-gradient-to-r from-primary to-secondary rounded-full flex items-center justify-center">
-                <span className={cn("text-white font-semibold", collapsed ? "text-sm" : "text-xs lg:text-sm")}>
-                  {user?.firstName?.[0]}{user?.lastName?.[0]}
-                </span>
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
-
+      {/* Grouped Navigation */}
       <nav className={cn(
-        "flex-1 py-4 lg:py-6 space-y-1 lg:space-y-2 overflow-y-auto scrollbar-hide",
-        collapsed ? "px-2" : "px-2 lg:px-4"
+        "flex-1 py-2 space-y-3 overflow-y-auto scrollbar-hide",
+        collapsed ? "px-1.5" : "px-2.5"
       )}>
-        {allNavigationItems.map((item) => {
-          const isActive = location === item.href;
-          const isReGestion = item.href === '/re-gestion';
-          
-          return (
-            <Link key={item.name} href={item.href} onClick={() => setIsMobileOpen(false)}>
-              <div
-                className={cn(
-                  "flex items-center rounded-lg font-medium transition-colors cursor-pointer relative",
-                  collapsed ? "justify-center p-2" : "justify-between px-2 lg:px-3 py-2 text-sm lg:text-base",
-                  isActive
-                    ? collapsed
-                      ? "text-sidebar-foreground"
-                      : "bg-sidebar-primary text-sidebar-primary-foreground"
-                    : "text-sidebar-foreground hover:bg-sidebar-accent"
-                )}
-                data-testid={`nav-${item.name.toLowerCase().replace(/\s+/g, '-')}${testIdSuffix}`}
-                title={collapsed ? item.name : undefined}
-              >
-                <div className={cn("flex items-center min-w-0", collapsed ? "" : "gap-2 lg:gap-3")}>
-                  <span className={cn(
-                    "inline-flex items-center justify-center flex-shrink-0",
-                    collapsed ? "w-9 h-9" : "w-5",
-                    collapsed && isActive ? "" : collapsed ? "" : ""
-                  )}>
-                    <i className={cn(
-                      item.icon, 
-                      collapsed ? "text-xl" : "text-sm",
-                      collapsed && isActive
-                        ? "bg-sidebar-primary text-sidebar-primary-foreground rounded-xl p-1.5 shadow-sm"
-                        : collapsed
-                          ? "text-sidebar-foreground"
-                          : ""
-                    )} aria-hidden="true"></i>
-                  </span>
-                  {!collapsed && <span className="truncate text-[13.5px] lg:text-[14.5px] font-medium tracking-[0.01em]">{item.name}</span>}
-                </div>
-                {!collapsed && isReGestion && (
-                  // Re-gestion notifications badge if needed, otherwise no hardcoded notification counter
-                  null
-                )}
-                {!collapsed && item.href === '/solicitudes-pendientes' && winnersPendingDispersal > 0 && (
-                  <span className="ml-auto inline-flex items-center px-2 py-0.5 rounded-full text-xs font-bold bg-amber-500 text-white animate-pulse shadow-sm" title={`${winnersPendingDispersal} propuesta(s) ganadora(s) por dispersar`}>
-                    🏆 {winnersPendingDispersal}
-                  </span>
-                )}
-                {!collapsed && item.href === '/solicitudes-pendientes' && winnersPendingDispersal === 0 && totalPendingAdmin > 0 && (
-                  <span className="ml-auto inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-yellow-100 text-yellow-800">
-                    {totalPendingAdmin}
-                  </span>
-                )}
+        {groupedItems.map((grp, grpIdx) => (
+          <div key={grp.section} className="space-y-0.5">
+            {!collapsed ? (
+              <div className="px-2 pt-1 pb-1 flex items-center justify-between">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-sidebar-foreground/50">
+                  {grp.label}
+                </span>
+                {grpIdx > 0 && <span className="h-px flex-1 ml-2 bg-sidebar-border/40" />}
               </div>
-            </Link>
-          );
-        })}
+            ) : grpIdx > 0 ? (
+              <div className="my-1.5 border-t border-sidebar-border/60 mx-1" />
+            ) : null}
+
+            {grp.items.map((item) => {
+              const isActive = location === item.href;
+              const IconComp = item.icon;
+              
+              return (
+                <Link key={item.name} href={item.href} onClick={() => setIsMobileOpen(false)}>
+                  <div
+                    className={cn(
+                      "flex items-center rounded-md font-medium transition-colors cursor-pointer relative",
+                      collapsed ? "justify-center p-2" : "justify-between px-2.5 py-1.5 text-xs",
+                      isActive
+                        ? "bg-sidebar-primary text-sidebar-primary-foreground shadow-2xs font-semibold"
+                        : "text-sidebar-foreground hover:bg-sidebar-accent/70 hover:text-sidebar-accent-foreground"
+                    )}
+                    data-testid={`nav-${item.name.toLowerCase().replace(/\s+/g, '-')}${testIdSuffix}`}
+                    title={collapsed ? item.name : undefined}
+                  >
+                    <div className={cn("flex items-center min-w-0", collapsed ? "" : "gap-2.5")}>
+                      <IconComp className={cn(
+                        "flex-shrink-0",
+                        collapsed ? "h-4 w-4" : "h-4 w-4",
+                        isActive ? "text-sidebar-primary-foreground" : "text-sidebar-foreground/75"
+                      )} />
+                      {!collapsed && (
+                        <span className="truncate text-xs tracking-tight">
+                          {item.name}
+                        </span>
+                      )}
+                    </div>
+                    {!collapsed && item.href === '/solicitudes-pendientes' && winnersPendingDispersal > 0 && (
+                      <span className="ml-auto inline-flex items-center px-1.5 py-0.2 rounded-full text-[10px] font-bold bg-amber-500 text-white animate-pulse shadow-xs" title={`${winnersPendingDispersal} propuesta(s) ganadora(s) por dispersar`}>
+                        🏆 {winnersPendingDispersal}
+                      </span>
+                    )}
+                    {!collapsed && item.href === '/solicitudes-pendientes' && winnersPendingDispersal === 0 && totalPendingAdmin > 0 && (
+                      <span className="ml-auto inline-flex items-center px-1.5 py-0.2 rounded-full text-[10px] font-semibold bg-amber-500/15 text-amber-800 dark:text-amber-300 font-mono">
+                        {totalPendingAdmin}
+                      </span>
+                    )}
+                  </div>
+                </Link>
+              );
+            })}
+          </div>
+        ))}
       </nav>
 
+      {/* Footer: User Identity + Settings + Logout */}
       <div className={cn(
-        "border-t border-sidebar-border mt-auto space-y-1 lg:space-y-2",
-        collapsed ? "p-2" : "p-2 lg:p-4"
+        "border-t border-sidebar-border/70 mt-auto flex-shrink-0 bg-sidebar-background/80 space-y-1.5",
+        collapsed ? "p-1.5" : "p-2.5"
       )}>
-        {bottomNavigation.map((item) => {
-          const isActive = location === item.href;
-          
-          return (
-            <Link key={item.name} href={item.href} onClick={() => setIsMobileOpen(false)}>
-              <div
-                className={cn(
-                  "flex items-center rounded-lg font-medium transition-colors cursor-pointer",
-                  collapsed ? "justify-center p-2" : "space-x-2 lg:space-x-3 px-2 lg:px-3 py-2 text-sm lg:text-base",
-                  isActive
-                    ? collapsed
-                      ? "text-sidebar-foreground"
-                      : "bg-sidebar-primary text-sidebar-primary-foreground"
-                    : "text-sidebar-foreground hover:bg-sidebar-accent"
-                )}
-                data-testid={`nav-${item.name.toLowerCase()}${testIdSuffix}`}
-                title={collapsed ? item.name : undefined}
-              >
-                <span className={cn(
-                  "inline-flex items-center justify-center flex-shrink-0",
-                  collapsed ? "w-9 h-9" : "w-5",
-                  collapsed && isActive ? "" : ""
-                )}>
-                  <i className={cn(
-                    item.icon, 
-                    collapsed ? "text-xl" : "text-sm",
-                    collapsed && isActive
-                      ? "bg-sidebar-primary text-sidebar-primary-foreground rounded-xl p-1.5 shadow-sm"
-                      : collapsed
-                        ? "text-sidebar-foreground"
-                        : ""
-                  )} aria-hidden="true"></i>
-                </span>
-                {!collapsed && <span className="text-[13.5px] lg:text-[14.5px] font-medium tracking-[0.01em]">{item.name}</span>}
+        {/* User Identity Mini-Card */}
+        <div className={cn(
+          "rounded-md border border-sidebar-border/60 bg-sidebar-accent/30",
+          collapsed ? "p-1 flex justify-center" : "p-2"
+        )}>
+          <div className={cn("flex items-center", collapsed ? "justify-center" : "gap-2")}>
+            <div className="w-7 h-7 rounded-md flex items-center justify-center flex-shrink-0 overflow-hidden bg-sidebar-accent border border-sidebar-border/70">
+              {user?.profileImageUrl || (user as any)?.customLogo ? (
+                <img
+                  src={user?.profileImageUrl || (user as any)?.customLogo}
+                  alt="Foto"
+                  className="w-full h-full object-cover"
+                  onError={(event) => {
+                    event.currentTarget.style.display = "none";
+                  }}
+                />
+              ) : (
+                <div className="w-full h-full bg-gradient-to-br from-primary to-secondary flex items-center justify-center">
+                  <span className="text-white font-semibold text-[10px]">
+                    {user?.firstName?.[0]}{user?.lastName?.[0]}
+                  </span>
+                </div>
+              )}
+            </div>
+            {!collapsed && (
+              <div className="min-w-0 flex-1 leading-tight">
+                <p className="font-semibold text-xs text-sidebar-foreground truncate" title={`${user?.firstName} ${user?.lastName}`}>
+                  {user?.firstName} {user?.lastName}
+                </p>
+                <div className="flex items-center gap-1 mt-0.5">
+                  <span className="text-[9.5px] font-medium tracking-wide text-sidebar-primary bg-sidebar-accent/80 px-1 py-0.2 rounded capitalize inline-block border border-sidebar-border/50 truncate max-w-[130px]">
+                    {user?.role?.replace('_', ' ')}
+                  </span>
+                </div>
               </div>
-            </Link>
-          );
-        })}
-        <button
-          onClick={handleLogout}
-          className={cn(
-            "flex items-center rounded-lg text-sidebar-foreground hover:bg-sidebar-accent transition-colors w-full",
-            collapsed ? "justify-center p-2" : "space-x-2 lg:space-x-3 px-2 lg:px-3 py-2 text-sm lg:text-base"
-          )}
-          data-testid={`nav-logout${testIdSuffix}`}
-          title={collapsed ? "Cerrar Sesión" : undefined}
-        >
-          <span className={cn(
-            "inline-flex items-center justify-center flex-shrink-0",
-            collapsed ? "w-9 h-9" : "w-5"
-          )}>
-            <i className={cn("fas fa-sign-out-alt", collapsed ? "text-xl text-sidebar-foreground" : "text-sm")} aria-hidden="true"></i>
-          </span>
-          {!collapsed && <span className="text-[13.5px] lg:text-[14.5px] font-medium tracking-[0.01em]">Cerrar Sesión</span>}
-        </button>
+            )}
+          </div>
+        </div>
+
+        {/* Footer Actions: Settings & Logout */}
+        <div className="space-y-0.5">
+          {bottomNavigation.map((item) => {
+            const isActive = location === item.href;
+            const BottomIcon = item.icon;
+            
+            return (
+              <Link key={item.name} href={item.href} onClick={() => setIsMobileOpen(false)}>
+                <div
+                  className={cn(
+                    "flex items-center rounded-md font-medium transition-colors cursor-pointer",
+                    collapsed ? "justify-center p-2" : "gap-2.5 px-2.5 py-1.5 text-xs",
+                    isActive
+                      ? "bg-sidebar-primary text-sidebar-primary-foreground font-semibold shadow-2xs"
+                      : "text-sidebar-foreground hover:bg-sidebar-accent/70 hover:text-sidebar-accent-foreground"
+                  )}
+                  data-testid={`nav-${item.name.toLowerCase()}${testIdSuffix}`}
+                  title={collapsed ? item.name : undefined}
+                >
+                  <BottomIcon className="h-4 w-4 flex-shrink-0" />
+                  {!collapsed && <span className="text-xs tracking-tight">{item.name}</span>}
+                </div>
+              </Link>
+            );
+          })}
+          <button
+            onClick={handleLogout}
+            className={cn(
+              "flex items-center rounded-md text-sidebar-foreground hover:bg-destructive/10 hover:text-destructive transition-colors w-full",
+              collapsed ? "justify-center p-2" : "gap-2.5 px-2.5 py-1.5 text-xs"
+            )}
+            data-testid={`nav-logout${testIdSuffix}`}
+            title={collapsed ? "Cerrar Sesión" : undefined}
+          >
+            <LogOut className="h-4 w-4 flex-shrink-0" />
+            {!collapsed && <span className="text-xs tracking-tight">Cerrar Sesión</span>}
+          </button>
+        </div>
       </div>
     </div>
   );
