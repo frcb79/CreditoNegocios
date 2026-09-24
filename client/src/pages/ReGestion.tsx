@@ -257,7 +257,7 @@ export default function ReGestion() {
 
           {/* Opportunities Grid */}
           {filteredOpportunities.length === 0 ? (
-            <div className="bg-white border border-slate-200/80 rounded-xl p-12 text-center shadow-xs">
+            <div className="bg-white border border-slate-200/80 rounded-xl p-12 text-center shadow-sm">
               <div className="w-12 h-12 rounded-full bg-slate-100 flex items-center justify-center mx-auto mb-3 text-slate-400">
                 <RotateCcw className="w-6 h-6" />
               </div>
@@ -287,7 +287,7 @@ export default function ReGestion() {
                 return (
                   <div 
                     key={opportunity.id}
-                    className={`bg-white border rounded-xl shadow-xs hover:shadow-sm hover:border-slate-300 transition-all flex flex-col justify-between overflow-hidden ${urgencyConfig.borderAccent}`}
+                    className={`bg-white border rounded-xl shadow-sm hover:border-slate-300 transition-all flex flex-col justify-between overflow-hidden ${urgencyConfig.borderAccent}`}
                     data-testid={`opportunity-${opportunity.id}`}
                   >
                     <div className="p-4 sm:p-5 pb-3 border-b border-slate-100 space-y-3">
@@ -302,7 +302,7 @@ export default function ReGestion() {
                         </div>
                         <Badge 
                           variant="outline"
-                          className={`text-xs font-semibold px-2 py-0.5 ${urgencyConfig.badgeColor}`}
+                          className={`text-xs font-semibold px-2 py-0.5 whitespace-nowrap shrink-0 ${urgencyConfig.badgeColor}`}
                           data-testid={`urgency-${opportunity.id}`}
                         >
                           {daysToExpire} días • {urgencyConfig.label}

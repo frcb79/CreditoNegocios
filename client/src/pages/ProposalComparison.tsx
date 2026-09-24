@@ -564,7 +564,7 @@ export default function ProposalComparison() {
           if (!open) setSelectedWinnerModalTarget(null);
         }}
       >
-        <DialogContent className="max-w-md">
+        <DialogContent className="max-w-md w-[95vw] max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center space-x-2 text-purple-700 dark:text-purple-300">
               <CheckCircle className="w-5 h-5 text-purple-600 dark:text-purple-400 flex-shrink-0" />

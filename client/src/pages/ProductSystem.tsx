@@ -73,7 +73,7 @@ export default function ProductSystem() {
           {/* Overview Cards (Platform Admins only) */}
           {isAdmin && (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-              <Card className="border border-slate-200/80 shadow-xs bg-white">
+              <Card className="border border-slate-200/80 shadow-sm bg-white">
                 <CardContent className="p-4 flex items-center justify-between">
                   <div>
                     <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Financieras Activas</p>
@@ -88,7 +88,7 @@ export default function ProductSystem() {
                 </CardContent>
               </Card>
 
-              <Card className="border border-slate-200/80 shadow-xs bg-white">
+              <Card className="border border-slate-200/80 shadow-sm bg-white">
                 <CardContent className="p-4 flex items-center justify-between">
                   <div>
                     <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Plantillas Base</p>
@@ -103,7 +103,7 @@ export default function ProductSystem() {
                 </CardContent>
               </Card>
 
-              <Card className="border border-slate-200/80 shadow-xs bg-white">
+              <Card className="border border-slate-200/80 shadow-sm bg-white">
                 <CardContent className="p-4 flex items-center justify-between">
                   <div>
                     <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Asignaciones</p>
@@ -118,7 +118,7 @@ export default function ProductSystem() {
                 </CardContent>
               </Card>
 
-              <Card className="border border-slate-200/80 shadow-xs bg-white">
+              <Card className="border border-slate-200/80 shadow-sm bg-white">
                 <CardContent className="p-4 flex items-center justify-between">
                   <div>
                     <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Catálogo Red</p>
@@ -137,7 +137,7 @@ export default function ProductSystem() {
 
           {/* Admin Management Tabs vs Broker Commercial Experience */}
           {isAdmin ? (
-            <Card className="border border-slate-200/80 shadow-xs bg-white overflow-hidden">
+            <Card className="border border-slate-200/80 shadow-sm bg-white overflow-hidden">
               <CardContent className="p-0">
                 <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as TabValue)} className="w-full">
                   <div className="border-b border-slate-100 bg-slate-50/50 px-6 py-3">
@@ -145,7 +145,7 @@ export default function ProductSystem() {
                       <TabsTrigger 
                         value="templates" 
                         data-testid="tab-templates" 
-                        className="flex items-center gap-2 text-xs font-semibold data-[state=active]:bg-white data-[state=active]:text-slate-900 data-[state=active]:shadow-xs rounded-lg px-4 py-1.5 text-slate-600 transition-all"
+                        className="flex items-center gap-2 text-xs font-semibold data-[state=active]:bg-white data-[state=active]:text-slate-900 data-[state=active]:shadow-sm rounded-lg px-4 py-1.5 text-slate-600 transition-all"
                       >
                         <Layers className="w-3.5 h-3.5" />
                         Plantillas de Producto
@@ -153,7 +153,7 @@ export default function ProductSystem() {
                       <TabsTrigger 
                         value="institution" 
                         data-testid="tab-institution" 
-                        className="flex items-center gap-2 text-xs font-semibold data-[state=active]:bg-white data-[state=active]:text-slate-900 data-[state=active]:shadow-xs rounded-lg px-4 py-1.5 text-slate-600 transition-all"
+                        className="flex items-center gap-2 text-xs font-semibold data-[state=active]:bg-white data-[state=active]:text-slate-900 data-[state=active]:shadow-sm rounded-lg px-4 py-1.5 text-slate-600 transition-all"
                       >
                         <Building2 className="w-3.5 h-3.5" />
                         Asignación a Financieras
@@ -182,7 +182,7 @@ export default function ProductSystem() {
             <Collapsible
               open={showAdvancedVariables}
               onOpenChange={setShowAdvancedVariables}
-              className="border border-slate-200/80 rounded-xl bg-white p-4 shadow-xs"
+              className="border border-slate-200/80 rounded-xl bg-white p-4 shadow-sm"
             >
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2.5">

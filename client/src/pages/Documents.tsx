@@ -427,7 +427,7 @@ export default function Documents() {
               {/* Desktop / Tablet: Tabla Compacta Operativa */}
               <div className="hidden md:block bg-white border border-slate-200/80 rounded-xl shadow-2xs overflow-hidden">
                 <div className="overflow-x-auto">
-                  <table className="w-full text-left border-collapse">
+                  <table className="w-full min-w-[750px] text-left border-collapse">
                     <thead>
                       <tr className="border-b border-slate-200/80 bg-slate-50/80 text-[11px] font-semibold text-slate-500 uppercase tracking-wider">
                         <th className="py-3 px-4">Documento / Archivo</th>
@@ -506,7 +506,7 @@ export default function Documents() {
                               <div className="flex flex-col gap-0.5">
                                 <Badge 
                                   variant="outline"
-                                  className={`w-fit text-2xs px-2 py-0.5 rounded-md font-semibold ${
+                                  className={`w-fit text-2xs px-2 py-0.5 rounded-md font-semibold whitespace-nowrap ${
                                     document.isValid 
                                       ? "bg-emerald-50 text-emerald-700 border-emerald-200/80" 
                                       : "bg-amber-50 text-amber-700 border-amber-200/80"
@@ -675,7 +675,7 @@ export default function Documents() {
 
                         <Badge 
                           variant="outline"
-                          className={`text-2xs px-2 py-0.5 rounded-md font-semibold shrink-0 ${
+                          className={`text-2xs px-2 py-0.5 rounded-md font-semibold shrink-0 whitespace-nowrap ${
                             document.isValid 
                               ? "bg-emerald-50 text-emerald-700 border-emerald-200/80" 
                               : "bg-amber-50 text-amber-700 border-amber-200/80"
@@ -777,7 +777,7 @@ export default function Documents() {
 
           {/* Upload Modal - Preserved internal form for Bloque 12.8 */}
           <Dialog open={showUpload} onOpenChange={setShowUpload}>
-            <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+            <DialogContent className="max-w-2xl w-[95vw] sm:w-full max-h-[90vh] overflow-y-auto">
               <DialogHeader>
                 <DialogTitle className="text-base font-semibold text-foreground">
                   {editingDocument ? 'Editar Documento' : 'Subir Nuevo Documento'}

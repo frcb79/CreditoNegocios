@@ -899,7 +899,7 @@ export default function UserManagement() {
             </div>
 
             {/* Metrics Strip (Compact Institutional Bar) */}
-            <div className="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-xl p-3 shadow-xs grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4 divide-y sm:divide-y-0 sm:divide-x divide-slate-100 dark:divide-slate-800">
+            <div className="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-xl p-3 shadow-sm grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4 divide-y-0 sm:divide-x divide-slate-100 dark:divide-slate-800">
               <div className="flex items-center gap-3 pt-1 sm:pt-0 sm:px-2">
                 <div className="p-2 rounded-lg bg-blue-50 dark:bg-blue-950/40 text-blue-600 shrink-0">
                   <Users className="h-4 w-4" />
@@ -942,7 +942,7 @@ export default function UserManagement() {
             </div>
 
             {/* Filter Bar (Integrated & Compact) */}
-            <div className="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-xl p-3 shadow-xs flex flex-col md:flex-row gap-2.5 items-stretch md:items-center">
+            <div className="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-xl p-3 shadow-sm flex flex-col md:flex-row gap-2.5 items-stretch md:items-center">
               <div className="flex-1 relative">
                 <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
                 <Input
@@ -1332,7 +1332,7 @@ export default function UserManagement() {
             </CardHeader>
             <CardContent className="p-0">
               <div className="overflow-x-auto">
-                <table className="w-full text-sm">
+                <table className="w-full min-w-[800px] text-sm">
                   <thead className="bg-muted/40 border-b text-xs uppercase text-muted-foreground">
                     <tr>
                       <th className="py-3 px-6 text-left font-semibold">Usuario</th>
@@ -1453,7 +1453,7 @@ export default function UserManagement() {
               </CardHeader>
               <CardContent className="p-0">
                 <div className="overflow-x-auto">
-                  <table className="w-full text-sm">
+                  <table className="w-full min-w-[800px] text-sm">
                     <thead className="bg-muted/40 border-b text-xs uppercase text-muted-foreground">
                       <tr>
                         <th className="py-3 px-6 text-left font-semibold">Código</th>
@@ -1546,7 +1546,7 @@ export default function UserManagement() {
 
       {/* MODAL 1: CREATE PROMO CODE */}
       <Dialog open={showCreatePromoModal} onOpenChange={setShowCreatePromoModal}>
-        <DialogContent className="max-w-lg">
+        <DialogContent className="max-w-lg w-[95vw] max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Tag className="h-5 w-5 text-primary" />
@@ -1774,7 +1774,7 @@ export default function UserManagement() {
 
       {/* MODAL 3: EDIT USER ACCESS STATUS */}
       <Dialog open={Boolean(userToEditAccess)} onOpenChange={(open) => !open && setUserToEditAccess(null)}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="max-w-md w-[95vw] max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <UserCheck className="h-5 w-5 text-primary" />
@@ -1859,7 +1859,7 @@ export default function UserManagement() {
 
       {/* CREATE MEMBER MODAL */}
       <Dialog open={showCreateModal} onOpenChange={setShowCreateModal}>
-        <DialogContent className="max-w-3xl max-h-[92vh] overflow-y-auto p-0 gap-0">
+        <DialogContent className="max-w-3xl w-[95vw] max-h-[92vh] overflow-y-auto p-0 gap-0">
           <DialogHeader className="p-6 pb-4 border-b bg-muted/20">
             <div className="flex items-center justify-between">
               <div>
@@ -2299,7 +2299,7 @@ export default function UserManagement() {
       {/* EDIT MEMBER MODAL */}
       {editingMember && (
         <Dialog open={!!editingMember} onOpenChange={(open) => !open && setEditingMember(null)}>
-          <DialogContent className="max-w-3xl max-h-[92vh] overflow-y-auto p-0 gap-0">
+          <DialogContent className="max-w-3xl w-[95vw] max-h-[92vh] overflow-y-auto p-0 gap-0">
             <DialogHeader className="p-6 pb-4 border-b bg-muted/20">
               <div className="flex items-center justify-between">
                 <div>
@@ -2633,7 +2633,7 @@ export default function UserManagement() {
           open={inviteResultDialog.show} 
           onOpenChange={(open) => setInviteResultDialog({ show: open })}
         >
-          <DialogContent className="max-w-lg">
+          <DialogContent className="max-w-lg w-[95vw] max-h-[90vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2 text-base">
                 <CheckCircle2 className="w-5 h-5 text-emerald-600" />

@@ -60,7 +60,7 @@ export default function MetricsGrid() {
     return (
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
         {Array.from({ length: 4 }).map((_, i) => (
-          <Card key={i} className="border border-border/70 bg-card shadow-xs">
+          <Card key={i} className="border border-border/70 bg-card shadow-sm">
             <CardContent className="p-4">
               <Skeleton className="h-3.5 w-24 mb-2" />
               <Skeleton className="h-7 w-28 mb-1.5" />
@@ -278,7 +278,7 @@ export default function MetricsGrid() {
           <Card
             key={index}
             className={`border border-border/70 bg-card shadow-2xs transition-all duration-150 ${
-              isClickable ? 'cursor-pointer hover:border-primary/40 hover:shadow-xs' : ''
+              isClickable ? 'cursor-pointer hover:border-primary/40 hover:shadow-sm' : ''
             }`}
             onClick={card.onClick}
           >

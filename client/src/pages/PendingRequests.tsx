@@ -541,7 +541,7 @@ export default function PendingRequests() {
             {/* Summary Metrics Strip */}
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
               {/* Por Revisar */}
-              <div className="bg-white border border-slate-200/80 rounded-xl p-3.5 shadow-xs hover:border-slate-300 transition-colors">
+              <div className="bg-white border border-slate-200/80 rounded-xl p-3.5 shadow-sm hover:border-slate-300 transition-colors">
                 <div className="flex items-center justify-between gap-2 mb-2">
                   <span className="text-xs font-medium text-slate-500 truncate">Por Revisar</span>
                   <div className="h-7 w-7 rounded-lg bg-amber-50 text-amber-700 flex items-center justify-center shrink-0 border border-amber-200/60">
@@ -557,7 +557,7 @@ export default function PendingRequests() {
               </div>
 
               {/* Enviadas a Financiera */}
-              <div className="bg-white border border-slate-200/80 rounded-xl p-3.5 shadow-xs hover:border-slate-300 transition-colors">
+              <div className="bg-white border border-slate-200/80 rounded-xl p-3.5 shadow-sm hover:border-slate-300 transition-colors">
                 <div className="flex items-center justify-between gap-2 mb-2">
                   <span className="text-xs font-medium text-slate-500 truncate">Enviadas</span>
                   <div className="h-7 w-7 rounded-lg bg-blue-50 text-blue-700 flex items-center justify-center shrink-0 border border-blue-200/60">
@@ -573,7 +573,7 @@ export default function PendingRequests() {
               </div>
 
               {/* Aprobadas / Propuestas */}
-              <div className="bg-white border border-slate-200/80 rounded-xl p-3.5 shadow-xs hover:border-slate-300 transition-colors">
+              <div className="bg-white border border-slate-200/80 rounded-xl p-3.5 shadow-sm hover:border-slate-300 transition-colors">
                 <div className="flex items-center justify-between gap-2 mb-2">
                   <span className="text-xs font-medium text-slate-500 truncate">Aprobadas</span>
                   <div className="h-7 w-7 rounded-lg bg-emerald-50 text-emerald-700 flex items-center justify-center shrink-0 border border-emerald-200/60">
@@ -589,7 +589,7 @@ export default function PendingRequests() {
               </div>
 
               {/* Ganadoras por Dispersar */}
-              <div className={`bg-white border rounded-xl p-3.5 shadow-xs transition-all ${
+              <div className={`bg-white border rounded-xl p-3.5 shadow-sm transition-all ${
                 winnerCount > 0 
                   ? 'border-amber-300 ring-1 ring-amber-200/70 bg-gradient-to-br from-white to-amber-50/30' 
                   : 'border-slate-200/80 hover:border-slate-300'
@@ -613,7 +613,7 @@ export default function PendingRequests() {
               </div>
 
               {/* Devueltas a Broker */}
-              <div className="bg-white border border-slate-200/80 rounded-xl p-3.5 shadow-xs hover:border-slate-300 transition-colors">
+              <div className="bg-white border border-slate-200/80 rounded-xl p-3.5 shadow-sm hover:border-slate-300 transition-colors">
                 <div className="flex items-center justify-between gap-2 mb-2">
                   <span className="text-xs font-medium text-slate-500 truncate">Devueltas</span>
                   <div className="h-7 w-7 rounded-lg bg-orange-50 text-orange-700 flex items-center justify-center shrink-0 border border-orange-200/60">
@@ -629,7 +629,7 @@ export default function PendingRequests() {
               </div>
 
               {/* Total Solicitudes */}
-              <div className="bg-white border border-slate-200/80 rounded-xl p-3.5 shadow-xs hover:border-slate-300 transition-colors">
+              <div className="bg-white border border-slate-200/80 rounded-xl p-3.5 shadow-sm hover:border-slate-300 transition-colors">
                 <div className="flex items-center justify-between gap-2 mb-2">
                   <span className="text-xs font-medium text-slate-500 truncate">Total</span>
                   <div className="h-7 w-7 rounded-lg bg-slate-50 text-slate-600 flex items-center justify-center shrink-0 border border-slate-200/80">

@@ -1149,7 +1149,7 @@ export default function Commissions() {
                   </div>
                 ) : (
                   <div className="overflow-x-auto">
-                    <table className="w-full text-left border-collapse">
+                    <table className="w-full min-w-[950px] text-left border-collapse">
                       <thead>
                         <tr className="border-b border-slate-200 bg-slate-50/80 text-[11px] font-semibold uppercase tracking-wider text-slate-500 select-none">
                           {isSuperAdmin && (adminSubTab === 'por_aprobar' || adminSubTab === 'dispersion') && (
@@ -1552,7 +1552,7 @@ export default function Commissions() {
                   </div>
 
                   <div className="overflow-x-auto">
-                    <table className="w-full text-left border-collapse text-xs">
+                    <table className="w-full min-w-[850px] text-left border-collapse text-xs">
                       <thead>
                         <tr className="border-b border-slate-200 bg-slate-50/80 text-[11px] font-semibold uppercase tracking-wider text-slate-500 select-none">
                           <th className="py-3 px-3 text-center w-14">Lugar</th>
@@ -1723,7 +1723,7 @@ export default function Commissions() {
                 </CardHeader>
                 <CardContent>
                   <div className="overflow-x-auto">
-                    <table className="w-full text-sm text-left border-collapse">
+                    <table className="w-full min-w-[950px] text-sm text-left border-collapse">
                       <thead className="bg-gray-100 text-gray-700 text-xs font-semibold uppercase">
                         <tr>
                           <th className="p-3 border-b">Crédito ID / Fecha</th>
@@ -1818,7 +1818,7 @@ export default function Commissions() {
 
         {/* Modal de Esquema de Comisiones por Financiera */}
         <Dialog open={showRatesModal} onOpenChange={setShowRatesModal}>
-          <DialogContent className="max-w-4xl max-h-[85vh] flex flex-col">
+          <DialogContent className="max-w-4xl w-[95vw] sm:w-full max-h-[85vh] flex flex-col">
             <DialogHeader>
               <DialogTitle className="text-xl font-bold flex items-center gap-2">
                 <Percent className="w-5 h-5 text-primary" />
@@ -1840,7 +1840,7 @@ export default function Commissions() {
               </div>
 
               <div className="flex-1 overflow-y-auto border rounded-lg">
-                <table className="w-full text-sm text-left border-collapse">
+                <table className="w-full min-w-[700px] text-sm text-left border-collapse">
                   <thead className="bg-gray-100 text-gray-700 text-xs font-semibold sticky top-0 uppercase">
                     <tr>
                       <th className="p-3 border-b">Financiera</th>
@@ -1958,7 +1958,7 @@ export default function Commissions() {
 
         {/* Modal de Detalle de Comisión */}
         <Dialog open={!!viewingCommission} onOpenChange={(open) => !open && setViewingCommission(null)}>
-          <DialogContent className="max-w-lg">
+          <DialogContent className="max-w-lg w-[95vw] max-h-[90vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle className="text-lg font-bold flex items-center gap-2">
                 <Receipt className="w-5 h-5 text-primary" />
@@ -2144,7 +2144,7 @@ export default function Commissions() {
 
         {/* Modal Único para Dispersión */}
         <Dialog open={!!selectedCommission} onOpenChange={(open) => !open && setSelectedCommission(null)}>
-          <DialogContent className="max-w-md">
+          <DialogContent className="max-w-md w-[95vw] max-h-[90vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2">
                 <Landmark className="w-5 h-5 text-primary" />
@@ -2255,7 +2255,7 @@ export default function Commissions() {
 
         {/* Modal de Cancelación de Comisión */}
         <Dialog open={!!cancellingCommission} onOpenChange={(open) => !open && setCancellingCommission(null)}>
-          <DialogContent className="max-w-md">
+          <DialogContent className="max-w-md w-[95vw] max-h-[90vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle className="text-base font-bold flex items-center gap-2 text-rose-700">
                 <AlertTriangle className="w-5 h-5 text-rose-600" />
@@ -2301,7 +2301,7 @@ export default function Commissions() {
 
         {/* Modal de Liquidación Manual */}
         <Dialog open={!!manualPaidCommission} onOpenChange={(open) => !open && setManualPaidCommission(null)}>
-          <DialogContent className="max-w-md">
+          <DialogContent className="max-w-md w-[95vw] max-h-[90vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle className="text-base font-bold flex items-center gap-2 text-emerald-800">
                 <DollarSign className="w-5 h-5 text-emerald-800" />
