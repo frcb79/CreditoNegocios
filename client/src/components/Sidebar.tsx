@@ -218,9 +218,9 @@ export default function Sidebar() {
         ) : (
           <div className="h-11 w-full flex items-center justify-center overflow-hidden px-1">
             <img 
-              src="/credito-negocios-full-logo.jpg" 
+              src="/credito-negocios-07.png" 
               alt="Credito Negocios" 
-              className="h-11 max-h-11 w-auto max-w-[215px] object-contain object-center" 
+              className="h-10 max-h-11 w-auto max-w-[215px] object-contain object-center" 
             />
           </div>
         )}
