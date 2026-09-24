@@ -16,7 +16,8 @@ import {
   DialogContent, 
   DialogHeader, 
   DialogTitle,
-  DialogDescription 
+  DialogDescription,
+  DialogFooter
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -43,7 +44,8 @@ import {
   AlertCircle,
   Download,
   ExternalLink,
-  Trash2
+  Trash2,
+  Loader2
 } from "lucide-react";
 import { buildApiUrl } from "@/lib/runtimeConfig";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -1121,46 +1123,46 @@ export default function ClientDetailPage() {
                     {client.type === 'persona_moral' ? (
                       <>
                         <div className="space-y-2">
-                          <Label className="text-sm font-semibold text-neutral">Razón Social</Label>
+                          <Label className="text-sm font-semibold text-muted-foreground">Razón Social</Label>
                           <p className="text-sm">{client.businessName || 'No especificada'}</p>
                         </div>
                         <div className="space-y-2">
-                          <Label className="text-sm font-semibold text-neutral">Industria</Label>
+                          <Label className="text-sm font-semibold text-muted-foreground">Industria</Label>
                           <p className="text-sm">{client.industry || 'No especificada'}</p>
                         </div>
                         <div className="space-y-2">
-                          <Label className="text-sm font-semibold text-neutral">Años en operación</Label>
+                          <Label className="text-sm font-semibold text-muted-foreground">Años en operación</Label>
                           <p className="text-sm">{client.yearsInBusiness || 0} años</p>
                         </div>
                       </>
                     ) : (
                       <>
                         <div className="space-y-2">
-                          <Label className="text-sm font-semibold text-neutral">Nombre</Label>
+                          <Label className="text-sm font-semibold text-muted-foreground">Nombre</Label>
                           <p className="text-sm">{client.firstName || 'No especificado'}</p>
                         </div>
                         <div className="space-y-2">
-                          <Label className="text-sm font-semibold text-neutral">Apellido</Label>
+                          <Label className="text-sm font-semibold text-muted-foreground">Apellido</Label>
                           <p className="text-sm">{client.lastName || 'No especificado'}</p>
                         </div>
                         <div className="space-y-2">
-                          <Label className="text-sm font-semibold text-neutral">CURP</Label>
+                          <Label className="text-sm font-semibold text-muted-foreground">CURP</Label>
                           <p className="text-sm">{client.curp || 'No proporcionada'}</p>
                         </div>
                       </>
                     )}
                     <div className="space-y-2">
-                      <Label className="text-sm font-semibold text-neutral">RFC</Label>
+                      <Label className="text-sm font-semibold text-muted-foreground">RFC</Label>
                       <p className="text-sm">{client.rfc}</p>
                     </div>
                     <div className="space-y-2">
-                      <Label className="text-sm font-semibold text-neutral">Tipo de Cliente</Label>
+                      <Label className="text-sm font-semibold text-muted-foreground">Tipo de Cliente</Label>
                       <Badge className={getClientTypeBadge(client.type).badgeClass}>
                         {getClientTypeBadge(client.type).label}
                       </Badge>
                     </div>
                     <div className="space-y-2">
-                      <Label className="text-sm font-semibold text-neutral">Estado</Label>
+                      <Label className="text-sm font-semibold text-muted-foreground">Estado</Label>
                       <Badge variant={client.isActive ? "default" : "secondary"} className={client.isActive ? "bg-green-100 text-green-800" : ""}>
                         {client.isActive ? "Activo" : "Inactivo"}
                       </Badge>
@@ -1174,16 +1176,16 @@ export default function ClientDetailPage() {
                     </h3>
                     <div className="grid grid-cols-2 gap-4">
                       <div className="space-y-2">
-                        <Label className="text-sm font-semibold text-neutral">Email</Label>
+                        <Label className="text-sm font-semibold text-muted-foreground">Email</Label>
                         <p className="text-sm break-all">{client.email || 'No proporcionado'}</p>
                       </div>
                       <div className="space-y-2">
-                        <Label className="text-sm font-semibold text-neutral">Teléfono</Label>
+                        <Label className="text-sm font-semibold text-muted-foreground">Teléfono</Label>
                         <p className="text-sm">{client.phone || 'No proporcionado'}</p>
                       </div>
                       {client.type === 'persona_moral' && (
                         <div className="space-y-2">
-                          <Label className="text-sm font-semibold text-neutral">CURP</Label>
+                          <Label className="text-sm font-semibold text-muted-foreground">CURP</Label>
                           <p className="text-sm">{client.curp || 'No proporcionado'}</p>
                         </div>
                       )}
@@ -1195,19 +1197,19 @@ export default function ClientDetailPage() {
                       <h3 className="text-sm font-semibold mb-4">Información Demográfica</h3>
                       <div className="grid grid-cols-2 gap-4">
                         <div className="space-y-2">
-                          <Label className="text-sm font-semibold text-neutral">Estado Civil</Label>
+                          <Label className="text-sm font-semibold text-muted-foreground">Estado Civil</Label>
                           <p className="text-sm">{client.estadoCivil || 'No especificado'}</p>
                         </div>
                         <div className="space-y-2">
-                          <Label className="text-sm font-semibold text-neutral">Nivel Educativo</Label>
+                          <Label className="text-sm font-semibold text-muted-foreground">Nivel Educativo</Label>
                           <p className="text-sm">{client.nivelEducativo || 'No especificado'}</p>
                         </div>
                         <div className="space-y-2">
-                          <Label className="text-sm font-semibold text-neutral">Tipo de Vivienda</Label>
+                          <Label className="text-sm font-semibold text-muted-foreground">Tipo de Vivienda</Label>
                           <p className="text-sm">{client.tipoVivienda || 'No especificado'}</p>
                         </div>
                         <div className="space-y-2">
-                          <Label className="text-sm font-semibold text-neutral">Dependientes Económicos</Label>
+                          <Label className="text-sm font-semibold text-muted-foreground">Dependientes Económicos</Label>
                           <p className="text-sm">{client.dependientesEconomicos || 'No especificado'}</p>
                         </div>
                       </div>
@@ -1221,23 +1223,23 @@ export default function ClientDetailPage() {
                     </h3>
                     <div className="grid grid-cols-2 gap-4">
                       <div className="space-y-2">
-                        <Label className="text-sm font-semibold text-neutral">Calle</Label>
+                        <Label className="text-sm font-semibold text-muted-foreground">Calle</Label>
                         <p className="text-sm">{client.street || 'No especificada'}</p>
                       </div>
                       <div className="space-y-2">
-                        <Label className="text-sm font-semibold text-neutral">Número</Label>
+                        <Label className="text-sm font-semibold text-muted-foreground">Número</Label>
                         <p className="text-sm">{client.number || 'No especificado'}</p>
                       </div>
                       <div className="space-y-2">
-                        <Label className="text-sm font-semibold text-neutral">Número Interior</Label>
+                        <Label className="text-sm font-semibold text-muted-foreground">Número Interior</Label>
                         <p className="text-sm">{client.interior || 'No especificado'}</p>
                       </div>
                       <div className="space-y-2">
-                        <Label className="text-sm font-semibold text-neutral">Código Postal</Label>
+                        <Label className="text-sm font-semibold text-muted-foreground">Código Postal</Label>
                         <p className="text-sm">{client.postalCode || 'No especificado'}</p>
                       </div>
                       <div className="space-y-2">
-                        <Label className="text-sm font-semibold text-neutral">Estado</Label>
+                        <Label className="text-sm font-semibold text-muted-foreground">Estado</Label>
                         <p className="text-sm">{client.state || 'No especificado'}</p>
                       </div>
                     </div>
@@ -1246,7 +1248,7 @@ export default function ClientDetailPage() {
                   {client.createdAt && (
                     <div className="border-t pt-4">
                       <div className="space-y-2">
-                        <Label className="text-sm font-semibold text-neutral">Fecha de Registro</Label>
+                        <Label className="text-sm font-semibold text-muted-foreground">Fecha de Registro</Label>
                         <p className="text-sm">
                           {new Date(client.createdAt).toLocaleDateString('es-MX', {
                             year: 'numeric',
@@ -1260,6 +1262,15 @@ export default function ClientDetailPage() {
                     </div>
                   )}
                 </div>
+                <DialogFooter className="pt-4 border-t mt-6">
+                  <Button
+                    variant="outline"
+                    onClick={() => setShowInfoModal(false)}
+                    data-testid="button-close-info-modal"
+                  >
+                    Cerrar
+                  </Button>
+                </DialogFooter>
               </DialogContent>
             </Dialog>
 
@@ -1279,29 +1290,29 @@ export default function ClientDetailPage() {
                         <h3 className="text-sm font-semibold mb-4">Información Financiera</h3>
                         <div className="grid grid-cols-2 gap-4">
                           <div className="space-y-2">
-                            <Label className="text-sm font-semibold text-neutral">Ingresos Anuales</Label>
+                            <Label className="text-sm font-semibold text-muted-foreground">Ingresos Anuales</Label>
                             <p className="text-sm">
                               {client.ingresoAnual ? `$${parseFloat(client.ingresoAnual || '0').toLocaleString('es-MX', { maximumFractionDigits: 0 })} MXN` : 'No especificado'}
                             </p>
                           </div>
                           <div className="space-y-2">
-                            <Label className="text-sm font-semibold text-neutral">Egresos Mensuales Promedio</Label>
+                            <Label className="text-sm font-semibold text-muted-foreground">Egresos Mensuales Promedio</Label>
                             <p className="text-sm">
                               {client.egresoMensualPromedio ? `$${parseFloat(client.egresoMensualPromedio || '0').toLocaleString('es-MX', { maximumFractionDigits: 0 })} MXN` : 'No especificado'}
                             </p>
                           </div>
                           <div className="space-y-2">
-                            <Label className="text-sm font-semibold text-neutral">Participación Ventas Gobierno</Label>
+                            <Label className="text-sm font-semibold text-muted-foreground">Participación Ventas Gobierno</Label>
                             <p className="text-sm">{client.participacionVentasGobierno || 'No especificado'}</p>
                           </div>
                           <div className="space-y-2">
-                            <Label className="text-sm font-semibold text-neutral">Ventas con Terminal Bancaria</Label>
+                            <Label className="text-sm font-semibold text-muted-foreground">Ventas con Terminal Bancaria</Label>
                             <p className="text-sm">
                               {client.ventasTerminalBancaria ? `$${parseFloat(client.ventasTerminalBancaria || '0').toLocaleString('es-MX', { maximumFractionDigits: 0 })} MXN` : 'No especificado'}
                             </p>
                           </div>
                           <div className="space-y-2">
-                            <Label className="text-sm font-semibold text-neutral">Sector Económico</Label>
+                            <Label className="text-sm font-semibold text-muted-foreground">Sector Económico</Label>
                             <p className="text-sm">{client.sectoreEconomico || 'No especificado'}</p>
                           </div>
                         </div>
@@ -1310,11 +1321,11 @@ export default function ClientDetailPage() {
                         <h3 className="text-sm font-semibold mb-4">Buró de Crédito</h3>
                         <div className="grid grid-cols-2 gap-4">
                           <div className="space-y-2">
-                            <Label className="text-sm font-semibold text-neutral">Buró Accionista Principal</Label>
+                            <Label className="text-sm font-semibold text-muted-foreground">Buró Accionista Principal</Label>
                             <p className="text-sm">{client.buroAccionistaPrincipal || 'No especificado'}</p>
                           </div>
                           <div className="space-y-2">
-                            <Label className="text-sm font-semibold text-neutral">Buró Empresa</Label>
+                            <Label className="text-sm font-semibold text-muted-foreground">Buró Empresa</Label>
                             <p className="text-sm">{client.buroEmpresa || 'No especificado'}</p>
                           </div>
                         </div>
@@ -1323,16 +1334,16 @@ export default function ClientDetailPage() {
                         <h3 className="text-sm font-semibold mb-4">Garantías</h3>
                         <div className="grid grid-cols-2 gap-4">
                           <div className="space-y-2">
-                            <Label className="text-sm font-semibold text-neutral">Cuenta con Garantía</Label>
+                            <Label className="text-sm font-semibold text-muted-foreground">Cuenta con Garantía</Label>
                             <p className="text-sm">{client.garantia || 'No especificado'}</p>
                           </div>
                           <div className="space-y-2">
-                            <Label className="text-sm font-semibold text-neutral">Aval u Obligado Solidario</Label>
+                            <Label className="text-sm font-semibold text-muted-foreground">Aval u Obligado Solidario</Label>
                             <p className="text-sm">{client.avalObligadoSolidario || 'No especificado'}</p>
                           </div>
                           {client.garantiaDetalles && typeof client.garantiaDetalles === 'object' && Object.keys(client.garantiaDetalles as object).length > 0 ? (
                             <div className="space-y-2 col-span-2">
-                              <Label className="text-sm font-semibold text-neutral">Detalles de Garantía</Label>
+                              <Label className="text-sm font-semibold text-muted-foreground">Detalles de Garantía</Label>
                               <div className="text-sm bg-gray-50 p-3 rounded border space-y-2">
                                 {(() => {
                                   const detalles = client.garantiaDetalles as any;
@@ -1391,30 +1402,30 @@ export default function ClientDetailPage() {
                         <h3 className="text-sm font-semibold mb-4">Documentación y Cumplimiento</h3>
                         <div className="grid grid-cols-2 gap-4">
                           <div className="space-y-2">
-                            <Label className="text-sm font-semibold text-neutral">SAT CIEC</Label>
+                            <Label className="text-sm font-semibold text-muted-foreground">SAT CIEC</Label>
                             <p className="text-sm">{client.satCiec || 'No especificado'}</p>
                           </div>
                           <div className="space-y-2">
-                            <Label className="text-sm font-semibold text-neutral">Estados Financieros</Label>
+                            <Label className="text-sm font-semibold text-muted-foreground">Estados Financieros</Label>
                             <p className="text-sm">{client.estadosFinancieros || 'No especificado'}</p>
                           </div>
                           <div className="space-y-2">
-                            <Label className="text-sm font-semibold text-neutral">Opinión de Cumplimiento</Label>
+                            <Label className="text-sm font-semibold text-muted-foreground">Opinión de Cumplimiento</Label>
                             <p className="text-sm">{client.opinionCumplimiento || 'No especificado'}</p>
                           </div>
                           {client.opinionDetalles && (
                             <div className="space-y-2 col-span-2">
-                              <Label className="text-sm font-semibold text-neutral">Detalles de Opinión</Label>
+                              <Label className="text-sm font-semibold text-muted-foreground">Detalles de Opinión</Label>
                               <p className="text-sm bg-gray-50 p-3 rounded border whitespace-pre-wrap">{client.opinionDetalles}</p>
                             </div>
                           )}
                           <div className="space-y-2">
-                            <Label className="text-sm font-semibold text-neutral">Atrasos en Deudas</Label>
+                            <Label className="text-sm font-semibold text-muted-foreground">Atrasos en Deudas</Label>
                             <p className="text-sm">{client.atrasosDeudas || 'No especificado'}</p>
                           </div>
                           {client.atrasosDetalles && (
                             <div className="space-y-2 col-span-2">
-                              <Label className="text-sm font-semibold text-neutral">Detalles de Atrasos</Label>
+                              <Label className="text-sm font-semibold text-muted-foreground">Detalles de Atrasos</Label>
                               <p className="text-sm bg-gray-50 p-3 rounded border whitespace-pre-wrap">{client.atrasosDetalles}</p>
                             </div>
                           )}
@@ -1424,12 +1435,12 @@ export default function ClientDetailPage() {
                         <h3 className="text-sm font-semibold mb-4">Créditos Vigentes</h3>
                         <div className="grid grid-cols-2 gap-4">
                           <div className="space-y-2">
-                            <Label className="text-sm font-semibold text-neutral">Créditos Vigentes</Label>
+                            <Label className="text-sm font-semibold text-muted-foreground">Créditos Vigentes</Label>
                             <p className="text-sm">{client.creditosVigentes || 'No especificado'}</p>
                           </div>
                           {client.creditosVigentesDetalles && Array.isArray(client.creditosVigentesDetalles) && client.creditosVigentesDetalles.length > 0 ? (
                             <div className="space-y-2 col-span-2">
-                              <Label className="text-sm font-semibold text-neutral">Detalles de Créditos Vigentes</Label>
+                              <Label className="text-sm font-semibold text-muted-foreground">Detalles de Créditos Vigentes</Label>
                               <div className="text-sm bg-gray-50 p-3 rounded border space-y-3">
                                 {client.creditosVigentesDetalles.map((credito: any, index: number) => (
                                   <div key={index} className="pb-2 border-b last:border-b-0 last:pb-0">
@@ -1473,7 +1484,7 @@ export default function ClientDetailPage() {
                         <div className="border-b pb-4">
                           <h3 className="text-sm font-semibold mb-4">Notas y Observaciones</h3>
                           <div className="space-y-2">
-                            <Label className="text-sm font-semibold text-neutral">Notas</Label>
+                            <Label className="text-sm font-semibold text-muted-foreground">Notas</Label>
                             <p className="text-sm bg-gray-50 p-3 rounded border whitespace-pre-wrap">{client.notes}</p>
                           </div>
                         </div>
@@ -1487,15 +1498,15 @@ export default function ClientDetailPage() {
                         <h3 className="text-sm font-semibold mb-4">Información Laboral</h3>
                         <div className="grid grid-cols-2 gap-4">
                           <div className="space-y-2">
-                            <Label className="text-sm font-semibold text-neutral">Puesto</Label>
+                            <Label className="text-sm font-semibold text-muted-foreground">Puesto</Label>
                             <p className="text-sm">{client.puesto || 'No especificado'}</p>
                           </div>
                           <div className="space-y-2">
-                            <Label className="text-sm font-semibold text-neutral">Antigüedad Laboral</Label>
+                            <Label className="text-sm font-semibold text-muted-foreground">Antigüedad Laboral</Label>
                             <p className="text-sm">{client.antiguedadLaboral || 'No especificado'}</p>
                           </div>
                           <div className="space-y-2">
-                            <Label className="text-sm font-semibold text-neutral">Sector Económico</Label>
+                            <Label className="text-sm font-semibold text-muted-foreground">Sector Económico</Label>
                             <p className="text-sm">{client.sectoreEconomico || 'No especificado'}</p>
                           </div>
                         </div>
@@ -1504,35 +1515,35 @@ export default function ClientDetailPage() {
                         <h3 className="text-sm font-semibold mb-4">Información Financiera</h3>
                         <div className="grid grid-cols-2 gap-4">
                           <div className="space-y-2">
-                            <Label className="text-sm font-semibold text-neutral">Ingresos Mensuales Comprobables</Label>
+                            <Label className="text-sm font-semibold text-muted-foreground">Ingresos Mensuales Comprobables</Label>
                             <p className="text-sm">
                               {client.ingresoMensualPromedioComprobables ? `$${parseFloat(client.ingresoMensualPromedioComprobables || '0').toLocaleString('es-MX', { maximumFractionDigits: 0 })} MXN` : 'No especificado'}
                             </p>
                           </div>
                           <div className="space-y-2">
-                            <Label className="text-sm font-semibold text-neutral">Ingresos Mensuales No Comprobables</Label>
+                            <Label className="text-sm font-semibold text-muted-foreground">Ingresos Mensuales No Comprobables</Label>
                             <p className="text-sm">
                               {client.ingresoMensualPromedioNoComprobables ? `$${parseFloat(client.ingresoMensualPromedioNoComprobables || '0').toLocaleString('es-MX', { maximumFractionDigits: 0 })} MXN` : 'No especificado'}
                             </p>
                           </div>
                           <div className="space-y-2">
-                            <Label className="text-sm font-semibold text-neutral">Gastos Fijos Mensuales Promedio</Label>
+                            <Label className="text-sm font-semibold text-muted-foreground">Gastos Fijos Mensuales Promedio</Label>
                             <p className="text-sm">
                               {client.gastosFijosMensualesPromedio ? `$${parseFloat(client.gastosFijosMensualesPromedio || '0').toLocaleString('es-MX', { maximumFractionDigits: 0 })} MXN` : 'No especificado'}
                             </p>
                           </div>
                           <div className="space-y-2">
-                            <Label className="text-sm font-semibold text-neutral">Ingreso Anual</Label>
+                            <Label className="text-sm font-semibold text-muted-foreground">Ingreso Anual</Label>
                             <p className="text-sm">
                               {client.ingresoAnual ? `$${parseFloat(client.ingresoAnual || '0').toLocaleString('es-MX', { maximumFractionDigits: 0 })} MXN` : 'No especificado'}
                             </p>
                           </div>
                           <div className="space-y-2">
-                            <Label className="text-sm font-semibold text-neutral">Participación de Ventas con Gobierno</Label>
+                            <Label className="text-sm font-semibold text-muted-foreground">Participación de Ventas con Gobierno</Label>
                             <p className="text-sm">{client.participacionVentasGobierno || 'No especificado'}</p>
                           </div>
                           <div className="space-y-2">
-                            <Label className="text-sm font-semibold text-neutral">Ventas con Terminal Bancaria</Label>
+                            <Label className="text-sm font-semibold text-muted-foreground">Ventas con Terminal Bancaria</Label>
                             <p className="text-sm">
                               {client.ventasTerminalBancaria ? `$${parseFloat(client.ventasTerminalBancaria || '0').toLocaleString('es-MX', { maximumFractionDigits: 0 })} MXN` : 'No especificado'}
                             </p>
@@ -1543,16 +1554,16 @@ export default function ClientDetailPage() {
                         <h3 className="text-sm font-semibold mb-4">Buró de Crédito</h3>
                         <div className="grid grid-cols-2 gap-4">
                           <div className="space-y-2">
-                            <Label className="text-sm font-semibold text-neutral">Buró de Crédito Persona Física</Label>
+                            <Label className="text-sm font-semibold text-muted-foreground">Buró de Crédito Persona Física</Label>
                             <p className="text-sm">{client.buroPersonaFisica || 'No especificado'}</p>
                           </div>
                           <div className="space-y-2">
-                            <Label className="text-sm font-semibold text-neutral">Atrasos en Deudas Buró</Label>
+                            <Label className="text-sm font-semibold text-muted-foreground">Atrasos en Deudas Buró</Label>
                             <p className="text-sm">{client.atrasosDeudasBuro || 'No especificado'}</p>
                           </div>
                           {client.atrasosDeudasBuroDetalles && (
                             <div className="space-y-2 col-span-2">
-                              <Label className="text-sm font-semibold text-neutral">Detalles de Atrasos en Buró</Label>
+                              <Label className="text-sm font-semibold text-muted-foreground">Detalles de Atrasos en Buró</Label>
                               <p className="text-sm bg-gray-50 p-3 rounded border whitespace-pre-wrap">{client.atrasosDeudasBuroDetalles}</p>
                             </div>
                           )}
@@ -1562,16 +1573,16 @@ export default function ClientDetailPage() {
                         <h3 className="text-sm font-semibold mb-4">Garantías</h3>
                         <div className="grid grid-cols-2 gap-4">
                           <div className="space-y-2">
-                            <Label className="text-sm font-semibold text-neutral">Cuenta con Garantía</Label>
+                            <Label className="text-sm font-semibold text-muted-foreground">Cuenta con Garantía</Label>
                             <p className="text-sm">{client.garantia || 'No especificado'}</p>
                           </div>
                           <div className="space-y-2">
-                            <Label className="text-sm font-semibold text-neutral">Tiene Aval u Obligado Solidario</Label>
+                            <Label className="text-sm font-semibold text-muted-foreground">Tiene Aval u Obligado Solidario</Label>
                             <p className="text-sm">{client.avalObligadoSolidario || 'No especificado'}</p>
                           </div>
                           {client.garantiaDetalles && typeof client.garantiaDetalles === 'object' && Object.keys(client.garantiaDetalles as object).length > 0 ? (
                             <div className="space-y-2 col-span-2">
-                              <Label className="text-sm font-semibold text-neutral">Detalles de Garantía</Label>
+                              <Label className="text-sm font-semibold text-muted-foreground">Detalles de Garantía</Label>
                               <div className="text-sm bg-gray-50 p-3 rounded border space-y-2">
                                 {(() => {
                                   const detalles = client.garantiaDetalles as any;
@@ -1630,20 +1641,20 @@ export default function ClientDetailPage() {
                         <h3 className="text-sm font-semibold mb-4">Documentación y Cumplimiento</h3>
                         <div className="grid grid-cols-2 gap-4">
                           <div className="space-y-2">
-                            <Label className="text-sm font-semibold text-neutral">Abierto a conectarse con SAT vía CIEC</Label>
+                            <Label className="text-sm font-semibold text-muted-foreground">Abierto a conectarse con SAT vía CIEC</Label>
                             <p className="text-sm">{client.satCiec || 'No especificado'}</p>
                           </div>
                           <div className="space-y-2">
-                            <Label className="text-sm font-semibold text-neutral">¿Cuenta con Estados Financieros?</Label>
+                            <Label className="text-sm font-semibold text-muted-foreground">¿Cuenta con Estados Financieros?</Label>
                             <p className="text-sm">{client.estadosFinancieros || 'No especificado'}</p>
                           </div>
                           <div className="space-y-2">
-                            <Label className="text-sm font-semibold text-neutral">Opinión de Cumplimiento</Label>
+                            <Label className="text-sm font-semibold text-muted-foreground">Opinión de Cumplimiento</Label>
                             <p className="text-sm">{client.opinionCumplimiento || 'No especificado'}</p>
                           </div>
                           {client.opinionDetalles && (
                             <div className="space-y-2 col-span-2">
-                              <Label className="text-sm font-semibold text-neutral">Detalles de Opinión</Label>
+                              <Label className="text-sm font-semibold text-muted-foreground">Detalles de Opinión</Label>
                               <p className="text-sm bg-gray-50 p-3 rounded border whitespace-pre-wrap">{client.opinionDetalles}</p>
                             </div>
                           )}
@@ -1653,12 +1664,12 @@ export default function ClientDetailPage() {
                         <h3 className="text-sm font-semibold mb-4">Créditos Vigentes</h3>
                         <div className="grid grid-cols-2 gap-4">
                           <div className="space-y-2">
-                            <Label className="text-sm font-semibold text-neutral">Créditos Vigentes</Label>
+                            <Label className="text-sm font-semibold text-muted-foreground">Créditos Vigentes</Label>
                             <p className="text-sm">{client.creditosVigentes || 'No especificado'}</p>
                           </div>
                           {client.creditosVigentesDetalles && Array.isArray(client.creditosVigentesDetalles) && client.creditosVigentesDetalles.length > 0 ? (
                             <div className="space-y-2 col-span-2">
-                              <Label className="text-sm font-semibold text-neutral">Detalles de Créditos Vigentes</Label>
+                              <Label className="text-sm font-semibold text-muted-foreground">Detalles de Créditos Vigentes</Label>
                               <div className="text-sm bg-gray-50 p-3 rounded border space-y-3">
                                 {client.creditosVigentesDetalles.map((credito: any, index: number) => (
                                   <div key={index} className="pb-2 border-b last:border-b-0 last:pb-0">
@@ -1717,15 +1728,15 @@ export default function ClientDetailPage() {
                         <h3 className="text-sm font-semibold mb-4">Información Laboral</h3>
                         <div className="grid grid-cols-2 gap-4">
                           <div className="space-y-2">
-                            <Label className="text-sm font-semibold text-neutral">Puesto</Label>
+                            <Label className="text-sm font-semibold text-muted-foreground">Puesto</Label>
                             <p className="text-sm">{client.puesto || 'No especificado'}</p>
                           </div>
                           <div className="space-y-2">
-                            <Label className="text-sm font-semibold text-neutral">Antigüedad Laboral</Label>
+                            <Label className="text-sm font-semibold text-muted-foreground">Antigüedad Laboral</Label>
                             <p className="text-sm">{client.antiguedadLaboral || 'No especificado'}</p>
                           </div>
                           <div className="space-y-2">
-                            <Label className="text-sm font-semibold text-neutral">Sector Económico</Label>
+                            <Label className="text-sm font-semibold text-muted-foreground">Sector Económico</Label>
                             <p className="text-sm">{client.sectoreEconomico || 'No especificado'}</p>
                           </div>
                         </div>
@@ -1734,19 +1745,19 @@ export default function ClientDetailPage() {
                         <h3 className="text-sm font-semibold mb-4">Información Financiera</h3>
                         <div className="grid grid-cols-2 gap-4">
                           <div className="space-y-2">
-                            <Label className="text-sm font-semibold text-neutral">Ingresos Mensuales Comprobables</Label>
+                            <Label className="text-sm font-semibold text-muted-foreground">Ingresos Mensuales Comprobables</Label>
                             <p className="text-sm">
                               {client.ingresoMensualPromedioComprobables ? `$${parseFloat(client.ingresoMensualPromedioComprobables || '0').toLocaleString('es-MX', { maximumFractionDigits: 0 })} MXN` : 'No especificado'}
                             </p>
                           </div>
                           <div className="space-y-2">
-                            <Label className="text-sm font-semibold text-neutral">Ingresos Mensuales No Comprobables</Label>
+                            <Label className="text-sm font-semibold text-muted-foreground">Ingresos Mensuales No Comprobables</Label>
                             <p className="text-sm">
                               {client.ingresoMensualPromedioNoComprobables ? `$${parseFloat(client.ingresoMensualPromedioNoComprobables || '0').toLocaleString('es-MX', { maximumFractionDigits: 0 })} MXN` : 'No especificado'}
                             </p>
                           </div>
                           <div className="space-y-2">
-                            <Label className="text-sm font-semibold text-neutral">Gastos Fijos Mensuales Promedio</Label>
+                            <Label className="text-sm font-semibold text-muted-foreground">Gastos Fijos Mensuales Promedio</Label>
                             <p className="text-sm">
                               {client.gastosFijosMensualesPromedio ? `$${parseFloat(client.gastosFijosMensualesPromedio || '0').toLocaleString('es-MX', { maximumFractionDigits: 0 })} MXN` : 'No especificado'}
                             </p>
@@ -1757,16 +1768,16 @@ export default function ClientDetailPage() {
                         <h3 className="text-sm font-semibold mb-4">Buró de Crédito</h3>
                         <div className="grid grid-cols-2 gap-4">
                           <div className="space-y-2">
-                            <Label className="text-sm font-semibold text-neutral">Buró Persona Física</Label>
+                            <Label className="text-sm font-semibold text-muted-foreground">Buró Persona Física</Label>
                             <p className="text-sm">{client.buroPersonaFisica || 'No especificado'}</p>
                           </div>
                           <div className="space-y-2">
-                            <Label className="text-sm font-semibold text-neutral">Atrasos en Deudas Buró</Label>
+                            <Label className="text-sm font-semibold text-muted-foreground">Atrasos en Deudas Buró</Label>
                             <p className="text-sm">{client.atrasosDeudasBuro || 'No especificado'}</p>
                           </div>
                           {client.atrasosDeudasBuroDetalles && (
                             <div className="space-y-2 col-span-2">
-                              <Label className="text-sm font-semibold text-neutral">Detalles de Atrasos en Buró</Label>
+                              <Label className="text-sm font-semibold text-muted-foreground">Detalles de Atrasos en Buró</Label>
                               <p className="text-sm bg-gray-50 p-3 rounded border whitespace-pre-wrap">{client.atrasosDeudasBuroDetalles}</p>
                             </div>
                           )}
@@ -1776,16 +1787,16 @@ export default function ClientDetailPage() {
                         <h3 className="text-sm font-semibold mb-4">Garantías</h3>
                         <div className="grid grid-cols-2 gap-4">
                           <div className="space-y-2">
-                            <Label className="text-sm font-semibold text-neutral">Cuenta con Garantía Física</Label>
+                            <Label className="text-sm font-semibold text-muted-foreground">Cuenta con Garantía Física</Label>
                             <p className="text-sm">{client.cuentaConGarantiaFisica || 'No especificado'}</p>
                           </div>
                           <div className="space-y-2">
-                            <Label className="text-sm font-semibold text-neutral">Tiene Aval u Obligado Solidario</Label>
+                            <Label className="text-sm font-semibold text-muted-foreground">Tiene Aval u Obligado Solidario</Label>
                             <p className="text-sm">{client.tieneAvalObligadoSolidarioFisica || 'No especificado'}</p>
                           </div>
                           {client.garantiaFisicaDetalles && typeof client.garantiaFisicaDetalles === 'object' && Object.keys(client.garantiaFisicaDetalles as object).length > 0 ? (
                             <div className="space-y-2 col-span-2">
-                              <Label className="text-sm font-semibold text-neutral">Detalles de Garantía Física</Label>
+                              <Label className="text-sm font-semibold text-muted-foreground">Detalles de Garantía Física</Label>
                               <div className="text-sm bg-gray-50 p-3 rounded border space-y-2">
                                 {(() => {
                                   const detalles = client.garantiaFisicaDetalles as any;
@@ -1838,13 +1849,13 @@ export default function ClientDetailPage() {
                         <div className="space-y-3">
                           {client.notes && (
                             <div className="space-y-2">
-                              <Label className="text-sm font-semibold text-neutral">Notas</Label>
+                              <Label className="text-sm font-semibold text-muted-foreground">Notas</Label>
                               <p className="text-sm bg-gray-50 p-3 rounded border whitespace-pre-wrap">{client.notes}</p>
                             </div>
                           )}
                           {client.observacionesAdicionalesFisica && (
                             <div className="space-y-2">
-                              <Label className="text-sm font-semibold text-neutral">Observaciones Adicionales</Label>
+                              <Label className="text-sm font-semibold text-muted-foreground">Observaciones Adicionales</Label>
                               <p className="text-sm bg-gray-50 p-3 rounded border whitespace-pre-wrap">{client.observacionesAdicionalesFisica}</p>
                             </div>
                           )}
@@ -1862,11 +1873,11 @@ export default function ClientDetailPage() {
                         <h3 className="text-sm font-semibold mb-4">Información del Negocio</h3>
                         <div className="grid grid-cols-2 gap-4">
                           <div className="space-y-2">
-                            <Label className="text-sm font-semibold text-neutral">Nombre Comercial</Label>
+                            <Label className="text-sm font-semibold text-muted-foreground">Nombre Comercial</Label>
                             <p className="text-sm">{client.nombreComercial || 'No especificado'}</p>
                           </div>
                           <div className="space-y-2">
-                            <Label className="text-sm font-semibold text-neutral">Ocupación</Label>
+                            <Label className="text-sm font-semibold text-muted-foreground">Ocupación</Label>
                             <p className="text-sm">{client.ocupacion || 'No especificada'}</p>
                           </div>
                         </div>
@@ -1875,19 +1886,19 @@ export default function ClientDetailPage() {
                         <h3 className="text-sm font-semibold mb-4">Información Financiera</h3>
                         <div className="grid grid-cols-2 gap-4">
                           <div className="space-y-2">
-                            <Label className="text-sm font-semibold text-neutral">Ingresos Mensuales Comprobables</Label>
+                            <Label className="text-sm font-semibold text-muted-foreground">Ingresos Mensuales Comprobables</Label>
                             <p className="text-sm">
                               {client.ingresoMensualPromedioComprobablesSinSat ? `$${parseFloat(client.ingresoMensualPromedioComprobablesSinSat || '0').toLocaleString('es-MX', { maximumFractionDigits: 0 })} MXN` : 'No especificado'}
                             </p>
                           </div>
                           <div className="space-y-2">
-                            <Label className="text-sm font-semibold text-neutral">Ingresos Mensuales No Comprobables</Label>
+                            <Label className="text-sm font-semibold text-muted-foreground">Ingresos Mensuales No Comprobables</Label>
                             <p className="text-sm">
                               {client.ingresoMensualPromedioNoComprobablesSinSat ? `$${parseFloat(client.ingresoMensualPromedioNoComprobablesSinSat || '0').toLocaleString('es-MX', { maximumFractionDigits: 0 })} MXN` : 'No especificado'}
                             </p>
                           </div>
                           <div className="space-y-2">
-                            <Label className="text-sm font-semibold text-neutral">Gastos Fijos Mensuales Promedio</Label>
+                            <Label className="text-sm font-semibold text-muted-foreground">Gastos Fijos Mensuales Promedio</Label>
                             <p className="text-sm">
                               {client.gastosFijosMensualesPromedioSinSat ? `$${parseFloat(client.gastosFijosMensualesPromedioSinSat || '0').toLocaleString('es-MX', { maximumFractionDigits: 0 })} MXN` : 'No especificado'}
                             </p>
@@ -1898,7 +1909,7 @@ export default function ClientDetailPage() {
                         <h3 className="text-sm font-semibold mb-4">Buró de Crédito</h3>
                         <div className="grid grid-cols-2 gap-4">
                           <div className="space-y-2">
-                            <Label className="text-sm font-semibold text-neutral">Buró Persona Física</Label>
+                            <Label className="text-sm font-semibold text-muted-foreground">Buró Persona Física</Label>
                             <p className="text-sm">{client.buroPersonaFisicaSinSat || 'No especificado'}</p>
                           </div>
                         </div>
@@ -1907,16 +1918,16 @@ export default function ClientDetailPage() {
                         <h3 className="text-sm font-semibold mb-4">Garantías</h3>
                         <div className="grid grid-cols-2 gap-4">
                           <div className="space-y-2">
-                            <Label className="text-sm font-semibold text-neutral">Cuenta con Garantía</Label>
+                            <Label className="text-sm font-semibold text-muted-foreground">Cuenta con Garantía</Label>
                             <p className="text-sm">{client.cuentaConGarantiaSinSat || 'No especificado'}</p>
                           </div>
                           <div className="space-y-2">
-                            <Label className="text-sm font-semibold text-neutral">Tiene Aval u Obligado Solidario</Label>
+                            <Label className="text-sm font-semibold text-muted-foreground">Tiene Aval u Obligado Solidario</Label>
                             <p className="text-sm">{client.tieneAvalObligadoSolidarioSinSat || 'No especificado'}</p>
                           </div>
                           {client.garantiaSinSatDetalles && typeof client.garantiaSinSatDetalles === 'object' && Object.keys(client.garantiaSinSatDetalles as object).length > 0 ? (
                             <div className="space-y-2 col-span-2">
-                              <Label className="text-sm font-semibold text-neutral">Detalles de Garantía</Label>
+                              <Label className="text-sm font-semibold text-muted-foreground">Detalles de Garantía</Label>
                               <div className="text-sm bg-gray-50 p-3 rounded border space-y-2">
                                 {(() => {
                                   const detalles = client.garantiaSinSatDetalles as any;
@@ -1970,12 +1981,12 @@ export default function ClientDetailPage() {
                         <h3 className="text-sm font-semibold mb-4">Documentación y Cumplimiento</h3>
                         <div className="grid grid-cols-2 gap-4">
                           <div className="space-y-2">
-                            <Label className="text-sm font-semibold text-neutral">Atrasos en Deudas Buró</Label>
+                            <Label className="text-sm font-semibold text-muted-foreground">Atrasos en Deudas Buró</Label>
                             <p className="text-sm">{client.atrasosDeudasBuroSinSat || 'No especificado'}</p>
                           </div>
                           {client.atrasosDeudasBuroDetallesSinSat && (
                             <div className="space-y-2 col-span-2">
-                              <Label className="text-sm font-semibold text-neutral">Detalles de Atrasos en Buró</Label>
+                              <Label className="text-sm font-semibold text-muted-foreground">Detalles de Atrasos en Buró</Label>
                               <p className="text-sm bg-gray-50 p-3 rounded border whitespace-pre-wrap">{client.atrasosDeudasBuroDetallesSinSat}</p>
                             </div>
                           )}
@@ -1986,13 +1997,13 @@ export default function ClientDetailPage() {
                         <div className="space-y-3">
                           {client.notes && (
                             <div className="space-y-2">
-                              <Label className="text-sm font-semibold text-neutral">Notas</Label>
+                              <Label className="text-sm font-semibold text-muted-foreground">Notas</Label>
                               <p className="text-sm bg-gray-50 p-3 rounded border whitespace-pre-wrap">{client.notes}</p>
                             </div>
                           )}
                           {client.observacionesAdicionalesSinSat && (
                             <div className="space-y-2">
-                              <Label className="text-sm font-semibold text-neutral">Observaciones Adicionales</Label>
+                              <Label className="text-sm font-semibold text-muted-foreground">Observaciones Adicionales</Label>
                               <p className="text-sm bg-gray-50 p-3 rounded border whitespace-pre-wrap">{client.observacionesAdicionalesSinSat}</p>
                             </div>
                           )}
@@ -2016,6 +2027,15 @@ export default function ClientDetailPage() {
                     </div>
                   )}
                 </div>
+                <DialogFooter className="pt-4 border-t mt-6">
+                  <Button
+                    variant="outline"
+                    onClick={() => setShowFinancialModal(false)}
+                    data-testid="button-close-financial-modal"
+                  >
+                    Cerrar
+                  </Button>
+                </DialogFooter>
               </DialogContent>
             </Dialog>
 
@@ -2074,8 +2094,8 @@ export default function ClientDetailPage() {
                         return vigentes.length === 0 ? (
                           <div className="text-center py-8">
                             <CreditCard className="h-12 w-12 text-gray-300 mx-auto mb-3" />
-                            <p className="text-sm text-neutral mb-2">No hay créditos vigentes</p>
-                            <p className="text-xs text-neutral">
+                            <p className="text-sm text-muted-foreground mb-2">No hay créditos vigentes</p>
+                            <p className="text-xs text-muted-foreground">
                               Los créditos vigentes se registran en el perfil del cliente
                             </p>
                           </div>
@@ -2098,25 +2118,25 @@ export default function ClientDetailPage() {
                                     <div className="grid grid-cols-2 gap-2 mt-2">
                                       {credito.institucion && (
                                         <div>
-                                          <Label className="text-xs text-neutral">Financiera</Label>
+                                          <Label className="text-xs text-muted-foreground">Financiera</Label>
                                           <p className="text-sm">{credito.institucion}</p>
                                         </div>
                                       )}
                                       {credito.saldoOriginal && (
                                         <div>
-                                          <Label className="text-xs text-neutral">Saldo Original</Label>
+                                          <Label className="text-xs text-muted-foreground">Saldo Original</Label>
                                           <p className="text-sm">${parseFloat(credito.saldoOriginal || '0').toLocaleString('es-MX', { maximumFractionDigits: 0 })} MXN</p>
                                         </div>
                                       )}
                                       {credito.fechaInicio && (
                                         <div>
-                                          <Label className="text-xs text-neutral">Fecha Inicio</Label>
+                                          <Label className="text-xs text-muted-foreground">Fecha Inicio</Label>
                                           <p className="text-sm">{credito.fechaInicio}</p>
                                         </div>
                                       )}
                                       {credito.fechaTermino && (
                                         <div>
-                                          <Label className="text-xs text-neutral">Fecha Término</Label>
+                                          <Label className="text-xs text-muted-foreground">Fecha Término</Label>
                                           <p className="text-sm">{credito.fechaTermino}</p>
                                         </div>
                                       )}
@@ -2157,8 +2177,8 @@ export default function ClientDetailPage() {
                       ) : !creditHistories || creditHistories.length === 0 ? (
                         <div className="text-center py-8">
                           <History className="h-12 w-12 text-gray-300 mx-auto mb-3" />
-                          <p className="text-sm text-neutral mb-2">No hay historial crediticio registrado</p>
-                          <p className="text-xs text-neutral mb-3">
+                          <p className="text-sm text-muted-foreground mb-2">No hay historial crediticio registrado</p>
+                          <p className="text-xs text-muted-foreground mb-3">
                             Si el cliente tiene créditos anteriores, puede ingresarlos manualmente
                           </p>
                           <Button
@@ -2188,21 +2208,21 @@ export default function ClientDetailPage() {
                                   </div>
                                   <div className="grid grid-cols-2 gap-2 mt-2">
                                     <div>
-                                      <Label className="text-xs text-neutral">Plazo</Label>
+                                      <Label className="text-xs text-muted-foreground">Plazo</Label>
                                       <p className="text-sm">{history.termMonths} meses</p>
                                     </div>
                                     <div>
-                                      <Label className="text-xs text-neutral">Tasa de Interés</Label>
+                                      <Label className="text-xs text-muted-foreground">Tasa de Interés</Label>
                                       <p className="text-sm">{history.interestRate}%</p>
                                     </div>
                                     {history.financialInstitution && (
                                       <div>
-                                        <Label className="text-xs text-neutral">Financiera</Label>
+                                        <Label className="text-xs text-muted-foreground">Financiera</Label>
                                         <p className="text-sm">{history.financialInstitution}</p>
                                       </div>
                                     )}
                                     <div>
-                                      <Label className="text-xs text-neutral">Registrado</Label>
+                                      <Label className="text-xs text-muted-foreground">Registrado</Label>
                                       <p className="text-sm">
                                         {formatDistanceToNow(new Date(history.createdAt!), { 
                                           addSuffix: true, 
@@ -2213,7 +2233,7 @@ export default function ClientDetailPage() {
                                   </div>
                                   {history.notes && (
                                     <div className="mt-2">
-                                      <Label className="text-xs text-neutral">Notas</Label>
+                                      <Label className="text-xs text-muted-foreground">Notas</Label>
                                       <p className="text-sm italic text-gray-600">{history.notes}</p>
                                     </div>
                                   )}
@@ -2236,8 +2256,8 @@ export default function ClientDetailPage() {
                       {!submissions || submissions.length === 0 ? (
                         <div className="text-center py-8">
                           <FileText className="h-12 w-12 text-gray-300 mx-auto mb-3" />
-                          <p className="text-sm text-neutral mb-2">No hay créditos en gestión</p>
-                          <p className="text-xs text-neutral">
+                          <p className="text-sm text-muted-foreground mb-2">No hay créditos en gestión</p>
+                          <p className="text-xs text-muted-foreground">
                             Los créditos en gestión aparecerán aquí cuando se registren en el sistema
                           </p>
                         </div>
@@ -2280,11 +2300,11 @@ export default function ClientDetailPage() {
                                     </div>
                                     <div className="grid grid-cols-2 gap-2 mt-2">
                                       <div>
-                                        <Label className="text-xs text-neutral">Producto</Label>
+                                        <Label className="text-xs text-muted-foreground">Producto</Label>
                                         <p className="text-sm">{submission.productTemplate?.name || 'N/A'}</p>
                                       </div>
                                       <div>
-                                        <Label className="text-xs text-neutral">Enviado</Label>
+                                        <Label className="text-xs text-muted-foreground">Enviado</Label>
                                         <p className="text-sm">
                                           {formatDistanceToNow(new Date(submission.createdAt), { 
                                             addSuffix: true, 
@@ -2344,6 +2364,15 @@ export default function ClientDetailPage() {
                     </TabsContent>
                   </Tabs>
                 </div>
+                <DialogFooter className="pt-4 border-t mt-6">
+                  <Button
+                    variant="outline"
+                    onClick={() => setShowHistoryModal(false)}
+                    data-testid="button-close-history-modal"
+                  >
+                    Cerrar
+                  </Button>
+                </DialogFooter>
               </DialogContent>
             </Dialog>
         </main>
@@ -2385,6 +2414,7 @@ export default function ClientDetailPage() {
               queryClient.invalidateQueries({ queryKey: [`/api/documents/client/${clientId}`] });
               setShowDocumentUploadModal(false);
             }}
+            onCancel={() => setShowDocumentUploadModal(false)}
           />
         </DialogContent>
       </Dialog>
@@ -2468,6 +2498,15 @@ export default function ClientDetailPage() {
               </>
             )}
           </div>
+          <DialogFooter className="pt-3 border-t mt-3 flex justify-end">
+            <Button
+              variant="outline"
+              onClick={() => setPreviewDocument(null)}
+              data-testid="button-close-preview-modal"
+            >
+              Cerrar
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </MainLayout>
@@ -2674,6 +2713,7 @@ function VigenteForm({
               type="button"
               variant="outline"
               onClick={onCancel}
+              disabled={updateVigentesMutation.isPending}
               data-testid="button-cancel-vigente"
             >
               Cancelar
@@ -2683,7 +2723,14 @@ function VigenteForm({
               disabled={updateVigentesMutation.isPending}
               data-testid="button-save-vigente"
             >
-              {updateVigentesMutation.isPending ? "Guardando..." : "Guardar"}
+              {updateVigentesMutation.isPending ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  Guardando...
+                </>
+              ) : (
+                "Guardar"
+              )}
             </Button>
           </div>
         </form>
@@ -2853,11 +2900,12 @@ function CreditHistoryDialog({
             />
           </div>
 
-          <div className="flex justify-end space-x-2 pt-4">
+          <DialogFooter className="gap-2 pt-4">
             <Button
               type="button"
               variant="outline"
               onClick={() => onOpenChange(false)}
+              disabled={createHistoryMutation.isPending}
               data-testid="button-cancel-history"
             >
               Cancelar
@@ -2867,9 +2915,16 @@ function CreditHistoryDialog({
               disabled={createHistoryMutation.isPending}
               data-testid="button-submit-history"
             >
-              {createHistoryMutation.isPending ? "Guardando..." : "Agregar Historial"}
+              {createHistoryMutation.isPending ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  Guardando...
+                </>
+              ) : (
+                "Agregar Historial"
+              )}
             </Button>
-          </div>
+          </DialogFooter>
         </form>
       </DialogContent>
     </Dialog>

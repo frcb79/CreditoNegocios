@@ -34,7 +34,8 @@ import {
   Calendar,
   AlertCircle,
   FileCheck2,
-  X
+  X,
+  Loader2
 } from "lucide-react";
 
 const documentTypes = [
@@ -607,7 +608,7 @@ export default function Documents() {
                                   data-testid={`button-delete-${document.id}`}
                                 >
                                   {deleteMutation.isPending ? (
-                                    <div className="w-2.5 h-2.5 border-2 border-slate-400 border-t-transparent rounded-full animate-spin"></div>
+                                    <Loader2 className="w-3 h-3 animate-spin text-muted-foreground" />
                                   ) : (
                                     <Trash2 className="w-3 h-3" />
                                   )}
@@ -761,7 +762,7 @@ export default function Documents() {
                           data-testid={`button-delete-mobile-${document.id}`}
                         >
                           {deleteMutation.isPending ? (
-                            <div className="w-2.5 h-2.5 border-2 border-slate-400 border-t-transparent rounded-full animate-spin"></div>
+                            <Loader2 className="w-3 h-3 animate-spin text-muted-foreground" />
                           ) : (
                             <Trash2 className="w-3 h-3" />
                           )}
@@ -778,7 +779,7 @@ export default function Documents() {
           <Dialog open={showUpload} onOpenChange={setShowUpload}>
             <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
               <DialogHeader>
-                <DialogTitle className="text-base font-semibold text-slate-900">
+                <DialogTitle className="text-base font-semibold text-foreground">
                   {editingDocument ? 'Editar Documento' : 'Subir Nuevo Documento'}
                 </DialogTitle>
               </DialogHeader>
@@ -789,6 +790,10 @@ export default function Documents() {
                     setShowUpload(false);
                     setEditingDocument(null);
                     queryClient.invalidateQueries({ queryKey: ["/api/documents"] });
+                  }}
+                  onCancel={() => {
+                    setShowUpload(false);
+                    setEditingDocument(null);
                   }}
                 />
               )}

@@ -36,7 +36,8 @@ import {
   Search,
   MoreHorizontal,
   Home,
-  Users
+  Users,
+  Loader2
 } from "lucide-react";
 import FinalProposalModal from "@/components/Modals/FinalProposalModal";
 import MatchingComparisonTable from "@/components/MatchingAnalysis/MatchingComparisonTable";
@@ -866,35 +867,22 @@ export default function CreditList() {
       >
         <DialogContent className="max-w-5xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle className="flex items-center justify-between">
-              <div className="flex items-center space-x-3">
-                <User className="w-6 h-6 text-primary" />
-                <div>
-                  <h2 className="text-xl font-bold">
-                    {selectedClient 
-                      ? getClientName(selectedClient.id) 
-                      : selectedCreditItem 
-                        ? getClientName(selectedCreditItem.clientId) 
-                        : 'Cargando...'}
-                  </h2>
-                  <p className="text-sm text-gray-500 font-normal">
-                    {selectedCreditItem?.type === 'credit' 
-                      ? 'Detalle del Crédito Dispersado' 
-                      : 'Análisis Detallado de Matching'}
-                  </p>
-                </div>
+            <DialogTitle className="flex items-center space-x-3">
+              <User className="w-6 h-6 text-primary shrink-0" />
+              <div>
+                <h2 className="text-xl font-bold">
+                  {selectedClient 
+                    ? getClientName(selectedClient.id) 
+                    : selectedCreditItem 
+                      ? getClientName(selectedCreditItem.clientId) 
+                      : 'Cargando...'}
+                </h2>
+                <p className="text-sm text-muted-foreground font-normal">
+                  {selectedCreditItem?.type === 'credit' 
+                    ? 'Detalle del Crédito Dispersado' 
+                    : 'Análisis Detallado de Matching'}
+                </p>
               </div>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => {
-                  setSelectedSubmissionId(null);
-                  setSelectedCreditItem(null);
-                }}
-                data-testid="button-close-dialog"
-              >
-                <X className="w-4 h-4" />
-              </Button>
             </DialogTitle>
           </DialogHeader>
 
@@ -1112,7 +1100,11 @@ export default function CreditList() {
                                       disabled={markDispersedMutation.isPending}
                                       data-testid={`button-disperse-${target.id}`}
                                     >
-                                      <Package className="w-3.5 h-3.5 mr-1.5" />
+                                      {markDispersedMutation.isPending && markDispersedMutation.variables === target.id ? (
+                                        <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />
+                                      ) : (
+                                        <Package className="w-3.5 h-3.5 mr-1.5" />
+                                      )}
                                       Dispersar Crédito
                                     </Button>
                                   )
@@ -1336,12 +1328,12 @@ export default function CreditList() {
                 <CardContent>
                   <div className="grid grid-cols-2 gap-4">
                     <div className="flex items-start space-x-3">
-                      <User className="w-5 h-5 text-gray-400 mt-0.5" />
+                      <User className="w-5 h-5 text-muted-foreground mt-0.5" />
                       <div>
-                        <p className="text-xs text-gray-500">Cliente</p>
-                        <p className="font-semibold text-gray-900">{getClientName(selectedCreditItem.clientId)}</p>
+                        <p className="text-xs text-muted-foreground">Cliente</p>
+                        <p className="font-semibold text-foreground">{getClientName(selectedCreditItem.clientId)}</p>
                         {selectedClient && (
-                          <p className="text-xs text-gray-600">
+                          <p className="text-xs text-muted-foreground">
                             {selectedClient.type === 'persona_moral' ? 'Persona Moral' :
                              selectedClient.type === 'fisica_empresarial' ? 'PFAE' :
                              selectedClient.type === 'fisica' ? 'Persona Física' : 'Sin SAT'}
@@ -1351,9 +1343,9 @@ export default function CreditList() {
                     </div>
 
                     <div className="flex items-start space-x-3">
-                      <DollarSign className="w-5 h-5 text-gray-400 mt-0.5" />
+                      <DollarSign className="w-5 h-5 text-muted-foreground mt-0.5" />
                       <div>
-                        <p className="text-xs text-gray-500">Monto Aprobado / Dispersado</p>
+                        <p className="text-xs text-muted-foreground">Monto Aprobado / Dispersado</p>
                         <p className="font-bold text-xl text-primary">
                           ${parseFloat(selectedCreditItem.amount || '0').toLocaleString('es-MX')} MXN
                         </p>
@@ -1362,40 +1354,40 @@ export default function CreditList() {
 
                     {selectedCreditItem.financialInstitutionName && (
                       <div className="flex items-start space-x-3">
-                        <Building2 className="w-5 h-5 text-gray-400 mt-0.5" />
+                        <Building2 className="w-5 h-5 text-muted-foreground mt-0.5" />
                         <div>
-                          <p className="text-xs text-gray-500">Financiera</p>
-                          <p className="font-medium text-gray-900">{selectedCreditItem.financialInstitutionName}</p>
+                          <p className="text-xs text-muted-foreground">Financiera</p>
+                          <p className="font-medium text-foreground">{selectedCreditItem.financialInstitutionName}</p>
                         </div>
                       </div>
                     )}
 
                     {selectedCreditItem.productTemplateName && (
                       <div className="flex items-start space-x-3">
-                        <FileText className="w-5 h-5 text-gray-400 mt-0.5" />
+                        <FileText className="w-5 h-5 text-muted-foreground mt-0.5" />
                         <div>
-                          <p className="text-xs text-gray-500">Producto / Modalidad</p>
-                          <p className="font-medium text-gray-900">{selectedCreditItem.productTemplateName}</p>
+                          <p className="text-xs text-muted-foreground">Producto / Modalidad</p>
+                          <p className="font-medium text-foreground">{selectedCreditItem.productTemplateName}</p>
                         </div>
                       </div>
                     )}
 
                     {selectedCreditItem.term && (
                       <div className="flex items-start space-x-3">
-                        <Calendar className="w-5 h-5 text-gray-400 mt-0.5" />
+                        <Calendar className="w-5 h-5 text-muted-foreground mt-0.5" />
                         <div>
-                          <p className="text-xs text-gray-500">Plazo</p>
-                          <p className="font-medium text-gray-900">{selectedCreditItem.term} meses</p>
+                          <p className="text-xs text-muted-foreground">Plazo</p>
+                          <p className="font-medium text-foreground">{selectedCreditItem.term} meses</p>
                         </div>
                       </div>
                     )}
 
                     {selectedCreditItem.frequency && (
                       <div className="flex items-start space-x-3">
-                        <Calendar className="w-5 h-5 text-gray-400 mt-0.5" />
+                        <Calendar className="w-5 h-5 text-muted-foreground mt-0.5" />
                         <div>
-                          <p className="text-xs text-gray-500">Frecuencia de Pago</p>
-                          <p className="font-medium text-gray-900 capitalize">
+                          <p className="text-xs text-muted-foreground">Frecuencia de Pago</p>
+                          <p className="font-medium text-foreground capitalize">
                             {selectedCreditItem.frequency === 'weekly' ? 'Semanal' :
                              selectedCreditItem.frequency === 'biweekly' ? 'Quincenal' :
                              selectedCreditItem.frequency === 'monthly' ? 'Mensual' : selectedCreditItem.frequency}
@@ -1406,10 +1398,10 @@ export default function CreditList() {
 
                     {selectedCreditItem.interestRate && (
                       <div className="flex items-start space-x-3">
-                        <Percent className="w-5 h-5 text-gray-400 mt-0.5" />
+                        <Percent className="w-5 h-5 text-muted-foreground mt-0.5" />
                         <div>
-                          <p className="text-xs text-gray-500">Tasa de Interés</p>
-                          <p className="font-medium text-gray-900">{selectedCreditItem.interestRate}%</p>
+                          <p className="text-xs text-muted-foreground">Tasa de Interés</p>
+                          <p className="font-medium text-foreground">{selectedCreditItem.interestRate}%</p>
                         </div>
                       </div>
                     )}
@@ -1476,7 +1468,7 @@ export default function CreditList() {
             </div>
           )}
 
-          <DialogFooter className="flex justify-between items-center gap-2">
+          <DialogFooter className="flex flex-col-reverse sm:flex-row sm:justify-between items-center gap-2 pt-4 border-t">
             <Button
               variant="outline"
               onClick={() => {
@@ -1498,7 +1490,6 @@ export default function CreditList() {
                     setLocation(`/comparar-propuestas/${reqId}`);
                   }
                 }}
-                className="bg-primary text-white hover:bg-primary-dark"
                 data-testid="button-compare-proposals"
               >
                 Ver Comparativo de Propuestas
