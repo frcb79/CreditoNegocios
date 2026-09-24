@@ -45,7 +45,7 @@ export default function BrokerNetwork() {
             <p className="text-xs text-muted-foreground mb-5 leading-relaxed">
               Esta funcionalidad y la gestión autónoma de comisiones de equipo están disponibles únicamente para perfiles con rango Master Broker y Administradores.
             </p>
-            <Link href="/dashboard">
+            <Link href="/">
               <Button size="sm" className="h-8 text-xs bg-primary hover:bg-primary/90 text-white shadow-xs">
                 Volver al Panel Principal
               </Button>

@@ -42,7 +42,7 @@ export default function Dashboard() {
       title: "Dashboard Principal",
       subtitle: "Gestión operativa de tus solicitudes de crédito, expedientes y cartera",
       action: {
-        label: "Nuevo Crédito",
+        label: "Ver Créditos",
         href: "/creditos",
       },
     };

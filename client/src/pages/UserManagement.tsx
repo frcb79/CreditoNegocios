@@ -51,7 +51,9 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { cn } from "@/lib/utils";
+import { Link } from "wouter";
 import { 
+  ArrowLeft,
   UserPlus, 
   Edit, 
   Power, 
@@ -773,6 +775,12 @@ export default function UserManagement() {
           <p className="text-muted-foreground max-w-md mb-6 text-sm">
             Tu cuenta no pertenece a ninguna organización activa. Contacta a un administrador de plataforma para vincular tu cuenta a un equipo.
           </p>
+          <Link href="/">
+            <Button variant="default" className="gap-2" size="sm">
+              <ArrowLeft className="w-4 h-4" />
+              Volver al Dashboard
+            </Button>
+          </Link>
         </div>
       </MainLayout>
     );

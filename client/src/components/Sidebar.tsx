@@ -12,7 +12,6 @@ import {
   PieChart,
   Users,
   CreditCard,
-  Coins,
   Repeat,
   Network,
   Clock,
@@ -44,7 +43,6 @@ const navigation: NavItemDef[] = [
   { name: 'Dashboard', href: '/', icon: PieChart, section: "operacion" },
   { name: 'Clientes', href: '/clientes', icon: Users, section: "operacion" },
   { name: 'Gestión de Créditos', href: '/creditos', icon: CreditCard, section: "operacion" },
-  { name: 'Mis Créditos', href: '/mis-solicitudes', icon: Coins, brokerOnly: true, section: "operacion" },
   { name: 'Renovaciones', href: '/re-gestion', icon: Repeat, section: "operacion" },
   // Catálogos y Productos
   { name: 'Financieras', href: '/financieras', icon: Building2, section: "catalogos" },
