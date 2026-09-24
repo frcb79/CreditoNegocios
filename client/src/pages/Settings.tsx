@@ -505,281 +505,292 @@ export default function Settings() {
     <MainLayout>
       <Header 
         title="Configuración"
-        subtitle="Gestiona tu perfil y preferencias"
+        subtitle="Gestiona tu perfil, preferencias del sistema y esquema comercial"
       />
       
-      <main className="flex-1 p-4 sm:p-6 lg:p-8 overflow-y-auto">
-          <div className="max-w-4xl mx-auto">
-            <Tabs value={activeTab} onValueChange={setActiveTab}>
-              <TabsList className="grid w-full grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 h-auto gap-1">
-                <TabsTrigger value="profile" data-testid="tab-profile" className="text-xs sm:text-sm py-2">Perfil</TabsTrigger>
-                <TabsTrigger value="notifications" data-testid="tab-notifications" className="text-xs sm:text-sm py-2">Notificaciones</TabsTrigger>
-                <TabsTrigger value="business" data-testid="tab-business" className="text-xs sm:text-sm py-2">Negocio</TabsTrigger>
-                <TabsTrigger value="profiling" data-testid="tab-profiling" className="text-xs sm:text-sm py-2">Perfilamiento</TabsTrigger>
-                <TabsTrigger value="security" data-testid="tab-security" className="text-xs sm:text-sm py-2">Seguridad</TabsTrigger>
-                <TabsTrigger value="benefits" data-testid="tab-benefits" className="text-xs sm:text-sm py-2">Beneficios y Acceso</TabsTrigger>
+      <main className="flex-1 p-3 sm:p-5 lg:p-6 overflow-y-auto">
+        <div className="max-w-4xl mx-auto space-y-4">
+          <Tabs value={activeTab} onValueChange={setActiveTab}>
+            <div className="overflow-x-auto pb-1 -mx-1 px-1">
+              <TabsList className="inline-flex w-full min-w-[540px] sm:min-w-0 grid-cols-6 h-9 p-1 bg-muted/70 rounded-lg">
+                <TabsTrigger value="profile" data-testid="tab-profile" className="text-xs font-medium py-1 px-2">Perfil</TabsTrigger>
+                <TabsTrigger value="notifications" data-testid="tab-notifications" className="text-xs font-medium py-1 px-2">Notificaciones</TabsTrigger>
+                <TabsTrigger value="business" data-testid="tab-business" className="text-xs font-medium py-1 px-2">Negocio</TabsTrigger>
+                <TabsTrigger value="profiling" data-testid="tab-profiling" className="text-xs font-medium py-1 px-2">Perfilamiento</TabsTrigger>
+                <TabsTrigger value="security" data-testid="tab-security" className="text-xs font-medium py-1 px-2">Seguridad</TabsTrigger>
+                <TabsTrigger value="benefits" data-testid="tab-benefits" className="text-xs font-medium py-1 px-2">Beneficios</TabsTrigger>
               </TabsList>
+            </div>
 
-              {/* Profile Settings */}
-              <TabsContent value="profile" className="space-y-6">
-                <Card>
-                  <CardHeader>
-                    <CardTitle>Información Personal</CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <Form {...profileForm}>
-                      <form onSubmit={profileForm.handleSubmit(onProfileSubmit)} className="space-y-6">
-                        <div className="flex flex-col sm:flex-row items-center gap-4 sm:gap-6">
-                          <div className="w-20 h-20 sm:w-24 sm:h-24 bg-gradient-to-r from-primary to-secondary rounded-full flex items-center justify-center flex-shrink-0 overflow-hidden">
-                            {avatarPreview ? (
-                              <img
-                                src={avatarPreview}
-                                alt="Foto de perfil"
-                                className="w-full h-full object-cover"
-                                onError={() => setAvatarPreview(null)}
-                              />
-                            ) : (
-                              <span className="text-white font-semibold text-xl sm:text-2xl">
-                                {user?.firstName?.[0]}{user?.lastName?.[0]}
-                              </span>
-                            )}
-                          </div>
-                          <div className="text-center sm:text-left">
+            {/* Profile Settings */}
+            <TabsContent value="profile" className="space-y-4 mt-3">
+              <Card className="border border-border/80 shadow-xs">
+                <CardHeader className="py-3 px-4 sm:px-6 border-b border-border/60">
+                  <CardTitle className="text-base font-semibold">Información Personal</CardTitle>
+                  <CardDescription className="text-xs">
+                    Datos principales de tu cuenta y dirección de correspondencia
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="p-4 sm:p-6">
+                  <Form {...profileForm}>
+                    <form onSubmit={profileForm.handleSubmit(onProfileSubmit)} className="space-y-5">
+                      <div className="flex flex-col sm:flex-row items-center gap-4 p-3 bg-muted/30 border border-border/60 rounded-lg">
+                        <div className="w-16 h-16 sm:w-18 sm:h-18 bg-gradient-to-r from-primary to-secondary rounded-full flex items-center justify-center flex-shrink-0 overflow-hidden shadow-xs">
+                          {avatarPreview ? (
+                            <img
+                              src={avatarPreview}
+                              alt="Foto de perfil"
+                              className="w-full h-full object-cover"
+                              onError={() => setAvatarPreview(null)}
+                            />
+                          ) : (
+                            <span className="text-white font-semibold text-lg">
+                              {user?.firstName?.[0]}{user?.lastName?.[0]}
+                            </span>
+                          )}
+                        </div>
+                        <div className="text-center sm:text-left flex-1 min-w-0">
+                          <div className="flex flex-wrap items-center justify-center sm:justify-start gap-2">
                             <Button
                               type="button"
                               variant="outline"
                               size="sm"
-                              className="sm:size-default"
+                              className="h-8 text-xs font-medium"
                               onClick={() => avatarInputRef.current?.click()}
                               disabled={updateAvatarMutation.isPending}
                               data-testid="button-change-profile-photo"
                             >
-                              <i className={updateAvatarMutation.isPending ? "fas fa-spinner fa-spin mr-2" : "fas fa-camera mr-2"}></i>
+                              <i className={updateAvatarMutation.isPending ? "fas fa-spinner fa-spin mr-1.5" : "fas fa-camera mr-1.5"}></i>
                               {updateAvatarMutation.isPending ? "Actualizando..." : "Cambiar Foto"}
                             </Button>
-                            <input
-                              ref={avatarInputRef}
-                              type="file"
-                              accept="image/png,image/jpeg,image/jpg,image/gif"
-                              className="hidden"
-                              onChange={handleAvatarSelection}
-                            />
-                            <p className="text-xs sm:text-sm text-neutral mt-2">
-                              JPG, PNG o GIF (máx. 2MB)
-                            </p>
+                            <span className="text-xs text-muted-foreground">JPG, PNG o GIF (máx. 2MB)</span>
                           </div>
-                        </div>
-
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                          <FormField
-                            control={profileForm.control}
-                            name="firstName"
-                            render={({ field }) => (
-                              <FormItem>
-                                <FormLabel>Nombre(s)</FormLabel>
-                                <FormControl>
-                                  <Input {...field} data-testid="input-first-name" />
-                                </FormControl>
-                                <FormMessage />
-                              </FormItem>
-                            )}
-                          />
-
-                          <FormField
-                            control={profileForm.control}
-                            name="lastName"
-                            render={({ field }) => (
-                              <FormItem>
-                                <FormLabel>Apellidos</FormLabel>
-                                <FormControl>
-                                  <Input {...field} data-testid="input-last-name" />
-                                </FormControl>
-                                <FormMessage />
-                              </FormItem>
-                            )}
+                          <input
+                            ref={avatarInputRef}
+                            type="file"
+                            accept="image/png,image/jpeg,image/jpg,image/gif"
+                            className="hidden"
+                            onChange={handleAvatarSelection}
                           />
                         </div>
+                      </div>
 
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <FormField
+                          control={profileForm.control}
+                          name="firstName"
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel className="text-xs font-medium">Nombre(s)</FormLabel>
+                              <FormControl>
+                                <Input className="h-9 text-xs" {...field} data-testid="input-first-name" />
+                              </FormControl>
+                              <FormMessage className="text-xs" />
+                            </FormItem>
+                          )}
+                        />
+
+                        <FormField
+                          control={profileForm.control}
+                          name="lastName"
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel className="text-xs font-medium">Apellidos</FormLabel>
+                              <FormControl>
+                                <Input className="h-9 text-xs" {...field} data-testid="input-last-name" />
+                              </FormControl>
+                              <FormMessage className="text-xs" />
+                            </FormItem>
+                          )}
+                        />
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                         <FormField
                           control={profileForm.control}
                           name="email"
                           render={({ field }) => (
                             <FormItem>
-                              <FormLabel>Email</FormLabel>
+                              <FormLabel className="text-xs font-medium">Email</FormLabel>
                               <FormControl>
-                                <Input type="email" {...field} data-testid="input-email" />
+                                <Input className="h-9 text-xs" type="email" {...field} data-testid="input-email" />
                               </FormControl>
-                              <FormDescription>
-                                Este email se usa para notificaciones y acceso a la cuenta
+                              <FormDescription className="text-[11px] leading-tight">
+                                Usado para notificaciones y acceso a la cuenta
                               </FormDescription>
-                              <FormMessage />
+                              <FormMessage className="text-xs" />
                             </FormItem>
                           )}
                         />
 
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <FormField
+                          control={profileForm.control}
+                          name="phone"
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel className="text-xs font-medium">Teléfono</FormLabel>
+                              <FormControl>
+                                <Input className="h-9 text-xs" placeholder="+52 55 1234 5678" {...field} data-testid="input-phone" />
+                              </FormControl>
+                              <FormMessage className="text-xs" />
+                            </FormItem>
+                          )}
+                        />
+                      </div>
+
+                      {/* Address Section */}
+                      <div className="space-y-3 pt-3 border-t border-border/60">
+                        <h4 className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Dirección</h4>
+                        
+                        <FormField
+                          control={profileForm.control}
+                          name="street"
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel className="text-xs font-medium">Calle</FormLabel>
+                              <FormControl>
+                                <Input className="h-9 text-xs" placeholder="Nombre de la calle" {...field} data-testid="input-street" />
+                              </FormControl>
+                              <FormMessage className="text-xs" />
+                            </FormItem>
+                          )}
+                        />
+
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                           <FormField
                             control={profileForm.control}
-                            name="phone"
+                            name="exteriorNumber"
                             render={({ field }) => (
                               <FormItem>
-                                <FormLabel>Teléfono</FormLabel>
+                                <FormLabel className="text-xs font-medium">Número Exterior</FormLabel>
                                 <FormControl>
-                                  <Input placeholder="+52 55 1234 5678" {...field} data-testid="input-phone" />
+                                  <Input className="h-9 text-xs" placeholder="123" {...field} data-testid="input-exterior-number" />
                                 </FormControl>
-                                <FormMessage />
+                                <FormMessage className="text-xs" />
+                              </FormItem>
+                            )}
+                          />
+
+                          <FormField
+                            control={profileForm.control}
+                            name="interiorNumber"
+                            render={({ field }) => (
+                              <FormItem>
+                                <FormLabel className="text-xs font-medium">Número Interior (Opcional)</FormLabel>
+                                <FormControl>
+                                  <Input className="h-9 text-xs" placeholder="Depto 4B" {...field} data-testid="input-interior-number" />
+                                </FormControl>
+                                <FormMessage className="text-xs" />
                               </FormItem>
                             )}
                           />
                         </div>
 
-                        {/* Address Section */}
-                        <div className="space-y-4">
-                          <h4 className="font-semibold text-gray-900">Dirección</h4>
-                          
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                           <FormField
                             control={profileForm.control}
-                            name="street"
+                            name="colonia"
                             render={({ field }) => (
                               <FormItem>
-                                <FormLabel>Calle</FormLabel>
+                                <FormLabel className="text-xs font-medium">Colonia</FormLabel>
                                 <FormControl>
-                                  <Input placeholder="Nombre de la calle" {...field} data-testid="input-street" />
+                                  <Input className="h-9 text-xs" placeholder="Nombre de la colonia" {...field} data-testid="input-colonia" />
                                 </FormControl>
-                                <FormMessage />
+                                <FormMessage className="text-xs" />
                               </FormItem>
                             )}
                           />
 
-                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            <FormField
-                              control={profileForm.control}
-                              name="exteriorNumber"
-                              render={({ field }) => (
-                                <FormItem>
-                                  <FormLabel>Número Exterior</FormLabel>
-                                  <FormControl>
-                                    <Input placeholder="123" {...field} data-testid="input-exterior-number" />
-                                  </FormControl>
-                                  <FormMessage />
-                                </FormItem>
-                              )}
-                            />
-
-                            <FormField
-                              control={profileForm.control}
-                              name="interiorNumber"
-                              render={({ field }) => (
-                                <FormItem>
-                                  <FormLabel>Número Interior (Opcional)</FormLabel>
-                                  <FormControl>
-                                    <Input placeholder="Depto 4B" {...field} data-testid="input-interior-number" />
-                                  </FormControl>
-                                  <FormMessage />
-                                </FormItem>
-                              )}
-                            />
-                          </div>
-
-                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            <FormField
-                              control={profileForm.control}
-                              name="colonia"
-                              render={({ field }) => (
-                                <FormItem>
-                                  <FormLabel>Colonia</FormLabel>
-                                  <FormControl>
-                                    <Input placeholder="Nombre de la colonia" {...field} data-testid="input-colonia" />
-                                  </FormControl>
-                                  <FormMessage />
-                                </FormItem>
-                              )}
-                            />
-
-                            <FormField
-                              control={profileForm.control}
-                              name="postalCode"
-                              render={({ field }) => (
-                                <FormItem>
-                                  <FormLabel>Código Postal</FormLabel>
-                                  <FormControl>
-                                    <Input placeholder="01234" {...field} data-testid="input-postal-code" />
-                                  </FormControl>
-                                  <FormMessage />
-                                </FormItem>
-                              )}
-                            />
-                          </div>
-
-                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            <FormField
-                              control={profileForm.control}
-                              name="city"
-                              render={({ field }) => (
-                                <FormItem>
-                                  <FormLabel>Ciudad</FormLabel>
-                                  <FormControl>
-                                    <Input placeholder="Ciudad de México" {...field} data-testid="input-city" />
-                                  </FormControl>
-                                  <FormMessage />
-                                </FormItem>
-                              )}
-                            />
-
-                            <FormField
-                              control={profileForm.control}
-                              name="state"
-                              render={({ field }) => (
-                                <FormItem>
-                                  <FormLabel>Estado</FormLabel>
-                                  <FormControl>
-                                    <Input placeholder="CDMX" {...field} data-testid="input-state" />
-                                  </FormControl>
-                                  <FormMessage />
-                                </FormItem>
-                              )}
-                            />
-                          </div>
+                          <FormField
+                            control={profileForm.control}
+                            name="postalCode"
+                            render={({ field }) => (
+                              <FormItem>
+                                <FormLabel className="text-xs font-medium">Código Postal</FormLabel>
+                                <FormControl>
+                                  <Input className="h-9 text-xs" placeholder="01234" {...field} data-testid="input-postal-code" />
+                                </FormControl>
+                                <FormMessage className="text-xs" />
+                              </FormItem>
+                            )}
+                          />
                         </div>
 
-                        <div className="flex justify-end">
-                          <Button 
-                            type="submit"
-                            disabled={updateProfileMutation.isPending}
-                            className="bg-primary text-white hover:bg-primary-dark"
-                            data-testid="button-save-profile"
-                          >
-                            {updateProfileMutation.isPending && <i className="fas fa-spinner fa-spin mr-2"></i>}
-                            Guardar Cambios
-                          </Button>
-                        </div>
-                      </form>
-                    </Form>
-                  </CardContent>
-                </Card>
-              </TabsContent>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                          <FormField
+                            control={profileForm.control}
+                            name="city"
+                            render={({ field }) => (
+                              <FormItem>
+                                <FormLabel className="text-xs font-medium">Ciudad</FormLabel>
+                                <FormControl>
+                                  <Input className="h-9 text-xs" placeholder="Ciudad de México" {...field} data-testid="input-city" />
+                                </FormControl>
+                                <FormMessage className="text-xs" />
+                              </FormItem>
+                            )}
+                          />
 
-              {/* Notification Settings */}
-              <TabsContent value="notifications" className="space-y-6">
-                <Card>
-                  <CardHeader>
-                    <CardTitle>Preferencias de Notificaciones</CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <Form {...notificationForm}>
-                      <form onSubmit={notificationForm.handleSubmit(onNotificationSubmit)} className="space-y-6">
-                        <div className="space-y-4">
-                          <h4 className="font-semibold text-gray-900">Canales de Notificación</h4>
-                          
+                          <FormField
+                            control={profileForm.control}
+                            name="state"
+                            render={({ field }) => (
+                              <FormItem>
+                                <FormLabel className="text-xs font-medium">Estado</FormLabel>
+                                <FormControl>
+                                  <Input className="h-9 text-xs" placeholder="CDMX" {...field} data-testid="input-state" />
+                                </FormControl>
+                                <FormMessage className="text-xs" />
+                              </FormItem>
+                            )}
+                          />
+                        </div>
+                      </div>
+
+                      <div className="flex justify-end pt-2">
+                        <Button 
+                          type="submit"
+                          disabled={updateProfileMutation.isPending}
+                          size="sm"
+                          className="h-9 text-xs font-medium px-4"
+                          data-testid="button-save-profile"
+                        >
+                          {updateProfileMutation.isPending && <i className="fas fa-spinner fa-spin mr-1.5"></i>}
+                          Guardar Cambios
+                        </Button>
+                      </div>
+                    </form>
+                  </Form>
+                </CardContent>
+              </Card>
+            </TabsContent>
+
+            {/* Notification Settings */}
+            <TabsContent value="notifications" className="space-y-4 mt-3">
+              <Card className="border border-border/80 shadow-xs">
+                <CardHeader className="py-3 px-4 sm:px-6 border-b border-border/60">
+                  <CardTitle className="text-base font-semibold">Preferencias de Notificaciones</CardTitle>
+                  <CardDescription className="text-xs">
+                    Define los canales y tipos de avisos operativos que deseas recibir
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="p-4 sm:p-6">
+                  <Form {...notificationForm}>
+                    <form onSubmit={notificationForm.handleSubmit(onNotificationSubmit)} className="space-y-5">
+                      {/* Canales */}
+                      <div className="space-y-2.5">
+                        <h4 className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Canales de Notificación</h4>
+                        
+                        <div className="divide-y divide-border/60 border border-border/70 rounded-lg overflow-hidden bg-card">
                           <FormField
                             control={notificationForm.control}
                             name="emailNotifications"
                             render={({ field }) => (
-                              <FormItem className="flex items-center justify-between p-4 border rounded-lg">
-                                <div className="space-y-0.5">
-                                  <FormLabel className="font-medium">Notificaciones por Email</FormLabel>
-                                  <FormDescription>
-                                    Recibe actualizaciones importantes por correo electrónico
+                              <FormItem className="flex items-center justify-between px-3.5 py-2.5 hover:bg-muted/20 transition-colors">
+                                <div className="space-y-0.5 pr-2">
+                                  <FormLabel className="text-xs font-semibold cursor-pointer">Notificaciones por Email</FormLabel>
+                                  <FormDescription className="text-[11px] leading-tight text-muted-foreground">
+                                    Actualizaciones importantes por correo electrónico
                                   </FormDescription>
                                 </div>
                                 <FormControl>
@@ -797,11 +808,11 @@ export default function Settings() {
                             control={notificationForm.control}
                             name="whatsappNotifications"
                             render={({ field }) => (
-                              <FormItem className="flex items-center justify-between p-4 border rounded-lg">
-                                <div className="space-y-0.5">
-                                  <FormLabel className="font-medium">Notificaciones por WhatsApp</FormLabel>
-                                  <FormDescription>
-                                    Alertas urgentes y recordatorios por WhatsApp
+                              <FormItem className="flex items-center justify-between px-3.5 py-2.5 hover:bg-muted/20 transition-colors">
+                                <div className="space-y-0.5 pr-2">
+                                  <FormLabel className="text-xs font-semibold cursor-pointer">Notificaciones por WhatsApp</FormLabel>
+                                  <FormDescription className="text-[11px] leading-tight text-muted-foreground">
+                                    Alertas urgentes y recordatorios por mensajería
                                   </FormDescription>
                                 </div>
                                 <FormControl>
@@ -819,11 +830,11 @@ export default function Settings() {
                             control={notificationForm.control}
                             name="pushNotifications"
                             render={({ field }) => (
-                              <FormItem className="flex items-center justify-between p-4 border rounded-lg">
-                                <div className="space-y-0.5">
-                                  <FormLabel className="font-medium">Notificaciones Push</FormLabel>
-                                  <FormDescription>
-                                    Notificaciones en tiempo real en la aplicación
+                              <FormItem className="flex items-center justify-between px-3.5 py-2.5 hover:bg-muted/20 transition-colors">
+                                <div className="space-y-0.5 pr-2">
+                                  <FormLabel className="text-xs font-semibold cursor-pointer">Notificaciones Push</FormLabel>
+                                  <FormDescription className="text-[11px] leading-tight text-muted-foreground">
+                                    Notificaciones en tiempo real en la aplicación web
                                   </FormDescription>
                                 </div>
                                 <FormControl>
@@ -837,21 +848,22 @@ export default function Settings() {
                             )}
                           />
                         </div>
+                      </div>
 
-                        <Separator />
-
-                        <div className="space-y-4">
-                          <h4 className="font-semibold text-gray-900">Tipos de Alertas</h4>
-                          
+                      {/* Tipos de Alertas */}
+                      <div className="space-y-2.5 pt-2">
+                        <h4 className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Tipos de Alertas Operativas</h4>
+                        
+                        <div className="divide-y divide-border/60 border border-border/70 rounded-lg overflow-hidden bg-card">
                           <FormField
                             control={notificationForm.control}
                             name="creditExpiringAlerts"
                             render={({ field }) => (
-                              <FormItem className="flex items-center justify-between p-4 border rounded-lg">
-                                <div className="space-y-0.5">
-                                  <FormLabel className="font-medium">Créditos por Vencer</FormLabel>
-                                  <FormDescription>
-                                    Alertas cuando los créditos están próximos a vencer
+                              <FormItem className="flex items-center justify-between px-3.5 py-2.5 hover:bg-muted/20 transition-colors">
+                                <div className="space-y-0.5 pr-2">
+                                  <FormLabel className="text-xs font-semibold cursor-pointer">Créditos por Vencer</FormLabel>
+                                  <FormDescription className="text-[11px] leading-tight text-muted-foreground">
+                                    Alertas cuando las solicitudes o líneas están próximas a vencer
                                   </FormDescription>
                                 </div>
                                 <FormControl>
@@ -869,11 +881,11 @@ export default function Settings() {
                             control={notificationForm.control}
                             name="commissionAlerts"
                             render={({ field }) => (
-                              <FormItem className="flex items-center justify-between p-4 border rounded-lg">
-                                <div className="space-y-0.5">
-                                  <FormLabel className="font-medium">Comisiones</FormLabel>
-                                  <FormDescription>
-                                    Notificaciones sobre pagos de comisiones
+                              <FormItem className="flex items-center justify-between px-3.5 py-2.5 hover:bg-muted/20 transition-colors">
+                                <div className="space-y-0.5 pr-2">
+                                  <FormLabel className="text-xs font-semibold cursor-pointer">Comisiones y Pagos</FormLabel>
+                                  <FormDescription className="text-[11px] leading-tight text-muted-foreground">
+                                    Notificaciones sobre aprobación y dispersión de comisiones
                                   </FormDescription>
                                 </div>
                                 <FormControl>
@@ -891,11 +903,11 @@ export default function Settings() {
                             control={notificationForm.control}
                             name="documentAlerts"
                             render={({ field }) => (
-                              <FormItem className="flex items-center justify-between p-4 border rounded-lg">
-                                <div className="space-y-0.5">
-                                  <FormLabel className="font-medium">Documentos Pendientes</FormLabel>
-                                  <FormDescription>
-                                    Recordatorios de documentos faltantes o por vencer
+                              <FormItem className="flex items-center justify-between px-3.5 py-2.5 hover:bg-muted/20 transition-colors">
+                                <div className="space-y-0.5 pr-2">
+                                  <FormLabel className="text-xs font-semibold cursor-pointer">Documentos Pendientes</FormLabel>
+                                  <FormDescription className="text-[11px] leading-tight text-muted-foreground">
+                                    Recordatorios de expedientes incompletos o documentos por renovar
                                   </FormDescription>
                                 </div>
                                 <FormControl>
@@ -913,11 +925,11 @@ export default function Settings() {
                             control={notificationForm.control}
                             name="marketingEmails"
                             render={({ field }) => (
-                              <FormItem className="flex items-center justify-between p-4 border rounded-lg">
-                                <div className="space-y-0.5">
-                                  <FormLabel className="font-medium">Emails de Marketing</FormLabel>
-                                  <FormDescription>
-                                    Noticias sobre productos y promociones
+                              <FormItem className="flex items-center justify-between px-3.5 py-2.5 hover:bg-muted/20 transition-colors">
+                                <div className="space-y-0.5 pr-2">
+                                  <FormLabel className="text-xs font-semibold cursor-pointer">Emails Informativos y Alianzas</FormLabel>
+                                  <FormDescription className="text-[11px] leading-tight text-muted-foreground">
+                                    Nuevos productos financieros y comunicados institucionales
                                   </FormDescription>
                                 </div>
                                 <FormControl>
@@ -931,328 +943,339 @@ export default function Settings() {
                             )}
                           />
                         </div>
+                      </div>
 
-                        <div className="flex justify-end">
-                          <Button 
-                            type="submit"
-                            disabled={updateNotificationsMutation.isPending}
-                            className="bg-primary text-white hover:bg-primary-dark"
-                            data-testid="button-save-notifications"
-                          >
-                            {updateNotificationsMutation.isPending && <i className="fas fa-spinner fa-spin mr-2"></i>}
-                            Guardar Preferencias
-                          </Button>
-                        </div>
-                      </form>
-                    </Form>
-                  </CardContent>
-                </Card>
-              </TabsContent>
+                      <div className="flex justify-end pt-2">
+                        <Button 
+                          type="submit"
+                          disabled={updateNotificationsMutation.isPending}
+                          size="sm"
+                          className="h-9 text-xs font-medium px-4"
+                          data-testid="button-save-notifications"
+                        >
+                          {updateNotificationsMutation.isPending && <i className="fas fa-spinner fa-spin mr-1.5"></i>}
+                          Guardar Preferencias
+                        </Button>
+                      </div>
+                    </form>
+                  </Form>
+                </CardContent>
+              </Card>
+            </TabsContent>
 
-              {/* Business Settings */}
-              <TabsContent value="business" className="space-y-6">
-                <Card>
-                  <CardHeader>
-                    <CardTitle>Información del Negocio</CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <Form {...businessForm}>
-                      <form onSubmit={businessForm.handleSubmit(onBusinessSubmit)} className="space-y-6">
+            {/* Business Settings */}
+            <TabsContent value="business" className="space-y-4 mt-3">
+              <Card className="border border-border/80 shadow-xs">
+                <CardHeader className="py-3 px-4 sm:px-6 border-b border-border/60">
+                  <CardTitle className="text-base font-semibold">Información del Negocio</CardTitle>
+                  <CardDescription className="text-xs">
+                    Datos comerciales y fiscales de tu entidad o despacho broker
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="p-4 sm:p-6">
+                  <Form {...businessForm}>
+                    <form onSubmit={businessForm.handleSubmit(onBusinessSubmit)} className="space-y-4">
+                      <FormField
+                        control={businessForm.control}
+                        name="businessName"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel className="text-xs font-medium">Nombre del Negocio / Marca</FormLabel>
+                            <FormControl>
+                              <Input className="h-9 text-xs" placeholder="Mi Despacho de Brokers" {...field} data-testid="input-business-name" />
+                            </FormControl>
+                            <FormMessage className="text-xs" />
+                          </FormItem>
+                        )}
+                      />
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                         <FormField
                           control={businessForm.control}
-                          name="businessName"
+                          name="taxId"
                           render={({ field }) => (
                             <FormItem>
-                              <FormLabel>Nombre del Negocio</FormLabel>
+                              <FormLabel className="text-xs font-medium">RFC</FormLabel>
                               <FormControl>
-                                <Input placeholder="Mi Empresa de Brokers" {...field} data-testid="input-business-name" />
+                                <Input className="h-9 text-xs uppercase" placeholder="XAXX010101000" {...field} data-testid="input-tax-id" />
                               </FormControl>
-                              <FormDescription>
-                                Nombre de tu empresa o marca personal
-                              </FormDescription>
-                              <FormMessage />
+                              <FormMessage className="text-xs" />
                             </FormItem>
                           )}
                         />
 
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                          <FormField
-                            control={businessForm.control}
-                            name="taxId"
-                            render={({ field }) => (
-                              <FormItem>
-                                <FormLabel>RFC</FormLabel>
-                                <FormControl>
-                                  <Input placeholder="XAXX010101000" {...field} data-testid="input-tax-id" />
-                                </FormControl>
-                                <FormMessage />
-                              </FormItem>
-                            )}
-                          />
-
-                          <FormField
-                            control={businessForm.control}
-                            name="businessPhone"
-                            render={({ field }) => (
-                              <FormItem>
-                                <FormLabel>Teléfono del Negocio</FormLabel>
-                                <FormControl>
-                                  <Input placeholder="+52 55 1234 5678" {...field} data-testid="input-business-phone" />
-                                </FormControl>
-                                <FormMessage />
-                              </FormItem>
-                            )}
-                          />
-                        </div>
-
                         <FormField
                           control={businessForm.control}
-                          name="businessAddress"
+                          name="businessPhone"
                           render={({ field }) => (
                             <FormItem>
-                              <FormLabel>Dirección del Negocio</FormLabel>
+                              <FormLabel className="text-xs font-medium">Teléfono del Negocio</FormLabel>
                               <FormControl>
-                                <Textarea 
-                                  placeholder="Dirección fiscal de la empresa..."
-                                  {...field}
-                                  data-testid="input-business-address"
-                                />
+                                <Input className="h-9 text-xs" placeholder="+52 55 1234 5678" {...field} data-testid="input-business-phone" />
                               </FormControl>
-                              <FormMessage />
+                              <FormMessage className="text-xs" />
+                            </FormItem>
+                          )}
+                        />
+                      </div>
+
+                      <FormField
+                        control={businessForm.control}
+                        name="businessAddress"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel className="text-xs font-medium">Dirección del Negocio</FormLabel>
+                            <FormControl>
+                              <Textarea 
+                                className="text-xs min-h-[70px] resize-none"
+                                placeholder="Dirección fiscal o comercial..."
+                                {...field}
+                                data-testid="input-business-address"
+                              />
+                            </FormControl>
+                            <FormMessage className="text-xs" />
+                          </FormItem>
+                        )}
+                      />
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <FormField
+                          control={businessForm.control}
+                          name="website"
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel className="text-xs font-medium">Sitio Web</FormLabel>
+                              <FormControl>
+                                <Input className="h-9 text-xs" placeholder="https://miempresa.com" {...field} data-testid="input-website" />
+                              </FormControl>
+                              <FormMessage className="text-xs" />
                             </FormItem>
                           )}
                         />
 
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                          <FormField
-                            control={businessForm.control}
-                            name="website"
-                            render={({ field }) => (
-                              <FormItem>
-                                <FormLabel>Sitio Web</FormLabel>
-                                <FormControl>
-                                  <Input placeholder="https://miempresa.com" {...field} data-testid="input-website" />
-                                </FormControl>
-                                <FormMessage />
-                              </FormItem>
-                            )}
-                          />
-
-                          <FormField
-                            control={businessForm.control}
-                            name="specialization"
-                            render={({ field }) => (
-                              <FormItem>
-                                <FormLabel>Especialización</FormLabel>
-                                <Select onValueChange={field.onChange} value={field.value}>
-                                  <FormControl>
-                                    <SelectTrigger data-testid="select-specialization">
-                                      <SelectValue placeholder="Selecciona tu especialización" />
-                                    </SelectTrigger>
-                                  </FormControl>
-                                  <SelectContent>
-                                    <SelectItem value="pyme">PyME</SelectItem>
-                                    <SelectItem value="personal">Crédito Personal</SelectItem>
-                                    <SelectItem value="hipotecario">Hipotecario</SelectItem>
-                                    <SelectItem value="automotriz">Automotriz</SelectItem>
-                                    <SelectItem value="empresarial">Empresarial</SelectItem>
-                                    <SelectItem value="microfinanzas">Microfinanzas</SelectItem>
-                                    <SelectItem value="general">General</SelectItem>
-                                  </SelectContent>
-                                </Select>
-                                <FormMessage />
-                              </FormItem>
-                            )}
-                          />
-                        </div>
-
-                        <div className="flex justify-end">
-                          <Button 
-                            type="submit"
-                            disabled={updateProfileMutation.isPending}
-                            className="bg-primary text-white hover:bg-primary-dark"
-                            data-testid="button-save-business"
-                          >
-                            {updateProfileMutation.isPending && <i className="fas fa-spinner fa-spin mr-2"></i>}
-                            Guardar Información
-                          </Button>
-                        </div>
-                      </form>
-                    </Form>
-                  </CardContent>
-                </Card>
-              </TabsContent>
-
-              {/* Profiling Settings */}
-              <TabsContent value="profiling" className="space-y-6">
-                <Card>
-                  <CardHeader>
-                    <CardTitle>Perfilamiento de Cliente</CardTitle>
-                    <CardDescription>
-                      Selecciona tu tipo de perfil y completa la información correspondiente
-                    </CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    <Form {...profilingForm}>
-                      <form onSubmit={profilingForm.handleSubmit(onProfilingSubmit)} className="space-y-6">
-                        {/* Profile Type Selection */}
                         <FormField
-                          control={profilingForm.control}
-                          name="profileType"
+                          control={businessForm.control}
+                          name="specialization"
                           render={({ field }) => (
                             <FormItem>
-                              <FormLabel>Tipo de Perfil</FormLabel>
-                              <Select onValueChange={(value) => {
-                                field.onChange(value);
-                                setProfileType(value as typeof profileType);
-                              }} defaultValue={field.value}>
+                              <FormLabel className="text-xs font-medium">Especialización</FormLabel>
+                              <Select onValueChange={field.onChange} value={field.value}>
                                 <FormControl>
-                                  <SelectTrigger data-testid="select-profile-type">
-                                    <SelectValue placeholder="Selecciona tu tipo de perfil" />
+                                  <SelectTrigger className="h-9 text-xs" data-testid="select-specialization">
+                                    <SelectValue placeholder="Selecciona tu especialización" />
                                   </SelectTrigger>
                                 </FormControl>
                                 <SelectContent>
-                                  <SelectItem value="persona_moral">Persona Moral</SelectItem>
-                                  <SelectItem value="fisica_empresarial">PFAE (Persona Física con Actividad Empresarial)</SelectItem>
-                                  <SelectItem value="fisica">Persona Física</SelectItem>
-                                  <SelectItem value="sin_sat">Sin SAT</SelectItem>
+                                  <SelectItem value="pyme">PyME</SelectItem>
+                                  <SelectItem value="personal">Crédito Personal</SelectItem>
+                                  <SelectItem value="hipotecario">Hipotecario</SelectItem>
+                                  <SelectItem value="automotriz">Automotriz</SelectItem>
+                                  <SelectItem value="empresarial">Empresarial</SelectItem>
+                                  <SelectItem value="microfinanzas">Microfinanzas</SelectItem>
+                                  <SelectItem value="general">General</SelectItem>
                                 </SelectContent>
                               </Select>
-                              <FormMessage />
+                              <FormMessage className="text-xs" />
                             </FormItem>
                           )}
                         />
+                      </div>
 
-                        {/* Broker Metrics Section */}
-                        <div className="space-y-4 border-t pt-6">
-                          <div>
-                            <h4 className="font-semibold text-gray-900">Métricas del Broker</h4>
-                            <p className="text-sm text-gray-600 mt-1">Información sobre tu actividad como broker profesional</p>
-                          </div>
-                          
-                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            <FormField
-                              control={profilingForm.control}
-                              name="yearsInBusiness"
-                              render={({ field }) => (
-                                <FormItem>
-                                  <FormLabel>Años en el Negocio</FormLabel>
-                                  <FormControl>
-                                    <Input 
-                                      placeholder="Ej: 5" 
-                                      {...field} 
-                                      data-testid="input-years-in-business" 
-                                    />
-                                  </FormControl>
-                                  <FormMessage />
-                                </FormItem>
-                              )}
-                            />
+                      <div className="flex justify-end pt-2">
+                        <Button 
+                          type="submit"
+                          disabled={updateProfileMutation.isPending}
+                          size="sm"
+                          className="h-9 text-xs font-medium px-4"
+                          data-testid="button-save-business"
+                        >
+                          {updateProfileMutation.isPending && <i className="fas fa-spinner fa-spin mr-1.5"></i>}
+                          Guardar Información
+                        </Button>
+                      </div>
+                    </form>
+                  </Form>
+                </CardContent>
+              </Card>
+            </TabsContent>
 
-                            <FormField
-                              control={profilingForm.control}
-                              name="clientPortfolioSize"
-                              render={({ field }) => (
-                                <FormItem>
-                                  <FormLabel>Tamaño de la Cartera de Clientes</FormLabel>
-                                  <FormControl>
-                                    <Input 
-                                      placeholder="Ej: 50 clientes activos" 
-                                      {...field} 
-                                      data-testid="input-client-portfolio-size" 
-                                    />
-                                  </FormControl>
-                                  <FormMessage />
-                                </FormItem>
-                              )}
-                            />
+            {/* Profiling Settings */}
+            <TabsContent value="profiling" className="space-y-4 mt-3">
+              <Card className="border border-border/80 shadow-xs">
+                <CardHeader className="py-3 px-4 sm:px-6 border-b border-border/60">
+                  <CardTitle className="text-base font-semibold">Perfilamiento Operativo y Bancario</CardTitle>
+                  <CardDescription className="text-xs">
+                    Régimen fiscal, métricas de colocación y datos para liquidación de comisiones
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="p-4 sm:p-6">
+                  <Form {...profilingForm}>
+                    <form onSubmit={profilingForm.handleSubmit(onProfilingSubmit)} className="space-y-5">
+                      {/* Profile Type Selection */}
+                      <FormField
+                        control={profilingForm.control}
+                        name="profileType"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel className="text-xs font-medium">Tipo de Perfil / Régimen</FormLabel>
+                            <Select onValueChange={(value) => {
+                              field.onChange(value);
+                              setProfileType(value as typeof profileType);
+                            }} defaultValue={field.value}>
+                              <FormControl>
+                                <SelectTrigger className="h-9 text-xs" data-testid="select-profile-type">
+                                  <SelectValue placeholder="Selecciona tu tipo de perfil" />
+                                </SelectTrigger>
+                              </FormControl>
+                              <SelectContent>
+                                <SelectItem value="persona_moral">Persona Moral</SelectItem>
+                                <SelectItem value="fisica_empresarial">PFAE (Persona Física con Actividad Empresarial)</SelectItem>
+                                <SelectItem value="fisica">Persona Física</SelectItem>
+                                <SelectItem value="sin_sat">Sin SAT</SelectItem>
+                              </SelectContent>
+                            </Select>
+                            <FormMessage className="text-xs" />
+                          </FormItem>
+                        )}
+                      />
 
-                            <FormField
-                              control={profilingForm.control}
-                              name="annualGoal"
-                              render={({ field }) => (
-                                <FormItem>
-                                  <FormLabel>Objetivo Anual de Colocación</FormLabel>
-                                  <FormControl>
-                                    <Input 
-                                      placeholder="Ej: $10,000,000" 
-                                      {...field} 
-                                      data-testid="input-annual-goal" 
-                                    />
-                                  </FormControl>
-                                  <FormMessage />
-                                </FormItem>
-                              )}
-                            />
-
-                            <FormField
-                              control={profilingForm.control}
-                              name="productsHandled"
-                              render={({ field }) => (
-                                <FormItem>
-                                  <FormLabel>Productos que Maneja</FormLabel>
-                                  <FormControl>
-                                    <Input 
-                                      placeholder="Ej: Crédito Simple, Prendario, Hipotecario" 
-                                      {...field} 
-                                      data-testid="input-products-handled" 
-                                    />
-                                  </FormControl>
-                                  <FormMessage />
-                                </FormItem>
-                              )}
-                            />
-
-                            <FormField
-                              control={profilingForm.control}
-                              name="averageTicket"
-                              render={({ field }) => (
-                                <FormItem>
-                                  <FormLabel>Monto Promedio por Operación</FormLabel>
-                                  <FormControl>
-                                    <Input 
-                                      placeholder="Ej: $500,000" 
-                                      {...field} 
-                                      data-testid="input-average-ticket" 
-                                    />
-                                  </FormControl>
-                                  <FormMessage />
-                                </FormItem>
-                              )}
-                            />
-                          </div>
+                      {/* Broker Metrics Section */}
+                      <div className="space-y-3 pt-3 border-t border-border/60">
+                        <div>
+                          <h4 className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Métricas del Broker</h4>
+                          <p className="text-[11px] text-muted-foreground">Capacidad y experiencia en colocación crediticia</p>
                         </div>
+                        
+                        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
+                          <FormField
+                            control={profilingForm.control}
+                            name="yearsInBusiness"
+                            render={({ field }) => (
+                              <FormItem>
+                                <FormLabel className="text-xs font-medium">Años en el Negocio</FormLabel>
+                                <FormControl>
+                                  <Input 
+                                    className="h-9 text-xs"
+                                    placeholder="Ej: 5" 
+                                    {...field} 
+                                    data-testid="input-years-in-business" 
+                                  />
+                                </FormControl>
+                                <FormMessage className="text-xs" />
+                              </FormItem>
+                            )}
+                          />
 
-                        {/* Referencias Comerciales */}
-                        <div className="space-y-6 border-t pt-6">
-                          <div className="flex items-center justify-between">
-                            <div>
-                              <h4 className="font-semibold text-gray-900">Referencias Comerciales</h4>
-                              <p className="text-sm text-gray-600">Agrega contactos que puedan dar referencias sobre tu trabajo</p>
-                            </div>
-                            <Button
-                              type="button"
-                              variant="outline"
-                              size="sm"
-                              onClick={addReference}
-                              data-testid="button-add-reference"
-                            >
-                              <i className="fas fa-plus mr-2"></i>
-                              Agregar Referencia
-                            </Button>
+                          <FormField
+                            control={profilingForm.control}
+                            name="clientPortfolioSize"
+                            render={({ field }) => (
+                              <FormItem>
+                                <FormLabel className="text-xs font-medium">Cartera de Clientes</FormLabel>
+                                <FormControl>
+                                  <Input 
+                                    className="h-9 text-xs"
+                                    placeholder="Ej: 50 clientes activos" 
+                                    {...field} 
+                                    data-testid="input-client-portfolio-size" 
+                                  />
+                                </FormControl>
+                                <FormMessage className="text-xs" />
+                              </FormItem>
+                            )}
+                          />
+
+                          <FormField
+                            control={profilingForm.control}
+                            name="annualGoal"
+                            render={({ field }) => (
+                              <FormItem>
+                                <FormLabel className="text-xs font-medium">Meta Anual de Colocación</FormLabel>
+                                <FormControl>
+                                  <Input 
+                                    className="h-9 text-xs"
+                                    placeholder="Ej: $10,000,000" 
+                                    {...field} 
+                                    data-testid="input-annual-goal" 
+                                  />
+                                </FormControl>
+                                <FormMessage className="text-xs" />
+                              </FormItem>
+                            )}
+                          />
+
+                          <FormField
+                            control={profilingForm.control}
+                            name="productsHandled"
+                            render={({ field }) => (
+                              <FormItem className="sm:col-span-2">
+                                <FormLabel className="text-xs font-medium">Productos que Maneja</FormLabel>
+                                <FormControl>
+                                  <Input 
+                                    className="h-9 text-xs"
+                                    placeholder="Ej: Crédito Simple, Arrendamiento, Factoraje" 
+                                    {...field} 
+                                    data-testid="input-products-handled" 
+                                  />
+                                </FormControl>
+                                <FormMessage className="text-xs" />
+                              </FormItem>
+                            )}
+                          />
+
+                          <FormField
+                            control={profilingForm.control}
+                            name="averageTicket"
+                            render={({ field }) => (
+                              <FormItem>
+                                <FormLabel className="text-xs font-medium">Ticket Promedio</FormLabel>
+                                <FormControl>
+                                  <Input 
+                                    className="h-9 text-xs"
+                                    placeholder="Ej: $500,000" 
+                                    {...field} 
+                                    data-testid="input-average-ticket" 
+                                  />
+                                </FormControl>
+                                <FormMessage className="text-xs" />
+                              </FormItem>
+                            )}
+                          />
+                        </div>
+                      </div>
+
+                      {/* Referencias Comerciales */}
+                      <div className="space-y-3 pt-3 border-t border-border/60">
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <h4 className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Referencias Comerciales</h4>
+                            <p className="text-[11px] text-muted-foreground">Contactos profesionales verificables</p>
                           </div>
-                          
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            className="h-8 text-xs font-medium"
+                            onClick={addReference}
+                            data-testid="button-add-reference"
+                          >
+                            <i className="fas fa-plus mr-1.5"></i>
+                            Agregar Referencia
+                          </Button>
+                        </div>
+                        
+                        <div className="space-y-2.5">
                           {references.map((ref, index) => (
-                            <div key={index} className="p-4 border rounded-lg bg-gray-50 space-y-4">
+                            <div key={index} className="p-3 border border-border/70 rounded-lg bg-muted/20 space-y-2.5">
                               <div className="flex items-center justify-between">
-                                <span className="text-sm font-medium text-gray-700">Referencia {index + 1}</span>
+                                <span className="text-xs font-semibold text-foreground">Referencia #{index + 1}</span>
                                 {references.length > 1 && (
                                   <Button
                                     type="button"
                                     variant="ghost"
                                     size="sm"
                                     onClick={() => removeReference(index)}
-                                    className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                                    className="h-7 text-xs text-destructive hover:bg-destructive/10"
                                     data-testid={`button-remove-reference-${index}`}
                                   >
                                     <i className="fas fa-trash mr-1"></i>
@@ -1260,10 +1283,11 @@ export default function Settings() {
                                   </Button>
                                 )}
                               </div>
-                              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 sm:gap-4">
+                              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
                                 <div>
-                                  <label className="block text-sm font-medium text-gray-700 mb-1">Nombre</label>
+                                  <label className="block text-[11px] font-medium text-muted-foreground mb-1">Nombre</label>
                                   <Input
+                                    className="h-8 text-xs"
                                     placeholder="Nombre completo"
                                     value={ref.name}
                                     onChange={(e) => updateReference(index, 'name', e.target.value)}
@@ -1271,17 +1295,19 @@ export default function Settings() {
                                   />
                                 </div>
                                 <div>
-                                  <label className="block text-sm font-medium text-gray-700 mb-1">Teléfono</label>
+                                  <label className="block text-[11px] font-medium text-muted-foreground mb-1">Teléfono</label>
                                   <Input
+                                    className="h-8 text-xs"
                                     placeholder="10 dígitos"
                                     value={ref.phone}
                                     onChange={(e) => updateReference(index, 'phone', e.target.value)}
                                     data-testid={`input-reference-phone-${index}`}
                                   />
                                 </div>
-                                <div className="sm:col-span-2 md:col-span-1">
-                                  <label className="block text-sm font-medium text-gray-700 mb-1">Correo electrónico</label>
+                                <div>
+                                  <label className="block text-[11px] font-medium text-muted-foreground mb-1">Correo electrónico</label>
                                   <Input
+                                    className="h-8 text-xs"
                                     type="email"
                                     placeholder="correo@ejemplo.com"
                                     value={ref.email}
@@ -1293,420 +1319,432 @@ export default function Settings() {
                             </div>
                           ))}
                         </div>
+                      </div>
 
-                        {/* Datos Bancarios */}
-                        <div className="space-y-6 border-t pt-6">
-                          <div>
-                            <h4 className="font-semibold text-gray-900">Datos Bancarios</h4>
-                            <p className="text-sm text-gray-600">Información para el pago de tus comisiones</p>
-                          </div>
-                          
-                          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                            <FormField
-                              control={profilingForm.control}
-                              name="bankName"
-                              render={({ field }) => (
-                                <FormItem>
-                                  <FormLabel>Banco</FormLabel>
-                                  <Select onValueChange={field.onChange} defaultValue={field.value}>
+                      {/* Datos Bancarios */}
+                      <div className="space-y-3 pt-3 border-t border-border/60">
+                        <div>
+                          <h4 className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Datos Bancarios para Comisiones</h4>
+                          <p className="text-[11px] text-muted-foreground">Cuenta destino para dispersión y pago de comisiones originadas</p>
+                        </div>
+                        
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                          <FormField
+                            control={profilingForm.control}
+                            name="bankName"
+                            render={({ field }) => (
+                              <FormItem>
+                                <FormLabel className="text-xs font-medium">Banco</FormLabel>
+                                <Select onValueChange={field.onChange} defaultValue={field.value}>
+                                  <FormControl>
+                                    <SelectTrigger className="h-9 text-xs" data-testid="select-bank-name">
+                                      <SelectValue placeholder="Selecciona banco" />
+                                    </SelectTrigger>
+                                  </FormControl>
+                                  <SelectContent>
+                                    <SelectItem value="BBVA">BBVA</SelectItem>
+                                    <SelectItem value="Santander">Santander</SelectItem>
+                                    <SelectItem value="Banorte">Banorte</SelectItem>
+                                    <SelectItem value="HSBC">HSBC</SelectItem>
+                                    <SelectItem value="Citibanamex">Citibanamex</SelectItem>
+                                    <SelectItem value="Scotiabank">Scotiabank</SelectItem>
+                                    <SelectItem value="Inbursa">Inbursa</SelectItem>
+                                    <SelectItem value="Banco Azteca">Banco Azteca</SelectItem>
+                                    <SelectItem value="BanCoppel">BanCoppel</SelectItem>
+                                    <SelectItem value="Banregio">Banregio</SelectItem>
+                                    <SelectItem value="Afirme">Afirme</SelectItem>
+                                    <SelectItem value="Mifel">Mifel</SelectItem>
+                                    <SelectItem value="Multiva">Multiva</SelectItem>
+                                    <SelectItem value="BanBajio">BanBajío</SelectItem>
+                                    <SelectItem value="Otro">Otro</SelectItem>
+                                  </SelectContent>
+                                </Select>
+                                <FormMessage className="text-xs" />
+                              </FormItem>
+                            )}
+                          />
+
+                          <FormField
+                            control={profilingForm.control}
+                            name="clabe"
+                            render={({ field }) => (
+                              <FormItem>
+                                <FormLabel className="text-xs font-medium">CLABE Interbancaria (18 dígitos)</FormLabel>
+                                <FormControl>
+                                  <Input 
+                                    className="h-9 text-xs font-mono"
+                                    placeholder="18 dígitos" 
+                                    maxLength={18}
+                                    {...field} 
+                                    data-testid="input-clabe" 
+                                  />
+                                </FormControl>
+                                <FormMessage className="text-xs" />
+                              </FormItem>
+                            )}
+                          />
+
+                          <FormField
+                            control={profilingForm.control}
+                            name="accountHolder"
+                            render={({ field }) => (
+                              <FormItem>
+                                <FormLabel className="text-xs font-medium">Titular de la Cuenta</FormLabel>
+                                <FormControl>
+                                  <Input 
+                                    className="h-9 text-xs"
+                                    placeholder="Nombre como aparece en el banco" 
+                                    {...field} 
+                                    data-testid="input-account-holder" 
+                                  />
+                                </FormControl>
+                                <FormMessage className="text-xs" />
+                              </FormItem>
+                            )}
+                          />
+                        </div>
+                      </div>
+
+                      <div className="flex justify-end pt-2">
+                        <Button 
+                          type="submit"
+                          disabled={updateProfileMutation.isPending}
+                          size="sm"
+                          className="h-9 text-xs font-medium px-4"
+                          data-testid="button-save-profiling"
+                        >
+                          {updateProfileMutation.isPending && <i className="fas fa-spinner fa-spin mr-1.5"></i>}
+                          Guardar Perfilamiento
+                        </Button>
+                      </div>
+                    </form>
+                  </Form>
+                </CardContent>
+              </Card>
+            </TabsContent>
+
+            {/* Security Settings */}
+            <TabsContent value="security" className="space-y-4 mt-3">
+              <Card className="border border-border/80 shadow-xs">
+                <CardHeader className="py-3 px-4 sm:px-6 border-b border-border/60">
+                  <CardTitle className="text-base font-semibold">Configuración de Seguridad</CardTitle>
+                  <CardDescription className="text-xs">
+                    Credenciales de acceso y gestión del ciclo de vida de la cuenta
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="p-4 sm:p-6 space-y-4">
+                  <div className="p-3.5 border border-border/70 rounded-lg flex items-center justify-between gap-3 bg-card">
+                    <div>
+                      <h4 className="text-xs font-semibold text-foreground">Cambiar Contraseña</h4>
+                      <p className="text-[11px] text-muted-foreground mt-0.5">
+                        Actualiza periódicamente tu contraseña para proteger tu sesión y operaciones
+                      </p>
+                    </div>
+                    <Button 
+                      variant="outline" 
+                      size="sm"
+                      className="h-8 text-xs font-medium"
+                      data-testid="button-change-password"
+                      onClick={() => setShowPasswordModal(true)}
+                    >
+                      <i className="fas fa-key mr-1.5"></i>
+                      Cambiar
+                    </Button>
+                  </div>
+
+                  {/* Change Password Modal */}
+                  {showPasswordModal && (
+                    <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+                      <Card className="w-full max-w-md shadow-lg border border-border">
+                        <CardHeader className="py-3 px-4 sm:px-6 border-b border-border/60">
+                          <CardTitle className="text-base font-semibold">Cambiar Contraseña</CardTitle>
+                          <CardDescription className="text-xs">
+                            Ingresa tu contraseña actual y define tu nueva clave de acceso
+                          </CardDescription>
+                        </CardHeader>
+                        <CardContent className="p-4 sm:p-6">
+                          <Form {...passwordForm}>
+                            <form onSubmit={passwordForm.handleSubmit(onPasswordSubmit)} className="space-y-3.5">
+                              <FormField
+                                control={passwordForm.control}
+                                name="currentPassword"
+                                render={({ field }) => (
+                                  <FormItem>
+                                    <FormLabel className="text-xs font-medium">Contraseña Actual</FormLabel>
                                     <FormControl>
-                                      <SelectTrigger data-testid="select-bank-name">
-                                        <SelectValue placeholder="Selecciona tu banco" />
-                                      </SelectTrigger>
+                                      <Input className="h-9 text-xs" type="password" {...field} />
                                     </FormControl>
-                                    <SelectContent>
-                                      <SelectItem value="BBVA">BBVA</SelectItem>
-                                      <SelectItem value="Santander">Santander</SelectItem>
-                                      <SelectItem value="Banorte">Banorte</SelectItem>
-                                      <SelectItem value="HSBC">HSBC</SelectItem>
-                                      <SelectItem value="Citibanamex">Citibanamex</SelectItem>
-                                      <SelectItem value="Scotiabank">Scotiabank</SelectItem>
-                                      <SelectItem value="Inbursa">Inbursa</SelectItem>
-                                      <SelectItem value="Banco Azteca">Banco Azteca</SelectItem>
-                                      <SelectItem value="BanCoppel">BanCoppel</SelectItem>
-                                      <SelectItem value="Banregio">Banregio</SelectItem>
-                                      <SelectItem value="Afirme">Afirme</SelectItem>
-                                      <SelectItem value="Mifel">Mifel</SelectItem>
-                                      <SelectItem value="Multiva">Multiva</SelectItem>
-                                      <SelectItem value="BanBajio">BanBajío</SelectItem>
-                                      <SelectItem value="Otro">Otro</SelectItem>
-                                    </SelectContent>
-                                  </Select>
-                                  <FormMessage />
-                                </FormItem>
-                              )}
-                            />
+                                    <FormMessage className="text-xs" />
+                                  </FormItem>
+                                )}
+                              />
+                              <FormField
+                                control={passwordForm.control}
+                                name="newPassword"
+                                render={({ field }) => (
+                                  <FormItem>
+                                    <FormLabel className="text-xs font-medium">Nueva Contraseña</FormLabel>
+                                    <FormControl>
+                                      <Input className="h-9 text-xs" type="password" {...field} />
+                                    </FormControl>
+                                    <FormMessage className="text-xs" />
+                                  </FormItem>
+                                )}
+                              />
+                              <FormField
+                                control={passwordForm.control}
+                                name="confirmPassword"
+                                render={({ field }) => (
+                                  <FormItem>
+                                    <FormLabel className="text-xs font-medium">Confirmar Nueva Contraseña</FormLabel>
+                                    <FormControl>
+                                      <Input className="h-9 text-xs" type="password" {...field} />
+                                    </FormControl>
+                                    <FormMessage className="text-xs" />
+                                  </FormItem>
+                                )}
+                              />
+                              <div className="flex justify-end gap-2.5 pt-3 border-t border-border/60">
+                                <Button 
+                                  type="button" 
+                                  variant="ghost" 
+                                  size="sm"
+                                  className="h-8 text-xs"
+                                  onClick={() => setShowPasswordModal(false)}
+                                >
+                                  Cancelar
+                                </Button>
+                                <Button 
+                                  type="submit" 
+                                  size="sm"
+                                  className="h-8 text-xs font-medium"
+                                  disabled={updatePasswordMutation.isPending}
+                                >
+                                  {updatePasswordMutation.isPending && <i className="fas fa-spinner fa-spin mr-1.5"></i>}
+                                  Actualizar Contraseña
+                                </Button>
+                              </div>
+                            </form>
+                          </Form>
+                        </CardContent>
+                      </Card>
+                    </div>
+                  )}
 
-                            <FormField
-                              control={profilingForm.control}
-                              name="clabe"
-                              render={({ field }) => (
-                                <FormItem>
-                                  <FormLabel>CLABE Interbancaria</FormLabel>
-                                  <FormControl>
-                                    <Input 
-                                      placeholder="18 dígitos" 
-                                      maxLength={18}
-                                      {...field} 
-                                      data-testid="input-clabe" 
-                                    />
-                                  </FormControl>
-                                  <FormMessage />
-                                </FormItem>
-                              )}
-                            />
+                  <div className="p-3.5 border border-amber-500/20 bg-amber-500/5 rounded-lg flex items-center justify-between gap-3">
+                    <div>
+                      <h4 className="text-xs font-semibold text-amber-800 dark:text-amber-300">Solicitar Baja de Cuenta</h4>
+                      <p className="text-[11px] text-amber-700/80 dark:text-amber-400/80 mt-0.5">
+                        Solicita la desactivación de tu cuenta. Un administrador revisará tu estatus operativo.
+                      </p>
+                    </div>
+                    <Button 
+                      variant="outline" 
+                      size="sm"
+                      className="h-8 text-xs border-amber-600/40 text-amber-700 hover:bg-amber-500/10 dark:text-amber-300"
+                      onClick={() => {
+                        if (window.confirm('¿Estás seguro de que deseas solicitar la baja de tu cuenta? Un administrador revisará tu solicitud.')) {
+                          apiRequest('POST', `/api/users/${user?.id}/deactivation-request`, {})
+                            .then(() => {
+                              toast({
+                                title: "Solicitud enviada",
+                                description: "Tu solicitud de baja ha sido enviada. Un administrador la revisará pronto.",
+                              });
+                            })
+                            .catch((error) => {
+                              toast({
+                                title: "Error",
+                                description: error.message || "No se pudo enviar la solicitud",
+                                variant: "destructive",
+                              });
+                            });
+                        }
+                      }}
+                      data-testid="button-request-deactivation"
+                    >
+                      <i className="fas fa-user-slash mr-1.5"></i>
+                      Solicitar Baja
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+            </TabsContent>
 
-                            <FormField
-                              control={profilingForm.control}
-                              name="accountHolder"
-                              render={({ field }) => (
-                                <FormItem>
-                                  <FormLabel>Titular de la Cuenta</FormLabel>
-                                  <FormControl>
-                                    <Input 
-                                      placeholder="Nombre como aparece en el banco" 
-                                      {...field} 
-                                      data-testid="input-account-holder" 
-                                    />
-                                  </FormControl>
-                                  <FormMessage />
-                                </FormItem>
-                              )}
-                            />
-                          </div>
-                        </div>
+            {/* Beneficios y Acceso Comercial (Bloque 10) */}
+            <TabsContent value="benefits" className="space-y-4 mt-3">
+              {/* Status & Active Benefit Card */}
+              <Card className="border border-border/80 shadow-xs">
+                <CardHeader className="py-3 px-4 sm:px-6 border-b border-border/60">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+                    <div>
+                      <CardTitle className="text-base font-semibold flex items-center gap-2">
+                        <Gift className="h-4 w-4 text-primary" />
+                        Estado de Acceso y Beneficios
+                      </CardTitle>
+                      <CardDescription className="text-xs">
+                        Información de tu esquema comercial y promociones activas
+                      </CardDescription>
+                    </div>
 
-
-                        <div className="flex justify-end">
-                          <Button 
-                            type="submit"
-                            disabled={updateProfileMutation.isPending}
-                            className="bg-primary text-white hover:bg-primary-dark"
-                            data-testid="button-save-profiling"
-                          >
-                            {updateProfileMutation.isPending && <i className="fas fa-spinner fa-spin mr-2"></i>}
-                            Guardar Perfilamiento
-                          </Button>
-                        </div>
-                      </form>
-                    </Form>
-                  </CardContent>
-                </Card>
-              </TabsContent>
-
-              {/* Security Settings */}
-              <TabsContent value="security" className="space-y-6">
-                <Card>
-                  <CardHeader>
-                    <CardTitle>Configuración de Seguridad</CardTitle>
-                  </CardHeader>
-                  <CardContent className="space-y-6">
-                    <div className="p-4 border rounded-lg">
-                      <div className="flex items-center justify-between">
+                    {/* Access Status Badge */}
+                    <div>
+                      {(() => {
+                        const status = myBenefits?.accessStatus || user?.accessStatus || "free";
+                        if (status === "complimentary") {
+                          return <Badge className="bg-emerald-600 text-white hover:bg-emerald-700 py-0.5 px-2.5 text-xs flex items-center gap-1 font-medium"><Sparkles className="h-3 w-3" /> Cortesía Permanente</Badge>;
+                        }
+                        if (status === "promotional") {
+                          return <Badge className="bg-indigo-600 text-white hover:bg-indigo-700 py-0.5 px-2.5 text-xs flex items-center gap-1 font-medium"><Tag className="h-3 w-3" /> Acceso Promocional</Badge>;
+                        }
+                        if (status === "trial") {
+                          return <Badge className="bg-amber-600 text-white hover:bg-amber-700 py-0.5 px-2.5 text-xs flex items-center gap-1 font-medium"><Clock className="h-3 w-3" /> Periodo de Prueba</Badge>;
+                        }
+                        if (status === "active") {
+                          return <Badge className="bg-primary text-primary-foreground py-0.5 px-2.5 text-xs flex items-center gap-1 font-medium"><CheckCircle className="h-3 w-3" /> Acceso Activo</Badge>;
+                        }
+                        if (status === "expired") {
+                          return <Badge className="bg-amber-600 text-white py-0.5 px-2.5 text-xs flex items-center gap-1 font-medium"><AlertCircle className="h-3 w-3" /> Promoción Finalizada (Acceso Estándar)</Badge>;
+                        }
+                        return <Badge className="bg-emerald-600 text-white py-0.5 px-2.5 text-xs flex items-center gap-1 font-medium"><CheckCircle className="h-3 w-3" /> Acceso Estándar Gratuito</Badge>;
+                      })()}
+                    </div>
+                  </div>
+                </CardHeader>
+                <CardContent className="p-4 sm:p-6 space-y-3.5">
+                  {/* Active Promo Display if exists */}
+                  {myBenefits?.activePromo ? (
+                    <div className="p-3.5 bg-primary/5 border border-primary/20 rounded-lg">
+                      <div className="flex items-start justify-between">
                         <div>
-                          <h4 className="font-medium text-gray-900">Cambiar Contraseña</h4>
-                          <p className="text-sm text-neutral">
-                            Actualiza tu contraseña regularmente para mayor seguridad
+                          <span className="text-[10px] font-bold text-primary uppercase tracking-wider">Promoción Vigente</span>
+                          <h4 className="text-sm font-bold text-foreground mt-0.5">
+                            {myBenefits.activePromo.name}
+                          </h4>
+                          <p className="text-xs text-muted-foreground mt-0.5">
+                            {myBenefits.activePromo.description || "Beneficio comercial activo en tu cuenta."}
                           </p>
                         </div>
-                        <Button 
-                          variant="outline" 
-                          data-testid="button-change-password"
-                          onClick={() => setShowPasswordModal(true)}
-                        >
-                          <i className="fas fa-key mr-2"></i>
-                          Cambiar
-                        </Button>
-                      </div>
-                    </div>
-
-                    {/* Change Password Modal */}
-                    {showPasswordModal && (
-                      <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-                        <Card className="w-full max-w-md">
-                          <CardHeader>
-                            <CardTitle>Cambiar Contraseña</CardTitle>
-                            <CardDescription>
-                              Ingresa tu contraseña actual y la nueva contraseña que deseas usar.
-                            </CardDescription>
-                          </CardHeader>
-                          <CardContent>
-                            <Form {...passwordForm}>
-                              <form onSubmit={passwordForm.handleSubmit(onPasswordSubmit)} className="space-y-4">
-                                <FormField
-                                  control={passwordForm.control}
-                                  name="currentPassword"
-                                  render={({ field }) => (
-                                    <FormItem>
-                                      <FormLabel>Contraseña Actual</FormLabel>
-                                      <FormControl>
-                                        <Input type="password" {...field} />
-                                      </FormControl>
-                                      <FormMessage />
-                                    </FormItem>
-                                  )}
-                                />
-                                <FormField
-                                  control={passwordForm.control}
-                                  name="newPassword"
-                                  render={({ field }) => (
-                                    <FormItem>
-                                      <FormLabel>Nueva Contraseña</FormLabel>
-                                      <FormControl>
-                                        <Input type="password" {...field} />
-                                      </FormControl>
-                                      <FormMessage />
-                                    </FormItem>
-                                  )}
-                                />
-                                <FormField
-                                  control={passwordForm.control}
-                                  name="confirmPassword"
-                                  render={({ field }) => (
-                                    <FormItem>
-                                      <FormLabel>Confirmar Nueva Contraseña</FormLabel>
-                                      <FormControl>
-                                        <Input type="password" {...field} />
-                                      </FormControl>
-                                      <FormMessage />
-                                    </FormItem>
-                                  )}
-                                />
-                                <div className="flex justify-end gap-3 pt-4">
-                                  <Button 
-                                    type="button" 
-                                    variant="ghost" 
-                                    onClick={() => setShowPasswordModal(false)}
-                                  >
-                                    Cancelar
-                                  </Button>
-                                  <Button 
-                                    type="submit" 
-                                    className="bg-primary text-white"
-                                    disabled={updatePasswordMutation.isPending}
-                                  >
-                                    {updatePasswordMutation.isPending && <i className="fas fa-spinner fa-spin mr-2"></i>}
-                                    Actualizar Contraseña
-                                  </Button>
-                                </div>
-                              </form>
-                            </Form>
-                          </CardContent>
-                        </Card>
-                      </div>
-                    )}
-
-                    <div className="p-4 border border-orange-200 bg-orange-50 rounded-lg">
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <h4 className="font-medium text-orange-900">Solicitar Baja de Cuenta</h4>
-                          <p className="text-sm text-orange-700">
-                            Solicita la desactivación de tu cuenta. Un administrador revisará tu solicitud.
-                          </p>
-                        </div>
-                        <Button 
-                          variant="outline" 
-                          className="border-orange-600 text-orange-600 hover:bg-orange-50"
-                          onClick={() => {
-                            if (window.confirm('¿Estás seguro de que deseas solicitar la baja de tu cuenta? Un administrador revisará tu solicitud.')) {
-                              apiRequest('POST', `/api/users/${user?.id}/deactivation-request`, {})
-                                .then(() => {
-                                  toast({
-                                    title: "Solicitud enviada",
-                                    description: "Tu solicitud de baja ha sido enviada. Un administrador la revisará pronto.",
-                                  });
-                                })
-                                .catch((error) => {
-                                  toast({
-                                    title: "Error",
-                                    description: error.message || "No se pudo enviar la solicitud",
-                                    variant: "destructive",
-                                  });
-                                });
-                            }
-                          }}
-                          data-testid="button-request-deactivation"
-                        >
-                          <i className="fas fa-user-slash mr-2"></i>
-                          Solicitar Baja
-                        </Button>
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-              </TabsContent>
-
-              {/* Beneficios y Acceso Comercial (Bloque 10) */}
-              <TabsContent value="benefits" className="space-y-6">
-                {/* Status & Active Benefit Card */}
-                <Card className="border-blue-100 shadow-sm">
-                  <CardHeader className="pb-3">
-                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                      <div>
-                        <CardTitle className="text-xl flex items-center gap-2">
-                          <Gift className="h-5 w-5 text-primary" />
-                          Estado de Acceso y Beneficios
-                        </CardTitle>
-                        <CardDescription>
-                          Información de tu esquema comercial y promociones activas
-                        </CardDescription>
-                      </div>
-
-                      {/* Access Status Badge */}
-                      <div>
-                        {(() => {
-                          const status = myBenefits?.accessStatus || user?.accessStatus || "free";
-                          if (status === "complimentary") {
-                            return <Badge className="bg-emerald-600 text-white hover:bg-emerald-700 py-1 px-3 text-sm flex items-center gap-1.5"><Sparkles className="h-3.5 w-3.5" /> Cortesía Permanente</Badge>;
-                          }
-                          if (status === "promotional") {
-                            return <Badge className="bg-indigo-600 text-white hover:bg-indigo-700 py-1 px-3 text-sm flex items-center gap-1.5"><Tag className="h-3.5 w-3.5" /> Acceso Promocional</Badge>;
-                          }
-                          if (status === "trial") {
-                            return <Badge className="bg-amber-600 text-white hover:bg-amber-700 py-1 px-3 text-sm flex items-center gap-1.5"><Clock className="h-3.5 w-3.5" /> Periodo de Prueba</Badge>;
-                          }
-                          if (status === "active") {
-                            return <Badge className="bg-blue-600 text-white hover:bg-blue-700 py-1 px-3 text-sm flex items-center gap-1.5"><CheckCircle className="h-3.5 w-3.5" /> Acceso Activo</Badge>;
-                          }
-                          if (status === "expired") {
-                            return <Badge className="bg-orange-600 text-white hover:bg-orange-700 py-1 px-3 text-sm flex items-center gap-1.5"><AlertCircle className="h-3.5 w-3.5" /> Promoción Finalizada (Acceso Estándar)</Badge>;
-                          }
-                          return <Badge className="bg-green-600 text-white hover:bg-green-700 py-1 px-3 text-sm flex items-center gap-1.5"><CheckCircle className="h-3.5 w-3.5" /> Acceso Estándar Gratuito</Badge>;
-                        })()}
-                      </div>
-                    </div>
-                  </CardHeader>
-                  <CardContent className="space-y-4">
-                    {/* Active Promo Display if exists */}
-                    {myBenefits?.activePromo ? (
-                      <div className="p-4 bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-lg">
-                        <div className="flex items-start justify-between">
-                          <div>
-                            <span className="text-xs font-semibold text-primary uppercase tracking-wider">Promoción Vigente</span>
-                            <h4 className="text-lg font-bold text-gray-900 mt-0.5">
-                              {myBenefits.activePromo.name}
-                            </h4>
-                            <p className="text-sm text-gray-600 mt-1">
-                              {myBenefits.activePromo.description || "Beneficio comercial activo en tu cuenta."}
-                            </p>
-                          </div>
-                          <Badge variant="outline" className="font-mono text-xs border-blue-400 bg-white text-blue-800">
-                            {myBenefits.activePromo.code}
-                          </Badge>
-                        </div>
-
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-4 pt-4 border-t border-blue-200/60 text-sm">
-                          <div>
-                            <span className="text-gray-500 text-xs">Tipo de Beneficio:</span>
-                            <p className="font-medium text-gray-800 capitalize">
-                              {myBenefits.activePromo.benefitType.replace('_', ' ')}
-                            </p>
-                          </div>
-                          {myBenefits.activePromo.expiresAt && (
-                            <div>
-                              <span className="text-gray-500 text-xs">Vigencia hasta:</span>
-                              <p className="font-medium text-gray-800">
-                                {new Date(myBenefits.activePromo.expiresAt).toLocaleDateString('es-MX', { year: 'numeric', month: 'long', day: 'numeric' })}
-                              </p>
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    ) : (
-                      <div className="p-4 bg-gray-50 border border-gray-200 rounded-lg text-sm text-gray-600">
-                        <p className="font-medium text-gray-800">No cuentas con un código promocional aplicado actualmente.</p>
-                        <p className="text-xs text-gray-500 mt-1">
-                          Tu cuenta opera bajo el esquema estándar con acceso integral a todas las herramientas de colocación y matching.
-                        </p>
-                      </div>
-                    )}
-
-                    {/* Operational Continuance Guarantee Banner */}
-                    <div className="p-4 bg-emerald-50 border border-emerald-200 rounded-lg flex items-start gap-3">
-                      <ShieldCheck className="h-5 w-5 text-emerald-600 flex-shrink-0 mt-0.5" />
-                      <div className="text-xs text-emerald-900 leading-relaxed">
-                        <span className="font-semibold block text-sm text-emerald-950 mb-0.5">
-                          Garantía de continuidad operativa (No-bloqueo)
-                        </span>
-                        Crédito Negocios prioriza la colocación efectiva de créditos. El estado de acceso comercial o vencimiento de promociones <strong>NUNCA</strong> bloquea ni suspende el alta de clientes, el motor de matching con financieras, el seguimiento de solicitudes ni la liquidación y dispersión puntual de tus comisiones ganadas.
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-
-                {/* Redeem New Promo Code Card */}
-                <Card className="shadow-sm">
-                  <CardHeader>
-                    <CardTitle className="text-lg flex items-center gap-2">
-                      <Tag className="h-5 w-5 text-indigo-600" />
-                      Canjear Código Promocional
-                    </CardTitle>
-                    <CardDescription>
-                      Si dispones de un código de descuento, meses gratuitos o convenio de alianza, aplícalo aquí.
-                    </CardDescription>
-                  </CardHeader>
-                  <CardContent className="space-y-4">
-                    <div className="flex flex-col sm:flex-row gap-3">
-                      <div className="relative flex-1">
-                        <Tag className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
-                        <Input
-                          placeholder="Ingresa tu código (Ej. ALIANZA-2026)"
-                          value={promoCodeInput}
-                          onChange={(e) => {
-                            setPromoCodeInput(e.target.value.toUpperCase());
-                            setValidatedPromoPreview(null);
-                          }}
-                          className="pl-10 uppercase font-mono"
-                          disabled={isValidatingPromo || isRedeemingPromo}
-                          data-testid="input-settings-promocode"
-                        />
-                      </div>
-                      <Button
-                        type="button"
-                        variant="outline"
-                        onClick={handleValidatePromo}
-                        disabled={isValidatingPromo || isRedeemingPromo || !promoCodeInput.trim()}
-                        data-testid="button-validate-promocode"
-                      >
-                        {isValidatingPromo ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
-                        Validar
-                      </Button>
-                      <Button
-                        type="button"
-                        onClick={handleRedeemPromo}
-                        disabled={isRedeemingPromo || !promoCodeInput.trim()}
-                        data-testid="button-redeem-promocode"
-                      >
-                        {isRedeemingPromo ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Gift className="h-4 w-4 mr-2" />}
-                        Canjear Beneficio
-                      </Button>
-                    </div>
-
-                    {/* Preview box if code was validated */}
-                    {validatedPromoPreview && (
-                      <div className="p-3 bg-indigo-50/70 border border-indigo-200 rounded-md text-xs text-indigo-900 flex items-center justify-between">
-                        <div>
-                          <span className="font-semibold text-sm block">{validatedPromoPreview.name}</span>
-                          <span className="text-indigo-700">
-                            {validatedPromoPreview.description || `Beneficio: ${validatedPromoPreview.benefitType}`}
-                            {validatedPromoPreview.durationMonths ? ` por ${validatedPromoPreview.durationMonths} meses` : ''}
-                          </span>
-                        </div>
-                        <Badge className="bg-indigo-600 text-white font-normal text-xs">
-                          Listo para canjear
+                        <Badge variant="outline" className="font-mono text-xs border-primary/30 bg-background text-primary">
+                          {myBenefits.activePromo.code}
                         </Badge>
                       </div>
-                    )}
 
-                    <p className="text-xs text-gray-500">
-                      * Nota: Los códigos promocionales otorgan beneficios comerciales temporales o permanentes y no sustituyen las claves de franquicia de Master Broker.
-                    </p>
-                  </CardContent>
-                </Card>
-              </TabsContent>
-            </Tabs>
-          </div>
-        </main>
-      </MainLayout>
-    );
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-3 pt-3 border-t border-primary/15 text-xs">
+                        <div>
+                          <span className="text-muted-foreground text-[11px]">Tipo de Beneficio:</span>
+                          <p className="font-semibold text-foreground capitalize mt-0.5">
+                            {myBenefits.activePromo.benefitType.replace('_', ' ')}
+                          </p>
+                        </div>
+                        {myBenefits.activePromo.expiresAt && (
+                          <div>
+                            <span className="text-muted-foreground text-[11px]">Vigencia hasta:</span>
+                            <p className="font-semibold text-foreground mt-0.5">
+                              {new Date(myBenefits.activePromo.expiresAt).toLocaleDateString('es-MX', { year: 'numeric', month: 'long', day: 'numeric' })}
+                            </p>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="p-3.5 bg-muted/30 border border-border/70 rounded-lg text-xs text-muted-foreground">
+                      <p className="font-medium text-foreground">No cuentas con un código promocional aplicado actualmente.</p>
+                      <p className="text-[11px] text-muted-foreground mt-0.5">
+                        Tu cuenta opera bajo el esquema estándar con acceso integral a todas las herramientas de colocación y matching crediticio.
+                      </p>
+                    </div>
+                  )}
+
+                  {/* Operational Continuance Guarantee Banner */}
+                  <div className="p-3.5 bg-emerald-500/10 border border-emerald-500/20 rounded-lg flex items-start gap-3">
+                    <ShieldCheck className="h-4 w-4 text-emerald-600 dark:text-emerald-400 flex-shrink-0 mt-0.5" />
+                    <div className="text-[11px] text-emerald-950 dark:text-emerald-200 leading-relaxed">
+                      <span className="font-semibold block text-xs text-emerald-900 dark:text-emerald-100 mb-0.5">
+                        Garantía de continuidad operativa (No-bloqueo)
+                      </span>
+                      Crédito Negocios prioriza la colocación efectiva de créditos. El estado de acceso comercial o vencimiento de promociones <strong>NUNCA</strong> bloquea ni suspende el alta de clientes, el motor de matching con financieras, el seguimiento de solicitudes ni la liquidación y dispersión puntual de tus comisiones ganadas.
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Redeem New Promo Code Card */}
+              <Card className="border border-border/80 shadow-xs">
+                <CardHeader className="py-3 px-4 sm:px-6 border-b border-border/60">
+                  <CardTitle className="text-base font-semibold flex items-center gap-2">
+                    <Tag className="h-4 w-4 text-primary" />
+                    Canjear Código Promocional
+                  </CardTitle>
+                  <CardDescription className="text-xs">
+                    Si dispones de un código de descuento, meses de servicio o convenio institucional, aplícalo aquí
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="p-4 sm:p-6 space-y-3.5">
+                  <div className="flex flex-col sm:flex-row gap-2.5">
+                    <div className="relative flex-1">
+                      <Tag className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
+                      <Input
+                        placeholder="Ingresa tu código (Ej. ALIANZA-2026)"
+                        value={promoCodeInput}
+                        onChange={(e) => {
+                          setPromoCodeInput(e.target.value.toUpperCase());
+                          setValidatedPromoPreview(null);
+                        }}
+                        className="pl-9 h-9 text-xs uppercase font-mono"
+                        disabled={isValidatingPromo || isRedeemingPromo}
+                        data-testid="input-settings-promocode"
+                      />
+                    </div>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="h-9 text-xs font-medium"
+                      onClick={handleValidatePromo}
+                      disabled={isValidatingPromo || isRedeemingPromo || !promoCodeInput.trim()}
+                      data-testid="button-validate-promocode"
+                    >
+                      {isValidatingPromo ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" /> : null}
+                      Validar
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      className="h-9 text-xs font-medium"
+                      onClick={handleRedeemPromo}
+                      disabled={isRedeemingPromo || !promoCodeInput.trim()}
+                      data-testid="button-redeem-promocode"
+                    >
+                      {isRedeemingPromo ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" /> : <Gift className="h-3.5 w-3.5 mr-1.5" />}
+                      Canjear Beneficio
+                    </Button>
+                  </div>
+
+                  {/* Preview box if code was validated */}
+                  {validatedPromoPreview && (
+                    <div className="p-3 bg-primary/5 border border-primary/20 rounded-md text-xs text-foreground flex items-center justify-between">
+                      <div>
+                        <span className="font-semibold text-xs block">{validatedPromoPreview.name}</span>
+                        <span className="text-[11px] text-muted-foreground">
+                          {validatedPromoPreview.description || `Beneficio: ${validatedPromoPreview.benefitType}`}
+                          {validatedPromoPreview.durationMonths ? ` por ${validatedPromoPreview.durationMonths} meses` : ''}
+                        </span>
+                      </div>
+                      <Badge className="bg-primary text-primary-foreground font-medium text-[11px] py-0.5 px-2">
+                        Listo para canjear
+                      </Badge>
+                    </div>
+                  )}
+
+                  <p className="text-[11px] text-muted-foreground">
+                    * Nota: Los códigos promocionales otorgan beneficios comerciales temporales o convenios y no reemplazan claves de franquicia Master Broker.
+                  </p>
+                </CardContent>
+              </Card>
+            </TabsContent>
+          </Tabs>
+        </div>
+      </main>
+    </MainLayout>
+  );
   }
