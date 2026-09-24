@@ -276,38 +276,42 @@ export default function InstitutionProducts() {
             onClick={() => downloadFinancierasTemplateClient()}
             title="Descargar plantilla oficial con comisiones de Super Admin y matching completo"
             data-testid="button-download-template"
+            className="h-9 text-xs font-semibold rounded-xl border-border text-foreground hover:bg-muted"
           >
             <Download className="w-4 h-4 mr-2 text-emerald-600" />
             Descargar Plantilla Excel
           </Button>
           <Dialog open={showAssignModal} onOpenChange={setShowAssignModal}>
             <DialogTrigger asChild>
-              <Button data-testid="button-assign-product">
-                <Plus className="w-4 h-4 mr-2" />
+              <Button data-testid="button-assign-product" className="h-9 text-xs font-semibold rounded-xl bg-primary hover:bg-primary/90 text-primary-foreground shadow-sm">
+                <Plus className="w-4 h-4 mr-1.5" />
                 Asignar Producto
               </Button>
             </DialogTrigger>
-          <DialogContent className="sm:max-w-md">
-            <DialogHeader>
-              <DialogTitle>Asignar Producto a Financiera</DialogTitle>
+          <DialogContent className="sm:max-w-lg">
+            <DialogHeader className="border-b border-border/60 pb-3">
+              <DialogTitle className="text-base font-bold text-foreground">Asignar Producto a Financiera</DialogTitle>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                Vincula una plantilla base a una o más financieras activas para habilitar el matching.
+              </p>
             </DialogHeader>
             <Form {...form}>
-              <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+              <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4 pt-2">
                 <FormField
                   control={form.control}
                   name="templateId"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Plantilla</FormLabel>
+                      <FormLabel className="text-xs font-semibold text-foreground">Plantilla Base *</FormLabel>
                       <Select onValueChange={field.onChange} defaultValue={field.value}>
                         <FormControl>
-                          <SelectTrigger data-testid="select-template">
+                          <SelectTrigger data-testid="select-template" className="h-9 text-xs border-border rounded-lg">
                             <SelectValue placeholder="Selecciona una plantilla" />
                           </SelectTrigger>
                         </FormControl>
                         <SelectContent>
                           {templates?.map((template) => (
-                            <SelectItem key={template.id} value={template.id}>
+                            <SelectItem key={template.id} value={template.id} className="text-xs">
                               {template.name} ({getCategoryDisplayName(template.category)})
                             </SelectItem>
                           ))}
@@ -341,16 +345,20 @@ export default function InstitutionProducts() {
                     
                     return (
                       <FormItem>
-                        <FormLabel>Financieras Compatibles</FormLabel>
+                        <FormLabel className="text-xs font-semibold text-foreground">Financieras Compatibles *</FormLabel>
                         {selectedTemplate && compatibleInstitutions.length === 0 && (
-                          <div className="text-sm text-amber-600 bg-amber-50 border border-amber-200 rounded p-3 mb-2">
-                            <i className="fas fa-exclamation-triangle mr-2"></i>
-                            No hay financieras activas que acepten los perfiles de esta plantilla. Configura los perfiles aceptados en las financieras primero.
+                          <div className="text-xs text-amber-700 dark:text-amber-300 bg-amber-50/80 dark:bg-amber-950/40 border border-amber-200/80 dark:border-amber-800/60 rounded-lg p-2.5 mb-2 flex items-start gap-1.5">
+                            <AlertTriangle className="w-3.5 h-3.5 text-amber-600 flex-shrink-0 mt-0.5" />
+                            <span>No hay financieras activas que acepten los perfiles de esta plantilla. Configura los perfiles aceptados en las financieras primero.</span>
                           </div>
                         )}
-                        <div className="space-y-2 max-h-32 overflow-y-auto border rounded p-3" data-testid="checkbox-institutions">
+                        <div className="space-y-1.5 max-h-36 overflow-y-auto border border-border rounded-lg p-2.5 bg-muted/30" data-testid="checkbox-institutions">
                           {compatibleInstitutions.map((institution) => (
-                            <div key={institution.id} className="flex items-center space-x-2">
+                            <label 
+                              key={institution.id} 
+                              htmlFor={`institution-${institution.id}`}
+                              className="flex items-center space-x-2.5 p-1.5 rounded-md hover:bg-card transition-colors cursor-pointer text-xs"
+                            >
                               <input
                                 type="checkbox"
                                 id={`institution-${institution.id}`}
@@ -361,20 +369,17 @@ export default function InstitutionProducts() {
                                     : field.value.filter(id => id !== institution.id);
                                   field.onChange(updatedIds);
                                 }}
-                                className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                                className="rounded border-border text-primary focus:ring-primary h-3.5 w-3.5"
                                 data-testid={`checkbox-institution-${institution.id}`}
                               />
-                              <label 
-                                htmlFor={`institution-${institution.id}`}
-                                className="text-sm font-medium text-gray-700 cursor-pointer"
-                              >
+                              <span className="font-medium text-foreground">
                                 {institution.name}
-                              </label>
-                            </div>
+                              </span>
+                            </label>
                           ))}
                         </div>
                         <FormMessage />
-                        <p className="text-xs text-gray-500">
+                        <p className="text-[11px] text-muted-foreground">
                           {selectedInstitutions && selectedInstitutions.length > 0 
                             ? `${selectedInstitutions.length} financiera${selectedInstitutions.length > 1 ? 's' : ''} seleccionada${selectedInstitutions.length > 1 ? 's' : ''}`
                             : selectedTemplate
@@ -392,11 +397,12 @@ export default function InstitutionProducts() {
                   name="customName"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Nombre del Producto (Opcional)</FormLabel>
+                      <FormLabel className="text-xs font-semibold text-foreground">Nombre Personalizado (Opcional)</FormLabel>
                       <FormControl>
                         <Input 
                           {...field} 
                           placeholder="Deja vacío para usar nombre automático"
+                          className="h-9 text-xs border-border rounded-lg bg-background"
                           data-testid="input-product-name"
                         />
                       </FormControl>
@@ -405,12 +411,13 @@ export default function InstitutionProducts() {
                   )}
                 />
 
-                <div className="flex justify-end space-x-2">
+                <div className="flex justify-end gap-2 pt-3 border-t border-border/60">
                   <Button 
                     type="button" 
                     variant="outline" 
                     onClick={() => setShowAssignModal(false)}
                     data-testid="button-cancel-assign"
+                    className="h-8 text-xs font-semibold rounded-lg border-border text-foreground hover:bg-muted"
                   >
                     Cancelar
                   </Button>
@@ -418,6 +425,7 @@ export default function InstitutionProducts() {
                     type="submit" 
                     disabled={assignProductMutation.isPending}
                     data-testid="button-submit-assign"
+                    className="h-8 text-xs font-semibold rounded-lg bg-primary hover:bg-primary/90 text-primary-foreground"
                   >
                     {assignProductMutation.isPending ? "Asignando..." : "Asignar"}
                   </Button>
@@ -431,46 +439,46 @@ export default function InstitutionProducts() {
 
       {/* Stats */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <Card className="border border-slate-200/80 shadow-xs bg-white">
+        <Card className="border border-border shadow-sm bg-card">
           <CardContent className="p-4 flex items-center justify-between">
             <div>
-              <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Plantillas Base</p>
-              <p className="text-2xl font-bold text-slate-900 mt-1" data-testid="text-templates-available">
+              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Plantillas Base</p>
+              <p className="text-2xl font-bold text-foreground mt-1" data-testid="text-templates-available">
                 {templates?.length || 0}
               </p>
-              <p className="text-[11px] text-slate-400 mt-0.5">Disponibles</p>
+              <p className="text-[11px] text-muted-foreground mt-0.5">Disponibles</p>
             </div>
-            <div className="w-10 h-10 rounded-xl bg-blue-50 border border-blue-200 text-blue-700 flex items-center justify-center flex-shrink-0">
+            <div className="w-10 h-10 rounded-xl bg-blue-50 dark:bg-blue-950/40 border border-blue-200/80 dark:border-blue-800/60 text-blue-700 dark:text-blue-300 flex items-center justify-center flex-shrink-0">
               <FileText className="w-5 h-5" />
             </div>
           </CardContent>
         </Card>
 
-        <Card className="border border-slate-200/80 shadow-xs bg-white">
+        <Card className="border border-border shadow-sm bg-card">
           <CardContent className="p-4 flex items-center justify-between">
             <div>
-              <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Financieras Activas</p>
-              <p className="text-2xl font-bold text-slate-900 mt-1" data-testid="text-institutions-active">
+              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Financieras Activas</p>
+              <p className="text-2xl font-bold text-foreground mt-1" data-testid="text-institutions-active">
                 {institutions?.filter(i => i.isActive).length || 0}
               </p>
-              <p className="text-[11px] text-slate-400 mt-0.5">Registradas</p>
+              <p className="text-[11px] text-muted-foreground mt-0.5">Registradas</p>
             </div>
-            <div className="w-10 h-10 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-700 flex items-center justify-center flex-shrink-0">
+            <div className="w-10 h-10 rounded-xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200/80 dark:border-emerald-800/60 text-emerald-700 dark:text-emerald-300 flex items-center justify-center flex-shrink-0">
               <Building2 className="w-5 h-5" />
             </div>
           </CardContent>
         </Card>
 
-        <Card className="border border-slate-200/80 shadow-xs bg-white">
+        <Card className="border border-border shadow-sm bg-card">
           <CardContent className="p-4 flex items-center justify-between">
             <div>
-              <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Productos Asignados</p>
-              <p className="text-2xl font-bold text-slate-900 mt-1" data-testid="text-products-assigned">
+              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Productos Asignados</p>
+              <p className="text-2xl font-bold text-foreground mt-1" data-testid="text-products-assigned">
                 {institutionProducts?.length || 0}
               </p>
-              <p className="text-[11px] text-slate-400 mt-0.5">En catálogo</p>
+              <p className="text-[11px] text-muted-foreground mt-0.5">En catálogo</p>
             </div>
-            <div className="w-10 h-10 rounded-xl bg-purple-50 border border-purple-200 text-purple-700 flex items-center justify-center flex-shrink-0">
+            <div className="w-10 h-10 rounded-xl bg-purple-50 dark:bg-purple-950/40 border border-purple-200/80 dark:border-purple-800/60 text-purple-700 dark:text-purple-300 flex items-center justify-center flex-shrink-0">
               <Settings className="w-5 h-5" />
             </div>
           </CardContent>
@@ -482,13 +490,13 @@ export default function InstitutionProducts() {
         const unassigned = institutions?.filter(i => i.isActive && !institutionProducts?.some(p => p.institutionId === i.id)) || [];
         if (unassigned.length === 0) return null;
         return (
-          <div className="p-3.5 bg-amber-50/80 border border-amber-200/80 rounded-xl flex items-start gap-3 shadow-xs">
-            <AlertTriangle className="w-4 h-4 text-amber-600 flex-shrink-0 mt-0.5" />
+          <div className="p-3.5 bg-amber-50/80 dark:bg-amber-950/40 border border-amber-200/80 dark:border-amber-800/60 rounded-xl flex items-start gap-3 shadow-sm">
+            <AlertTriangle className="w-4 h-4 text-amber-600 dark:text-amber-400 flex-shrink-0 mt-0.5" />
             <div className="flex-1">
-              <h4 className="text-xs font-bold text-amber-950">
+              <h4 className="text-xs font-bold text-amber-950 dark:text-amber-200">
                 Financieras pendientes de asignación ({unassigned.length})
               </h4>
-              <p className="text-xs text-amber-800 mt-0.5 leading-relaxed">
+              <p className="text-xs text-amber-800 dark:text-amber-300 mt-0.5 leading-relaxed">
                 Las siguientes financieras activas aún no tienen productos asignados: <strong>{unassigned.map(i => i.name).join(', ')}</strong>. Asigna productos para que participen en el matching inteligente.
               </p>
             </div>
@@ -497,29 +505,29 @@ export default function InstitutionProducts() {
       })()}
 
       {/* Assignment Table Card */}
-      <Card className="border border-slate-200/80 shadow-xs bg-white overflow-hidden">
-        <CardHeader className="p-5 pb-4 border-b border-slate-100 bg-slate-50/40">
+      <Card className="border border-border shadow-sm bg-card overflow-hidden">
+        <CardHeader className="p-5 pb-4 border-b border-border bg-muted/20">
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
             <div>
-              <CardTitle className="text-sm font-semibold text-slate-900 flex items-center gap-2">
-                <SlidersHorizontal className="w-4 h-4 text-slate-600" />
+              <CardTitle className="text-sm font-semibold text-foreground flex items-center gap-2">
+                <SlidersHorizontal className="w-4 h-4 text-muted-foreground" />
                 Matriz de Asignaciones (Financieras y Productos)
               </CardTitle>
-              <p className="text-xs text-slate-500 mt-0.5">
+              <p className="text-xs text-muted-foreground mt-0.5">
                 Consulta y audita los esquemas crediticios vinculados a cada financiera participante.
               </p>
             </div>
 
             {/* View Mode Toggle */}
-            <div className="flex items-center gap-1.5 bg-slate-100 p-1 rounded-xl border border-slate-200/60">
+            <div className="flex items-center gap-1.5 bg-muted p-1 rounded-xl border border-border">
               <Button
                 variant={viewMode === 'by_institution' ? 'default' : 'ghost'}
                 size="sm"
                 onClick={() => setViewMode('by_institution')}
                 className={`text-xs font-semibold h-7 px-3 rounded-lg ${
                   viewMode === 'by_institution' 
-                    ? 'bg-white text-slate-900 shadow-xs' 
-                    : 'text-slate-600 hover:text-slate-900'
+                    ? 'bg-card text-foreground shadow-sm' 
+                    : 'text-muted-foreground hover:text-foreground'
                 }`}
                 data-testid="toggle-view-by-institution"
               >
@@ -532,8 +540,8 @@ export default function InstitutionProducts() {
                 onClick={() => setViewMode('by_product')}
                 className={`text-xs font-semibold h-7 px-3 rounded-lg ${
                   viewMode === 'by_product' 
-                    ? 'bg-white text-slate-900 shadow-xs' 
-                    : 'text-slate-600 hover:text-slate-900'
+                    ? 'bg-card text-foreground shadow-sm' 
+                    : 'text-muted-foreground hover:text-foreground'
                 }`}
                 data-testid="toggle-view-by-product"
               >
@@ -544,21 +552,21 @@ export default function InstitutionProducts() {
           </div>
 
           {/* Filters Bar */}
-          <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 pt-3 mt-3 border-t border-slate-100">
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 pt-3 mt-3 border-t border-border">
             <div className="relative flex-1 max-w-sm">
-              <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+              <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
               <Input
                 placeholder={viewMode === 'by_institution' ? "Buscar por financiera..." : "Buscar por producto..."}
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="pl-9 text-xs h-8 border-slate-200 rounded-lg bg-white"
+                className="pl-9 text-xs h-8 border-border rounded-lg bg-background"
                 data-testid="input-search-assignments"
               />
             </div>
 
             {viewMode === 'by_institution' && (
               <Select value={statusFilter} onValueChange={(val: any) => setStatusFilter(val)}>
-                <SelectTrigger className="w-full sm:w-[220px] h-8 text-xs border-slate-200 rounded-lg" data-testid="select-assignment-filter">
+                <SelectTrigger className="w-full sm:w-[220px] h-8 text-xs border-border rounded-lg bg-background" data-testid="select-assignment-filter">
                   <SelectValue placeholder="Filtrar asignaciones..." />
                 </SelectTrigger>
                 <SelectContent>
@@ -601,8 +609,10 @@ export default function InstitutionProducts() {
                     if (filtered.length === 0) {
                       return (
                         <TableRow>
-                          <TableCell colSpan={5} className="text-center py-8 text-gray-500 text-sm">
-                            No se encontraron financieras que coincidan con los filtros de búsqueda.
+                          <TableCell colSpan={5} className="text-center py-10 px-4 bg-muted/20">
+                            <Building2 className="w-8 h-8 text-muted-foreground/40 mx-auto mb-2" />
+                            <p className="text-xs font-semibold text-foreground">No se encontraron financieras</p>
+                            <p className="text-[11px] text-muted-foreground mt-0.5">Prueba ajustando el término de búsqueda o filtros.</p>
                           </TableCell>
                         </TableRow>
                       );
@@ -613,39 +623,43 @@ export default function InstitutionProducts() {
                       const hasProducts = assignedProducts.length > 0;
 
                       return (
-                        <TableRow key={inst.id} className="hover:bg-gray-50/50">
-                          <TableCell className="py-3">
+                        <TableRow key={inst.id} className="hover:bg-muted/40 transition-colors">
+                          <TableCell className="py-3 px-4">
                             <div className="flex items-center space-x-2.5">
-                              <Building2 className={`w-4 h-4 ${hasProducts ? 'text-primary' : 'text-amber-500'}`} />
+                              <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 border ${
+                                hasProducts ? 'bg-primary/10 border-primary/20 text-primary' : 'bg-amber-500/10 border-amber-500/20 text-amber-600'
+                              }`}>
+                                <Building2 className="w-4 h-4" />
+                              </div>
                               <div>
-                                <p className="font-bold text-gray-900 text-sm">{inst.name}</p>
+                                <p className="font-semibold text-foreground text-xs">{inst.name}</p>
                                 <div className="flex items-center gap-2 mt-0.5">
-                                  <Badge variant="outline" className={`text-[10px] py-0 px-1.5 ${inst.isActive ? 'bg-emerald-50 text-emerald-700 border-emerald-300' : 'bg-gray-100 text-gray-600'}`}>
+                                  <Badge variant="outline" className={`text-[10px] py-0 px-1.5 font-semibold ${inst.isActive ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800/60' : 'bg-muted text-muted-foreground border-border'}`}>
                                     {inst.isActive ? 'Activa' : 'Inactiva'}
                                   </Badge>
                                   {inst.contactPerson && (
-                                    <span className="text-[11px] text-gray-500">• {inst.contactPerson}</span>
+                                    <span className="text-[11px] text-muted-foreground">• {inst.contactPerson}</span>
                                   )}
                                 </div>
                               </div>
                             </div>
                           </TableCell>
 
-                          <TableCell className="py-3">
+                          <TableCell className="py-3 px-3">
                             <div className="flex flex-wrap gap-1 max-w-[200px]">
                               {inst.acceptedProfiles && inst.acceptedProfiles.length > 0 ? (
                                 inst.acceptedProfiles.map((p) => (
-                                  <Badge key={p} variant="secondary" className="text-[10px] py-0 px-1.5 font-medium bg-blue-50 text-blue-800 border border-blue-200">
+                                  <Badge key={p} variant="outline" className="text-[10px] py-0 px-1.5 font-medium bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 border-blue-200 dark:border-blue-800/60">
                                     {getCategoryDisplayName(p)}
                                   </Badge>
                                 ))
                               ) : (
-                                <span className="text-xs text-gray-400 italic">Todos los perfiles</span>
+                                <span className="text-[11px] text-muted-foreground italic">Todos</span>
                               )}
                             </div>
                           </TableCell>
 
-                          <TableCell className="py-3">
+                          <TableCell className="py-3 px-3">
                             {hasProducts ? (
                               <div className="flex flex-wrap gap-1.5 max-w-md">
                                 {assignedProducts.map((p) => {
@@ -653,10 +667,10 @@ export default function InstitutionProducts() {
                                   return (
                                     <div
                                       key={p.id}
-                                      className="inline-flex items-center gap-1 px-2 py-1 bg-purple-50 text-purple-900 border border-purple-200 rounded-md text-xs font-medium"
+                                      className="inline-flex items-center gap-1.5 px-2 py-0.5 bg-purple-50 dark:bg-purple-950/40 text-purple-900 dark:text-purple-300 border border-purple-200/80 dark:border-purple-800/60 rounded-lg text-xs font-medium"
                                     >
-                                      <Package className="w-3 h-3 text-purple-600" />
-                                      <span>{(p as any).customName || p.name || template?.name || 'Producto'}</span>
+                                      <Package className="w-3 h-3 text-purple-600 dark:text-purple-400 flex-shrink-0" />
+                                      <span className="truncate max-w-[160px]">{(p as any).customName || p.name || template?.name || 'Producto'}</span>
                                       <button
                                         type="button"
                                         onClick={() => {
@@ -664,43 +678,41 @@ export default function InstitutionProducts() {
                                             unassignMutation.mutate(p.id);
                                           }
                                         }}
-                                        className="ml-1 text-gray-400 hover:text-red-600 rounded-full"
+                                        className="text-purple-400 hover:text-destructive rounded-full transition-colors ml-0.5"
                                         title="Eliminar asignación"
                                         data-testid={`button-unassign-${p.id}`}
                                       >
-                                        <XCircle className="w-3 h-3" />
+                                        <XCircle className="w-3.5 h-3.5" />
                                       </button>
                                     </div>
                                   );
                                 })}
                               </div>
                             ) : (
-                              <div className="flex items-center gap-1.5 text-amber-700 bg-amber-50 px-2.5 py-1 rounded-md border border-amber-200 w-fit text-xs font-semibold">
-                                <AlertTriangle className="w-3.5 h-3.5 text-amber-600" />
-                                <span>Sin productos asignados (Faltante)</span>
+                              <div className="flex items-center gap-1.5 text-amber-800 dark:text-amber-300 bg-amber-50/80 dark:bg-amber-950/40 px-2.5 py-1 rounded-lg border border-amber-200/80 dark:border-amber-800/60 w-fit text-xs font-medium">
+                                <AlertTriangle className="w-3.5 h-3.5 text-amber-600 flex-shrink-0" />
+                                <span>Sin productos asignados</span>
                               </div>
                             )}
                           </TableCell>
 
-                          <TableCell className="py-3 text-center">
-                            <Badge className={`text-xs font-bold ${hasProducts ? 'bg-purple-100 text-purple-800' : 'bg-amber-100 text-amber-800'}`}>
+                          <TableCell className="py-3 px-3 text-center">
+                            <Badge variant="outline" className={`text-xs font-semibold ${hasProducts ? 'bg-purple-50 dark:bg-purple-950/40 text-purple-700 dark:text-purple-300 border-purple-200 dark:border-purple-800/60' : 'bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 border-amber-200 dark:border-amber-800/60'}`}>
                               {assignedProducts.length}
                             </Badge>
                           </TableCell>
 
-                          <TableCell className="py-3 text-right">
-                            <div className="flex items-center justify-end gap-1.5">
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                onClick={() => handleOpenAssignForInstitution(inst.id)}
-                                className="text-xs h-8 border-primary text-primary hover:bg-primary/10"
-                                data-testid={`button-assign-to-inst-${inst.id}`}
-                              >
-                                <Plus className="w-3.5 h-3.5 mr-1" />
-                                Asignar
-                              </Button>
-                            </div>
+                          <TableCell className="py-3 px-4 text-right">
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => handleOpenAssignForInstitution(inst.id)}
+                              className="text-xs h-7 px-2.5 font-semibold rounded-lg border-border text-foreground hover:bg-muted"
+                              data-testid={`button-assign-to-inst-${inst.id}`}
+                            >
+                              <Plus className="w-3.5 h-3.5 mr-1 text-muted-foreground" />
+                              Asignar
+                            </Button>
                           </TableCell>
                         </TableRow>
                       );
@@ -714,12 +726,12 @@ export default function InstitutionProducts() {
             <div className="overflow-x-auto">
               <Table>
                 <TableHeader>
-                  <TableRow className="bg-gray-50/75">
-                    <TableHead className="font-semibold text-gray-700 text-xs py-3">Plantilla de Producto</TableHead>
-                    <TableHead className="font-semibold text-gray-700 text-xs py-3">Categoría y Perfiles</TableHead>
-                    <TableHead className="font-semibold text-gray-700 text-xs py-3">Financieras con este Producto</TableHead>
-                    <TableHead className="font-semibold text-gray-700 text-xs py-3 text-center">Cobertura</TableHead>
-                    <TableHead className="font-semibold text-gray-700 text-xs py-3 text-right">Acciones</TableHead>
+                  <TableRow className="border-b border-border/60 bg-muted/40 text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">
+                    <TableHead className="font-semibold text-muted-foreground text-[11px] py-3 px-4">Plantilla de Producto</TableHead>
+                    <TableHead className="font-semibold text-muted-foreground text-[11px] py-3 px-3">Categoría y Perfiles</TableHead>
+                    <TableHead className="font-semibold text-muted-foreground text-[11px] py-3 px-3">Financieras con este Producto</TableHead>
+                    <TableHead className="font-semibold text-muted-foreground text-[11px] py-3 px-3 text-center">Cobertura</TableHead>
+                    <TableHead className="font-semibold text-muted-foreground text-[11px] py-3 px-4 text-right">Acciones</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -733,8 +745,10 @@ export default function InstitutionProducts() {
                     if (filtered.length === 0) {
                       return (
                         <TableRow>
-                          <TableCell colSpan={5} className="text-center py-8 text-gray-500 text-sm">
-                            No se encontraron plantillas de productos que coincidan con la búsqueda.
+                          <TableCell colSpan={5} className="text-center py-10 px-4 bg-muted/20">
+                            <FileText className="w-8 h-8 text-muted-foreground/40 mx-auto mb-2" />
+                            <p className="text-xs font-semibold text-foreground">No se encontraron plantillas</p>
+                            <p className="text-[11px] text-muted-foreground mt-0.5">Prueba con otro término de búsqueda.</p>
                           </TableCell>
                         </TableRow>
                       );
@@ -749,48 +763,52 @@ export default function InstitutionProducts() {
                       const hasInsts = instNames.length > 0;
 
                       return (
-                        <TableRow key={tmpl.id} className="hover:bg-gray-50/50">
-                          <TableCell className="py-3">
+                        <TableRow key={tmpl.id} className="hover:bg-muted/40 transition-colors">
+                          <TableCell className="py-3 px-4">
                             <div className="flex items-center space-x-2.5">
-                              <FileText className={`w-4 h-4 ${hasInsts ? 'text-primary' : 'text-amber-500'}`} />
+                              <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 border ${
+                                hasInsts ? 'bg-primary/10 border-primary/20 text-primary' : 'bg-amber-500/10 border-amber-500/20 text-amber-600'
+                              }`}>
+                                <FileText className="w-4 h-4" />
+                              </div>
                               <div>
-                                <p className="font-bold text-gray-900 text-sm">{tmpl.name}</p>
+                                <p className="font-semibold text-foreground text-xs">{tmpl.name}</p>
                                 {tmpl.description && (
-                                  <p className="text-[11px] text-gray-500 line-clamp-1 max-w-xs">{tmpl.description}</p>
+                                  <p className="text-[11px] text-muted-foreground line-clamp-1 max-w-xs">{tmpl.description}</p>
                                 )}
                               </div>
                             </div>
                           </TableCell>
 
-                          <TableCell className="py-3">
+                          <TableCell className="py-3 px-3">
                             <div className="space-y-1">
-                              <span className="text-[11px] font-semibold text-gray-600 capitalize block">
+                              <span className="text-[11px] font-semibold text-muted-foreground capitalize block">
                                 {tmpl.category || 'General'}
                               </span>
                               <div className="flex flex-wrap gap-1">
                                 {tmpl.targetProfiles && tmpl.targetProfiles.length > 0 ? (
                                   tmpl.targetProfiles.map((p: string) => (
-                                    <Badge key={p} variant="outline" className="text-[10px] py-0 px-1 font-medium bg-blue-50 text-blue-800 border-blue-200">
+                                    <Badge key={p} variant="outline" className="text-[10px] py-0 px-1.5 font-medium bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 border-blue-200 dark:border-blue-800/60">
                                       {getCategoryDisplayName(p)}
                                     </Badge>
                                   ))
                                 ) : (
-                                  <span className="text-[10px] text-gray-400">Todos</span>
+                                  <span className="text-[11px] text-muted-foreground">Todos</span>
                                 )}
                               </div>
                             </div>
                           </TableCell>
 
-                          <TableCell className="py-3">
+                          <TableCell className="py-3 px-3">
                             {hasInsts ? (
                               <div className="flex flex-wrap gap-1.5 max-w-md">
                                 {instNames.map((item) => (
                                   <div
                                     key={item.productId}
-                                    className="inline-flex items-center gap-1 px-2 py-1 bg-green-50 text-green-900 border border-green-200 rounded-md text-xs font-medium"
+                                    className="inline-flex items-center gap-1.5 px-2 py-0.5 bg-emerald-50 dark:bg-emerald-950/40 text-emerald-900 dark:text-emerald-300 border border-emerald-200/80 dark:border-emerald-800/60 rounded-lg text-xs font-medium"
                                   >
-                                    <Building2 className="w-3 h-3 text-green-700" />
-                                    <span>{item.institutionName}</span>
+                                    <Building2 className="w-3 h-3 text-emerald-700 dark:text-emerald-400 flex-shrink-0" />
+                                    <span className="truncate max-w-[160px]">{item.institutionName}</span>
                                     <button
                                       type="button"
                                       onClick={() => {
@@ -798,37 +816,37 @@ export default function InstitutionProducts() {
                                           unassignMutation.mutate(item.productId);
                                         }
                                       }}
-                                      className="ml-1 text-gray-400 hover:text-red-600 rounded-full"
+                                      className="text-emerald-500 hover:text-destructive rounded-full transition-colors ml-0.5"
                                       title="Eliminar asignación"
                                       data-testid={`button-unassign-tmpl-${item.productId}`}
                                     >
-                                      <XCircle className="w-3 h-3" />
+                                      <XCircle className="w-3.5 h-3.5" />
                                     </button>
                                   </div>
                                 ))}
                               </div>
                             ) : (
-                              <span className="text-xs text-amber-700 font-semibold bg-amber-50 px-2 py-1 rounded border border-amber-200 inline-block">
+                              <span className="text-xs text-amber-800 dark:text-amber-300 font-medium bg-amber-50/80 dark:bg-amber-950/40 px-2 py-0.5 rounded-lg border border-amber-200/80 dark:border-amber-800/60 inline-block">
                                 ⚠️ Sin financieras asignadas
                               </span>
                             )}
                           </TableCell>
 
-                          <TableCell className="py-3 text-center">
-                            <Badge className={`text-xs font-bold ${hasInsts ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-600'}`}>
+                          <TableCell className="py-3 px-3 text-center">
+                            <Badge variant="outline" className={`text-xs font-semibold ${hasInsts ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800/60' : 'bg-muted text-muted-foreground border-border'}`}>
                               {instNames.length} {instNames.length === 1 ? 'financiera' : 'financieras'}
                             </Badge>
                           </TableCell>
 
-                          <TableCell className="py-3 text-right">
+                          <TableCell className="py-3 px-4 text-right">
                             <Button
                               size="sm"
                               variant="outline"
                               onClick={() => handleOpenAssignForTemplate(tmpl.id)}
-                              className="text-xs h-8 border-primary text-primary hover:bg-primary/10"
+                              className="text-xs h-7 px-2.5 font-semibold rounded-lg border-border text-foreground hover:bg-muted"
                               data-testid={`button-assign-template-${tmpl.id}`}
                             >
-                              <Plus className="w-3.5 h-3.5 mr-1" />
+                              <Plus className="w-3.5 h-3.5 mr-1 text-muted-foreground" />
                               Asignar
                             </Button>
                           </TableCell>

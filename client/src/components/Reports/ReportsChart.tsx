@@ -1,4 +1,5 @@
 import { ResponsiveContainer, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, PieChart, Pie, Cell, BarChart, Bar } from 'recharts';
+import { BarChart2 } from 'lucide-react';
 
 interface ReportsChartProps {
   type: 'line' | 'bar' | 'pie';
@@ -9,7 +10,7 @@ interface ReportsChartProps {
   height?: number;
 }
 
-const DEFAULT_COLORS = ['#1E40AF', '#059669', '#F59E0B', '#EF4444', '#8B5CF6', '#EC4899', '#14B8A6', '#F97316'];
+const DEFAULT_COLORS = ['#0f172a', '#059669', '#2563eb', '#d97706', '#7c3aed', '#0891b2', '#db2777', '#475569'];
 
 export default function ReportsChart({ 
   type, 
@@ -23,8 +24,9 @@ export default function ReportsChart({
     return (
       <div className="flex items-center justify-center h-64">
         <div className="text-center">
-          <i className="fas fa-chart-line text-4xl text-gray-300 mb-4"></i>
-          <p className="text-neutral">No hay datos para mostrar</p>
+          <BarChart2 className="w-8 h-8 text-muted-foreground/40 mx-auto mb-2" />
+          <p className="text-xs font-semibold text-foreground">No hay datos para mostrar</p>
+          <p className="text-[11px] text-muted-foreground mt-0.5">Selecciona otro período de tiempo</p>
         </div>
       </div>
     );
@@ -37,14 +39,18 @@ export default function ReportsChart({
   const CustomTooltip = ({ active, payload, label }: any) => {
     if (active && payload && payload.length) {
       return (
-        <div className="bg-white p-3 border border-gray-200 rounded-lg shadow-lg">
-          <p className="font-semibold text-gray-900">{label}</p>
+        <div className="bg-popover/95 backdrop-blur-sm p-3 border border-border rounded-xl shadow-sm text-xs">
+          <p className="font-bold text-popover-foreground mb-1">{label}</p>
           {payload.map((item: any, index: number) => (
-            <p key={index} className="text-sm" style={{ color: item.color }}>
-              {item.name}: {typeof item.value === 'number' && item.dataKey?.includes('amount') 
-                ? formatCurrency(item.value)
-                : item.value
-              }
+            <p key={index} className="flex items-center gap-1.5 py-0.5 text-xs">
+              <span className="w-2 h-2 rounded-full inline-block flex-shrink-0" style={{ backgroundColor: item.color }} />
+              <span className="text-muted-foreground font-medium">{item.name}:</span>
+              <span className="font-bold font-mono text-popover-foreground">
+                {typeof item.value === 'number' && item.dataKey?.includes('amount') 
+                  ? formatCurrency(item.value)
+                  : item.value
+                }
+              </span>
             </p>
           ))}
         </div>
@@ -57,16 +63,24 @@ export default function ReportsChart({
     case 'line':
       return (
         <ResponsiveContainer width="100%" height={height}>
-          <LineChart data={data}>
-            <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+          <LineChart data={data} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
+            <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" strokeOpacity={0.6} vertical={false} />
             <XAxis 
               dataKey={xKey} 
-              stroke="#666"
-              fontSize={12}
+              stroke="hsl(var(--muted-foreground))"
+              fontSize={11}
+              tickLine={false}
+              axisLine={{ stroke: 'hsl(var(--border))' }}
             />
-            <YAxis stroke="#666" fontSize={12} />
+            <YAxis 
+              stroke="hsl(var(--muted-foreground))" 
+              fontSize={11}
+              tickLine={false}
+              axisLine={{ stroke: 'hsl(var(--border))' }}
+              tickFormatter={(v) => typeof v === 'number' && v >= 1000 ? `${(v/1000).toFixed(0)}k` : String(v)}
+            />
             <Tooltip content={<CustomTooltip />} />
-            <Legend />
+            <Legend wrapperStyle={{ fontSize: '11px', paddingTop: '8px' }} />
             {yKeys.map((key, index) => (
               <Line
                 key={key}
@@ -74,8 +88,8 @@ export default function ReportsChart({
                 dataKey={key}
                 stroke={colors[index % colors.length]}
                 strokeWidth={2}
-                dot={{ r: 4 }}
-                activeDot={{ r: 6 }}
+                dot={{ r: 3, fill: colors[index % colors.length] }}
+                activeDot={{ r: 5 }}
                 name={key === 'credits' ? 'Créditos' : key === 'amount' ? 'Monto' : key}
               />
             ))}
@@ -86,17 +100,18 @@ export default function ReportsChart({
     case 'bar':
       return (
         <ResponsiveContainer width="100%" height={height}>
-          <BarChart data={data}>
-            <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-            <XAxis dataKey={xKey} stroke="#666" fontSize={12} />
-            <YAxis stroke="#666" fontSize={12} />
+          <BarChart data={data} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
+            <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" strokeOpacity={0.6} vertical={false} />
+            <XAxis dataKey={xKey} stroke="hsl(var(--muted-foreground))" fontSize={11} tickLine={false} axisLine={{ stroke: 'hsl(var(--border))' }} />
+            <YAxis stroke="hsl(var(--muted-foreground))" fontSize={11} tickLine={false} axisLine={{ stroke: 'hsl(var(--border))' }} />
             <Tooltip content={<CustomTooltip />} />
-            <Legend />
+            <Legend wrapperStyle={{ fontSize: '11px', paddingTop: '8px' }} />
             {yKeys.map((key, index) => (
               <Bar
                 key={key}
                 dataKey={key}
                 fill={colors[index % colors.length]}
+                radius={[4, 4, 0, 0]}
                 name={key === 'credits' ? 'Créditos' : key === 'amount' ? 'Monto' : key}
               />
             ))}
@@ -114,12 +129,12 @@ export default function ReportsChart({
               cy="50%"
               labelLine={false}
               label={({ name, percent }) => `${name}: ${(percent * 100).toFixed(0)}%`}
-              outerRadius={80}
-              fill="#8884d8"
+              outerRadius={85}
+              fill="#0f172a"
               dataKey={yKeys[0] || 'value'}
             >
               {data.map((entry, index) => (
-                <Cell key={`cell-${index}`} fill={colors[index % colors.length]} />
+                <Cell key={`cell-${index}`} fill={colors[index % colors.length]} stroke="hsl(var(--background))" strokeWidth={2} />
               ))}
             </Pie>
             <Tooltip content={<CustomTooltip />} />
@@ -130,7 +145,7 @@ export default function ReportsChart({
     default:
       return (
         <div className="flex items-center justify-center h-64">
-          <p className="text-neutral">Tipo de gráfico no soportado</p>
+          <p className="text-xs text-muted-foreground">Tipo de gráfico no soportado</p>
         </div>
       );
   }

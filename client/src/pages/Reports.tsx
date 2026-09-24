@@ -283,238 +283,254 @@ export default function Reports() {
         subtitle="Análisis detallado del desempeño de tu operación"
       />
         
-      <main className="flex-1 p-4 sm:p-6 lg:p-8 overflow-y-auto space-y-4" data-testid="reports-main-content">
-        {/* Compact Controls Toolbar */}
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3 bg-card border border-border/70 rounded-lg shadow-2xs">
-          <div className="flex flex-wrap items-center gap-2">
-            <Select value={dateRange} onValueChange={setDateRange}>
-              <SelectTrigger className="w-40 sm:w-44 h-8 text-xs bg-background border-border/70" data-testid="select-date-range">
-                <SelectValue placeholder="Período" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="current_month" className="text-xs">Este mes</SelectItem>
-                <SelectItem value="last_month" className="text-xs">Mes anterior</SelectItem>
-                <SelectItem value="last_6_months" className="text-xs">Últimos 6 meses</SelectItem>
-                <SelectItem value="current_year" className="text-xs">Este año</SelectItem>
-              </SelectContent>
-            </Select>
+      <main className="flex-1 p-4 sm:p-6 lg:p-8 overflow-y-auto space-y-6" data-testid="reports-main-content">
+        <div className="max-w-7xl mx-auto space-y-6">
+          {/* Compact Controls Toolbar */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3 bg-card border border-border rounded-xl shadow-sm">
+            <div className="flex flex-wrap items-center gap-2">
+              <Select value={dateRange} onValueChange={setDateRange}>
+                <SelectTrigger className="w-40 sm:w-44 h-8 text-xs bg-background border-border rounded-lg text-foreground font-medium" data-testid="select-date-range">
+                  <SelectValue placeholder="Período" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="current_month" className="text-xs">Este mes</SelectItem>
+                  <SelectItem value="last_month" className="text-xs">Mes anterior</SelectItem>
+                  <SelectItem value="last_6_months" className="text-xs">Últimos 6 meses</SelectItem>
+                  <SelectItem value="current_year" className="text-xs">Este año</SelectItem>
+                </SelectContent>
+              </Select>
 
-            <Select value={reportType} onValueChange={setReportType}>
-              <SelectTrigger className="w-40 sm:w-44 h-8 text-xs bg-background border-border/70" data-testid="select-report-type">
-                <SelectValue placeholder="Tipo de reporte" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="overview" className="text-xs">Vista General</SelectItem>
-                <SelectItem value="commissions" className="text-xs">Comisiones</SelectItem>
-                <SelectItem value="clients" className="text-xs">Análisis de Clientes</SelectItem>
-                <SelectItem value="performance" className="text-xs">Rendimiento</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-
-          <div className="flex items-center gap-2 self-start sm:self-auto">
-            <Button
-              variant="outline"
-              size="sm"
-              className="h-8 text-xs border-border/70 hover:bg-muted"
-              data-testid="button-export-pdf"
-              onClick={exportToPDF}
-            >
-              <FileText className="h-3.5 w-3.5 mr-1.5 text-rose-600 dark:text-rose-400" />
-              Exportar PDF
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              className="h-8 text-xs border-border/70 hover:bg-muted"
-              data-testid="button-export-excel"
-              onClick={exportToExcel}
-            >
-              <FileSpreadsheet className="h-3.5 w-3.5 mr-1.5 text-emerald-600 dark:text-emerald-400" />
-              Exportar Excel
-            </Button>
-          </div>
-        </div>
-
-        {/* Compact Key Metrics Grid */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-          {/* Métricas 1: Créditos Otorgados */}
-          <div className="p-3.5 rounded-lg border border-border/70 bg-card shadow-2xs flex items-center justify-between">
-            <div className="space-y-0.5">
-              <span className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider block">
-                Créditos Otorgados
-              </span>
-              <p className="text-xl font-bold font-mono text-foreground" data-testid="metric-total-credits">
-                {reportData.totalCredits}
-              </p>
-              <span className="text-[11px] text-muted-foreground block">
-                En el período
-              </span>
+              <Select value={reportType} onValueChange={setReportType}>
+                <SelectTrigger className="w-40 sm:w-44 h-8 text-xs bg-background border-border rounded-lg text-foreground font-medium" data-testid="select-report-type">
+                  <SelectValue placeholder="Tipo de reporte" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="overview" className="text-xs">Vista General</SelectItem>
+                  <SelectItem value="commissions" className="text-xs">Comisiones</SelectItem>
+                  <SelectItem value="clients" className="text-xs">Análisis de Clientes</SelectItem>
+                  <SelectItem value="performance" className="text-xs">Rendimiento</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
-            <div className="w-8 h-8 rounded-md bg-primary/10 flex items-center justify-center flex-shrink-0 border border-primary/20">
-              <CreditCard className="h-4 w-4 text-primary" />
+
+            <div className="flex items-center gap-2 self-start sm:self-auto">
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-8 text-xs font-semibold border-border hover:bg-muted text-foreground rounded-lg"
+                data-testid="button-export-pdf"
+                onClick={exportToPDF}
+              >
+                <FileText className="h-3.5 w-3.5 mr-1.5 text-rose-600 dark:text-rose-400" />
+                Exportar PDF
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-8 text-xs font-semibold border-border hover:bg-muted text-foreground rounded-lg"
+                data-testid="button-export-excel"
+                onClick={exportToExcel}
+              >
+                <FileSpreadsheet className="h-3.5 w-3.5 mr-1.5 text-emerald-600 dark:text-emerald-400" />
+                Exportar Excel
+              </Button>
             </div>
           </div>
 
-          {/* Métricas 2: Volumen Total */}
-          <div className="p-3.5 rounded-lg border border-border/70 bg-card shadow-2xs flex items-center justify-between">
-            <div className="space-y-0.5">
-              <span className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider block">
-                Volumen Total
-              </span>
-              <p className="text-xl font-bold font-mono text-emerald-600 dark:text-emerald-400" data-testid="metric-total-amount">
-                ${reportData.totalAmount.toLocaleString('es-MX')}
-              </p>
-              <span className="text-[11px] text-muted-foreground block">
-                MXN colocados
-              </span>
-            </div>
-            <div className="w-8 h-8 rounded-md bg-emerald-500/10 flex items-center justify-center flex-shrink-0 border border-emerald-500/20">
-              <DollarSign className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
-            </div>
+          {/* Compact Key Metrics Grid */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            {/* Métricas 1: Créditos Otorgados */}
+            <Card className="border border-border shadow-sm bg-card">
+              <CardContent className="p-4 flex items-center justify-between">
+                <div>
+                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                    Créditos Otorgados
+                  </p>
+                  <p className="text-2xl font-bold font-mono text-foreground mt-1" data-testid="metric-total-credits">
+                    {reportData.totalCredits}
+                  </p>
+                  <p className="text-[11px] text-muted-foreground mt-0.5">
+                    En el período seleccionado
+                  </p>
+                </div>
+                <div className="w-10 h-10 rounded-xl bg-blue-50 dark:bg-blue-950/40 border border-blue-200/80 dark:border-blue-800/60 text-blue-700 dark:text-blue-300 flex items-center justify-center flex-shrink-0">
+                  <CreditCard className="h-5 w-5" />
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Métricas 2: Volumen Total */}
+            <Card className="border border-border shadow-sm bg-card">
+              <CardContent className="p-4 flex items-center justify-between">
+                <div>
+                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                    Volumen Total
+                  </p>
+                  <p className="text-2xl font-bold font-mono text-emerald-600 dark:text-emerald-400 mt-1" data-testid="metric-total-amount">
+                    ${reportData.totalAmount.toLocaleString('es-MX')}
+                  </p>
+                  <p className="text-[11px] text-muted-foreground mt-0.5">
+                    MXN colocados
+                  </p>
+                </div>
+                <div className="w-10 h-10 rounded-xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200/80 dark:border-emerald-800/60 text-emerald-700 dark:text-emerald-300 flex items-center justify-center flex-shrink-0">
+                  <DollarSign className="h-5 w-5" />
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Métricas 3: Ticket Promedio */}
+            <Card className="border border-border shadow-sm bg-card">
+              <CardContent className="p-4 flex items-center justify-between">
+                <div>
+                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                    Ticket Promedio
+                  </p>
+                  <p className="text-2xl font-bold font-mono text-foreground mt-1" data-testid="metric-avg-amount">
+                    ${reportData.avgCreditAmount.toLocaleString('es-MX', { maximumFractionDigits: 0 })}
+                  </p>
+                  <p className="text-[11px] text-muted-foreground mt-0.5">
+                    Por crédito otorgado
+                  </p>
+                </div>
+                <div className="w-10 h-10 rounded-xl bg-amber-50 dark:bg-amber-950/40 border border-amber-200/80 dark:border-amber-800/60 text-amber-700 dark:text-amber-300 flex items-center justify-center flex-shrink-0">
+                  <TrendingUp className="h-5 w-5" />
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Métricas 4: Comisiones Generadas */}
+            <Card className="border border-border shadow-sm bg-card">
+              <CardContent className="p-4 flex items-center justify-between">
+                <div>
+                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                    Comisiones Generadas
+                  </p>
+                  <p className="text-2xl font-bold font-mono text-purple-700 dark:text-purple-300 mt-1" data-testid="metric-total-commissions">
+                    ${totalCommissions.toLocaleString('es-MX', { maximumFractionDigits: 0 })}
+                  </p>
+                  <p className="text-[11px] text-muted-foreground mt-0.5">
+                    Total del período
+                  </p>
+                </div>
+                <div className="w-10 h-10 rounded-xl bg-purple-50 dark:bg-purple-950/40 border border-purple-200/80 dark:border-purple-800/60 text-purple-700 dark:text-purple-300 flex items-center justify-center flex-shrink-0">
+                  <Coins className="h-5 w-5" />
+                </div>
+              </CardContent>
+            </Card>
           </div>
 
-          {/* Métricas 3: Ticket Promedio */}
-          <div className="p-3.5 rounded-lg border border-border/70 bg-card shadow-2xs flex items-center justify-between">
-            <div className="space-y-0.5">
-              <span className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider block">
-                Ticket Promedio
-              </span>
-              <p className="text-xl font-bold font-mono text-foreground" data-testid="metric-avg-amount">
-                ${reportData.avgCreditAmount.toLocaleString('es-MX')}
-              </p>
-              <span className="text-[11px] text-muted-foreground block">
-                Por crédito
-              </span>
-            </div>
-            <div className="w-8 h-8 rounded-md bg-amber-500/10 flex items-center justify-center flex-shrink-0 border border-amber-500/20">
-              <TrendingUp className="h-4 w-4 text-amber-600 dark:text-amber-400" />
-            </div>
+          {/* Charts Section */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            {/* Monthly Trend Chart */}
+            <Card className="border border-border bg-card shadow-sm">
+              <CardHeader className="p-4 pb-2 border-b border-border">
+                <CardTitle className="text-sm font-semibold text-foreground flex items-center gap-2">
+                  <BarChart2 className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+                  Tendencia Mensual
+                </CardTitle>
+                <p className="text-xs text-muted-foreground">Histórico de créditos y montos colocados por mes</p>
+              </CardHeader>
+              <CardContent className="p-4 pt-3">
+                <ReportsChart
+                  type="line"
+                  data={reportData.monthlyTrend}
+                  xKey="month"
+                  yKeys={["credits", "amount"]}
+                  colors={["#0f172a", "#059669"]}
+                />
+              </CardContent>
+            </Card>
+
+            {/* Status Distribution */}
+            <Card className="border border-border bg-card shadow-sm">
+              <CardHeader className="p-4 pb-2 border-b border-border">
+                <CardTitle className="text-sm font-semibold text-foreground flex items-center gap-2">
+                  <BarChart2 className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
+                  Distribución por Estado
+                </CardTitle>
+                <p className="text-xs text-muted-foreground">Proporción de solicitudes según estatus actual</p>
+              </CardHeader>
+              <CardContent className="p-4 pt-3">
+                <ReportsChart
+                  type="pie"
+                  data={reportData.statusDistribution}
+                  xKey="status"
+                  yKeys={["count"]}
+                  colors={["#0f172a", "#059669", "#2563eb", "#d97706", "#7c3aed"]}
+                />
+              </CardContent>
+            </Card>
           </div>
 
-          {/* Métricas 4: Comisiones Generadas */}
-          <div className="p-3.5 rounded-lg border border-border/70 bg-card shadow-2xs flex items-center justify-between">
-            <div className="space-y-0.5">
-              <span className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider block">
-                Comisiones Generadas
-              </span>
-              <p className="text-xl font-bold font-mono text-primary" data-testid="metric-total-commissions">
-                ${totalCommissions.toLocaleString('es-MX')}
-              </p>
-              <span className="text-[11px] text-muted-foreground block">
-                Total del período
-              </span>
-            </div>
-            <div className="w-8 h-8 rounded-md bg-primary/10 flex items-center justify-center flex-shrink-0 border border-primary/20">
-              <Coins className="h-4 w-4 text-primary" />
-            </div>
-          </div>
-        </div>
-
-        {/* Charts Section */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-          {/* Monthly Trend Chart */}
-          <Card className="border border-border/70 bg-card shadow-2xs">
-            <CardHeader className="p-4 pb-2 border-b border-border/40">
-              <CardTitle className="text-sm font-semibold text-foreground tracking-tight flex items-center gap-2">
-                <BarChart2 className="h-4 w-4 text-primary" />
-                Tendencia Mensual
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="p-4 pt-3">
-              <ReportsChart
-                type="line"
-                data={reportData.monthlyTrend}
-                xKey="month"
-                yKeys={["credits", "amount"]}
-                colors={["#1E40AF", "#059669"]}
-              />
-            </CardContent>
-          </Card>
-
-          {/* Status Distribution */}
-          <Card className="border border-border/70 bg-card shadow-2xs">
-            <CardHeader className="p-4 pb-2 border-b border-border/40">
-              <CardTitle className="text-sm font-semibold text-foreground tracking-tight flex items-center gap-2">
-                <BarChart2 className="h-4 w-4 text-emerald-600" />
-                Distribución por Estado
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="p-4 pt-3">
-              <ReportsChart
-                type="pie"
-                data={reportData.statusDistribution}
-                xKey="status"
-                yKeys={["count"]}
-                colors={["#1E40AF", "#059669", "#F59E0B", "#EF4444", "#8B5CF6"]}
-              />
-            </CardContent>
-          </Card>
-        </div>
-
-        {/* Top Clients Table */}
-        <Card className="border border-border/70 bg-card shadow-2xs">
-          <CardHeader className="p-4 pb-2 border-b border-border/40">
-            <div className="flex items-center justify-between">
-              <CardTitle className="text-sm font-semibold text-foreground tracking-tight">
-                Top 10 Clientes por Volumen
-              </CardTitle>
-              <span className="text-[11px] text-muted-foreground font-mono">
-                {reportData.topClients.length} registrados
-              </span>
-            </div>
-          </CardHeader>
-          <CardContent className="p-0">
-            {reportData.topClients.length === 0 ? (
-              <div className="text-center py-8">
-                <BarChart2 className="h-8 w-8 text-muted-foreground/40 mx-auto mb-2" />
-                <p className="text-xs text-muted-foreground">No hay datos de clientes en el período seleccionado</p>
+          {/* Top Clients Table */}
+          <Card className="border border-border bg-card shadow-sm overflow-hidden">
+            <CardHeader className="p-4 pb-3 border-b border-border bg-muted/20">
+              <div className="flex items-center justify-between">
+                <div>
+                  <CardTitle className="text-sm font-semibold text-foreground">
+                    Top 10 Clientes por Volumen
+                  </CardTitle>
+                  <p className="text-xs text-muted-foreground mt-0.5">Empresas y personas con mayor colocación crediticia</p>
+                </div>
+                <span className="text-[11px] font-semibold text-muted-foreground bg-muted px-2 py-0.5 rounded-md border border-border font-mono">
+                  {reportData.topClients.length} registrados
+                </span>
               </div>
-            ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full text-xs">
-                  <thead>
-                    <tr className="border-b border-border/50 bg-muted/40 text-muted-foreground">
-                      <th className="text-left py-2.5 px-3.5 font-semibold uppercase tracking-wider text-[10px]">Cliente</th>
-                      <th className="text-right py-2.5 px-3.5 font-semibold uppercase tracking-wider text-[10px]">Créditos</th>
-                      <th className="text-right py-2.5 px-3.5 font-semibold uppercase tracking-wider text-[10px]">Volumen Total</th>
-                      <th className="text-right py-2.5 px-3.5 font-semibold uppercase tracking-wider text-[10px]">Promedio por Crédito</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-border/40">
-                    {reportData.topClients.map((client, index) => (
-                      <tr 
-                        key={index} 
-                        className="hover:bg-muted/30 transition-colors"
-                        data-testid={`top-client-${index}`}
-                      >
-                        <td className="py-2.5 px-3.5">
-                          <div className="flex items-center gap-2.5">
-                            <div className="w-6 h-6 bg-primary/10 border border-primary/20 rounded-full flex items-center justify-center flex-shrink-0">
-                              <span className="text-primary font-bold text-[10px]">
-                                {client.name.slice(0, 2).toUpperCase()}
-                              </span>
-                            </div>
-                            <span className="font-medium text-foreground truncate max-w-[200px] sm:max-w-xs">{client.name}</span>
-                          </div>
-                        </td>
-                        <td className="text-right py-2.5 px-3.5 font-mono font-medium text-foreground">
-                          {client.creditsCount}
-                        </td>
-                        <td className="text-right py-2.5 px-3.5 font-mono font-semibold text-emerald-600 dark:text-emerald-400">
-                          ${client.totalAmount.toLocaleString('es-MX')}
-                        </td>
-                        <td className="text-right py-2.5 px-3.5 font-mono text-muted-foreground">
-                          ${(client.totalAmount / client.creditsCount).toLocaleString('es-MX')}
-                        </td>
+            </CardHeader>
+            <CardContent className="p-0">
+              {reportData.topClients.length === 0 ? (
+                <div className="text-center py-10 px-4 bg-muted/20">
+                  <BarChart2 className="h-8 w-8 text-muted-foreground/40 mx-auto mb-2" />
+                  <p className="text-xs font-semibold text-foreground">No hay datos de clientes</p>
+                  <p className="text-[11px] text-muted-foreground mt-0.5">No se encontraron créditos registrados en el período seleccionado</p>
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-xs text-left border-collapse">
+                    <thead>
+                      <tr className="border-b border-border bg-muted/40 text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">
+                        <th className="py-2.5 px-4">Cliente</th>
+                        <th className="text-right py-2.5 px-4">Créditos</th>
+                        <th className="text-right py-2.5 px-4">Volumen Total</th>
+                        <th className="text-right py-2.5 px-4">Promedio por Crédito</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </CardContent>
-        </Card>
+                    </thead>
+                    <tbody className="divide-y divide-border">
+                      {reportData.topClients.map((client, index) => (
+                        <tr 
+                          key={index} 
+                          className="hover:bg-muted/30 transition-colors"
+                          data-testid={`top-client-${index}`}
+                        >
+                          <td className="py-2.5 px-4">
+                            <div className="flex items-center gap-2.5">
+                              <div className="w-6 h-6 bg-muted border border-border rounded-full flex items-center justify-center flex-shrink-0">
+                                <span className="text-foreground font-bold text-[10px]">
+                                  {client.name.slice(0, 2).toUpperCase()}
+                                </span>
+                              </div>
+                              <span className="font-semibold text-foreground truncate max-w-[200px] sm:max-w-xs">{client.name}</span>
+                            </div>
+                          </td>
+                          <td className="text-right py-2.5 px-4 font-mono font-medium text-foreground">
+                            {client.creditsCount}
+                          </td>
+                          <td className="text-right py-2.5 px-4 font-mono font-bold text-emerald-600 dark:text-emerald-400">
+                            ${client.totalAmount.toLocaleString('es-MX')}
+                          </td>
+                          <td className="text-right py-2.5 px-4 font-mono text-muted-foreground">
+                            ${(client.totalAmount / client.creditsCount).toLocaleString('es-MX', { maximumFractionDigits: 0 })}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </div>
       </main>
     </MainLayout>
   );

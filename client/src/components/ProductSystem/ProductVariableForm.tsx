@@ -123,205 +123,214 @@ export default function ProductVariableForm({ variable, onSuccess, onCancel }: P
   };
 
   return (
-    <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
+    <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-5">
       {/* Basic Information */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Información Básica</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <Label htmlFor="name">Nombre interno *</Label>
-              <Input
-                id="name"
-                {...form.register("name")}
-                placeholder="ej: monto_credito"
-                data-testid="input-name"
-              />
-              {form.formState.errors.name && (
-                <p className="text-sm text-red-600 mt-1">{form.formState.errors.name.message}</p>
-              )}
-            </div>
-
-            <div>
-              <Label htmlFor="displayName">Nombre para mostrar *</Label>
-              <Input
-                id="displayName"
-                {...form.register("displayName")}
-                placeholder="ej: Monto del Crédito"
-                data-testid="input-display-name"
-              />
-              {form.formState.errors.displayName && (
-                <p className="text-sm text-red-600 mt-1">{form.formState.errors.displayName.message}</p>
-              )}
-            </div>
+      <div className="space-y-3.5 bg-muted/30 p-4 rounded-xl border border-border">
+        <h4 className="text-xs font-bold text-foreground uppercase tracking-wider">Información Básica</h4>
+        
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
+          <div>
+            <Label htmlFor="name" className="text-xs font-semibold text-foreground">Nombre interno *</Label>
+            <Input
+              id="name"
+              {...form.register("name")}
+              placeholder="ej: monto_credito"
+              className="h-9 text-xs border-border rounded-lg bg-background mt-1"
+              data-testid="input-name"
+            />
+            {form.formState.errors.name && (
+              <p className="text-[11px] text-destructive mt-1">{form.formState.errors.name.message}</p>
+            )}
           </div>
 
           <div>
-            <Label htmlFor="description">Descripción</Label>
-            <Textarea
-              id="description"
-              {...form.register("description")}
-              placeholder="Descripción de la variable"
-              data-testid="textarea-description"
+            <Label htmlFor="displayName" className="text-xs font-semibold text-foreground">Nombre para mostrar *</Label>
+            <Input
+              id="displayName"
+              {...form.register("displayName")}
+              placeholder="ej: Monto del Crédito"
+              className="h-9 text-xs border-border rounded-lg bg-background mt-1"
+              data-testid="input-display-name"
             />
+            {form.formState.errors.displayName && (
+              <p className="text-[11px] text-destructive mt-1">{form.formState.errors.displayName.message}</p>
+            )}
+          </div>
+        </div>
+
+        <div>
+          <Label htmlFor="description" className="text-xs font-semibold text-foreground">Descripción</Label>
+          <Textarea
+            id="description"
+            {...form.register("description")}
+            placeholder="Descripción del propósito de esta variable"
+            className="text-xs border-border rounded-lg bg-background min-h-[64px] mt-1"
+            data-testid="textarea-description"
+          />
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
+          <div>
+            <Label htmlFor="variableType" className="text-xs font-semibold text-foreground">Tipo de Variable *</Label>
+            <Select
+              value={form.watch("dataType")}
+              onValueChange={(value) => form.setValue("dataType", value)}
+            >
+              <SelectTrigger data-testid="select-variable-type" className="h-9 text-xs border-border rounded-lg bg-background mt-1">
+                <SelectValue placeholder="Selecciona tipo" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="text" className="text-xs">Texto</SelectItem>
+                <SelectItem value="number" className="text-xs">Número</SelectItem>
+                <SelectItem value="select" className="text-xs">Selección</SelectItem>
+                <SelectItem value="multiple_select" className="text-xs">Multi-selección</SelectItem>
+                <SelectItem value="range" className="text-xs">Rango</SelectItem>
+                <SelectItem value="date" className="text-xs">Fecha</SelectItem>
+                <SelectItem value="boolean" className="text-xs">Sí/No</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <Label htmlFor="variableType">Tipo de Variable *</Label>
-              <Select
-                value={form.watch("dataType")}
-                onValueChange={(value) => form.setValue("dataType", value)}
-              >
-                <SelectTrigger data-testid="select-variable-type">
-                  <SelectValue placeholder="Selecciona tipo" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="text">Texto</SelectItem>
-                  <SelectItem value="number">Número</SelectItem>
-                  <SelectItem value="select">Selección</SelectItem>
-                  <SelectItem value="multiple_select">Multi-selección</SelectItem>
-                  <SelectItem value="range">Rango</SelectItem>
-                  <SelectItem value="date">Fecha</SelectItem>
-                  <SelectItem value="boolean">Sí/No</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div>
-              <Label htmlFor="category">Categoría *</Label>
-              <Select
-                value={form.watch("category")}
-                onValueChange={(value) => form.setValue("category", value)}
-              >
-                <SelectTrigger data-testid="select-category">
-                  <SelectValue placeholder="Selecciona categoría" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="basic">Básico</SelectItem>
-                  <SelectItem value="financial">Financiero</SelectItem>
-                  <SelectItem value="requirements">Requisitos</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
+          <div>
+            <Label htmlFor="category" className="text-xs font-semibold text-foreground">Categoría *</Label>
+            <Select
+              value={form.watch("category")}
+              onValueChange={(value) => form.setValue("category", value)}
+            >
+              <SelectTrigger data-testid="select-category" className="h-9 text-xs border-border rounded-lg bg-background mt-1">
+                <SelectValue placeholder="Selecciona categoría" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="basic" className="text-xs">Básico</SelectItem>
+                <SelectItem value="financial" className="text-xs">Financiero</SelectItem>
+                <SelectItem value="requirements" className="text-xs">Requisitos</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
-        </CardContent>
-      </Card>
+        </div>
+      </div>
 
       {/* Type-specific Configuration */}
       {(variableType === "select" || variableType === "multiple_select") && (
-        <Card>
-          <CardHeader>
-            <CardTitle>Opciones de Selección</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-4">
-              <div className="flex space-x-2">
-                <Input
-                  value={newOption}
-                  onChange={(e) => setNewOption(e.target.value)}
-                  placeholder="Nueva opción"
-                  data-testid="input-new-option"
-                  onKeyPress={(e) => e.key === 'Enter' && (e.preventDefault(), handleAddOption())}
-                />
-                <Button type="button" onClick={handleAddOption} data-testid="button-add-option">
-                  Agregar
-                </Button>
-              </div>
-              
-              <div className="flex flex-wrap gap-2">
-                {options.map((option, index) => (
-                  <Badge key={index} variant="outline" className="flex items-center space-x-2">
+        <div className="space-y-3 bg-muted/30 p-4 rounded-xl border border-border">
+          <h4 className="text-xs font-bold text-foreground uppercase tracking-wider">Opciones de Selección</h4>
+          <div className="space-y-3">
+            <div className="flex gap-2">
+              <Input
+                value={newOption}
+                onChange={(e) => setNewOption(e.target.value)}
+                placeholder="Nueva opción"
+                data-testid="input-new-option"
+                className="h-8 text-xs border-border rounded-lg bg-background flex-1"
+                onKeyPress={(e) => e.key === 'Enter' && (e.preventDefault(), handleAddOption())}
+              />
+              <Button 
+                type="button" 
+                onClick={handleAddOption} 
+                data-testid="button-add-option"
+                className="h-8 text-xs font-semibold bg-primary hover:bg-primary/90 text-primary-foreground rounded-lg px-3"
+              >
+                Agregar
+              </Button>
+            </div>
+            
+            <div className="flex flex-wrap gap-1.5 min-h-[32px] p-2 bg-card rounded-lg border border-border">
+              {options.length === 0 ? (
+                <span className="text-[11px] text-muted-foreground italic">No hay opciones agregadas aún</span>
+              ) : (
+                options.map((option, index) => (
+                  <Badge key={index} variant="outline" className="flex items-center gap-1.5 py-0.5 px-2 bg-muted text-foreground border-border text-xs">
                     <span>{option}</span>
                     <button
                       type="button"
                       onClick={() => handleRemoveOption(index)}
-                      className="text-red-500 hover:text-red-700"
+                      className="text-muted-foreground hover:text-destructive transition-colors"
                       data-testid={`button-remove-option-${index}`}
                     >
                       ×
                     </button>
                   </Badge>
-                ))}
-              </div>
+                ))
+              )}
             </div>
-          </CardContent>
-        </Card>
+          </div>
+        </div>
       )}
 
       {variableType === "range" && (
-        <Card>
-          <CardHeader>
-            <CardTitle>Configuración de Rango</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div>
-                <Label htmlFor="min">Valor Mínimo</Label>
-                <Input
-                  id="min"
-                  type="number"
-                  step="any"
-                  {...form.register("min")}
-                  placeholder="0"
-                  data-testid="input-min"
-                />
-              </div>
-              <div>
-                <Label htmlFor="max">Valor Máximo</Label>
-                <Input
-                  id="max"
-                  type="number"
-                  step="any"
-                  {...form.register("max")}
-                  placeholder="100"
-                  data-testid="input-max"
-                />
-              </div>
-              <div>
-                <Label htmlFor="unit">Unidad</Label>
-                <Input
-                  id="unit"
-                  {...form.register("unit")}
-                  placeholder="ej: MXN, %, meses"
-                  data-testid="input-unit"
-                />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {variableType === "number" && (
-        <Card>
-          <CardHeader>
-            <CardTitle>Configuración de Número</CardTitle>
-          </CardHeader>
-          <CardContent>
+        <div className="space-y-3 bg-muted/30 p-4 rounded-xl border border-border">
+          <h4 className="text-xs font-bold text-foreground uppercase tracking-wider">Configuración de Rango</h4>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
             <div>
-              <Label htmlFor="unit">Unidad</Label>
+              <Label htmlFor="min" className="text-xs font-semibold text-foreground">Valor Mínimo</Label>
+              <Input
+                id="min"
+                type="number"
+                step="any"
+                {...form.register("min")}
+                placeholder="0"
+                className="h-8 text-xs border-border rounded-lg bg-background mt-1"
+                data-testid="input-min"
+              />
+            </div>
+            <div>
+              <Label htmlFor="max" className="text-xs font-semibold text-foreground">Valor Máximo</Label>
+              <Input
+                id="max"
+                type="number"
+                step="any"
+                {...form.register("max")}
+                placeholder="100"
+                className="h-8 text-xs border-border rounded-lg bg-background mt-1"
+                data-testid="input-max"
+              />
+            </div>
+            <div>
+              <Label htmlFor="unit" className="text-xs font-semibold text-foreground">Unidad</Label>
               <Input
                 id="unit"
                 {...form.register("unit")}
-                placeholder="ej: MXN, %, días"
-                data-testid="input-number-unit"
+                placeholder="ej: MXN, %, meses"
+                className="h-8 text-xs border-border rounded-lg bg-background mt-1"
+                data-testid="input-unit"
               />
             </div>
-          </CardContent>
-        </Card>
+          </div>
+        </div>
+      )}
+
+      {variableType === "number" && (
+        <div className="space-y-3 bg-muted/30 p-4 rounded-xl border border-border">
+          <h4 className="text-xs font-bold text-foreground uppercase tracking-wider">Configuración de Número</h4>
+          <div>
+            <Label htmlFor="unit" className="text-xs font-semibold text-foreground">Unidad</Label>
+            <Input
+              id="unit"
+              {...form.register("unit")}
+              placeholder="ej: MXN, %, días"
+              className="h-8 text-xs border-border rounded-lg bg-background mt-1"
+              data-testid="input-number-unit"
+            />
+          </div>
+        </div>
       )}
 
       {/* Action Buttons */}
-      <div className="flex justify-end space-x-4 pt-6 border-t">
-        <Button type="button" variant="outline" onClick={onCancel} data-testid="button-cancel">
+      <div className="flex justify-end gap-2 pt-3 border-t border-border">
+        <Button 
+          type="button" 
+          variant="outline" 
+          onClick={onCancel} 
+          data-testid="button-cancel"
+          className="h-8 text-xs font-semibold rounded-lg border-border text-foreground hover:bg-muted"
+        >
           Cancelar
         </Button>
         <Button
           type="submit"
           disabled={saveMutation.isPending}
           data-testid="button-save"
+          className="h-8 text-xs font-semibold rounded-lg bg-primary hover:bg-primary/90 text-primary-foreground"
         >
           {saveMutation.isPending ? "Guardando..." : isEditing ? "Actualizar" : "Crear"}
         </Button>
