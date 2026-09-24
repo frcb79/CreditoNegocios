@@ -16,9 +16,17 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage, FormDes
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Separator } from "@/components/ui/separator";
 import { Badge } from "@/components/ui/badge";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import { Tag, Gift, CheckCircle, ShieldCheck, Clock, AlertCircle, Sparkles, Check, Info, ArrowRight, Loader2 } from "lucide-react";
+import { Tag, Gift, CheckCircle, ShieldCheck, Clock, AlertCircle, Sparkles, Check, Info, ArrowRight, Loader2, KeyRound } from "lucide-react";
 
 const profileSchema = z.object({
   firstName: z.string().min(1, "Nombre requerido"),
@@ -1447,89 +1455,99 @@ export default function Settings() {
                       data-testid="button-change-password"
                       onClick={() => setShowPasswordModal(true)}
                     >
-                      <i className="fas fa-key mr-1.5"></i>
+                      <KeyRound className="w-3.5 h-3.5 mr-1.5" />
                       Cambiar
                     </Button>
                   </div>
 
                   {/* Change Password Modal */}
-                  {showPasswordModal && (
-                    <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-                      <Card className="w-full max-w-md shadow-lg border border-border">
-                        <CardHeader className="py-3 px-4 sm:px-6 border-b border-border/60">
-                          <CardTitle className="text-base font-semibold">Cambiar Contraseña</CardTitle>
-                          <CardDescription className="text-xs">
-                            Ingresa tu contraseña actual y define tu nueva clave de acceso
-                          </CardDescription>
-                        </CardHeader>
-                        <CardContent className="p-4 sm:p-6">
-                          <Form {...passwordForm}>
-                            <form onSubmit={passwordForm.handleSubmit(onPasswordSubmit)} className="space-y-3.5">
-                              <FormField
-                                control={passwordForm.control}
-                                name="currentPassword"
-                                render={({ field }) => (
-                                  <FormItem>
-                                    <FormLabel className="text-xs font-medium">Contraseña Actual</FormLabel>
-                                    <FormControl>
-                                      <Input className="h-9 text-xs" type="password" {...field} />
-                                    </FormControl>
-                                    <FormMessage className="text-xs" />
-                                  </FormItem>
-                                )}
-                              />
-                              <FormField
-                                control={passwordForm.control}
-                                name="newPassword"
-                                render={({ field }) => (
-                                  <FormItem>
-                                    <FormLabel className="text-xs font-medium">Nueva Contraseña</FormLabel>
-                                    <FormControl>
-                                      <Input className="h-9 text-xs" type="password" {...field} />
-                                    </FormControl>
-                                    <FormMessage className="text-xs" />
-                                  </FormItem>
-                                )}
-                              />
-                              <FormField
-                                control={passwordForm.control}
-                                name="confirmPassword"
-                                render={({ field }) => (
-                                  <FormItem>
-                                    <FormLabel className="text-xs font-medium">Confirmar Nueva Contraseña</FormLabel>
-                                    <FormControl>
-                                      <Input className="h-9 text-xs" type="password" {...field} />
-                                    </FormControl>
-                                    <FormMessage className="text-xs" />
-                                  </FormItem>
-                                )}
-                              />
-                              <div className="flex justify-end gap-2.5 pt-3 border-t border-border/60">
-                                <Button 
-                                  type="button" 
-                                  variant="ghost" 
-                                  size="sm"
-                                  className="h-8 text-xs"
-                                  onClick={() => setShowPasswordModal(false)}
-                                >
-                                  Cancelar
-                                </Button>
-                                <Button 
-                                  type="submit" 
-                                  size="sm"
-                                  className="h-8 text-xs font-medium"
-                                  disabled={updatePasswordMutation.isPending}
-                                >
-                                  {updatePasswordMutation.isPending && <i className="fas fa-spinner fa-spin mr-1.5"></i>}
-                                  Actualizar Contraseña
-                                </Button>
-                              </div>
-                            </form>
-                          </Form>
-                        </CardContent>
-                      </Card>
-                    </div>
-                  )}
+                  <Dialog 
+                    open={showPasswordModal} 
+                    onOpenChange={(open) => {
+                      setShowPasswordModal(open);
+                      if (!open) passwordForm.reset();
+                    }}
+                  >
+                    <DialogContent className="sm:max-w-md">
+                      <DialogHeader>
+                        <DialogTitle className="text-base font-semibold flex items-center gap-2">
+                          <KeyRound className="w-4 h-4 text-primary" />
+                          Cambiar Contraseña
+                        </DialogTitle>
+                        <DialogDescription className="text-xs">
+                          Ingresa tu contraseña actual y define tu nueva clave de acceso
+                        </DialogDescription>
+                      </DialogHeader>
+
+                      <Form {...passwordForm}>
+                        <form onSubmit={passwordForm.handleSubmit(onPasswordSubmit)} className="space-y-3.5">
+                          <FormField
+                            control={passwordForm.control}
+                            name="currentPassword"
+                            render={({ field }) => (
+                              <FormItem>
+                                <FormLabel className="text-xs font-medium">Contraseña Actual</FormLabel>
+                                <FormControl>
+                                  <Input className="h-9 text-xs" type="password" {...field} />
+                                </FormControl>
+                                <FormMessage className="text-xs" />
+                              </FormItem>
+                            )}
+                          />
+                          <FormField
+                            control={passwordForm.control}
+                            name="newPassword"
+                            render={({ field }) => (
+                              <FormItem>
+                                <FormLabel className="text-xs font-medium">Nueva Contraseña</FormLabel>
+                                <FormControl>
+                                  <Input className="h-9 text-xs" type="password" {...field} />
+                                </FormControl>
+                                <FormMessage className="text-xs" />
+                              </FormItem>
+                            )}
+                          />
+                          <FormField
+                            control={passwordForm.control}
+                            name="confirmPassword"
+                            render={({ field }) => (
+                              <FormItem>
+                                <FormLabel className="text-xs font-medium">Confirmar Nueva Contraseña</FormLabel>
+                                <FormControl>
+                                  <Input className="h-9 text-xs" type="password" {...field} />
+                                </FormControl>
+                                <FormMessage className="text-xs" />
+                              </FormItem>
+                            )}
+                          />
+                          <DialogFooter className="gap-2 pt-3 border-t border-border/60">
+                            <Button 
+                              type="button" 
+                              variant="outline" 
+                              size="sm"
+                              className="h-8 text-xs"
+                              onClick={() => {
+                                setShowPasswordModal(false);
+                                passwordForm.reset();
+                              }}
+                              disabled={updatePasswordMutation.isPending}
+                            >
+                              Cancelar
+                            </Button>
+                            <Button 
+                              type="submit" 
+                              size="sm"
+                              className="h-8 text-xs font-medium"
+                              disabled={updatePasswordMutation.isPending}
+                            >
+                              {updatePasswordMutation.isPending && <Loader2 className="w-3.5 h-3.5 animate-spin mr-1.5" />}
+                              Actualizar Contraseña
+                            </Button>
+                          </DialogFooter>
+                        </form>
+                      </Form>
+                    </DialogContent>
+                  </Dialog>
 
                   <div className="p-3.5 border border-amber-500/20 bg-amber-500/5 rounded-lg flex items-center justify-between gap-3">
                     <div>
