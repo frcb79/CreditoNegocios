@@ -1322,7 +1322,7 @@ export const insertCommercialActivitySchema = createInsertSchema(commercialActiv
   id: true,
   createdAt: true,
 }).extend({
-  activityType: z.enum(COMMERCIAL_ACTIVITY_TYPES),
+  activityType: z.string().min(1),
 });
 
 export const insertBrokerElectionConfirmationSchema = createInsertSchema(brokerElectionConfirmations).omit({

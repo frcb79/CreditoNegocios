@@ -60,6 +60,7 @@ import {
   type ClientAuthorizationResult,
   type ClientAccessScope,
 } from "./commercialAuthorizationService";
+import { commercialOpportunityService } from "./commercialOpportunityService";
 
 
 import { z } from "zod";
@@ -2701,70 +2702,272 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Check for potential duplicate clients without cross-tenant leak
+  // Check for potential duplicate clients with enriched commercial eligibility
   app.post('/api/clients/check-duplicates', isAuthenticated, async (req: any, res) => {
     try {
-      const { rfc, phone, email } = req.body;
+      const { rfc, phone, email, financingNeedType } = req.body;
       if (!rfc && !phone && !email) {
-        return res.json({ hasDuplicate: false });
+        return res.json({
+          hasDuplicate: false,
+          clientExists: false,
+          isSameTenant: false,
+          canCreateOpportunity: true,
+          duplicateReason: 'no_duplicate',
+          message: 'No se enviaron datos de identificación para verificación.',
+        });
       }
 
       const userId = req.user.claims.sub;
       const user = await storage.getUser(userId);
       const userTenantId = req.tenantContext?.tenant?.id || null;
 
-      const cleanRfc = rfc ? String(rfc).trim().toUpperCase() : null;
-      const cleanPhone = phone ? String(phone).replace(/[^0-9]/g, '') : null;
-      const cleanEmail = email ? String(email).trim().toLowerCase() : null;
-
-      // 1. Check in user's tenant / portfolio
-      const tenantClients = await storage.getClients(userTenantId ? { tenantId: userTenantId } : { brokerId: userId });
-      const sameTenantMatch = tenantClients.find(c => {
-        if (cleanRfc && c.rfc && c.rfc.trim().toUpperCase() === cleanRfc) return true;
-        if (cleanPhone && c.phone && c.phone.replace(/[^0-9]/g, '') === cleanPhone) return true;
-        if (cleanEmail && c.email && c.email.trim().toLowerCase() === cleanEmail) return true;
-        return false;
+      const result = await commercialOpportunityService.checkDuplicatesEnriched({
+        rfc,
+        phone,
+        email,
+        financingNeedType,
+        currentUserId: userId,
+        currentUserRole: user?.role || 'broker',
+        userTenantId,
+        tenantContext: req.tenantContext,
       });
 
-      if (sameTenantMatch) {
-        return res.json({
-          hasDuplicate: true,
-          isSameTenant: true,
-          existingClient: {
-            id: sameTenantMatch.id,
-            firstName: sameTenantMatch.firstName,
-            lastName: sameTenantMatch.lastName,
-            businessName: sameTenantMatch.businessName,
-            phone: sameTenantMatch.phone,
-            email: sameTenantMatch.email,
-            rfc: sameTenantMatch.rfc,
-            type: sameTenantMatch.type,
-          }
-        });
-      }
-
-      // 2. Check cross-tenant globally (without exposing other tenant data)
-      const allClients = await storage.getClients();
-      const crossMatch = allClients.find(c => {
-        if (userTenantId && c.tenantId === userTenantId) return false;
-        if (!userTenantId && c.brokerId === userId) return false;
-        if (cleanRfc && c.rfc && c.rfc.trim().toUpperCase() === cleanRfc) return true;
-        if (cleanPhone && c.phone && c.phone.replace(/[^0-9]/g, '') === cleanPhone) return true;
-        if (cleanEmail && c.email && c.email.trim().toLowerCase() === cleanEmail) return true;
-        return false;
-      });
-
-      if (crossMatch) {
-        return res.json({
-          hasDuplicate: true,
-          isSameTenant: false,
-        });
-      }
-
-      return res.json({ hasDuplicate: false });
+      res.json(result);
     } catch (error: any) {
       console.error("Error checking client duplicates:", error);
       res.status(500).json({ message: "Error al verificar duplicados" });
+    }
+  });
+
+  // Consultar oportunidades comerciales de un cliente (filtradas por ClientAccessScope)
+  app.get('/api/clients/:id/opportunities', isAuthenticated, async (req: any, res) => {
+    try {
+      const { id } = req.params;
+      const userId = req.user.claims.sub;
+      const user = await storage.getUser(userId);
+
+      const result = await commercialOpportunityService.getClientOpportunities({
+        clientId: id,
+        userId,
+        userRole: user?.role || 'broker',
+        tenantContext: req.tenantContext,
+      });
+
+      if (!result.authorized) {
+        return res.status(403).json({ message: result.reason || 'Acceso denegado al expediente del cliente.' });
+      }
+
+      res.json(result.opportunities);
+    } catch (error: any) {
+      console.error("Error fetching client opportunities:", error);
+      res.status(500).json({ message: "Error al consultar oportunidades del cliente" });
+    }
+  });
+
+  // Registrar una nueva oportunidad comercial protegida
+  app.post('/api/clients/:id/opportunities', isAuthenticated, async (req: any, res) => {
+    try {
+      const { id } = req.params;
+      const userId = req.user.claims.sub;
+      const user = await storage.getUser(userId);
+
+      const {
+        title,
+        financingNeedType,
+        requestedAmount,
+        productTemplateId,
+        targetInstitutionId,
+        initialEvidenceType,
+        initialEvidenceDocUrl,
+        notes,
+        brokerId,
+      } = req.body;
+
+      if (!title || !financingNeedType || requestedAmount === undefined) {
+        return res.status(400).json({
+          message: "Campos requeridos: title, financingNeedType, requestedAmount",
+        });
+      }
+
+      const isPlatformAdmin = Boolean(user?.role === 'super_admin' || req.tenantContext?.isPlatformAdmin);
+      const targetBrokerId = (isPlatformAdmin && brokerId) ? brokerId : userId;
+
+      const result = await commercialOpportunityService.createOpportunity({
+        clientId: id,
+        brokerId: targetBrokerId,
+        tenantId: req.tenantContext?.tenant?.id || null,
+        title,
+        financingNeedType,
+        requestedAmount,
+        productTemplateId,
+        targetInstitutionId,
+        initialEvidenceType,
+        initialEvidenceDocUrl,
+        notes,
+        performedBy: userId,
+        userRole: user?.role || 'broker',
+        tenantContext: req.tenantContext,
+      });
+
+      if (!result.success) {
+        const statusCode = result.conflict ? 409 : 403;
+        return res.status(statusCode).json(result);
+      }
+
+      res.status(201).json(result);
+    } catch (error: any) {
+      console.error("Error creating commercial opportunity:", error);
+      res.status(500).json({ message: "Error al registrar oportunidad comercial" });
+    }
+  });
+
+  // Registrar actividad comercial sobre una oportunidad
+  app.post('/api/opportunities/:id/activities', isAuthenticated, async (req: any, res) => {
+    try {
+      const { id } = req.params;
+      const userId = req.user.claims.sub;
+      const user = await storage.getUser(userId);
+
+      const {
+        clientId,
+        activityType,
+        title,
+        description,
+        documentId,
+        evidenceUrl,
+        performedAt,
+      } = req.body;
+
+      if (!activityType || !title) {
+        return res.status(400).json({
+          message: "Campos requeridos: activityType, title",
+        });
+      }
+
+      const opp = await commercialOpportunityService['storage'].getOpportunity(id);
+      if (!opp) {
+        return res.status(404).json({ message: "Oportunidad no encontrada" });
+      }
+
+      const targetClientId = clientId || opp.clientId;
+
+      const result = await commercialOpportunityService.recordActivity({
+        clientId: targetClientId,
+        opportunityId: id,
+        brokerId: userId,
+        activityType,
+        title,
+        description,
+        documentId,
+        evidenceUrl,
+        performedAt: performedAt ? new Date(performedAt) : new Date(),
+        performedBy: userId,
+        userRole: user?.role || 'broker',
+        tenantContext: req.tenantContext,
+      });
+
+      if (!result.success) {
+        return res.status(403).json(result);
+      }
+
+      res.status(201).json(result);
+    } catch (error: any) {
+      console.error("Error recording commercial activity:", error);
+      res.status(500).json({ message: "Error al registrar actividad comercial" });
+    }
+  });
+
+  // Consultar actividades de una oportunidad
+  app.get('/api/opportunities/:id/activities', isAuthenticated, async (req: any, res) => {
+    try {
+      const { id } = req.params;
+      const userId = req.user.claims.sub;
+      const user = await storage.getUser(userId);
+
+      const result = await commercialOpportunityService.getOpportunityActivities({
+        opportunityId: id,
+        userId,
+        userRole: user?.role || 'broker',
+        tenantContext: req.tenantContext,
+      });
+
+      if (!result.authorized) {
+        return res.status(403).json({ message: result.reason || 'Acceso denegado a la oportunidad' });
+      }
+
+      res.json(result.activities);
+    } catch (error: any) {
+      console.error("Error fetching opportunity activities:", error);
+      res.status(500).json({ message: "Error al consultar actividades de la oportunidad" });
+    }
+  });
+
+  // Liberación masiva de oportunidades expiradas (Super Admin / Cron)
+  app.post('/api/admin/opportunities/release-expired', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const user = await storage.getUser(userId);
+      const isPlatformAdmin = Boolean(user?.role === 'super_admin' || req.tenantContext?.isPlatformAdmin);
+
+      if (!isPlatformAdmin) {
+        return res.status(403).json({ message: "Solo administradores de plataforma pueden ejecutar la liberación masiva." });
+      }
+
+      const result = await commercialOpportunityService.evaluateAndReleaseExpiredOpportunities();
+      res.json(result);
+    } catch (error: any) {
+      console.error("Error releasing expired opportunities:", error);
+      res.status(500).json({ message: "Error al liberar oportunidades expiradas" });
+    }
+  });
+
+  // Apertura formal de controversia comercial sobre una oportunidad
+  app.post('/api/opportunities/:id/dispute', isAuthenticated, async (req: any, res) => {
+    try {
+      const { id } = req.params;
+      const userId = req.user.claims.sub;
+      const user = await storage.getUser(userId);
+
+      const {
+        disputeReason,
+        justification,
+        evidenceUrl,
+        clientElectionToken,
+        verificationMethod,
+      } = req.body;
+
+      if (!disputeReason || !justification) {
+        return res.status(400).json({
+          message: "Campos requeridos: disputeReason, justification",
+        });
+      }
+
+      const result = await commercialOpportunityService.openFormalDispute({
+        opportunityId: id,
+        disputeReason,
+        justification,
+        evidenceUrl,
+        clientElectionToken,
+        verificationMethod,
+        performedBy: userId,
+        userRole: user?.role || 'broker',
+        tenantContext: req.tenantContext,
+      });
+
+      if (!result.success) {
+        const statusCode =
+          result.code === "OPPORTUNITY_NOT_FOUND"
+            ? 404
+            : result.code === "FORBIDDEN_REASON"
+            ? 403
+            : 400;
+        return res.status(statusCode).json(result);
+      }
+
+      res.json(result);
+    } catch (error: any) {
+      console.error("Error opening formal dispute:", error);
+      res.status(500).json({ message: "Error al registrar la controversia formal" });
     }
   });
 
