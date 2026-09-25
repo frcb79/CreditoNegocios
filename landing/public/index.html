@@ -13,7 +13,9 @@ tailwind.config = {
     extend: {
       colors: {
         brand: {
-          navy: '#0A3042',
+          navy: '#1F476B',
+          navyDark: '#173653',
+          navyLight: '#2B5B85',
           teal: '#00cca2',
           orange: '#f59e0b'
         }
@@ -26,15 +28,15 @@ tailwind.config = {
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap');
 * { font-family: 'Inter', sans-serif; }
 
-.gradient-navy { background: linear-gradient(135deg, #0A3042 0%, #163f56 100%); }
+.gradient-navy { background: linear-gradient(135deg, #2B5B85 0%, #1F476B 58%, #173653 100%); }
 .gradient-teal  { background: linear-gradient(135deg, #00cca2 0%, #00FFCA 100%); }
 .gradient-orange{ background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%); }
 
 /* Unified icon gradient: logo blue */
-.gradient-brand { background: linear-gradient(135deg, #0A3042 0%, #163f56 100%); }
+.gradient-brand { background: linear-gradient(135deg, #2B5B85 0%, #1F476B 58%, #173653 100%); }
 
 .hero-pattern {
-  background-color: #0A3042;
+  background-color: #1F476B;
   background-image: url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%2300cca2' fill-opacity='0.1'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E");
 }
 
@@ -44,7 +46,7 @@ tailwind.config = {
 .tab-content { display: none !important; }
 .tab-content.active { display: block !important; animation: fadeIn 0.4s ease-in; }
 .tab-btn { border: 2px solid transparent; }
-.tab-btn-active { background: #ffffff !important; color: #0A3042 !important; border: 2px solid #0A3042 !important; }
+.tab-btn-active { background: #ffffff !important; color: #1F476B !important; border: 2px solid #1F476B !important; }
 .tab-btn-inactive { background: transparent; color: #374151; border: 2px solid transparent; }
 .carousel-wrap { overflow: hidden; position: relative; }
 .carousel-track { display: flex; gap: 24px; transition: transform 0.35s cubic-bezier(.4,0,.2,1); }
@@ -77,7 +79,7 @@ tailwind.config = {
 }
 .dropdown-content.open { display: block; }
 .dropdown-content a { display: block; padding: 12px 20px; color: #374151; transition: all 0.2s; }
-.dropdown-content a:hover { background: #f3f4f6; color: #0A3042; padding-left: 24px; }
+.dropdown-content a:hover { background: #f3f4f6; color: #1F476B; padding-left: 24px; }
 </style>
 </head>
 
@@ -143,20 +145,20 @@ tailwind.config = {
 
       <!-- Desktop Actions -->
       <div class="hidden md:flex items-center gap-3 justify-end">
-        <a href="https://app.creditonegocios.com.mx/brokers" class="text-white border border-white px-5 py-2 rounded-full font-semibold text-sm hover:bg-white hover:text-brand-navy transition">
+        <a href="https://app.creditonegocios.com.mx/brokers" class="text-white border border-white/80 px-5 py-2.5 rounded-lg font-semibold text-sm hover:bg-white hover:text-brand-navy shadow-sm transition">
           Soy Broker
         </a>
-        <a href="#contacto" class="bg-white text-brand-navy border border-white px-6 py-2 rounded-full font-semibold text-sm hover:bg-slate-100 transition">
+        <a href="#contacto" class="bg-white text-brand-navy border border-white px-6 py-2.5 rounded-lg font-semibold text-sm hover:bg-slate-100 shadow-md transition">
           Solicitar Ahora
         </a>
       </div>
 
       <!-- Mobile Quick Actions -->
       <div class="md:hidden flex items-center gap-2">
-        <a href="#referidos" class="text-white border border-white px-3 py-2 rounded-full font-semibold text-xs hover:bg-white hover:text-brand-navy transition">
+        <a href="#referidos" class="text-white border border-white/80 px-3 py-2 rounded-lg font-semibold text-xs hover:bg-white hover:text-brand-navy shadow-sm transition">
           Referidos
         </a>
-        <a href="#contacto" class="bg-white text-brand-navy border border-white px-3 py-2 rounded-full font-semibold text-xs hover:bg-slate-100 transition">
+        <a href="#contacto" class="bg-white text-brand-navy border border-white px-3 py-2 rounded-lg font-semibold text-xs hover:bg-slate-100 shadow-sm transition">
           Cotizar
         </a>
       </div>
@@ -215,7 +217,7 @@ tailwind.config = {
             <span class="text-gray-700">Todo incluido: seguro y mantenimiento</span>
           </li>
         </ul>
-        <a href="#arrendamiento" class="block w-full gradient-brand text-white text-center py-3 rounded-full font-bold hover:shadow-lg transition">
+        <a href="#arrendamiento" class="block w-full gradient-brand text-white text-center py-3 rounded-lg font-semibold shadow-md hover:shadow-lg transition-all duration-200">
           Conocer Arrendamiento →
         </a>
       </div>
@@ -253,7 +255,7 @@ tailwind.config = {
             <span class="text-gray-700">Soluciones personalizadas</span>
           </li>
         </ul>
-        <a href="#creditos" class="block w-full gradient-brand text-white text-center py-3 rounded-full font-bold hover:shadow-lg transition">
+        <a href="#creditos" class="block w-full gradient-brand text-white text-center py-3 rounded-lg font-semibold shadow-md hover:shadow-lg transition-all duration-200">
           Conocer Créditos →
         </a>
       </div>
@@ -362,7 +364,7 @@ tailwind.config = {
             <p class="text-sm mb-1">Ejemplo: Auto $1.5M</p>
             <p class="text-3xl font-black">Costo real: $550k</p>
           </div>
-          <a href="#contacto" class="block w-full bg-white text-brand-teal text-center py-3 rounded-full font-bold hover:bg-gray-100 transition">
+          <a href="#contacto" class="block w-full bg-white text-brand-teal text-center py-3 rounded-lg font-semibold shadow-md hover:bg-gray-100 transition">
             Calcular ROI
           </a>
         </div>
@@ -530,7 +532,7 @@ tailwind.config = {
           </li>
         </ul>
         <!-- ✅ Botón Gray-700 -->
-        <a href="#contacto" class="block w-full mt-auto text-white text-center py-3 rounded-full font-bold hover:opacity-90 transition" style="background-color:#374151">
+        <a href="#contacto" class="block w-full mt-auto text-white text-center py-2.5 rounded-lg font-semibold shadow-md hover:opacity-90 transition" style="background-color:#1F476B">
           Solicitar →
         </a>
       </div>
@@ -565,7 +567,7 @@ tailwind.config = {
             <span>Tasas flexibles</span>
           </li>
         </ul>
-        <a href="#contacto" class="block w-full mt-auto text-white text-center py-3 rounded-full font-bold hover:opacity-90 transition" style="background-color:#374151">
+        <a href="#contacto" class="block w-full mt-auto text-white text-center py-2.5 rounded-lg font-semibold shadow-md hover:opacity-90 transition" style="background-color:#1F476B">
           Solicitar →
         </a>
       </div>
@@ -599,7 +601,7 @@ tailwind.config = {
             <span>Mejora flujo de caja</span>
           </li>
         </ul>
-        <a href="#contacto" class="block w-full mt-auto text-white text-center py-3 rounded-full font-bold hover:opacity-90 transition" style="background-color:#374151">
+        <a href="#contacto" class="block w-full mt-auto text-white text-center py-2.5 rounded-lg font-semibold shadow-md hover:opacity-90 transition" style="background-color:#1F476B">
           Solicitar →
         </a>
       </div>
@@ -633,7 +635,7 @@ tailwind.config = {
             <span>Una sola mensualidad</span>
           </li>
         </ul>
-        <a href="#contacto" class="block w-full mt-auto text-white text-center py-3 rounded-full font-bold hover:opacity-90 transition" style="background-color:#374151">
+        <a href="#contacto" class="block w-full mt-auto text-white text-center py-2.5 rounded-lg font-semibold shadow-md hover:opacity-90 transition" style="background-color:#1F476B">
           Solicitar →
         </a>
       </div>
@@ -1148,7 +1150,7 @@ tailwind.config = {
     </div>
 
     <div class="text-center mt-12">
-      <a href="#contacto" class="inline-block gradient-teal text-white px-10 py-4 rounded-full font-bold text-lg hover:shadow-lg transition">
+      <a href="#contacto" class="inline-block gradient-teal text-white px-8 py-3 rounded-lg font-semibold text-base shadow-md hover:shadow-lg transition">
         Comenzar Ahora →
       </a>
     </div>
@@ -1324,7 +1326,7 @@ tailwind.config = {
         <textarea name="message" rows="2" class="w-full px-4 py-2.5 border-2 border-gray-200 rounded-xl focus:outline-none focus:border-brand-teal transition" placeholder="Cuéntanos más sobre tu proyecto o necesidad..."></textarea>
       </div>
 
-      <button id="website-lead-submit" type="submit" class="w-full gradient-teal text-white py-3 rounded-xl font-bold text-lg shadow-xl hover:shadow-2xl transition">
+      <button id="website-lead-submit" type="submit" class="w-full gradient-teal text-white py-3 rounded-lg font-semibold text-base shadow-md hover:shadow-lg transition">
         Enviar Solicitud →
       </button>
       <p id="website-lead-status" class="text-sm text-center mt-4 hidden"></p>
@@ -1378,7 +1380,7 @@ tailwind.config = {
     </div>
 
     <div class="max-w-md mx-auto text-center">
-      <a href="https://app.creditonegocios.com.mx/brokers" class="block w-full text-center bg-brand-teal text-white py-3 rounded-full font-bold shadow-lg hover:bg-emerald-600 hover:shadow-xl transition">Quiero empezar a ganar comisiones</a>
+      <a href="https://app.creditonegocios.com.mx/brokers" class="block w-full text-center bg-brand-navy text-white py-3 rounded-lg font-semibold text-base shadow-md hover:bg-brand-navyDark hover:shadow-lg transition">Quiero empezar a ganar comisiones</a>
     </div>
   </div>
 </section>

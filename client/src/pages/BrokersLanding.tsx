@@ -288,15 +288,15 @@ export default function BrokersLanding() {
           </div>
 
           <div className="flex items-center justify-end gap-2 sm:gap-3 flex-shrink-0">
-            <Button asChild size="sm" className="bg-emerald-500 text-white shadow-md hover:bg-emerald-600">
+            <Button asChild size="sm" className="bg-emerald-500 text-white font-semibold shadow-md hover:bg-emerald-600">
               <a href={whatsappUrl} target="_blank" rel="noreferrer">
                 <MessageSquare className="mr-2 h-4 w-4" />
                 WhatsApp
               </a>
             </Button>
-            <Button variant="outline" size="sm" asChild className="border-emerald-300/80 bg-transparent text-emerald-100 hover:bg-emerald-500/20 hover:text-emerald-50">
+            <Button variant="outline" size="sm" asChild className="border-white/40 bg-white/10 text-white font-semibold shadow-sm hover:bg-white hover:text-[#1F476B] transition-colors">
               <a href={loginHref}>
-                <LogIn className="mr-2 h-4 w-4 text-emerald-100" />
+                <LogIn className="mr-2 h-4 w-4" />
                 Login
               </a>
             </Button>
@@ -341,7 +341,7 @@ export default function BrokersLanding() {
             </div>
 
             <div className="mt-8 flex flex-col gap-3 sm:flex-row">
-              <Button asChild size="lg" className="bg-secondary text-base font-semibold shadow-lg shadow-secondary/20 hover:bg-secondary/90">
+              <Button asChild size="lg" className="bg-[#1F476B] hover:bg-[#173653] text-white text-base font-semibold shadow-md transition-all duration-200">
                 <a href="#form-brokers">
                   Solicitar demo
                   <ArrowRight className="ml-2 h-5 w-5" />
@@ -350,7 +350,7 @@ export default function BrokersLanding() {
               <Button
                 asChild
                 size="lg"
-                className="bg-emerald-500 text-base font-semibold text-white shadow-lg shadow-emerald-900/20 hover:bg-emerald-600"
+                className="bg-emerald-600 text-base font-semibold text-white shadow-md hover:bg-emerald-700 transition-all duration-200"
               >
                 <a href={whatsappUrl} target="_blank" rel="noreferrer">
                   <MessageSquare className="mr-2 h-5 w-5" />
@@ -519,7 +519,7 @@ export default function BrokersLanding() {
                   <Button
                     type="submit"
                     size="lg"
-                    className="w-full bg-secondary text-base font-bold shadow-lg shadow-secondary/20 hover:bg-secondary/90"
+                    className="w-full bg-[#1F476B] hover:bg-[#173653] text-white text-base font-semibold shadow-md transition-all duration-200"
                     disabled={isSubmitting}
                   >
                     {isSubmitting ? (
@@ -684,19 +684,19 @@ export default function BrokersLanding() {
 
       <section className="mx-auto max-w-[90rem] px-4 py-12 sm:px-6 lg:px-8">
         <div className="grid gap-4 lg:grid-cols-3">
-          <div className="rounded-[1.75rem] bg-[#0A3042] p-6 text-white shadow-xl">
+          <div className="rounded-[1.75rem] border border-[#173653] bg-[#1F476B] p-6 text-white shadow-xl">
             <Building2 className="h-6 w-6 text-cyan-300" />
             <p className="mt-3 text-lg font-bold">Instituciones más alineadas</p>
             <p className="mt-2 text-sm leading-6 text-blue-100">Cada oportunidad puede perfilarse con una lógica mucho más comercial y menos improvisada.</p>
           </div>
 
-          <div className="rounded-[1.75rem] bg-[#0A3042] p-6 text-white shadow-xl">
+          <div className="rounded-[1.75rem] border border-[#173653] bg-[#1F476B] p-6 text-white shadow-xl">
             <Wallet className="h-6 w-6 text-cyan-300" />
             <p className="mt-3 text-lg font-bold">Mayor percepción de valor</p>
             <p className="mt-2 text-sm leading-6 text-blue-100">Tu despacho se ve más sólido cuando el proceso es claro y estructurado.</p>
           </div>
 
-          <div className="rounded-[1.75rem] bg-[#0A3042] p-6 text-white shadow-xl">
+          <div className="rounded-[1.75rem] border border-[#173653] bg-[#1F476B] p-6 text-white shadow-xl">
             <ShieldCheck className="h-6 w-6 text-cyan-300" />
             <p className="mt-3 text-lg font-bold">Seguimiento con mejor trazabilidad</p>
             <p className="mt-2 text-sm leading-6 text-blue-100">Menos incertidumbre, más orden y una experiencia mucho más digna de mostrar frente a tu nicho de mercado.</p>
@@ -792,7 +792,7 @@ export default function BrokersLanding() {
           </div>
 
           <div className="flex flex-col gap-3 sm:flex-row">
-            <Button size="lg" asChild className="bg-secondary px-7 text-white hover:bg-secondary/90">
+            <Button size="lg" asChild className="bg-white hover:bg-slate-100 text-[#1F476B] text-base font-semibold shadow-md px-7 transition-all duration-200">
               <a href="#form-brokers">
                 Solicitar acceso
                 <ArrowRight className="ml-2 h-5 w-5" />
@@ -802,7 +802,7 @@ export default function BrokersLanding() {
               size="lg"
               variant="outline"
               asChild
-              className="border-white/30 bg-white/10 px-7 text-white hover:bg-white/20 hover:text-white"
+              className="border-white/40 bg-white/10 px-7 text-white text-base font-semibold shadow-sm hover:bg-white/20 hover:text-white transition-all duration-200"
             >
               <a href={loginHref}>
                 <LogIn className="mr-2 h-4 w-4" />

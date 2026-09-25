@@ -28,7 +28,7 @@ export default function NotFound() {
             </div>
 
             <div className="pt-2">
-              <Button asChild className="w-full bg-primary hover:bg-primary/90 text-white font-semibold">
+              <Button asChild className="w-full bg-primary hover:bg-primary/90 text-white font-semibold shadow-md">
                 <a href="/">
                   <ArrowLeft className="mr-2 h-4 w-4" />
                   Volver al inicio
