@@ -27,6 +27,7 @@ import {
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { Tag, Gift, CheckCircle, ShieldCheck, Clock, AlertCircle, Sparkles, Check, Info, ArrowRight, Loader2, KeyRound } from "lucide-react";
+import { CommercialRulesSettings } from "@/components/Commercial/CommercialRulesSettings";
 
 const profileSchema = z.object({
   firstName: z.string().min(1, "Nombre requerido"),
@@ -527,6 +528,11 @@ export default function Settings() {
                 <TabsTrigger value="profiling" data-testid="tab-profiling" className="text-xs font-medium py-1 px-2">Perfilamiento</TabsTrigger>
                 <TabsTrigger value="security" data-testid="tab-security" className="text-xs font-medium py-1 px-2">Seguridad</TabsTrigger>
                 <TabsTrigger value="benefits" data-testid="tab-benefits" className="text-xs font-medium py-1 px-2">Beneficios</TabsTrigger>
+                {user?.role === "super_admin" && (
+                  <TabsTrigger value="commercial_rules" data-testid="tab-commercial-rules" className="text-xs font-medium py-1 px-2">
+                    Reglas Comerciales
+                  </TabsTrigger>
+                )}
               </TabsList>
             </div>
 
@@ -1760,6 +1766,12 @@ export default function Settings() {
                 </CardContent>
               </Card>
             </TabsContent>
+
+            {user?.role === "super_admin" && (
+              <TabsContent value="commercial_rules" className="space-y-4 mt-3">
+                <CommercialRulesSettings />
+              </TabsContent>
+            )}
           </Tabs>
         </div>
       </main>

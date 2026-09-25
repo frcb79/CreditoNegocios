@@ -6,6 +6,7 @@ import {
   commercialAuditLogs,
   clients,
   COMMERCIAL_ACTIVITY_TYPES,
+  FORMAL_DISPUTE_REASONS,
   type CommercialOpportunity,
   type InsertCommercialOpportunity,
   type CommercialActivity,
@@ -17,6 +18,7 @@ import {
   type Client,
   type CommercialActivityType,
   type ClientAccessScope,
+  type FormalDisputeReason,
 } from "../shared/schema";
 import {
   CommercialConfigService,
@@ -63,10 +65,7 @@ export interface CreateOpportunityResult {
   };
 }
 
-export type FormalDisputeReason =
-  | "client_broker_change_request" // Solicitud verificable de cambio de broker por parte del cliente
-  | "mesa_control_intervention"     // Apertura expresa de controversia por Mesa de Control / Super Admin
-  | "contradictory_evidence";       // Evidencia contradictoria documental formal que requiera resolución
+export { FORMAL_DISPUTE_REASONS, type FormalDisputeReason };
 
 export interface OpenFormalDisputeInput {
   opportunityId: string;
@@ -243,6 +242,17 @@ export interface ICommercialOpportunityStorage {
     entityType: string,
     entityId: string
   ): Promise<CommercialAuditLog[]>;
+  getAllOpportunities(filter?: {
+    tenantId?: string | null;
+    brokerIds?: string[];
+    status?: string;
+    clientId?: string;
+  }): Promise<CommercialOpportunity[]>;
+  getAllAuditLogs(filter?: {
+    entityType?: string;
+    entityId?: string;
+    limit?: number;
+  }): Promise<CommercialAuditLog[]>;
 }
 
 export class CommercialOpportunityService {
@@ -1194,6 +1204,111 @@ export class CommercialOpportunityService {
       message: "Controversia formal registrada exitosamente. La oportunidad ha sido colocada en estado 'disputed' para resolución de Mesa de Control.",
     };
   }
+
+  /**
+   * Lista oportunidades comerciales filtradas según el rol y scope de autorización del usuario:
+   * - super_admin: visibilidad global.
+   * - admin: oportunidades de su organización (tenant).
+   * - master_broker: oportunidades propias y de brokers de su red.
+   * - broker: únicamente oportunidades propias.
+   */
+  async listOpportunities(params: {
+    userId: string;
+    userRole: string;
+    status?: string;
+    clientId?: string;
+    tenantContext?: any;
+    now?: Date;
+  }): Promise<{
+    opportunities: (CommercialOpportunity & { client?: Partial<Client> })[];
+  }> {
+    const { userId, userRole, status, clientId, tenantContext, now = new Date() } = params;
+
+    const isPlatformAdmin = Boolean(
+      userRole === "super_admin" || tenantContext?.isPlatformAdmin === true
+    );
+
+    let brokerIds: string[] | undefined;
+    let tenantId: string | null | undefined;
+
+    if (isPlatformAdmin) {
+      // Sin restricción de broker; opcionalmente filtrar por tenant si viene en contexto
+      tenantId = undefined;
+    } else if (userRole === "admin") {
+      tenantId = tenantContext?.tenant?.id || null;
+    } else if (userRole === "master_broker") {
+      let networkIds: string[] = [userId];
+      const network = await (this.authService as any)['storage']?.getNetworkBrokers?.(userId);
+      if (network && Array.isArray(network)) {
+        networkIds = [userId, ...network.map((b: any) => b.id)];
+      }
+      brokerIds = networkIds;
+      tenantId = tenantContext?.tenant?.id || null;
+    } else {
+      // Broker regular: únicamente sus propias oportunidades
+      brokerIds = [userId];
+    }
+
+    const rawOpps = await this.storage.getAllOpportunities({
+      tenantId: tenantId ?? undefined,
+      brokerIds,
+      status: status || undefined,
+      clientId: clientId || undefined,
+    });
+
+    // Enriquecer con datos del cliente para la UI
+    const enriched = await Promise.all(
+      rawOpps.map(async (opp) => {
+        const c = await this.storage.getClient(opp.clientId);
+        return {
+          ...opp,
+          client: c
+            ? {
+                id: c.id,
+                businessName: c.businessName,
+                firstName: c.firstName,
+                lastName: c.lastName,
+                rfc: c.rfc,
+                type: c.type,
+              }
+            : undefined,
+        };
+      })
+    );
+
+    return { opportunities: enriched };
+  }
+
+  /**
+   * Consulta la bitácora inmutable de auditoría comercial para Mesa de Control / Super Admin.
+   */
+  async listAuditLogs(params: {
+    userId: string;
+    userRole: string;
+    entityType?: string;
+    entityId?: string;
+    limit?: number;
+    tenantContext?: any;
+  }): Promise<{
+    logs: CommercialAuditLog[];
+  }> {
+    const { userRole, entityType, entityId, limit = 100, tenantContext } = params;
+    const isPlatformAdmin = Boolean(
+      userRole === "super_admin" || userRole === "admin" || tenantContext?.isPlatformAdmin === true
+    );
+
+    if (!isPlatformAdmin) {
+      return { logs: [] };
+    }
+
+    const logs = await this.storage.getAllAuditLogs({
+      entityType: entityType || undefined,
+      entityId: entityId || undefined,
+      limit,
+    });
+
+    return { logs };
+  }
 }
 
 /**
@@ -1428,6 +1543,36 @@ export class MockCommercialOpportunityStorage implements ICommercialOpportunityS
       (l) => l.entityType === entityType && l.entityId === entityId
     );
   }
+
+  async getAllOpportunities(filter?: {
+    tenantId?: string | null;
+    brokerIds?: string[];
+    status?: string;
+    clientId?: string;
+  }): Promise<CommercialOpportunity[]> {
+    return this.opportunities.filter((o) => {
+      if (filter?.clientId && o.clientId !== filter.clientId) return false;
+      if (filter?.status && o.status !== filter.status) return false;
+      if (filter?.brokerIds && filter.brokerIds.length > 0) {
+        const matchesBroker = filter.brokerIds.includes(o.brokerId);
+        const matchesMasterBroker = o.masterBrokerId ? filter.brokerIds.includes(o.masterBrokerId) : false;
+        if (!matchesBroker && !matchesMasterBroker) return false;
+      }
+      if (filter?.tenantId && o.tenantId !== filter.tenantId) return false;
+      return true;
+    });
+  }
+
+  async getAllAuditLogs(filter?: {
+    entityType?: string;
+    entityId?: string;
+    limit?: number;
+  }): Promise<CommercialAuditLog[]> {
+    let result = [...this.auditLogs];
+    if (filter?.entityType) result = result.filter((l) => l.entityType === filter.entityType);
+    if (filter?.entityId) result = result.filter((l) => l.entityId === filter.entityId);
+    return result.slice(0, filter?.limit || 100);
+  }
 }
 
 /**
@@ -1626,6 +1771,63 @@ export class DrizzleCommercialOpportunityStorage implements ICommercialOpportuni
         )
       )
       .orderBy(desc(commercialAuditLogs.createdAt));
+  }
+
+  async getAllOpportunities(filter?: {
+    tenantId?: string | null;
+    brokerIds?: string[];
+    status?: string;
+    clientId?: string;
+  }): Promise<CommercialOpportunity[]> {
+    const conditions: any[] = [];
+    if (filter?.clientId) conditions.push(eq(commercialOpportunities.clientId, filter.clientId));
+    if (filter?.status) conditions.push(eq(commercialOpportunities.status, filter.status as any));
+    if (filter?.brokerIds && filter.brokerIds.length > 0) {
+      conditions.push(
+        or(
+          inArray(commercialOpportunities.brokerId, filter.brokerIds),
+          inArray(commercialOpportunities.masterBrokerId, filter.brokerIds)
+        )
+      );
+    }
+    if (filter?.tenantId) conditions.push(eq(commercialOpportunities.tenantId, filter.tenantId));
+
+    if (conditions.length > 0) {
+      return await this.db
+        .select()
+        .from(commercialOpportunities)
+        .where(and(...conditions))
+        .orderBy(desc(commercialOpportunities.createdAt));
+    }
+    return await this.db
+      .select()
+      .from(commercialOpportunities)
+      .orderBy(desc(commercialOpportunities.createdAt));
+  }
+
+  async getAllAuditLogs(filter?: {
+    entityType?: string;
+    entityId?: string;
+    limit?: number;
+  }): Promise<CommercialAuditLog[]> {
+    const conditions: any[] = [];
+    if (filter?.entityType) conditions.push(eq(commercialAuditLogs.entityType, filter.entityType));
+    if (filter?.entityId) conditions.push(eq(commercialAuditLogs.entityId, filter.entityId));
+    const limit = filter?.limit || 100;
+
+    if (conditions.length > 0) {
+      return await this.db
+        .select()
+        .from(commercialAuditLogs)
+        .where(and(...conditions))
+        .orderBy(desc(commercialAuditLogs.createdAt))
+        .limit(limit);
+    }
+    return await this.db
+      .select()
+      .from(commercialAuditLogs)
+      .orderBy(desc(commercialAuditLogs.createdAt))
+      .limit(limit);
   }
 }
 

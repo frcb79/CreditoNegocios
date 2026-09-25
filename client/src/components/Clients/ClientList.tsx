@@ -42,6 +42,7 @@ export default function ClientList({ onSelectClient, onNewClient }: ClientListPr
   const [filterType, setFilterType] = useState<string>("all");
   const [filterBroker, setFilterBroker] = useState<string>("all");
   const [filterMasterBroker, setFilterMasterBroker] = useState<string>("all");
+  const [filterCommercial, setFilterCommercial] = useState<string>("all");
 
   const { data: clients, isLoading: clientsLoading } = useQuery<Client[]>({
     queryKey: ["/api/clients"],
@@ -53,6 +54,10 @@ export default function ClientList({ onSelectClient, onNewClient }: ClientListPr
 
   const { data: submissions } = useQuery<any[]>({
     queryKey: ["/api/credit-submissions"],
+  });
+
+  const { data: commercialOpportunities } = useQuery<any[]>({
+    queryKey: ["/api/commercial/opportunities"],
   });
 
   const { data: allUsers } = useQuery<User[]>({
@@ -85,7 +90,22 @@ export default function ClientList({ onSelectClient, onNewClient }: ClientListPr
     return map;
   }, [credits, submissions]);
 
+  // Index opportunities by client
+  const oppsByClient = useMemo(() => {
+    const map = new Map<string, any[]>();
+    (commercialOpportunities || []).forEach(opp => {
+      const list = map.get(opp.clientId) || [];
+      list.push(opp);
+      map.set(opp.clientId, list);
+    });
+    return map;
+  }, [commercialOpportunities]);
+
   const filteredClients = useMemo(() => {
+    const now = new Date();
+    const twentyDaysAgo = new Date(now.getTime() - 20 * 24 * 60 * 60 * 1000);
+    const threeDaysFromNow = new Date(now.getTime() + 3 * 24 * 60 * 60 * 1000);
+
     return (clients || []).filter(client => {
       const term = searchTerm.toLowerCase();
       const matchesSearch = 
@@ -106,10 +126,39 @@ export default function ClientList({ onSelectClient, onNewClient }: ClientListPr
       const matchesMasterBroker = filterMasterBroker === "all" || 
         (client as any).masterBroker?.id === filterMasterBroker ||
         (client as any).broker?.masterBrokerId === filterMasterBroker;
+
+      // Commercial filter
+      let matchesCommercial = true;
+      const clientOpps = oppsByClient.get(client.id) || [];
+      const hasProtectedOpp = clientOpps.some(o => o.status === 'protected_active' || o.status === 'registered_hold');
+      const hasExpiringSoon = clientOpps.some(o => {
+        if (o.status !== 'protected_active' && o.status !== 'registered_hold') return false;
+        const expDate = o.protectionExpiresAt ? new Date(o.protectionExpiresAt) : (o.holdExpiresAt ? new Date(o.holdExpiresAt) : null);
+        return expDate && expDate > now && expDate <= threeDaysFromNow;
+      });
+
+      const clientAny = client as any;
+      if (filterCommercial === 'active') {
+        matchesCommercial = clientAny.commercialRelationshipStatus === 'active';
+      } else if (filterCommercial === 'protected_opp') {
+        matchesCommercial = hasProtectedOpp;
+      } else if (filterCommercial === 'expiring_soon') {
+        matchesCommercial = hasExpiringSoon;
+      } else if (filterCommercial === 'needs_activity') {
+        const lastAct = clientAny.lastValidCommercialActivityAt ? new Date(clientAny.lastValidCommercialActivityAt) : null;
+        matchesCommercial = clientAny.commercialRelationshipStatus === 'active' && (!lastAct || lastAct < twentyDaysAgo);
+      } else if (filterCommercial === 'dormant') {
+        matchesCommercial = clientAny.commercialRelationshipStatus === 'dormant' || clientAny.commercialRelationshipStatus === 'legacy_unverified' || clientAny.commercialRelationshipStatus === 'inactive';
+      } else if (filterCommercial === 'renewal') {
+        // Has active credit or renewal opportunity
+        const clientCredits = (credits || []).filter(c => c.clientId === client.id && c.status === 'active');
+        const hasRenewalOpp = clientOpps.some(o => o.needType === 'renovacion' && (o.status === 'protected_active' || o.status === 'registered_hold'));
+        matchesCommercial = clientCredits.length > 0 || hasRenewalOpp;
+      }
       
-      return matchesSearch && matchesType && matchesBroker && matchesMasterBroker;
+      return matchesSearch && matchesType && matchesBroker && matchesMasterBroker && matchesCommercial;
     });
-  }, [clients, searchTerm, filterType, filterBroker, filterMasterBroker]);
+  }, [clients, searchTerm, filterType, filterBroker, filterMasterBroker, filterCommercial, oppsByClient, credits]);
 
   const formatRelativeDate = (dateVal: any) => {
     if (!dateVal) return "—";
@@ -229,6 +278,24 @@ export default function ClientList({ onSelectClient, onNewClient }: ClientListPr
             </Select>
           </div>
 
+          {/* Commercial Governance Filter */}
+          <div className="w-full sm:w-48">
+            <Select value={filterCommercial} onValueChange={setFilterCommercial}>
+              <SelectTrigger data-testid="select-commercial-filter" className="h-9 text-xs border-slate-200 bg-white">
+                <SelectValue placeholder="Estado comercial" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Todas las relaciones</SelectItem>
+                <SelectItem value="active">Clientes activos</SelectItem>
+                <SelectItem value="protected_opp">Oportunidades protegidas</SelectItem>
+                <SelectItem value="expiring_soon">Próximas a vencer (≤ 3d)</SelectItem>
+                <SelectItem value="needs_activity">Requieren seguimiento</SelectItem>
+                <SelectItem value="dormant">Relaciones sin actividad reciente</SelectItem>
+                <SelectItem value="renewal">Próximas renovaciones</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
           {/* Admin filters */}
           {isAdmin && (
             <>
@@ -306,11 +373,12 @@ export default function ClientList({ onSelectClient, onNewClient }: ClientListPr
         </div>
       ) : (
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[700px] text-left border-collapse">
+          <table className="w-full min-w-[750px] text-left border-collapse">
             <thead>
               <tr className="border-b border-slate-200 bg-slate-50/80 text-[11px] font-semibold uppercase tracking-wider text-slate-500 select-none">
                 <th className="py-3 px-4">Cliente / Razón Social</th>
                 <th className="py-3 px-3 text-center">Tipo</th>
+                <th className="py-3 px-3 text-center">Relación Comercial</th>
                 <th className="py-3 px-4">Contacto</th>
                 <th className="py-3 px-3 text-center">Operaciones</th>
                 <th className="py-3 px-4">Originador</th>
@@ -323,7 +391,18 @@ export default function ClientList({ onSelectClient, onNewClient }: ClientListPr
                 const typeInfo = getTypeBadge(client);
                 const activeOps = operationsCountMap.get(client.id) || 0;
                 const displayName = getClientDisplayName(client);
-                const lastActivityDate = client.updatedAt || client.createdAt;
+                const lastActivityDate = (client as any).lastValidCommercialActivityAt || client.updatedAt || client.createdAt;
+                const clientOpps = oppsByClient.get(client.id) || [];
+                const activeOpp = clientOpps.find(o => o.status === 'protected_active' || o.status === 'registered_hold');
+
+                // Relación status badge
+                const relStatus = (client as any).commercialRelationshipStatus || 'active';
+                let relBadge = { label: 'Activa', cls: 'bg-emerald-50 text-emerald-700 border-emerald-200' };
+                if (relStatus === 'dormant' || relStatus === 'inactive') {
+                  relBadge = { label: 'Inactiva', cls: 'bg-slate-100 text-slate-600 border-slate-200' };
+                } else if (relStatus === 'legacy_unverified') {
+                  relBadge = { label: 'Por validar', cls: 'bg-amber-50 text-amber-700 border-amber-200' };
+                }
 
                 return (
                   <tr
@@ -343,6 +422,15 @@ export default function ClientList({ onSelectClient, onNewClient }: ClientListPr
                           >
                             {displayName}
                           </span>
+                          {activeOpp && (
+                            <span 
+                              className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-emerald-50 text-emerald-800 border border-emerald-200 shrink-0"
+                              title="Tiene oportunidad comercial protegida"
+                            >
+                              <Briefcase className="w-2.5 h-2.5 text-emerald-700" />
+                              <span>Protegida</span>
+                            </span>
+                          )}
                           {client.originOpportunity === 'hipotecario_vivienda' && (
                             <span 
                               data-testid={`client-origin-${client.id}`}
@@ -394,6 +482,13 @@ export default function ClientList({ onSelectClient, onNewClient }: ClientListPr
                       >
                         <span className={cn("w-1.5 h-1.5 rounded-full shrink-0", typeInfo.dotClass)} />
                         <span>{typeInfo.label}</span>
+                      </span>
+                    </td>
+
+                    {/* 2.5 Relación Comercial */}
+                    <td className="py-3 px-3 text-center">
+                      <span className={cn("inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium border whitespace-nowrap", relBadge.cls)}>
+                        {relBadge.label}
                       </span>
                     </td>
 

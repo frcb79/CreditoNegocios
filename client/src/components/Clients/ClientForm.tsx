@@ -14,7 +14,8 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import CurrencyInput from "@/components/ui/currency-input";
-import { User, TrendingUp, Trash2, Plus } from "lucide-react";
+import { User, TrendingUp, Trash2, Plus, Loader2 } from "lucide-react";
+import { CommercialDuplicateAlert, type DuplicateCheckResult } from "@/components/Commercial/CommercialDuplicateAlert";
 
 interface ClientFormProps {
   client?: any;
@@ -241,6 +242,35 @@ export default function ClientForm({ client, onSuccess }: ClientFormProps) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [clientType, setClientType] = useState<"persona_moral" | "fisica_empresarial" | "fisica" | "sin_sat">(client?.type || "fisica");
+  const [duplicateCheckResult, setDuplicateCheckResult] = useState<DuplicateCheckResult | null>(null);
+  const [isCheckingDuplicate, setIsCheckingDuplicate] = useState(false);
+
+  const runDuplicateCheck = async (rfcVal?: string, phoneVal?: string, emailVal?: string) => {
+    if (client?.id) return;
+    const rfc = rfcVal !== undefined ? rfcVal : form.getValues("rfc");
+    const phone = phoneVal !== undefined ? phoneVal : form.getValues("phone");
+    const email = emailVal !== undefined ? emailVal : form.getValues("email");
+
+    if (!rfc && !phone && !email) {
+      setDuplicateCheckResult(null);
+      return;
+    }
+
+    setIsCheckingDuplicate(true);
+    try {
+      const res = await apiRequest("POST", "/api/clients/check-duplicates", {
+        rfc: rfc || undefined,
+        phone: phone || undefined,
+        email: email || undefined,
+      });
+      const data = await res.json();
+      setDuplicateCheckResult(data);
+    } catch {
+      // Ignorar fallas silenciosas en verificación anticipada
+    } finally {
+      setIsCheckingDuplicate(false);
+    }
+  };
 
   const form = useForm<InsertClient>({
     resolver: zodResolver(formSchema),
@@ -1265,6 +1295,9 @@ export default function ClientForm({ client, onSuccess }: ClientFormProps) {
                 </TabsList>
                 
                 <TabsContent value="datos-basicos" className="space-y-4">
+                  {/* Alerta Inteligente de Check-Duplicates y Gobernanza Comercial */}
+                  <CommercialDuplicateAlert result={duplicateCheckResult} className="mb-2" />
+
                   {/* RFC and Phone fields */}
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     {clientType !== "sin_sat" && (
@@ -1275,14 +1308,23 @@ export default function ClientForm({ client, onSuccess }: ClientFormProps) {
                           <FormItem>
                             <FormLabel>RFC *</FormLabel>
                             <FormControl>
-                              <Input placeholder="RFC" {...field} value={field.value || ''} data-testid="input-rfc" />
+                              <Input
+                                placeholder="RFC"
+                                {...field}
+                                value={field.value || ""}
+                                onBlur={() => {
+                                  field.onBlur();
+                                  runDuplicateCheck();
+                                }}
+                                data-testid="input-rfc"
+                              />
                             </FormControl>
                             <FormMessage />
                           </FormItem>
                         )}
                       />
                     )}
-                    
+
                     <FormField
                       control={form.control}
                       name="phone"
@@ -1290,14 +1332,23 @@ export default function ClientForm({ client, onSuccess }: ClientFormProps) {
                         <FormItem>
                           <FormLabel>Teléfono</FormLabel>
                           <FormControl>
-                            <Input placeholder="+52 55 1234 5678" {...field} value={field.value || ''} data-testid="input-phone" />
+                            <Input
+                              placeholder="+52 55 1234 5678"
+                              {...field}
+                              value={field.value || ""}
+                              onBlur={() => {
+                                field.onBlur();
+                                runDuplicateCheck();
+                              }}
+                              data-testid="input-phone"
+                            />
                           </FormControl>
                           <FormMessage />
                         </FormItem>
                       )}
                     />
                   </div>
-                  
+
                   <FormField
                     control={form.control}
                     name="email"
@@ -1305,7 +1356,17 @@ export default function ClientForm({ client, onSuccess }: ClientFormProps) {
                       <FormItem>
                         <FormLabel>Email</FormLabel>
                         <FormControl>
-                          <Input type="email" placeholder="correo@ejemplo.com" {...field} value={field.value || ''} data-testid="input-email" />
+                          <Input
+                            type="email"
+                            placeholder="correo@ejemplo.com"
+                            {...field}
+                            value={field.value || ""}
+                            onBlur={() => {
+                              field.onBlur();
+                              runDuplicateCheck();
+                            }}
+                            data-testid="input-email"
+                          />
                         </FormControl>
                         <FormMessage />
                       </FormItem>

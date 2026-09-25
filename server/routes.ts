@@ -2971,6 +2971,56 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Consultar lista de oportunidades comerciales con filtros por rol y scope
+  app.get('/api/commercial/opportunities', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const user = await storage.getUser(userId);
+      const { status, clientId } = req.query;
+
+      const result = await commercialOpportunityService.listOpportunities({
+        userId,
+        userRole: user?.role || 'broker',
+        status: status ? String(status) : undefined,
+        clientId: clientId ? String(clientId) : undefined,
+        tenantContext: req.tenantContext,
+      });
+
+      res.json(result.opportunities);
+    } catch (error: any) {
+      console.error("Error fetching commercial opportunities list:", error);
+      res.status(500).json({ message: "Error al consultar oportunidades comerciales" });
+    }
+  });
+
+  // Consultar bitácora inmutable de auditoría comercial (Mesa de Control / Super Admin)
+  app.get('/api/commercial/audit-logs', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const user = await storage.getUser(userId);
+      const isPlatformAdmin = Boolean(user?.role === 'super_admin' || user?.role === 'admin' || req.tenantContext?.isPlatformAdmin);
+
+      if (!isPlatformAdmin) {
+        return res.status(403).json({ message: "Acceso exclusivo para Mesa de Control o Administradores de Plataforma." });
+      }
+
+      const { entityType, entityId, limit } = req.query;
+      const result = await commercialOpportunityService.listAuditLogs({
+        userId,
+        userRole: user?.role || 'broker',
+        entityType: entityType ? String(entityType) : undefined,
+        entityId: entityId ? String(entityId) : undefined,
+        limit: limit ? Number(limit) : 100,
+        tenantContext: req.tenantContext,
+      });
+
+      res.json(result.logs);
+    } catch (error: any) {
+      console.error("Error fetching commercial audit logs:", error);
+      res.status(500).json({ message: "Error al consultar bitácora de auditoría comercial" });
+    }
+  });
+
   app.put('/api/clients/:id', isAuthenticated, requireModuleAndAction('clientes', 'edit'), async (req: any, res) => {
     try {
       const { id } = req.params;

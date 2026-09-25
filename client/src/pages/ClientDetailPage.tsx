@@ -45,7 +45,8 @@ import {
   Download,
   ExternalLink,
   Trash2,
-  Loader2
+  Loader2,
+  ShieldCheck
 } from "lucide-react";
 import { buildApiUrl } from "@/lib/runtimeConfig";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -56,6 +57,8 @@ import MortgageLeadModal from "@/components/Modals/MortgageLeadModal";
 import DocumentUpload from "@/components/Documents/DocumentUpload";
 import { targetStatusConfig, getSubmissionStatusSummary } from "@/lib/statusConfig";
 import { cn } from "@/lib/utils";
+import { CommercialOpportunityList } from "@/components/Commercial/CommercialOpportunityList";
+import { getRelationshipStatusBadge } from "@/components/Commercial/CommercialLabels";
 
 const vigenteFormSchema = z.object({
   tipo: z.string().min(1, "El tipo de crédito es requerido"),
@@ -453,6 +456,95 @@ export default function ClientDetailPage() {
               </Button>
             </div>
           </div>
+        </div>
+
+        {/* Gobernanza Comercial: Relación y Vigencia */}
+        {(() => {
+          const rel = (client as any).commercialRelationship;
+          const status = rel?.status || "legacy_unverified";
+          const relBadge = getRelationshipStatusBadge(status);
+          const scope = (client as any).accessScope || "full";
+          const lastActivity = rel?.lastValidActivityAt;
+          const activeUntil = rel?.activeUntil;
+
+          return (
+            <div className="bg-white border border-slate-200/80 rounded-xl p-4 shadow-xs space-y-3">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-100">
+                <div className="flex items-center gap-2">
+                  <div className="p-1.5 rounded-lg bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300">
+                    <ShieldCheck className="h-4 w-4" />
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-xs font-bold text-slate-900 dark:text-slate-100">
+                        Gobernanza Comercial
+                      </span>
+                      <span
+                        className={cn(
+                          "inline-flex items-center px-2 py-0.5 rounded text-[11px] font-semibold border gap-1.5",
+                          relBadge.badgeClass
+                        )}
+                      >
+                        <span className={cn("w-1.5 h-1.5 rounded-full", relBadge.dotClass)} />
+                        {relBadge.label}
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                      {relBadge.description}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="text-[11px] text-slate-500 flex items-center gap-2">
+                  <span>Alcance de Acceso:</span>
+                  <Badge variant="outline" className="text-[10px] uppercase font-mono font-bold">
+                    {scope}
+                  </Badge>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
+                <div>
+                  <span className="text-[10px] text-slate-400 font-semibold uppercase block">
+                    Asesor Titular
+                  </span>
+                  <span className="font-semibold text-slate-800 dark:text-slate-200">
+                    {client.brokerId || "Sin asesor asignado"}
+                  </span>
+                </div>
+                <div>
+                  <span className="text-[10px] text-slate-400 font-semibold uppercase block">
+                    Última Actividad Válida
+                  </span>
+                  <span className="font-medium text-slate-700 dark:text-slate-300">
+                    {lastActivity
+                      ? format(new Date(lastActivity), "dd/MMM/yyyy", { locale: es })
+                      : "Sin actividad registrada"}
+                  </span>
+                </div>
+                <div>
+                  <span className="text-[10px] text-slate-400 font-semibold uppercase block">
+                    Vigencia de Relación
+                  </span>
+                  <span className="font-medium text-slate-700 dark:text-slate-300">
+                    {activeUntil
+                      ? format(new Date(activeUntil), "dd/MMM/yyyy", { locale: es })
+                      : "Sujeta a actividad comercial"}
+                  </span>
+                </div>
+              </div>
+            </div>
+          );
+        })()}
+
+        {/* Sección de Oportunidades Comerciales Protegidas */}
+        <div className="bg-white border border-slate-200/80 rounded-xl p-5 shadow-xs">
+          <CommercialOpportunityList
+            clientId={client.id}
+            clientName={clientName || undefined}
+            capabilities={(client as any).capabilities}
+            accessScope={(client as any).accessScope}
+          />
         </div>
 
         {/* Dashboard Cards Grid */}
@@ -994,6 +1086,45 @@ export default function ClientDetailPage() {
                             </p>
                           </div>
                         ))}
+                      </div>
+                    )}
+
+                    {/* Créditos Colocados en Plataforma y Broker Originador */}
+                    {credits && credits.length > 0 && (
+                      <div className="pt-3 mt-3 border-t space-y-2">
+                        <span className="text-[11px] font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider block">
+                          Créditos Históricos en Plataforma ({credits.length})
+                        </span>
+                        <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
+                          {credits.map((cr) => (
+                            <div
+                              key={cr.id}
+                              className="p-2.5 rounded-lg border bg-white dark:bg-slate-900 text-xs space-y-1"
+                            >
+                              <div className="flex items-center justify-between">
+                                <span className="font-bold text-emerald-700 dark:text-emerald-400">
+                                  ${parseFloat(String(cr.amount || 0)).toLocaleString("es-MX", { maximumFractionDigits: 0 })} MXN
+                                </span>
+                                <Badge variant="outline" className="text-[10px]">
+                                  {cr.status || "Activo"}
+                                </Badge>
+                              </div>
+                              <div className="flex items-center justify-between text-[11px] text-slate-500">
+                                <span>
+                                  Broker Originador:{" "}
+                                  <span className="font-medium text-slate-700 dark:text-slate-300">
+                                    {cr.brokerId || "Sin asignar"}
+                                  </span>
+                                </span>
+                                {(cr as any).endDate && (
+                                  <span>
+                                    Vence: {format(new Date((cr as any).endDate), "dd/MMM/yyyy", { locale: es })}
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
                       </div>
                     )}
                   </TabsContent>

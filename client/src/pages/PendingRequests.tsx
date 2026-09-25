@@ -24,6 +24,8 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import CommercialDisputesView from "@/components/Commercial/CommercialDisputesView";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, invalidateAllCreditQueries } from "@/lib/queryClient";
@@ -50,7 +52,8 @@ import {
   Trophy,
   Home,
   Filter,
-  Loader2
+  Loader2,
+  ShieldCheck
 } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import MatchingComparisonTable from "@/components/MatchingAnalysis/MatchingComparisonTable";
@@ -537,7 +540,28 @@ export default function PendingRequests() {
       />
       
       <main className="flex-1 p-4 sm:p-6 lg:p-8 overflow-y-auto">
-          <div className="space-y-6">
+        <Tabs defaultValue="submissions" className="space-y-6">
+          <TabsList className="bg-slate-100 p-1 rounded-xl h-10 inline-flex w-auto border border-slate-200/60 max-w-full overflow-x-auto">
+            <TabsTrigger 
+              value="submissions" 
+              className="flex items-center gap-2 text-xs font-semibold data-[state=active]:bg-white data-[state=active]:text-slate-900 data-[state=active]:shadow-xs rounded-lg px-4 py-1.5 text-slate-600 transition-all whitespace-nowrap shrink-0"
+              data-testid="tab-credit-submissions"
+            >
+              <FileText className="w-3.5 h-3.5 text-slate-700" />
+              Solicitudes de Crédito ({submissionEntries.length})
+            </TabsTrigger>
+            <TabsTrigger 
+              value="governance" 
+              className="flex items-center gap-2 text-xs font-semibold data-[state=active]:bg-white data-[state=active]:text-slate-900 data-[state=active]:shadow-xs rounded-lg px-4 py-1.5 text-slate-600 transition-all whitespace-nowrap shrink-0"
+              data-testid="tab-commercial-governance"
+            >
+              <ShieldCheck className="w-3.5 h-3.5 text-blue-600" />
+              Gobernanza y Controversias
+            </TabsTrigger>
+          </TabsList>
+
+          <TabsContent value="submissions" className="space-y-6 mt-4">
+            <div className="space-y-6">
             {/* Summary Metrics Strip */}
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
               {/* Por Revisar */}
@@ -1237,7 +1261,13 @@ export default function PendingRequests() {
               )}
             </div>
           </div>
-        </main>
+        </TabsContent>
+
+        <TabsContent value="governance" className="space-y-6 mt-4">
+          <CommercialDisputesView />
+        </TabsContent>
+      </Tabs>
+    </main>
 
         {selectedTarget && (
           <>

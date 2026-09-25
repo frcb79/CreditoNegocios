@@ -15,6 +15,7 @@ import { apiRequest } from "@/lib/queryClient";
 import { formatDistanceToNow } from "date-fns";
 import { es } from "date-fns/locale";
 import InviteBrokerModal from "@/components/Modals/InviteBrokerModal";
+import MasterBrokerOversight from "@/components/Commercial/MasterBrokerOversight";
 import {
   Network,
   Users,
@@ -351,6 +352,14 @@ export default function BrokerNetworkComponent() {
               Mi Equipo ({brokers.length})
             </TabsTrigger>
             <TabsTrigger 
+              value="oversight" 
+              className="flex items-center gap-2 text-xs font-semibold data-[state=active]:bg-white data-[state=active]:text-slate-900 data-[state=active]:shadow-xs rounded-lg px-4 py-1.5 text-slate-600 transition-all whitespace-nowrap shrink-0"
+              data-testid="tab-master-broker-oversight"
+            >
+              <ShieldCheck className="w-3.5 h-3.5 text-blue-600" />
+              Supervisión Comercial
+            </TabsTrigger>
+            <TabsTrigger 
               value="rates" 
               className="flex items-center gap-2 text-xs font-semibold data-[state=active]:bg-white data-[state=active]:text-slate-900 data-[state=active]:shadow-xs rounded-lg px-4 py-1.5 text-slate-600 transition-all whitespace-nowrap shrink-0"
             >
@@ -502,6 +511,10 @@ export default function BrokerNetworkComponent() {
                 </Card>
               </>
             )}
+          </TabsContent>
+
+          <TabsContent value="oversight" className="space-y-6 mt-4">
+            <MasterBrokerOversight />
           </TabsContent>
 
           <TabsContent value="rates" className="space-y-6 mt-4">

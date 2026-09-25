@@ -1075,6 +1075,13 @@ export const COMMERCIAL_OPPORTUNITY_STATUSES = [
 ] as const;
 export type CommercialOpportunityStatus = (typeof COMMERCIAL_OPPORTUNITY_STATUSES)[number];
 
+export const FORMAL_DISPUTE_REASONS = [
+  "client_broker_change_request",
+  "mesa_control_intervention",
+  "contradictory_evidence",
+] as const;
+export type FormalDisputeReason = (typeof FORMAL_DISPUTE_REASONS)[number];
+
 export const COMMERCIAL_ACTIVITY_TYPES = [
   "customer_reply",
   "meeting_conducted",
