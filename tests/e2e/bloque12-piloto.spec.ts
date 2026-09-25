@@ -95,7 +95,12 @@ test.describe('BLOQUE 12.1 — Validación Pantalla Piloto (Gestión de Crédito
       const detailDialog = page.locator('[role="dialog"]').first();
       await expect(detailDialog).toBeVisible();
       // Cerrar modal
-      await page.locator('[data-testid="button-close-dialog"]').click();
+      const closeDetailBtn = detailDialog.getByRole('button', { name: /close|cerrar|cancelar/i }).first();
+      if (await closeDetailBtn.isVisible()) {
+        await closeDetailBtn.click();
+      } else {
+        await page.keyboard.press('Escape');
+      }
       await page.waitForTimeout(500);
     }
 
