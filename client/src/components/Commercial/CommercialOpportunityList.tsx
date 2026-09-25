@@ -30,6 +30,7 @@ import { getOpportunityStatusBadge, COMMERCIAL_ACTIVITY_OPTIONS } from "./Commer
 import { CreateOpportunityModal } from "./CreateOpportunityModal";
 import { RecordActivityModal } from "./RecordActivityModal";
 import { DisputeOpportunityModal } from "./DisputeOpportunityModal";
+import { ContextualHelpLink } from "@/components/Help/ContextualHelpLink";
 import { useAuth } from "@/hooks/useAuth";
 
 interface CommercialOpportunityListProps {
@@ -119,9 +120,16 @@ export const CommercialOpportunityList: React.FC<CommercialOpportunityListProps>
               {(opportunities || []).length}
             </Badge>
           </h3>
-          <p className="text-xs text-slate-500 dark:text-slate-400">
-            Protección de trabajo comercial efectivamente realizado por necesidad de financiamiento.
-          </p>
+          <div className="flex flex-wrap items-center gap-3 mt-1">
+            <p className="text-xs text-slate-500 dark:text-slate-400">
+              Protección de trabajo comercial efectivamente realizado por necesidad de financiamiento.
+            </p>
+            <ContextualHelpLink
+              slug="oportunidad-protegida"
+              label="¿Qué significa oportunidad protegida?"
+              variant="inline"
+            />
+          </div>
         </div>
 
         {canCreate && (

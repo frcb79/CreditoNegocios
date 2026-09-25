@@ -23,6 +23,7 @@ import {
   TrendingUp,
   UserCheck
 } from "lucide-react";
+import { ContextualHelpLink } from "@/components/Help/ContextualHelpLink";
 
 interface ReGestionOpportunity {
   id: string;
@@ -143,6 +144,17 @@ export default function ReGestion() {
       
       <main className="flex-1 p-4 sm:p-6 lg:p-8 overflow-y-auto">
         <div className="max-w-7xl mx-auto space-y-6">
+          {/* Barra de Ayuda y Ventana de Renovación */}
+          <div className="flex items-center justify-between bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-xl px-4 py-2.5 shadow-xs flex-wrap gap-2">
+            <span className="text-xs text-slate-500">
+              La ventana de renovación y los días de prioridad para el originador se gestionan conforme a los parámetros vigentes de la plataforma.
+            </span>
+            <ContextualHelpLink
+              slug="como-funciona-renovacion"
+              label="¿Cómo funciona una renovación?"
+            />
+          </div>
+
           {/* Summary KPI Cards */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
             <div className="bg-white border border-slate-200/80 rounded-xl p-4 sm:p-5 shadow-xs flex items-center justify-between">

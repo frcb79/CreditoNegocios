@@ -23,6 +23,7 @@ import {
   FileSpreadsheet,
   Users2,
   Settings,
+  HelpCircle,
   LogOut,
   type LucideIcon,
 } from "lucide-react";
@@ -61,6 +62,7 @@ const adminNavigation: NavItemDef[] = [
 ];
 
 const bottomNavigation = [
+  { name: 'Ayuda y Reglas', href: '/ayuda', icon: HelpCircle },
   { name: 'Configuración', href: '/configuracion', icon: Settings },
 ];
 

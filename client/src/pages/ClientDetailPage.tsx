@@ -59,6 +59,7 @@ import { targetStatusConfig, getSubmissionStatusSummary } from "@/lib/statusConf
 import { cn } from "@/lib/utils";
 import { CommercialOpportunityList } from "@/components/Commercial/CommercialOpportunityList";
 import { getRelationshipStatusBadge } from "@/components/Commercial/CommercialLabels";
+import { ContextualHelpLink } from "@/components/Help/ContextualHelpLink";
 
 const vigenteFormSchema = z.object({
   tipo: z.string().min(1, "El tipo de crédito es requerido"),
@@ -532,6 +533,18 @@ export default function ClientDetailPage() {
                       : "Sujeta a actividad comercial"}
                   </span>
                 </div>
+              </div>
+
+              <div className="pt-2 border-t border-slate-200/60 dark:border-slate-800/40 flex flex-wrap items-center justify-between gap-2">
+                <ContextualHelpLink
+                  slug="por-que-cliente-con-otro-broker"
+                  label="¿Por qué este cliente aparece relacionado con otro broker?"
+                />
+                <ContextualHelpLink
+                  slug="clientes-relacion-comercial"
+                  label="¿Cómo funciona la vigencia de relación?"
+                  variant="inline"
+                />
               </div>
             </div>
           );

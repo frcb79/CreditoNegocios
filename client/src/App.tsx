@@ -33,6 +33,7 @@ import UserManagement from "@/pages/UserManagement";
 import DesignPreview from "@/pages/DesignPreview";
 import BulkImport from "@/pages/BulkImport";
 import Notifications from "@/pages/Notifications";
+import HelpCenterPage from "@/pages/HelpCenterPage";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
 
 function Router() {
@@ -94,6 +95,8 @@ function Router() {
           <ProtectedRoute path="/admin/usuarios" component={UserManagement} />
           <ProtectedRoute path="/notificaciones" component={Notifications} />
           <ProtectedRoute path="/importacion-masiva" component={BulkImport} allowedRoles={['admin', 'super_admin']} requiredModule="importacion" />
+          <ProtectedRoute path="/ayuda" component={HelpCenterPage} />
+          <ProtectedRoute path="/reglas-operacion" component={HelpCenterPage} />
         </>
       )}
       <Route component={NotFound} />

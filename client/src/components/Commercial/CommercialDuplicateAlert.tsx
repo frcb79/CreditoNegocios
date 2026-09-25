@@ -4,6 +4,7 @@ import { Badge } from "@/components/ui/badge";
 import { CheckCircle2, AlertTriangle, AlertCircle, Info, ShieldCheck, Lock } from "lucide-react";
 import { formatDistanceToNow, format } from "date-fns";
 import { es } from "date-fns/locale";
+import { ContextualHelpLink } from "@/components/Help/ContextualHelpLink";
 
 export interface DuplicateCheckResult {
   hasDuplicate: boolean;
@@ -76,7 +77,12 @@ export const CommercialDuplicateAlert: React.FC<CommercialDuplicateAlertProps> =
           Coincidencia registrada en otra organización
         </AlertTitle>
         <AlertDescription className="text-red-800 dark:text-red-300 text-xs mt-1">
-          Este cliente o razón social ya se encuentra dado de alta en una organización externa. Por políticas de confidencialidad y gobernanza comercial, no está disponible para asignación directa. Consulta con Mesa de Control de Plataforma si consideras que se trata de una cuenta compartida.
+          <p>
+            Este cliente o razón social ya se encuentra dado de alta en una organización externa. Por políticas de confidencialidad y gobernanza comercial, no está disponible para asignación directa. Consulta con Mesa de Control de Plataforma si consideras que se trata de una cuenta compartida.
+          </p>
+          <div className="mt-2">
+            <ContextualHelpLink slug="cliente-ya-existe" label="¿Qué hago si el cliente ya existe?" />
+          </div>
         </AlertDescription>
       </Alert>
     );
@@ -104,6 +110,10 @@ export const CommercialDuplicateAlert: React.FC<CommercialDuplicateAlertProps> =
           <p className="text-amber-700 dark:text-amber-400">
             Un intento de registro no cancela ni congela los derechos comerciales existentes. Para representar a este cliente, se requiere una solicitud verificable de confirmación de elección de broker emitida formalmente por el cliente.
           </p>
+          <div className="mt-2.5 flex flex-wrap items-center gap-3 pt-1 border-t border-amber-200/60 dark:border-amber-800/40">
+            <ContextualHelpLink slug="cliente-ya-existe" label="¿Qué hago si el cliente ya existe?" />
+            <ContextualHelpLink slug="por-que-cliente-con-otro-broker" label="¿Por qué este cliente aparece relacionado con otro broker?" />
+          </div>
         </AlertDescription>
       </Alert>
     );

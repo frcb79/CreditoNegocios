@@ -51,7 +51,9 @@ import {
   validatePromoCodeSchema,
   updateUserAccessStatusSchema,
   updateCommercialRulesConfigSchema,
-  DEFAULT_COMMERCIAL_RULES_CONFIG
+  DEFAULT_COMMERCIAL_RULES_CONFIG,
+  insertOperationalRulesVersionSchema,
+  insertUserRuleAcknowledgmentSchema,
 } from "../shared/schema";
 import { commercialConfigService } from "./commercialConfigService";
 
@@ -61,6 +63,7 @@ import {
   type ClientAccessScope,
 } from "./commercialAuthorizationService";
 import { commercialOpportunityService } from "./commercialOpportunityService";
+import { commercialHelpService } from "./commercialHelpService";
 
 
 import { z } from "zod";
@@ -3018,6 +3021,143 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error: any) {
       console.error("Error fetching commercial audit logs:", error);
       res.status(500).json({ message: "Error al consultar bitácora de auditoría comercial" });
+    }
+  });
+
+  // --- FASE 6: Centro de Reglas de Operación, Manual de Uso y Ayuda Contextual ---
+
+  // Versión vigente de Reglas de Operación con estado de confirmación del usuario
+  app.get('/api/operational-rules/current', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const result = await commercialHelpService.getCurrentOperationalRules(userId);
+      if (!result) {
+        return res.status(404).json({ message: "No hay reglas de operación vigentes configuradas" });
+      }
+      res.json(result);
+    } catch (error: any) {
+      console.error("Error fetching current operational rules:", error);
+      res.status(500).json({ message: "Error al consultar reglas de operación vigentes" });
+    }
+  });
+
+  // Historial de versiones de Reglas de Operación
+  app.get('/api/operational-rules/history', isAuthenticated, async (req: any, res) => {
+    try {
+      const versions = await commercialHelpService.getOperationalRulesVersions();
+      res.json(versions);
+    } catch (error: any) {
+      console.error("Error fetching operational rules history:", error);
+      res.status(500).json({ message: "Error al consultar historial de reglas de operación" });
+    }
+  });
+
+  // Detalle de una versión específica de Reglas de Operación
+  app.get('/api/operational-rules/:version', isAuthenticated, async (req: any, res) => {
+    try {
+      const { version } = req.params;
+      const userId = req.user.claims.sub;
+      const result = await commercialHelpService.getOperationalRulesByVersion(version, userId);
+      if (!result) {
+        return res.status(404).json({ message: `Versión de reglas '${version}' no encontrada` });
+      }
+      res.json(result);
+    } catch (error: any) {
+      console.error("Error fetching operational rules version:", error);
+      res.status(500).json({ message: "Error al consultar versión de reglas de operación" });
+    }
+  });
+
+  // Registrar confirmación de lectura y aceptación de versión
+  app.post('/api/operational-rules/acknowledge', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const { ruleVersionId, version } = req.body;
+      const targetVersion = ruleVersionId || version;
+
+      if (!targetVersion) {
+        return res.status(400).json({ message: "Se requiere ruleVersionId o version" });
+      }
+
+      const clientIp = req.headers['x-forwarded-for'] || req.socket.remoteAddress || req.ip;
+      const result = await commercialHelpService.recordAcknowledgment(
+        userId,
+        targetVersion,
+        typeof clientIp === 'string' ? clientIp : Array.isArray(clientIp) ? clientIp[0] : undefined
+      );
+
+      res.json(result);
+    } catch (error: any) {
+      console.error("Error acknowledging operational rules:", error);
+      res.status(400).json({ message: error.message || "Error al registrar aceptación de reglas" });
+    }
+  });
+
+  // Crear nueva versión de Reglas de Operación (Solo Super Admin de Plataforma)
+  app.post('/api/admin/operational-rules', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const user = await storage.getUser(userId);
+
+      // Verificación estricta de Super Admin de plataforma
+      if (user?.role !== 'super_admin') {
+        return res.status(403).json({ message: "Acceso exclusivo para Super Administradores de plataforma" });
+      }
+
+      const parseResult = insertOperationalRulesVersionSchema.safeParse(req.body);
+      if (!parseResult.success) {
+        return res.status(400).json({
+          message: "Datos de versión inválidos",
+          errors: parseResult.error.errors,
+        });
+      }
+
+      const created = await commercialHelpService.createOperationalRulesVersion({
+        ...parseResult.data,
+        createdBy: userId,
+      });
+
+      res.status(201).json(created);
+    } catch (error: any) {
+      console.error("Error creating operational rules version:", error);
+      res.status(500).json({ message: error.message || "Error al crear nueva versión de reglas" });
+    }
+  });
+
+  // Artículos del Centro de Ayuda y Manual Práctico (con buscador por palabras y filtros)
+  app.get('/api/help/articles', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const user = await storage.getUser(userId);
+      const userRole = user?.role || 'broker';
+
+      const { q, category, slug } = req.query;
+      const articles = await commercialHelpService.getArticles({
+        query: q ? String(q) : undefined,
+        category: category ? String(category) : undefined,
+        slug: slug ? String(slug) : undefined,
+        userRole,
+      });
+
+      res.json(articles);
+    } catch (error: any) {
+      console.error("Error fetching help articles:", error);
+      res.status(500).json({ message: "Error al consultar artículos de ayuda" });
+    }
+  });
+
+  // Categorías disponibles para el rol del usuario
+  app.get('/api/help/categories', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const user = await storage.getUser(userId);
+      const userRole = user?.role || 'broker';
+
+      const categories = await commercialHelpService.getCategories(userRole);
+      res.json(categories);
+    } catch (error: any) {
+      console.error("Error fetching help categories:", error);
+      res.status(500).json({ message: "Error al consultar categorías de ayuda" });
     }
   });
 

@@ -23,6 +23,7 @@ import { COMMERCIAL_ACTIVITY_OPTIONS } from "./CommercialLabels";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { CheckCircle2, Info, Loader2, Sparkles, FileText } from "lucide-react";
+import { ContextualHelpLink } from "@/components/Help/ContextualHelpLink";
 
 interface RecordActivityModalProps {
   isOpen: boolean;
@@ -138,9 +139,16 @@ export const RecordActivityModal: React.FC<RecordActivityModalProps> = ({
 
         <form onSubmit={handleSubmit} className="space-y-4 py-2">
           <div className="space-y-1.5">
-            <Label htmlFor="act-type" className="text-xs font-semibold">
-              Tipo de Actividad *
-            </Label>
+            <div className="flex items-center justify-between">
+              <Label htmlFor="act-type" className="text-xs font-semibold">
+                Tipo de Actividad *
+              </Label>
+              <ContextualHelpLink
+                slug="actividades-que-mantienen-proteccion"
+                label="¿Qué actividades mantienen mi protección?"
+                variant="inline"
+              />
+            </div>
             <Select value={activityType} onValueChange={setActivityType}>
               <SelectTrigger id="act-type" className="text-xs">
                 <SelectValue placeholder="Selecciona tipo de actividad" />

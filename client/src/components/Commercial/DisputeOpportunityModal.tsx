@@ -25,6 +25,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { AlertCircle, AlertTriangle, Loader2, Scale } from "lucide-react";
 import { FORMAL_DISPUTE_REASON_OPTIONS } from "./CommercialLabels";
 import type { FormalDisputeReason } from "@shared/schema";
+import { ContextualHelpLink } from "@/components/Help/ContextualHelpLink";
 
 interface DisputeOpportunityModalProps {
   isOpen: boolean;
@@ -146,8 +147,17 @@ export const DisputeOpportunityModal: React.FC<DisputeOpportunityModalProps> = (
         <Alert className="border-amber-200 bg-amber-50/70 dark:bg-amber-950/20 text-amber-900 dark:text-amber-200">
           <AlertCircle className="h-4 w-4 text-amber-600 dark:text-amber-400" />
           <AlertTitle className="text-xs font-semibold">Regla de Protección de Derechos</AlertTitle>
-          <AlertDescription className="text-[11px] mt-0.5">
-            Una afirmación o nota unilateral de un broker no puede degradar ni congelar los derechos vigentes de otro asesor. Solo proceden controversias con solicitud verificable del cliente o evidencia contradictoria documental.
+          <AlertDescription className="text-[11px] mt-0.5 space-y-1.5">
+            <p>
+              Una afirmación o nota unilateral de un broker no puede degradar ni congelar los derechos vigentes de otro asesor. Solo proceden controversias con solicitud verificable del cliente o evidencia contradictoria documental.
+            </p>
+            <div className="pt-1">
+              <ContextualHelpLink
+                slug="como-se-resuelve-conflicto"
+                label="¿Cómo se resuelve un conflicto entre brokers?"
+                variant="inline"
+              />
+            </div>
           </AlertDescription>
         </Alert>
 

@@ -25,6 +25,7 @@ import { formatDistanceToNow, format } from "date-fns";
 import { es } from "date-fns/locale";
 import CommissionBulkUploader from "@/components/Commissions/CommissionBulkUploader";
 import { cn } from "@/lib/utils";
+import { ContextualHelpLink } from "@/components/Help/ContextualHelpLink";
 import { 
   Search, 
   Clock, 
@@ -633,6 +634,17 @@ export default function Commissions() {
       />
         
         <main className="flex-1 p-4 sm:p-6 lg:p-8 overflow-y-auto">
+          {/* Barra de Ayuda y Atribución */}
+          <div className="mb-4 flex items-center justify-between bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-xl px-4 py-2.5 shadow-xs flex-wrap gap-2">
+            <span className="text-xs text-slate-500">
+              Las comisiones corresponden permanentemente al broker originador de la operación efectivamente dispersada.
+            </span>
+            <ContextualHelpLink
+              slug="atribucion-comisiones"
+              label="¿Cómo funciona la atribución de esta comisión?"
+            />
+          </div>
+
           {/* Alerta de cuenta bancaria pendiente */}
           {needsBankSetup && (
             <div className="mb-6 p-4 bg-orange-50 border-2 border-orange-300 rounded-xl flex items-center justify-between flex-wrap gap-3">
