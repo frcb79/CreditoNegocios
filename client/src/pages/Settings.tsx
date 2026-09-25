@@ -25,6 +25,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { apiRequest } from "@/lib/queryClient";
+import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
 import { Tag, Gift, CheckCircle, ShieldCheck, Clock, AlertCircle, Sparkles, Check, Info, ArrowRight, Loader2, KeyRound } from "lucide-react";
 import { CommercialRulesSettings } from "@/components/Commercial/CommercialRulesSettings";
@@ -549,12 +550,15 @@ export default function Settings() {
                   <Form {...profileForm}>
                     <form onSubmit={profileForm.handleSubmit(onProfileSubmit)} className="space-y-5">
                       <div className="flex flex-col sm:flex-row items-center gap-4 p-3 bg-muted/30 border border-border/60 rounded-lg">
-                        <div className="w-16 h-16 sm:w-18 sm:h-18 bg-gradient-to-r from-primary to-secondary rounded-full flex items-center justify-center flex-shrink-0 overflow-hidden shadow-xs">
+                        <div className={cn(
+                          "w-16 h-16 sm:w-18 sm:h-18 rounded-full flex items-center justify-center flex-shrink-0 overflow-hidden shadow-xs border border-border/60",
+                          avatarPreview ? "bg-transparent" : "bg-gradient-to-r from-primary to-secondary"
+                        )}>
                           {avatarPreview ? (
                             <img
                               src={avatarPreview}
                               alt="Foto de perfil"
-                              className="w-full h-full object-cover"
+                              className="w-full h-full object-contain"
                               onError={() => setAvatarPreview(null)}
                             />
                           ) : (

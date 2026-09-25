@@ -18,8 +18,8 @@ export default function Header({ title, subtitle, action, children }: HeaderProp
   const { unreadCount } = useNotifications();
 
   return (
-    <header className="sticky top-0 z-30 bg-card border-b border-border/70 pl-14 sm:pl-16 lg:px-8 pr-4 py-2.5 sm:py-3 shadow-2xs">
-      <div className="flex items-center justify-between gap-3 sm:gap-4">
+    <header className="sticky top-0 z-30 bg-card border-b border-border/70 pl-14 sm:pl-16 lg:px-8 pr-4 min-h-[72px] h-[72px] flex items-center shadow-2xs">
+      <div className="flex items-center justify-between gap-3 sm:gap-4 w-full">
         <div className="min-w-0 flex-1">
           <h2 className="text-lg sm:text-xl font-bold tracking-tight text-foreground truncate" data-testid="header-title">
             {title}

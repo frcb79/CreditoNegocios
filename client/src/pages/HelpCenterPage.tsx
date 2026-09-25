@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from "react";
 import { useLocation } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { queryClient } from "@/lib/queryClient";
+import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
 import MainLayout from "@/components/MainLayout";
@@ -109,35 +109,36 @@ export default function HelpCenterPage() {
   });
 
   // Consultar artículos del Centro de Ayuda
-  const { data: articles, isLoading: isLoadingArticles } = useQuery<any[]>({
+  const { data: articles = [], isLoading: isLoadingArticles } = useQuery<any[]>({
     queryKey: ["/api/help/articles", searchQuery, selectedCategory],
     queryFn: async () => {
       const params = new URLSearchParams();
       if (searchQuery) params.set("q", searchQuery);
       if (selectedCategory && selectedCategory !== "all") params.set("category", selectedCategory);
-      const res = await fetch(`/api/help/articles?${params.toString()}`);
+      const queryString = params.toString();
+      const url = queryString ? `/api/help/articles?${queryString}` : "/api/help/articles";
+      const res = await fetch(url, { credentials: "include" });
       if (!res.ok) throw new Error("Error al consultar artículos");
       return res.json();
     },
   });
 
   // Consultar categorías
-  const { data: categories } = useQuery<{ id: string; label: string; count: number }[]>({
+  const { data: categories = [] } = useQuery<{ id: string; label: string; count: number }[]>({
     queryKey: ["/api/help/categories"],
+    queryFn: async () => {
+      const res = await fetch("/api/help/categories", { credentials: "include" });
+      if (!res.ok) throw new Error("Error al consultar categorías");
+      return res.json();
+    },
   });
 
   // Mutación para confirmar lectura y aceptación
   const acknowledgeMutation = useMutation({
     mutationFn: async (versionId: string) => {
-      const res = await fetch("/api/operational-rules/acknowledge", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ruleVersionId: versionId }),
+      const res = await apiRequest("POST", "/api/operational-rules/acknowledge", {
+        ruleVersionId: versionId,
       });
-      if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.message || "Error al confirmar aceptación");
-      }
       return res.json();
     },
     onSuccess: () => {
@@ -160,15 +161,7 @@ export default function HelpCenterPage() {
   // Mutación para crear nueva versión de reglas (Super Admin)
   const createVersionMutation = useMutation({
     mutationFn: async (payload: typeof newVersionForm) => {
-      const res = await fetch("/api/admin/operational-rules", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-      if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.message || "Error al crear nueva versión");
-      }
+      const res = await apiRequest("POST", "/api/admin/operational-rules", payload);
       return res.json();
     },
     onSuccess: () => {
@@ -222,7 +215,8 @@ export default function HelpCenterPage() {
 
   return (
     <MainLayout>
-      <div className="space-y-6 pb-12 max-w-6xl mx-auto">
+      <main className="flex-1 p-4 sm:p-6 lg:p-8 overflow-y-auto pt-14 sm:pt-16 lg:pt-8">
+        <div className="space-y-6 pb-12 max-w-6xl mx-auto">
         {/* Encabezado Principal */}
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b pb-5">
           <div>
@@ -729,7 +723,8 @@ export default function HelpCenterPage() {
             </div>
           </TabsContent>
         </Tabs>
-      </div>
+        </div>
+      </main>
     </MainLayout>
   );
 }

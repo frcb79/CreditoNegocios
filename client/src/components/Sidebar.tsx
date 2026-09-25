@@ -210,7 +210,7 @@ export default function Sidebar() {
   const SidebarContent = ({ collapsed = false, testIdSuffix = '' }: { collapsed?: boolean; testIdSuffix?: string }) => (
     <div className="flex flex-col h-full">
       {/* Brand Header: Only logo/brand */}
-      <div className={cn("border-b border-sidebar-border/70 flex items-center justify-center flex-shrink-0", collapsed ? "p-2 h-16" : "px-4 py-3 h-16")}>
+      <div className={cn("border-b border-sidebar-border/70 flex items-center justify-center flex-shrink-0", collapsed ? "p-2 h-[72px]" : "px-4 py-3 h-[72px]")}>
         {collapsed ? (
           <div className="w-9 h-9 bg-gradient-to-r from-primary to-secondary rounded-lg flex items-center justify-center shadow-xs">
             <span className="text-white font-bold text-sm font-mono">CN</span>
@@ -298,26 +298,27 @@ export default function Sidebar() {
       )}>
         {/* User Identity Mini-Card */}
         <div className={cn(
-          "rounded-lg border border-sidebar-border/60 bg-sidebar-accent/40 shadow-2xs",
+          "rounded-lg border border-sidebar-border/60 bg-card/60 shadow-2xs",
           collapsed ? "p-1.5 flex justify-center" : "p-2.5"
         )}>
           <div className={cn("flex items-center", collapsed ? "justify-center" : "gap-2.5")}>
-            <div className="w-8 h-8 rounded-md flex items-center justify-center flex-shrink-0 overflow-hidden bg-sidebar-accent border border-sidebar-border/70">
+            <div className={cn(
+              "w-8 h-8 rounded-md flex items-center justify-center flex-shrink-0 overflow-hidden border border-sidebar-border/70",
+              (user?.profileImageUrl || (user as any)?.customLogo) ? "bg-transparent" : "bg-gradient-to-br from-primary to-secondary"
+            )}>
               {user?.profileImageUrl || (user as any)?.customLogo ? (
                 <img
                   src={user?.profileImageUrl || (user as any)?.customLogo}
                   alt="Foto"
-                  className="w-full h-full object-cover"
+                  className="w-full h-full object-contain"
                   onError={(event) => {
                     event.currentTarget.style.display = "none";
                   }}
                 />
               ) : (
-                <div className="w-full h-full bg-gradient-to-br from-primary to-secondary flex items-center justify-center">
-                  <span className="text-white font-semibold text-xs">
-                    {user?.firstName?.[0]}{user?.lastName?.[0]}
-                  </span>
-                </div>
+                <span className="text-white font-semibold text-xs">
+                  {user?.firstName?.[0]}{user?.lastName?.[0]}
+                </span>
               )}
             </div>
             {!collapsed && (

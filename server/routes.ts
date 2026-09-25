@@ -3061,7 +3061,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Versión vigente de Reglas de Operación con estado de confirmación del usuario
   app.get('/api/operational-rules/current', isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const userId = getAuthUserId(req);
+      if (!userId) {
+        return res.status(401).json({ message: "Unauthorized" });
+      }
       const result = await commercialHelpService.getCurrentOperationalRules(userId);
       if (!result) {
         return res.status(404).json({ message: "No hay reglas de operación vigentes configuradas" });
@@ -3088,7 +3091,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get('/api/operational-rules/:version', isAuthenticated, async (req: any, res) => {
     try {
       const { version } = req.params;
-      const userId = req.user.claims.sub;
+      const userId = getAuthUserId(req);
+      if (!userId) {
+        return res.status(401).json({ message: "Unauthorized" });
+      }
       const result = await commercialHelpService.getOperationalRulesByVersion(version, userId);
       if (!result) {
         return res.status(404).json({ message: `Versión de reglas '${version}' no encontrada` });
@@ -3103,7 +3109,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Registrar confirmación de lectura y aceptación de versión
   app.post('/api/operational-rules/acknowledge', isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const userId = getAuthUserId(req);
+      if (!userId) {
+        return res.status(401).json({ message: "Unauthorized" });
+      }
       const { ruleVersionId, version } = req.body;
       const targetVersion = ruleVersionId || version;
 
@@ -3128,7 +3137,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Crear nueva versión de Reglas de Operación (Solo Super Admin de Plataforma)
   app.post('/api/admin/operational-rules', isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const userId = getAuthUserId(req);
+      if (!userId) {
+        return res.status(401).json({ message: "Unauthorized" });
+      }
       const user = await storage.getUser(userId);
 
       // Verificación estricta de Super Admin de plataforma
@@ -3159,7 +3171,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Artículos del Centro de Ayuda y Manual Práctico (con buscador por palabras y filtros)
   app.get('/api/help/articles', isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const userId = getAuthUserId(req);
+      if (!userId) {
+        return res.status(401).json({ message: "Unauthorized" });
+      }
       const user = await storage.getUser(userId);
       const userRole = user?.role || 'broker';
 
@@ -3181,7 +3196,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Categorías disponibles para el rol del usuario
   app.get('/api/help/categories', isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const userId = getAuthUserId(req);
+      if (!userId) {
+        return res.status(401).json({ message: "Unauthorized" });
+      }
       const user = await storage.getUser(userId);
       const userRole = user?.role || 'broker';
 

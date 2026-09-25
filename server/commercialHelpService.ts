@@ -41,22 +41,12 @@ export interface ICommercialHelpStorage {
   getUserRuleAcknowledgments(userId: string): Promise<UserRuleAcknowledgment[]>;
 }
 
-export class MockCommercialHelpStorage implements ICommercialHelpStorage {
-  private versions: Map<string, OperationalRulesVersion> = new Map();
-  private acknowledgments: Map<string, UserRuleAcknowledgment> = new Map();
-
-  constructor() {
-    this.seedDefaultVersion();
-  }
-
-  private seedDefaultVersion() {
-    const v1Id = "seed-rule-version-1-0-0";
-    const v1: OperationalRulesVersion = {
-      id: v1Id,
-      version: "1.0.0",
-      title: "Reglas de Operación y Protección Comercial de Crédito Negocios",
-      summary: "Normas fundamentales de asignación de cartera, vigencia de relaciones comerciales, protección de oportunidades, atribución histórica y ventanas de renovación.",
-      contentMarkdown: `# Reglas de Operación y Protección Comercial
+export const DEFAULT_OPERATIONAL_RULES_V1: OperationalRulesVersion = {
+  id: "seed-rule-version-1-0-0",
+  version: "1.0.0",
+  title: "Reglas de Operación y Protección Comercial de Crédito Negocios",
+  summary: "Normas fundamentales de asignación de cartera, vigencia de relaciones comerciales, protección de oportunidades, atribución histórica y ventanas de renovación.",
+  contentMarkdown: `# Reglas de Operación y Protección Comercial
 
 **Versión:** 1.0.0  
 **Fecha de Entrada en Vigor:** 24 de Septiembre, 2026  
@@ -139,13 +129,23 @@ El cliente es una entidad independiente con plena libertad de contratación. Nin
 2. **Operación que Genera Atribución:** La comisión se genera cuando una solicitud de crédito llega a dispersión efectiva con una financiera aliada.
 3. **No División Automática de Comisiones:** No existen divisiones ni splits automáticos entre brokers en caso de conflicto; la comisión se asigna a quien efectivamente concretó la solución autorizada por el cliente.
 4. **Casos Excepcionales:** Cualquier ajuste extraordinario solo puede ser ordenado y aplicado formalmente por Mesa de Control tras un dictamen debidamente documentado.`,
-      effectiveDate: "2026-09-24",
-      isCurrent: true,
-      requiresAcknowledgment: true,
-      createdBy: null,
-      createdAt: new Date("2026-09-24T00:00:00Z"),
-    };
-    this.versions.set(v1.id, v1);
+  effectiveDate: "2026-09-24",
+  isCurrent: true,
+  requiresAcknowledgment: true,
+  createdBy: null,
+  createdAt: new Date("2026-09-24T00:00:00Z"),
+};
+
+export class MockCommercialHelpStorage implements ICommercialHelpStorage {
+  private versions: Map<string, OperationalRulesVersion> = new Map();
+  private acknowledgments: Map<string, UserRuleAcknowledgment> = new Map();
+
+  constructor() {
+    this.seedDefaultVersion();
+  }
+
+  private seedDefaultVersion() {
+    this.versions.set(DEFAULT_OPERATIONAL_RULES_V1.id, { ...DEFAULT_OPERATIONAL_RULES_V1 });
   }
 
   async getOperationalRulesVersions(): Promise<OperationalRulesVersion[]> {
@@ -242,7 +242,9 @@ export class DrizzleCommercialHelpStorage implements ICommercialHelpStorage {
       .select()
       .from(operationalRulesVersions)
       .where(eq(operationalRulesVersions.id, id));
-    return found;
+    if (found) return found;
+    if (id === DEFAULT_OPERATIONAL_RULES_V1.id) return DEFAULT_OPERATIONAL_RULES_V1;
+    return undefined;
   }
 
   async getOperationalRulesVersionByVersion(version: string): Promise<OperationalRulesVersion | undefined> {
@@ -250,7 +252,9 @@ export class DrizzleCommercialHelpStorage implements ICommercialHelpStorage {
       .select()
       .from(operationalRulesVersions)
       .where(eq(operationalRulesVersions.version, version));
-    return found;
+    if (found) return found;
+    if (version === DEFAULT_OPERATIONAL_RULES_V1.version) return DEFAULT_OPERATIONAL_RULES_V1;
+    return undefined;
   }
 
   async getCurrentOperationalRulesVersion(): Promise<OperationalRulesVersion | undefined> {
@@ -266,7 +270,23 @@ export class DrizzleCommercialHelpStorage implements ICommercialHelpStorage {
       .from(operationalRulesVersions)
       .orderBy(desc(operationalRulesVersions.createdAt))
       .limit(1);
-    return latest;
+    if (latest) return latest;
+
+    try {
+      const [inserted] = await this.db
+        .insert(operationalRulesVersions)
+        .values({
+          ...DEFAULT_OPERATIONAL_RULES_V1,
+          createdAt: new Date(),
+        })
+        .onConflictDoNothing()
+        .returning();
+      if (inserted) return inserted;
+    } catch {
+      // ignore
+    }
+
+    return DEFAULT_OPERATIONAL_RULES_V1;
   }
 
   async createOperationalRulesVersion(
@@ -992,13 +1012,19 @@ export class CommercialHelpService {
     }
 
     if (options?.query && options.query.trim().length > 0) {
-      const q = options.query.trim().toLowerCase();
-      // Búsqueda simple y rápida en título, keywords, summary y contenido
+      const normalize = (str: string) =>
+        str
+          .normalize("NFD")
+          .replace(/[\u0300-\u036f]/g, "")
+          .toLowerCase();
+
+      const q = normalize(options.query.trim());
+      // Búsqueda flexible e insensible a acentos en título, keywords, summary y contenido
       list = list.filter((a) => {
-        const titleMatch = a.title.toLowerCase().includes(q);
-        const keywordMatch = a.keywords.some((k) => k.toLowerCase().includes(q));
-        const summaryMatch = a.summary.toLowerCase().includes(q);
-        const contentMatch = a.contentMarkdown.toLowerCase().includes(q);
+        const titleMatch = normalize(a.title).includes(q);
+        const keywordMatch = a.keywords.some((k) => normalize(k).includes(q));
+        const summaryMatch = normalize(a.summary).includes(q);
+        const contentMatch = normalize(a.contentMarkdown).includes(q);
         return titleMatch || keywordMatch || summaryMatch || contentMatch;
       });
     }

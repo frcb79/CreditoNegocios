@@ -53,13 +53,13 @@ export default function NotificationsPanel() {
     <Card className="border border-border/70 bg-card shadow-2xs" data-testid="notifications-panel-card">
       <CardHeader className="p-4 pb-3 border-b border-border/40">
         <div className="flex items-center justify-between">
-          <div className="flex items-center space-x-2">
-            <CardTitle className="text-sm font-semibold text-foreground tracking-tight">
+          <div className="flex items-center gap-2">
+            <CardTitle className="text-sm font-semibold text-foreground tracking-tight leading-none">
               Requieren atención
             </CardTitle>
             {unreadCount > 0 ? (
               <Badge
-                className="bg-amber-500/15 text-amber-800 dark:text-amber-300 border border-amber-500/30 text-[10px] px-1.5 py-0 font-medium"
+                className="inline-flex items-center justify-center bg-amber-500/15 text-amber-800 dark:text-amber-300 border border-amber-500/30 text-[10px] px-2 py-0.5 font-medium leading-none rounded-full shrink-0"
                 data-testid="notification-count"
               >
                 {unreadCount > 99 ? '99+' : unreadCount} pendientes
@@ -67,7 +67,7 @@ export default function NotificationsPanel() {
             ) : (
               <Badge
                 variant="outline"
-                className="text-[10px] text-muted-foreground border-border/60 px-1.5 py-0 font-normal"
+                className="inline-flex items-center justify-center text-[10px] text-muted-foreground border-border/60 px-2 py-0.5 font-normal leading-none rounded-full shrink-0"
                 data-testid="notification-count"
               >
                 Al día

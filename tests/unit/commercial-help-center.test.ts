@@ -72,6 +72,10 @@ describe("Fase 6 — Centro de Reglas de Operación, Manual de Uso y Ayuda Conte
 
   // 3. Buscador encuentra artículos relevantes
   it("3. Buscador encuentra artículos relevantes con términos cotidianos de broker", async () => {
+    // Caso: "cliente"
+    const clientResults = await service.getArticles({ query: "cliente" });
+    expect(clientResults.length).toBeGreaterThan(0);
+
     // Caso exacto requerido en especificación: "cliente ya existe"
     const duplicateResults = await service.getArticles({ query: "cliente ya existe" });
     expect(duplicateResults.length).toBeGreaterThan(0);
@@ -88,10 +92,15 @@ describe("Fase 6 — Centro de Reglas de Operación, Manual de Uso y Ayuda Conte
     expect(commResults.length).toBeGreaterThan(0);
     expect(commResults.some((a) => a.slug === "atribucion-comisiones")).toBe(true);
 
-    // Caso: "renovacion"
+    // Caso: "renovacion" (sin acento)
     const renResults = await service.getArticles({ query: "renovacion" });
     expect(renResults.length).toBeGreaterThan(0);
     expect(renResults.some((a) => a.slug === "como-funciona-renovacion")).toBe(true);
+
+    // Caso: "renovación" (con acento diacrítico)
+    const renAccentResults = await service.getArticles({ query: "renovación" });
+    expect(renAccentResults.length).toBeGreaterThan(0);
+    expect(renAccentResults.some((a) => a.slug === "como-funciona-renovacion")).toBe(true);
   });
 
   // 4. Deep-link desde Clientes abre artículo correcto
