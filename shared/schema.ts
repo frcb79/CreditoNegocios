@@ -1052,3 +1052,348 @@ export type PromoCode = typeof promoCodes.$inferSelect;
 export type InsertPromoRedemption = z.infer<typeof insertPromoRedemptionSchema>;
 export type PromoRedemption = typeof promoRedemptions.$inferSelect;
 
+// ============================================================================
+// GOBERNANZA COMERCIAL: VIGENCIA, RELACIÓN CLIENTE-BROKER Y OPORTUNIDADES
+// ============================================================================
+
+export const COMMERCIAL_RELATIONSHIP_STATUSES = [
+  "active",
+  "dormant",
+  "inactive",
+  "legacy_unverified",
+  "reassigned",
+] as const;
+export type CommercialRelationshipStatus = (typeof COMMERCIAL_RELATIONSHIP_STATUSES)[number];
+
+export const COMMERCIAL_OPPORTUNITY_STATUSES = [
+  "registered_hold",
+  "protected_active",
+  "expired_released",
+  "converted_credit",
+  "disputed",
+  "rejected",
+] as const;
+export type CommercialOpportunityStatus = (typeof COMMERCIAL_OPPORTUNITY_STATUSES)[number];
+
+export const COMMERCIAL_ACTIVITY_TYPES = [
+  "customer_reply",
+  "meeting_conducted",
+  "financial_doc_uploaded",
+  "proposal_sent",
+  "submission_created",
+  "approval_received",
+] as const;
+export type CommercialActivityType = (typeof COMMERCIAL_ACTIVITY_TYPES)[number];
+
+export const BROKER_ELECTION_STATUSES = [
+  "pending",
+  "confirmed",
+  "expired",
+  "revoked",
+  "rejected",
+] as const;
+export type BrokerElectionStatus = (typeof BROKER_ELECTION_STATUSES)[number];
+
+export const CLIENT_ACCESS_SCOPES = [
+  "full",
+  "commercial_dormant",
+  "master_broker_oversight",
+  "historical_scoped",
+  "none",
+] as const;
+export type ClientAccessScope = (typeof CLIENT_ACCESS_SCOPES)[number];
+
+// 1. Relación Comercial de Cartera (client_commercial_relationships)
+export const clientCommercialRelationships = pgTable("client_commercial_relationships", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  tenantId: varchar("tenant_id").references(() => tenants.id),
+  clientId: varchar("client_id").notNull().references(() => clients.id, { onDelete: 'cascade' }),
+  brokerId: varchar("broker_id").notNull().references(() => users.id),
+  masterBrokerId: varchar("master_broker_id").references(() => users.id),
+  status: varchar("status").notNull().default("legacy_unverified"),
+  lastValidActivityAt: timestamp("last_valid_activity_at"),
+  lastActivityType: varchar("last_activity_type"),
+  lastActivitySummary: text("last_activity_summary"),
+  activeUntil: timestamp("active_until"),
+  dormantUntil: timestamp("dormant_until"),
+  inboundPriorityExpiresAt: timestamp("inbound_priority_expires_at"),
+  inboundPriorityStatus: varchar("inbound_priority_status"),
+  notes: text("notes"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => [
+  index("rel_client_idx").on(table.clientId),
+  index("rel_broker_idx").on(table.brokerId),
+  index("rel_status_idx").on(table.status),
+]);
+
+// 2. Protección de Oportunidades Concretas (commercial_opportunities)
+export const commercialOpportunities = pgTable("commercial_opportunities", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  tenantId: varchar("tenant_id").references(() => tenants.id),
+  clientId: varchar("client_id").notNull().references(() => clients.id, { onDelete: 'cascade' }),
+  brokerId: varchar("broker_id").notNull().references(() => users.id),
+  masterBrokerId: varchar("master_broker_id").references(() => users.id),
+  title: varchar("title").notNull(),
+  financingNeedType: varchar("financing_need_type").notNull(),
+  requestedAmount: decimal("requested_amount", { precision: 15, scale: 2 }).notNull(),
+  productTemplateId: varchar("product_template_id").references(() => productTemplates.id),
+  targetInstitutionId: varchar("target_institution_id").references(() => financialInstitutions.id),
+  status: varchar("status").notNull().default("registered_hold"),
+  holdExpiresAt: timestamp("hold_expires_at").notNull(),
+  protectedUntil: timestamp("protected_until"),
+  lastValidActivityAt: timestamp("last_valid_activity_at").defaultNow().notNull(),
+  initialEvidenceType: varchar("initial_evidence_type"),
+  initialEvidenceDocUrl: varchar("initial_evidence_doc_url"),
+  initialEvidenceValidatedAt: timestamp("initial_evidence_validated_at"),
+  initialEvidenceValidatedBy: varchar("initial_evidence_validated_by").references(() => users.id),
+  linkedSubmissionId: varchar("linked_submission_id").references(() => creditSubmissionRequests.id),
+  convertedCreditId: varchar("converted_credit_id").references(() => credits.id),
+  isDerivedWorkSuspicion: boolean("is_derived_work_suspicion").default(false),
+  priorWorkBrokerId: varchar("prior_work_broker_id").references(() => users.id),
+  notes: text("notes"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => [
+  index("opp_client_idx").on(table.clientId),
+  index("opp_broker_idx").on(table.brokerId),
+  index("opp_status_idx").on(table.status),
+  index("opp_need_idx").on(table.clientId, table.financingNeedType),
+]);
+
+// 3. Actividades Comerciales Válidas (commercial_activities)
+export const commercialActivities = pgTable("commercial_activities", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  clientId: varchar("client_id").notNull().references(() => clients.id, { onDelete: 'cascade' }),
+  opportunityId: varchar("opportunity_id").references(() => commercialOpportunities.id),
+  relationshipId: varchar("relationship_id").references(() => clientCommercialRelationships.id),
+  brokerId: varchar("broker_id").notNull().references(() => users.id),
+  activityType: varchar("activity_type").notNull(),
+  title: varchar("title").notNull(),
+  description: text("description"),
+  documentId: varchar("document_id").references(() => documents.id),
+  evidenceUrl: varchar("evidence_url"),
+  verifiedBySystem: boolean("verified_by_system").default(true),
+  performedAt: timestamp("performed_at").defaultNow().notNull(),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => [
+  index("comm_act_client_idx").on(table.clientId),
+  index("comm_act_opp_idx").on(table.opportunityId),
+  index("comm_act_broker_idx").on(table.brokerId),
+]);
+
+// 4. Tokens de Elección de Broker por el Cliente (broker_election_confirmations)
+export const brokerElectionConfirmations = pgTable("broker_election_confirmations", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  clientId: varchar("client_id").notNull().references(() => clients.id),
+  opportunityId: varchar("opportunity_id").references(() => commercialOpportunities.id),
+  previousBrokerId: varchar("previous_broker_id").references(() => users.id),
+  selectedBrokerId: varchar("selected_broker_id").notNull().references(() => users.id),
+  channel: varchar("channel").notNull(),
+  recipientContact: varchar("recipient_contact").notNull(),
+  recipientName: varchar("recipient_name"),
+  recipientRole: varchar("recipient_role"),
+  tokenHash: varchar("token_hash").notNull().unique(),
+  tokenExpiresAt: timestamp("token_expires_at").notNull(),
+  status: varchar("status").notNull().default("pending"),
+  confirmedAt: timestamp("confirmed_at"),
+  confirmationIp: varchar("confirmation_ip"),
+  confirmationUserAgent: text("confirmation_user_agent"),
+  revokedAt: timestamp("revoked_at"),
+  revokedReason: varchar("revoked_reason"),
+  validatedByAdminId: varchar("validated_by_admin_id").references(() => users.id),
+  manualEvidenceFileUrl: varchar("manual_evidence_file_url"),
+  manualValidationNotes: text("manual_validation_notes"),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => [
+  index("elec_client_idx").on(table.clientId),
+  index("elec_token_idx").on(table.tokenHash),
+]);
+
+// 5. Bitácora Inmutable de Gobernanza Comercial (commercial_audit_logs)
+export const commercialAuditLogs = pgTable("commercial_audit_logs", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  entityType: varchar("entity_type").notNull(),
+  entityId: varchar("entity_id").notNull(),
+  clientId: varchar("client_id").references(() => clients.id),
+  brokerId: varchar("broker_id").references(() => users.id),
+  performedBy: varchar("performed_by").references(() => users.id),
+  action: varchar("action").notNull(),
+  previousState: varchar("previous_state"),
+  newState: varchar("new_state"),
+  metadata: jsonb("metadata").default('{}'),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => [
+  index("comm_audit_entity_idx").on(table.entityType, table.entityId),
+  index("comm_audit_client_idx").on(table.clientId),
+]);
+
+// 6. Versiones del Centro de Reglas de Operación (operational_rules_versions)
+export const operationalRulesVersions = pgTable("operational_rules_versions", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  version: varchar("version").notNull().unique(),
+  title: varchar("title").notNull(),
+  summary: text("summary").notNull(),
+  contentMarkdown: text("content_markdown").notNull(),
+  effectiveDate: date("effective_date").notNull(),
+  isCurrent: boolean("is_current").default(false).notNull(),
+  requiresAcknowledgment: boolean("requires_acknowledgment").default(false),
+  createdBy: varchar("created_by").references(() => users.id),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+// 7. Registro de Lectura y Aceptación de Reglas (user_rule_acknowledgments)
+export const userRuleAcknowledgments = pgTable("user_rule_acknowledgments", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull().references(() => users.id),
+  ruleVersionId: varchar("rule_version_id").notNull().references(() => operationalRulesVersions.id),
+  acknowledgedAt: timestamp("acknowledged_at").defaultNow().notNull(),
+  ipAddress: varchar("ip_address"),
+}, (table) => [
+  uniqueIndex("user_rule_ack_unique").on(table.userId, table.ruleVersionId),
+]);
+
+// 8. Configuración Centralizada de Reglas Comerciales (commercial_configurations)
+export const DEFAULT_COMMERCIAL_RULES_CONFIG = {
+  activeRelationshipValidityDays: 90,
+  initialOpportunityHoldDays: 7,
+  opportunityInactivityProtectionDays: 45,
+  inboundPriorityHours: 48,
+  renewalWindowDaysBeforeMaturity: 180,
+  renewalOriginatorPriorityDays: 15,
+  brokerElectionTokenValidityHours: 72,
+} as const;
+
+export type CommercialRulesConfig = {
+  activeRelationshipValidityDays: number;
+  initialOpportunityHoldDays: number;
+  opportunityInactivityProtectionDays: number;
+  inboundPriorityHours: number;
+  renewalWindowDaysBeforeMaturity: number;
+  renewalOriginatorPriorityDays: number;
+  brokerElectionTokenValidityHours: number;
+};
+
+export const commercialConfigurations = pgTable("commercial_configurations", {
+  id: varchar("id").primaryKey().default("default"),
+  activeRelationshipValidityDays: integer("active_relationship_validity_days").notNull().default(90),
+  initialOpportunityHoldDays: integer("initial_opportunity_hold_days").notNull().default(7),
+  opportunityInactivityProtectionDays: integer("opportunity_inactivity_protection_days").notNull().default(45),
+  inboundPriorityHours: integer("inbound_priority_hours").notNull().default(48),
+  renewalWindowDaysBeforeMaturity: integer("renewal_window_days_before_maturity").notNull().default(180),
+  renewalOriginatorPriorityDays: integer("renewal_originator_priority_days").notNull().default(15),
+  brokerElectionTokenValidityHours: integer("broker_election_token_validity_hours").notNull().default(72),
+  updatedBy: varchar("updated_by").references(() => users.id),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+// 9. Auditoría de Cambios a Configuración Comercial (commercial_config_audit_logs)
+export const commercialConfigAuditLogs = pgTable("commercial_config_audit_logs", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  parameterKey: varchar("parameter_key").notNull(),
+  previousValue: varchar("previous_value").notNull(),
+  newValue: varchar("new_value").notNull(),
+  changedBy: varchar("changed_by").references(() => users.id),
+  changeReason: text("change_reason"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => [
+  index("comm_cfg_audit_param_idx").on(table.parameterKey),
+  index("comm_cfg_audit_created_idx").on(table.createdAt),
+]);
+
+// Schemas Zod
+export const insertClientCommercialRelationshipSchema = createInsertSchema(clientCommercialRelationships).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+}).extend({
+  status: z.enum(COMMERCIAL_RELATIONSHIP_STATUSES).default("legacy_unverified"),
+});
+
+export const insertCommercialOpportunitySchema = createInsertSchema(commercialOpportunities).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+}).extend({
+  status: z.enum(COMMERCIAL_OPPORTUNITY_STATUSES).default("registered_hold"),
+});
+
+export const insertCommercialActivitySchema = createInsertSchema(commercialActivities).omit({
+  id: true,
+  createdAt: true,
+}).extend({
+  activityType: z.enum(COMMERCIAL_ACTIVITY_TYPES),
+});
+
+export const insertBrokerElectionConfirmationSchema = createInsertSchema(brokerElectionConfirmations).omit({
+  id: true,
+  createdAt: true,
+}).extend({
+  status: z.enum(BROKER_ELECTION_STATUSES).default("pending"),
+});
+
+export const insertCommercialAuditLogSchema = createInsertSchema(commercialAuditLogs).omit({
+  id: true,
+  createdAt: true,
+});
+
+export const insertOperationalRulesVersionSchema = createInsertSchema(operationalRulesVersions).omit({
+  id: true,
+  createdAt: true,
+});
+
+export const insertUserRuleAcknowledgmentSchema = createInsertSchema(userRuleAcknowledgments).omit({
+  id: true,
+  acknowledgedAt: true,
+});
+
+export const insertCommercialConfigurationSchema = createInsertSchema(commercialConfigurations).omit({
+  updatedAt: true,
+});
+
+export const insertCommercialConfigAuditLogSchema = createInsertSchema(commercialConfigAuditLogs).omit({
+  id: true,
+  createdAt: true,
+});
+
+export const updateCommercialRulesConfigSchema = z.object({
+  activeRelationshipValidityDays: z.number().int().min(1).max(730).optional(),
+  initialOpportunityHoldDays: z.number().int().min(1).max(90).optional(),
+  opportunityInactivityProtectionDays: z.number().int().min(1).max(180).optional(),
+  inboundPriorityHours: z.number().int().min(1).max(336).optional(),
+  renewalWindowDaysBeforeMaturity: z.number().int().min(1).max(365).optional(),
+  renewalOriginatorPriorityDays: z.number().int().min(1).max(90).optional(),
+  brokerElectionTokenValidityHours: z.number().int().min(1).max(720).optional(),
+  reason: z.string().optional(),
+});
+
+// Tipos exportados
+export type InsertClientCommercialRelationship = z.infer<typeof insertClientCommercialRelationshipSchema>;
+export type ClientCommercialRelationship = typeof clientCommercialRelationships.$inferSelect;
+
+export type InsertCommercialOpportunity = z.infer<typeof insertCommercialOpportunitySchema>;
+export type CommercialOpportunity = typeof commercialOpportunities.$inferSelect;
+
+export type InsertCommercialActivity = z.infer<typeof insertCommercialActivitySchema>;
+export type CommercialActivity = typeof commercialActivities.$inferSelect;
+
+export type InsertBrokerElectionConfirmation = z.infer<typeof insertBrokerElectionConfirmationSchema>;
+export type BrokerElectionConfirmation = typeof brokerElectionConfirmations.$inferSelect;
+
+export type InsertCommercialAuditLog = z.infer<typeof insertCommercialAuditLogSchema>;
+export type CommercialAuditLog = typeof commercialAuditLogs.$inferSelect;
+
+export type InsertOperationalRulesVersion = z.infer<typeof insertOperationalRulesVersionSchema>;
+export type OperationalRulesVersion = typeof operationalRulesVersions.$inferSelect;
+
+export type InsertUserRuleAcknowledgment = z.infer<typeof insertUserRuleAcknowledgmentSchema>;
+export type UserRuleAcknowledgment = typeof userRuleAcknowledgments.$inferSelect;
+
+export type CommercialConfiguration = typeof commercialConfigurations.$inferSelect;
+export type InsertCommercialConfiguration = z.infer<typeof insertCommercialConfigurationSchema>;
+export type CommercialConfigAuditLog = typeof commercialConfigAuditLogs.$inferSelect;
+export type InsertCommercialConfigAuditLog = z.infer<typeof insertCommercialConfigAuditLogSchema>;
+export type UpdateCommercialRulesConfig = z.infer<typeof updateCommercialRulesConfigSchema>;
+
+
+

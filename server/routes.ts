@@ -49,8 +49,19 @@ import {
   insertPromoRedemptionSchema,
   redeemPromoCodeSchema,
   validatePromoCodeSchema,
-  updateUserAccessStatusSchema
+  updateUserAccessStatusSchema,
+  updateCommercialRulesConfigSchema,
+  DEFAULT_COMMERCIAL_RULES_CONFIG
 } from "../shared/schema";
+import { commercialConfigService } from "./commercialConfigService";
+
+import {
+  commercialAuthorizationService,
+  type ClientAuthorizationResult,
+  type ClientAccessScope,
+} from "./commercialAuthorizationService";
+
+
 import { z } from "zod";
 import multer from "multer";
 import path from "path";
@@ -557,22 +568,19 @@ async function authorizeBrokerResource(params: {
   return authorizeTenantOrBrokerResource(params);
 }
 
-// Helper to check if user can access a client
-async function authorizeClientAccess(userId: string, userRole: string, clientId: string, tenantContext?: any): Promise<{ authorized: boolean; client?: any; reason?: string }> {
-  const client = await storage.getClient(clientId);
-  if (!client) {
-    return { authorized: false, reason: 'Client not found' };
-  }
-  
-  const authResult = await authorizeTenantOrBrokerResource({
-    currentUserId: userId,
-    resourceBrokerId: client.brokerId,
-    resourceTenantId: client.tenantId,
-    currentUserRole: userRole,
+// Helper to check if user can access a client with decoupled commercial governance scopes
+async function authorizeClientAccess(
+  userId: string,
+  userRole: string,
+  clientId: string,
+  tenantContext?: any
+): Promise<ClientAuthorizationResult> {
+  return await commercialAuthorizationService.authorizeClientAccess({
+    userId,
+    userRole,
+    clientId,
     tenantContext,
   });
-  
-  return { ...authResult, client };
 }
 
 // Helper to check if user can access a credit
@@ -594,28 +602,51 @@ async function authorizeCreditAccess(userId: string, userRole: string, creditId:
 }
 
 // Helper to check if user can access a document
-async function authorizeDocumentAccess(userId: string, userRole: string, documentId: string, tenantContext?: any): Promise<{ authorized: boolean; document?: any; reason?: string }> {
+async function authorizeDocumentAccess(
+  userId: string,
+  userRole: string,
+  documentId: string,
+  tenantContext?: any
+): Promise<{ authorized: boolean; document?: any; reason?: string }> {
   const document = await storage.getDocument(documentId);
   if (!document) {
     return { authorized: false, reason: 'Document not found' };
   }
 
-  // If the document is linked to a client, client ownership is the source of truth.
+  // Admins have full access
+  if (userRole === 'admin' || userRole === 'super_admin') {
+    return { authorized: true, document };
+  }
+
+  // If the document is linked to a client, evaluate decoupled commercial governance access
   if (document.clientId) {
-    const client = await storage.getClient(document.clientId);
-    if (client) {
-      const authResult = await authorizeTenantOrBrokerResource({
-        currentUserId: userId,
-        resourceBrokerId: client.brokerId,
-        resourceTenantId: client.tenantId || document.tenantId,
-        currentUserRole: userRole,
-        tenantContext,
-      });
-      return { ...authResult, document };
+    const authResult = await authorizeClientAccess(userId, userRole, document.clientId, tenantContext);
+    if (!authResult.authorized) {
+      return { authorized: false, document, reason: authResult.reason || 'Access denied' };
     }
+
+    const userCredits = await storage.getCredits({ clientId: document.clientId, brokerId: userId });
+    const userCreditIds = userCredits.map((c) => c.id);
+
+    const canAccess = commercialAuthorizationService.canAccessDocument(
+      authResult,
+      document,
+      userId,
+      userCreditIds
+    );
+
+    if (!canAccess) {
+      return {
+        authorized: false,
+        document,
+        reason: 'Acceso denegado: este documento corresponde a operaciones de otro asesor comercial.',
+      };
+    }
+
+    return { authorized: true, document };
   }
   
-  // Document has tenantId or brokerId
+  // Document has tenantId or brokerId (non-client orphan document)
   if (document.tenantId || document.brokerId) {
     const authResult = await authorizeTenantOrBrokerResource({
       currentUserId: userId,
@@ -627,13 +658,9 @@ async function authorizeDocumentAccess(userId: string, userRole: string, documen
     return { ...authResult, document };
   }
   
-  // Admins can access orphan documents
-  if (userRole === 'admin' || userRole === 'super_admin') {
-    return { authorized: true, document };
-  }
-  
   return { authorized: false, document, reason: 'Access denied' };
 }
+
 
 // Helper function to resolve product template with cascading fallbacks (#6)
 async function resolveProductTemplate(productTemplateId?: string | null, fallbackPurpose?: string | null) {
@@ -1788,6 +1815,85 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // =========================================================================
+  // GOBERNANZA COMERCIAL: CONFIGURACIÓN CENTRAL DE PARÁMETROS (SUPER ADMIN)
+  // =========================================================================
+
+  // 1. Obtener configuración comercial vigente y defaults normativos
+  app.get('/api/admin/commercial-config', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = getAuthUserId(req);
+      if (!userId) {
+        return res.status(401).json({ message: "No autenticado." });
+      }
+      const user = await storage.getUser(userId);
+      if (!user || user.role !== 'super_admin') {
+        return res.status(403).json({ message: "Acceso exclusivo para Super Admin." });
+      }
+
+      const config = await commercialConfigService.getConfig();
+      res.json({
+        config,
+        defaults: DEFAULT_COMMERCIAL_RULES_CONFIG,
+      });
+    } catch (error: any) {
+      console.error("[COMMERCIAL CONFIG GET] Error:", error);
+      res.status(500).json({ message: "Error al consultar configuración de reglas comerciales." });
+    }
+  });
+
+  // 2. Actualizar parámetros de gobernanza comercial con auditoría inmutable
+  app.put('/api/admin/commercial-config', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = getAuthUserId(req);
+      if (!userId) {
+        return res.status(401).json({ message: "No autenticado." });
+      }
+      const user = await storage.getUser(userId);
+      if (!user || user.role !== 'super_admin') {
+        return res.status(403).json({ message: "Acceso exclusivo para Super Admin." });
+      }
+
+      const parsed = updateCommercialRulesConfigSchema.parse(req.body);
+      const { reason, ...updates } = parsed;
+
+      const result = await commercialConfigService.updateConfig(updates, userId, reason);
+      res.json({
+        success: true,
+        message: "Configuración de gobernanza comercial actualizada correctamente.",
+        ...result,
+      });
+    } catch (error: any) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: error.errors[0]?.message || "Datos inválidos" });
+      }
+      console.error("[COMMERCIAL CONFIG PUT] Error:", error);
+      res.status(500).json({ message: "Error al actualizar configuración de reglas comerciales." });
+    }
+  });
+
+  // 3. Bitácora histórica de modificaciones a parámetros comerciales
+  app.get('/api/admin/commercial-config/audit', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = getAuthUserId(req);
+      if (!userId) {
+        return res.status(401).json({ message: "No autenticado." });
+      }
+      const user = await storage.getUser(userId);
+      if (!user || user.role !== 'super_admin') {
+        return res.status(403).json({ message: "Acceso exclusivo para Super Admin." });
+      }
+
+      const limit = Number(req.query.limit) || 100;
+      const logs = await commercialConfigService.getAuditHistory(limit);
+      res.json({ logs });
+    } catch (error: any) {
+      console.error("[COMMERCIAL CONFIG AUDIT] Error:", error);
+      res.status(500).json({ message: "Error al consultar bitácora de configuración comercial." });
+    }
+  });
+
+
   // Tenant Context Testing Endpoint
   app.get('/api/tenant-context', isAuthenticated, async (req: any, res) => {
     try {
@@ -2529,13 +2635,24 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const userId = req.user.claims.sub;
       const user = await storage.getUser(userId);
       
-      // Authorization check - broker/tenant access
+      // Authorization check - decoupled commercial governance scope
       const authResult = await authorizeClientAccess(userId, user?.role || '', id, req.tenantContext);
-      if (!authResult.authorized) {
+      if (!authResult.authorized || !authResult.client) {
         return res.status(authResult.reason === 'Client not found' ? 404 : 403).json({ message: authResult.reason });
       }
       
-      res.json(authResult.client);
+      res.json({
+        ...authResult.client,
+        accessScope: authResult.scope,
+        capabilities: authResult.capabilities,
+        commercialRelationship: authResult.relationship ? {
+          status: authResult.relationship.status,
+          lastValidActivityAt: authResult.relationship.lastValidActivityAt,
+          activeUntil: authResult.relationship.activeUntil,
+          dormantUntil: authResult.relationship.dormantUntil,
+        } : null,
+      });
+
     } catch (error) {
       console.error("Error fetching client:", error);
       res.status(500).json({ message: "Failed to fetch client" });
@@ -2662,6 +2779,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (!authResult.authorized) {
         return res.status(authResult.reason === 'Client not found' ? 404 : 403).json({ message: authResult.reason });
       }
+
+      if (!authResult.capabilities.canEditClient) {
+        return res.status(403).json({
+          message: `Acceso denegado para edición: su nivel de acceso es '${authResult.scope}'. Se requiere relación comercial activa vigente o privilegios administrativos.`,
+          scope: authResult.scope,
+        });
+      }
       
       const clientData = updatedInsertClientSchema.partial().parse(req.body);
       const client = await storage.updateClient(id, clientData);
@@ -2687,6 +2811,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const authResult = await authorizeClientAccess(userId, user?.role || '', id, req.tenantContext);
       if (!authResult.authorized) {
         return res.status(authResult.reason === 'Client not found' ? 404 : 403).json({ message: authResult.reason });
+      }
+
+      if (!authResult.capabilities.canEditClient) {
+        return res.status(403).json({
+          message: `Acceso denegado: su nivel de acceso es '${authResult.scope}'. No cuenta con permisos para eliminar este cliente.`,
+          scope: authResult.scope,
+        });
       }
       
       const success = await storage.deleteClient(id);
@@ -2734,6 +2865,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (!authResult.authorized) {
         return res.status(authResult.reason === 'Client not found' ? 404 : 403).json({ message: authResult.reason });
       }
+
+      if (!authResult.capabilities.canEditClient) {
+        return res.status(403).json({
+          message: `Acceso denegado: su nivel de acceso es '${authResult.scope}'. No cuenta con permisos para registrar historiales en este cliente.`,
+          scope: authResult.scope,
+        });
+      }
+
       
       const historyData = insertClientCreditHistorySchema.parse({
         ...req.body,
@@ -4518,8 +4657,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       // User is authorized to access this client, fetch documents
       const documents = await storage.getDocuments({ clientId });
-      
-      res.json(documents);
+
+      // Filtrado granular según el scope comercial del solicitante
+      const userCredits = await storage.getCredits({ clientId, brokerId: userId });
+      const userCreditIds = userCredits.map((c) => c.id);
+
+      const filteredDocuments = documents.filter((doc) =>
+        commercialAuthorizationService.canAccessDocument(
+          authResult,
+          doc,
+          userId,
+          userCreditIds
+        )
+      );
+
+      res.json(filteredDocuments);
+
     } catch (error) {
       console.error("Error fetching client documents:", error);
       res.status(500).json({ message: "Failed to fetch client documents" });
