@@ -570,30 +570,40 @@ export class DrizzleCommercialAuthStorage implements ICommercialAuthStorage {
     clientId: string,
     brokerId?: string
   ): Promise<ClientCommercialRelationship | undefined> {
-    const conditions = [eq(clientCommercialRelationships.clientId, clientId)];
-    if (brokerId) {
-      conditions.push(eq(clientCommercialRelationships.brokerId, brokerId));
+    try {
+      const conditions = [eq(clientCommercialRelationships.clientId, clientId)];
+      if (brokerId) {
+        conditions.push(eq(clientCommercialRelationships.brokerId, brokerId));
+      }
+      const rows = await this.db
+        .select()
+        .from(clientCommercialRelationships)
+        .where(and(...conditions))
+        .limit(1);
+      return rows[0];
+    } catch (err: any) {
+      console.warn("⚠️ [CommercialAuthStorage] Warning querying clientCommercialRelationships:", err?.message);
+      return undefined;
     }
-    const rows = await this.db
-      .select()
-      .from(clientCommercialRelationships)
-      .where(and(...conditions))
-      .limit(1);
-    return rows[0];
   }
 
   async getCommercialOpportunities(
     clientId: string,
     brokerId?: string
   ): Promise<CommercialOpportunity[]> {
-    const conditions = [eq(commercialOpportunities.clientId, clientId)];
-    if (brokerId) {
-      conditions.push(eq(commercialOpportunities.brokerId, brokerId));
+    try {
+      const conditions = [eq(commercialOpportunities.clientId, clientId)];
+      if (brokerId) {
+        conditions.push(eq(commercialOpportunities.brokerId, brokerId));
+      }
+      return await this.db
+        .select()
+        .from(commercialOpportunities)
+        .where(and(...conditions));
+    } catch (err: any) {
+      console.warn("⚠️ [CommercialAuthStorage] Warning querying commercialOpportunities:", err?.message);
+      return [];
     }
-    return await this.db
-      .select()
-      .from(commercialOpportunities)
-      .where(and(...conditions));
   }
 
   async getCredits(clientId: string, brokerId?: string): Promise<Credit[]> {

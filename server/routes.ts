@@ -1897,6 +1897,38 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // 4. Backfill conservador e idempotente de gobernanza comercial (Super Admin)
+  app.post('/api/admin/commercial-governance/backfill', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = getAuthUserId(req);
+      if (!userId) {
+        return res.status(401).json({ message: "No autenticado." });
+      }
+      const user = await storage.getUser(userId);
+      if (!user || user.role !== 'super_admin') {
+        return res.status(403).json({ message: "Acceso exclusivo para Super Admin." });
+      }
+
+      const apply = req.body?.apply === true;
+      const { db } = await import("./db");
+      const { CommercialBackfillService, DrizzleCommercialBackfillStorage } = await import("./commercialBackfillService");
+
+      const backfillStorage = new DrizzleCommercialBackfillStorage(db);
+      const backfillService = new CommercialBackfillService(backfillStorage, commercialConfigService);
+
+      const summary = await backfillService.runBackfill({ dryRun: !apply });
+
+      res.json({
+        success: true,
+        mode: apply ? "apply" : "dry_run",
+        summary,
+      });
+    } catch (error: any) {
+      console.error("[COMMERCIAL BACKFILL] Error:", error);
+      res.status(500).json({ message: "Error al ejecutar backfill de gobernanza comercial.", error: error?.message });
+    }
+  });
+
 
   // Tenant Context Testing Endpoint
   app.get('/api/tenant-context', isAuthenticated, async (req: any, res) => {

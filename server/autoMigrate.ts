@@ -650,6 +650,197 @@ export async function runAutoMigration(): Promise<void> {
       console.error("⚠️ [AutoMigrate] Error verifying promo tables:", promoErr);
     }
 
+    // 11. Ensure commercial governance and operational rules tables exist (Fases 1–6)
+    try {
+      await client.query(`
+        -- 1. client_commercial_relationships
+        CREATE TABLE IF NOT EXISTS public.client_commercial_relationships (
+          id VARCHAR PRIMARY KEY DEFAULT gen_random_uuid(),
+          tenant_id VARCHAR REFERENCES public.tenants(id),
+          client_id VARCHAR NOT NULL REFERENCES public.clients(id) ON DELETE CASCADE,
+          broker_id VARCHAR NOT NULL REFERENCES public.users(id),
+          master_broker_id VARCHAR REFERENCES public.users(id),
+          status VARCHAR NOT NULL DEFAULT 'legacy_unverified',
+          last_valid_activity_at TIMESTAMP,
+          last_activity_type VARCHAR,
+          last_activity_summary TEXT,
+          active_until TIMESTAMP,
+          dormant_until TIMESTAMP,
+          inbound_priority_expires_at TIMESTAMP,
+          inbound_priority_status VARCHAR,
+          notes TEXT,
+          created_at TIMESTAMP DEFAULT NOW(),
+          updated_at TIMESTAMP DEFAULT NOW()
+        );
+
+        CREATE INDEX IF NOT EXISTS "rel_client_idx" ON public.client_commercial_relationships (client_id);
+        CREATE INDEX IF NOT EXISTS "rel_broker_idx" ON public.client_commercial_relationships (broker_id);
+        CREATE INDEX IF NOT EXISTS "rel_status_idx" ON public.client_commercial_relationships (status);
+
+        -- 2. commercial_opportunities
+        CREATE TABLE IF NOT EXISTS public.commercial_opportunities (
+          id VARCHAR PRIMARY KEY DEFAULT gen_random_uuid(),
+          tenant_id VARCHAR REFERENCES public.tenants(id),
+          client_id VARCHAR NOT NULL REFERENCES public.clients(id) ON DELETE CASCADE,
+          broker_id VARCHAR NOT NULL REFERENCES public.users(id),
+          master_broker_id VARCHAR REFERENCES public.users(id),
+          title VARCHAR NOT NULL,
+          financing_need_type VARCHAR NOT NULL,
+          requested_amount NUMERIC(15, 2) NOT NULL,
+          product_template_id VARCHAR REFERENCES public.product_templates(id),
+          target_institution_id VARCHAR REFERENCES public.financial_institutions(id),
+          status VARCHAR NOT NULL DEFAULT 'registered_hold',
+          hold_expires_at TIMESTAMP NOT NULL,
+          protected_until TIMESTAMP,
+          last_valid_activity_at TIMESTAMP NOT NULL DEFAULT NOW(),
+          initial_evidence_type VARCHAR,
+          initial_evidence_doc_url VARCHAR,
+          initial_evidence_validated_at TIMESTAMP,
+          initial_evidence_validated_by VARCHAR REFERENCES public.users(id),
+          linked_submission_id VARCHAR REFERENCES public.credit_submission_requests(id),
+          converted_credit_id VARCHAR REFERENCES public.credits(id),
+          is_derived_work_suspicion BOOLEAN DEFAULT FALSE,
+          prior_work_broker_id VARCHAR REFERENCES public.users(id),
+          notes TEXT,
+          created_at TIMESTAMP DEFAULT NOW(),
+          updated_at TIMESTAMP DEFAULT NOW()
+        );
+
+        CREATE INDEX IF NOT EXISTS "opp_client_idx" ON public.commercial_opportunities (client_id);
+        CREATE INDEX IF NOT EXISTS "opp_broker_idx" ON public.commercial_opportunities (broker_id);
+        CREATE INDEX IF NOT EXISTS "opp_status_idx" ON public.commercial_opportunities (status);
+        CREATE INDEX IF NOT EXISTS "opp_need_idx" ON public.commercial_opportunities (client_id, financing_need_type);
+
+        -- 3. commercial_activities
+        CREATE TABLE IF NOT EXISTS public.commercial_activities (
+          id VARCHAR PRIMARY KEY DEFAULT gen_random_uuid(),
+          client_id VARCHAR NOT NULL REFERENCES public.clients(id) ON DELETE CASCADE,
+          opportunity_id VARCHAR REFERENCES public.commercial_opportunities(id),
+          relationship_id VARCHAR REFERENCES public.client_commercial_relationships(id),
+          broker_id VARCHAR NOT NULL REFERENCES public.users(id),
+          activity_type VARCHAR NOT NULL,
+          title VARCHAR NOT NULL,
+          description TEXT,
+          document_id VARCHAR REFERENCES public.documents(id),
+          evidence_url VARCHAR,
+          verified_by_system BOOLEAN DEFAULT TRUE,
+          performed_at TIMESTAMP NOT NULL DEFAULT NOW(),
+          created_at TIMESTAMP DEFAULT NOW()
+        );
+
+        CREATE INDEX IF NOT EXISTS "comm_act_client_idx" ON public.commercial_activities (client_id);
+        CREATE INDEX IF NOT EXISTS "comm_act_opp_idx" ON public.commercial_activities (opportunity_id);
+        CREATE INDEX IF NOT EXISTS "comm_act_broker_idx" ON public.commercial_activities (broker_id);
+
+        -- 4. broker_election_confirmations
+        CREATE TABLE IF NOT EXISTS public.broker_election_confirmations (
+          id VARCHAR PRIMARY KEY DEFAULT gen_random_uuid(),
+          client_id VARCHAR NOT NULL REFERENCES public.clients(id),
+          opportunity_id VARCHAR REFERENCES public.commercial_opportunities(id),
+          previous_broker_id VARCHAR REFERENCES public.users(id),
+          selected_broker_id VARCHAR NOT NULL REFERENCES public.users(id),
+          channel VARCHAR NOT NULL,
+          recipient_contact VARCHAR NOT NULL,
+          recipient_name VARCHAR,
+          recipient_role VARCHAR,
+          token_hash VARCHAR NOT NULL UNIQUE,
+          token_expires_at TIMESTAMP NOT NULL,
+          status VARCHAR NOT NULL DEFAULT 'pending',
+          confirmed_at TIMESTAMP,
+          confirmation_ip VARCHAR,
+          confirmation_user_agent TEXT,
+          revoked_at TIMESTAMP,
+          revoked_reason VARCHAR,
+          validated_by_admin_id VARCHAR REFERENCES public.users(id),
+          manual_evidence_file_url VARCHAR,
+          manual_validation_notes TEXT,
+          created_at TIMESTAMP DEFAULT NOW()
+        );
+
+        CREATE INDEX IF NOT EXISTS "elec_client_idx" ON public.broker_election_confirmations (client_id);
+        CREATE INDEX IF NOT EXISTS "elec_token_idx" ON public.broker_election_confirmations (token_hash);
+
+        -- 5. commercial_audit_logs
+        CREATE TABLE IF NOT EXISTS public.commercial_audit_logs (
+          id VARCHAR PRIMARY KEY DEFAULT gen_random_uuid(),
+          entity_type VARCHAR NOT NULL,
+          entity_id VARCHAR NOT NULL,
+          client_id VARCHAR REFERENCES public.clients(id),
+          broker_id VARCHAR REFERENCES public.users(id),
+          performed_by VARCHAR REFERENCES public.users(id),
+          action VARCHAR NOT NULL,
+          previous_state VARCHAR,
+          new_state VARCHAR,
+          metadata JSONB DEFAULT '{}',
+          created_at TIMESTAMP DEFAULT NOW()
+        );
+
+        CREATE INDEX IF NOT EXISTS "comm_audit_entity_idx" ON public.commercial_audit_logs (entity_type, entity_id);
+        CREATE INDEX IF NOT EXISTS "comm_audit_client_idx" ON public.commercial_audit_logs (client_id);
+
+        -- 6. operational_rules_versions
+        CREATE TABLE IF NOT EXISTS public.operational_rules_versions (
+          id VARCHAR PRIMARY KEY DEFAULT gen_random_uuid(),
+          version VARCHAR NOT NULL UNIQUE,
+          title VARCHAR NOT NULL,
+          summary TEXT NOT NULL,
+          content_markdown TEXT NOT NULL,
+          effective_date DATE NOT NULL,
+          is_current BOOLEAN NOT NULL DEFAULT FALSE,
+          requires_acknowledgment BOOLEAN DEFAULT FALSE,
+          created_by VARCHAR REFERENCES public.users(id),
+          created_at TIMESTAMP DEFAULT NOW()
+        );
+
+        -- 7. user_rule_acknowledgments
+        CREATE TABLE IF NOT EXISTS public.user_rule_acknowledgments (
+          id VARCHAR PRIMARY KEY DEFAULT gen_random_uuid(),
+          user_id VARCHAR NOT NULL REFERENCES public.users(id),
+          rule_version_id VARCHAR NOT NULL REFERENCES public.operational_rules_versions(id),
+          acknowledged_at TIMESTAMP NOT NULL DEFAULT NOW(),
+          ip_address VARCHAR
+        );
+
+        CREATE UNIQUE INDEX IF NOT EXISTS "user_rule_ack_unique" ON public.user_rule_acknowledgments (user_id, rule_version_id);
+
+        -- 8. commercial_configurations
+        CREATE TABLE IF NOT EXISTS public.commercial_configurations (
+          id VARCHAR PRIMARY KEY DEFAULT 'default',
+          active_relationship_validity_days INTEGER NOT NULL DEFAULT 90,
+          initial_opportunity_hold_days INTEGER NOT NULL DEFAULT 7,
+          opportunity_inactivity_protection_days INTEGER NOT NULL DEFAULT 45,
+          inbound_priority_hours INTEGER NOT NULL DEFAULT 48,
+          renewal_window_days_before_maturity INTEGER NOT NULL DEFAULT 180,
+          renewal_originator_priority_days INTEGER NOT NULL DEFAULT 15,
+          broker_election_token_validity_hours INTEGER NOT NULL DEFAULT 72,
+          updated_by VARCHAR REFERENCES public.users(id),
+          updated_at TIMESTAMP DEFAULT NOW()
+        );
+
+        -- 9. commercial_config_audit_logs
+        CREATE TABLE IF NOT EXISTS public.commercial_config_audit_logs (
+          id VARCHAR PRIMARY KEY DEFAULT gen_random_uuid(),
+          parameter_key VARCHAR NOT NULL,
+          previous_value VARCHAR NOT NULL,
+          new_value VARCHAR NOT NULL,
+          changed_by VARCHAR REFERENCES public.users(id),
+          change_reason TEXT,
+          created_at TIMESTAMP NOT NULL DEFAULT NOW()
+        );
+
+        CREATE INDEX IF NOT EXISTS "comm_cfg_audit_param_idx" ON public.commercial_config_audit_logs (parameter_key);
+        CREATE INDEX IF NOT EXISTS "comm_cfg_audit_created_idx" ON public.commercial_config_audit_logs (created_at);
+
+        -- Ensure default commercial configuration exists
+        INSERT INTO public.commercial_configurations (id)
+        VALUES ('default')
+        ON CONFLICT (id) DO NOTHING;
+      `);
+      console.log("✅ [AutoMigrate] Commercial governance and operational rules tables verified (Fases 1–6)");
+    } catch (commErr) {
+      console.error("⚠️ [AutoMigrate] Error verifying commercial governance tables:", commErr);
+    }
+
     console.log("✨ [AutoMigrate] Schema verification and user sync completed successfully!");
   } catch (error) {
     console.error("❌ [AutoMigrate] General schema verification error:", error);

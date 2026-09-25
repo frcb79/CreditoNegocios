@@ -37,6 +37,7 @@ export interface CommercialBackfillOptions {
   referenceDate?: Date;
   inactivityWindowDays?: number; // Override explícito; si se omite, se lee de la configuración central
   config?: CommercialRulesConfig; // Configuración inyectable
+  dryRun?: boolean; // Modo simulación: calcula sin persistir cambios en base de datos
 }
 
 
@@ -58,6 +59,7 @@ export interface CommercialBackfillSummary {
   assignedLegacyUnverified: number;
   rulesVersionSeeded: boolean;
   rulesVersionAlreadyExisted: boolean;
+  dryRun?: boolean;
   clientDetails: CommercialBackfillClientResult[];
 }
 
@@ -301,18 +303,20 @@ export class CommercialBackfillService {
           : null;
 
       // Crear registro de relación comercial de forma segura
-      await this.storage.createCommercialRelationship({
-        tenantId: client.tenantId || null,
-        clientId: client.id,
-        brokerId: client.brokerId,
-        status,
-        lastValidActivityAt,
-        lastActivityType: status === "active" ? "system_backfill_evidence" : null,
-        lastActivitySummary: evidenceReason,
-        activeUntil,
-        dormantUntil,
-        notes: `Migración inicial Fase 2: ${evidenceReason}`,
-      });
+      if (!options.dryRun) {
+        await this.storage.createCommercialRelationship({
+          tenantId: client.tenantId || null,
+          clientId: client.id,
+          brokerId: client.brokerId,
+          status,
+          lastValidActivityAt,
+          lastActivityType: status === "active" ? "system_backfill_evidence" : null,
+          lastActivitySummary: evidenceReason,
+          activeUntil,
+          dormantUntil,
+          notes: `Migración inicial Fase 2: ${evidenceReason}`,
+        });
+      }
 
       if (status === "active") {
         summary.assignedActive++;
@@ -336,10 +340,14 @@ export class CommercialBackfillService {
     const existingRules = await this.storage.getOperationalRulesVersion(INITIAL_OPERATIONAL_RULES_V1.version);
     if (existingRules) {
       summary.rulesVersionAlreadyExisted = true;
-    } else {
+    } else if (!options.dryRun) {
       await this.storage.createOperationalRulesVersion(INITIAL_OPERATIONAL_RULES_V1);
       summary.rulesVersionSeeded = true;
+    } else {
+      summary.rulesVersionSeeded = false;
     }
+
+    summary.dryRun = Boolean(options.dryRun);
 
     return summary;
   }
