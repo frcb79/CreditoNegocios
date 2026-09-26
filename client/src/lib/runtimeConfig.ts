@@ -5,7 +5,7 @@ function stripTrailingSlash(value: string) {
 export function getApiBaseUrl() {
   const value = import.meta.env.VITE_API_BASE_URL?.trim();
   if (value) return stripTrailingSlash(value);
-  if (typeof window !== "undefined" && window.location.hostname.includes("vercel.app")) {
+  if (typeof window !== "undefined" && window.location.hostname.includes("staging")) {
     return "https://creditonegocios-staging.up.railway.app";
   }
   return "";

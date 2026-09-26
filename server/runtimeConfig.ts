@@ -24,6 +24,7 @@ const defaultOrigins = [
   "https://www.creditonegocios.com.mx",
   "https://app.creditonegocios.com.mx",
   "https://creditonegocios-staging.up.railway.app",
+  "https://creditonegocios-production.up.railway.app",
 ];
 
 export const frontendBaseUrl = process.env.FRONTEND_BASE_URL
