@@ -270,14 +270,14 @@ export default function BrokersLanding() {
   }
 
   return (
-    <div className="min-h-screen bg-[linear-gradient(180deg,#f5fbff_0%,#edf5fb_40%,#ffffff_100%)] text-slate-900">
+    <div className="min-h-screen bg-[linear-gradient(180deg,#f5fbff_0%,#edf5fb_40%,#ffffff_100%)] text-slate-900 overflow-x-clip w-full">
       <nav className="sticky top-0 z-50 border-b border-[#173653] bg-[#1F476B] backdrop-blur-xl">
-        <div className="mx-auto flex items-center justify-between gap-3 px-4 py-3 sm:px-6 lg:px-8 max-w-[90rem]">
+        <div className="mx-auto flex items-center justify-between gap-1.5 sm:gap-3 px-2.5 sm:px-6 lg:px-8 max-w-[90rem]">
           <div className="flex items-center flex-shrink-0">
             <img
               src="/credito-negocios-07.jpg"
               alt="Credito Negocios"
-              className="h-10 w-auto rounded-sm object-contain sm:h-12 lg:h-14"
+              className="h-7 w-auto max-w-[95px] sm:max-w-none rounded-sm object-contain sm:h-12 lg:h-14"
             />
           </div>
 
@@ -287,16 +287,16 @@ export default function BrokersLanding() {
             </p>
           </div>
 
-          <div className="flex items-center justify-end gap-2 sm:gap-3 flex-shrink-0">
-            <Button asChild size="sm" className="bg-emerald-500 text-white font-semibold shadow-md hover:bg-emerald-600">
+          <div className="flex items-center justify-end gap-1.5 sm:gap-3 flex-shrink-0">
+            <Button asChild size="sm" className="bg-emerald-500 text-white font-semibold shadow-md hover:bg-emerald-600 px-2 sm:px-3 text-[11px] sm:text-sm h-7 sm:h-9">
               <a href={whatsappUrl} target="_blank" rel="noreferrer">
-                <MessageSquare className="mr-2 h-4 w-4" />
+                <MessageSquare className="mr-1 sm:mr-2 h-3 w-3 sm:h-4 sm:w-4" />
                 WhatsApp
               </a>
             </Button>
-            <Button variant="outline" size="sm" asChild className="border-white/40 bg-white/10 text-white font-semibold shadow-sm hover:bg-white hover:text-[#1F476B] transition-colors">
+            <Button variant="outline" size="sm" asChild className="border-white/40 bg-white/10 text-white font-semibold shadow-sm hover:bg-white hover:text-[#1F476B] transition-colors px-2 sm:px-3 text-[11px] sm:text-sm h-7 sm:h-9">
               <a href={loginHref}>
-                <LogIn className="mr-2 h-4 w-4" />
+                <LogIn className="mr-1 sm:mr-2 h-3 w-3 sm:h-4 sm:w-4" />
                 Login
               </a>
             </Button>
@@ -305,7 +305,7 @@ export default function BrokersLanding() {
       </nav>
 
       <section className="relative overflow-hidden bg-[linear-gradient(180deg,#f7f9fb_0%,#eef2f6_100%)] text-slate-900">
-        <div className="absolute inset-0">
+        <div className="absolute inset-0 overflow-hidden pointer-events-none">
           <div className="absolute -right-16 -top-24 h-72 w-72 rounded-full bg-slate-300/30 blur-3xl" />
           <div className="absolute -left-12 bottom-0 h-80 w-80 rounded-full bg-slate-200/45 blur-3xl" />
         </div>
