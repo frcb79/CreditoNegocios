@@ -272,12 +272,12 @@ export default function BrokersLanding() {
   return (
     <div className="min-h-screen bg-[linear-gradient(180deg,#f5fbff_0%,#edf5fb_40%,#ffffff_100%)] text-slate-900 overflow-x-clip w-full">
       <nav className="sticky top-0 z-50 border-b border-[#173653] bg-[#1F476B] backdrop-blur-xl">
-        <div className="mx-auto flex items-center justify-between gap-1.5 sm:gap-3 px-2.5 sm:px-6 lg:px-8 max-w-[90rem]">
+        <div className="mx-auto flex items-center justify-between gap-1.5 min-[360px]:gap-2 sm:gap-4 px-2 min-[360px]:px-2.5 sm:px-6 lg:px-8 py-2.5 min-[360px]:py-3 sm:py-3.5 max-w-[90rem]">
           <div className="flex items-center flex-shrink-0">
             <img
               src="/credito-negocios-07.jpg"
               alt="Credito Negocios"
-              className="h-7 w-auto max-w-[95px] sm:max-w-none rounded-sm object-contain sm:h-12 lg:h-14"
+              className="h-7 min-[360px]:h-9 sm:h-12 lg:h-14 w-auto max-w-[95px] min-[360px]:max-w-[140px] sm:max-w-none rounded-sm object-contain"
             />
           </div>
 
@@ -287,16 +287,16 @@ export default function BrokersLanding() {
             </p>
           </div>
 
-          <div className="flex items-center justify-end gap-1.5 sm:gap-3 flex-shrink-0">
-            <Button asChild size="sm" className="bg-emerald-500 text-white font-semibold shadow-md hover:bg-emerald-600 px-2 sm:px-3 text-[11px] sm:text-sm h-7 sm:h-9">
+          <div className="flex items-center justify-end gap-1 min-[360px]:gap-1.5 sm:gap-3 flex-shrink-0">
+            <Button asChild size="sm" className="bg-emerald-500 text-white font-semibold shadow-md hover:bg-emerald-600 px-2 min-[360px]:px-2.5 sm:px-3 text-[11px] min-[360px]:text-xs sm:text-sm h-7 min-[360px]:h-8 sm:h-9">
               <a href={whatsappUrl} target="_blank" rel="noreferrer">
-                <MessageSquare className="mr-1 sm:mr-2 h-3 w-3 sm:h-4 sm:w-4" />
+                <MessageSquare className="mr-1 min-[360px]:mr-1.5 sm:mr-2 h-3 w-3 min-[360px]:h-3.5 min-[360px]:w-3.5 sm:h-4 sm:w-4" />
                 WhatsApp
               </a>
             </Button>
-            <Button variant="outline" size="sm" asChild className="border-white/40 bg-white/10 text-white font-semibold shadow-sm hover:bg-white hover:text-[#1F476B] transition-colors px-2 sm:px-3 text-[11px] sm:text-sm h-7 sm:h-9">
+            <Button variant="outline" size="sm" asChild className="border-white/40 bg-white/10 text-white font-semibold shadow-sm hover:bg-white hover:text-[#1F476B] transition-colors px-2 min-[360px]:px-2.5 sm:px-3 text-[11px] min-[360px]:text-xs sm:text-sm h-7 min-[360px]:h-8 sm:h-9">
               <a href={loginHref}>
-                <LogIn className="mr-1 sm:mr-2 h-3 w-3 sm:h-4 sm:w-4" />
+                <LogIn className="mr-1 min-[360px]:mr-1.5 sm:mr-2 h-3 w-3 min-[360px]:h-3.5 min-[360px]:w-3.5 sm:h-4 sm:w-4" />
                 Login
               </a>
             </Button>
