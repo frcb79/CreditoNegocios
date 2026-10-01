@@ -83,6 +83,11 @@ export async function runAutoMigration(): Promise<void> {
           ADD COLUMN IF NOT EXISTS access_status_notes TEXT,
           ADD COLUMN IF NOT EXISTS active_promo_id VARCHAR,
           ADD COLUMN IF NOT EXISTS is_active BOOLEAN DEFAULT TRUE,
+          ADD COLUMN IF NOT EXISTS status VARCHAR(20) NOT NULL DEFAULT 'active',
+          ADD COLUMN IF NOT EXISTS status_changed_at TIMESTAMP,
+          ADD COLUMN IF NOT EXISTS status_changed_by VARCHAR,
+          ADD COLUMN IF NOT EXISTS status_change_reason TEXT,
+          ADD COLUMN IF NOT EXISTS status_change_notes TEXT,
           ADD COLUMN IF NOT EXISTS created_at TIMESTAMP DEFAULT NOW(),
           ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT NOW();
       `);
@@ -91,6 +96,18 @@ export async function runAutoMigration(): Promise<void> {
         CREATE UNIQUE INDEX IF NOT EXISTS "users_referral_code_unique" 
         ON public.users ("referral_code") 
         WHERE referral_code IS NOT NULL;
+        CREATE INDEX IF NOT EXISTS "idx_users_status" 
+        ON public.users ("status");
+      `);
+
+      await client.query(`
+        UPDATE public.users 
+        SET status = 'inactive' 
+        WHERE is_active = false AND (status IS NULL OR status = 'active');
+
+        UPDATE public.users 
+        SET status = 'active' 
+        WHERE (is_active = true OR is_active IS NULL) AND status IS NULL;
       `);
       console.log("✅ [AutoMigrate] Users table and columns verified");
     } catch (err) {
