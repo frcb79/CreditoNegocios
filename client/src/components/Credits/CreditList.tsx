@@ -772,11 +772,22 @@ export default function CreditList() {
 
                       {/* 6. Originador */}
                       <td className="py-2.5 px-4">
-                        <div className="flex flex-col text-xs max-w-[150px]">
+                        <div className="flex flex-col text-xs max-w-[170px]">
                           {item.broker ? (
-                            <span className="font-medium text-slate-800 truncate" title={`${item.broker.firstName} ${item.broker.lastName || ''}`}>
-                              {item.broker.firstName} {item.broker.lastName || ''}
-                            </span>
+                            <>
+                              <span className="font-medium text-slate-800 truncate" title={`${item.broker.firstName} ${item.broker.lastName || ''}`}>
+                                {item.broker.firstName} {item.broker.lastName || ''}
+                              </span>
+                              {item.broker.status === 'suspended' ? (
+                                <span className="text-[10px] text-amber-700 font-medium">
+                                  Broker de origen — Suspendido
+                                </span>
+                              ) : (item.broker.status === 'inactive' || item.broker.isActive === false) ? (
+                                <span className="text-[10px] text-slate-500 font-medium">
+                                  Broker de origen — Inactivo
+                                </span>
+                              ) : null}
+                            </>
                           ) : (
                             <span className="text-slate-400 italic">No asignado</span>
                           )}
@@ -970,11 +981,22 @@ export default function CreditList() {
                       <User className="w-5 h-5 text-gray-400 mt-0.5" />
                       <div>
                         <p className="text-xs text-gray-500">Bróker Asignado</p>
-                        <p className="font-medium">
-                          {selectedSubmission.broker 
-                            ? `${selectedSubmission.broker.firstName} ${selectedSubmission.broker.lastName || ''}`.trim()
-                            : 'No asignado'}
-                        </p>
+                        <div className="font-medium flex items-center gap-1.5 flex-wrap">
+                          <span>
+                            {selectedSubmission.broker 
+                              ? `${selectedSubmission.broker.firstName} ${selectedSubmission.broker.lastName || ''}`.trim()
+                              : 'No asignado'}
+                          </span>
+                          {selectedSubmission.broker?.status === 'suspended' ? (
+                            <Badge variant="outline" className="text-[10px] bg-amber-50 text-amber-700 border-amber-300">
+                              Broker de origen — Suspendido
+                            </Badge>
+                          ) : (selectedSubmission.broker?.status === 'inactive' || selectedSubmission.broker?.isActive === false) ? (
+                            <Badge variant="outline" className="text-[10px] bg-slate-100 text-slate-600 border-slate-300">
+                              Broker de origen — Inactivo
+                            </Badge>
+                          ) : null}
+                        </div>
                         {selectedSubmission.broker?.email && (
                           <p className="text-xs text-gray-600">{selectedSubmission.broker.email}</p>
                         )}

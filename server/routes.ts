@@ -54,6 +54,8 @@ import {
   DEFAULT_COMMERCIAL_RULES_CONFIG,
   insertOperationalRulesVersionSchema,
   insertUserRuleAcknowledgmentSchema,
+  updateOperationalStatusSchema,
+  type UserOperationalStatus,
 } from "../shared/schema";
 import { commercialConfigService } from "./commercialConfigService";
 
@@ -1124,8 +1126,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       // Check if user is active
-      if (!user.isActive) {
-        return res.status(401).json({ message: "Tu cuenta ha sido desactivada. Contacta al administrador." });
+      if (!user.isActive || user.status === 'suspended' || user.status === 'inactive') {
+        const message = user.status === 'suspended'
+          ? "Tu cuenta se encuentra temporalmente suspendida. Contacta a soporte."
+          : "Tu cuenta ha sido desactivada. Contacta al administrador.";
+        return res.status(401).json({ message });
       }
       
       // Verify password
@@ -1350,6 +1355,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
       }
       
+      // Proteger estado operativo contra modificaciones directas fuera de la lógica central
+      delete sanitizedData.status;
+      delete sanitizedData.isActive;
+      delete sanitizedData.statusChangedAt;
+      delete sanitizedData.statusChangedBy;
+      delete sanitizedData.statusChangeReason;
+      delete sanitizedData.statusChangeNotes;
+
       const user = await storage.updateUser(id, sanitizedData);
       
       if (!user) {
@@ -2511,6 +2524,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
       }
 
+      // Proteger estado operativo contra modificaciones directas fuera de la lógica central
+      delete (userData as any).status;
+      delete (userData as any).isActive;
+      delete (userData as any).statusChangedAt;
+      delete (userData as any).statusChangedBy;
+      delete (userData as any).statusChangeReason;
+      delete (userData as any).statusChangeNotes;
+
       // Check if changing email to one that already exists
       if (userData.email) {
         const existingUser = await storage.getUserByEmail(userData.email);
@@ -2538,40 +2559,109 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.patch('/api/users/:id/toggle-status', isAuthenticated, requireModuleAndAction('usuarios', 'manage_users'), async (req: any, res) => {
+  // Helper central para cambios de estado operativo (Super Admin y Master Broker)
+  async function handleUserOperationalStatusChange(req: any, res: any, targetUserId: string, requestedStatus: UserOperationalStatus, reason: string, notes?: string) {
+    const callerUserId = req.user.claims?.sub || req.user.id;
+    const callerUser = await storage.getUser(callerUserId);
+    if (!callerUser) {
+      return res.status(401).json({ message: "Usuario no autenticado" });
+    }
+
+    const isSuperAdmin = callerUser.role === 'admin' || callerUser.role === 'super_admin';
+    const isMasterBroker = callerUser.role === 'master_broker';
+
+    if (!isSuperAdmin && !isMasterBroker) {
+      return res.status(403).json({ message: "No tienes permisos para modificar el estado operativo de usuarios" });
+    }
+
+    const targetUser = await storage.getUser(targetUserId);
+    if (!targetUser) {
+      return res.status(404).json({ message: "Usuario no encontrado" });
+    }
+
+    // Bloqueo estricto de auto-desactivación / auto-modificación
+    if (targetUser.id === callerUserId) {
+      return res.status(400).json({ message: "No puedes modificar el estado de tu propia cuenta" });
+    }
+
+    // Reglas estrictas de gobierno para Master Broker
+    if (isMasterBroker) {
+      if (targetUser.role !== 'broker' || targetUser.masterBrokerId !== callerUser.id) {
+        return res.status(403).json({ message: "No tienes permiso para modificar usuarios fuera de tu red" });
+      }
+      // Master Broker SOLO puede suspender directamente a brokers de su red
+      if (requestedStatus !== 'suspended') {
+        return res.status(403).json({ 
+          message: "Los Master Brokers solo pueden suspender temporalmente a brokers de su red. La baja definitiva o reactivación requiere solicitud a Super Admin." 
+        });
+      }
+    }
+
+    if (!reason || reason.trim().length < 3) {
+      return res.status(400).json({ message: "El motivo del cambio de estado es obligatorio (mínimo 3 caracteres)" });
+    }
+
+    const updatedUser = await storage.updateUserOperationalStatus({
+      userId: targetUser.id,
+      targetStatus: requestedStatus,
+      changedBy: callerUserId,
+      reason: reason.trim(),
+      notes: notes?.trim() || undefined,
+    });
+
+    return res.json({
+      message: `Estado operativo actualizado exitosamente a ${requestedStatus}`,
+      user: updatedUser,
+    });
+  }
+
+  // Endpoint formal administrativo para cambio de estado operativo (Super Admin y Master Broker con reglas)
+  app.patch('/api/admin/users/:id/operational-status', isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
-      const currentUser = await storage.getUser(userId);
-      
-      const isSuperAdmin = currentUser?.role === 'admin' || currentUser?.role === 'super_admin';
-      const isMasterBroker = currentUser?.role === 'master_broker';
+      const parseResult = updateOperationalStatusSchema.safeParse(req.body);
+      if (!parseResult.success) {
+        return res.status(400).json({ 
+          message: parseResult.error.errors[0]?.message || "Datos de estado inválidos",
+          errors: parseResult.error.errors 
+        });
+      }
+      const { status, reason, notes } = parseResult.data;
+      return await handleUserOperationalStatusChange(req, res, req.params.id, status, reason, notes);
+    } catch (error: any) {
+      console.error("Error updating user operational status:", error);
+      return res.status(500).json({ message: error.message || "Error al actualizar estado operativo" });
+    }
+  });
 
-      if (!isSuperAdmin && !isMasterBroker) {
-        return res.status(403).json({ message: "Access denied." });
-      }
-      
-      const { id } = req.params;
-      const user = await storage.getUser(id);
-      
-      if (!user) {
-        return res.status(404).json({ message: "User not found" });
-      }
-      
-      if (isMasterBroker && user.masterBrokerId !== currentUser.id) {
-        return res.status(403).json({ message: "No tienes permiso para desactivar usuarios fuera de tu red." });
+  // Endpoint antiguo corregido: delega a la lógica central para evitar bypass de auditoría y permisos
+  app.patch('/api/users/:id/toggle-status', isAuthenticated, async (req: any, res) => {
+    try {
+      const targetUserId = req.params.id;
+      const targetUser = await storage.getUser(targetUserId);
+      if (!targetUser) {
+        return res.status(404).json({ message: "Usuario no encontrado" });
       }
 
-      // Prevent deactivating yourself
-      if (user.id === userId) {
-        return res.status(400).json({ message: "No puedes desactivar tu propia cuenta" });
+      const callerUserId = req.user.claims?.sub || req.user.id;
+      const callerUser = await storage.getUser(callerUserId);
+      const isMasterBroker = callerUser?.role === 'master_broker';
+
+      const currentStatus = (targetUser.status as UserOperationalStatus) || (targetUser.isActive ? 'active' : 'inactive');
+
+      let targetStatus: UserOperationalStatus;
+      if (currentStatus === 'active') {
+        targetStatus = isMasterBroker ? 'suspended' : 'inactive';
+      } else {
+        targetStatus = 'active';
       }
-      
-      const updatedUser = await storage.updateUser(id, { isActive: !user.isActive });
-      
-      res.json(updatedUser);
-    } catch (error) {
-      console.error("Error toggling user status:", error);
-      res.status(500).json({ message: "Failed to toggle user status" });
+
+      const reason = req.body?.reason || `Cambio de estado administrativo vía toggle (${currentStatus} -> ${targetStatus})`;
+      const notes = req.body?.notes;
+
+      return await handleUserOperationalStatusChange(req, res, targetUserId, targetStatus, reason, notes);
+    } catch (error: any) {
+      console.error("Error toggling user status via delegate:", error);
+      return res.status(500).json({ message: error.message || "Failed to toggle user status" });
     }
   });
 
@@ -3430,6 +3520,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
               firstName: broker.firstName,
               lastName: broker.lastName,
               email: broker.email,
+              isActive: broker.isActive,
+              status: broker.status || (broker.isActive ? 'active' : 'inactive'),
             } : null,
             submission: submission ? {
               id: submission.id,
@@ -6866,7 +6958,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
               email: broker.email,
               role: broker.role,
               bankName: broker.bankName,
-              clabe: broker.clabe
+              clabe: broker.clabe,
+              isActive: broker.isActive,
+              status: broker.status || (broker.isActive ? 'active' : 'inactive'),
             } : null,
             masterBroker: masterBroker ? {
               id: masterBroker.id,
@@ -6930,7 +7024,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
           firstName: broker.firstName,
           lastName: broker.lastName,
           email: broker.email,
-          role: broker.role
+          role: broker.role,
+          isActive: broker.isActive,
+          status: broker.status || (broker.isActive ? 'active' : 'inactive'),
         } : null,
         masterBroker: masterBroker ? {
           id: masterBroker.id,

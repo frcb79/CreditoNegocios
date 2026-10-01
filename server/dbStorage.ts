@@ -26,7 +26,8 @@ import {
   type ClientCreditHistory, type InsertClientCreditHistory,
   type BankAnalysisReport, type InsertBankAnalysisReport,
   type PromoCode, type InsertPromoCode,
-  type PromoRedemption, type InsertPromoRedemption
+  type PromoRedemption, type InsertPromoRedemption,
+  commercialAuditLogs, type UserOperationalStatus
 } from "../shared/schema";
 import { eq, desc, asc, like, and, or, inArray, sql } from "drizzle-orm";
 
@@ -357,11 +358,22 @@ export class DbStorage implements IStorage {
             }),
           }
         : priorProfileData;
+ 
+      // Strip operational status fields to prevent bypass of central governance
+      const {
+        status: _status,
+        isActive: _isActive,
+        statusChangedAt: _statusChangedAt,
+        statusChangedBy: _statusChangedBy,
+        statusChangeReason: _statusChangeReason,
+        statusChangeNotes: _statusChangeNotes,
+        ...safeUserData
+      } = userData as any;
 
       const [updated] = await db
         .update(users)
         .set({ 
-          ...userData, 
+          ...safeUserData, 
           profileData: mergedProfileData,
           updatedAt: new Date() 
         })
@@ -445,6 +457,86 @@ export class DbStorage implements IStorage {
       console.error("Error updating user password:", error);
       throw error;
     }
+  }
+
+  async createCommercialAuditLog(logData: any): Promise<any> {
+    const [inserted] = await db.insert(commercialAuditLogs).values({
+      ...logData,
+      id: logData.id || randomUUID(),
+      createdAt: logData.createdAt || new Date(),
+    }).returning();
+    return inserted;
+  }
+
+  async getCommercialAuditLogs(filters?: { entityType?: string; entityId?: string }): Promise<any[]> {
+    const conditions = [];
+    if (filters?.entityType) conditions.push(eq(commercialAuditLogs.entityType, filters.entityType));
+    if (filters?.entityId) conditions.push(eq(commercialAuditLogs.entityId, filters.entityId));
+
+    return await db.select().from(commercialAuditLogs)
+      .where(conditions.length ? and(...conditions) : undefined)
+      .orderBy(desc(commercialAuditLogs.createdAt));
+  }
+
+  async updateUserOperationalStatus(params: {
+    userId: string;
+    targetStatus: UserOperationalStatus;
+    changedBy: string;
+    reason: string;
+    notes?: string;
+  }): Promise<User> {
+    return await db.transaction(async (tx) => {
+      const [user] = await tx.select().from(users).where(eq(users.id, params.userId));
+      if (!user) {
+        throw new Error("Usuario no encontrado");
+      }
+
+      const previousStatus = (user.status as UserOperationalStatus) || (user.isActive ? 'active' : 'inactive');
+      const newIsActive = params.targetStatus === 'active';
+      const now = new Date();
+
+      const [updatedUser] = await tx
+        .update(users)
+        .set({
+          status: params.targetStatus,
+          isActive: newIsActive,
+          statusChangedAt: now,
+          statusChangedBy: params.changedBy,
+          statusChangeReason: params.reason,
+          statusChangeNotes: params.notes || null,
+          updatedAt: now,
+        })
+        .where(eq(users.id, params.userId))
+        .returning();
+
+      const action = params.targetStatus === 'active' 
+        ? 'reactivate' 
+        : params.targetStatus === 'suspended' 
+          ? 'suspend' 
+          : 'deactivate';
+
+      await tx.insert(commercialAuditLogs).values({
+        entityType: 'user',
+        entityId: params.userId,
+        clientId: null,
+        brokerId: user.role === 'broker' || user.role === 'master_broker' ? user.id : null,
+        performedBy: params.changedBy,
+        action,
+        previousState: previousStatus,
+        newState: params.targetStatus,
+        metadata: {
+          reason: params.reason,
+          notes: params.notes || null,
+          targetRole: user.role,
+          targetEmail: user.email,
+          previousIsActive: user.isActive,
+          newIsActive,
+        },
+        createdAt: now,
+      });
+
+      return updatedUser;
+    });
   }
 
   // ===== PRODUCT VARIABLES =====
@@ -1779,28 +1871,8 @@ export class DbStorage implements IStorage {
         .where(eq(tenantMembers.id, memberId))
         .returning();
 
-      // Check other active memberships
-      const [otherActive] = await tx
-        .select({ count: sql<number>`count(*)::int` })
-        .from(tenantMembers)
-        .where(
-          and(
-            eq(tenantMembers.userId, member.userId),
-            sql`${tenantMembers.tenantId} != ${tenantId}`,
-            eq(tenantMembers.isActive, true)
-          )
-        );
-
-      let userDeactivatedGlobally = false;
-      if ((otherActive?.count || 0) === 0) {
-        await tx
-          .update(users)
-          .set({ isActive: false, updatedAt: new Date() })
-          .where(eq(users.id, member.userId));
-        userDeactivatedGlobally = true;
-      }
-
-      return { member: updatedMember, userDeactivatedGlobally };
+      // Membresía en tenant no debe alterar automáticamente el estado global del usuario
+      return { member: updatedMember, userDeactivatedGlobally: false };
     });
   }
 
@@ -1821,11 +1893,7 @@ export class DbStorage implements IStorage {
         .where(eq(tenantMembers.id, memberId))
         .returning();
 
-      await tx
-        .update(users)
-        .set({ isActive: true, updatedAt: new Date() })
-        .where(eq(users.id, member.userId));
-
+      // Membresía en tenant no debe alterar automáticamente el estado global del usuario
       return { member: updatedMember };
     });
   }

@@ -57,7 +57,8 @@ import {
   type PromoCode,
   type InsertPromoCode,
   type PromoRedemption,
-  type InsertPromoRedemption
+  type InsertPromoRedemption,
+  type UserOperationalStatus
 } from "../shared/schema";
 
 
@@ -86,6 +87,14 @@ export interface IStorage {
   getUserByResetToken(token: string): Promise<User | undefined>;
   clearPasswordResetToken(userId: string): Promise<void>;
   updateUserPassword(userId: string, hashedPassword: string): Promise<void>;
+  updateUserOperationalStatus(params: {
+    userId: string;
+    targetStatus: UserOperationalStatus;
+    changedBy: string;
+    reason: string;
+    notes?: string;
+  }): Promise<User>;
+  getCommercialAuditLogs(filters?: { entityType?: string; entityId?: string }): Promise<any[]>;
 
   // Client operations
   getClients(filters?: string | { brokerId?: string; tenantId?: string; tenantIds?: string[] }): Promise<Client[]>;
@@ -311,6 +320,7 @@ export class MemStorage implements IStorage {
   // Credit submission system storage
   private promoCodes: Map<string, PromoCode> = new Map();
   private promoRedemptions: Map<string, PromoRedemption> = new Map();
+  private commercialAuditLogs: Map<string, any> = new Map();
 
   // Implement BankAnalysisReport methods
   async createBankAnalysisReport(report: InsertBankAnalysisReport): Promise<BankAnalysisReport> {
@@ -1362,6 +1372,85 @@ export class MemStorage implements IStorage {
     this.users.set(userId, { ...user, password: hashedPassword, authMethod: user.authMethod || 'local', updatedAt: new Date() } as User);
   }
 
+  async createCommercialAuditLog(logData: any): Promise<any> {
+    const id = logData.id || randomUUID();
+    const log = {
+      ...logData,
+      id,
+      createdAt: logData.createdAt || new Date(),
+    };
+    this.commercialAuditLogs.set(id, log);
+    return log;
+  }
+
+  async getCommercialAuditLogs(filters?: { entityType?: string; entityId?: string }): Promise<any[]> {
+    let logs = Array.from(this.commercialAuditLogs.values());
+    if (filters?.entityType) {
+      logs = logs.filter(l => l.entityType === filters.entityType);
+    }
+    if (filters?.entityId) {
+      logs = logs.filter(l => l.entityId === filters.entityId);
+    }
+    return logs.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  }
+
+  async updateUserOperationalStatus(params: {
+    userId: string;
+    targetStatus: UserOperationalStatus;
+    changedBy: string;
+    reason: string;
+    notes?: string;
+  }): Promise<User> {
+    const user = this.users.get(params.userId);
+    if (!user) {
+      throw new Error("Usuario no encontrado");
+    }
+
+    const previousStatus = (user.status as UserOperationalStatus) || (user.isActive ? 'active' : 'inactive');
+    const newIsActive = params.targetStatus === 'active';
+    const now = new Date();
+
+    const updatedUser: User = {
+      ...user,
+      status: params.targetStatus,
+      isActive: newIsActive,
+      statusChangedAt: now,
+      statusChangedBy: params.changedBy,
+      statusChangeReason: params.reason,
+      statusChangeNotes: params.notes || null,
+      updatedAt: now,
+    };
+    this.users.set(params.userId, updatedUser);
+
+    const action = params.targetStatus === 'active' 
+      ? 'reactivate' 
+      : params.targetStatus === 'suspended' 
+        ? 'suspend' 
+        : 'deactivate';
+
+    await this.createCommercialAuditLog({
+      entityType: 'user',
+      entityId: params.userId,
+      clientId: null,
+      brokerId: user.role === 'broker' || user.role === 'master_broker' ? user.id : null,
+      performedBy: params.changedBy,
+      action,
+      previousState: previousStatus,
+      newState: params.targetStatus,
+      metadata: {
+        reason: params.reason,
+        notes: params.notes || null,
+        targetRole: user.role,
+        targetEmail: user.email,
+        previousIsActive: user.isActive,
+        newIsActive,
+      },
+      createdAt: now,
+    });
+
+    return updatedUser;
+  }
+
   async upsertUser(userData: UpsertUser, replitId?: string): Promise<User> {
     // If replitId is provided, use it as the user ID (for Replit Auth)
     if (replitId) {
@@ -1461,9 +1550,20 @@ export class MemStorage implements IStorage {
         }
       : priorProfileData;
 
+    // Strip operational status fields to prevent bypass of central governance
+    const {
+      status: _status,
+      isActive: _isActive,
+      statusChangedAt: _statusChangedAt,
+      statusChangedBy: _statusChangedBy,
+      statusChangeReason: _statusChangeReason,
+      statusChangeNotes: _statusChangeNotes,
+      ...safeUserData
+    } = userData as any;
+
     const updatedUser = {
       ...existingUser,
-      ...userData,
+      ...safeUserData,
       profileData: mergedProfileData,
       updatedAt: new Date(),
     };
@@ -2439,22 +2539,8 @@ export class MemStorage implements IStorage {
     member.updatedAt = new Date();
     this.tenantMembers.set(memberId, member);
 
-    // Check if user has active memberships in other tenants
-    const otherActive = Array.from(this.tenantMembers.values())
-      .filter(m => m.userId === member.userId && m.tenantId !== tenantId && m.isActive);
-
-    let userDeactivatedGlobally = false;
-    if (otherActive.length === 0) {
-      const u = this.users.get(member.userId);
-      if (u) {
-        u.isActive = false;
-        u.updatedAt = new Date();
-        this.users.set(member.userId, u);
-        userDeactivatedGlobally = true;
-      }
-    }
-
-    return { member, userDeactivatedGlobally };
+    // Membresía en tenant no debe alterar automáticamente el estado global del usuario
+    return { member, userDeactivatedGlobally: false };
   }
 
   async activateTenantMember(tenantId: string, memberId: string): Promise<{ member: TenantMember }> {
@@ -2467,13 +2553,7 @@ export class MemStorage implements IStorage {
     member.updatedAt = new Date();
     this.tenantMembers.set(memberId, member);
 
-    const u = this.users.get(member.userId);
-    if (u) {
-      u.isActive = true;
-      u.updatedAt = new Date();
-      this.users.set(member.userId, u);
-    }
-
+    // Membresía en tenant no debe alterar automáticamente el estado global del usuario
     return { member };
   }
 

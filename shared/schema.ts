@@ -67,9 +67,19 @@ export const users = pgTable("users", {
   accessStatusNotes: text("access_status_notes"),
   activePromoId: varchar("active_promo_id"),
   isActive: boolean("is_active").default(true),
+  // Operational Status (Lifecycle: active, suspended, inactive)
+  status: varchar("status", { length: 20 }).notNull().default("active"),
+  statusChangedAt: timestamp("status_changed_at"),
+  statusChangedBy: varchar("status_changed_by"),
+  statusChangeReason: text("status_change_reason"),
+  statusChangeNotes: text("status_change_notes"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
+
+// User Operational Status catalogue
+export const USER_OPERATIONAL_STATUSES = ["active", "suspended", "inactive"] as const;
+export type UserOperationalStatus = (typeof USER_OPERATIONAL_STATUSES)[number];
 
 // Tenant organization types catalogue
 export const TENANT_TYPES = ["platform", "master_broker", "broker"] as const;
@@ -129,6 +139,10 @@ export interface TenantMemberWithUser {
     customRoleTitle: string | null;
     permissions: unknown;
     isActive: boolean | null;
+    status?: UserOperationalStatus | string | null;
+    statusChangedAt?: Date | null;
+    statusChangeReason?: string | null;
+    statusChangeNotes?: string | null;
     profileImageUrl: string | null;
     updatedAt: Date | null;
   };
@@ -586,6 +600,13 @@ export const insertUserSchema = createInsertSchema(users).omit({
   createdAt: true,
   updatedAt: true,
 });
+
+export const updateOperationalStatusSchema = z.object({
+  status: z.enum(USER_OPERATIONAL_STATUSES),
+  reason: z.string().min(3, "El motivo de cambio de estado es obligatorio"),
+  notes: z.string().optional(),
+});
+export type UpdateOperationalStatusInput = z.infer<typeof updateOperationalStatusSchema>;
 
 export const insertClientSchema = createInsertSchema(clients).omit({
   id: true,

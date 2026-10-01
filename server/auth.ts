@@ -99,9 +99,12 @@ export const isAuthenticated: RequestHandler = async (req, res, next) => {
       if (typeof req.logout === 'function') req.logout(() => {});
       return res.status(401).json({ message: "Usuario no encontrado" });
     }
-    if (dbUser.isActive === false) {
+    if (dbUser.isActive === false || dbUser.status === 'suspended' || dbUser.status === 'inactive') {
       if (typeof req.logout === 'function') req.logout(() => {});
-      return res.status(401).json({ message: "Tu cuenta ha sido desactivada. Contacta al administrador." });
+      const message = dbUser.status === 'suspended'
+        ? "Tu cuenta se encuentra temporalmente suspendida. Contacta a soporte."
+        : "Tu cuenta ha sido desactivada. Contacta al administrador.";
+      return res.status(401).json({ message });
     }
     (req as any).dbUser = dbUser;
   } catch (err) {

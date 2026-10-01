@@ -44,7 +44,29 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { User, Tenant, TenantMemberWithUser, TenantMemberRole, TENANT_MEMBER_ROLES } from "@shared/schema";
+import { User, Tenant, TenantMemberWithUser, TenantMemberRole, TENANT_MEMBER_ROLES, UserOperationalStatus, USER_OPERATIONAL_STATUSES } from "@shared/schema";
+
+export function renderUserStatusBadge(status?: string | null, isActive?: boolean | null) {
+  if (status === 'suspended') {
+    return (
+      <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-300 text-xs font-semibold">
+        Suspendido
+      </Badge>
+    );
+  }
+  if (status === 'inactive' || isActive === false) {
+    return (
+      <Badge variant="outline" className="bg-slate-100 text-slate-600 border-slate-300 text-xs font-semibold">
+        Inactivo
+      </Badge>
+    );
+  }
+  return (
+    <Badge variant="outline" className="bg-emerald-50 text-emerald-700 border-emerald-300 text-xs font-semibold">
+      Activo
+    </Badge>
+  );
+}
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useForm } from "react-hook-form";
@@ -249,8 +271,43 @@ export default function UserManagement() {
   const [accessExpiresAtSelection, setAccessExpiresAtSelection] = useState<string>("");
   const [accessNotesInput, setAccessNotesInput] = useState<string>("");
 
+  // Operational Status Management State (Active / Suspended / Inactive)
+  const [operationalStatusUser, setOperationalStatusUser] = useState<User | null>(null);
+  const [targetOperationalStatus, setTargetOperationalStatus] = useState<UserOperationalStatus>("suspended");
+  const [operationalStatusReason, setOperationalStatusReason] = useState<string>("");
+  const [operationalStatusNotes, setOperationalStatusNotes] = useState<string>("");
+
   const isSuperAdmin = currentUser?.role === 'super_admin';
   const isPlatformAdmin = currentUser?.role === 'admin' || isSuperAdmin;
+
+  const updateOperationalStatusMutation = useMutation({
+    mutationFn: async ({ userId, status, reason, notes }: { userId: string; status: UserOperationalStatus; reason: string; notes?: string }) => {
+      const res = await apiRequest('PATCH', `/api/admin/users/${userId}/operational-status`, { status, reason, notes });
+      return res.json();
+    },
+    onSuccess: (data: any) => {
+      toast({ 
+        title: "Estado operativo actualizado", 
+        description: data.message || "El cambio de estado y la auditoría se registraron exitosamente." 
+      });
+      queryClient.invalidateQueries({ queryKey: ["/api/users"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/tenants"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/broker-network"] });
+      if (selectedTenantId) {
+        queryClient.invalidateQueries({ queryKey: ["/api/tenants", selectedTenantId, "members"] });
+      }
+      setOperationalStatusUser(null);
+      setOperationalStatusReason("");
+      setOperationalStatusNotes("");
+    },
+    onError: (err: any) => {
+      toast({ 
+        title: "Error al actualizar estado", 
+        description: err.message || "No se pudo actualizar el estado operativo.", 
+        variant: "destructive" 
+      });
+    }
+  });
 
   // 1. Fetch available tenants for user
   const { data: tenants, isLoading: isLoadingTenants } = useQuery<Tenant[]>({
@@ -1116,16 +1173,7 @@ export default function UserManagement() {
                                 </td>
 
                                 <td className="py-2.5 px-3 text-center">
-                                  <Badge 
-                                    variant="outline"
-                                    className={`text-[10px] h-5 px-2 font-medium ${
-                                      m.isActive 
-                                        ? "bg-emerald-50 text-emerald-700 border-emerald-300 dark:bg-emerald-950/40 dark:text-emerald-300" 
-                                        : "bg-slate-100 text-slate-600 border-slate-300 dark:bg-slate-800 dark:text-slate-400"
-                                    }`}
-                                  >
-                                    {m.isActive ? "Activo" : "Inactivo"}
-                                  </Badge>
+                                  {renderUserStatusBadge(m.user?.status, m.user?.isActive ?? m.isActive)}
                                 </td>
 
                                 <td className="py-2.5 px-3 text-slate-500 text-[11px] whitespace-nowrap">
@@ -1134,6 +1182,27 @@ export default function UserManagement() {
 
                                 <td className="py-2.5 px-4 text-right">
                                   <div className="flex items-center justify-end gap-1">
+                                    {(isSuperAdmin || (currentUser?.role === 'master_broker' && m.user?.role === 'broker')) && !isSelf && (
+                                      <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        onClick={() => {
+                                          if (m.user) {
+                                            setOperationalStatusUser(m.user as User);
+                                            const currentStatus = (m.user.status as UserOperationalStatus) || (m.user.isActive ? 'active' : 'inactive');
+                                            setTargetOperationalStatus(currentStatus === 'active' ? 'suspended' : 'active');
+                                            setOperationalStatusReason("");
+                                            setOperationalStatusNotes("");
+                                          }
+                                        }}
+                                        className="h-7 w-7 p-0 text-amber-600 hover:text-amber-700 hover:bg-amber-50 dark:hover:bg-amber-950/40"
+                                        title="Gestionar estado operativo (Activo/Suspendido/Inactivo)"
+                                        data-testid={`button-operational-status-member-${m.id}`}
+                                      >
+                                        <Shield className="h-3.5 w-3.5" />
+                                      </Button>
+                                    )}
+
                                     {canManageMembers && !cannotTouch && (
                                       <>
                                         <Button
@@ -1168,7 +1237,7 @@ export default function UserManagement() {
                                               ? "text-rose-600 hover:text-rose-700 hover:bg-rose-50 dark:hover:bg-rose-950/40" 
                                               : "text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50 dark:hover:bg-emerald-950/40"
                                           }`}
-                                          title={m.isActive ? "Desactivar miembro" : "Activar miembro"}
+                                          title={m.isActive ? "Desactivar membresía" : "Activar membresía"}
                                           data-testid={`button-toggle-member-${m.id}`}
                                         >
                                           <Power className="h-3.5 w-3.5" />
@@ -1224,16 +1293,7 @@ export default function UserManagement() {
                                 </div>
                               </div>
 
-                              <Badge 
-                                variant="outline"
-                                className={`text-[10px] h-5 px-1.5 shrink-0 ${
-                                  m.isActive 
-                                    ? "bg-emerald-50 text-emerald-700 border-emerald-300 dark:bg-emerald-950/40 dark:text-emerald-300" 
-                                    : "bg-slate-100 text-slate-600 border-slate-300 dark:bg-slate-800 dark:text-slate-400"
-                                }`}
-                              >
-                                {m.isActive ? "Activo" : "Inactivo"}
-                              </Badge>
+                              {renderUserStatusBadge(m.user?.status, m.user?.isActive ?? m.isActive)}
                             </div>
 
                             {/* Card Body: Roles, Title, Faculties */}
@@ -1272,6 +1332,28 @@ export default function UserManagement() {
                               <span>Ingreso: {m.joinedAt ? format(new Date(m.joinedAt), "dd/MM/yyyy") : "—"}</span>
                               
                               <div className="flex items-center gap-1">
+                                {(isSuperAdmin || (currentUser?.role === 'master_broker' && m.user?.role === 'broker')) && !isSelf && (
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() => {
+                                      if (m.user) {
+                                        setOperationalStatusUser(m.user as User);
+                                        const currentStatus = (m.user.status as UserOperationalStatus) || (m.user.isActive ? 'active' : 'inactive');
+                                        setTargetOperationalStatus(currentStatus === 'active' ? 'suspended' : 'active');
+                                        setOperationalStatusReason("");
+                                        setOperationalStatusNotes("");
+                                      }
+                                    }}
+                                    className="h-7 text-xs px-2 text-amber-700 hover:text-amber-800"
+                                    title="Estado operativo"
+                                    data-testid={`button-operational-status-member-${m.id}-mobile`}
+                                  >
+                                    <Shield className="h-3 w-3 mr-1" />
+                                    Estado
+                                  </Button>
+                                )}
+
                                 {canManageMembers && !cannotTouch && (
                                   <>
                                     <Button
@@ -1369,12 +1451,7 @@ export default function UserManagement() {
                           {u.customRoleTitle || "-"}
                         </td>
                         <td className="py-3 px-4">
-                          <Badge 
-                            variant="outline" 
-                            className={u.isActive ? "bg-emerald-50 text-emerald-700 text-xs" : "bg-gray-100 text-xs"}
-                          >
-                            {u.isActive ? "Activo" : "Inactivo"}
-                          </Badge>
+                          {renderUserStatusBadge(u.status, u.isActive)}
                         </td>
                         <td className="py-3 px-4">
                           <div className="flex flex-col gap-0.5">
@@ -1404,22 +1481,43 @@ export default function UserManagement() {
                           {u.createdAt ? format(new Date(u.createdAt), "dd/MM/yyyy") : "-"}
                         </td>
                         <td className="py-3 px-6 text-right">
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => {
-                              setUserToEditAccess(u);
-                              setAccessStatusSelection(u.accessStatus || "free");
-                              setAccessExpiresAtSelection(u.accessStatusExpiresAt ? format(new Date(u.accessStatusExpiresAt), "yyyy-MM-dd") : "");
-                              setAccessNotesInput(u.accessStatusNotes || "");
-                            }}
-                            className="h-8 text-xs text-primary hover:text-primary hover:bg-primary/10"
-                            title="Modificar acceso comercial"
-                            data-testid={`button-edit-access-${u.id}`}
-                          >
-                            <Tag className="h-3.5 w-3.5 mr-1" />
-                            Acceso
-                          </Button>
+                          <div className="flex items-center justify-end gap-1">
+                            {isSuperAdmin && (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => {
+                                  setOperationalStatusUser(u);
+                                  const currentStatus = (u.status as UserOperationalStatus) || (u.isActive ? 'active' : 'inactive');
+                                  setTargetOperationalStatus(currentStatus === 'active' ? 'suspended' : 'active');
+                                  setOperationalStatusReason("");
+                                  setOperationalStatusNotes("");
+                                }}
+                                className="h-8 text-xs text-amber-700 hover:text-amber-800 hover:bg-amber-50"
+                                title="Gestionar estado operativo"
+                                data-testid={`button-operational-status-${u.id}`}
+                              >
+                                <Shield className="h-3.5 w-3.5 mr-1" />
+                                Estado
+                              </Button>
+                            )}
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => {
+                                setUserToEditAccess(u);
+                                setAccessStatusSelection(u.accessStatus || "free");
+                                setAccessExpiresAtSelection(u.accessStatusExpiresAt ? format(new Date(u.accessStatusExpiresAt), "yyyy-MM-dd") : "");
+                                setAccessNotesInput(u.accessStatusNotes || "");
+                              }}
+                              className="h-8 text-xs text-primary hover:text-primary hover:bg-primary/10"
+                              title="Modificar acceso comercial"
+                              data-testid={`button-edit-access-${u.id}`}
+                            >
+                              <Tag className="h-3.5 w-3.5 mr-1" />
+                              Acceso
+                            </Button>
+                          </div>
                         </td>
                       </tr>
                     ))}
@@ -2699,6 +2797,214 @@ export default function UserManagement() {
                 Entendido
               </Button>
             </div>
+          </DialogContent>
+        </Dialog>
+      )}
+
+      {/* OPERATIONAL STATUS MANAGEMENT MODAL */}
+      {operationalStatusUser && (
+        <Dialog
+          open={!!operationalStatusUser}
+          onOpenChange={(open) => {
+            if (!open) {
+              setOperationalStatusUser(null);
+              setOperationalStatusReason("");
+              setOperationalStatusNotes("");
+            }
+          }}
+        >
+          <DialogContent className="max-w-md w-[95vw]">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2 text-base">
+                <Shield className="w-5 h-5 text-primary" />
+                Gestión de Estado Operativo
+              </DialogTitle>
+              <DialogDescription className="text-xs text-muted-foreground">
+                Actualiza el estado de acceso de la cuenta y registra la trazabilidad en auditoría.
+              </DialogDescription>
+            </DialogHeader>
+
+            <div className="space-y-4 py-2 text-sm">
+              <div className="bg-muted/40 p-3 rounded-lg space-y-1 text-xs">
+                <div className="font-semibold text-foreground">
+                  {operationalStatusUser.firstName} {operationalStatusUser.lastName}
+                </div>
+                <div className="text-muted-foreground font-mono">{operationalStatusUser.email}</div>
+                <div className="flex items-center gap-2 pt-1">
+                  <span className="text-muted-foreground">Estado actual:</span>
+                  {renderUserStatusBadge(operationalStatusUser.status, operationalStatusUser.isActive)}
+                  <Badge variant="outline" className="text-[10px]">{operationalStatusUser.role}</Badge>
+                </div>
+              </div>
+
+              {/* Warning if Master Broker with active subordinates */}
+              {operationalStatusUser.role === 'master_broker' && targetOperationalStatus !== 'active' && (
+                (() => {
+                  const subCount = (legacyUsers || []).filter(
+                    u => u.masterBrokerId === operationalStatusUser.id && (u.status === 'active' || (u.status !== 'suspended' && u.status !== 'inactive' && u.isActive))
+                  ).length;
+                  if (subCount > 0) {
+                    return (
+                      <div className="p-3 bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800 rounded-lg text-xs text-amber-800 dark:text-amber-200 flex items-start gap-2">
+                        <AlertTriangle className="w-4 h-4 shrink-0 text-amber-600 mt-0.5" />
+                        <div>
+                          <strong>Master Broker inactivo con {subCount} brokers subordinados activos.</strong>
+                          <p className="mt-0.5 text-[11px] text-amber-700 dark:text-amber-300">
+                            La suspensión o baja del Master Broker no desactiva a sus brokers subordinados. Éstos seguirán activos y operando normalmente.
+                          </p>
+                        </div>
+                      </div>
+                    );
+                  }
+                  return null;
+                })()
+              )}
+
+              {/* Status Selection */}
+              <div className="space-y-2">
+                <label className="text-xs font-semibold text-foreground">Nuevo Estado Operativo *</label>
+                <div className="grid grid-cols-3 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setTargetOperationalStatus("active")}
+                    disabled={currentUser?.role === 'master_broker'}
+                    className={cn(
+                      "p-2.5 rounded-lg border text-center transition-all flex flex-col items-center gap-1",
+                      targetOperationalStatus === "active"
+                        ? "border-emerald-500 bg-emerald-50 text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300 font-semibold ring-1 ring-emerald-500"
+                        : "border-border hover:bg-muted/50 text-muted-foreground",
+                      currentUser?.role === 'master_broker' && "opacity-50 cursor-not-allowed"
+                    )}
+                  >
+                    <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                    <span className="text-xs">Activo</span>
+                    <span className="text-[10px] opacity-75">Acceso total</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setTargetOperationalStatus("suspended")}
+                    className={cn(
+                      "p-2.5 rounded-lg border text-center transition-all flex flex-col items-center gap-1",
+                      targetOperationalStatus === "suspended"
+                        ? "border-amber-500 bg-amber-50 text-amber-800 dark:bg-amber-950/40 dark:text-amber-300 font-semibold ring-1 ring-amber-500"
+                        : "border-border hover:bg-muted/50 text-muted-foreground"
+                    )}
+                  >
+                    <AlertTriangle className="w-4 h-4 text-amber-600" />
+                    <span className="text-xs">Suspendido</span>
+                    <span className="text-[10px] opacity-75">Bloqueo temporal</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setTargetOperationalStatus("inactive")}
+                    disabled={currentUser?.role === 'master_broker'}
+                    className={cn(
+                      "p-2.5 rounded-lg border text-center transition-all flex flex-col items-center gap-1",
+                      targetOperationalStatus === "inactive"
+                        ? "border-rose-500 bg-rose-50 text-rose-800 dark:bg-rose-950/40 dark:text-rose-300 font-semibold ring-1 ring-rose-500"
+                        : "border-border hover:bg-muted/50 text-muted-foreground",
+                      currentUser?.role === 'master_broker' && "opacity-50 cursor-not-allowed"
+                    )}
+                  >
+                    <Power className="w-4 h-4 text-rose-600" />
+                    <span className="text-xs">Inactivo</span>
+                    <span className="text-[10px] opacity-75">Baja lógica</span>
+                  </button>
+                </div>
+
+                {currentUser?.role === 'master_broker' && (
+                  <p className="text-[11px] text-muted-foreground italic">
+                    Como Master Broker, únicamente puedes suspender temporalmente a brokers de tu red. Para baja definitiva o reactivación se requiere solicitud de aprobación a Super Admin.
+                  </p>
+                )}
+              </div>
+
+              {/* Motivo obligatorio */}
+              <div className="space-y-1.5">
+                <label className="text-xs font-semibold text-foreground">
+                  Motivo del Cambio * <span className="text-muted-foreground font-normal">(mínimo 3 caracteres)</span>
+                </label>
+                <Input
+                  value={operationalStatusReason}
+                  onChange={(e) => setOperationalStatusReason(e.target.value)}
+                  placeholder="Ej: Suspensión por revisión de documentación comercial..."
+                  className="text-xs h-9"
+                  data-testid="input-operational-status-reason"
+                />
+              </div>
+
+              {/* Notas opcionales */}
+              <div className="space-y-1.5">
+                <label className="text-xs font-semibold text-foreground">
+                  Notas Adicionales <span className="text-muted-foreground font-normal">(opcional)</span>
+                </label>
+                <textarea
+                  value={operationalStatusNotes}
+                  onChange={(e) => setOperationalStatusNotes(e.target.value)}
+                  placeholder="Detalles complementarios o contexto interno..."
+                  rows={2}
+                  className="w-full text-xs p-2 border rounded-md bg-background resize-none focus:outline-none focus:ring-1 focus:ring-primary"
+                  data-testid="textarea-operational-status-notes"
+                />
+              </div>
+
+              <div className="bg-slate-50 dark:bg-slate-900/40 p-2.5 rounded text-[11px] text-muted-foreground">
+                ℹ️ <strong>Regla del sistema:</strong> El cambio de estado bloquea o rehabilita el acceso del usuario, pero <strong>nunca elimina</strong> créditos, clientes, ni comisiones históricas. Tampoco modifica las facultades comerciales (<code className="font-mono text-[10px]">canOriginate</code>).
+              </div>
+            </div>
+
+            <DialogFooter className="flex items-center justify-end gap-2 pt-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setOperationalStatusUser(null)}
+                disabled={updateOperationalStatusMutation.isPending}
+              >
+                Cancelar
+              </Button>
+              <Button
+                size="sm"
+                disabled={
+                  updateOperationalStatusMutation.isPending ||
+                  !operationalStatusReason ||
+                  operationalStatusReason.trim().length < 3 ||
+                  Boolean(operationalStatusUser.status === targetOperationalStatus && (targetOperationalStatus === 'active' ? operationalStatusUser.isActive : !operationalStatusUser.isActive))
+                }
+                onClick={() => {
+                  updateOperationalStatusMutation.mutate({
+                    userId: operationalStatusUser.id,
+                    status: targetOperationalStatus,
+                    reason: operationalStatusReason.trim(),
+                    notes: operationalStatusNotes.trim() || undefined,
+                  });
+                }}
+                className={
+                  targetOperationalStatus === 'active'
+                    ? "bg-emerald-600 hover:bg-emerald-700 text-white"
+                    : targetOperationalStatus === 'suspended'
+                    ? "bg-amber-600 hover:bg-amber-700 text-white"
+                    : "bg-rose-600 hover:bg-rose-700 text-white"
+                }
+                data-testid="button-confirm-operational-status"
+              >
+                {updateOperationalStatusMutation.isPending ? (
+                  <>
+                    <Loader2 className="w-3.5 h-3.5 mr-1 animate-spin" />
+                    Guardando...
+                  </>
+                ) : (
+                  `Confirmar ${
+                    targetOperationalStatus === 'active'
+                      ? "Reactivación"
+                      : targetOperationalStatus === 'suspended'
+                      ? "Suspensión"
+                      : "Baja Lógica"
+                  }`
+                )}
+              </Button>
+            </DialogFooter>
           </DialogContent>
         </Dialog>
       )}

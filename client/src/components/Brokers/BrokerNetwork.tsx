@@ -35,8 +35,40 @@ import {
   Phone,
   ShieldCheck,
   UserCheck,
-  Briefcase
+  Briefcase,
+  AlertTriangle
 } from "lucide-react";
+
+function getBrokerStatusBadge(brokerUser: any) {
+  if (brokerUser?.status === 'suspended') {
+    return (
+      <Badge 
+        variant="outline"
+        className="bg-amber-50 text-amber-700 border-amber-300 font-semibold text-xs"
+      >
+        Suspendido
+      </Badge>
+    );
+  }
+  if (brokerUser?.status === 'inactive' || brokerUser?.isActive === false) {
+    return (
+      <Badge 
+        variant="outline"
+        className="bg-slate-100 text-slate-600 border-slate-300 font-semibold text-xs"
+      >
+        Inactivo
+      </Badge>
+    );
+  }
+  return (
+    <Badge 
+      variant="outline"
+      className="bg-emerald-50 text-emerald-700 border-emerald-200 font-semibold text-xs"
+    >
+      Activo
+    </Badge>
+  );
+}
 
 function MasterBrokerRatesConfig({ user }: { user: any }) {
   const { toast } = useToast();
@@ -495,14 +527,7 @@ export default function BrokerNetworkComponent() {
                           </div>
                           
                           <div className="text-right">
-                            <Badge 
-                              variant="outline"
-                              className={broker.isActive 
-                                ? "bg-emerald-50 text-emerald-700 border-emerald-200 font-semibold text-xs" 
-                                : "bg-slate-50 text-slate-600 border-slate-200 font-semibold text-xs"}
-                            >
-                              {broker.isActive ? "Activo" : "Inactivo"}
-                            </Badge>
+                            {getBrokerStatusBadge(broker)}
                           </div>
                         </div>
                       ))}
@@ -696,11 +721,19 @@ export default function BrokerNetworkComponent() {
                                 {mb.brandName}
                               </Badge>
                             )}
+                            {getBrokerStatusBadge(mb)}
                           </div>
                           <p className="text-xs text-slate-500 flex items-center gap-2 mt-0.5">
                             <span className="flex items-center gap-1"><Mail className="w-3 h-3 text-slate-400" /> {mb.email}</span>
                             {mb.phone && <span className="flex items-center gap-1">• <Phone className="w-3 h-3 text-slate-400" /> {mb.phone}</span>}
                           </p>
+                          {(mb.status === 'suspended' || mb.status === 'inactive' || mb.isActive === false) && 
+                           (mb.networkBrokers || []).filter((b: any) => b.isActive !== false && b.status !== 'inactive').length > 0 && (
+                            <div className="flex items-center gap-1.5 text-[11px] text-amber-800 bg-amber-50 border border-amber-200 px-2.5 py-1 rounded-md font-medium mt-1.5">
+                              <AlertTriangle className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                              <span>Master Broker inactivo con {(mb.networkBrokers || []).filter((b: any) => b.isActive !== false && b.status !== 'inactive').length} brokers subordinados activos</span>
+                            </div>
+                          )}
                         </div>
                       </div>
 
@@ -748,14 +781,7 @@ export default function BrokerNetworkComponent() {
                                   <p className="text-[11px] text-slate-500">{broker.email}</p>
                                 </div>
                               </div>
-                              <Badge 
-                                variant="outline" 
-                                className={broker.isActive 
-                                  ? "bg-emerald-50 text-emerald-700 border-emerald-200 text-[10px] font-semibold" 
-                                  : "bg-slate-100 text-slate-600 border-slate-200 text-[10px] font-semibold"}
-                              >
-                                {broker.isActive ? "Activo" : "Inactivo"}
-                              </Badge>
+                              {getBrokerStatusBadge(broker)}
                             </div>
                           ))}
                         </div>
@@ -815,14 +841,7 @@ export default function BrokerNetworkComponent() {
                           )}
                         </div>
                       </div>
-                      <Badge 
-                        variant="outline" 
-                        className={broker.isActive 
-                          ? "bg-emerald-50 text-emerald-700 border-emerald-200 text-xs font-semibold" 
-                          : "bg-slate-100 text-slate-600 border-slate-200 text-xs font-semibold"}
-                      >
-                        {broker.isActive ? "Activo" : "Inactivo"}
-                      </Badge>
+                      {getBrokerStatusBadge(broker)}
                     </div>
                   ))}
                 </div>
@@ -888,14 +907,7 @@ export default function BrokerNetworkComponent() {
                           <p className="text-[11px] text-emerald-800 font-medium mt-0.5">Broker Directo de Casa Matriz</p>
                         </div>
                       </div>
-                      <Badge 
-                        variant="outline" 
-                        className={broker.isActive 
-                          ? "bg-emerald-50 text-emerald-700 border-emerald-200 text-xs font-semibold" 
-                          : "bg-slate-100 text-slate-600 border-slate-200 text-xs font-semibold"}
-                      >
-                        {broker.isActive ? "Activo" : "Inactivo"}
-                      </Badge>
+                      {getBrokerStatusBadge(broker)}
                     </div>
                   ))}
                 </div>
