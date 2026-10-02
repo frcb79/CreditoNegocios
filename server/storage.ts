@@ -58,7 +58,11 @@ import {
   type InsertPromoCode,
   type PromoRedemption,
   type InsertPromoRedemption,
-  type UserOperationalStatus
+  type UserOperationalStatus,
+  userStatusRequests,
+  type UserStatusRequest,
+  type UserStatusRequestStatus,
+  type UserStatusRequestAction
 } from "../shared/schema";
 
 
@@ -94,7 +98,32 @@ export interface IStorage {
     reason: string;
     notes?: string;
   }): Promise<User>;
+  createCommercialAuditLog(logData: any): Promise<any>;
   getCommercialAuditLogs(filters?: { entityType?: string; entityId?: string }): Promise<any[]>;
+  createUserStatusRequest(data: {
+    requesterId: string;
+    targetUserId: string;
+    requestedStatus: UserStatusRequestAction;
+    reason: string;
+    notes?: string;
+  }): Promise<UserStatusRequest>;
+  getUserStatusRequest(id: string): Promise<UserStatusRequest | undefined>;
+  getUserStatusRequests(filters?: {
+    requesterId?: string;
+    targetUserId?: string;
+    status?: UserStatusRequestStatus;
+  }): Promise<(UserStatusRequest & { requester?: User; targetUser?: User; reviewer?: User })[]>;
+  hasPendingStatusRequest(params: {
+    requesterId: string;
+    targetUserId: string;
+    requestedStatus: UserStatusRequestAction;
+  }): Promise<boolean>;
+  resolveUserStatusRequest(params: {
+    requestId: string;
+    resolution: 'approved' | 'rejected';
+    reviewedBy: string;
+    reviewNotes?: string;
+  }): Promise<UserStatusRequest>;
 
   // Client operations
   getClients(filters?: string | { brokerId?: string; tenantId?: string; tenantIds?: string[] }): Promise<Client[]>;
@@ -321,6 +350,7 @@ export class MemStorage implements IStorage {
   private promoCodes: Map<string, PromoCode> = new Map();
   private promoRedemptions: Map<string, PromoRedemption> = new Map();
   private commercialAuditLogs: Map<string, any> = new Map();
+  private userStatusRequests: Map<string, UserStatusRequest> = new Map();
 
   // Implement BankAnalysisReport methods
   async createBankAnalysisReport(report: InsertBankAnalysisReport): Promise<BankAnalysisReport> {
@@ -1449,6 +1479,109 @@ export class MemStorage implements IStorage {
     });
 
     return updatedUser;
+  }
+
+  async createUserStatusRequest(data: {
+    requesterId: string;
+    targetUserId: string;
+    requestedStatus: UserStatusRequestAction;
+    reason: string;
+    notes?: string;
+  }): Promise<UserStatusRequest> {
+    // Unique partial index invariant: idx_usr_req_unique_pending
+    if (await this.hasPendingStatusRequest({ requesterId: data.requesterId, targetUserId: data.targetUserId, requestedStatus: data.requestedStatus })) {
+      const err: any = new Error('duplicate key value violates unique constraint "idx_usr_req_unique_pending"');
+      err.code = '23505';
+      err.constraint = 'idx_usr_req_unique_pending';
+      throw err;
+    }
+
+    const id = randomUUID();
+    const now = new Date();
+    const req: UserStatusRequest = {
+      id,
+      requesterId: data.requesterId,
+      targetUserId: data.targetUserId,
+      requestedStatus: data.requestedStatus,
+      reason: data.reason,
+      notes: data.notes || null,
+      status: 'pending',
+      reviewedBy: null,
+      reviewedAt: null,
+      reviewNotes: null,
+      createdAt: now,
+      updatedAt: now,
+    };
+    this.userStatusRequests.set(id, req);
+    return req;
+  }
+
+  async getUserStatusRequest(id: string): Promise<UserStatusRequest | undefined> {
+    return this.userStatusRequests.get(id);
+  }
+
+  async getUserStatusRequests(filters?: {
+    requesterId?: string;
+    targetUserId?: string;
+    status?: UserStatusRequestStatus;
+  }): Promise<(UserStatusRequest & { requester?: User; targetUser?: User; reviewer?: User })[]> {
+    let list = Array.from(this.userStatusRequests.values());
+    if (filters?.requesterId) list = list.filter(r => r.requesterId === filters.requesterId);
+    if (filters?.targetUserId) list = list.filter(r => r.targetUserId === filters.targetUserId);
+    if (filters?.status) list = list.filter(r => r.status === filters.status);
+
+    list.sort((a, b) => new Date(b.createdAt!).getTime() - new Date(a.createdAt!).getTime());
+
+    return list.map(r => ({
+      ...r,
+      requester: this.users.get(r.requesterId),
+      targetUser: this.users.get(r.targetUserId),
+      reviewer: r.reviewedBy ? this.users.get(r.reviewedBy) : undefined,
+    }));
+  }
+
+  async hasPendingStatusRequest(params: {
+    requesterId: string;
+    targetUserId: string;
+    requestedStatus: UserStatusRequestAction;
+  }): Promise<boolean> {
+    for (const r of this.userStatusRequests.values()) {
+      if (
+        r.requesterId === params.requesterId &&
+        r.targetUserId === params.targetUserId &&
+        r.requestedStatus === params.requestedStatus &&
+        r.status === 'pending'
+      ) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  async resolveUserStatusRequest(params: {
+    requestId: string;
+    resolution: 'approved' | 'rejected';
+    reviewedBy: string;
+    reviewNotes?: string;
+  }): Promise<UserStatusRequest> {
+    const req = this.userStatusRequests.get(params.requestId);
+    if (!req) {
+      throw new Error("Solicitud no encontrada");
+    }
+    if (req.status !== 'pending') {
+      throw new Error(`La solicitud ya fue resuelta previamente (estado: ${req.status})`);
+    }
+    const now = new Date();
+    const updated: UserStatusRequest = {
+      ...req,
+      status: params.resolution,
+      reviewedBy: params.reviewedBy,
+      reviewedAt: now,
+      reviewNotes: params.reviewNotes || null,
+      updatedAt: now,
+    };
+    this.userStatusRequests.set(params.requestId, updated);
+    return updated;
   }
 
   async upsertUser(userData: UpsertUser, replitId?: string): Promise<User> {

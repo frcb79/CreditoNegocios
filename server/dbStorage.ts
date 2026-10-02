@@ -27,7 +27,8 @@ import {
   type BankAnalysisReport, type InsertBankAnalysisReport,
   type PromoCode, type InsertPromoCode,
   type PromoRedemption, type InsertPromoRedemption,
-  commercialAuditLogs, type UserOperationalStatus
+  commercialAuditLogs, type UserOperationalStatus,
+  userStatusRequests, type UserStatusRequest, type UserStatusRequestStatus, type UserStatusRequestAction
 } from "../shared/schema";
 import { eq, desc, asc, like, and, or, inArray, sql } from "drizzle-orm";
 
@@ -537,6 +538,114 @@ export class DbStorage implements IStorage {
 
       return updatedUser;
     });
+  }
+
+  async createUserStatusRequest(data: {
+    requesterId: string;
+    targetUserId: string;
+    requestedStatus: UserStatusRequestAction;
+    reason: string;
+    notes?: string;
+  }): Promise<UserStatusRequest> {
+    const [inserted] = await db.insert(userStatusRequests).values({
+      requesterId: data.requesterId,
+      targetUserId: data.targetUserId,
+      requestedStatus: data.requestedStatus,
+      reason: data.reason,
+      notes: data.notes || null,
+      status: 'pending',
+    }).returning();
+    return inserted;
+  }
+
+  async getUserStatusRequest(id: string): Promise<UserStatusRequest | undefined> {
+    const [res] = await db.select().from(userStatusRequests).where(eq(userStatusRequests.id, id));
+    return res;
+  }
+
+  async getUserStatusRequests(filters?: {
+    requesterId?: string;
+    targetUserId?: string;
+    status?: UserStatusRequestStatus;
+  }): Promise<(UserStatusRequest & { requester?: User; targetUser?: User; reviewer?: User })[]> {
+    const conditions = [];
+    if (filters?.requesterId) conditions.push(eq(userStatusRequests.requesterId, filters.requesterId));
+    if (filters?.targetUserId) conditions.push(eq(userStatusRequests.targetUserId, filters.targetUserId));
+    if (filters?.status) conditions.push(eq(userStatusRequests.status, filters.status));
+
+    const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
+
+    const list = await db.select().from(userStatusRequests)
+      .where(whereClause)
+      .orderBy(desc(userStatusRequests.createdAt));
+
+    if (list.length === 0) return [];
+
+    const userIds = new Set<string>();
+    for (const r of list) {
+      if (r.requesterId) userIds.add(r.requesterId);
+      if (r.targetUserId) userIds.add(r.targetUserId);
+      if (r.reviewedBy) userIds.add(r.reviewedBy);
+    }
+
+    const hydratedUsers = await db.select().from(users).where(inArray(users.id, Array.from(userIds)));
+    const userMap = new Map(hydratedUsers.map(u => [u.id, u]));
+
+    return list.map(r => ({
+      ...r,
+      requester: userMap.get(r.requesterId),
+      targetUser: userMap.get(r.targetUserId),
+      reviewer: r.reviewedBy ? userMap.get(r.reviewedBy) : undefined,
+    }));
+  }
+
+  async hasPendingStatusRequest(params: {
+    requesterId: string;
+    targetUserId: string;
+    requestedStatus: UserStatusRequestAction;
+  }): Promise<boolean> {
+    const [existing] = await db.select({ id: userStatusRequests.id })
+      .from(userStatusRequests)
+      .where(and(
+        eq(userStatusRequests.requesterId, params.requesterId),
+        eq(userStatusRequests.targetUserId, params.targetUserId),
+        eq(userStatusRequests.requestedStatus, params.requestedStatus),
+        eq(userStatusRequests.status, 'pending')
+      ))
+      .limit(1);
+    return Boolean(existing);
+  }
+
+  async resolveUserStatusRequest(params: {
+    requestId: string;
+    resolution: 'approved' | 'rejected';
+    reviewedBy: string;
+    reviewNotes?: string;
+  }): Promise<UserStatusRequest> {
+    const now = new Date();
+    const [updated] = await db.update(userStatusRequests)
+      .set({
+        status: params.resolution,
+        reviewedBy: params.reviewedBy,
+        reviewedAt: now,
+        reviewNotes: params.reviewNotes || null,
+        updatedAt: now,
+      })
+      .where(and(
+        eq(userStatusRequests.id, params.requestId),
+        eq(userStatusRequests.status, 'pending')
+      ))
+      .returning();
+
+    if (!updated) {
+      const existing = await this.getUserStatusRequest(params.requestId);
+      if (!existing) {
+        throw new Error("Solicitud no encontrada");
+      }
+      throw new Error(`La solicitud ya fue resuelta previamente (estado: ${existing.status})`);
+    }
+
+    return updated;
   }
 
   // ===== PRODUCT VARIABLES =====

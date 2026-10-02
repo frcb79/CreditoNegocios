@@ -114,6 +114,36 @@ export async function runAutoMigration(): Promise<void> {
       console.error("⚠️ [AutoMigrate] Error verifying users table/columns:", err);
     }
 
+    // 2a. Ensure user_status_requests table and indexes exist (Master Broker -> Super Admin workflow)
+    try {
+      await client.query(`
+        CREATE TABLE IF NOT EXISTS public.user_status_requests (
+          id VARCHAR PRIMARY KEY DEFAULT gen_random_uuid(),
+          requester_id VARCHAR NOT NULL REFERENCES public.users(id),
+          target_user_id VARCHAR NOT NULL REFERENCES public.users(id),
+          requested_status VARCHAR(20) NOT NULL,
+          reason TEXT NOT NULL,
+          notes TEXT,
+          status VARCHAR(20) NOT NULL DEFAULT 'pending',
+          reviewed_by VARCHAR REFERENCES public.users(id),
+          reviewed_at TIMESTAMP,
+          review_notes TEXT,
+          created_at TIMESTAMP DEFAULT NOW(),
+          updated_at TIMESTAMP DEFAULT NOW()
+        );
+
+        CREATE INDEX IF NOT EXISTS "idx_usr_req_requester" ON public.user_status_requests (requester_id);
+        CREATE INDEX IF NOT EXISTS "idx_usr_req_target" ON public.user_status_requests (target_user_id);
+        CREATE INDEX IF NOT EXISTS "idx_usr_req_status" ON public.user_status_requests (status);
+        CREATE UNIQUE INDEX IF NOT EXISTS "idx_usr_req_unique_pending" 
+          ON public.user_status_requests (requester_id, target_user_id, requested_status) 
+          WHERE status = 'pending';
+      `);
+      console.log("✅ [AutoMigrate] User status requests table verified");
+    } catch (err) {
+      console.error("⚠️ [AutoMigrate] Error verifying user_status_requests table:", err);
+    }
+
     // 2b. Ensure tenants and tenant_members tables and indexes exist
     try {
       await client.query(`

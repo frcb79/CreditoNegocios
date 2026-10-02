@@ -81,6 +81,65 @@ export const users = pgTable("users", {
 export const USER_OPERATIONAL_STATUSES = ["active", "suspended", "inactive"] as const;
 export type UserOperationalStatus = (typeof USER_OPERATIONAL_STATUSES)[number];
 
+// User Status Request Statuses & Actions (Master Broker -> Super Admin workflow)
+export const USER_STATUS_REQUEST_STATUSES = ["pending", "approved", "rejected"] as const;
+export type UserStatusRequestStatus = (typeof USER_STATUS_REQUEST_STATUSES)[number];
+
+export const USER_STATUS_REQUEST_ACTIONS = ["inactive", "active"] as const;
+export type UserStatusRequestAction = (typeof USER_STATUS_REQUEST_ACTIONS)[number];
+
+export const userStatusRequests = pgTable("user_status_requests", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  requesterId: varchar("requester_id").notNull().references(() => users.id),
+  targetUserId: varchar("target_user_id").notNull().references(() => users.id),
+  requestedStatus: varchar("requested_status", { length: 20 }).notNull(), // 'inactive' | 'active'
+  reason: text("reason").notNull(),
+  notes: text("notes"),
+  status: varchar("status", { length: 20 }).notNull().default("pending"), // 'pending' | 'approved' | 'rejected'
+  reviewedBy: varchar("reviewed_by").references(() => users.id),
+  reviewedAt: timestamp("reviewed_at"),
+  reviewNotes: text("review_notes"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => [
+  index("idx_usr_req_requester").on(table.requesterId),
+  index("idx_usr_req_target").on(table.targetUserId),
+  index("idx_usr_req_status").on(table.status),
+  uniqueIndex("idx_usr_req_unique_pending")
+    .on(table.requesterId, table.targetUserId, table.requestedStatus)
+    .where(sql`status = 'pending'`),
+]);
+
+export const insertUserStatusRequestSchema = createInsertSchema(userStatusRequests).omit({
+  id: true,
+  status: true,
+  reviewedBy: true,
+  reviewedAt: true,
+  reviewNotes: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export type UserStatusRequest = typeof userStatusRequests.$inferSelect;
+export type InsertUserStatusRequest = z.infer<typeof insertUserStatusRequestSchema>;
+
+export const createStatusRequestSchema = z.object({
+  targetUserId: z.string().min(1, "El usuario objetivo es obligatorio"),
+  requestedStatus: z.enum(USER_STATUS_REQUEST_ACTIONS, {
+    errorMap: () => ({ message: "El estado solicitado solo puede ser 'inactive' o 'active'" }),
+  }),
+  reason: z.string().min(3, "El motivo es obligatorio (mínimo 3 caracteres)").max(1000),
+  notes: z.string().max(2000).optional(),
+});
+
+export const rejectStatusRequestSchema = z.object({
+  reviewNotes: z.string().min(3, "El motivo del rechazo es obligatorio (mínimo 3 caracteres)").max(1000),
+});
+
+export const approveStatusRequestSchema = z.object({
+  reviewNotes: z.string().max(1000).optional(),
+});
+
 // Tenant organization types catalogue
 export const TENANT_TYPES = ["platform", "master_broker", "broker"] as const;
 export type TenantType = (typeof TENANT_TYPES)[number];

@@ -44,7 +44,18 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { User, Tenant, TenantMemberWithUser, TenantMemberRole, TENANT_MEMBER_ROLES, UserOperationalStatus, USER_OPERATIONAL_STATUSES } from "@shared/schema";
+import { 
+  User, 
+  Tenant, 
+  TenantMemberWithUser, 
+  TenantMemberRole, 
+  TENANT_MEMBER_ROLES, 
+  UserOperationalStatus, 
+  USER_OPERATIONAL_STATUSES,
+  UserStatusRequest,
+  UserStatusRequestStatus,
+  UserStatusRequestAction
+} from "@shared/schema";
 
 export function renderUserStatusBadge(status?: string | null, isActive?: boolean | null) {
   if (status === 'suspended') {
@@ -104,7 +115,12 @@ import {
   Loader2,
   Coins,
   Info,
-  Inbox
+  Inbox,
+  Clock,
+  Check,
+  X,
+  FileText,
+  AlertCircle
 } from "lucide-react";
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
@@ -305,6 +321,143 @@ export default function UserManagement() {
         title: "Error al actualizar estado", 
         description: err.message || "No se pudo actualizar el estado operativo.", 
         variant: "destructive" 
+      });
+    }
+  });
+
+  // ==========================================
+  // STATUS REQUESTS (Master Broker <-> Super Admin)
+  // ==========================================
+  const [statusRequestsFilter, setStatusRequestsFilter] = useState<'all' | 'pending' | 'approved' | 'rejected'>('all');
+
+  // Master Broker request modal state
+  const [statusRequestModal, setStatusRequestModal] = useState<{
+    open: boolean;
+    targetUser?: User;
+    requestedStatus: 'inactive' | 'active';
+    reason: string;
+    notes: string;
+  }>({
+    open: false,
+    requestedStatus: 'inactive',
+    reason: '',
+    notes: '',
+  });
+
+  // Super Admin approval modal state
+  const [approveModalState, setApproveModalState] = useState<{
+    open: boolean;
+    request?: any;
+    reviewNotes: string;
+  }>({
+    open: false,
+    reviewNotes: '',
+  });
+
+  // Super Admin rejection modal state
+  const [rejectModalState, setRejectModalState] = useState<{
+    open: boolean;
+    request?: any;
+    reviewNotes: string;
+  }>({
+    open: false,
+    reviewNotes: '',
+  });
+
+  // Fetch status requests for Super Admin
+  const { data: adminStatusRequests = [], refetch: refetchAdminStatusRequests, isLoading: isLoadingAdminStatusRequests } = useQuery<any[]>({
+    queryKey: ['/api/admin/status-requests'],
+    enabled: isSuperAdmin,
+  });
+
+  // Fetch status requests for Master Broker
+  const { data: masterStatusRequests = [], refetch: refetchMasterStatusRequests, isLoading: isLoadingMasterStatusRequests } = useQuery<any[]>({
+    queryKey: ['/api/master-broker/status-requests'],
+    enabled: currentUser?.role === 'master_broker',
+  });
+
+  const pendingAdminRequests = adminStatusRequests.filter((r: any) => r.status === 'pending');
+  const pendingMasterRequests = masterStatusRequests.filter((r: any) => r.status === 'pending');
+
+  const getPendingRequestForBroker = (brokerUserId?: string) => {
+    if (!brokerUserId) return undefined;
+    const reqs = currentUser?.role === 'master_broker' ? masterStatusRequests : adminStatusRequests;
+    return reqs.find((r: any) => r.targetUserId === brokerUserId && r.status === 'pending');
+  };
+
+  // Mutation: Master Broker create status request
+  const createStatusRequestMutation = useMutation({
+    mutationFn: async (payload: { targetUserId: string; requestedStatus: 'inactive' | 'active'; reason: string; notes?: string }) => {
+      const res = await apiRequest('POST', '/api/master-broker/status-requests', payload);
+      return res.json();
+    },
+    onSuccess: (data: any) => {
+      toast({
+        title: "Solicitud enviada a Super Admin",
+        description: `Se envió la solicitud de ${statusRequestModal.requestedStatus === 'inactive' ? 'baja' : 'reactivación'} para revisión.`,
+      });
+      refetchMasterStatusRequests();
+      queryClient.invalidateQueries({ queryKey: ["/api/master-broker/status-requests"] });
+      setStatusRequestModal({ open: false, requestedStatus: 'inactive', reason: '', notes: '' });
+    },
+    onError: (err: any) => {
+      toast({
+        title: "Error al enviar solicitud",
+        description: err.message || "No se pudo crear la solicitud",
+        variant: "destructive",
+      });
+    }
+  });
+
+  // Mutation: Super Admin approve status request
+  const approveStatusRequestMutation = useMutation({
+    mutationFn: async ({ id, reviewNotes }: { id: string; reviewNotes?: string }) => {
+      const res = await apiRequest('POST', `/api/admin/status-requests/${id}/approve`, { reviewNotes });
+      return res.json();
+    },
+    onSuccess: (data: any) => {
+      toast({
+        title: "Solicitud aprobada",
+        description: data.message || "El estado operativo del broker ha sido actualizado.",
+      });
+      refetchAdminStatusRequests();
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/status-requests"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/users"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/tenants"] });
+      if (selectedTenantId) {
+        queryClient.invalidateQueries({ queryKey: ["/api/tenants", selectedTenantId, "members"] });
+      }
+      setApproveModalState({ open: false, reviewNotes: '' });
+    },
+    onError: (err: any) => {
+      toast({
+        title: "Error al aprobar solicitud",
+        description: err.message || "No se pudo aprobar la solicitud",
+        variant: "destructive",
+      });
+    }
+  });
+
+  // Mutation: Super Admin reject status request
+  const rejectStatusRequestMutation = useMutation({
+    mutationFn: async ({ id, reviewNotes }: { id: string; reviewNotes: string }) => {
+      const res = await apiRequest('POST', `/api/admin/status-requests/${id}/reject`, { reviewNotes });
+      return res.json();
+    },
+    onSuccess: (data: any) => {
+      toast({
+        title: "Solicitud rechazada",
+        description: data.message || "La solicitud ha sido rechazada.",
+      });
+      refetchAdminStatusRequests();
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/status-requests"] });
+      setRejectModalState({ open: false, reviewNotes: '' });
+    },
+    onError: (err: any) => {
+      toast({
+        title: "Error al rechazar solicitud",
+        description: err.message || "No se pudo rechazar la solicitud",
+        variant: "destructive",
       });
     }
   });
@@ -809,7 +962,7 @@ export default function UserManagement() {
         <main className="flex-1 p-6 space-y-4">
           <Skeleton className="h-24 w-full" />
           <Skeleton className="h-96 w-full" />
-        </main>
+      </main>
       </MainLayout>
     );
   }
@@ -887,7 +1040,7 @@ export default function UserManagement() {
         {/* Navigation Tabs for Platform Admins */}
         {isPlatformAdmin && (
           <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-            <TabsList className="grid grid-cols-3 max-w-2xl bg-slate-100 dark:bg-slate-800 p-1 border border-slate-200 dark:border-slate-700">
+            <TabsList className={`grid ${isSuperAdmin ? 'grid-cols-4 max-w-3xl' : 'grid-cols-3 max-w-2xl'} bg-slate-100 dark:bg-slate-800 p-1 border border-slate-200 dark:border-slate-700`}>
               <TabsTrigger value="organization" data-testid="tab-organization" className="text-xs font-semibold flex items-center gap-2">
                 <Building2 className="w-3.5 h-3.5 text-primary" />
                 Organización
@@ -899,6 +1052,38 @@ export default function UserManagement() {
               <TabsTrigger value="promos" data-testid="tab-promos" className="text-xs font-semibold flex items-center gap-2">
                 <Tag className="w-3.5 h-3.5 text-primary" />
                 Códigos Promocionales ({adminPromos?.length || 0})
+              </TabsTrigger>
+              {isSuperAdmin && (
+                <TabsTrigger value="status-requests" data-testid="tab-status-requests" className="text-xs font-semibold flex items-center gap-2">
+                  <Inbox className="w-3.5 h-3.5 text-primary" />
+                  Solicitudes de Estado
+                  {pendingAdminRequests.length > 0 && (
+                    <Badge className="bg-amber-500 text-white text-[10px] h-4 px-1.5 ml-1 font-bold">
+                      {pendingAdminRequests.length}
+                    </Badge>
+                  )}
+                </TabsTrigger>
+              )}
+            </TabsList>
+          </Tabs>
+        )}
+
+        {/* Navigation Tabs for Master Broker */}
+        {currentUser?.role === 'master_broker' && (
+          <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+            <TabsList className="grid grid-cols-2 max-w-md bg-slate-100 dark:bg-slate-800 p-1 border border-slate-200 dark:border-slate-700">
+              <TabsTrigger value="organization" data-testid="tab-mb-organization" className="text-xs font-semibold flex items-center gap-2">
+                <Building2 className="w-3.5 h-3.5 text-primary" />
+                Mi Red de Brokers
+              </TabsTrigger>
+              <TabsTrigger value="my-requests" data-testid="tab-mb-requests" className="text-xs font-semibold flex items-center gap-2">
+                <Inbox className="w-3.5 h-3.5 text-primary" />
+                Solicitudes Enviadas ({masterStatusRequests.length})
+                {pendingMasterRequests.length > 0 && (
+                  <Badge className="bg-amber-500 text-white text-[10px] h-4 px-1.5 ml-1 font-bold">
+                    {pendingMasterRequests.length}
+                  </Badge>
+                )}
               </TabsTrigger>
             </TabsList>
           </Tabs>
@@ -1173,7 +1358,26 @@ export default function UserManagement() {
                                 </td>
 
                                 <td className="py-2.5 px-3 text-center">
-                                  {renderUserStatusBadge(m.user?.status, m.user?.isActive ?? m.isActive)}
+                                  <div className="flex flex-col items-center gap-1">
+                                    {renderUserStatusBadge(m.user?.status, m.user?.isActive ?? m.isActive)}
+                                    {(() => {
+                                      const pendingReq = getPendingRequestForBroker(m.user?.id);
+                                      if (pendingReq) {
+                                        return (
+                                          <Badge 
+                                            variant="outline" 
+                                            className="bg-amber-50 text-amber-800 border-amber-300 text-[10px] font-semibold flex items-center gap-1"
+                                            title={`Solicitud pendiente de ${pendingReq.requestedStatus === 'inactive' ? 'baja' : 'reactivación'}`}
+                                            data-testid={`badge-pending-request-${m.id}`}
+                                          >
+                                            <Clock className="w-2.5 h-2.5" />
+                                            Solicitud pendiente
+                                          </Badge>
+                                        );
+                                      }
+                                      return null;
+                                    })()}
+                                  </div>
                                 </td>
 
                                 <td className="py-2.5 px-3 text-slate-500 text-[11px] whitespace-nowrap">
@@ -1182,7 +1386,8 @@ export default function UserManagement() {
 
                                 <td className="py-2.5 px-4 text-right">
                                   <div className="flex items-center justify-end gap-1">
-                                    {(isSuperAdmin || (currentUser?.role === 'master_broker' && m.user?.role === 'broker')) && !isSelf && (
+                                    {/* Super Admin: Control operativo directo */}
+                                    {isSuperAdmin && !isSelf && (
                                       <Button
                                         variant="ghost"
                                         size="sm"
@@ -1196,12 +1401,96 @@ export default function UserManagement() {
                                           }
                                         }}
                                         className="h-7 w-7 p-0 text-amber-600 hover:text-amber-700 hover:bg-amber-50 dark:hover:bg-amber-950/40"
-                                        title="Gestionar estado operativo (Activo/Suspendido/Inactivo)"
+                                        title="Gestionar estado operativo (Super Admin)"
                                         data-testid={`button-operational-status-member-${m.id}`}
                                       >
                                         <Shield className="h-3.5 w-3.5" />
                                       </Button>
                                     )}
+
+                                    {/* Master Broker: Acciones sobre brokers de su red */}
+                                    {currentUser?.role === 'master_broker' && m.user?.role === 'broker' && !isSelf && (() => {
+                                      const currentStatus = (m.user?.status as UserOperationalStatus) || (m.user?.isActive ? 'active' : 'inactive');
+                                      const pendingReq = getPendingRequestForBroker(m.user?.id);
+
+                                      return (
+                                        <div className="flex items-center gap-1">
+                                          {/* Suspender: Acción directa */}
+                                          {currentStatus === 'active' && (
+                                            <Button
+                                              variant="ghost"
+                                              size="sm"
+                                              onClick={() => {
+                                                if (m.user) {
+                                                  setOperationalStatusUser(m.user as User);
+                                                  setTargetOperationalStatus('suspended');
+                                                  setOperationalStatusReason("");
+                                                  setOperationalStatusNotes("");
+                                                }
+                                              }}
+                                              className="h-7 px-1.5 text-xs text-amber-700 hover:text-amber-800 hover:bg-amber-50"
+                                              title="Suspender temporalmente (acción directa)"
+                                              data-testid={`button-direct-suspend-broker-${m.id}`}
+                                            >
+                                              <AlertTriangle className="h-3.5 w-3.5 mr-1" />
+                                              Suspender
+                                            </Button>
+                                          )}
+
+                                          {/* Solicitar Baja: si broker está active o suspended */}
+                                          {(currentStatus === 'active' || currentStatus === 'suspended') && (
+                                            <Button
+                                              variant="ghost"
+                                              size="sm"
+                                              disabled={Boolean(pendingReq && pendingReq.requestedStatus === 'inactive')}
+                                              onClick={() => {
+                                                if (m.user) {
+                                                  setStatusRequestModal({
+                                                    open: true,
+                                                    targetUser: m.user as User,
+                                                    requestedStatus: 'inactive',
+                                                    reason: '',
+                                                    notes: '',
+                                                  });
+                                                }
+                                              }}
+                                              className="h-7 px-1.5 text-xs text-rose-700 hover:text-rose-800 hover:bg-rose-50"
+                                              title={pendingReq && pendingReq.requestedStatus === 'inactive' ? "Ya existe solicitud de baja pendiente" : "Solicitar baja definitiva a Super Admin"}
+                                              data-testid={`button-request-baja-broker-${m.id}`}
+                                            >
+                                              <Power className="h-3.5 w-3.5 mr-1" />
+                                              Solicitar baja
+                                            </Button>
+                                          )}
+
+                                          {/* Solicitar Reactivación: si broker está inactive */}
+                                          {currentStatus === 'inactive' && (
+                                            <Button
+                                              variant="ghost"
+                                              size="sm"
+                                              disabled={Boolean(pendingReq && pendingReq.requestedStatus === 'active')}
+                                              onClick={() => {
+                                                if (m.user) {
+                                                  setStatusRequestModal({
+                                                    open: true,
+                                                    targetUser: m.user as User,
+                                                    requestedStatus: 'active',
+                                                    reason: '',
+                                                    notes: '',
+                                                  });
+                                                }
+                                              }}
+                                              className="h-7 px-1.5 text-xs text-emerald-700 hover:text-emerald-800 hover:bg-emerald-50"
+                                              title={pendingReq && pendingReq.requestedStatus === 'active' ? "Ya existe solicitud de reactivación pendiente" : "Solicitar reactivación a Super Admin"}
+                                              data-testid={`button-request-reactivate-broker-${m.id}`}
+                                            >
+                                              <RefreshCw className="h-3.5 w-3.5 mr-1" />
+                                              Solicitar reactivación
+                                            </Button>
+                                          )}
+                                        </div>
+                                      );
+                                    })()}
 
                                     {canManageMembers && !cannotTouch && (
                                       <>
@@ -1293,7 +1582,24 @@ export default function UserManagement() {
                                 </div>
                               </div>
 
-                              {renderUserStatusBadge(m.user?.status, m.user?.isActive ?? m.isActive)}
+                              <div className="flex flex-col items-end gap-1">
+                                {renderUserStatusBadge(m.user?.status, m.user?.isActive ?? m.isActive)}
+                                {(() => {
+                                  const pendingReq = getPendingRequestForBroker(m.user?.id);
+                                  if (pendingReq) {
+                                    return (
+                                      <Badge 
+                                        variant="outline" 
+                                        className="bg-amber-50 text-amber-800 border-amber-300 text-[9px] font-semibold flex items-center gap-1"
+                                      >
+                                        <Clock className="w-2 h-2" />
+                                        Solicitud pendiente
+                                      </Badge>
+                                    );
+                                  }
+                                  return null;
+                                })()}
+                              </div>
                             </div>
 
                             {/* Card Body: Roles, Title, Faculties */}
@@ -1332,7 +1638,7 @@ export default function UserManagement() {
                               <span>Ingreso: {m.joinedAt ? format(new Date(m.joinedAt), "dd/MM/yyyy") : "—"}</span>
                               
                               <div className="flex items-center gap-1">
-                                {(isSuperAdmin || (currentUser?.role === 'master_broker' && m.user?.role === 'broker')) && !isSelf && (
+                                {isSuperAdmin && !isSelf && (
                                   <Button
                                     variant="outline"
                                     size="sm"
@@ -1353,6 +1659,78 @@ export default function UserManagement() {
                                     Estado
                                   </Button>
                                 )}
+
+                                {currentUser?.role === 'master_broker' && m.user?.role === 'broker' && !isSelf && (() => {
+                                  const currentStatus = (m.user?.status as UserOperationalStatus) || (m.user?.isActive ? 'active' : 'inactive');
+                                  const pendingReq = getPendingRequestForBroker(m.user?.id);
+
+                                  return (
+                                    <div className="flex items-center gap-1">
+                                      {currentStatus === 'active' && (
+                                        <Button
+                                          variant="outline"
+                                          size="sm"
+                                          onClick={() => {
+                                            if (m.user) {
+                                              setOperationalStatusUser(m.user as User);
+                                              setTargetOperationalStatus('suspended');
+                                              setOperationalStatusReason("");
+                                              setOperationalStatusNotes("");
+                                            }
+                                          }}
+                                          className="h-7 text-xs px-2 text-amber-700"
+                                          data-testid={`button-direct-suspend-broker-${m.id}-mobile`}
+                                        >
+                                          Suspender
+                                        </Button>
+                                      )}
+                                      {(currentStatus === 'active' || currentStatus === 'suspended') && (
+                                        <Button
+                                          variant="outline"
+                                          size="sm"
+                                          disabled={Boolean(pendingReq && pendingReq.requestedStatus === 'inactive')}
+                                          onClick={() => {
+                                            if (m.user) {
+                                              setStatusRequestModal({
+                                                open: true,
+                                                targetUser: m.user as User,
+                                                requestedStatus: 'inactive',
+                                                reason: '',
+                                                notes: '',
+                                              });
+                                            }
+                                          }}
+                                          className="h-7 text-xs px-2 text-rose-700"
+                                          data-testid={`button-request-baja-broker-${m.id}-mobile`}
+                                        >
+                                          Solicitar baja
+                                        </Button>
+                                      )}
+                                      {currentStatus === 'inactive' && (
+                                        <Button
+                                          variant="outline"
+                                          size="sm"
+                                          disabled={Boolean(pendingReq && pendingReq.requestedStatus === 'active')}
+                                          onClick={() => {
+                                            if (m.user) {
+                                              setStatusRequestModal({
+                                                open: true,
+                                                targetUser: m.user as User,
+                                                requestedStatus: 'active',
+                                                reason: '',
+                                                notes: '',
+                                              });
+                                            }
+                                          }}
+                                          className="h-7 text-xs px-2 text-emerald-700"
+                                          data-testid={`button-request-reactivate-broker-${m.id}-mobile`}
+                                        >
+                                          Solicitar reactivación
+                                        </Button>
+                                      )}
+                                    </div>
+                                  );
+                                })()}
 
                                 {canManageMembers && !cannotTouch && (
                                   <>
@@ -1647,6 +2025,413 @@ export default function UserManagement() {
             </Card>
           </div>
         )}
+
+          {/* Tab 4: Super Admin Status Requests Management */}
+        {activeTab === "status-requests" && isSuperAdmin && (
+          <div className="space-y-4">
+            {/* Header & Metrics */}
+            <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
+              <Card className="p-3 bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 rounded-lg bg-amber-50 dark:bg-amber-950/40 text-amber-600">
+                    <Clock className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <div className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Pendientes</div>
+                    <div className="text-lg font-bold text-amber-600" data-testid="count-pending-status-requests">
+                      {adminStatusRequests.filter((r: any) => r.status === 'pending').length}
+                    </div>
+                  </div>
+                </div>
+              </Card>
+
+              <Card className="p-3 bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 rounded-lg bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600">
+                    <CheckCircle2 className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <div className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Aprobadas</div>
+                    <div className="text-lg font-bold text-emerald-600">
+                      {adminStatusRequests.filter((r: any) => r.status === 'approved').length}
+                    </div>
+                  </div>
+                </div>
+              </Card>
+
+              <Card className="p-3 bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 rounded-lg bg-rose-50 dark:bg-rose-950/40 text-rose-600">
+                    <X className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <div className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Rechazadas</div>
+                    <div className="text-lg font-bold text-rose-600">
+                      {adminStatusRequests.filter((r: any) => r.status === 'rejected').length}
+                    </div>
+                  </div>
+                </div>
+              </Card>
+
+              <Card className="p-3 bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 rounded-lg bg-blue-50 dark:bg-blue-950/40 text-blue-600">
+                    <Inbox className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <div className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Total Histórico</div>
+                    <div className="text-lg font-bold text-slate-700 dark:text-slate-200">
+                      {adminStatusRequests.length}
+                    </div>
+                  </div>
+                </div>
+              </Card>
+            </div>
+
+            {/* Filter Bar */}
+            <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-3 shadow-xs flex flex-wrap items-center justify-between gap-3">
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-semibold text-slate-500">Filtrar por estado:</span>
+                <div className="flex items-center gap-1.5">
+                  {(['all', 'pending', 'approved', 'rejected'] as const).map((st) => (
+                    <Button
+                      key={st}
+                      variant={statusRequestsFilter === st ? "default" : "outline"}
+                      size="sm"
+                      onClick={() => setStatusRequestsFilter(st)}
+                      className="h-7 text-xs px-2.5 capitalize"
+                      data-testid={`filter-status-request-${st}`}
+                    >
+                      {st === 'all' ? 'Todas' : st === 'pending' ? 'Pendientes' : st === 'approved' ? 'Aprobadas' : 'Rechazadas'}
+                    </Button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="text-xs text-muted-foreground">
+                Actualización en tiempo real · Las aprobaciones aplican la lógica central y conservan facultades comerciales
+              </div>
+            </div>
+
+            {/* Table Card */}
+            <Card className="border-slate-200 dark:border-slate-800">
+              <CardContent className="p-0">
+                <div className="overflow-x-auto">
+                  <table className="w-full text-xs">
+                    <thead className="bg-slate-50 dark:bg-slate-800/60 border-b border-slate-200 dark:border-slate-800 text-[11px] uppercase tracking-wider text-slate-500 font-semibold">
+                      <tr>
+                        <th className="py-2.5 px-4 text-left">Broker Objetivo</th>
+                        <th className="py-2.5 px-3 text-left">Master Solicitante</th>
+                        <th className="py-2.5 px-3 text-center">Acción Solicitada</th>
+                        <th className="py-2.5 px-3 text-left">Motivo y Contexto</th>
+                        <th className="py-2.5 px-3 text-left">Fecha Registro</th>
+                        <th className="py-2.5 px-3 text-center">Estado</th>
+                        <th className="py-2.5 px-4 text-right">Dictamen</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                      {(() => {
+                        const filtered = adminStatusRequests.filter((r: any) => {
+                          if (statusRequestsFilter === 'all') return true;
+                          return r.status === statusRequestsFilter;
+                        });
+
+                        if (isLoadingAdminStatusRequests) {
+                          return (
+                            <tr>
+                              <td colSpan={7} className="py-8 text-center text-slate-500">
+                                <Loader2 className="w-5 h-5 animate-spin mx-auto text-primary mb-2" />
+                                Cargando solicitudes...
+                              </td>
+                            </tr>
+                          );
+                        }
+
+                        if (filtered.length === 0) {
+                          return (
+                            <tr>
+                              <td colSpan={7} className="py-12 text-center text-slate-500">
+                                <Inbox className="w-8 h-8 mx-auto text-slate-300 dark:text-slate-600 mb-2" />
+                                <p className="font-medium text-sm text-foreground">No hay solicitudes en este filtro</p>
+                                <p className="text-xs text-muted-foreground mt-0.5">Las solicitudes enviadas por Master Brokers aparecerán aquí.</p>
+                              </td>
+                            </tr>
+                          );
+                        }
+
+                        return filtered.map((req: any) => {
+                          const targetCurrentStatus = (req.targetUser?.status as UserOperationalStatus) || (req.targetUser?.isActive ? 'active' : 'inactive');
+                          const isObsolete = req.status === 'pending' && (
+                            (req.requestedStatus === 'inactive' && targetCurrentStatus === 'inactive') ||
+                            (req.requestedStatus === 'active' && targetCurrentStatus === 'active')
+                          );
+
+                          return (
+                            <tr key={req.id} className="hover:bg-slate-50/60 dark:hover:bg-slate-800/40 transition-colors">
+                              <td className="py-3 px-4">
+                                <div className="font-semibold text-slate-900 dark:text-slate-100">
+                                  {req.targetUser ? `${req.targetUser.firstName} ${req.targetUser.lastName}` : req.targetUserId}
+                                </div>
+                                <div className="text-[11px] text-slate-500 font-mono">
+                                  {req.targetUser?.email || "Sin email"}
+                                </div>
+                                <div className="flex items-center gap-1.5 mt-1">
+                                  <span className="text-[10px] text-slate-400">Estado actual:</span>
+                                  {renderUserStatusBadge(req.targetUser?.status, req.targetUser?.isActive)}
+                                </div>
+                              </td>
+
+                              <td className="py-3 px-3">
+                                <div className="font-medium text-slate-900 dark:text-slate-100">
+                                  {req.requester ? `${req.requester.firstName} ${req.requester.lastName}` : req.requesterId}
+                                </div>
+                                <div className="text-[11px] text-slate-500 font-mono">
+                                  {req.requester?.email || "-"}
+                                </div>
+                                <Badge variant="outline" className="text-[9px] mt-1">Master Broker</Badge>
+                              </td>
+
+                              <td className="py-3 px-3 text-center">
+                                {req.requestedStatus === 'inactive' ? (
+                                  <Badge className="bg-rose-50 text-rose-700 border-rose-300 dark:bg-rose-950/40 dark:text-rose-300 text-xs font-semibold">
+                                    <Power className="w-3 h-3 mr-1" />
+                                    Baja Lógica
+                                  </Badge>
+                                ) : (
+                                  <Badge className="bg-emerald-50 text-emerald-700 border-emerald-300 dark:bg-emerald-950/40 dark:text-emerald-300 text-xs font-semibold">
+                                    <CheckCircle2 className="w-3 h-3 mr-1" />
+                                    Reactivación
+                                  </Badge>
+                                )}
+                              </td>
+
+                              <td className="py-3 px-3 max-w-xs">
+                                <div className="text-slate-800 dark:text-slate-200 font-medium">
+                                  {req.reason}
+                                </div>
+                                {req.notes && (
+                                  <div className="text-[11px] text-slate-500 italic mt-0.5">
+                                    Notas: {req.notes}
+                                  </div>
+                                )}
+                              </td>
+
+                              <td className="py-3 px-3 text-slate-500 text-[11px] whitespace-nowrap">
+                                {req.createdAt ? format(new Date(req.createdAt), "dd MMM yyyy HH:mm", { locale: es }) : "—"}
+                              </td>
+
+                              <td className="py-3 px-3 text-center">
+                                {req.status === 'pending' ? (
+                                  <div className="flex flex-col items-center gap-1">
+                                    <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-300 font-semibold text-xs">
+                                      <Clock className="w-3 h-3 mr-1" />
+                                      Pendiente
+                                    </Badge>
+                                    {isObsolete && (
+                                      <Badge variant="outline" className="bg-rose-50 text-rose-700 border-rose-200 text-[9px]">
+                                        Obsoleta: ya está {targetCurrentStatus}
+                                      </Badge>
+                                    )}
+                                  </div>
+                                ) : req.status === 'approved' ? (
+                                  <div className="flex flex-col items-center gap-0.5">
+                                    <Badge variant="outline" className="bg-emerald-50 text-emerald-700 border-emerald-300 font-semibold text-xs">
+                                      <CheckCircle2 className="w-3 h-3 mr-1" />
+                                      Aprobada
+                                    </Badge>
+                                    {req.reviewedAt && (
+                                      <span className="text-[10px] text-slate-400">
+                                        {format(new Date(req.reviewedAt), "dd/MM/yy", { locale: es })}
+                                      </span>
+                                    )}
+                                  </div>
+                                ) : (
+                                  <div className="flex flex-col items-center gap-0.5">
+                                    <Badge variant="outline" className="bg-rose-50 text-rose-700 border-rose-300 font-semibold text-xs">
+                                      <X className="w-3 h-3 mr-1" />
+                                      Rechazada
+                                    </Badge>
+                                    {req.reviewedAt && (
+                                      <span className="text-[10px] text-slate-400">
+                                        {format(new Date(req.reviewedAt), "dd/MM/yy", { locale: es })}
+                                      </span>
+                                    )}
+                                  </div>
+                                )}
+                              </td>
+
+                              <td className="py-3 px-4 text-right">
+                                {req.status === 'pending' ? (
+                                  <div className="flex items-center justify-end gap-1.5">
+                                    <Button
+                                      size="sm"
+                                      disabled={isObsolete}
+                                      onClick={() => setApproveModalState({ open: true, request: req, reviewNotes: '' })}
+                                      className="h-7 text-xs bg-emerald-600 hover:bg-emerald-700 text-white disabled:opacity-50"
+                                      data-testid={`button-approve-request-${req.id}`}
+                                    >
+                                      <Check className="w-3.5 h-3.5 mr-1" />
+                                      Aprobar
+                                    </Button>
+
+                                    <Button
+                                      variant="outline"
+                                      size="sm"
+                                      onClick={() => setRejectModalState({ open: true, request: req, reviewNotes: '' })}
+                                      className="h-7 text-xs text-rose-600 border-rose-200 hover:bg-rose-50 hover:text-rose-700"
+                                      data-testid={`button-reject-request-${req.id}`}
+                                    >
+                                      <X className="w-3.5 h-3.5 mr-1" />
+                                      Rechazar
+                                    </Button>
+                                  </div>
+                                ) : (
+                                  <div className="text-[11px] text-slate-400 max-w-[180px] truncate text-right">
+                                    {req.reviewNotes ? `Comentarios: "${req.reviewNotes}"` : "Sin comentarios"}
+                                  </div>
+                                )}
+                              </td>
+                            </tr>
+                          );
+                        });
+                      })()}
+                    </tbody>
+                  </table>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        )}
+
+        {/* Tab: Master Broker Submitted Status Requests */}
+        {activeTab === "my-requests" && currentUser?.role === 'master_broker' && (
+          <div className="space-y-4">
+            <Card className="border-slate-200 dark:border-slate-800">
+              <CardHeader className="py-3 px-4 border-b border-slate-100 dark:border-slate-800 flex flex-row items-center justify-between">
+                <div>
+                  <CardTitle className="text-sm font-bold text-slate-900 dark:text-slate-100 flex items-center gap-2">
+                    <Inbox className="w-4 h-4 text-primary" />
+                    Historial de Solicitudes Enviadas a Super Admin
+                  </CardTitle>
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    Trazabilidad de solicitudes de baja y reactivación para brokers de tu red.
+                  </p>
+                </div>
+                <Badge variant="secondary" className="font-mono text-xs">{masterStatusRequests.length}</Badge>
+              </CardHeader>
+              <CardContent className="p-0">
+                <div className="overflow-x-auto">
+                  <table className="w-full text-xs">
+                    <thead className="bg-slate-50 dark:bg-slate-800/60 border-b border-slate-200 dark:border-slate-800 text-[11px] uppercase tracking-wider text-slate-500 font-semibold">
+                      <tr>
+                        <th className="py-2.5 px-4 text-left">Broker</th>
+                        <th className="py-2.5 px-3 text-center">Acción Solicitada</th>
+                        <th className="py-2.5 px-3 text-left">Motivo Enviado</th>
+                        <th className="py-2.5 px-3 text-left">Fecha de Solicitud</th>
+                        <th className="py-2.5 px-3 text-center">Estado</th>
+                        <th className="py-2.5 px-4 text-left">Dictamen de Super Admin</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                      {isLoadingMasterStatusRequests ? (
+                        <tr>
+                          <td colSpan={6} className="py-8 text-center text-slate-500">
+                            <Loader2 className="w-5 h-5 animate-spin mx-auto text-primary mb-2" />
+                            Cargando solicitudes...
+                          </td>
+                        </tr>
+                      ) : masterStatusRequests.length === 0 ? (
+                        <tr>
+                          <td colSpan={6} className="py-12 text-center text-slate-500">
+                            <Inbox className="w-8 h-8 mx-auto text-slate-300 dark:text-slate-600 mb-2" />
+                            <p className="font-medium text-sm text-foreground">Aún no has enviado solicitudes de estado</p>
+                            <p className="text-xs text-muted-foreground mt-0.5">
+                              Puedes solicitar la baja o reactivación de brokers de tu red desde la pestaña "Mi Red de Brokers".
+                            </p>
+                          </td>
+                        </tr>
+                      ) : (
+                        masterStatusRequests.map((req: any) => (
+                          <tr key={req.id} className="hover:bg-slate-50/60 dark:hover:bg-slate-800/40 transition-colors">
+                            <td className="py-3 px-4">
+                              <div className="font-semibold text-slate-900 dark:text-slate-100">
+                                {req.targetUser ? `${req.targetUser.firstName} ${req.targetUser.lastName}` : req.targetUserId}
+                              </div>
+                              <div className="text-[11px] text-slate-500 font-mono">
+                                {req.targetUser?.email || "Sin email"}
+                              </div>
+                            </td>
+                            <td className="py-3 px-3 text-center">
+                              {req.requestedStatus === 'inactive' ? (
+                                <Badge className="bg-rose-50 text-rose-700 border-rose-300 text-xs font-semibold">
+                                  <Power className="w-3 h-3 mr-1" />
+                                  Baja Lógica
+                                </Badge>
+                              ) : (
+                                <Badge className="bg-emerald-50 text-emerald-700 border-emerald-300 text-xs font-semibold">
+                                  <CheckCircle2 className="w-3 h-3 mr-1" />
+                                  Reactivación
+                                </Badge>
+                              )}
+                            </td>
+                            <td className="py-3 px-3 max-w-xs">
+                              <div className="text-slate-800 dark:text-slate-200 font-medium">
+                                {req.reason}
+                              </div>
+                              {req.notes && (
+                                <div className="text-[11px] text-slate-500 italic mt-0.5">
+                                  Notas: {req.notes}
+                                </div>
+                              )}
+                            </td>
+                            <td className="py-3 px-3 text-slate-500 text-[11px] whitespace-nowrap">
+                              {req.createdAt ? format(new Date(req.createdAt), "dd MMM yyyy HH:mm", { locale: es }) : "—"}
+                            </td>
+                            <td className="py-3 px-3 text-center">
+                              {req.status === 'pending' ? (
+                                <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-300 font-semibold text-xs">
+                                  <Clock className="w-3 h-3 mr-1" />
+                                  En Revisión
+                                </Badge>
+                              ) : req.status === 'approved' ? (
+                                <Badge variant="outline" className="bg-emerald-50 text-emerald-700 border-emerald-300 font-semibold text-xs">
+                                  <CheckCircle2 className="w-3 h-3 mr-1" />
+                                  Aprobada
+                                </Badge>
+                              ) : (
+                                <Badge variant="outline" className="bg-rose-50 text-rose-700 border-rose-300 font-semibold text-xs">
+                                  <X className="w-3 h-3 mr-1" />
+                                  Rechazada
+                                </Badge>
+                              )}
+                            </td>
+                            <td className="py-3 px-4">
+                              {req.status === 'pending' ? (
+                                <span className="text-slate-400 italic text-[11px]">Esperando dictamen de Super Admin</span>
+                              ) : (
+                                <div>
+                                  <div className="text-[11px] text-slate-700 dark:text-slate-300 font-medium">
+                                    {req.reviewNotes || (req.status === 'approved' ? "Aprobada sin comentarios adicionales" : "Rechazada")}
+                                  </div>
+                                  {req.reviewedAt && (
+                                    <div className="text-[10px] text-slate-400 mt-0.5">
+                                      Resuelto el: {format(new Date(req.reviewedAt), "dd/MM/yyyy HH:mm", { locale: es })}
+                                    </div>
+                                  )}
+                                </div>
+                              )}
+                            </td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        )}
+
 
       </main>
 
@@ -3002,6 +3787,285 @@ export default function UserManagement() {
                       ? "Suspensión"
                       : "Baja Lógica"
                   }`
+                )}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
+
+      {/* MASTER BROKER: CREATE STATUS REQUEST DIALOG */}
+      {statusRequestModal.open && statusRequestModal.targetUser && (
+        <Dialog 
+          open={statusRequestModal.open} 
+          onOpenChange={(open) => {
+            if (!open) {
+              setStatusRequestModal({ open: false, requestedStatus: 'inactive', reason: '', notes: '' });
+            }
+          }}
+        >
+          <DialogContent className="max-w-md w-[95vw]">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2 text-base">
+                {statusRequestModal.requestedStatus === 'inactive' ? (
+                  <Power className="w-5 h-5 text-rose-600" />
+                ) : (
+                  <CheckCircle2 className="w-5 h-5 text-emerald-600" />
+                )}
+                Solicitar {statusRequestModal.requestedStatus === 'inactive' ? "Baja Definitiva" : "Reactivación"} de Broker
+              </DialogTitle>
+              <DialogDescription className="text-xs text-muted-foreground">
+                Esta solicitud será enviada al Super Admin para su evaluación y dictamen.
+              </DialogDescription>
+            </DialogHeader>
+
+            <div className="space-y-4 py-2 text-sm">
+              <div className="bg-muted/40 p-3 rounded-lg space-y-1 text-xs">
+                <div className="font-semibold text-foreground">
+                  {statusRequestModal.targetUser.firstName} {statusRequestModal.targetUser.lastName}
+                </div>
+                <div className="text-muted-foreground font-mono">{statusRequestModal.targetUser.email}</div>
+                <div className="flex items-center gap-2 pt-1">
+                  <span className="text-muted-foreground">Estado actual:</span>
+                  {renderUserStatusBadge(statusRequestModal.targetUser.status, statusRequestModal.targetUser.isActive)}
+                  <Badge variant="outline" className="text-[10px]">Tu Red</Badge>
+                </div>
+              </div>
+
+              <div className="bg-slate-50 dark:bg-slate-900/40 p-2.5 rounded text-xs text-muted-foreground space-y-1">
+                <div className="font-semibold text-slate-800 dark:text-slate-200">
+                  {statusRequestModal.requestedStatus === 'inactive' ? "Alcance de la baja:" : "Alcance de la reactivación:"}
+                </div>
+                <p className="text-[11px]">
+                  {statusRequestModal.requestedStatus === 'inactive'
+                    ? "Al aprobarse, el broker no podrá iniciar sesión ni originar créditos nuevos. Todo su historial comercial, comisiones y clientes continuarán asignados intactos a él."
+                    : "Al aprobarse, el broker recuperará el acceso a la plataforma manteniendo su historial comercial intacto."
+                  }
+                </p>
+              </div>
+
+              {/* Motivo obligatorio */}
+              <div className="space-y-1.5">
+                <label className="text-xs font-semibold text-foreground">
+                  Motivo de la solicitud * <span className="text-muted-foreground font-normal">(mínimo 3 caracteres)</span>
+                </label>
+                <Input
+                  value={statusRequestModal.reason}
+                  onChange={(e) => setStatusRequestModal(prev => ({ ...prev, reason: e.target.value }))}
+                  placeholder={statusRequestModal.requestedStatus === 'inactive' 
+                    ? "Ej: Cierre de actividades comerciales, baja voluntaria de la red..."
+                    : "Ej: Regularización de contrato y retorno a operaciones comerciales..."}
+                  className="text-xs h-9"
+                  data-testid="input-status-request-reason"
+                />
+              </div>
+
+              {/* Notas adicionales */}
+              <div className="space-y-1.5">
+                <label className="text-xs font-semibold text-foreground">
+                  Notas Adicionales <span className="text-muted-foreground font-normal">(opcional)</span>
+                </label>
+                <textarea
+                  value={statusRequestModal.notes}
+                  onChange={(e) => setStatusRequestModal(prev => ({ ...prev, notes: e.target.value }))}
+                  placeholder="Información adicional para facilitar la revisión del Super Admin..."
+                  rows={2}
+                  className="w-full text-xs p-2 border rounded-md bg-background resize-none focus:outline-none focus:ring-1 focus:ring-primary"
+                  data-testid="textarea-status-request-notes"
+                />
+              </div>
+            </div>
+
+            <DialogFooter className="flex items-center justify-end gap-2 pt-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setStatusRequestModal({ open: false, requestedStatus: 'inactive', reason: '', notes: '' })}
+                disabled={createStatusRequestMutation.isPending}
+              >
+                Cancelar
+              </Button>
+              <Button
+                size="sm"
+                disabled={
+                  createStatusRequestMutation.isPending ||
+                  !statusRequestModal.reason ||
+                  statusRequestModal.reason.trim().length < 3
+                }
+                onClick={() => {
+                  createStatusRequestMutation.mutate({
+                    targetUserId: statusRequestModal.targetUser!.id,
+                    requestedStatus: statusRequestModal.requestedStatus,
+                    reason: statusRequestModal.reason.trim(),
+                    notes: statusRequestModal.notes.trim() || undefined,
+                  });
+                }}
+                className={
+                  statusRequestModal.requestedStatus === 'inactive'
+                    ? "bg-rose-600 hover:bg-rose-700 text-white"
+                    : "bg-emerald-600 hover:bg-emerald-700 text-white"
+                }
+                data-testid="button-submit-status-request"
+              >
+                {createStatusRequestMutation.isPending ? (
+                  <>
+                    <Loader2 className="w-3.5 h-3.5 mr-1 animate-spin" />
+                    Enviando...
+                  </>
+                ) : (
+                  `Enviar Solicitud de ${statusRequestModal.requestedStatus === 'inactive' ? 'Baja' : 'Reactivación'}`
+                )}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
+
+      {/* SUPER ADMIN: APPROVE STATUS REQUEST DIALOG */}
+      {approveModalState.open && approveModalState.request && (
+        <Dialog 
+          open={approveModalState.open} 
+          onOpenChange={(open) => !open && setApproveModalState({ open: false, reviewNotes: '' })}
+        >
+          <DialogContent className="max-w-md w-[95vw]">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2 text-base">
+                <CheckCircle2 className="w-5 h-5 text-emerald-600" />
+                Aprobar Solicitud de Cambio de Estado
+              </DialogTitle>
+              <DialogDescription className="text-xs text-muted-foreground">
+                Se ejecutará el cambio operativo real mediante la lógica central institucional.
+              </DialogDescription>
+            </DialogHeader>
+
+            <div className="space-y-3 py-2 text-xs">
+              <div className="p-3 bg-muted/40 rounded-lg space-y-1">
+                <div><strong>Broker:</strong> {approveModalState.request.targetUser?.firstName} {approveModalState.request.targetUser?.lastName} ({approveModalState.request.targetUser?.email})</div>
+                <div><strong>Master Solicitante:</strong> {approveModalState.request.requester?.firstName} {approveModalState.request.requester?.lastName} ({approveModalState.request.requester?.email})</div>
+                <div><strong>Acción solicitada:</strong> {approveModalState.request.requestedStatus === 'inactive' ? 'Baja Lógica (Inactivo)' : 'Reactivación (Activo)'}</div>
+                <div><strong>Motivo:</strong> {approveModalState.request.reason}</div>
+                {approveModalState.request.notes && <div><strong>Notas:</strong> {approveModalState.request.notes}</div>}
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="font-semibold text-foreground">Comentarios de aprobación (opcional)</label>
+                <textarea
+                  value={approveModalState.reviewNotes}
+                  onChange={(e) => setApproveModalState(prev => ({ ...prev, reviewNotes: e.target.value }))}
+                  placeholder="Detalles complementarios para el expediente o notificación..."
+                  rows={2}
+                  className="w-full text-xs p-2 border rounded-md bg-background resize-none focus:outline-none focus:ring-1 focus:ring-primary"
+                  data-testid="textarea-approve-notes"
+                />
+              </div>
+            </div>
+
+            <DialogFooter className="flex items-center justify-end gap-2 pt-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setApproveModalState({ open: false, reviewNotes: '' })}
+                disabled={approveStatusRequestMutation.isPending}
+              >
+                Cancelar
+              </Button>
+              <Button
+                size="sm"
+                onClick={() => {
+                  approveStatusRequestMutation.mutate({
+                    id: approveModalState.request.id,
+                    reviewNotes: approveModalState.reviewNotes.trim() || undefined,
+                  });
+                }}
+                disabled={approveStatusRequestMutation.isPending}
+                className="bg-emerald-600 hover:bg-emerald-700 text-white"
+                data-testid="button-confirm-approve-request"
+              >
+                {approveStatusRequestMutation.isPending ? (
+                  <>
+                    <Loader2 className="w-3.5 h-3.5 mr-1 animate-spin" />
+                    Aprobando...
+                  </>
+                ) : (
+                  "Confirmar y Aplicar Cambio"
+                )}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
+
+      {/* SUPER ADMIN: REJECT STATUS REQUEST DIALOG */}
+      {rejectModalState.open && rejectModalState.request && (
+        <Dialog 
+          open={rejectModalState.open} 
+          onOpenChange={(open) => !open && setRejectModalState({ open: false, reviewNotes: '' })}
+        >
+          <DialogContent className="max-w-md w-[95vw]">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2 text-base">
+                <X className="w-5 h-5 text-rose-600" />
+                Rechazar Solicitud de Cambio de Estado
+              </DialogTitle>
+              <DialogDescription className="text-xs text-muted-foreground">
+                El estado del broker no cambiará. El Master Broker recibirá el motivo del rechazo.
+              </DialogDescription>
+            </DialogHeader>
+
+            <div className="space-y-3 py-2 text-xs">
+              <div className="p-3 bg-muted/40 rounded-lg space-y-1">
+                <div><strong>Broker:</strong> {rejectModalState.request.targetUser?.firstName} {rejectModalState.request.targetUser?.lastName} ({rejectModalState.request.targetUser?.email})</div>
+                <div><strong>Acción solicitada:</strong> {rejectModalState.request.requestedStatus === 'inactive' ? 'Baja Lógica' : 'Reactivación'}</div>
+                <div><strong>Motivo del Master:</strong> {rejectModalState.request.reason}</div>
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="font-semibold text-foreground">
+                  Motivo del rechazo * <span className="text-muted-foreground font-normal">(mínimo 3 caracteres)</span>
+                </label>
+                <textarea
+                  value={rejectModalState.reviewNotes}
+                  onChange={(e) => setRejectModalState(prev => ({ ...prev, reviewNotes: e.target.value }))}
+                  placeholder="Explica el motivo por el cual se declina esta solicitud..."
+                  rows={3}
+                  className="w-full text-xs p-2 border rounded-md bg-background resize-none focus:outline-none focus:ring-1 focus:ring-primary"
+                  data-testid="textarea-reject-notes"
+                />
+              </div>
+            </div>
+
+            <DialogFooter className="flex items-center justify-end gap-2 pt-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setRejectModalState({ open: false, reviewNotes: '' })}
+                disabled={rejectStatusRequestMutation.isPending}
+              >
+                Cancelar
+              </Button>
+              <Button
+                size="sm"
+                disabled={
+                  rejectStatusRequestMutation.isPending ||
+                  !rejectModalState.reviewNotes ||
+                  rejectModalState.reviewNotes.trim().length < 3
+                }
+                onClick={() => {
+                  rejectStatusRequestMutation.mutate({
+                    id: rejectModalState.request.id,
+                    reviewNotes: rejectModalState.reviewNotes.trim(),
+                  });
+                }}
+                className="bg-rose-600 hover:bg-rose-700 text-white"
+                data-testid="button-confirm-reject-request"
+              >
+                {rejectStatusRequestMutation.isPending ? (
+                  <>
+                    <Loader2 className="w-3.5 h-3.5 mr-1 animate-spin" />
+                    Rechazando...
+                  </>
+                ) : (
+                  "Confirmar Rechazo"
                 )}
               </Button>
             </DialogFooter>

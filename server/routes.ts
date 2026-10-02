@@ -56,6 +56,11 @@ import {
   insertUserRuleAcknowledgmentSchema,
   updateOperationalStatusSchema,
   type UserOperationalStatus,
+  createStatusRequestSchema,
+  approveStatusRequestSchema,
+  rejectStatusRequestSchema,
+  type UserStatusRequestStatus,
+  type UserStatusRequestAction,
 } from "../shared/schema";
 import { commercialConfigService } from "./commercialConfigService";
 
@@ -2662,6 +2667,357 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error: any) {
       console.error("Error toggling user status via delegate:", error);
       return res.status(500).json({ message: error.message || "Failed to toggle user status" });
+    }
+  });
+
+  // ==========================================
+  // MASTER BROKER -> SUPER ADMIN STATUS REQUESTS
+  // ==========================================
+
+  // Master Broker: Crear solicitud de cambio de estado operativo (Baja o Reactivación)
+  app.post('/api/master-broker/status-requests', isAuthenticated, async (req: any, res) => {
+    try {
+      const callerUserId = req.user.claims?.sub || req.user.id;
+      const callerUser = await storage.getUser(callerUserId);
+      if (!callerUser) {
+        return res.status(401).json({ message: "Usuario no autenticado" });
+      }
+
+      if (callerUser.role !== 'master_broker') {
+        return res.status(403).json({ message: "Solo los Master Brokers pueden crear solicitudes de cambio de estado" });
+      }
+
+      const parseResult = createStatusRequestSchema.safeParse(req.body);
+      if (!parseResult.success) {
+        return res.status(400).json({ 
+          message: parseResult.error.errors[0]?.message || "Datos de solicitud inválidos",
+          errors: parseResult.error.errors 
+        });
+      }
+
+      const { targetUserId, requestedStatus, reason, notes } = parseResult.data;
+
+      // Master no puede solicitar sobre sí mismo
+      if (targetUserId === callerUser.id) {
+        return res.status(400).json({ message: "No puedes crear solicitudes sobre tu propia cuenta" });
+      }
+
+      const targetUser = await storage.getUser(targetUserId);
+      if (!targetUser) {
+        return res.status(404).json({ message: "Usuario objetivo no encontrado" });
+      }
+
+      // Target debe ser Broker
+      if (targetUser.role !== 'broker') {
+        return res.status(403).json({ message: "Solo se pueden crear solicitudes para usuarios con rol Broker" });
+      }
+
+      // Target debe pertenecer a su red (masterBrokerId coincide)
+      if (targetUser.masterBrokerId !== callerUser.id) {
+        return res.status(403).json({ message: "Solo puedes crear solicitudes para brokers de tu propia red" });
+      }
+
+      // Estado actual del broker
+      const currentStatus = (targetUser.status as UserOperationalStatus) || (targetUser.isActive ? 'active' : 'inactive');
+
+      // Validar reglas según acción solicitada
+      if (requestedStatus === 'inactive') {
+        if (currentStatus !== 'active' && currentStatus !== 'suspended') {
+          return res.status(400).json({ 
+            message: "Solo se puede solicitar la baja de un broker que esté actualmente activo o suspendido" 
+          });
+        }
+      } else if (requestedStatus === 'active') {
+        if (currentStatus !== 'inactive') {
+          return res.status(400).json({ 
+            message: "Solo se puede solicitar la reactivación de un broker que esté actualmente inactivo" 
+          });
+        }
+      }
+
+      // No permitir solicitudes duplicadas pendientes para mismo requester, target y requestedStatus
+      const hasDuplicate = await storage.hasPendingStatusRequest({
+        requesterId: callerUser.id,
+        targetUserId: targetUser.id,
+        requestedStatus,
+      });
+
+      if (hasDuplicate) {
+        return res.status(409).json({ 
+          message: `Ya existe una solicitud pendiente de ${requestedStatus === 'inactive' ? 'baja' : 'reactivación'} para este broker` 
+        });
+      }
+
+      const newRequest = await storage.createUserStatusRequest({
+        requesterId: callerUser.id,
+        targetUserId: targetUser.id,
+        requestedStatus,
+        reason: reason.trim(),
+        notes: notes?.trim() || undefined,
+      });
+
+      // Trazabilidad de auditoría
+      await storage.createCommercialAuditLog({
+        action: 'create_status_request',
+        entityType: 'user_status_request',
+        entityId: newRequest.id,
+        targetUserId: targetUser.id,
+        performedBy: callerUser.id,
+        notes: `Solicitud de ${requestedStatus === 'inactive' ? 'baja' : 'reactivación'} creada por Master Broker ${callerUser.email} para broker ${targetUser.email}. Motivo: ${reason.trim()}`,
+      });
+
+      // Notificar a administradores
+      try {
+        const allUsers = await storage.getAllUsers();
+        const admins = allUsers.filter(u => u.role === 'admin' || u.role === 'super_admin');
+        const actionLabel = requestedStatus === 'inactive' ? 'baja' : 'reactivación';
+        await Promise.all(admins.map(admin => 
+          storage.createNotification({
+            userId: admin.id,
+            type: 'status_request_created',
+            title: `Nueva solicitud de ${actionLabel} de broker`,
+            message: `El Master Broker ${callerUser.firstName || ''} ${callerUser.lastName || ''} (${callerUser.email}) solicitó la ${actionLabel} del broker ${targetUser.firstName || ''} ${targetUser.lastName || ''} (${targetUser.email}). Motivo: ${reason.trim()}`,
+            relatedEntityType: 'user_status_request',
+            relatedEntityId: newRequest.id,
+          })
+        ));
+      } catch (notifErr) {
+        console.warn('[StatusRequest] Error creating admin notifications:', notifErr);
+      }
+
+      return res.status(201).json(newRequest);
+    } catch (error: any) {
+      console.error("Error creating status request:", error);
+      if (error?.code === '23505' || error?.constraint?.includes('idx_usr_req_unique_pending') || error?.message?.includes('idx_usr_req_unique_pending')) {
+        return res.status(409).json({ 
+          message: "Ya existe una solicitud pendiente con el mismo estado para este broker (carrera concurrente prevenida)." 
+        });
+      }
+      return res.status(500).json({ message: error.message || "Error al crear solicitud de estado" });
+    }
+  });
+
+  // Master Broker: Listar solicitudes de su autoría
+  app.get('/api/master-broker/status-requests', isAuthenticated, async (req: any, res) => {
+    try {
+      const callerUserId = req.user.claims?.sub || req.user.id;
+      const callerUser = await storage.getUser(callerUserId);
+      if (!callerUser) {
+        return res.status(401).json({ message: "Usuario no autenticado" });
+      }
+
+      if (callerUser.role !== 'master_broker') {
+        return res.status(403).json({ message: "Acceso denegado" });
+      }
+
+      const requests = await storage.getUserStatusRequests({ requesterId: callerUser.id });
+      return res.json(requests);
+    } catch (error: any) {
+      console.error("Error fetching master broker status requests:", error);
+      return res.status(500).json({ message: error.message || "Error al consultar solicitudes" });
+    }
+  });
+
+  // Super Admin / Admin: Listar solicitudes de estado
+  app.get('/api/admin/status-requests', isAuthenticated, async (req: any, res) => {
+    try {
+      const callerUserId = req.user.claims?.sub || req.user.id;
+      const callerUser = await storage.getUser(callerUserId);
+      if (!callerUser) {
+        return res.status(401).json({ message: "Usuario no autenticado" });
+      }
+
+      if (callerUser.role !== 'super_admin') {
+        return res.status(403).json({ message: "Se requieren privilegios de Super Administrador" });
+      }
+
+      const statusFilter = req.query.status as UserStatusRequestStatus | undefined;
+      const requests = await storage.getUserStatusRequests({ status: statusFilter });
+      return res.json(requests);
+    } catch (error: any) {
+      console.error("Error fetching admin status requests:", error);
+      return res.status(500).json({ message: error.message || "Error al consultar solicitudes de estado" });
+    }
+  });
+
+  // Super Admin / Admin: Aprobar solicitud de estado
+  app.post('/api/admin/status-requests/:id/approve', isAuthenticated, async (req: any, res) => {
+    try {
+      const callerUserId = req.user.claims?.sub || req.user.id;
+      const callerUser = await storage.getUser(callerUserId);
+      if (!callerUser) {
+        return res.status(401).json({ message: "Usuario no autenticado" });
+      }
+
+      if (callerUser.role !== 'super_admin') {
+        return res.status(403).json({ message: "Se requieren privilegios de Super Administrador" });
+      }
+
+      const parseResult = approveStatusRequestSchema.safeParse(req.body);
+      if (!parseResult.success) {
+        return res.status(400).json({ message: parseResult.error.errors[0]?.message || "Datos inválidos" });
+      }
+      const { reviewNotes } = parseResult.data;
+
+      const statusRequest = await storage.getUserStatusRequest(req.params.id);
+      if (!statusRequest) {
+        return res.status(404).json({ message: "Solicitud no encontrada" });
+      }
+
+      if (statusRequest.status !== 'pending') {
+        return res.status(400).json({ 
+          message: `La solicitud ya fue resuelta previamente (estado actual: ${statusRequest.status})` 
+        });
+      }
+
+      const targetUser = await storage.getUser(statusRequest.targetUserId);
+      if (!targetUser) {
+        return res.status(404).json({ message: "Usuario objetivo no encontrado" });
+      }
+
+      // Validar si la solicitud es obsoleta respecto al estado actual del broker
+      const currentStatus = (targetUser.status as UserOperationalStatus) || (targetUser.isActive ? 'active' : 'inactive');
+
+      if (statusRequest.requestedStatus === 'inactive' && currentStatus === 'inactive') {
+        return res.status(400).json({ 
+          message: "La solicitud es obsoleta: el usuario ya se encuentra inactivo." 
+        });
+      }
+
+      if (statusRequest.requestedStatus === 'active' && currentStatus === 'active') {
+        return res.status(400).json({ 
+          message: "La solicitud es obsoleta: el usuario ya se encuentra activo." 
+        });
+      }
+
+      // Ejecutar cambio operativo real reutilizando la lógica central (mantiene canOriginate, sincroniza isActive, etc.)
+      const updatedUser = await storage.updateUserOperationalStatus({
+        userId: targetUser.id,
+        targetStatus: statusRequest.requestedStatus as UserOperationalStatus,
+        changedBy: callerUserId,
+        reason: `Aprobación de solicitud ${statusRequest.id}: ${statusRequest.reason}`,
+        notes: reviewNotes?.trim() || statusRequest.notes || undefined,
+      });
+
+      // Marcar solicitud como aprobada
+      const resolvedRequest = await storage.resolveUserStatusRequest({
+        requestId: statusRequest.id,
+        resolution: 'approved',
+        reviewedBy: callerUserId,
+        reviewNotes: reviewNotes?.trim() || undefined,
+      });
+
+      // Trazabilidad de aprobación
+      await storage.createCommercialAuditLog({
+        action: 'approve_status_request',
+        entityType: 'user_status_request',
+        entityId: statusRequest.id,
+        targetUserId: targetUser.id,
+        performedBy: callerUserId,
+        notes: `Solicitud ${statusRequest.id} aprobada por ${callerUser.email}. Estado de ${targetUser.email} actualizado a ${statusRequest.requestedStatus}.`,
+      });
+
+      // Notificar al Master Broker solicitante
+      try {
+        const actionLabel = statusRequest.requestedStatus === 'inactive' ? 'baja' : 'reactivación';
+        await storage.createNotification({
+          userId: statusRequest.requesterId,
+          type: 'status_request_approved',
+          title: `Solicitud de ${actionLabel} aprobada`,
+          message: `Tu solicitud de ${actionLabel} para el broker ${targetUser.firstName || ''} ${targetUser.lastName || ''} (${targetUser.email}) ha sido aprobada.`,
+          relatedEntityType: 'user_status_request',
+          relatedEntityId: statusRequest.id,
+        });
+      } catch (notifErr) {
+        console.warn('[StatusRequest] Error notifying requester on approval:', notifErr);
+      }
+
+      return res.json({
+        message: "Solicitud aprobada y estado operativo actualizado exitosamente",
+        request: resolvedRequest,
+        user: updatedUser,
+      });
+    } catch (error: any) {
+      console.error("Error approving status request:", error);
+      return res.status(500).json({ message: error.message || "Error al aprobar la solicitud" });
+    }
+  });
+
+  // Super Admin / Admin: Rechazar solicitud de estado
+  app.post('/api/admin/status-requests/:id/reject', isAuthenticated, async (req: any, res) => {
+    try {
+      const callerUserId = req.user.claims?.sub || req.user.id;
+      const callerUser = await storage.getUser(callerUserId);
+      if (!callerUser) {
+        return res.status(401).json({ message: "Usuario no autenticado" });
+      }
+
+      if (callerUser.role !== 'super_admin') {
+        return res.status(403).json({ message: "Se requieren privilegios de Super Administrador" });
+      }
+
+      const parseResult = rejectStatusRequestSchema.safeParse(req.body);
+      if (!parseResult.success) {
+        return res.status(400).json({ 
+          message: parseResult.error.errors[0]?.message || "El motivo del rechazo es obligatorio (mínimo 3 caracteres)",
+          errors: parseResult.error.errors 
+        });
+      }
+      const { reviewNotes } = parseResult.data;
+
+      const statusRequest = await storage.getUserStatusRequest(req.params.id);
+      if (!statusRequest) {
+        return res.status(404).json({ message: "Solicitud no encontrada" });
+      }
+
+      if (statusRequest.status !== 'pending') {
+        return res.status(400).json({ 
+          message: `La solicitud ya fue resuelta previamente (estado actual: ${statusRequest.status})` 
+        });
+      }
+
+      const targetUser = await storage.getUser(statusRequest.targetUserId);
+
+      // Al RECHAZAR: NO cambiar el estado del usuario objetivo
+      const resolvedRequest = await storage.resolveUserStatusRequest({
+        requestId: statusRequest.id,
+        resolution: 'rejected',
+        reviewedBy: callerUserId,
+        reviewNotes: reviewNotes.trim(),
+      });
+
+      // Trazabilidad de rechazo
+      await storage.createCommercialAuditLog({
+        action: 'reject_status_request',
+        entityType: 'user_status_request',
+        entityId: statusRequest.id,
+        targetUserId: statusRequest.targetUserId,
+        performedBy: callerUserId,
+        notes: `Solicitud ${statusRequest.id} rechazada por ${callerUser.email}. Motivo: ${reviewNotes.trim()}`,
+      });
+
+      // Notificar al Master Broker solicitante
+      try {
+        const actionLabel = statusRequest.requestedStatus === 'inactive' ? 'baja' : 'reactivación';
+        await storage.createNotification({
+          userId: statusRequest.requesterId,
+          type: 'status_request_rejected',
+          title: `Solicitud de ${actionLabel} rechazada`,
+          message: `Tu solicitud de ${actionLabel} para el broker ${targetUser ? `${targetUser.firstName || ''} ${targetUser.lastName || ''} (${targetUser.email})` : statusRequest.targetUserId} ha sido rechazada. Motivo: ${reviewNotes.trim()}`,
+          relatedEntityType: 'user_status_request',
+          relatedEntityId: statusRequest.id,
+        });
+      } catch (notifErr) {
+        console.warn('[StatusRequest] Error notifying requester on rejection:', notifErr);
+      }
+
+      return res.json({
+        message: "Solicitud rechazada exitosamente",
+        request: resolvedRequest,
+      });
+    } catch (error: any) {
+      console.error("Error rejecting status request:", error);
+      return res.status(500).json({ message: error.message || "Error al rechazar la solicitud" });
     }
   });
 
