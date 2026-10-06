@@ -1482,5 +1482,57 @@ export type CommercialConfigAuditLog = typeof commercialConfigAuditLogs.$inferSe
 export type InsertCommercialConfigAuditLog = z.infer<typeof insertCommercialConfigAuditLogSchema>;
 export type UpdateCommercialRulesConfig = z.infer<typeof updateCommercialRulesConfigSchema>;
 
+// ==========================================
+// LEGAL VERSIONS & ACCEPTANCES (BLOQUE 2)
+// ==========================================
+
+export const legalDocumentVersions = pgTable("legal_document_versions", {
+  id: varchar("id").primaryKey(), // e.g. "terminos:1.0", "aviso:1.0"
+  document: varchar("document", { length: 64 }).notNull(),
+  title: varchar("title", { length: 255 }).notNull(),
+  version: varchar("version", { length: 32 }).notNull(),
+  sourceFile: varchar("source_file", { length: 255 }).notNull(),
+  content: text("content").notNull(),
+  contentSha256: varchar("content_sha256", { length: 64 }).notNull(),
+  effectiveAt: timestamp("effective_at"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const legalAcceptances = pgTable(
+  "legal_acceptances",
+  {
+    id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+    userId: varchar("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    userEmail: varchar("user_email").notNull(),
+    documentId: varchar("document_id")
+      .notNull()
+      .references(() => legalDocumentVersions.id),
+    document: varchar("document", { length: 64 }).notNull(),
+    version: varchar("version", { length: 32 }).notNull(),
+    contentSha256: varchar("content_sha256", { length: 64 }).notNull(),
+    acceptanceType: varchar("acceptance_type", { length: 64 }).notNull(), // "accept_terms" | "acknowledge_privacy"
+    ipAddress: varchar("ip_address", { length: 128 }).notNull(),
+    userAgent: text("user_agent").notNull(),
+    acceptedAt: timestamp("accepted_at").defaultNow().notNull(),
+  },
+  (table) => [
+    index("idx_legal_acceptances_user_id").on(table.userId),
+    index("idx_legal_acceptances_document_id").on(table.documentId),
+  ],
+);
+
+export const insertLegalDocumentVersionSchema = createInsertSchema(legalDocumentVersions);
+export const insertLegalAcceptanceSchema = createInsertSchema(legalAcceptances).omit({
+  id: true,
+  acceptedAt: true,
+});
+
+export type LegalDocumentVersionDb = typeof legalDocumentVersions.$inferSelect;
+export type InsertLegalDocumentVersionDb = typeof legalDocumentVersions.$inferInsert;
+export type LegalAcceptance = typeof legalAcceptances.$inferSelect;
+export type InsertLegalAcceptance = typeof legalAcceptances.$inferInsert;
+
 
 

@@ -1,5 +1,5 @@
 // @ts-nocheck
-import { randomUUID } from "crypto";
+import { randomUUID, createHash } from "crypto";
 import {
   users,
   clients,
@@ -62,8 +62,15 @@ import {
   userStatusRequests,
   type UserStatusRequest,
   type UserStatusRequestStatus,
-  type UserStatusRequestAction
+  type UserStatusRequestAction,
+  legalDocumentVersions,
+  legalAcceptances,
+  type LegalDocumentVersionDb,
+  type LegalAcceptance,
+  type InsertLegalAcceptance,
 } from "../shared/schema";
+import catalog from "./legalDocumentCatalog.json";
+import { getApprovedLegalDocument } from "./legalDocuments";
 
 
 type NotificationInput = InsertNotification & {
@@ -73,6 +80,40 @@ type NotificationInput = InsertNotification & {
 };
 
 export interface IStorage {
+  // Legal operations (Bloque 2)
+  getLegalDocumentVersions(): Promise<LegalDocumentVersionDb[]>;
+  getLegalDocumentVersion(id: string): Promise<LegalDocumentVersionDb | undefined>;
+  getLegalAcceptancesByUser(userId: string): Promise<LegalAcceptance[]>;
+  getAllLegalAcceptances(): Promise<LegalAcceptance[]>;
+  registerUserWithLegalEvidence(params: {
+    userData: {
+      email: string;
+      password: string;
+      firstName: string;
+      lastName: string;
+      authMethod: string;
+      role: string;
+      masterBrokerId?: string;
+      referralCode?: string;
+    };
+    evidence: {
+      ipAddress: string;
+      userAgent: string;
+      termsDoc: {
+        id: string;
+        document: string;
+        version: string;
+        contentSha256: string;
+      };
+      privacyDoc: {
+        id: string;
+        document: string;
+        version: string;
+        contentSha256: string;
+      };
+    };
+  }): Promise<{ user: User; acceptances: LegalAcceptance[] }>;
+
   // Bank analysis report operations
   createBankAnalysisReport(report: InsertBankAnalysisReport): Promise<BankAnalysisReport>;
   getBankAnalysisReportById(id: string): Promise<BankAnalysisReport | undefined>;
@@ -374,11 +415,34 @@ export class MemStorage implements IStorage {
   }
   private creditSubmissionRequests: Map<string, CreditSubmissionRequest> = new Map();
   private creditSubmissionTargets: Map<string, CreditSubmissionTarget> = new Map();
+  private legalDocumentVersions: Map<string, LegalDocumentVersionDb> = new Map();
+  private legalAcceptances: Map<string, LegalAcceptance> = new Map();
 
   constructor() {
     this.seedData();
     this.migrateExistingData();
+    this.seedLegalDocumentVersions();
   }
+
+  private seedLegalDocumentVersions(): void {
+    for (const entry of catalog) {
+      if (this.legalDocumentVersions.has(entry.id)) {
+        continue;
+      }
+      this.legalDocumentVersions.set(entry.id, structuredClone({
+        id: entry.id,
+        document: entry.document,
+        title: entry.title,
+        version: entry.version,
+        sourceFile: entry.sourceFile,
+        content: entry.content,
+        contentSha256: entry.contentSha256,
+        effectiveAt: entry.effectiveAt ? new Date(entry.effectiveAt) : null,
+        createdAt: new Date(),
+      }));
+    }
+  }
+
 
   private createSeedFinancialInstitution(data: Partial<FinancialInstitution> & Pick<FinancialInstitution, "id" | "name">): FinancialInstitution {
     return {
@@ -1362,6 +1426,177 @@ export class MemStorage implements IStorage {
     this.users.set(id, user);
     return user;
   }
+
+  async getLegalDocumentVersions(): Promise<LegalDocumentVersionDb[]> {
+    return Array.from(this.legalDocumentVersions.values()).map((v) => structuredClone(v));
+  }
+
+  async getLegalDocumentVersion(id: string): Promise<LegalDocumentVersionDb | undefined> {
+    const doc = this.legalDocumentVersions.get(id);
+    return doc ? structuredClone(doc) : undefined;
+  }
+
+  async getLegalAcceptancesByUser(userId: string): Promise<LegalAcceptance[]> {
+    return Array.from(this.legalAcceptances.values())
+      .filter((a) => a.userId === userId)
+      .sort((a, b) => new Date(b.acceptedAt).getTime() - new Date(a.acceptedAt).getTime())
+      .map((a) => structuredClone(a));
+  }
+
+  async getAllLegalAcceptances(): Promise<LegalAcceptance[]> {
+    return Array.from(this.legalAcceptances.values())
+      .sort((a, b) => new Date(b.acceptedAt).getTime() - new Date(a.acceptedAt).getTime())
+      .map((a) => structuredClone(a));
+  }
+
+  async registerUserWithLegalEvidence(params: {
+    userData: {
+      email: string;
+      password: string;
+      firstName: string;
+      lastName: string;
+      authMethod: string;
+      role: string;
+      masterBrokerId?: string;
+      referralCode?: string;
+    };
+    evidence: {
+      ipAddress: string;
+      userAgent: string;
+      termsDoc: {
+        id: string;
+        document: string;
+        version: string;
+        contentSha256: string;
+      };
+      privacyDoc: {
+        id: string;
+        document: string;
+        version: string;
+        contentSha256: string;
+      };
+    };
+  }): Promise<{ user: User; acceptances: LegalAcceptance[] }> {
+    // 1. Validate against approved catalog
+    const catalogTerms = getApprovedLegalDocument(params.evidence.termsDoc.document, params.evidence.termsDoc.version);
+    if (!catalogTerms) {
+      throw new Error(`La versión de Términos (${params.evidence.termsDoc.version}) no está aprobada en el catálogo.`);
+    }
+    if (catalogTerms.contentSha256 !== params.evidence.termsDoc.contentSha256) {
+      throw new Error("Discrepancia en el hash de los Términos y Condiciones.");
+    }
+
+    const catalogPrivacy = getApprovedLegalDocument(params.evidence.privacyDoc.document, params.evidence.privacyDoc.version);
+    if (!catalogPrivacy) {
+      throw new Error(`La versión del Aviso de Privacidad (${params.evidence.privacyDoc.version}) no está aprobada en el catálogo.`);
+    }
+    if (catalogPrivacy.contentSha256 !== params.evidence.privacyDoc.contentSha256) {
+      throw new Error("Discrepancia en el hash del Aviso de Privacidad.");
+    }
+
+    // 2. Verify persisted versions match catalog and hashes
+    const persistedTerms = this.legalDocumentVersions.get(params.evidence.termsDoc.id);
+    if (!persistedTerms) {
+      throw new Error(`La versión de Términos (${params.evidence.termsDoc.id}) no se encuentra persistida.`);
+    }
+    if (
+      persistedTerms.contentSha256 !== catalogTerms.contentSha256 ||
+      persistedTerms.document !== catalogTerms.document ||
+      persistedTerms.version !== catalogTerms.version
+    ) {
+      throw new Error("Discrepancia detectada entre Términos persistidos y catálogo aprobado.");
+    }
+    const termsHash = createHash("sha256").update(persistedTerms.content, "utf8").digest("hex");
+    if (termsHash !== catalogTerms.contentSha256) {
+      throw new Error("Discrepancia en la integridad del contenido persistido de Términos.");
+    }
+
+    const persistedPrivacy = this.legalDocumentVersions.get(params.evidence.privacyDoc.id);
+    if (!persistedPrivacy) {
+      throw new Error(`La versión del Aviso (${params.evidence.privacyDoc.id}) no se encuentra persistida.`);
+    }
+    if (
+      persistedPrivacy.contentSha256 !== catalogPrivacy.contentSha256 ||
+      persistedPrivacy.document !== catalogPrivacy.document ||
+      persistedPrivacy.version !== catalogPrivacy.version
+    ) {
+      throw new Error("Discrepancia detectada entre Aviso persistido y catálogo aprobado.");
+    }
+    const privacyHash = createHash("sha256").update(persistedPrivacy.content, "utf8").digest("hex");
+    if (privacyHash !== catalogPrivacy.contentSha256) {
+      throw new Error("Discrepancia en la integridad del contenido persistido de Aviso.");
+    }
+
+    // 3. Check duplicate email
+    const existing = await this.getUserByEmail(params.userData.email);
+    if (existing) {
+      throw new Error("Este email ya está registrado");
+    }
+
+    const id = randomUUID();
+    const now = new Date();
+    const user: User = {
+      id,
+      email: params.userData.email,
+      password: params.userData.password,
+      authMethod: params.userData.authMethod || "local",
+      firstName: params.userData.firstName,
+      lastName: params.userData.lastName,
+      role: params.userData.role || "broker",
+      profileImageUrl: null,
+      masterBrokerId: params.userData.masterBrokerId || null,
+      referralCode: params.userData.referralCode || null,
+      customLogo: null,
+      brandName: null,
+      primaryColor: null,
+      secondaryColor: null,
+      isWhiteLabel: false,
+      autoRegisterBrokers: false,
+      profileType: null,
+      profileData: {},
+      isActive: true,
+      createdAt: now,
+      updatedAt: now,
+    };
+
+    const termsAcceptance: LegalAcceptance = {
+      id: randomUUID(),
+      userId: user.id,
+      userEmail: user.email!,
+      documentId: params.evidence.termsDoc.id,
+      document: params.evidence.termsDoc.document,
+      version: params.evidence.termsDoc.version,
+      contentSha256: params.evidence.termsDoc.contentSha256,
+      acceptanceType: "accept_terms",
+      ipAddress: params.evidence.ipAddress,
+      userAgent: params.evidence.userAgent,
+      acceptedAt: now,
+    };
+
+    const privacyAcceptance: LegalAcceptance = {
+      id: randomUUID(),
+      userId: user.id,
+      userEmail: user.email!,
+      documentId: params.evidence.privacyDoc.id,
+      document: params.evidence.privacyDoc.document,
+      version: params.evidence.privacyDoc.version,
+      contentSha256: params.evidence.privacyDoc.contentSha256,
+      acceptanceType: "acknowledge_privacy",
+      ipAddress: params.evidence.ipAddress,
+      userAgent: params.evidence.userAgent,
+      acceptedAt: now,
+    };
+
+    this.users.set(id, structuredClone(user));
+    this.legalAcceptances.set(termsAcceptance.id, structuredClone(termsAcceptance));
+    this.legalAcceptances.set(privacyAcceptance.id, structuredClone(privacyAcceptance));
+
+    return {
+      user: structuredClone(user),
+      acceptances: [structuredClone(termsAcceptance), structuredClone(privacyAcceptance)],
+    };
+  }
+
 
   async updateUser(id: string, userData: Partial<UpsertUser>): Promise<User | undefined> {
     const existing = this.users.get(id);

@@ -1,0 +1,131 @@
+{
+  "backendUrl": "https://creditonegocios-staging.up.railway.app",
+  "httpResults": [
+    {
+      "case": "4a_Sin_Terminos",
+      "email": "test-no-terms-1791329193299@creditonegocios-test.internal",
+      "expectedStatus": 400,
+      "receivedStatus": 400,
+      "response": {
+        "message": "Debes aceptar los Términos y Condiciones para continuar."
+      },
+      "setCookie": "none"
+    },
+    {
+      "case": "4b_Sin_Aviso",
+      "email": "test-no-privacy-1791329193299@creditonegocios-test.internal",
+      "expectedStatus": 400,
+      "receivedStatus": 400,
+      "response": {
+        "message": "Debes confirmar que has leído el Aviso de Privacidad para continuar."
+      },
+      "setCookie": "none"
+    },
+    {
+      "case": "4c_Terminos_Desactualizados",
+      "email": "test-outdated-terms-1791329193299@creditonegocios-test.internal",
+      "expectedStatus": 400,
+      "receivedStatus": 400,
+      "response": {
+        "message": "La versión de Términos y Condiciones no está vigente o está desactualizada (vigente: 1.0)."
+      },
+      "setCookie": "none"
+    },
+    {
+      "case": "4d_Aviso_Desactualizado",
+      "email": "test-outdated-privacy-1791329193299@creditonegocios-test.internal",
+      "expectedStatus": 400,
+      "receivedStatus": 400,
+      "response": {
+        "message": "La versión del Aviso de Privacidad no está vigente o está desactualizada (vigente: 1.0)."
+      },
+      "setCookie": "none"
+    },
+    {
+      "case": "4e_Registro_Valido",
+      "email": "test-valid-reg-1791329193299@creditonegocios-test.internal",
+      "expectedStatus": 201,
+      "receivedStatus": 201,
+      "response": {
+        "message": "Registro exitoso",
+        "user": {
+          "id": "d231a889-c4a6-4996-8dad-6c5f8b935b82",
+          "email": "test-valid-reg-1791329193299@creditonegocios-test.internal",
+          "firstName": "Test",
+          "lastName": "Valido Bloque 2",
+          "role": "broker"
+        }
+      },
+      "setCookie": "present"
+    }
+  ],
+  "dbResults": {
+    "rejectedUsersCount": 0,
+    "rejectedAcceptancesCount": 0,
+    "validUserFound": true,
+    "validAcceptancesCount": 2,
+    "validAcceptancesDetails": [
+      {
+        "id": "be0504e8-f9fb-4b1e-ad04-e5bf418408e5",
+        "user_id": "d231a889-c4a6-4996-8dad-6c5f8b935b82",
+        "user_email": "test-valid-reg-1791329193299@creditonegocios-test.internal",
+        "document": "aviso",
+        "document_id": "aviso:1.0",
+        "version": "1.0",
+        "content_sha256": "66b082fab14d3aded2362796ded41f88b6ee71e2452208f024c48e16f1416efd",
+        "acceptance_type": "acknowledge_privacy",
+        "ip_address": "169.150.224.129",
+        "user_agent": "IntegrationTest/Bloque2",
+        "accepted_at": "2026-10-06T23:26:33.844Z"
+      },
+      {
+        "id": "2ee3193a-d0ab-4f7e-a449-36d5ab8534bd",
+        "user_id": "d231a889-c4a6-4996-8dad-6c5f8b935b82",
+        "user_email": "test-valid-reg-1791329193299@creditonegocios-test.internal",
+        "document": "terminos",
+        "document_id": "terminos:1.0",
+        "version": "1.0",
+        "content_sha256": "e2ec998a066e702a43ee0f69dbadce692a5dac6171774254664d372423f1f2eb",
+        "acceptance_type": "accept_terms",
+        "ip_address": "169.150.224.129",
+        "user_agent": "IntegrationTest/Bloque2",
+        "accepted_at": "2026-10-06T23:26:33.844Z"
+      }
+    ]
+  },
+  "historyVerification": {
+    "status": 200,
+    "count": 2,
+    "records": [
+      {
+        "id": "2ee3193a-d0ab-4f7e-a449-36d5ab8534bd",
+        "userId": "d231a889-c4a6-4996-8dad-6c5f8b935b82",
+        "userEmail": "test-valid-reg-1791329193299@creditonegocios-test.internal",
+        "documentId": "terminos:1.0",
+        "document": "terminos",
+        "version": "1.0",
+        "contentSha256": "e2ec998a066e702a43ee0f69dbadce692a5dac6171774254664d372423f1f2eb",
+        "acceptanceType": "accept_terms",
+        "ipAddress": "169.150.224.129",
+        "userAgent": "IntegrationTest/Bloque2",
+        "acceptedAt": "2026-10-06T23:26:33.844Z"
+      },
+      {
+        "id": "be0504e8-f9fb-4b1e-ad04-e5bf418408e5",
+        "userId": "d231a889-c4a6-4996-8dad-6c5f8b935b82",
+        "userEmail": "test-valid-reg-1791329193299@creditonegocios-test.internal",
+        "documentId": "aviso:1.0",
+        "document": "aviso",
+        "version": "1.0",
+        "contentSha256": "66b082fab14d3aded2362796ded41f88b6ee71e2452208f024c48e16f1416efd",
+        "acceptanceType": "acknowledge_privacy",
+        "ipAddress": "169.150.224.129",
+        "userAgent": "IntegrationTest/Bloque2",
+        "acceptedAt": "2026-10-06T23:26:33.844Z"
+      }
+    ]
+  },
+  "timestampAlignment": {
+    "verifiedUtcExactMatch": true
+  }
+}

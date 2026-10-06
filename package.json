@@ -36,6 +36,8 @@
     "import:financieras:ficha:staging": "node scripts/convert-ficha-to-financieras.cjs && node scripts/staging-import-financieras.cjs --file scripts/financieras-from-ficha.xlsx --sheet Financieras",
     "validate:staging": "powershell -ExecutionPolicy Bypass -File scripts/run-staging-validation.ps1",
     "validate:staging:quick": "powershell -ExecutionPolicy Bypass -File scripts/run-staging-validation.ps1 -SkipBackendPreflight -SkipDbCompare -SkipMigrationPreflight -ExtendedSmoke",
+    "verify:staging:legal:sql": "node scripts/verify-staging-legal-sql.cjs",
+    "verify:staging:legal:endpoints": "node scripts/verify-staging-register-endpoints.cjs",
     "preflight:backend": "node scripts/preflight-env.cjs backend",
     "preflight:frontend": "node scripts/preflight-env.cjs frontend",
     "preflight:migration": "node scripts/preflight-env.cjs migration"

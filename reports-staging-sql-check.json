@@ -1,0 +1,79 @@
+{
+  "tables": [
+    "legal_acceptances",
+    "legal_document_versions"
+  ],
+  "catalogCheck": [
+    {
+      "id": "convenio:1.0",
+      "document": "convenio",
+      "version": "1.0",
+      "title": "Convenio de Colaboración",
+      "contentSha256": "8da70ad24e725d7d9e1a15dee77b6058f6e2a41ea6fe996ab3d3e1cf6400824a",
+      "hashMatchDb": true,
+      "hashMatchCatalog": true,
+      "contentLength": 12282,
+      "status": "VERIFIED_MATCH"
+    },
+    {
+      "id": "reglas-red:1.0",
+      "document": "reglas-red",
+      "version": "1.0",
+      "title": "Reglas de la Red",
+      "contentSha256": "0b63f36bbefc7e94cb35be0fd98816c4773f1409b576b83769cebdd5f879014c",
+      "hashMatchDb": true,
+      "hashMatchCatalog": true,
+      "contentLength": 4335,
+      "status": "VERIFIED_MATCH"
+    },
+    {
+      "id": "reglas-master:1.0",
+      "document": "reglas-master",
+      "version": "1.0",
+      "title": "Reglas Master Broker",
+      "contentSha256": "d7f3aca19b76f7b551a2a3f6df623bd9f236513a15c8410be4d9eaea4cc56760",
+      "hashMatchDb": true,
+      "hashMatchCatalog": true,
+      "contentLength": 3895,
+      "status": "VERIFIED_MATCH"
+    },
+    {
+      "id": "terminos:1.0",
+      "document": "terminos",
+      "version": "1.0",
+      "title": "Términos y Condiciones",
+      "contentSha256": "e2ec998a066e702a43ee0f69dbadce692a5dac6171774254664d372423f1f2eb",
+      "hashMatchDb": true,
+      "hashMatchCatalog": true,
+      "contentLength": 10807,
+      "status": "VERIFIED_MATCH"
+    },
+    {
+      "id": "aviso:1.0",
+      "document": "aviso",
+      "version": "1.0",
+      "title": "Aviso de Privacidad Integral",
+      "contentSha256": "66b082fab14d3aded2362796ded41f88b6ee71e2452208f024c48e16f1416efd",
+      "hashMatchDb": true,
+      "hashMatchCatalog": true,
+      "contentLength": 10989,
+      "status": "VERIFIED_MATCH"
+    }
+  ],
+  "triggerProtection": {
+    "docVersionUpdateBlocked": true,
+    "docVersionUpdateMessage": "Legal document versions are immutable and cannot be updated or deleted.",
+    "docVersionDeleteBlocked": true,
+    "docVersionDeleteMessage": "Legal document versions are immutable and cannot be updated or deleted.",
+    "acceptanceUpdateBlocked": true,
+    "acceptanceUpdateMessage": "Legal acceptances are immutable audit records and cannot be updated or deleted.",
+    "acceptanceDeleteBlocked": true,
+    "acceptanceDeleteMessage": "Legal acceptances are immutable audit records and cannot be updated or deleted."
+  },
+  "rollbackVerification": {
+    "rollbackTriggered": true,
+    "userPersisted": false,
+    "firstAcceptancePersisted": false,
+    "cleanStateVerified": true
+  }
+}

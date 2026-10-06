@@ -13,7 +13,7 @@ if (process.env.NODE_ENV === "production" && !process.env.SESSION_SECRET) {
 export function getSession() {
   const sessionTtl = 7 * 24 * 60 * 60 * 1000; // 1 week
   const dbUrl = process.env.DATABASE_URL ?? "";
-  const useMemoryStorage = process.env.USE_MEMORY_STORAGE === "true";
+  const useMemoryStorage = process.env.USE_MEMORY_STORAGE === "true" || process.env.NODE_ENV === "test";
   const usesSupabaseDirectIpv6Host = dbUrl.includes("supabase.co") && dbUrl.includes(":5432");
   const forceMemoryStore = process.env.SESSION_STORE === "memory";
   const runningOnRailway = !!process.env.RAILWAY_ENVIRONMENT_NAME;
