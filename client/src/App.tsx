@@ -11,6 +11,7 @@ import { isUnauthorizedError } from "@/lib/authUtils";
 import { getAppBaseUrl } from "@/lib/runtimeConfig";
 import NotFound from "@/pages/not-found";
 import Landing from "@/pages/Landing";
+import LegalDocumentPage from "@/pages/LegalDocumentPage";
 import BrokersLanding from "@/pages/BrokersLanding";
 import ResetPassword from "@/pages/ResetPassword";
 import Dashboard from "@/pages/Dashboard";
@@ -65,6 +66,8 @@ function Router() {
 
   return (
     <Switch>
+      <Route path="/legal/terminos"><LegalDocumentPage document="terminos" /></Route>
+      <Route path="/legal/aviso"><LegalDocumentPage document="aviso" /></Route>
       {/* Reset password route - accessible without auth */}
       <Route path="/reset-password" component={ResetPassword} />
       {/* Design preview - accessible only in development for testing */}
