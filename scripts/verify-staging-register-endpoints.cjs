@@ -1,27 +1,51 @@
 /**
  * Reproducible test script for direct staging endpoint verification (Bloque 2)
  *
- * Verifies:
- * 1. Rejection (400) without acceptTerms
- * 2. Rejection (400) without acknowledgePrivacy
- * 3. Rejection (400) with outdated/invalid termsVersion
- * 4. Rejection (400) with outdated/invalid privacyVersion
- * 5. Successful registration (201) when both valid confirmations and versions are sent
- * 6. DB checks in staging: no users or acceptances created for rejected attempts, exactly 2 acceptances created for valid user
- * 7. Query legal acceptance history via authenticated session (/api/legal/my-acceptances)
+ * Requirements:
+ * 1. Requires STAGING_DATABASE_URL without defaults or hardcoded credentials.
+ * 2. Rejection tests (400) without acceptTerms, without acknowledgePrivacy, and with outdated versions.
+ * 3. Successful registration (201) when both valid confirmations and versions are sent.
+ * 4. DB check: no users or acceptances created for rejected attempts, exactly 2 acceptances created for valid user.
+ * 5. Query legal acceptance history via authenticated session (/api/legal/my-acceptances).
+ * 6. Reads accepted_at in UTC and verifies that SQL and history API represent the exact same instant.
+ * 7. Does not alter or rewrite existing acceptances.
  */
 
-const { Client } = require('pg');
+const { Client, types } = require('pg');
 const fs = require('fs');
 const path = require('path');
 
+// Configurar parser de timestamp without time zone (OID 1114) para lectura alineada en UTC
+types.setTypeParser(1114, (str) => {
+  return str.replace(' ', 'T') + 'Z';
+});
+
+function getStagingDatabaseUrl() {
+  let url = process.env.STAGING_DATABASE_URL;
+  if (!url) {
+    const envLocalPath = path.resolve(__dirname, '../.env.staging.local');
+    if (fs.existsSync(envLocalPath)) {
+      const content = fs.readFileSync(envLocalPath, 'utf8');
+      const match = content.match(/^\s*STAGING_DATABASE_URL\s*=\s*(.+)$/m);
+      if (match) {
+        url = match[1].trim().replace(/^['"]|['"]$/g, '');
+      }
+    }
+  }
+
+  if (!url) {
+    throw new Error('La variable de entorno STAGING_DATABASE_URL es requerida. No se permiten valores predeterminados ni credenciales incrustadas.');
+  }
+
+  return url;
+}
+
 const BACKEND_URL = process.env.BACKEND_URL || 'https://creditonegocios-staging.up.railway.app';
-const DATABASE_URL = process.env.DATABASE_URL ||
-  'postgresql://postgres:neMoZUFoyWnqqzIrxdLIiUGOKamDllJa@trolley.proxy.rlwy.net:43850/railway';
 
 async function run() {
   console.log(`--- Iniciando Pruebas de Endpoints en Staging (${BACKEND_URL}) ---`);
 
+  const databaseUrl = getStagingDatabaseUrl();
   const timestamp = Date.now();
   const testCases = [
     {
@@ -124,7 +148,6 @@ async function run() {
       throw new Error(`Caso ${tc.name} falló: esperado HTTP ${tc.expectedStatus}, recibido ${status}`);
     }
 
-    // Guardar cookies si es registro válido para consultar sesión posterior
     const setCookie = res.headers.get('set-cookie');
 
     httpResults.push({
@@ -138,9 +161,9 @@ async function run() {
   }
 
   // Comprobar DB
-  console.log('\n--- Verificando Persistencia en PostgreSQL Staging ---');
+  console.log('\n--- Verificando Persistencia en PostgreSQL Staging (sin secretos en log) ---');
   const client = new Client({
-    connectionString: DATABASE_URL,
+    connectionString: databaseUrl,
     ssl: { rejectUnauthorized: false }
   });
   await client.connect();
@@ -155,6 +178,8 @@ async function run() {
     validAcceptancesCount: 0,
     validAcceptancesDetails: []
   };
+
+  let validSqlAcceptances = [];
 
   try {
     // 1. Verificar que ninguno de los emails rechazados fue creado
@@ -193,6 +218,7 @@ async function run() {
     `, [validUserId]);
     dbResults.validAcceptancesCount = checkValidAcc.rows.length;
     dbResults.validAcceptancesDetails = checkValidAcc.rows;
+    validSqlAcceptances = checkValidAcc.rows;
     console.log('Evidencias registradas para el usuario válido:', dbResults.validAcceptancesCount, '(esperado 2)');
 
     if (dbResults.validAcceptancesCount !== 2) {
@@ -206,17 +232,17 @@ async function run() {
       throw new Error('Falta aceptación de términos o aviso');
     }
 
-    console.log('Evidencia Términos:', {
+    console.log('Evidencia Términos (SQL UTC):', {
       id: terminosAcc.id,
       version: terminosAcc.version,
       sha256: terminosAcc.content_sha256,
-      acceptedAt: terminosAcc.accepted_at
+      acceptedAtUtc: terminosAcc.accepted_at
     });
-    console.log('Evidencia Aviso:', {
+    console.log('Evidencia Aviso (SQL UTC):', {
       id: avisoAcc.id,
       version: avisoAcc.version,
       sha256: avisoAcc.content_sha256,
-      acceptedAt: avisoAcc.accepted_at
+      acceptedAtUtc: avisoAcc.accepted_at
     });
 
   } finally {
@@ -225,7 +251,6 @@ async function run() {
 
   // 4. Probar consulta de historial vía endpoint autenticado (/api/legal/my-acceptances)
   console.log('\n--- Probando Consulta de Historial /api/legal/my-acceptances tras Login ---');
-  // Login con el usuario creado
   const loginRes = await fetch(`${BACKEND_URL}/api/auth/login`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -254,10 +279,32 @@ async function run() {
   const historyJson = await historyRes.json();
   const acceptances = historyJson.acceptances || historyJson;
   console.log('Historial HTTP status:', historyStatus, 'Registros devueltos:', acceptances.length);
-  console.log('Historial:', JSON.stringify(acceptances, null, 2));
 
   if (historyStatus !== 200 || !Array.isArray(acceptances) || acceptances.length !== 2) {
     throw new Error('Fallo al consultar historial de evidencias con sesión autenticada');
+  }
+
+  // 5. Comprobación de alineación temporal exacta (SQL UTC vs Historial API)
+  console.log('\n--- Verificando Alineación Temporal Exacta (SQL vs API) en UTC ---');
+  for (const sqlRow of validSqlAcceptances) {
+    const apiMatch = acceptances.find(a => a.document === sqlRow.document);
+    if (!apiMatch) {
+      throw new Error(`No se encontró registro en API para el documento ${sqlRow.document}`);
+    }
+
+    const sqlIso = new Date(sqlRow.accepted_at).toISOString();
+    const apiIso = new Date(apiMatch.acceptedAt).toISOString();
+    const sqlMs = new Date(sqlRow.accepted_at).getTime();
+    const apiMs = new Date(apiMatch.acceptedAt).getTime();
+
+    console.log(`Documento [${sqlRow.document}]:`);
+    console.log(`  SQL accepted_at (UTC):     ${sqlIso} (${sqlMs} ms)`);
+    console.log(`  Historial API acceptedAt:  ${apiIso} (${apiMs} ms)`);
+
+    if (sqlMs !== apiMs) {
+      throw new Error(`Discrepancia temporal en ${sqlRow.document}: SQL=${sqlIso} vs API=${apiIso}`);
+    }
+    console.log(`  -> Exactamente el mismo instante verificado.`);
   }
 
   const finalSummary = {
@@ -268,11 +315,14 @@ async function run() {
       status: historyStatus,
       count: acceptances.length,
       records: acceptances
+    },
+    timestampAlignment: {
+      verifiedUtcExactMatch: true
     }
   };
 
   fs.writeFileSync(path.resolve(__dirname, '../reports-staging-endpoint-check.json'), JSON.stringify(finalSummary, null, 2));
-  console.log('\n✅ PRUEBAS DE ENDPOINTS Y HISTORIAL FINALIZADAS CON ÉXITO');
+  console.log('\n✅ PRUEBAS DE ENDPOINTS, HISTORIAL Y ALINEACIÓN TEMPORAL UTC FINALIZADAS CON ÉXITO');
   return finalSummary;
 }
 
@@ -280,7 +330,7 @@ if (require.main === module) {
   run()
     .then(() => process.exit(0))
     .catch(err => {
-      console.error('ERROR EN PRUEBAS DE ENDPOINT:', err);
+      console.error('ERROR EN PRUEBAS DE ENDPOINT:', err.message);
       process.exit(1);
     });
 }

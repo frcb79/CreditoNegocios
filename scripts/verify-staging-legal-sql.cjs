@@ -1,13 +1,12 @@
 /**
  * Reproducible test script for staging legal database verification (Bloque 2)
  *
- * Verifies:
- * 1. Legal tables existence and schema
- * 2. Exact match of versions, titles, texts, and SHA-256 hashes against server/legalDocumentCatalog.json
- * 3. PostgreSQL immutability triggers (UPDATE/DELETE blocked on legal_document_versions and legal_acceptances)
- * 4. Atomic transaction rollback when second acceptance fails
- *
- * Safe: Runs immutability mutation tests inside rolled-back transactions or verifies existing triggers without altering staging data.
+ * Requirements:
+ * 1. Requires STAGING_DATABASE_URL without defaults or hardcoded fallback credentials.
+ * 2. Wraps all mutation tests in transactions with guaranteed ROLLBACK.
+ * 3. Asserts the specific immutability trigger error message.
+ * 4. Verifies catalog integrity and SHA-256 match.
+ * 5. Safe: guarantees no alteration of existing staging records.
  */
 
 const { Client } = require('pg');
@@ -15,17 +14,39 @@ const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
 
-const DATABASE_URL = process.env.DATABASE_URL ||
-  'postgresql://postgres:neMoZUFoyWnqqzIrxdLIiUGOKamDllJa@trolley.proxy.rlwy.net:43850/railway';
+function getStagingDatabaseUrl() {
+  let url = process.env.STAGING_DATABASE_URL;
+  if (!url) {
+    const envLocalPath = path.resolve(__dirname, '../.env.staging.local');
+    if (fs.existsSync(envLocalPath)) {
+      const content = fs.readFileSync(envLocalPath, 'utf8');
+      const match = content.match(/^\s*STAGING_DATABASE_URL\s*=\s*(.+)$/m);
+      if (match) {
+        url = match[1].trim().replace(/^['"]|['"]$/g, '');
+      }
+    }
+  }
+
+  if (!url) {
+    throw new Error('La variable de entorno STAGING_DATABASE_URL es requerida. No se permiten valores predeterminados ni credenciales incrustadas.');
+  }
+
+  return url;
+}
+
+const EXPECTED_DOC_TRIGGER_ERROR = 'Legal document versions are immutable and cannot be updated or deleted.';
+const EXPECTED_ACCEPTANCE_TRIGGER_ERROR = 'Legal acceptances are immutable audit records and cannot be updated or deleted.';
 
 async function run() {
+  const databaseUrl = getStagingDatabaseUrl();
+
   const client = new Client({
-    connectionString: DATABASE_URL,
+    connectionString: databaseUrl,
     ssl: { rejectUnauthorized: false }
   });
 
   await client.connect();
-  console.log('--- Conectado a PostgreSQL Staging ---');
+  console.log('--- Conectado a PostgreSQL Staging (sin secretos en log) ---');
 
   const results = {
     tables: {},
@@ -105,41 +126,64 @@ async function run() {
       console.log(`[OK] ${item.id} - ${item.title} -> SHA256 verificado: ${item.contentSha256}`);
     }
 
-    // 3. Verificación de disparadores de inmutabilidad (UPDATE/DELETE bloqueados)
-    console.log('\n--- Probando Disparadores de Inmutabilidad ---');
+    // 3. Verificación de disparadores de inmutabilidad (con transacción y ROLLBACK garantizado)
+    console.log('\n--- Probando Disparadores de Inmutabilidad con Transacciones y ROLLBACK Garantizado ---');
 
     // 3a. UPDATE sobre legal_document_versions
-    let docUpdateBlocked = false;
+    let docUpdateBlockedByTrigger = false;
     let docUpdateError = '';
+    await client.query('BEGIN');
     try {
       await client.query(`UPDATE legal_document_versions SET title = 'Modificado' WHERE id = 'terminos:1.0';`);
     } catch (err) {
-      docUpdateBlocked = true;
-      docUpdateError = err.message;
+      if (err.message && err.message.includes(EXPECTED_DOC_TRIGGER_ERROR)) {
+        docUpdateBlockedByTrigger = true;
+        docUpdateError = err.message;
+      } else {
+        throw new Error(`UPDATE legal_document_versions falló por un error inesperado (no es el trigger específico): ${err.message}`);
+      }
+    } finally {
+      await client.query('ROLLBACK');
     }
-    console.log('UPDATE legal_document_versions bloqueado:', docUpdateBlocked, `(${docUpdateError})`);
+
+    if (!docUpdateBlockedByTrigger) {
+      throw new Error('Fallo de seguridad: UPDATE sobre legal_document_versions no fue bloqueado por el trigger específico.');
+    }
+    console.log('UPDATE legal_document_versions bloqueado por trigger específico:', docUpdateBlockedByTrigger);
 
     // 3b. DELETE sobre legal_document_versions
-    let docDeleteBlocked = false;
+    let docDeleteBlockedByTrigger = false;
     let docDeleteError = '';
+    await client.query('BEGIN');
     try {
       await client.query(`DELETE FROM legal_document_versions WHERE id = 'terminos:1.0';`);
     } catch (err) {
-      docDeleteBlocked = true;
-      docDeleteError = err.message;
+      if (err.message && err.message.includes(EXPECTED_DOC_TRIGGER_ERROR)) {
+        docDeleteBlockedByTrigger = true;
+        docDeleteError = err.message;
+      } else {
+        throw new Error(`DELETE legal_document_versions falló por un error inesperado (no es el trigger específico): ${err.message}`);
+      }
+    } finally {
+      await client.query('ROLLBACK');
     }
-    console.log('DELETE legal_document_versions bloqueado:', docDeleteBlocked, `(${docDeleteError})`);
 
-    // 3c. UPDATE y DELETE sobre legal_acceptances usando una transacción de prueba
-    let acceptanceUpdateBlocked = false;
+    if (!docDeleteBlockedByTrigger) {
+      throw new Error('Fallo de seguridad: DELETE sobre legal_document_versions no fue bloqueado por el trigger específico.');
+    }
+    console.log('DELETE legal_document_versions bloqueado por trigger específico:', docDeleteBlockedByTrigger);
+
+    // 3c. UPDATE y DELETE sobre legal_acceptances con transacción y ROLLBACK garantizado
+    let acceptanceUpdateBlockedByTrigger = false;
     let acceptanceUpdateError = '';
-    let acceptanceDeleteBlocked = false;
+    let acceptanceDeleteBlockedByTrigger = false;
     let acceptanceDeleteError = '';
 
     const testTriggerUserId = 'test-trigger-user-' + Date.now();
     const testAcceptanceId = 'test-acc-trigger-' + Date.now();
+
+    await client.query('BEGIN');
     try {
-      await client.query('BEGIN');
       await client.query(`
         INSERT INTO users (id, email, password, role, status, is_active)
         VALUES ($1, 'trigger-test@creditonegocios-test.internal', 'hashed', 'broker', 'active', true)
@@ -157,51 +201,55 @@ async function run() {
         )
       `, [testAcceptanceId, testTriggerUserId]);
 
-      // Probar UPDATE (usar SAVEPOINT para que el error no rompa la transacción)
+      // Probar UPDATE
       await client.query('SAVEPOINT sp_update');
       try {
         await client.query(`UPDATE legal_acceptances SET user_agent = 'hacked' WHERE id = $1`, [testAcceptanceId]);
       } catch (err) {
-        acceptanceUpdateBlocked = true;
-        acceptanceUpdateError = err.message;
+        if (err.message && err.message.includes(EXPECTED_ACCEPTANCE_TRIGGER_ERROR)) {
+          acceptanceUpdateBlockedByTrigger = true;
+          acceptanceUpdateError = err.message;
+        } else {
+          throw new Error(`UPDATE legal_acceptances falló por error inesperado (no es el trigger): ${err.message}`);
+        }
         await client.query('ROLLBACK TO SAVEPOINT sp_update');
       }
 
-      // Probar DELETE (usar SAVEPOINT)
+      // Probar DELETE
       await client.query('SAVEPOINT sp_delete');
       try {
         await client.query(`DELETE FROM legal_acceptances WHERE id = $1`, [testAcceptanceId]);
       } catch (err) {
-        acceptanceDeleteBlocked = true;
-        acceptanceDeleteError = err.message;
+        if (err.message && err.message.includes(EXPECTED_ACCEPTANCE_TRIGGER_ERROR)) {
+          acceptanceDeleteBlockedByTrigger = true;
+          acceptanceDeleteError = err.message;
+        } else {
+          throw new Error(`DELETE legal_acceptances falló por error inesperado (no es el trigger): ${err.message}`);
+        }
         await client.query('ROLLBACK TO SAVEPOINT sp_delete');
       }
-
+    } finally {
       await client.query('ROLLBACK');
-    } catch (e) {
-      await client.query('ROLLBACK');
-      throw e;
     }
 
-    console.log('UPDATE legal_acceptances bloqueado:', acceptanceUpdateBlocked, `(${acceptanceUpdateError})`);
-    console.log('DELETE legal_acceptances bloqueado:', acceptanceDeleteBlocked, `(${acceptanceDeleteError})`);
+    if (!acceptanceUpdateBlockedByTrigger || !acceptanceDeleteBlockedByTrigger) {
+      throw new Error('Fallo de seguridad: UPDATE o DELETE sobre legal_acceptances no fueron bloqueados por el trigger esperado.');
+    }
+    console.log('UPDATE legal_acceptances bloqueado por trigger específico:', acceptanceUpdateBlockedByTrigger);
+    console.log('DELETE legal_acceptances bloqueado por trigger específico:', acceptanceDeleteBlockedByTrigger);
 
     results.triggerProtection = {
-      docVersionUpdateBlocked: docUpdateBlocked,
+      docVersionUpdateBlocked: docUpdateBlockedByTrigger,
       docVersionUpdateMessage: docUpdateError,
-      docVersionDeleteBlocked: docDeleteBlocked,
+      docVersionDeleteBlocked: docDeleteBlockedByTrigger,
       docVersionDeleteMessage: docDeleteError,
-      acceptanceUpdateBlocked: acceptanceUpdateBlocked,
+      acceptanceUpdateBlocked: acceptanceUpdateBlockedByTrigger,
       acceptanceUpdateMessage: acceptanceUpdateError,
-      acceptanceDeleteBlocked: acceptanceDeleteBlocked,
+      acceptanceDeleteBlocked: acceptanceDeleteBlockedByTrigger,
       acceptanceDeleteMessage: acceptanceDeleteError
     };
 
-    if (!docUpdateBlocked || !docDeleteBlocked || !acceptanceUpdateBlocked || !acceptanceDeleteBlocked) {
-      throw new Error('Fallo de seguridad: no todos los intentos de mutación fueron bloqueados por disparadores');
-    }
-
-    // 4. Verificación de rollback ante fallo de segunda evidencia
+    // 4. Verificación de rollback atómico ante fallo de segunda evidencia
     console.log('\n--- Probando Rollback Atómico ante Fallo de Segunda Evidencia ---');
     const testUserId = 'test-rollback-user-' + Date.now();
     const testEmail = `rollback-${Date.now()}@creditonegocios-test.internal`;
@@ -231,7 +279,7 @@ async function run() {
         )
       `, [acc1Id, testUserId, testEmail]);
 
-      // Paso 3: Simular fallo intencional en la segunda evidencia (violación de versión nula o forzar error)
+      // Paso 3: Simular fallo intencional en la segunda evidencia (violación de versión nula)
       await client.query(`
         INSERT INTO legal_acceptances (
           id, user_id, user_email, document, document_id,
@@ -248,7 +296,10 @@ async function run() {
     } catch (err) {
       rollbackTriggered = true;
       console.log('Error provocado exitosamente en paso 3:', err.message);
-      await client.query('ROLLBACK');
+    } finally {
+      try {
+        await client.query('ROLLBACK');
+      } catch (_) {}
     }
 
     // Verificar fuera de transacción que no existen ni el usuario ni la primera aceptación
@@ -284,11 +335,11 @@ if (require.main === module) {
   run()
     .then(res => {
       fs.writeFileSync(path.resolve(__dirname, '../reports-staging-sql-check.json'), JSON.stringify(res, null, 2));
-      console.log('Resultados guardados en reports-staging-sql-check.json');
+      console.log('Resultados guardados en reports-staging-sql-check.json (sin credenciales)');
       process.exit(0);
     })
     .catch(err => {
-      console.error('ERROR EN VERIFICACIÓN SQL:', err);
+      console.error('ERROR EN VERIFICACIÓN SQL:', err.message);
       process.exit(1);
     });
 }
