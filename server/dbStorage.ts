@@ -28,7 +28,9 @@ import {
   type PromoCode, type InsertPromoCode,
   type PromoRedemption, type InsertPromoRedemption,
   commercialAuditLogs, type UserOperationalStatus,
-  userStatusRequests, type UserStatusRequest, type UserStatusRequestStatus, type UserStatusRequestAction
+  userStatusRequests, type UserStatusRequest, type UserStatusRequestStatus, type UserStatusRequestAction,
+  legalDocumentVersions, legalAcceptances,
+  type LegalDocumentVersionDb, type LegalAcceptance
 } from "../shared/schema";
 import { eq, desc, asc, like, and, or, inArray, sql } from "drizzle-orm";
 
@@ -335,6 +337,119 @@ export class DbStorage implements IStorage {
       console.error("Error creating local user:", error);
       throw error;
     }
+  }
+
+  async getLegalDocumentVersions(): Promise<LegalDocumentVersionDb[]> {
+    return await db.select().from(legalDocumentVersions);
+  }
+
+  async getLegalDocumentVersion(id: string): Promise<LegalDocumentVersionDb | undefined> {
+    const [version] = await db
+      .select()
+      .from(legalDocumentVersions)
+      .where(eq(legalDocumentVersions.id, id));
+    return version;
+  }
+
+  async getLegalAcceptancesByUser(userId: string): Promise<LegalAcceptance[]> {
+    return await db
+      .select()
+      .from(legalAcceptances)
+      .where(eq(legalAcceptances.userId, userId))
+      .orderBy(desc(legalAcceptances.acceptedAt));
+  }
+
+  async getAllLegalAcceptances(): Promise<LegalAcceptance[]> {
+    return await db
+      .select()
+      .from(legalAcceptances)
+      .orderBy(desc(legalAcceptances.acceptedAt));
+  }
+
+  async registerUserWithLegalEvidence(params: {
+    userData: {
+      email: string;
+      password: string;
+      firstName: string;
+      lastName: string;
+      authMethod: string;
+      role: string;
+      masterBrokerId?: string;
+      referralCode?: string;
+    };
+    evidence: {
+      ipAddress: string;
+      userAgent: string;
+      termsDoc: {
+        id: string;
+        document: string;
+        version: string;
+        contentSha256: string;
+      };
+      privacyDoc: {
+        id: string;
+        document: string;
+        version: string;
+        contentSha256: string;
+      };
+    };
+  }): Promise<{ user: User; acceptances: LegalAcceptance[] }> {
+    return await db.transaction(async (tx) => {
+      const [createdUser] = await tx
+        .insert(users)
+        .values({
+          email: params.userData.email,
+          password: params.userData.password,
+          firstName: params.userData.firstName,
+          lastName: params.userData.lastName,
+          authMethod: params.userData.authMethod,
+          role: params.userData.role,
+          masterBrokerId: params.userData.masterBrokerId || null,
+          referralCode: params.userData.referralCode || null,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        })
+        .returning();
+
+      const acceptedAt = new Date();
+
+      const [termsAcceptance] = await tx
+        .insert(legalAcceptances)
+        .values({
+          userId: createdUser.id,
+          userEmail: createdUser.email!,
+          documentId: params.evidence.termsDoc.id,
+          document: params.evidence.termsDoc.document,
+          version: params.evidence.termsDoc.version,
+          contentSha256: params.evidence.termsDoc.contentSha256,
+          acceptanceType: "accept_terms",
+          ipAddress: params.evidence.ipAddress,
+          userAgent: params.evidence.userAgent,
+          acceptedAt,
+        })
+        .returning();
+
+      const [privacyAcceptance] = await tx
+        .insert(legalAcceptances)
+        .values({
+          userId: createdUser.id,
+          userEmail: createdUser.email!,
+          documentId: params.evidence.privacyDoc.id,
+          document: params.evidence.privacyDoc.document,
+          version: params.evidence.privacyDoc.version,
+          contentSha256: params.evidence.privacyDoc.contentSha256,
+          acceptanceType: "acknowledge_privacy",
+          ipAddress: params.evidence.ipAddress,
+          userAgent: params.evidence.userAgent,
+          acceptedAt,
+        })
+        .returning();
+
+      return {
+        user: createdUser,
+        acceptances: [termsAcceptance, privacyAcceptance],
+      };
+    });
   }
 
   async updateUser(id: string, userData: Partial<UpsertUser>): Promise<User | undefined> {

@@ -1,7 +1,18 @@
 import type { Express } from "express";
 import { getPublishedLegalDocument } from "./legalDocuments";
+import { storage } from "./storage";
 
 export function registerLegalRoutes(app: Express) {
+  // Acceptance evidence for current user
+  app.get("/api/legal/my-acceptances", async (req: any, res) => {
+    const userId = req.user?.claims?.sub || req.user?.id;
+    if (!userId) {
+      return res.status(401).json({ message: "No autenticado" });
+    }
+    const acceptances = await storage.getLegalAcceptancesByUser(userId);
+    return res.json({ acceptances });
+  });
+
   // Public, read-only routes. Do not depend on a session or write acceptance evidence.
   app.get("/api/legal/:document", (req, res) => {
     const requestedVersion = req.query.version;

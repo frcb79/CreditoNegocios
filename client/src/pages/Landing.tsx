@@ -1,9 +1,10 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import LegalLinks from "@/components/LegalLinks";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Loader2, Mail, Lock, User, ArrowLeft, Key, Tag, Eye, EyeOff, ArrowRight } from "lucide-react";
@@ -34,6 +35,26 @@ export default function Landing() {
   const [registerLastName, setRegisterLastName] = useState("");
   const [registerReferralCode, setRegisterReferralCode] = useState("");
   const [registerPromoCode, setRegisterPromoCode] = useState("");
+  const [acceptTerms, setAcceptTerms] = useState(false);
+  const [acknowledgePrivacy, setAcknowledgePrivacy] = useState(false);
+  const [termsVersion, setTermsVersion] = useState("1.0");
+  const [privacyVersion, setPrivacyVersion] = useState("1.0");
+
+  useEffect(() => {
+    fetch("/api/legal/terminos")
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (data?.version) setTermsVersion(data.version);
+      })
+      .catch(() => {});
+
+    fetch("/api/legal/aviso")
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (data?.version) setPrivacyVersion(data.version);
+      })
+      .catch(() => {});
+  }, []);
 
   const handleLocalLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -91,6 +112,24 @@ export default function Landing() {
       return;
     }
 
+    if (!acceptTerms) {
+      toast({
+        title: "Términos requeridos",
+        description: "Debes aceptar los Términos y Condiciones para registrarte.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (!acknowledgePrivacy) {
+      toast({
+        title: "Aviso de Privacidad requerido",
+        description: "Debes confirmar que has leído el Aviso de Privacidad para registrarte.",
+        variant: "destructive",
+      });
+      return;
+    }
+
     setIsLoading(true);
     
     try {
@@ -104,6 +143,10 @@ export default function Landing() {
           lastName: registerLastName,
           referralCode: registerReferralCode || undefined,
           promoCode: registerPromoCode || undefined,
+          acceptTerms,
+          termsVersion,
+          acknowledgePrivacy,
+          privacyVersion,
         }),
         credentials: "include",
       });
@@ -583,11 +626,67 @@ export default function Landing() {
                       Aplica beneficios como meses gratuitos o descuentos. No define tu relación o red broker.
                     </p>
                   </div>
+
+                  <div className="space-y-3 pt-3 border-t border-slate-200">
+                    <div className="flex items-start space-x-2">
+                      <Checkbox
+                        id="register-accept-terms"
+                        data-testid="checkbox-register-terms"
+                        checked={acceptTerms}
+                        onCheckedChange={(checked) => setAcceptTerms(Boolean(checked))}
+                        disabled={isLoading}
+                        className="mt-0.5"
+                      />
+                      <label
+                        htmlFor="register-accept-terms"
+                        className="text-xs text-slate-700 leading-snug cursor-pointer select-none"
+                      >
+                        Acepto los{" "}
+                        <a
+                          href="/legal/terminos"
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="font-semibold text-primary hover:underline"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          Términos y Condiciones
+                        </a>{" "}
+                        vigentes ({termsVersion ? `v${termsVersion}` : "v1.0"}).
+                      </label>
+                    </div>
+
+                    <div className="flex items-start space-x-2">
+                      <Checkbox
+                        id="register-acknowledge-privacy"
+                        data-testid="checkbox-register-privacy"
+                        checked={acknowledgePrivacy}
+                        onCheckedChange={(checked) => setAcknowledgePrivacy(Boolean(checked))}
+                        disabled={isLoading}
+                        className="mt-0.5"
+                      />
+                      <label
+                        htmlFor="register-acknowledge-privacy"
+                        className="text-xs text-slate-700 leading-snug cursor-pointer select-none"
+                      >
+                        Reconozco haber leído y entendido el{" "}
+                        <a
+                          href="/legal/aviso"
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="font-semibold text-primary hover:underline"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          Aviso de Privacidad Integral
+                        </a>{" "}
+                        vigente ({privacyVersion ? `v${privacyVersion}` : "v1.0"}).
+                      </label>
+                    </div>
+                  </div>
                   
                   <Button 
                     type="submit" 
                     className="w-full bg-primary hover:bg-primary/90 text-white font-semibold shadow-md" 
-                    disabled={isLoading || (Boolean(registerPassword && registerConfirmPassword && registerPassword !== registerConfirmPassword))}
+                    disabled={isLoading || !acceptTerms || !acknowledgePrivacy || (Boolean(registerPassword && registerConfirmPassword && registerPassword !== registerConfirmPassword))}
                     data-testid="button-register-submit"
                   >
                     {isLoading ? (

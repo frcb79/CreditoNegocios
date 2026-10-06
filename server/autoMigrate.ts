@@ -1,5 +1,6 @@
 import { pool } from "./db";
 import bcrypt from "bcrypt";
+import catalog from "./legalDocumentCatalog.json";
 
 export async function runAutoMigration(): Promise<void> {
   if (process.env.USE_MEMORY_STORAGE === "true") {
@@ -904,6 +905,92 @@ export async function runAutoMigration(): Promise<void> {
     } catch (commErr) {
       console.error("⚠️ [AutoMigrate] Error verifying commercial governance tables:", commErr);
     }
+
+    // 7. Legal document versions and immutable acceptances (Bloque 2)
+    try {
+      await client.query(`
+        CREATE TABLE IF NOT EXISTS public.legal_document_versions (
+          id VARCHAR PRIMARY KEY,
+          document VARCHAR(64) NOT NULL,
+          title VARCHAR(255) NOT NULL,
+          version VARCHAR(32) NOT NULL,
+          source_file VARCHAR(255) NOT NULL,
+          content TEXT NOT NULL,
+          content_sha256 VARCHAR(64) NOT NULL,
+          effective_at TIMESTAMP,
+          created_at TIMESTAMP NOT NULL DEFAULT NOW()
+        );
+
+        CREATE TABLE IF NOT EXISTS public.legal_acceptances (
+          id VARCHAR PRIMARY KEY DEFAULT gen_random_uuid(),
+          user_id VARCHAR NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
+          user_email VARCHAR NOT NULL,
+          document_id VARCHAR NOT NULL REFERENCES public.legal_document_versions(id),
+          document VARCHAR(64) NOT NULL,
+          version VARCHAR(32) NOT NULL,
+          content_sha256 VARCHAR(64) NOT NULL,
+          acceptance_type VARCHAR(64) NOT NULL,
+          ip_address VARCHAR(128) NOT NULL,
+          user_agent TEXT NOT NULL,
+          accepted_at TIMESTAMP NOT NULL DEFAULT NOW()
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_legal_acceptances_user_id ON public.legal_acceptances(user_id);
+        CREATE INDEX IF NOT EXISTS idx_legal_acceptances_document_id ON public.legal_acceptances(document_id);
+
+        CREATE OR REPLACE FUNCTION protect_legal_document_versions()
+        RETURNS TRIGGER AS $$
+        BEGIN
+          RAISE EXCEPTION 'Legal document versions are immutable and cannot be updated or deleted.';
+        END;
+        $$ LANGUAGE plpgsql;
+
+        DROP TRIGGER IF EXISTS trg_protect_legal_document_versions ON public.legal_document_versions;
+        CREATE TRIGGER trg_protect_legal_document_versions
+          BEFORE UPDATE OR DELETE ON public.legal_document_versions
+          FOR EACH ROW
+          EXECUTE FUNCTION protect_legal_document_versions();
+
+        CREATE OR REPLACE FUNCTION protect_legal_acceptances()
+        RETURNS TRIGGER AS $$
+        BEGIN
+          RAISE EXCEPTION 'Legal acceptances are immutable audit records and cannot be updated or deleted.';
+        END;
+        $$ LANGUAGE plpgsql;
+
+        DROP TRIGGER IF EXISTS trg_protect_legal_acceptances ON public.legal_acceptances;
+        CREATE TRIGGER trg_protect_legal_acceptances
+          BEFORE UPDATE OR DELETE ON public.legal_acceptances
+          FOR EACH ROW
+          EXECUTE FUNCTION protect_legal_acceptances();
+      `);
+
+      // Seed approved versions from catalog with ON CONFLICT (id) DO NOTHING
+      for (const entry of catalog) {
+        await client.query(
+          `
+          INSERT INTO public.legal_document_versions (
+            id, document, title, version, source_file, content, content_sha256, effective_at, created_at
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW())
+          ON CONFLICT (id) DO NOTHING;
+          `,
+          [
+            entry.id,
+            entry.document,
+            entry.title,
+            entry.version,
+            entry.sourceFile,
+            entry.content,
+            entry.contentSha256,
+            entry.effectiveAt ? new Date(entry.effectiveAt) : null,
+          ],
+        );
+      }
+      console.log("✅ [AutoMigrate] Legal document versions and immutable acceptances verified (Bloque 2)");
+    } catch (legalErr) {
+      console.error("⚠️ [AutoMigrate] Error verifying legal tables:", legalErr);
+    }
+
 
     console.log("✨ [AutoMigrate] Schema verification and user sync completed successfully!");
   } catch (error) {

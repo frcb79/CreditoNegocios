@@ -62,8 +62,14 @@ import {
   userStatusRequests,
   type UserStatusRequest,
   type UserStatusRequestStatus,
-  type UserStatusRequestAction
+  type UserStatusRequestAction,
+  legalDocumentVersions,
+  legalAcceptances,
+  type LegalDocumentVersionDb,
+  type LegalAcceptance,
+  type InsertLegalAcceptance,
 } from "../shared/schema";
+import catalog from "./legalDocumentCatalog.json";
 
 
 type NotificationInput = InsertNotification & {
@@ -73,6 +79,40 @@ type NotificationInput = InsertNotification & {
 };
 
 export interface IStorage {
+  // Legal operations (Bloque 2)
+  getLegalDocumentVersions(): Promise<LegalDocumentVersionDb[]>;
+  getLegalDocumentVersion(id: string): Promise<LegalDocumentVersionDb | undefined>;
+  getLegalAcceptancesByUser(userId: string): Promise<LegalAcceptance[]>;
+  getAllLegalAcceptances(): Promise<LegalAcceptance[]>;
+  registerUserWithLegalEvidence(params: {
+    userData: {
+      email: string;
+      password: string;
+      firstName: string;
+      lastName: string;
+      authMethod: string;
+      role: string;
+      masterBrokerId?: string;
+      referralCode?: string;
+    };
+    evidence: {
+      ipAddress: string;
+      userAgent: string;
+      termsDoc: {
+        id: string;
+        document: string;
+        version: string;
+        contentSha256: string;
+      };
+      privacyDoc: {
+        id: string;
+        document: string;
+        version: string;
+        contentSha256: string;
+      };
+    };
+  }): Promise<{ user: User; acceptances: LegalAcceptance[] }>;
+
   // Bank analysis report operations
   createBankAnalysisReport(report: InsertBankAnalysisReport): Promise<BankAnalysisReport>;
   getBankAnalysisReportById(id: string): Promise<BankAnalysisReport | undefined>;
@@ -374,11 +414,31 @@ export class MemStorage implements IStorage {
   }
   private creditSubmissionRequests: Map<string, CreditSubmissionRequest> = new Map();
   private creditSubmissionTargets: Map<string, CreditSubmissionTarget> = new Map();
+  private legalDocumentVersions: Map<string, LegalDocumentVersionDb> = new Map();
+  private legalAcceptances: Map<string, LegalAcceptance> = new Map();
 
   constructor() {
     this.seedData();
     this.migrateExistingData();
+    this.seedLegalDocumentVersions();
   }
+
+  private seedLegalDocumentVersions(): void {
+    for (const entry of catalog) {
+      this.legalDocumentVersions.set(entry.id, {
+        id: entry.id,
+        document: entry.document,
+        title: entry.title,
+        version: entry.version,
+        sourceFile: entry.sourceFile,
+        content: entry.content,
+        contentSha256: entry.contentSha256,
+        effectiveAt: entry.effectiveAt ? new Date(entry.effectiveAt) : null,
+        createdAt: new Date(),
+      });
+    }
+  }
+
 
   private createSeedFinancialInstitution(data: Partial<FinancialInstitution> & Pick<FinancialInstitution, "id" | "name">): FinancialInstitution {
     return {
@@ -1362,6 +1422,123 @@ export class MemStorage implements IStorage {
     this.users.set(id, user);
     return user;
   }
+
+  async getLegalDocumentVersions(): Promise<LegalDocumentVersionDb[]> {
+    return Array.from(this.legalDocumentVersions.values());
+  }
+
+  async getLegalDocumentVersion(id: string): Promise<LegalDocumentVersionDb | undefined> {
+    return this.legalDocumentVersions.get(id);
+  }
+
+  async getLegalAcceptancesByUser(userId: string): Promise<LegalAcceptance[]> {
+    return Array.from(this.legalAcceptances.values())
+      .filter((a) => a.userId === userId)
+      .sort((a, b) => new Date(b.acceptedAt).getTime() - new Date(a.acceptedAt).getTime());
+  }
+
+  async getAllLegalAcceptances(): Promise<LegalAcceptance[]> {
+    return Array.from(this.legalAcceptances.values())
+      .sort((a, b) => new Date(b.acceptedAt).getTime() - new Date(a.acceptedAt).getTime());
+  }
+
+  async registerUserWithLegalEvidence(params: {
+    userData: {
+      email: string;
+      password: string;
+      firstName: string;
+      lastName: string;
+      authMethod: string;
+      role: string;
+      masterBrokerId?: string;
+      referralCode?: string;
+    };
+    evidence: {
+      ipAddress: string;
+      userAgent: string;
+      termsDoc: {
+        id: string;
+        document: string;
+        version: string;
+        contentSha256: string;
+      };
+      privacyDoc: {
+        id: string;
+        document: string;
+        version: string;
+        contentSha256: string;
+      };
+    };
+  }): Promise<{ user: User; acceptances: LegalAcceptance[] }> {
+    const existing = await this.getUserByEmail(params.userData.email);
+    if (existing) {
+      throw new Error("Este email ya está registrado");
+    }
+
+    const id = randomUUID();
+    const now = new Date();
+    const user: User = {
+      id,
+      email: params.userData.email,
+      password: params.userData.password,
+      authMethod: params.userData.authMethod || "local",
+      firstName: params.userData.firstName,
+      lastName: params.userData.lastName,
+      role: params.userData.role || "broker",
+      profileImageUrl: null,
+      masterBrokerId: params.userData.masterBrokerId || null,
+      referralCode: params.userData.referralCode || null,
+      customLogo: null,
+      brandName: null,
+      primaryColor: null,
+      secondaryColor: null,
+      isWhiteLabel: false,
+      autoRegisterBrokers: false,
+      profileType: null,
+      profileData: {},
+      isActive: true,
+      createdAt: now,
+      updatedAt: now,
+    };
+
+    const termsAcceptance: LegalAcceptance = {
+      id: randomUUID(),
+      userId: user.id,
+      userEmail: user.email!,
+      documentId: params.evidence.termsDoc.id,
+      document: params.evidence.termsDoc.document,
+      version: params.evidence.termsDoc.version,
+      contentSha256: params.evidence.termsDoc.contentSha256,
+      acceptanceType: "accept_terms",
+      ipAddress: params.evidence.ipAddress,
+      userAgent: params.evidence.userAgent,
+      acceptedAt: now,
+    };
+
+    const privacyAcceptance: LegalAcceptance = {
+      id: randomUUID(),
+      userId: user.id,
+      userEmail: user.email!,
+      documentId: params.evidence.privacyDoc.id,
+      document: params.evidence.privacyDoc.document,
+      version: params.evidence.privacyDoc.version,
+      contentSha256: params.evidence.privacyDoc.contentSha256,
+      acceptanceType: "acknowledge_privacy",
+      ipAddress: params.evidence.ipAddress,
+      userAgent: params.evidence.userAgent,
+      acceptedAt: now,
+    };
+
+    this.users.set(id, user);
+    this.legalAcceptances.set(termsAcceptance.id, termsAcceptance);
+    this.legalAcceptances.set(privacyAcceptance.id, privacyAcceptance);
+
+    return {
+      user,
+      acceptances: [termsAcceptance, privacyAcceptance],
+    };
+  }
+
 
   async updateUser(id: string, userData: Partial<UpsertUser>): Promise<User | undefined> {
     const existing = this.users.get(id);
