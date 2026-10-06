@@ -1,5 +1,5 @@
 // @ts-nocheck
-import { randomUUID } from "crypto";
+import { randomUUID, createHash } from "crypto";
 import {
   users,
   clients,
@@ -70,6 +70,7 @@ import {
   type InsertLegalAcceptance,
 } from "../shared/schema";
 import catalog from "./legalDocumentCatalog.json";
+import { getApprovedLegalDocument } from "./legalDocuments";
 
 
 type NotificationInput = InsertNotification & {
@@ -425,7 +426,10 @@ export class MemStorage implements IStorage {
 
   private seedLegalDocumentVersions(): void {
     for (const entry of catalog) {
-      this.legalDocumentVersions.set(entry.id, {
+      if (this.legalDocumentVersions.has(entry.id)) {
+        continue;
+      }
+      this.legalDocumentVersions.set(entry.id, structuredClone({
         id: entry.id,
         document: entry.document,
         title: entry.title,
@@ -435,7 +439,7 @@ export class MemStorage implements IStorage {
         contentSha256: entry.contentSha256,
         effectiveAt: entry.effectiveAt ? new Date(entry.effectiveAt) : null,
         createdAt: new Date(),
-      });
+      }));
     }
   }
 
@@ -1424,22 +1428,25 @@ export class MemStorage implements IStorage {
   }
 
   async getLegalDocumentVersions(): Promise<LegalDocumentVersionDb[]> {
-    return Array.from(this.legalDocumentVersions.values());
+    return Array.from(this.legalDocumentVersions.values()).map((v) => structuredClone(v));
   }
 
   async getLegalDocumentVersion(id: string): Promise<LegalDocumentVersionDb | undefined> {
-    return this.legalDocumentVersions.get(id);
+    const doc = this.legalDocumentVersions.get(id);
+    return doc ? structuredClone(doc) : undefined;
   }
 
   async getLegalAcceptancesByUser(userId: string): Promise<LegalAcceptance[]> {
     return Array.from(this.legalAcceptances.values())
       .filter((a) => a.userId === userId)
-      .sort((a, b) => new Date(b.acceptedAt).getTime() - new Date(a.acceptedAt).getTime());
+      .sort((a, b) => new Date(b.acceptedAt).getTime() - new Date(a.acceptedAt).getTime())
+      .map((a) => structuredClone(a));
   }
 
   async getAllLegalAcceptances(): Promise<LegalAcceptance[]> {
     return Array.from(this.legalAcceptances.values())
-      .sort((a, b) => new Date(b.acceptedAt).getTime() - new Date(a.acceptedAt).getTime());
+      .sort((a, b) => new Date(b.acceptedAt).getTime() - new Date(a.acceptedAt).getTime())
+      .map((a) => structuredClone(a));
   }
 
   async registerUserWithLegalEvidence(params: {
@@ -1470,6 +1477,57 @@ export class MemStorage implements IStorage {
       };
     };
   }): Promise<{ user: User; acceptances: LegalAcceptance[] }> {
+    // 1. Validate against approved catalog
+    const catalogTerms = getApprovedLegalDocument(params.evidence.termsDoc.document, params.evidence.termsDoc.version);
+    if (!catalogTerms) {
+      throw new Error(`La versión de Términos (${params.evidence.termsDoc.version}) no está aprobada en el catálogo.`);
+    }
+    if (catalogTerms.contentSha256 !== params.evidence.termsDoc.contentSha256) {
+      throw new Error("Discrepancia en el hash de los Términos y Condiciones.");
+    }
+
+    const catalogPrivacy = getApprovedLegalDocument(params.evidence.privacyDoc.document, params.evidence.privacyDoc.version);
+    if (!catalogPrivacy) {
+      throw new Error(`La versión del Aviso de Privacidad (${params.evidence.privacyDoc.version}) no está aprobada en el catálogo.`);
+    }
+    if (catalogPrivacy.contentSha256 !== params.evidence.privacyDoc.contentSha256) {
+      throw new Error("Discrepancia en el hash del Aviso de Privacidad.");
+    }
+
+    // 2. Verify persisted versions match catalog and hashes
+    const persistedTerms = this.legalDocumentVersions.get(params.evidence.termsDoc.id);
+    if (!persistedTerms) {
+      throw new Error(`La versión de Términos (${params.evidence.termsDoc.id}) no se encuentra persistida.`);
+    }
+    if (
+      persistedTerms.contentSha256 !== catalogTerms.contentSha256 ||
+      persistedTerms.document !== catalogTerms.document ||
+      persistedTerms.version !== catalogTerms.version
+    ) {
+      throw new Error("Discrepancia detectada entre Términos persistidos y catálogo aprobado.");
+    }
+    const termsHash = createHash("sha256").update(persistedTerms.content, "utf8").digest("hex");
+    if (termsHash !== catalogTerms.contentSha256) {
+      throw new Error("Discrepancia en la integridad del contenido persistido de Términos.");
+    }
+
+    const persistedPrivacy = this.legalDocumentVersions.get(params.evidence.privacyDoc.id);
+    if (!persistedPrivacy) {
+      throw new Error(`La versión del Aviso (${params.evidence.privacyDoc.id}) no se encuentra persistida.`);
+    }
+    if (
+      persistedPrivacy.contentSha256 !== catalogPrivacy.contentSha256 ||
+      persistedPrivacy.document !== catalogPrivacy.document ||
+      persistedPrivacy.version !== catalogPrivacy.version
+    ) {
+      throw new Error("Discrepancia detectada entre Aviso persistido y catálogo aprobado.");
+    }
+    const privacyHash = createHash("sha256").update(persistedPrivacy.content, "utf8").digest("hex");
+    if (privacyHash !== catalogPrivacy.contentSha256) {
+      throw new Error("Discrepancia en la integridad del contenido persistido de Aviso.");
+    }
+
+    // 3. Check duplicate email
     const existing = await this.getUserByEmail(params.userData.email);
     if (existing) {
       throw new Error("Este email ya está registrado");
@@ -1529,13 +1587,13 @@ export class MemStorage implements IStorage {
       acceptedAt: now,
     };
 
-    this.users.set(id, user);
-    this.legalAcceptances.set(termsAcceptance.id, termsAcceptance);
-    this.legalAcceptances.set(privacyAcceptance.id, privacyAcceptance);
+    this.users.set(id, structuredClone(user));
+    this.legalAcceptances.set(termsAcceptance.id, structuredClone(termsAcceptance));
+    this.legalAcceptances.set(privacyAcceptance.id, structuredClone(privacyAcceptance));
 
     return {
-      user,
-      acceptances: [termsAcceptance, privacyAcceptance],
+      user: structuredClone(user),
+      acceptances: [structuredClone(termsAcceptance), structuredClone(privacyAcceptance)],
     };
   }
 

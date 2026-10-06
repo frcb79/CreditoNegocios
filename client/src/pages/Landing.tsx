@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import LegalLinks from "@/components/LegalLinks";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
@@ -37,24 +37,55 @@ export default function Landing() {
   const [registerPromoCode, setRegisterPromoCode] = useState("");
   const [acceptTerms, setAcceptTerms] = useState(false);
   const [acknowledgePrivacy, setAcknowledgePrivacy] = useState(false);
-  const [termsVersion, setTermsVersion] = useState("1.0");
-  const [privacyVersion, setPrivacyVersion] = useState("1.0");
+  const [termsVersion, setTermsVersion] = useState<string | null>(null);
+  const [privacyVersion, setPrivacyVersion] = useState<string | null>(null);
+  const [legalLoading, setLegalLoading] = useState(true);
+  const [legalError, setLegalError] = useState<string | null>(null);
+
+  const loadLegalDocuments = useCallback(async () => {
+    setLegalLoading(true);
+    setLegalError(null);
+    try {
+      const [termsRes, privacyRes] = await Promise.all([
+        fetch("/api/legal/terminos"),
+        fetch("/api/legal/aviso"),
+      ]);
+
+      if (!termsRes.ok || !privacyRes.ok) {
+        throw new Error("No fue posible cargar los documentos legales vigentes.");
+      }
+
+      const termsData = await termsRes.json();
+      const privacyData = await privacyRes.json();
+
+      if (!termsData?.version || !privacyData?.version) {
+        throw new Error("Información de versiones legales incompleta.");
+      }
+
+      setTermsVersion((prev) => {
+        if (prev !== null && prev !== termsData.version) {
+          setAcceptTerms(false);
+        }
+        return termsData.version;
+      });
+
+      setPrivacyVersion((prev) => {
+        if (prev !== null && prev !== privacyData.version) {
+          setAcknowledgePrivacy(false);
+        }
+        return privacyData.version;
+      });
+    } catch (err: any) {
+      console.error("Error al cargar documentos legales:", err);
+      setLegalError(err.message || "Error al cargar documentos legales vigentes.");
+    } finally {
+      setLegalLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
-    fetch("/api/legal/terminos")
-      .then((res) => (res.ok ? res.json() : null))
-      .then((data) => {
-        if (data?.version) setTermsVersion(data.version);
-      })
-      .catch(() => {});
-
-    fetch("/api/legal/aviso")
-      .then((res) => (res.ok ? res.json() : null))
-      .then((data) => {
-        if (data?.version) setPrivacyVersion(data.version);
-      })
-      .catch(() => {});
-  }, []);
+    loadLegalDocuments();
+  }, [loadLegalDocuments]);
 
   const handleLocalLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -107,6 +138,15 @@ export default function Landing() {
       toast({
         title: "Error",
         description: "La contraseña debe tener al menos 6 caracteres",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (!termsVersion || !privacyVersion || legalLoading || legalError) {
+      toast({
+        title: "Documentos legales requeridos",
+        description: "No fue posible verificar las versiones legales vigentes. Por favor reintenta.",
         variant: "destructive",
       });
       return;
@@ -628,13 +668,36 @@ export default function Landing() {
                   </div>
 
                   <div className="space-y-3 pt-3 border-t border-slate-200">
+                    {legalLoading && (
+                      <div className="flex items-center space-x-2 text-xs text-slate-500 py-1" data-testid="legal-loading-indicator">
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                        <span>Cargando documentos legales vigentes...</span>
+                      </div>
+                    )}
+
+                    {legalError && (
+                      <div className="rounded-lg bg-red-50 p-2.5 text-xs text-red-700 border border-red-200 flex items-center justify-between gap-2" data-testid="legal-error-banner">
+                        <span>{legalError}</span>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={() => loadLegalDocuments()}
+                          className="h-7 px-2 text-xs text-red-700 border-red-300 hover:bg-red-100 shrink-0"
+                          data-testid="button-retry-legal"
+                        >
+                          Reintentar
+                        </Button>
+                      </div>
+                    )}
+
                     <div className="flex items-start space-x-2">
                       <Checkbox
                         id="register-accept-terms"
                         data-testid="checkbox-register-terms"
                         checked={acceptTerms}
                         onCheckedChange={(checked) => setAcceptTerms(Boolean(checked))}
-                        disabled={isLoading}
+                        disabled={isLoading || legalLoading || Boolean(legalError) || !termsVersion}
                         className="mt-0.5"
                       />
                       <label
@@ -643,7 +706,7 @@ export default function Landing() {
                       >
                         Acepto los{" "}
                         <a
-                          href="/legal/terminos"
+                          href={termsVersion ? `/legal/terminos?version=${encodeURIComponent(termsVersion)}` : "/legal/terminos"}
                           target="_blank"
                           rel="noopener noreferrer"
                           className="font-semibold text-primary hover:underline"
@@ -651,7 +714,7 @@ export default function Landing() {
                         >
                           Términos y Condiciones
                         </a>{" "}
-                        vigentes ({termsVersion ? `v${termsVersion}` : "v1.0"}).
+                        vigentes ({termsVersion ? `v${termsVersion}` : "cargando..."}).
                       </label>
                     </div>
 
@@ -661,7 +724,7 @@ export default function Landing() {
                         data-testid="checkbox-register-privacy"
                         checked={acknowledgePrivacy}
                         onCheckedChange={(checked) => setAcknowledgePrivacy(Boolean(checked))}
-                        disabled={isLoading}
+                        disabled={isLoading || legalLoading || Boolean(legalError) || !privacyVersion}
                         className="mt-0.5"
                       />
                       <label
@@ -670,7 +733,7 @@ export default function Landing() {
                       >
                         Reconozco haber leído y entendido el{" "}
                         <a
-                          href="/legal/aviso"
+                          href={privacyVersion ? `/legal/aviso?version=${encodeURIComponent(privacyVersion)}` : "/legal/aviso"}
                           target="_blank"
                           rel="noopener noreferrer"
                           className="font-semibold text-primary hover:underline"
@@ -678,7 +741,7 @@ export default function Landing() {
                         >
                           Aviso de Privacidad Integral
                         </a>{" "}
-                        vigente ({privacyVersion ? `v${privacyVersion}` : "v1.0"}).
+                        vigente ({privacyVersion ? `v${privacyVersion}` : "cargando..."}).
                       </label>
                     </div>
                   </div>
@@ -686,7 +749,16 @@ export default function Landing() {
                   <Button 
                     type="submit" 
                     className="w-full bg-primary hover:bg-primary/90 text-white font-semibold shadow-md" 
-                    disabled={isLoading || !acceptTerms || !acknowledgePrivacy || (Boolean(registerPassword && registerConfirmPassword && registerPassword !== registerConfirmPassword))}
+                    disabled={
+                      isLoading ||
+                      legalLoading ||
+                      Boolean(legalError) ||
+                      !termsVersion ||
+                      !privacyVersion ||
+                      !acceptTerms || 
+                      !acknowledgePrivacy || 
+                      (Boolean(registerPassword && registerConfirmPassword && registerPassword !== registerConfirmPassword))
+                    }
                     data-testid="button-register-submit"
                   >
                     {isLoading ? (

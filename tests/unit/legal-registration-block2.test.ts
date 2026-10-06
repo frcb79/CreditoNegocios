@@ -1,6 +1,9 @@
 import express from "express";
 import session from "express-session";
-import { randomUUID } from "node:crypto";
+import cron from "node-cron";
+import type { Server } from "http";
+// @ts-ignore
+import request from "supertest";
 import {
   getPublishedLegalDocument,
   getAllApprovedCatalogVersions,
@@ -8,44 +11,44 @@ import {
   validateRegistrationAcceptance,
 } from "../../server/legalDocuments";
 import { registerLegalRoutes } from "../../server/legalRoutes";
-import { MemStorage } from "../../server/storage";
+import { registerRoutes } from "../../server/routes";
+import { MemStorage, storage } from "../../server/storage";
 import catalog from "../../server/legalDocumentCatalog.json";
-import { z } from "zod";
-import bcrypt from "bcrypt";
 
-const request = require("supertest");
 const afterPublication = new Date("2026-10-07T12:00:00Z");
 
 describe("Bloque 2: Legal Document Persistence & Registration Acceptance Evidence", () => {
-  afterEach(() => jest.useRealTimers());
+  afterEach(() => {
+    jest.useRealTimers();
+  });
 
-  describe("1. Persistence of approved catalog versions", () => {
+  describe("1. Persistence of approved catalog versions and immutability", () => {
     it("loads all 5 approved legal documents into storage upon initialization", async () => {
-      const storage = new MemStorage();
-      const versions = await storage.getLegalDocumentVersions();
+      const memStorage = new MemStorage();
+      const versions = await memStorage.getLegalDocumentVersions();
       expect(versions.length).toBe(5);
 
-      const terms = await storage.getLegalDocumentVersion("terminos:1.0");
+      const terms = await memStorage.getLegalDocumentVersion("terminos:1.0");
       expect(terms).toBeDefined();
       expect(terms?.document).toBe("terminos");
       expect(terms?.version).toBe("1.0");
       expect(terms?.contentSha256).toBe("e2ec998a066e702a43ee0f69dbadce692a5dac6171774254664d372423f1f2eb");
 
-      const privacy = await storage.getLegalDocumentVersion("aviso:1.0");
+      const privacy = await memStorage.getLegalDocumentVersion("aviso:1.0");
       expect(privacy).toBeDefined();
       expect(privacy?.document).toBe("aviso");
       expect(privacy?.version).toBe("1.0");
       expect(privacy?.contentSha256).toBe("66b082fab14d3aded2362796ded41f88b6ee71e2452208f024c48e16f1416efd");
 
-      const convenio = await storage.getLegalDocumentVersion("convenio:1.0");
+      const convenio = await memStorage.getLegalDocumentVersion("convenio:1.0");
       expect(convenio).toBeDefined();
       expect(convenio?.contentSha256).toBe("8da70ad24e725d7d9e1a15dee77b6058f6e2a41ea6fe996ab3d3e1cf6400824a");
 
-      const reglasRed = await storage.getLegalDocumentVersion("reglas-red:1.0");
+      const reglasRed = await memStorage.getLegalDocumentVersion("reglas-red:1.0");
       expect(reglasRed).toBeDefined();
       expect(reglasRed?.contentSha256).toBe("0b63f36bbefc7e94cb35be0fd98816c4773f1409b576b83769cebdd5f879014c");
 
-      const reglasMaster = await storage.getLegalDocumentVersion("reglas-master:1.0");
+      const reglasMaster = await memStorage.getLegalDocumentVersion("reglas-master:1.0");
       expect(reglasMaster).toBeDefined();
       expect(reglasMaster?.contentSha256).toBe("d7f3aca19b76f7b551a2a3f6df623bd9f236513a15c8410be4d9eaea4cc56760");
     });
@@ -61,6 +64,64 @@ describe("Bloque 2: Legal Document Persistence & Registration Acceptance Evidenc
       const privacy = getApprovedLegalDocument("aviso", "1.0");
       expect(privacy?.id).toBe("aviso:1.0");
       expect(privacy?.contentSha256).toBe("66b082fab14d3aded2362796ded41f88b6ee71e2452208f024c48e16f1416efd");
+    });
+
+    it("prevents mutating objects returned by MemStorage from altering stored versions (structuredClone)", async () => {
+      const memStorage = new MemStorage();
+      const termsBefore = await memStorage.getLegalDocumentVersion("terminos:1.0");
+      expect(termsBefore).toBeDefined();
+      const originalTitle = termsBefore!.title;
+      const originalContent = termsBefore!.content;
+
+      // Attempt mutating the returned object
+      termsBefore!.title = "MUTATED_TITLE";
+      termsBefore!.content = "MUTATED_CONTENT";
+
+      // Re-fetch and verify storage remains pristine
+      const freshTerms = await memStorage.getLegalDocumentVersion("terminos:1.0");
+      expect(freshTerms!.title).toBe(originalTitle);
+      expect(freshTerms!.content).toBe(originalContent);
+
+      const allVersions = await memStorage.getLegalDocumentVersions();
+      allVersions[0].content = "CORRUPTED_ALL";
+      const freshAllVersions = await memStorage.getLegalDocumentVersions();
+      expect(freshAllVersions[0].content).not.toBe("CORRUPTED_ALL");
+    });
+
+    it("prevents mutating objects returned by MemStorage from altering stored acceptances", async () => {
+      const memStorage = new MemStorage();
+      const termsDoc = getApprovedLegalDocument("terminos", "1.0")!;
+      const privacyDoc = getApprovedLegalDocument("aviso", "1.0")!;
+
+      const result = await memStorage.registerUserWithLegalEvidence({
+        userData: {
+          email: "immutable-evidence@example.com",
+          password: "password123",
+          firstName: "Mario",
+          lastName: "Test",
+          authMethod: "local",
+          role: "broker",
+        },
+        evidence: {
+          ipAddress: "198.51.100.1",
+          userAgent: "TestAgent/1.0",
+          termsDoc,
+          privacyDoc,
+        },
+      });
+
+      // Attempt mutating the returned acceptances directly
+      result.acceptances[0].ipAddress = "999.999.999.999";
+      result.acceptances[0].userAgent = "HACKED_AGENT";
+
+      const acceptances = await memStorage.getLegalAcceptancesByUser(result.user.id);
+      expect(acceptances[0].ipAddress).toBe("198.51.100.1");
+      expect(acceptances[0].userAgent).toBe("TestAgent/1.0");
+
+      // Attempt mutating array returned by getLegalAcceptancesByUser
+      acceptances[0].ipAddress = "888.888.888.888";
+      const freshAcceptances = await memStorage.getLegalAcceptancesByUser(result.user.id);
+      expect(freshAcceptances[0].ipAddress).toBe("198.51.100.1");
     });
   });
 
@@ -166,14 +227,14 @@ describe("Bloque 2: Legal Document Persistence & Registration Acceptance Evidenc
     });
   });
 
-  describe("3. Atomic user and evidence registration in storage", () => {
+  describe("3. In-transaction validation and discrepancy rollback", () => {
     it("creates account and 2 legal acceptance records atomically with server timestamp, IP and user agent", async () => {
-      const storage = new MemStorage();
+      const memStorage = new MemStorage();
       const email = `broker-${Date.now()}@example.com`;
-      const termsDoc = getPublishedLegalDocument("terminos", "1.0", afterPublication)!;
-      const privacyDoc = getPublishedLegalDocument("aviso", "1.0", afterPublication)!;
+      const termsDoc = getApprovedLegalDocument("terminos", "1.0")!;
+      const privacyDoc = getApprovedLegalDocument("aviso", "1.0")!;
 
-      const result = await storage.registerUserWithLegalEvidence({
+      const result = await memStorage.registerUserWithLegalEvidence({
         userData: {
           email,
           password: "hashedPassword123",
@@ -204,7 +265,6 @@ describe("Bloque 2: Legal Document Persistence & Registration Acceptance Evidenc
       expect(result.user.email).toBe(email);
       expect(result.acceptances.length).toBe(2);
 
-      // Verify Terms acceptance record
       const termsRecord = result.acceptances.find((a) => a.document === "terminos");
       expect(termsRecord).toBeDefined();
       expect(termsRecord?.userId).toBe(result.user.id);
@@ -215,9 +275,9 @@ describe("Bloque 2: Legal Document Persistence & Registration Acceptance Evidenc
       expect(termsRecord?.acceptanceType).toBe("accept_terms");
       expect(termsRecord?.ipAddress).toBe("203.0.113.42");
       expect(termsRecord?.userAgent).toBe("Mozilla/5.0 TestBrowser/1.0");
-      expect(termsRecord?.acceptedAt).toBeInstanceOf(Date);
+      expect(Object.prototype.toString.call(termsRecord?.acceptedAt)).toBe("[object Date]");
+      expect(Number.isFinite(new Date(termsRecord!.acceptedAt).getTime())).toBe(true);
 
-      // Verify Privacy acknowledgment record
       const privacyRecord = result.acceptances.find((a) => a.document === "aviso");
       expect(privacyRecord).toBeDefined();
       expect(privacyRecord?.userId).toBe(result.user.id);
@@ -228,31 +288,128 @@ describe("Bloque 2: Legal Document Persistence & Registration Acceptance Evidenc
       expect(privacyRecord?.acceptanceType).toBe("acknowledge_privacy");
       expect(privacyRecord?.ipAddress).toBe("203.0.113.42");
       expect(privacyRecord?.userAgent).toBe("Mozilla/5.0 TestBrowser/1.0");
-      expect(privacyRecord?.acceptedAt).toBeInstanceOf(Date);
+      expect(Object.prototype.toString.call(privacyRecord?.acceptedAt)).toBe("[object Date]");
+      expect(Number.isFinite(new Date(privacyRecord!.acceptedAt).getTime())).toBe(true);
 
-      // Verify retrieval by user id
-      const userAcceptances = await storage.getLegalAcceptancesByUser(result.user.id);
+      const userAcceptances = await memStorage.getLegalAcceptancesByUser(result.user.id);
       expect(userAcceptances.length).toBe(2);
     });
 
-    it("does not generate synthetic acceptances for existing test users", async () => {
-      const storage = new MemStorage();
-      const allUsers = await storage.getAllUsers();
-      expect(allUsers.length).toBeGreaterThan(0);
+    it("rejects without creating account or evidence when terms hash differs from catalog", async () => {
+      const memStorage = new MemStorage();
+      const email = "tampered-terms@example.com";
+      const termsDoc = getApprovedLegalDocument("terminos", "1.0")!;
+      const privacyDoc = getApprovedLegalDocument("aviso", "1.0")!;
 
-      for (const existingUser of allUsers) {
-        const acceptances = await storage.getLegalAcceptancesByUser(existingUser.id);
-        expect(acceptances).toHaveLength(0);
-      }
+      const initialUsersCount = (await memStorage.getAllUsers()).length;
+      const initialAcceptancesCount = (await memStorage.getAllLegalAcceptances()).length;
+
+      await expect(
+        memStorage.registerUserWithLegalEvidence({
+          userData: {
+            email,
+            password: "hashedPassword123",
+            firstName: "Tampered",
+            lastName: "Terms",
+            authMethod: "local",
+            role: "broker",
+          },
+          evidence: {
+            ipAddress: "127.0.0.1",
+            userAgent: "TestAgent",
+            termsDoc: {
+              ...termsDoc,
+              contentSha256: "0000000000000000000000000000000000000000000000000000000000000000",
+            },
+            privacyDoc,
+          },
+        }),
+      ).rejects.toThrow(/Discrepancia en el hash de los Términos/);
+
+      // Verify no user and no evidence was created
+      const user = await memStorage.getUserByEmail(email);
+      expect(user).toBeUndefined();
+      expect((await memStorage.getAllUsers()).length).toBe(initialUsersCount);
+      expect((await memStorage.getAllLegalAcceptances()).length).toBe(initialAcceptancesCount);
+    });
+
+    it("rejects without creating account or evidence when privacy hash differs from catalog", async () => {
+      const memStorage = new MemStorage();
+      const email = "tampered-privacy@example.com";
+      const termsDoc = getApprovedLegalDocument("terminos", "1.0")!;
+      const privacyDoc = getApprovedLegalDocument("aviso", "1.0")!;
+
+      const initialUsersCount = (await memStorage.getAllUsers()).length;
+      const initialAcceptancesCount = (await memStorage.getAllLegalAcceptances()).length;
+
+      await expect(
+        memStorage.registerUserWithLegalEvidence({
+          userData: {
+            email,
+            password: "hashedPassword123",
+            firstName: "Tampered",
+            lastName: "Privacy",
+            authMethod: "local",
+            role: "broker",
+          },
+          evidence: {
+            ipAddress: "127.0.0.1",
+            userAgent: "TestAgent",
+            termsDoc,
+            privacyDoc: {
+              ...privacyDoc,
+              contentSha256: "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+            },
+          },
+        }),
+      ).rejects.toThrow(/Discrepancia en el hash del Aviso/);
+
+      const user = await memStorage.getUserByEmail(email);
+      expect(user).toBeUndefined();
+      expect((await memStorage.getAllUsers()).length).toBe(initialUsersCount);
+      expect((await memStorage.getAllLegalAcceptances()).length).toBe(initialAcceptancesCount);
+    });
+
+    it("rejects when document version is not in approved catalog", async () => {
+      const memStorage = new MemStorage();
+      const email = "unapproved-doc@example.com";
+      const privacyDoc = getApprovedLegalDocument("aviso", "1.0")!;
+
+      await expect(
+        memStorage.registerUserWithLegalEvidence({
+          userData: {
+            email,
+            password: "hashedPassword123",
+            firstName: "Unapproved",
+            lastName: "Doc",
+            authMethod: "local",
+            role: "broker",
+          },
+          evidence: {
+            ipAddress: "127.0.0.1",
+            userAgent: "TestAgent",
+            termsDoc: {
+              id: "terminos:9.9",
+              document: "terminos",
+              version: "9.9",
+              contentSha256: "abc",
+            },
+            privacyDoc,
+          },
+        }),
+      ).rejects.toThrow(/no está aprobada en el catálogo/);
+
+      const user = await memStorage.getUserByEmail(email);
+      expect(user).toBeUndefined();
     });
 
     it("prevents duplicate registration and does not create stray evidence", async () => {
-      const storage = new MemStorage();
+      const memStorage = new MemStorage();
       const email = "duplicate@example.com";
-      const termsDoc = getPublishedLegalDocument("terminos", "1.0", afterPublication)!;
-      const privacyDoc = getPublishedLegalDocument("aviso", "1.0", afterPublication)!;
+      const termsDoc = getApprovedLegalDocument("terminos", "1.0")!;
+      const privacyDoc = getApprovedLegalDocument("aviso", "1.0")!;
 
-      await storage.registerUserWithLegalEvidence({
+      await memStorage.registerUserWithLegalEvidence({
         userData: {
           email,
           password: "hashedPassword123",
@@ -269,11 +426,10 @@ describe("Bloque 2: Legal Document Persistence & Registration Acceptance Evidenc
         },
       });
 
-      const initialAcceptancesCount = (await storage.getAllLegalAcceptances()).length;
+      const initialAcceptancesCount = (await memStorage.getAllLegalAcceptances()).length;
 
-      // Attempt second registration with same email
       await expect(
-        storage.registerUserWithLegalEvidence({
+        memStorage.registerUserWithLegalEvidence({
           userData: {
             email,
             password: "hashedPassword456",
@@ -289,143 +445,223 @@ describe("Bloque 2: Legal Document Persistence & Registration Acceptance Evidenc
             privacyDoc,
           },
         }),
-      ).rejects.toThrow();
+      ).rejects.toThrow(/ya está registrado/);
 
-      const finalAcceptancesCount = (await storage.getAllLegalAcceptances()).length;
+      const finalAcceptancesCount = (await memStorage.getAllLegalAcceptances()).length;
       expect(finalAcceptancesCount).toBe(initialAcceptancesCount);
     });
   });
 
-  describe("4. Registration API HTTP endpoint verification", () => {
-    function createTestApp(storageInstance: MemStorage) {
-      const app = express();
+  describe("4. Real Legal Route Handlers (registerLegalRoutes)", () => {
+    let app: express.Express;
+    let activeUser: any;
+    let inactiveUser: any;
+    let suspendedUser: any;
+    let currentUserInSession: any = null;
+
+    beforeAll(async () => {
+      // Create test users in storage
+      activeUser = await storage.createUser({
+        email: "legal-active@example.com",
+        firstName: "Active",
+        lastName: "User",
+        role: "broker",
+        isActive: true,
+        status: "active",
+      });
+
+      inactiveUser = await storage.createUser({
+        email: "legal-inactive@example.com",
+        firstName: "Inactive",
+        lastName: "User",
+        role: "broker",
+        isActive: false,
+        status: "inactive",
+      });
+
+      suspendedUser = await storage.createUser({
+        email: "legal-suspended@example.com",
+        firstName: "Suspended",
+        lastName: "User",
+        role: "broker",
+        isActive: true,
+        status: "suspended",
+      });
+
+      // Record acceptances for active user
+      const termsDoc = getApprovedLegalDocument("terminos", "1.0")!;
+      const privacyDoc = getApprovedLegalDocument("aviso", "1.0")!;
+      await storage.registerUserWithLegalEvidence({
+        userData: {
+          email: "accepted-evidence@example.com",
+          password: "password123",
+          firstName: "Accepted",
+          lastName: "Evidence",
+          authMethod: "local",
+          role: "broker",
+        },
+        evidence: {
+          ipAddress: "192.0.2.100",
+          userAgent: "TestBrowser/1.0",
+          termsDoc,
+          privacyDoc,
+        },
+      });
+
+      // Setup express app with session and passport simulation
+      app = express();
       app.use(express.json());
-      app.set("trust proxy", true);
 
-      // Session setup
-      app.use(
-        session({
-          secret: "test-secret",
-          resave: false,
-          saveUninitialized: false,
-        }),
-      );
-
-      // Mock passport req.login
+      // Middleware simulating session auth state
       app.use((req: any, _res, next) => {
-        req.login = (user: any, cb: any) => {
-          req.session.user = user;
-          cb(null);
-        };
+        if (currentUserInSession) {
+          req.isAuthenticated = () => true;
+          req.user = currentUserInSession;
+        } else {
+          req.isAuthenticated = () => false;
+          req.user = null;
+        }
         next();
       });
 
-      const registerSchema = z.object({
-        email: z.string().email("Email inválido"),
-        password: z.string().min(6, "La contraseña debe tener al menos 6 caracteres"),
-        firstName: z.string().min(1, "Nombre requerido"),
-        lastName: z.string().min(1, "Apellido requerido"),
-        referralCode: z.string().optional(),
-        promoCode: z.string().optional(),
-        acceptTerms: z.literal(true, {
-          errorMap: () => ({ message: "Debes aceptar los Términos y Condiciones para continuar." }),
-        }),
-        termsVersion: z.string({
-          required_error: "La versión de Términos y Condiciones es requerida",
-        }),
-        acknowledgePrivacy: z.literal(true, {
-          errorMap: () => ({ message: "Debes confirmar que has leído el Aviso de Privacidad para continuar." }),
-        }),
-        privacyVersion: z.string({
-          required_error: "La versión del Aviso de Privacidad es requerida",
-        }),
-      });
+      // Register the real legal routes
+      registerLegalRoutes(app);
+    });
 
-      app.post("/api/auth/register", async (req: any, res) => {
-        try {
-          const data = registerSchema.parse(req.body);
+    beforeEach(() => {
+      currentUserInSession = null;
+    });
 
-          const legalValidation = validateRegistrationAcceptance({
-            acceptTerms: data.acceptTerms,
-            termsVersion: data.termsVersion,
-            acknowledgePrivacy: data.acknowledgePrivacy,
-            privacyVersion: data.privacyVersion,
-            now: afterPublication,
-          });
+    it("GET /api/legal/my-acceptances returns 401 when anonymous / unauthenticated", async () => {
+      currentUserInSession = null;
+      const res = await request(app)
+        .get("/api/legal/my-acceptances")
+        .expect(401);
 
-          if (!legalValidation.valid || !legalValidation.termsDoc || !legalValidation.privacyDoc) {
-            return res.status(400).json({ message: legalValidation.error || "Aceptación legal inválida." });
-          }
+      expect(res.body.message).toBe("Unauthorized");
+    });
 
-          const existingUser = await storageInstance.getUserByEmail(data.email);
-          if (existingUser) {
-            return res.status(400).json({ message: "Este email ya está registrado" });
-          }
+    it("GET /api/legal/my-acceptances returns 401 when user is inactive", async () => {
+      currentUserInSession = { id: inactiveUser.id };
+      const res = await request(app)
+        .get("/api/legal/my-acceptances")
+        .expect(401);
 
-          const forwarded = req.headers["x-forwarded-for"];
-          let clientIp = req.ip || req.socket?.remoteAddress || "127.0.0.1";
-          if (typeof forwarded === "string" && forwarded.length > 0) {
-            clientIp = forwarded.split(",")[0].trim();
-          }
+      expect(res.body.message).toContain("desactivada");
+    });
 
-          const userAgent = req.headers["user-agent"] || "unknown";
+    it("GET /api/legal/my-acceptances returns 401 when user is suspended", async () => {
+      currentUserInSession = { id: suspendedUser.id };
+      const res = await request(app)
+        .get("/api/legal/my-acceptances")
+        .expect(401);
 
-          const { user, acceptances } = await storageInstance.registerUserWithLegalEvidence({
-            userData: {
-              email: data.email,
-              password: await bcrypt.hash(data.password, 10),
-              firstName: data.firstName,
-              lastName: data.lastName,
-              authMethod: "local",
-              role: "broker",
-            },
-            evidence: {
-              ipAddress: clientIp,
-              userAgent,
-              termsDoc: {
-                id: legalValidation.termsDoc.id,
-                document: legalValidation.termsDoc.document,
-                version: legalValidation.termsDoc.version,
-                contentSha256: legalValidation.termsDoc.contentSha256,
-              },
-              privacyDoc: {
-                id: legalValidation.privacyDoc.id,
-                document: legalValidation.privacyDoc.document,
-                version: legalValidation.privacyDoc.version,
-                contentSha256: legalValidation.privacyDoc.contentSha256,
-              },
-            },
-          });
+      expect(res.body.message).toContain("suspendida");
+    });
 
-          return res.status(201).json({
-            message: "Registro exitoso",
-            user: { id: user.id, email: user.email },
-            acceptancesCount: acceptances.length,
-          });
-        } catch (error: any) {
-          if (error instanceof z.ZodError) {
-            return res.status(400).json({ message: error.errors[0].message });
-          }
-          return res.status(500).json({ message: "Error al registrar usuario" });
-        }
-      });
+    it("GET /api/legal/my-acceptances returns 200 with acceptances for authenticated active user", async () => {
+      currentUserInSession = { id: activeUser.id };
+      const res = await request(app)
+        .get("/api/legal/my-acceptances")
+        .expect(200);
 
-      return app;
-    }
+      expect(res.body).toHaveProperty("acceptances");
+      expect(Array.isArray(res.body.acceptances)).toBe(true);
+    });
 
-    it("succeeds when both legal confirmations and current versions are provided", async () => {
-      const storage = new MemStorage();
-      const app = createTestApp(storage);
+    it("prevents route collision: /api/legal/my-acceptances is not captured as /api/legal/:document", async () => {
+      // If collision occurred, /api/legal/:document would treat "my-acceptances" as a document name and return 404
+      currentUserInSession = { id: activeUser.id };
+      const res = await request(app)
+        .get("/api/legal/my-acceptances");
 
-      const response = await request(app)
+      expect(res.status).not.toBe(404);
+      expect(res.status).toBe(200);
+      expect(res.body).toHaveProperty("acceptances");
+    });
+
+    it("maintains public access to legal documents without requiring authentication", async () => {
+      currentUserInSession = null; // Unauthenticated
+      const termsRes = await request(app)
+        .get("/api/legal/terminos")
+        .expect(200);
+
+      expect(termsRes.body.document).toBe("terminos");
+      expect(termsRes.body.version).toBe("1.0");
+
+      const privacyRes = await request(app)
+        .get("/api/legal/aviso")
+        .expect(200);
+
+      expect(privacyRes.body.document).toBe("aviso");
+      expect(privacyRes.body.version).toBe("1.0");
+    });
+
+    it("handles document loading errors gracefully (invalid version -> 400, unknown doc -> 404)", async () => {
+      currentUserInSession = null;
+      const invalidVersionRes = await request(app)
+        .get("/api/legal/terminos?version=invalid-version")
+        .expect(400);
+
+      expect(invalidVersionRes.body.message).toContain("inválida");
+
+      const unknownDocRes = await request(app)
+        .get("/api/legal/documento-inexistente")
+        .expect(404);
+
+      expect(unknownDocRes.body.message).toContain("no disponible");
+    });
+
+    it("handles internal storage errors with 500 JSON response on my-acceptances", async () => {
+      currentUserInSession = { id: activeUser.id };
+      const originalMethod = storage.getLegalAcceptancesByUser;
+      // Force storage error
+      storage.getLegalAcceptancesByUser = jest.fn().mockRejectedValue(new Error("Database disconnected"));
+
+      try {
+        const res = await request(app)
+          .get("/api/legal/my-acceptances")
+          .expect(500);
+
+        expect(res.body.message).toContain("Error al obtener historial de aceptaciones");
+      } finally {
+        storage.getLegalAcceptancesByUser = originalMethod;
+      }
+    });
+  });
+
+  describe("5. Real Registration Route Handler (/api/auth/register via registerRoutes)", () => {
+    let app: express.Express;
+    let server: Server;
+
+    beforeAll(async () => {
+      app = express();
+      app.use(express.json());
+      // Explicitly disable trust proxy on this app to test untrusted header spoofing
+      app.set("trust proxy", false);
+
+      server = await registerRoutes(app);
+    });
+
+    afterAll((done) => {
+      // Stop all background cron tasks scheduled by registerRoutes
+      cron.getTasks().forEach((task: any) => task.stop());
+      if (server && (server as any).listening) {
+        server.close(done);
+      } else {
+        done();
+      }
+    });
+
+    it("succeeds when valid legal confirmations and current versions are provided", async () => {
+      const email = `real-route-${Date.now()}@example.com`;
+      const res = await request(app)
         .post("/api/auth/register")
-        .set("X-Forwarded-For", "198.51.100.25")
-        .set("User-Agent", "Mozilla/5.0 AgentTest")
         .send({
-          email: "valid-register@example.com",
-          password: "securePassword123",
-          firstName: "Ana",
-          lastName: "García",
+          email,
+          password: "password123",
+          firstName: "Real",
+          lastName: "Handler",
           acceptTerms: true,
           termsVersion: "1.0",
           acknowledgePrivacy: true,
@@ -433,29 +669,51 @@ describe("Bloque 2: Legal Document Persistence & Registration Acceptance Evidenc
         })
         .expect(201);
 
-      expect(response.body.message).toBe("Registro exitoso");
-      expect(response.body.acceptancesCount).toBe(2);
+      expect(res.body.message).toBe("Registro exitoso");
+      expect(res.body.user).toBeDefined();
 
-      const user = await storage.getUserByEmail("valid-register@example.com");
-      expect(user).toBeDefined();
+      // Verify acceptances were persisted in storage
+      const acceptances = await storage.getLegalAcceptancesByUser(res.body.user.id);
+      expect(acceptances.length).toBe(2);
+      expect(acceptances.map((a) => a.document).sort()).toEqual(["aviso", "terminos"]);
+    });
 
-      const acceptances = await storage.getLegalAcceptancesByUser(user!.id);
-      expect(acceptances).toHaveLength(2);
-      expect(acceptances[0].ipAddress).toBe("198.51.100.25");
-      expect(acceptances[0].userAgent).toBe("Mozilla/5.0 AgentTest");
+    it("captures client IP via req.ip without trusting spoofed X-Forwarded-For when trust proxy is disabled", async () => {
+      const email = `spoofed-ip-${Date.now()}@example.com`;
+      const spoofedIp = "203.0.113.199";
+
+      const res = await request(app)
+        .post("/api/auth/register")
+        .set("X-Forwarded-For", spoofedIp)
+        .send({
+          email,
+          password: "password123",
+          firstName: "Spoof",
+          lastName: "Test",
+          acceptTerms: true,
+          termsVersion: "1.0",
+          acknowledgePrivacy: true,
+          privacyVersion: "1.0",
+        })
+        .expect(201);
+
+      const acceptances = await storage.getLegalAcceptancesByUser(res.body.user.id);
+      expect(acceptances.length).toBe(2);
+      // Because trust proxy is false, req.ip does NOT trust X-Forwarded-For: 203.0.113.199
+      for (const record of acceptances) {
+        expect(record.ipAddress).not.toBe(spoofedIp);
+      }
     });
 
     it("rejects with 400 when Terms are not accepted", async () => {
-      const storage = new MemStorage();
-      const app = createTestApp(storage);
-
-      const response = await request(app)
+      const email = `reject-terms-${Date.now()}@example.com`;
+      const res = await request(app)
         .post("/api/auth/register")
         .send({
-          email: "no-terms@example.com",
-          password: "securePassword123",
-          firstName: "Ana",
-          lastName: "García",
+          email,
+          password: "password123",
+          firstName: "No",
+          lastName: "Terms",
           acceptTerms: false,
           termsVersion: "1.0",
           acknowledgePrivacy: true,
@@ -463,44 +721,40 @@ describe("Bloque 2: Legal Document Persistence & Registration Acceptance Evidenc
         })
         .expect(400);
 
-      expect(response.body.message).toContain("Términos y Condiciones");
-      const user = await storage.getUserByEmail("no-terms@example.com");
+      expect(res.body.message).toContain("Términos y Condiciones");
+      const user = await storage.getUserByEmail(email);
       expect(user).toBeUndefined();
     });
 
     it("rejects with 400 when Privacy acknowledgment is missing", async () => {
-      const storage = new MemStorage();
-      const app = createTestApp(storage);
-
-      const response = await request(app)
+      const email = `reject-privacy-${Date.now()}@example.com`;
+      const res = await request(app)
         .post("/api/auth/register")
         .send({
-          email: "no-privacy@example.com",
-          password: "securePassword123",
-          firstName: "Ana",
-          lastName: "García",
+          email,
+          password: "password123",
+          firstName: "No",
+          lastName: "Privacy",
           acceptTerms: true,
           termsVersion: "1.0",
           privacyVersion: "1.0",
         })
         .expect(400);
 
-      expect(response.body.message).toContain("Aviso de Privacidad");
-      const user = await storage.getUserByEmail("no-privacy@example.com");
+      expect(res.body.message).toContain("Aviso de Privacidad");
+      const user = await storage.getUserByEmail(email);
       expect(user).toBeUndefined();
     });
 
     it("rejects with 400 when termsVersion is outdated", async () => {
-      const storage = new MemStorage();
-      const app = createTestApp(storage);
-
-      const response = await request(app)
+      const email = `outdated-terms-${Date.now()}@example.com`;
+      const res = await request(app)
         .post("/api/auth/register")
         .send({
-          email: "outdated-terms@example.com",
-          password: "securePassword123",
-          firstName: "Ana",
-          lastName: "García",
+          email,
+          password: "password123",
+          firstName: "Outdated",
+          lastName: "Terms",
           acceptTerms: true,
           termsVersion: "0.9",
           acknowledgePrivacy: true,
@@ -508,22 +762,20 @@ describe("Bloque 2: Legal Document Persistence & Registration Acceptance Evidenc
         })
         .expect(400);
 
-      expect(response.body.message).toContain("desactualizada");
-      const user = await storage.getUserByEmail("outdated-terms@example.com");
+      expect(res.body.message).toContain("desactualizada");
+      const user = await storage.getUserByEmail(email);
       expect(user).toBeUndefined();
     });
 
     it("rejects with 400 when privacyVersion is outdated", async () => {
-      const storage = new MemStorage();
-      const app = createTestApp(storage);
-
-      const response = await request(app)
+      const email = `outdated-privacy-${Date.now()}@example.com`;
+      const res = await request(app)
         .post("/api/auth/register")
         .send({
-          email: "outdated-privacy@example.com",
-          password: "securePassword123",
-          firstName: "Ana",
-          lastName: "García",
+          email,
+          password: "password123",
+          firstName: "Outdated",
+          lastName: "Privacy",
           acceptTerms: true,
           termsVersion: "1.0",
           acknowledgePrivacy: true,
@@ -531,8 +783,8 @@ describe("Bloque 2: Legal Document Persistence & Registration Acceptance Evidenc
         })
         .expect(400);
 
-      expect(response.body.message).toContain("desactualizada");
-      const user = await storage.getUserByEmail("outdated-privacy@example.com");
+      expect(res.body.message).toContain("desactualizada");
+      const user = await storage.getUserByEmail(email);
       expect(user).toBeUndefined();
     });
   });

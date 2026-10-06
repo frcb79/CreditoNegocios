@@ -800,7 +800,6 @@ function getDocumentExtractedData() {
 }
 
 export async function registerRoutes(app: Express): Promise<Server> {
-  registerLegalRoutes(app);
   app.get('/api/health', async (_req, res) => {
     const strictHealth = process.env.HEALTHCHECK_STRICT === 'true';
     const healthQueryTimeoutMs = Number(process.env.HEALTHCHECK_DB_TIMEOUT_MS ?? '2500');
@@ -840,6 +839,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Auth middleware
   await setupAuth(app);
+
+  // Register legal routes after session/Passport initialization
+  registerLegalRoutes(app);
 
   // Tenant context middleware - must be after auth setup
   app.use(tenantContextMiddleware);
@@ -1057,15 +1059,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const saltRounds = 10;
       const hashedPassword = await bcrypt.hash(data.password, saltRounds);
 
-      // Client IP from trusted proxy or headers
-      const forwarded = req.headers["x-forwarded-for"];
-      let clientIp = req.ip || req.socket?.remoteAddress || "127.0.0.1";
-      if (typeof forwarded === "string" && forwarded.length > 0) {
-        clientIp = forwarded.split(",")[0].trim();
-      } else if (Array.isArray(forwarded) && forwarded.length > 0) {
-        clientIp = forwarded[0].trim();
-      }
-      const userAgent = req.headers["user-agent"] || "unknown";
+      // Client IP captured via Express req.ip (honoring trust proxy configuration)
+      const clientIp = req.ip || req.socket?.remoteAddress || "";
+      const userAgent = (req.headers["user-agent"] as string) || "unknown";
       
       // Create user and legal evidence atomically
       const { user } = await storage.registerUserWithLegalEvidence({
