@@ -3885,22 +3885,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
           status: status as string,
         });
       } else if (user?.role === 'master_broker') {
-        const networkBrokers = await storage.getUsersByMasterBroker(userId);
-        const brokerIds = [userId, ...networkBrokers.map(b => b.id)];
-        let tenantIds: string[] = [];
-        if (req.tenantContext?.tenant) {
-          const subordinates = await storage.getTenantsByParent(req.tenantContext.tenant.id);
-          tenantIds = [req.tenantContext.tenant.id, ...subordinates.map(t => t.id)];
-        }
         const allCredits = await storage.getCredits({
           clientId: clientId as string,
           status: status as string,
         });
-        rawCredits = allCredits.filter(c => 
+        // A Master sees its direct originations and credits historically
+        // originated under its network. Current network membership alone must
+        // never transfer old credits from another Master or from Casa Matriz.
+        rawCredits = allCredits.filter(c =>
           c.brokerId === userId ||
-          c.originMasterBrokerId === userId ||
-          brokerIds.includes(c.brokerId) ||
-          (c.tenantId && tenantIds.includes(c.tenantId))
+          c.originMasterBrokerId === userId
         );
       } else if (req.tenantContext?.tenant) {
         const tenant = req.tenantContext.tenant;
