@@ -297,14 +297,24 @@ export default function UserManagement() {
 
   const isSuperAdmin = currentUser?.role === 'super_admin';
   const isPlatformAdmin = currentUser?.role === 'admin' || isSuperAdmin;
+  const configuredModules = Array.isArray((currentUser?.permissions as any)?.modules)
+    ? (currentUser?.permissions as any).modules as string[]
+    : [];
   const configuredActions = Array.isArray((currentUser?.permissions as any)?.actions)
     ? (currentUser?.permissions as any).actions as string[]
     : [];
-  const canViewActivityTab =
+  const usesRoleDefaults =
+    (currentUser?.role === 'admin' || currentUser?.role === 'master_broker') &&
+    configuredModules.length === 0 &&
+    configuredActions.length === 0;
+  const hasUsersModule =
+    isSuperAdmin || configuredModules.includes('usuarios') || usesRoleDefaults;
+  const hasActivityAction =
     isSuperAdmin ||
     configuredActions.includes('view_user_activity') ||
     configuredActions.includes('manage_users') ||
-    ((currentUser?.role === 'admin' || currentUser?.role === 'master_broker') && configuredActions.length === 0);
+    usesRoleDefaults;
+  const canViewActivityTab = hasUsersModule && hasActivityAction;
 
   const updateOperationalStatusMutation = useMutation({
     mutationFn: async ({ userId, status, reason, notes }: { userId: string; status: UserOperationalStatus; reason: string; notes?: string }) => {
