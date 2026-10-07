@@ -1210,10 +1210,21 @@ export class DbStorage implements IStorage {
   
   async createCredit(credit: InsertCredit): Promise<Credit> {
     try {
+      // Commercial lineage is always derived server-side at creation time.
+      // It must never depend on the broker's future network affiliation.
+      const brokerAtOrigination = await this.getUser(credit.brokerId);
+      const originMasterBrokerId =
+        brokerAtOrigination?.role === "master_broker"
+          ? brokerAtOrigination.id
+          : brokerAtOrigination?.role === "broker"
+            ? brokerAtOrigination.masterBrokerId || null
+            : null;
+
       const [created] = await db
         .insert(credits)
         .values({
           ...credit,
+          originMasterBrokerId,
           createdAt: new Date(),
           updatedAt: new Date(),
         })
