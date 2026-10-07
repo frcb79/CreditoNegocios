@@ -90,7 +90,7 @@ function displayName(user: UserActivityRow | any): string {
 }
 
 function activityState(lastActivity?: string | null, firstLogin?: string | null) {
-  if (!firstLogin) return { label: "Sin acceso registrado", variant: "outline" as const };
+  if (!lastActivity && !firstLogin) return { label: "Sin actividad registrada", variant: "outline" as const };
   if (!lastActivity) return { label: "Sin actividad", variant: "secondary" as const };
   const days = (Date.now() - new Date(lastActivity).getTime()) / 86_400_000;
   if (days <= 7) return { label: "Activo", variant: "default" as const };
@@ -201,7 +201,7 @@ export default function UserActivityView() {
           icon={<Clock3 className="h-4 w-4" />}
         />
         <MetricCard
-          title="Sin acceso registrado"
+          title="Sin login registrado"
           value={overview?.noRecordedLogin ?? "—"}
           subtitle="desde la activación de la bitácora"
           icon={<UserX className="h-4 w-4" />}
@@ -379,7 +379,7 @@ export default function UserActivityView() {
                       ? format(new Date(detailQuery.data.user.first_login_at), "dd MMM yyyy HH:mm", {
                           locale: es,
                         })
-                      : "No registrado aún"
+                      : "Login no registrado aún"
                   }
                 />
                 <SmallStat
