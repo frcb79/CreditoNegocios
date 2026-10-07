@@ -72,6 +72,10 @@ import {
 import { commercialOpportunityService } from "./commercialOpportunityService";
 import { commercialHelpService } from "./commercialHelpService";
 import { registerBrokerNetworkTransitionRoutes } from "./brokerNetworkTransitionRoutes";
+import {
+  BrokerNetworkTransitionError,
+  createBrokerWithOrganization,
+} from "./brokerNetworkTransitionService";
 
 
 import { z } from "zod";
@@ -1040,16 +1044,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const saltRounds = 10;
       const hashedPassword = await bcrypt.hash(data.password, saltRounds);
       
-      // Create user
-      const user = await storage.createLocalUser({
+      // Canonical broker creation: identity + own organization + owner membership
+      // are committed atomically so the user can be safely moved/promoted later.
+      const brokerCreation = await createBrokerWithOrganization({
         email: data.email,
         password: hashedPassword,
         firstName: data.firstName,
         lastName: data.lastName,
         authMethod: "local",
-        role: "broker", // Default role for new registrations
-        masterBrokerId,
+        masterBrokerId: masterBrokerId || null,
+        isActive: true,
       });
+      const user = brokerCreation.user;
 
       // Apply promotional redemption if promo was supplied
       if (validatedPromo) {
@@ -1057,7 +1063,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           await storage.createPromoRedemption({
             promoCodeId: validatedPromo.id,
             userId: user.id,
-            tenantId: (user as any).tenantId || null,
+            tenantId: brokerCreation.tenant.id,
             startsAt: new Date(),
             expiresAt: targetExpiresAt,
             status: "active",
@@ -2500,7 +2506,29 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ message: "El email ya está registrado en el sistema" });
       }
       
-      const newUser = await storage.createUser(userData);
+      let newUser;
+      if (userData.role === 'broker') {
+        const created = await createBrokerWithOrganization({
+          email: userData.email,
+          firstName: userData.firstName || '',
+          lastName: userData.lastName || '',
+          password: userData.password || null,
+          authMethod: userData.authMethod || 'local',
+          masterBrokerId: isMasterBroker ? currentUser!.id : null,
+          profileData: userData.profileData || {},
+          isActive: userData.isActive !== false,
+        });
+
+        // Non-structural profile/RBAC fields may still come from this admin form.
+        newUser = (await storage.updateUser(created.user.id, {
+          permissions: userData.permissions || {},
+          customRoleTitle: userData.customRoleTitle || null,
+          profileType: userData.profileType || null,
+          commercialReferences: userData.commercialReferences || [],
+        } as any)) || created.user;
+      } else {
+        newUser = await storage.createUser(userData);
+      }
       
       // Send welcome email to the new broker
       if (newUser.email && (newUser.role === 'broker' || newUser.role === 'master_broker')) {
@@ -2512,6 +2540,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.status(201).json(newUser);
     } catch (error: any) {
       console.error("Error creating user:", error);
+      if (error instanceof BrokerNetworkTransitionError) {
+        return res.status(error.statusCode).json({ message: error.message, code: error.code });
+      }
       if (error instanceof z.ZodError) {
         return res.status(400).json({ message: "Validation error", errors: error.errors });
       }
@@ -5804,13 +5835,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
           });
         }
       } else {
-        // Create new broker user record under master broker
-        targetBroker = await storage.createUser({
+        // New invitation creates a complete Broker organization atomically.
+        // Platform admins create direct Crédito Negocios brokers; Masters create
+        // brokers inside their own network. Existing brokers are never moved here.
+        const created = await createBrokerWithOrganization({
           email,
           firstName: firstName || '',
           lastName: lastName || '',
-          role: 'broker',
-          masterBrokerId: user.role === 'master_broker' ? userId : (req.body.masterBrokerId || null),
+          masterBrokerId: user.role === 'master_broker' ? userId : null,
           isActive: true,
           profileData: {
             phone: phone || '',
@@ -5818,6 +5850,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             invitationMessage: message || '',
           },
         });
+        targetBroker = created.user;
       }
 
       // Create a notification for sender
@@ -5849,6 +5882,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         invitation: { email, firstName, lastName, phone }
       });
     } catch (error) {
+      if (error instanceof BrokerNetworkTransitionError) {
+        return res.status(error.statusCode).json({ message: error.message, code: error.code });
+      }
       console.error("Error sending broker invitation:", error);
       res.status(500).json({ message: "Failed to send broker invitation" });
     }
