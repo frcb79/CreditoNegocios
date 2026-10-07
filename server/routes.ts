@@ -5,6 +5,7 @@ import rateLimit from "express-rate-limit";
 import { pool } from "./db";
 import { storage } from "./storage";
 import { setupAuth, isAuthenticated } from "./auth";
+import { registerLegalRoutes } from "./legalRoutes";
 import PDFDocument from "pdfkit";
 import bcrypt from "bcrypt";
 import { sendBrokerDeactivationRequestEmail, sendBrokerLeadEmail, sendPasswordResetEmail, sendWebsiteLeadEmail, sendWelcomeEmail, sendSuperAdminNotificationEmail } from "./emailService";
@@ -798,6 +799,7 @@ function getDocumentExtractedData() {
 }
 
 export async function registerRoutes(app: Express): Promise<Server> {
+  registerLegalRoutes(app);
   app.get('/api/health', async (_req, res) => {
     const strictHealth = process.env.HEALTHCHECK_STRICT === 'true';
     const healthQueryTimeoutMs = Number(process.env.HEALTHCHECK_DB_TIMEOUT_MS ?? '2500');

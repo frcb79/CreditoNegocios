@@ -1,4 +1,5 @@
 import { useState } from "react";
+import LegalLinks from "@/components/LegalLinks";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -620,6 +621,7 @@ export default function Landing() {
         <p className="text-center text-xs text-slate-500 mt-6">
           © 2026 Crédito Negocios. Soluciones especializadas para brokers financieros en México.
         </p>
+        <div className="mt-4"><LegalLinks /></div>
       </div>
     </div>
   );
