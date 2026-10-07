@@ -1237,13 +1237,16 @@ export class CommercialOpportunityService {
     } else if (userRole === "admin") {
       tenantId = tenantContext?.tenant?.id || null;
     } else if (userRole === "master_broker") {
-      let networkIds: string[] = [userId];
-      const network = await (this.authService as any)['storage']?.getNetworkBrokers?.(userId);
-      if (network && Array.isArray(network)) {
-        networkIds = [userId, ...network.map((b: any) => b.id)];
-      }
-      brokerIds = networkIds;
-      tenantId = tenantContext?.tenant?.id || null;
+      // Historical network attribution is already frozen on each opportunity
+      // through opportunity.masterBrokerId. Passing only the Master id lets
+      // storage match:
+      //   - brokerId === Master id (direct origination), or
+      //   - masterBrokerId === Master id (network origination).
+      //
+      // Do NOT expand this to the Master's current broker list: after a broker
+      // moves networks that would expose pre-move opportunities to the new Master.
+      brokerIds = [userId];
+      tenantId = undefined;
     } else {
       // Broker regular: únicamente sus propias oportunidades
       brokerIds = [userId];
