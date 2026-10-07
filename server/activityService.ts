@@ -247,7 +247,7 @@ export async function recordHeartbeat(params: {
       ? Math.min(MAX_HEARTBEAT_CREDIT_SECONDS, elapsedSeconds)
       : 0;
   const previousModule = cleanText(session.last_module_id, 64);
-  const moduleChanged = Boolean(safeModule && safeModule !== previousModule);
+  const moduleChanged = Boolean(previousModule && safeModule && safeModule !== previousModule);
   // Elapsed time belongs to the module that was active since the previous heartbeat.
   const creditedModule = previousModule || safeModule;
 
@@ -295,7 +295,7 @@ export async function recordHeartbeat(params: {
         tenantId,
         creditedModule,
         creditSeconds,
-        !moduleChanged && safeModule === creditedModule ? 0 : 0,
+        0,
       ],
     );
   }
