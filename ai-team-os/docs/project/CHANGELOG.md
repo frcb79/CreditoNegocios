@@ -35,3 +35,23 @@ Actualizar cada vez que se completa una feature.
 	- Reestructuración de la vista para Super Admin con métricas ejecutivas y 3 pestañas: Master Brokers & Redes (con desglose de brokers asociados), Brokers Directos Independientes y Mi Red Directa (Casa Matriz) con botón de invitación.
 - **Fix de Build en Vercel (`CreditList.tsx`):**
 	- Corrección de error de esbuild `Unexpected "const"` mediante el encapsulamiento apropiado del bloque JSX en un IIFE `{(() => { ... })()}`.
+
+## 2026-10-07 — Broker Network Transitions & Escalamiento Broker–Master
+- **Servicio y Rutas de Transición (`brokerNetworkTransitionService.ts`, `brokerNetworkTransitionRoutes.ts`):**
+	- Implementación de `executeBrokerNetworkTransition` bajo transacción atómica y locks consultivos PostgreSQL:
+		- Asignación/reasignación entre Master Brokers (`assign_master`).
+		- Desconexión hacia Crédito Negocios directo (`assign_platform` con `masterBrokerId = null`).
+		- Promoción Broker -> Master Broker (`promote_master`), preservando identidad, usuario y tenant.
+	- Invalidación automática de solicitudes pendientes de estatus ante movimientos de red.
+	- Auditoría inmutable en `commercial_audit_logs` con motivo obligatorio y desglose anterior/nuevo.
+- **Migración 0004 (`migrations/0004_broker_network_transitions.sql`):**
+	- Columnas indexadas `origin_master_broker_id` en `credits` y `credit_submission_requests`.
+	- Marcadores de migración `system_migration_markers` para garantizar backfills únicos.
+	- Normalización de Casa Matriz legacy (enlaces broker -> admin normalizados a directo plataforma).
+	- Triggers PL/pgSQL de base de datos para impedir mutaciones en snapshots históricos de oportunidades, solicitudes y créditos.
+- **UI de Gestión de Red (`BrokerNetworkTransitionDialog.tsx`, `UserManagement.tsx`):**
+	- Modal institucional para Super Admin con selección de acción, destino, motivo obligatorio y opción de reactivación.
+- **Estabilización de QA y Tests:**
+	- Desempate determinista por orden de inserción en `MemStorage.getCommercialAuditLogs`.
+	- Corrección de delimitadores PL/pgSQL `$$` en migración 0004.
+	- Cobertura 100% pasando: 161 unit tests y 51 E2E tests en Staging.

@@ -13,8 +13,8 @@
 | 🔴 Errores Críticos Abiertos | 0 |
 | 🟠 Errores Altos Abiertos | 0 |
 | 🟡 Errores Medios Abiertos | 0 |
-| Total Errores Resueltos | 3 |
-| Último Incidente | 2026-09-11 (ERR-2026-09-11-002) |
+| Total Errores Resueltos | 5 |
+| Último Incidente | 2026-10-07 (ERR-2026-10-07-002) |
 
 ---
 
@@ -93,6 +93,78 @@ _Ninguno activo en este momento._
 ---
 
 ## ERRORES RESUELTOS
+
+### ERR-2026-10-07-001 — Delimitadores PL/pgSQL inválidos en migración 0004 (DO $ en vez de DO $$)
+
+| Campo | Valor |
+|-------|-------|
+| ID | ERR-2026-10-07-001 |
+| Fecha detección | 2026-10-07 17:07 CST |
+| Severidad | 🟠 Alto (bloquea ejecución de migración DDL en PostgreSQL) |
+| Área | Backend / Migraciones / DB |
+| Estado | ✅ Verificado |
+| Reportado por | QA / Antigravity Code Review |
+| Asignado a | Backend Dev / DBA |
+
+**Descripción:**
+En el bloque condicional de Foreign Keys de `migrations/0004_broker_network_transitions.sql`, se utilizaron delimitadores de un solo signo de dólar (`DO $` / `END $;`), lo cual viola la sintaxis de dollar-quoting de PostgreSQL e impide la ejecución de la migración.
+
+**Pasos para reproducir:**
+1. Ejecutar el script SQL con `DO $ ... END $;` en PostgreSQL.
+2. PostgreSQL aborta la transacción con error de sintaxis en el token `$`.
+
+**Impacto en negocio:**
+Impediría el despliegue del Bloque de Transiciones de Red en Staging y Producción.
+
+**Solución aplicada:**
+Se corrigieron los delimitadores a `DO $$` y `END $$;` estándar, validando idempotencia con doble ejecución exitosa contra Staging DB.
+
+**Causa raíz:**
+Typo en la definición del segundo bloque DO anónimo al escribir un solo signo de dólar.
+
+**Aprendizaje:**
+Revisar siempre la validez de delimitadores PL/pgSQL (`$$` o `$body$`) en todos los bloques antes de intentar aplicar migraciones DDL.
+
+**Fecha resolución:** 2026-10-07
+**Verificado por:** QA / Staging Migration Execution (COMMIT exitoso)
+
+---
+
+### ERR-2026-10-07-002 — Inestabilidad en orden de auditoría en memoria por colisión de timestamps idénticos
+
+| Campo | Valor |
+|-------|-------|
+| ID | ERR-2026-10-07-002 |
+| Fecha detección | 2026-10-07 16:55 CST |
+| Severidad | 🟡 Medio (afecta determinismo en tests unitarios bajo alta concurrencia) |
+| Área | Backend / Storage / Testing |
+| Estado | ✅ Verificado |
+| Reportado por | Jest Test Suite (`user-operational-status.test.ts`) |
+| Asignado a | Backend Dev / QA |
+
+**Descripción:**
+En `MemStorage.getCommercialAuditLogs()`, el ordenamiento descendente dependía exclusivamente de `new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()`. En ejecuciones sincrónicas consecutivas en el mismo milisegundo, la resta arrojaba `0`, provocando un orden no determinista donde el log más antiguo podía devolverse antes que el más reciente.
+
+**Pasos para reproducir:**
+1. Ejecutar de forma síncrona dos llamadas a `updateUserOperationalStatus` sobre el mismo usuario.
+2. Consultar `getCommercialAuditLogs` y verificar `logs[0]`.
+
+**Impacto en negocio:**
+Flaky tests en la suite unitaria automatizada y posible orden inconsistente de eventos de auditoría en memoria.
+
+**Solución aplicada:**
+Se añadió un desempate secundario por orden de inserción en el Map: `diff !== 0 ? diff : (logs.indexOf(b) - logs.indexOf(a))`, garantizando que el evento registrado posteriormente siempre quede primero si comparten milisegundo.
+
+**Causa raíz:**
+Resolución insuficiente de `Date.now()` (milisegundos) ante operaciones en el mismo tick de CPU.
+
+**Aprendizaje:**
+Toda ordenación por fecha en memoria debe contemplar un criterio de desempate determinista basado en secuencia o posición de inserción.
+
+**Fecha resolución:** 2026-10-07
+**Verificado por:** QA (16/16 passed en `user-operational-status.test.ts`, 161/161 unit suite general)
+
+---
 
 ### ERR-2026-09-04-001 — esbuild Unexpected "const" en build de Vercel (CreditList.tsx)
 
