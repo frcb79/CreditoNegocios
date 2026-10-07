@@ -6036,6 +6036,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.put('/api/tenants/:id', isAuthenticated, resolveTenantFromParam(), requireTenantRole(['owner', 'admin']), async (req: any, res) => {
     try {
       const { id } = req.params;
+
+      if (req.body?.type !== undefined || req.body?.parentTenantId !== undefined) {
+        return res.status(409).json({
+          message: "El tipo y la jerarquía de una organización no pueden modificarse desde la edición general. Los movimientos Broker/Master se realizan desde el flujo exclusivo de Super Admin.",
+        });
+      }
       
       const tenantData = insertTenantSchema.partial().parse(req.body);
       const tenant = await storage.updateTenant(id, tenantData);
