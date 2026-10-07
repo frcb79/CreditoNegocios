@@ -71,6 +71,12 @@ import {
 } from "./commercialAuthorizationService";
 import { commercialOpportunityService } from "./commercialOpportunityService";
 import { commercialHelpService } from "./commercialHelpService";
+import {
+  activityMutationAuditMiddleware,
+  recordFailedLogin,
+  startUserActivitySession,
+} from "./userActivityService";
+import { registerUserActivityRoutes } from "./userActivityRoutes";
 
 
 import { z } from "zod";
@@ -841,6 +847,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Tenant context middleware - must be after auth setup
   app.use(tenantContextMiddleware);
 
+  // Product usage tracking. It only records a small whitelist of meaningful mutations.
+  app.use(activityMutationAuditMiddleware);
+  registerUserActivityRoutes(app);
+
   // Auth routes
   app.get('/api/auth/user', isAuthenticated, async (req: any, res) => {
     try {
@@ -1086,6 +1096,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
           return res.status(500).json({ message: "Error al iniciar sesión" });
         }
         
+        await startUserActivitySession(req, user.id);
+
         // Explicitly save session to ensure it's written to the store before responding
         req.session.save((saveErr: any) => {
           if (saveErr) {
@@ -1121,6 +1133,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Find user by email
       const user = await storage.getUserByEmail(normalizedEmail);
       if (!user) {
+        await recordFailedLogin(req, normalizedEmail, "user_not_found");
         return res.status(401).json({ message: "Email o contraseña incorrectos" });
       }
       
@@ -1132,6 +1145,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // Check if user is active
       if (!user.isActive || user.status === 'suspended' || user.status === 'inactive') {
+        await recordFailedLogin(req, normalizedEmail, "user_inactive", user.id);
         const message = user.status === 'suspended'
           ? "Tu cuenta se encuentra temporalmente suspendida. Contacta a soporte."
           : "Tu cuenta ha sido desactivada. Contacta al administrador.";
@@ -1164,11 +1178,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       if (!isValidPassword) {
+        await recordFailedLogin(req, normalizedEmail, "invalid_password", user.id);
         return res.status(401).json({ message: "Email o contraseña incorrectos" });
       }
       
-      // Create session
-      req.login({ claims: { sub: user.id } }, (err: any) => {
+      // Create technical session, then create a separate product-usage session.
+      req.login({ claims: { sub: user.id } }, async (err: any) => {
         if (err) {
           console.error("Error creating session:", err);
           return res.status(500).json({ message: "Error al iniciar sesión" });
