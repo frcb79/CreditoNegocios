@@ -17,7 +17,7 @@ const DEFAULT_ROLE_PERMISSIONS: Record<string, EffectivePermissions> = {
     ],
     actions: [
       "view", "edit", "submit_proposals", "approve_disperse",
-      "manage_commissions", "manage_users", "export_reports"
+      "manage_commissions", "manage_users", "view_user_activity", "export_reports"
     ],
     scope: "global",
   },
@@ -29,7 +29,7 @@ const DEFAULT_ROLE_PERMISSIONS: Record<string, EffectivePermissions> = {
     ],
     actions: [
       "view", "edit", "submit_proposals", "approve_disperse",
-      "manage_commissions", "manage_users", "export_reports"
+      "manage_commissions", "manage_users", "view_user_activity", "export_reports"
     ],
     scope: "global",
   },
@@ -41,7 +41,7 @@ const DEFAULT_ROLE_PERMISSIONS: Record<string, EffectivePermissions> = {
     ],
     actions: [
       "view", "edit", "submit_proposals", "manage_commissions",
-      "manage_users", "export_reports"
+      "manage_users", "view_user_activity", "export_reports"
     ],
     scope: "network",
   },
@@ -76,9 +76,17 @@ export function getEffectivePermissions(user: any): EffectivePermissions {
   const hasCustomModules = Array.isArray(userPerms.modules) && userPerms.modules.length > 0;
   const hasCustomActions = Array.isArray(userPerms.actions) && userPerms.actions.length > 0;
 
+  const modules = hasCustomModules ? userPerms.modules : roleDefaults.modules;
+  const baseActions = hasCustomActions ? userPerms.actions : roleDefaults.actions;
+  // Backward compatibility: anyone who can manage users may also read activity,
+  // while view_user_activity can be granted independently to read-only administrators.
+  const actions = baseActions.includes("manage_users") && !baseActions.includes("view_user_activity")
+    ? [...baseActions, "view_user_activity"]
+    : baseActions;
+
   return {
-    modules: hasCustomModules ? userPerms.modules : roleDefaults.modules,
-    actions: hasCustomActions ? userPerms.actions : roleDefaults.actions,
+    modules,
+    actions,
     scope: userPerms.scope || roleDefaults.scope,
   };
 }
