@@ -2502,6 +2502,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
           message: "Para crear un Master Broker, registra primero al usuario como Broker y utiliza Movimientos de Red → Convertir en Master Broker.",
         });
       }
+
+      // Initial network assignment is also a topology decision.
+      // A regular platform Admin may create a direct broker, but only Super Admin
+      // may place a newly-created broker directly under a Master Broker.
+      if (
+        isPlatformAdmin &&
+        !isTrueSuperAdmin &&
+        userData.role === 'broker' &&
+        Boolean(userData.masterBrokerId)
+      ) {
+        return res.status(403).json({
+          message: "Sólo Super Admin puede asignar un broker a una red Master Broker.",
+        });
+      }
       
       // Check if email already exists
       const existingUser = await storage.getUserByEmail(userData.email);
@@ -2517,7 +2531,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
           lastName: userData.lastName || '',
           password: userData.password || null,
           authMethod: userData.authMethod || 'local',
-          masterBrokerId: isMasterBroker ? currentUser!.id : null,
+          masterBrokerId: isMasterBroker
+            ? currentUser!.id
+            : (isTrueSuperAdmin && userData.masterBrokerId ? userData.masterBrokerId : null),
           profileData: userData.profileData || {},
           isActive: userData.isActive !== false,
         });
