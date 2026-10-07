@@ -260,10 +260,28 @@ export async function recordHeartbeat(params: {
         (user_id, tenant_id, started_at, last_active_at, last_heartbeat_at,
          active_seconds, last_module_id, ip_address, user_agent)
        VALUES ($1,$2,NOW(),NOW(),NOW(),0,$3,$4,$5)
+       ON CONFLICT (user_id) WHERE ended_at IS NULL DO NOTHING
        RETURNING *`,
       [params.userId, tenantId, safeModule, params.ipAddress || null, params.userAgent || null],
     );
-    session = created.rows[0];
+    session = created.rows[0] || null;
+
+    // A concurrent heartbeat may have won the open-session insert.
+    if (!session) {
+      const concurrent = await pool.query(
+        `SELECT *
+         FROM public.user_activity_sessions
+         WHERE user_id = $1 AND ended_at IS NULL
+         ORDER BY started_at DESC
+         LIMIT 1`,
+        [params.userId],
+      );
+      session = concurrent.rows[0] || null;
+    }
+
+    if (!session) {
+      throw new Error("Could not resolve active usage session");
+    }
   }
 
   const lastHeartbeat = new Date(session.last_heartbeat_at || now);
