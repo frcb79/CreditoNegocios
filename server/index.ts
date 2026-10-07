@@ -8,6 +8,7 @@ import { allowedOrigins, isAllowedOrigin } from "./runtimeConfig";
 import { runAutoMigration } from "./autoMigrate";
 import { ensureUserActivitySchema } from "./activityMigration";
 import { registerActivityRoutes } from "./activityRoutes";
+import { startActivityMaintenance } from "./activityService";
 
 const isProd = process.env.NODE_ENV === "production";
 
@@ -99,6 +100,7 @@ app.use((req, res, next) => {
 
   const server = await registerRoutes(app);
   registerActivityRoutes(app);
+  startActivityMaintenance();
 
   app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
     const status = err.status || err.statusCode || 500;
