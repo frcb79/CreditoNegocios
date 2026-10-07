@@ -3,6 +3,7 @@ import session from "express-session";
 import type { Express, RequestHandler } from "express";
 import connectPg from "connect-pg-simple";
 import { storage } from "./storage";
+import { endUserActivitySession } from "./userActivityService";
 
 const sessionSecret: string = process.env.SESSION_SECRET ?? "dev-session-secret-local";
 
@@ -69,7 +70,8 @@ export async function setupAuth(app: Express) {
   passport.deserializeUser((user: Express.User, cb) => cb(null, user));
 
   // Global logout route
-  app.get("/api/logout", (req, res) => {
+  app.get("/api/logout", async (req: any, res) => {
+    await endUserActivitySession(req, "logout");
     req.logout(() => {
       req.session.destroy(() => {
         res.clearCookie('connect.sid');
