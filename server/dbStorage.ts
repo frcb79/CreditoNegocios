@@ -2482,12 +2482,33 @@ export class DbStorage implements IStorage {
         throw new Error("Se requiere clientData (Camino A) o clientId (Camino B)");
       }
 
-      // Insert credit submission request within transaction
+      // Insert credit submission request within transaction with immutable
+      // network affiliation derived from the originating broker.
+      const [brokerAtOrigination] = await tx
+        .select()
+        .from(users)
+        .where(eq(users.id, params.submissionData.brokerId))
+        .limit(1);
+
+      let originMasterBrokerId: string | null = null;
+      if (brokerAtOrigination?.role === "master_broker") {
+        originMasterBrokerId = brokerAtOrigination.id;
+      } else if (brokerAtOrigination?.role === "broker" && brokerAtOrigination.masterBrokerId) {
+        const [parentAtOrigination] = await tx
+          .select()
+          .from(users)
+          .where(eq(users.id, brokerAtOrigination.masterBrokerId))
+          .limit(1);
+        originMasterBrokerId =
+          parentAtOrigination?.role === "master_broker" ? parentAtOrigination.id : null;
+      }
+
       const [submission] = await tx
         .insert(creditSubmissionRequests)
         .values({
           ...params.submissionData,
           clientId: client.id,
+          originMasterBrokerId,
           createdAt: new Date(),
           updatedAt: new Date(),
         })
