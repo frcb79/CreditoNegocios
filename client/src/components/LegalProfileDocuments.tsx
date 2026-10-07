@@ -244,7 +244,6 @@ export default function LegalProfileDocuments({
                   <TableRow>
                     <TableHead className="text-xs font-semibold">Documento</TableHead>
                     <TableHead className="text-xs font-semibold">Versión</TableHead>
-                    <TableHead className="text-xs font-semibold hidden md:table-cell">Tipo</TableHead>
                     <TableHead className="text-xs font-semibold">Fecha de Aceptación</TableHead>
                     <TableHead className="text-xs font-semibold text-right">Versión Exacta</TableHead>
                   </TableRow>
@@ -257,10 +256,23 @@ export default function LegalProfileDocuments({
                     return (
                       <TableRow key={acc.id} data-testid={`row-acceptance-${acc.document}-${acc.version}`}>
                         <TableCell className="py-3">
-                          <div className="flex flex-col">
-                            <span className="font-semibold text-xs sm:text-sm text-foreground">
-                              {getDocumentTitle(acc.document)}
-                            </span>
+                          <div className="flex flex-col gap-1">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="font-semibold text-xs sm:text-sm text-foreground">
+                                {getDocumentTitle(acc.document)}
+                              </span>
+                              {acc.document === "convenio" || acc.document.startsWith("reglas") ? (
+                                <Badge className="text-[10px] bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300 font-normal px-1.5 py-0">
+                                  <ShieldCheck className="h-3 w-3 mr-0.5 inline text-emerald-600 dark:text-emerald-400" />
+                                  Firma Digital OTP
+                                </Badge>
+                              ) : (
+                                <Badge variant="outline" className="text-[10px] text-muted-foreground font-normal px-1.5 py-0">
+                                  <CheckCircle2 className="h-3 w-3 mr-0.5 inline text-muted-foreground" />
+                                  Registro Web
+                                </Badge>
+                              )}
+                            </div>
                             <span
                               className="text-[10px] font-mono text-muted-foreground truncate max-w-[200px] sm:max-w-[280px]"
                               title={`SHA-256: ${acc.contentSha256}`}
@@ -273,13 +285,6 @@ export default function LegalProfileDocuments({
                         <TableCell className="py-3">
                           <Badge variant="outline" className="font-mono text-xs px-2 py-0.5">
                             v{acc.version}
-                          </Badge>
-                        </TableCell>
-
-                        <TableCell className="py-3 hidden md:table-cell">
-                          <Badge variant="secondary" className="text-[11px] font-normal">
-                            <CheckCircle2 className="h-3 w-3 mr-1 text-emerald-600 inline" />
-                            {getAcceptanceTypeLabel(acc.acceptanceType)}
                           </Badge>
                         </TableCell>
 

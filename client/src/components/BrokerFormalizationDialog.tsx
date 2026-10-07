@@ -26,7 +26,13 @@ import {
   ArrowRight,
   RotateCcw,
 } from "lucide-react";
-import type { FormalizationDocumentsResult, FormalizationDocumentItem } from "@shared/legalDocuments";
+import { useLocation } from "wouter";
+import {
+  type FormalizationDocumentsResult,
+  type FormalizationDocumentItem,
+  getFormalizationProfileMissingFields,
+  interpolateConvenioContent,
+} from "@shared/legalDocuments";
 
 interface BrokerFormalizationDialogProps {
   open: boolean;
@@ -44,7 +50,12 @@ export default function BrokerFormalizationDialog({
   onCompleted,
 }: BrokerFormalizationDialogProps) {
   const queryClient = useQueryClient();
+  const [, setLocation] = useLocation();
   const [step, setStep] = useState<FormalizationStep>("review");
+
+  // Validate whether required profile fields are present
+  const missingProfileFields = getFormalizationProfileMissingFields(user);
+  const isProfileComplete = missingProfileFields.length === 0;
 
   // Document checkboxes - strictly unchecked by default
   const [checkedDocs, setCheckedDocs] = useState<Record<string, boolean>>({});
@@ -152,7 +163,7 @@ export default function BrokerFormalizationDialog({
 
   // Request OTP from server
   const handleRequestOtp = async () => {
-    if (!allDocumentsChecked || isRequestingOtp || isVerifyingOtp) return;
+    if (!isProfileComplete || !allDocumentsChecked || isRequestingOtp || isVerifyingOtp) return;
 
     setIsRequestingOtp(true);
     setRequestError(null);
@@ -348,6 +359,39 @@ export default function BrokerFormalizationDialog({
                   Los permisos operativos y facultades de tu cuenta continúan rigiéndose por las políticas asignadas.
                 </div>
 
+                {!isProfileComplete && (
+                  <Alert className="border-amber-300 bg-amber-50/90 text-amber-950 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-100" data-testid="alert-missing-profile-fields">
+                    <AlertCircle className="h-4 w-4 text-amber-600 dark:text-amber-400 mt-0.5 shrink-0" />
+                    <div>
+                      <AlertTitle className="text-xs font-semibold">Completa tus datos de perfil para emitir tu Convenio</AlertTitle>
+                      <AlertDescription className="text-xs mt-1 space-y-2">
+                        <p className="leading-relaxed">
+                          Para que tu Convenio de Colaboración se emita con validez jurídica y tus datos fiscales/bancarios correctos, es necesario capturar en tu perfil:
+                        </p>
+                        <ul className="list-disc list-inside space-y-0.5 text-[11px] font-medium text-amber-900 dark:text-amber-200">
+                          {missingProfileFields.map((field) => (
+                            <li key={field}>{field}</li>
+                          ))}
+                        </ul>
+                        <div className="pt-1.5">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => {
+                              onOpenChange(false);
+                              setLocation("/settings?tab=profile");
+                            }}
+                            className="h-7 text-xs bg-background hover:bg-background/90"
+                            data-testid="button-go-to-settings-profile"
+                          >
+                            Completar perfil en Configuración
+                          </Button>
+                        </div>
+                      </AlertDescription>
+                    </div>
+                  </Alert>
+                )}
+
                 {cooldownSeconds > 0 && (
                   <div className="flex items-center gap-1.5 text-xs text-muted-foreground p-2.5 bg-muted/40 rounded-md border" data-testid="alert-review-cooldown">
                     <Clock className="h-3.5 w-3.5 text-amber-600 shrink-0" />
@@ -366,6 +410,10 @@ export default function BrokerFormalizationDialog({
                 <div className="space-y-4">
                   {documents.map((doc: FormalizationDocumentItem) => {
                     const isChecked = Boolean(checkedDocs[doc.document]);
+                    const renderedContent =
+                      doc.document === "convenio"
+                        ? interpolateConvenioContent(doc.content, user)
+                        : doc.content;
 
                     return (
                       <div
@@ -400,7 +448,7 @@ export default function BrokerFormalizationDialog({
                           aria-label={`Contenido completo de ${doc.title}`}
                           data-testid={`content-doc-${doc.document}`}
                         >
-                          {doc.content}
+                          {renderedContent}
                         </div>
 
                         {/* Checkbox (initially unchecked) */}
@@ -637,12 +685,16 @@ export default function BrokerFormalizationDialog({
               </Button>
               <Button
                 size="sm"
-                disabled={!allDocumentsChecked || isRequestingOtp || isVerifyingOtp || cooldownSeconds > 0}
+                disabled={!isProfileComplete || !allDocumentsChecked || isRequestingOtp || isVerifyingOtp || cooldownSeconds > 0}
                 onClick={handleRequestOtp}
                 className="order-1 sm:order-2 text-xs gap-1.5"
                 data-testid="button-request-otp"
               >
-                {isRequestingOtp ? (
+                {!isProfileComplete ? (
+                  <>
+                    Completar Perfil para Solicitar Código
+                  </>
+                ) : isRequestingOtp ? (
                   <>
                     <Loader2 className="h-3.5 w-3.5 animate-spin" />
                     Solicitando código...

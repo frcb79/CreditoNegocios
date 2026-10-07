@@ -71,6 +71,9 @@ import {
   type InsertLegalAcceptance,
   type FormalizationOtpRequest,
   type InsertFormalizationOtpRequest,
+  brokerCommissionAcceptances,
+  type BrokerCommissionAcceptance,
+  type InsertBrokerCommissionAcceptance,
 } from "../shared/schema";
 import catalog from "./legalDocumentCatalog.json";
 import {
@@ -199,6 +202,11 @@ export interface IStorage {
   getLatestFormalizationOtpByUser(userId: string): Promise<FormalizationOtpRequest | undefined>;
   countFormalizationOtpRequests(userId: string, since: Date): Promise<number>;
   isUserFormalized(userId: string, role?: string): Promise<{ isFormalized: boolean; formalizedAt?: Date; acceptedDocuments: string[] }>;
+
+  // Broker Commission Acceptance operations
+  getBrokerCommissionAcceptances(userId: string): Promise<BrokerCommissionAcceptance[]>;
+  getBrokerCommissionAcceptance(userId: string, institutionId: string, ratesHash: string): Promise<BrokerCommissionAcceptance | undefined>;
+  createBrokerCommissionAcceptance(data: InsertBrokerCommissionAcceptance): Promise<BrokerCommissionAcceptance>;
 
   // Bank analysis report operations
   createBankAnalysisReport(report: InsertBankAnalysisReport): Promise<BankAnalysisReport>;
@@ -504,6 +512,7 @@ export class MemStorage implements IStorage {
   private legalDocumentVersions: Map<string, LegalDocumentVersionDb> = new Map();
   private legalAcceptances: Map<string, LegalAcceptance> = new Map();
   private formalizationOtpRequests: Map<string, FormalizationOtpRequest> = new Map();
+  private brokerCommissionAcceptancesMap: Map<string, BrokerCommissionAcceptance> = new Map();
   private userLocks: Map<string, Promise<void>> = new Map();
 
   private async withUserLock<T>(userId: string, fn: () => Promise<T>): Promise<T> {
@@ -2151,6 +2160,36 @@ export class MemStorage implements IStorage {
       acceptedDocuments: Array.from(acceptedDocsMap.keys()),
     };
   }
+
+  // Broker Commission Acceptance operations
+  async getBrokerCommissionAcceptances(userId: string): Promise<BrokerCommissionAcceptance[]> {
+    return Array.from(this.brokerCommissionAcceptancesMap.values())
+      .filter((a) => a.userId === userId)
+      .sort((a, b) => new Date(b.acceptedAt).getTime() - new Date(a.acceptedAt).getTime());
+  }
+
+  async getBrokerCommissionAcceptance(userId: string, institutionId: string, ratesHash: string): Promise<BrokerCommissionAcceptance | undefined> {
+    return Array.from(this.brokerCommissionAcceptancesMap.values()).find(
+      (a) => a.userId === userId && a.institutionId === institutionId && a.ratesHash === ratesHash
+    );
+  }
+
+  async createBrokerCommissionAcceptance(data: InsertBrokerCommissionAcceptance): Promise<BrokerCommissionAcceptance> {
+    const id = (data as any).id || randomUUID();
+    const acceptance: BrokerCommissionAcceptance = {
+      id,
+      userId: data.userId,
+      institutionId: data.institutionId,
+      acceptedRates: data.acceptedRates ?? {},
+      ratesHash: data.ratesHash,
+      acceptedAt: new Date(),
+      ipAddress: data.ipAddress ?? null,
+      userAgent: data.userAgent ?? null,
+    };
+    this.brokerCommissionAcceptancesMap.set(id, acceptance);
+    return acceptance;
+  }
+
 
 
   async updateUser(id: string, userData: Partial<UpsertUser>): Promise<User | undefined> {

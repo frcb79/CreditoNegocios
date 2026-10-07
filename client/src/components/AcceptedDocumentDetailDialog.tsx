@@ -29,6 +29,7 @@ import {
   getAcceptanceTypeLabel,
   formatAcceptedDate,
   getExactDocumentUrl,
+  interpolateConvenioContent,
 } from "@shared/legalDocuments";
 import { useAuth } from "@/hooks/useAuth";
 
@@ -245,7 +246,11 @@ export default function AcceptedDocumentDetailDialog({
                 className="max-h-72 overflow-y-auto p-4 rounded-lg border bg-muted/10 font-sans text-xs text-foreground/90 leading-relaxed whitespace-pre-wrap"
                 data-testid="text-accepted-document-content"
               >
-                {docContent}
+                {acceptance.document === "convenio"
+                  ? interpolateConvenioContent(docContent, user, {
+                      acceptedAt: acceptance.acceptedAt,
+                    })
+                  : docContent}
               </div>
             )}
           </div>

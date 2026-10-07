@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useSearch } from "wouter";
 import LegalProfileDocuments from "@/components/LegalProfileDocuments";
+import BrokerExpedienteDocuments from "@/components/BrokerExpedienteDocuments";
 import { FORMALIZATION_NOTICE_TEXT, type FormalizationStatusResult } from "@shared/legalDocuments";
 import LegalLinks from "@/components/LegalLinks";
 import { useForm } from "react-hook-form";
@@ -40,6 +41,7 @@ const profileSchema = z.object({
   lastName: z.string().min(1, "Apellido requerido"),
   email: z.string().email("Email válido requerido"),
   phone: z.string().optional(),
+  taxId: z.string().optional(),
   // Structured address fields
   street: z.string().optional(),
   exteriorNumber: z.string().optional(),
@@ -250,6 +252,7 @@ export default function Settings() {
       email: user?.email || "",
       // Fallback to top-level phone for backward compatibility
       phone: (user?.profileData as any)?.phone || (user as any)?.phone || "",
+      taxId: (user?.profileData as any)?.taxId || (user?.profileData as any)?.rfc || (user as any)?.taxId || (user as any)?.rfc || "",
       // Hydrate address from profileData with empty fallbacks
       street: (user?.profileData as any)?.address?.street || "",
       exteriorNumber: (user?.profileData as any)?.address?.exteriorNumber || "",
@@ -277,12 +280,12 @@ export default function Settings() {
   const businessForm = useForm({
     resolver: zodResolver(businessSchema),
     defaultValues: {
-      businessName: "",
-      taxId: "",
-      businessAddress: "",
-      businessPhone: "",
-      website: "",
-      specialization: "",
+      businessName: (user?.profileData as any)?.businessName || (user as any)?.brandName || "",
+      taxId: (user?.profileData as any)?.taxId || (user?.profileData as any)?.rfc || (user as any)?.taxId || (user as any)?.rfc || "",
+      businessAddress: (user?.profileData as any)?.businessAddress || "",
+      businessPhone: (user?.profileData as any)?.businessPhone || "",
+      website: (user?.profileData as any)?.website || "",
+      specialization: (user?.profileData as any)?.specialization || "",
     },
   });
 
@@ -312,6 +315,54 @@ export default function Settings() {
       ? savedRefs 
       : [{ name: "", phone: "", email: "" }];
   });
+
+  // Keep all forms synchronized whenever user state loads or is refreshed
+  useEffect(() => {
+    if (user) {
+      const pData = ((user as any).profileData as Record<string, any>) || {};
+      const addr = (pData.address as Record<string, any>) || {};
+      profileForm.reset({
+        firstName: user.firstName || "",
+        lastName: user.lastName || "",
+        email: user.email || "",
+        phone: pData.phone || (user as any).phone || "",
+        taxId: pData.taxId || pData.rfc || (user as any).taxId || (user as any).rfc || "",
+        street: addr.street || "",
+        exteriorNumber: addr.exteriorNumber || "",
+        interiorNumber: addr.interiorNumber || "",
+        colonia: addr.colonia || "",
+        city: addr.city || "",
+        state: addr.state || "",
+        postalCode: addr.postalCode || "",
+      });
+
+      businessForm.reset({
+        businessName: pData.businessName || (user as any).brandName || "",
+        taxId: pData.taxId || pData.rfc || (user as any).taxId || (user as any).rfc || "",
+        businessAddress: pData.businessAddress || "",
+        businessPhone: pData.businessPhone || "",
+        website: pData.website || "",
+        specialization: pData.specialization || "",
+      });
+
+      profilingForm.reset({
+        profileType: (user as any).profileType || "persona_moral",
+        yearsInBusiness: pData.brokerMetrics?.yearsInBusiness || "",
+        clientPortfolioSize: pData.brokerMetrics?.clientPortfolioSize || "",
+        annualGoal: pData.brokerMetrics?.annualGoal || "",
+        productsHandled: pData.brokerMetrics?.productsHandled || "",
+        averageTicket: pData.brokerMetrics?.averageTicket || "",
+        commercialReferences: (user as any).commercialReferences || [],
+        bankName: (user as any).bankName || "",
+        clabe: (user as any).clabe || "",
+        accountHolder: (user as any).accountHolder || "",
+      });
+
+      if (Array.isArray((user as any).commercialReferences) && (user as any).commercialReferences.length > 0) {
+        setReferences((user as any).commercialReferences);
+      }
+    }
+  }, [user]);
 
   const addReference = () => {
     setReferences([...references, { name: "", phone: "", email: "" }]);
@@ -393,13 +444,15 @@ export default function Settings() {
 
   const onProfileSubmit = (data: any) => {
     // Separate core profile fields from address fields
-    const { street, exteriorNumber, interiorNumber, colonia, city, state, postalCode, phone, ...coreFields } = data;
+    const { street, exteriorNumber, interiorNumber, colonia, city, state, postalCode, phone, taxId, ...coreFields } = data;
     
     // Shape payload with profileData.address structure
     const payload = {
       ...coreFields,
+      taxId,
       profileData: {
         phone,
+        ...(taxId ? { taxId, rfc: taxId } : {}),
         address: {
           street,
           exteriorNumber,
@@ -420,7 +473,18 @@ export default function Settings() {
   };
 
   const onBusinessSubmit = (data: any) => {
-    updateProfileMutation.mutate(data);
+    const { businessName, taxId, ...businessMeta } = data;
+    updateProfileMutation.mutate({
+      brandName: businessName,
+      taxId,
+      businessName,
+      profileData: {
+        businessName,
+        taxId,
+        rfc: taxId,
+        ...businessMeta,
+      },
+    });
   };
 
   const onProfilingSubmit = (data: any) => {
@@ -606,7 +670,6 @@ export default function Settings() {
 
             {/* Profile Settings */}
             <TabsContent value="profile" className="space-y-4 mt-3">
-              <LegalProfileDocuments user={user} showFormalizationNotice={false} />
               <Card className="border border-border/80 shadow-xs">
                 <CardHeader className="py-3 px-4 sm:px-6 border-b border-border/60">
                   <CardTitle className="text-base font-semibold">Información Personal</CardTitle>
@@ -718,6 +781,25 @@ export default function Settings() {
                               <FormControl>
                                 <Input className="h-9 text-xs" placeholder="+52 55 1234 5678" {...field} data-testid="input-phone" />
                               </FormControl>
+                              <FormMessage className="text-xs" />
+                            </FormItem>
+                          )}
+                        />
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <FormField
+                          control={profileForm.control}
+                          name="taxId"
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel className="text-xs font-medium">RFC con Homoclave (Fiscal)</FormLabel>
+                              <FormControl>
+                                <Input className="h-9 text-xs uppercase" placeholder="XAXX010101000" {...field} data-testid="input-profile-tax-id" />
+                              </FormControl>
+                              <FormDescription className="text-[11px] leading-tight">
+                                Requerido para formalización de convenio y emisión fiscal
+                              </FormDescription>
                               <FormMessage className="text-xs" />
                             </FormItem>
                           )}
@@ -853,6 +935,7 @@ export default function Settings() {
 
             {/* Documents Settings */}
             <TabsContent value="documents" className="space-y-4 mt-3">
+              <BrokerExpedienteDocuments user={user} />
               <LegalProfileDocuments user={user} showFormalizationNotice={true} />
             </TabsContent>
 

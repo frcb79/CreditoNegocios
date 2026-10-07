@@ -969,6 +969,21 @@ export async function runAutoMigration(): Promise<void> {
         CREATE INDEX IF NOT EXISTS idx_legal_acceptances_user_id ON public.legal_acceptances(user_id);
         CREATE INDEX IF NOT EXISTS idx_legal_acceptances_document_id ON public.legal_acceptances(document_id);
 
+        -- broker_commission_acceptances
+        CREATE TABLE IF NOT EXISTS public.broker_commission_acceptances (
+          id VARCHAR PRIMARY KEY DEFAULT gen_random_uuid(),
+          user_id VARCHAR NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
+          institution_id VARCHAR NOT NULL REFERENCES public.financial_institutions(id) ON DELETE CASCADE,
+          accepted_rates JSONB NOT NULL DEFAULT '{}',
+          rates_hash VARCHAR(64) NOT NULL,
+          accepted_at TIMESTAMP NOT NULL DEFAULT NOW(),
+          ip_address VARCHAR,
+          user_agent TEXT
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_bca_user_inst ON public.broker_commission_acceptances(user_id, institution_id);
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_bca_user_inst_hash ON public.broker_commission_acceptances(user_id, institution_id, rates_hash);
+
         CREATE OR REPLACE FUNCTION protect_legal_document_versions()
         RETURNS TRIGGER AS $$
         BEGIN

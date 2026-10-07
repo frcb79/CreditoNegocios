@@ -30,15 +30,18 @@ import {
   Info, 
   Check, 
   PauseCircle,
-  FileCheck
+  FileCheck,
+  AlertTriangle
 } from "lucide-react";
 import { FinancialInstitution, InstitutionProductWithTemplate } from "@shared/schema";
 import ProductConfigurationModal from "@/components/Modals/ProductConfigurationModal";
+import { CommissionAcceptanceDialog } from "@/components/Commercial/CommissionAcceptanceDialog";
 
 export default function FinancieraDetail() {
   const { id } = useParams();
   const { user } = useAuth();
   const [configModal, setConfigModal] = useState(false);
+  const [acceptanceModalOpen, setAcceptanceModalOpen] = useState(false);
   const [activeTab, setActiveTab] = useState("proceso");
   
   const isAdmin = user?.role === 'admin' || user?.role === 'super_admin';
@@ -55,6 +58,25 @@ export default function FinancieraDetail() {
     queryKey: [`/api/institution-products`, { institutionId: id }],
     enabled: !!id,
   });
+
+  const { data: commissionAcceptancesData } = useQuery<{
+    acceptances: any[];
+    institutionStatuses: Record<string, {
+      institutionId: string;
+      institutionName: string;
+      rates: any;
+      ratesHash: string;
+      source: string;
+      isAccepted: boolean;
+      outdated: boolean;
+      acceptedAt?: string;
+    }>;
+  }>({
+    queryKey: ['/api/broker/commission-acceptances'],
+    enabled: isBrokerOrMaster,
+  });
+
+  const instStatus = id && commissionAcceptancesData?.institutionStatuses ? commissionAcceptancesData.institutionStatuses[id] : undefined;
 
   if (isLoading) {
     return (
@@ -586,6 +608,65 @@ export default function FinancieraDetail() {
                     <Percent className="w-4 h-4 text-primary" />
                     <span>Estructura de Comisiones</span>
                   </h3>
+
+                  {/* Status Banner for Broker / Master Broker */}
+                  {isBrokerOrMaster && instStatus && (
+                    instStatus.isAccepted ? (
+                      <div className="p-4 mb-5 bg-emerald-50/70 border border-emerald-200/80 rounded-xl flex items-center justify-between gap-3 shadow-2xs">
+                        <div className="flex items-center gap-3">
+                          <div className="w-9 h-9 rounded-lg bg-emerald-100 flex items-center justify-center shrink-0 text-emerald-700">
+                            <CheckCircle className="w-5 h-5" />
+                          </div>
+                          <div>
+                            <div className="flex items-center gap-2">
+                              <span className="text-xs sm:text-sm font-bold text-emerald-900">
+                                Esquema Comercial Vigente Aceptado
+                              </span>
+                              <Badge variant="outline" className="bg-emerald-100 text-emerald-800 border-emerald-300 text-[10px] font-semibold">
+                                Habilitado para Cotizar
+                              </Badge>
+                            </div>
+                            <p className="text-xs text-emerald-700 mt-0.5">
+                              {instStatus.acceptedAt
+                                ? `Aceptado el ${new Date(instStatus.acceptedAt).toLocaleDateString("es-MX", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })}`
+                                : "Condiciones comerciales aceptadas correctamente."}
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="p-4 mb-5 bg-amber-50/80 border border-amber-200 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-2xs">
+                        <div className="flex items-start gap-3">
+                          <div className="w-9 h-9 rounded-lg bg-amber-100 flex items-center justify-center shrink-0 text-amber-700 mt-0.5 sm:mt-0">
+                            <AlertTriangle className="w-5 h-5" />
+                          </div>
+                          <div>
+                            <div className="flex items-center gap-2">
+                              <span className="text-xs sm:text-sm font-bold text-amber-900">
+                                {instStatus.outdated ? "Actualización de Comisiones Pendiente" : "Aceptación Comercial Pendiente"}
+                              </span>
+                              <Badge variant="outline" className="bg-amber-100 text-amber-800 border-amber-300 text-[10px] font-semibold">
+                                Cotización Inhabilitada
+                              </Badge>
+                            </div>
+                            <p className="text-xs text-amber-800 mt-0.5">
+                              {instStatus.outdated
+                                ? "Las comisiones de esta financiera fueron modificadas. Para poder cotizar y canalizar créditos, debes aceptar el nuevo esquema comercial."
+                                : "Debes revisar y aceptar las condiciones comerciales vigentes para poder cotizar créditos con esta financiera."}
+                            </p>
+                          </div>
+                        </div>
+                        <Button
+                          size="sm"
+                          className="bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold shrink-0 shadow-xs"
+                          onClick={() => setAcceptanceModalOpen(true)}
+                        >
+                          Revisar y Aceptar Comisión
+                        </Button>
+                      </div>
+                    )
+                  )}
+
                   {commissionRates ? (
                     <>
                       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -720,6 +801,18 @@ export default function FinancieraDetail() {
           isOpen={configModal}
           onClose={() => setConfigModal(false)}
           financiera={institution}
+        />
+      )}
+
+      {/* Commission Acceptance Dialog for Broker / Master Broker */}
+      {isBrokerOrMaster && institution && (
+        <CommissionAcceptanceDialog
+          isOpen={acceptanceModalOpen}
+          onClose={() => setAcceptanceModalOpen(false)}
+          institution={institution}
+          rates={instStatus?.rates}
+          ratesHash={instStatus?.ratesHash}
+          isOutdated={instStatus?.outdated}
         />
       )}
     </MainLayout>

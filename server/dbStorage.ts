@@ -32,7 +32,10 @@ import {
   userStatusRequests, type UserStatusRequest, type UserStatusRequestStatus, type UserStatusRequestAction,
   legalDocumentVersions, legalAcceptances, formalizationOtpRequests,
   type LegalDocumentVersionDb, type LegalAcceptance,
-  type FormalizationOtpRequest, type InsertFormalizationOtpRequest
+  type FormalizationOtpRequest, type InsertFormalizationOtpRequest,
+  brokerCommissionAcceptances,
+  type BrokerCommissionAcceptance,
+  type InsertBrokerCommissionAcceptance
 } from "../shared/schema";
 import { eq, desc, asc, like, and, or, inArray, sql, gte } from "drizzle-orm";
 
@@ -394,6 +397,55 @@ export class DbStorage implements IStorage {
       .select()
       .from(legalAcceptances)
       .orderBy(desc(legalAcceptances.acceptedAt));
+  }
+
+  async getBrokerCommissionAcceptances(userId: string): Promise<BrokerCommissionAcceptance[]> {
+    try {
+      return await db
+        .select()
+        .from(brokerCommissionAcceptances)
+        .where(eq(brokerCommissionAcceptances.userId, userId))
+        .orderBy(desc(brokerCommissionAcceptances.acceptedAt));
+    } catch (error) {
+      console.error("Error fetching broker commission acceptances:", error);
+      return [];
+    }
+  }
+
+  async getBrokerCommissionAcceptance(userId: string, institutionId: string, ratesHash: string): Promise<BrokerCommissionAcceptance | undefined> {
+    try {
+      const [res] = await db
+        .select()
+        .from(brokerCommissionAcceptances)
+        .where(
+          and(
+            eq(brokerCommissionAcceptances.userId, userId),
+            eq(brokerCommissionAcceptances.institutionId, institutionId),
+            eq(brokerCommissionAcceptances.ratesHash, ratesHash)
+          )
+        );
+      return res;
+    } catch (error) {
+      console.error("Error fetching broker commission acceptance:", error);
+      return undefined;
+    }
+  }
+
+  async createBrokerCommissionAcceptance(data: InsertBrokerCommissionAcceptance): Promise<BrokerCommissionAcceptance> {
+    const [res] = await db
+      .insert(brokerCommissionAcceptances)
+      .values(data)
+      .onConflictDoUpdate({
+        target: [brokerCommissionAcceptances.userId, brokerCommissionAcceptances.institutionId, brokerCommissionAcceptances.ratesHash],
+        set: {
+          acceptedAt: new Date(),
+          ipAddress: data.ipAddress,
+          userAgent: data.userAgent,
+          acceptedRates: data.acceptedRates,
+        }
+      })
+      .returning();
+    return res;
   }
 
   async registerUserWithLegalEvidence(params: {
