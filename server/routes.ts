@@ -73,6 +73,7 @@ import { commercialOpportunityService } from "./commercialOpportunityService";
 import { commercialHelpService } from "./commercialHelpService";
 import {
   activityMutationAuditMiddleware,
+  recordActivityEvent,
   recordFailedLogin,
   startUserActivitySession,
 } from "./userActivityService";
@@ -1321,6 +1322,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Update password and clear reset token
       await storage.updateUserPassword(user.id, hashedPassword);
       await storage.clearPasswordResetToken(user.id);
+      await recordActivityEvent(req, {
+        category: "security",
+        eventType: "auth.password_reset",
+        success: true,
+        userId: user.id,
+      });
       
       res.json({ message: "Contraseña actualizada exitosamente. Ya puedes iniciar sesión." });
     } catch (error) {
