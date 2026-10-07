@@ -212,6 +212,8 @@ export const clients = pgTable("clients", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   tenantId: varchar("tenant_id").references(() => tenants.id),
   brokerId: varchar("broker_id").notNull().references(() => users.id),
+  // Immutable Master Broker affiliation at submission/origination time.
+  originMasterBrokerId: varchar("origin_master_broker_id").references(() => users.id),
   createdBy: varchar("created_by").references(() => users.id),
   type: varchar("type").notNull(), // "persona_moral" | "fisica_empresarial" | "fisica" | "sin_sat"
   businessName: varchar("business_name"),
@@ -706,6 +708,7 @@ export const creditSubmissionRequests = pgTable("credit_submission_requests", {
   updatedAt: timestamp("updated_at").defaultNow(),
 }, (table) => [
   index("credit_submissions_tenant_idx").on(table.tenantId),
+  index("credit_submissions_origin_master_idx").on(table.originMasterBrokerId),
 ]);
 
 export const creditSubmissionTargets = pgTable("credit_submission_targets", {
