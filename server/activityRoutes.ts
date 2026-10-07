@@ -172,8 +172,8 @@ export function registerActivityRoutes(app: Express): void {
            )::int AS active_users,
            COUNT(*) FILTER (WHERE u.first_login_at IS NULL)::int AS no_recorded_login,
            COUNT(*) FILTER (
-             WHERE u.first_login_at IS NOT NULL
-               AND (u.last_activity_at IS NULL OR u.last_activity_at < NOW() - INTERVAL '30 days')
+             WHERE u.last_activity_at IS NOT NULL
+               AND u.last_activity_at < NOW() - INTERVAL '30 days'
            )::int AS inactive_30d
          FROM public.users u
          WHERE ($1::varchar[] IS NULL OR u.id = ANY($1::varchar[]))
