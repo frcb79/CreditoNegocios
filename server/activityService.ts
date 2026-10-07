@@ -199,7 +199,7 @@ export async function recordHeartbeat(params: {
   active: boolean;
   ipAddress?: string | null;
   userAgent?: string | null;
-}): Promise<{ sessionId: string; tenantId: string | null; activeSeconds: number }> {
+}): Promise<{ sessionId: string | null; tenantId: string | null; activeSeconds: number }> {
   await closeStaleActivitySessions();
 
   const now = new Date();
@@ -226,6 +226,10 @@ export async function recordHeartbeat(params: {
       [session.id],
     );
     session = null;
+  }
+
+  if (!session && !params.active) {
+    return { sessionId: null, tenantId, activeSeconds: 0 };
   }
 
   if (!session) {
