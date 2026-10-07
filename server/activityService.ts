@@ -246,7 +246,10 @@ export async function recordHeartbeat(params: {
     params.active && elapsedSeconds <= ACTIVE_IDLE_SECONDS
       ? Math.min(MAX_HEARTBEAT_CREDIT_SECONDS, elapsedSeconds)
       : 0;
-  const moduleChanged = Boolean(safeModule && safeModule !== session.last_module_id);
+  const previousModule = cleanText(session.last_module_id, 64);
+  const moduleChanged = Boolean(safeModule && safeModule !== previousModule);
+  // Elapsed time belongs to the module that was active since the previous heartbeat.
+  const creditedModule = previousModule || safeModule;
 
   const updated = await pool.query(
     `UPDATE public.user_activity_sessions
@@ -276,7 +279,7 @@ export async function recordHeartbeat(params: {
     );
   }
 
-  if (params.active && safeModule) {
+  if (params.active && creditedModule) {
     await pool.query(
       `INSERT INTO public.user_activity_session_modules
         (session_id, user_id, tenant_id, module_id, first_seen_at, last_seen_at, active_seconds, enter_count)
@@ -290,10 +293,24 @@ export async function recordHeartbeat(params: {
         session.id,
         params.userId,
         tenantId,
-        safeModule,
+        creditedModule,
         creditSeconds,
-        moduleChanged ? 1 : 0,
+        !moduleChanged && safeModule === creditedModule ? 0 : 0,
       ],
+    );
+  }
+
+  if (params.active && safeModule && moduleChanged) {
+    // Register the module transition now; its elapsed time starts on the next heartbeat.
+    await pool.query(
+      `INSERT INTO public.user_activity_session_modules
+        (session_id, user_id, tenant_id, module_id, first_seen_at, last_seen_at, active_seconds, enter_count)
+       VALUES ($1,$2,$3,$4,NOW(),NOW(),0,1)
+       ON CONFLICT (session_id, module_id)
+       DO UPDATE SET
+         last_seen_at = NOW(),
+         enter_count = public.user_activity_session_modules.enter_count + 1`,
+      [session.id, params.userId, tenantId, safeModule],
     );
   }
 
