@@ -985,7 +985,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const cleanCode = data.referralCode.trim().toUpperCase();
         const allUsers = await storage.getAllUsers();
         const masterBroker = allUsers.find(
-          u => u.referralCode && u.referralCode.toUpperCase() === cleanCode && (u.role === 'master_broker' || u.role === 'admin' || u.role === 'super_admin')
+          u =>
+            u.referralCode &&
+            u.referralCode.toUpperCase() === cleanCode &&
+            u.role === 'master_broker' &&
+            u.isActive !== false &&
+            (u.status || 'active') === 'active'
         );
         if (masterBroker) {
           masterBrokerId = masterBroker.id;
@@ -2454,10 +2459,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const userId = req.user.claims.sub;
       const currentUser = await storage.getUser(userId);
       
-      const isSuperAdmin = currentUser?.role === 'admin' || currentUser?.role === 'super_admin';
+      const isPlatformAdmin = currentUser?.role === 'admin' || currentUser?.role === 'super_admin';
+      const isTrueSuperAdmin = currentUser?.role === 'super_admin';
       const isMasterBroker = currentUser?.role === 'master_broker';
 
-      if (!isSuperAdmin && !isMasterBroker) {
+      if (!isPlatformAdmin && !isMasterBroker) {
         return res.status(403).json({ message: "Access denied. Admin or Master Broker privileges required." });
       }
       
@@ -2466,22 +2472,26 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ message: "El email es requerido" });
       }
 
-      // Master Broker security enforcement
+      // Master Broker can only create brokers inside their own network.
       if (isMasterBroker) {
+        userData.role = 'broker';
         userData.masterBrokerId = currentUser.id;
-        if (userData.role === 'admin' || userData.role === 'super_admin') {
-          userData.role = 'broker';
-        }
+        delete (userData as any).referralCode;
         if (userData.permissions && typeof userData.permissions === 'object') {
           (userData.permissions as any).scope = 'network';
         }
       }
 
-      // Auto-generate unique referralCode for master_broker if not provided
-      if (userData.role === 'master_broker' && !userData.referralCode) {
-        const prefix = (userData.firstName ? userData.firstName.substring(0, 3).toUpperCase() : 'MB');
-        const randomDigits = Math.floor(1000 + Math.random() * 9000);
-        userData.referralCode = `${prefix}-${randomDigits}`;
+      if (userData.role === 'super_admin' && !isTrueSuperAdmin) {
+        return res.status(403).json({ message: "Sólo Super Admin puede crear otro Super Admin." });
+      }
+
+      // Master Broker is an organizational topology, not just a user role.
+      // Create the person as Broker first and use the atomic Super Admin transition.
+      if (userData.role === 'master_broker') {
+        return res.status(409).json({
+          message: "Para crear un Master Broker, registra primero al usuario como Broker y utiliza Movimientos de Red → Convertir en Master Broker.",
+        });
       }
       
       // Check if email already exists
@@ -5775,6 +5785,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
       let targetBroker: any = existingUser;
 
       if (existingUser) {
+        if (existingUser.role !== 'broker') {
+          return res.status(409).json({
+            message: "El email ya pertenece a un usuario que no es Broker. No puede incorporarse mediante una invitación de red.",
+          });
+        }
+
         // Existing identities can never be reassigned through an invitation.
         // Moving an existing broker between networks is exclusive to Super Admin.
         if (user.role === 'master_broker' && existingUser.masterBrokerId !== userId) {
