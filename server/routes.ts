@@ -718,10 +718,9 @@ async function enrichCreditSubmissionTarget(target: any) {
   const client = await storage.getClient(request.clientId);
   const institution = await storage.getFinancialInstitution(target.financialInstitutionId);
   
-  let masterBroker = null;
-  if (broker && broker.masterBrokerId) {
-    masterBroker = await storage.getUser(broker.masterBrokerId);
-  }
+  const masterBroker = request.originMasterBrokerId
+    ? await storage.getUser(request.originMasterBrokerId)
+    : null;
   
   const productTemplate = await resolveProductTemplate(request.productTemplateId, request.purpose);
   
@@ -2045,30 +2044,27 @@ export async function registerRoutes(app: Express): Promise<Server> {
         role: user.role,
       };
       
-      // 1. Get submissions and network broker IDs
-      let networkBrokerIds: string[] = [userId];
+      // 1. Current network headcount remains dynamic.
       let networkBrokers: any[] = [];
       if (isMasterBroker) {
         networkBrokers = await storage.getUsersByMasterBroker(userId);
-        networkBrokerIds = [userId, ...networkBrokers.map(b => b.id)];
       }
 
-      // 2. Fetch all submissions relevant for user
+      // 2. Pipeline ownership is historical: a broker move must not transfer
+      // submissions or credits that originated under a previous Master.
       const allSubmissions = await storage.getCreditSubmissionRequests({});
       let userSubmissions: any[] = [];
       if (isAdmin) {
         userSubmissions = allSubmissions;
+      } else if (isMasterBroker) {
+        userSubmissions = allSubmissions.filter(
+          s => s.brokerId === userId || s.originMasterBrokerId === userId
+        );
       } else if (req.tenantContext?.tenant) {
         const tenant = req.tenantContext.tenant;
-        if (tenant.type === 'master_broker') {
-          const subordinates = await storage.getTenantsByParent(tenant.id);
-          const tenantIds = [tenant.id, ...subordinates.map(t => t.id)];
-          userSubmissions = allSubmissions.filter(s => (s.tenantId && tenantIds.includes(s.tenantId)) || networkBrokerIds.includes(s.brokerId));
-        } else {
-          userSubmissions = allSubmissions.filter(s => s.tenantId === tenant.id || s.brokerId === userId);
-        }
-      } else if (isMasterBroker) {
-        userSubmissions = allSubmissions.filter(s => networkBrokerIds.includes(s.brokerId));
+        userSubmissions = allSubmissions.filter(
+          s => s.brokerId === userId || s.tenantId === tenant.id
+        );
       } else {
         userSubmissions = allSubmissions.filter(s => s.brokerId === userId);
       }
@@ -2080,22 +2076,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
       );
       const pipelineCount = activePipelineSubmissions.length;
 
-      // 3. Fetch credits (dispersed / active loans)
+      // 3. Fetch credits (dispersed / active loans) with the same historical rule.
       const allCredits = await storage.getCredits({});
       let userCredits: any[] = [];
       if (isAdmin) {
         userCredits = allCredits;
+      } else if (isMasterBroker) {
+        userCredits = allCredits.filter(
+          credit => credit.brokerId === userId || credit.originMasterBrokerId === userId
+        );
       } else if (req.tenantContext?.tenant) {
         const tenant = req.tenantContext.tenant;
-        if (tenant.type === 'master_broker') {
-          const subordinates = await storage.getTenantsByParent(tenant.id);
-          const tenantIds = [tenant.id, ...subordinates.map(t => t.id)];
-          userCredits = allCredits.filter(c => (c.tenantId && tenantIds.includes(c.tenantId)) || networkBrokerIds.includes(c.brokerId));
-        } else {
-          userCredits = allCredits.filter(c => c.tenantId === tenant.id || c.brokerId === userId);
-        }
-      } else if (isMasterBroker) {
-        userCredits = allCredits.filter(c => networkBrokerIds.includes(c.brokerId));
+        userCredits = allCredits.filter(
+          credit => credit.brokerId === userId || credit.tenantId === tenant.id
+        );
       } else {
         userCredits = allCredits.filter(c => c.brokerId === userId);
       }
@@ -2286,22 +2280,29 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const isAdmin = user?.role === 'admin' || user?.role === 'super_admin';
       const isMasterBroker = user?.role === 'master_broker';
       
-      let brokerIds = [userId];
-      if (isMasterBroker) {
-        const networkBrokers = await storage.getUsersByMasterBroker(userId);
-        brokerIds = [userId, ...networkBrokers.map(b => b.id)];
-      }
-
-      // Fetch both submissions and credits
+      // Fetch both submissions and credits. Master Broker scope follows
+      // immutable origination lineage, not today's network membership.
       const allSubmissions = await storage.getCreditSubmissionRequests({});
       const userSubmissions = isAdmin
         ? allSubmissions
-        : allSubmissions.filter(s => brokerIds.includes(s.brokerId));
+        : isMasterBroker
+          ? allSubmissions.filter(
+              submission =>
+                submission.brokerId === userId ||
+                submission.originMasterBrokerId === userId
+            )
+          : allSubmissions.filter(submission => submission.brokerId === userId);
 
       const allCredits = await storage.getCredits({});
       const userCredits = isAdmin
         ? allCredits
-        : allCredits.filter(c => brokerIds.includes(c.brokerId));
+        : isMasterBroker
+          ? allCredits.filter(
+              credit =>
+                credit.brokerId === userId ||
+                credit.originMasterBrokerId === userId
+            )
+          : allCredits.filter(credit => credit.brokerId === userId);
 
       // Calculate pipeline stages across both submissions in-flight and credits
       const en_revision = userSubmissions.filter(s =>
@@ -7380,40 +7381,38 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ message: "User not found" });
       }
 
-      const filters: { status?: string; brokerId?: string; brokerIds?: string[] } = {};
-      
-      // If user is broker, only show their submissions
-      // If user is master_broker, show submissions of their whole network
+      const filters: { status?: string; brokerId?: string } = {};
       if (user.role === 'broker') {
         filters.brokerId = userId;
-      } else if (user.role === 'master_broker') {
-        const networkBrokers = await storage.getUsersByMasterBroker(userId);
-        filters.brokerIds = [userId, ...networkBrokers.map(b => b.id)];
       }
-      
-      // Apply query filters
       if (req.query.status) {
         filters.status = req.query.status as string;
       }
 
-      const submissions = await storage.getCreditSubmissionRequests(filters);
+      let submissions = await storage.getCreditSubmissionRequests(filters);
+      if (user.role === 'master_broker') {
+        submissions = submissions.filter(
+          submission =>
+            submission.brokerId === userId ||
+            submission.originMasterBrokerId === userId
+        );
+      }
       
-      // Enrich with related data (client, broker, masterBroker, productTemplate, targets)
+      // Enrich with related data using the Master affiliation frozen on the submission.
       const enrichedSubmissions = await Promise.all(
         submissions.map(async (submission) => {
           const client = submission.clientId ? await storage.getClient(submission.clientId) : null;
           const productTemplate = await resolveProductTemplate(submission.productTemplateId, submission.purpose);
           const broker = submission.brokerId ? await storage.getUser(submission.brokerId) : null;
-          const masterBroker = broker?.masterBrokerId ? await storage.getUser(broker.masterBrokerId) : null;
+          const masterBroker = submission.originMasterBrokerId
+            ? await storage.getUser(submission.originMasterBrokerId)
+            : null;
           
           const targets = await storage.getCreditSubmissionTargets({ requestId: submission.id });
           const enrichedTargets = await Promise.all(
             targets.map(async (target) => {
               const institution = await storage.getFinancialInstitution(target.financialInstitutionId);
-              return {
-                ...target,
-                institution
-              };
+              return { ...target, institution };
             })
           );
           
@@ -7438,9 +7437,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
               lastName: masterBroker.lastName,
               email: masterBroker.email,
               role: masterBroker.role,
-              brandName: (masterBroker as any).brandName
+              brandName: (masterBroker as any).brandName,
             } : null,
-            targets: enrichedTargets
+            targets: enrichedTargets,
           };
         })
       );
@@ -7464,8 +7463,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ message: "Credit submission not found" });
       }
 
-      // Authorization check - brokers can only see their own submissions
-      if ((user?.role === 'broker' || user?.role === 'master_broker') && submission.brokerId !== userId) {
+      // Broker sees own submission. Master sees direct originations plus submissions
+      // historically originated under its network.
+      if (user?.role === 'broker' && submission.brokerId !== userId) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      if (
+        user?.role === 'master_broker' &&
+        submission.brokerId !== userId &&
+        submission.originMasterBrokerId !== userId
+      ) {
         return res.status(403).json({ message: "Access denied" });
       }
 
@@ -7473,7 +7480,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const client = submission.clientId ? await storage.getClient(submission.clientId) : null;
       const productTemplate = await resolveProductTemplate(submission.productTemplateId, submission.purpose);
       const broker = submission.brokerId ? await storage.getUser(submission.brokerId) : null;
-      const masterBroker = broker?.masterBrokerId ? await storage.getUser(broker.masterBrokerId) : null;
+      const masterBroker = submission.originMasterBrokerId
+        ? await storage.getUser(submission.originMasterBrokerId)
+        : null;
       const targets = await storage.getCreditSubmissionTargets({ requestId: submission.id });
       const enrichedTargets = await Promise.all(
         targets.map(async (target) => {
@@ -7523,15 +7532,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       let submissions: any[] = [];
-      if (req.tenantContext?.tenant) {
+      if (user.role === 'master_broker') {
+        const allSubmissions = await storage.getCreditSubmissionRequests({});
+        submissions = allSubmissions.filter(
+          submission =>
+            submission.brokerId === userId ||
+            submission.originMasterBrokerId === userId
+        );
+      } else if (req.tenantContext?.tenant) {
         const tenant = req.tenantContext.tenant;
-        if (tenant.type === 'master_broker') {
-          const subordinates = await storage.getTenantsByParent(tenant.id);
-          const tenantIds = [tenant.id, ...subordinates.map(t => t.id)];
-          submissions = await storage.getCreditSubmissionRequests({ tenantIds });
-        } else {
-          submissions = await storage.getCreditSubmissionRequests({ tenantId: tenant.id });
-        }
+        submissions = await storage.getCreditSubmissionRequests({
+          tenantId: tenant.id,
+          brokerId: user.role === 'broker' ? userId : undefined,
+        });
       } else {
         submissions = await storage.getCreditSubmissionRequests({ brokerId: userId });
       }
@@ -7691,6 +7704,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
 
       const submission = await storage.createCreditSubmissionRequest(submissionData);
+      const originBroker = await storage.getUser(submission.brokerId);
       
       // Create targets for each selected financial institution
       const targets = [];
@@ -7733,10 +7747,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
         // Send email alert to Super Admin
         sendSuperAdminNotificationEmail({
           title: `Nueva Solicitud de Crédito: ${clientName}`,
-          message: `Se ha recibido una nueva solicitud de crédito para ${clientName} por ${formattedAmount}. Registrada por el broker ${user.firstName} ${user.lastName || ''}. Requiere revisión administrativa y visto bueno para enviarse a financieras.`,
+          message: `Se ha recibido una nueva solicitud de crédito para ${clientName} por ${formattedAmount}. Registrada por el broker ${originBroker?.firstName || ''} ${originBroker?.lastName || ''}. Requiere revisión administrativa y visto bueno para enviarse a financieras.`,
           type: 'credit_submission_created',
           clientName,
-          brokerName: `${user.firstName} ${user.lastName || ''}`.trim(),
+          brokerName: `${originBroker?.firstName || ''} ${originBroker?.lastName || ''}`.trim(),
           amount: formattedAmount,
           actionUrl: '/solicitudes-pendientes',
           details: {
@@ -7746,24 +7760,24 @@ export async function registerRoutes(app: Express): Promise<Server> {
           }
         }).catch(e => console.error('[Email] Error sending super admin notification on submission created:', e));
 
-        // 2. Notify Master Broker if applicable
-        if (user.masterBrokerId) {
+        // 2. Notify the Master Broker frozen at submission origination.
+        if (submission.originMasterBrokerId) {
           const mbNotif = await storage.createNotification({
-            userId: user.masterBrokerId,
+            userId: submission.originMasterBrokerId,
             type: 'credit_submission_created',
             title: 'Nueva solicitud en tu red de brokers',
-            message: `${user.firstName} ${user.lastName || ''} registró una solicitud para ${clientName} por ${formattedAmount}.`,
+            message: `${originBroker?.firstName || ''} ${originBroker?.lastName || ''} registró una solicitud para ${clientName} por ${formattedAmount}.`,
             relatedEntityType: 'credit_submission',
             relatedEntityId: submission.id,
             priority: 'normal',
           });
-          broadcastToUser(user.masterBrokerId, { type: 'notification', notification: mbNotif });
-          broadcastToUser(user.masterBrokerId, { type: 'submission_created', submissionId: submission.id });
+          broadcastToUser(submission.originMasterBrokerId, { type: 'notification', notification: mbNotif });
+          broadcastToUser(submission.originMasterBrokerId, { type: 'submission_created', submissionId: submission.id });
         }
 
-        // 3. Notify the submitting Broker
+        // 3. Notify the originating Broker.
         const brokerNotif = await storage.createNotification({
-          userId: user.id,
+          userId: submission.brokerId,
           type: 'credit_submission_created',
           title: 'Solicitud enviada a revisión',
           message: `Tu solicitud para ${clientName} por ${formattedAmount} fue registrada exitosamente y está en revisión administrativa.`,
@@ -7771,7 +7785,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           relatedEntityId: submission.id,
           priority: 'normal',
         });
-        broadcastToUser(user.id, { type: 'notification', notification: brokerNotif });
+        broadcastToUser(submission.brokerId, { type: 'notification', notification: brokerNotif });
       } catch (notifErr) {
         console.error("Error creating notifications on submission creation:", notifErr);
       }
@@ -8067,9 +8081,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         // Broker: only see their own submissions
         filteredTargets = enrichedTargets.filter((t: any) => t.request?.brokerId === userId);
       } else if (user.role === 'master_broker') {
-        // Master broker: see own + their network's submissions
+        // Master broker: direct originations + submissions historically originated under its network.
         filteredTargets = enrichedTargets.filter((t: any) =>
-          t.request?.brokerId === userId || t.broker?.masterBrokerId === userId
+          t.request?.brokerId === userId || t.request?.originMasterBrokerId === userId
         );
       }
       // admin / super_admin: see all (no filter)
@@ -8115,9 +8129,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
           });
           broadcastToUser(request.brokerId, { type: 'notification', notification });
           const broker = await storage.getUser(request.brokerId);
-          if (broker?.masterBrokerId) {
+          if (request.originMasterBrokerId) {
             const mbNotif = await storage.createNotification({
-              userId: broker.masterBrokerId,
+              userId: request.originMasterBrokerId,
               type: 'submission_update',
               title: 'Solicitud de tu red aprobada',
               message: `La solicitud de un broker de tu red fue aprobada.`,
@@ -8125,7 +8139,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
               relatedEntityId: rawTarget.id,
               priority: 'medium',
             });
-            broadcastToUser(broker.masterBrokerId, { type: 'notification', notification: mbNotif });
+            broadcastToUser(request.originMasterBrokerId, { type: 'notification', notification: mbNotif });
           }
         }
       } catch (notifError) {
@@ -8174,9 +8188,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
           });
           broadcastToUser(request.brokerId, { type: 'notification', notification });
           const broker = await storage.getUser(request.brokerId);
-          if (broker?.masterBrokerId) {
+          if (request.originMasterBrokerId) {
             const mbNotif = await storage.createNotification({
-              userId: broker.masterBrokerId,
+              userId: request.originMasterBrokerId,
               type: 'submission_update',
               title: 'Solicitud de tu red rechazada',
               message: `La solicitud de un broker de tu red fue rechazada.`,
@@ -8184,7 +8198,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
               relatedEntityId: rawTarget.id,
               priority: 'medium',
             });
-            broadcastToUser(broker.masterBrokerId, { type: 'notification', notification: mbNotif });
+            broadcastToUser(request.originMasterBrokerId, { type: 'notification', notification: mbNotif });
           }
         }
       } catch (notifError) {
@@ -8234,9 +8248,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
           });
           broadcastToUser(request.brokerId, { type: 'notification', notification });
           const broker = await storage.getUser(request.brokerId);
-          if (broker?.masterBrokerId) {
+          if (request.originMasterBrokerId) {
             const mbNotif = await storage.createNotification({
-              userId: broker.masterBrokerId,
+              userId: request.originMasterBrokerId,
               type: 'submission_update',
               title: 'Solicitud de tu red devuelta al broker',
               message: `Una solicitud de tu red fue devuelta al broker para correcciones.`,
@@ -8244,7 +8258,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
               relatedEntityId: rawTarget.id,
               priority: 'medium',
             });
-            broadcastToUser(broker.masterBrokerId, { type: 'notification', notification: mbNotif });
+            broadcastToUser(request.originMasterBrokerId, { type: 'notification', notification: mbNotif });
           }
         }
       } catch (notifError) {
@@ -8548,9 +8562,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
           });
           broadcastToUser(request.brokerId, { type: 'notification', notification });
           const broker = await storage.getUser(request.brokerId);
-          if (broker?.masterBrokerId) {
+          if (request.originMasterBrokerId) {
             const mbNotif = await storage.createNotification({
-              userId: broker.masterBrokerId,
+              userId: request.originMasterBrokerId,
               type: 'submission_update',
               title: 'Propuesta recibida para solicitud de tu red',
               message: `Una institución aprobó la solicitud de un broker de tu red.`,
@@ -8558,7 +8572,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
               relatedEntityId: rawTarget.id,
               priority: 'medium',
             });
-            broadcastToUser(broker.masterBrokerId, { type: 'notification', notification: mbNotif });
+            broadcastToUser(request.originMasterBrokerId, { type: 'notification', notification: mbNotif });
           }
         }
       } catch (notifError) {
@@ -8655,9 +8669,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
           });
           broadcastToUser(request.brokerId, { type: 'notification', notification });
           const broker = await storage.getUser(request.brokerId);
-          if (broker?.masterBrokerId) {
+          if (request.originMasterBrokerId) {
             const mbNotif = await storage.createNotification({
-              userId: broker.masterBrokerId,
+              userId: request.originMasterBrokerId,
               type: 'submission_update',
               title: approved ? 'Institución aprobó solicitud de tu red' : 'Institución rechazó solicitud de tu red',
               message: `Una institución ${approved ? 'aprobó' : 'rechazó'} la solicitud de un broker de tu red.`,
@@ -8665,7 +8679,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
               relatedEntityId: rawTarget.id,
               priority: 'medium',
             });
-            broadcastToUser(broker.masterBrokerId, { type: 'notification', notification: mbNotif });
+            broadcastToUser(request.originMasterBrokerId, { type: 'notification', notification: mbNotif });
           }
         }
       } catch (notifError) {
