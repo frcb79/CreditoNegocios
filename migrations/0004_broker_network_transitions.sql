@@ -8,12 +8,26 @@ ALTER TABLE IF EXISTS public.credits
 UPDATE public.credits AS c
 SET origin_master_broker_id = CASE
   WHEN u.role = 'master_broker' THEN u.id
-  WHEN u.role = 'broker' THEN u.master_broker_id
+  WHEN u.role = 'broker' AND mb.role = 'master_broker' THEN mb.id
   ELSE NULL
 END
 FROM public.users AS u
+LEFT JOIN public.users AS mb ON mb.id = u.master_broker_id
 WHERE c.broker_id = u.id
   AND c.origin_master_broker_id IS NULL;
+
+-- Legacy Casa Matriz links (broker -> admin/super_admin) are normalized as direct platform brokers.
+UPDATE public.users AS broker
+SET master_broker_id = NULL,
+    updated_at = NOW()
+WHERE broker.role = 'broker'
+  AND broker.master_broker_id IS NOT NULL
+  AND NOT EXISTS (
+    SELECT 1
+    FROM public.users AS parent_user
+    WHERE parent_user.id = broker.master_broker_id
+      AND parent_user.role = 'master_broker'
+  );
 
 CREATE INDEX IF NOT EXISTS credits_origin_master_broker_idx
   ON public.credits (origin_master_broker_id);
