@@ -27,6 +27,7 @@ export function useActivityHeartbeat(): void {
   const [location] = useLocation();
   const lastInteractionAt = useRef(Date.now());
   const currentModule = useRef(moduleFromPath(location));
+  const didMountRouteEffect = useRef(false);
 
   useEffect(() => {
     currentModule.current = moduleFromPath(location);
@@ -88,7 +89,13 @@ export function useActivityHeartbeat(): void {
   }, []);
 
   useEffect(() => {
-    // Record module changes immediately without creating a clickstream event.
+    // The main heartbeat effect already sends once on mount.
+    if (!didMountRouteEffect.current) {
+      didMountRouteEffect.current = true;
+      return;
+    }
+
+    // Record module transitions immediately without creating clickstream events.
     const active = document.visibilityState === "visible";
     void fetch("/api/activity/heartbeat", {
       method: "POST",
