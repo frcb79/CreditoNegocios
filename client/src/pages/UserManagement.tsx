@@ -337,12 +337,12 @@ export default function UserManagement() {
   const [statusRequestModal, setStatusRequestModal] = useState<{
     open: boolean;
     targetUser?: User;
-    requestedStatus: 'inactive' | 'active';
+    requestedStatus: 'active';
     reason: string;
     notes: string;
   }>({
     open: false,
-    requestedStatus: 'inactive',
+    requestedStatus: 'active',
     reason: '',
     notes: '',
   });
@@ -390,18 +390,18 @@ export default function UserManagement() {
 
   // Mutation: Master Broker create status request
   const createStatusRequestMutation = useMutation({
-    mutationFn: async (payload: { targetUserId: string; requestedStatus: 'inactive' | 'active'; reason: string; notes?: string }) => {
+    mutationFn: async (payload: { targetUserId: string; requestedStatus: 'active'; reason: string; notes?: string }) => {
       const res = await apiRequest('POST', '/api/master-broker/status-requests', payload);
       return res.json();
     },
     onSuccess: (data: any) => {
       toast({
         title: "Solicitud enviada a Super Admin",
-        description: `Se envió la solicitud de ${statusRequestModal.requestedStatus === 'inactive' ? 'baja' : 'reactivación'} para revisión.`,
+        description: "Se envió la solicitud de reactivación para revisión.",
       });
       refetchMasterStatusRequests();
       queryClient.invalidateQueries({ queryKey: ["/api/master-broker/status-requests"] });
-      setStatusRequestModal({ open: false, requestedStatus: 'inactive', reason: '', notes: '' });
+      setStatusRequestModal({ open: false, requestedStatus: 'active', reason: '', notes: '' });
     },
     onError: (err: any) => {
       toast({
@@ -2322,7 +2322,7 @@ export default function UserManagement() {
                     Historial de Solicitudes Enviadas a Super Admin
                   </CardTitle>
                   <p className="text-xs text-slate-500 mt-0.5">
-                    Trazabilidad de solicitudes de baja y reactivación para brokers de tu red.
+                    Trazabilidad de solicitudes de reactivación enviadas a Super Admin.
                   </p>
                 </div>
                 <Badge variant="secondary" className="font-mono text-xs">{masterStatusRequests.length}</Badge>
@@ -2354,7 +2354,7 @@ export default function UserManagement() {
                             <Inbox className="w-8 h-8 mx-auto text-slate-300 dark:text-slate-600 mb-2" />
                             <p className="font-medium text-sm text-foreground">Aún no has enviado solicitudes de estado</p>
                             <p className="text-xs text-muted-foreground mt-0.5">
-                              Puedes solicitar la baja o reactivación de brokers de tu red desde la pestaña "Mi Red de Brokers".
+                              Puedes solicitar la reactivación de brokers inactivos de tu red desde la pestaña "Mi Red de Brokers".
                             </p>
                           </td>
                         </tr>
@@ -3824,19 +3824,15 @@ export default function UserManagement() {
           open={statusRequestModal.open} 
           onOpenChange={(open) => {
             if (!open) {
-              setStatusRequestModal({ open: false, requestedStatus: 'inactive', reason: '', notes: '' });
+              setStatusRequestModal({ open: false, requestedStatus: 'active', reason: '', notes: '' });
             }
           }}
         >
           <DialogContent className="max-w-md w-[95vw]">
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2 text-base">
-                {statusRequestModal.requestedStatus === 'inactive' ? (
-                  <Power className="w-5 h-5 text-rose-600" />
-                ) : (
-                  <CheckCircle2 className="w-5 h-5 text-emerald-600" />
-                )}
-                Solicitar {statusRequestModal.requestedStatus === 'inactive' ? "Baja Definitiva" : "Reactivación"} de Broker
+                <CheckCircle2 className="w-5 h-5 text-emerald-600" />
+                Solicitar Reactivación de Broker
               </DialogTitle>
               <DialogDescription className="text-xs text-muted-foreground">
                 Esta solicitud será enviada al Super Admin para su evaluación y dictamen.
@@ -3858,13 +3854,10 @@ export default function UserManagement() {
 
               <div className="bg-slate-50 dark:bg-slate-900/40 p-2.5 rounded text-xs text-muted-foreground space-y-1">
                 <div className="font-semibold text-slate-800 dark:text-slate-200">
-                  {statusRequestModal.requestedStatus === 'inactive' ? "Alcance de la baja:" : "Alcance de la reactivación:"}
+                  Alcance de la reactivación:
                 </div>
                 <p className="text-[11px]">
-                  {statusRequestModal.requestedStatus === 'inactive'
-                    ? "Al aprobarse, el broker no podrá iniciar sesión ni originar créditos nuevos. Todo su historial comercial, comisiones y clientes continuarán asignados intactos a él."
-                    : "Al aprobarse, el broker recuperará el acceso a la plataforma manteniendo su historial comercial intacto."
-                  }
+                  Al aprobarse, el broker recuperará el acceso a la plataforma manteniendo intactos su historial y atribuciones comerciales.
                 </p>
               </div>
 
@@ -3876,9 +3869,7 @@ export default function UserManagement() {
                 <Input
                   value={statusRequestModal.reason}
                   onChange={(e) => setStatusRequestModal(prev => ({ ...prev, reason: e.target.value }))}
-                  placeholder={statusRequestModal.requestedStatus === 'inactive' 
-                    ? "Ej: Cierre de actividades comerciales, baja voluntaria de la red..."
-                    : "Ej: Regularización de contrato y retorno a operaciones comerciales..."}
+                  placeholder="Ej: Regularización de contrato y retorno a operaciones comerciales..."
                   className="text-xs h-9"
                   data-testid="input-status-request-reason"
                 />
@@ -3904,7 +3895,7 @@ export default function UserManagement() {
               <Button
                 variant="outline"
                 size="sm"
-                onClick={() => setStatusRequestModal({ open: false, requestedStatus: 'inactive', reason: '', notes: '' })}
+                onClick={() => setStatusRequestModal({ open: false, requestedStatus: 'active', reason: '', notes: '' })}
                 disabled={createStatusRequestMutation.isPending}
               >
                 Cancelar
@@ -3924,11 +3915,7 @@ export default function UserManagement() {
                     notes: statusRequestModal.notes.trim() || undefined,
                   });
                 }}
-                className={
-                  statusRequestModal.requestedStatus === 'inactive'
-                    ? "bg-rose-600 hover:bg-rose-700 text-white"
-                    : "bg-emerald-600 hover:bg-emerald-700 text-white"
-                }
+                className="bg-emerald-600 hover:bg-emerald-700 text-white"
                 data-testid="button-submit-status-request"
               >
                 {createStatusRequestMutation.isPending ? (
@@ -3937,7 +3924,7 @@ export default function UserManagement() {
                     Enviando...
                   </>
                 ) : (
-                  `Enviar Solicitud de ${statusRequestModal.requestedStatus === 'inactive' ? 'Baja' : 'Reactivación'}`
+                  "Enviar Solicitud de Reactivación"
                 )}
               </Button>
             </DialogFooter>
