@@ -1213,12 +1213,15 @@ export class DbStorage implements IStorage {
       // Commercial lineage is always derived server-side at creation time.
       // It must never depend on the broker's future network affiliation.
       const brokerAtOrigination = await this.getUser(credit.brokerId);
-      const originMasterBrokerId =
-        brokerAtOrigination?.role === "master_broker"
-          ? brokerAtOrigination.id
-          : brokerAtOrigination?.role === "broker"
-            ? brokerAtOrigination.masterBrokerId || null
-            : null;
+      let originMasterBrokerId: string | null = null;
+      if (brokerAtOrigination?.role === "master_broker") {
+        originMasterBrokerId = brokerAtOrigination.id;
+      } else if (brokerAtOrigination?.role === "broker" && brokerAtOrigination.masterBrokerId) {
+        const parentAtOrigination = await this.getUser(brokerAtOrigination.masterBrokerId);
+        // Casa Matriz / Admin is direct platform business, not a Master layer.
+        originMasterBrokerId =
+          parentAtOrigination?.role === "master_broker" ? parentAtOrigination.id : null;
+      }
 
       const [created] = await db
         .insert(credits)
