@@ -169,6 +169,58 @@ describe("credit origination network snapshot", () => {
     expect(derivedCredit.originMasterBrokerId).toBeNull();
   });
 
+  it("ignores attempts to rewrite immutable credit and submission lineage", async () => {
+    const storage = new MemStorage();
+
+    const masterA = await storage.createUser({
+      email: "immutable-a@network.test",
+      role: "master_broker",
+      isActive: true,
+    } as any);
+    const masterB = await storage.createUser({
+      email: "immutable-b@network.test",
+      role: "master_broker",
+      isActive: true,
+    } as any);
+    const broker = await storage.createUser({
+      email: "immutable-broker@network.test",
+      role: "broker",
+      masterBrokerId: masterA.id,
+      isActive: true,
+    } as any);
+
+    const submission = await storage.createCreditSubmissionRequest({
+      clientId: "client-immutable",
+      brokerId: broker.id,
+      requestedAmount: "800000",
+      status: "pending_admin",
+    } as any);
+    expect(submission.originMasterBrokerId).toBe(masterA.id);
+
+    const submissionAfterUpdate = await storage.updateCreditSubmissionRequest(
+      submission.id,
+      { originMasterBrokerId: masterB.id, status: "in_progress" } as any,
+    );
+    expect(submissionAfterUpdate?.originMasterBrokerId).toBe(masterA.id);
+    expect(submissionAfterUpdate?.status).toBe("in_progress");
+
+    const credit = await storage.createCredit({
+      clientId: submission.clientId,
+      brokerId: broker.id,
+      linkedSubmissionId: submission.id,
+      amount: submission.requestedAmount,
+      status: "approved",
+    } as any);
+    expect(credit.originMasterBrokerId).toBe(masterA.id);
+
+    const creditAfterUpdate = await storage.updateCredit(
+      credit.id,
+      { originMasterBrokerId: masterB.id, status: "active" } as any,
+    );
+    expect(creditAfterUpdate?.originMasterBrokerId).toBe(masterA.id);
+    expect(creditAfterUpdate?.status).toBe("active");
+  });
+
   it("treats legacy Casa Matriz admin links as direct platform business", async () => {
     const storage = new MemStorage();
 
