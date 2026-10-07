@@ -58,6 +58,21 @@ Para datos previos a esta funcionalidad, la migración congela la afiliación ex
 
 Las comisiones existentes mantienen además su propio `master_broker_id`, montos y shares congelados.
 
+Las **oportunidades comerciales** congelan igualmente el `master_broker_id` vigente al momento de su creación. Antes de habilitar los movimientos, la migración 0004 fotografía una sola vez la afiliación de oportunidades existentes que todavía no tuvieran ese dato. Después queda protegida por trigger. Por ello:
+
+- una oportunidad nacida bajo Master A continúa atribuida y visible históricamente para A;
+- si el broker pasa a Master B, B no hereda esa oportunidad anterior;
+- las oportunidades nuevas creadas después del movimiento se atribuyen a B.
+
+## Alta inicial
+
+La creación de un Broker también respeta el gobierno de red:
+
+- un Master Broker puede dar de alta un broker nuevo directamente dentro de su propia red;
+- un Admin de plataforma puede crear brokers directos de Crédito Negocios;
+- sólo Super Admin puede crear un broker nuevo ya asignado a un Master Broker distinto;
+- un Master Broker nuevo se crea primero como Broker y después se promueve mediante **Movimientos de Red**.
+
 ## Solicitudes de estado pendientes
 
 Una transición ejecutada por Super Admin invalida las solicitudes de estado pendientes del broker. Esto evita que una solicitud del Master anterior pueda aprobarse después de la reasignación.
@@ -97,3 +112,9 @@ La formalización legal vive en un bloque paralelo. Cuando ese bloque se integre
 - crédito creado bajo Master A, mover broker a B, dispersar crédito → comisión sigue con A
 - nuevo crédito después del movimiento → afiliación B
 - verificar que solicitudes pendientes del Master anterior quedan invalidadas
+- Master propio: suspensión directa → permitido
+- Master propio: baja directa → permitido
+- Master propio: reactivación directa → 403; sólo solicitud a Super Admin
+- Admin normal: reasignación/reactivación → 403
+- oportunidad creada bajo Master A, mover broker a B → la oportunidad sigue atribuida a A
+- oportunidad nueva después del movimiento → atribuida a B
