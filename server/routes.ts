@@ -71,6 +71,7 @@ import {
 } from "./commercialAuthorizationService";
 import { commercialOpportunityService } from "./commercialOpportunityService";
 import { commercialHelpService } from "./commercialHelpService";
+import { registerBrokerNetworkTransitionRoutes } from "./brokerNetworkTransitionRoutes";
 
 
 import { z } from "zod";
@@ -175,9 +176,12 @@ export async function createCascadingCommissionRecord(
     const approvedAmount = parseFloat(String(amountArg || credit?.amount || "0"));
     const commType = commTypeArg || "apertura";
 
-    const brokerUser = credit?.brokerId ? await storage.getUser(credit.brokerId) : null;
-    const isMasterDirect = brokerUser?.role === "master_broker";
-    const masterBrokerId = isMasterDirect ? brokerUser.id : brokerUser?.masterBrokerId;
+    // Economic attribution comes from the credit's immutable origination snapshot,
+    // never from the broker's current role/network.
+    const masterBrokerId = credit?.originMasterBrokerId || null;
+    const isMasterDirect = Boolean(
+      masterBrokerId && credit?.brokerId && String(masterBrokerId) === String(credit.brokerId),
+    );
 
     const finalProposal = credit?.finalProposal;
     const proposalCommRates = (finalProposal as any)?.commissionRates;
@@ -841,6 +845,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Tenant context middleware - must be after auth setup
   app.use(tenantContextMiddleware);
 
+  // Super Admin-only broker network lifecycle routes.
+  registerBrokerNetworkTransitionRoutes(app);
+
   // Auth routes
   app.get('/api/auth/user', isAuthenticated, async (req: any, res) => {
     try {
@@ -1335,6 +1342,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       
       const userData = req.body;
+
+      if (
+        userData?.role !== undefined ||
+        userData?.masterBrokerId !== undefined ||
+        userData?.referralCode !== undefined
+      ) {
+        return res.status(409).json({
+          message: "Los cambios de rol, red o clave de Master Broker sólo pueden realizarse desde el flujo de Movimientos de Red de Super Admin.",
+        });
+      }
+
       let sanitizedData: any = {};
       
       if (!isAdmin) {
@@ -2518,6 +2536,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(403).json({ message: "No tienes permiso para modificar usuarios fuera de tu red." });
       }
       
+      if (
+        req.body?.role !== undefined ||
+        req.body?.masterBrokerId !== undefined ||
+        req.body?.referralCode !== undefined
+      ) {
+        return res.status(409).json({
+          message: "Los cambios de rol, red o clave de Master Broker sólo pueden realizarse desde el flujo de Movimientos de Red de Super Admin.",
+        });
+      }
+
       const userData = insertUserSchema.partial().parse(req.body);
       
       // Prevent Master Broker from escalating privileges
@@ -3953,6 +3981,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       
       const creditData = insertCreditSchema.partial().parse(req.body);
+      // Commercial lineage is immutable after credit creation.
+      delete (creditData as any).originMasterBrokerId;
       const oldCredit = authResult.credit;
       
       const credit = await storage.updateCredit(id, creditData);
@@ -3980,8 +4010,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
           // Get broker and master broker
           const broker = await storage.getUser(credit.brokerId);
           if (broker) {
-            const isMasterDirect = broker.role === 'master_broker';
-            const masterBrokerId = isMasterDirect ? broker.id : broker.masterBrokerId;
+            const masterBrokerId = credit.originMasterBrokerId || null;
+            const isMasterDirect = Boolean(
+              masterBrokerId && String(masterBrokerId) === String(credit.brokerId),
+            );
             const finalProposal = credit.finalProposal as any;
             const approvedAmount = parseFloat(finalProposal?.approvedAmount || credit.amount || '0');
             const commissionsToApply = (finalProposal?.commissionsToApply && finalProposal.commissionsToApply.length)
@@ -5743,10 +5775,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
       let targetBroker: any = existingUser;
 
       if (existingUser) {
-        // Link to master broker if this is invited by a master broker
-        if (user.role === 'master_broker' && (!existingUser.masterBrokerId || existingUser.masterBrokerId !== userId)) {
-          targetBroker = await storage.updateUser(existingUser.id, {
-            masterBrokerId: userId,
+        // Existing identities can never be reassigned through an invitation.
+        // Moving an existing broker between networks is exclusive to Super Admin.
+        if (user.role === 'master_broker' && existingUser.masterBrokerId !== userId) {
+          return res.status(409).json({
+            message: "Este usuario ya existe y no pertenece a tu red. La reasignación debe realizarla Super Admin desde Movimientos de Red.",
+          });
+        }
+        if ((user.role === 'admin' || user.role === 'super_admin') && req.body.masterBrokerId !== undefined) {
+          return res.status(409).json({
+            message: "Este usuario ya existe. Utiliza el flujo de Movimientos de Red de Super Admin para cambiar su afiliación.",
           });
         }
       } else {
@@ -8763,8 +8801,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       try {
         const broker = await storage.getUser(request.brokerId);
         if (broker) {
-          const isMasterDirect = broker.role === 'master_broker';
-          const masterBrokerId = isMasterDirect ? broker.id : broker.masterBrokerId;
+          const masterBrokerId = credit?.originMasterBrokerId || null;
+          const isMasterDirect = Boolean(
+            masterBrokerId && credit?.brokerId && String(masterBrokerId) === String(credit.brokerId),
+          );
           const approvedAmount = parseFloat(proposal?.approvedAmount || credit?.amount || request.requestedAmount?.toString() || '0');
           
           // Get institution for commission rates
