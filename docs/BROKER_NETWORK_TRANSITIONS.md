@@ -1,0 +1,88 @@
+# Movimientos de Red y Escalamiento Broker → Master Broker
+
+## Regla de gobierno
+
+Los cambios de afiliación y la promoción de Broker a Master Broker son exclusivos de **Super Admin**.
+
+Un Master Broker puede suspender a un broker de su propia red y utilizar el flujo de solicitudes de estado ya existente, pero no puede:
+
+- apropiarse de un broker ya registrado;
+- moverlo desde otra red;
+- reactivarlo directamente;
+- convertirlo en Master Broker;
+- modificar `role` o `masterBrokerId`.
+
+## Transiciones soportadas
+
+1. Broker directo de Crédito Negocios → Master Broker existente.
+2. Broker de Master A → Master B.
+3. Broker de Master A → Crédito Negocios directo.
+4. Broker directo → Master Broker.
+5. Broker suspendido/inactivo → mismo Master, otro Master o Crédito Negocios, con reactivación controlada por Super Admin.
+
+No se incluye en este bloque una degradación Master Broker → Broker.
+
+## Identidad y organización
+
+El usuario conserva el mismo `users.id`.
+
+Cada broker mantiene su organización propia. Una reasignación cambia el `parent_tenant_id` de esa organización:
+
+- bajo Master: parent = tenant del Master;
+- directo: parent = tenant plataforma.
+
+Al promover un broker, su organización existente se transforma de `broker` a `master_broker`, preservando su `tenant.id`, clientes, documentos y operaciones.
+
+## Historia económica inmutable
+
+La afiliación actual nunca debe reescribir el pasado.
+
+Se agrega `credits.origin_master_broker_id` para congelar la estructura comercial al crear el crédito:
+
+- broker bajo Master A → A;
+- Master originando directamente → su propio ID;
+- broker directo de Crédito Negocios → null.
+
+El valor es inmutable. Por lo tanto, si el broker posteriormente pasa a Master B, un crédito originado bajo A seguirá generando sus comisiones con la afiliación A.
+
+Las comisiones existentes mantienen además su propio `master_broker_id`, montos y shares congelados.
+
+## Solicitudes de estado pendientes
+
+Una transición ejecutada por Super Admin invalida las solicitudes de estado pendientes del broker. Esto evita que una solicitud del Master anterior pueda aprobarse después de la reasignación.
+
+## Auditoría
+
+Cada transición genera un registro en `commercial_audit_logs` con:
+
+- actor Super Admin;
+- broker afectado;
+- rol anterior/nuevo;
+- Master anterior/nuevo;
+- tenant y parent anterior/nuevo;
+- estado anterior/nuevo;
+- motivo;
+- fecha efectiva;
+- cantidad de solicitudes pendientes invalidadas;
+- confirmación de que la atribución histórica se preserva.
+
+## Integración legal
+
+La formalización legal vive en un bloque paralelo. Cuando ese bloque se integre, un usuario promovido a `master_broker` deberá cumplir los documentos adicionales exigibles a Master Broker antes de originar bajo su nuevo rol. Las aceptaciones históricas no se eliminan.
+
+## Validación antes de merge
+
+- `npm run check`
+- `npm run build`
+- suite unitaria
+- pruebas E2E relevantes
+- migración 0004 en staging
+- Broker A → Master B
+- Broker A → plataforma
+- Broker directo → Master
+- broker suspendido → reactivación + cambio de red
+- intento de cambio por Admin normal → 403
+- intento de reasignación por Master → rechazo
+- crédito creado bajo Master A, mover broker a B, dispersar crédito → comisión sigue con A
+- nuevo crédito después del movimiento → afiliación B
+- verificar que solicitudes pendientes del Master anterior quedan invalidadas
