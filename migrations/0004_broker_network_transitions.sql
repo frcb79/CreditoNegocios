@@ -78,6 +78,38 @@ $$;
 CREATE INDEX IF NOT EXISTS credits_origin_master_broker_idx
   ON public.credits (origin_master_broker_id);
 
+-- Freeze pre-existing opportunity affiliation exactly once. The column already
+-- existed before this block, so column existence cannot be used as the marker.
+CREATE TABLE IF NOT EXISTS public.system_migration_markers (
+  key VARCHAR PRIMARY KEY,
+  applied_at TIMESTAMP NOT NULL DEFAULT NOW(),
+  metadata JSONB DEFAULT '{}'
+);
+
+WITH marker AS (
+  INSERT INTO public.system_migration_markers (key, metadata)
+  VALUES (
+    'broker_network_opportunity_snapshot_v1',
+    '{"purpose":"freeze pre-transition Master Broker affiliation on commercial opportunities"}'::jsonb
+  )
+  ON CONFLICT (key) DO NOTHING
+  RETURNING key
+)
+UPDATE public.commercial_opportunities AS opportunity
+SET master_broker_id = CASE
+  WHEN broker.role = 'master_broker' THEN broker.id
+  WHEN broker.role = 'broker' AND parent_master.role = 'master_broker' THEN parent_master.id
+  ELSE NULL
+END
+FROM public.users AS broker
+LEFT JOIN public.users AS parent_master ON parent_master.id = broker.master_broker_id,
+marker
+WHERE opportunity.broker_id = broker.id
+  AND opportunity.master_broker_id IS NULL;
+
+CREATE INDEX IF NOT EXISTS opp_master_broker_idx
+  ON public.commercial_opportunities (master_broker_id);
+
 DO $$
 BEGIN
   IF NOT EXISTS (
@@ -110,3 +142,21 @@ CREATE TRIGGER trg_credits_origin_master_immutable
 BEFORE UPDATE OF origin_master_broker_id ON public.credits
 FOR EACH ROW
 EXECUTE FUNCTION public.prevent_credit_origin_master_change();
+
+CREATE OR REPLACE FUNCTION public.prevent_opportunity_origin_master_change()
+RETURNS trigger
+LANGUAGE plpgsql
+AS $
+BEGIN
+  IF NEW.master_broker_id IS DISTINCT FROM OLD.master_broker_id THEN
+    RAISE EXCEPTION 'commercial opportunity master_broker_id is immutable after origination';
+  END IF;
+  RETURN NEW;
+END;
+$;
+
+DROP TRIGGER IF EXISTS trg_opportunity_origin_master_immutable ON public.commercial_opportunities;
+CREATE TRIGGER trg_opportunity_origin_master_immutable
+BEFORE UPDATE OF master_broker_id ON public.commercial_opportunities
+FOR EACH ROW
+EXECUTE FUNCTION public.prevent_opportunity_origin_master_change();
