@@ -1,6 +1,7 @@
 -- Bloque 3.1 — Actividad y Bitácora de Usuarios
 -- Source-of-truth for product usage sessions + immutable significant events.
 -- Intentionally separate from technical auth sessions and commercial/commission audit logs.
+-- Historical sessions before deployment are intentionally not reconstructed.
 
 ALTER TABLE public.users
   ADD COLUMN IF NOT EXISTS first_login_at TIMESTAMP,
