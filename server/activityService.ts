@@ -62,6 +62,16 @@ async function findUserByEmail(email: unknown): Promise<{ id: string; role: stri
   return result.rows[0] || null;
 }
 
+async function findUserByResetToken(token: unknown): Promise<{ id: string; role: string | null } | null> {
+  const safeToken = cleanText(token, 512);
+  if (!safeToken) return null;
+  const result = await pool.query(
+    `SELECT id, role FROM public.users WHERE reset_token = $1 LIMIT 1`,
+    [safeToken],
+  );
+  return result.rows[0] || null;
+}
+
 export async function resolveActivityTenant(
   userId: string,
   requestedTenantId?: string | null,
@@ -329,6 +339,9 @@ function mapRequestToEvent(method: string, path: string): MappedRequestEvent | n
   if ((match = path.match(/^\/api\/admin\/users\/([^/]+)\/operational-status$/)) && ["PATCH","PUT"].includes(m))
     return { category: "security", eventType: "user.status_changed", moduleId: "usuarios", entityType: "user", entityId: match[1] };
 
+  if ((match = path.match(/^\/api\/users\/([^/]+)$/)) && ["PATCH","PUT"].includes(m))
+    return { category: "security", eventType: "user.updated", moduleId: "usuarios", entityType: "user", entityId: match[1] };
+
   if (/\/members(\/[^/]+)?$/.test(path) && ["POST","PATCH","PUT","DELETE"].includes(m))
     return { category: "governance", eventType: "user.membership_changed", moduleId: "usuarios", entityType: "tenant_member" };
 
@@ -350,6 +363,12 @@ export const activityObserverMiddleware: RequestHandler = (req: any, res: any, n
   const ipAddress = getRequestIp(req);
   const userAgent = getRequestUserAgent(req);
   const email = req.body?.email;
+  // Start resolving the reset-token owner before the route clears the token.
+  // Only the user id/role is retained; the token is never written to activity logs.
+  const resetUserLookup =
+    requestPath === "/api/auth/reset-password" && requestMethod === "POST"
+      ? findUserByResetToken(req.body?.token).catch(() => null)
+      : Promise.resolve(null);
 
   res.on("finish", () => {
     void (async () => {
@@ -420,6 +439,23 @@ export const activityObserverMiddleware: RequestHandler = (req: any, res: any, n
               category: "security",
               eventType: "auth.password_reset_requested",
               actorRole: dbUser.role,
+              ipAddress,
+              userAgent,
+            });
+          }
+          return;
+        }
+
+        if (requestPath === "/api/auth/reset-password" && requestMethod === "POST" && success) {
+          const resetUser = await resetUserLookup;
+          if (resetUser) {
+            const tenantId = await resolveActivityTenant(resetUser.id, null, resetUser.role);
+            await recordUserActivityEvent({
+              userId: resetUser.id,
+              tenantId,
+              category: "security",
+              eventType: "auth.password_changed",
+              actorRole: resetUser.role,
               ipAddress,
               userAgent,
             });
