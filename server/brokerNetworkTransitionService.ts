@@ -353,14 +353,16 @@ export async function executeBrokerNetworkTransition(input: BrokerNetworkTransit
       nextMasterBrokerId = targetMaster.id;
       nextParentTenantId = targetMasterTenant.id;
 
-      const alreadyThere =
+      const sameNetwork =
         previousMasterBrokerId === nextMasterBrokerId &&
-        previousParentTenantId === nextParentTenantId &&
-        previousStatus === ACTIVE_STATUS &&
-        broker.isActive !== false;
-      if (alreadyThere) {
+        previousParentTenantId === nextParentTenantId;
+      const currentlyActive =
+        previousStatus === ACTIVE_STATUS && broker.isActive !== false;
+      if (sameNetwork && (currentlyActive || !reactivate)) {
         throw new BrokerNetworkTransitionError(
-          "El broker ya está activo dentro de esa red.",
+          currentlyActive
+            ? "El broker ya está activo dentro de esa red."
+            : "El broker ya pertenece a esa red. Activa la opción de reactivación para aplicar un cambio.",
           409,
           "NO_TRANSITION_REQUIRED",
         );
@@ -369,14 +371,16 @@ export async function executeBrokerNetworkTransition(input: BrokerNetworkTransit
       nextMasterBrokerId = null;
       nextParentTenantId = platformTenant.id;
 
-      const alreadyDirect =
+      const sameDirectNetwork =
         !previousMasterBrokerId &&
-        previousParentTenantId === platformTenant.id &&
-        previousStatus === ACTIVE_STATUS &&
-        broker.isActive !== false;
-      if (alreadyDirect) {
+        previousParentTenantId === platformTenant.id;
+      const currentlyActive =
+        previousStatus === ACTIVE_STATUS && broker.isActive !== false;
+      if (sameDirectNetwork && (currentlyActive || !reactivate)) {
         throw new BrokerNetworkTransitionError(
-          "El broker ya pertenece directamente a Crédito Negocios y está activo.",
+          currentlyActive
+            ? "El broker ya pertenece directamente a Crédito Negocios y está activo."
+            : "El broker ya pertenece directamente a Crédito Negocios. Activa la reactivación para aplicar un cambio.",
           409,
           "NO_TRANSITION_REQUIRED",
         );
