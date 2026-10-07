@@ -3,6 +3,7 @@ import { pool } from "./db";
 import { storage } from "./storage";
 
 const ACTIVE_DELTA_CAP_SECONDS = 75;
+const ACTIVE_GAP_RESET_SECONDS = 120;
 const STALE_SESSION_MINUTES = 15;
 
 function getUserId(req: any): string | null {
@@ -184,7 +185,7 @@ export async function heartbeat(req: any, moduleName?: string | null) {
     const previous = new Date(current.rows[0].last_activity_at).getTime();
     const now = Date.now();
     const elapsed = Math.max(0, Math.floor((now - previous) / 1000));
-    const activeDelta = Math.min(elapsed, ACTIVE_DELTA_CAP_SECONDS);
+    const activeDelta = elapsed > ACTIVE_GAP_RESET_SECONDS ? 0 : Math.min(elapsed, ACTIVE_DELTA_CAP_SECONDS);
     const modules = Array.isArray(current.rows[0].modules_visited) ? current.rows[0].modules_visited : [];
     const cleanModule = moduleName ? moduleName.slice(0, 80) : null;
     if (cleanModule && !modules.includes(cleanModule)) modules.push(cleanModule);
@@ -347,6 +348,9 @@ type ClassifiedAction = {
 
 function classifyMutation(method: string, path: string): ClassifiedAction | null {
   const m = method.toUpperCase();
+  if (m === "GET" && /^\/api\/documents\/[^/]+\/download$/.test(path)) {
+    return { category: "business", eventType: "document.downloaded", module: "documentos", entityType: "document" };
+  }
   if (!["POST", "PUT", "PATCH", "DELETE"].includes(m)) return null;
   const rules: Array<[RegExp, ClassifiedAction]> = [
     [/^\/api\/clients(?:\/[^/]+)?$/, { category: "business", eventType: m === "POST" ? "client.created" : m === "DELETE" ? "client.deleted" : "client.updated", module: "clientes", entityType: "client" }],
