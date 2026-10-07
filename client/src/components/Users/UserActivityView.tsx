@@ -111,21 +111,24 @@ async function getJson<T>(url: string): Promise<T> {
 export default function UserActivityView() {
   const [days, setDays] = useState("30");
   const [search, setSearch] = useState("");
+  const [scopeTab, setScopeTab] = useState("users");
+  const [selectedTenant, setSelectedTenant] = useState<{ id: string; name: string } | null>(null);
   const [selectedUser, setSelectedUser] = useState<UserActivityRow | null>(null);
   const [detailTab, setDetailTab] = useState("summary");
 
   const period = Number(days);
+  const tenantQuery = selectedTenant ? `&tenantId=${encodeURIComponent(selectedTenant.id)}` : "";
 
   const overviewQuery = useQuery<Overview>({
-    queryKey: ["/api/user-activity/overview", period],
-    queryFn: () => getJson(`/api/user-activity/overview?days=${period}`),
+    queryKey: ["/api/user-activity/overview", period, selectedTenant?.id],
+    queryFn: () => getJson(`/api/user-activity/overview?days=${period}${tenantQuery}`),
   });
 
   const usersQuery = useQuery<UserActivityRow[]>({
-    queryKey: ["/api/user-activity/users", period, search],
+    queryKey: ["/api/user-activity/users", period, search, selectedTenant?.id],
     queryFn: () =>
       getJson(
-        `/api/user-activity/users?days=${period}&limit=150&search=${encodeURIComponent(search)}`,
+        `/api/user-activity/users?days=${period}&limit=150&search=${encodeURIComponent(search)}${tenantQuery}`,
       ),
   });
 
@@ -214,7 +217,7 @@ export default function UserActivityView() {
         />
       </div>
 
-      <Tabs defaultValue="users" className="space-y-4">
+      <Tabs value={scopeTab} onValueChange={setScopeTab} className="space-y-4">
         <TabsList>
           <TabsTrigger value="users">
             <Users className="mr-2 h-4 w-4" />
@@ -227,6 +230,21 @@ export default function UserActivityView() {
         </TabsList>
 
         <TabsContent value="users" className="space-y-3">
+          {selectedTenant && (
+            <div className="flex flex-wrap items-center gap-2 rounded-lg border bg-muted/30 px-3 py-2 text-sm">
+              <Building2 className="h-4 w-4 text-muted-foreground" />
+              <span>Organización:</span>
+              <Badge variant="secondary">{selectedTenant.name}</Badge>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-7"
+                onClick={() => setSelectedTenant(null)}
+              >
+                Ver todos
+              </Button>
+            </div>
+          )}
           <div className="relative max-w-md">
             <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
             <Input
@@ -321,6 +339,7 @@ export default function UserActivityView() {
                       <th className="px-4 py-3 font-medium">Activos</th>
                       <th className="px-4 py-3 font-medium">Tiempo activo</th>
                       <th className="px-4 py-3 font-medium">Última actividad</th>
+                      <th className="px-4 py-3"></th>
                     </tr>
                   </thead>
                   <tbody>
@@ -340,6 +359,19 @@ export default function UserActivityView() {
                                 addSuffix: true,
                               })
                             : "Sin actividad"}
+                        </td>
+                        <td className="px-4 py-3 text-right">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => {
+                              setSelectedTenant({ id: organization.id, name: organization.name });
+                              setScopeTab("users");
+                            }}
+                          >
+                            <Eye className="mr-2 h-4 w-4" />
+                            Ver usuarios
+                          </Button>
                         </td>
                       </tr>
                     ))}
