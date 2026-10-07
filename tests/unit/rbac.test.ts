@@ -16,6 +16,7 @@ describe("RBAC Permissions and Middleware Tests", () => {
       expect(perms.modules).toContain("usuarios");
       expect(perms.modules).toContain("aprobaciones");
       expect(perms.actions).toContain("manage_users");
+      expect(perms.actions).toContain("view_user_activity");
       expect(perms.actions).toContain("approve_disperse");
       expect(perms.scope).toBe("global");
     });
@@ -32,6 +33,34 @@ describe("RBAC Permissions and Middleware Tests", () => {
       expect(perms.modules).not.toContain("aprobaciones");
       expect(perms.actions).toContain("view");
       expect(perms.actions).toContain("edit");
+      expect(perms.actions).not.toContain("manage_users");
+    });
+
+    it("should preserve backward compatibility: manage_users implies view_user_activity", () => {
+      const user = {
+        role: "broker",
+        permissions: {
+          modules: ["usuarios"],
+          actions: ["view", "manage_users"],
+          scope: "own",
+        },
+      };
+      const perms = getEffectivePermissions(user);
+      expect(perms.actions).toContain("manage_users");
+      expect(perms.actions).toContain("view_user_activity");
+    });
+
+    it("should allow read-only activity access without granting manage_users", () => {
+      const user = {
+        role: "broker",
+        permissions: {
+          modules: ["usuarios"],
+          actions: ["view", "view_user_activity"],
+          scope: "own",
+        },
+      };
+      const perms = getEffectivePermissions(user);
+      expect(perms.actions).toContain("view_user_activity");
       expect(perms.actions).not.toContain("manage_users");
     });
 
