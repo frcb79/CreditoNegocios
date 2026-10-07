@@ -1506,13 +1506,14 @@ export const legalAcceptances = pgTable(
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
     userEmail: varchar("user_email").notNull(),
+    userName: varchar("user_name"),
     documentId: varchar("document_id")
       .notNull()
       .references(() => legalDocumentVersions.id),
     document: varchar("document", { length: 64 }).notNull(),
     version: varchar("version", { length: 32 }).notNull(),
     contentSha256: varchar("content_sha256", { length: 64 }).notNull(),
-    acceptanceType: varchar("acceptance_type", { length: 64 }).notNull(), // "accept_terms" | "acknowledge_privacy"
+    acceptanceType: varchar("acceptance_type", { length: 64 }).notNull(), // "accept_terms" | "acknowledge_privacy" | "accept_convenio" | etc.
     ipAddress: varchar("ip_address", { length: 128 }).notNull(),
     userAgent: text("user_agent").notNull(),
     acceptedAt: timestamp("accepted_at").defaultNow().notNull(),
@@ -1523,16 +1524,50 @@ export const legalAcceptances = pgTable(
   ],
 );
 
+export const formalizationOtpRequests = pgTable(
+  "formalization_otp_requests",
+  {
+    id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+    userId: varchar("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    userEmail: varchar("user_email").notNull(),
+    userName: varchar("user_name"),
+    userRole: varchar("user_role", { length: 64 }).notNull(),
+    documentsSnapshot: jsonb("documents_snapshot").notNull(),
+    codeHash: varchar("code_hash", { length: 64 }).notNull(),
+    attempts: integer("attempts").notNull().default(0),
+    maxAttempts: integer("max_attempts").notNull().default(5),
+    expiresAt: timestamp("expires_at").notNull(),
+    resendAvailableAt: timestamp("resend_available_at").notNull(),
+    consumed: boolean("consumed").notNull().default(false),
+    consumedAt: timestamp("consumed_at"),
+    invalidated: boolean("invalidated").notNull().default(false),
+    invalidatedAt: timestamp("invalidated_at"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (table) => [
+    index("idx_formalization_otp_user_id").on(table.userId),
+    index("idx_formalization_otp_created_at").on(table.createdAt),
+  ],
+);
+
 export const insertLegalDocumentVersionSchema = createInsertSchema(legalDocumentVersions);
 export const insertLegalAcceptanceSchema = createInsertSchema(legalAcceptances).omit({
   id: true,
   acceptedAt: true,
+});
+export const insertFormalizationOtpRequestSchema = createInsertSchema(formalizationOtpRequests).omit({
+  id: true,
+  createdAt: true,
 });
 
 export type LegalDocumentVersionDb = typeof legalDocumentVersions.$inferSelect;
 export type InsertLegalDocumentVersionDb = typeof legalDocumentVersions.$inferInsert;
 export type LegalAcceptance = typeof legalAcceptances.$inferSelect;
 export type InsertLegalAcceptance = typeof legalAcceptances.$inferInsert;
+export type FormalizationOtpRequest = typeof formalizationOtpRequests.$inferSelect;
+export type InsertFormalizationOtpRequest = typeof formalizationOtpRequests.$inferInsert;
 
 
 

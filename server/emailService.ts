@@ -691,3 +691,144 @@ Crédito Negocios - Notificación para ${SUPERADMIN_NOTIFICATION_EMAIL}
     return { success: false, error: error.message || 'Error desconocido' };
   }
 }
+
+// In-memory test store for test suites to capture simulated emails without logging plaintext secrets
+export const _testEmailStore: {
+  lastFormalizationOtp?: {
+    to: string;
+    code: string;
+    role: string;
+    documents: Array<{ title: string; version: string }>;
+  };
+  simulateFailure?: boolean;
+} = {};
+
+export async function sendFormalizationOtpEmail(payload: {
+  to: string;
+  userName?: string;
+  code: string;
+  role: string;
+  documents: Array<{ title: string; version: string }>;
+}): Promise<{ success: boolean; error?: string }> {
+  try {
+    if (process.env.NODE_ENV === "test") {
+      if (_testEmailStore.simulateFailure) {
+        return { success: false, error: "Simulated email delivery failure in test" };
+      }
+      _testEmailStore.lastFormalizationOtp = {
+        to: payload.to,
+        code: payload.code,
+        role: payload.role,
+        documents: payload.documents,
+      };
+      return { success: true };
+    }
+
+    if (!resend) {
+      console.error("[Email] Formalization OTP email failed: missing email service provider configuration (RESEND_API_KEY)");
+      return { success: false, error: "Servicio de correo electrónico no configurado" };
+    }
+
+    const roleLabel = payload.role === "master_broker" ? "Master Broker" : "Broker";
+    const greeting = payload.userName ? `Hola ${payload.userName},` : "Hola,";
+    const docsListHtml = payload.documents
+      .map((d) => `<li style="margin-bottom: 4px;"><strong>${d.title}</strong> (Versión ${d.version})</li>`)
+      .join("");
+    const docsListText = payload.documents
+      .map((d) => `- ${d.title} (Versión ${d.version})`)
+      .join("\n");
+
+    const { error } = await resend.emails.send({
+      from: FROM_EMAIL,
+      to: [payload.to],
+      subject: `Código de verificación para Convenio de Colaboración - ${APP_NAME}`,
+      html: `
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <meta charset="utf-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1.0">
+          <title>Código de verificación</title>
+        </head>
+        <body style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; line-height: 1.6; color: #1e293b; max-width: 600px; margin: 0 auto; padding: 20px; background-color: #f8fafc;">
+          <div style="background-color: #ffffff; border-radius: 12px; padding: 36px; box-shadow: 0 4px 16px rgba(0,0,0,0.06); border: 1px solid #e2e8f0;">
+            <div style="text-align: center; margin-bottom: 28px;">
+              <h1 style="color: #05478a; margin: 0; font-size: 26px; font-weight: 800;">${APP_NAME}</h1>
+              <p style="color: #64748b; margin-top: 4px; font-size: 13px; text-transform: uppercase; letter-spacing: 0.1em;">Formalización de Colaborador (${roleLabel})</p>
+            </div>
+
+            <p style="margin-bottom: 16px; font-size: 15px;">${greeting}</p>
+
+            <p style="margin-bottom: 20px; font-size: 14px; color: #334155;">
+              Recibimos tu solicitud para formalizar tu relación comercial como <strong>${roleLabel}</strong> mediante la aceptación de los siguientes documentos legales vigentes:
+            </p>
+
+            <ul style="margin-bottom: 24px; padding-left: 20px; font-size: 14px; color: #1e293b;">
+              ${docsListHtml}
+            </ul>
+
+            <p style="margin-bottom: 12px; font-size: 14px; color: #334155; text-align: center;">
+              Tu código de verificación de un solo uso es:
+            </p>
+
+            <div style="text-align: center; margin: 24px 0;">
+              <div style="display: inline-block; background-color: #f0fdf4; border: 2px dashed #16a34a; border-radius: 10px; padding: 16px 36px; font-size: 32px; font-weight: 800; letter-spacing: 8px; color: #15803d; font-family: monospace;">
+                ${payload.code}
+              </div>
+            </div>
+
+            <div style="background-color: #f8fafc; border-radius: 8px; padding: 14px; margin-bottom: 20px; border: 1px solid #e2e8f0; font-size: 13px; color: #475569;">
+              <p style="margin: 0 0 6px 0;"><strong>Seguridad y Vigencia:</strong></p>
+              <ul style="margin: 0; padding-left: 18px;">
+                <li>Este código expirará en <strong>10 minutos</strong>.</li>
+                <li>Es de uso único y está vinculado a tu cuenta y a los documentos aprobados.</li>
+                <li>Tienes un máximo de 5 intentos para ingresarlo correctamente.</li>
+              </ul>
+            </div>
+
+            <p style="font-size: 12px; color: #94a3b8; margin: 0; text-align: center;">
+              Si no realizaste esta solicitud, puedes ignorar este mensaje de forma segura o comunicarte con nuestro equipo.
+            </p>
+          </div>
+          <div style="text-align: center; margin-top: 16px; font-size: 11px; color: #94a3b8;">
+            <p>&copy; ${new Date().getFullYear()} ${APP_NAME}. Todos los derechos reservados.</p>
+          </div>
+        </body>
+        </html>
+      `.trim(),
+      text: `
+${greeting}
+
+Recibimos tu solicitud para formalizar tu relación comercial como ${roleLabel} en ${APP_NAME}.
+
+Documentos a formalizar:
+${docsListText}
+
+Tu código de verificación de un solo uso es:
+${payload.code}
+
+Seguridad:
+- Este código expirará en 10 minutos.
+- Es de uso único y está vinculado exclusivamente a tu cuenta y versiones exactas de los documentos.
+- Tienes un máximo de 5 intentos.
+
+Si no realizaste esta solicitud, ignora este mensaje.
+
+---
+${APP_NAME}
+      `.trim(),
+    });
+
+    if (error) {
+      console.error("[Email] Resend formalization OTP error:", error);
+      return { success: false, error: error.message };
+    }
+
+    console.log(`[Email] Formalization OTP email sent successfully to ${payload.to}`);
+    return { success: true };
+  } catch (error: any) {
+    console.error("[Email] Error sending formalization OTP email:", error);
+    return { success: false, error: error.message || "Error desconocido" };
+  }
+}
+
