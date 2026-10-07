@@ -80,55 +80,6 @@ export const users = pgTable("users", {
   updatedAt: timestamp("updated_at").defaultNow(),
 });
 
-// Product usage sessions - distinct from technical express sessions.
-export const userActivitySessions = pgTable("user_activity_sessions", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
-  tenantId: varchar("tenant_id").references(() => tenants.id, { onDelete: "set null" }),
-  startedAt: timestamp("started_at").notNull().defaultNow(),
-  lastActivityAt: timestamp("last_activity_at").notNull().defaultNow(),
-  endedAt: timestamp("ended_at"),
-  activeSeconds: integer("active_seconds").notNull().default(0),
-  heartbeatCount: integer("heartbeat_count").notNull().default(0),
-  endReason: varchar("end_reason"),
-  entryModule: varchar("entry_module"),
-  lastModule: varchar("last_module"),
-  modulesVisited: jsonb("modules_visited").notNull().default('[]'),
-  ipAddress: varchar("ip_address"),
-  userAgent: text("user_agent"),
-  createdAt: timestamp("created_at").notNull().defaultNow(),
-}, (table) => [
-  index("user_activity_sessions_user_started_idx").on(table.userId, table.startedAt),
-  index("user_activity_sessions_tenant_started_idx").on(table.tenantId, table.startedAt),
-  index("user_activity_sessions_last_activity_idx").on(table.lastActivityAt),
-]);
-
-// Immutable/auditable significant product and security events.
-export const userActivityEvents = pgTable("user_activity_events", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  sessionId: varchar("session_id").references(() => userActivitySessions.id, { onDelete: "set null" }),
-  userId: varchar("user_id").references(() => users.id, { onDelete: "set null" }),
-  tenantId: varchar("tenant_id").references(() => tenants.id, { onDelete: "set null" }),
-  category: varchar("category").notNull(),
-  eventType: varchar("event_type").notNull(),
-  module: varchar("module"),
-  entityType: varchar("entity_type"),
-  entityId: varchar("entity_id"),
-  success: boolean("success").notNull().default(true),
-  ipAddress: varchar("ip_address"),
-  userAgent: text("user_agent"),
-  metadata: jsonb("metadata").notNull().default('{}'),
-  createdAt: timestamp("created_at").notNull().defaultNow(),
-}, (table) => [
-  index("user_activity_events_user_created_idx").on(table.userId, table.createdAt),
-  index("user_activity_events_tenant_created_idx").on(table.tenantId, table.createdAt),
-  index("user_activity_events_type_created_idx").on(table.eventType, table.createdAt),
-  index("user_activity_events_session_idx").on(table.sessionId),
-]);
-
-export type UserActivitySession = typeof userActivitySessions.$inferSelect;
-export type UserActivityEvent = typeof userActivityEvents.$inferSelect;
-
 // User Operational Status catalogue
 export const USER_OPERATIONAL_STATUSES = ["active", "suspended", "inactive"] as const;
 export type UserOperationalStatus = (typeof USER_OPERATIONAL_STATUSES)[number];
@@ -230,6 +181,55 @@ export const tenantMembers = pgTable("tenant_members", {
   index("tenant_members_user_idx").on(table.userId),
   index("tenant_members_tenant_idx").on(table.tenantId),
 ]);
+
+// Product usage sessions - distinct from technical express sessions.
+export const userActivitySessions = pgTable("user_activity_sessions", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  tenantId: varchar("tenant_id").references(() => tenants.id, { onDelete: "set null" }),
+  startedAt: timestamp("started_at").notNull().defaultNow(),
+  lastActivityAt: timestamp("last_activity_at").notNull().defaultNow(),
+  endedAt: timestamp("ended_at"),
+  activeSeconds: integer("active_seconds").notNull().default(0),
+  heartbeatCount: integer("heartbeat_count").notNull().default(0),
+  endReason: varchar("end_reason"),
+  entryModule: varchar("entry_module"),
+  lastModule: varchar("last_module"),
+  modulesVisited: jsonb("modules_visited").notNull().default('[]'),
+  ipAddress: varchar("ip_address"),
+  userAgent: text("user_agent"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => [
+  index("user_activity_sessions_user_started_idx").on(table.userId, table.startedAt),
+  index("user_activity_sessions_tenant_started_idx").on(table.tenantId, table.startedAt),
+  index("user_activity_sessions_last_activity_idx").on(table.lastActivityAt),
+]);
+
+// Immutable/auditable significant product and security events.
+export const userActivityEvents = pgTable("user_activity_events", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  sessionId: varchar("session_id").references(() => userActivitySessions.id, { onDelete: "set null" }),
+  userId: varchar("user_id").references(() => users.id, { onDelete: "set null" }),
+  tenantId: varchar("tenant_id").references(() => tenants.id, { onDelete: "set null" }),
+  category: varchar("category").notNull(),
+  eventType: varchar("event_type").notNull(),
+  module: varchar("module"),
+  entityType: varchar("entity_type"),
+  entityId: varchar("entity_id"),
+  success: boolean("success").notNull().default(true),
+  ipAddress: varchar("ip_address"),
+  userAgent: text("user_agent"),
+  metadata: jsonb("metadata").notNull().default('{}'),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => [
+  index("user_activity_events_user_created_idx").on(table.userId, table.createdAt),
+  index("user_activity_events_tenant_created_idx").on(table.tenantId, table.createdAt),
+  index("user_activity_events_type_created_idx").on(table.eventType, table.createdAt),
+  index("user_activity_events_session_idx").on(table.sessionId),
+]);
+
+export type UserActivitySession = typeof userActivitySessions.$inferSelect;
+export type UserActivityEvent = typeof userActivityEvents.$inferSelect;
 
 // Organization member with user data
 export interface TenantMemberWithUser {
