@@ -53,6 +53,122 @@ describe("credit origination network snapshot", () => {
     expect(newCredit.originMasterBrokerId).toBe(masterB.id);
   });
 
+  it("keeps submission and derived credit with the Master that owned the opportunity before a broker move", async () => {
+    const storage = new MemStorage();
+
+    const masterA = await storage.createUser({
+      email: "submission-master-a@network.test",
+      firstName: "Submission",
+      lastName: "Master A",
+      role: "master_broker",
+      isActive: true,
+      status: "active",
+    } as any);
+
+    const masterB = await storage.createUser({
+      email: "submission-master-b@network.test",
+      firstName: "Submission",
+      lastName: "Master B",
+      role: "master_broker",
+      isActive: true,
+      status: "active",
+    } as any);
+
+    const broker = await storage.createUser({
+      email: "submission-broker@network.test",
+      firstName: "Submission",
+      lastName: "Broker",
+      role: "broker",
+      masterBrokerId: masterA.id,
+      isActive: true,
+      status: "active",
+    } as any);
+
+    const submission = await storage.createCreditSubmissionRequest({
+      clientId: "client-submission-a",
+      brokerId: broker.id,
+      requestedAmount: "900000",
+      status: "pending_admin",
+    } as any);
+
+    expect(submission.originMasterBrokerId).toBe(masterA.id);
+
+    // Broker changes network while the request is still in flight.
+    await storage.updateUser(broker.id, { masterBrokerId: masterB.id } as any);
+
+    const derivedCredit = await storage.createCredit({
+      clientId: submission.clientId,
+      brokerId: broker.id,
+      linkedSubmissionId: submission.id,
+      amount: submission.requestedAmount,
+      status: "approved",
+    } as any);
+
+    // The operation remains economically/historically under Master A.
+    expect(derivedCredit.originMasterBrokerId).toBe(masterA.id);
+
+    // New business after the movement belongs to Master B.
+    const newSubmission = await storage.createCreditSubmissionRequest({
+      clientId: "client-submission-b",
+      brokerId: broker.id,
+      requestedAmount: "400000",
+      status: "pending_admin",
+    } as any);
+    expect(newSubmission.originMasterBrokerId).toBe(masterB.id);
+
+    const newCredit = await storage.createCredit({
+      clientId: newSubmission.clientId,
+      brokerId: broker.id,
+      linkedSubmissionId: newSubmission.id,
+      amount: newSubmission.requestedAmount,
+      status: "approved",
+    } as any);
+    expect(newCredit.originMasterBrokerId).toBe(masterB.id);
+  });
+
+  it("preserves direct-platform submission lineage when the broker joins a Master before credit creation", async () => {
+    const storage = new MemStorage();
+
+    const master = await storage.createUser({
+      email: "later-master@network.test",
+      firstName: "Later",
+      lastName: "Master",
+      role: "master_broker",
+      isActive: true,
+      status: "active",
+    } as any);
+
+    const broker = await storage.createUser({
+      email: "direct-before-submission@network.test",
+      firstName: "Direct",
+      lastName: "Before Move",
+      role: "broker",
+      masterBrokerId: null,
+      isActive: true,
+      status: "active",
+    } as any);
+
+    const directSubmission = await storage.createCreditSubmissionRequest({
+      clientId: "client-direct-submission",
+      brokerId: broker.id,
+      requestedAmount: "600000",
+      status: "pending_admin",
+    } as any);
+    expect(directSubmission.originMasterBrokerId).toBeNull();
+
+    await storage.updateUser(broker.id, { masterBrokerId: master.id } as any);
+
+    const derivedCredit = await storage.createCredit({
+      clientId: directSubmission.clientId,
+      brokerId: broker.id,
+      linkedSubmissionId: directSubmission.id,
+      amount: directSubmission.requestedAmount,
+      status: "approved",
+    } as any);
+
+    expect(derivedCredit.originMasterBrokerId).toBeNull();
+  });
+
   it("treats legacy Casa Matriz admin links as direct platform business", async () => {
     const storage = new MemStorage();
 
