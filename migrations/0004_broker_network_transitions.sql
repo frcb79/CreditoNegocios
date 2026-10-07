@@ -137,7 +137,7 @@ marker
 WHERE submission.broker_id = broker.id
   AND submission.origin_master_broker_id IS NULL;
 
-DO $
+DO $$
 BEGIN
   IF NOT EXISTS (
     SELECT 1
@@ -161,7 +161,7 @@ BEGIN
       REFERENCES public.users(id);
   END IF;
 END
-$;
+$$;
 
 CREATE OR REPLACE FUNCTION public.prevent_credit_origin_master_change()
 RETURNS trigger

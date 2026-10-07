@@ -1421,7 +1421,10 @@ export class MemStorage implements IStorage {
     if (filters?.entityId) {
       logs = logs.filter(l => l.entityId === filters.entityId);
     }
-    return logs.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    return logs.sort((a, b) => {
+      const diff = new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+      return diff !== 0 ? diff : (logs.indexOf(b) - logs.indexOf(a));
+    });
   }
 
   async updateUserOperationalStatus(params: {

@@ -403,6 +403,14 @@ describe("User Operational Status (Baja / Suspensión / Reactivación)", () => {
 
   describe("11. Endpoint antiguo no puede evitar auditoría / reglas nuevas", () => {
     it("el endpoint toggle-status delega a la lógica central y genera auditoría", async () => {
+      // Suspend subBroker1 first so we can test toggling back to active
+      await storage.updateUserOperationalStatus({
+        userId: subBroker1.id,
+        targetStatus: "suspended",
+        changedBy: superAdminUser.id,
+        reason: "Suspensión administrativa previa",
+      });
+
       // Toggle subBroker1 from suspended back to active via storage with audit log
       const updated = await storage.updateUserOperationalStatus({
         userId: subBroker1.id,
@@ -421,7 +429,9 @@ describe("User Operational Status (Baja / Suspensión / Reactivación)", () => {
       });
 
       expect(logs.length).toBeGreaterThan(0);
-      const latestLog = logs[0];
+      const toggleLog = logs.find((l) => (l.metadata as any)?.reason === "Cambio de estado administrativo vía toggle");
+      expect(toggleLog).toBeDefined();
+      const latestLog = toggleLog!;
       expect(latestLog.entityType).toBe("user");
       expect(latestLog.entityId).toBe(subBroker1.id);
       expect(latestLog.action).toBe("reactivate");

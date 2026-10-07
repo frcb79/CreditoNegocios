@@ -186,13 +186,15 @@ function ownerUserIdPredicate(userId: string) {
   return sql`${tenants.settings}->>'legacyOwnerUserId' = ${userId}`;
 }
 
-async function getPlatformTenant(tx: any) {
+async function getPlatformTenant(tx: any): Promise<typeof tenants.$inferSelect> {
   const matches = await tx
     .select()
     .from(tenants)
     .where(or(eq(tenants.type, "platform"), eq(tenants.slug, "platform")));
 
-  const unique = Array.from(new Map(matches.map((t: any) => [t.id, t])).values());
+  const unique: Array<typeof tenants.$inferSelect> = Array.from(
+    new Map<string, typeof tenants.$inferSelect>(matches.map((t: any) => [t.id, t])).values(),
+  );
   if (unique.length !== 1) {
     throw new BrokerNetworkTransitionError(
       `La topología requiere exactamente una organización plataforma. Encontradas: ${unique.length}.`,
@@ -203,11 +205,11 @@ async function getPlatformTenant(tx: any) {
   return unique[0];
 }
 
-async function getOwnedTenant(tx: any, userId: string, expectedType?: "broker" | "master_broker") {
+async function getOwnedTenant(tx: any, userId: string, expectedType?: "broker" | "master_broker"): Promise<typeof tenants.$inferSelect> {
   const conditions: any[] = [ownerUserIdPredicate(userId)];
   if (expectedType) conditions.push(eq(tenants.type, expectedType));
 
-  const rows = await tx
+  const rows: Array<typeof tenants.$inferSelect> = await tx
     .select()
     .from(tenants)
     .where(and(...conditions));
@@ -228,8 +230,8 @@ async function getOwnedTenant(tx: any, userId: string, expectedType?: "broker" |
     .innerJoin(tenants, eq(tenantMembers.tenantId, tenants.id))
     .where(and(...membershipConditions));
 
-  const uniqueOwned = Array.from(
-    new Map(ownerRows.map((row: any) => [row.tenant.id, row.tenant])).values(),
+  const uniqueOwned: Array<typeof tenants.$inferSelect> = Array.from(
+    new Map<string, typeof tenants.$inferSelect>(ownerRows.map((row: any) => [row.tenant.id, row.tenant])).values(),
   );
 
   if (uniqueOwned.length !== 1) {
@@ -601,7 +603,7 @@ export async function executeBrokerNetworkTransition(input: BrokerNetworkTransit
     }
     if (nextMasterBrokerId) masterNotificationIds.add(nextMasterBrokerId);
 
-    for (const masterId of masterNotificationIds) {
+    for (const masterId of Array.from(masterNotificationIds)) {
       await tx.insert(notifications).values({
         userId: masterId,
         type: "broker_network_transition",

@@ -507,6 +507,7 @@ describe("Fase 5: UI y Operación Real de Gobernanza Comercial", () => {
       currentUserRole: "broker",
       userTenantId: tenantA,
       tenantContext: { tenant: { id: tenantA } },
+      now,
     });
 
     expect(dupCheck.canCreateOpportunity).toBe(false);
