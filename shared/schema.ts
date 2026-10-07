@@ -73,6 +73,10 @@ export const users = pgTable("users", {
   statusChangedBy: varchar("status_changed_by"),
   statusChangeReason: text("status_change_reason"),
   statusChangeNotes: text("status_change_notes"),
+  // Product activity summary (Bloque 3.1)
+  firstLoginAt: timestamp("first_login_at"),
+  lastLoginAt: timestamp("last_login_at"),
+  lastActivityAt: timestamp("last_activity_at"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
@@ -206,6 +210,73 @@ export interface TenantMemberWithUser {
     updatedAt: Date | null;
   };
 }
+
+// User product-usage sessions (separate from technical auth sessions)
+export const userActivitySessions = pgTable("user_activity_sessions", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull().references(() => users.id),
+  tenantId: varchar("tenant_id").references(() => tenants.id),
+  startedAt: timestamp("started_at").notNull().defaultNow(),
+  lastActiveAt: timestamp("last_active_at").notNull().defaultNow(),
+  lastHeartbeatAt: timestamp("last_heartbeat_at").notNull().defaultNow(),
+  endedAt: timestamp("ended_at"),
+  endReason: varchar("end_reason", { length: 32 }),
+  activeSeconds: integer("active_seconds").notNull().default(0),
+  lastModuleId: varchar("last_module_id", { length: 64 }),
+  ipAddress: varchar("ip_address", { length: 64 }),
+  userAgent: text("user_agent"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+}, (table) => [
+  index("idx_uas_user_started").on(table.userId, table.startedAt),
+  index("idx_uas_tenant_started").on(table.tenantId, table.startedAt),
+  index("idx_uas_open_last_active").on(table.lastActiveAt),
+]);
+
+export const userActivitySessionModules = pgTable("user_activity_session_modules", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  sessionId: varchar("session_id").notNull().references(() => userActivitySessions.id, { onDelete: "cascade" }),
+  userId: varchar("user_id").notNull().references(() => users.id),
+  tenantId: varchar("tenant_id").references(() => tenants.id),
+  moduleId: varchar("module_id", { length: 64 }).notNull(),
+  firstSeenAt: timestamp("first_seen_at").notNull().defaultNow(),
+  lastSeenAt: timestamp("last_seen_at").notNull().defaultNow(),
+  activeSeconds: integer("active_seconds").notNull().default(0),
+  enterCount: integer("enter_count").notNull().default(1),
+}, (table) => [
+  uniqueIndex("user_activity_session_modules_session_module_unique").on(table.sessionId, table.moduleId),
+  index("idx_uasm_user_module").on(table.userId, table.moduleId),
+  index("idx_uasm_tenant_module").on(table.tenantId, table.moduleId),
+]);
+
+export const userActivityEvents = pgTable("user_activity_events", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").references(() => users.id),
+  tenantId: varchar("tenant_id").references(() => tenants.id),
+  sessionId: varchar("session_id").references(() => userActivitySessions.id, { onDelete: "set null" }),
+  category: varchar("category", { length: 32 }).notNull(),
+  eventType: varchar("event_type", { length: 96 }).notNull(),
+  moduleId: varchar("module_id", { length: 64 }),
+  entityType: varchar("entity_type", { length: 64 }),
+  entityId: varchar("entity_id"),
+  outcome: varchar("outcome", { length: 32 }).notNull().default("success"),
+  actorRole: varchar("actor_role", { length: 32 }),
+  ipAddress: varchar("ip_address", { length: 64 }),
+  userAgent: text("user_agent"),
+  metadata: jsonb("metadata").notNull().default({}),
+  occurredAt: timestamp("occurred_at").notNull().defaultNow(),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => [
+  index("idx_uae_user_occurred").on(table.userId, table.occurredAt),
+  index("idx_uae_tenant_occurred").on(table.tenantId, table.occurredAt),
+  index("idx_uae_type_occurred").on(table.eventType, table.occurredAt),
+  index("idx_uae_category_occurred").on(table.category, table.occurredAt),
+  index("idx_uae_session").on(table.sessionId),
+]);
+
+export type UserActivitySession = typeof userActivitySessions.$inferSelect;
+export type UserActivitySessionModule = typeof userActivitySessionModules.$inferSelect;
+export type UserActivityEvent = typeof userActivityEvents.$inferSelect;
 
 // Clients table
 export const clients = pgTable("clients", {
