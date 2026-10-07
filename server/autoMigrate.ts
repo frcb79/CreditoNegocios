@@ -239,19 +239,61 @@ export async function runAutoMigration(): Promise<void> {
       console.error("⚠️ [AutoMigrate] Error verifying clients columns:", err);
     }
 
-    // 3b. Ensure credits table columns and indexes exist
+    // 3b. Ensure credits table columns, immutable origin affiliation and indexes exist
     try {
       await client.query(`
         ALTER TABLE IF EXISTS public.credits
           ADD COLUMN IF NOT EXISTS tenant_id VARCHAR,
           ADD COLUMN IF NOT EXISTS created_by VARCHAR,
-          ADD COLUMN IF NOT EXISTS mortgage_data JSONB DEFAULT '{}';
+          ADD COLUMN IF NOT EXISTS mortgage_data JSONB DEFAULT '{}',
+          ADD COLUMN IF NOT EXISTS origin_master_broker_id VARCHAR;
+
+        -- The trigger is removed only while repairing legacy NULL snapshots.
+        DROP TRIGGER IF EXISTS trg_credits_origin_master_immutable ON public.credits;
+
+        UPDATE public.credits AS c
+        SET origin_master_broker_id = CASE
+          WHEN u.role = 'master_broker' THEN u.id
+          WHEN u.role = 'broker' THEN u.master_broker_id
+          ELSE NULL
+        END
+        FROM public.users AS u
+        WHERE c.broker_id = u.id
+          AND c.origin_master_broker_id IS NULL;
 
         CREATE INDEX IF NOT EXISTS "credits_tenant_idx" ON public.credits ("tenant_id");
         CREATE INDEX IF NOT EXISTS "credits_broker_idx" ON public.credits ("broker_id");
         CREATE INDEX IF NOT EXISTS "credits_client_idx" ON public.credits ("client_id");
+        CREATE INDEX IF NOT EXISTS "credits_origin_master_broker_idx" ON public.credits ("origin_master_broker_id");
+
+        DO $ BEGIN
+          IF NOT EXISTS (
+            SELECT 1 FROM pg_constraint WHERE conname = 'credits_origin_master_broker_fk'
+          ) THEN
+            ALTER TABLE public.credits
+              ADD CONSTRAINT credits_origin_master_broker_fk
+              FOREIGN KEY (origin_master_broker_id) REFERENCES public.users(id);
+          END IF;
+        END $;
+
+        CREATE OR REPLACE FUNCTION public.prevent_credit_origin_master_change()
+        RETURNS trigger
+        LANGUAGE plpgsql
+        AS $
+        BEGIN
+          IF NEW.origin_master_broker_id IS DISTINCT FROM OLD.origin_master_broker_id THEN
+            RAISE EXCEPTION 'origin_master_broker_id is immutable after credit creation';
+          END IF;
+          RETURN NEW;
+        END;
+        $;
+
+        CREATE TRIGGER trg_credits_origin_master_immutable
+        BEFORE UPDATE OF origin_master_broker_id ON public.credits
+        FOR EACH ROW
+        EXECUTE FUNCTION public.prevent_credit_origin_master_change();
       `);
-      console.log("✅ [AutoMigrate] Credits table columns and indexes verified");
+      console.log("✅ [AutoMigrate] Credits table columns, origin affiliation and indexes verified");
     } catch (err) {
       console.error("⚠️ [AutoMigrate] Error verifying credits columns/indexes:", err);
     }
