@@ -185,15 +185,16 @@ export async function recordUserActivityEvent(input: EventInput): Promise<void> 
   }
 }
 
-export async function closeStaleActivitySessions(): Promise<void> {
+export async function closeStaleActivitySessions(userId?: string | null): Promise<void> {
   await pool.query(
     `UPDATE public.user_activity_sessions
      SET ended_at = last_active_at,
          end_reason = 'timeout',
          updated_at = NOW()
      WHERE ended_at IS NULL
-       AND last_active_at < NOW() - ($1::text || ' minutes')::interval`,
-    [SESSION_IDLE_MINUTES],
+       AND last_active_at < NOW() - ($1::text || ' minutes')::interval
+       AND ($2::varchar IS NULL OR user_id = $2)`,
+    [SESSION_IDLE_MINUTES, userId || null],
   );
 }
 
@@ -222,10 +223,9 @@ export async function recordHeartbeat(params: {
   ipAddress?: string | null;
   userAgent?: string | null;
 }): Promise<{ sessionId: string | null; tenantId: string | null; activeSeconds: number }> {
-  await closeStaleActivitySessions();
+  await closeStaleActivitySessions(params.userId);
 
   const now = new Date();
-  const tenantId = await resolveActivityTenant(params.userId, params.tenantId, params.role);
   const safeModule = cleanText(params.moduleId, 64)?.replace(/[^a-zA-Z0-9_\-]/g, "") || null;
 
   const existing = await pool.query(
@@ -238,7 +238,20 @@ export async function recordHeartbeat(params: {
   );
 
   let session = existing.rows[0] || null;
-  const tenantChanged = session && (session.tenant_id || null) !== (tenantId || null);
+  let tenantId = session?.tenant_id || null;
+
+  // Resolve tenant only when opening a session or when the caller explicitly changes context.
+  if (params.tenantId) {
+    tenantId = await resolveActivityTenant(params.userId, params.tenantId, params.role);
+  } else if (!session && params.active) {
+    tenantId = await resolveActivityTenant(params.userId, null, params.role);
+  }
+
+  const tenantChanged = Boolean(
+    session &&
+    params.tenantId &&
+    (session.tenant_id || null) !== (tenantId || null),
+  );
 
   if (tenantChanged) {
     await pool.query(
