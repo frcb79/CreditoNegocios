@@ -297,6 +297,14 @@ export default function UserManagement() {
 
   const isSuperAdmin = currentUser?.role === 'super_admin';
   const isPlatformAdmin = currentUser?.role === 'admin' || isSuperAdmin;
+  const configuredActions = Array.isArray((currentUser?.permissions as any)?.actions)
+    ? (currentUser?.permissions as any).actions as string[]
+    : [];
+  const canViewActivityTab =
+    isSuperAdmin ||
+    configuredActions.includes('view_user_activity') ||
+    configuredActions.includes('manage_users') ||
+    ((currentUser?.role === 'admin' || currentUser?.role === 'master_broker') && configuredActions.length === 0);
 
   const updateOperationalStatusMutation = useMutation({
     mutationFn: async ({ userId, status, reason, notes }: { userId: string; status: UserOperationalStatus; reason: string; notes?: string }) => {
@@ -1101,6 +1109,22 @@ export default function UserManagement() {
 
         {/* User activity and immutable significant-event log */}
         {activeTab === "activity" && <UserActivityView />}
+
+        {/* Organization owners/admins with user-management permissions */}
+        {!isPlatformAdmin && currentUser?.role !== 'master_broker' && canViewActivityTab && (
+          <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+            <TabsList className="grid grid-cols-2 max-w-md bg-slate-100 dark:bg-slate-800 p-1 border border-slate-200 dark:border-slate-700">
+              <TabsTrigger value="organization" className="text-xs font-semibold flex items-center gap-2">
+                <Building2 className="w-3.5 h-3.5 text-primary" />
+                Organización
+              </TabsTrigger>
+              <TabsTrigger value="activity" className="text-xs font-semibold flex items-center gap-2">
+                <Clock className="w-3.5 h-3.5 text-primary" />
+                Actividad
+              </TabsTrigger>
+            </TabsList>
+          </Tabs>
+        )}
 
         {/* Tab 1: Organization Members View */}
         {activeTab === "organization" && (
