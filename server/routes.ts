@@ -1120,6 +1120,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (error instanceof z.ZodError) {
         return res.status(400).json({ message: error.errors[0].message });
       }
+      if (error instanceof BrokerNetworkTransitionError) {
+        return res.status(error.statusCode).json({ message: error.message, code: error.code });
+      }
       console.error("Error in registration:", error);
       res.status(500).json({ message: "Error al registrar usuario" });
     }
