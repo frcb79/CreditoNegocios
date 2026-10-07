@@ -269,7 +269,6 @@ export class CommercialOpportunityService {
     const {
       clientId,
       brokerId,
-      masterBrokerId,
       tenantId,
       title,
       financingNeedType,
@@ -306,6 +305,21 @@ export class CommercialOpportunityService {
         success: false,
         message: `El nivel de acceso '${authResult.scope}' no permite registrar nuevas oportunidades comerciales.`,
       };
+    }
+
+    // Freeze network affiliation at opportunity origination. Never trust a
+    // client-supplied Master id and never derive historical visibility later
+    // from the broker's current network.
+    let originMasterBrokerId: string | null = null;
+    const brokerAtOrigination = await (this.authService as any)['storage']?.getUser?.(brokerId);
+    if (brokerAtOrigination?.role === "master_broker") {
+      originMasterBrokerId = brokerAtOrigination.id;
+    } else if (brokerAtOrigination?.role === "broker" && brokerAtOrigination.masterBrokerId) {
+      const parentAtOrigination = await (this.authService as any)['storage']?.getUser?.(
+        brokerAtOrigination.masterBrokerId
+      );
+      originMasterBrokerId =
+        parentAtOrigination?.role === "master_broker" ? parentAtOrigination.id : null;
     }
 
     // 2. Liberar oportunidades expiradas del cliente para tener estado limpio
@@ -382,7 +396,7 @@ export class CommercialOpportunityService {
     const opportunity = await this.storage.createCommercialOpportunity({
       clientId,
       brokerId,
-      masterBrokerId: masterBrokerId || null,
+      masterBrokerId: originMasterBrokerId,
       tenantId: tenantId || authResult.client?.tenantId || null,
       title,
       financingNeedType,
