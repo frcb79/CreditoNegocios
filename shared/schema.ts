@@ -230,7 +230,7 @@ export const userActivitySessions = pgTable("user_activity_sessions", {
 }, (table) => [
   index("idx_uas_user_started").on(table.userId, table.startedAt),
   index("idx_uas_tenant_started").on(table.tenantId, table.startedAt),
-  index("idx_uas_open_last_active").on(table.lastActiveAt),
+  index("idx_uas_open_last_active").on(table.lastActiveAt).where(sql`${table.endedAt} IS NULL`),
 ]);
 
 export const userActivitySessionModules = pgTable("user_activity_session_modules", {
