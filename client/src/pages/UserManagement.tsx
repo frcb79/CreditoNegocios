@@ -1023,7 +1023,7 @@ export default function UserManagement() {
             : "Control de identidades, perfiles y permisos de la organización"
         }
       >
-        {canManageMembers && activeTab !== "promos" && (
+        {canManageMembers && activeTab !== "promos" && activeTab !== "activity" && (
           <Button
             onClick={handleOpenCreateModal}
             className="bg-primary hover:bg-primary/90 text-primary-foreground shadow-sm ml-3"
@@ -1050,7 +1050,7 @@ export default function UserManagement() {
         {/* Navigation Tabs for Platform Admins */}
         {isPlatformAdmin && (
           <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-            <TabsList className={`grid ${isSuperAdmin ? 'grid-cols-5 max-w-5xl' : 'grid-cols-4 max-w-4xl'} bg-slate-100 dark:bg-slate-800 p-1 border border-slate-200 dark:border-slate-700`}>
+            <TabsList className={`grid ${isSuperAdmin ? 'grid-cols-5 max-w-5xl' : canViewActivityTab ? 'grid-cols-4 max-w-4xl' : 'grid-cols-3 max-w-2xl'} bg-slate-100 dark:bg-slate-800 p-1 border border-slate-200 dark:border-slate-700`}>
               <TabsTrigger value="organization" data-testid="tab-organization" className="text-xs font-semibold flex items-center gap-2">
                 <Building2 className="w-3.5 h-3.5 text-primary" />
                 Organización
@@ -1059,10 +1059,12 @@ export default function UserManagement() {
                 <Users className="w-3.5 h-3.5" />
                 Directorio Global ({legacyUsers?.length || 0})
               </TabsTrigger>
-              <TabsTrigger value="activity" data-testid="tab-activity" className="text-xs font-semibold flex items-center gap-2">
-                <Clock className="w-3.5 h-3.5 text-primary" />
-                Actividad y Bitácora
-              </TabsTrigger>
+              {canViewActivityTab && (
+                <TabsTrigger value="activity" data-testid="tab-activity" className="text-xs font-semibold flex items-center gap-2">
+                  <Clock className="w-3.5 h-3.5 text-primary" />
+                  Actividad y Bitácora
+                </TabsTrigger>
+              )}
               <TabsTrigger value="promos" data-testid="tab-promos" className="text-xs font-semibold flex items-center gap-2">
                 <Tag className="w-3.5 h-3.5 text-primary" />
                 Códigos Promocionales ({adminPromos?.length || 0})
@@ -1085,15 +1087,17 @@ export default function UserManagement() {
         {/* Navigation Tabs for Master Broker */}
         {currentUser?.role === 'master_broker' && (
           <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-            <TabsList className="grid grid-cols-3 max-w-2xl bg-slate-100 dark:bg-slate-800 p-1 border border-slate-200 dark:border-slate-700">
+            <TabsList className={`grid ${canViewActivityTab ? 'grid-cols-3 max-w-2xl' : 'grid-cols-2 max-w-md'} bg-slate-100 dark:bg-slate-800 p-1 border border-slate-200 dark:border-slate-700`}>
               <TabsTrigger value="organization" data-testid="tab-mb-organization" className="text-xs font-semibold flex items-center gap-2">
                 <Building2 className="w-3.5 h-3.5 text-primary" />
                 Mi Red de Brokers
               </TabsTrigger>
-              <TabsTrigger value="activity" data-testid="tab-mb-activity" className="text-xs font-semibold flex items-center gap-2">
-                <Clock className="w-3.5 h-3.5 text-primary" />
-                Actividad
-              </TabsTrigger>
+              {canViewActivityTab && (
+                <TabsTrigger value="activity" data-testid="tab-mb-activity" className="text-xs font-semibold flex items-center gap-2">
+                  <Clock className="w-3.5 h-3.5 text-primary" />
+                  Actividad
+                </TabsTrigger>
+              )}
               <TabsTrigger value="my-requests" data-testid="tab-mb-requests" className="text-xs font-semibold flex items-center gap-2">
                 <Inbox className="w-3.5 h-3.5 text-primary" />
                 Solicitudes Enviadas ({masterStatusRequests.length})
@@ -1106,9 +1110,6 @@ export default function UserManagement() {
             </TabsList>
           </Tabs>
         )}
-
-        {/* User activity and immutable significant-event log */}
-        {activeTab === "activity" && <UserActivityView />}
 
         {/* Organization owners/admins with user-management permissions */}
         {!isPlatformAdmin && currentUser?.role !== 'master_broker' && canViewActivityTab && (
@@ -1125,6 +1126,9 @@ export default function UserManagement() {
             </TabsList>
           </Tabs>
         )}
+
+        {/* User activity and immutable significant-event log */}
+        {activeTab === "activity" && canViewActivityTab && <UserActivityView />}
 
         {/* Tab 1: Organization Members View */}
         {activeTab === "organization" && (
