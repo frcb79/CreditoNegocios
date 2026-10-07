@@ -1248,6 +1248,7 @@ export const commercialOpportunities = pgTable("commercial_opportunities", {
 }, (table) => [
   index("opp_client_idx").on(table.clientId),
   index("opp_broker_idx").on(table.brokerId),
+  index("opp_master_broker_idx").on(table.masterBrokerId),
   index("opp_status_idx").on(table.status),
   index("opp_need_idx").on(table.clientId, table.financingNeedType),
 ]);
