@@ -38,7 +38,7 @@ type Overview = {
   periodDays: number;
   totalUsers: number;
   activeUsers: number;
-  neverUsed: number;
+  noRecordedLogin: number;
   inactive30d: number;
   sessions: number;
   activeSeconds: number;
@@ -90,7 +90,7 @@ function displayName(user: UserActivityRow | any): string {
 }
 
 function activityState(lastActivity?: string | null, firstLogin?: string | null) {
-  if (!firstLogin) return { label: "Nunca ha ingresado", variant: "outline" as const };
+  if (!firstLogin) return { label: "Sin acceso registrado", variant: "outline" as const };
   if (!lastActivity) return { label: "Sin actividad", variant: "secondary" as const };
   const days = (Date.now() - new Date(lastActivity).getTime()) / 86_400_000;
   if (days <= 7) return { label: "Activo", variant: "default" as const };
@@ -165,7 +165,7 @@ export default function UserActivityView() {
         <div>
           <h2 className="text-lg font-semibold">Actividad y Bitácora</h2>
           <p className="text-sm text-muted-foreground">
-            Sesiones reales, uso por módulo y acciones significativas. No se registran clics individuales.
+            Sesiones reales, uso por módulo y acciones significativas. No se registran clics individuales. El historial comienza desde la activación de esta bitácora.
           </p>
         </div>
         <Select value={days} onValueChange={setDays}>
@@ -201,9 +201,9 @@ export default function UserActivityView() {
           icon={<Clock3 className="h-4 w-4" />}
         />
         <MetricCard
-          title="Nunca ingresaron"
-          value={overview?.neverUsed ?? "—"}
-          subtitle="requieren activación"
+          title="Sin acceso registrado"
+          value={overview?.noRecordedLogin ?? "—"}
+          subtitle="desde la activación de la bitácora"
           icon={<UserX className="h-4 w-4" />}
         />
         <MetricCard
@@ -379,7 +379,7 @@ export default function UserActivityView() {
                       ? format(new Date(detailQuery.data.user.first_login_at), "dd MMM yyyy HH:mm", {
                           locale: es,
                         })
-                      : "Nunca"
+                      : "No registrado aún"
                   }
                 />
                 <SmallStat
