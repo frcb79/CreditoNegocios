@@ -6,6 +6,8 @@ import { registerRoutes } from "./routes";
 import { setupVite, serveStatic, log } from "./vite";
 import { allowedOrigins, isAllowedOrigin } from "./runtimeConfig";
 import { runAutoMigration } from "./autoMigrate";
+import { ensureUserActivitySchema } from "./activityMigration";
+import { registerActivityRoutes } from "./activityRoutes";
 
 const isProd = process.env.NODE_ENV === "production";
 
@@ -85,11 +87,13 @@ app.use((req, res, next) => {
   // Ensure database schema and super admin users exist before starting routes
   try {
     await runAutoMigration();
+    await ensureUserActivitySchema();
   } catch (migErr) {
     console.error("⚠️ [Startup] Auto-migration error:", migErr);
   }
 
   const server = await registerRoutes(app);
+  registerActivityRoutes(app);
 
   app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
     const status = err.status || err.statusCode || 500;
