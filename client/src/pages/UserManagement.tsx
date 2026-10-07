@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import MainLayout from "@/components/MainLayout";
 import Header from "@/components/Header";
+import UserActivityView from "@/components/Users/UserActivityView";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -150,6 +151,7 @@ export const SYSTEM_ACTIONS = [
   { id: 'approve_disperse', label: 'Aprobar y Dispersar', desc: 'Autorizar liquidaciones y dispersión de comisiones', category: 'Financiera' },
   { id: 'manage_commissions', label: 'Administrar Comisiones', desc: 'Configurar tabuladores de comisiones y techos de red', category: 'Políticas' },
   { id: 'manage_users', label: 'Administrar Usuarios', desc: 'Crear, editar y suspender usuarios o colaboradores', category: 'Gobierno' },
+  { id: 'view_user_activity', label: 'Ver Actividad de Usuarios', desc: 'Consultar sesiones, uso y bitácora de usuarios dentro de su alcance', category: 'Auditoría' },
   { id: 'export_reports', label: 'Exportar Reportes', desc: 'Descargar auditorías, balances y reportes a Excel / CSV', category: 'Auditoría' },
 ];
 
@@ -163,7 +165,7 @@ export const ROLE_PRESETS = [
     canOriginate: true,
     title: "Administrador General",
     modules: ['dashboard', 'clientes', 'creditos', 'aprobaciones', 'comisiones', 'financieras', 'sistema_productos', 'red_brokers', 'documentos', 'reportes', 'importacion', 'usuarios'],
-    actions: ['view', 'edit', 'submit_proposals', 'approve_disperse', 'manage_commissions', 'manage_users', 'export_reports'],
+    actions: ['view', 'edit', 'submit_proposals', 'approve_disperse', 'manage_commissions', 'manage_users', 'view_user_activity', 'export_reports'],
     adminOnly: true,
   },
   {
@@ -204,7 +206,7 @@ export const ROLE_PRESETS = [
     canOriginate: true,
     title: "Master Broker Titular",
     modules: ['dashboard', 'clientes', 'creditos', 'comisiones', 'financieras', 'sistema_productos', 'red_brokers', 'documentos', 'reportes', 'usuarios'],
-    actions: ['view', 'edit', 'submit_proposals', 'manage_commissions', 'manage_users', 'export_reports'],
+    actions: ['view', 'edit', 'submit_proposals', 'manage_commissions', 'manage_users', 'view_user_activity', 'export_reports'],
   },
   {
     name: "Líder de Organización",
@@ -214,7 +216,7 @@ export const ROLE_PRESETS = [
     canOriginate: true,
     title: "Líder / Socio Director",
     modules: ['dashboard', 'clientes', 'creditos', 'comisiones', 'financieras', 'sistema_productos', 'usuarios', 'documentos'],
-    actions: ['view', 'edit', 'submit_proposals', 'manage_commissions', 'manage_users', 'export_reports'],
+    actions: ['view', 'edit', 'submit_proposals', 'manage_commissions', 'manage_users', 'view_user_activity', 'export_reports'],
   },
 ];
 
@@ -1040,7 +1042,7 @@ export default function UserManagement() {
         {/* Navigation Tabs for Platform Admins */}
         {isPlatformAdmin && (
           <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-            <TabsList className={`grid ${isSuperAdmin ? 'grid-cols-4 max-w-3xl' : 'grid-cols-3 max-w-2xl'} bg-slate-100 dark:bg-slate-800 p-1 border border-slate-200 dark:border-slate-700`}>
+            <TabsList className={`grid ${isSuperAdmin ? 'grid-cols-5 max-w-5xl' : 'grid-cols-4 max-w-4xl'} bg-slate-100 dark:bg-slate-800 p-1 border border-slate-200 dark:border-slate-700`}>
               <TabsTrigger value="organization" data-testid="tab-organization" className="text-xs font-semibold flex items-center gap-2">
                 <Building2 className="w-3.5 h-3.5 text-primary" />
                 Organización
@@ -1048,6 +1050,10 @@ export default function UserManagement() {
               <TabsTrigger value="global" data-testid="tab-global" className="text-xs font-semibold flex items-center gap-2">
                 <Users className="w-3.5 h-3.5" />
                 Directorio Global ({legacyUsers?.length || 0})
+              </TabsTrigger>
+              <TabsTrigger value="activity" data-testid="tab-activity" className="text-xs font-semibold flex items-center gap-2">
+                <Clock className="w-3.5 h-3.5 text-primary" />
+                Actividad y Bitácora
               </TabsTrigger>
               <TabsTrigger value="promos" data-testid="tab-promos" className="text-xs font-semibold flex items-center gap-2">
                 <Tag className="w-3.5 h-3.5 text-primary" />
@@ -1071,10 +1077,14 @@ export default function UserManagement() {
         {/* Navigation Tabs for Master Broker */}
         {currentUser?.role === 'master_broker' && (
           <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-            <TabsList className="grid grid-cols-2 max-w-md bg-slate-100 dark:bg-slate-800 p-1 border border-slate-200 dark:border-slate-700">
+            <TabsList className="grid grid-cols-3 max-w-2xl bg-slate-100 dark:bg-slate-800 p-1 border border-slate-200 dark:border-slate-700">
               <TabsTrigger value="organization" data-testid="tab-mb-organization" className="text-xs font-semibold flex items-center gap-2">
                 <Building2 className="w-3.5 h-3.5 text-primary" />
                 Mi Red de Brokers
+              </TabsTrigger>
+              <TabsTrigger value="activity" data-testid="tab-mb-activity" className="text-xs font-semibold flex items-center gap-2">
+                <Clock className="w-3.5 h-3.5 text-primary" />
+                Actividad
               </TabsTrigger>
               <TabsTrigger value="my-requests" data-testid="tab-mb-requests" className="text-xs font-semibold flex items-center gap-2">
                 <Inbox className="w-3.5 h-3.5 text-primary" />
@@ -1088,6 +1098,9 @@ export default function UserManagement() {
             </TabsList>
           </Tabs>
         )}
+
+        {/* User activity and immutable significant-event log */}
+        {activeTab === "activity" && <UserActivityView />}
 
         {/* Tab 1: Organization Members View */}
         {activeTab === "organization" && (
