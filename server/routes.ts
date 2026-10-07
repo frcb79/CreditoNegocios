@@ -2666,10 +2666,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (targetUser.role !== 'broker' || targetUser.masterBrokerId !== callerUser.id) {
         return res.status(403).json({ message: "No tienes permiso para modificar usuarios fuera de tu red" });
       }
-      // Master Broker SOLO puede suspender directamente a brokers de su red
-      if (requestedStatus !== 'suspended') {
+      // Master Broker can suspend or deactivate brokers in its own network,
+      // but can never reactivate them. Reactivation and every network/role
+      // transition remain exclusive to Super Admin.
+      if (requestedStatus === 'active') {
         return res.status(403).json({ 
-          message: "Los Master Brokers solo pueden suspender temporalmente a brokers de su red. La baja definitiva o reactivación requiere solicitud a Super Admin." 
+          message: "Los Master Brokers pueden suspender o dar de baja a brokers de su red, pero la reactivación requiere Super Admin." 
         });
       }
     }
