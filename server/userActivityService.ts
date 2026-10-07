@@ -226,35 +226,53 @@ export async function finalizeStaleSessions() {
   }
 }
 
-async function resolveAllowedUserIds(req: any, requestedTenantId?: string | null): Promise<string[] | null> {
+type ActivityScope = {
+  userIds: string[] | null;
+  tenantIds: string[] | null;
+};
+
+async function resolveActivityScope(req: any, requestedTenantId?: string | null): Promise<ActivityScope> {
   const userId = getUserId(req);
   const user = req.dbUser || (userId ? await storage.getUser(userId) : null);
-  if (!userId || !user) return [];
+  if (!userId || !user) return { userIds: [], tenantIds: [] };
 
   const isPlatformAdmin = user.role === "super_admin" || user.role === "admin";
-  if (isPlatformAdmin && !requestedTenantId) return null;
+  if (isPlatformAdmin && !requestedTenantId) {
+    return { userIds: null, tenantIds: null };
+  }
 
   if (requestedTenantId) {
     if (!isPlatformAdmin) {
       const membership = await storage.getUserTenantMembership(userId, requestedTenantId);
       if (!membership || !membership.isActive || !["owner", "admin"].includes(membership.role)) {
-        return [];
+        return { userIds: [], tenantIds: [] };
       }
     }
     const members = await storage.getTenantMembers(requestedTenantId);
-    return Array.from(new Set(members.filter((m: any) => m.isActive).map((m: any) => m.userId)));
+    return {
+      userIds: Array.from(new Set(members.filter((m: any) => m.isActive).map((m: any) => m.userId))),
+      tenantIds: [requestedTenantId],
+    };
   }
 
   const memberships = (await storage.getTenantMembersByUser(userId)).filter((m: any) => m.isActive);
   const manageable = memberships.filter((m: any) => ["owner", "admin"].includes(m.role));
-  if (manageable.length === 0) return [userId];
+  if (manageable.length === 0) {
+    return {
+      userIds: [userId],
+      tenantIds: memberships.map((m: any) => m.tenantId),
+    };
+  }
 
   const userIds = new Set<string>([userId]);
+  const tenantIds = manageable.map((m: any) => m.tenantId);
   for (const membership of manageable) {
     const members = await storage.getTenantMembers(membership.tenantId);
-    for (const member of members) if ((member as any).isActive) userIds.add((member as any).userId);
+    for (const member of members) {
+      if ((member as any).isActive) userIds.add((member as any).userId);
+    }
   }
-  return [...userIds];
+  return { userIds: [...userIds], tenantIds };
 }
 
 function inClause(values: string[], startParam: number) {
@@ -264,20 +282,31 @@ function inClause(values: string[], startParam: number) {
   };
 }
 
+function scopedTenantPredicate(column: string, tenantIds: string[] | null, params: any[]) {
+  if (!tenantIds) return "";
+  if (tenantIds.length === 0) return " AND 1=0";
+  const clause = inClause(tenantIds, params.length + 1);
+  params.push(...clause.params);
+  return ` AND ${column} IN (${clause.sql})`;
+}
+
 export async function getActivitySummary(req: any, days: number, tenantId?: string | null) {
   await finalizeStaleSessions();
-  const allowed = await resolveAllowedUserIds(req, tenantId);
-  if (allowed && allowed.length === 0) return [];
+  const scope = await resolveActivityScope(req, tenantId);
+  if (scope.userIds && scope.userIds.length === 0) return [];
 
   const params: any[] = [days];
-  const conditions: string[] = [];
-  if (allowed) {
-    const clause = inClause(allowed, params.length + 1);
-    conditions.push(`u.id IN (${clause.sql})`);
+  const userConditions: string[] = [];
+  if (scope.userIds) {
+    const clause = inClause(scope.userIds, params.length + 1);
+    userConditions.push(`u.id IN (${clause.sql})`);
     params.push(...clause.params);
   }
 
-  const where = conditions.length ? `WHERE ${conditions.join(" AND ")}` : "";
+  const sessionTenantFilter = scopedTenantPredicate("tenant_id", scope.tenantIds, params);
+  const eventTenantFilter = scopedTenantPredicate("tenant_id", scope.tenantIds, params);
+  const where = userConditions.length ? `WHERE ${userConditions.join(" AND ")}` : "";
+
   const result = await pool.query(
     `WITH session_stats AS (
        SELECT user_id,
@@ -286,11 +315,13 @@ export async function getActivitySummary(req: any, days: number, tenantId?: stri
          COALESCE(SUM(active_seconds) FILTER (WHERE started_at >= NOW() - ($1::text || ' days')::interval),0)::int AS active_seconds_period,
          MAX(last_activity_at) AS last_activity_at
        FROM public.user_activity_sessions
+       WHERE 1=1${sessionTenantFilter}
        GROUP BY user_id
      ),
      event_stats AS (
        SELECT user_id, MAX(created_at) AS last_event_at
        FROM public.user_activity_events
+       WHERE 1=1${eventTenantFilter}
        GROUP BY user_id
      )
      SELECT
@@ -311,11 +342,17 @@ export async function getActivitySummary(req: any, days: number, tenantId?: stri
   return result.rows;
 }
 
-export async function getUserActivityDetail(req: any, targetUserId: string, days: number) {
-  const allowed = await resolveAllowedUserIds(req, null);
-  if (allowed && !allowed.includes(targetUserId)) return null;
+export async function getUserActivityDetail(req: any, targetUserId: string, days: number, tenantId?: string | null) {
+  const scope = await resolveActivityScope(req, tenantId);
+  if (scope.userIds && !scope.userIds.includes(targetUserId)) return null;
 
   await finalizeStaleSessions();
+
+  const sessionParams: any[] = [targetUserId, days];
+  const eventParams: any[] = [targetUserId, days];
+  const sessionTenantFilter = scopedTenantPredicate("tenant_id", scope.tenantIds, sessionParams);
+  const eventTenantFilter = scopedTenantPredicate("tenant_id", scope.tenantIds, eventParams);
+
   const [userResult, sessionsResult, eventsResult] = await Promise.all([
     pool.query(
       `SELECT id,email,first_name,last_name,role,custom_role_title,first_login_at,last_login_at,last_seen_at,status,is_active
@@ -325,16 +362,18 @@ export async function getUserActivityDetail(req: any, targetUserId: string, days
     pool.query(
       `SELECT id,tenant_id,started_at,last_activity_at,ended_at,active_seconds,end_reason,entry_module,last_module,modules_visited,ip_address,user_agent
        FROM public.user_activity_sessions
-       WHERE user_id=$1 AND started_at >= NOW() - ($2::text || ' days')::interval
+       WHERE user_id=$1
+         AND started_at >= NOW() - ($2::text || ' days')::interval${sessionTenantFilter}
        ORDER BY started_at DESC LIMIT 100`,
-      [targetUserId, days],
+      sessionParams,
     ),
     pool.query(
       `SELECT id,session_id,tenant_id,category,event_type,module,entity_type,entity_id,success,ip_address,user_agent,metadata,created_at
        FROM public.user_activity_events
-       WHERE user_id=$1 AND created_at >= NOW() - ($2::text || ' days')::interval
+       WHERE user_id=$1
+         AND created_at >= NOW() - ($2::text || ' days')::interval${eventTenantFilter}
        ORDER BY created_at DESC LIMIT 250`,
-      [targetUserId, days],
+      eventParams,
     ),
   ]);
 
