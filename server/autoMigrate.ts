@@ -280,6 +280,33 @@ export async function runAutoMigration(): Promise<void> {
           WHERE c.broker_id = u.id;
 
           -- Legacy Casa Matriz links are direct platform affiliations, not Master Broker layers.
+          -- Normalize both the user link and the Broker tenant parent.
+          WITH platform_tenant AS (
+            SELECT id
+            FROM public.tenants
+            WHERE type = 'platform' OR slug = 'platform'
+            ORDER BY CASE WHEN type = 'platform' THEN 0 ELSE 1 END
+            LIMIT 1
+          ),
+          legacy_direct_brokers AS (
+            SELECT broker.id
+            FROM public.users AS broker
+            WHERE broker.role = 'broker'
+              AND broker.master_broker_id IS NOT NULL
+              AND NOT EXISTS (
+                SELECT 1
+                FROM public.users AS parent_user
+                WHERE parent_user.id = broker.master_broker_id
+                  AND parent_user.role = 'master_broker'
+              )
+          )
+          UPDATE public.tenants AS broker_tenant
+          SET parent_tenant_id = platform_tenant.id,
+              updated_at = NOW()
+          FROM platform_tenant, legacy_direct_brokers
+          WHERE broker_tenant.type = 'broker'
+            AND broker_tenant.settings->>'legacyOwnerUserId' = legacy_direct_brokers.id;
+
           UPDATE public.users AS broker
           SET master_broker_id = NULL,
               updated_at = NOW()
