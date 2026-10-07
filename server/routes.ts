@@ -3897,8 +3897,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
           status: status as string,
         });
         rawCredits = allCredits.filter(c => 
-          c.brokerId === userId || 
-          (c as any).masterBrokerId === userId || 
+          c.brokerId === userId ||
+          c.originMasterBrokerId === userId ||
           brokerIds.includes(c.brokerId) ||
           (c.tenantId && tenantIds.includes(c.tenantId))
         );
