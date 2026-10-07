@@ -2644,7 +2644,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       return res.status(401).json({ message: "Usuario no autenticado" });
     }
 
-    const isSuperAdmin = callerUser.role === 'admin' || callerUser.role === 'super_admin';
+    const isSuperAdmin = callerUser.role === 'super_admin';
     const isMasterBroker = callerUser.role === 'master_broker';
 
     if (!isSuperAdmin && !isMasterBroker) {
@@ -2694,7 +2694,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     });
   }
 
-  // Endpoint formal administrativo para cambio de estado operativo (Super Admin y Master Broker con reglas)
+  // Endpoint formal administrativo para cambio de estado operativo (Super Admin y Master Broker con reglas).
   app.patch('/api/admin/users/:id/operational-status', isAuthenticated, async (req: any, res) => {
     try {
       const parseResult = updateOperationalStatusSchema.safeParse(req.body);
@@ -2839,10 +2839,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
         notes: `Solicitud de reactivación creada por Master Broker ${callerUser.email} para broker ${targetUser.email}. Motivo: ${reason.trim()}`,
       });
 
-      // Notificar a administradores
+      // Notificar únicamente a Super Admins, que son quienes pueden resolver la solicitud.
       try {
         const allUsers = await storage.getAllUsers();
-        const admins = allUsers.filter(u => u.role === 'admin' || u.role === 'super_admin');
+        const admins = allUsers.filter(u => u.role === 'super_admin');
         const actionLabel = 'reactivación';
         await Promise.all(admins.map(admin => 
           storage.createNotification({
@@ -2891,7 +2891,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Super Admin / Admin: Listar solicitudes de estado
+  // Super Admin: Listar solicitudes de estado
   app.get('/api/admin/status-requests', isAuthenticated, async (req: any, res) => {
     try {
       const callerUserId = req.user.claims?.sub || req.user.id;
@@ -2913,7 +2913,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Super Admin / Admin: Aprobar solicitud de estado
+  // Super Admin: Aprobar solicitud de estado
   app.post('/api/admin/status-requests/:id/approve', isAuthenticated, async (req: any, res) => {
     try {
       const callerUserId = req.user.claims?.sub || req.user.id;
@@ -3016,7 +3016,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Super Admin / Admin: Rechazar solicitud de estado
+  // Super Admin: Rechazar solicitud de estado
   app.post('/api/admin/status-requests/:id/reject', isAuthenticated, async (req: any, res) => {
     try {
       const callerUserId = req.user.claims?.sub || req.user.id;
