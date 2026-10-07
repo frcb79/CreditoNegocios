@@ -32,6 +32,9 @@ CREATE INDEX IF NOT EXISTS idx_uas_tenant_started
 CREATE INDEX IF NOT EXISTS idx_uas_open_last_active
   ON public.user_activity_sessions(last_active_at)
   WHERE ended_at IS NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_uas_one_open_per_user
+  ON public.user_activity_sessions(user_id)
+  WHERE ended_at IS NULL;
 
 CREATE TABLE IF NOT EXISTS public.user_activity_session_modules (
   id VARCHAR PRIMARY KEY DEFAULT gen_random_uuid()::text,
