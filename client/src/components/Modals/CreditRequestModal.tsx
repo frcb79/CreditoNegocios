@@ -24,9 +24,11 @@ import { Badge } from "@/components/ui/badge";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/hooks/useAuth";
 import { apiRequest } from "@/lib/queryClient";
-import { Building2, User, DollarSign, Send, AlertCircle, CheckCircle, AlertTriangle, Info, HelpCircle, XCircle, Loader2 } from "lucide-react";
+import { Building2, User, DollarSign, Send, AlertCircle, CheckCircle, AlertTriangle, Info, HelpCircle, XCircle, Loader2, Lock } from "lucide-react";
 import { evaluateAllFieldsForClient } from "@/components/MatchingAnalysis/matchingRules";
+import { CommissionAcceptanceDialog } from "@/components/Commercial/CommissionAcceptanceDialog";
 
 interface Client {
   id: string;
@@ -102,7 +104,17 @@ type CreditRequestForm = z.infer<typeof creditRequestSchema>;
 export default function CreditRequestModal({ isOpen, onClose, preselectedClientId }: CreditRequestModalProps) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const { user } = useAuth();
+  const isBrokerOrMaster = user?.role === 'broker' || user?.role === 'master_broker';
+
   const [selectedInstitutions, setSelectedInstitutions] = useState<string[]>([]);
+  const [acceptanceModalInstitution, setAcceptanceModalInstitution] = useState<{
+    id: string;
+    name: string;
+    rates?: any;
+    ratesHash?: string;
+    isOutdated?: boolean;
+  } | null>(null);
 
   // Form setup
   const form = useForm<CreditRequestForm>({
@@ -115,6 +127,24 @@ export default function CreditRequestModal({ isOpen, onClose, preselectedClientI
       brokerNotes: "",
       financialInstitutionIds: [],
     },
+  });
+
+  // Query broker commission acceptances
+  const { data: commissionAcceptancesData } = useQuery<{
+    acceptances: any[];
+    institutionStatuses: Record<string, {
+      institutionId: string;
+      institutionName: string;
+      rates: any;
+      ratesHash: string;
+      source: string;
+      isAccepted: boolean;
+      outdated: boolean;
+      acceptedAt?: string;
+    }>;
+  }>({
+    queryKey: ['/api/broker/commission-acceptances'],
+    enabled: isBrokerOrMaster,
   });
 
   // Reset form when modal opens or preselected client changes
@@ -188,6 +218,23 @@ export default function CreditRequestModal({ isOpen, onClose, preselectedClientI
   });
 
   const handleInstitutionToggle = (institutionId: string) => {
+    const instStatus = commissionAcceptancesData?.institutionStatuses?.[institutionId];
+    if (isBrokerOrMaster && instStatus && !instStatus.isAccepted) {
+      const inst = institutions?.find((i) => i.id === institutionId);
+      setAcceptanceModalInstitution({
+        id: institutionId,
+        name: inst?.name || instStatus.institutionName || "Financiera",
+        rates: instStatus.rates,
+        ratesHash: instStatus.ratesHash,
+        isOutdated: instStatus.outdated,
+      });
+      toast({
+        title: "Aceptación de comisión requerida",
+        description: `Debes aceptar el esquema comercial vigente de ${inst?.name || "esta financiera"} antes de poder seleccionarla para cotizar.`,
+      });
+      return;
+    }
+
     const updatedIds = selectedInstitutions.includes(institutionId)
       ? selectedInstitutions.filter(id => id !== institutionId)
       : [...selectedInstitutions, institutionId];
@@ -197,6 +244,20 @@ export default function CreditRequestModal({ isOpen, onClose, preselectedClientI
   };
 
   const onSubmit = (data: CreditRequestForm) => {
+    if (isBrokerOrMaster && commissionAcceptancesData?.institutionStatuses) {
+      const unaccepted = data.financialInstitutionIds
+        .map((id) => institutions?.find((i) => i.id === id))
+        .filter((inst) => inst && !commissionAcceptancesData.institutionStatuses[inst.id]?.isAccepted);
+
+      if (unaccepted.length > 0) {
+        toast({
+          title: "Aceptación comercial requerida",
+          description: `Debes aceptar el esquema de comisiones de: ${unaccepted.map((u) => u?.name).join(", ")} antes de enviar.`,
+          variant: "destructive",
+        });
+        return;
+      }
+    }
     submitRequestMutation.mutate(data);
   };
 
@@ -522,6 +583,8 @@ export default function CreditRequestModal({ isOpen, onClose, preselectedClientI
 
   const renderInstitutionCard = (institution: FinancialInstitution, match: MatchResult) => {
     const isSelected = selectedInstitutions.includes(institution.id);
+    const instStatus = commissionAcceptancesData?.institutionStatuses?.[institution.id];
+    const requiresAcceptance = Boolean(isBrokerOrMaster && instStatus && !instStatus.isAccepted);
     
     // Get institution's specific product for this template
     const institutionProduct = institutionProducts?.find(
@@ -574,22 +637,33 @@ export default function CreditRequestModal({ isOpen, onClose, preselectedClientI
         <Tooltip>
           <TooltipTrigger asChild>
             <div 
-              className={`flex items-center space-x-3 p-3 rounded-lg cursor-pointer border transition-all ${
-                isSelected
-                  ? 'bg-blue-50 border-blue-400 shadow-sm'
+              className={`flex items-center space-x-3 p-3 rounded-lg border transition-all ${
+                requiresAcceptance
+                  ? 'bg-amber-50/40 border-amber-200 hover:bg-amber-50/70 cursor-pointer'
+                  : isSelected
+                  ? 'bg-blue-50 border-blue-400 shadow-sm cursor-pointer'
                   : match.category === 'recommended'
-                  ? 'bg-green-50/50 border-green-200 hover:bg-green-50'
-                  : 'bg-white border-gray-200 hover:bg-gray-50'
+                  ? 'bg-green-50/50 border-green-200 hover:bg-green-50 cursor-pointer'
+                  : 'bg-white border-gray-200 hover:bg-gray-50 cursor-pointer'
               }`}
               onClick={() => handleInstitutionToggle(institution.id)}
             >
-              <input
-                type="checkbox"
-                checked={isSelected}
-                onChange={() => handleInstitutionToggle(institution.id)}
-                className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                data-testid={`checkbox-institution-${institution.id}`}
-              />
+              {requiresAcceptance ? (
+                <div 
+                  className="w-4 h-4 rounded border border-amber-300 bg-amber-100 flex items-center justify-center shrink-0"
+                  title="Requiere aceptación de comisión"
+                >
+                  <Lock className="w-2.5 h-2.5 text-amber-700" />
+                </div>
+              ) : (
+                <input
+                  type="checkbox"
+                  checked={isSelected}
+                  onChange={() => handleInstitutionToggle(institution.id)}
+                  className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                  data-testid={`checkbox-institution-${institution.id}`}
+                />
+              )}
               <div className="flex items-center justify-between flex-1 min-w-0">
                 <div className="flex items-center space-x-2 flex-1 min-w-0">
                   {categoryIcon}
@@ -601,10 +675,38 @@ export default function CreditRequestModal({ isOpen, onClose, preselectedClientI
                   </div>
                 </div>
                 <div className="flex items-center space-x-2 ml-2">
-                  {match.score > 0 && (
-                    <span className="text-xs font-semibold text-gray-600">{match.score}%</span>
+                  {requiresAcceptance ? (
+                    <div className="flex items-center gap-1.5">
+                      <Badge variant="outline" className="bg-amber-50 text-amber-800 border-amber-300 text-[10px] font-semibold whitespace-nowrap">
+                        {instStatus?.outdated ? "Comisión Modificada" : "Comisión Pendiente"}
+                      </Badge>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        className="h-6 text-[11px] px-2 bg-blue-50 text-blue-700 border-blue-200 hover:bg-blue-100 font-medium whitespace-nowrap"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setAcceptanceModalInstitution({
+                            id: institution.id,
+                            name: institution.name,
+                            rates: instStatus?.rates,
+                            ratesHash: instStatus?.ratesHash,
+                            isOutdated: instStatus?.outdated,
+                          });
+                        }}
+                      >
+                        Aceptar
+                      </Button>
+                    </div>
+                  ) : (
+                    <>
+                      {match.score > 0 && (
+                        <span className="text-xs font-semibold text-gray-600">{match.score}%</span>
+                      )}
+                      {categoryBadge}
+                    </>
                   )}
-                  {categoryBadge}
                 </div>
               </div>
             </div>
@@ -978,6 +1080,26 @@ export default function CreditRequestModal({ isOpen, onClose, preselectedClientI
           </form>
         </Form>
       </DialogContent>
+
+      {/* Commercial Commission Acceptance Dialog */}
+      <CommissionAcceptanceDialog
+        isOpen={Boolean(acceptanceModalInstitution)}
+        onClose={() => setAcceptanceModalInstitution(null)}
+        institution={acceptanceModalInstitution}
+        rates={acceptanceModalInstitution?.rates}
+        ratesHash={acceptanceModalInstitution?.ratesHash}
+        isOutdated={acceptanceModalInstitution?.isOutdated}
+        onAccepted={() => {
+          if (acceptanceModalInstitution) {
+            const instId = acceptanceModalInstitution.id;
+            const updatedIds = selectedInstitutions.includes(instId)
+              ? selectedInstitutions
+              : [...selectedInstitutions, instId];
+            setSelectedInstitutions(updatedIds);
+            form.setValue("financialInstitutionIds", updatedIds);
+          }
+        }}
+      />
     </Dialog>
   );
 }

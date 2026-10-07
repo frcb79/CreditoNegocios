@@ -1,6 +1,6 @@
 import type { Express } from "express";
 import { isAuthenticated } from "./auth";
-import { getPublishedLegalDocument } from "./legalDocuments";
+import { getPublishedLegalDocument, getApprovedLegalDocument } from "./legalDocuments";
 import { maskEmail } from "../shared/legalDocuments";
 import { sendFormalizationOtpEmail } from "./emailService";
 import { storage } from "./storage";
@@ -18,6 +18,65 @@ export function registerLegalRoutes(app: Express) {
     } catch (error: any) {
       console.error("Error al obtener historial de aceptaciones:", error);
       return res.status(500).json({ message: "Error al obtener historial de aceptaciones." });
+    }
+  });
+
+  // Acceptance record detail with exact document version content and evidence
+  app.get("/api/legal/my-acceptances/:id", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub || req.user?.id || (req as any).dbUser?.id;
+      if (!userId) {
+        return res.status(401).json({ message: "No autenticado" });
+      }
+
+      const acceptance = await storage.getLegalAcceptanceById(req.params.id);
+      if (!acceptance) {
+        return res.status(404).json({ message: "Registro de aceptación no encontrado." });
+      }
+
+      const callerUser = (req as any).dbUser || (await storage.getUser(userId));
+      const isAdmin = callerUser && (callerUser.role === "admin" || callerUser.role === "super_admin");
+
+      if (acceptance.userId !== userId && !isAdmin) {
+        return res.status(403).json({
+          message: "No tienes permiso para consultar la evidencia de otro usuario.",
+        });
+      }
+
+      const docVersion =
+        (await storage.getLegalDocumentVersion(acceptance.documentId)) ||
+        getApprovedLegalDocument(acceptance.document, acceptance.version);
+
+      return res.json({
+        acceptance: {
+          id: acceptance.id,
+          userId: acceptance.userId,
+          userEmail: maskEmail(acceptance.userEmail),
+          userName: acceptance.userName,
+          documentId: acceptance.documentId,
+          document: acceptance.document,
+          version: acceptance.version,
+          contentSha256: acceptance.contentSha256,
+          acceptanceType: acceptance.acceptanceType,
+          ipAddress: acceptance.ipAddress,
+          userAgent: acceptance.userAgent,
+          acceptedAt: acceptance.acceptedAt,
+        },
+        document: docVersion
+          ? {
+              id: docVersion.id,
+              document: docVersion.document,
+              title: docVersion.title,
+              version: docVersion.version,
+              content: docVersion.content,
+              contentSha256: docVersion.contentSha256,
+              effectiveAt: docVersion.effectiveAt,
+            }
+          : null,
+      });
+    } catch (error: any) {
+      console.error("Error al obtener evidencia de aceptación:", error);
+      return res.status(500).json({ message: "Error al obtener evidencia de aceptación." });
     }
   });
 
@@ -152,9 +211,18 @@ export function registerLegalRoutes(app: Express) {
     }
   });
 
-  // Public, read-only routes. Do not depend on a session or write acceptance evidence.
-  app.get("/api/legal/:document", (req, res) => {
+  // Public for terminos and aviso; authenticated and role-authorized for convenio, reglas-red, reglas-master.
+  app.get("/api/legal/:document", async (req: any, res: any) => {
     try {
+      const documentName = req.params.document;
+      const publicDocs = ["terminos", "aviso"];
+      const privateDocs = ["convenio", "reglas-red", "reglas-master"];
+
+      // Unknown documents return 404 immediately
+      if (!publicDocs.includes(documentName) && !privateDocs.includes(documentName)) {
+        return res.status(404).json({ message: "Documento legal no encontrado." });
+      }
+
       const requestedVersion = req.query.version;
       if (
         requestedVersion !== undefined &&
@@ -162,13 +230,85 @@ export function registerLegalRoutes(app: Express) {
       ) {
         return res.status(400).json({ message: "Versión de documento inválida." });
       }
-      const document = getPublishedLegalDocument(req.params.document, requestedVersion);
-      if (!document) {
-        return res.status(404).json({ message: "Documento o versión no disponible." });
+
+      // Public documents: terminos and aviso (no authentication required)
+      if (publicDocs.includes(documentName)) {
+        const document = getPublishedLegalDocument(documentName, requestedVersion);
+        if (!document) {
+          return res.status(404).json({ message: "Documento o versión no disponible." });
+        }
+        res.set("Cache-Control", "no-cache");
+        return res.json(document);
       }
-      res.set("Cache-Control", "no-cache");
-      // Express computes an ETag for the whole JSON, including identity and dates.
-      return res.json(document);
+
+      // Private documents: convenio, reglas-red, reglas-master
+      // Execute the real isAuthenticated middleware to reject inactive, suspended or unauthenticated accounts
+      return isAuthenticated(req, res, async () => {
+        try {
+          const callerUser = (req as any).dbUser;
+          if (!callerUser) {
+            return res.status(401).json({ message: "Usuario no encontrado o no activo." });
+          }
+
+          const allowedRoles = ["broker", "master_broker", "admin", "super_admin"];
+          if (!allowedRoles.includes(callerUser.role)) {
+            return res.status(403).json({ message: "No tienes autorización para consultar este documento." });
+          }
+
+          if (
+            documentName === "reglas-master" &&
+            callerUser.role !== "master_broker" &&
+            callerUser.role !== "admin" &&
+            callerUser.role !== "super_admin"
+          ) {
+            return res.status(403).json({ message: "No tienes autorización para consultar las Reglas Master Broker." });
+          }
+
+          const targetVersion = (typeof requestedVersion === "string" ? requestedVersion : undefined) || "1.0";
+          const docVersion =
+            (await storage.getLegalDocumentVersion(`${documentName}:${targetVersion}`)) ||
+            getApprovedLegalDocument(documentName, targetVersion);
+
+          if (!docVersion) {
+            return res.status(404).json({ message: "Documento o versión no disponible." });
+          }
+
+          // Fetch caller's own acceptance evidence for this document/version if it exists
+          const userAcceptances = await storage.getLegalAcceptancesByUser(callerUser.id);
+          const ownAcceptance = userAcceptances.find(
+            (a) => a.document === documentName && a.version === targetVersion
+          );
+
+          res.set("Cache-Control", "no-cache");
+          return res.json({
+            id: docVersion.id,
+            document: docVersion.document,
+            title: docVersion.title,
+            version: docVersion.version,
+            content: docVersion.content,
+            contentSha256: docVersion.contentSha256,
+            effectiveAt: docVersion.effectiveAt,
+            isPrivate: true,
+            userAcceptance: ownAcceptance
+              ? {
+                  id: ownAcceptance.id,
+                  document: ownAcceptance.document,
+                  version: ownAcceptance.version,
+                  contentSha256: ownAcceptance.contentSha256,
+                  acceptanceType: ownAcceptance.acceptanceType,
+                  userEmail: maskEmail(ownAcceptance.userEmail),
+                  userName: ownAcceptance.userName,
+                  ipAddress: ownAcceptance.ipAddress,
+                  userAgent: ownAcceptance.userAgent,
+                  acceptedAt: ownAcceptance.acceptedAt,
+                }
+              : null,
+          });
+        } catch (innerError: any) {
+          console.error("Error al procesar consulta de documento privado:", innerError);
+          return res.status(500).json({ message: "Error interno al obtener documento legal." });
+        }
+      });
     } catch (error: any) {
       console.error("Error al obtener documento legal:", error);
       return res.status(500).json({ message: "Error interno al obtener documento legal." });

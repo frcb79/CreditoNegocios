@@ -1569,5 +1569,38 @@ export type InsertLegalAcceptance = typeof legalAcceptances.$inferInsert;
 export type FormalizationOtpRequest = typeof formalizationOtpRequests.$inferSelect;
 export type InsertFormalizationOtpRequest = typeof formalizationOtpRequests.$inferInsert;
 
+// =====================================================================
+// BROKER COMMISSION ACCEPTANCES PER FINANCIAL INSTITUTION
+// =====================================================================
+export const brokerCommissionAcceptances = pgTable(
+  "broker_commission_acceptances",
+  {
+    id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+    userId: varchar("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    institutionId: varchar("institution_id")
+      .notNull()
+      .references(() => financialInstitutions.id, { onDelete: "cascade" }),
+    acceptedRates: jsonb("accepted_rates").notNull().default("{}"),
+    ratesHash: varchar("rates_hash", { length: 64 }).notNull(),
+    acceptedAt: timestamp("accepted_at").defaultNow().notNull(),
+    ipAddress: varchar("ip_address"),
+    userAgent: text("user_agent"),
+  },
+  (table) => [
+    index("idx_bca_user_inst").on(table.userId, table.institutionId),
+    uniqueIndex("idx_bca_user_inst_hash").on(table.userId, table.institutionId, table.ratesHash),
+  ],
+);
+
+export const insertBrokerCommissionAcceptanceSchema = createInsertSchema(brokerCommissionAcceptances).omit({
+  id: true,
+  acceptedAt: true,
+});
+
+export type BrokerCommissionAcceptance = typeof brokerCommissionAcceptances.$inferSelect;
+export type InsertBrokerCommissionAcceptance = typeof brokerCommissionAcceptances.$inferInsert;
+
 
 

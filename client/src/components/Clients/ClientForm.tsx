@@ -373,10 +373,17 @@ export default function ClientForm({ client, onSuccess }: ClientFormProps) {
       form.reset();
       onSuccess?.();
     },
-    onError: (error: Error) => {
+    onError: (error: any) => {
+      const isFormalizationReq =
+        error?.code === "FORMALIZATION_REQUIRED" ||
+        error?.message?.includes("formalizar") ||
+        error?.body?.code === "FORMALIZATION_REQUIRED";
+
       toast({
-        title: "Error",
-        description: error.message,
+        title: isFormalizationReq ? "Formalización requerida" : "Error",
+        description: isFormalizationReq
+          ? "Para registrar clientes deberás formalizar tu Convenio de Colaboración en Perfil → Documentos."
+          : error.message,
         variant: "destructive",
       });
     },
