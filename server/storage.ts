@@ -150,6 +150,7 @@ export interface IStorage {
   getLegalDocumentVersions(): Promise<LegalDocumentVersionDb[]>;
   getLegalDocumentVersion(id: string): Promise<LegalDocumentVersionDb | undefined>;
   getLegalAcceptancesByUser(userId: string): Promise<LegalAcceptance[]>;
+  getLegalAcceptanceById(id: string): Promise<LegalAcceptance | undefined>;
   getAllLegalAcceptances(): Promise<LegalAcceptance[]>;
   registerUserWithLegalEvidence(params: {
     userData: {
@@ -1546,6 +1547,11 @@ export class MemStorage implements IStorage {
       .filter((a) => a.userId === userId)
       .sort((a, b) => new Date(b.acceptedAt).getTime() - new Date(a.acceptedAt).getTime())
       .map((a) => structuredClone(a));
+  }
+
+  async getLegalAcceptanceById(id: string): Promise<LegalAcceptance | undefined> {
+    const acc = this.legalAcceptances.get(id);
+    return acc ? structuredClone(acc) : undefined;
   }
 
   async getAllLegalAcceptances(): Promise<LegalAcceptance[]> {

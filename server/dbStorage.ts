@@ -381,6 +381,14 @@ export class DbStorage implements IStorage {
       .orderBy(desc(legalAcceptances.acceptedAt));
   }
 
+  async getLegalAcceptanceById(id: string): Promise<LegalAcceptance | undefined> {
+    const [acc] = await db
+      .select()
+      .from(legalAcceptances)
+      .where(eq(legalAcceptances.id, id));
+    return acc;
+  }
+
   async getAllLegalAcceptances(): Promise<LegalAcceptance[]> {
     return await db
       .select()

@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "wouter";
 import { useAuth } from "@/hooks/useAuth";
@@ -19,6 +19,7 @@ import {
 } from "lucide-react";
 import {
   type LegalAcceptanceRecord,
+  type FormalizationStatusResult,
   FORMALIZATION_NOTICE_TEXT,
   shouldShowFormalizationNotice,
   getExactDocumentUrl,
@@ -26,6 +27,8 @@ import {
   getAcceptanceTypeLabel,
   formatAcceptedDate,
 } from "@shared/legalDocuments";
+import BrokerFormalizationDialog from "./BrokerFormalizationDialog";
+import AcceptedDocumentDetailDialog from "./AcceptedDocumentDetailDialog";
 
 export {
   FORMALIZATION_NOTICE_TEXT,
@@ -48,9 +51,43 @@ export default function LegalProfileDocuments({
   const { user: authUser } = useAuth();
   const currentUser = propUser || authUser;
 
+  const [isFormalizationOpen, setIsFormalizationOpen] = useState(false);
+  const [selectedAcceptance, setSelectedAcceptance] = useState<LegalAcceptanceRecord | null>(null);
+
+  // Limpiar selección de evidencia y cerrar modales al cambiar de usuario autenticado
+  const prevUserIdRef = useRef(currentUser?.id);
+  useEffect(() => {
+    if (prevUserIdRef.current !== currentUser?.id) {
+      prevUserIdRef.current = currentUser?.id;
+      setSelectedAcceptance(null);
+      setIsFormalizationOpen(false);
+    }
+  }, [currentUser?.id]);
+
   const isBrokerOrMaster = shouldShowFormalizationNotice(currentUser?.role);
   const shouldRenderNotice = showFormalizationNotice && isBrokerOrMaster;
 
+  // Query formalization status for current user
+  const {
+    data: formalizationStatus,
+    isLoading: isLoadingStatus,
+    refetch: refetchStatus,
+  } = useQuery<FormalizationStatusResult>({
+    queryKey: ["/api/legal/formalization/status", currentUser?.id],
+    enabled: Boolean(currentUser?.id && isBrokerOrMaster),
+    queryFn: async () => {
+      const res = await fetch(buildApiUrl("/api/legal/formalization/status"), {
+        credentials: "include",
+      });
+      if (!res.ok) {
+        throw new Error("No fue posible consultar el estado de formalización.");
+      }
+      return res.json();
+    },
+    staleTime: 30000,
+  });
+
+  // Query legal acceptances history for current user
   const {
     data,
     isLoading,
@@ -82,18 +119,48 @@ export default function LegalProfileDocuments({
     <div className="space-y-4" data-testid="legal-profile-documents-section">
       {/* 1. Aviso de Formalización para Broker / Master Broker */}
       {shouldRenderNotice && (
-        <Alert
-          className="border-amber-300 bg-amber-50/90 text-amber-900 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-200 shadow-2xs"
-          data-testid="alert-formalization-notice"
-        >
-          <AlertCircle className="h-5 w-5 text-amber-600 dark:text-amber-400 mt-0.5" />
-          <AlertTitle className="font-semibold text-amber-900 dark:text-amber-100 text-sm">
-            Aviso de Formalización
-          </AlertTitle>
-          <AlertDescription className="text-xs sm:text-sm text-amber-800 dark:text-amber-300 mt-1 leading-relaxed">
-            {FORMALIZATION_NOTICE_TEXT}
-          </AlertDescription>
-        </Alert>
+        <>
+          {formalizationStatus?.isFormalized ? (
+            <Alert
+              className="border-emerald-300 bg-emerald-50/90 text-emerald-900 dark:border-emerald-800 dark:bg-emerald-950/30 dark:text-emerald-200 shadow-2xs"
+              data-testid="alert-formalization-completed"
+            >
+              <CheckCircle2 className="h-5 w-5 text-emerald-600 dark:text-emerald-400 mt-0.5 shrink-0" />
+              <AlertTitle className="font-semibold text-emerald-900 dark:text-emerald-100 text-sm">
+                Convenio Formalizado
+              </AlertTitle>
+              <AlertDescription className="text-xs sm:text-sm text-emerald-800 dark:text-emerald-300 mt-1 leading-relaxed">
+                Has formalizado tu Convenio de Colaboración y Reglas de Operación vigentes, completando el requisito contractual. Los permisos operativos y de originación asignados a tu cuenta continúan aplicando con normalidad.
+              </AlertDescription>
+            </Alert>
+          ) : (
+            <Alert
+              className="border-amber-300 bg-amber-50/90 text-amber-900 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-200 shadow-2xs"
+              data-testid="alert-formalization-notice"
+            >
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 w-full">
+                <div className="flex items-start gap-2">
+                  <AlertCircle className="h-5 w-5 text-amber-600 dark:text-amber-400 mt-0.5 shrink-0" />
+                  <div>
+                    <AlertTitle className="font-semibold text-amber-900 dark:text-amber-100 text-sm">
+                      Aviso de Formalización
+                    </AlertTitle>
+                    <AlertDescription className="text-xs sm:text-sm text-amber-800 dark:text-amber-300 mt-1 leading-relaxed">
+                      {FORMALIZATION_NOTICE_TEXT}
+                    </AlertDescription>
+                  </div>
+                </div>
+                <Button
+                  onClick={() => setIsFormalizationOpen(true)}
+                  className="bg-amber-600 hover:bg-amber-700 text-white shrink-0 self-start sm:self-center text-xs h-8"
+                  data-testid="button-open-formalization"
+                >
+                  Formalizar Convenio
+                </Button>
+              </div>
+            </Alert>
+          )}
+        </>
       )}
 
       {/* 2. Historial de Aceptaciones Legales */}
@@ -228,16 +295,27 @@ export default function LegalProfileDocuments({
                         </TableCell>
 
                         <TableCell className="py-3 text-right">
-                          <Link
-                            href={exactUrl}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="inline-flex items-center gap-1 text-xs font-medium text-primary hover:text-primary-dark underline underline-offset-2"
-                            data-testid={`link-document-${acc.document}-${acc.version}`}
-                          >
-                            <span>Consultar versión</span>
-                            <ExternalLink className="h-3 w-3" />
-                          </Link>
+                          <div className="flex items-center justify-end gap-1.5">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => setSelectedAcceptance(acc)}
+                              className="h-7 px-2 text-xs font-medium text-primary hover:text-primary-dark underline underline-offset-2"
+                              data-testid={`button-view-detail-${acc.document}-${acc.version}`}
+                            >
+                              <span>Consultar versión</span>
+                            </Button>
+                            <Link
+                              href={exactUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-muted-foreground hover:text-primary inline-flex items-center p-1"
+                              title="Abrir en pestaña nueva"
+                              data-testid={`link-document-${acc.document}-${acc.version}`}
+                            >
+                              <ExternalLink className="h-3.5 w-3.5" />
+                            </Link>
+                          </div>
                         </TableCell>
                       </TableRow>
                     );
@@ -278,6 +356,26 @@ export default function LegalProfileDocuments({
           </div>
         </CardContent>
       </Card>
+
+      {/* Modal para formalización con código OTP */}
+      <BrokerFormalizationDialog
+        open={isFormalizationOpen}
+        onOpenChange={setIsFormalizationOpen}
+        user={currentUser}
+        onCompleted={() => {
+          refetchStatus();
+          refetch();
+        }}
+      />
+
+      {/* Modal para detalle de documento aceptado y evidencia */}
+      <AcceptedDocumentDetailDialog
+        acceptance={selectedAcceptance}
+        open={Boolean(selectedAcceptance)}
+        onOpenChange={(open) => {
+          if (!open) setSelectedAcceptance(null);
+        }}
+      />
     </div>
   );
 }

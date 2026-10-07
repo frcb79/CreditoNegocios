@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useSearch } from "wouter";
 import LegalProfileDocuments from "@/components/LegalProfileDocuments";
-import { FORMALIZATION_NOTICE_TEXT } from "@shared/legalDocuments";
+import { FORMALIZATION_NOTICE_TEXT, type FormalizationStatusResult } from "@shared/legalDocuments";
 import LegalLinks from "@/components/LegalLinks";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -145,6 +145,16 @@ export default function Settings() {
     message: string;
   }>({
     queryKey: ['/api/promos/my-benefits'],
+  });
+
+  // Formalization status by user to control exterior banner visibility
+  const { data: formalizationStatus } = useQuery<FormalizationStatusResult>({
+    queryKey: ['/api/legal/formalization/status', user?.id],
+    enabled: Boolean(user?.id && isBrokerOrMaster),
+    queryFn: async () => {
+      const res = await apiRequest('GET', '/api/legal/formalization/status');
+      return res.json();
+    },
   });
 
   const handleValidatePromo = async () => {
@@ -548,7 +558,7 @@ export default function Settings() {
       <main className="flex-1 p-3 sm:p-5 lg:p-6 overflow-y-auto">
         <div className="max-w-4xl mx-auto space-y-4">
           {/* Formalization banner for Broker / Master Broker when outside documents tab */}
-          {isBrokerOrMaster && activeTab !== "documents" && (
+          {isBrokerOrMaster && activeTab !== "documents" && formalizationStatus && !formalizationStatus.isFormalized && (
             <Alert
               className="border-amber-300 bg-amber-50/90 text-amber-900 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-200 shadow-2xs"
               data-testid="alert-formalization-banner"

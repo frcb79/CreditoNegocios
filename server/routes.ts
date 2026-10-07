@@ -64,6 +64,7 @@ import {
   type UserStatusRequestStatus,
   type UserStatusRequestAction,
 } from "../shared/schema";
+import { isRoleSubjectToFormalization } from "../shared/legalDocuments";
 import { commercialConfigService } from "./commercialConfigService";
 
 import {
@@ -3196,8 +3197,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post('/api/clients', isAuthenticated, requireModuleAndAction('clientes', 'edit'), async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
-      const user = await storage.getUser(userId);
+      const userId = req.user?.claims?.sub || req.user?.id || (req as any).dbUser?.id;
+      const user = (req as any).dbUser || (await storage.getUser(userId));
+
+      if (user && isRoleSubjectToFormalization(user.role)) {
+        const formalization = await storage.isUserFormalized(user.id, user.role);
+        if (!formalization.isFormalized) {
+          return res.status(403).json({
+            code: "FORMALIZATION_REQUIRED",
+            message: "Para registrar clientes y generar comisiones deberás formalizar tu Convenio de Colaboración.",
+          });
+        }
+      }
 
       const originationCheck = await validateCommercialOrigination({
         callerUser: user,
@@ -7766,12 +7777,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post('/api/mortgage-leads', isAuthenticated, requireModuleAndAction('creditos', 'submit_proposals'), async (req: any, res) => {
     let createdClientId: string | null = null;
     try {
-      const userId = req.user.claims.sub;
-      const user = await storage.getUser(userId);
+      const userId = req.user?.claims?.sub || req.user?.id || (req as any).dbUser?.id;
+      const user = (req as any).dbUser || (await storage.getUser(userId));
 
       const allowedRoles = ['broker', 'master_broker', 'admin', 'super_admin'];
       if (!user || !allowedRoles.includes(user.role)) {
         return res.status(403).json({ message: "No tienes permiso para registrar operaciones hipotecarias" });
+      }
+
+      if (isRoleSubjectToFormalization(user.role)) {
+        const formalization = await storage.isUserFormalized(user.id, user.role);
+        if (!formalization.isFormalized) {
+          return res.status(403).json({
+            code: "FORMALIZATION_REQUIRED",
+            message: "Para registrar clientes y generar comisiones deberás formalizar tu Convenio de Colaboración.",
+          });
+        }
       }
 
       const originationCheck = await validateCommercialOrigination({

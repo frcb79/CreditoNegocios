@@ -38,6 +38,36 @@ export interface LegalAcceptanceRecord {
   acceptedAt: Date | string;
 }
 
+export interface FormalizationStatusResult {
+  requiresFormalization: boolean;
+  isFormalized: boolean;
+  formalizedAt?: string | null;
+  requiredDocuments: string[];
+  acceptedDocuments: string[];
+}
+
+export interface FormalizationDocumentItem {
+  document: string;
+  version: string;
+  title: string;
+  content: string;
+  contentSha256: string;
+  effectiveAt?: string;
+}
+
+export interface FormalizationDocumentsResult {
+  requiresFormalization: boolean;
+  isFormalized: boolean;
+  user?: {
+    id: string;
+    email: string;
+    name: string;
+    role: string;
+  };
+  documents: FormalizationDocumentItem[];
+  message?: string;
+}
+
 export const FORMALIZATION_NOTICE_TEXT =
   "Para comenzar a registrar clientes y generar comisiones deberás formalizar tu Convenio de Colaboración.";
 
