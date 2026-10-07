@@ -3,6 +3,7 @@ import session from "express-session";
 import type { Express, RequestHandler } from "express";
 import connectPg from "connect-pg-simple";
 import { storage } from "./storage";
+import { activityObserverMiddleware } from "./activityService";
 
 const sessionSecret: string = process.env.SESSION_SECRET ?? "dev-session-secret-local";
 
@@ -63,6 +64,7 @@ export async function setupAuth(app: Express) {
   app.use(getSession());
   app.use(passport.initialize());
   app.use(passport.session());
+  app.use(activityObserverMiddleware);
 
   // Local auth session serialization
   passport.serializeUser((user: Express.User, cb) => cb(null, user));
