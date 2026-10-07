@@ -297,10 +297,10 @@ export async function recordHeartbeat(params: {
 
   const updated = await pool.query(
     `UPDATE public.user_activity_sessions
-     SET last_heartbeat_at = NOW(),
+     SET last_heartbeat_at = CASE WHEN $2 THEN NOW() ELSE last_heartbeat_at END,
          last_active_at = CASE WHEN $2 THEN NOW() ELSE last_active_at END,
          active_seconds = active_seconds + $3,
-         last_module_id = COALESCE($4, last_module_id),
+         last_module_id = CASE WHEN $2 THEN COALESCE($4, last_module_id) ELSE last_module_id END,
          ip_address = COALESCE(ip_address, $5),
          user_agent = COALESCE(user_agent, $6),
          updated_at = NOW()
