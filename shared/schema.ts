@@ -808,6 +808,7 @@ export const VALID_PERMISSIONS_ACTIONS = [
   "approve_disperse",
   "manage_commissions",
   "manage_users",
+  "view_user_activity",
   "export_reports",
 ] as const;
 
