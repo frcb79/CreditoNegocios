@@ -212,9 +212,6 @@ export const clients = pgTable("clients", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   tenantId: varchar("tenant_id").references(() => tenants.id),
   brokerId: varchar("broker_id").notNull().references(() => users.id),
-  // Immutable commercial lineage: Master Broker at credit origination time.
-  // null = broker was direct under Crédito Negocios.
-  originMasterBrokerId: varchar("origin_master_broker_id").references(() => users.id),
   createdBy: varchar("created_by").references(() => users.id),
   type: varchar("type").notNull(), // "persona_moral" | "fisica_empresarial" | "fisica" | "sin_sat"
   businessName: varchar("business_name"),
@@ -400,6 +397,9 @@ export const credits = pgTable("credits", {
   tenantId: varchar("tenant_id").references(() => tenants.id),
   clientId: varchar("client_id").notNull().references(() => clients.id),
   brokerId: varchar("broker_id").notNull().references(() => users.id),
+  // Immutable commercial lineage: Master Broker at credit origination time.
+  // null = broker was direct under Crédito Negocios.
+  originMasterBrokerId: varchar("origin_master_broker_id").references(() => users.id),
   createdBy: varchar("created_by").references(() => users.id),
   financialInstitutionId: varchar("financial_institution_id").references(() => financialInstitutions.id),
   productTemplateId: varchar("product_template_id").references(() => productTemplates.id), // Tipo de crédito
