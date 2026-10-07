@@ -125,6 +125,7 @@ import {
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
 import { useAuth } from "@/hooks/useAuth";
+import UserActivityPanel from "@/components/Users/UserActivityPanel";
 
 // Definition of Platform Modules ("¿Dónde puede ingresar?")
 export const SYSTEM_MODULES = [
@@ -1013,7 +1014,7 @@ export default function UserManagement() {
             : "Control de identidades, perfiles y permisos de la organización"
         }
       >
-        {canManageMembers && activeTab !== "promos" && (
+        {canManageMembers && !["promos", "activity", "status-requests", "my-requests"].includes(activeTab) && (
           <Button
             onClick={handleOpenCreateModal}
             className="bg-primary hover:bg-primary/90 text-primary-foreground shadow-sm ml-3"
@@ -1040,7 +1041,7 @@ export default function UserManagement() {
         {/* Navigation Tabs for Platform Admins */}
         {isPlatformAdmin && (
           <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-            <TabsList className={`grid ${isSuperAdmin ? 'grid-cols-4 max-w-3xl' : 'grid-cols-3 max-w-2xl'} bg-slate-100 dark:bg-slate-800 p-1 border border-slate-200 dark:border-slate-700`}>
+            <TabsList className={`grid ${isSuperAdmin ? 'grid-cols-5 max-w-5xl' : 'grid-cols-4 max-w-4xl'} bg-slate-100 dark:bg-slate-800 p-1 border border-slate-200 dark:border-slate-700`}>
               <TabsTrigger value="organization" data-testid="tab-organization" className="text-xs font-semibold flex items-center gap-2">
                 <Building2 className="w-3.5 h-3.5 text-primary" />
                 Organización
@@ -1052,6 +1053,10 @@ export default function UserManagement() {
               <TabsTrigger value="promos" data-testid="tab-promos" className="text-xs font-semibold flex items-center gap-2">
                 <Tag className="w-3.5 h-3.5 text-primary" />
                 Códigos Promocionales ({adminPromos?.length || 0})
+              </TabsTrigger>
+              <TabsTrigger value="activity" data-testid="tab-activity" className="text-xs font-semibold flex items-center gap-2">
+                <Activity className="w-3.5 h-3.5 text-primary" />
+                Actividad y Bitácora
               </TabsTrigger>
               {isSuperAdmin && (
                 <TabsTrigger value="status-requests" data-testid="tab-status-requests" className="text-xs font-semibold flex items-center gap-2">
@@ -1071,7 +1076,7 @@ export default function UserManagement() {
         {/* Navigation Tabs for Master Broker */}
         {currentUser?.role === 'master_broker' && (
           <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-            <TabsList className="grid grid-cols-2 max-w-md bg-slate-100 dark:bg-slate-800 p-1 border border-slate-200 dark:border-slate-700">
+            <TabsList className="grid grid-cols-3 max-w-2xl bg-slate-100 dark:bg-slate-800 p-1 border border-slate-200 dark:border-slate-700">
               <TabsTrigger value="organization" data-testid="tab-mb-organization" className="text-xs font-semibold flex items-center gap-2">
                 <Building2 className="w-3.5 h-3.5 text-primary" />
                 Mi Red de Brokers
@@ -1084,6 +1089,25 @@ export default function UserManagement() {
                     {pendingMasterRequests.length}
                   </Badge>
                 )}
+              </TabsTrigger>
+              <TabsTrigger value="activity" data-testid="tab-mb-activity" className="text-xs font-semibold flex items-center gap-2">
+                <Activity className="w-3.5 h-3.5 text-primary" />
+                Actividad
+              </TabsTrigger>
+            </TabsList>
+          </Tabs>
+        )}
+
+        {!isPlatformAdmin && currentUser?.role !== 'master_broker' && canManageMembers && (
+          <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+            <TabsList className="grid grid-cols-2 max-w-md bg-slate-100 dark:bg-slate-800 p-1 border border-slate-200 dark:border-slate-700">
+              <TabsTrigger value="organization" data-testid="tab-tenant-organization" className="text-xs font-semibold flex items-center gap-2">
+                <Building2 className="w-3.5 h-3.5 text-primary" />
+                Mi Organización
+              </TabsTrigger>
+              <TabsTrigger value="activity" data-testid="tab-tenant-activity" className="text-xs font-semibold flex items-center gap-2">
+                <Activity className="w-3.5 h-3.5 text-primary" />
+                Actividad
               </TabsTrigger>
             </TabsList>
           </Tabs>
@@ -2024,6 +2048,15 @@ export default function UserManagement() {
               </CardContent>
             </Card>
           </div>
+        )}
+
+        {/* Bloque 3.1: User Activity */}
+        {activeTab === "activity" && (
+          <UserActivityPanel
+            tenants={tenants || []}
+            defaultTenantId={selectedTenantId || undefined}
+            platformWide={isPlatformAdmin}
+          />
         )}
 
           {/* Tab 4: Super Admin Status Requests Management */}
