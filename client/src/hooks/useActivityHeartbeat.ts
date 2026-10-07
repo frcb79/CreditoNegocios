@@ -55,6 +55,10 @@ export function useActivityHeartbeat(): void {
         document.visibilityState === "visible" &&
         Date.now() - lastInteractionAt.current <= ACTIVE_WINDOW_MS;
 
+      // Inactive/hidden tabs do not generate periodic traffic. The server closes
+      // stale sessions centrally after the 30-minute inactivity threshold.
+      if (!active) return;
+
       try {
         await fetch("/api/activity/heartbeat", {
           method: "POST",
@@ -62,7 +66,7 @@ export function useActivityHeartbeat(): void {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             moduleId: currentModule.current,
-            active,
+            active: true,
           }),
         });
       } catch {
@@ -76,8 +80,8 @@ export function useActivityHeartbeat(): void {
     const onVisibilityChange = () => {
       if (document.visibilityState === "visible") {
         lastInteractionAt.current = Date.now();
+        void sendHeartbeat();
       }
-      void sendHeartbeat();
     };
     document.addEventListener("visibilitychange", onVisibilityChange);
 
