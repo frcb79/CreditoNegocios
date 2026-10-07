@@ -98,7 +98,7 @@ async function resolveReqUser(req: any): Promise<any> {
   if (req.dbUser) {
     return req.dbUser;
   }
-  const userId = req.user?.claims?.sub;
+  const userId = req.user?.claims?.sub || req.user?.id;
   if (!userId) return null;
   const dbUser = await storage.getUser(userId);
   if (dbUser) {
