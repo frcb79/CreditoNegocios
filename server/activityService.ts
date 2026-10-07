@@ -198,6 +198,19 @@ export async function closeStaleActivitySessions(userId?: string | null): Promis
   );
 }
 
+export function startActivityMaintenance(): void {
+  const run = () => {
+    void closeStaleActivitySessions().catch((error) => {
+      console.error("[Activity] Stale-session maintenance error:", error);
+    });
+  };
+
+  run();
+  const timer = setInterval(run, 10 * 60 * 1000);
+  // Do not keep the Node process alive solely for telemetry maintenance.
+  timer.unref?.();
+}
+
 export async function endLatestActivitySession(userId: string, reason = "logout"): Promise<void> {
   await pool.query(
     `UPDATE public.user_activity_sessions
