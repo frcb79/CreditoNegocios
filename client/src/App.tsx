@@ -35,10 +35,12 @@ import BulkImport from "@/pages/BulkImport";
 import Notifications from "@/pages/Notifications";
 import HelpCenterPage from "@/pages/HelpCenterPage";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
+import { useActivityTracking } from "@/hooks/useActivityTracking";
 
 function Router() {
   const { isAuthenticated, isLoading } = useAuth();
   const { toast } = useToast();
+  useActivityTracking(Boolean(isAuthenticated));
 
   // Handle unauthorized errors globally - but don't redirect automatically
   useEffect(() => {
