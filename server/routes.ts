@@ -5769,22 +5769,26 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const masterBrokers = allUsers.filter(u => u.role === 'master_broker');
         const allBrokers = allUsers.filter(u => u.role === 'broker');
 
+        const activeMasterIds = new Set(masterBrokers.map(mb => mb.id));
+
         // Master brokers with their respective network brokers
         const masterBrokersWithNetwork = masterBrokers.map(mb => ({
           ...mb,
           networkBrokers: allBrokers.filter(b => b.masterBrokerId === mb.id),
         }));
 
-        // Brokers directos que no tienen master broker asignado
-        const independentDirectBrokers = allBrokers.filter(b => !b.masterBrokerId);
-
-        // Brokers asignados directamente al super admin
-        const adminNetworkBrokers = allBrokers.filter(b => b.masterBrokerId === userId);
+        // Canonical model: every broker that is not attached to a real Master
+        // operates directly under Crédito Negocios (Casa Matriz).
+        const directBrokers = allBrokers.filter(
+          b => !b.masterBrokerId || !activeMasterIds.has(b.masterBrokerId)
+        );
 
         return res.json({
           masterBrokers: masterBrokersWithNetwork,
-          independentBrokers: independentDirectBrokers,
-          adminBrokers: adminNetworkBrokers,
+          directBrokers,
+          // Legacy alias kept temporarily for older clients.
+          independentBrokers: directBrokers,
+          adminBrokers: [],
           allBrokers,
         });
       }
