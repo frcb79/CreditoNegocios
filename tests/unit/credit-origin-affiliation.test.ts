@@ -53,6 +53,36 @@ describe("credit origination network snapshot", () => {
     expect(newCredit.originMasterBrokerId).toBe(masterB.id);
   });
 
+  it("treats legacy Casa Matriz admin links as direct platform business", async () => {
+    const storage = new MemStorage();
+
+    const platformAdmin = await storage.createUser({
+      email: "platform-admin@network.test",
+      firstName: "Platform",
+      lastName: "Admin",
+      role: "super_admin",
+      isActive: true,
+    } as any);
+
+    const broker = await storage.createUser({
+      email: "legacy-casa-matriz@network.test",
+      firstName: "Legacy",
+      lastName: "Direct",
+      role: "broker",
+      masterBrokerId: platformAdmin.id,
+      isActive: true,
+    } as any);
+
+    const credit = await storage.createCredit({
+      clientId: "client-legacy-direct",
+      brokerId: broker.id,
+      amount: "300000",
+      status: "draft",
+    } as any);
+
+    expect(credit.originMasterBrokerId).toBeNull();
+  });
+
   it("snapshots direct brokers as null and direct Master originations as self", async () => {
     const storage = new MemStorage();
 
