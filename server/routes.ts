@@ -1090,7 +1090,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       
       // Create session for the new user
-      req.login({ claims: { sub: user.id } }, (err: any) => {
+      req.login({ claims: { sub: user.id } }, async (err: any) => {
         if (err) {
           console.error("Error creating session:", err);
           return res.status(500).json({ message: "Error al iniciar sesión" });
@@ -1189,6 +1189,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
           return res.status(500).json({ message: "Error al iniciar sesión" });
         }
         
+        await startUserActivitySession(req, user.id);
+
         // Explicitly save session to ensure it's written to the store before responding
         req.session.save((saveErr: any) => {
           if (saveErr) {
