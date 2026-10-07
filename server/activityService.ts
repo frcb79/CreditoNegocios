@@ -211,20 +211,73 @@ export function startActivityMaintenance(): void {
   timer.unref?.();
 }
 
-export async function endLatestActivitySession(userId: string, reason = "logout"): Promise<void> {
-  await pool.query(
-    `UPDATE public.user_activity_sessions
-     SET ended_at = NOW(),
-         end_reason = $2,
-         updated_at = NOW()
-     WHERE id = (
-       SELECT id FROM public.user_activity_sessions
+export async function endLatestActivitySession(userId: string, reason = "logout"): Promise<string | null> {
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    const selected = await client.query(
+      `SELECT id, tenant_id, last_heartbeat_at, last_module_id
+       FROM public.user_activity_sessions
        WHERE user_id = $1 AND ended_at IS NULL
        ORDER BY started_at DESC
        LIMIT 1
-     )`,
-    [userId, reason],
-  );
+       FOR UPDATE`,
+      [userId],
+    );
+
+    const session = selected.rows[0];
+    if (!session) {
+      await client.query("COMMIT");
+      return null;
+    }
+
+    const elapsedSeconds = Math.max(
+      0,
+      Math.floor((Date.now() - new Date(session.last_heartbeat_at).getTime()) / 1000),
+    );
+    const finalCredit =
+      elapsedSeconds <= ACTIVE_IDLE_SECONDS
+        ? Math.min(MAX_HEARTBEAT_CREDIT_SECONDS, elapsedSeconds)
+        : 0;
+
+    await client.query(
+      `UPDATE public.user_activity_sessions
+       SET ended_at = NOW(),
+           last_active_at = NOW(),
+           last_heartbeat_at = NOW(),
+           end_reason = $2,
+           active_seconds = active_seconds + $3,
+           updated_at = NOW()
+       WHERE id = $1`,
+      [session.id, reason, finalCredit],
+    );
+
+    await client.query(
+      `UPDATE public.users SET last_activity_at = NOW(), updated_at = NOW() WHERE id = $1`,
+      [userId],
+    );
+
+    if (finalCredit > 0 && session.last_module_id) {
+      await client.query(
+        `INSERT INTO public.user_activity_session_modules
+          (session_id, user_id, tenant_id, module_id, first_seen_at, last_seen_at, active_seconds, enter_count)
+         VALUES ($1,$2,$3,$4,NOW(),NOW(),$5,1)
+         ON CONFLICT (session_id, module_id)
+         DO UPDATE SET
+           last_seen_at = NOW(),
+           active_seconds = public.user_activity_session_modules.active_seconds + EXCLUDED.active_seconds`,
+        [session.id, userId, session.tenant_id || null, session.last_module_id, finalCredit],
+      );
+    }
+
+    await client.query("COMMIT");
+    return session.id;
+  } catch (error) {
+    await client.query("ROLLBACK");
+    throw error;
+  } finally {
+    client.release();
+  }
 }
 
 export async function recordHeartbeat(params: {
@@ -560,10 +613,11 @@ export const activityObserverMiddleware: RequestHandler = (req: any, res: any, n
         if (requestPath === "/api/logout") {
           if (beforeUserId) {
             const tenantId = await resolveActivityTenant(beforeUserId, null, beforeRole);
-            await endLatestActivitySession(beforeUserId, "logout");
+            const closedSessionId = await endLatestActivitySession(beforeUserId, "logout");
             await recordUserActivityEvent({
               userId: beforeUserId,
               tenantId,
+              sessionId: closedSessionId,
               category: "security",
               eventType: "auth.logout",
               actorRole: beforeRole,
