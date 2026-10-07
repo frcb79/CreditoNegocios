@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { format, formatDistanceToNow } from "date-fns";
@@ -474,7 +475,7 @@ function MetricCard({
   title: string;
   value: string | number;
   subtitle: string;
-  icon: React.ReactNode;
+  icon: ReactNode;
 }) {
   return (
     <Card>
