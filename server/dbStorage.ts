@@ -193,6 +193,9 @@ export class DbStorage implements IStorage {
       customRoleTitle: r.custom_role_title,
       permissions: r.permissions || {},
       isActive: r.is_active !== false,
+      firstLoginAt: r.first_login_at ? new Date(r.first_login_at) : null,
+      lastLoginAt: r.last_login_at ? new Date(r.last_login_at) : null,
+      lastSeenAt: r.last_seen_at ? new Date(r.last_seen_at) : null,
       createdAt: r.created_at ? new Date(r.created_at) : new Date(),
       updatedAt: r.updated_at ? new Date(r.updated_at) : new Date(),
     } as User;
