@@ -1440,29 +1440,25 @@ export default function UserManagement() {
                                             </Button>
                                           )}
 
-                                          {/* Solicitar Baja: si broker está active o suspended */}
+                                          {/* Baja: acción directa del Master sobre su propia red */}
                                           {(currentStatus === 'active' || currentStatus === 'suspended') && (
                                             <Button
                                               variant="ghost"
                                               size="sm"
-                                              disabled={Boolean(pendingReq && pendingReq.requestedStatus === 'inactive')}
                                               onClick={() => {
                                                 if (m.user) {
-                                                  setStatusRequestModal({
-                                                    open: true,
-                                                    targetUser: m.user as User,
-                                                    requestedStatus: 'inactive',
-                                                    reason: '',
-                                                    notes: '',
-                                                  });
+                                                  setOperationalStatusUser(m.user as User);
+                                                  setTargetOperationalStatus('inactive');
+                                                  setOperationalStatusReason("");
+                                                  setOperationalStatusNotes("");
                                                 }
                                               }}
                                               className="h-7 px-1.5 text-xs text-rose-700 hover:text-rose-800 hover:bg-rose-50"
-                                              title={pendingReq && pendingReq.requestedStatus === 'inactive' ? "Ya existe solicitud de baja pendiente" : "Solicitar baja definitiva a Super Admin"}
-                                              data-testid={`button-request-baja-broker-${m.id}`}
+                                              title="Dar de baja al broker de tu red"
+                                              data-testid={`button-direct-baja-broker-${m.id}`}
                                             >
                                               <Power className="h-3.5 w-3.5 mr-1" />
-                                              Solicitar baja
+                                              Dar de baja
                                             </Button>
                                           )}
 
@@ -1691,22 +1687,18 @@ export default function UserManagement() {
                                         <Button
                                           variant="outline"
                                           size="sm"
-                                          disabled={Boolean(pendingReq && pendingReq.requestedStatus === 'inactive')}
                                           onClick={() => {
                                             if (m.user) {
-                                              setStatusRequestModal({
-                                                open: true,
-                                                targetUser: m.user as User,
-                                                requestedStatus: 'inactive',
-                                                reason: '',
-                                                notes: '',
-                                              });
+                                              setOperationalStatusUser(m.user as User);
+                                              setTargetOperationalStatus('inactive');
+                                              setOperationalStatusReason("");
+                                              setOperationalStatusNotes("");
                                             }
                                           }}
                                           className="h-7 text-xs px-2 text-rose-700"
-                                          data-testid={`button-request-baja-broker-${m.id}-mobile`}
+                                          data-testid={`button-direct-baja-broker-${m.id}-mobile`}
                                         >
-                                          Solicitar baja
+                                          Dar de baja
                                         </Button>
                                       )}
                                       {currentStatus === 'inactive' && (
@@ -3717,7 +3709,7 @@ export default function UserManagement() {
 
                 {currentUser?.role === 'master_broker' && (
                   <p className="text-[11px] text-muted-foreground italic">
-                    Como Master Broker, únicamente puedes suspender temporalmente a brokers de tu red. Para baja definitiva o reactivación se requiere solicitud de aprobación a Super Admin.
+                    Como Master Broker, puedes suspender o dar de baja a brokers de tu propia red. La reactivación requiere intervención de Super Admin.
                   </p>
                 )}
               </div>
