@@ -87,9 +87,14 @@ app.use((req, res, next) => {
   // Ensure database schema and super admin users exist before starting routes
   try {
     await runAutoMigration();
-    await ensureUserActivitySchema();
   } catch (migErr) {
     console.error("⚠️ [Startup] Auto-migration error:", migErr);
+  }
+
+  try {
+    await ensureUserActivitySchema();
+  } catch (activityMigErr) {
+    console.error("⚠️ [Startup] User activity migration error:", activityMigErr);
   }
 
   const server = await registerRoutes(app);
