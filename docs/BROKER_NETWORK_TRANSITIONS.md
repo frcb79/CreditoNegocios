@@ -26,6 +26,15 @@ No se incluye en este bloque una degradación Master Broker → Broker.
 
 El usuario conserva el mismo `users.id`.
 
+### Modelo canónico de afiliación
+
+- `masterBrokerId = <id de un usuario master_broker>` significa pertenencia real a esa red Master.
+- `masterBrokerId = null` significa Broker directo de **Crédito Negocios / Casa Matriz**.
+- Un usuario `admin` o `super_admin` nunca funciona como Master Broker económico.
+- Se elimina la distinción heredada entre “broker independiente” y “broker de Casa Matriz”: ambos son brokers directos de plataforma.
+
+Todo Broker nuevo debe nacer con su propia organización tipo `broker` y una membresía `owner` con `canOriginate=true`. Registro, invitación y alta administrativa usan el mismo camino canónico para crear identidad + tenant + owner en una sola transacción.
+
 Cada broker mantiene su organización propia. Una reasignación cambia el `parent_tenant_id` de esa organización:
 
 - bajo Master: parent = tenant del Master;
@@ -44,6 +53,8 @@ Se agrega `credits.origin_master_broker_id` para congelar la estructura comercia
 - broker directo de Crédito Negocios → null.
 
 El valor es inmutable. Por lo tanto, si el broker posteriormente pasa a Master B, un crédito originado bajo A seguirá generando sus comisiones con la afiliación A.
+
+Para datos previos a esta funcionalidad, la migración congela la afiliación existente en el momento de su primera ejecución. A partir de ahí el snapshot queda protegido por trigger y no puede reescribirse en arranques posteriores.
 
 Las comisiones existentes mantienen además su propio `master_broker_id`, montos y shares congelados.
 
