@@ -1,6 +1,12 @@
 {
   "buildCommand": "npm run build",
   "outputDirectory": "public",
+  "rewrites": [
+    {
+      "source": "/api/public/website-leads",
+      "destination": "https://creditonegocios-production.up.railway.app/api/public/website-leads"
+    }
+  ],
   "redirects": [
     {
       "source": "/brokers",
