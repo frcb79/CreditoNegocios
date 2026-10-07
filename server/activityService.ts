@@ -98,6 +98,27 @@ export async function resolveActivityTenant(
 
 export async function recordUserActivityEvent(input: EventInput): Promise<void> {
   const metadata = input.metadata || {};
+  let sessionId = input.sessionId || null;
+  let tenantId = input.tenantId || null;
+
+  // Attach significant actions to the active usage session whenever possible.
+  if (!sessionId && input.userId) {
+    const activeSession = await pool.query(
+      `SELECT id, tenant_id
+       FROM public.user_activity_sessions
+       WHERE user_id = $1
+         AND ended_at IS NULL
+         AND last_active_at >= NOW() - INTERVAL '30 minutes'
+       ORDER BY started_at DESC
+       LIMIT 1`,
+      [input.userId],
+    );
+    if (activeSession.rowCount) {
+      sessionId = activeSession.rows[0].id;
+      tenantId = tenantId || activeSession.rows[0].tenant_id || null;
+    }
+  }
+
   await pool.query(
     `INSERT INTO public.user_activity_events
       (user_id, tenant_id, session_id, category, event_type, module_id,
@@ -105,8 +126,8 @@ export async function recordUserActivityEvent(input: EventInput): Promise<void> 
      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13::jsonb)`,
     [
       input.userId || null,
-      input.tenantId || null,
-      input.sessionId || null,
+      tenantId,
+      sessionId,
       input.category,
       input.eventType,
       input.moduleId || null,
@@ -119,6 +140,17 @@ export async function recordUserActivityEvent(input: EventInput): Promise<void> 
       JSON.stringify(metadata),
     ],
   );
+
+  if (
+    input.userId &&
+    (input.outcome || "success") === "success" &&
+    (input.category === "product" || input.category === "governance")
+  ) {
+    await pool.query(
+      `UPDATE public.users SET last_activity_at = NOW(), updated_at = NOW() WHERE id = $1`,
+      [input.userId],
+    );
+  }
 }
 
 export async function closeStaleActivitySessions(): Promise<void> {
