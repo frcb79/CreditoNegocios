@@ -241,6 +241,17 @@ export async function runAutoMigration(): Promise<void> {
 
     // 3b. Ensure credits table columns, immutable origin affiliation and indexes exist
     try {
+      const originColumnCheck = await client.query(`
+        SELECT EXISTS (
+          SELECT 1
+          FROM information_schema.columns
+          WHERE table_schema = 'public'
+            AND table_name = 'credits'
+            AND column_name = 'origin_master_broker_id'
+        ) AS exists;
+      `);
+      const originColumnAlreadyExisted = Boolean(originColumnCheck.rows?.[0]?.exists);
+
       await client.query(`
         ALTER TABLE IF EXISTS public.credits
           ADD COLUMN IF NOT EXISTS tenant_id VARCHAR,
@@ -248,39 +259,43 @@ export async function runAutoMigration(): Promise<void> {
           ADD COLUMN IF NOT EXISTS mortgage_data JSONB DEFAULT '{}',
           ADD COLUMN IF NOT EXISTS origin_master_broker_id VARCHAR;
 
-        -- The trigger is removed only while repairing legacy NULL snapshots.
-        DROP TRIGGER IF EXISTS trg_credits_origin_master_immutable ON public.credits;
-
-        UPDATE public.credits AS c
-        SET origin_master_broker_id = CASE
-          WHEN u.role = 'master_broker' THEN u.id
-          WHEN u.role = 'broker' AND mb.role = 'master_broker' THEN mb.id
-          ELSE NULL
-        END
-        FROM public.users AS u
-        LEFT JOIN public.users AS mb ON mb.id = u.master_broker_id
-        WHERE c.broker_id = u.id
-          AND c.origin_master_broker_id IS NULL;
-
-        -- Legacy Casa Matriz links are direct platform affiliations, not Master Broker layers.
-        UPDATE public.users AS broker
-        SET master_broker_id = NULL,
-            updated_at = NOW()
-        WHERE broker.role = 'broker'
-          AND broker.master_broker_id IS NOT NULL
-          AND NOT EXISTS (
-            SELECT 1
-            FROM public.users AS parent_user
-            WHERE parent_user.id = broker.master_broker_id
-              AND parent_user.role = 'master_broker'
-          );
-
         CREATE INDEX IF NOT EXISTS "credits_tenant_idx" ON public.credits ("tenant_id");
         CREATE INDEX IF NOT EXISTS "credits_broker_idx" ON public.credits ("broker_id");
         CREATE INDEX IF NOT EXISTS "credits_client_idx" ON public.credits ("client_id");
         CREATE INDEX IF NOT EXISTS "credits_origin_master_broker_idx" ON public.credits ("origin_master_broker_id");
+      `);
 
-        DO $ BEGIN
+      // Backfill exactly once. NULL remains a meaningful immutable value for
+      // credits originated directly under Crédito Negocios.
+      if (!originColumnAlreadyExisted) {
+        await client.query(`
+          UPDATE public.credits AS c
+          SET origin_master_broker_id = CASE
+            WHEN u.role = 'master_broker' THEN u.id
+            WHEN u.role = 'broker' AND mb.role = 'master_broker' THEN mb.id
+            ELSE NULL
+          END
+          FROM public.users AS u
+          LEFT JOIN public.users AS mb ON mb.id = u.master_broker_id
+          WHERE c.broker_id = u.id;
+
+          -- Legacy Casa Matriz links are direct platform affiliations, not Master Broker layers.
+          UPDATE public.users AS broker
+          SET master_broker_id = NULL,
+              updated_at = NOW()
+          WHERE broker.role = 'broker'
+            AND broker.master_broker_id IS NOT NULL
+            AND NOT EXISTS (
+              SELECT 1
+              FROM public.users AS parent_user
+              WHERE parent_user.id = broker.master_broker_id
+                AND parent_user.role = 'master_broker'
+            );
+        `);
+      }
+
+      await client.query(`
+        DO $$ BEGIN
           IF NOT EXISTS (
             SELECT 1 FROM pg_constraint WHERE conname = 'credits_origin_master_broker_fk'
           ) THEN
@@ -288,25 +303,27 @@ export async function runAutoMigration(): Promise<void> {
               ADD CONSTRAINT credits_origin_master_broker_fk
               FOREIGN KEY (origin_master_broker_id) REFERENCES public.users(id);
           END IF;
-        END $;
+        END $$;
 
         CREATE OR REPLACE FUNCTION public.prevent_credit_origin_master_change()
         RETURNS trigger
         LANGUAGE plpgsql
-        AS $
+        AS $$
         BEGIN
           IF NEW.origin_master_broker_id IS DISTINCT FROM OLD.origin_master_broker_id THEN
             RAISE EXCEPTION 'origin_master_broker_id is immutable after credit creation';
           END IF;
           RETURN NEW;
         END;
-        $;
+        $$;
 
+        DROP TRIGGER IF EXISTS trg_credits_origin_master_immutable ON public.credits;
         CREATE TRIGGER trg_credits_origin_master_immutable
         BEFORE UPDATE OF origin_master_broker_id ON public.credits
         FOR EACH ROW
         EXECUTE FUNCTION public.prevent_credit_origin_master_change();
       `);
+
       console.log("✅ [AutoMigrate] Credits table columns, origin affiliation and indexes verified");
     } catch (err) {
       console.error("⚠️ [AutoMigrate] Error verifying credits columns/indexes:", err);
