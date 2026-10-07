@@ -1005,8 +1005,8 @@ export async function runAutoMigration(): Promise<void> {
       console.error("⚠️ [AutoMigrate] Error verifying commercial governance tables:", commErr);
     }
 
-    // 11a. Freeze historical Master Broker affiliation on existing opportunities exactly once.
-    // New opportunities derive this value server-side at origination.
+    // 11a. Freeze historical network affiliation for opportunities and submissions exactly once.
+    // New records derive these values server-side at origination.
     try {
       await client.query(`
         CREATE TABLE IF NOT EXISTS public.system_migration_markers (
@@ -1014,6 +1014,12 @@ export async function runAutoMigration(): Promise<void> {
           applied_at TIMESTAMP NOT NULL DEFAULT NOW(),
           metadata JSONB DEFAULT '{}'
         );
+
+        ALTER TABLE IF EXISTS public.credit_submission_requests
+          ADD COLUMN IF NOT EXISTS origin_master_broker_id VARCHAR;
+
+        CREATE INDEX IF NOT EXISTS "credit_submissions_origin_master_idx"
+          ON public.credit_submission_requests (origin_master_broker_id);
 
         WITH marker AS (
           INSERT INTO public.system_migration_markers (key, metadata)
@@ -1036,30 +1042,84 @@ export async function runAutoMigration(): Promise<void> {
         WHERE opportunity.broker_id = broker.id
           AND opportunity.master_broker_id IS NULL;
 
+        WITH marker AS (
+          INSERT INTO public.system_migration_markers (key, metadata)
+          VALUES (
+            'broker_network_submission_snapshot_v1',
+            '{"purpose":"freeze pre-transition Master Broker affiliation on credit submissions"}'::jsonb
+          )
+          ON CONFLICT (key) DO NOTHING
+          RETURNING key
+        )
+        UPDATE public.credit_submission_requests AS submission
+        SET origin_master_broker_id = CASE
+          WHEN broker.role = 'master_broker' THEN broker.id
+          WHEN broker.role = 'broker' AND parent_master.role = 'master_broker' THEN parent_master.id
+          ELSE NULL
+        END
+        FROM public.users AS broker
+        LEFT JOIN public.users AS parent_master ON parent_master.id = broker.master_broker_id,
+        marker
+        WHERE submission.broker_id = broker.id
+          AND submission.origin_master_broker_id IS NULL;
+
         CREATE INDEX IF NOT EXISTS "opp_master_broker_idx"
           ON public.commercial_opportunities (master_broker_id);
+
+        DO $$
+        BEGIN
+          IF NOT EXISTS (
+            SELECT 1
+            FROM pg_constraint
+            WHERE conname = 'credit_submissions_origin_master_fk'
+          ) THEN
+            ALTER TABLE public.credit_submission_requests
+              ADD CONSTRAINT credit_submissions_origin_master_fk
+              FOREIGN KEY (origin_master_broker_id)
+              REFERENCES public.users(id);
+          END IF;
+        END
+        $$;
 
         CREATE OR REPLACE FUNCTION public.prevent_opportunity_origin_master_change()
         RETURNS trigger
         LANGUAGE plpgsql
-        AS $
+        AS $$
         BEGIN
           IF NEW.master_broker_id IS DISTINCT FROM OLD.master_broker_id THEN
             RAISE EXCEPTION 'commercial opportunity master_broker_id is immutable after origination';
           END IF;
           RETURN NEW;
         END;
-        $;
+        $$;
 
         DROP TRIGGER IF EXISTS trg_opportunity_origin_master_immutable ON public.commercial_opportunities;
         CREATE TRIGGER trg_opportunity_origin_master_immutable
         BEFORE UPDATE OF master_broker_id ON public.commercial_opportunities
         FOR EACH ROW
         EXECUTE FUNCTION public.prevent_opportunity_origin_master_change();
+
+        CREATE OR REPLACE FUNCTION public.prevent_submission_origin_master_change()
+        RETURNS trigger
+        LANGUAGE plpgsql
+        AS $$
+        BEGIN
+          IF NEW.origin_master_broker_id IS DISTINCT FROM OLD.origin_master_broker_id THEN
+            RAISE EXCEPTION 'credit submission origin_master_broker_id is immutable after origination';
+          END IF;
+          RETURN NEW;
+        END;
+        $$;
+
+        DROP TRIGGER IF EXISTS trg_submission_origin_master_immutable ON public.credit_submission_requests;
+        CREATE TRIGGER trg_submission_origin_master_immutable
+        BEFORE UPDATE OF origin_master_broker_id ON public.credit_submission_requests
+        FOR EACH ROW
+        EXECUTE FUNCTION public.prevent_submission_origin_master_change();
       `);
-      console.log("✅ [AutoMigrate] Historical opportunity network affiliation verified");
-    } catch (oppAffErr) {
-      console.error("⚠️ [AutoMigrate] Error freezing opportunity network affiliation:", oppAffErr);
+      console.log("✅ [AutoMigrate] Historical opportunity/submission network affiliation verified");
+    } catch (networkAffErr) {
+      console.error("⚠️ [AutoMigrate] Error freezing historical network affiliation:", networkAffErr);
     }
 
     console.log("✨ [AutoMigrate] Schema verification and user sync completed successfully!");
