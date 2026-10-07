@@ -337,39 +337,86 @@ function mapRequestToEvent(method: string, path: string): MappedRequestEvent | n
   const m = method.toUpperCase();
   let match: RegExpMatchArray | null;
 
+  // Clients / opportunities
   if (m === "POST" && path === "/api/clients")
     return { category: "product", eventType: "client.created", moduleId: "clientes", entityType: "client" };
   if ((m === "PUT" || m === "PATCH") && (match = path.match(/^\/api\/clients\/([^/]+)$/)))
     return { category: "product", eventType: "client.updated", moduleId: "clientes", entityType: "client", entityId: match[1] };
+  if (m === "DELETE" && (match = path.match(/^\/api\/clients\/([^/]+)$/)))
+    return { category: "product", eventType: "client.deleted", moduleId: "clientes", entityType: "client", entityId: match[1] };
+  if (m === "POST" && (match = path.match(/^\/api\/clients\/([^/]+)\/opportunities$/)))
+    return { category: "governance", eventType: "opportunity.created", moduleId: "clientes", entityType: "opportunity" };
+  if (m === "POST" && (match = path.match(/^\/api\/opportunities\/([^/]+)\/activities$/)))
+    return { category: "governance", eventType: "opportunity.activity_recorded", moduleId: "clientes", entityType: "opportunity", entityId: match[1] };
+  if (m === "POST" && (match = path.match(/^\/api\/opportunities\/([^/]+)\/dispute$/)))
+    return { category: "governance", eventType: "opportunity.disputed", moduleId: "aprobaciones", entityType: "opportunity", entityId: match[1] };
 
+  // Credits / submissions
   if (m === "POST" && path === "/api/credits")
     return { category: "product", eventType: "credit.created", moduleId: "creditos", entityType: "credit" };
   if ((m === "PUT" || m === "PATCH") && (match = path.match(/^\/api\/credits\/([^/]+)$/)))
     return { category: "product", eventType: "credit.updated", moduleId: "creditos", entityType: "credit", entityId: match[1] };
-  if (m === "POST" && /\/submit|submission|proposals?/.test(path))
+  if (m === "POST" && path === "/api/credit-submissions")
     return { category: "product", eventType: "submission.sent", moduleId: "creditos", entityType: "submission" };
+  if (m === "POST" && (match = path.match(/^\/api\/credit-submissions\/([^/]+)\/targets$/)))
+    return { category: "product", eventType: "submission.targets_added", moduleId: "creditos", entityType: "submission", entityId: match[1] };
+  if (m === "POST" && (match = path.match(/^\/api\/credit-submission-targets\/([^/]+)\/upload-proposal$/)))
+    return { category: "governance", eventType: "proposal.document_uploaded", moduleId: "aprobaciones", entityType: "submission_target", entityId: match[1] };
+  if (m === "POST" && (match = path.match(/^\/api\/credit-submission-targets\/([^/]+)\/institution-proposal$/)))
+    return { category: "governance", eventType: "proposal.received", moduleId: "aprobaciones", entityType: "submission_target", entityId: match[1] };
 
-  if (m === "POST" && /\/documents?(\/upload)?$/.test(path))
+  // Documents
+  if (m === "POST" && path === "/api/documents")
     return { category: "product", eventType: "document.uploaded", moduleId: "documentos", entityType: "document" };
+  if (m === "PUT" && (match = path.match(/^\/api\/documents\/([^/]+)$/)))
+    return { category: "product", eventType: "document.updated", moduleId: "documentos", entityType: "document", entityId: match[1] };
+  if (m === "DELETE" && (match = path.match(/^\/api\/documents\/([^/]+)$/)))
+    return { category: "product", eventType: "document.deleted", moduleId: "documentos", entityType: "document", entityId: match[1] };
   if (m === "GET" && (match = path.match(/^\/api\/documents\/([^/]+)\/(download|file)$/)))
     return { category: "product", eventType: "document.downloaded", moduleId: "documentos", entityType: "document", entityId: match[1] };
 
-  if ((match = path.match(/^\/api\/commissions\/([^/]+)\/(approve|cancel|disperse|mark-paid)/)) && ["POST","PATCH","PUT"].includes(m))
+  // Commissions
+  if ((match = path.match(/^\/api\/commissions\/([^/]+)\/(approve|cancel|pay|mark-paid)$/)) && m === "POST")
     return { category: "governance", eventType: `commission.${match[2]}`, moduleId: "comisiones", entityType: "commission", entityId: match[1] };
 
+  // User and organization governance
   if ((match = path.match(/^\/api\/admin\/users\/([^/]+)\/operational-status$/)) && ["PATCH","PUT"].includes(m))
     return { category: "security", eventType: "user.status_changed", moduleId: "usuarios", entityType: "user", entityId: match[1] };
-
+  if ((match = path.match(/^\/api\/admin\/users\/([^/]+)\/access-status$/)) && ["PATCH","PUT"].includes(m))
+    return { category: "security", eventType: "user.access_status_changed", moduleId: "usuarios", entityType: "user", entityId: match[1] };
   if ((match = path.match(/^\/api\/users\/([^/]+)$/)) && ["PATCH","PUT"].includes(m))
     return { category: "security", eventType: "user.updated", moduleId: "usuarios", entityType: "user", entityId: match[1] };
 
-  if (/\/members(\/[^/]+)?$/.test(path) && ["POST","PATCH","PUT","DELETE"].includes(m))
-    return { category: "governance", eventType: "user.membership_changed", moduleId: "usuarios", entityType: "tenant_member" };
+  if (m === "POST" && (match = path.match(/^\/api\/tenants\/([^/]+)\/members$/)))
+    return { category: "governance", eventType: "user.invited", moduleId: "usuarios", entityType: "tenant_member" };
+  if (m === "PATCH" && (match = path.match(/^\/api\/tenants\/([^/]+)\/members\/([^/]+)$/)))
+    return { category: "governance", eventType: "user.membership_updated", moduleId: "usuarios", entityType: "tenant_member", entityId: match[2] };
+  if (m === "PATCH" && (match = path.match(/^\/api\/tenants\/([^/]+)\/members\/([^/]+)\/status$/)))
+    return { category: "governance", eventType: "user.membership_status_changed", moduleId: "usuarios", entityType: "tenant_member", entityId: match[2] };
+  if (m === "POST" && (match = path.match(/^\/api\/tenants\/([^/]+)\/members\/([^/]+)\/resend-invite$/)))
+    return { category: "security", eventType: "auth.invitation_resent", moduleId: "usuarios", entityType: "tenant_member", entityId: match[2] };
 
-  if (/commercial/.test(path) && ["POST","PATCH","PUT"].includes(m))
+  // Specialized commercial audit remains the source of truth; this is a central activity reference.
+  if (/^\/api\/commercial\//.test(path) && ["POST","PATCH","PUT","DELETE"].includes(m))
     return { category: "governance", eventType: "commercial.action", moduleId: "aprobaciones", entityType: "commercial" };
 
   return null;
+}
+
+function responseEntityId(body: any, entityType?: string | null): string | null {
+  if (!body || typeof body !== "object") return null;
+  const candidates = [
+    body.id,
+    body?.[entityType || ""]?.id,
+    body.client?.id,
+    body.credit?.id,
+    body.submission?.id,
+    body.opportunity?.id,
+    body.member?.id,
+    body.target?.id,
+  ];
+  const value = candidates.find((candidate) => typeof candidate === "string" || typeof candidate === "number");
+  return value === undefined ? null : String(value);
 }
 
 /**
@@ -384,6 +431,17 @@ export const activityObserverMiddleware: RequestHandler = (req: any, res: any, n
   const ipAddress = getRequestIp(req);
   const userAgent = getRequestUserAgent(req);
   const email = req.body?.email;
+  const mappedEvent = mapRequestToEvent(requestMethod, requestPath);
+  let mappedResponseBody: any = null;
+
+  if (mappedEvent) {
+    const originalJson = res.json;
+    res.json = function (body: any, ...args: any[]) {
+      mappedResponseBody = body;
+      return originalJson.apply(this, [body, ...args]);
+    };
+  }
+
   // Start resolving the reset-token owner before the route clears the token.
   // Only the user id/role is retained; the token is never written to activity logs.
   const resetUserLookup =
@@ -490,10 +548,15 @@ export const activityObserverMiddleware: RequestHandler = (req: any, res: any, n
         const role = getReqUserRole(req) || beforeRole;
         if (!userId) return;
 
-        const mapped = mapRequestToEvent(requestMethod, requestPath);
+        const mapped = mappedEvent;
         if (!mapped) return;
 
-        const tenantId = await resolveActivityTenant(userId, req.body?.tenantId || null, role);
+        const requestedTenantId =
+          req.tenantContext?.tenant?.id ||
+          req.params?.tenantId ||
+          req.body?.tenantId ||
+          null;
+        const tenantId = await resolveActivityTenant(userId, requestedTenantId, role);
         await recordUserActivityEvent({
           userId,
           tenantId,
@@ -501,7 +564,7 @@ export const activityObserverMiddleware: RequestHandler = (req: any, res: any, n
           eventType: mapped.eventType,
           moduleId: mapped.moduleId || null,
           entityType: mapped.entityType || null,
-          entityId: mapped.entityId || null,
+          entityId: mapped.entityId || responseEntityId(mappedResponseBody, mapped.entityType) || null,
           actorRole: role,
           ipAddress: mapped.category === "security" ? ipAddress : null,
           userAgent: mapped.category === "security" ? userAgent : null,
