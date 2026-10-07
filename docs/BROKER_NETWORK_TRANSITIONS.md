@@ -64,6 +64,16 @@ Las **oportunidades comerciales** congelan igualmente el `master_broker_id` vige
 - si el broker pasa a Master B, B no hereda esa oportunidad anterior;
 - las oportunidades nuevas creadas después del movimiento se atribuyen a B.
 
+Las **solicitudes/canalizaciones** congelan `origin_master_broker_id` desde el momento en que se envían. Esto cubre operaciones que siguen vivas durante un cambio de red:
+
+- solicitud creada bajo Master A → broker pasa a B → la solicitud sigue visible/atribuida a A;
+- si esa solicitud se convierte después en crédito, el crédito hereda A aunque el broker ya esté con B;
+- las comisiones derivadas de ese crédito siguen la misma afiliación A;
+- una solicitud nueva creada después del movimiento se fotografía bajo B;
+- si la solicitud nació como broker directo de Crédito Negocios, conserva `null` aunque el broker posteriormente se una a un Master.
+
+Los dashboards y vistas de solicitudes/créditos de Master Broker usan estas fotografías históricas. El conteo de **brokers activos en su red** sí utiliza la afiliación actual.
+
 ## Alta inicial
 
 La creación de un Broker también respeta el gobierno de red:
@@ -118,3 +128,7 @@ La formalización legal vive en un bloque paralelo. Cuando ese bloque se integre
 - Admin normal: reasignación/reactivación → 403
 - oportunidad creada bajo Master A, mover broker a B → la oportunidad sigue atribuida a A
 - oportunidad nueva después del movimiento → atribuida a B
+- solicitud creada bajo Master A → mover broker a B → solicitud sigue con A
+- convertir esa solicitud en crédito después del movimiento → crédito y comisión siguen con A
+- nueva solicitud posterior al movimiento → B
+- solicitud directa de Crédito Negocios → mover broker a Master → crédito derivado continúa directo
