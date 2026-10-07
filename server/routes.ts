@@ -2748,7 +2748,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // MASTER BROKER -> SUPER ADMIN STATUS REQUESTS
   // ==========================================
 
-  // Master Broker: Crear solicitud de cambio de estado operativo (Baja o Reactivación)
+  // Master Broker: solicitar únicamente reactivación a Super Admin.
+  // Suspensión y baja de brokers propios son acciones directas del Master.
   app.post('/api/master-broker/status-requests', isAuthenticated, async (req: any, res) => {
     try {
       const callerUserId = req.user.claims?.sub || req.user.id;
@@ -2794,19 +2795,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Estado actual del broker
       const currentStatus = (targetUser.status as UserOperationalStatus) || (targetUser.isActive ? 'active' : 'inactive');
 
-      // Validar reglas según acción solicitada
-      if (requestedStatus === 'inactive') {
-        if (currentStatus !== 'active' && currentStatus !== 'suspended') {
-          return res.status(400).json({ 
-            message: "Solo se puede solicitar la baja de un broker que esté actualmente activo o suspendido" 
-          });
-        }
-      } else if (requestedStatus === 'active') {
-        if (currentStatus !== 'inactive') {
-          return res.status(400).json({ 
-            message: "Solo se puede solicitar la reactivación de un broker que esté actualmente inactivo" 
-          });
-        }
+      // La baja ya es facultad directa del Master sobre su propia red.
+      // La única solicitud escalada a Super Admin es la reactivación.
+      if (requestedStatus !== 'active') {
+        return res.status(400).json({
+          message: "La baja de un broker de tu red se ejecuta directamente. Sólo la reactivación requiere solicitud a Super Admin."
+        });
+      }
+      if (currentStatus !== 'inactive') {
+        return res.status(400).json({ 
+          message: "Solo se puede solicitar la reactivación de un broker que esté actualmente inactivo" 
+        });
       }
 
       // No permitir solicitudes duplicadas pendientes para mismo requester, target y requestedStatus
@@ -2818,7 +2817,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       if (hasDuplicate) {
         return res.status(409).json({ 
-          message: `Ya existe una solicitud pendiente de ${requestedStatus === 'inactive' ? 'baja' : 'reactivación'} para este broker` 
+          message: "Ya existe una solicitud pendiente de reactivación para este broker" 
         });
       }
 
@@ -2837,14 +2836,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
         entityId: newRequest.id,
         targetUserId: targetUser.id,
         performedBy: callerUser.id,
-        notes: `Solicitud de ${requestedStatus === 'inactive' ? 'baja' : 'reactivación'} creada por Master Broker ${callerUser.email} para broker ${targetUser.email}. Motivo: ${reason.trim()}`,
+        notes: `Solicitud de reactivación creada por Master Broker ${callerUser.email} para broker ${targetUser.email}. Motivo: ${reason.trim()}`,
       });
 
       // Notificar a administradores
       try {
         const allUsers = await storage.getAllUsers();
         const admins = allUsers.filter(u => u.role === 'admin' || u.role === 'super_admin');
-        const actionLabel = requestedStatus === 'inactive' ? 'baja' : 'reactivación';
+        const actionLabel = 'reactivación';
         await Promise.all(admins.map(admin => 
           storage.createNotification({
             userId: admin.id,
