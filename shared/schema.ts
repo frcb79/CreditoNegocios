@@ -212,8 +212,6 @@ export const clients = pgTable("clients", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   tenantId: varchar("tenant_id").references(() => tenants.id),
   brokerId: varchar("broker_id").notNull().references(() => users.id),
-  // Immutable Master Broker affiliation at submission/origination time.
-  originMasterBrokerId: varchar("origin_master_broker_id").references(() => users.id),
   createdBy: varchar("created_by").references(() => users.id),
   type: varchar("type").notNull(), // "persona_moral" | "fisica_empresarial" | "fisica" | "sin_sat"
   businessName: varchar("business_name"),
@@ -697,6 +695,8 @@ export const creditSubmissionRequests = pgTable("credit_submission_requests", {
   tenantId: varchar("tenant_id").references(() => tenants.id),
   clientId: varchar("client_id").notNull().references(() => clients.id),
   brokerId: varchar("broker_id").notNull().references(() => users.id),
+  // Immutable Master Broker affiliation at submission/origination time.
+  originMasterBrokerId: varchar("origin_master_broker_id").references(() => users.id),
   createdBy: varchar("created_by").references(() => users.id),
   productTemplateId: varchar("product_template_id").references(() => productTemplates.id), // Plantilla de producto solicitada
   requestedAmount: decimal("requested_amount", { precision: 15, scale: 2 }).notNull(),
