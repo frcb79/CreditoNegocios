@@ -212,14 +212,34 @@ async function getOwnedTenant(tx: any, userId: string, expectedType?: "broker" |
     .from(tenants)
     .where(and(...conditions));
 
-  if (rows.length !== 1) {
+  if (rows.length === 1) return rows[0];
+
+  // Robust fallback for legacy/multiuser records where the settings marker is
+  // missing but the canonical owner membership already exists.
+  const membershipConditions: any[] = [
+    eq(tenantMembers.userId, userId),
+    eq(tenantMembers.role, "owner"),
+  ];
+  if (expectedType) membershipConditions.push(eq(tenants.type, expectedType));
+
+  const ownerRows = await tx
+    .select({ tenant: tenants })
+    .from(tenantMembers)
+    .innerJoin(tenants, eq(tenantMembers.tenantId, tenants.id))
+    .where(and(...membershipConditions));
+
+  const uniqueOwned = Array.from(
+    new Map(ownerRows.map((row: any) => [row.tenant.id, row.tenant])).values(),
+  );
+
+  if (uniqueOwned.length !== 1) {
     throw new BrokerNetworkTransitionError(
-      `No se pudo resolver de forma unívoca la organización propia del usuario. Encontradas: ${rows.length}.`,
+      `No se pudo resolver de forma unívoca la organización propia del usuario. Marcadores: ${rows.length}; membresías owner: ${uniqueOwned.length}.`,
       409,
       "OWN_TENANT_TOPOLOGY_INVALID",
     );
   }
-  return rows[0];
+  return uniqueOwned[0];
 }
 
 async function ensureUniqueMasterReferralCode(tx: any): Promise<string> {
