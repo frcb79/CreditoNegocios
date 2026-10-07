@@ -1961,9 +1961,10 @@ export class MemStorage implements IStorage {
     const existing = this.credits.get(id);
     if (!existing) return undefined;
 
+    const { originMasterBrokerId: _immutableOrigin, ...safeCreditData } = creditData as any;
     const updated = {
       ...existing,
-      ...creditData,
+      ...safeCreditData,
       updatedAt: new Date(),
     };
     this.credits.set(id, updated);
