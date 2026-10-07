@@ -1254,10 +1254,11 @@ export class DbStorage implements IStorage {
   
   async updateCredit(id: string, credit: Partial<InsertCredit>): Promise<Credit | undefined> {
     try {
+      const { originMasterBrokerId: _immutableOrigin, ...safeCredit } = credit as any;
       const [updated] = await db
         .update(credits)
         .set({
-          ...credit,
+          ...safeCredit,
           updatedAt: new Date(),
         })
         .where(eq(credits.id, id))
