@@ -38,7 +38,8 @@ export function registerUserActivityRoutes(app: Express) {
   app.get("/api/activity/users/:userId", isAuthenticated, async (req: any, res) => {
     try {
       const days = clampDays(req.query.days);
-      const detail = await getUserActivityDetail(req, req.params.userId, days);
+      const tenantId = typeof req.query.tenantId === "string" ? req.query.tenantId : null;
+      const detail = await getUserActivityDetail(req, req.params.userId, days, tenantId);
       if (!detail) return res.status(403).json({ message: "No tienes acceso a la actividad de este usuario" });
       res.json({ days, ...detail });
     } catch (error) {
