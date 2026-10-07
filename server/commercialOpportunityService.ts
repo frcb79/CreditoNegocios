@@ -1483,9 +1483,10 @@ export class MockCommercialOpportunityStorage implements ICommercialOpportunityS
   ): Promise<CommercialOpportunity> {
     const idx = this.opportunities.findIndex((o) => o.id === id);
     if (idx === -1) throw new Error(`Opportunity ${id} not found`);
+    const { masterBrokerId: _immutableMaster, ...safeUpdates } = updates as any;
     const updated = {
       ...this.opportunities[idx],
-      ...updates,
+      ...safeUpdates,
       updatedAt: new Date(),
     };
     this.opportunities[idx] = updated;
@@ -1720,9 +1721,10 @@ export class DrizzleCommercialOpportunityStorage implements ICommercialOpportuni
     id: string,
     updates: Partial<CommercialOpportunity>
   ): Promise<CommercialOpportunity> {
+    const { masterBrokerId: _immutableMaster, ...safeUpdates } = updates as any;
     const rows = await this.db
       .update(commercialOpportunities)
-      .set({ ...updates, updatedAt: new Date() })
+      .set({ ...safeUpdates, updatedAt: new Date() })
       .where(eq(commercialOpportunities.id, id))
       .returning();
     return rows[0];
