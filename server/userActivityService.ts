@@ -278,19 +278,32 @@ export async function getActivitySummary(req: any, days: number, tenantId?: stri
 
   const where = conditions.length ? `WHERE ${conditions.join(" AND ")}` : "";
   const result = await pool.query(
-    `SELECT
+    `WITH session_stats AS (
+       SELECT user_id,
+         COUNT(*) FILTER (WHERE started_at >= NOW() - ($1::text || ' days')::interval)::int AS sessions_period,
+         COUNT(DISTINCT DATE(started_at)) FILTER (WHERE started_at >= NOW() - ($1::text || ' days')::interval)::int AS active_days_period,
+         COALESCE(SUM(active_seconds) FILTER (WHERE started_at >= NOW() - ($1::text || ' days')::interval),0)::int AS active_seconds_period,
+         MAX(last_activity_at) AS last_activity_at
+       FROM public.user_activity_sessions
+       GROUP BY user_id
+     ),
+     event_stats AS (
+       SELECT user_id, MAX(created_at) AS last_event_at
+       FROM public.user_activity_events
+       GROUP BY user_id
+     )
+     SELECT
        u.id, u.email, u.first_name, u.last_name, u.role, u.custom_role_title,
        u.first_login_at, u.last_login_at, u.last_seen_at, u.status, u.is_active,
-       COUNT(s.id) FILTER (WHERE s.started_at >= NOW() - ($1::text || ' days')::interval)::int AS sessions_period,
-       COUNT(DISTINCT DATE(s.started_at)) FILTER (WHERE s.started_at >= NOW() - ($1::text || ' days')::interval)::int AS active_days_period,
-       COALESCE(SUM(s.active_seconds) FILTER (WHERE s.started_at >= NOW() - ($1::text || ' days')::interval),0)::int AS active_seconds_period,
-       MAX(s.last_activity_at) AS last_activity_at,
-       MAX(e.created_at) AS last_event_at
+       COALESCE(ss.sessions_period,0)::int AS sessions_period,
+       COALESCE(ss.active_days_period,0)::int AS active_days_period,
+       COALESCE(ss.active_seconds_period,0)::int AS active_seconds_period,
+       ss.last_activity_at,
+       es.last_event_at
      FROM public.users u
-     LEFT JOIN public.user_activity_sessions s ON s.user_id = u.id
-     LEFT JOIN public.user_activity_events e ON e.user_id = u.id
+     LEFT JOIN session_stats ss ON ss.user_id = u.id
+     LEFT JOIN event_stats es ON es.user_id = u.id
      ${where}
-     GROUP BY u.id
      ORDER BY u.last_seen_at DESC NULLS LAST, u.created_at DESC`,
     params,
   );
