@@ -170,7 +170,7 @@ export function registerActivityRoutes(app: Express): void {
            COUNT(*) FILTER (
              WHERE u.last_activity_at >= NOW() - ($2::text || ' days')::interval
            )::int AS active_users,
-           COUNT(*) FILTER (WHERE u.first_login_at IS NULL)::int AS never_used,
+           COUNT(*) FILTER (WHERE u.first_login_at IS NULL)::int AS no_recorded_login,
            COUNT(*) FILTER (
              WHERE u.first_login_at IS NOT NULL
                AND (u.last_activity_at IS NULL OR u.last_activity_at < NOW() - INTERVAL '30 days')
@@ -201,7 +201,7 @@ export function registerActivityRoutes(app: Express): void {
         periodDays: days,
         totalUsers: users.rows[0]?.total_users || 0,
         activeUsers: users.rows[0]?.active_users || 0,
-        neverUsed: users.rows[0]?.never_used || 0,
+        noRecordedLogin: users.rows[0]?.no_recorded_login || 0,
         inactive30d: users.rows[0]?.inactive_30d || 0,
         sessions: sessions.rows[0]?.sessions || 0,
         activeSeconds: Number(sessions.rows[0]?.active_seconds || 0),
