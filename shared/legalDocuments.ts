@@ -16,12 +16,18 @@ export interface PublishedLegalDocument extends LegalDocumentVersion {
   effectiveAt: string;
 }
 
-export type LegalAcceptanceType = "accept_terms" | "acknowledge_privacy";
+export type LegalAcceptanceType =
+  | "accept_terms"
+  | "acknowledge_privacy"
+  | "accept_convenio"
+  | "accept_reglas_red"
+  | "accept_reglas_master";
 
 export interface LegalAcceptanceRecord {
   id: string;
   userId: string;
   userEmail: string;
+  userName?: string | null;
   documentId: string;
   document: string;
   version: string;
@@ -39,6 +45,29 @@ export function shouldShowFormalizationNotice(role?: string | null): boolean {
   return role === "broker" || role === "master_broker";
 }
 
+export function isRoleSubjectToFormalization(role?: string | null): boolean {
+  return role === "broker" || role === "master_broker";
+}
+
+export function getRequiredFormalizationDocuments(role?: string | null): string[] {
+  if (role === "broker") {
+    return ["convenio", "reglas-red"];
+  }
+  if (role === "master_broker") {
+    return ["convenio", "reglas-red", "reglas-master"];
+  }
+  return [];
+}
+
+export function maskEmail(email: string): string {
+  if (!email || !email.includes("@")) return email || "";
+  const [local, domain] = email.split("@");
+  if (local.length <= 2) {
+    return `${local[0]}***@${domain}`;
+  }
+  return `${local[0]}***${local[local.length - 1]}@${domain}`;
+}
+
 export function getExactDocumentUrl(document: string, version: string): string {
   return `/legal/${encodeURIComponent(document)}?version=${encodeURIComponent(version)}`;
 }
@@ -51,6 +80,10 @@ export function getDocumentTitle(document: string): string {
       return "Aviso de Privacidad Integral";
     case "convenio":
       return "Convenio de Colaboración";
+    case "reglas-red":
+      return "Reglas de la Red";
+    case "reglas-master":
+      return "Reglas Master Broker";
     default:
       return document;
   }
@@ -62,6 +95,12 @@ export function getAcceptanceTypeLabel(type: string): string {
       return "Aceptación de Términos";
     case "acknowledge_privacy":
       return "Reconocimiento del Aviso";
+    case "accept_convenio":
+      return "Aceptación de Convenio";
+    case "accept_reglas_red":
+      return "Aceptación de Reglas de la Red";
+    case "accept_reglas_master":
+      return "Aceptación de Reglas Master Broker";
     default:
       return type;
   }

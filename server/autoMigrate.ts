@@ -925,6 +925,7 @@ export async function runAutoMigration(): Promise<void> {
           id VARCHAR PRIMARY KEY DEFAULT gen_random_uuid(),
           user_id VARCHAR NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
           user_email VARCHAR NOT NULL,
+          user_name VARCHAR,
           document_id VARCHAR NOT NULL REFERENCES public.legal_document_versions(id),
           document VARCHAR(64) NOT NULL,
           version VARCHAR(32) NOT NULL,
@@ -934,6 +935,36 @@ export async function runAutoMigration(): Promise<void> {
           user_agent TEXT NOT NULL,
           accepted_at TIMESTAMP NOT NULL DEFAULT NOW()
         );
+
+        ALTER TABLE IF EXISTS public.legal_acceptances
+          ADD COLUMN IF NOT EXISTS user_name VARCHAR;
+
+        CREATE TABLE IF NOT EXISTS public.formalization_otp_requests (
+          id VARCHAR PRIMARY KEY DEFAULT gen_random_uuid(),
+          user_id VARCHAR NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
+          user_email VARCHAR NOT NULL,
+          user_name VARCHAR,
+          user_role VARCHAR(64) NOT NULL,
+          documents_snapshot JSONB NOT NULL,
+          code_hash VARCHAR(64) NOT NULL,
+          attempts INTEGER NOT NULL DEFAULT 0,
+          max_attempts INTEGER NOT NULL DEFAULT 5,
+          expires_at TIMESTAMP NOT NULL,
+          resend_available_at TIMESTAMP NOT NULL,
+          consumed BOOLEAN NOT NULL DEFAULT FALSE,
+          consumed_at TIMESTAMP,
+          invalidated BOOLEAN NOT NULL DEFAULT FALSE,
+          invalidated_at TIMESTAMP,
+          created_at TIMESTAMP NOT NULL DEFAULT NOW()
+        );
+
+        ALTER TABLE IF EXISTS public.formalization_otp_requests
+          ADD COLUMN IF NOT EXISTS invalidated BOOLEAN NOT NULL DEFAULT FALSE;
+        ALTER TABLE IF EXISTS public.formalization_otp_requests
+          ADD COLUMN IF NOT EXISTS invalidated_at TIMESTAMP;
+
+        CREATE INDEX IF NOT EXISTS idx_formalization_otp_user_id ON public.formalization_otp_requests(user_id);
+        CREATE INDEX IF NOT EXISTS idx_formalization_otp_created_at ON public.formalization_otp_requests(created_at);
 
         CREATE INDEX IF NOT EXISTS idx_legal_acceptances_user_id ON public.legal_acceptances(user_id);
         CREATE INDEX IF NOT EXISTS idx_legal_acceptances_document_id ON public.legal_acceptances(document_id);
