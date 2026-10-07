@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import MainLayout from "@/components/MainLayout";
 import Header from "@/components/Header";
+import BrokerNetworkTransitionDialog from "@/components/Users/BrokerNetworkTransitionDialog";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -120,7 +121,8 @@ import {
   Check,
   X,
   FileText,
-  AlertCircle
+  AlertCircle,
+  ArrowRightLeft
 } from "lucide-react";
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
@@ -292,6 +294,7 @@ export default function UserManagement() {
   const [targetOperationalStatus, setTargetOperationalStatus] = useState<UserOperationalStatus>("suspended");
   const [operationalStatusReason, setOperationalStatusReason] = useState<string>("");
   const [operationalStatusNotes, setOperationalStatusNotes] = useState<string>("");
+  const [networkTransitionUser, setNetworkTransitionUser] = useState<User | null>(null);
 
   const isSuperAdmin = currentUser?.role === 'super_admin';
   const isPlatformAdmin = currentUser?.role === 'admin' || isSuperAdmin;
@@ -1860,6 +1863,19 @@ export default function UserManagement() {
                         </td>
                         <td className="py-3 px-6 text-right">
                           <div className="flex items-center justify-end gap-1">
+                            {isSuperAdmin && u.role === 'broker' && (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => setNetworkTransitionUser(u)}
+                                className="h-8 text-xs text-blue-700 hover:text-blue-800 hover:bg-blue-50"
+                                title="Mover de red o convertir en Master Broker"
+                                data-testid={`button-network-transition-${u.id}`}
+                              >
+                                <ArrowRightLeft className="h-3.5 w-3.5 mr-1" />
+                                Red
+                              </Button>
+                            )}
                             {isSuperAdmin && (
                               <Button
                                 variant="ghost"
@@ -3793,6 +3809,22 @@ export default function UserManagement() {
           </DialogContent>
         </Dialog>
       )}
+
+      <BrokerNetworkTransitionDialog
+        broker={networkTransitionUser}
+        open={Boolean(networkTransitionUser)}
+        onOpenChange={(open) => {
+          if (!open) setNetworkTransitionUser(null);
+        }}
+        onSuccess={() => {
+          refetchLegacyUsers();
+          queryClient.invalidateQueries({ queryKey: ["/api/broker-network"] });
+          queryClient.invalidateQueries({ queryKey: ["/api/tenants"] });
+          if (selectedTenantId) {
+            queryClient.invalidateQueries({ queryKey: ["/api/tenants", selectedTenantId, "members"] });
+          }
+        }}
+      />
 
       {/* MASTER BROKER: CREATE STATUS REQUEST DIALOG */}
       {statusRequestModal.open && statusRequestModal.targetUser && (
