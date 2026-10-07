@@ -1,4 +1,4 @@
-import { randomBytes } from "node:crypto";
+import { randomBytes, randomUUID } from "node:crypto";
 import { and, desc, eq, or, sql } from "drizzle-orm";
 import { db } from "./db";
 import {
@@ -33,6 +33,151 @@ export class BrokerNetworkTransitionError extends Error {
     super(message);
     this.name = "BrokerNetworkTransitionError";
   }
+}
+
+export interface CreateBrokerWithOrganizationInput {
+  email: string;
+  firstName?: string | null;
+  lastName?: string | null;
+  password?: string | null;
+  authMethod?: string;
+  masterBrokerId?: string | null;
+  profileData?: unknown;
+  isActive?: boolean;
+}
+
+function brokerTenantName(input: { id: string; firstName?: string | null; lastName?: string | null }) {
+  const fullName = `${input.firstName || ""} ${input.lastName || ""}`.trim();
+  return fullName || `Broker ${input.id.slice(0, 8)}`;
+}
+
+function slugBase(value: string) {
+  return value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 38);
+}
+
+/**
+ * Canonical creation path for a Broker identity.
+ *
+ * The user, its own Broker tenant and owner membership are created in the same
+ * DB transaction. This prevents new brokers from becoming "orphan users"
+ * without an organization, which would make later network transitions unsafe.
+ */
+export async function createBrokerWithOrganization(input: CreateBrokerWithOrganizationInput) {
+  const normalizedEmail = input.email.trim().toLowerCase();
+  if (!normalizedEmail) {
+    throw new BrokerNetworkTransitionError("El email del broker es obligatorio.", 400, "EMAIL_REQUIRED");
+  }
+
+  return await db.transaction(async (tx: any) => {
+    await tx.execute(
+      sql`SELECT pg_advisory_xact_lock(hashtext(${`broker_create_${normalizedEmail}`}))`,
+    );
+
+    const [existing] = await tx
+      .select({ id: users.id })
+      .from(users)
+      .where(sql`LOWER(TRIM(${users.email})) = ${normalizedEmail}`)
+      .limit(1);
+
+    if (existing) {
+      throw new BrokerNetworkTransitionError(
+        "El email ya está registrado en el sistema.",
+        409,
+        "EMAIL_ALREADY_EXISTS",
+      );
+    }
+
+    const platformTenant = await getPlatformTenant(tx);
+    let parentTenantId = platformTenant.id;
+    let masterBrokerId: string | null = null;
+
+    if (input.masterBrokerId) {
+      const [master] = await tx
+        .select()
+        .from(users)
+        .where(eq(users.id, input.masterBrokerId))
+        .limit(1);
+
+      const masterStatus = master?.status || (master?.isActive ? "active" : "inactive");
+      if (!master || master.role !== "master_broker" || master.isActive === false || masterStatus !== ACTIVE_STATUS) {
+        throw new BrokerNetworkTransitionError(
+          "El Master Broker de alta no es válido o no está activo.",
+          409,
+          "MASTER_FOR_CREATION_INVALID",
+        );
+      }
+
+      const masterTenant = await getOwnedTenant(tx, master.id, "master_broker");
+      masterBrokerId = master.id;
+      parentTenantId = masterTenant.id;
+    }
+
+    const now = new Date();
+    const userId = randomUUID();
+    const [user] = await tx
+      .insert(users)
+      .values({
+        id: userId,
+        email: normalizedEmail,
+        firstName: input.firstName?.trim() || null,
+        lastName: input.lastName?.trim() || null,
+        password: input.password || null,
+        authMethod: input.authMethod || "local",
+        role: "broker",
+        masterBrokerId,
+        profileData: input.profileData || {},
+        isActive: input.isActive !== false,
+        status: input.isActive === false ? "inactive" : "active",
+        createdAt: now,
+        updatedAt: now,
+      })
+      .returning();
+
+    const name = brokerTenantName(user);
+    const base = slugBase(name) || "broker";
+    // User UUID suffix makes collision practically impossible and keeps email out of URLs.
+    const slug = `${base}-${user.id.slice(0, 8).toLowerCase()}`;
+
+    const [tenant] = await tx
+      .insert(tenants)
+      .values({
+        id: randomUUID(),
+        type: "broker",
+        name,
+        slug,
+        parentTenantId,
+        settings: {
+          legacyOwnerUserId: user.id,
+          createdFrom: "canonical_broker_creation",
+        },
+        isActive: input.isActive !== false,
+        createdAt: now,
+        updatedAt: now,
+      })
+      .returning();
+
+    const [member] = await tx
+      .insert(tenantMembers)
+      .values({
+        id: randomUUID(),
+        tenantId: tenant.id,
+        userId: user.id,
+        role: "owner",
+        canOriginate: true,
+        isActive: input.isActive !== false,
+        joinedAt: now,
+        updatedAt: now,
+      })
+      .returning();
+
+    return { user, tenant, member };
+  });
 }
 
 const ACTIVE_STATUS = "active";
