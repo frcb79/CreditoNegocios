@@ -4,7 +4,7 @@
 
 Los cambios de afiliación y la promoción de Broker a Master Broker son exclusivos de **Super Admin**.
 
-Un Master Broker puede suspender a un broker de su propia red y utilizar el flujo de solicitudes de estado ya existente, pero no puede:
+Un Master Broker puede **suspender o dar de baja** directamente a un broker de su propia red. La solicitud a Super Admin se conserva únicamente para pedir una **reactivación**. Un Master no puede:
 
 - apropiarse de un broker ya registrado;
 - moverlo desde otra red;
