@@ -89,9 +89,11 @@ export default function UserActivityPanel({
   });
 
   const detailQuery = useQuery<any>({
-    queryKey: ["/api/activity/users", selectedUserId, days],
+    queryKey: ["/api/activity/users", selectedUserId, days, tenantId],
     queryFn: async () => {
-      const res = await apiRequest("GET", `/api/activity/users/${selectedUserId}?days=${days}`);
+      const params = new URLSearchParams({ days });
+      if (tenantId !== "all") params.set("tenantId", tenantId);
+      const res = await apiRequest("GET", `/api/activity/users/${selectedUserId}?${params.toString()}`);
       return res.json();
     },
     enabled: Boolean(selectedUserId),
