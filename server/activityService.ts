@@ -81,6 +81,24 @@ export async function resolveActivityTenant(
     if (role === "super_admin" || role === "admin") {
       const tenant = await pool.query(`SELECT id FROM public.tenants WHERE id = $1 LIMIT 1`, [requestedTenantId]);
       if (tenant.rowCount) return requestedTenantId;
+    } else if (role === "master_broker") {
+      const networkTenant = await pool.query(
+        `WITH RECURSIVE roots AS (
+           SELECT tenant_id AS id
+           FROM public.tenant_members
+           WHERE user_id = $1 AND is_active = TRUE
+         ),
+         network AS (
+           SELECT id FROM roots
+           UNION
+           SELECT t.id
+           FROM public.tenants t
+           JOIN network n ON t.parent_tenant_id = n.id
+         )
+         SELECT id FROM network WHERE id = $2 LIMIT 1`,
+        [userId, requestedTenantId],
+      );
+      if (networkTenant.rowCount) return requestedTenantId;
     } else {
       const membership = await pool.query(
         `SELECT tenant_id FROM public.tenant_members
@@ -124,8 +142,12 @@ export async function recordUserActivityEvent(input: EventInput): Promise<void> 
       [input.userId],
     );
     if (activeSession.rowCount) {
-      sessionId = activeSession.rows[0].id;
-      tenantId = tenantId || activeSession.rows[0].tenant_id || null;
+      const activeTenantId = activeSession.rows[0].tenant_id || null;
+      const tenantMismatch = Boolean(tenantId && activeTenantId && tenantId !== activeTenantId);
+      if (!tenantMismatch) {
+        sessionId = activeSession.rows[0].id;
+        tenantId = tenantId || activeTenantId;
+      }
     }
   }
 
