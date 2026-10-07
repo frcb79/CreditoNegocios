@@ -1911,12 +1911,14 @@ export class MemStorage implements IStorage {
   async createCredit(creditData: InsertCredit): Promise<Credit> {
     const id = randomUUID();
     const brokerAtOrigination = this.users.get(creditData.brokerId);
-    const originMasterBrokerId =
-      brokerAtOrigination?.role === "master_broker"
-        ? brokerAtOrigination.id
-        : brokerAtOrigination?.role === "broker"
-          ? brokerAtOrigination.masterBrokerId || null
-          : null;
+    let originMasterBrokerId: string | null = null;
+    if (brokerAtOrigination?.role === "master_broker") {
+      originMasterBrokerId = brokerAtOrigination.id;
+    } else if (brokerAtOrigination?.role === "broker" && brokerAtOrigination.masterBrokerId) {
+      const parentAtOrigination = this.users.get(brokerAtOrigination.masterBrokerId);
+      originMasterBrokerId =
+        parentAtOrigination?.role === "master_broker" ? parentAtOrigination.id : null;
+    }
 
     const credit: Credit = {
       ...creditData,
