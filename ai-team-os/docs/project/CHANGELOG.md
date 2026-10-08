@@ -85,3 +85,25 @@ Actualizar cada vez que se completa una feature.
 - **Validación QA:**
 	- Suite automatizada: `tests/unit/institution-offers-versioning.test.ts` (8/8 passing).
 	- Compilación TypeScript (`npm run check`): 0 errores.
+
+## 2026-10-08 — Corrección A1.1: Consolidación Canónica en institution_products y Hardening Transaccional
+
+- **Rama:** `feat/institution-offers-versioning-a1`
+- **Consolidación Canónica (Sin Duplicidad de Catálogos):**
+	- `institution_products` enriquecida aditivamente como la entidad canónica única de ofertas (`name`, `product_type`, `slug`, `description`, `status`, `current_version_number`).
+	- `institution_product_versions`: tabla de versiones aditivas e inmutables vinculada a `institution_products.id`.
+	- Mantenimiento de vistas SQL y aliases de TypeScript (`financialInstitutionOffers`, `financialInstitutionOfferVersions`) para preservación total retrocompatible.
+- **Ciclo de Vida y Gate de Calidad Comercial:**
+	- Las nuevas ofertas y versiones inician obligatoriamente en estado `draft`.
+	- `validateMinimumPublishConditions`: valida montos (`minAmount > 0`, `maxAmount >= minAmount`), tasas (`minInterestRate > 0`, `maxInterestRate >= minInterestRate`), plazos (`minTermMonths > 0`), perfiles obligatorios en `requirements.targetProfiles`, lista de documentos en `requiredDocuments` y `changeReason`.
+- **Transacciones Atómicas y Concurrencia:**
+	- `publishInstitutionProductVersion` en `DbStorage` ejecutado en `db.transaction()` con bloqueo de fila `SELECT FOR UPDATE` sobre `institution_products`.
+	- Garantía física en PostgreSQL mediante índice parcial único: `CREATE UNIQUE INDEX "ipv_published_unique" ON institution_product_versions (institution_product_id) WHERE status = 'published'`. Máximo una versión vigente por oferta.
+- **Integridad Legal y Documentación en Hash:**
+	- `computeInstitutionProductVersionHash` incluye `requiredDocuments` ordenado alfabéticamente para reproducibilidad determinista del SHA-256.
+	- Eliminación destructiva bloqueada: prohibido eliminar versiones con estado `published` o `superseded`, o eliminar ofertas con historial publicado.
+- **Validación QA:**
+	- Suite automatizada: `tests/unit/institution-offers-versioning.test.ts` (12/12 passing).
+	- Suite de regresión: `tests/unit/storage.test.ts` (1/1 passing).
+	- Compilación TypeScript (`npm run check`): 0 errores.
+	- Empaquetado backend (`npm run build:server`): 0 errores.

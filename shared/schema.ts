@@ -548,85 +548,78 @@ export const productTemplates = pgTable("product_templates", {
   updatedAt: timestamp("updated_at").defaultNow(),
 });
 
-// Institution Products - Templates personalizados por cada financiera
+// Institution Products - Catálogo canónico de ofertas por financiera (Bloque A1 / Corrección A1.1)
+// Permite múltiples ofertas del mismo tipo por financiera con versionado aditivo histórico
 export const institutionProducts = pgTable("institution_products", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  templateId: varchar("template_id").notNull().references(() => productTemplates.id),
-  institutionId: varchar("institution_id").notNull().references(() => financialInstitutions.id),
+  templateId: varchar("template_id").references(() => productTemplates.id),
+  institutionId: varchar("institution_id").notNull().references(() => financialInstitutions.id, { onDelete: 'cascade' }),
   
-  // Personalización por financiera
-  customName: varchar("custom_name"), // Nombre personalizado (opcional)
+  // Identificación comercial y personalización
+  name: varchar("name"), // Nombre comercial de la oferta
+  customName: varchar("custom_name"), // Nombre personalizado / legacy
+  productType: varchar("product_type"), // Permite múltiples ofertas del mismo tipo por financiera
+  slug: varchar("slug"),
+  description: text("description"),
   configuration: jsonb("configuration").default('{}'), // Configuración específica de la financiera
   
-  // Perfiles de cliente que esta financiera acepta para este producto (puede restringir del template padre)
-  targetProfiles: text("target_profiles").array(), // Hereda del template, puede restringir más
+  // Perfiles de cliente que esta financiera acepta para este producto
+  targetProfiles: text("target_profiles").array(),
   
   // Variables activas para esta financiera
-  activeVariables: jsonb("active_variables").default('{}'), // Qué variables usa y cómo
+  activeVariables: jsonb("active_variables").default('{}'),
   
-  // Estado y metadata
-  isActive: boolean("is_active").default(true),
-  createdBy: varchar("created_by").notNull().references(() => users.id),
-  createdAt: timestamp("created_at").defaultNow(),
-  updatedAt: timestamp("updated_at").defaultNow(),
-});
-
-// Financial Institution Offers - Ofertas comerciales configuradas por financiera (Bloque A1)
-// Permite múltiples ofertas del mismo tipo por financiera con versionado aditivo histórico
-export const financialInstitutionOffers = pgTable("financial_institution_offers", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  institutionId: varchar("institution_id").notNull().references(() => financialInstitutions.id, { onDelete: 'cascade' }),
-  templateId: varchar("template_id").references(() => productTemplates.id),
-  institutionProductId: varchar("institution_product_id").references(() => institutionProducts.id), // Compatibilidad aditiva con modelo previo
-  
-  // Identificación comercial
-  name: varchar("name").notNull(), // Ej. "Crédito Simple PyME Preferencial", "Línea Ágil Santander"
-  slug: varchar("slug"),
-  productType: varchar("product_type").notNull(), // Permite múltiples ofertas del mismo productType
-  description: text("description"),
-  
-  // Versionado activo
+  // Ciclo de vida de la oferta y versionado canónico
+  status: varchar("status").notNull().default("draft"), // "draft", "published", "archived"
   currentVersionNumber: integer("current_version_number").notNull().default(1),
-  
-  // Estado y auditoría
+
+  // Estado y metadata
   isActive: boolean("is_active").default(true),
   createdBy: varchar("created_by").references(() => users.id),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 }, (table) => [
-  index("fio_institution_idx").on(table.institutionId),
-  index("fio_template_idx").on(table.templateId),
-  index("fio_product_type_idx").on(table.productType),
-  index("fio_is_active_idx").on(table.isActive),
+  index("inst_prod_institution_idx").on(table.institutionId),
+  index("inst_prod_template_idx").on(table.templateId),
+  index("inst_prod_type_idx").on(table.productType),
+  index("inst_prod_status_idx").on(table.status),
+  index("inst_prod_active_idx").on(table.isActive),
 ]);
 
-// Financial Institution Offer Versions - Historial inmutable y aditivo por versión de oferta
-export const financialInstitutionOfferVersions = pgTable("financial_institution_offer_versions", {
+// Institution Product Versions - Historial inmutable y aditivo por versión de oferta (Bloque A1.1)
+export const institutionProductVersions = pgTable("institution_product_versions", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  offerId: varchar("offer_id").notNull().references(() => financialInstitutionOffers.id, { onDelete: 'cascade' }),
+  institutionProductId: varchar("institution_product_id").notNull().references(() => institutionProducts.id, { onDelete: 'cascade' }),
   versionNumber: integer("version_number").notNull().default(1),
-  status: varchar("status").notNull().default("active"), // "draft", "active", "superseded", "archived"
+  status: varchar("status").notNull().default("draft"), // "draft", "published", "superseded", "archived"
   
   // Vigencia
-  effectiveFrom: timestamp("effective_from").defaultNow(),
+  effectiveFrom: timestamp("effective_from"),
   effectiveTo: timestamp("effective_to"),
   
   // Parámetros y condiciones comerciales
   conditions: jsonb("conditions").default('{}'), // Tasas min/max/default, plazos, montos min/max, amortización, comisiones cliente
   requirements: jsonb("requirements").default('{}'), // Perfiles aceptados, facturación min, antigüedad min, buró
   requiredDocuments: text("required_documents").array().default(sql`ARRAY[]::text[]`),
-  variablesConfiguration: jsonb("variables_configuration").default('{}'), // Configuración de variables canónicas
+  variablesConfiguration: jsonb("variables_configuration").default('{}'),
   
-  // Auditoría e integridad
+  // Auditoría e integridad legal
   changeReason: text("change_reason"),
   versionHash: varchar("version_hash"),
+  publishedAt: timestamp("published_at"),
+  publishedBy: varchar("published_by").references(() => users.id),
   createdBy: varchar("created_by").references(() => users.id),
   createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
 }, (table) => [
-  index("fio_versions_offer_idx").on(table.offerId),
-  uniqueIndex("fio_versions_offer_version_unique").on(table.offerId, table.versionNumber),
-  index("fio_versions_status_idx").on(table.status),
+  index("ipv_product_id_idx").on(table.institutionProductId),
+  uniqueIndex("ipv_product_version_unique").on(table.institutionProductId, table.versionNumber),
+  index("ipv_status_idx").on(table.status),
 ]);
+
+// Aliases para compatibilidad retrocompatible
+export const financialInstitutionOffers = institutionProducts;
+export const financialInstitutionOfferVersions = institutionProductVersions;
 
 // Products - Productos simples creados por super admin (LEGACY - mantener por compatibilidad)
 export const products = pgTable("products", {
@@ -1054,16 +1047,15 @@ export const insertInstitutionProductSchema = createInsertSchema(institutionProd
   updatedAt: true,
 });
 
-export const insertFinancialInstitutionOfferSchema = createInsertSchema(financialInstitutionOffers).omit({
+export const insertInstitutionProductVersionSchema = createInsertSchema(institutionProductVersions).omit({
   id: true,
   createdAt: true,
   updatedAt: true,
 });
 
-export const insertFinancialInstitutionOfferVersionSchema = createInsertSchema(financialInstitutionOfferVersions).omit({
-  id: true,
-  createdAt: true,
-});
+// Aliases retrocompatibles para ofertas
+export const insertFinancialInstitutionOfferSchema = insertInstitutionProductSchema;
+export const insertFinancialInstitutionOfferVersionSchema = insertInstitutionProductVersionSchema;
 
 export const insertProductSchema = createInsertSchema(products).omit({
   id: true,
@@ -1122,7 +1114,14 @@ export type InsertProductTemplate = z.infer<typeof insertProductTemplateSchema>;
 export type ProductTemplate = typeof productTemplates.$inferSelect;
 
 export type InsertInstitutionProduct = z.infer<typeof insertInstitutionProductSchema>;
-export type InstitutionProduct = typeof institutionProducts.$inferSelect;
+export type InstitutionProduct = typeof institutionProducts.$inferSelect & {
+  institutionProductId?: string;
+};
+
+export type InsertInstitutionProductVersion = z.infer<typeof insertInstitutionProductVersionSchema>;
+export type InstitutionProductVersion = typeof institutionProductVersions.$inferSelect & {
+  offerId?: string;
+};
 
 // Institution Product with template data from JOIN
 export type InstitutionProductWithTemplate = InstitutionProduct & {
@@ -1138,16 +1137,18 @@ export type InstitutionProductWithTemplate = InstitutionProduct & {
   } | null;
 };
 
-// Financial Institution Offer types (Bloque A1)
-export type InsertFinancialInstitutionOffer = z.infer<typeof insertFinancialInstitutionOfferSchema>;
-export type FinancialInstitutionOffer = typeof financialInstitutionOffers.$inferSelect;
-export type InsertFinancialInstitutionOfferVersion = z.infer<typeof insertFinancialInstitutionOfferVersionSchema>;
-export type FinancialInstitutionOfferVersion = typeof financialInstitutionOfferVersions.$inferSelect;
+// Aliases canónicos y de oferta (Bloque A1 / Corrección A1.1)
+export type FinancialInstitutionOffer = InstitutionProduct;
+export type InsertFinancialInstitutionOffer = InsertInstitutionProduct;
+export type FinancialInstitutionOfferVersion = InstitutionProductVersion;
+export type InsertFinancialInstitutionOfferVersion = InsertInstitutionProductVersion;
 
-export type FinancialInstitutionOfferWithVersion = FinancialInstitutionOffer & {
-  currentVersion?: FinancialInstitutionOfferVersion;
-  versions?: FinancialInstitutionOfferVersion[];
+export type InstitutionProductWithVersion = InstitutionProduct & {
+  currentVersion?: InstitutionProductVersion;
+  versions?: InstitutionProductVersion[];
 };
+
+export type FinancialInstitutionOfferWithVersion = InstitutionProductWithVersion;
 
 export type InsertProduct = z.infer<typeof insertProductSchema>;
 export type Product = typeof products.$inferSelect;

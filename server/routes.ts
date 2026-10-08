@@ -6977,7 +6977,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       // Auto-copy targetProfiles from template if not provided
       let targetProfiles = bodyData.targetProfiles;
-      if (!targetProfiles || targetProfiles.length === 0) {
+      if ((!targetProfiles || targetProfiles.length === 0) && bodyData.templateId) {
         const template = await storage.getProductTemplate(bodyData.templateId);
         if (template && template.targetProfiles && template.targetProfiles.length > 0) {
           targetProfiles = template.targetProfiles;

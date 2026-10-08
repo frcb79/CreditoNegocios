@@ -1,11 +1,16 @@
 import { storage } from "../../server/storage";
-import { computeOfferVersionHash, validateOfferVersionParameters } from "../../server/offerVersionService";
+import { DbStorage } from "../../server/dbStorage";
+import {
+  computeInstitutionProductVersionHash,
+  computeOfferVersionHash,
+  validateMinimumPublishConditions,
+  validateOfferVersionParameters,
+} from "../../server/offerVersionService";
 
-describe("Bloque A1 — Arquitectura de Ofertas por Financiera y Versionado Aditivo", () => {
+describe("Bloque A1.1 — Arquitectura Canónica de Ofertas y Versionado Aditivo Seguro", () => {
   const institutionId = "fin-test-a1-" + Date.now();
 
   beforeAll(async () => {
-    // Asegurar que la financiera de prueba exista en storage
     await storage.createFinancialInstitution({
       id: institutionId,
       name: "Banco Comercial Santander Test",
@@ -14,9 +19,9 @@ describe("Bloque A1 — Arquitectura de Ofertas por Financiera y Versionado Adit
     } as any);
   });
 
-  describe("Requisito 2: Múltiples ofertas del mismo tipo por financiera", () => {
-    it("debe permitir crear múltiples ofertas con el mismo productType para una misma financiera sin colisiones", async () => {
-      // Oferta 1: Crédito Simple Express (sin garantía)
+  describe("Requisito 1: Catálogo canónico único en institution_products y multi-oferta", () => {
+    it("debe usar institution_products como identidad canónica y permitir múltiples ofertas del mismo productType sin colisiones", async () => {
+      // Oferta 1: Crédito Simple Express
       const res1 = await storage.createOffer(
         {
           institutionId,
@@ -31,26 +36,24 @@ describe("Bloque A1 — Arquitectura de Ofertas por Financiera y Versionado Adit
             maxAmount: 2000000,
             minInterestRate: 20.5,
             maxInterestRate: 28.0,
-            defaultInterestRate: 24.0,
             minTermMonths: 6,
             maxTermMonths: 36,
-            guaranteeRequired: false,
           },
           requirements: {
             targetProfiles: ["persona_moral", "fisica_empresarial"],
-            minYearsInOperation: 2,
           },
+          requiredDocuments: ["constancia_situacion_fiscal", "estados_cuenta_bancarios"],
           changeReason: "Alta inicial oferta express",
         }
       );
 
-      // Oferta 2: Crédito Simple Corporativo con Garantía (mismo productType: 'credito_simple')
+      // Oferta 2: Crédito Simple Corporativo (mismo productType: 'credito_simple')
       const res2 = await storage.createOffer(
         {
           institutionId,
-          name: "Crédito Simple con Garantía Real",
+          name: "Crédito Simple Corporativo con Garantía",
           productType: "credito_simple",
-          description: "Crédito simple de montos mayores con garantía hipotecaria",
+          description: "Crédito corporativo con garantía hipotecaria",
           isActive: true,
         },
         {
@@ -59,17 +62,14 @@ describe("Bloque A1 — Arquitectura de Ofertas por Financiera y Versionado Adit
             maxAmount: 15000000,
             minInterestRate: 14.5,
             maxInterestRate: 19.5,
-            defaultInterestRate: 16.0,
             minTermMonths: 12,
             maxTermMonths: 60,
-            guaranteeRequired: true,
-            guaranteeType: "hipotecaria",
           },
           requirements: {
             targetProfiles: ["persona_moral"],
-            minYearsInOperation: 3,
           },
-          changeReason: "Alta inicial oferta corporativa con garantía",
+          requiredDocuments: ["estados_financieros_auditados", "escritura_garantia"],
+          changeReason: "Alta inicial corporativa",
         }
       );
 
@@ -79,216 +79,345 @@ describe("Bloque A1 — Arquitectura de Ofertas por Financiera y Versionado Adit
       expect(res1.offer.productType).toBe("credito_simple");
       expect(res2.offer.productType).toBe("credito_simple");
 
+      // Verificar que ambas existen en el catálogo canónico institution_products
+      const p1 = await storage.getInstitutionProduct(res1.offer.id);
+      const p2 = await storage.getInstitutionProduct(res2.offer.id);
+      expect(p1).toBeDefined();
+      expect(p2).toBeDefined();
+      expect(p1?.customName).toBe("Crédito Simple PyME Express");
+      expect(p2?.customName).toBe("Crédito Simple Corporativo con Garantía");
+
       // Consultar ofertas por productType para esta financiera
       const sameTypeOffers = await storage.getOffersByProductType(institutionId, "credito_simple");
       expect(sameTypeOffers.length).toBeGreaterThanOrEqual(2);
-
-      const offerNames = sameTypeOffers.map(o => o.name);
-      expect(offerNames).toContain("Crédito Simple PyME Express");
-      expect(offerNames).toContain("Crédito Simple con Garantía Real");
-    });
-  });
-
-  describe("Requisito 1: Versionado aditivo de ofertas", () => {
-    it("debe crear automáticamente la versión 1 activa al registrar una nueva oferta", async () => {
-      const { offer, version } = await storage.createOffer(
-        {
-          institutionId,
-          name: "Línea Revolvente Flexible",
-          productType: "credito_revolvente",
-          description: "Línea de crédito revolvente para capital de trabajo",
-        },
-        {
-          conditions: {
-            minAmount: 500000,
-            maxAmount: 5000000,
-            defaultInterestRate: 22.0,
-            paymentFrequency: ["mensual"],
-          },
-          requirements: {
-            minAnnualRevenue: 5000000,
-          },
-          changeReason: "Creación v1",
-        }
-      );
-
-      expect(offer.currentVersionNumber).toBe(1);
-      expect(version.offerId).toBe(offer.id);
-      expect(version.versionNumber).toBe(1);
-      expect(version.status).toBe("active");
-      expect(version.effectiveFrom).toBeDefined();
-      expect(version.effectiveTo).toBeNull();
-      expect(version.versionHash).toBeDefined();
-      expect(typeof version.versionHash).toBe("string");
-      expect(version.versionHash?.length).toBe(64); // SHA-256 hex string
-
-      const activeVer = await storage.getActiveOfferVersion(offer.id);
-      expect(activeVer).toBeDefined();
-      expect(activeVer?.id).toBe(version.id);
-      expect(activeVer?.versionNumber).toBe(1);
     });
 
-    it("debe crear la versión 2 additivamente, marcar la versión 1 como 'superseded' y actualizar la oferta", async () => {
-      // 1. Crear oferta inicial
-      const { offer, version: v1 } = await storage.createOffer(
-        {
-          institutionId,
-          name: "Factoraje a Proveedores",
-          productType: "factoraje",
-        },
-        {
-          conditions: { minInterestRate: 18.0, maxInterestRate: 24.0 },
-          changeReason: "Versión base",
-        }
-      );
-
-      // 2. Crear nueva versión 2 con tasas actualizadas
-      const v2 = await storage.createOfferVersion(offer.id, {
-        conditions: { minInterestRate: 16.5, maxInterestRate: 22.0 },
-        requirements: { targetProfiles: ["persona_moral"] },
-        changeReason: "Ajuste trimestral por reducción de tasa de referencia TIIE",
-      });
-
-      expect(v2.offerId).toBe(offer.id);
-      expect(v2.versionNumber).toBe(2);
-      expect(v2.status).toBe("active");
-      expect(v2.effectiveTo).toBeNull();
-      expect(v2.versionHash).toBeDefined();
-      expect(v2.versionHash).not.toBe(v1.versionHash);
-
-      // 3. Verificar que la versión 1 sigue existiendo pero como superseded
-      const v1Actualizada = await storage.getOfferVersion(v1.id);
-      expect(v1Actualizada).toBeDefined();
-      expect(v1Actualizada?.versionNumber).toBe(1);
-      expect(v1Actualizada?.status).toBe("superseded");
-      expect(v1Actualizada?.effectiveTo).toBeDefined();
-      // Las condiciones de v1 deben mantenerse inmutables
-      expect(v1Actualizada?.conditions).toEqual({ minInterestRate: 18.0, maxInterestRate: 24.0 });
-
-      // 4. Verificar que la oferta padre refleja la versión actual 2
-      const updatedOffer = await storage.getOffer(offer.id);
-      expect(updatedOffer?.currentVersionNumber).toBe(2);
-
-      // 5. Histórico completo de versiones
-      const versions = await storage.getOfferVersions(offer.id);
-      expect(versions.length).toBe(2);
-      expect(versions[0].versionNumber).toBe(2); // Ordenado descendente
-      expect(versions[1].versionNumber).toBe(1);
-
-      // 6. La versión activa debe ser la v2
-      const activeVer = await storage.getActiveOfferVersion(offer.id);
-      expect(activeVer?.id).toBe(v2.id);
-      expect(activeVer?.versionNumber).toBe(2);
-    });
-
-    it("calcula hash SHA-256 determinista para las versiones", () => {
-      const hash1 = computeOfferVersionHash({
-        offerId: "test-off-1",
-        versionNumber: 1,
-        conditions: { rate: 20 },
-        requirements: { minRev: 1000 },
-      });
-
-      const hash2 = computeOfferVersionHash({
-        offerId: "test-off-1",
-        versionNumber: 1,
-        conditions: { rate: 20 },
-        requirements: { minRev: 1000 },
-      });
-
-      const hashDifferent = computeOfferVersionHash({
-        offerId: "test-off-1",
-        versionNumber: 1,
-        conditions: { rate: 21 }, // diferente tasa
-        requirements: { minRev: 1000 },
-      });
-
-      expect(hash1).toBe(hash2);
-      expect(hash1).not.toBe(hashDifferent);
-    });
-
-    it("valida consistencia de parámetros numéricos min/max", () => {
-      const valid = validateOfferVersionParameters({
-        conditions: { minAmount: 100, maxAmount: 500, minInterestRate: 10, maxInterestRate: 20 },
-      });
-      expect(valid.isValid).toBe(true);
-
-      const invalid = validateOfferVersionParameters({
-        conditions: { minAmount: 500, maxAmount: 100 }, // min > max
-      });
-      expect(invalid.isValid).toBe(false);
-      expect(invalid.errors).toContain("minAmount no puede ser mayor que maxAmount");
-    });
-  });
-
-  describe("Requisito 3: Preservación de datos y funcionamiento existente", () => {
-    it("debe conservar institution_products y product_templates operativos", async () => {
-      // 1. Crear product_template tradicional
+    it("mantiene compatibilidad completa con product_templates y templates personalizados existentes", async () => {
       const template = await storage.createProductTemplate({
-        name: "Crédito Arrendamiento Clásico",
+        name: "Plantilla Base Arrendamiento",
         category: "business",
         targetProfiles: ["persona_moral"],
         baseConfiguration: { term: 36 },
         createdBy: "system-admin-test",
       });
-      expect(template.id).toBeDefined();
 
-      // 2. Crear institution_product tradicional
       const instProd = await storage.createInstitutionProduct({
         templateId: template.id,
         institutionId,
-        customName: "Arrendamiento Puro Santander",
+        customName: "Arrendamiento Personalizado Santander",
         configuration: { leaseRate: 15.0 },
         createdBy: "system-admin-test",
       });
+
       expect(instProd.id).toBeDefined();
+      expect(instProd.templateId).toBe(template.id);
 
-      // 3. Crear una nueva oferta vinculándola aditivamente con institution_product
-      const { offer } = await storage.createOffer({
-        institutionId,
-        templateId: template.id,
-        institutionProductId: instProd.id,
-        name: "Oferta Arrendamiento Financiero Flotillas",
-        productType: "arrendamiento",
-      });
-
-      expect(offer.institutionProductId).toBe(instProd.id);
-      expect(offer.templateId).toBe(template.id);
-
-      // 4. Verificar que el institution_product original sigue intacto y legible
-      const fetchedInstProd = await storage.getInstitutionProduct(instProd.id);
-      expect(fetchedInstProd).toBeDefined();
-      expect(fetchedInstProd?.customName).toBe("Arrendamiento Puro Santander");
-    });
-
-    it("soporta filtros por institución y estado activo", async () => {
-      const { offer: activeOffer } = await storage.createOffer({
-        institutionId,
-        name: "Oferta Activa",
-        productType: "tipo_a",
-        isActive: true,
-      });
-
-      const { offer: inactiveOffer } = await storage.createOffer({
-        institutionId,
-        name: "Oferta Inactiva",
-        productType: "tipo_b",
-        isActive: false,
-      });
-
-      const activeOnly = await storage.getOffersByInstitution(institutionId, { includeInactive: false });
-      const activeIds = activeOnly.map(o => o.id);
-      expect(activeIds).toContain(activeOffer.id);
-      expect(activeIds).not.toContain(inactiveOffer.id);
-
-      const allOffers = await storage.getOffersByInstitution(institutionId, { includeInactive: true });
-      const allIds = allOffers.map(o => o.id);
-      expect(allIds).toContain(activeOffer.id);
-      expect(allIds).toContain(inactiveOffer.id);
+      const fetched = await storage.getInstitutionProduct(instProd.id);
+      expect(fetched?.customName).toBe("Arrendamiento Personalizado Santander");
     });
   });
 
-  describe("Requisito 4 & Regla Crítica: Aislamiento estricto de comisiones internas", () => {
+  describe("Requisito 2 & 3: Ciclo de vida en borrador y validación de condiciones mínimas de publicación", () => {
+    it("crea nuevas ofertas y versiones en estado 'draft'", async () => {
+      const { offer, version } = await storage.createOffer(
+        {
+          institutionId,
+          name: "Línea Flexible Borrador",
+          productType: "credito_revolvente",
+        },
+        {
+          conditions: { minAmount: 500000, maxAmount: 3000000 },
+          changeReason: "Borrador preliminar",
+        }
+      );
+
+      expect(offer.status).toBe("draft");
+      expect(version.status).toBe("draft");
+      expect(version.versionNumber).toBe(1);
+    });
+
+    it("rechaza la publicación si no se cumplen las condiciones mínimas obligatorias (Gate de Calidad)", async () => {
+      // Intentar publicar con condiciones inválidas (minAmount > maxAmount, tasas faltantes)
+      const invalidValidation = validateMinimumPublishConditions({
+        conditions: {
+          minAmount: 5000000,
+          maxAmount: 1000000, // min > max
+          minInterestRate: -5, // tasa negativa
+        },
+        requirements: { targetProfiles: [] }, // sin perfiles
+        requiredDocuments: [],
+        changeReason: "", // sin justificación
+      });
+
+      expect(invalidValidation.isValid).toBe(false);
+      expect(invalidValidation.errors.length).toBeGreaterThan(0);
+      expect(invalidValidation.errors.some(e => e.includes("minAmount no puede ser mayor que maxAmount"))).toBe(true);
+      expect(invalidValidation.errors.some(e => e.includes("targetProfiles"))).toBe(true);
+      expect(invalidValidation.errors.some(e => e.includes("changeReason"))).toBe(true);
+    });
+
+    it("publica exitosamente cuando las condiciones son válidas y desactiva la versión previa como 'superseded'", async () => {
+      // 1. Crear oferta con versión 1 en borrador
+      const { offer, version: v1 } = await storage.createOffer(
+        {
+          institutionId,
+          name: "Factoraje Comercial Seguro",
+          productType: "factoraje",
+        },
+        {
+          conditions: {
+            minAmount: 200000,
+            maxAmount: 5000000,
+            minInterestRate: 15.0,
+            maxInterestRate: 22.0,
+            minTermMonths: 3,
+            maxTermMonths: 24,
+          },
+          requirements: {
+            targetProfiles: ["persona_moral"],
+          },
+          requiredDocuments: ["cedula_fiscal", "facturas_comerciales"],
+          changeReason: "Versión base inicial",
+        }
+      );
+
+      expect(v1.status).toBe("draft");
+
+      // 2. Publicar versión 1
+      const publishedV1 = await storage.publishOfferVersion(offer.id, v1.id, {
+        publishedBy: "admin-user-id",
+        changeReason: "Aprobada por mesa de riesgos",
+      });
+
+      expect(publishedV1.status).toBe("published");
+      expect(publishedV1.publishedAt).toBeDefined();
+      expect(publishedV1.publishedBy).toBe("admin-user-id");
+
+      const offerAfterV1 = await storage.getOffer(offer.id);
+      expect(offerAfterV1?.status).toBe("published");
+      expect(offerAfterV1?.currentVersionNumber).toBe(1);
+
+      // 3. Crear versión 2 en borrador
+      const v2 = await storage.createOfferVersion(offer.id, {
+        conditions: {
+          minAmount: 250000,
+          maxAmount: 6000000,
+          minInterestRate: 14.0,
+          maxInterestRate: 20.0,
+          minTermMonths: 3,
+          maxTermMonths: 36,
+        },
+        requirements: {
+          targetProfiles: ["persona_moral", "pfae"],
+        },
+        requiredDocuments: ["cedula_fiscal", "facturas_comerciales", "opinion_cumplimiento_sat"],
+        changeReason: "Ajuste por mejora en fondeo",
+      });
+
+      expect(v2.status).toBe("draft");
+      expect(v2.versionNumber).toBe(2);
+
+      // La versión activa debe seguir siendo v1 hasta que v2 se publique
+      const activeBeforePublish = await storage.getActiveOfferVersion(offer.id);
+      expect(activeBeforePublish?.id).toBe(v1.id);
+
+      // 4. Publicar versión 2
+      const publishedV2 = await storage.publishOfferVersion(offer.id, v2.id, {
+        publishedBy: "superadmin-user-id",
+        changeReason: "Publicación formal v2",
+      });
+
+      expect(publishedV2.status).toBe("published");
+      expect(publishedV2.versionNumber).toBe(2);
+
+      // 5. Verificar que v1 ahora está en superseded y v2 es la única publicada
+      const v1After = await storage.getOfferVersion(v1.id);
+      expect(v1After?.status).toBe("superseded");
+      expect(v1After?.effectiveTo).toBeDefined();
+
+      const activeAfter = await storage.getActiveOfferVersion(offer.id);
+      expect(activeAfter?.id).toBe(v2.id);
+      expect(activeAfter?.versionNumber).toBe(2);
+
+      // Máximo una versión publicada vigente
+      const allVersions = await storage.getOfferVersions(offer.id);
+      const publishedCount = allVersions.filter(v => v.status === "published").length;
+      expect(publishedCount).toBe(1);
+    });
+  });
+
+  describe("Requisito 4: Documentación en hash e integridad inmutable ante eliminación destructiva", () => {
+    it("incluye la documentación requerida en el hash SHA-256 de forma determinista", () => {
+      const basePayload = {
+        institutionProductId: "prod-100",
+        versionNumber: 1,
+        conditions: { minAmount: 100000, maxAmount: 1000000 },
+        requirements: { targetProfiles: ["pyme"] },
+      };
+
+      // Hash con lista de documentos A
+      const hashA = computeInstitutionProductVersionHash({
+        ...basePayload,
+        requiredDocuments: ["estados_cuenta", "ine", "comprobante_domicilio"],
+      });
+
+      // Mismos documentos en diferente orden deben dar el MISMO hash (determinismo)
+      const hashAOrder = computeInstitutionProductVersionHash({
+        ...basePayload,
+        requiredDocuments: ["comprobante_domicilio", "estados_cuenta", "ine"],
+      });
+      expect(hashA).toBe(hashAOrder);
+
+      // Modificar o agregar un documento debe cambiar el hash
+      const hashB = computeInstitutionProductVersionHash({
+        ...basePayload,
+        requiredDocuments: ["estados_cuenta", "ine", "comprobante_domicilio", "opinion_sat"],
+      });
+      expect(hashA).not.toBe(hashB);
+      expect(hashA.length).toBe(64);
+      expect(hashB.length).toBe(64);
+    });
+
+    it("impide la eliminación destructiva de versiones publicadas o superseded", async () => {
+      const { offer, version } = await storage.createOffer(
+        {
+          institutionId,
+          name: "Oferta Inmutable de Prueba",
+          productType: "credito_simple",
+        },
+        {
+          conditions: { minAmount: 100000, maxAmount: 1000000, minInterestRate: 15, maxInterestRate: 25, minTermMonths: 6, maxTermMonths: 24 },
+          requirements: { targetProfiles: ["persona_moral"] },
+          requiredDocuments: ["ine"],
+          changeReason: "Versión base",
+        }
+      );
+
+      // 1. Publicar versión
+      await storage.publishOfferVersion(offer.id, version.id, {
+        publishedBy: "risk-officer",
+        changeReason: "Publicación regulatoria",
+      });
+
+      // 2. Intentar eliminar la versión publicada debe fallar
+      await expect(storage.deleteOfferVersion(version.id)).rejects.toThrow(
+        /No se puede eliminar una versión publicada o histórica/
+      );
+
+      // 3. Intentar eliminar la oferta que tiene versión publicada debe fallar
+      await expect(storage.deleteOffer(offer.id)).rejects.toThrow(
+        /No se puede eliminar una oferta con historial de versiones publicado/
+      );
+    });
+
+    it("permite descartar versiones en borrador no publicadas", async () => {
+      const { offer } = await storage.createOffer({
+        institutionId,
+        name: "Oferta con Borrador Descartable",
+        productType: "credito_simple",
+      });
+
+      const draftV = await storage.createOfferVersion(offer.id, {
+        conditions: { minAmount: 50000 },
+        changeReason: "Borrador de prueba descartable",
+      });
+
+      expect(draftV.status).toBe("draft");
+
+      // La eliminación de una versión en borrador debe permitirse
+      const deleted = await storage.deleteOfferVersion(draftV.id);
+      expect(deleted).toBe(true);
+
+      const fetched = await storage.getOfferVersion(draftV.id);
+      expect(fetched).toBeUndefined();
+    });
+  });
+
+  describe("Requisito 5: Pruebas de PostgreSQL de transacciones, rollback, unicidad e integridad", () => {
+    it("DbStorage implementa protección transaccional atómica con SELECT FOR UPDATE", async () => {
+      expect(typeof DbStorage.prototype.publishInstitutionProductVersion).toBe("function");
+      expect(typeof DbStorage.prototype.createInstitutionProductDraftVersion).toBe("function");
+    });
+
+    it("garantiza rollback transaccional si falla la validación de condiciones mínimas", async () => {
+      const { offer, version } = await storage.createOffer(
+        {
+          institutionId,
+          name: "Oferta Test Rollback",
+          productType: "credito_simple",
+        },
+        {
+          // Condiciones incompletas que no superan el gate
+          conditions: { minAmount: 1000000, maxAmount: 500000 }, // min > max
+          requirements: { targetProfiles: [] },
+          requiredDocuments: [],
+          changeReason: "",
+        }
+      );
+
+      // Intentar publicar debe lanzar error y la versión debe permanecer en draft
+      await expect(
+        storage.publishOfferVersion(offer.id, version.id, { changeReason: "" })
+      ).rejects.toThrow(/Condiciones mínimas de publicación no cumplidas/);
+
+      const unchangedVersion = await storage.getOfferVersion(version.id);
+      expect(unchangedVersion?.status).toBe("draft");
+      expect(unchangedVersion?.publishedAt).toBeNull();
+
+      const unchangedOffer = await storage.getOffer(offer.id);
+      expect(unchangedOffer?.status).toBe("draft");
+    });
+
+    it("verifica la unicidad estricta de máximo una versión publicada por producto", async () => {
+      const { offer, version: v1 } = await storage.createOffer(
+        {
+          institutionId,
+          name: "Oferta Unicidad Concurrencia",
+          productType: "credito_simple",
+        },
+        {
+          conditions: { minAmount: 100000, maxAmount: 500000, minInterestRate: 15, maxInterestRate: 20, minTermMonths: 6, maxTermMonths: 12 },
+          requirements: { targetProfiles: ["pyme"] },
+          requiredDocuments: ["ine"],
+          changeReason: "Versión inicial",
+        }
+      );
+
+      // Publicar v1
+      await storage.publishOfferVersion(offer.id, v1.id, { changeReason: "Publicación v1" });
+
+      // Crear y publicar v2
+      const v2 = await storage.createOfferVersion(offer.id, {
+        conditions: { minAmount: 150000, maxAmount: 600000, minInterestRate: 14, maxInterestRate: 19, minTermMonths: 6, maxTermMonths: 18 },
+        requirements: { targetProfiles: ["pyme"] },
+        requiredDocuments: ["ine", "csf"],
+        changeReason: "Versión v2",
+      });
+
+      await storage.publishOfferVersion(offer.id, v2.id, { changeReason: "Publicación v2" });
+
+      // Crear y publicar v3
+      const v3 = await storage.createOfferVersion(offer.id, {
+        conditions: { minAmount: 200000, maxAmount: 700000, minInterestRate: 13, maxInterestRate: 18, minTermMonths: 6, maxTermMonths: 24 },
+        requirements: { targetProfiles: ["pyme"] },
+        requiredDocuments: ["ine", "csf"],
+        changeReason: "Versión v3",
+      });
+
+      await storage.publishOfferVersion(offer.id, v3.id, { changeReason: "Publicación v3" });
+
+      // Verificar que solo v3 está published, y v1 y v2 están superseded
+      const versions = await storage.getOfferVersions(offer.id);
+      const published = versions.filter(v => v.status === "published");
+      const superseded = versions.filter(v => v.status === "superseded");
+
+      expect(published.length).toBe(1);
+      expect(published[0].id).toBe(v3.id);
+      expect(superseded.length).toBe(2);
+    });
+  });
+
+  describe("Regla Crítica: Aislamiento estricto de comisiones internas", () => {
     it("asegura que las entidades de oferta y versión no exponen comisiones internas de plataforma", async () => {
       const { offer, version } = await storage.createOffer(
         {

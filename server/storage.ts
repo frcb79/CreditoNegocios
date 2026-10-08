@@ -63,6 +63,14 @@ import {
   type UserStatusRequest,
   type UserStatusRequestStatus,
   type UserStatusRequestAction,
+  institutionProducts,
+  institutionProductVersions,
+  type InstitutionProduct,
+  type InsertInstitutionProduct,
+  type InstitutionProductVersion,
+  type InsertInstitutionProductVersion,
+  type InstitutionProductWithTemplate,
+  type InstitutionProductWithVersion,
   financialInstitutionOffers,
   financialInstitutionOfferVersions,
   type FinancialInstitutionOffer,
@@ -71,7 +79,12 @@ import {
   type InsertFinancialInstitutionOfferVersion,
   type FinancialInstitutionOfferWithVersion,
 } from "../shared/schema";
-import { computeOfferVersionHash } from "./offerVersionService";
+import {
+  computeInstitutionProductVersionHash,
+  computeOfferVersionHash,
+  validateMinimumPublishConditions,
+  validateOfferVersionParameters,
+} from "./offerVersionService";
 
 
 type NotificationInput = InsertNotification & {
@@ -254,27 +267,43 @@ export interface IStorage {
   updateProductTemplate(id: string, templateData: Partial<InsertProductTemplate>): Promise<ProductTemplate | undefined>;
   deleteProductTemplate(id: string): Promise<boolean>;
 
-  // Institution Products operations
+  // Institution Products (Canonical Offer Catalog) operations (Bloque A1 / Corrección A1.1)
   getInstitutionProducts(institutionId?: string): Promise<InstitutionProductWithTemplate[]>;
   getInstitutionProduct(id: string): Promise<InstitutionProduct | undefined>;
   getInstitutionProductsByTemplate(templateId: string): Promise<InstitutionProduct[]>;
-  createInstitutionProduct(productData: InsertInstitutionProduct): Promise<InstitutionProduct>;
+  createInstitutionProduct(
+    productData: InsertInstitutionProduct,
+    initialVersion?: Partial<InsertInstitutionProductVersion>
+  ): Promise<InstitutionProduct>;
   updateInstitutionProduct(id: string, productData: Partial<InsertInstitutionProduct>): Promise<InstitutionProduct | undefined>;
   deleteInstitutionProduct(id: string): Promise<boolean>;
 
-  // Financial Institution Offers operations (Bloque A1)
-  getOffers(options?: { institutionId?: string; productType?: string; isActive?: boolean }): Promise<FinancialInstitutionOffer[]>;
+  // Canonical Versioning operations (Bloque A1.1)
+  getInstitutionProductVersions(productId: string): Promise<InstitutionProductVersion[]>;
+  getInstitutionProductVersion(id: string): Promise<InstitutionProductVersion | undefined>;
+  getActiveInstitutionProductVersion(productId: string): Promise<InstitutionProductVersion | undefined>;
+  createInstitutionProductDraftVersion(
+    productId: string,
+    versionData: Partial<InsertInstitutionProductVersion> & { changeReason?: string }
+  ): Promise<InstitutionProductVersion>;
+  publishInstitutionProductVersion(
+    productId: string,
+    versionId: string,
+    options?: { publishedBy?: string; changeReason?: string }
+  ): Promise<InstitutionProductVersion>;
+  deleteInstitutionProductVersion(id: string): Promise<boolean>;
+
+  // Financial Institution Offers aliases (Retrocompatibilidad total con Bloque A1)
+  getOffers(options?: { institutionId?: string; productType?: string; status?: string; isActive?: boolean }): Promise<FinancialInstitutionOffer[]>;
   getOffer(id: string): Promise<FinancialInstitutionOffer | undefined>;
   getOffersByInstitution(institutionId: string, options?: { includeInactive?: boolean }): Promise<FinancialInstitutionOffer[]>;
   getOffersByProductType(institutionId: string, productType: string): Promise<FinancialInstitutionOffer[]>;
   createOffer(
-    offerData: InsertFinancialInstitutionOffer,
+    offerData: InsertFinancialInstitutionOffer & { name?: string },
     initialVersion?: Partial<InsertFinancialInstitutionOfferVersion>
   ): Promise<{ offer: FinancialInstitutionOffer; version: FinancialInstitutionOfferVersion }>;
   updateOffer(id: string, offerData: Partial<InsertFinancialInstitutionOffer>): Promise<FinancialInstitutionOffer | undefined>;
   deleteOffer(id: string): Promise<boolean>;
-
-  // Financial Institution Offer Versions operations (Bloque A1)
   getOfferVersions(offerId: string): Promise<FinancialInstitutionOfferVersion[]>;
   getOfferVersion(id: string): Promise<FinancialInstitutionOfferVersion | undefined>;
   getActiveOfferVersion(offerId: string): Promise<FinancialInstitutionOfferVersion | undefined>;
@@ -282,6 +311,12 @@ export interface IStorage {
     offerId: string,
     versionData: Partial<InsertFinancialInstitutionOfferVersion> & { changeReason?: string }
   ): Promise<FinancialInstitutionOfferVersion>;
+  publishOfferVersion(
+    offerId: string,
+    versionId: string,
+    options?: { publishedBy?: string; changeReason?: string }
+  ): Promise<FinancialInstitutionOfferVersion>;
+  deleteOfferVersion(id: string): Promise<boolean>;
   supersedeOfferVersion(offerId: string, oldVersionNumber: number, supersededAt?: Date): Promise<boolean>;
 
   // Products operations (simplified - LEGACY)
@@ -368,10 +403,9 @@ export class MemStorage implements IStorage {
   private productVariables: Map<string, ProductVariable> = new Map();
   private productTemplates: Map<string, ProductTemplate> = new Map();
   private institutionProducts: Map<string, InstitutionProduct> = new Map();
+  private institutionProductVersions: Map<string, InstitutionProductVersion> = new Map();
   private products: Map<string, Product> = new Map();
   private productRequests: Map<string, ProductRequest> = new Map();
-  private financialInstitutionOffers: Map<string, FinancialInstitutionOffer> = new Map();
-  private financialInstitutionOfferVersions: Map<string, FinancialInstitutionOfferVersion> = new Map();
   
   // Financial institution requests storage
   private financialInstitutionRequests: Map<string, FinancialInstitutionRequest> = new Map();
@@ -2869,19 +2903,71 @@ export class MemStorage implements IStorage {
       });
   }
 
-  async createInstitutionProduct(productData: InsertInstitutionProduct): Promise<InstitutionProduct> {
-    const id = randomUUID();
+  async createInstitutionProduct(
+    productData: InsertInstitutionProduct,
+    initialVersion?: Partial<InsertInstitutionProductVersion>
+  ): Promise<InstitutionProduct> {
+    const id = productData.id ?? randomUUID();
+    const now = new Date();
     const institutionProduct: InstitutionProduct = {
       ...productData,
       id,
-      customName: productData.customName ?? null,
+      name: (productData as any).name ?? productData.customName ?? null,
+      customName: productData.customName ?? (productData as any).name ?? null,
+      productType: productData.productType ?? null,
+      slug: productData.slug ?? null,
+      description: productData.description ?? null,
       configuration: productData.configuration ?? {},
+      targetProfiles: productData.targetProfiles ?? null,
       activeVariables: productData.activeVariables ?? {},
+      status: productData.status ?? "draft",
+      currentVersionNumber: productData.currentVersionNumber ?? 1,
       isActive: productData.isActive ?? true,
-      createdAt: new Date(),
-      updatedAt: new Date(),
+      createdBy: productData.createdBy ?? null,
+      createdAt: now,
+      updatedAt: now,
+      institutionProductId: id,
     };
     this.institutionProducts.set(id, institutionProduct);
+
+    if (initialVersion) {
+      const versionId = randomUUID();
+      const conditions = initialVersion.conditions ?? {};
+      const requirements = initialVersion.requirements ?? {};
+      const variablesConfig = initialVersion.variablesConfiguration ?? {};
+      const requiredDocuments = Array.isArray(initialVersion.requiredDocuments) ? initialVersion.requiredDocuments : [];
+      const versionHash = computeInstitutionProductVersionHash({
+        institutionProductId: id,
+        versionNumber: 1,
+        conditions,
+        requirements,
+        requiredDocuments,
+        variablesConfiguration: variablesConfig,
+      });
+
+      const newVersion: InstitutionProductVersion = {
+        id: versionId,
+        institutionProductId: id,
+        offerId: id,
+        versionNumber: 1,
+        status: initialVersion.status ?? "draft",
+        effectiveFrom: initialVersion.effectiveFrom ?? null,
+        effectiveTo: initialVersion.effectiveTo ?? null,
+        conditions,
+        requirements,
+        requiredDocuments,
+        variablesConfiguration: variablesConfig,
+        changeReason: initialVersion.changeReason ?? "Versión inicial en borrador",
+        versionHash,
+        publishedAt: initialVersion.publishedAt ?? null,
+        publishedBy: initialVersion.publishedBy ?? null,
+        createdBy: initialVersion.createdBy ?? productData.createdBy ?? null,
+        createdAt: now,
+        updatedAt: now,
+      };
+      this.institutionProductVersions.set(versionId, newVersion);
+    }
+
     return institutionProduct;
   }
 
@@ -2892,6 +2978,8 @@ export class MemStorage implements IStorage {
     const updated: InstitutionProduct = {
       ...existing,
       ...productData,
+      name: (productData as any).name ?? existing.name,
+      customName: productData.customName ?? (productData as any).name ?? existing.customName,
       updatedAt: new Date(),
     };
     this.institutionProducts.set(id, updated);
@@ -2899,17 +2987,186 @@ export class MemStorage implements IStorage {
   }
 
   async deleteInstitutionProduct(id: string): Promise<boolean> {
+    // Protección ante eliminación destructiva: impedir eliminar si tiene versiones publicadas o superseded
+    for (const v of this.institutionProductVersions.values()) {
+      if ((v.institutionProductId === id || v.offerId === id) && (v.status === "published" || v.status === "superseded" || v.status === "active")) {
+        throw new Error("No se puede eliminar una oferta con historial de versiones publicado o utilizado en solicitudes.");
+      }
+    }
+    // Eliminar versiones en borrador asociadas
+    for (const [vId, v] of this.institutionProductVersions.entries()) {
+      if (v.institutionProductId === id || v.offerId === id) {
+        this.institutionProductVersions.delete(vId);
+      }
+    }
     return this.institutionProducts.delete(id);
   }
 
-  // Financial Institution Offers operations (Bloque A1)
-  async getOffers(options?: { institutionId?: string; productType?: string; isActive?: boolean }): Promise<FinancialInstitutionOffer[]> {
-    let offers = Array.from(this.financialInstitutionOffers.values());
+  // ===== CANONICAL INSTITUTION PRODUCT VERSIONS (Bloque A1.1) =====
+  async getInstitutionProductVersions(productId: string): Promise<InstitutionProductVersion[]> {
+    return Array.from(this.institutionProductVersions.values())
+      .filter(v => v.institutionProductId === productId || v.offerId === productId)
+      .sort((a, b) => b.versionNumber - a.versionNumber);
+  }
+
+  async getInstitutionProductVersion(id: string): Promise<InstitutionProductVersion | undefined> {
+    return this.institutionProductVersions.get(id);
+  }
+
+  async getActiveInstitutionProductVersion(productId: string): Promise<InstitutionProductVersion | undefined> {
+    return Array.from(this.institutionProductVersions.values())
+      .find(v => (v.institutionProductId === productId || v.offerId === productId) && (v.status === "published" || v.status === "active"));
+  }
+
+  async createInstitutionProductDraftVersion(
+    productId: string,
+    versionData: Partial<InsertInstitutionProductVersion> & { changeReason?: string }
+  ): Promise<InstitutionProductVersion> {
+    const product = this.institutionProducts.get(productId);
+    if (!product) {
+      throw new Error(`Oferta/Producto con ID ${productId} no encontrado`);
+    }
+
+    const versions = await this.getInstitutionProductVersions(productId);
+    const maxVer = versions.reduce((max, v) => Math.max(max, v.versionNumber), 0);
+    const nextVersionNumber = maxVer + 1;
+    const now = new Date();
+    const versionId = randomUUID();
+
+    const conditions = versionData.conditions ?? {};
+    const requirements = versionData.requirements ?? {};
+    const variablesConfig = versionData.variablesConfiguration ?? {};
+    const requiredDocuments = Array.isArray(versionData.requiredDocuments) ? versionData.requiredDocuments : [];
+    const versionHash = computeInstitutionProductVersionHash({
+      institutionProductId: productId,
+      versionNumber: nextVersionNumber,
+      conditions,
+      requirements,
+      requiredDocuments,
+      variablesConfiguration: variablesConfig,
+    });
+
+    const newVersion: InstitutionProductVersion = {
+      id: versionId,
+      institutionProductId: productId,
+      offerId: productId,
+      versionNumber: nextVersionNumber,
+      status: "draft", // Siempre se crea en borrador
+      effectiveFrom: null,
+      effectiveTo: null,
+      conditions,
+      requirements,
+      requiredDocuments,
+      variablesConfiguration: variablesConfig,
+      changeReason: versionData.changeReason ?? `Borrador para versión ${nextVersionNumber}`,
+      versionHash,
+      publishedAt: null,
+      publishedBy: null,
+      createdBy: versionData.createdBy ?? product.createdBy ?? null,
+      createdAt: now,
+      updatedAt: now,
+    };
+
+    this.institutionProductVersions.set(versionId, newVersion);
+    return newVersion;
+  }
+
+  async publishInstitutionProductVersion(
+    productId: string,
+    versionId: string,
+    options?: { publishedBy?: string; changeReason?: string }
+  ): Promise<InstitutionProductVersion> {
+    const product = this.institutionProducts.get(productId);
+    if (!product) {
+      throw new Error(`Oferta/Producto con ID ${productId} no encontrado`);
+    }
+
+    const version = this.institutionProductVersions.get(versionId);
+    if (!version || (version.institutionProductId !== productId && version.offerId !== productId)) {
+      throw new Error(`Versión ${versionId} no encontrada para la oferta ${productId}`);
+    }
+
+    if (version.status !== "draft") {
+      throw new Error(`Solo se pueden publicar versiones en borrador (estado actual: ${version.status})`);
+    }
+
+    // Validación de condiciones mínimas obligatorias antes de publicar
+    const validation = validateMinimumPublishConditions({
+      conditions: version.conditions,
+      requirements: version.requirements,
+      requiredDocuments: version.requiredDocuments ?? [],
+      changeReason: options?.changeReason || version.changeReason,
+    });
+
+    if (!validation.isValid) {
+      throw new Error(`Condiciones mínimas de publicación no cumplidas: ${validation.errors.join("; ")}`);
+    }
+
+    const now = new Date();
+
+    // 1. Desactivar versión publicada previa marcándola como 'superseded'
+    for (const [vId, v] of this.institutionProductVersions.entries()) {
+      if ((v.institutionProductId === productId || v.offerId === productId) && (v.status === "published" || v.status === "active")) {
+        this.institutionProductVersions.set(vId, {
+          ...v,
+          status: "superseded",
+          effectiveTo: now,
+          updatedAt: now,
+        });
+      }
+    }
+
+    // 2. Publicar la nueva versión (máximo una vigente)
+    const publishedVersion: InstitutionProductVersion = {
+      ...version,
+      status: "published",
+      effectiveFrom: now,
+      effectiveTo: null,
+      publishedAt: now,
+      publishedBy: options?.publishedBy ?? null,
+      changeReason: options?.changeReason || version.changeReason,
+      updatedAt: now,
+    };
+    this.institutionProductVersions.set(versionId, publishedVersion);
+
+    // 3. Actualizar la oferta padre
+    this.institutionProducts.set(productId, {
+      ...product,
+      status: "published",
+      currentVersionNumber: version.versionNumber,
+      updatedAt: now,
+    });
+
+    return publishedVersion;
+  }
+
+  async deleteInstitutionProductVersion(id: string): Promise<boolean> {
+    const version = this.institutionProductVersions.get(id);
+    if (!version) return false;
+
+    // Impedir eliminación destructiva de versiones publicadas o históricas
+    if (version.status === "published" || version.status === "superseded" || version.status === "active") {
+      throw new Error("No se puede eliminar una versión publicada o histórica (superseded). La integridad del historial es obligatoria.");
+    }
+
+    return this.institutionProductVersions.delete(id);
+  }
+
+  // ===== FINANCIAL INSTITUTION OFFERS ALIASES (Retrocompatibilidad total Bloque A1) =====
+  async getOffers(options?: { institutionId?: string; productType?: string; status?: string; isActive?: boolean }): Promise<FinancialInstitutionOffer[]> {
+    let offers = Array.from(this.institutionProducts.values()).map(o => ({
+      ...o,
+      name: o.name ?? o.customName ?? "",
+      institutionProductId: o.id,
+    }));
     if (options?.institutionId) {
       offers = offers.filter(o => o.institutionId === options.institutionId);
     }
     if (options?.productType) {
       offers = offers.filter(o => o.productType === options.productType);
+    }
+    if (options?.status) {
+      offers = offers.filter(o => o.status === options.status);
     }
     if (options?.isActive !== undefined) {
       offers = offers.filter(o => o.isActive === options.isActive);
@@ -2918,12 +3175,19 @@ export class MemStorage implements IStorage {
   }
 
   async getOffer(id: string): Promise<FinancialInstitutionOffer | undefined> {
-    return this.financialInstitutionOffers.get(id);
+    const p = this.institutionProducts.get(id);
+    if (!p) return undefined;
+    return {
+      ...p,
+      name: p.name ?? p.customName ?? "",
+      institutionProductId: p.id,
+    };
   }
 
   async getOffersByInstitution(institutionId: string, options?: { includeInactive?: boolean }): Promise<FinancialInstitutionOffer[]> {
-    let offers = Array.from(this.financialInstitutionOffers.values())
-      .filter(o => o.institutionId === institutionId);
+    let offers = Array.from(this.institutionProducts.values())
+      .filter(o => o.institutionId === institutionId)
+      .map(o => ({ ...o, name: o.name ?? o.customName ?? "", institutionProductId: o.id }));
     if (!options?.includeInactive) {
       offers = offers.filter(o => o.isActive);
     }
@@ -2931,170 +3195,81 @@ export class MemStorage implements IStorage {
   }
 
   async getOffersByProductType(institutionId: string, productType: string): Promise<FinancialInstitutionOffer[]> {
-    return Array.from(this.financialInstitutionOffers.values())
-      .filter(o => o.institutionId === institutionId && o.productType === productType && o.isActive);
+    return Array.from(this.institutionProducts.values())
+      .filter(o => o.institutionId === institutionId && o.productType === productType && o.isActive)
+      .map(o => ({ ...o, name: o.name ?? o.customName ?? "", institutionProductId: o.id }));
   }
 
   async createOffer(
-    offerData: InsertFinancialInstitutionOffer,
+    offerData: InsertFinancialInstitutionOffer & { name?: string },
     initialVersion?: Partial<InsertFinancialInstitutionOfferVersion>
   ): Promise<{ offer: FinancialInstitutionOffer; version: FinancialInstitutionOfferVersion }> {
-    const offerId = randomUUID();
-    const now = new Date();
-    const newOffer: FinancialInstitutionOffer = {
+    const offerId = offerData.id ?? randomUUID();
+    const offerName = offerData.name ?? offerData.customName ?? "Oferta Comercial";
+
+    const product = await this.createInstitutionProduct({
       ...offerData,
       id: offerId,
-      templateId: offerData.templateId ?? null,
-      institutionProductId: offerData.institutionProductId ?? null,
-      slug: offerData.slug ?? null,
-      description: offerData.description ?? null,
-      currentVersionNumber: 1,
-      isActive: offerData.isActive ?? true,
-      createdBy: offerData.createdBy ?? null,
-      createdAt: now,
-      updatedAt: now,
-    };
-    this.financialInstitutionOffers.set(offerId, newOffer);
-
-    // Generar automáticamente versión 1
-    const versionId = randomUUID();
-    const conditions = initialVersion?.conditions ?? {};
-    const requirements = initialVersion?.requirements ?? {};
-    const variablesConfig = initialVersion?.variablesConfiguration ?? {};
-    const versionHash = computeOfferVersionHash({
-      offerId,
-      versionNumber: 1,
-      conditions,
-      requirements,
-      variablesConfiguration: variablesConfig,
+      name: offerName,
+      customName: offerName,
     });
 
-    const newVersion: FinancialInstitutionOfferVersion = {
-      id: versionId,
-      offerId,
-      versionNumber: 1,
-      status: "active",
-      effectiveFrom: now,
-      effectiveTo: null,
-      conditions,
-      requirements,
-      requiredDocuments: initialVersion?.requiredDocuments ?? [],
-      variablesConfiguration: variablesConfig,
-      changeReason: initialVersion?.changeReason ?? "Versión inicial de la oferta",
-      versionHash,
-      createdBy: offerData.createdBy ?? null,
-      createdAt: now,
-    };
-    this.financialInstitutionOfferVersions.set(versionId, newVersion);
+    // Crear versión inicial en borrador
+    const version = await this.createInstitutionProductDraftVersion(offerId, {
+      ...initialVersion,
+      changeReason: initialVersion?.changeReason ?? "Versión inicial en borrador",
+    });
 
-    return { offer: newOffer, version: newVersion };
+    return {
+      offer: { ...product, name: offerName, institutionProductId: offerId },
+      version: { ...version, offerId },
+    };
   }
 
   async updateOffer(id: string, offerData: Partial<InsertFinancialInstitutionOffer>): Promise<FinancialInstitutionOffer | undefined> {
-    const existing = this.financialInstitutionOffers.get(id);
-    if (!existing) return undefined;
-    const updated: FinancialInstitutionOffer = {
-      ...existing,
-      ...offerData,
-      updatedAt: new Date(),
-    };
-    this.financialInstitutionOffers.set(id, updated);
-    return updated;
+    return this.updateInstitutionProduct(id, offerData);
   }
 
   async deleteOffer(id: string): Promise<boolean> {
-    for (const [vId, v] of this.financialInstitutionOfferVersions.entries()) {
-      if (v.offerId === id) {
-        this.financialInstitutionOfferVersions.delete(vId);
-      }
-    }
-    return this.financialInstitutionOffers.delete(id);
+    return this.deleteInstitutionProduct(id);
   }
 
-  // Financial Institution Offer Versions operations (Bloque A1)
   async getOfferVersions(offerId: string): Promise<FinancialInstitutionOfferVersion[]> {
-    return Array.from(this.financialInstitutionOfferVersions.values())
-      .filter(v => v.offerId === offerId)
-      .sort((a, b) => b.versionNumber - a.versionNumber);
+    return this.getInstitutionProductVersions(offerId);
   }
 
   async getOfferVersion(id: string): Promise<FinancialInstitutionOfferVersion | undefined> {
-    return this.financialInstitutionOfferVersions.get(id);
+    return this.getInstitutionProductVersion(id);
   }
 
   async getActiveOfferVersion(offerId: string): Promise<FinancialInstitutionOfferVersion | undefined> {
-    return Array.from(this.financialInstitutionOfferVersions.values())
-      .find(v => v.offerId === offerId && v.status === "active");
+    return this.getActiveInstitutionProductVersion(offerId);
   }
 
   async createOfferVersion(
     offerId: string,
     versionData: Partial<InsertFinancialInstitutionOfferVersion> & { changeReason?: string }
   ): Promise<FinancialInstitutionOfferVersion> {
-    const offer = this.financialInstitutionOffers.get(offerId);
-    if (!offer) {
-      throw new Error(`Oferta con ID ${offerId} no encontrada`);
-    }
+    return this.createInstitutionProductDraftVersion(offerId, versionData);
+  }
 
-    const now = new Date();
-    const nextVersionNumber = offer.currentVersionNumber + 1;
+  async publishOfferVersion(
+    offerId: string,
+    versionId: string,
+    options?: { publishedBy?: string; changeReason?: string }
+  ): Promise<FinancialInstitutionOfferVersion> {
+    return this.publishInstitutionProductVersion(offerId, versionId, options);
+  }
 
-    // Versionado aditivo: marcar versión activa previa como 'superseded'
-    for (const [vId, v] of this.financialInstitutionOfferVersions.entries()) {
-      if (v.offerId === offerId && v.status === "active") {
-        this.financialInstitutionOfferVersions.set(vId, {
-          ...v,
-          status: "superseded",
-          effectiveTo: now,
-        });
-      }
-    }
-
-    // Actualizar oferta
-    this.financialInstitutionOffers.set(offerId, {
-      ...offer,
-      currentVersionNumber: nextVersionNumber,
-      updatedAt: now,
-    });
-
-    const newVersionId = randomUUID();
-    const conditions = versionData.conditions ?? {};
-    const requirements = versionData.requirements ?? {};
-    const variablesConfig = versionData.variablesConfiguration ?? {};
-    const versionHash = computeOfferVersionHash({
-      offerId,
-      versionNumber: nextVersionNumber,
-      conditions,
-      requirements,
-      variablesConfiguration: variablesConfig,
-    });
-
-    const newVersion: FinancialInstitutionOfferVersion = {
-      id: newVersionId,
-      offerId,
-      versionNumber: nextVersionNumber,
-      status: "active",
-      effectiveFrom: now,
-      effectiveTo: null,
-      conditions,
-      requirements,
-      requiredDocuments: versionData.requiredDocuments ?? [],
-      variablesConfiguration: variablesConfig,
-      changeReason: versionData.changeReason ?? `Actualización a versión ${nextVersionNumber}`,
-      versionHash,
-      createdBy: versionData.createdBy ?? offer.createdBy ?? null,
-      createdAt: now,
-    };
-    this.financialInstitutionOfferVersions.set(newVersionId, newVersion);
-
-    return newVersion;
+  async deleteOfferVersion(id: string): Promise<boolean> {
+    return this.deleteInstitutionProductVersion(id);
   }
 
   async supersedeOfferVersion(offerId: string, oldVersionNumber: number, supersededAt?: Date): Promise<boolean> {
-    const version = Array.from(this.financialInstitutionOfferVersions.values())
-      .find(v => v.offerId === offerId && v.versionNumber === oldVersionNumber);
+    const version = Array.from(this.institutionProductVersions.values())
+      .find(v => (v.institutionProductId === offerId || v.offerId === offerId) && v.versionNumber === oldVersionNumber);
     if (!version) return false;
-    this.financialInstitutionOfferVersions.set(version.id, {
+    this.institutionProductVersions.set(version.id, {
       ...version,
       status: "superseded",
       effectiveTo: supersededAt ?? new Date(),
