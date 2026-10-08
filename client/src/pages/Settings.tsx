@@ -109,6 +109,14 @@ export default function Settings() {
   });
 
   const isBrokerOrMaster = user?.role === "broker" || user?.role === "master_broker";
+  const isSuperAdmin = user?.role === "super_admin";
+
+  // Never show broker-only settings for Super Admin, including bookmarked tabs.
+  useEffect(() => {
+    if (isSuperAdmin && ["business", "profiling", "benefits"].includes(activeTab)) {
+      setActiveTab("profile");
+    }
+  }, [isSuperAdmin, activeTab]);
 
   useEffect(() => {
     const params = new URLSearchParams(search);
@@ -616,7 +624,9 @@ export default function Settings() {
     <MainLayout>
       <Header 
         title="Configuración"
-        subtitle="Gestiona tu perfil, preferencias del sistema y esquema comercial"
+        subtitle={isSuperAdmin
+          ? "Cuenta administrativa, seguridad y reglas de la plataforma"
+          : "Gestiona tu perfil, preferencias del sistema y esquema comercial"}
       />
       
       <main className="flex-1 p-3 sm:p-5 lg:p-6 overflow-y-auto">
@@ -656,10 +666,10 @@ export default function Settings() {
                 <TabsTrigger value="profile" data-testid="tab-profile" className="text-xs font-medium py-1 px-2">Perfil</TabsTrigger>
                 <TabsTrigger value="documents" data-testid="tab-documents" className="text-xs font-medium py-1 px-2">Documentos</TabsTrigger>
                 <TabsTrigger value="notifications" data-testid="tab-notifications" className="text-xs font-medium py-1 px-2">Notificaciones</TabsTrigger>
-                <TabsTrigger value="business" data-testid="tab-business" className="text-xs font-medium py-1 px-2">Negocio</TabsTrigger>
-                <TabsTrigger value="profiling" data-testid="tab-profiling" className="text-xs font-medium py-1 px-2">Perfilamiento</TabsTrigger>
+                {!isSuperAdmin && <TabsTrigger value="business" data-testid="tab-business" className="text-xs font-medium py-1 px-2">Negocio</TabsTrigger>}
+                {!isSuperAdmin && <TabsTrigger value="profiling" data-testid="tab-profiling" className="text-xs font-medium py-1 px-2">Perfilamiento</TabsTrigger>}
                 <TabsTrigger value="security" data-testid="tab-security" className="text-xs font-medium py-1 px-2">Seguridad</TabsTrigger>
-                <TabsTrigger value="benefits" data-testid="tab-benefits" className="text-xs font-medium py-1 px-2">Beneficios</TabsTrigger>
+                {!isSuperAdmin && <TabsTrigger value="benefits" data-testid="tab-benefits" className="text-xs font-medium py-1 px-2">Beneficios</TabsTrigger>}
                 {user?.role === "super_admin" && (
                   <TabsTrigger value="commercial_rules" data-testid="tab-commercial-rules" className="text-xs font-medium py-1 px-2">
                     Reglas Comerciales
@@ -935,8 +945,8 @@ export default function Settings() {
 
             {/* Documents Settings */}
             <TabsContent value="documents" className="space-y-4 mt-3">
-              <BrokerExpedienteDocuments user={user} />
-              <LegalProfileDocuments user={user} showFormalizationNotice={true} />
+              {isBrokerOrMaster && <BrokerExpedienteDocuments user={user} />}
+              <LegalProfileDocuments user={user} showFormalizationNotice={isBrokerOrMaster} />
             </TabsContent>
 
             {/* Notification Settings */}
