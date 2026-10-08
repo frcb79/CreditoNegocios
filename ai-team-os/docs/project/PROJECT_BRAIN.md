@@ -55,6 +55,14 @@ Completado:
 	- Alta e importación exitosa (100% - 9 perfiles/productos, 0 errores) en Railway Staging para 5 nuevas financieras: Altum, Cualli, Jeeves (con plantilla de producto "Credito Revolvente"), Aspiria, Kapital, y actualización de Pretmex con nuevas reglas y esquemas de comisión.
 	- Purga y depuración permanente de 5 entidades de pruebas pasadas (E2E Flujo Completo, Financiera Demo, Financiera Prueba Franco) para dejar el catálogo oficial limpio en exactamente 18 financieras sin duplicados ni faltantes.
 	- Implementación del endpoint y método `DELETE /api/financial-institutions/:id` con soporte de eliminación en cascada referencial y confirmación en UI (`Financieras.tsx`).
+- **Sprint 2026-10-07 (CreditoNegocios - Cierre P0 Formalización Obligatoria & Bypasses de Originación):**
+	- Centralización del gate de formalización mediante `validateEffectiveBrokerFormalization` y pipeline `validateCommercialOriginationAndFormalization` en backend (`server/tenantPermissions.ts` y `server/routes.ts`).
+	- Blindaje integral de rutas de originación: `POST /api/clients`, `POST /api/credits`, `POST /api/credit-submissions`, `POST /api/credit-submissions/:id/targets`, `POST /api/mortgage-leads`, y `POST /api/clients/:id/opportunities`.
+	- Cierre de bypasses en originación delegada (colaboradores o admins actuando en nombre de un broker no formalizado son bloqueados con 403 `FORMALIZATION_REQUIRED`).
+	- Preservación de facultades para administradores que originan operaciones propias.
+	- Exigencia de documentos vigentes por rol: Convenio y Reglas de Red para Brokers; Convenio, Reglas de Red y Reglas Master para Master Brokers (incluyendo ascensos).
+	- Preservación de la experiencia pactada: registro libre, consulta de documentos y edición de perfil previa a formalización.
+	- Suite de 14 pruebas automatizadas con 100% de éxito y regresión limpia en suite UI 3b2a (17/17).
 
 En progreso:
 - Estabilización y validación visual de los flujos de dispersión y red en entorno de producción Vercel y Railway.
@@ -76,3 +84,4 @@ Bloqueadores:
 2026-09-04 — Implementación de Filtros de Clientes, Multi-Dispersión de Créditos con Comisiones Individuales, Red de Brokers 3-en-1 para Super Admin, y corrección de build Vercel (IIFE en JSX).
 2026-09-11 — Corrección de build en Railway, reparación de esquema PostgreSQL (`referral_code`), implementación de fallback nativo SQL en autenticación, restauración y blindaje de matriz RBAC (3 cuentas con `Prueba1$`) y validación live en producción.
 2026-09-17 — Procesamiento de `Plantilla_Comisiones_Financieras Luis.xlsx`, alta de 5 nuevas financieras (Altum, Cualli, Jeeves, Aspiria, Kapital) y actualización de Pretmex. Purga de 5 entidades de prueba e incorporación de eliminación permanente segura (`DELETE /api/financial-institutions/:id`). Catálogo consolidado en 18 financieras reales.
+2026-10-07 — Cierre P0 de Formalización Obligatoria y Bypasses de Originación: gate centralizado en backend con validación de broker efectivo, protección de 6 rutas clave, soporte para ascensos a Master Broker y pruebas de integración 100% verdes.

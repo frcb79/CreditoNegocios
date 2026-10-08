@@ -1,6 +1,7 @@
 import { storage, type IStorage } from "./storage";
 import { getEffectivePermissions } from "./middleware/rbacMiddleware";
 import type { TenantMemberPermissions } from "../shared/schema";
+import { isRoleSubjectToFormalization } from "../shared/legalDocuments";
 
 export interface ValidationParams {
   permissions: TenantMemberPermissions | any;
@@ -233,3 +234,137 @@ export async function checkTransactionalCreationAllowed(
     targetStorage
   );
 }
+
+export interface EffectiveBrokerFormalizationParams {
+  callerUser: any;
+  effectiveBrokerId: string;
+}
+
+/**
+ * Validates that the effective broker under whose name the operation is originated
+ * has completed the mandatory active formalization documents (Convenio, Reglas de Red, Reglas Master).
+ * 
+ * - Administrators originating their own operations are exempt.
+ * - Delegated origination (admin or collaborator on behalf of a broker) strictly verifies
+ *   the effective broker's formalization status.
+ */
+export async function validateEffectiveBrokerFormalization(
+  params: EffectiveBrokerFormalizationParams,
+  targetStorage: IStorage = storage
+): Promise<{
+  allowed: boolean;
+  code?: string;
+  statusCode?: number;
+  message?: string;
+  effectiveBroker?: any;
+}> {
+  const { callerUser, effectiveBrokerId } = params;
+
+  if (!effectiveBrokerId) {
+    return {
+      allowed: false,
+      statusCode: 400,
+      message: "Broker originador no especificado",
+    };
+  }
+
+  // If caller is originating in their own name
+  let effectiveBroker = callerUser;
+  if (!effectiveBroker || effectiveBroker.id !== effectiveBrokerId) {
+    effectiveBroker = await targetStorage.getUser(effectiveBrokerId);
+  }
+
+  if (!effectiveBroker) {
+    return {
+      allowed: false,
+      statusCode: 404,
+      message: "Broker originador no encontrado",
+    };
+  }
+
+  // Administrators or roles not subject to formalization (e.g. platform admin originating self)
+  if (!isRoleSubjectToFormalization(effectiveBroker.role)) {
+    return {
+      allowed: true,
+      effectiveBroker,
+    };
+  }
+
+  // For brokers or master_brokers, verify formalization in storage
+  const formalization = await targetStorage.isUserFormalized(effectiveBroker.id, effectiveBroker.role);
+  if (!formalization.isFormalized) {
+    const isSelf = callerUser && callerUser.id === effectiveBroker.id;
+    const message = isSelf
+      ? "Para registrar clientes y generar comisiones deberás formalizar tu Convenio de Colaboración."
+      : `El broker originador (${effectiveBroker.firstName || ""} ${effectiveBroker.lastName || ""})`.trim() +
+        " debe formalizar sus convenios y reglas vigentes antes de que se puedan originar operaciones en su nombre.";
+
+    return {
+      allowed: false,
+      code: "FORMALIZATION_REQUIRED",
+      statusCode: 403,
+      message,
+      effectiveBroker,
+    };
+  }
+
+  return {
+    allowed: true,
+    effectiveBroker,
+  };
+}
+
+/**
+ * Centralized gate combining organizational origination checks and mandatory legal formalization.
+ * Enforces zero-bypass origination across direct and delegated pathways.
+ */
+export async function validateCommercialOriginationAndFormalization(
+  params: CommercialOriginationParams,
+  targetStorage: IStorage = storage
+): Promise<{
+  allowed: boolean;
+  code?: string;
+  statusCode?: number;
+  message?: string;
+  brokerId?: string;
+  effectiveBroker?: any;
+}> {
+  // 1. Validate organizational origination capabilities and resolve effective brokerId
+  const originationCheck = await validateCommercialOrigination(params, targetStorage);
+  if (!originationCheck.allowed) {
+    return {
+      allowed: false,
+      statusCode: 403,
+      message: originationCheck.message,
+    };
+  }
+
+  const effectiveBrokerId = originationCheck.brokerId!;
+
+  // 2. Validate formalization compliance for the effective broker
+  const formalizationCheck = await validateEffectiveBrokerFormalization(
+    {
+      callerUser: params.callerUser,
+      effectiveBrokerId,
+    },
+    targetStorage
+  );
+
+  if (!formalizationCheck.allowed) {
+    return {
+      allowed: false,
+      code: formalizationCheck.code,
+      statusCode: formalizationCheck.statusCode || 403,
+      message: formalizationCheck.message,
+      brokerId: effectiveBrokerId,
+      effectiveBroker: formalizationCheck.effectiveBroker,
+    };
+  }
+
+  return {
+    allowed: true,
+    brokerId: effectiveBrokerId,
+    effectiveBroker: formalizationCheck.effectiveBroker,
+  };
+}
+

@@ -47,5 +47,16 @@ Formato: Fecha / Decision / Opciones evaluadas / Decision final / Por que
 	- Evita que los brókers o el super admin tengan que duplicar expedientes manualmente para cobrar comisiones de diferentes financieras.
 	- Garantiza que cada desembolso mantenga su botón de pago STP y tracking de dispersión sin bloquear a las demás propuestas en proceso.
 
+### 2026-10-07 / Cierre P0: Centralización del Gate de Formalización y Cierre de Bypasses en Originación
+- Opciones evaluadas:
+	- Opcion A: Validar formalización únicamente en el frontend o verificando ad-hoc el `brokerId` del payload en algunas rutas.
+	- Opcion B: Centralizar la verificación en el backend mediante `validateEffectiveBrokerFormalization` y el pipeline `validateCommercialOriginationAndFormalization`, evaluando al broker originador efectivo (titular, delegado, o en nombre de quien opera un admin/colaborador) contra los documentos obligatorios vigentes (`isUserFormalized`).
+- Decision final: Opcion B.
+- Por que:
+	- Garantiza que ningún Broker o Master Broker origine operaciones (`clients`, `credits`, `submissions`, `targets`, `mortgage-leads`, `opportunities`) sin haber formalizado sus documentos obligatorios vigentes.
+	- Cierra bypasses de originación delegada por colaboradores o administradores actuando en nombre de un broker no formalizado.
+	- Preserva las facultades de los administradores para originar operaciones propias sin bloqueos.
+	- Preserva intacta la experiencia del broker: registro, consulta de documentos, navegación y edición de perfil antes de formalizar.
+
 ## DECISIONES CAMBIADAS
 [Si alguna se revirtio, documentar con la razon]
