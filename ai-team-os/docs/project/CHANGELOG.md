@@ -118,3 +118,31 @@ Actualizar cada vez que se completa una feature.
 	- Build de producción (`npm run build`) exitoso.
 	- 100% de tests unitarios y de regresión pasando limpiamente.
 
+## 2026-10-08 — Cierre de QA P0: Integridad de Afiliación, Auditoría de Importes Congelados y Pruebas HTTP de Endpoints
+
+- **Integridad Estricta de Afiliación (`server/dbStorage.ts`, `server/storage.ts`, `server/brokerNetworkTransitionService.ts`):**
+	- Resolución canónica reutilizando `getPlatformTenant` y `getOwnedTenant`.
+	- En `registerUserWithLegalEvidence`, si `masterBrokerId` está definido y no se encuentra un tenant Master válido, se rechaza y revierte la transacción PostgreSQL completa (cero fallback silencioso a plataforma).
+	- Para brokers directos (`masterBrokerId == null`), se valida la existencia del tenant de plataforma, fallando de forma segura con rollback ante su ausencia.
+- **Auditoría de Importes Congelados y Blindaje de Liquidación (`server/routes.ts`, `client/src/pages/Commissions.tsx`):**
+	- Función de auditoría `auditCommissionPayout` implementada para evaluar discrepancias entre `frozenAmount` y el cálculo canónico de liquidación (`getCommissionPayoutAmount`).
+	- Reglas estrictas:
+		- `frozenAmount = 0` explícito nunca se convierte automáticamente en pago positivo.
+		- No se reduce silenciosamente ningún importe congelado que exceda la cuota canónica.
+		- Discrepancias históricas bloquean la dispersión (`POST /api/commissions/:id/pay`, `POST /api/commissions/bulk-pay`, `POST /api/commissions/:id/mark-paid`) retornando HTTP 400 con código `FROZEN_AMOUNT_DISCREPANCY` y `requiresAdminReview: true`.
+		- Las comisiones aprobadas y pagadas en base de datos permanecen 100% inmutables (cero mutación automática en DB).
+		- En `client/src/pages/Commissions.tsx`, se expone la alerta "Revisión Requerida" e impide el envío a dispersión STP cuando existe discrepancia.
+		- Preservación íntegra de la corrección contra doble conteo de Master Directo.
+- **Suite de Pruebas HTTP/Integración con Mock STP (`tests/unit/p0-endpoint-integration.test.ts`):**
+	- 16 pruebas exhaustivas con Supertest cubriendo el ciclo completo de endpoints:
+		- `POST /api/commissions/:id/pay`
+		- `POST /api/commissions/bulk-pay`
+		- `POST /api/commissions/:id/mark-paid`
+		- Registro directo y bajo Master Broker con validación de rollback y fallo atómico de aprovisionamiento.
+		- Beneficiario histórico en transferencias de red, rechazo de CLABE alterada/faltante y bloqueo por importe congelado con discrepancia.
+- **Validación y QA Integral:**
+	- Typecheck (`npm run check`): 0 errores.
+	- Build de producción (`npm run build`): exitoso.
+	- 100% de suites de pruebas pasando limpiamente (69 unit tests de suites P0 y formales).
+
+

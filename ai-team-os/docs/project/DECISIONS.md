@@ -103,5 +103,23 @@ Formato: Fecha / Decision / Opciones evaluadas / Decision final / Por que
 	- Protege la integridad financiera de la plataforma impidiendo pagos dobles accidentales vía STP o liquidación manual.
 	- Mantiene la transparencia contable para el Master Broker y Super Admin en la visualización en cascada de `Commissions.tsx`.
 
+### 2026-10-08 / Integridad Estricta de Afiliación de Red en Registro Canónico
+- Opciones evaluadas:
+	- Opcion A: Si se suministra un `masterBrokerId` no encontrado, hacer fallback automático a la organización plataforma.
+	- Opcion B: Reutilizar la resolución canónica de Network Transitions (`getPlatformTenant` y `getOwnedTenant`). Si `masterBrokerId` está definido y no se encuentra su tenant Master activo o válido, abortar y revertir toda la transacción. Si es broker directo y falta la organización plataforma, también fallar de forma segura.
+- Decision final: Opcion B.
+- Por que:
+	- Evita afiliaciones silenciosamente corruptas o asignaciones erróneas a Casa Matriz cuando la intención legal y operativa del usuario era afiliarse a un Master Broker.
+	- Preserva la topología jerárquica estricta de multitenancy.
+
+### 2026-10-08 / Auditoría Rigurosa de Importes Congelados y Bloqueo de Liquidación ante Discrepancia
+- Opciones evaluadas:
+	- Opcion A: Reducir silenciosamente cualquier `frozenAmount > singleShare` al monto legítimo al liquidar, y permitir que `frozenAmount = 0` recalcule en caliente un pago positivo.
+	- Opcion B: Implementar `auditCommissionPayout`: un `frozenAmount = 0` explícito nunca se convierte en pago positivo; ante cualquier discrepancia histórica (ej. $60k congelado vs $30k legítimo), no alterar silenciosamente las cifras sino bloquear la liquidación con error auditado (`FROZEN_AMOUNT_DISCREPANCY`), exigir revisión administrativa y preservar intactos los registros aprobados y pagados en base de datos.
+- Decision final: Opcion B.
+- Por que:
+	- En auditoría contable y financiera, un importe previamente congelado que difiere del cálculo reglamentario no debe mutarse de manera encubierta. Exige revisión humana auditada.
+	- Protege la inmutabilidad de los registros históricos sin alteraciones retroactivas.
+
 ## DECISIONES CAMBIADAS
 [Si alguna se revirtio, documentar con la razon]

@@ -186,7 +186,7 @@ function ownerUserIdPredicate(userId: string) {
   return sql`${tenants.settings}->>'legacyOwnerUserId' = ${userId}`;
 }
 
-async function getPlatformTenant(tx: any): Promise<typeof tenants.$inferSelect> {
+export async function getPlatformTenant(tx: any): Promise<typeof tenants.$inferSelect> {
   const matches = await tx
     .select()
     .from(tenants)
@@ -205,7 +205,7 @@ async function getPlatformTenant(tx: any): Promise<typeof tenants.$inferSelect> 
   return unique[0];
 }
 
-async function getOwnedTenant(tx: any, userId: string, expectedType?: "broker" | "master_broker"): Promise<typeof tenants.$inferSelect> {
+export async function getOwnedTenant(tx: any, userId: string, expectedType?: "broker" | "master_broker"): Promise<typeof tenants.$inferSelect> {
   const conditions: any[] = [ownerUserIdPredicate(userId)];
   if (expectedType) conditions.push(eq(tenants.type, expectedType));
 

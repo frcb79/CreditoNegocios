@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach } from "@jest/globals";
 import express from "express";
 import { storage } from "../../server/storage";
-import { getCommissionPayoutAmount, createCascadingCommissionRecord } from "../../server/routes";
+import { getCommissionPayoutAmount, createCascadingCommissionRecord, auditCommissionPayout } from "../../server/routes";
 
 describe("P0 - Commission Payout Integrity & Master Direct Single Count", () => {
 
@@ -92,6 +92,54 @@ describe("P0 - Commission Payout Integrity & Master Direct Single Count", () => 
 
       const payout = getCommissionPayoutAmount(approvedComm);
       expect(payout).toBe(30000);
+    });
+
+    it("Explicit frozenAmount = 0 does NOT automatically convert into a positive payout", () => {
+      const zeroFrozenComm = {
+        id: "comm-zero-1",
+        creditId: "credit-zero-1",
+        brokerId: "master-user-1",
+        masterBrokerId: "master-user-1",
+        amount: "50000.00",
+        brokerShare: "30000.00",
+        masterBrokerShare: "30000.00",
+        frozenAmount: "0.00", // Explicit 0
+        status: "approved",
+      };
+
+      const payout = getCommissionPayoutAmount(zeroFrozenComm);
+      expect(payout).toBe(0);
+      expect(payout).not.toBeGreaterThan(0); // Never converts into positive payment
+
+      const audit = auditCommissionPayout(zeroFrozenComm);
+      expect(audit.hasDiscrepancy).toBe(true);
+      expect(audit.discrepancyReason).toMatch(/Importe congelado explícito de \$0\.00/);
+    });
+
+    it("auditCommissionPayout flags historical discrepancy when frozenAmount > singleShare without modifying records", () => {
+      const historicalDoubledComm = {
+        id: "comm-hist-doubled",
+        creditId: "credit-hist-1",
+        brokerId: "master-user-1",
+        masterBrokerId: "master-user-1",
+        amount: "50000.00",
+        brokerShare: "30000.00",
+        masterBrokerShare: "30000.00",
+        frozenAmount: "60000.00", // Doubled
+        status: "approved",
+      };
+
+      const audit = auditCommissionPayout(historicalDoubledComm);
+      expect(audit.hasDiscrepancy).toBe(true);
+      expect(audit.isMasterDirect).toBe(true);
+      expect(audit.expectedAmount).toBe(30000);
+      expect(audit.frozenAmount).toBe(60000);
+      expect(audit.discrepancyReason).toMatch(/Posible doble conteo histórico detectado/);
+
+      // Throws when strict audit is requested for liquidation
+      expect(() => {
+        getCommissionPayoutAmount(historicalDoubledComm, { throwOnDiscrepancy: true });
+      }).toThrow(/Discrepancia en importe congelado/);
     });
   });
 

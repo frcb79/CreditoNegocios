@@ -1711,19 +1711,36 @@ export class MemStorage implements IStorage {
     };
 
     // 4. Resolve Parent Tenant (Master Broker or Casa Matriz / Platform)
-    let parentTenantId: string | null = null;
+    let parentTenantId: string;
     if (params.userData.masterBrokerId) {
-      const allTenants = Array.from(this.tenants.values());
-      const masterTenant = allTenants.find(
-        (t) => (t.settings as any)?.legacyOwnerUserId === params.userData.masterBrokerId
-      );
-      if (masterTenant) {
-        parentTenantId = masterTenant.id;
+      const masterUser = this.users.get(params.userData.masterBrokerId);
+      const masterStatus = masterUser?.status || (masterUser?.isActive ? "active" : "inactive");
+      if (!masterUser || masterUser.role !== "master_broker" || masterUser.isActive === false || masterStatus !== "active") {
+        throw new Error("El Master Broker de afiliación no es válido o no está activo.");
       }
-    }
-    if (!parentTenantId) {
-      const platformTenant = Array.from(this.tenants.values()).find((t) => t.type === "platform") || Array.from(this.tenants.values())[0];
-      parentTenantId = platformTenant?.id || null;
+
+      const allTenants = Array.from(this.tenants.values());
+      const masterTenant = allTenants.find((t) => {
+        if (t.type !== "master_broker") return false;
+        if ((t.settings as any)?.legacyOwnerUserId === params.userData.masterBrokerId) return true;
+        const ownerMember = Array.from(this.tenantMembers.values()).find(
+          (m) => m.tenantId === t.id && m.userId === params.userData.masterBrokerId && m.role === "owner"
+        );
+        return Boolean(ownerMember);
+      });
+
+      if (!masterTenant) {
+        throw new Error("No se encontró la organización Master Broker para afiliar al nuevo bróker.");
+      }
+      parentTenantId = masterTenant.id;
+    } else {
+      const platformTenant = Array.from(this.tenants.values()).find(
+        (t) => t.type === "platform" || t.slug === "platform"
+      );
+      if (!platformTenant) {
+        throw new Error("No se encontró la organización de plataforma requerida para el registro directo.");
+      }
+      parentTenantId = platformTenant.id;
     }
 
     // 5. Create own broker tenant

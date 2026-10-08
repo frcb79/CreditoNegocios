@@ -94,6 +94,65 @@ _Ninguno activo en este momento._
 
 ## ERRORES RESUELTOS
 
+### ERR-2026-10-08-001 — Fallback indebido a plataforma ante Master Broker inválido en registro
+| Campo | Valor |
+|-------|-------|
+| ID | ERR-2026-10-08-001 |
+| Fecha detección | 2026-10-08 00:10 CST |
+| Severidad | 🔴 Crítico (integridad de jerarquía multitenant y filiación de red) |
+| Área | Backend / Multi-tenant / Auth / Network Transitions |
+| Estado | ✅ Verificado |
+| Reportado por | Revisión Externa QA P0 |
+| Asignado a | Backend Dev / Security Lead |
+
+**Descripción:**
+En `registerUserWithLegalEvidence`, si `masterBrokerId` estaba definido pero no se encontraba su tenant Master válido, la lógica realizaba fallback silencioso a la organización plataforma (`Casa Matriz`).
+
+**Pasos para reproducir:**
+1. Enviar registro indicando un `masterBrokerId` no existente o sin tenant activo.
+2. El broker quedaba creado afiliado a plataforma en vez de abortar.
+
+**Impacto en negocio:**
+Brokers asignados a organizaciones erróneas contra la voluntad del usuario y del modelo de franquicia.
+
+**Solución aplicada:**
+Se reutilizó la resolución canónica de Network Transitions (`getPlatformTenant` y `getOwnedTenant`). Si `masterBrokerId` está presente y no se encuentra un Master Broker válido con tenant activo de tipo `master_broker`, la transacción se rechaza y se revierte al 100%. Para registros directos, se exige obligatoriamente la existencia de la organización plataforma.
+
+**Fecha resolución:** 2026-10-08
+**Verificado por:** Suite `tests/unit/p0-endpoint-integration.test.ts` (16/16 passed).
+
+---
+
+### ERR-2026-10-08-002 — Discrepancia histórica de importes congelados y riesgo de conversión de frozen=0
+| Campo | Valor |
+|-------|-------|
+| ID | ERR-2026-10-08-002 |
+| Fecha detección | 2026-10-08 00:15 CST |
+| Severidad | 🔴 Crítico (riesgo financiero de dispersión y alteración silenciosa de auditoría) |
+| Área | Backend / Comisiones / STP / UI |
+| Estado | ✅ Verificado |
+| Reportado por | Revisión Externa QA P0 |
+| Asignado a | Backend Dev / QA |
+
+**Descripción:**
+1. Un `frozenAmount = 0` explícito en comisiones saltaba la condición `if (frozen > 0)` y se convertía automáticamente en un pago positivo.
+2. Si un registro tenía `frozenAmount` superior a `singleShare` por histórico duplicado ($60,000 vs $30,000), el helper reducía silenciosamente el importe sin alertar al administrador.
+
+**Pasos para reproducir:**
+1. Intentar liquidar una comisión con `frozenAmount = "0.00"` o `frozenAmount = "60000.00"` para Master Directo.
+2. La comisión se dispersaba sin auditar la discrepancia.
+
+**Impacto en negocio:**
+Riesgo de pagos duplicados o dispersión de comisiones retenidas/en cero, y falta de pista de auditoría en registros modificados silenciosamente.
+
+**Solución aplicada:**
+Se implementó `auditCommissionPayout` y `CommissionFrozenDiscrepancyError`. Un `frozenAmount = 0` explícito devuelve 0 y nunca un pago positivo. Cualquier discrepancia histórica bloquea la liquidación en `/pay`, `bulk-pay` y `/mark-paid` devolviendo HTTP 400 con código `FROZEN_AMOUNT_DISCREPANCY` y `requiresAdminReview: true`, sin modificar los registros existentes en base de datos. En UI se agregó badge "Revisión Requerida" y bloqueo de botón.
+
+**Fecha resolución:** 2026-10-08
+**Verificado por:** Suites `tests/unit/commission-payout-integrity.test.ts` (13/13 passed) y `tests/unit/p0-endpoint-integration.test.ts` (16/16 passed).
+
+---
+
 ### ERR-2026-10-07-001 — Delimitadores PL/pgSQL inválidos en migración 0004 (DO $ en vez de DO $$)
 
 | Campo | Valor |

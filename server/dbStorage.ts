@@ -53,6 +53,7 @@ import {
   FORMALIZATION_OTP_MAX_REQUESTS_PER_WINDOW,
   FORMALIZATION_OTP_WINDOW_MS,
 } from "./legalDocuments";
+import { getPlatformTenant, getOwnedTenant } from "./brokerNetworkTransitionService";
 import { getRequiredFormalizationDocuments, isRoleSubjectToFormalization } from "../shared/legalDocuments";
 
 import type {
@@ -598,22 +599,30 @@ export class DbStorage implements IStorage {
         .returning();
 
       // 6. Resolve parent tenant on tx (Master Broker or Casa Matriz / Platform)
-      let parentTenantId: string | null = null;
+      let parentTenantId: string;
       if (params.userData.masterBrokerId) {
-        const allTenants = await tx.select().from(tenants);
-        const masterTenant = allTenants.find(
-          (t) => (t.settings as any)?.legacyOwnerUserId === params.userData.masterBrokerId
-        );
-        if (masterTenant) {
-          parentTenantId = masterTenant.id;
-        }
-      }
-      if (!parentTenantId) {
-        const [platformTenant] = await tx
+        const [master] = await tx
           .select()
-          .from(tenants)
-          .where(eq(tenants.type, "platform"));
-        parentTenantId = platformTenant?.id || null;
+          .from(users)
+          .where(eq(users.id, params.userData.masterBrokerId))
+          .limit(1);
+
+        const masterStatus = master?.status || (master?.isActive ? "active" : "inactive");
+        if (!master || master.role !== "master_broker" || master.isActive === false || masterStatus !== "active") {
+          throw new Error("El Master Broker de afiliación no es válido o no está activo.");
+        }
+
+        const masterTenant = await getOwnedTenant(tx, master.id, "master_broker");
+        if (!masterTenant) {
+          throw new Error("No se encontró la organización Master Broker para afiliar al nuevo bróker.");
+        }
+        parentTenantId = masterTenant.id;
+      } else {
+        const platformTenant = await getPlatformTenant(tx);
+        if (!platformTenant) {
+          throw new Error("No se encontró la organización de plataforma requerida para el registro directo.");
+        }
+        parentTenantId = platformTenant.id;
       }
 
       // 7. Insert broker tenant on tx

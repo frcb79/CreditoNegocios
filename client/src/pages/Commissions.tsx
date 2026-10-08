@@ -357,10 +357,13 @@ export default function Commissions() {
     );
     const singleShare = safeFloat(c.masterBrokerShare) || safeFloat(c.brokerShare) || safeFloat(c.amount);
 
-    if (c.frozenAmount) {
+    if (c.frozenAmount !== undefined && c.frozenAmount !== null && String(c.frozenAmount).trim() !== "") {
       const frozen = safeFloat(c.frozenAmount);
+      if (frozen <= 0) {
+        return 0;
+      }
       if (isMasterDirect) {
-        return frozen > singleShare + 0.01 ? singleShare : frozen;
+        return singleShare;
       }
       return frozen;
     }
@@ -1401,7 +1404,11 @@ export default function Commissions() {
                                   <span className="text-sm font-bold text-slate-900 whitespace-nowrap">
                                     ${profileSpecificAmount.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                                   </span>
-                                  {commission.frozenAmount ? (
+                                  {commission.hasFrozenDiscrepancy ? (
+                                    <span className="text-[10px] font-mono text-amber-700 bg-amber-50 px-1 rounded border border-amber-200" title={commission.frozenDiscrepancyReason}>
+                                      Revisión Requerida
+                                    </span>
+                                  ) : commission.frozenAmount ? (
                                     <span className="text-[10px] font-mono text-blue-700 font-medium">
                                       Congelado
                                     </span>
@@ -1454,18 +1461,31 @@ export default function Commissions() {
                                   )}
 
                                   {isSuperAdmin && isApproved && (
-                                    <Button
-                                      size="sm"
-                                      className="bg-primary hover:bg-primary-dark text-white text-xs font-medium h-7 px-2.5 shadow-sm"
-                                      onClick={() => {
-                                        setSelectedCommission(commission);
-                                        setAccountNumber(commission.effectiveBankAccount?.clabe || "");
-                                      }}
-                                      title="Enviar a dispersión a la red"
-                                    >
-                                      <Send className="w-3 h-3 mr-1 text-white" />
-                                      Enviar a dispersión
-                                    </Button>
+                                    commission.hasFrozenDiscrepancy ? (
+                                      <Button
+                                        size="sm"
+                                        variant="outline"
+                                        className="border-amber-300 text-amber-800 bg-amber-50 text-xs font-medium h-7 px-2.5 opacity-80 cursor-not-allowed"
+                                        disabled
+                                        title={commission.frozenDiscrepancyReason || "Discrepancia en importe congelado. Requiere revisión administrativa auditada."}
+                                      >
+                                        <AlertTriangle className="w-3 h-3 mr-1 text-amber-600" />
+                                        Revisión Requerida
+                                      </Button>
+                                    ) : (
+                                      <Button
+                                        size="sm"
+                                        className="bg-primary hover:bg-primary-dark text-white text-xs font-medium h-7 px-2.5 shadow-sm"
+                                        onClick={() => {
+                                          setSelectedCommission(commission);
+                                          setAccountNumber(commission.effectiveBankAccount?.clabe || "");
+                                        }}
+                                        title="Enviar a dispersión a la red"
+                                      >
+                                        <Send className="w-3 h-3 mr-1 text-white" />
+                                        Enviar a dispersión
+                                      </Button>
+                                    )
                                   )}
 
                                   {isSuperAdmin && isFailed && (
