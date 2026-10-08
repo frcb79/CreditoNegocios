@@ -220,7 +220,7 @@ export function registerLegalRoutes(app: Express) {
 
       // Unknown documents return 404 immediately
       if (!publicDocs.includes(documentName) && !privateDocs.includes(documentName)) {
-        return res.status(404).json({ message: "Documento legal no encontrado." });
+        return res.status(404).json({ message: "Documento legal no encontrado o no disponible." });
       }
 
       const requestedVersion = req.query.version;

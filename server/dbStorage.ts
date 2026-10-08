@@ -475,7 +475,7 @@ export class DbStorage implements IStorage {
         contentSha256: string;
       };
     };
-  }): Promise<{ user: User; acceptances: LegalAcceptance[] }> {
+  }): Promise<{ user: User; acceptances: LegalAcceptance[]; tenant: Tenant; member: TenantMember }> {
     return await db.transaction(async (tx) => {
       // 1. Validate against approved catalog
       const catalogTerms = getApprovedLegalDocument(params.evidence.termsDoc.document, params.evidence.termsDoc.version);
@@ -533,11 +533,20 @@ export class DbStorage implements IStorage {
         throw new Error("Discrepancia en la integridad del contenido persistido de Aviso.");
       }
 
-      // 3. User & Acceptances insertion (rolls back on any error above)
+      // 3. User duplicate email check inside transaction
+      const [existingUser] = await tx
+        .select()
+        .from(users)
+        .where(eq(users.email, params.userData.email.toLowerCase().trim()));
+      if (existingUser) {
+        throw new Error("Este email ya está registrado");
+      }
+
+      // 4. User insertion on tx
       const [createdUser] = await tx
         .insert(users)
         .values({
-          email: params.userData.email,
+          email: params.userData.email.toLowerCase().trim(),
           password: params.userData.password,
           firstName: params.userData.firstName,
           lastName: params.userData.lastName,
@@ -553,6 +562,7 @@ export class DbStorage implements IStorage {
       const acceptedAt = new Date();
       const registrationUserName = [createdUser.firstName, createdUser.lastName].filter(Boolean).join(" ").trim() || null;
 
+      // 5. Legal acceptances insertion on tx
       const [termsAcceptance] = await tx
         .insert(legalAcceptances)
         .values({
@@ -587,9 +597,64 @@ export class DbStorage implements IStorage {
         })
         .returning();
 
+      // 6. Resolve parent tenant on tx (Master Broker or Casa Matriz / Platform)
+      let parentTenantId: string | null = null;
+      if (params.userData.masterBrokerId) {
+        const allTenants = await tx.select().from(tenants);
+        const masterTenant = allTenants.find(
+          (t) => (t.settings as any)?.legacyOwnerUserId === params.userData.masterBrokerId
+        );
+        if (masterTenant) {
+          parentTenantId = masterTenant.id;
+        }
+      }
+      if (!parentTenantId) {
+        const [platformTenant] = await tx
+          .select()
+          .from(tenants)
+          .where(eq(tenants.type, "platform"));
+        parentTenantId = platformTenant?.id || null;
+      }
+
+      // 7. Insert broker tenant on tx
+      const tenantName = `Broker ${createdUser.firstName || ''} ${createdUser.lastName || ''}`.trim() || createdUser.email || "Broker";
+      const tenantSlug = `broker-${createdUser.id.slice(0, 8).toLowerCase()}`;
+      const [brokerTenant] = await tx
+        .insert(tenants)
+        .values({
+          name: tenantName,
+          slug: tenantSlug,
+          type: "broker",
+          parentTenantId,
+          settings: {
+            legacyOwnerUserId: createdUser.id,
+            createdFrom: "canonical_broker_creation",
+          },
+          isActive: true,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        })
+        .returning();
+
+      // 8. Insert owner membership with canOriginate: true on tx
+      const [ownerMember] = await tx
+        .insert(tenantMembers)
+        .values({
+          tenantId: brokerTenant.id,
+          userId: createdUser.id,
+          role: "owner",
+          canOriginate: true,
+          isActive: true,
+          joinedAt: new Date(),
+          updatedAt: new Date(),
+        })
+        .returning();
+
       return {
         user: createdUser,
         acceptances: [termsAcceptance, privacyAcceptance],
+        tenant: brokerTenant,
+        member: ownerMember,
       };
     });
   }

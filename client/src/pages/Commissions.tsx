@@ -351,10 +351,22 @@ export default function Commissions() {
 
   // Helper for network payout (Option B: To Master Broker if exists, else to Broker)
   const getPayoutAmount = (c: any): number => {
-    if (c.frozenAmount) return safeFloat(c.frozenAmount);
-    const isMasterDirect = c.masterBrokerId && String(c.brokerId) === String(c.masterBrokerId);
+    const isMasterDirect = Boolean(
+      c.isMasterDirect ||
+      (c.masterBrokerId && c.brokerId && String(c.brokerId) === String(c.masterBrokerId))
+    );
+    const singleShare = safeFloat(c.masterBrokerShare) || safeFloat(c.brokerShare) || safeFloat(c.amount);
+
+    if (c.frozenAmount) {
+      const frozen = safeFloat(c.frozenAmount);
+      if (isMasterDirect) {
+        return frozen > singleShare + 0.01 ? singleShare : frozen;
+      }
+      return frozen;
+    }
+
     if (isMasterDirect) {
-      return safeFloat(c.masterBrokerShare) || safeFloat(c.brokerShare) || safeFloat(c.amount);
+      return singleShare;
     }
     const isMb = c.masterBrokerId && safeFloat(c.masterBrokerShare) > 0;
     return isMb 
@@ -380,7 +392,10 @@ export default function Commissions() {
   // Master Broker figures
   const mbGrossFromPlatform = useMemo(() => {
     return commissions.reduce((sum, c) => {
-      const isMasterDirect = c.masterBrokerId && String(c.brokerId) === String(c.masterBrokerId);
+      const isMasterDirect = Boolean(
+        c.isMasterDirect ||
+        (c.masterBrokerId && c.brokerId && String(c.brokerId) === String(c.masterBrokerId))
+      );
       if (isMasterDirect) {
         return sum + (safeFloat(c.masterBrokerShare) || safeFloat(c.brokerShare) || safeFloat(c.amount));
       }
@@ -389,7 +404,14 @@ export default function Commissions() {
   }, [commissions]);
 
   const mbOwedToBrokers = useMemo(() => {
-    return commissions.reduce((sum, c) => sum + safeFloat(c.brokerShare), 0);
+    return commissions.reduce((sum, c) => {
+      const isMasterDirect = Boolean(
+        c.isMasterDirect ||
+        (c.masterBrokerId && c.brokerId && String(c.brokerId) === String(c.masterBrokerId))
+      );
+      if (isMasterDirect) return sum; // Direct origination by Master has no subordinate broker share to distribute
+      return sum + safeFloat(c.brokerShare);
+    }, 0);
   }, [commissions]);
 
   const mbNetEarnings = useMemo(() => {
@@ -1216,16 +1238,21 @@ export default function Commissions() {
                           const masterBrokerShare = safeFloat(commission.masterBrokerShare);
                           const appShare = safeFloat(commission.appShare);
                           const totalGrossAmount = safeFloat(commission.amount);
+                          const isMasterDirect = Boolean(
+                            commission.isMasterDirect ||
+                            (commission.masterBrokerId && commission.brokerId && String(commission.brokerId) === String(commission.masterBrokerId))
+                          );
                           const isMb = commission.masterBrokerId && masterBrokerShare > 0;
+                          const singleShare = masterBrokerShare > 0 ? masterBrokerShare : (brokerShare > 0 ? brokerShare : totalGrossAmount);
                           const payoutToNetwork = commission.frozenAmount 
-                            ? safeFloat(commission.frozenAmount)
-                            : (isMb ? (masterBrokerShare + brokerShare) : brokerShare);
+                            ? (isMasterDirect && safeFloat(commission.frozenAmount) > singleShare + 0.01 ? singleShare : safeFloat(commission.frozenAmount))
+                            : (isMasterDirect ? singleShare : (isMb ? (masterBrokerShare + brokerShare) : brokerShare));
 
                           // Profile specific commission amount protagonist
-                          const isOwnCreditAsMB = isMasterBrokerRole && (commission.brokerId === user?.id || !commission.masterBrokerId);
+                          const isOwnCreditAsMB = isMasterBrokerRole && (isMasterDirect || commission.brokerId === user?.id || !commission.masterBrokerId);
                           const profileSpecificAmount = isBrokerRole 
                             ? brokerShare 
-                            : (isMasterBrokerRole ? (isOwnCreditAsMB ? brokerShare : masterBrokerShare) : payoutToNetwork);
+                            : (isMasterBrokerRole ? (isOwnCreditAsMB ? (masterBrokerShare || brokerShare) : masterBrokerShare) : payoutToNetwork);
 
                           const hasValidClabe = commission.effectiveBankAccount?.clabe && /^\d{18}$/.test(commission.effectiveBankAccount.clabe);
                           const clientObj = commission.client || commission.credit?.client;
@@ -1316,10 +1343,10 @@ export default function Commissions() {
                                             ? "bg-indigo-50 text-indigo-700 border-indigo-200/80"
                                             : "bg-slate-100 text-slate-700 border-slate-200/80"
                                         )}>
-                                          {isMb ? 'Master' : 'Directo'}
+                                          {isMasterDirect ? 'Master Directo' : (isMb ? 'Master' : 'Directo')}
                                         </span>
                                       </div>
-                                      {isMb && (
+                                      {isMb && !isMasterDirect && (
                                         <span className="text-[10px] text-slate-500 truncate mt-0.5" title={`Incluye $${brokerShare.toLocaleString('es-MX')} para ${commission.broker?.firstName || 'Broker'}`}>
                                           Incluye ${brokerShare.toLocaleString('es-MX', { maximumFractionDigits: 0 })} p/ {commission.broker?.firstName || 'red'}
                                         </span>
@@ -2074,51 +2101,104 @@ export default function Commissions() {
                       Desglose de Repartición (Cascada):
                     </p>
                     
-                    {isSuperAdmin && (
-                      <div className="space-y-1.5 bg-white p-2.5 rounded border border-gray-200">
-                        <div className="flex justify-between text-blue-950 font-semibold">
-                          <span>📥 Otorgado por Financiera:</span>
-                          <span>${(safeFloat(viewingCommission.totalGrossAmount) || (safeFloat(viewingCommission.appShare) + safeFloat(viewingCommission.masterBrokerShare) + safeFloat(viewingCommission.brokerShare))).toLocaleString('es-MX', { minimumFractionDigits: 2 })} MXN</span>
-                        </div>
-                        <div className="flex justify-between text-amber-900">
-                          <span>📤 Dispersión a la Red:</span>
-                          <span>-${(safeFloat(viewingCommission.masterBrokerShare) + safeFloat(viewingCommission.brokerShare)).toLocaleString('es-MX', { minimumFractionDigits: 2 })} MXN</span>
-                        </div>
-                        <div className="flex justify-between text-emerald-900 font-bold border-t pt-1">
-                          <span>💰 Margen Plataforma:</span>
-                          <span>${safeFloat(viewingCommission.appShare).toLocaleString('es-MX', { minimumFractionDigits: 2 })} MXN</span>
-                        </div>
-                      </div>
-                    )}
+                    {isSuperAdmin && (() => {
+                      const isMasterDirect = Boolean(
+                        viewingCommission.isMasterDirect ||
+                        (viewingCommission.masterBrokerId && viewingCommission.brokerId && String(viewingCommission.brokerId) === String(viewingCommission.masterBrokerId))
+                      );
+                      const singleShare = safeFloat(viewingCommission.masterBrokerShare) || safeFloat(viewingCommission.brokerShare) || safeFloat(viewingCommission.amount);
+                      const networkDispersion = isMasterDirect
+                        ? singleShare
+                        : (safeFloat(viewingCommission.masterBrokerShare) + safeFloat(viewingCommission.brokerShare));
+                      const grossFromFin = safeFloat(viewingCommission.totalGrossAmount) || safeFloat(viewingCommission.amount) || (networkDispersion + safeFloat(viewingCommission.appShare));
 
-                    {isMasterBrokerRole && (
-                      <div className="space-y-1.5 bg-white p-2.5 rounded border border-gray-200">
-                        <div className="flex justify-between text-indigo-950 font-semibold">
-                          <span>📥 Ingreso Red de Plataforma:</span>
-                          <span>${(safeFloat(viewingCommission.masterBrokerShare) + safeFloat(viewingCommission.brokerShare)).toLocaleString('es-MX', { minimumFractionDigits: 2 })} MXN</span>
+                      return (
+                        <div className="space-y-1.5 bg-white p-2.5 rounded border border-gray-200">
+                          <div className="flex justify-between text-blue-950 font-semibold">
+                            <span>📥 Otorgado por Financiera:</span>
+                            <span>${grossFromFin.toLocaleString('es-MX', { minimumFractionDigits: 2 })} MXN</span>
+                          </div>
+                          <div className="flex justify-between text-amber-900">
+                            <span>📤 Dispersión a la Red:</span>
+                            <span>-${networkDispersion.toLocaleString('es-MX', { minimumFractionDigits: 2 })} MXN</span>
+                          </div>
+                          <div className="flex justify-between text-emerald-900 font-bold border-t pt-1">
+                            <span>💰 Margen Plataforma:</span>
+                            <span>${safeFloat(viewingCommission.appShare).toLocaleString('es-MX', { minimumFractionDigits: 2 })} MXN</span>
+                          </div>
                         </div>
-                        <div className="flex justify-between text-amber-900">
-                          <span>📤 Repartición a Bróker:</span>
-                          <span>-${safeFloat(viewingCommission.brokerShare).toLocaleString('es-MX', { minimumFractionDigits: 2 })} MXN</span>
+                      );
+                    })()}
+
+                    {isMasterBrokerRole && (() => {
+                      const isMasterDirect = Boolean(
+                        viewingCommission.isMasterDirect ||
+                        (viewingCommission.masterBrokerId && viewingCommission.brokerId && String(viewingCommission.brokerId) === String(viewingCommission.masterBrokerId))
+                      );
+                      const singleShare = safeFloat(viewingCommission.masterBrokerShare) || safeFloat(viewingCommission.brokerShare) || safeFloat(viewingCommission.amount);
+
+                      if (isMasterDirect) {
+                        return (
+                          <div className="space-y-1.5 bg-white p-2.5 rounded border border-gray-200">
+                            <div className="flex justify-between text-indigo-950 font-semibold">
+                              <span>📥 Originación Directa:</span>
+                              <span>${singleShare.toLocaleString('es-MX', { minimumFractionDigits: 2 })} MXN</span>
+                            </div>
+                            <div className="flex justify-between text-emerald-900 font-bold border-t pt-1">
+                              <span>💰 Tu Ganancia Neta:</span>
+                              <span>${singleShare.toLocaleString('es-MX', { minimumFractionDigits: 2 })} MXN</span>
+                            </div>
+                          </div>
+                        );
+                      }
+
+                      return (
+                        <div className="space-y-1.5 bg-white p-2.5 rounded border border-gray-200">
+                          <div className="flex justify-between text-indigo-950 font-semibold">
+                            <span>📥 Ingreso Red de Plataforma:</span>
+                            <span>${(safeFloat(viewingCommission.masterBrokerShare) + safeFloat(viewingCommission.brokerShare)).toLocaleString('es-MX', { minimumFractionDigits: 2 })} MXN</span>
+                          </div>
+                          <div className="flex justify-between text-amber-900">
+                            <span>📤 Repartición a Bróker:</span>
+                            <span>-${safeFloat(viewingCommission.brokerShare).toLocaleString('es-MX', { minimumFractionDigits: 2 })} MXN</span>
+                          </div>
+                          <div className="flex justify-between text-emerald-900 font-bold border-t pt-1">
+                            <span>💰 Tu Ganancia Neta:</span>
+                            <span>${safeFloat(viewingCommission.masterBrokerShare).toLocaleString('es-MX', { minimumFractionDigits: 2 })} MXN</span>
+                          </div>
                         </div>
-                        <div className="flex justify-between text-emerald-900 font-bold border-t pt-1">
-                          <span>💰 Tu Ganancia Neta:</span>
-                          <span>${safeFloat(viewingCommission.masterBrokerShare).toLocaleString('es-MX', { minimumFractionDigits: 2 })} MXN</span>
-                        </div>
-                      </div>
-                    )}
+                      );
+                    })()}
 
                     <div className="pt-1 text-[11px] text-gray-500 space-y-1 border-t">
-                      <div className="flex justify-between">
-                        <span>👤 Cuota Bróker:</span>
-                        <span className="font-semibold text-gray-700">${safeFloat(viewingCommission.brokerShare).toLocaleString('es-MX', { minimumFractionDigits: 2 })} MXN</span>
-                      </div>
-                      {safeFloat(viewingCommission.masterBrokerShare) > 0 && (
-                        <div className="flex justify-between">
-                          <span>🌐 Cuota Master Bróker:</span>
-                          <span className="font-semibold text-gray-700">${safeFloat(viewingCommission.masterBrokerShare).toLocaleString('es-MX', { minimumFractionDigits: 2 })} MXN</span>
-                        </div>
-                      )}
+                      {(() => {
+                        const isMasterDirect = Boolean(
+                          viewingCommission.isMasterDirect ||
+                          (viewingCommission.masterBrokerId && viewingCommission.brokerId && String(viewingCommission.brokerId) === String(viewingCommission.masterBrokerId))
+                        );
+                        if (isMasterDirect) {
+                          return (
+                            <div className="flex justify-between">
+                              <span>🌐 Cuota Master Bróker (Directo):</span>
+                              <span className="font-semibold text-gray-700">${(safeFloat(viewingCommission.masterBrokerShare) || safeFloat(viewingCommission.brokerShare)).toLocaleString('es-MX', { minimumFractionDigits: 2 })} MXN</span>
+                            </div>
+                          );
+                        }
+                        return (
+                          <>
+                            <div className="flex justify-between">
+                              <span>👤 Cuota Bróker:</span>
+                              <span className="font-semibold text-gray-700">${safeFloat(viewingCommission.brokerShare).toLocaleString('es-MX', { minimumFractionDigits: 2 })} MXN</span>
+                            </div>
+                            {safeFloat(viewingCommission.masterBrokerShare) > 0 && (
+                              <div className="flex justify-between">
+                                <span>🌐 Cuota Master Bróker:</span>
+                                <span className="font-semibold text-gray-700">${safeFloat(viewingCommission.masterBrokerShare).toLocaleString('es-MX', { minimumFractionDigits: 2 })} MXN</span>
+                              </div>
+                            )}
+                          </>
+                        );
+                      })()}
                       {safeFloat(viewingCommission.appShare) > 0 && (
                         <div className="flex justify-between">
                           <span>🏢 Cuota Plataforma:</span>

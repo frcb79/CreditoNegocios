@@ -86,3 +86,35 @@ Actualizar cada vez que se completa una feature.
 	- Regresiones de formalización y gobernanza pasando al 100% (`credit-origin-affiliation.test.ts`, `broker-formalization-origination-gate.test.ts`, `broker-formalization-ui-block3b2a.test.ts`, `user-status-requests.test.ts`, `user-operational-status.test.ts`).
 	- Compilación de tipos (`npm run check`) y build de producción (`npm run build`) exitosos.
 
+## 2026-10-07 — P0: Integridad de Registro de Brokers y Liquidación de Comisiones
+
+- **Unificación Atómica del Registro de Brokers (`POST /api/auth/register`, `server/dbStorage.ts`, `server/storage.ts`, `server/routes.ts`):**
+	- Se integraron en una única transacción PostgreSQL (`tx`) indivisible:
+		- Identidad del broker (`users`).
+		- Aceptación de Términos y Reconocimiento de Aviso (`legal_acceptances`).
+		- Tenant propio tipo `broker` (`tenants`).
+		- Membresía `owner` con `canOriginate=true` (`tenant_members`).
+		- Afiliación al Master correspondiente o Casa Matriz (`parentTenantId`).
+	- Eliminación definitiva del bloque desacoplado `try/catch` que permitía el aprovisionamiento parcial.
+	- Si cualquier paso falla (duplicidad, error de tenant, hashes inválidos), PostgreSQL ejecuta rollback total del registro.
+	- Nueva suite: `tests/unit/broker-registration-atomicity.test.ts` (4/4 pasando al 100%).
+
+- **Blindaje contra Doble Conteo en Comisiones Master Directo (`server/routes.ts`, `client/src/pages/Commissions.tsx`):**
+	- Creación del helper canónico `getCommissionPayoutAmount` en backend y sincronizado en frontend.
+	- Identificación precisa de `isMasterDirect` (`historicalMasterId === brokerId`), calculando el importe liquidable como cuota única legítima (sin duplicar `brokerShare + masterBrokerShare`).
+	- Saneamiento y protección de `frozenAmount` ante registros legacy con importes doblados (capeado seguro al monto único).
+	- Corrección en todas las rutas de ciclo de vida financiero:
+		- `GET /api/commissions`: `payoutAmount` único, `isNetworkPayout: false` para Master Direct.
+		- `POST /api/commissions/:id/approve` y `POST /api/commissions/bulk-approve`: congelan cuota única.
+		- `POST /api/commissions/:id/pay`, `POST /api/commissions/bulk-pay` y `POST /api/commissions/:id/mark-paid`: liquidan cuota única, rechazan CLABE alterada o ausente y preservan inmutabilidad histórica.
+	- UI `Commissions.tsx`:
+		- Tabla principal: `payoutToNetwork` y monto protagonista reflejan cuota única; badge `Master Directo` sin subtítulo de reparto subordinado.
+		- Modal de desglose en cascada: Super Admin visualiza la dispersión a la red neta (sin doblar); Master Broker visualiza originación directa 100% neta sin reparto phantom a broker inexistente.
+		- Métrica agregada: `mbOwedToBrokers` excluye comisiones directas del Master.
+	- Nueva suite: `tests/unit/commission-payout-integrity.test.ts` (11/11 pasando al 100%).
+
+- **Validación y Cierre:**
+	- Typecheck (`tsc`) limpio.
+	- Build de producción (`npm run build`) exitoso.
+	- 100% de tests unitarios y de regresión pasando limpiamente.
+

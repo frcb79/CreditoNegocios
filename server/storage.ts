@@ -182,7 +182,7 @@ export interface IStorage {
         contentSha256: string;
       };
     };
-  }): Promise<{ user: User; acceptances: LegalAcceptance[] }>;
+  }): Promise<{ user: User; acceptances: LegalAcceptance[]; tenant: Tenant; member: TenantMember }>;
 
   // Formalization OTP and Legal Agreement (Bloque 3B1)
   getFormalizationDocuments(userId: string): Promise<FormalizationDocumentsResult>;
@@ -1596,7 +1596,7 @@ export class MemStorage implements IStorage {
         contentSha256: string;
       };
     };
-  }): Promise<{ user: User; acceptances: LegalAcceptance[] }> {
+  }): Promise<{ user: User; acceptances: LegalAcceptance[]; tenant: Tenant; member: TenantMember }> {
     // 1. Validate against approved catalog
     const catalogTerms = getApprovedLegalDocument(params.evidence.termsDoc.document, params.evidence.termsDoc.version);
     if (!catalogTerms) {
@@ -1710,13 +1710,68 @@ export class MemStorage implements IStorage {
       acceptedAt: now,
     };
 
+    // 4. Resolve Parent Tenant (Master Broker or Casa Matriz / Platform)
+    let parentTenantId: string | null = null;
+    if (params.userData.masterBrokerId) {
+      const allTenants = Array.from(this.tenants.values());
+      const masterTenant = allTenants.find(
+        (t) => (t.settings as any)?.legacyOwnerUserId === params.userData.masterBrokerId
+      );
+      if (masterTenant) {
+        parentTenantId = masterTenant.id;
+      }
+    }
+    if (!parentTenantId) {
+      const platformTenant = Array.from(this.tenants.values()).find((t) => t.type === "platform") || Array.from(this.tenants.values())[0];
+      parentTenantId = platformTenant?.id || null;
+    }
+
+    // 5. Create own broker tenant
+    const tenantId = randomUUID();
+    const tenantName = `Broker ${user.firstName || ''} ${user.lastName || ''}`.trim() || user.email || "Broker";
+    const tenantSlug = `broker-${user.id.slice(0, 8).toLowerCase()}`;
+    const tenant: Tenant = {
+      id: tenantId,
+      name: tenantName,
+      slug: tenantSlug,
+      type: "broker",
+      parentTenantId,
+      settings: {
+        legacyOwnerUserId: user.id,
+        createdFrom: "canonical_broker_creation",
+      },
+      branding: {},
+      isActive: true,
+      createdAt: now,
+      updatedAt: now,
+    };
+
+    // 6. Create owner membership with canOriginate: true
+    const memberId = randomUUID();
+    const member: TenantMember = {
+      id: memberId,
+      tenantId: tenant.id,
+      userId: user.id,
+      role: "owner",
+      canOriginate: true,
+      permissions: [],
+      isActive: true,
+      joinedAt: now,
+      updatedAt: now,
+    };
+
+    // 7. Atomic state mutation in MemStorage
     this.users.set(id, structuredClone(user));
     this.legalAcceptances.set(termsAcceptance.id, structuredClone(termsAcceptance));
     this.legalAcceptances.set(privacyAcceptance.id, structuredClone(privacyAcceptance));
+    this.tenants.set(tenant.id, structuredClone(tenant));
+    this.tenantMembers.set(member.id, structuredClone(member));
 
     return {
       user: structuredClone(user),
       acceptances: [structuredClone(termsAcceptance), structuredClone(privacyAcceptance)],
+      tenant: structuredClone(tenant),
+      member: structuredClone(member),
     };
   }
 

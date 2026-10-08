@@ -85,5 +85,23 @@ Formato: Fecha / Decision / Opciones evaluadas / Decision final / Por que
 	- Impide que una alteración en la petición web desvíe fondos o altere silenciosamente el beneficiario bancario de la comisión.
 	- Mantiene la consistencia integral con la multi-dispersión y comisiones independientes por desembolso.
 
+### 2026-10-07 / Unificación Atómica del Registro de Brokers en PostgreSQL
+- Opciones evaluadas:
+	- Opcion A: Registrar el usuario y evidencias legales en una transacción y después provisionar el tenant y la membresía en pasos separados con `try/catch` permisivo.
+	- Opcion B: Unificar en una sola transacción PostgreSQL (`tx`): identidad del broker, aceptación de Términos y Aviso de Privacidad, tenant propio del broker, membresía owner con `canOriginate=true` y afiliación al tenant del Master o plataforma.
+- Decision final: Opcion B.
+- Por que:
+	- Elimina la creación de brokers "huérfanos" sin organización o sin permisos de originación exigidos por Network Transitions.
+	- Si cualquier paso falla (duplicidad, error de tenant, hashes no coincidentes), PostgreSQL revierte la totalidad del registro sin dejar estados parciales ni evidencias huérfanas.
+
+### 2026-10-07 / Blindaje contra Doble Conteo en Comisiones Master Directo y Liquidación Canónica
+- Opciones evaluadas:
+	- Opcion A: Sumar `brokerShare + masterBrokerShare` siempre que exista `masterBrokerId`, obligando al frontend a descontar o ajustar en caliente.
+	- Opcion B: Definir un helper canónico `getCommissionPayoutAmount` en backend y sincronizado en frontend, identificando `isMasterDirect` (`historicalMasterId === brokerId`), devolviendo estrictamente la cuota única legítima del Master (sin duplicar), capeando `frozenAmount` legacy corruptos y asegurando que `/pay`, `/bulk-pay`, `/mark-paid` y `Commissions.tsx` respeten el importe único.
+- Decision final: Opcion B.
+- Por que:
+	- Protege la integridad financiera de la plataforma impidiendo pagos dobles accidentales vía STP o liquidación manual.
+	- Mantiene la transparencia contable para el Master Broker y Super Admin en la visualización en cascada de `Commissions.tsx`.
+
 ## DECISIONES CAMBIADAS
 [Si alguna se revirtio, documentar con la razon]

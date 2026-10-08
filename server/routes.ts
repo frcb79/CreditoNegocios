@@ -158,6 +158,63 @@ function parseCommissionRate(value: unknown): number {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
 }
 
+/**
+ * Canonical helper for liquidable commission payout amount calculation.
+ * Preserves the legitimate single economic share of a Master Broker who directly originates
+ * without doubling it (since brokerShare and masterBrokerShare both represent that share).
+ * For a network credit (broker under master), Option B pays the sum (brokerShare + masterBrokerShare) to the Master.
+ * For a direct broker (Casa Matriz), pays the brokerShare.
+ * Safeguards frozenAmount against legacy doubled corruption.
+ */
+export function getCommissionPayoutAmount(comm: {
+  amount?: string | number | null;
+  brokerShare?: string | number | null;
+  masterBrokerShare?: string | number | null;
+  frozenAmount?: string | number | null;
+  brokerId?: string | null;
+  masterBrokerId?: string | null;
+  originMasterBrokerId?: string | null;
+  status?: string | null;
+}): number {
+  const brokerShare = parseFloat(String(comm.brokerShare || '0')) || 0;
+  const masterBrokerShare = parseFloat(String(comm.masterBrokerShare || '0')) || 0;
+  const grossAmount = parseFloat(String(comm.amount || '0')) || 0;
+
+  const historicalMasterId = comm.masterBrokerId || comm.originMasterBrokerId || null;
+  const isMasterDirect = Boolean(
+    historicalMasterId &&
+    comm.brokerId &&
+    String(comm.brokerId) === String(historicalMasterId)
+  );
+
+  const singleShare = masterBrokerShare > 0 ? masterBrokerShare : (brokerShare > 0 ? brokerShare : grossAmount);
+
+  // If frozenAmount is explicitly set
+  if (comm.frozenAmount !== undefined && comm.frozenAmount !== null) {
+    const frozen = parseFloat(String(comm.frozenAmount)) || 0;
+    if (frozen > 0) {
+      if (isMasterDirect) {
+        // Protect against historical double-counting: if frozenAmount was saved as double the single share, cap it to singleShare
+        return frozen > singleShare + 0.01 ? singleShare : frozen;
+      }
+      return frozen;
+    }
+  }
+
+  if (isMasterDirect) {
+    return singleShare;
+  }
+
+  const isMb = Boolean(historicalMasterId && masterBrokerShare > 0);
+  if (isMb) {
+    // Option B: Network payout to Master Broker = Broker share + Master differential share
+    return brokerShare + masterBrokerShare;
+  }
+
+  // Direct Broker under Casa Matriz
+  return brokerShare > 0 ? brokerShare : grossAmount;
+}
+
 export async function createCascadingCommissionRecord(
   arg1: any,
   institutionArg?: any,
@@ -1082,8 +1139,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const clientIp = req.ip || req.socket?.remoteAddress || "";
       const userAgent = (req.headers["user-agent"] as string) || "unknown";
       
-      // Create user and legal evidence atomically
-      const { user } = await storage.registerUserWithLegalEvidence({
+      // Create user, legal evidence, tenant and owner membership (canOriginate=true) atomically
+      const { user, tenant: brokerTenant, member: brokerMember } = await storage.registerUserWithLegalEvidence({
         userData: {
           email: data.email,
           password: hashedPassword,
@@ -1110,41 +1167,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
           },
         },
       });
-
-      // Canonical broker creation: provision own organization + owner membership
-      // so the user can be safely moved/promoted later in network transitions.
-      let brokerTenant: any = null;
-      try {
-        const platformTenant = (await storage.getTenants?.())?.find((t: any) => t.type === "platform") || (await storage.getTenants?.())?.[0];
-        let parentTenantId = platformTenant?.id || null;
-        if (masterBrokerId && storage.getTenants) {
-          const allTenants = await storage.getTenants();
-          const masterTenant = allTenants.find((t: any) => (t.settings as any)?.legacyOwnerUserId === masterBrokerId);
-          if (masterTenant) parentTenantId = masterTenant.id;
-        }
-
-        brokerTenant = await storage.createTenant({
-          name: `Broker ${user.firstName || ''} ${user.lastName || ''}`.trim() || user.email || "Broker",
-          slug: `broker-${user.id.slice(0, 8).toLowerCase()}`,
-          type: "broker",
-          parentTenantId,
-          settings: {
-            legacyOwnerUserId: user.id,
-            createdFrom: "canonical_broker_creation",
-          },
-          isActive: true,
-        });
-
-        await storage.createTenantMember({
-          tenantId: brokerTenant.id,
-          userId: user.id,
-          role: "owner",
-          canOriginate: true,
-          isActive: true,
-        });
-      } catch (tenantInitErr) {
-        console.warn("[REGISTER] Broker tenant initialization skipped or failed:", tenantInitErr);
-      }
 
       // Apply promotional redemption if promo was supplied
       if (validatedPromo) {
@@ -4860,13 +4882,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
           }
 
           const isMb = Boolean(historicalMasterBrokerId && parseFloat(comm.masterBrokerShare || '0') > 0);
-          const payoutAmount = comm.frozenAmount 
-            ? parseFloat(comm.frozenAmount)
-            : (isMasterDirect
-                ? parseFloat(comm.masterBrokerShare || comm.brokerShare || '0')
-                : (isMb
-                    ? (parseFloat(comm.brokerShare || '0') + parseFloat(comm.masterBrokerShare || '0'))
-                    : parseFloat(comm.brokerShare || comm.amount || '0')));
+          const payoutAmount = getCommissionPayoutAmount({
+            ...comm,
+            originMasterBrokerId: historicalMasterBrokerId,
+          });
 
           const effectiveBeneficiary = (isMb || isMasterDirect) && masterBroker
             ? {
@@ -4893,7 +4912,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
           return {
             ...comm,
             payoutAmount,
-            isNetworkPayout: !!isMb,
+            isNetworkPayout: !!(isMb && !isMasterDirect),
+            isMasterDirect,
             effectiveBeneficiary,
             credit: credit ? {
               id: credit.id,
@@ -5005,13 +5025,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       // Calculate and freeze final payout amount
-      const isMasterDirect = commission.masterBrokerId && commission.brokerId === commission.masterBrokerId;
-      const isMb = commission.masterBrokerId && parseFloat(commission.masterBrokerShare || '0') > 0;
-      const payoutAmount = isMasterDirect
-        ? parseFloat(commission.masterBrokerShare || commission.brokerShare || '0')
-        : (isMb
-            ? (parseFloat(commission.brokerShare || '0') + parseFloat(commission.masterBrokerShare || '0'))
-            : parseFloat(commission.brokerShare || commission.amount || '0'));
+      const linkedCredit = commission.creditId ? await storage.getCredit(commission.creditId) : null;
+      const historicalMasterBrokerId = commission.masterBrokerId || (linkedCredit?.originMasterBrokerId ?? null);
+      const payoutAmount = getCommissionPayoutAmount({
+        ...commission,
+        masterBrokerId: historicalMasterBrokerId,
+      });
 
       const updated = await storage.updateCommission(id, {
         status: 'approved',
@@ -5074,13 +5093,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
             continue;
           }
 
-          const isMasterDirect = comm.masterBrokerId && comm.brokerId === comm.masterBrokerId;
-          const isMb = comm.masterBrokerId && parseFloat(comm.masterBrokerShare || '0') > 0;
-          const payoutAmount = isMasterDirect
-            ? parseFloat(comm.masterBrokerShare || comm.brokerShare || '0')
-            : (isMb
-                ? (parseFloat(comm.brokerShare || '0') + parseFloat(comm.masterBrokerShare || '0'))
-                : parseFloat(comm.brokerShare || comm.amount || '0'));
+          const linkedCredit = comm.creditId ? await storage.getCredit(comm.creditId) : null;
+          const historicalMasterBrokerId = comm.masterBrokerId || (linkedCredit?.originMasterBrokerId ?? null);
+          const payoutAmount = getCommissionPayoutAmount({
+            ...comm,
+            masterBrokerId: historicalMasterBrokerId,
+          });
 
           await storage.updateCommission(id, {
             status: 'approved',
@@ -5184,7 +5202,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             transactionId: alreadyProcessed.trackingKey,
             alreadyPaid: true,
             paidAt: alreadyProcessed.paidAt,
-            payoutAmount: parseFloat(alreadyProcessed.frozenAmount || alreadyProcessed.brokerShare || alreadyProcessed.amount || '0'),
+            payoutAmount: getCommissionPayoutAmount(alreadyProcessed),
             commission: alreadyProcessed,
           });
         }
@@ -5202,7 +5220,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           transactionId: commission.trackingKey || null,
           alreadyPaid: true,
           paidAt: commission.paidAt,
-          payoutAmount: parseFloat(commission.frozenAmount || commission.brokerShare || commission.amount || '0'),
+          payoutAmount: getCommissionPayoutAmount(commission),
           commission,
         });
       }
@@ -5279,12 +5297,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
       }
 
-      // 5. Calculate payout amount (use frozenAmount if set, else net Option B)
-      const payoutAmount = lockedComm.frozenAmount
-        ? parseFloat(lockedComm.frozenAmount)
-        : (isMbCredit
-            ? (parseFloat(lockedComm.brokerShare || '0') + parseFloat(lockedComm.masterBrokerShare || '0'))
-            : parseFloat(lockedComm.brokerShare || lockedComm.amount || '0'));
+      // 5. Calculate payout amount using canonical logic (safe against double counting)
+      const payoutAmount = getCommissionPayoutAmount({
+        ...lockedComm,
+        originMasterBrokerId: historicalMasterBrokerId,
+      });
 
       // 6. Process STP payment
       const paymentResult = await processStpPayment(payoutAmount.toFixed(2), effectiveClabe);
@@ -5409,7 +5426,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           }
 
           if (commission.status === 'paid') {
-            successful.push({ id, status: 'already_paid', payoutAmount: parseFloat(commission.frozenAmount || commission.brokerShare || commission.amount || '0') });
+            successful.push({ id, status: 'already_paid', payoutAmount: getCommissionPayoutAmount(commission) });
             continue;
           }
 
@@ -5452,11 +5469,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
             continue;
           }
 
-          const payoutAmount = locked.frozenAmount
-            ? parseFloat(locked.frozenAmount)
-            : (isMbCredit
-                ? (parseFloat(locked.brokerShare || '0') + parseFloat(locked.masterBrokerShare || '0'))
-                : parseFloat(locked.brokerShare || locked.amount || '0'));
+          const payoutAmount = getCommissionPayoutAmount({
+            ...locked,
+            originMasterBrokerId: historicalMasterBrokerId,
+          });
 
           const paymentResult = await processStpPayment(payoutAmount.toFixed(2), effectiveClabe);
 
@@ -5566,12 +5582,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.json({ message: "La comisión ya estaba marcada como pagada", commission });
       }
 
-      const isMbCredit = commission.masterBrokerId && parseFloat(commission.masterBrokerShare || '0') > 0;
-      const payoutAmount = commission.frozenAmount
-        ? parseFloat(commission.frozenAmount)
-        : (isMbCredit
-            ? (parseFloat(commission.brokerShare || '0') + parseFloat(commission.masterBrokerShare || '0'))
-            : parseFloat(commission.brokerShare || commission.amount || '0'));
+      const linkedCredit = commission.creditId ? await storage.getCredit(commission.creditId) : null;
+      const historicalMasterBrokerId = commission.masterBrokerId || (linkedCredit?.originMasterBrokerId ?? null);
+      const isMasterDirect = Boolean(
+        historicalMasterBrokerId &&
+        commission.brokerId &&
+        String(commission.brokerId) === String(historicalMasterBrokerId)
+      );
+      const isMbCredit = Boolean(historicalMasterBrokerId && parseFloat(commission.masterBrokerShare || '0') > 0);
+      const payoutAmount = getCommissionPayoutAmount({
+        ...commission,
+        originMasterBrokerId: historicalMasterBrokerId,
+      });
 
       const updated = await storage.updateCommission(id, {
         status: 'paid',
@@ -5598,7 +5620,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
 
       // Notify beneficiary with real net amount (never gross amount)
-      const beneficiaryId = isMbCredit ? commission.masterBrokerId! : commission.brokerId;
+      const beneficiaryId = (isMbCredit || isMasterDirect) ? historicalMasterBrokerId! : commission.brokerId;
 
       const paidNotification = await storage.createNotification({
         userId: beneficiaryId,

@@ -326,6 +326,73 @@ En `shared/schema.ts`, la tabla `users` definía la columna `referralCode: varch
 
 ---
 
+### ERR-2026-10-07-003 — Aprovisionamiento parcial no atómico en registro de brokers (POST /api/auth/register)
+
+| Campo | Valor |
+|-------|-------|
+| ID | ERR-2026-10-07-003 |
+| Fecha detección | 2026-10-07 22:42 CST |
+| Severidad | 🔴 Crítica (P0) — integridad transaccional de red |
+| Área | Backend / Auth / Multitenancy |
+| Estado | ✅ Verificado |
+| Reportado por | Auditoría P0 / AI-Team-OS |
+| Asignado a | Backend Dev / QA / Security |
+
+**Descripción:**
+En `POST /api/auth/register`, la creación del usuario y sus aceptaciones legales ocurría en una transacción, pero el tenant propio y la membresía owner (`canOriginate=true`) se creaban posteriormente fuera de la transacción con un `catch` que permitía continuar ante cualquier falla. Si el aprovisionamiento fallaba, el broker quedaba creado como una entidad huérfana sin organización ni permisos de originación.
+
+**Impacto en negocio:**
+Brokers registrados sin tenant o sin membresía activa con `canOriginate=true` quedaban bloqueados de originar créditos y de participar en transiciones de red.
+
+**Solución aplicada:**
+Se unificaron en una sola transacción PostgreSQL (`tx`) dentro de `DbStorage.registerUserWithLegalEvidence` (y atómicamente en `MemStorage`): identidad del broker, aceptación de Términos y Aviso, tenant propio del broker, membresía owner con `canOriginate=true` y afiliación al Master correspondiente o Casa Matriz. Si cualquier paso falla, se revierte la totalidad del registro.
+
+**Causa raíz:**
+Diseño en dos fases desconectadas durante la refactorización de formalización documental.
+
+**Aprendizaje:**
+Toda entidad multitenant con requisitos de membresía estricta debe nacer en una transacción atómica indivisible.
+
+**Fecha resolución:** 2026-10-07
+**Verificado por:** QA Suite (`tests/unit/broker-registration-atomicity.test.ts` — 4/4 passing)
+
+---
+
+### ERR-2026-10-07-004 — Doble conteo de importe en comisiones de Master Broker originador directo
+
+| Campo | Valor |
+|-------|-------|
+| ID | ERR-2026-10-07-004 |
+| Fecha detección | 2026-10-07 22:42 CST |
+| Severidad | 🔴 Crítica (P0) — riesgo financiero / pagos duplicados |
+| Área | Backend / Comisiones / Payouts / Frontend |
+| Estado | ✅ Verificado |
+| Reportado por | Auditoría P0 / AI-Team-OS |
+| Asignado a | Backend Dev / QA / Security |
+
+**Descripción:**
+En `createCascadingCommissionRecord`, cuando un Master Broker originaba directamente (`isMasterDirect=true`), se registraba el importe económico ganado tanto en `brokerShare` como en `masterBrokerShare`. Sin embargo, las rutas de pago (`/pay`, `/bulk-pay`, `/mark-paid`), aprobación y la UI de `Commissions.tsx` asumían que toda comisión de Master debía sumar `brokerShare + masterBrokerShare`, duplicando el importe a dispersar.
+
+**Impacto en negocio:**
+Riesgo de dispersar o registrar el doble del importe real ganado a los Master Brokers directos en transferencias STP o liquidaciones manuales.
+
+**Solución aplicada:**
+1. Se implementó la función canónica `getCommissionPayoutAmount` que identifica `isMasterDirect` y devuelve estrictamente la cuota única legítima sin duplicarla.
+2. Se protegió `frozenAmount` contra valores legacy corruptos (se capean al valor de cuota única).
+3. Se alinearon `/approve`, `/bulk-approve`, `GET /api/commissions`, `/pay`, `/bulk-pay` y `/mark-paid`.
+4. Se corrigió `Commissions.tsx` (desglose modal, `payoutToNetwork`, y cálculo de `mbOwedToBrokers`).
+
+**Causa raíz:**
+Reutilización de la fórmula de red (Opción B: broker + diferencial) sin condicionar la no duplicación cuando el Master es el originador directo.
+
+**Aprendizaje:**
+Las entidades de red deben distinguir explícitamente entre operaciones de red (reparto) y operaciones directas (cuota única).
+
+**Fecha resolución:** 2026-10-07
+**Verificado por:** QA Suite (`tests/unit/commission-payout-integrity.test.ts` — 11/11 passing)
+
+---
+
 ## ANÁLISIS DE PATRONES
 
 ### Errores Recurrentes
