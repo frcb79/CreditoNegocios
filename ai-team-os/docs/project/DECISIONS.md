@@ -67,5 +67,25 @@ Formato: Fecha / Decision / Opciones evaluadas / Decision final / Por que
 	- Impide que cualquier entorno nuevo o recreado arranque con contraseñas conocidas.
 	- Elimina sobrescrituras arbitrarias de decisiones de negocio (`can_originate`, `status`) en cada reinicio del servidor.
 
+### 2026-10-08 / Arquitectura de Ofertas por Financiera con Versionado Aditivo Histórico (Bloque A1)
+- Opciones evaluadas:
+	- Opcion A: Sobrescribir directamente los campos y configuraciones de `institution_products` al cambiar tasas o condiciones.
+	- Opcion B: Modelo aditivo de dos capas: `financial_institution_offers` (entidad lógica que permite múltiples ofertas del mismo `productType` por financiera) + `financial_institution_offer_versions` (historial inmutable de versiones con hash SHA-256 de condiciones y estados 'active'/'superseded').
+- Decision final: Opcion B.
+- Por que:
+	- Permite que una financiera tenga múltiples ofertas del mismo tipo (ej. Crédito Simple Express vs con Garantía Real) sin colisión de unicidad.
+	- Preserva el snapshot histórico inmutable de condiciones cuando se ajustan tasas en el mercado, permitiendo que solicitudes pasadas sigan referenciando la versión exacta ofrecida.
+	- Garantiza auditoría regulatoria e integridad legal mediante hashes criptográficos SHA-256.
+	- Protege la compatibilidad retroactiva al 100% con `institution_products` y `product_templates` existentes.
+
+### 2026-10-08 / Aislamiento Estricto de Comisiones Internas de Crédito Negocios en Ofertas
+- Opciones evaluadas:
+	- Opcion A: Incrustar el spread o comisión interna de Crédito Negocios dentro del esquema y respuestas de las ofertas por financiera.
+	- Opcion B: Desacoplar absolutamente las comisiones internas del catálogo de ofertas. Las entidades de ofertas y versiones solo almacenan condiciones cliente/producto. En fases futuras, el acceso a comisiones internas estará estrictamente blindado en backend por roles y APIs separadas por alcance (Master sólo ve su red autorizada; Broker sólo la propia; Crédito Negocios retiene exclusividad de su spread).
+- Decision final: Opcion B.
+- Por que:
+	- Regla crítica de gobernanza comercial: las comisiones internas jamás deben filtrarse ni exponerse a Master Brokers o Brokers.
+	- El aislamiento real debe implementarse en la capa de datos y servicios de backend, no en filtros superficiales de frontend.
+
 ## DECISIONES CAMBIADAS
 [Si alguna se revirtio, documentar con la razon]

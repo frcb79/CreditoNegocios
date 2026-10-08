@@ -57,3 +57,31 @@ Actualizar cada vez que se completa una feature.
 	- Regresiones de RBAC, storage y estatus operativo passing (27/27).
 	- Compilación de tipos (`npm run check`): 0 errores.
 	- Build de producción (`npm run build`): exitoso.
+
+## 2026-10-08 — Bloque A1: Arquitectura de Ofertas por Financiera y Versionado Aditivo
+
+- **Rama Aislada:** `feat/institution-offers-versioning-a1`
+- **Modelo de Datos y DDL (`shared/schema.ts`, `migrations/0005_institution_offers_versioning.sql`):**
+	- Tabla `financial_institution_offers`: entidad lógica que permite múltiples ofertas de un mismo tipo de producto (`product_type`) por financiera, vinculable opcionalmente a `institution_products` y `product_templates`.
+	- Tabla `financial_institution_offer_versions`: histórico inmutable y aditivo por versión de oferta con `version_number`, `status` ('active', 'superseded'), vigencia temporal (`effective_from`, `effective_to`), snapshot de condiciones y requisitos en JSONB, y hash de integridad SHA-256 (`version_hash`).
+	- Índices específicos para consultas de alto rendimiento por financiera, tipo de producto, estatus y versión.
+- **Servicio y Utilidades de Integridad (`server/offerVersionService.ts`):**
+	- Función determinista `computeOfferVersionHash` mediante serialización recursiva y SHA-256.
+	- Validador de rangos comerciales `validateOfferVersionParameters`.
+- **Capa de Persistencia (`server/storage.ts`, `server/dbStorage.ts`):**
+	- Métodos añadidos a `IStorage`, `MemStorage` y `DbStorage`:
+		- `getOffers`, `getOffer`, `getOffersByInstitution`, `getOffersByProductType`.
+		- `createOffer`: genera oferta y versión 1 automáticamente.
+		- `updateOffer`, `deleteOffer`.
+		- `getOfferVersions`, `getOfferVersion`, `getActiveOfferVersion`.
+		- `createOfferVersion`: versionado aditivo que transiciona automáticamente la versión anterior a 'superseded' y fija `effective_to`.
+		- `supersedeOfferVersion`.
+- **Auto-Migración Idempotente (`server/autoMigrate.ts`):**
+	- Incorporación de bloque `CREATE TABLE IF NOT EXISTS` e índices para despliegues transparentes y zero-downtime en Staging y Producción.
+- **Preservación Estricta:**
+	- `institution_products` y `product_templates` conservados 100% operativos sin modificaciones destructivas.
+	- Matching, comisiones y APIs existentes no intervenidos.
+	- Aislamiento de seguridad: comisiones internas de Crédito Negocios completamente desacopladas de las ofertas.
+- **Validación QA:**
+	- Suite automatizada: `tests/unit/institution-offers-versioning.test.ts` (8/8 passing).
+	- Compilación TypeScript (`npm run check`): 0 errores.

@@ -55,17 +55,28 @@ Completado:
 	- Alta e importación exitosa (100% - 9 perfiles/productos, 0 errores) en Railway Staging para 5 nuevas financieras: Altum, Cualli, Jeeves (con plantilla de producto "Credito Revolvente"), Aspiria, Kapital, y actualización de Pretmex con nuevas reglas y esquemas de comisión.
 	- Purga y depuración permanente de 5 entidades de pruebas pasadas (E2E Flujo Completo, Financiera Demo, Financiera Prueba Franco) para dejar el catálogo oficial limpio en exactamente 18 financieras sin duplicados ni faltantes.
 	- Implementación del endpoint y método `DELETE /api/financial-institutions/:id` con soporte de eliminación en cascada referencial y confirmación en UI (`Financieras.tsx`).
+- **Sprint 2026-10-08 (Bloque A1 — Ofertas por Financiera y Versionado Aditivo):**
+	- Creación de arquitectura de dos capas para ofertas comerciales (`financial_institution_offers` y `financial_institution_offer_versions`).
+	- Soporte para múltiples ofertas del mismo `product_type` por financiera sin colisiones de clave única.
+	- Versionado aditivo estricto: transición automática de versión activa a `superseded` al crear nuevas versiones, preservando historial inmutable de tasas, plazos y condiciones.
+	- Hashes criptográficos SHA-256 (`version_hash`) con serialización recursiva ordenada para auditoría jurídica de condiciones.
+	- Preservación íntegra y retrocompatible de `institution_products` y `product_templates`.
+	- Aislamiento estricto de seguridad: comisiones internas de Crédito Negocios desacopladas de las ofertas.
+	- Implementación completa en `IStorage`, `MemStorage` y `DbStorage`.
+	- Migración SQL `migrations/0005_institution_offers_versioning.sql` y sincronización idempotente en `server/autoMigrate.ts`.
+	- Suite automatizada `tests/unit/institution-offers-versioning.test.ts` (8/8 tests passing).
 
 En progreso:
-- Estabilización y validación visual de los flujos de dispersión y red en entorno de producción Vercel y Railway.
+- Preparación para bloques subsiguientes: Diccionario Canónico de Variables, Matching por Oferta, Esquemas de Comisiones y Aceptación Comercial.
 
 Pendiente:
+- Bloques B y C: Matching contra versiones activas de ofertas y cálculo de comisiones desacopladas por rol.
 - Revisión de items de `Pendientes.md` (logo/fondo transparente en sidebar, mensaje de devolución admin en modal de broker, tracking de pagos de sobretasa de financiera a super admin).
 - Medir impacto del sistema en tiempo de arranque, calidad y velocidad de entrega.
 - Establecer ritual de sync periódico de aprendizajes al repositorio maestro.
 
 Bloqueadores:
-- Ninguno. Todos los builds, accesos, base de datos y despliegues en Railway están en verde (200 OK).
+- Ninguno. Tests unitarios en verde (8/8), TypeScript sin errores (0 errores), base de datos con migración idempotente.
 
 ## HISTORIAL
 2026-04-17 — Sesion inicial: creacion de estructura base del sistema.
@@ -76,3 +87,4 @@ Bloqueadores:
 2026-09-04 — Implementación de Filtros de Clientes, Multi-Dispersión de Créditos con Comisiones Individuales, Red de Brokers 3-en-1 para Super Admin, y corrección de build Vercel (IIFE en JSX).
 2026-09-11 — Corrección de build en Railway, reparación de esquema PostgreSQL (`referral_code`), implementación de fallback nativo SQL en autenticación, restauración y blindaje de matriz RBAC (3 cuentas con `Prueba1$`) y validación live en producción.
 2026-09-17 — Procesamiento de `Plantilla_Comisiones_Financieras Luis.xlsx`, alta de 5 nuevas financieras (Altum, Cualli, Jeeves, Aspiria, Kapital) y actualización de Pretmex. Purga de 5 entidades de prueba e incorporación de eliminación permanente segura (`DELETE /api/financial-institutions/:id`). Catálogo consolidado en 18 financieras reales.
+2026-10-08 — Implementación del Bloque A1: Arquitectura de ofertas por financiera, soporte multi-oferta del mismo tipo, versionado aditivo histórico inmutable y aislamiento de comisiones de plataforma en rama aislada `feat/institution-offers-versioning-a1`.

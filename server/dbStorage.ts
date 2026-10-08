@@ -28,8 +28,13 @@ import {
   type PromoCode, type InsertPromoCode,
   type PromoRedemption, type InsertPromoRedemption,
   commercialAuditLogs, type UserOperationalStatus,
-  userStatusRequests, type UserStatusRequest, type UserStatusRequestStatus, type UserStatusRequestAction
+  userStatusRequests, type UserStatusRequest, type UserStatusRequestStatus, type UserStatusRequestAction,
+  financialInstitutionOffers, financialInstitutionOfferVersions,
+  type FinancialInstitutionOffer, type InsertFinancialInstitutionOffer,
+  type FinancialInstitutionOfferVersion, type InsertFinancialInstitutionOfferVersion,
+  type FinancialInstitutionOfferWithVersion
 } from "../shared/schema";
+import { computeOfferVersionHash } from "./offerVersionService";
 import { eq, desc, asc, like, and, or, inArray, sql } from "drizzle-orm";
 
 import { randomUUID } from "crypto";
@@ -945,6 +950,264 @@ export class DbStorage implements IStorage {
       return (result.rowCount ?? 0) > 0;
     } catch (error) {
       console.error("Error deleting institution product:", error);
+      return false;
+    }
+  }
+
+  // ===== FINANCIAL INSTITUTION OFFERS (Bloque A1) =====
+  async getOffers(options?: { institutionId?: string; productType?: string; isActive?: boolean }): Promise<FinancialInstitutionOffer[]> {
+    try {
+      const conditions = [];
+      if (options?.institutionId) conditions.push(eq(financialInstitutionOffers.institutionId, options.institutionId));
+      if (options?.productType) conditions.push(eq(financialInstitutionOffers.productType, options.productType));
+      if (options?.isActive !== undefined) conditions.push(eq(financialInstitutionOffers.isActive, options.isActive));
+
+      const query = db.select().from(financialInstitutionOffers);
+      if (conditions.length > 0) {
+        return await query.where(and(...conditions)).orderBy(desc(financialInstitutionOffers.createdAt));
+      }
+      return await query.orderBy(desc(financialInstitutionOffers.createdAt));
+    } catch (error) {
+      console.error("Error getting offers in DbStorage:", error);
+      return [];
+    }
+  }
+
+  async getOffer(id: string): Promise<FinancialInstitutionOffer | undefined> {
+    try {
+      const [offer] = await db.select().from(financialInstitutionOffers).where(eq(financialInstitutionOffers.id, id)).limit(1);
+      return offer;
+    } catch (error) {
+      console.error(`Error getting offer ${id} in DbStorage:`, error);
+      return undefined;
+    }
+  }
+
+  async getOffersByInstitution(institutionId: string, options?: { includeInactive?: boolean }): Promise<FinancialInstitutionOffer[]> {
+    try {
+      const conditions = [eq(financialInstitutionOffers.institutionId, institutionId)];
+      if (!options?.includeInactive) {
+        conditions.push(eq(financialInstitutionOffers.isActive, true));
+      }
+      return await db.select().from(financialInstitutionOffers)
+        .where(and(...conditions))
+        .orderBy(desc(financialInstitutionOffers.createdAt));
+    } catch (error) {
+      console.error(`Error getting offers by institution ${institutionId} in DbStorage:`, error);
+      return [];
+    }
+  }
+
+  async getOffersByProductType(institutionId: string, productType: string): Promise<FinancialInstitutionOffer[]> {
+    try {
+      return await db.select().from(financialInstitutionOffers)
+        .where(and(
+          eq(financialInstitutionOffers.institutionId, institutionId),
+          eq(financialInstitutionOffers.productType, productType),
+          eq(financialInstitutionOffers.isActive, true)
+        ))
+        .orderBy(desc(financialInstitutionOffers.createdAt));
+    } catch (error) {
+      console.error(`Error getting offers by product type in DbStorage:`, error);
+      return [];
+    }
+  }
+
+  async createOffer(
+    offerData: InsertFinancialInstitutionOffer,
+    initialVersion?: Partial<InsertFinancialInstitutionOfferVersion>
+  ): Promise<{ offer: FinancialInstitutionOffer; version: FinancialInstitutionOfferVersion }> {
+    try {
+      const offerId = randomUUID();
+      const versionId = randomUUID();
+      const now = new Date();
+
+      const conditions = initialVersion?.conditions ?? {};
+      const requirements = initialVersion?.requirements ?? {};
+      const variablesConfig = initialVersion?.variablesConfiguration ?? {};
+      const versionHash = computeOfferVersionHash({
+        offerId,
+        versionNumber: 1,
+        conditions,
+        requirements,
+        variablesConfiguration: variablesConfig,
+      });
+
+      const [createdOffer] = await db.insert(financialInstitutionOffers).values({
+        ...offerData,
+        id: offerId,
+        templateId: offerData.templateId ?? null,
+        institutionProductId: offerData.institutionProductId ?? null,
+        slug: offerData.slug ?? null,
+        description: offerData.description ?? null,
+        currentVersionNumber: 1,
+        isActive: offerData.isActive ?? true,
+        createdBy: offerData.createdBy ?? null,
+        createdAt: now,
+        updatedAt: now,
+      }).returning();
+
+      const [createdVersion] = await db.insert(financialInstitutionOfferVersions).values({
+        id: versionId,
+        offerId,
+        versionNumber: 1,
+        status: "active",
+        effectiveFrom: now,
+        effectiveTo: null,
+        conditions,
+        requirements,
+        requiredDocuments: initialVersion?.requiredDocuments ?? [],
+        variablesConfiguration: variablesConfig,
+        changeReason: initialVersion?.changeReason ?? "Versión inicial de la oferta",
+        versionHash,
+        createdBy: offerData.createdBy ?? null,
+        createdAt: now,
+      }).returning();
+
+      return { offer: createdOffer, version: createdVersion };
+    } catch (error) {
+      console.error("Error creating offer in DbStorage:", error);
+      throw error;
+    }
+  }
+
+  async updateOffer(id: string, offerData: Partial<InsertFinancialInstitutionOffer>): Promise<FinancialInstitutionOffer | undefined> {
+    try {
+      const [updated] = await db.update(financialInstitutionOffers)
+        .set({ ...offerData, updatedAt: new Date() })
+        .where(eq(financialInstitutionOffers.id, id))
+        .returning();
+      return updated;
+    } catch (error) {
+      console.error(`Error updating offer ${id} in DbStorage:`, error);
+      return undefined;
+    }
+  }
+
+  async deleteOffer(id: string): Promise<boolean> {
+    try {
+      const result = await db.delete(financialInstitutionOffers).where(eq(financialInstitutionOffers.id, id));
+      return (result.rowCount ?? 0) > 0;
+    } catch (error) {
+      console.error(`Error deleting offer ${id} in DbStorage:`, error);
+      return false;
+    }
+  }
+
+  // ===== FINANCIAL INSTITUTION OFFER VERSIONS (Bloque A1) =====
+  async getOfferVersions(offerId: string): Promise<FinancialInstitutionOfferVersion[]> {
+    try {
+      return await db.select().from(financialInstitutionOfferVersions)
+        .where(eq(financialInstitutionOfferVersions.offerId, offerId))
+        .orderBy(desc(financialInstitutionOfferVersions.versionNumber));
+    } catch (error) {
+      console.error(`Error getting offer versions for ${offerId} in DbStorage:`, error);
+      return [];
+    }
+  }
+
+  async getOfferVersion(id: string): Promise<FinancialInstitutionOfferVersion | undefined> {
+    try {
+      const [version] = await db.select().from(financialInstitutionOfferVersions)
+        .where(eq(financialInstitutionOfferVersions.id, id))
+        .limit(1);
+      return version;
+    } catch (error) {
+      console.error(`Error getting offer version ${id} in DbStorage:`, error);
+      return undefined;
+    }
+  }
+
+  async getActiveOfferVersion(offerId: string): Promise<FinancialInstitutionOfferVersion | undefined> {
+    try {
+      const [activeVersion] = await db.select().from(financialInstitutionOfferVersions)
+        .where(and(
+          eq(financialInstitutionOfferVersions.offerId, offerId),
+          eq(financialInstitutionOfferVersions.status, "active")
+        ))
+        .orderBy(desc(financialInstitutionOfferVersions.versionNumber))
+        .limit(1);
+      return activeVersion;
+    } catch (error) {
+      console.error(`Error getting active offer version for ${offerId} in DbStorage:`, error);
+      return undefined;
+    }
+  }
+
+  async createOfferVersion(
+    offerId: string,
+    versionData: Partial<InsertFinancialInstitutionOfferVersion> & { changeReason?: string }
+  ): Promise<FinancialInstitutionOfferVersion> {
+    try {
+      const offer = await this.getOffer(offerId);
+      if (!offer) {
+        throw new Error(`Oferta con ID ${offerId} no encontrada`);
+      }
+
+      const now = new Date();
+      const nextVersionNumber = offer.currentVersionNumber + 1;
+
+      // 1. Marcar versión activa previa como superseded
+      await db.update(financialInstitutionOfferVersions)
+        .set({ status: "superseded", effectiveTo: now })
+        .where(and(
+          eq(financialInstitutionOfferVersions.offerId, offerId),
+          eq(financialInstitutionOfferVersions.status, "active")
+        ));
+
+      // 2. Actualizar oferta padre
+      await db.update(financialInstitutionOffers)
+        .set({ currentVersionNumber: nextVersionNumber, updatedAt: now })
+        .where(eq(financialInstitutionOffers.id, offerId));
+
+      const versionId = randomUUID();
+      const conditions = versionData.conditions ?? {};
+      const requirements = versionData.requirements ?? {};
+      const variablesConfig = versionData.variablesConfiguration ?? {};
+      const versionHash = computeOfferVersionHash({
+        offerId,
+        versionNumber: nextVersionNumber,
+        conditions,
+        requirements,
+        variablesConfiguration: variablesConfig,
+      });
+
+      // 3. Insertar nueva versión activa
+      const [createdVersion] = await db.insert(financialInstitutionOfferVersions).values({
+        id: versionId,
+        offerId,
+        versionNumber: nextVersionNumber,
+        status: "active",
+        effectiveFrom: now,
+        effectiveTo: null,
+        conditions,
+        requirements,
+        requiredDocuments: versionData.requiredDocuments ?? [],
+        variablesConfiguration: variablesConfig,
+        changeReason: versionData.changeReason ?? `Actualización a versión ${nextVersionNumber}`,
+        versionHash,
+        createdBy: versionData.createdBy ?? offer.createdBy ?? null,
+        createdAt: now,
+      }).returning();
+
+      return createdVersion;
+    } catch (error) {
+      console.error(`Error creating offer version for ${offerId} in DbStorage:`, error);
+      throw error;
+    }
+  }
+
+  async supersedeOfferVersion(offerId: string, oldVersionNumber: number, supersededAt?: Date): Promise<boolean> {
+    try {
+      const result = await db.update(financialInstitutionOfferVersions)
+        .set({ status: "superseded", effectiveTo: supersededAt ?? new Date() })
+        .where(and(
+          eq(financialInstitutionOfferVersions.offerId, offerId),
+          eq(financialInstitutionOfferVersions.versionNumber, oldVersionNumber)
+        ));
+      return (result.rowCount ?? 0) > 0;
+    } catch (error) {
+      console.error(`Error superseding offer version in DbStorage:`, error);
       return false;
     }
   }

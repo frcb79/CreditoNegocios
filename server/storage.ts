@@ -62,8 +62,16 @@ import {
   userStatusRequests,
   type UserStatusRequest,
   type UserStatusRequestStatus,
-  type UserStatusRequestAction
+  type UserStatusRequestAction,
+  financialInstitutionOffers,
+  financialInstitutionOfferVersions,
+  type FinancialInstitutionOffer,
+  type InsertFinancialInstitutionOffer,
+  type FinancialInstitutionOfferVersion,
+  type InsertFinancialInstitutionOfferVersion,
+  type FinancialInstitutionOfferWithVersion,
 } from "../shared/schema";
+import { computeOfferVersionHash } from "./offerVersionService";
 
 
 type NotificationInput = InsertNotification & {
@@ -254,6 +262,28 @@ export interface IStorage {
   updateInstitutionProduct(id: string, productData: Partial<InsertInstitutionProduct>): Promise<InstitutionProduct | undefined>;
   deleteInstitutionProduct(id: string): Promise<boolean>;
 
+  // Financial Institution Offers operations (Bloque A1)
+  getOffers(options?: { institutionId?: string; productType?: string; isActive?: boolean }): Promise<FinancialInstitutionOffer[]>;
+  getOffer(id: string): Promise<FinancialInstitutionOffer | undefined>;
+  getOffersByInstitution(institutionId: string, options?: { includeInactive?: boolean }): Promise<FinancialInstitutionOffer[]>;
+  getOffersByProductType(institutionId: string, productType: string): Promise<FinancialInstitutionOffer[]>;
+  createOffer(
+    offerData: InsertFinancialInstitutionOffer,
+    initialVersion?: Partial<InsertFinancialInstitutionOfferVersion>
+  ): Promise<{ offer: FinancialInstitutionOffer; version: FinancialInstitutionOfferVersion }>;
+  updateOffer(id: string, offerData: Partial<InsertFinancialInstitutionOffer>): Promise<FinancialInstitutionOffer | undefined>;
+  deleteOffer(id: string): Promise<boolean>;
+
+  // Financial Institution Offer Versions operations (Bloque A1)
+  getOfferVersions(offerId: string): Promise<FinancialInstitutionOfferVersion[]>;
+  getOfferVersion(id: string): Promise<FinancialInstitutionOfferVersion | undefined>;
+  getActiveOfferVersion(offerId: string): Promise<FinancialInstitutionOfferVersion | undefined>;
+  createOfferVersion(
+    offerId: string,
+    versionData: Partial<InsertFinancialInstitutionOfferVersion> & { changeReason?: string }
+  ): Promise<FinancialInstitutionOfferVersion>;
+  supersedeOfferVersion(offerId: string, oldVersionNumber: number, supersededAt?: Date): Promise<boolean>;
+
   // Products operations (simplified - LEGACY)
   getProducts(institutionId?: string): Promise<Product[]>;
   getProduct(id: string): Promise<Product | undefined>;
@@ -340,6 +370,8 @@ export class MemStorage implements IStorage {
   private institutionProducts: Map<string, InstitutionProduct> = new Map();
   private products: Map<string, Product> = new Map();
   private productRequests: Map<string, ProductRequest> = new Map();
+  private financialInstitutionOffers: Map<string, FinancialInstitutionOffer> = new Map();
+  private financialInstitutionOfferVersions: Map<string, FinancialInstitutionOfferVersion> = new Map();
   
   // Financial institution requests storage
   private financialInstitutionRequests: Map<string, FinancialInstitutionRequest> = new Map();
@@ -2868,6 +2900,206 @@ export class MemStorage implements IStorage {
 
   async deleteInstitutionProduct(id: string): Promise<boolean> {
     return this.institutionProducts.delete(id);
+  }
+
+  // Financial Institution Offers operations (Bloque A1)
+  async getOffers(options?: { institutionId?: string; productType?: string; isActive?: boolean }): Promise<FinancialInstitutionOffer[]> {
+    let offers = Array.from(this.financialInstitutionOffers.values());
+    if (options?.institutionId) {
+      offers = offers.filter(o => o.institutionId === options.institutionId);
+    }
+    if (options?.productType) {
+      offers = offers.filter(o => o.productType === options.productType);
+    }
+    if (options?.isActive !== undefined) {
+      offers = offers.filter(o => o.isActive === options.isActive);
+    }
+    return offers;
+  }
+
+  async getOffer(id: string): Promise<FinancialInstitutionOffer | undefined> {
+    return this.financialInstitutionOffers.get(id);
+  }
+
+  async getOffersByInstitution(institutionId: string, options?: { includeInactive?: boolean }): Promise<FinancialInstitutionOffer[]> {
+    let offers = Array.from(this.financialInstitutionOffers.values())
+      .filter(o => o.institutionId === institutionId);
+    if (!options?.includeInactive) {
+      offers = offers.filter(o => o.isActive);
+    }
+    return offers;
+  }
+
+  async getOffersByProductType(institutionId: string, productType: string): Promise<FinancialInstitutionOffer[]> {
+    return Array.from(this.financialInstitutionOffers.values())
+      .filter(o => o.institutionId === institutionId && o.productType === productType && o.isActive);
+  }
+
+  async createOffer(
+    offerData: InsertFinancialInstitutionOffer,
+    initialVersion?: Partial<InsertFinancialInstitutionOfferVersion>
+  ): Promise<{ offer: FinancialInstitutionOffer; version: FinancialInstitutionOfferVersion }> {
+    const offerId = randomUUID();
+    const now = new Date();
+    const newOffer: FinancialInstitutionOffer = {
+      ...offerData,
+      id: offerId,
+      templateId: offerData.templateId ?? null,
+      institutionProductId: offerData.institutionProductId ?? null,
+      slug: offerData.slug ?? null,
+      description: offerData.description ?? null,
+      currentVersionNumber: 1,
+      isActive: offerData.isActive ?? true,
+      createdBy: offerData.createdBy ?? null,
+      createdAt: now,
+      updatedAt: now,
+    };
+    this.financialInstitutionOffers.set(offerId, newOffer);
+
+    // Generar automáticamente versión 1
+    const versionId = randomUUID();
+    const conditions = initialVersion?.conditions ?? {};
+    const requirements = initialVersion?.requirements ?? {};
+    const variablesConfig = initialVersion?.variablesConfiguration ?? {};
+    const versionHash = computeOfferVersionHash({
+      offerId,
+      versionNumber: 1,
+      conditions,
+      requirements,
+      variablesConfiguration: variablesConfig,
+    });
+
+    const newVersion: FinancialInstitutionOfferVersion = {
+      id: versionId,
+      offerId,
+      versionNumber: 1,
+      status: "active",
+      effectiveFrom: now,
+      effectiveTo: null,
+      conditions,
+      requirements,
+      requiredDocuments: initialVersion?.requiredDocuments ?? [],
+      variablesConfiguration: variablesConfig,
+      changeReason: initialVersion?.changeReason ?? "Versión inicial de la oferta",
+      versionHash,
+      createdBy: offerData.createdBy ?? null,
+      createdAt: now,
+    };
+    this.financialInstitutionOfferVersions.set(versionId, newVersion);
+
+    return { offer: newOffer, version: newVersion };
+  }
+
+  async updateOffer(id: string, offerData: Partial<InsertFinancialInstitutionOffer>): Promise<FinancialInstitutionOffer | undefined> {
+    const existing = this.financialInstitutionOffers.get(id);
+    if (!existing) return undefined;
+    const updated: FinancialInstitutionOffer = {
+      ...existing,
+      ...offerData,
+      updatedAt: new Date(),
+    };
+    this.financialInstitutionOffers.set(id, updated);
+    return updated;
+  }
+
+  async deleteOffer(id: string): Promise<boolean> {
+    for (const [vId, v] of this.financialInstitutionOfferVersions.entries()) {
+      if (v.offerId === id) {
+        this.financialInstitutionOfferVersions.delete(vId);
+      }
+    }
+    return this.financialInstitutionOffers.delete(id);
+  }
+
+  // Financial Institution Offer Versions operations (Bloque A1)
+  async getOfferVersions(offerId: string): Promise<FinancialInstitutionOfferVersion[]> {
+    return Array.from(this.financialInstitutionOfferVersions.values())
+      .filter(v => v.offerId === offerId)
+      .sort((a, b) => b.versionNumber - a.versionNumber);
+  }
+
+  async getOfferVersion(id: string): Promise<FinancialInstitutionOfferVersion | undefined> {
+    return this.financialInstitutionOfferVersions.get(id);
+  }
+
+  async getActiveOfferVersion(offerId: string): Promise<FinancialInstitutionOfferVersion | undefined> {
+    return Array.from(this.financialInstitutionOfferVersions.values())
+      .find(v => v.offerId === offerId && v.status === "active");
+  }
+
+  async createOfferVersion(
+    offerId: string,
+    versionData: Partial<InsertFinancialInstitutionOfferVersion> & { changeReason?: string }
+  ): Promise<FinancialInstitutionOfferVersion> {
+    const offer = this.financialInstitutionOffers.get(offerId);
+    if (!offer) {
+      throw new Error(`Oferta con ID ${offerId} no encontrada`);
+    }
+
+    const now = new Date();
+    const nextVersionNumber = offer.currentVersionNumber + 1;
+
+    // Versionado aditivo: marcar versión activa previa como 'superseded'
+    for (const [vId, v] of this.financialInstitutionOfferVersions.entries()) {
+      if (v.offerId === offerId && v.status === "active") {
+        this.financialInstitutionOfferVersions.set(vId, {
+          ...v,
+          status: "superseded",
+          effectiveTo: now,
+        });
+      }
+    }
+
+    // Actualizar oferta
+    this.financialInstitutionOffers.set(offerId, {
+      ...offer,
+      currentVersionNumber: nextVersionNumber,
+      updatedAt: now,
+    });
+
+    const newVersionId = randomUUID();
+    const conditions = versionData.conditions ?? {};
+    const requirements = versionData.requirements ?? {};
+    const variablesConfig = versionData.variablesConfiguration ?? {};
+    const versionHash = computeOfferVersionHash({
+      offerId,
+      versionNumber: nextVersionNumber,
+      conditions,
+      requirements,
+      variablesConfiguration: variablesConfig,
+    });
+
+    const newVersion: FinancialInstitutionOfferVersion = {
+      id: newVersionId,
+      offerId,
+      versionNumber: nextVersionNumber,
+      status: "active",
+      effectiveFrom: now,
+      effectiveTo: null,
+      conditions,
+      requirements,
+      requiredDocuments: versionData.requiredDocuments ?? [],
+      variablesConfiguration: variablesConfig,
+      changeReason: versionData.changeReason ?? `Actualización a versión ${nextVersionNumber}`,
+      versionHash,
+      createdBy: versionData.createdBy ?? offer.createdBy ?? null,
+      createdAt: now,
+    };
+    this.financialInstitutionOfferVersions.set(newVersionId, newVersion);
+
+    return newVersion;
+  }
+
+  async supersedeOfferVersion(offerId: string, oldVersionNumber: number, supersededAt?: Date): Promise<boolean> {
+    const version = Array.from(this.financialInstitutionOfferVersions.values())
+      .find(v => v.offerId === offerId && v.versionNumber === oldVersionNumber);
+    if (!version) return false;
+    this.financialInstitutionOfferVersions.set(version.id, {
+      ...version,
+      status: "superseded",
+      effectiveTo: supersededAt ?? new Date(),
+    });
+    return true;
   }
 
   // Products operations (simplified - LEGACY)
