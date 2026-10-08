@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import MainLayout from "@/components/MainLayout";
 import Header from "@/components/Header";
+import BrokerNetworkTransitionDialog from "@/components/Users/BrokerNetworkTransitionDialog";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -120,7 +121,8 @@ import {
   Check,
   X,
   FileText,
-  AlertCircle
+  AlertCircle,
+  ArrowRightLeft
 } from "lucide-react";
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
@@ -292,6 +294,7 @@ export default function UserManagement() {
   const [targetOperationalStatus, setTargetOperationalStatus] = useState<UserOperationalStatus>("suspended");
   const [operationalStatusReason, setOperationalStatusReason] = useState<string>("");
   const [operationalStatusNotes, setOperationalStatusNotes] = useState<string>("");
+  const [networkTransitionUser, setNetworkTransitionUser] = useState<User | null>(null);
 
   const isSuperAdmin = currentUser?.role === 'super_admin';
   const isPlatformAdmin = currentUser?.role === 'admin' || isSuperAdmin;
@@ -334,12 +337,12 @@ export default function UserManagement() {
   const [statusRequestModal, setStatusRequestModal] = useState<{
     open: boolean;
     targetUser?: User;
-    requestedStatus: 'inactive' | 'active';
+    requestedStatus: 'active';
     reason: string;
     notes: string;
   }>({
     open: false,
-    requestedStatus: 'inactive',
+    requestedStatus: 'active',
     reason: '',
     notes: '',
   });
@@ -387,18 +390,18 @@ export default function UserManagement() {
 
   // Mutation: Master Broker create status request
   const createStatusRequestMutation = useMutation({
-    mutationFn: async (payload: { targetUserId: string; requestedStatus: 'inactive' | 'active'; reason: string; notes?: string }) => {
+    mutationFn: async (payload: { targetUserId: string; requestedStatus: 'active'; reason: string; notes?: string }) => {
       const res = await apiRequest('POST', '/api/master-broker/status-requests', payload);
       return res.json();
     },
     onSuccess: (data: any) => {
       toast({
         title: "Solicitud enviada a Super Admin",
-        description: `Se envió la solicitud de ${statusRequestModal.requestedStatus === 'inactive' ? 'baja' : 'reactivación'} para revisión.`,
+        description: "Se envió la solicitud de reactivación para revisión.",
       });
       refetchMasterStatusRequests();
       queryClient.invalidateQueries({ queryKey: ["/api/master-broker/status-requests"] });
-      setStatusRequestModal({ open: false, requestedStatus: 'inactive', reason: '', notes: '' });
+      setStatusRequestModal({ open: false, requestedStatus: 'active', reason: '', notes: '' });
     },
     onError: (err: any) => {
       toast({
@@ -1437,29 +1440,25 @@ export default function UserManagement() {
                                             </Button>
                                           )}
 
-                                          {/* Solicitar Baja: si broker está active o suspended */}
+                                          {/* Baja: acción directa del Master sobre su propia red */}
                                           {(currentStatus === 'active' || currentStatus === 'suspended') && (
                                             <Button
                                               variant="ghost"
                                               size="sm"
-                                              disabled={Boolean(pendingReq && pendingReq.requestedStatus === 'inactive')}
                                               onClick={() => {
                                                 if (m.user) {
-                                                  setStatusRequestModal({
-                                                    open: true,
-                                                    targetUser: m.user as User,
-                                                    requestedStatus: 'inactive',
-                                                    reason: '',
-                                                    notes: '',
-                                                  });
+                                                  setOperationalStatusUser(m.user as User);
+                                                  setTargetOperationalStatus('inactive');
+                                                  setOperationalStatusReason("");
+                                                  setOperationalStatusNotes("");
                                                 }
                                               }}
                                               className="h-7 px-1.5 text-xs text-rose-700 hover:text-rose-800 hover:bg-rose-50"
-                                              title={pendingReq && pendingReq.requestedStatus === 'inactive' ? "Ya existe solicitud de baja pendiente" : "Solicitar baja definitiva a Super Admin"}
-                                              data-testid={`button-request-baja-broker-${m.id}`}
+                                              title="Dar de baja al broker de tu red"
+                                              data-testid={`button-direct-baja-broker-${m.id}`}
                                             >
                                               <Power className="h-3.5 w-3.5 mr-1" />
-                                              Solicitar baja
+                                              Dar de baja
                                             </Button>
                                           )}
 
@@ -1688,22 +1687,18 @@ export default function UserManagement() {
                                         <Button
                                           variant="outline"
                                           size="sm"
-                                          disabled={Boolean(pendingReq && pendingReq.requestedStatus === 'inactive')}
                                           onClick={() => {
                                             if (m.user) {
-                                              setStatusRequestModal({
-                                                open: true,
-                                                targetUser: m.user as User,
-                                                requestedStatus: 'inactive',
-                                                reason: '',
-                                                notes: '',
-                                              });
+                                              setOperationalStatusUser(m.user as User);
+                                              setTargetOperationalStatus('inactive');
+                                              setOperationalStatusReason("");
+                                              setOperationalStatusNotes("");
                                             }
                                           }}
                                           className="h-7 text-xs px-2 text-rose-700"
-                                          data-testid={`button-request-baja-broker-${m.id}-mobile`}
+                                          data-testid={`button-direct-baja-broker-${m.id}-mobile`}
                                         >
-                                          Solicitar baja
+                                          Dar de baja
                                         </Button>
                                       )}
                                       {currentStatus === 'inactive' && (
@@ -1860,6 +1855,19 @@ export default function UserManagement() {
                         </td>
                         <td className="py-3 px-6 text-right">
                           <div className="flex items-center justify-end gap-1">
+                            {isSuperAdmin && u.role === 'broker' && (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => setNetworkTransitionUser(u)}
+                                className="h-8 text-xs text-blue-700 hover:text-blue-800 hover:bg-blue-50"
+                                title="Mover de red o convertir en Master Broker"
+                                data-testid={`button-network-transition-${u.id}`}
+                              >
+                                <ArrowRightLeft className="h-3.5 w-3.5 mr-1" />
+                                Red
+                              </Button>
+                            )}
                             {isSuperAdmin && (
                               <Button
                                 variant="ghost"
@@ -2314,7 +2322,7 @@ export default function UserManagement() {
                     Historial de Solicitudes Enviadas a Super Admin
                   </CardTitle>
                   <p className="text-xs text-slate-500 mt-0.5">
-                    Trazabilidad de solicitudes de baja y reactivación para brokers de tu red.
+                    Trazabilidad de solicitudes de reactivación enviadas a Super Admin.
                   </p>
                 </div>
                 <Badge variant="secondary" className="font-mono text-xs">{masterStatusRequests.length}</Badge>
@@ -2346,7 +2354,7 @@ export default function UserManagement() {
                             <Inbox className="w-8 h-8 mx-auto text-slate-300 dark:text-slate-600 mb-2" />
                             <p className="font-medium text-sm text-foreground">Aún no has enviado solicitudes de estado</p>
                             <p className="text-xs text-muted-foreground mt-0.5">
-                              Puedes solicitar la baja o reactivación de brokers de tu red desde la pestaña "Mi Red de Brokers".
+                              Puedes solicitar la reactivación de brokers inactivos de tu red desde la pestaña "Mi Red de Brokers".
                             </p>
                           </td>
                         </tr>
@@ -3701,7 +3709,7 @@ export default function UserManagement() {
 
                 {currentUser?.role === 'master_broker' && (
                   <p className="text-[11px] text-muted-foreground italic">
-                    Como Master Broker, únicamente puedes suspender temporalmente a brokers de tu red. Para baja definitiva o reactivación se requiere solicitud de aprobación a Super Admin.
+                    Como Master Broker, puedes suspender o dar de baja a brokers de tu propia red. La reactivación requiere intervención de Super Admin.
                   </p>
                 )}
               </div>
@@ -3794,25 +3802,37 @@ export default function UserManagement() {
         </Dialog>
       )}
 
+      <BrokerNetworkTransitionDialog
+        broker={networkTransitionUser}
+        open={Boolean(networkTransitionUser)}
+        onOpenChange={(open) => {
+          if (!open) setNetworkTransitionUser(null);
+        }}
+        onSuccess={() => {
+          refetchLegacyUsers();
+          queryClient.invalidateQueries({ queryKey: ["/api/broker-network"] });
+          queryClient.invalidateQueries({ queryKey: ["/api/tenants"] });
+          if (selectedTenantId) {
+            queryClient.invalidateQueries({ queryKey: ["/api/tenants", selectedTenantId, "members"] });
+          }
+        }}
+      />
+
       {/* MASTER BROKER: CREATE STATUS REQUEST DIALOG */}
       {statusRequestModal.open && statusRequestModal.targetUser && (
         <Dialog 
           open={statusRequestModal.open} 
           onOpenChange={(open) => {
             if (!open) {
-              setStatusRequestModal({ open: false, requestedStatus: 'inactive', reason: '', notes: '' });
+              setStatusRequestModal({ open: false, requestedStatus: 'active', reason: '', notes: '' });
             }
           }}
         >
           <DialogContent className="max-w-md w-[95vw]">
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2 text-base">
-                {statusRequestModal.requestedStatus === 'inactive' ? (
-                  <Power className="w-5 h-5 text-rose-600" />
-                ) : (
-                  <CheckCircle2 className="w-5 h-5 text-emerald-600" />
-                )}
-                Solicitar {statusRequestModal.requestedStatus === 'inactive' ? "Baja Definitiva" : "Reactivación"} de Broker
+                <CheckCircle2 className="w-5 h-5 text-emerald-600" />
+                Solicitar Reactivación de Broker
               </DialogTitle>
               <DialogDescription className="text-xs text-muted-foreground">
                 Esta solicitud será enviada al Super Admin para su evaluación y dictamen.
@@ -3834,13 +3854,10 @@ export default function UserManagement() {
 
               <div className="bg-slate-50 dark:bg-slate-900/40 p-2.5 rounded text-xs text-muted-foreground space-y-1">
                 <div className="font-semibold text-slate-800 dark:text-slate-200">
-                  {statusRequestModal.requestedStatus === 'inactive' ? "Alcance de la baja:" : "Alcance de la reactivación:"}
+                  Alcance de la reactivación:
                 </div>
                 <p className="text-[11px]">
-                  {statusRequestModal.requestedStatus === 'inactive'
-                    ? "Al aprobarse, el broker no podrá iniciar sesión ni originar créditos nuevos. Todo su historial comercial, comisiones y clientes continuarán asignados intactos a él."
-                    : "Al aprobarse, el broker recuperará el acceso a la plataforma manteniendo su historial comercial intacto."
-                  }
+                  Al aprobarse, el broker recuperará el acceso a la plataforma manteniendo intactos su historial y atribuciones comerciales.
                 </p>
               </div>
 
@@ -3852,9 +3869,7 @@ export default function UserManagement() {
                 <Input
                   value={statusRequestModal.reason}
                   onChange={(e) => setStatusRequestModal(prev => ({ ...prev, reason: e.target.value }))}
-                  placeholder={statusRequestModal.requestedStatus === 'inactive' 
-                    ? "Ej: Cierre de actividades comerciales, baja voluntaria de la red..."
-                    : "Ej: Regularización de contrato y retorno a operaciones comerciales..."}
+                  placeholder="Ej: Regularización de contrato y retorno a operaciones comerciales..."
                   className="text-xs h-9"
                   data-testid="input-status-request-reason"
                 />
@@ -3880,7 +3895,7 @@ export default function UserManagement() {
               <Button
                 variant="outline"
                 size="sm"
-                onClick={() => setStatusRequestModal({ open: false, requestedStatus: 'inactive', reason: '', notes: '' })}
+                onClick={() => setStatusRequestModal({ open: false, requestedStatus: 'active', reason: '', notes: '' })}
                 disabled={createStatusRequestMutation.isPending}
               >
                 Cancelar
@@ -3900,11 +3915,7 @@ export default function UserManagement() {
                     notes: statusRequestModal.notes.trim() || undefined,
                   });
                 }}
-                className={
-                  statusRequestModal.requestedStatus === 'inactive'
-                    ? "bg-rose-600 hover:bg-rose-700 text-white"
-                    : "bg-emerald-600 hover:bg-emerald-700 text-white"
-                }
+                className="bg-emerald-600 hover:bg-emerald-700 text-white"
                 data-testid="button-submit-status-request"
               >
                 {createStatusRequestMutation.isPending ? (
@@ -3913,7 +3924,7 @@ export default function UserManagement() {
                     Enviando...
                   </>
                 ) : (
-                  `Enviar Solicitud de ${statusRequestModal.requestedStatus === 'inactive' ? 'Baja' : 'Reactivación'}`
+                  "Enviar Solicitud de Reactivación"
                 )}
               </Button>
             </DialogFooter>

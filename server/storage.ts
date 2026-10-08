@@ -1421,7 +1421,10 @@ export class MemStorage implements IStorage {
     if (filters?.entityId) {
       logs = logs.filter(l => l.entityId === filters.entityId);
     }
-    return logs.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    return logs.sort((a, b) => {
+      const diff = new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+      return diff !== 0 ? diff : (logs.indexOf(b) - logs.indexOf(a));
+    });
   }
 
   async updateUserOperationalStatus(params: {
@@ -1910,10 +1913,32 @@ export class MemStorage implements IStorage {
 
   async createCredit(creditData: InsertCredit): Promise<Credit> {
     const id = randomUUID();
+    let originMasterBrokerId: string | null = null;
+    let inheritedFromSubmission = false;
+    if (creditData.linkedSubmissionId) {
+      const submission = this.creditSubmissionRequests.get(creditData.linkedSubmissionId);
+      if (submission) {
+        originMasterBrokerId = submission.originMasterBrokerId ?? null;
+        inheritedFromSubmission = true;
+      }
+    }
+
+    if (!inheritedFromSubmission) {
+      const brokerAtOrigination = this.users.get(creditData.brokerId);
+      if (brokerAtOrigination?.role === "master_broker") {
+        originMasterBrokerId = brokerAtOrigination.id;
+      } else if (brokerAtOrigination?.role === "broker" && brokerAtOrigination.masterBrokerId) {
+        const parentAtOrigination = this.users.get(brokerAtOrigination.masterBrokerId);
+        originMasterBrokerId =
+          parentAtOrigination?.role === "master_broker" ? parentAtOrigination.id : null;
+      }
+    }
+
     const credit: Credit = {
       ...creditData,
       id,
       tenantId: creditData.tenantId ?? null,
+      originMasterBrokerId,
       createdBy: creditData.createdBy ?? null,
       financialInstitutionId: creditData.financialInstitutionId ?? null,
       interestRate: creditData.interestRate ?? null,
@@ -1939,9 +1964,10 @@ export class MemStorage implements IStorage {
     const existing = this.credits.get(id);
     if (!existing) return undefined;
 
+    const { originMasterBrokerId: _immutableOrigin, ...safeCreditData } = creditData as any;
     const updated = {
       ...existing,
-      ...creditData,
+      ...safeCreditData,
       updatedAt: new Date(),
     };
     this.credits.set(id, updated);
@@ -3137,10 +3163,21 @@ export class MemStorage implements IStorage {
 
   async createCreditSubmissionRequest(requestData: InsertCreditSubmissionRequest): Promise<CreditSubmissionRequest> {
     const id = randomUUID();
+    const brokerAtOrigination = this.users.get(requestData.brokerId);
+    let originMasterBrokerId: string | null = null;
+    if (brokerAtOrigination?.role === "master_broker") {
+      originMasterBrokerId = brokerAtOrigination.id;
+    } else if (brokerAtOrigination?.role === "broker" && brokerAtOrigination.masterBrokerId) {
+      const parentAtOrigination = this.users.get(brokerAtOrigination.masterBrokerId);
+      originMasterBrokerId =
+        parentAtOrigination?.role === "master_broker" ? parentAtOrigination.id : null;
+    }
+
     const request: CreditSubmissionRequest = {
       ...requestData,
       id,
       tenantId: requestData.tenantId ?? null,
+      originMasterBrokerId,
       createdBy: requestData.createdBy ?? null,
       purpose: requestData.purpose ?? null,
       brokerNotes: requestData.brokerNotes ?? null,
@@ -3157,9 +3194,10 @@ export class MemStorage implements IStorage {
     const existing = this.creditSubmissionRequests.get(id);
     if (!existing) return undefined;
 
+    const { originMasterBrokerId: _immutableOrigin, ...safeRequestData } = requestData as any;
     const updated: CreditSubmissionRequest = {
       ...existing,
-      ...requestData,
+      ...safeRequestData,
       updatedAt: new Date(),
     };
     this.creditSubmissionRequests.set(id, updated);

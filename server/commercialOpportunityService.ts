@@ -269,7 +269,6 @@ export class CommercialOpportunityService {
     const {
       clientId,
       brokerId,
-      masterBrokerId,
       tenantId,
       title,
       financingNeedType,
@@ -306,6 +305,21 @@ export class CommercialOpportunityService {
         success: false,
         message: `El nivel de acceso '${authResult.scope}' no permite registrar nuevas oportunidades comerciales.`,
       };
+    }
+
+    // Freeze network affiliation at opportunity origination. Never trust a
+    // client-supplied Master id and never derive historical visibility later
+    // from the broker's current network.
+    let originMasterBrokerId: string | null = null;
+    const brokerAtOrigination = await (this.authService as any)['storage']?.getUser?.(brokerId);
+    if (brokerAtOrigination?.role === "master_broker") {
+      originMasterBrokerId = brokerAtOrigination.id;
+    } else if (brokerAtOrigination?.role === "broker" && brokerAtOrigination.masterBrokerId) {
+      const parentAtOrigination = await (this.authService as any)['storage']?.getUser?.(
+        brokerAtOrigination.masterBrokerId
+      );
+      originMasterBrokerId =
+        parentAtOrigination?.role === "master_broker" ? parentAtOrigination.id : null;
     }
 
     // 2. Liberar oportunidades expiradas del cliente para tener estado limpio
@@ -382,7 +396,7 @@ export class CommercialOpportunityService {
     const opportunity = await this.storage.createCommercialOpportunity({
       clientId,
       brokerId,
-      masterBrokerId: masterBrokerId || null,
+      masterBrokerId: originMasterBrokerId,
       tenantId: tenantId || authResult.client?.tenantId || null,
       title,
       financingNeedType,
@@ -1237,13 +1251,16 @@ export class CommercialOpportunityService {
     } else if (userRole === "admin") {
       tenantId = tenantContext?.tenant?.id || null;
     } else if (userRole === "master_broker") {
-      let networkIds: string[] = [userId];
-      const network = await (this.authService as any)['storage']?.getNetworkBrokers?.(userId);
-      if (network && Array.isArray(network)) {
-        networkIds = [userId, ...network.map((b: any) => b.id)];
-      }
-      brokerIds = networkIds;
-      tenantId = tenantContext?.tenant?.id || null;
+      // Historical network attribution is already frozen on each opportunity
+      // through opportunity.masterBrokerId. Passing only the Master id lets
+      // storage match:
+      //   - brokerId === Master id (direct origination), or
+      //   - masterBrokerId === Master id (network origination).
+      //
+      // Do NOT expand this to the Master's current broker list: after a broker
+      // moves networks that would expose pre-move opportunities to the new Master.
+      brokerIds = [userId];
+      tenantId = undefined;
     } else {
       // Broker regular: únicamente sus propias oportunidades
       brokerIds = [userId];
@@ -1466,9 +1483,10 @@ export class MockCommercialOpportunityStorage implements ICommercialOpportunityS
   ): Promise<CommercialOpportunity> {
     const idx = this.opportunities.findIndex((o) => o.id === id);
     if (idx === -1) throw new Error(`Opportunity ${id} not found`);
+    const { masterBrokerId: _immutableMaster, ...safeUpdates } = updates as any;
     const updated = {
       ...this.opportunities[idx],
-      ...updates,
+      ...safeUpdates,
       updatedAt: new Date(),
     };
     this.opportunities[idx] = updated;
@@ -1703,9 +1721,10 @@ export class DrizzleCommercialOpportunityStorage implements ICommercialOpportuni
     id: string,
     updates: Partial<CommercialOpportunity>
   ): Promise<CommercialOpportunity> {
+    const { masterBrokerId: _immutableMaster, ...safeUpdates } = updates as any;
     const rows = await this.db
       .update(commercialOpportunities)
-      .set({ ...updates, updatedAt: new Date() })
+      .set({ ...safeUpdates, updatedAt: new Date() })
       .where(eq(commercialOpportunities.id, id))
       .returning();
     return rows[0];

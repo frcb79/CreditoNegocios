@@ -95,6 +95,18 @@ Aquí se registran los aprendizajes listos pero aún no sincronizados al master.
   - Aprendizaje: Segmentar la visualización en 3 pestañas claras: Master Brokers (con acordeón hijo), Independientes y Casa Matriz Directa con métricas globales consolidadas.
   - Aplicación: UX/UI (03), Fullstack (05) en cualquier sistema B2B2C o de comisiones multinivel.
 
+- 2026-10-07 — Patrón de Inmutabilidad de Origen (Lineage) con Triggers de DB en Redes Jerárquicas
+  - Origen: CreditoNegocios (Broker Network Transitions)
+  - Problema: Si un broker o ejecutivo de ventas cambia de red o agencia, las consultas que calculan comisiones o históricos mediante joins dinámicos terminan reatribuyendo erróneamente el negocio previo a la nueva red.
+  - Aprendizaje: Congelar la filiación en un snapshot inmutable en cada entidad al momento de su creación (oportunidad, solicitud, crédito) y proteger dichas columnas con triggers PostgreSQL `BEFORE UPDATE ... IS DISTINCT FROM` para blindaje definitivo contra bypasses.
+  - Aplicación: Arquitecto (04), Backend Dev (05), Seguridad (07), CFO (18) en sistemas transaccionales, comisiones multinivel o modelos de franquicia.
+
+- 2026-10-07 — Desacoplamiento de Suspensión vs Reactivación en Gobernanza Multinivel
+  - Origen: CreditoNegocios (Gobernanza Operativa de Usuarios)
+  - Problema: Otorgar facultades simétricas de suspensión y reactivación a administradores intermedios expone a la plataforma a conflictos de interés y desalineación con políticas de compliance.
+  - Aprendizaje: Los supervisores intermedios (Master Brokers) pueden suspender o dar de baja a subordinados de forma inmediata por seguridad operativa, pero la reactivación requiere solicitud formal auditada aprobada exclusivamente por la administración central (Super Admin).
+  - Aplicación: PM (02), Seguridad (07), Fullstack (05) en plataformas multi-tenant con jerarquías de supervisión.
+
 ---
 
 ## SYNCs REALIZADOS

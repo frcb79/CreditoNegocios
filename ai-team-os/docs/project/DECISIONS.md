@@ -47,5 +47,24 @@ Formato: Fecha / Decision / Opciones evaluadas / Decision final / Por que
 	- Evita que los brókers o el super admin tengan que duplicar expedientes manualmente para cobrar comisiones de diferentes financieras.
 	- Garantiza que cada desembolso mantenga su botón de pago STP y tracking de dispersión sin bloquear a las demás propuestas en proceso.
 
+### 2026-10-07 / Inmutabilidad Estricta de Afiliación Histórica en 4 Entidades (Lineage)
+- Opciones evaluadas:
+	- Opcion A: Relacionar dinámicamente créditos, solicitudes y comisiones con el `users.master_broker_id` actual del broker al momento de consultar.
+	- Opcion B: Capturar un snapshot inmutable en cada entidad al momento de originarse (`commercial_opportunities.master_broker_id`, `credit_submission_requests.origin_master_broker_id`, `credits.origin_master_broker_id`), blindado con triggers PostgreSQL a nivel de base de datos (`BEFORE UPDATE ... RAISE EXCEPTION`).
+- Decision final: Opcion B.
+- Por que:
+	- Garantiza que cuando un broker se mueva de Master A a Master B (o a Crédito Negocios directo), Master B jamás herede el negocio histórico o comisiones pasadas de Master A.
+	- Separa conceptualmente la relación organizativa actual (`users.master_broker_id`, `tenants.parent_tenant_id`) de la atribución económica histórica.
+	- Los triggers de base de datos impiden modificaciones arbitrarias incluso ante eventuales bugs o bypasses desde la capa de aplicación.
+
+### 2026-10-07 / Gobernanza de Estados Operativos y Desacoplamiento de Reactivación
+- Opciones evaluadas:
+	- Opcion A: Permitir que los Master Brokers reactiven directamente a los brokers que suspendieron o dieron de baja.
+	- Opcion B: El Master Broker puede suspender o dar de baja a brokers de su propia red, pero la reactivación requiere solicitud formal (`user_status_requests`) y aprobación exclusiva de Super Admin.
+- Decision final: Opcion B.
+- Por que:
+	- Previene conflictos de interés y asegura control centralizado de cumplimiento/compliance sobre quién opera en la plataforma.
+	- Mantiene la independencia entre el estado operativo global (`users.status` / `isActive`) y la propiedad del tenant (`tenant_members.role = 'owner'`).
+
 ## DECISIONES CAMBIADAS
 [Si alguna se revirtio, documentar con la razon]

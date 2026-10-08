@@ -320,6 +320,65 @@ describe("Fase 5: UI y Operación Real de Gobernanza Comercial", () => {
     expect(mbList.opportunities.every(o => o.brokerId === brokerActivo.id || o.masterBrokerId === masterBroker.id)).toBe(true);
   });
 
+  test("4b. Movimiento de broker no transfiere oportunidades históricas al nuevo Master", async () => {
+    const masterBrokerB: User = {
+      id: "master-broker-b",
+      role: "master_broker",
+      firstName: "Master",
+      lastName: "B",
+      email: "master-b@creditonegocios.test",
+      isActive: true,
+      status: "active",
+    } as any;
+    authStorage.users.push(masterBrokerB);
+
+    // Oportunidad 1 nace bajo Master A.
+    const beforeMove = await oppService.createOpportunity({
+      clientId: clientAlpha.id,
+      brokerId: brokerActivo.id,
+      title: "Crédito antes del movimiento",
+      financingNeedType: "credito_empresarial",
+      requestedAmount: "700000",
+      userRole: "broker",
+      tenantContext: { tenant: { id: tenantA } },
+      now,
+    });
+    expect(beforeMove.success).toBe(true);
+    expect(beforeMove.opportunity?.masterBrokerId).toBe(masterBroker.id);
+
+    // El broker cambia de red. La oportunidad anterior no cambia.
+    (brokerActivo as any).masterBrokerId = masterBrokerB.id;
+
+    const afterMove = await oppService.createOpportunity({
+      clientId: clientAlpha.id,
+      brokerId: brokerActivo.id,
+      title: "Factoraje después del movimiento",
+      financingNeedType: "factoraje",
+      requestedAmount: "350000",
+      userRole: "broker",
+      tenantContext: { tenant: { id: tenantA } },
+      now,
+    });
+    expect(afterMove.success).toBe(true);
+    expect(afterMove.opportunity?.masterBrokerId).toBe(masterBrokerB.id);
+
+    const oldMasterView = await oppService.listOpportunities({
+      userId: masterBroker.id,
+      userRole: "master_broker",
+      tenantContext: { tenant: { id: "tenant-master-a" } },
+    });
+    const newMasterView = await oppService.listOpportunities({
+      userId: masterBrokerB.id,
+      userRole: "master_broker",
+      tenantContext: { tenant: { id: "tenant-master-b" } },
+    });
+
+    expect(oldMasterView.opportunities.map(o => o.id)).toContain(beforeMove.opportunity!.id);
+    expect(oldMasterView.opportunities.map(o => o.id)).not.toContain(afterMove.opportunity!.id);
+    expect(newMasterView.opportunities.map(o => o.id)).toContain(afterMove.opportunity!.id);
+    expect(newMasterView.opportunities.map(o => o.id)).not.toContain(beforeMove.opportunity!.id);
+  });
+
   // 5. Admin tenant no cruza tenants
   test("5. Admin tenant no cruza tenants", async () => {
     await oppService.createOpportunity({
@@ -448,6 +507,7 @@ describe("Fase 5: UI y Operación Real de Gobernanza Comercial", () => {
       currentUserRole: "broker",
       userTenantId: tenantA,
       tenantContext: { tenant: { id: tenantA } },
+      now,
     });
 
     expect(dupCheck.canCreateOpportunity).toBe(false);

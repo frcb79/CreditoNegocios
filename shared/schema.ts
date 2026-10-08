@@ -397,6 +397,9 @@ export const credits = pgTable("credits", {
   tenantId: varchar("tenant_id").references(() => tenants.id),
   clientId: varchar("client_id").notNull().references(() => clients.id),
   brokerId: varchar("broker_id").notNull().references(() => users.id),
+  // Immutable commercial lineage: Master Broker at credit origination time.
+  // null = broker was direct under Crédito Negocios.
+  originMasterBrokerId: varchar("origin_master_broker_id").references(() => users.id),
   createdBy: varchar("created_by").references(() => users.id),
   financialInstitutionId: varchar("financial_institution_id").references(() => financialInstitutions.id),
   productTemplateId: varchar("product_template_id").references(() => productTemplates.id), // Tipo de crédito
@@ -426,6 +429,7 @@ export const credits = pgTable("credits", {
   index("credits_tenant_idx").on(table.tenantId),
   index("credits_client_idx").on(table.clientId),
   index("credits_broker_idx").on(table.brokerId),
+  index("credits_origin_master_broker_idx").on(table.originMasterBrokerId),
 ]);
 
 
@@ -691,6 +695,8 @@ export const creditSubmissionRequests = pgTable("credit_submission_requests", {
   tenantId: varchar("tenant_id").references(() => tenants.id),
   clientId: varchar("client_id").notNull().references(() => clients.id),
   brokerId: varchar("broker_id").notNull().references(() => users.id),
+  // Immutable Master Broker affiliation at submission/origination time.
+  originMasterBrokerId: varchar("origin_master_broker_id").references(() => users.id),
   createdBy: varchar("created_by").references(() => users.id),
   productTemplateId: varchar("product_template_id").references(() => productTemplates.id), // Plantilla de producto solicitada
   requestedAmount: decimal("requested_amount", { precision: 15, scale: 2 }).notNull(),
@@ -702,6 +708,7 @@ export const creditSubmissionRequests = pgTable("credit_submission_requests", {
   updatedAt: timestamp("updated_at").defaultNow(),
 }, (table) => [
   index("credit_submissions_tenant_idx").on(table.tenantId),
+  index("credit_submissions_origin_master_idx").on(table.originMasterBrokerId),
 ]);
 
 export const creditSubmissionTargets = pgTable("credit_submission_targets", {
@@ -1244,6 +1251,7 @@ export const commercialOpportunities = pgTable("commercial_opportunities", {
 }, (table) => [
   index("opp_client_idx").on(table.clientId),
   index("opp_broker_idx").on(table.brokerId),
+  index("opp_master_broker_idx").on(table.masterBrokerId),
   index("opp_status_idx").on(table.status),
   index("opp_need_idx").on(table.clientId, table.financingNeedType),
 ]);
