@@ -5387,6 +5387,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Security enforcement: The registered CLABE in targetUser's profile/formalization is authoritative.
       const registeredClabe = targetUser.clabe ? String(targetUser.clabe).trim() : null;
       if (!registeredClabe || !/^\d{18}$/.test(registeredClabe)) {
+        await storage.createCommissionAuditLog({
+          commissionId: id,
+          performedBy: userId,
+          action: 'dispersion_blocked',
+          previousStatus: commission.status,
+          newStatus: commission.status,
+          details: {
+            actorRole: user.role,
+            reason: 'CLABE_INVALID_OR_MISSING',
+            beneficiaryId: targetUserId,
+          },
+        });
         return res.status(400).json({
           message: `El beneficiario histórico (${isMbCredit ? 'Master Bróker' : 'Bróker'} ${targetUser.firstName || ''} ${targetUser.lastName || ''}) no cuenta con una CLABE interbancaria válida de 18 dígitos registrada en su expediente.`
         });
@@ -5395,6 +5407,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Block client-side tampering: if the frontend sent an accountNumber/clabe, verify it strictly matches the registered CLABE
       const providedClabe = accountNumber ? String(accountNumber).trim() : null;
       if (providedClabe && providedClabe !== registeredClabe) {
+        await storage.createCommissionAuditLog({
+          commissionId: id,
+          performedBy: userId,
+          action: 'dispersion_blocked',
+          previousStatus: commission.status,
+          newStatus: commission.status,
+          details: {
+            actorRole: user.role,
+            reason: 'CLABE_TAMPERING_ATTEMPT',
+            providedClabe,
+            registeredClabe,
+            beneficiaryId: targetUserId,
+          },
+        });
         return res.status(400).json({
           message: "Discrepancia de seguridad: La CLABE enviada no coincide con la cuenta bancaria oficial del beneficiario histórico registrado. No se permite alterar silenciosamente el beneficiario bancario."
         });
@@ -5408,6 +5434,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
 
       if (audit.hasDiscrepancy) {
+        await storage.createCommissionAuditLog({
+          commissionId: id,
+          performedBy: userId,
+          action: 'dispersion_blocked',
+          previousStatus: commission.status,
+          newStatus: commission.status,
+          details: {
+            actorRole: user.role,
+            reason: 'FROZEN_AMOUNT_DISCREPANCY',
+            audit,
+          },
+        });
         return res.status(400).json({
           message: audit.discrepancyReason,
           code: "FROZEN_AMOUNT_DISCREPANCY",
@@ -5588,6 +5626,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
           const effectiveClabe = targetUser?.clabe ? String(targetUser.clabe).trim() : null;
           if (!effectiveClabe || !/^\d{18}$/.test(effectiveClabe)) {
+            await storage.createCommissionAuditLog({
+              commissionId: id,
+              performedBy: userId,
+              action: 'dispersion_blocked',
+              previousStatus: commission.status,
+              newStatus: commission.status,
+              details: {
+                actorRole: user.role,
+                reason: 'CLABE_INVALID_OR_MISSING_BULK',
+                beneficiaryId: targetUserId,
+              },
+            });
             failed.push({ id, reason: `Beneficiario histórico (${isMbCredit ? 'Master Bróker' : 'Bróker'}) sin CLABE válida de 18 dígitos registrada en su expediente` });
             continue;
           }
@@ -5598,6 +5648,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
           });
 
           if (audit.hasDiscrepancy) {
+            await storage.createCommissionAuditLog({
+              commissionId: id,
+              performedBy: userId,
+              action: 'dispersion_blocked',
+              previousStatus: commission.status,
+              newStatus: commission.status,
+              details: {
+                actorRole: user.role,
+                reason: 'FROZEN_AMOUNT_DISCREPANCY_BULK',
+                audit,
+              },
+            });
             failed.push({
               id,
               reason: audit.discrepancyReason || "Discrepancia en importe congelado. Requiere revisión administrativa auditada.",
@@ -5745,6 +5807,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
 
       if (audit.hasDiscrepancy) {
+        await storage.createCommissionAuditLog({
+          commissionId: id,
+          performedBy: userId,
+          action: 'dispersion_blocked',
+          previousStatus: commission.status,
+          newStatus: commission.status,
+          details: {
+            actorRole: user.role,
+            reason: 'FROZEN_AMOUNT_DISCREPANCY_MANUAL',
+            audit,
+          },
+        });
         return res.status(400).json({
           message: audit.discrepancyReason,
           code: "FROZEN_AMOUNT_DISCREPANCY",

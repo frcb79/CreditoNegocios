@@ -133,6 +133,7 @@ Actualizar cada vez que se completa una feature.
 		- Las comisiones aprobadas y pagadas en base de datos permanecen 100% inmutables (cero mutación automática en DB).
 		- En `client/src/pages/Commissions.tsx`, se expone la alerta "Revisión Requerida" e impide el envío a dispersión STP cuando existe discrepancia.
 		- Preservación íntegra de la corrección contra doble conteo de Master Directo.
+	- **Evidencia Persistente de Auditoría:** Registro obligatorio en `commission_audit_logs` con `action: 'dispersion_blocked'` ante cualquier intento de dispersión con CLABE inválida/faltante (`CLABE_INVALID_OR_MISSING`), intento de alteración (`CLABE_TAMPERING_ATTEMPT`) o discrepancia en importe congelado (`FROZEN_AMOUNT_DISCREPANCY`).
 - **Suite de Pruebas HTTP/Integración con Mock STP (`tests/unit/p0-endpoint-integration.test.ts`):**
 	- 16 pruebas exhaustivas con Supertest cubriendo el ciclo completo de endpoints:
 		- `POST /api/commissions/:id/pay`
@@ -140,9 +141,14 @@ Actualizar cada vez que se completa una feature.
 		- `POST /api/commissions/:id/mark-paid`
 		- Registro directo y bajo Master Broker con validación de rollback y fallo atómico de aprovisionamiento.
 		- Beneficiario histórico en transferencias de red, rechazo de CLABE alterada/faltante y bloqueo por importe congelado con discrepancia.
+		- Verificación de creación de evidencias persistentes en `commission_audit_logs`.
 - **Validación y QA Integral:**
 	- Typecheck (`npm run check`): 0 errores.
 	- Build de producción (`npm run build`): exitoso.
 	- 100% de suites de pruebas pasando limpiamente (69 unit tests de suites P0 y formales).
+- **Preparación de QA Integral en Staging:**
+	- Creación de la rama de integración `qa/staging-consolidation-p0`.
+	- Auditoría de migraciones e idempotencia en `server/autoMigrate.ts` y SQL DDL.
+	- Documentación de protocolos de despliegue, rollback y checklist de validación sin afectar producción.
 
 

@@ -517,6 +517,10 @@ describe("P0 - Real HTTP Endpoint Integration Tests (STP Mock, Registration Atom
       // Commission was NOT dispersed or paid
       const commCheck = await storage.getCommission(commission.id);
       expect(commCheck?.status).toBe("approved");
+
+      // Persistent audit log verification
+      const auditLogs = await storage.getCommissionAuditLogs(commission.id);
+      expect(auditLogs.some(l => l.action === "dispersion_blocked" && (l.details as any)?.reason === "CLABE_TAMPERING_ATTEMPT")).toBe(true);
     });
 
     it("Security: rejects payout when beneficiary lacks registered 18-digit CLABE", async () => {
@@ -556,6 +560,10 @@ describe("P0 - Real HTTP Endpoint Integration Tests (STP Mock, Registration Atom
 
       const commCheck = await storage.getCommission(commission.id);
       expect(commCheck?.status).toBe("approved");
+
+      // Persistent audit log verification
+      const auditLogs = await storage.getCommissionAuditLogs(commission.id);
+      expect(auditLogs.some(l => l.action === "dispersion_blocked" && (l.details as any)?.reason === "CLABE_INVALID_OR_MISSING")).toBe(true);
     });
 
     it("Integrity: blocks liquidation on historical frozen discrepancy ($60k vs $30k) and requires admin review", async () => {
@@ -603,6 +611,10 @@ describe("P0 - Real HTTP Endpoint Integration Tests (STP Mock, Registration Atom
       const commCheck = await storage.getCommission(commission.id);
       expect(commCheck?.status).toBe("approved");
       expect(commCheck?.frozenAmount).toBe("60000.00"); // Not silently altered
+
+      // Persistent audit log verification
+      const auditLogs = await storage.getCommissionAuditLogs(commission.id);
+      expect(auditLogs.some(l => l.action === "dispersion_blocked" && (l.details as any)?.reason === "FROZEN_AMOUNT_DISCREPANCY")).toBe(true);
     });
 
     it("Integrity: blocks liquidation on explicit frozenAmount = 0.00", async () => {

@@ -121,5 +121,14 @@ Formato: Fecha / Decision / Opciones evaluadas / Decision final / Por que
 	- En auditoría contable y financiera, un importe previamente congelado que difiere del cálculo reglamentario no debe mutarse de manera encubierta. Exige revisión humana auditada.
 	- Protege la inmutabilidad de los registros históricos sin alteraciones retroactivas.
 
+### 2026-10-08 / Evidencia Persistente de Auditoría en Rechazos de Dispersión y Flujo de Excepción Administrativa
+- Opciones evaluadas:
+	- Opcion A: Retornar errores HTTP 400 sin registrar en `commission_audit_logs` los rechazos previos al bloqueo de concurrencia (CLABE faltante, CLABE alterada, discrepancia en congelado).
+	- Opcion B: Persistir formalmente en `commission_audit_logs` cada intento bloqueado (`action: 'dispersion_blocked'`) con actor, motivo estructurado y detalle completo del incidente; establecer un flujo administrativo gobernado para resolver comisiones bloqueadas por `FROZEN_AMOUNT_DISCREPANCY` mediante dictamen de Mesa de Control / Super Admin.
+- Decision final: Opcion B.
+- Por que:
+	- Seguridad Bancaria: Los intentos de manipulación de CLABE (`CLABE_TAMPERING_ATTEMPT`) y dispersión a cuentas no validadas deben dejar rastro inmutable para auditoría y cumplimiento normativo.
+	- Gobernanza Financiera: Las discrepancias en importes congelados requieren un expediente administrativo explícito que justifique cualquier regularización manual antes de reintentar la dispersión, evitando bypasses operacionales.
+
 ## DECISIONES CAMBIADAS
 [Si alguna se revirtio, documentar con la razon]
