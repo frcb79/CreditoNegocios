@@ -454,10 +454,10 @@ Las entidades de red deben distinguir explícitamente entre operaciones de red (
 | ID | SEC-2026-10-08-001 |
 | Fecha detección | 2026-10-08 08:40 CST |
 | Severidad | 🔴 Crítica (P0) — Riesgo de acceso privilegiado y mutación destructiva en boot |
-| Área | Backend / Seguridad / Autenticación / Migraciones |
-| Estado | ⚠️ Mitigado en Arranque / Pendiente Autorización para Bypass en Login |
+| Área | Backend / Seguridad / Autenticación / Migraciones / Comisiones |
+| Estado | 🟢 Resuelto en Rama Aislada (fix/p0-security-hardening-commissions-gate) / 🔴 Crítico Activo en origin/main (Producción) |
 | Reportado por | Auditoría P0 Pre-Staging / AI-Team-OS |
-| Asignado a | Arquitecto / Seguridad / Backend Dev |
+| Asignado a | Arquitecto / Seguridad / QA / Backend Dev |
 
 **Descripción:**
 1. En `server/autoMigrate.ts` heredado de `main`, cada arranque del servidor (`runAutoMigration()`) ejecutaba mutaciones DML destructivas de manera indiscriminada:
@@ -468,26 +468,39 @@ Las entidades de red deben distinguir explícitamente entre operaciones de red (
    - Reactivación masiva de todas las financieras desactivadas (`UPDATE financial_institutions SET is_active = TRUE`).
    - Eliminación de financieras marcadas como prueba y desvinculación de créditos.
    - Sobrescritura de permisos RBAC en `tenant_members`.
-2. Durante la auditoría en modo de solo lectura de `server/routes.ts` (líneas 1403-1415), se identificó un bypass de login en `POST /api/auth/login`:
-   - Permite que correos específicos (`francocb79@gmail.com`, `fcb@creditonegocios.com.mx`, `francocb79@yahoo.com`) inicien sesión con contraseñas fijas (`Prueba1$`, `Franco2026!*`) omitiendo completamente la verificación criptográfica del hash (`verifyPassword`).
+2. En `server/routes.ts` (líneas 1397-1425), se identificó un bypass activo de login en `POST /api/auth/login`:
+   - Permite que correos específicos (`francocb79@gmail.com`, `fcb@creditonegocios.com.mx`, etc.) inicien sesión con contraseñas fijas (`Prueba1$`, `Franco2026!*`) e invoque un reset forzoso de contraseña en caliente al autenticar.
+3. En comisiones, existía riesgo de dispersión masiva o manual de montos no aprobados formalmente.
 
 **Impacto en negocio y seguridad:**
-- Un reinicio o cold start del servidor en Staging o Producción revertiría contraseñas cambiadas por los administradores a credenciales conocidas, reactivaría cuentas suspendidas y reactivaría financieras dadas de baja por negocio.
-- El bypass de autenticación en login permite el acceso no autorizado a roles privilegiados si un atacante conoce o compromete los nombres de usuario con contraseñas fijas conocidas.
+- **Hallazgo Crítico en Producción (`origin/main`):** Se confirmó mediante inspección estricta de despliegue (`git grep` sobre `origin/main`) que el código vulnerable (`allowedAdminPasswords` y DML destructivo en `autoMigrate.ts`) está presente en `main`. Si producción en Railway despliega desde `main`, **producción está actualmente expuesta** a login por bypass con contraseñas fijas conocidas y a mutación destructiva ante cualquier cold start.
+- En comisiones, existía riesgo de dispersión masiva o manual de montos no aprobados formalmente.
 
-**Solución aplicada (Arranque Seguro):**
-1. Se despojó completamente `server/autoMigrate.ts` de todas las operaciones destructivas de DML: cero reseteos de contraseñas, cero cambios de roles, cero reactivaciones forzosas, cero mutaciones de redes, cero reactivaciones masivas de financieras y cero borrado de datos.
-2. Se implementó una comprobación segura en `autoMigrate.ts`: si la tabla `users` contiene usuarios (`SELECT count(*) > 0`), se omiten 100% las inserciones de bootstrap.
-3. Se crearon marcadores persistentes en `system_migration_markers` para garantizar que los backfills DDL/DML históricos corran exactamente una vez y nunca sobreescriban linajes actuales (`WHERE origin_master_broker_id IS NULL`).
-4. Se encapsularon los procedimientos administrativos y de aprovisionamiento de prueba en una herramienta CLI explícita y protegida: `scripts/admin-bootstrap-environment.ts` (`npm run admin:bootstrap`), exigiendo flags explícitos (`--seed-test-accounts`, `--force-reset-passwords`, `--cleanup-test-institutions`, `--sanitize-rbac`).
-5. Se creó la suite de validación `tests/unit/startup-migration-security.test.ts` (7/7 pruebas pasando), certificando que múltiples reinicios consecutivos no alteran el estado de la base de datos.
+**Solución aplicada (Rama Aislada `fix/p0-security-hardening-commissions-gate`):**
+1. **Login Hardening Radical:** Se eliminó por completo el bypass de contraseñas hardcodeadas (`allowedAdminPasswords`), eliminando la sincronización automática de contraseñas. Todo login pasa obligatoriamente por comparación criptográfica contra el hash de la base de datos (`bcrypt.compare`). Se valida y bloquea con 401 a usuarios inactivos o suspendidos.
+2. **AutoMigrate Zero-Destructive:** Retirados todos los DELETE, UPDATE y mutaciones de datos comerciales (usuarios, financieras, comisiones, afiliaciones). `autoMigrate.ts` se convirtió estrictamente en DDL idempotente.
+3. **Migraciones Explícitas y Scripts Administrativos Blindados:**
+   - Creado `scripts/explicit-historical-backfills.ts` con preflight analítico, validación estricta de no-producción, y requerimiento de `--confirm-backup` y `--authorize-historical-backfill`.
+   - `scripts/admin-bootstrap-environment.ts` blindado contra ejecución accidental en producción (`isProd || isProdDb`) y flags obligatorios.
+4. **Gate Temporal de Comisiones (Super Admin Exclusivo):**
+   - Dispersión individual (`/pay`), masiva (`/bulk-pay`) y liquidación manual (`/mark-paid`) bloquean cualquier comisión que no tenga: `status === 'approved'`, `approvedBy`, `approvedAt`, y `frozenAmount` numérico válido registrado por Super Admin (respondiendo con 400 `APPROVAL_PREREQUISITES_MISSING` y auditoría inmutable en `commission_audit_logs`).
+   - Aprobación masiva (`/bulk-approve`) temporalmente deshabilitada (400 `BULK_APPROVAL_TEMPORARILY_DISABLED`) para forzar la revisión individual obligatoria.
+5. **Certificación QA:**
+   - `tests/unit/startup-migration-security.test.ts`: 5/5 passing (simulación PostgreSQL stateful en memoria).
+   - `tests/unit/commission-gate-security.test.ts`: 13/13 passing (pruebas negativas de login y comisiones).
+   - `tests/unit/p0-endpoint-integration.test.ts`: 16/16 passing.
+   - `tests/unit/commission-historical-beneficiary.test.ts`: 3/3 passing.
+   - `tests/unit/commission-payout-integrity.test.ts`: 13/13 passing.
+   - Typecheck (`npm run check`) y Build (`npm run build`) 100% limpios.
 
-**Propuesta de Remediación para Bypass en Login (Pendiente Autorización):**
-- En `server/routes.ts` (líneas 1403-1415), eliminar la cláusula condicional de bypass y hacer que todo intento de login pase exclusivamente por `crypto.verifyPassword(password, user.passwordHash)`.
-- Si las cuentas de prueba requieren acceso en Staging, restablecer sus hashes mediante el flujo oficial o el script administrativo gobernado `scripts/admin-bootstrap-environment.ts --force-reset-passwords`.
+**Plan de Remediación Urgente Propuesto para Producción (Requiere Autorización):**
+1. Rotación inmediata de contraseñas para los correos que tenían bypass hardcodeado (`francocb79@gmail.com`, `fcb@creditonegocios.com.mx`, etc.) mediante hash aleatorio fuerte o reseteo forzado por correo.
+2. Invalidación total de sesiones activas en producción (`TRUNCATE TABLE sessions`).
+3. Auditoría de accesos recientes en logs de Railway y tablas de auditoría para descartar intrusiones.
+4. Despliegue de este fix a producción solo tras autorización explícita.
 
-**Fecha resolución parcial:** 2026-10-08
-**Verificado por:** QA Suite (`tests/unit/startup-migration-security.test.ts` — 7/7 passing)
+**Fecha resolución en rama:** 2026-10-08
+**Verificado por:** QA Suites (Total 50 tests passing en suites de seguridad y comisiones)
 
 ---
 

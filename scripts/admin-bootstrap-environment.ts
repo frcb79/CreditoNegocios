@@ -219,17 +219,43 @@ async function main() {
   const doReset = args.includes('--force-reset-passwords');
   const doCleanup = doAll || args.includes('--cleanup-test-institutions');
   const doSanitize = doAll || args.includes('--sanitize-rbac');
+  const hasEnvConfirm = args.includes('--confirm-environment=staging-or-local');
+  const hasDestructiveConfirm = args.includes('--confirm-destructive-operations');
+
+  // 1. Bloqueo estricto contra producción
+  const isProd = process.env.NODE_ENV === "production" || process.env.RAILWAY_ENVIRONMENT === "production";
+  const databaseUrl = (process.env.DATABASE_URL || "").toLowerCase();
+  const isProdDb = databaseUrl.includes("production") || (process.env.RAILWAY_SERVICE_NAME || "").toLowerCase().includes("prod");
+
+  if (isProd || isProdDb) {
+    console.error("🛑 [AdminBootstrap] BLOQUEO DE SEGURIDAD CRÍTICO: Este script administrativo está estrictamente PROHIBIDO en entornos de producción.");
+    process.exit(1);
+  }
 
   if (!doSeed && !doCleanup && !doSanitize) {
     console.log(`
-Uso de script administrativo de bootstrap:
-  --seed-test-accounts         Crea cuentas de prueba si no existen (sin sobrescribir existentes)
-  --force-reset-passwords      Fuerza reseteo de password y permisos en cuentas de prueba (PELIGROSO)
-  --cleanup-test-institutions  Elimina financieras ficticias de prueba (E2E Flujo Completo, etc.)
-  --sanitize-rbac              Agrega módulos básicos en usuarios legacy que carecen de ellos
-  --all                        Ejecuta seed, cleanup y sanitización
+Uso de script administrativo de bootstrap y mantenimiento:
+  --confirm-environment=staging-or-local   [OBLIGATORIO] Validación explícita de entorno seguro
+  --seed-test-accounts                    Crea cuentas de prueba si no existen (sin sobrescribir existentes)
+  --force-reset-passwords                 Fuerza reseteo de password y permisos en cuentas de prueba (PELIGROSO)
+  --cleanup-test-institutions             Elimina financieras ficticias de prueba (E2E Flujo Completo, etc.)
+  --sanitize-rbac                         Agrega módulos básicos en usuarios legacy que carecen de ellos
+  --confirm-destructive-operations        [OBLIGATORIO para --force-reset-passwords o --cleanup-test-institutions]
+  --all                                   Ejecuta seed, cleanup y sanitización
     `);
     process.exit(0);
+  }
+
+  // 2. Validación de entorno explícita
+  if (!hasEnvConfirm) {
+    console.error("❌ [AdminBootstrap] ERROR DE SEGURIDAD: Se requiere la bandera explícita '--confirm-environment=staging-or-local' para autorizar el entorno.");
+    process.exit(1);
+  }
+
+  // 3. Validación de operaciones destructivas
+  if ((doReset || doCleanup || doAll) && !hasDestructiveConfirm) {
+    console.error("❌ [AdminBootstrap] ERROR DE SEGURIDAD: Las operaciones destructivas (--force-reset-passwords, --cleanup-test-institutions, --all) requieren la bandera explícita '--confirm-destructive-operations'.");
+    process.exit(1);
   }
 
   console.log("🚀 [AdminBootstrap] Iniciando procedimiento administrativo...");

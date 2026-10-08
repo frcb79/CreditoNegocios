@@ -215,6 +215,9 @@ describe("Validación Crítica: Atribución Bancaria Histórica de Comisiones y 
       masterBrokerShare: "15000.00",
       appShare: "0.00",
       status: "approved",
+      approvedBy: adminUser.id,
+      approvedAt: new Date(),
+      frozenAmount: "40000.00",
       commissionType: "apertura",
     } as any);
 
@@ -292,6 +295,9 @@ describe("Validación Crítica: Atribución Bancaria Histórica de Comisiones y 
       masterBrokerShare: "10000.00",
       appShare: "0.00",
       status: "approved",
+      approvedBy: adminUser.id,
+      approvedAt: new Date(),
+      frozenAmount: "30000.00",
       commissionType: "apertura",
     } as any);
 

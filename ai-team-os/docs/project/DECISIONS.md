@@ -140,5 +140,15 @@ Formato: Fecha / Decision / Opciones evaluadas / Decision final / Por que
 	- Elimina el riesgo de corrupción en el linaje histórico de créditos al condicionar los backfills a `origin_master_broker_id IS NULL`.
 	- Mantiene la capacidad de aprovisionar ambientes nuevos de manera segura, auditable y bajo control deliberado del operador.
 
+### 2026-10-08 / Eliminación Total de Bypass en Login y Gate Temporal Obligatorio de Comisiones
+- Opciones evaluadas:
+	- Opcion A: Mantener el bypass de contraseñas de desarrollo para conveniencia en testing y permitir la dispersión masiva automática sin aprobación previa.
+	- Opcion B: Eliminar radicalmente las contraseñas hardcodeadas (`allowedAdminPasswords`) y sincronización automática en `POST /api/auth/login`, forzando hash criptográfico estricto para todas las cuentas; e implementar un gate temporal obligatorio en backend para dispersión individual (`/pay`), masiva (`/bulk-pay`) y manual (`/mark-paid`), requiriendo que la comisión cuente con `status === 'approved'`, `approvedBy` de Super Admin, `approvedAt`, y un `frozenAmount` numérico válido. Deshabilitar temporalmente la aprobación masiva (`/bulk-approve` -> 400 `BULK_APPROVAL_TEMPORARILY_DISABLED`) para forzar la revisión manual individual por Super Admin.
+- Decision final: Opcion B.
+- Por que:
+	- Seguridad Crítica (P0): Las contraseñas fijas conocidas en código fuente representan una brecha de acceso no autorizado inaceptable para cuentas de Super Admin y Brókers.
+	- Integridad Financiera: Impide dispersiones no autorizadas de comisiones que no hayan sido formalmente revisadas, aprobadas y congeladas de forma individual por Super Admin.
+	- Cumplimiento y Trazabilidad: Cada aprobación y bloqueo persiste un log inmutable en `commission_audit_logs`.
+
 ## DECISIONES CAMBIADAS
 [Si alguna se revirtio, documentar con la razon]

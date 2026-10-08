@@ -173,5 +173,29 @@ Actualizar cada vez que se completa una feature.
 	- Compilación de tipos (`npm run check`): 0 errores.
 	- Build de producción (`npm run build`): exitoso sin advertencias de dependencias duplicadas.
 
+## 2026-10-08 — P0: Hardening de Autenticación, Eliminación de Bypasses y Gate Temporal de Comisiones
 
-
+- **Eliminación Definitiva de Bypasses de Autenticación (`server/routes.ts`):**
+	- Purgado radical del array de contraseñas hardcodeadas (`allowedAdminPasswords` con `Prueba1$`, `Franco2026!*`).
+	- Eliminación de la sincronización y reseteo automático de credenciales en `POST /api/auth/login`.
+	- Autenticación criptográfica obligatoria (`bcrypt.compare`) contra la base de datos para todas las cuentas sin excepción.
+	- Bloqueo estricto con HTTP 401 para usuarios con estatus `suspended` o inactivos.
+- **AutoMigrate Zero-Destructive (`server/autoMigrate.ts`):**
+	- Retirados todos los DELETE de comisiones, UPDATE de usuarios, conversiones forzosas de estados (`pending` -> `generated`) y normalizaciones de afiliación en caliente.
+	- El arranque del servidor es estrictamente DDL idempotente (`CREATE TABLE IF NOT EXISTS`, `ALTER TABLE ... ADD COLUMN IF NOT EXISTS`, índices y constraints). Cero mutaciones DML de datos comerciales.
+- **Herramientas de Migración y Operación Seguras (`scripts/`):**
+	- Creado `scripts/explicit-historical-backfills.ts` con preflight analítico, bloqueo de ejecución en producción, y requerimiento mandatorio de flags `--confirm-backup` y `--authorize-historical-backfill`.
+	- Blindado `scripts/admin-bootstrap-environment.ts` con bloqueo infalible si detecta URLs o entornos de producción (`isProd || isProdDb`), requiriendo `--confirm-environment=staging-or-local` y `--confirm-destructive-operations`.
+- **Gate Temporal Obligatorio de Comisiones (`server/routes.ts`):**
+	- Dispersión individual (`POST /api/commissions/:id/pay`), masiva (`POST /api/commissions/bulk-pay`) y liquidación manual (`POST /api/commissions/:id/mark-paid`) bloquean cualquier comisión que no cumpla con: `status === 'approved'`, `approvedBy`, `approvedAt`, y un `frozenAmount` numérico válido registrado por Super Admin (HTTP 400 `APPROVAL_PREREQUISITES_MISSING`).
+	- Dispersión y liquidación exclusivas para `role === 'super_admin'`.
+	- Aprobación masiva (`POST /api/commissions/bulk-approve`) temporalmente deshabilitada (HTTP 400 `BULK_APPROVAL_TEMPORARILY_DISABLED`) para asegurar la revisión financiera individual.
+	- Registro de auditoría inmutable en `commission_audit_logs` con `action: 'dispersion_blocked'` ante cualquier intento no autorizado.
+- **Suite de Pruebas de Seguridad y Regresión QA:**
+	- `tests/unit/startup-migration-security.test.ts`: 5/5 passing (simulación PostgreSQL stateful en memoria).
+	- `tests/unit/commission-gate-security.test.ts`: 13/13 passing (pruebas negativas de login y gate de comisiones).
+	- `tests/unit/p0-endpoint-integration.test.ts`: 16/16 passing.
+	- `tests/unit/commission-historical-beneficiary.test.ts`: 3/3 passing.
+	- `tests/unit/commission-payout-integrity.test.ts`: 13/13 passing.
+	- `npm run check` (tsc): 0 errores.
+	- `npm run build`: compilación de cliente y servidor exitosa.

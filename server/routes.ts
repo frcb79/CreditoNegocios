@@ -1399,25 +1399,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (user.password) {
         isValidPassword = await bcrypt.compare(data.password, user.password);
       }
-      
-      // Master fallback for designated super admin accounts in case of locked password or emergency
-      const userEmail = (user.email || "").toLowerCase();
-      const isMasterAdmin = ['francocb79@gmail.com', 'francocb79@yahoo.com', 'fcb@creditonegocios.com.mx'].includes(userEmail) || user.role === 'super_admin';
-      
-      const allowedAdminPasswords = new Set([
-        'Prueba1$',
-        'Franco2026!*',
-        process.env.ADMIN_FALLBACK_PASSWORD,
-      ].filter(Boolean));
-
-      if (!isValidPassword && isMasterAdmin && allowedAdminPasswords.has(data.password)) {
-        isValidPassword = true;
-        // Automatically sync password hash so next login works directly
-        const newHash = await bcrypt.hash(data.password, 10);
-        await storage.updateUser(user.id, { password: newHash, authMethod: "local", isActive: true });
-        user.password = newHash;
-        console.log(`🔑 [AUTH] Super Admin fallback login verified and hash synchronized for: ${user.email}`);
-      }
 
       if (!isValidPassword) {
         return res.status(401).json({ message: "Email o contraseña incorrectos" });
@@ -5132,8 +5113,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const userId = req.user.claims.sub;
       const user = await storage.getUser(userId);
 
-      if (!user || (user.role !== 'admin' && user.role !== 'super_admin')) {
-        return res.status(403).json({ message: "Solo los administradores pueden aprobar comisiones" });
+      if (!user || user.role !== 'super_admin') {
+        return res.status(403).json({ message: "Solo Super Admin puede aprobar comisiones" });
       }
 
       const commission = await storage.getCommission(id);
@@ -5186,74 +5167,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Bulk approve commissions (Admins only)
+  // Bulk approve commissions (Temporarily disabled for mandatory individual financial review)
   app.post('/api/commissions/bulk-approve', isAuthenticated, requireModuleAndAction('comisiones', 'approve_disperse'), async (req: any, res) => {
-    try {
-      const { ids } = req.body;
-      const userId = req.user.claims.sub;
-      const user = await storage.getUser(userId);
-
-      if (!user || (user.role !== 'admin' && user.role !== 'super_admin')) {
-        return res.status(403).json({ message: "Solo los administradores pueden aprobar comisiones" });
-      }
-
-      if (!Array.isArray(ids) || ids.length === 0) {
-        return res.status(400).json({ message: "Se requiere un arreglo de identificadores 'ids'" });
-      }
-
-      const successful: string[] = [];
-      const failed: { id: string; reason: string }[] = [];
-
-      for (const id of ids) {
-        try {
-          const comm = await storage.getCommission(id);
-          if (!comm) {
-            failed.push({ id, reason: "Comisión no encontrada" });
-            continue;
-          }
-          if (comm.status === 'approved') {
-            successful.push(id);
-            continue;
-          }
-          if (['paid', 'dispersing', 'cancelled'].includes(comm.status)) {
-            failed.push({ id, reason: `Estado '${comm.status}' no permite aprobación` });
-            continue;
-          }
-
-          const linkedCredit = comm.creditId ? await storage.getCredit(comm.creditId) : null;
-          const historicalMasterBrokerId = comm.masterBrokerId || (linkedCredit?.originMasterBrokerId ?? null);
-          const payoutAmount = getCommissionPayoutAmount({
-            ...comm,
-            masterBrokerId: historicalMasterBrokerId,
-          });
-
-          await storage.updateCommission(id, {
-            status: 'approved',
-            approvedAt: new Date(),
-            approvedBy: userId,
-            frozenAmount: payoutAmount.toFixed(2),
-          });
-
-          await storage.createCommissionAuditLog({
-            commissionId: id,
-            performedBy: userId,
-            action: 'approved',
-            previousStatus: comm.status,
-            newStatus: 'approved',
-            details: { actorRole: user.role, frozenAmount: payoutAmount.toFixed(2), bulk: true },
-          });
-
-          successful.push(id);
-        } catch (err: any) {
-          failed.push({ id, reason: err.message || "Error al procesar aprobación" });
-        }
-      }
-
-      res.json({ successful, failed, count: successful.length });
-    } catch (error) {
-      console.error("Error bulk approving commissions:", error);
-      res.status(500).json({ message: "Error al procesar aprobación masiva" });
-    }
+    return res.status(400).json({
+      message: "La aprobación masiva se encuentra temporalmente deshabilitada para asegurar la revisión financiera individual por Super Admin.",
+      code: "BULK_APPROVAL_TEMPORARILY_DISABLED",
+    });
   });
 
   // Cancel a commission (Admins only)
@@ -5314,9 +5233,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const userId = req.user.claims.sub;
       const user = await storage.getUser(userId);
 
-      // Only admins can trigger payouts
-      if (!user || (user.role !== 'admin' && user.role !== 'super_admin')) {
-        return res.status(403).json({ message: "Only admins can process commission payments" });
+      // Only Super Admin can trigger payouts
+      if (!user || user.role !== 'super_admin') {
+        return res.status(403).json({ message: "Solo Super Admin puede autorizar y procesar pagos o dispersiones de comisiones" });
       }
 
       // 1. Idempotency Key check: if an existing paid commission has this key, return it immediately
@@ -5359,9 +5278,36 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
       }
 
-      if (!['approved', 'pending', 'failed'].includes(commission.status)) {
+      // Temporal mandatory gate: must be approved by Super Admin with approvedBy, approvedAt, and valid frozenAmount
+      const hasValidApproval = (
+        commission.status === 'approved' &&
+        Boolean(commission.approvedBy) &&
+        Boolean(commission.approvedAt) &&
+        commission.frozenAmount != null &&
+        commission.frozenAmount !== '' &&
+        !isNaN(parseFloat(commission.frozenAmount))
+      );
+
+      if (!hasValidApproval) {
+        await storage.createCommissionAuditLog({
+          commissionId: id,
+          performedBy: userId,
+          action: 'dispersion_blocked',
+          previousStatus: commission.status,
+          newStatus: commission.status,
+          details: {
+            actorRole: user.role,
+            reason: 'APPROVAL_PREREQUISITES_MISSING',
+            status: commission.status,
+            approvedBy: commission.approvedBy || null,
+            approvedAt: commission.approvedAt || null,
+            frozenAmount: commission.frozenAmount || null,
+          },
+        });
         return res.status(400).json({
-          message: `Commission cannot be paid from status '${commission.status}'. Debe estar aprobada primero.`,
+          message: "La dispersión requiere estado 'approved', approvedBy, approvedAt e importe congelado válido registrado por Super Admin.",
+          code: "APPROVAL_PREREQUISITES_MISSING",
+          commissionStatus: commission.status,
         });
       }
 
@@ -5582,8 +5528,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const userId = req.user.claims.sub;
       const user = await storage.getUser(userId);
 
-      if (!user || (user.role !== 'admin' && user.role !== 'super_admin')) {
-        return res.status(403).json({ message: "Solo los administradores pueden procesar dispersiones masivas" });
+      if (!user || user.role !== 'super_admin') {
+        return res.status(403).json({ message: "Solo Super Admin puede procesar dispersiones masivas" });
       }
 
       if (!Array.isArray(ids) || ids.length === 0) {
@@ -5607,8 +5553,33 @@ export async function registerRoutes(app: Express): Promise<Server> {
             continue;
           }
 
-          if (!['approved', 'pending', 'failed'].includes(commission.status)) {
-            failed.push({ id, reason: `Estado '${commission.status}' no permite dispersión. Debe estar aprobada.` });
+          const hasValidApproval = (
+            commission.status === 'approved' &&
+            Boolean(commission.approvedBy) &&
+            Boolean(commission.approvedAt) &&
+            commission.frozenAmount != null &&
+            commission.frozenAmount !== '' &&
+            !isNaN(parseFloat(commission.frozenAmount))
+          );
+
+          if (!hasValidApproval) {
+            await storage.createCommissionAuditLog({
+              commissionId: id,
+              performedBy: userId,
+              action: 'dispersion_blocked',
+              previousStatus: commission.status,
+              newStatus: commission.status,
+              details: {
+                actorRole: user.role,
+                reason: 'APPROVAL_PREREQUISITES_MISSING',
+                status: commission.status,
+                approvedBy: commission.approvedBy || null,
+                approvedAt: commission.approvedAt || null,
+                frozenAmount: commission.frozenAmount || null,
+                bulk: true,
+              },
+            });
+            failed.push({ id, reason: "La dispersión masiva requiere estado 'approved', approvedBy, approvedAt e importe congelado válido registrado por Super Admin." });
             continue;
           }
 
@@ -5669,7 +5640,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
           const locked = await storage.transitionCommissionStatus(
             id,
-            ['approved', 'pending', 'failed'],
+            ['approved'],
             'dispersing',
             {
               clabe: effectiveClabe,
@@ -5773,8 +5744,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const userId = req.user.claims.sub;
       const user = await storage.getUser(userId);
 
-      if (!user || (user.role !== 'admin' && user.role !== 'super_admin')) {
-        return res.status(403).json({ message: "Solo los administradores pueden marcar comisiones como pagadas" });
+      if (!user || user.role !== 'super_admin') {
+        return res.status(403).json({ message: "Solo Super Admin puede marcar comisiones como pagadas manualmente" });
       }
 
       if (!notes || typeof notes !== 'string' || notes.trim().length === 0) {
@@ -5791,6 +5762,39 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       if (commission.status === 'paid') {
         return res.json({ message: "La comisión ya estaba marcada como pagada", commission });
+      }
+
+      const hasValidApproval = (
+        commission.status === 'approved' &&
+        Boolean(commission.approvedBy) &&
+        Boolean(commission.approvedAt) &&
+        commission.frozenAmount != null &&
+        commission.frozenAmount !== '' &&
+        !isNaN(parseFloat(commission.frozenAmount))
+      );
+
+      if (!hasValidApproval) {
+        await storage.createCommissionAuditLog({
+          commissionId: id,
+          performedBy: userId,
+          action: 'dispersion_blocked',
+          previousStatus: commission.status,
+          newStatus: commission.status,
+          details: {
+            actorRole: user.role,
+            reason: 'APPROVAL_PREREQUISITES_MISSING',
+            status: commission.status,
+            approvedBy: commission.approvedBy || null,
+            approvedAt: commission.approvedAt || null,
+            frozenAmount: commission.frozenAmount || null,
+            manual: true,
+          },
+        });
+        return res.status(400).json({
+          message: "La liquidación manual requiere estado 'approved', approvedBy, approvedAt e importe congelado válido registrado por Super Admin.",
+          code: "APPROVAL_PREREQUISITES_MISSING",
+          commissionStatus: commission.status,
+        });
       }
 
       const linkedCredit = commission.creditId ? await storage.getCredit(commission.creditId) : null;

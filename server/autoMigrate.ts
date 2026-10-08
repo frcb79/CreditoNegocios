@@ -114,11 +114,6 @@ export async function runAutoMigration(): Promise<void> {
         ON public.users ("status");
       `);
 
-      await client.query(`
-        UPDATE public.users 
-        SET status = 'active' 
-        WHERE status IS NULL;
-      `);
       console.log("✅ [AutoMigrate] Users table and columns verified");
     } catch (err) {
       console.error("⚠️ [AutoMigrate] Error verifying users table/columns:", err);
@@ -204,17 +199,6 @@ export async function runAutoMigration(): Promise<void> {
 
         ALTER TABLE IF EXISTS public.tenant_members
           ADD COLUMN IF NOT EXISTS can_originate BOOLEAN DEFAULT false;
-
-        WITH marker AS (
-          INSERT INTO public.system_migration_markers (key, metadata)
-          VALUES ('tenant_members_owner_originate_v1', '{"purpose":"initialize owner can_originate=true"}'::jsonb)
-          ON CONFLICT (key) DO NOTHING
-          RETURNING key
-        )
-        UPDATE public.tenant_members
-        SET can_originate = true
-        FROM marker
-        WHERE role = 'owner' AND can_originate IS NOT TRUE;
       `);
       console.log("✅ [AutoMigrate] Tenant members table and indexes verified");
     } catch (err) {
@@ -280,76 +264,6 @@ export async function runAutoMigration(): Promise<void> {
         CREATE INDEX IF NOT EXISTS "credits_broker_idx" ON public.credits ("broker_id");
         CREATE INDEX IF NOT EXISTS "credits_client_idx" ON public.credits ("client_id");
         CREATE INDEX IF NOT EXISTS "credits_origin_master_broker_idx" ON public.credits ("origin_master_broker_id");
-      `);
-
-      // Backfill exactly once using persistent marker. NULL remains a meaningful immutable value for
-      // credits originated directly under Crédito Negocios. Existing non-null origin masters are never overwritten.
-      await client.query(`
-        WITH marker AS (
-          INSERT INTO public.system_migration_markers (key, metadata)
-          VALUES ('credits_origin_master_snapshot_v1', '{"purpose":"freeze pre-transition Master Broker affiliation on legacy credits"}'::jsonb)
-          ON CONFLICT (key) DO NOTHING
-          RETURNING key
-        )
-        UPDATE public.credits AS c
-        SET origin_master_broker_id = CASE
-          WHEN u.role = 'master_broker' THEN u.id
-          WHEN u.role = 'broker' AND mb.role = 'master_broker' THEN mb.id
-          ELSE NULL
-        END
-        FROM public.users AS u
-        LEFT JOIN public.users AS mb ON mb.id = u.master_broker_id,
-        marker
-        WHERE c.broker_id = u.id
-          AND c.origin_master_broker_id IS NULL;
-
-        WITH marker AS (
-          INSERT INTO public.system_migration_markers (key, metadata)
-          VALUES ('legacy_direct_brokers_normalize_v1', '{"purpose":"normalize legacy Casa Matriz links to platform"}'::jsonb)
-          ON CONFLICT (key) DO NOTHING
-          RETURNING key
-        ),
-        platform_tenant AS (
-          SELECT id
-          FROM public.tenants
-          WHERE type = 'platform' OR slug = 'platform'
-          ORDER BY CASE WHEN type = 'platform' THEN 0 ELSE 1 END
-          LIMIT 1
-        ),
-        legacy_direct_brokers AS (
-          SELECT broker.id
-          FROM public.users AS broker
-          WHERE broker.role = 'broker'
-            AND broker.master_broker_id IS NOT NULL
-            AND NOT EXISTS (
-              SELECT 1
-              FROM public.users AS parent_user
-              WHERE parent_user.id = broker.master_broker_id
-                AND parent_user.role = 'master_broker'
-            )
-        )
-        UPDATE public.tenants AS broker_tenant
-        SET parent_tenant_id = platform_tenant.id,
-            updated_at = NOW()
-        FROM platform_tenant, legacy_direct_brokers, marker
-        WHERE broker_tenant.type = 'broker'
-          AND broker_tenant.settings->>'legacyOwnerUserId' = legacy_direct_brokers.id;
-
-        WITH marker AS (
-          SELECT key FROM public.system_migration_markers WHERE key = 'legacy_direct_brokers_normalize_v1'
-        )
-        UPDATE public.users AS broker
-        SET master_broker_id = NULL,
-            updated_at = NOW()
-        FROM marker
-        WHERE broker.role = 'broker'
-          AND broker.master_broker_id IS NOT NULL
-          AND NOT EXISTS (
-            SELECT 1
-            FROM public.users AS parent_user
-            WHERE parent_user.id = broker.master_broker_id
-              AND parent_user.role = 'master_broker'
-          );
       `);
 
       await client.query(`
@@ -441,37 +355,6 @@ export async function runAutoMigration(): Promise<void> {
           ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT now();
       `);
 
-      // Safe deduplication and legacy status normalization gated by persistent marker
-      await client.query(`
-        WITH marker AS (
-          INSERT INTO public.system_migration_markers (key, metadata)
-          VALUES ('commissions_bloque6_cleanup_v1', '{"purpose":"safe deduplication and legacy status normalization for Bloque 6"}'::jsonb)
-          ON CONFLICT (key) DO NOTHING
-          RETURNING key
-        )
-        DELETE FROM public.commissions
-        WHERE id IN (
-          SELECT c.id FROM (
-            SELECT id, ROW_NUMBER() OVER (
-              PARTITION BY credit_id, commission_type 
-              ORDER BY CASE WHEN status = 'paid' THEN 0 ELSE 1 END, created_at DESC
-            ) as rn
-            FROM public.commissions
-            WHERE credit_id IS NOT NULL AND commission_type IS NOT NULL
-          ) c
-          JOIN marker m ON true
-          WHERE c.rn > 1
-        );
-
-        WITH marker AS (
-          SELECT key FROM public.system_migration_markers WHERE key = 'commissions_bloque6_cleanup_v1'
-        )
-        UPDATE public.commissions c
-        SET status = 'generated'
-        FROM marker
-        WHERE c.status = 'pending';
-      `);
-
       // Ensure indexes and unique constraints
       await client.query(`
         CREATE UNIQUE INDEX IF NOT EXISTS commissions_credit_type_unique 
@@ -496,14 +379,6 @@ export async function runAutoMigration(): Promise<void> {
         );
         CREATE INDEX IF NOT EXISTS comm_audit_commission_idx ON public.commission_audit_logs (commission_id);
         CREATE INDEX IF NOT EXISTS comm_audit_created_at_idx ON public.commission_audit_logs (created_at);
-      `);
-
-      // Backfill tenant_id from linked credits
-      await client.query(`
-        UPDATE public.commissions c
-        SET tenant_id = cr.tenant_id
-        FROM public.credits cr
-        WHERE c.credit_id = cr.id AND c.tenant_id IS NULL AND cr.tenant_id IS NOT NULL;
       `);
 
       console.log("✅ [AutoMigrate] Commissions table, audit logs and indexes verified (Bloque 6)");
@@ -536,23 +411,7 @@ export async function runAutoMigration(): Promise<void> {
       console.error("⚠️ [AutoMigrate] Error verifying financial institutions columns:", err);
     }
 
-    // 6. Update existing legacy users to 'local' auth so they can authenticate locally (preserves active status)
-    try {
-      await client.query(`
-        WITH marker AS (
-          INSERT INTO public.system_migration_markers (key, metadata)
-          VALUES ('users_auth_method_local_backfill_v1', '{"purpose":"normalize auth_method to local for legacy accounts"}'::jsonb)
-          ON CONFLICT (key) DO NOTHING
-          RETURNING key
-        )
-        UPDATE public.users u
-        SET auth_method = 'local', updated_at = NOW()
-        FROM marker
-        WHERE u.auth_method IS NULL OR u.auth_method = 'replit';
-      `);
-    } catch (err) {
-      console.error("⚠️ [AutoMigrate] Error updating auth_method:", err);
-    }
+    // 6. User auth method defaults verified via column definitions
 
     // 7. Safe initial admin bootstrap ONLY if database is 100% empty (never alters existing accounts)
     try {
@@ -866,48 +725,6 @@ export async function runAutoMigration(): Promise<void> {
 
         CREATE INDEX IF NOT EXISTS "credit_submissions_origin_master_idx"
           ON public.credit_submission_requests (origin_master_broker_id);
-
-        WITH marker AS (
-          INSERT INTO public.system_migration_markers (key, metadata)
-          VALUES (
-            'broker_network_opportunity_snapshot_v1',
-            '{"purpose":"freeze pre-transition Master Broker affiliation on commercial opportunities"}'::jsonb
-          )
-          ON CONFLICT (key) DO NOTHING
-          RETURNING key
-        )
-        UPDATE public.commercial_opportunities AS opportunity
-        SET master_broker_id = CASE
-          WHEN broker.role = 'master_broker' THEN broker.id
-          WHEN broker.role = 'broker' AND parent_master.role = 'master_broker' THEN parent_master.id
-          ELSE NULL
-        END
-        FROM public.users AS broker
-        LEFT JOIN public.users AS parent_master ON parent_master.id = broker.master_broker_id,
-        marker
-        WHERE opportunity.broker_id = broker.id
-          AND opportunity.master_broker_id IS NULL;
-
-        WITH marker AS (
-          INSERT INTO public.system_migration_markers (key, metadata)
-          VALUES (
-            'broker_network_submission_snapshot_v1',
-            '{"purpose":"freeze pre-transition Master Broker affiliation on credit submissions"}'::jsonb
-          )
-          ON CONFLICT (key) DO NOTHING
-          RETURNING key
-        )
-        UPDATE public.credit_submission_requests AS submission
-        SET origin_master_broker_id = CASE
-          WHEN broker.role = 'master_broker' THEN broker.id
-          WHEN broker.role = 'broker' AND parent_master.role = 'master_broker' THEN parent_master.id
-          ELSE NULL
-        END
-        FROM public.users AS broker
-        LEFT JOIN public.users AS parent_master ON parent_master.id = broker.master_broker_id,
-        marker
-        WHERE submission.broker_id = broker.id
-          AND submission.origin_master_broker_id IS NULL;
 
         CREATE INDEX IF NOT EXISTS "opp_master_broker_idx"
           ON public.commercial_opportunities (master_broker_id);

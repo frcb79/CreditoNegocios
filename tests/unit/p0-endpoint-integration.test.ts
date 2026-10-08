@@ -323,6 +323,9 @@ describe("P0 - Real HTTP Endpoint Integration Tests (STP Mock, Registration Atom
         masterBrokerShare: "30000.00", // Both hold 30,000
         appShare: "20000.00",
         status: "approved",
+        approvedBy: adminUser.id,
+        approvedAt: new Date(),
+        frozenAmount: "30000.00",
         commissionType: "apertura",
       } as any);
 
@@ -390,6 +393,9 @@ describe("P0 - Real HTTP Endpoint Integration Tests (STP Mock, Registration Atom
         masterBrokerShare: "10000.00",
         appShare: "20000.00",
         status: "approved",
+        approvedBy: adminUser.id,
+        approvedAt: new Date(),
+        frozenAmount: "30000.00",
         commissionType: "apertura",
       } as any);
 
@@ -462,6 +468,9 @@ describe("P0 - Real HTTP Endpoint Integration Tests (STP Mock, Registration Atom
         masterBrokerShare: "10000.00",
         appShare: "0.00",
         status: "approved",
+        approvedBy: adminUser.id,
+        approvedAt: new Date(),
+        frozenAmount: "25000.00",
         commissionType: "apertura",
       } as any);
 
@@ -504,6 +513,9 @@ describe("P0 - Real HTTP Endpoint Integration Tests (STP Mock, Registration Atom
         brokerShare: "6000.00",
         masterBrokerShare: "6000.00",
         status: "approved",
+        approvedBy: adminUser.id,
+        approvedAt: new Date(),
+        frozenAmount: "6000.00",
       } as any);
 
       // Spoofed CLABE in request body
@@ -549,6 +561,9 @@ describe("P0 - Real HTTP Endpoint Integration Tests (STP Mock, Registration Atom
         brokerShare: "6000.00",
         masterBrokerShare: "6000.00",
         status: "approved",
+        approvedBy: adminUser.id,
+        approvedAt: new Date(),
+        frozenAmount: "6000.00",
       } as any);
 
       const payRes = await request(app)
@@ -595,6 +610,8 @@ describe("P0 - Real HTTP Endpoint Integration Tests (STP Mock, Registration Atom
         masterBrokerShare: "30000.00",
         frozenAmount: "60000.00", // Corrupted doubled amount!
         status: "approved",
+        approvedBy: adminUser.id,
+        approvedAt: new Date(),
       } as any);
 
       const payRes = await request(app)
@@ -645,6 +662,8 @@ describe("P0 - Real HTTP Endpoint Integration Tests (STP Mock, Registration Atom
         masterBrokerShare: "15000.00",
         frozenAmount: "0.00", // Explicit 0
         status: "approved",
+        approvedBy: adminUser.id,
+        approvedAt: new Date(),
       } as any);
 
       const payRes = await request(app)
@@ -702,6 +721,9 @@ describe("P0 - Real HTTP Endpoint Integration Tests (STP Mock, Registration Atom
         brokerShare: "30000.00",
         masterBrokerShare: "30000.00",
         status: "approved",
+        approvedBy: adminUser.id,
+        approvedAt: new Date(),
+        frozenAmount: "30000.00",
       } as any);
 
       // Discrepancy commission (frozen $60k vs expected $30k)
@@ -714,6 +736,8 @@ describe("P0 - Real HTTP Endpoint Integration Tests (STP Mock, Registration Atom
         masterBrokerShare: "30000.00",
         frozenAmount: "60000.00",
         status: "approved",
+        approvedBy: adminUser.id,
+        approvedAt: new Date(),
       } as any);
 
       const bulkRes = await request(app)
@@ -772,6 +796,9 @@ describe("P0 - Real HTTP Endpoint Integration Tests (STP Mock, Registration Atom
         amount: "10000.00",
         brokerShare: "6000.00",
         status: "approved",
+        approvedBy: adminUser.id,
+        approvedAt: new Date(),
+        frozenAmount: "6000.00",
       } as any);
 
       const res = await request(app)
@@ -823,6 +850,8 @@ describe("P0 - Real HTTP Endpoint Integration Tests (STP Mock, Registration Atom
         masterBrokerShare: "15000.00",
         frozenAmount: "30000.00", // Doubled discrepancy!
         status: "approved",
+        approvedBy: adminUser.id,
+        approvedAt: new Date(),
       } as any);
 
       const res = await request(app)
