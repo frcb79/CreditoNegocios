@@ -46,6 +46,45 @@ CREATE INDEX IF NOT EXISTS "ipv_status_idx" ON public.institution_product_versio
 -- 3. Regla física de integridad: Máximo una versión publicada vigente por oferta en PostgreSQL
 CREATE UNIQUE INDEX IF NOT EXISTS "ipv_published_unique" ON public.institution_product_versions (institution_product_id) WHERE status = 'published';
 
+-- 3b. Migración aditiva y preservación de institution_products preexistentes (A1.3):
+-- No asignarlos indiscriminadamente a 'draft': Si el producto ya existía y está activo,
+-- preservarlo con status 'published' y generar su versión inicial publicada v1 en el histórico.
+UPDATE public.institution_products
+SET status = 'published'
+WHERE is_active = true AND (status IS NULL OR status = 'draft') AND NOT EXISTS (
+  SELECT 1 FROM public.institution_product_versions ipv WHERE ipv.institution_product_id = institution_products.id
+);
+
+INSERT INTO public.institution_product_versions (
+  id,
+  institution_product_id,
+  version_number,
+  status,
+  effective_from,
+  conditions,
+  requirements,
+  required_documents,
+  change_reason,
+  published_at,
+  created_by
+)
+SELECT
+  gen_random_uuid(),
+  ip.id,
+  1,
+  'published',
+  NOW(),
+  COALESCE(ip.configuration, '{}'::jsonb),
+  jsonb_build_object('targetProfiles', COALESCE(ip.target_profiles, ARRAY[]::text[])),
+  ARRAY[]::text[],
+  'Migración automática de producto institucional legacy',
+  NOW(),
+  ip.created_by
+FROM public.institution_products ip
+WHERE ip.status = 'published' AND NOT EXISTS (
+  SELECT 1 FROM public.institution_product_versions ipv WHERE ipv.institution_product_id = ip.id
+);
+
 -- 4. Vista de compatibilidad retrocompatible para lecturas legacy
 CREATE OR REPLACE VIEW public.financial_institution_offers AS
   SELECT 

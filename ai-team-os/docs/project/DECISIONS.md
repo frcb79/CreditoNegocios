@@ -90,6 +90,17 @@ Formato: Fecha / Decision / Opciones evaluadas / Decision final / Por que
 	- Protege la integridad histórica y jurídica del libro de créditos y solicitudes ante solicitudes de borrado, convirtiéndolo en desactivación lógica segura.
 	- Garantiza que los borradores incompletos nunca sean asignados a solicitudes reales mientras preserva la continuidad operativa de los productos preexistentes.
 
+### 2026-10-08 / Cierre de Compatibilidad y Elegibilidad A1.3: Migración Legacy y Verificación de Versiones Publicadas
+- Opciones evaluadas:
+	- Opcion A: Asignar todas las ofertas existentes a `draft` al migrar y confiar exclusivamente en la columna `status === 'published'` de la oferta para considerarla elegible.
+	- Opcion B: Migrar aditivamente los `institution_products` activos a `published` con su versión v1 inicial publicada en `institution_product_versions`, distinguir inequívocamente productos legacy de nuevas ofertas en borrador, exigir la verificación real de versiones publicadas en el backend (no confiar ciegamente en `status`) e impedir en backend (`POST /api/credit-submissions` y `POST /api/credits`) la utilización de ofertas en borrador.
+- Decision final: Opcion B.
+- Por que:
+	- Evita la parálisis operativa: asignar productos legacy a `draft` rompería de inmediato el catálogo operativo y la recepción de solicitudes en curso.
+	- Cierra la vulnerabilidad de spoofing o inconsistencia de estado: una oferta manipulada o inconsistente con `status = 'published'` pero sin versiones o con solo versiones borrador queda vetada de nuevas solicitudes.
+	- Mantiene la compatibilidad legacy ininterrumpida por financiera y tipo de producto.
+
 ## DECISIONES CAMBIADAS
 - 2026-10-08: Se reemplaza la coexistencia de dos catálogos (`financial_institution_offers` y `institution_products`) por la unificación en `institution_products` como catálogo canónico, manteniendo aliases y vistas retrocompatibles para evitar romper integraciones.
 - 2026-10-08: Se reemplaza la eliminación física con desvinculación de créditos en `deleteFinancialInstitution` por desactivación lógica preservadora de historial (`isActive: false` y ofertas archivadas) cuando existen créditos, solicitudes o versiones publicadas asociadas.
+- 2026-10-08: Se descarta la asignación indiscriminada de productos preexistentes a `draft`; se migran como `published` con versión inicial v1 publicada para garantizar continuidad comercial inmediata.

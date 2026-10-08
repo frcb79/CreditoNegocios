@@ -604,8 +604,11 @@ describe("Bloque A1.1 — Arquitectura Canónica de Ofertas y Versionado Aditivo
         isActive: true,
       };
 
-      expect(isOfferEligibleForRequests(publishedOffer)).toBe(true);
+      // Exige pasar la versión activa o lista de versiones publicadas
       expect(isOfferEligibleForRequests(publishedOffer, { status: "published" })).toBe(true);
+      expect(isOfferEligibleForRequests(publishedOffer, [{ status: "published" }])).toBe(true);
+      // Sin versión verificada, no se puede certificar una oferta solo por status
+      expect(isOfferEligibleForRequests(publishedOffer)).toBe(false);
     });
 
     it("preserva la operación de registros legacy existentes sin romper el flujo operativo", () => {
@@ -623,12 +626,178 @@ describe("Bloque A1.1 — Arquitectura Canónica de Ofertas y Versionado Aditivo
         isActive: true,
       };
       expect(isOfferEligibleForRequests(legacyWithActiveStatus)).toBe(true);
+
+      // Registro legacy con isLegacy flag
+      const legacyFlagged = {
+        id: "legacy-prod-3",
+        status: "published",
+        isLegacy: true,
+        isActive: true,
+      };
+      expect(isOfferEligibleForRequests(legacyFlagged)).toBe(true);
     });
 
     it("ofertas inactivas o archivadas NO son elegibles para nuevas solicitudes", () => {
-      expect(isOfferEligibleForRequests({ status: "published", isActive: false })).toBe(false);
-      expect(isOfferEligibleForRequests({ status: "archived", isActive: true })).toBe(false);
+      expect(isOfferEligibleForRequests({ status: "published", isActive: false }, { status: "published" })).toBe(false);
+      expect(isOfferEligibleForRequests({ status: "archived", isActive: true }, { status: "published" })).toBe(false);
       expect(isOfferEligibleForRequests({ status: "archived", isActive: false })).toBe(false);
+    });
+  });
+
+  describe("Pruebas de Regresión A1.3 (En Memoria): Migración de productos existentes y validación de elegibilidad en solicitudes", () => {
+    it("migra los institution_products existentes a status 'published' con versión inicial 1 publicada (no en draft)", async () => {
+      // Obtener los productos migrados en el arranque de MemStorage
+      const migratedProducts = (await storage.getInstitutionProducts()).filter(p => p.id.startsWith("inst-prod-"));
+      expect(migratedProducts.length).toBeGreaterThan(0);
+
+      for (const p of migratedProducts) {
+        if (p.isActive) {
+          // No debe haber sido asignado indiscriminadamente a 'draft'
+          expect(p.status).toBe("published");
+          expect(p.currentVersionNumber).toBe(1);
+
+          // Debe contar con su versión inicial 1 publicada en el histórico
+          const versions = await storage.getInstitutionProductVersions(p.id);
+          expect(versions.length).toBeGreaterThanOrEqual(1);
+          const publishedV = versions.find(v => v.status === "published");
+          expect(publishedV).toBeDefined();
+          expect(publishedV?.versionNumber).toBe(1);
+
+          // Debe ser plenamente elegible para solicitudes
+          expect(isOfferEligibleForRequests(p, versions)).toBe(true);
+        }
+      }
+    });
+
+    it("distingue ofertas nuevas en borrador de productos legacy migrados", async () => {
+      // 1. Producto legacy migrado está en published y es elegible
+      const migratedProducts = (await storage.getInstitutionProducts()).filter(p => p.id.startsWith("inst-prod-"));
+      const legacyProd = migratedProducts.find(p => p.isActive);
+      expect(legacyProd).toBeDefined();
+      const legacyVersions = await storage.getInstitutionProductVersions(legacyProd!.id);
+      expect(isOfferEligibleForRequests(legacyProd!, legacyVersions)).toBe(true);
+
+      // 2. Oferta nueva creada mediante versionado nace en 'draft' y NO es elegible
+      const { offer: newOffer, version: newVersion } = await storage.createOffer({
+        institutionId,
+        name: "Nueva Oferta Experimental",
+        productType: "credito_simple",
+      });
+
+      expect(newOffer.status).toBe("draft");
+      expect(newVersion.status).toBe("draft");
+
+      const newVersions = await storage.getInstitutionProductVersions(newOffer.id);
+      expect(isOfferEligibleForRequests(newOffer, newVersions)).toBe(false);
+    });
+
+    it("exige una versión realmente publicada para considerar elegible una oferta nueva (no confía solamente en status)", () => {
+      // Oferta con status manipulado a 'published' pero con versiones vacías
+      const offerWithoutVersions = {
+        id: "prod-fake-published",
+        status: "published",
+        isActive: true,
+      };
+      expect(isOfferEligibleForRequests(offerWithoutVersions, [])).toBe(false);
+      expect(isOfferEligibleForRequests(offerWithoutVersions)).toBe(false);
+
+      // Oferta con status 'published' pero cuya única versión está en 'draft'
+      const offerWithDraftVersion = {
+        id: "prod-draft-ver",
+        status: "published",
+        isActive: true,
+      };
+      expect(isOfferEligibleForRequests(offerWithDraftVersion, [{ status: "draft" }])).toBe(false);
+
+      // Oferta con versión efectivamente publicada
+      expect(isOfferEligibleForRequests(offerWithDraftVersion, [{ status: "published" }])).toBe(true);
+    });
+
+    it("valida que la creación de solicitudes excluya financieras cuyas ofertas estén exclusivamente en borrador", async () => {
+      // Crear financiera exclusiva con solo una oferta en borrador para una plantilla
+      const draftOnlyInstId = "fin-draft-only-" + Date.now();
+      await storage.createFinancialInstitution({
+        id: draftOnlyInstId,
+        name: "Financiera Solo Borradores",
+        email: "draft@financiera.com",
+        isActive: true,
+      } as any);
+
+      const template = await storage.createProductTemplate({
+        name: "Plantilla Exclusiva Test",
+        category: "credito_simple",
+        createdBy: "user-super-admin",
+        isActive: true,
+      } as any);
+
+      // Crear oferta en borrador para esa plantilla
+      const { offer } = await storage.createOffer({
+        institutionId: draftOnlyInstId,
+        templateId: template.id,
+        name: "Oferta en Borrador No Elegible",
+        productType: "credito_simple",
+      });
+
+      expect(offer.status).toBe("draft");
+
+      // Simular verificación de elegibilidad para la solicitud
+      const instProducts = await storage.getInstitutionProducts(draftOnlyInstId);
+      const matchingProducts = instProducts.filter(p => p.templateId === template.id);
+      expect(matchingProducts.length).toBe(1);
+
+      let hasAnyEligible = false;
+      for (const mp of matchingProducts) {
+        const versions = await storage.getInstitutionProductVersions(mp.id);
+        if (isOfferEligibleForRequests(mp, versions)) {
+          hasAnyEligible = true;
+          break;
+        }
+      }
+
+      // Debe ser false: no se puede destinar una solicitud a esta financiera para esta plantilla
+      expect(hasAnyEligible).toBe(false);
+    });
+
+    it("permite solicitudes para financieras con ofertas publicadas o productos legacy", async () => {
+      // 1. Con producto legacy migrado
+      const migratedProducts = (await storage.getInstitutionProducts()).filter(p => p.id.startsWith("inst-prod-"));
+      const legacyProd = migratedProducts.find(p => p.isActive);
+      expect(legacyProd).toBeDefined();
+
+      const legacyVersions = await storage.getInstitutionProductVersions(legacyProd!.id);
+      expect(isOfferEligibleForRequests(legacyProd!, legacyVersions)).toBe(true);
+
+      // 2. Con oferta formalmente publicada
+      const pubInstId = "fin-pub-test-" + Date.now();
+      await storage.createFinancialInstitution({
+        id: pubInstId,
+        name: "Financiera Publicada Test",
+        email: "pub@financiera.com",
+        isActive: true,
+      } as any);
+
+      const { offer, version } = await storage.createOffer(
+        {
+          institutionId: pubInstId,
+          name: "Oferta Publicada Válida",
+          productType: "credito_simple",
+        },
+        {
+          conditions: { minAmount: 100000, maxAmount: 1000000, minInterestRate: 14, maxInterestRate: 20, minTermMonths: 6, maxTermMonths: 24 },
+          requirements: { targetProfiles: ["persona_moral"] },
+          requiredDocuments: ["ine"],
+          changeReason: "Lanzamiento oficial",
+        }
+      );
+
+      await storage.publishOfferVersion(offer.id, version.id, {
+        publishedBy: "risk-officer",
+        changeReason: "Aprobación oficial",
+      });
+
+      const publishedOffer = await storage.getOffer(offer.id);
+      const pubVersions = await storage.getInstitutionProductVersions(offer.id);
+      expect(isOfferEligibleForRequests(publishedOffer!, pubVersions)).toBe(true);
     });
   });
 });

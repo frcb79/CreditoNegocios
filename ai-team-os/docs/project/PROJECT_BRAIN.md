@@ -55,7 +55,7 @@ Completado:
 	- Alta e importación exitosa (100% - 9 perfiles/productos, 0 errores) en Railway Staging para 5 nuevas financieras: Altum, Cualli, Jeeves (con plantilla de producto "Credito Revolvente"), Aspiria, Kapital, y actualización de Pretmex con nuevas reglas y esquemas de comisión.
 	- Purga y depuración permanente de 5 entidades de pruebas pasadas (E2E Flujo Completo, Financiera Demo, Financiera Prueba Franco) para dejar el catálogo oficial limpio en exactamente 18 financieras sin duplicados ni faltantes.
 	- Implementación del endpoint y método `DELETE /api/financial-institutions/:id` con soporte de eliminación en cascada referencial y confirmación en UI (`Financieras.tsx`).
-- **Sprint 2026-10-08 (Bloque A1, Corrección A1.1 & Cierre Técnico A1.2 — Ofertas Canónicas, Versionado Seguro y Cierre de Riesgos):**
+- **Sprint 2026-10-08 (Bloque A1, Corrección A1.1, Cierre Técnico A1.2 & Cierre de Compatibilidad A1.3 — Ofertas Canónicas, Versionado Seguro y Cierre de Riesgos):**
 	- Consolidación del catálogo canónico en `institution_products` con historial en `institution_product_versions`, eliminando catálogos duales y manteniendo retrocompatibilidad mediante vistas SQL y aliases TypeScript.
 	- Soporte para múltiples ofertas del mismo `product_type` por financiera sin colisiones de clave única.
 	- Ciclo de vida robusto: nuevas ofertas y versiones inician en `draft`; gate de calidad estricto antes de publicar (`validateMinimumPublishConditions`).
@@ -65,9 +65,9 @@ Completado:
 	- Normalización de esquema: corrección de `createdAt` a snake_case `created_at` en DDL y verificación defensiva de columnas en `autoMigrate.ts`.
 	- Blindaje contra bypass legacy: `updateInstitutionProduct` y `PUT /api/institution-products/:id` impiden publicar directamente o mutar condiciones de ofertas ya publicadas.
 	- Desactivación lógica: `deleteFinancialInstitution` y `deleteInstitutionProduct` aplican soft-deactivation (`isActive: false`, `archived`) cuando existen créditos o versiones publicadas, protegiendo el historial legal.
-	- Reglas de elegibilidad: `isOfferEligibleForRequests` excluye ofertas en borrador (`draft`) de nuevas solicitudes mientras preserva la operación continua de registros legacy.
+	- Cierre de compatibilidad y elegibilidad (A1.3): migración idempotente de productos preexistentes a `status = 'published'` con versión inicial v1 publicada, protegiendo la operación legacy; exigencia de versiones efectivamente publicadas (no confiar solo en `status`) y blindaje backend (`POST /api/credit-submissions`, `POST /api/credits`) excluyendo ofertas en borrador.
 	- Aislamiento estricto de seguridad: comisiones internas de Crédito Negocios desacopladas de las ofertas.
-	- Suite automatizada: `tests/unit/institution-offers-versioning.test.ts` (21/21 tests passing).
+	- Suite automatizada: `tests/unit/institution-offers-versioning.test.ts` (**26/26 tests passing**).
 
 En progreso:
 - Preparación para bloques subsiguientes: Diccionario Canónico de Variables, Matching por Oferta, Esquemas de Comisiones y Aceptación Comercial.
@@ -80,7 +80,7 @@ Pendiente:
 - Establecer ritual de sync periódico de aprendizajes al repositorio maestro.
 
 Bloqueadores:
-- Ninguno. Tests unitarios en verde (21/21), TypeScript sin errores (0 errores), build de servidor verificado (921.3kb), base de datos con migración idempotente y transacciones ACID.
+- Ninguno. Tests unitarios y de regresión en verde (26/26), TypeScript sin errores (0 errores), build de servidor verificado (927.0kb), base de datos con migración idempotente y transacciones ACID.
 
 ## HISTORIAL
 2026-04-17 — Sesion inicial: creacion de estructura base del sistema.
@@ -91,4 +91,4 @@ Bloqueadores:
 2026-09-04 — Implementación de Filtros de Clientes, Multi-Dispersión de Créditos con Comisiones Individuales, Red de Brokers 3-en-1 para Super Admin, y corrección de build Vercel (IIFE en JSX).
 2026-09-11 — Corrección de build en Railway, reparación de esquema PostgreSQL (`referral_code`), implementación de fallback nativo SQL en autenticación, restauración y blindaje de matriz RBAC (3 cuentas con `Prueba1$`) y validación live en producción.
 2026-09-17 — Procesamiento de `Plantilla_Comisiones_Financieras Luis.xlsx`, alta de 5 nuevas financieras (Altum, Cualli, Jeeves, Aspiria, Kapital) y actualización de Pretmex. Purga de 5 entidades de prueba e incorporación de eliminación permanente segura (`DELETE /api/financial-institutions/:id`). Catálogo consolidado en 18 financieras reales.
-2026-10-08 — Implementación del Bloque A1, Corrección A1.1 y Cierre Técnico A1.2: Consolidación de catálogo canónico en `institution_products`, versionado aditivo histórico inmutable, transacciones concurrentes ACID, normalización snake_case `created_at`, blindaje contra bypass legacy, desactivación lógica y elegibilidad de borradores en rama `feat/institution-offers-versioning-a1`.
+2026-10-08 — Implementación del Bloque A1, Corrección A1.1, Cierre Técnico A1.2 y Cierre de Compatibilidad A1.3: Consolidación de catálogo canónico en `institution_products`, versionado aditivo histórico inmutable, transacciones concurrentes ACID, normalización snake_case `created_at`, blindaje contra bypass legacy, desactivación lógica, migración legacy a versión publicada y exigencia de versiones publicadas para elegibilidad en rama `feat/institution-offers-versioning-a1`.

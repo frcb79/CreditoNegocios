@@ -134,3 +134,30 @@ Actualizar cada vez que se completa una feature.
 	- Suite automatizada: `tests/unit/institution-offers-versioning.test.ts` ampliada a **21/21 passing**.
 	- Compilación TypeScript (`npm run check`): **0 errores**.
 	- Empaquetado backend (`npm run build:server`): **0 errores** (`dist/index.js`, 921.3kb).
+
+## 2026-10-08 — Cierre de Compatibilidad y Elegibilidad A1.3: Migración Legacy y Verificación de Versiones Publicadas
+
+- **Rama:** `feat/institution-offers-versioning-a1`
+- **Requisito 1: Migración de `institution_products` Existentes sin Asignación Indiscriminada a Borrador:**
+	- Actualizado `migrations/0005_institution_offers_versioning.sql` y `server/autoMigrate.ts` con script aditivo e idempotente: los productos legacy activos existentes sin versiones son actualizados a `status = 'published'` y se les crea su versión inicial v1 con `status = 'published'` en `institution_product_versions`.
+	- En `server/storage.ts` (`MemStorage.migrateExistingData`), los productos legacy activos se inicializan en `status: 'published'` con versión inicial 1 publicada, evitando asignarlos indiscriminadamente a `draft` y preservando su operación legacy.
+- **Requisito 2: Blindaje de Solicitudes contra Ofertas Nuevas en Borrador:**
+	- En `server/routes.ts`: `POST /api/credit-submissions` valida que las financieras seleccionadas para una plantilla tengan ofertas elegibles publicadas o productos legacy activos; si solo cuentan con ofertas en borrador, la financiera se excluye o la solicitud se rechaza con HTTP 400 descriptivo.
+	- Si una solicitud envía directamente un `institutionProductId` en estado `draft`, se rechaza con error 400 en `POST /api/credit-submissions` y `POST /api/credits`.
+	- Se respeta estrictamente el flujo operativo actual por financiera y tipo de producto.
+- **Requisito 3: Exigencia de Versión Realmente Publicada (No Confiar Solo en Status):**
+	- En `server/offerVersionService.ts`: `isOfferEligibleForRequests` acepta la lista de versiones o versión activa y exige que, si `offer.status === 'published'`, exista efectivamente al menos una versión con `status === 'published'` (`currentPublishedVersion`). Si no se verifican versiones o solo existen versiones en `draft`, la oferta se dictamina inelegible.
+	- Preserva la compatibilidad para registros legacy donde no existe historial de versiones pero `isActive === true` y su status es compatible (`active`, `published` o nulo).
+	- En `server/routes.ts`: los endpoints `GET /api/institution-products` y `GET /api/institution-products/template/:templateId` con `eligibleOnly=true` consultan las versiones de cada oferta y ejecutan `isOfferEligibleForRequests(offer, versions)`.
+- **Requisito 4: Pruebas de Regresión A1.3 (En Memoria):**
+	- Nuevas pruebas de regresión añadidas en `tests/unit/institution-offers-versioning.test.ts`:
+		1. Migración de productos existentes a `published` con versión inicial 1 publicada (no en draft).
+		2. Distinción clara entre ofertas nuevas en borrador y productos legacy migrados.
+		3. Exigencia de versión realmente publicada (detección de status falso/manipulado o versiones solo en borrador).
+		4. Exclusión de financieras cuyas ofertas estén exclusivamente en borrador al crear solicitudes.
+		5. Permisión de solicitudes para financieras con ofertas publicadas o productos legacy.
+	- Las pruebas se documentan y ejecutan explícitamente en memoria (sin presentarlas como integración PostgreSQL).
+- **Validación QA:**
+	- Suite automatizada: `tests/unit/institution-offers-versioning.test.ts` con **26/26 tests passing** (100% éxito).
+	- Compilación TypeScript (`npm run check`): **0 errores**.
+	- Empaquetado backend (`npm run build:server`): **0 errores** (`dist/index.js`, 927.0kb).

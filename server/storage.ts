@@ -3532,9 +3532,13 @@ export class MemStorage implements IStorage {
           id: `inst-prod-${legacyProduct.id}`,
           templateId: template.id,
           institutionId: legacyProduct.institutionId,
+          name: legacyProduct.name,
           customName: legacyProduct.name, // Use same name initially
+          productType: legacyProduct.category || "credito_simple",
           configuration: legacyProduct.configuration || {},
           activeVariables: legacyProduct.availableVariables || {},
+          status: legacyProduct.isActive ? "published" : "archived",
+          currentVersionNumber: 1,
           isActive: legacyProduct.isActive,
           createdBy: "user-super-admin", // System migration
           createdAt: new Date(),
@@ -3542,7 +3546,36 @@ export class MemStorage implements IStorage {
         };
 
         this.institutionProducts.set(institutionProduct.id, institutionProduct);
-        console.log(`✅ Created InstitutionProduct: ${institutionProduct.customName} for institution ${legacyProduct.institutionId}`);
+
+        // Generar versión inicial 1 publicada para productos legacy activos
+        if (legacyProduct.isActive) {
+          const v1: InstitutionProductVersion = {
+            id: `ipv-legacy-${legacyProduct.id}`,
+            institutionProductId: institutionProduct.id,
+            versionNumber: 1,
+            status: "published",
+            effectiveFrom: new Date(),
+            effectiveTo: null,
+            conditions: legacyProduct.configuration || {},
+            requirements: { targetProfiles: [] },
+            requiredDocuments: [],
+            variablesConfiguration: legacyProduct.availableVariables || {},
+            changeReason: "Migración de producto legacy a versión publicada 1",
+            versionHash: computeInstitutionProductVersionHash({
+              institutionProductId: institutionProduct.id,
+              versionNumber: 1,
+              conditions: legacyProduct.configuration || {},
+            }),
+            publishedAt: new Date(),
+            publishedBy: "user-super-admin",
+            createdBy: "user-super-admin",
+            createdAt: new Date(),
+            updatedAt: new Date(),
+          };
+          this.institutionProductVersions.set(v1.id, v1);
+        }
+
+        console.log(`✅ Created InstitutionProduct: ${institutionProduct.customName} for institution ${legacyProduct.institutionId} (status: ${institutionProduct.status})`);
       }
     });
 

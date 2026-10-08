@@ -162,17 +162,20 @@ export function validateMinimumPublishConditions(params: {
  * Evalúa si una oferta/producto es elegible para nuevas solicitudes de crédito.
  * - Ofertas nuevas en borrador ('draft'): NUNCA son elegibles para nuevas solicitudes.
  * - Ofertas archivadas ('archived') o inactivas ('isActive: false'): NO son elegibles.
- * - Ofertas publicadas ('published'): Requieren versión publicada para ser elegibles.
- * - Registros legacy: Se preserva su operación existente (elegibles si isActive !== false y no son 'draft'/'archived').
+ * - Requisito 3 (A1.3): Exige una versión realmente publicada (status === 'published' o 'active').
+ *   No confía solamente en offer.status === 'published'.
+ * - Registros legacy preexistentes: Se preserva su operación existente (elegibles si isActive !== false y no son draft/archived).
  */
 export function isOfferEligibleForRequests(
   offer: {
+    id?: string;
     status?: string | null;
     isActive?: boolean | null;
+    isLegacy?: boolean | null;
   },
-  activeVersion?: {
+  activeVersionOrVersions?: {
     status?: string | null;
-  } | null
+  } | Array<{ status?: string | null }> | null
 ): boolean {
   // 1. Inactiva lógicamente -> No elegible
   if (offer.isActive === false) {
@@ -189,11 +192,24 @@ export function isOfferEligibleForRequests(
     return false;
   }
 
-  // 4. Si se proporciona versión activa, debe estar publicada
-  if (activeVersion) {
-    return activeVersion.status === "published" || activeVersion.status === "active";
+  // 4. Si se proporciona versión activa o arreglo de versiones:
+  if (activeVersionOrVersions) {
+    if (Array.isArray(activeVersionOrVersions)) {
+      if (activeVersionOrVersions.length === 0) {
+        // Sin versiones en el histórico: solo elegible si es un registro legacy comprobado
+        return offer.status === "active" || !offer.status || offer.isLegacy === true;
+      }
+      return activeVersionOrVersions.some(
+        v => v.status === "published" || v.status === "active"
+      );
+    }
+    return activeVersionOrVersions.status === "published" || activeVersionOrVersions.status === "active";
   }
 
-  // 5. Ofertas publicadas o registros legacy (sin status o con status='active') -> Elegibles
-  return offer.status === "published" || offer.status === "active" || !offer.status;
+  // 5. Requisito 3: Exigir una versión realmente publicada para considerar elegible una oferta nueva;
+  // NO confiar solamente en offer.status === 'published'.
+  // Si no se pasaron versiones para validar:
+  // - Solo se consideran elegibles los registros legacy existentes (sin status o con status 'active' o isLegacy=true).
+  // - Para una oferta (status='published'), NO se puede certificar elegibilidad sin constatar su versión publicada.
+  return offer.status === "active" || !offer.status || offer.isLegacy === true;
 }

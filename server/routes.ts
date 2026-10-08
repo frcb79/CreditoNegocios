@@ -3904,6 +3904,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
         createdBy: userId,
       });
       
+      if (req.body.institutionProductId) {
+        const product = await storage.getInstitutionProduct(req.body.institutionProductId);
+        if (product) {
+          const versions = await storage.getInstitutionProductVersions(product.id);
+          if (!isOfferEligibleForRequests(product, versions)) {
+            return res.status(400).json({
+              message: "La oferta seleccionada se encuentra en borrador o no cuenta con una versión publicada vigente.",
+            });
+          }
+        }
+      }
+
       const credit = await storage.createCredit(creditData);
       
       // Create notification
@@ -6933,7 +6945,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
         products = products.filter(p => p.status === status);
       }
       if (eligibleOnly === 'true') {
-        products = products.filter(p => isOfferEligibleForRequests(p));
+        const eligible = [];
+        for (const p of products) {
+          const versions = await storage.getInstitutionProductVersions(p.id);
+          if (isOfferEligibleForRequests(p, versions)) {
+            eligible.push(p);
+          }
+        }
+        products = eligible;
       }
       res.json(products);
     } catch (error) {
@@ -6965,7 +6984,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       let products = await storage.getInstitutionProductsByTemplate(templateId);
       if (eligibleOnly === 'true') {
-        products = products.filter(p => isOfferEligibleForRequests(p));
+        const eligible = [];
+        for (const p of products) {
+          const versions = await storage.getInstitutionProductVersions(p.id);
+          if (isOfferEligibleForRequests(p, versions)) {
+            eligible.push(p);
+          }
+        }
+        products = eligible;
       }
       res.json(products);
     } catch (error) {
@@ -7567,6 +7593,42 @@ export async function registerRoutes(app: Express): Promise<Server> {
         createdBy: userId,
         status: 'pending_admin'
       });
+
+      // 1. Validar si se seleccionó una oferta específica explícitamente
+      if (req.body.institutionProductId) {
+        const product = await storage.getInstitutionProduct(req.body.institutionProductId);
+        if (product) {
+          const versions = await storage.getInstitutionProductVersions(product.id);
+          if (!isOfferEligibleForRequests(product, versions)) {
+            return res.status(400).json({
+              message: "La oferta seleccionada se encuentra en borrador o no cuenta con una versión publicada vigente.",
+            });
+          }
+        }
+      }
+
+      // 2. Validar que las financieras seleccionadas no tengan exclusivamente ofertas en borrador para la plantilla
+      if (submissionData.productTemplateId && req.body.financialInstitutionIds && Array.isArray(req.body.financialInstitutionIds)) {
+        for (const institutionId of req.body.financialInstitutionIds) {
+          const instProducts = await storage.getInstitutionProducts(institutionId);
+          const matchingProducts = instProducts.filter(p => p.templateId === submissionData.productTemplateId);
+          if (matchingProducts.length > 0) {
+            let hasAnyEligible = false;
+            for (const mp of matchingProducts) {
+              const versions = await storage.getInstitutionProductVersions(mp.id);
+              if (isOfferEligibleForRequests(mp, versions)) {
+                hasAnyEligible = true;
+                break;
+              }
+            }
+            if (!hasAnyEligible) {
+              return res.status(400).json({
+                message: `La financiera seleccionada (${institutionId}) tiene la oferta para este tipo de producto en borrador o sin versión publicada vigente y no puede recibir solicitudes.`,
+              });
+            }
+          }
+        }
+      }
 
       const submission = await storage.createCreditSubmissionRequest(submissionData);
       
