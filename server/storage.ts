@@ -1339,6 +1339,23 @@ export class MemStorage implements IStorage {
     };
     this.products.set(konfioPyme.id, konfioPyme);
 
+    const legacyInactiveProd: Product = {
+      id: "product-legacy-inactive",
+      institutionId: "fin-1",
+      name: "BCM Crédito Tradicional (Legacy Inactivo)",
+      description: "Producto legacy inactivo descontinuado de BCM",
+      category: "business",
+      availableVariables: {},
+      configuration: { minAmount: 50000, maxAmount: 1000000 },
+      requirements: {},
+      documents: ["rfc"],
+      isActive: false,
+      createdBy: "user-super-admin",
+      createdAt: new Date("2023-01-01"),
+      updatedAt: new Date("2023-01-01"),
+    };
+    this.products.set(legacyInactiveProd.id, legacyInactiveProd);
+
     // Seed sample product requests
     const sampleRequest: ProductRequest = {
       id: "request-sample-1",
@@ -3518,8 +3535,7 @@ export class MemStorage implements IStorage {
   public migrateExistingData() {
     // El backfill legacy debe ejecutarse una sola vez y distinguir de forma inequívoca productos preexistentes de ofertas nuevas.
     // Nunca convertir un borrador nuevo en publicado al reiniciar.
-    if (this.legacyBackfilled || this.productTemplates.size > 0) {
-      this.legacyBackfilled = true;
+    if (this.legacyBackfilled) {
       return;
     }
     this.legacyBackfilled = true;
@@ -3581,14 +3597,46 @@ export class MemStorage implements IStorage {
             requirements: { targetProfiles: [] },
             requiredDocuments: [],
             variablesConfiguration: legacyProduct.availableVariables || {},
-            changeReason: "Migración de producto legacy a versión publicada 1",
+            changeReason: "Migración de producto legacy activo a versión publicada 1",
             versionHash: computeInstitutionProductVersionHash({
               institutionProductId: institutionProduct.id,
               versionNumber: 1,
               conditions: legacyProduct.configuration || {},
+              requirements: { targetProfiles: [] },
+              requiredDocuments: [],
+              variablesConfiguration: legacyProduct.availableVariables || {},
             }),
             publishedAt: new Date(),
             publishedBy: "user-super-admin",
+            createdBy: "user-super-admin",
+            createdAt: new Date(),
+            updatedAt: new Date(),
+          };
+          this.institutionProductVersions.set(v1.id, v1);
+        } else {
+          // Generar versión inicial 1 archivada para productos legacy inactivos
+          const v1: InstitutionProductVersion = {
+            id: `ipv-legacy-${legacyProduct.id}`,
+            institutionProductId: institutionProduct.id,
+            versionNumber: 1,
+            status: "archived",
+            effectiveFrom: legacyProduct.createdAt || new Date(),
+            effectiveTo: new Date(),
+            conditions: legacyProduct.configuration || {},
+            requirements: { targetProfiles: [] },
+            requiredDocuments: [],
+            variablesConfiguration: legacyProduct.availableVariables || {},
+            changeReason: "Migración de producto legacy inactivo a versión archivada 1",
+            versionHash: computeInstitutionProductVersionHash({
+              institutionProductId: institutionProduct.id,
+              versionNumber: 1,
+              conditions: legacyProduct.configuration || {},
+              requirements: { targetProfiles: [] },
+              requiredDocuments: [],
+              variablesConfiguration: legacyProduct.availableVariables || {},
+            }),
+            publishedAt: null,
+            publishedBy: null,
             createdBy: "user-super-admin",
             createdAt: new Date(),
             updatedAt: new Date(),

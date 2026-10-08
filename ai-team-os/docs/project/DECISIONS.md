@@ -110,8 +110,19 @@ Formato: Fecha / Decision / Opciones evaluadas / Decision final / Por que
 	- Sella de forma definitiva la seguridad: solo el flujo de publicación formal con validación de condiciones mínimas puede establecer `published`.
 	- Previene la creación de créditos o solicitudes asociados a entidades inexistentes o no publicadas, manteniendo a su vez compatibilidad con clientes sin ID de oferta.
 
+### 2026-10-08 / Corrección Final del Backfill PostgreSQL A1: Orden DDL, Preservación y Manejo Seguro de app_migrations
+- Opciones evaluadas:
+	- Opcion A: Declarar `ADD COLUMN status VARCHAR DEFAULT 'draft'` inmediatamente y confiar en que `status IS NULL` identificará registros históricos en PostgreSQL; ignorar productos legacy inactivos y marcar `app_migrations` sin verificar completitud.
+	- Opcion B: Agregar columnas `status` y `current_version_number` SIN `DEFAULT` para preservar `status IS NULL` en filas existentes en PostgreSQL; ejecutar backfill distinguiendo activos (`published`) de inactivos (`archived`); generar `version_hash` SHA-256 determinista para todos los snapshots; verificar completitud (`COUNT(*) = 0` sin versión) antes de marcar `app_migrations`; y solo después asignar `SET DEFAULT 'draft'` para nuevas inserciones.
+- Decision final: Opcion B.
+- Por que:
+	- En PostgreSQL 11+, `ADD COLUMN ... DEFAULT 'draft'` asigna el valor por defecto de inmediato en el catálogo a las filas existentes, provocando que `status IS NULL` devuelva 0 filas y omita el backfill legacy.
+	- Garantiza que los productos legacy inactivos no queden en el limbo o sean borrados, sino preservados con versión archivada e inmutabilidad histórica.
+	- Asegura atomicidad e integridad: nunca se marca éxito en `app_migrations` si la migración histórica no completó el 100% de los registros legacy.
+
 ## DECISIONES CAMBIADAS
 - 2026-10-08: Se reemplaza la coexistencia de dos catálogos (`financial_institution_offers` y `institution_products`) por la unificación en `institution_products` como catálogo canónico, manteniendo aliases y vistas retrocompatibles para evitar romper integraciones.
 - 2026-10-08: Se reemplaza la eliminación física con desvinculación de créditos en `deleteFinancialInstitution` por desactivación lógica preservadora de historial (`isActive: false` y ofertas archivadas) cuando existen créditos, solicitudes o versiones publicadas asociadas.
 - 2026-10-08: Se descarta la asignación indiscriminada de productos preexistentes a `draft`; se migran como `published` con versión inicial v1 publicada para garantizar continuidad comercial inmediata.
 - 2026-10-08: Se descarta permitir el parámetro `status` en la creación de ofertas; el servidor fuerza estrictamente `status: 'draft'`.
+- 2026-10-08: Se corrige el orden DDL de PostgreSQL: primero se agregan las columnas sin valor por defecto para posibilitar el backfill de filas preexistentes (`status IS NULL`), y el default se establece únicamente al finalizar el proceso.

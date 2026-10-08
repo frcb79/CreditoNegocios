@@ -818,8 +818,14 @@ describe("Bloque A1.1 — Arquitectura Canónica de Ofertas y Versionado Aditivo
 
       for (const p of legacyAfter) {
         const versions = await storage.getInstitutionProductVersions(p.id);
-        const publishedVersions = versions.filter(v => v.status === "published");
-        expect(publishedVersions.length).toBe(1);
+        expect(versions.length).toBe(1);
+        if (p.isActive) {
+          expect(p.status).toBe("published");
+          expect(versions[0].status).toBe("published");
+        } else {
+          expect(p.status).toBe("archived");
+          expect(versions[0].status).toBe("archived");
+        }
       }
     });
 
@@ -863,6 +869,40 @@ describe("Bloque A1.1 — Arquitectura Canónica de Ofertas y Versionado Aditivo
           const versions = await storage.getInstitutionProductVersions(lp.id);
           expect(versions.some(v => v.status === "published")).toBe(true);
           expect(isOfferEligibleForRequests(lp, versions)).toBe(true);
+        }
+      }
+    });
+
+    it("3b. Conservación de productos legacy inactivos y validación de version_hash determinista", async () => {
+      // Verificar que el producto legacy inactivo preexistente quedó archivado
+      const migratedInactive = await storage.getInstitutionProduct("inst-prod-product-legacy-inactive");
+      expect(migratedInactive).toBeDefined();
+      expect(migratedInactive?.status).toBe("archived");
+      expect(migratedInactive?.isActive).toBe(false);
+
+      // Verificar que su versión 1 existe, está archivada y tiene version_hash válido de 64 caracteres
+      const inactiveVersions = await storage.getInstitutionProductVersions("inst-prod-product-legacy-inactive");
+      expect(inactiveVersions.length).toBe(1);
+      expect(inactiveVersions[0].versionNumber).toBe(1);
+      expect(inactiveVersions[0].status).toBe("archived");
+      expect(inactiveVersions[0].effectiveTo).toBeDefined();
+      expect(inactiveVersions[0].versionHash).toBeDefined();
+      expect(inactiveVersions[0].versionHash).toHaveLength(64);
+      expect(inactiveVersions[0].versionHash).toMatch(/^[0-9a-f]{64}$/);
+
+      // Verificar que NO es elegible para solicitudes
+      expect(isOfferEligibleForRequests(migratedInactive!, inactiveVersions)).toBe(false);
+
+      // Verificar que todos los productos legacy tienen version_hash válido de 64 caracteres
+      const allMigrated = (await storage.getInstitutionProducts()).filter(p => p.id.startsWith("inst-prod-"));
+      expect(allMigrated.length).toBeGreaterThan(0);
+      for (const p of allMigrated) {
+        const versions = await storage.getInstitutionProductVersions(p.id);
+        expect(versions.length).toBeGreaterThan(0);
+        for (const v of versions) {
+          expect(v.versionHash).toBeDefined();
+          expect(v.versionHash).toHaveLength(64);
+          expect(v.versionHash).toMatch(/^[0-9a-f]{64}$/);
         }
       }
     });

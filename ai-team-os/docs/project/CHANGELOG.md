@@ -189,3 +189,27 @@ Actualizar cada vez que se completa una feature.
 	- Suite automatizada: `tests/unit/institution-offers-versioning.test.ts` con **31/31 tests passing** (100% éxito).
 	- Compilación TypeScript (`npm run check`): **0 errores**.
 	- Empaquetado backend (`npm run build:server`): **0 errores** (`dist/index.js`, 931.2kb).
+
+## 2026-10-08 — Corrección Final del Backfill PostgreSQL A1: Orden DDL, Preservación de Inactivos, Hashes Deterministas y Manejo Seguro de app_migrations
+
+- **Rama:** `feat/institution-offers-versioning-a1`
+- **Requisito 1: Corrección del Orden de Operaciones DDL en PostgreSQL:**
+	- En `migrations/0005_institution_offers_versioning.sql` y `server/autoMigrate.ts`, las columnas `status` y `current_version_number` se agregan SIN `DEFAULT` previo (`ALTER TABLE public.institution_products ADD COLUMN IF NOT EXISTS status VARCHAR;`).
+	- Esto previene que PostgreSQL 11+ asigne `'draft'` de forma inmediata a los registros preexistentes en el catálogo físico, permitiendo que el filtro `status IS NULL` distinga fielmente los registros históricos.
+	- Las directivas `SET DEFAULT 'draft'` y `SET DEFAULT 1` se aplican como restricción de columna exclusivamente tras culminar el backfill histórico.
+- **Requisito 2: Preservación de Productos Activos como Operativos e Inactivos como Inactivos:**
+	- Los productos legacy activos (`is_active = true`) se preservan como operativos (`status = 'published'`, versión 1 `published`).
+	- Los productos legacy inactivos (`is_active = false`) se preservan como inactivos (`status = 'archived'`, versión 1 `archived` con `effective_to = NOW()`).
+	- Las nuevas ofertas creadas en borrador (`draft`) nunca son promovidas a publicadas por la migración.
+- **Requisito 3: Generación de `version_hash` Válido y Determinista (SHA-256):**
+	- En SQL: cálculo criptográfico de 64 caracteres hex mediante `encode(sha256(convert_to(jsonb_build_object(...)::text, 'UTF8')), 'hex')` para versiones publicadas y archivadas.
+	- En runtime / `MemStorage`: generación consistente vía `computeInstitutionProductVersionHash` incorporando condiciones, requerimientos, variables y documentación requerida.
+- **Requisito 4: Idempotencia y Blindaje del Marcador `app_migrations`:**
+	- Verificación estricta de completitud post-backfill: si existe al menos un producto institucional sin versión en `institution_product_versions`, se aborta la ejecución con `RAISE EXCEPTION` y se previene el registro prematuro de `0005_legacy_institution_products_backfill_a1`.
+- **Requisito 5: Pruebas y Reporte de Entorno:**
+	- Ejecución de 32/32 tests en `tests/unit/institution-offers-versioning.test.ts` cubriendo preservación de activos e inactivos, hashes de 64 caracteres, dos arranques consecutivos y protección de borradores.
+	- Reporte transparente: ante la ausencia de motor PostgreSQL / Docker local en el entorno Windows del host, la prueba en PostgreSQL físico aislado queda formalmente reportada como pendiente de validación en CI/CD.
+- **Validación QA:**
+	- Suite automatizada: `tests/unit/institution-offers-versioning.test.ts` con **32/32 tests passing** (100% éxito).
+	- Compilación TypeScript (`npm run check`): **0 errores**.
+	- Empaquetado backend (`npm run build:server`): **0 errores** (`dist/index.js`, 938.1kb).
