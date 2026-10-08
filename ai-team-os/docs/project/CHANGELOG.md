@@ -44,13 +44,16 @@ Actualizar cada vez que se completa una feature.
 	- Eliminación de la sincronización y reseteo automático de contraseñas al iniciar sesión.
 	- Autenticación criptográfica obligatoria (`bcrypt.compare`) contra la base de datos para todas las cuentas sin excepción.
 	- Preservación de bloqueo estricto con HTTP 401 para usuarios con estatus `suspended` o inactivos.
+	- Diferimiento de migración de `authMethod` a "local": solo se actualiza tras verificación exitosa de contraseña (cero mutaciones en intentos fallidos).
 - **AutoMigrate Zero-Destructive (`server/autoMigrate.ts`):**
 	- Retirados todos los DELETE de comisiones, UPDATE forzosos de usuarios (`password = Prueba1$`, `is_active = TRUE`), reactivaciones masivas de financieras y eliminación de financieras de prueba.
-	- El arranque del servidor es 100% no destructivo: si existen usuarios (`SELECT count(*) FROM users > 0`), se omiten todas las mutaciones e inserciones de usuarios.
+	- Eliminados todos los UPDATE residuales en arranque (`public.users` y `public.tenant_members can_originate`).
+	- Eliminación de contraseña por defecto en bootstrap: solo inicializa super admin en bases vacías si `ADMIN_INITIAL_PASSWORD` es explícita y segura (mínimo 12 caracteres, mayúscula, minúscula, número); `user-super-admin` usa secreto aleatorio sin acceso interactivo.
+	- El arranque del servidor es 100% no destructivo: en bases de datos con usuarios existentes (`SELECT count(*) FROM users > 0`), se omiten todas las mutaciones e inserciones de usuarios.
 - **Aislamiento Funcional Estricto:**
 	- Cero inclusión de los 85 commits funcionales pendientes (sin Network Transitions, sin Formalización OTP, sin Comisiones Multi-Step Approval).
 - **Validación QA:**
-	- Nueva suite: `tests/unit/prod-hotfix-security.test.ts` (6/6 passing).
-	- Regresiones de RBAC y estatus operativo passing (26/26).
+	- Nueva suite: `tests/unit/prod-hotfix-security.test.ts` (9/9 passing).
+	- Regresiones de RBAC, storage y estatus operativo passing (27/27).
 	- Compilación de tipos (`npm run check`): 0 errores.
 	- Build de producción (`npm run build`): exitoso.

@@ -57,5 +57,15 @@ Formato: Fecha / Decision / Opciones evaluadas / Decision final / Por que
 	- Cierra de forma inmediata y aislada la brecha crítica de seguridad (P0).
 	- Preserva la estabilidad y compatibilidad 100% con la base de datos productiva actual.
 
+### 2026-10-08 / Endurecimiento de Bootstrap, Diferimiento de authMethod y Cero UPDATEs Residuales
+- Opciones evaluadas:
+	- Opcion A: Permitir contraseña por defecto `Prueba1$` en base vacía, migrar `authMethod` antes de verificar credenciales, y ejecutar UPDATEs de inicialización en cada arranque.
+	- Opcion B: Exigir `ADMIN_INITIAL_PASSWORD` explícita y criptográficamente segura (mínimo 12 caracteres, mayúscula, minúscula, número) para bases vacías sin ningún fallback por defecto; generar secreto criptográfico aleatorio para `user-super-admin`; posponer la mutación de `authMethod` en login hasta validar exitosamente las credenciales con bcrypt; eliminar todo `UPDATE` residual en arranque sobre usuarios o `can_originate` de `tenant_members`.
+- Decision final: Opcion B.
+- Por que:
+	- Garantiza que un atacante no pueda provocar cambios de estado en base de datos mediante intentos de login fallidos.
+	- Impide que cualquier entorno nuevo o recreado arranque con contraseñas conocidas.
+	- Elimina sobrescrituras arbitrarias de decisiones de negocio (`can_originate`, `status`) en cada reinicio del servidor.
+
 ## DECISIONES CAMBIADAS
 [Si alguna se revirtio, documentar con la razon]

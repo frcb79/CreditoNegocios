@@ -99,16 +99,6 @@ export async function runAutoMigration(): Promise<void> {
         CREATE INDEX IF NOT EXISTS "idx_users_status" 
         ON public.users ("status");
       `);
-
-      await client.query(`
-        UPDATE public.users 
-        SET status = 'inactive' 
-        WHERE is_active = false AND status IS NULL;
-
-        UPDATE public.users 
-        SET status = 'active' 
-        WHERE (is_active = true OR is_active IS NULL) AND status IS NULL;
-      `);
       console.log("✅ [AutoMigrate] Users table and columns verified");
     } catch (err) {
       console.error("⚠️ [AutoMigrate] Error verifying users table/columns:", err);
@@ -194,10 +184,6 @@ export async function runAutoMigration(): Promise<void> {
 
         ALTER TABLE IF EXISTS public.tenant_members
           ADD COLUMN IF NOT EXISTS can_originate BOOLEAN DEFAULT false;
-
-        UPDATE public.tenant_members
-          SET can_originate = true
-          WHERE role = 'owner' AND can_originate IS NOT TRUE;
       `);
       console.log("✅ [AutoMigrate] Tenant members table and indexes verified");
     } catch (err) {
@@ -376,17 +362,31 @@ export async function runAutoMigration(): Promise<void> {
       const totalUsers = parseInt(userCountRes.rows[0]?.count || "0", 10);
 
       if (totalUsers === 0) {
-        // Only on a completely blank database, initialize a root super admin
-        const initialPassword = process.env.ADMIN_INITIAL_PASSWORD || 'Prueba1$';
-        const hashedPassword = await bcrypt.hash(initialPassword, 10);
-        await client.query(`
-          INSERT INTO public.users (
-            id, email, password, auth_method, first_name, last_name, role, is_active, permissions, created_at, updated_at
-          ) VALUES (
-            gen_random_uuid(), 'francocb79@gmail.com', $1, 'local', 'Franco', 'Admin', 'super_admin', true, '{"modules": ["*"], "actions": ["*"]}', NOW(), NOW()
-          ) ON CONFLICT (email) DO NOTHING
-        `, [hashedPassword]);
-        console.log("🌱 [AutoMigrate] Blank database detected: seeded initial super_admin account.");
+        // Only on a completely blank database, initialize a root super admin if ADMIN_INITIAL_PASSWORD is explicitly set and secure
+        const initialPassword = process.env.ADMIN_INITIAL_PASSWORD?.trim();
+        const isSecurePassword = Boolean(
+          initialPassword && 
+          initialPassword.length >= 12 && 
+          initialPassword !== 'Prueba1$' &&
+          initialPassword !== 'Franco2026!*' &&
+          /[A-Z]/.test(initialPassword) &&
+          /[a-z]/.test(initialPassword) &&
+          /[0-9]/.test(initialPassword)
+        );
+
+        if (!isSecurePassword) {
+          console.warn("⚠️ [AutoMigrate] Blank database detected, but ADMIN_INITIAL_PASSWORD is empty, insecure, or default. Super admin account was NOT created. Provide a secure ADMIN_INITIAL_PASSWORD (min 12 chars, upper, lower, number) to bootstrap.");
+        } else {
+          const hashedPassword = await bcrypt.hash(initialPassword!, 10);
+          await client.query(`
+            INSERT INTO public.users (
+              id, email, password, auth_method, first_name, last_name, role, is_active, permissions, created_at, updated_at
+            ) VALUES (
+              gen_random_uuid(), 'francocb79@gmail.com', $1, 'local', 'Franco', 'Admin', 'super_admin', true, '{"modules": ["*"], "actions": ["*"]}', NOW(), NOW()
+            ) ON CONFLICT (email) DO NOTHING
+          `, [hashedPassword]);
+          console.log("🌱 [AutoMigrate] Blank database detected: seeded initial super_admin account with secure ADMIN_INITIAL_PASSWORD.");
+        }
       } else {
         console.log(`✅ [AutoMigrate] User catalog verified (${totalUsers} existing users). Zero user mutations performed.`);
       }
@@ -398,7 +398,9 @@ export async function runAutoMigration(): Promise<void> {
     try {
       const sysUser = await client.query(`SELECT id FROM public.users WHERE id = 'user-super-admin'`);
       if (sysUser.rows.length === 0) {
-        const dummyPassword = await bcrypt.hash('system-admin-password-' + Date.now(), 10);
+        const crypto = await import("crypto");
+        const internalSecret = crypto.randomBytes(32).toString("hex");
+        const dummyPassword = await bcrypt.hash(internalSecret, 10);
         await client.query(`
           INSERT INTO public.users (
             id, email, password, auth_method, first_name, last_name, role, is_active, permissions, created_at, updated_at

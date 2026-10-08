@@ -137,6 +137,39 @@ describe("P0 Hotfix - Production Security & Zero-Destructive Startup", () => {
       expect(res.status).toBe(401);
       expect(res.body.message).toMatch(/cuenta ha sido desactivada/i);
     });
+
+    it("No cambia authMethod a 'local' si la verificación de credenciales falla", async () => {
+      const externalUser = await storage.createUser({
+        email: `external-${randomUUID()}@network.test`,
+        password: await bcrypt.hash("LegitPass123!", 10),
+        firstName: "External",
+        lastName: "AuthUser",
+        role: "broker",
+        isActive: true,
+        status: "active",
+        authMethod: "replit",
+      } as any);
+
+      // Intento fallido con contraseña errónea
+      const resFail = await request(app)
+        .post("/api/auth/login")
+        .send({ email: externalUser.email, password: "WrongPassword999!" });
+      expect(resFail.status).toBe(401);
+
+      // authMethod debe mantenerse como estaba (no mutar a 'local')
+      const userAfterFail = await storage.getUser(externalUser.id);
+      expect(userAfterFail?.authMethod).toBe("replit");
+
+      // Ahora intento exitoso con contraseña correcta
+      const resSuccess = await request(app)
+        .post("/api/auth/login")
+        .send({ email: externalUser.email, password: "LegitPass123!" });
+      expect(resSuccess.status).toBe(200);
+
+      // Ahora sí authMethod migra a 'local'
+      const userAfterSuccess = await storage.getUser(externalUser.id);
+      expect(userAfterSuccess?.authMethod).toBe("local");
+    });
   });
 
   // =========================================================================
@@ -276,6 +309,66 @@ describe("P0 Hotfix - Production Security & Zero-Destructive Startup", () => {
 
       const superUser = dbState.users.find((u) => u.email === "francocb79@gmail.com");
       expect(await bcrypt.compare("CustomSecretPassword999!", superUser.password)).toBe(true);
+    });
+
+    it("En base vacía, no crea super admin si ADMIN_INITIAL_PASSWORD falta o es default/insegura", async () => {
+      let insertedUsers: any[] = [];
+      const mockClient = {
+        query: jest.fn().mockImplementation(async (sql: string, params?: any[]) => {
+          const normalizedSql = sql.replace(/\s+/g, " ").trim();
+          if (/SELECT\s+count\(\*\)\s+as\s+count\s+FROM\s+public\.users/i.test(normalizedSql)) {
+            return { rows: [{ count: "0" }] }; // DB vacía
+          }
+          if (/INSERT INTO public\.users/i.test(normalizedSql) && /francocb79@gmail\.com/i.test(normalizedSql)) {
+            insertedUsers.push(params);
+            return { rows: [], rowCount: 1 };
+          }
+          return { rows: [], rowCount: 0 };
+        }),
+        release: jest.fn(),
+      };
+      (pool as any).connect = jest.fn().mockResolvedValue(mockClient);
+
+      delete process.env.ADMIN_INITIAL_PASSWORD;
+      delete process.env.USE_MEMORY_STORAGE;
+      await runAutoMigration();
+      expect(insertedUsers.length).toBe(0);
+
+      // Con default / insegura 'Prueba1$'
+      process.env.ADMIN_INITIAL_PASSWORD = "Prueba1$";
+      await runAutoMigration();
+      expect(insertedUsers.length).toBe(0);
+
+      // Con contraseña explícita y segura (>= 12 chars, mayúscula, minúscula, número)
+      process.env.ADMIN_INITIAL_PASSWORD = "SuperSecureAdminPassword2026!";
+      await runAutoMigration();
+      expect(insertedUsers.length).toBe(1);
+      expect(await bcrypt.compare("SuperSecureAdminPassword2026!", insertedUsers[0][0])).toBe(true);
+
+      delete process.env.ADMIN_INITIAL_PASSWORD;
+    });
+
+    it("No ejecuta UPDATE residuales sobre users o tenant_members can_originate durante el arranque", async () => {
+      const executedQueries: string[] = [];
+      const mockClient = {
+        query: jest.fn().mockImplementation(async (sql: string) => {
+          executedQueries.push(sql);
+          if (/SELECT\s+count\(\*\)\s+as\s+count\s+FROM\s+public\.users/i.test(sql)) {
+            return { rows: [{ count: "10" }] };
+          }
+          return { rows: [], rowCount: 0 };
+        }),
+        release: jest.fn(),
+      };
+      (pool as any).connect = jest.fn().mockResolvedValue(mockClient);
+
+      delete process.env.USE_MEMORY_STORAGE;
+      await runAutoMigration();
+
+      const hasUserUpdate = executedQueries.some((q) => /UPDATE\s+public\.users/i.test(q));
+      const hasTenantMembersUpdate = executedQueries.some((q) => /UPDATE\s+public\.tenant_members/i.test(q));
+      expect(hasUserUpdate).toBe(false);
+      expect(hasTenantMembersUpdate).toBe(false);
     });
   });
 });

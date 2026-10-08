@@ -1124,12 +1124,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(401).json({ message: "Email o contraseña incorrectos" });
       }
       
-      // Auto-migrate user from external/Replit auth to local auth
-      if (user.authMethod !== "local") {
-        await storage.updateUser(user.id, { authMethod: "local" });
-        user.authMethod = "local";
-      }
-
       // Check if user is active
       if (!user.isActive || user.status === 'suspended' || user.status === 'inactive') {
         const message = user.status === 'suspended'
@@ -1146,6 +1140,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       if (!isValidPassword) {
         return res.status(401).json({ message: "Email o contraseña incorrectos" });
+      }
+
+      // Auto-migrate user from external/Replit auth to local auth only after successful credential verification
+      if (user.authMethod !== "local") {
+        await storage.updateUser(user.id, { authMethod: "local" });
+        user.authMethod = "local";
       }
       
       // Create session

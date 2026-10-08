@@ -236,20 +236,34 @@ En `shared/schema.ts`, la tabla `users` definía la columna `referralCode: varch
 - Riesgo de corrupción y reversión de datos comerciales ante reinicios del contenedor en Railway.
 
 **Solución aplicada en Hotfix (`hotfix/prod-security-auth-startup`):**
-1. Eliminación total de contraseñas alternativas y sincronización automática en `POST /api/auth/login`.
-2. Saneamiento total de `server/autoMigrate.ts` (cero mutaciones DML, cero DELETEs, cero reseteos de contraseñas en arranque).
-3. Aislamiento absoluto sin incorporar los 85 commits funcionales pendientes.
-4. Validación con suite automatizada `tests/unit/prod-hotfix-security.test.ts` (6/6 passing) y regresiones (26/26 passing).
+1. Eliminación total de contraseñas alternativas (`allowedAdminPasswords`) y sincronización automática en `POST /api/auth/login`.
+2. Migración diferida de `authMethod`: solo se actualiza a `local` tras autenticación criptográfica exitosa (`bcrypt.compare`), impidiendo mutaciones en intentos fallidos.
+3. Saneamiento total de `server/autoMigrate.ts` (cero mutaciones DML, cero DELETEs, cero reseteos forzados de contraseñas, cero UPDATEs residuales en `users` o `tenant_members can_originate`).
+4. Eliminación de contraseña por defecto en bootstrap: solo inicializa super admin en bases vacías si `ADMIN_INITIAL_PASSWORD` es explícita y segura (>= 12 chars, mayúscula, minúscula, número); `user-super-admin` usa secreto aleatorio sin acceso interactivo.
+5. Aislamiento absoluto sin incorporar los 85 commits funcionales pendientes.
+6. Validación con suite automatizada `tests/unit/prod-hotfix-security.test.ts` (9/9 passing) y regresiones (27/27 passing).
 
 **Plan de Despliegue y Remediación en Producción (Pendiente Autorización):**
-1. **Despliegue Controlado:** Desplegar `hotfix/prod-security-auth-startup` a producción en Railway vía PR o despliegue directo de la rama.
-2. **Invalidación de Sesiones:** Ejecutar en PostgreSQL de producción: `TRUNCATE TABLE sessions;` para desconectar todas las sesiones potencialmente activadas por bypass.
-3. **Rotación Segura de Contraseñas:** Solicitar o forzar el restablecimiento de contraseñas para los correos administrativos involucrados (`francocb79@gmail.com`, `fcb@creditonegocios.com.mx`, `francocb79@yahoo.com`).
-4. **Revisión de Auditoría:** Inspeccionar logs de acceso de Railway de los últimos 30 días para descartar autenticaciones anómalas.
-5. **Rollback Plan:** En caso de contingencia, revertir en Railway al deployment previo `392cfac4-9283-4466-ad28-fbe6f5499579`.
+1. **Pre-Verificación de Acceso Administrativo Legítimo:**
+   - Confirmar que la cuenta de super admin (`francocb79@gmail.com`) cuenta con una contraseña legítima conocida o verificar que el flujo de recuperación (`POST /api/auth/forgot-password` con Resend/SMTP) esté operativo antes del corte de sesiones.
+2. **Despliegue Controlado:** Desplegar `hotfix/prod-security-auth-startup` a producción en Railway vía PR hacia `main` o vinculación directa controlada del branch hotfix.
+3. **Invalidación de Sesiones (Almacén Confirmado):**
+   - El middleware de sesión en producción (`server/auth.ts`) utiliza `connect-pg-simple` apuntando explícitamente a la tabla `public.sessions` (`tableName: "sessions"`).
+   - Ejecutar en PostgreSQL de producción:
+     ```sql
+     TRUNCATE TABLE public.sessions;
+     ```
+   - Esto desconecta de inmediato todas las sesiones activas sin alterar credenciales ni datos de negocio.
+4. **Rotación Segura de Contraseñas:** Solicitar a los administradores actualizar sus credenciales mediante el flujo estándar de `/reset-password` o establecer hash bcrypt seguro directamente.
+5. **Revisión de Auditoría:** Inspeccionar logs de acceso de Railway de los últimos 30 días para identificar y descartar autenticaciones anómalas previas.
+6. **Rollback Seguro (Principio de No Regresión Vulnerable):**
+   - **Regla Crítica:** Queda estrictamente PROHIBIDO hacer rollback al deployment anterior `392cfac4-9283-4466-ad28-fbe6f5499579` o al commit `ce24a16`, ya que restauraría el bypass vulnerable con contraseñas fijas y el arranque destructivo.
+   - En caso de contingencia operativa con el hotfix, el procedimiento es:
+     a) Realizar un *forward-fix* inmediato sobre la rama hotfix, o
+     b) Si se revierte lógica accesoria, mantener incondicionalmente la capa de protección de autenticación segura (`bcrypt.compare` estricto y arranque zero-destructive).
 
 **Fecha resolución en rama:** 2026-10-08
-**Verificado por:** QA Suite (`prod-hotfix-security.test.ts` 6/6 passing)
+**Verificado por:** QA Suite (`prod-hotfix-security.test.ts` 9/9 passing, `npm run check` 0 err, `npm run build` exitoso)
 
 ---
 
