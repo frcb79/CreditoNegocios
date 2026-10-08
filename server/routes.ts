@@ -4792,6 +4792,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
           let masterBroker = null;
           let effectiveBankAccount = null;
 
+          // The economic and bank beneficiary is anchored to the historical Master Broker
+          // recorded in the commission or in the immutable credit origination snapshot.
+          const historicalMasterBrokerId = comm.masterBrokerId || (credit?.originMasterBrokerId ?? null);
+          const hasHistoricalMasterShare = Boolean(
+            historicalMasterBrokerId &&
+            parseFloat(comm.masterBrokerShare || '0') > 0
+          );
+          const isMasterDirect = Boolean(
+            historicalMasterBrokerId &&
+            comm.brokerId &&
+            String(comm.brokerId) === String(historicalMasterBrokerId)
+          );
+
           if (comm.brokerId) {
             const brokerUser = await storage.getUser(comm.brokerId);
             if (brokerUser) {
@@ -4804,44 +4817,49 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 clabe: brokerUser.clabe,
                 accountHolder: brokerUser.accountHolder,
               };
+            }
+          }
 
-              if (brokerUser.masterBrokerId) {
-                const mbUser = await storage.getUser(brokerUser.masterBrokerId);
-                if (mbUser) {
-                  masterBroker = {
-                    id: mbUser.id,
-                    firstName: mbUser.firstName,
-                    lastName: mbUser.lastName,
-                    email: mbUser.email,
-                    brandName: mbUser.brandName,
-                    bankName: mbUser.bankName,
-                    clabe: mbUser.clabe,
-                    accountHolder: mbUser.accountHolder,
-                  };
-                  // If under master broker, the beneficiary account is the master broker's (Option B)
-                  effectiveBankAccount = {
-                    beneficiaryType: 'master_broker',
-                    beneficiaryName: mbUser.accountHolder || `${mbUser.firstName || ''} ${mbUser.lastName || ''}`.trim() || mbUser.brandName,
-                    bankName: mbUser.bankName,
-                    clabe: mbUser.clabe,
-                  };
-                }
-              }
+          // Fetch the HISTORICAL Master Broker saved in the operation (never the broker's current master)
+          if (historicalMasterBrokerId) {
+            const mbUser = await storage.getUser(historicalMasterBrokerId);
+            if (mbUser) {
+              masterBroker = {
+                id: mbUser.id,
+                firstName: mbUser.firstName,
+                lastName: mbUser.lastName,
+                email: mbUser.email,
+                brandName: mbUser.brandName,
+                bankName: mbUser.bankName,
+                clabe: mbUser.clabe,
+                accountHolder: mbUser.accountHolder,
+              };
 
-              if (!effectiveBankAccount) {
-                // Solo broker
+              // If network commission with Master share or Master direct, bank account belongs to historical Master
+              if (hasHistoricalMasterShare || isMasterDirect) {
                 effectiveBankAccount = {
-                  beneficiaryType: 'broker',
-                  beneficiaryName: brokerUser.accountHolder || `${brokerUser.firstName || ''} ${brokerUser.lastName || ''}`.trim(),
-                  bankName: brokerUser.bankName,
-                  clabe: brokerUser.clabe,
+                  beneficiaryType: 'master_broker',
+                  beneficiaryId: mbUser.id,
+                  beneficiaryName: mbUser.accountHolder || `${mbUser.firstName || ''} ${mbUser.lastName || ''}`.trim() || mbUser.brandName,
+                  bankName: mbUser.bankName,
+                  clabe: mbUser.clabe,
                 };
               }
             }
           }
 
-          const isMasterDirect = comm.masterBrokerId && comm.brokerId === comm.masterBrokerId;
-          const isMb = comm.masterBrokerId && parseFloat(comm.masterBrokerShare || '0') > 0;
+          if (!effectiveBankAccount && broker) {
+            // Solo broker directo
+            effectiveBankAccount = {
+              beneficiaryType: 'broker',
+              beneficiaryId: broker.id,
+              beneficiaryName: broker.accountHolder || `${broker.firstName || ''} ${broker.lastName || ''}`.trim(),
+              bankName: broker.bankName,
+              clabe: broker.clabe,
+            };
+          }
+
+          const isMb = Boolean(historicalMasterBrokerId && parseFloat(comm.masterBrokerShare || '0') > 0);
           const payoutAmount = comm.frozenAmount 
             ? parseFloat(comm.frozenAmount)
             : (isMasterDirect
@@ -4850,7 +4868,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
                     ? (parseFloat(comm.brokerShare || '0') + parseFloat(comm.masterBrokerShare || '0'))
                     : parseFloat(comm.brokerShare || comm.amount || '0')));
 
-          const effectiveBeneficiary = isMb && masterBroker
+          const effectiveBeneficiary = (isMb || isMasterDirect) && masterBroker
             ? {
                 id: masterBroker.id,
                 name: masterBroker.accountHolder || `${masterBroker.firstName || ''} ${masterBroker.lastName || ''}`.trim() || masterBroker.brandName,
@@ -5202,26 +5220,44 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
       }
 
-      // 3. Resolve beneficiary and 18-digit CLABE
-      const isMbCredit = commission.masterBrokerId && parseFloat(commission.masterBrokerShare || '0') > 0;
-      let effectiveClabe: string | null = accountNumber || null;
-      let effectiveBankName: string | null = null;
-      let effectiveAccountHolder: string | null = null;
+      // 3. Resolve beneficiary and 18-digit CLABE from historical master / broker of the operation
+      const linkedCredit = commission.creditId ? await storage.getCredit(commission.creditId) : null;
+      const historicalMasterBrokerId = commission.masterBrokerId || (linkedCredit?.originMasterBrokerId ?? null);
+      const isMbCredit = Boolean(historicalMasterBrokerId && parseFloat(commission.masterBrokerShare || '0') > 0);
+      const isMasterDirect = Boolean(
+        historicalMasterBrokerId &&
+        commission.brokerId &&
+        String(commission.brokerId) === String(historicalMasterBrokerId)
+      );
 
-      const targetUserId = isMbCredit ? commission.masterBrokerId! : commission.brokerId;
+      const targetUserId = (isMbCredit || isMasterDirect) ? historicalMasterBrokerId! : commission.brokerId;
       const targetUser = await storage.getUser(targetUserId);
 
-      if (!effectiveClabe && targetUser) {
-        effectiveClabe = targetUser.clabe || null;
-        effectiveBankName = targetUser.bankName || null;
-        effectiveAccountHolder = targetUser.accountHolder || `${targetUser.firstName || ''} ${targetUser.lastName || ''}`.trim() || null;
-      }
-
-      if (!effectiveClabe || !/^\d{18}$/.test(String(effectiveClabe))) {
-        return res.status(400).json({
-          message: "El beneficiario no cuenta con una CLABE interbancaria válida de 18 dígitos para dispersión STP."
+      if (!targetUser) {
+        return res.status(404).json({
+          message: "No se encontró el beneficiario histórico registrado para esta comisión."
         });
       }
+
+      // Security enforcement: The registered CLABE in targetUser's profile/formalization is authoritative.
+      const registeredClabe = targetUser.clabe ? String(targetUser.clabe).trim() : null;
+      if (!registeredClabe || !/^\d{18}$/.test(registeredClabe)) {
+        return res.status(400).json({
+          message: `El beneficiario histórico (${isMbCredit ? 'Master Bróker' : 'Bróker'} ${targetUser.firstName || ''} ${targetUser.lastName || ''}) no cuenta con una CLABE interbancaria válida de 18 dígitos registrada en su expediente.`
+        });
+      }
+
+      // Block client-side tampering: if the frontend sent an accountNumber/clabe, verify it strictly matches the registered CLABE
+      const providedClabe = accountNumber ? String(accountNumber).trim() : null;
+      if (providedClabe && providedClabe !== registeredClabe) {
+        return res.status(400).json({
+          message: "Discrepancia de seguridad: La CLABE enviada no coincide con la cuenta bancaria oficial del beneficiario histórico registrado. No se permite alterar silenciosamente el beneficiario bancario."
+        });
+      }
+
+      const effectiveClabe = registeredClabe;
+      const effectiveBankName = targetUser.bankName || null;
+      const effectiveAccountHolder = targetUser.accountHolder || `${targetUser.firstName || ''} ${targetUser.lastName || ''}`.trim() || null;
 
       // 4. Atomic concurrency lock: transition status to 'dispersing'
       const lockedComm = await storage.transitionCommissionStatus(
@@ -5382,13 +5418,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
             continue;
           }
 
-          const isMbCredit = commission.masterBrokerId && parseFloat(commission.masterBrokerShare || '0') > 0;
-          const targetUserId = isMbCredit ? commission.masterBrokerId! : commission.brokerId;
+          const linkedCredit = commission.creditId ? await storage.getCredit(commission.creditId) : null;
+          const historicalMasterBrokerId = commission.masterBrokerId || (linkedCredit?.originMasterBrokerId ?? null);
+          const isMbCredit = Boolean(historicalMasterBrokerId && parseFloat(commission.masterBrokerShare || '0') > 0);
+          const isMasterDirect = Boolean(
+            historicalMasterBrokerId &&
+            commission.brokerId &&
+            String(commission.brokerId) === String(historicalMasterBrokerId)
+          );
+
+          const targetUserId = (isMbCredit || isMasterDirect) ? historicalMasterBrokerId! : commission.brokerId;
           const targetUser = await storage.getUser(targetUserId);
 
-          const effectiveClabe = targetUser?.clabe;
-          if (!effectiveClabe || !/^\d{18}$/.test(String(effectiveClabe))) {
-            failed.push({ id, reason: "Beneficiario sin CLABE válida de 18 dígitos" });
+          const effectiveClabe = targetUser?.clabe ? String(targetUser.clabe).trim() : null;
+          if (!effectiveClabe || !/^\d{18}$/.test(effectiveClabe)) {
+            failed.push({ id, reason: `Beneficiario histórico (${isMbCredit ? 'Master Bróker' : 'Bróker'}) sin CLABE válida de 18 dígitos registrada en su expediente` });
             continue;
           }
 

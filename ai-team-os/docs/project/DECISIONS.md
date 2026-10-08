@@ -75,7 +75,15 @@ Formato: Fecha / Decision / Opciones evaluadas / Decision final / Por que
 	- Garantiza que ningún Broker o Master Broker origine operaciones (`clients`, `credits`, `submissions`, `targets`, `mortgage-leads`, `opportunities`) sin haber formalizado sus documentos obligatorios vigentes.
 	- Cierra bypasses de originación delegada por colaboradores o administradores actuando en nombre de un broker no formalizado.
 	- Preserva las facultades de los administradores para originar operaciones propias sin bloqueos.
-	- Preserva intacta la experiencia del broker: registro, consulta de documentos, navegación y edición de perfil antes de formalizar.
+### 2026-10-07 / Atribución Bancaria de Comisiones al Master Histórico y Blindaje contra Spoofing de CLABE
+- Opciones evaluadas:
+	- Opcion A: Resolver el beneficiario bancario y CLABE consultando el `masterBrokerId` actual del broker al momento de la dispersión, y permitir sobrescribir la CLABE desde el cuerpo de la petición enviada por el frontend.
+	- Opcion B: Obtener el beneficiario bancario exclusivamente del Master Broker histórico registrado en la operación (`commission.masterBrokerId` con fallback a `credit.originMasterBrokerId`), presentar en UI la CLABE oficial en modo de solo lectura, y en backend rechazar estrictamente cualquier discrepancia entre una CLABE enviada por el cliente y la CLABE oficial registrada en el expediente formalizado del beneficiario.
+- Decision final: Opcion B.
+- Por que:
+	- Si un broker cambia de red (de Master A a Master B), los pagos por operaciones originadas bajo Master A deben liquidarse ineludiblemente a las cuentas bancarias de Master A, nunca a Master B ni a una cuenta arbitraria.
+	- Impide que una alteración en la petición web desvíe fondos o altere silenciosamente el beneficiario bancario de la comisión.
+	- Mantiene la consistencia integral con la multi-dispersión y comisiones independientes por desembolso.
 
 ## DECISIONES CAMBIADAS
 [Si alguna se revirtio, documentar con la razon]

@@ -312,10 +312,11 @@ export default function Commissions() {
   });
 
   const handlePayment = () => {
-    if (selectedCommission && accountNumber) {
+    const verifiedClabe = selectedCommission?.effectiveBankAccount?.clabe;
+    if (selectedCommission && verifiedClabe) {
       paymentMutation.mutate({ 
         id: selectedCommission.id, 
-        accountNumber,
+        accountNumber: verifiedClabe,
         idempotencyKey: `pay-${selectedCommission.id}-${Date.now()}`
       });
     }
@@ -2218,32 +2219,34 @@ export default function Commissions() {
                     <span className="text-gray-500">CLABE Interbancaria Registrada:</span>
                     <p className="font-mono font-semibold text-gray-900 text-xs">
                       {selectedCommission.effectiveBankAccount?.clabe || (
-                        <span className="text-orange-600 font-normal">Sin CLABE registrada en el perfil</span>
+                        <span className="text-rose-600 font-normal">Sin CLABE registrada en el expediente oficial</span>
                       )}
                     </p>
                   </div>
                 </div>
 
-                {!selectedCommission.effectiveBankAccount?.clabe && (
-                  <div className="bg-orange-50 border border-orange-200 p-2.5 rounded-lg text-xs text-orange-800 flex items-start gap-2">
-                    <AlertTriangle className="w-4 h-4 mt-0.5 text-orange-600 shrink-0" />
-                    <span>El beneficiario aún no ha registrado sus datos bancarios en Configuración. Puedes ingresar la CLABE manualmente a continuación.</span>
+                {!selectedCommission.effectiveBankAccount?.clabe ? (
+                  <div className="bg-rose-50 border border-rose-200 p-2.5 rounded-lg text-xs text-rose-800 flex items-start gap-2">
+                    <AlertTriangle className="w-4 h-4 mt-0.5 text-rose-600 shrink-0" />
+                    <span>El beneficiario histórico no cuenta con una CLABE interbancaria registrada en su expediente formalizado. Por seguridad de red, la dispersión solo puede realizarse a la cuenta oficial registrada por el beneficiario.</span>
+                  </div>
+                ) : (
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-700 mb-1">
+                      CLABE Verificada para la Transferencia (18 dígitos)
+                    </label>
+                    <Input
+                      value={selectedCommission.effectiveBankAccount.clabe}
+                      readOnly
+                      disabled
+                      data-testid="input-account-number"
+                      className="font-mono text-sm bg-gray-100 text-gray-800 cursor-not-allowed select-all"
+                    />
+                    <p className="text-[10px] text-gray-500 mt-1">
+                      Cuenta oficial del beneficiario histórico guardado en la operación. No alterable manualmente.
+                    </p>
                   </div>
                 )}
-
-                <div>
-                  <label className="block text-xs font-semibold text-gray-700 mb-1">
-                    CLABE para la Transferencia (18 dígitos)
-                  </label>
-                  <Input
-                    placeholder="012345678901234567"
-                    value={accountNumber}
-                    onChange={(e) => setAccountNumber(e.target.value)}
-                    maxLength={18}
-                    data-testid="input-account-number"
-                    className="font-mono text-sm"
-                  />
-                </div>
 
                 <DialogFooter className="gap-2 pt-3 border-t">
                   <Button variant="outline" size="sm" onClick={() => setSelectedCommission(null)} disabled={paymentMutation.isPending}>
@@ -2252,7 +2255,11 @@ export default function Commissions() {
                   <Button 
                     size="sm"
                     onClick={handlePayment}
-                    disabled={!accountNumber || accountNumber.length < 18 || paymentMutation.isPending}
+                    disabled={
+                      !selectedCommission.effectiveBankAccount?.clabe ||
+                      selectedCommission.effectiveBankAccount.clabe.length < 18 ||
+                      paymentMutation.isPending
+                    }
                     className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs"
                     data-testid="button-confirm-payment"
                   >

@@ -69,11 +69,16 @@ Completado:
 		- Cierre de bypasses en originación delegada (colaboradores o admins actuando en nombre de un broker no formalizado son bloqueados con 403 `FORMALIZATION_REQUIRED`).
 		- Preservación de facultades para administradores que originan operaciones propias.
 		- Exigencia de documentos vigentes por rol: Convenio y Reglas de Red para Brokers; Convenio, Reglas de Red y Reglas Master para Master Brokers (incluyendo ascensos).
-		- Preservación de la experiencia pactada: registro libre, consulta de documentos y edición de perfil previa a formalización.
 		- Suite de 14 pruebas automatizadas con 100% de éxito y regresión limpia en suite UI 3b2a (17/17).
+	- **Integración Controlada 01 (`integration/network-formalization`):**
+		- Fusión controlada de `feat/broker-network-transitions` y `feat/broker-formalization-origination-gate` sobre `main`.
+		- Resolución armónica de conflictos en `autoMigrate.ts`, `routes.ts` y documentación AI-Team-OS.
+		- Auditoría y blindaje de beneficiario bancario de comisión: resolución inmutable del Master histórico (`credit.originMasterBrokerId`), presentación de CLABE en solo lectura en UI, y rechazo 400 en backend ante cualquier discrepancia o alteración de CLABE desde frontend.
+		- Pruebas dedicadas passing: `commission-historical-beneficiary.test.ts` (3/3), `credit-origin-affiliation.test.ts` (6/6), `broker-formalization-origination-gate.test.ts` (14/14), `broker-formalization-ui-block3b2a.test.ts` (17/17), `user-status-requests.test.ts` (10/10), `user-operational-status.test.ts` (16/16).
+		- Typecheck (`tsc`) 0 errores y build de producción exitoso.
 
 En progreso:
-- Integración controlada en rama `integration/network-formalization`: consolidación de Network Transitions y Formalización Obligatoria con verificación de lineage y gobernanza de comisiones bancarias.
+- Revisión de integración (`READY FOR INTEGRATION REVIEW`) previo a cualquier merge a main o deploy a staging.
 
 Pendiente:
 - **Verificación de deploy en Staging:** Comprobar un deploy en Staging del commit exacto consolidado que finalmente se vaya a liberar.

@@ -67,3 +67,22 @@ Actualizar cada vez que se completa una feature.
 - **Suite de Pruebas Automatizadas (`tests/unit/broker-formalization-origination-gate.test.ts`):**
 	- 14 pruebas de integración unitarias cubriendo los 8 escenarios obligatorios al 100% (14/14 pasando).
 	- Regresión limpia: suite de formalización UI `broker-formalization-ui-block3b2a.test.ts` pasando al 100% (17/17).
+
+## 2026-10-07 — Integración Controlada 01: Linaje Histórico de Red, Formalización y Protección Bancaria
+- **Integración de Ramas:**
+	- Fusión controlada de `feat/broker-network-transitions` y `feat/broker-formalization-origination-gate` sobre la rama `integration/network-formalization` basada en `main`.
+	- Resolución armónica de conflictos en `server/autoMigrate.ts` (preservando Sección 11a de triggers/snapshots y Sección 7 de Bloque 2 legal), `server/routes.ts` (registro atómico con evidencia legal + aprovisionamiento canónico de tenant), y documentación AI-Team-OS.
+- **Atribución Bancaria Histórica de Comisiones (`server/routes.ts` & `Commissions.tsx`):**
+	- Corrección crítica en `GET /api/commissions`: la cuenta destino (`effectiveBankAccount`) y el beneficiario (`effectiveBeneficiary`) se obtienen obligatoriamente del Master histórico de la operación (`commission.masterBrokerId` con fallback a `credit.originMasterBrokerId`), nunca del Master actual del broker.
+	- Blindaje en dispersión individual y masiva (`POST /api/commissions/:id/pay` y `POST /api/commissions/bulk-pay`):
+		- Resolución estricta del beneficiario histórico.
+		- Validación de 18 dígitos en la CLABE oficial del expediente formalizado.
+		- Rechazo con 400 si el cliente intenta enviar una CLABE alternativa o inconsistente en el payload, impidiendo alteraciones silenciosas.
+	- UI de Dispersión (`client/src/pages/Commissions.tsx`):
+		- Campo de CLABE en modo solo lectura (`readOnly`, fondo bloqueado, copy explicativo de seguridad).
+		- Alerta bloqueante y botón deshabilitado si el beneficiario no cuenta con CLABE oficial registrada.
+- **Validación Automatizada y QA:**
+	- Nueva suite: `tests/unit/commission-historical-beneficiary.test.ts` (3/3 pasando al 100%).
+	- Regresiones de formalización y gobernanza pasando al 100% (`credit-origin-affiliation.test.ts`, `broker-formalization-origination-gate.test.ts`, `broker-formalization-ui-block3b2a.test.ts`, `user-status-requests.test.ts`, `user-operational-status.test.ts`).
+	- Compilación de tipos (`npm run check`) y build de producción (`npm run build`) exitosos.
+

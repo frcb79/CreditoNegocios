@@ -166,6 +166,46 @@ Toda ordenación por fecha en memoria debe contemplar un criterio de desempate d
 
 ---
 
+### ERR-2026-10-07-003 — Riesgo de discrepancia en beneficiario bancario de comisión y vulnerabilidad de alteración de CLABE desde frontend
+
+| Campo | Valor |
+|-------|-------|
+| ID | ERR-2026-10-07-003 |
+| Fecha detección | 2026-10-07 22:00 CST |
+| Severidad | 🔴 Crítico (riesgo financiero de dispersión de fondos a Master erróneo o cuenta alterada) |
+| Área | Backend / Comisiones / STP / Seguridad |
+| Estado | ✅ Verificado |
+| Reportado por | Antigravity Security Audit / Prompt Integración Controlada 01 |
+| Asignado a | Backend Dev / Security Lead |
+
+**Descripción:**
+En `GET /api/commissions`, la resolución de `masterBroker` y `effectiveBankAccount` consultaba `brokerUser.masterBrokerId` en lugar del Master Broker histórico de la operación (`commission.masterBrokerId` / `credit.originMasterBrokerId`). Si un broker se transfería de Master A a Master B, la plataforma mostraba erróneamente los datos bancarios de Master B. Además, en `POST /api/commissions/:id/pay`, la variable `effectiveClabe` aceptaba `accountNumber` del body de la petición, permitiendo que una llamada desde el frontend alterara la cuenta destino registrada en el perfil.
+
+**Pasos para reproducir:**
+1. Crear un crédito y comisión bajo Master A.
+2. Transferir el broker a Master B (`broker.masterBrokerId = masterB.id`).
+3. Consultar `/api/commissions` o invocar `/api/commissions/:id/pay` con un payload que incluya `{ accountNumber: "999999999999999999" }`.
+
+**Impacto en negocio:**
+Riesgo de fraude financiero, elusión o pérdida de trazabilidad económica entre Master Brokers al transferir brokers de una red a otra.
+
+**Solución aplicada:**
+1. En `GET /api/commissions`, se ancló la resolución bancaria al Master histórico (`commission.masterBrokerId || credit.originMasterBrokerId`).
+2. En `POST /api/commissions/:id/pay` y `bulk-pay`, se forzó la resolución del beneficiario histórico y su CLABE registrada oficial de 18 dígitos, rechazando con 400 cualquier discrepancia con `accountNumber` enviado en el body.
+3. En la UI (`Commissions.tsx`), el campo de CLABE se convirtió en solo lectura verificada, deshabilitando la dispersión si el beneficiario no tiene CLABE oficial registrada.
+4. Se creó la suite automatizada `tests/unit/commission-historical-beneficiary.test.ts` pasando 3/3.
+
+**Causa raíz:**
+Lectura del estado vivo relacional del broker (`brokerUser.masterBrokerId`) en vez del snapshot histórico inmutable de la operación, junto con la permisividad de sobrescritura manual de CLABE en el endpoint de pago.
+
+**Aprendizaje:**
+Todas las operaciones de dispersión financiera deben consultar snapshots inmutables de la operación y bloquear cualquier modificación de datos bancarios enviada dinámicamente desde el cliente web.
+
+**Fecha resolución:** 2026-10-07
+**Verificado por:** QA / Test Suite `commission-historical-beneficiary.test.ts` (3/3 passed)
+
+---
+
 ### ERR-2026-09-04-001 — esbuild Unexpected "const" en build de Vercel (CreditList.tsx)
 
 | Campo | Valor |
