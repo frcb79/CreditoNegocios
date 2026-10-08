@@ -100,7 +100,18 @@ Formato: Fecha / Decision / Opciones evaluadas / Decision final / Por que
 	- Cierra la vulnerabilidad de spoofing o inconsistencia de estado: una oferta manipulada o inconsistente con `status = 'published'` pero sin versiones o con solo versiones borrador queda vetada de nuevas solicitudes.
 	- Mantiene la compatibilidad legacy ininterrumpida por financiera y tipo de producto.
 
+### 2026-10-08 / Cierre Definitivo de Seguridad A1.4: Idempotencia de Backfill, Forzado de Borrador y Validación de IDs
+- Opciones evaluadas:
+	- Opcion A: Permitir que el backfill se reejecute en cada reinicio evaluando `status = 'draft'` y permitir que el cliente declare `status: 'published'` al crear ofertas.
+	- Opcion B: Controlar la ejecución única del backfill mediante tabla `app_migrations` filtrando exclusivamente por `status IS NULL` (nunca tocar borradores nuevos); forzar incondicionalmente `status: 'draft'` en creación desde el servidor; y rechazar explícitamente cualquier ID de oferta inexistente o no elegible al crear créditos o solicitudes preservando flujos legacy sin ID.
+- Decision final: Opcion B.
+- Por que:
+	- Garantiza que los nuevos borradores jamás se promuevan a publicados al reiniciar o ejecutar migraciones automáticas.
+	- Sella de forma definitiva la seguridad: solo el flujo de publicación formal con validación de condiciones mínimas puede establecer `published`.
+	- Previene la creación de créditos o solicitudes asociados a entidades inexistentes o no publicadas, manteniendo a su vez compatibilidad con clientes sin ID de oferta.
+
 ## DECISIONES CAMBIADAS
 - 2026-10-08: Se reemplaza la coexistencia de dos catálogos (`financial_institution_offers` y `institution_products`) por la unificación en `institution_products` como catálogo canónico, manteniendo aliases y vistas retrocompatibles para evitar romper integraciones.
 - 2026-10-08: Se reemplaza la eliminación física con desvinculación de créditos en `deleteFinancialInstitution` por desactivación lógica preservadora de historial (`isActive: false` y ofertas archivadas) cuando existen créditos, solicitudes o versiones publicadas asociadas.
 - 2026-10-08: Se descarta la asignación indiscriminada de productos preexistentes a `draft`; se migran como `published` con versión inicial v1 publicada para garantizar continuidad comercial inmediata.
+- 2026-10-08: Se descarta permitir el parámetro `status` en la creación de ofertas; el servidor fuerza estrictamente `status: 'draft'`.

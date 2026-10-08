@@ -161,3 +161,31 @@ Actualizar cada vez que se completa una feature.
 	- Suite automatizada: `tests/unit/institution-offers-versioning.test.ts` con **26/26 tests passing** (100% éxito).
 	- Compilación TypeScript (`npm run check`): **0 errores**.
 	- Empaquetado backend (`npm run build:server`): **0 errores** (`dist/index.js`, 927.0kb).
+
+## 2026-10-08 — Cierre Definitivo de Seguridad de Publicación A1.4: Idempotencia de Backfill, Forzado de Borrador y Rechazo de Ofertas Inexistentes
+
+- **Rama:** `feat/institution-offers-versioning-a1`
+- **Requisito 1: Ejecución Única e Idempotente del Backfill Legacy:**
+	- Creada tabla de control `public.app_migrations` en `migrations/0005_institution_offers_versioning.sql` y `server/autoMigrate.ts` para registrar `0005_legacy_institution_products_backfill_a1`.
+	- El backfill se ejecuta una sola vez y distingue de forma inequívoca los productos preexistentes (filtra estrictamente por `status IS NULL`) de ofertas nuevas en borrador.
+	- NUNCA promueve ni altera ofertas en borrador (`draft`) a publicadas al reiniciar o ejecutar `autoMigrate`.
+	- En `MemStorage`, se agregó bandera atómica `legacyBackfilled: boolean = false` que garantiza idempotencia estricta ante arranques consecutivos.
+- **Requisito 2: Forzado de Estado Borrador (`draft`) en el Servidor:**
+	- La creación de ofertas (`createOffer`, `createInstitutionProduct`, `createInstitutionProductDraftVersion` en `MemStorage` y `DbStorage`, y `POST /api/institution-products`) fuerza `status: 'draft'` desde el servidor, ignorando cualquier intento de manipulación o spoofing de estado en el payload.
+	- Solo el flujo validado de publicación (`publishOfferVersion` / `publishInstitutionProductVersion` con `validateMinimumPublishConditions`) puede establecer `status: 'published'`.
+- **Requisito 3: Rechazo de IDs Explícitos Inexistentes o No Elegibles en Créditos y Solicitudes:**
+	- En `POST /api/credits` y `POST /api/credit-submissions` (así como a nivel de capa de persistencia en `createCredit` y `createCreditSubmissionRequest`):
+		- Si se provee un ID explícito de oferta (`institutionProductId` u `offerId`) inexistente: se rechaza con HTTP 400 descriptivo ("La oferta especificada no existe.").
+		- Si la oferta existe pero se encuentra en borrador o no tiene versión publicada vigente: se rechaza con HTTP 400 descriptivo.
+		- Si no se provee ID de oferta: se preserva 100% la compatibilidad con los flujos operativos legacy.
+- **Requisito 4: Pruebas de Regresión A1.4:**
+	- Agregada suite de 5 regresiones en `tests/unit/institution-offers-versioning.test.ts`:
+		1. Simulación de dos arranques consecutivos con idempotencia absoluta y sin duplicación de versiones.
+		2. Creación de nuevos borradores y verificación de que ningún arranque o backfill posterior los promueve a publicados.
+		3. Verificación de que los productos preexistentes conservan su estado publicado y operabilidad legacy.
+		4. Manipulación de estado: el servidor fuerza `draft` al crear y rechaza publicaciones directas vía update o spoofing.
+		5. Rechazo estricto de IDs inexistentes o en borrador al crear créditos y solicitudes, con éxito en flujo legacy sin ID.
+- **Validación QA:**
+	- Suite automatizada: `tests/unit/institution-offers-versioning.test.ts` con **31/31 tests passing** (100% éxito).
+	- Compilación TypeScript (`npm run check`): **0 errores**.
+	- Empaquetado backend (`npm run build:server`): **0 errores** (`dist/index.js`, 931.2kb).

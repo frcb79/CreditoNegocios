@@ -3904,15 +3904,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
         createdBy: userId,
       });
       
-      if (req.body.institutionProductId) {
-        const product = await storage.getInstitutionProduct(req.body.institutionProductId);
-        if (product) {
-          const versions = await storage.getInstitutionProductVersions(product.id);
-          if (!isOfferEligibleForRequests(product, versions)) {
-            return res.status(400).json({
-              message: "La oferta seleccionada se encuentra en borrador o no cuenta con una versión publicada vigente.",
-            });
-          }
+      const explicitOfferId = req.body.institutionProductId || req.body.offerId;
+      if (explicitOfferId) {
+        const product = await storage.getInstitutionProduct(explicitOfferId);
+        if (!product) {
+          return res.status(400).json({
+            message: "La oferta especificada no existe.",
+          });
+        }
+        const versions = await storage.getInstitutionProductVersions(product.id);
+        if (!isOfferEligibleForRequests(product, versions)) {
+          return res.status(400).json({
+            message: "La oferta seleccionada se encuentra en borrador o no cuenta con una versión publicada vigente.",
+          });
         }
       }
 
@@ -3928,8 +3932,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
       
       res.status(201).json(credit);
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error creating credit:", error);
+      if (error?.message && (error.message.includes("no existe") || error.message.includes("borrador"))) {
+        return res.status(400).json({ message: error.message });
+      }
       res.status(500).json({ message: "Failed to create credit" });
     }
   });
@@ -7023,6 +7030,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       const productData = {
         ...bodyData,
+        status: 'draft', // Forzado a draft desde el servidor; solo el flujo validado de publicación puede establecer published
         targetProfiles, // Use copied or provided targetProfiles
         createdBy: userId, // Set automatically from authenticated user
       };
@@ -7595,15 +7603,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
 
       // 1. Validar si se seleccionó una oferta específica explícitamente
-      if (req.body.institutionProductId) {
-        const product = await storage.getInstitutionProduct(req.body.institutionProductId);
-        if (product) {
-          const versions = await storage.getInstitutionProductVersions(product.id);
-          if (!isOfferEligibleForRequests(product, versions)) {
-            return res.status(400).json({
-              message: "La oferta seleccionada se encuentra en borrador o no cuenta con una versión publicada vigente.",
-            });
-          }
+      const explicitOfferId = req.body.institutionProductId || req.body.offerId;
+      if (explicitOfferId) {
+        const product = await storage.getInstitutionProduct(explicitOfferId);
+        if (!product) {
+          return res.status(400).json({
+            message: "La oferta especificada no existe.",
+          });
+        }
+        const versions = await storage.getInstitutionProductVersions(product.id);
+        if (!isOfferEligibleForRequests(product, versions)) {
+          return res.status(400).json({
+            message: "La oferta seleccionada se encuentra en borrador o no cuenta con una versión publicada vigente.",
+          });
         }
       }
 
@@ -7717,10 +7729,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       res.status(201).json({ submission, targets });
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error creating credit submission:", error);
       if (error instanceof z.ZodError) {
         res.status(400).json({ message: "Invalid submission data", errors: error.errors });
+      } else if (error?.message && (error.message.includes("no existe") || error.message.includes("borrador"))) {
+        res.status(400).json({ message: error.message });
       } else {
         res.status(500).json({ message: "Failed to create credit submission" });
       }

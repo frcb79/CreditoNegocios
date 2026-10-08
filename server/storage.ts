@@ -84,6 +84,7 @@ import {
   computeOfferVersionHash,
   validateMinimumPublishConditions,
   validateOfferVersionParameters,
+  isOfferEligibleForRequests,
 } from "./offerVersionService";
 
 
@@ -440,6 +441,7 @@ export class MemStorage implements IStorage {
   }
   private creditSubmissionRequests: Map<string, CreditSubmissionRequest> = new Map();
   private creditSubmissionTargets: Map<string, CreditSubmissionTarget> = new Map();
+  public legacyBackfilled: boolean = false;
 
   constructor() {
     this.seedData();
@@ -1975,6 +1977,20 @@ export class MemStorage implements IStorage {
   }
 
   async createCredit(creditData: InsertCredit): Promise<Credit> {
+    const explicitOfferId = (creditData as any).institutionProductId || (creditData as any).offerId;
+    if (explicitOfferId) {
+      const product = this.institutionProducts.get(explicitOfferId);
+      if (!product) {
+        throw new Error("La oferta especificada no existe.");
+      }
+      const versions = Array.from(this.institutionProductVersions.values()).filter(
+        v => v.institutionProductId === explicitOfferId
+      );
+      if (!isOfferEligibleForRequests(product, versions)) {
+        throw new Error("La oferta seleccionada se encuentra en borrador o no cuenta con una versión publicada vigente.");
+      }
+    }
+
     const id = randomUUID();
     const credit: Credit = {
       ...creditData,
@@ -2943,7 +2959,7 @@ export class MemStorage implements IStorage {
       configuration: productData.configuration ?? {},
       targetProfiles: productData.targetProfiles ?? null,
       activeVariables: productData.activeVariables ?? {},
-      status: productData.status ?? "draft",
+      status: "draft", // Forzado a draft desde el servidor; solo el flujo validado de publicación puede establecer published
       currentVersionNumber: productData.currentVersionNumber ?? 1,
       isActive: productData.isActive ?? true,
       createdBy: productData.createdBy ?? null,
@@ -2973,17 +2989,17 @@ export class MemStorage implements IStorage {
         institutionProductId: id,
         offerId: id,
         versionNumber: 1,
-        status: initialVersion.status ?? "draft",
-        effectiveFrom: initialVersion.effectiveFrom ?? null,
-        effectiveTo: initialVersion.effectiveTo ?? null,
+        status: "draft", // Forzado a draft desde el servidor
+        effectiveFrom: null,
+        effectiveTo: null,
         conditions,
         requirements,
         requiredDocuments,
         variablesConfiguration: variablesConfig,
         changeReason: initialVersion.changeReason ?? "Versión inicial en borrador",
         versionHash,
-        publishedAt: initialVersion.publishedAt ?? null,
-        publishedBy: initialVersion.publishedBy ?? null,
+        publishedAt: null,
+        publishedBy: null,
         createdBy: initialVersion.createdBy ?? productData.createdBy ?? null,
         createdAt: now,
         updatedAt: now,
@@ -3254,17 +3270,19 @@ export class MemStorage implements IStorage {
       id: offerId,
       name: offerName,
       customName: offerName,
+      status: "draft",
     });
 
     // Crear versión inicial en borrador
     const version = await this.createInstitutionProductDraftVersion(offerId, {
       ...initialVersion,
+      status: "draft",
       changeReason: initialVersion?.changeReason ?? "Versión inicial en borrador",
     });
 
     return {
-      offer: { ...product, name: offerName, institutionProductId: offerId },
-      version: { ...version, offerId },
+      offer: { ...product, name: offerName, institutionProductId: offerId, status: "draft" },
+      version: { ...version, offerId, status: "draft" },
     };
   }
 
@@ -3497,11 +3515,14 @@ export class MemStorage implements IStorage {
    * Migrates existing legacy products to the new 3-layer architecture
    * Converts Products → ProductTemplates → InstitutionProducts
    */
-  private migrateExistingData() {
-    // Skip migration if templates already exist (avoid duplicate migration)
-    if (this.productTemplates.size > 0) {
+  public migrateExistingData() {
+    // El backfill legacy debe ejecutarse una sola vez y distinguir de forma inequívoca productos preexistentes de ofertas nuevas.
+    // Nunca convertir un borrador nuevo en publicado al reiniciar.
+    if (this.legacyBackfilled || this.productTemplates.size > 0) {
+      this.legacyBackfilled = true;
       return;
     }
+    this.legacyBackfilled = true;
 
     console.log("🔄 Starting migration of legacy products to 3-layer architecture...");
 
@@ -3618,6 +3639,20 @@ export class MemStorage implements IStorage {
   }
 
   async createCreditSubmissionRequest(requestData: InsertCreditSubmissionRequest): Promise<CreditSubmissionRequest> {
+    const explicitOfferId = (requestData as any).institutionProductId || (requestData as any).offerId;
+    if (explicitOfferId) {
+      const product = this.institutionProducts.get(explicitOfferId);
+      if (!product) {
+        throw new Error("La oferta especificada no existe.");
+      }
+      const versions = Array.from(this.institutionProductVersions.values()).filter(
+        v => v.institutionProductId === explicitOfferId
+      );
+      if (!isOfferEligibleForRequests(product, versions)) {
+        throw new Error("La oferta seleccionada se encuentra en borrador o no cuenta con una versión publicada vigente.");
+      }
+    }
+
     const id = randomUUID();
     const request: CreditSubmissionRequest = {
       ...requestData,

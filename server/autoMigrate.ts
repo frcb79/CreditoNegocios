@@ -729,44 +729,59 @@ export async function runAutoMigration(): Promise<void> {
           ADD COLUMN IF NOT EXISTS created_at TIMESTAMP DEFAULT NOW(),
           ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT NOW();
 
-        -- Migración aditiva y preservación de institution_products preexistentes (A1.3):
-        -- No asignarlos indiscriminadamente a 'draft': Si el producto ya existía y está activo,
-        -- preservarlo con status 'published' y generar su versión inicial publicada v1 en el histórico.
-        UPDATE public.institution_products
-        SET status = 'published'
-        WHERE is_active = true AND (status IS NULL OR status = 'draft') AND NOT EXISTS (
-          SELECT 1 FROM public.institution_product_versions ipv WHERE ipv.institution_product_id = institution_products.id
+        -- Tabla de control de migraciones para ejecución única
+        CREATE TABLE IF NOT EXISTS public.app_migrations (
+          id VARCHAR PRIMARY KEY,
+          executed_at TIMESTAMP DEFAULT NOW()
         );
 
-        INSERT INTO public.institution_product_versions (
-          id,
-          institution_product_id,
-          version_number,
-          status,
-          effective_from,
-          conditions,
-          requirements,
-          required_documents,
-          change_reason,
-          published_at,
-          created_by
-        )
-        SELECT
-          gen_random_uuid(),
-          ip.id,
-          1,
-          'published',
-          NOW(),
-          COALESCE(ip.configuration, '{}'::jsonb),
-          jsonb_build_object('targetProfiles', COALESCE(ip.target_profiles, ARRAY[]::text[])),
-          ARRAY[]::text[],
-          'Migración automática de producto institucional legacy',
-          NOW(),
-          ip.created_by
-        FROM public.institution_products ip
-        WHERE ip.status = 'published' AND NOT EXISTS (
-          SELECT 1 FROM public.institution_product_versions ipv WHERE ipv.institution_product_id = ip.id
-        );
+        -- Migración aditiva y preservación de institution_products preexistentes (A1.4):
+        -- Se ejecuta UNA SOLA VEZ y distingue de forma inequívoca productos preexistentes (status IS NULL) de nuevas ofertas.
+        -- NUNCA convierte un borrador nuevo ('draft') en publicado.
+        DO $$
+        BEGIN
+          IF NOT EXISTS (SELECT 1 FROM public.app_migrations WHERE id = '0005_legacy_institution_products_backfill_a1') THEN
+            UPDATE public.institution_products
+            SET status = 'published', current_version_number = 1
+            WHERE is_active = true AND status IS NULL AND NOT EXISTS (
+              SELECT 1 FROM public.institution_product_versions ipv WHERE ipv.institution_product_id = institution_products.id
+            );
+
+            INSERT INTO public.institution_product_versions (
+              id,
+              institution_product_id,
+              version_number,
+              status,
+              effective_from,
+              conditions,
+              requirements,
+              required_documents,
+              change_reason,
+              published_at,
+              created_by
+            )
+            SELECT
+              gen_random_uuid(),
+              ip.id,
+              1,
+              'published',
+              NOW(),
+              COALESCE(ip.configuration, '{}'::jsonb),
+              jsonb_build_object('targetProfiles', COALESCE(ip.target_profiles, ARRAY[]::text[])),
+              ARRAY[]::text[],
+              'Migración automática de producto institucional legacy',
+              NOW(),
+              ip.created_by
+            FROM public.institution_products ip
+            WHERE ip.status = 'published' AND NOT EXISTS (
+              SELECT 1 FROM public.institution_product_versions ipv WHERE ipv.institution_product_id = ip.id
+            );
+
+            INSERT INTO public.app_migrations (id, executed_at)
+            VALUES ('0005_legacy_institution_products_backfill_a1', NOW())
+            ON CONFLICT (id) DO NOTHING;
+          END IF;
+        END $$;
 
         -- Vista retrocompatible para interfaces legacy
         CREATE OR REPLACE VIEW public.financial_institution_offers AS

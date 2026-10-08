@@ -800,4 +800,175 @@ describe("Bloque A1.1 — Arquitectura Canónica de Ofertas y Versionado Aditivo
       expect(isOfferEligibleForRequests(publishedOffer!, pubVersions)).toBe(true);
     });
   });
+
+  describe("Pruebas de Regresión A1.4: Cierre definitivo de seguridad de publicación y validación de ofertas", () => {
+    it("1. Simular dos arranques consecutivos: la migración legacy es estrictamente idempotente y no altera el histórico", async () => {
+      // Contar productos y versiones antes
+      const productsBefore = await storage.getInstitutionProducts();
+      const legacyProducts = productsBefore.filter(p => p.id.startsWith("inst-prod-"));
+      expect(legacyProducts.length).toBeGreaterThan(0);
+
+      // Simular un segundo arranque ejecutando migrateExistingData
+      (storage as any).migrateExistingData();
+
+      // Verificar que los productos no se duplicaron ni cambiaron
+      const productsAfter = await storage.getInstitutionProducts();
+      const legacyAfter = productsAfter.filter(p => p.id.startsWith("inst-prod-"));
+      expect(legacyAfter.length).toBe(legacyProducts.length);
+
+      for (const p of legacyAfter) {
+        const versions = await storage.getInstitutionProductVersions(p.id);
+        const publishedVersions = versions.filter(v => v.status === "published");
+        expect(publishedVersions.length).toBe(1);
+      }
+    });
+
+    it("2. Borradores nuevos: nunca se convierten en publicados al reiniciar o ejecutar autoMigrate/backfill", async () => {
+      const testInstId = "fin-draft-test-" + Date.now();
+      await storage.createFinancialInstitution({
+        id: testInstId,
+        name: "Financiera Borradores Persistentes",
+        email: "draft_persist@test.com",
+        isActive: true,
+      } as any);
+
+      // Crear una nueva oferta en borrador
+      const { offer, version } = await storage.createOffer({
+        institutionId: testInstId,
+        name: "Oferta Nueva en Borrador Estricto",
+        productType: "credito_simple",
+      });
+
+      expect(offer.status).toBe("draft");
+      expect(version.status).toBe("draft");
+
+      // Simular reinicio / nuevo arranque
+      (storage as any).migrateExistingData();
+
+      // Comprobar que la nueva oferta sigue estando estrictamente en 'draft'
+      const offerAfter = await storage.getOffer(offer.id);
+      expect(offerAfter?.status).toBe("draft");
+
+      const versionsAfter = await storage.getInstitutionProductVersions(offer.id);
+      expect(versionsAfter.length).toBe(1);
+      expect(versionsAfter[0].status).toBe("draft");
+      expect(isOfferEligibleForRequests(offerAfter!, versionsAfter)).toBe(false);
+    });
+
+    it("3. Migración legacy: distingue de forma inequívoca productos preexistentes conservando su estado publicado", async () => {
+      const migratedProducts = (await storage.getInstitutionProducts()).filter(p => p.id.startsWith("inst-prod-"));
+      for (const lp of migratedProducts) {
+        if (lp.isActive) {
+          expect(lp.status).toBe("published");
+          const versions = await storage.getInstitutionProductVersions(lp.id);
+          expect(versions.some(v => v.status === "published")).toBe(true);
+          expect(isOfferEligibleForRequests(lp, versions)).toBe(true);
+        }
+      }
+    });
+
+    it("4. Manipulación de estado: el servidor fuerza 'draft' al crear y rechaza publicaciones directas", async () => {
+      // 4a. Intentar crear oferta con status 'published' en el payload: el servidor debe forzar 'draft'
+      const { offer: createdOffer, version: createdVersion } = await storage.createOffer({
+        institutionId,
+        name: "Oferta con Status Spoofing",
+        productType: "credito_simple",
+        status: "published" as any,
+      });
+
+      expect(createdOffer.status).toBe("draft");
+      expect(createdVersion.status).toBe("draft");
+
+      const storedOffer = await storage.getOffer(createdOffer.id);
+      expect(storedOffer?.status).toBe("draft");
+
+      // 4b. Intentar crear institutionProduct directamente con status 'published'
+      const createdProd = await storage.createInstitutionProduct({
+        institutionId,
+        name: "Producto Directo con Status Spoofing",
+        productType: "credito_simple",
+        status: "published" as any,
+      });
+      expect(createdProd.status).toBe("draft");
+
+      // 4c. Intentar bypass de estado a 'published' vía updateInstitutionProduct: debe ser rechazado
+      await expect(
+        storage.updateInstitutionProduct(createdOffer.id, { status: "published" as any })
+      ).rejects.toThrow(/No se puede cambiar el estado a 'published' directamente/);
+
+      // 4d. Si un objeto en memoria tiene status = 'published' pero no tiene versión publicada física: es inelegible
+      const spoofedInMemoryOffer = {
+        id: "spoofed-123",
+        status: "published",
+        isActive: true,
+      };
+      expect(isOfferEligibleForRequests(spoofedInMemoryOffer, [{ status: "draft" }])).toBe(false);
+      expect(isOfferEligibleForRequests(spoofedInMemoryOffer, [])).toBe(false);
+    });
+
+    it("5. Oferta inexistente y no elegible al crear créditos y solicitudes", async () => {
+      // 5a. Rechazar crédito con oferta inexistente
+      await expect(
+        storage.createCredit({
+          clientId: "client-test-1",
+          institutionProductId: "oferta-inexistente-uuid-999",
+          amount: "500000",
+        } as any)
+      ).rejects.toThrow("La oferta especificada no existe.");
+
+      // 5b. Rechazar solicitud con oferta inexistente
+      await expect(
+        storage.createCreditSubmissionRequest({
+          clientId: "client-test-1",
+          brokerId: "broker-test-1",
+          requestedAmount: "500000",
+          institutionProductId: "oferta-inexistente-uuid-999",
+        } as any)
+      ).rejects.toThrow("La oferta especificada no existe.");
+
+      // 5c. Rechazar crédito con oferta en borrador
+      const { offer: draftOffer } = await storage.createOffer({
+        institutionId,
+        name: "Oferta en Borrador para Rechazo",
+        productType: "credito_simple",
+      });
+
+      await expect(
+        storage.createCredit({
+          clientId: "client-test-1",
+          institutionProductId: draftOffer.id,
+          amount: "500000",
+        } as any)
+      ).rejects.toThrow("La oferta seleccionada se encuentra en borrador o no cuenta con una versión publicada vigente.");
+
+      // 5d. Rechazar solicitud con oferta en borrador
+      await expect(
+        storage.createCreditSubmissionRequest({
+          clientId: "client-test-1",
+          brokerId: "broker-test-1",
+          requestedAmount: "500000",
+          institutionProductId: draftOffer.id,
+        } as any)
+      ).rejects.toThrow("La oferta seleccionada se encuentra en borrador o no cuenta con una versión publicada vigente.");
+
+      // 5e. Preservar compatibilidad total con flujos legacy sin ID de oferta
+      const legacyCredit = await storage.createCredit({
+        clientId: "client-test-1",
+        financialInstitutionId: institutionId,
+        amount: "500000",
+        status: "draft",
+      } as any);
+      expect(legacyCredit).toBeDefined();
+      expect(legacyCredit.id).toBeDefined();
+
+      const legacySubmission = await storage.createCreditSubmissionRequest({
+        clientId: "client-test-1",
+        brokerId: "broker-test-1",
+        requestedAmount: "500000",
+        status: "pending_admin",
+      } as any);
+      expect(legacySubmission).toBeDefined();
+      expect(legacySubmission.id).toBeDefined();
+    });
+  });
 });

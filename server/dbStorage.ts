@@ -40,6 +40,7 @@ import {
   computeOfferVersionHash,
   validateMinimumPublishConditions,
   validateOfferVersionParameters,
+  isOfferEligibleForRequests,
 } from "./offerVersionService";
 import { eq, desc, asc, like, and, or, inArray, sql } from "drizzle-orm";
 
@@ -936,7 +937,7 @@ export class DbStorage implements IStorage {
           templateId: productData.templateId ?? null,
           configuration: productData.configuration ?? {},
           activeVariables: activeVariables,
-          status: productData.status ?? "draft",
+          status: "draft", // Forzado a draft desde el servidor; solo el flujo validado de publicación puede establecer published
           currentVersionNumber: productData.currentVersionNumber ?? 1,
           isActive: productData.isActive ?? true,
           createdAt: now,
@@ -963,9 +964,9 @@ export class DbStorage implements IStorage {
           id: versionId,
           institutionProductId: productId,
           versionNumber: 1,
-          status: initialVersion.status ?? "draft",
-          effectiveFrom: initialVersion.effectiveFrom ?? null,
-          effectiveTo: initialVersion.effectiveTo ?? null,
+          status: "draft", // Forzado a draft desde el servidor
+          effectiveFrom: null,
+          effectiveTo: null,
           conditions,
           requirements,
           requiredDocuments,
@@ -1328,16 +1329,18 @@ export class DbStorage implements IStorage {
       id: offerId,
       name: offerName,
       customName: offerName,
+      status: "draft",
     } as any);
 
     const version = await this.createInstitutionProductDraftVersion(offerId, {
       ...initialVersion,
+      status: "draft",
       changeReason: initialVersion?.changeReason ?? "Versión inicial en borrador",
     });
 
     return {
-      offer: { ...product, name: offerName, institutionProductId: offerId },
-      version: { ...version, offerId },
+      offer: { ...product, name: offerName, institutionProductId: offerId, status: "draft" },
+      version: { ...version, offerId, status: "draft" },
     };
   }
 
@@ -1676,6 +1679,18 @@ export class DbStorage implements IStorage {
   
   async createCredit(credit: InsertCredit): Promise<Credit> {
     try {
+      const explicitOfferId = (credit as any).institutionProductId || (credit as any).offerId;
+      if (explicitOfferId) {
+        const product = await this.getInstitutionProduct(explicitOfferId);
+        if (!product) {
+          throw new Error("La oferta especificada no existe.");
+        }
+        const versions = await this.getInstitutionProductVersions(explicitOfferId);
+        if (!isOfferEligibleForRequests(product, versions)) {
+          throw new Error("La oferta seleccionada se encuentra en borrador o no cuenta con una versión publicada vigente.");
+        }
+      }
+
       const [created] = await db
         .insert(credits)
         .values({
@@ -2654,6 +2669,18 @@ export class DbStorage implements IStorage {
 
   async createCreditSubmissionRequest(requestData: InsertCreditSubmissionRequest): Promise<CreditSubmissionRequest> {
     try {
+      const explicitOfferId = (requestData as any).institutionProductId || (requestData as any).offerId;
+      if (explicitOfferId) {
+        const product = await this.getInstitutionProduct(explicitOfferId);
+        if (!product) {
+          throw new Error("La oferta especificada no existe.");
+        }
+        const versions = await this.getInstitutionProductVersions(explicitOfferId);
+        if (!isOfferEligibleForRequests(product, versions)) {
+          throw new Error("La oferta seleccionada se encuentra en borrador o no cuenta con una versión publicada vigente.");
+        }
+      }
+
       const result = await db.insert(creditSubmissionRequests)
         .values(requestData)
         .returning();
