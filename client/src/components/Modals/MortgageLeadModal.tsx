@@ -301,9 +301,16 @@ export default function MortgageLeadModal({
       onClose();
     },
     onError: (err: any) => {
+      const isFormalizationReq =
+        err?.code === "FORMALIZATION_REQUIRED" ||
+        err?.message?.includes("formalizar") ||
+        err?.body?.code === "FORMALIZATION_REQUIRED";
+
       toast({
-        title: "Error al registrar",
-        description: err.message || "No se pudo registrar la oportunidad hipotecaria.",
+        title: isFormalizationReq ? "Formalización requerida" : "Error al registrar",
+        description: isFormalizationReq
+          ? "Para registrar operaciones hipotecarias deberás formalizar tu Convenio de Colaboración en Perfil → Documentos."
+          : err.message || "No se pudo registrar la oportunidad hipotecaria.",
         variant: "destructive",
       });
     },

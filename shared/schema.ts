@@ -1490,5 +1490,125 @@ export type CommercialConfigAuditLog = typeof commercialConfigAuditLogs.$inferSe
 export type InsertCommercialConfigAuditLog = z.infer<typeof insertCommercialConfigAuditLogSchema>;
 export type UpdateCommercialRulesConfig = z.infer<typeof updateCommercialRulesConfigSchema>;
 
+// ==========================================
+// LEGAL VERSIONS & ACCEPTANCES (BLOQUE 2)
+// ==========================================
+
+export const legalDocumentVersions = pgTable("legal_document_versions", {
+  id: varchar("id").primaryKey(), // e.g. "terminos:1.0", "aviso:1.0"
+  document: varchar("document", { length: 64 }).notNull(),
+  title: varchar("title", { length: 255 }).notNull(),
+  version: varchar("version", { length: 32 }).notNull(),
+  sourceFile: varchar("source_file", { length: 255 }).notNull(),
+  content: text("content").notNull(),
+  contentSha256: varchar("content_sha256", { length: 64 }).notNull(),
+  effectiveAt: timestamp("effective_at"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const legalAcceptances = pgTable(
+  "legal_acceptances",
+  {
+    id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+    userId: varchar("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    userEmail: varchar("user_email").notNull(),
+    userName: varchar("user_name"),
+    documentId: varchar("document_id")
+      .notNull()
+      .references(() => legalDocumentVersions.id),
+    document: varchar("document", { length: 64 }).notNull(),
+    version: varchar("version", { length: 32 }).notNull(),
+    contentSha256: varchar("content_sha256", { length: 64 }).notNull(),
+    acceptanceType: varchar("acceptance_type", { length: 64 }).notNull(), // "accept_terms" | "acknowledge_privacy" | "accept_convenio" | etc.
+    ipAddress: varchar("ip_address", { length: 128 }).notNull(),
+    userAgent: text("user_agent").notNull(),
+    acceptedAt: timestamp("accepted_at").defaultNow().notNull(),
+  },
+  (table) => [
+    index("idx_legal_acceptances_user_id").on(table.userId),
+    index("idx_legal_acceptances_document_id").on(table.documentId),
+  ],
+);
+
+export const formalizationOtpRequests = pgTable(
+  "formalization_otp_requests",
+  {
+    id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+    userId: varchar("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    userEmail: varchar("user_email").notNull(),
+    userName: varchar("user_name"),
+    userRole: varchar("user_role", { length: 64 }).notNull(),
+    documentsSnapshot: jsonb("documents_snapshot").notNull(),
+    codeHash: varchar("code_hash", { length: 64 }).notNull(),
+    attempts: integer("attempts").notNull().default(0),
+    maxAttempts: integer("max_attempts").notNull().default(5),
+    expiresAt: timestamp("expires_at").notNull(),
+    resendAvailableAt: timestamp("resend_available_at").notNull(),
+    consumed: boolean("consumed").notNull().default(false),
+    consumedAt: timestamp("consumed_at"),
+    invalidated: boolean("invalidated").notNull().default(false),
+    invalidatedAt: timestamp("invalidated_at"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (table) => [
+    index("idx_formalization_otp_user_id").on(table.userId),
+    index("idx_formalization_otp_created_at").on(table.createdAt),
+  ],
+);
+
+export const insertLegalDocumentVersionSchema = createInsertSchema(legalDocumentVersions);
+export const insertLegalAcceptanceSchema = createInsertSchema(legalAcceptances).omit({
+  id: true,
+  acceptedAt: true,
+});
+export const insertFormalizationOtpRequestSchema = createInsertSchema(formalizationOtpRequests).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type LegalDocumentVersionDb = typeof legalDocumentVersions.$inferSelect;
+export type InsertLegalDocumentVersionDb = typeof legalDocumentVersions.$inferInsert;
+export type LegalAcceptance = typeof legalAcceptances.$inferSelect;
+export type InsertLegalAcceptance = typeof legalAcceptances.$inferInsert;
+export type FormalizationOtpRequest = typeof formalizationOtpRequests.$inferSelect;
+export type InsertFormalizationOtpRequest = typeof formalizationOtpRequests.$inferInsert;
+
+// =====================================================================
+// BROKER COMMISSION ACCEPTANCES PER FINANCIAL INSTITUTION
+// =====================================================================
+export const brokerCommissionAcceptances = pgTable(
+  "broker_commission_acceptances",
+  {
+    id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+    userId: varchar("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    institutionId: varchar("institution_id")
+      .notNull()
+      .references(() => financialInstitutions.id, { onDelete: "cascade" }),
+    acceptedRates: jsonb("accepted_rates").notNull().default("{}"),
+    ratesHash: varchar("rates_hash", { length: 64 }).notNull(),
+    acceptedAt: timestamp("accepted_at").defaultNow().notNull(),
+    ipAddress: varchar("ip_address"),
+    userAgent: text("user_agent"),
+  },
+  (table) => [
+    index("idx_bca_user_inst").on(table.userId, table.institutionId),
+    uniqueIndex("idx_bca_user_inst_hash").on(table.userId, table.institutionId, table.ratesHash),
+  ],
+);
+
+export const insertBrokerCommissionAcceptanceSchema = createInsertSchema(brokerCommissionAcceptances).omit({
+  id: true,
+  acceptedAt: true,
+});
+
+export type BrokerCommissionAcceptance = typeof brokerCommissionAcceptances.$inferSelect;
+export type InsertBrokerCommissionAcceptance = typeof brokerCommissionAcceptances.$inferInsert;
+
 
 

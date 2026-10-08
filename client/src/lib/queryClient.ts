@@ -3,12 +3,16 @@ import { QueryClient, QueryFunction } from "@tanstack/react-query";
 class ApiError extends Error {
   status: number;
   isNetworkError: boolean;
+  code?: string;
+  body?: any;
   
-  constructor(message: string, status: number, isNetworkError = false) {
+  constructor(message: string, status: number, isNetworkError = false, code?: string, body?: any) {
     super(message);
     this.name = 'ApiError';
     this.status = status;
     this.isNetworkError = isNetworkError;
+    this.code = code;
+    this.body = body;
   }
 }
 
@@ -19,8 +23,8 @@ async function throwIfResNotOk(res: Response) {
     // Try to parse JSON response and extract message
     try {
       const json = JSON.parse(text);
-      if (json.message) {
-        throw new ApiError(json.message, res.status);
+      if (json.message || json.code) {
+        throw new ApiError(json.message || text, res.status, false, json.code, json);
       }
     } catch (e) {
       if (e instanceof ApiError) throw e;

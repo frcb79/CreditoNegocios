@@ -1,4 +1,9 @@
 import { useEffect, useRef, useState } from "react";
+import { useSearch } from "wouter";
+import LegalProfileDocuments from "@/components/LegalProfileDocuments";
+import BrokerExpedienteDocuments from "@/components/BrokerExpedienteDocuments";
+import { FORMALIZATION_NOTICE_TEXT, type FormalizationStatusResult } from "@shared/legalDocuments";
+import LegalLinks from "@/components/LegalLinks";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -16,6 +21,7 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage, FormDes
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Separator } from "@/components/ui/separator";
 import { Badge } from "@/components/ui/badge";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import {
   Dialog,
   DialogContent,
@@ -35,6 +41,7 @@ const profileSchema = z.object({
   lastName: z.string().min(1, "Apellido requerido"),
   email: z.string().email("Email válido requerido"),
   phone: z.string().optional(),
+  taxId: z.string().optional(),
   // Structured address fields
   street: z.string().optional(),
   exteriorNumber: z.string().optional(),
@@ -87,7 +94,29 @@ export default function Settings() {
   const { user } = useAuth();
   const { toast } = useToast();
   const queryClient = useQueryClient();
-  const [activeTab, setActiveTab] = useState("profile");
+  const search = useSearch();
+  const [activeTab, setActiveTab] = useState(() => {
+    const params = new URLSearchParams(search);
+    const tabParam = params.get("tab");
+    if (tabParam === "documents" || tabParam === "documentos") return "documents";
+    if (tabParam === "notifications") return "notifications";
+    if (tabParam === "business") return "business";
+    if (tabParam === "profiling") return "profiling";
+    if (tabParam === "security") return "security";
+    if (tabParam === "benefits") return "benefits";
+    if (tabParam === "commercial_rules" || tabParam === "commercial-rules") return "commercial_rules";
+    return "profile";
+  });
+
+  const isBrokerOrMaster = user?.role === "broker" || user?.role === "master_broker";
+
+  useEffect(() => {
+    const params = new URLSearchParams(search);
+    const tabParam = params.get("tab");
+    if (tabParam === "documents" || tabParam === "documentos") {
+      setActiveTab("documents");
+    }
+  }, [search]);
   const [profileType, setProfileType] = useState<"persona_moral" | "fisica_empresarial" | "fisica" | "sin_sat">("persona_moral");
   const [showPasswordModal, setShowPasswordModal] = useState(false);
   const [avatarPreview, setAvatarPreview] = useState<string | null>((user?.profileImageUrl as string) || null);
@@ -118,6 +147,16 @@ export default function Settings() {
     message: string;
   }>({
     queryKey: ['/api/promos/my-benefits'],
+  });
+
+  // Formalization status by user to control exterior banner visibility
+  const { data: formalizationStatus } = useQuery<FormalizationStatusResult>({
+    queryKey: ['/api/legal/formalization/status', user?.id],
+    enabled: Boolean(user?.id && isBrokerOrMaster),
+    queryFn: async () => {
+      const res = await apiRequest('GET', '/api/legal/formalization/status');
+      return res.json();
+    },
   });
 
   const handleValidatePromo = async () => {
@@ -213,6 +252,7 @@ export default function Settings() {
       email: user?.email || "",
       // Fallback to top-level phone for backward compatibility
       phone: (user?.profileData as any)?.phone || (user as any)?.phone || "",
+      taxId: (user?.profileData as any)?.taxId || (user?.profileData as any)?.rfc || (user as any)?.taxId || (user as any)?.rfc || "",
       // Hydrate address from profileData with empty fallbacks
       street: (user?.profileData as any)?.address?.street || "",
       exteriorNumber: (user?.profileData as any)?.address?.exteriorNumber || "",
@@ -240,12 +280,12 @@ export default function Settings() {
   const businessForm = useForm({
     resolver: zodResolver(businessSchema),
     defaultValues: {
-      businessName: "",
-      taxId: "",
-      businessAddress: "",
-      businessPhone: "",
-      website: "",
-      specialization: "",
+      businessName: (user?.profileData as any)?.businessName || (user as any)?.brandName || "",
+      taxId: (user?.profileData as any)?.taxId || (user?.profileData as any)?.rfc || (user as any)?.taxId || (user as any)?.rfc || "",
+      businessAddress: (user?.profileData as any)?.businessAddress || "",
+      businessPhone: (user?.profileData as any)?.businessPhone || "",
+      website: (user?.profileData as any)?.website || "",
+      specialization: (user?.profileData as any)?.specialization || "",
     },
   });
 
@@ -275,6 +315,54 @@ export default function Settings() {
       ? savedRefs 
       : [{ name: "", phone: "", email: "" }];
   });
+
+  // Keep all forms synchronized whenever user state loads or is refreshed
+  useEffect(() => {
+    if (user) {
+      const pData = ((user as any).profileData as Record<string, any>) || {};
+      const addr = (pData.address as Record<string, any>) || {};
+      profileForm.reset({
+        firstName: user.firstName || "",
+        lastName: user.lastName || "",
+        email: user.email || "",
+        phone: pData.phone || (user as any).phone || "",
+        taxId: pData.taxId || pData.rfc || (user as any).taxId || (user as any).rfc || "",
+        street: addr.street || "",
+        exteriorNumber: addr.exteriorNumber || "",
+        interiorNumber: addr.interiorNumber || "",
+        colonia: addr.colonia || "",
+        city: addr.city || "",
+        state: addr.state || "",
+        postalCode: addr.postalCode || "",
+      });
+
+      businessForm.reset({
+        businessName: pData.businessName || (user as any).brandName || "",
+        taxId: pData.taxId || pData.rfc || (user as any).taxId || (user as any).rfc || "",
+        businessAddress: pData.businessAddress || "",
+        businessPhone: pData.businessPhone || "",
+        website: pData.website || "",
+        specialization: pData.specialization || "",
+      });
+
+      profilingForm.reset({
+        profileType: (user as any).profileType || "persona_moral",
+        yearsInBusiness: pData.brokerMetrics?.yearsInBusiness || "",
+        clientPortfolioSize: pData.brokerMetrics?.clientPortfolioSize || "",
+        annualGoal: pData.brokerMetrics?.annualGoal || "",
+        productsHandled: pData.brokerMetrics?.productsHandled || "",
+        averageTicket: pData.brokerMetrics?.averageTicket || "",
+        commercialReferences: (user as any).commercialReferences || [],
+        bankName: (user as any).bankName || "",
+        clabe: (user as any).clabe || "",
+        accountHolder: (user as any).accountHolder || "",
+      });
+
+      if (Array.isArray((user as any).commercialReferences) && (user as any).commercialReferences.length > 0) {
+        setReferences((user as any).commercialReferences);
+      }
+    }
+  }, [user]);
 
   const addReference = () => {
     setReferences([...references, { name: "", phone: "", email: "" }]);
@@ -356,13 +444,15 @@ export default function Settings() {
 
   const onProfileSubmit = (data: any) => {
     // Separate core profile fields from address fields
-    const { street, exteriorNumber, interiorNumber, colonia, city, state, postalCode, phone, ...coreFields } = data;
+    const { street, exteriorNumber, interiorNumber, colonia, city, state, postalCode, phone, taxId, ...coreFields } = data;
     
     // Shape payload with profileData.address structure
     const payload = {
       ...coreFields,
+      taxId,
       profileData: {
         phone,
+        ...(taxId ? { taxId, rfc: taxId } : {}),
         address: {
           street,
           exteriorNumber,
@@ -383,7 +473,18 @@ export default function Settings() {
   };
 
   const onBusinessSubmit = (data: any) => {
-    updateProfileMutation.mutate(data);
+    const { businessName, taxId, ...businessMeta } = data;
+    updateProfileMutation.mutate({
+      brandName: businessName,
+      taxId,
+      businessName,
+      profileData: {
+        businessName,
+        taxId,
+        rfc: taxId,
+        ...businessMeta,
+      },
+    });
   };
 
   const onProfilingSubmit = (data: any) => {
@@ -520,10 +621,40 @@ export default function Settings() {
       
       <main className="flex-1 p-3 sm:p-5 lg:p-6 overflow-y-auto">
         <div className="max-w-4xl mx-auto space-y-4">
+          {/* Formalization banner for Broker / Master Broker when outside documents tab */}
+          {isBrokerOrMaster && activeTab !== "documents" && formalizationStatus && !formalizationStatus.isFormalized && (
+            <Alert
+              className="border-amber-300 bg-amber-50/90 text-amber-900 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-200 shadow-2xs"
+              data-testid="alert-formalization-banner"
+            >
+              <AlertCircle className="h-5 w-5 text-amber-600 dark:text-amber-400 mt-0.5" />
+              <div className="flex-1 min-w-0">
+                <AlertTitle className="font-semibold text-amber-900 dark:text-amber-100 text-sm">
+                  Aviso de Formalización
+                </AlertTitle>
+                <AlertDescription className="text-xs sm:text-sm text-amber-800 dark:text-amber-300 mt-1 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                  <span>
+                    {FORMALIZATION_NOTICE_TEXT}
+                  </span>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setActiveTab("documents")}
+                    className="h-7 text-xs border-amber-400 text-amber-900 bg-amber-100/60 hover:bg-amber-200/60 w-fit shrink-0"
+                    data-testid="button-go-to-documents"
+                  >
+                    Ver Documentos
+                  </Button>
+                </AlertDescription>
+              </div>
+            </Alert>
+          )}
+
           <Tabs value={activeTab} onValueChange={setActiveTab}>
             <div className="overflow-x-auto pb-1 -mx-1 px-1">
-              <TabsList className="inline-flex w-full min-w-[540px] sm:min-w-0 grid-cols-6 h-9 p-1 bg-muted/70 rounded-lg">
+              <TabsList className="inline-flex w-full min-w-[620px] sm:min-w-0 h-9 p-1 bg-muted/70 rounded-lg">
                 <TabsTrigger value="profile" data-testid="tab-profile" className="text-xs font-medium py-1 px-2">Perfil</TabsTrigger>
+                <TabsTrigger value="documents" data-testid="tab-documents" className="text-xs font-medium py-1 px-2">Documentos</TabsTrigger>
                 <TabsTrigger value="notifications" data-testid="tab-notifications" className="text-xs font-medium py-1 px-2">Notificaciones</TabsTrigger>
                 <TabsTrigger value="business" data-testid="tab-business" className="text-xs font-medium py-1 px-2">Negocio</TabsTrigger>
                 <TabsTrigger value="profiling" data-testid="tab-profiling" className="text-xs font-medium py-1 px-2">Perfilamiento</TabsTrigger>
@@ -656,6 +787,25 @@ export default function Settings() {
                         />
                       </div>
 
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <FormField
+                          control={profileForm.control}
+                          name="taxId"
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel className="text-xs font-medium">RFC con Homoclave (Fiscal)</FormLabel>
+                              <FormControl>
+                                <Input className="h-9 text-xs uppercase" placeholder="XAXX010101000" {...field} data-testid="input-profile-tax-id" />
+                              </FormControl>
+                              <FormDescription className="text-[11px] leading-tight">
+                                Requerido para formalización de convenio y emisión fiscal
+                              </FormDescription>
+                              <FormMessage className="text-xs" />
+                            </FormItem>
+                          )}
+                        />
+                      </div>
+
                       {/* Address Section */}
                       <div className="space-y-3 pt-3 border-t border-border/60">
                         <h4 className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Dirección</h4>
@@ -781,6 +931,12 @@ export default function Settings() {
                   </Form>
                 </CardContent>
               </Card>
+            </TabsContent>
+
+            {/* Documents Settings */}
+            <TabsContent value="documents" className="space-y-4 mt-3">
+              <BrokerExpedienteDocuments user={user} />
+              <LegalProfileDocuments user={user} showFormalizationNotice={true} />
             </TabsContent>
 
             {/* Notification Settings */}

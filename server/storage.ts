@@ -1,5 +1,5 @@
 // @ts-nocheck
-import { randomUUID } from "crypto";
+import { randomUUID, createHash } from "crypto";
 import {
   users,
   clients,
@@ -62,9 +62,85 @@ import {
   userStatusRequests,
   type UserStatusRequest,
   type UserStatusRequestStatus,
-  type UserStatusRequestAction
+  type UserStatusRequestAction,
+  legalDocumentVersions,
+  legalAcceptances,
+  formalizationOtpRequests,
+  type LegalDocumentVersionDb,
+  type LegalAcceptance,
+  type InsertLegalAcceptance,
+  type FormalizationOtpRequest,
+  type InsertFormalizationOtpRequest,
+  brokerCommissionAcceptances,
+  type BrokerCommissionAcceptance,
+  type InsertBrokerCommissionAcceptance,
 } from "../shared/schema";
+import catalog from "./legalDocumentCatalog.json";
+import {
+  getApprovedLegalDocument,
+  getActiveFormalizationDocument,
+  getFormalizationCatalogDocuments,
+  validateFormalizationConfirmation,
+  generateOtpCode,
+  hashOtpCode,
+  verifyOtpCode,
+  FORMALIZATION_OTP_EXPIRATION_MS,
+  FORMALIZATION_OTP_COOLDOWN_MS,
+  FORMALIZATION_OTP_MAX_ATTEMPTS,
+  FORMALIZATION_OTP_MAX_REQUESTS_PER_WINDOW,
+  FORMALIZATION_OTP_WINDOW_MS,
+} from "./legalDocuments";
+import {
+  getRequiredFormalizationDocuments,
+  isRoleSubjectToFormalization,
+} from "../shared/legalDocuments";
 
+export interface CreateFormalizationOtpResult {
+  success: boolean;
+  statusCode: number;
+  error?: string;
+  otp?: FormalizationOtpRequest;
+  rawCode?: string;
+  documentsForEmail?: Array<{ title: string; version: string }>;
+  resendAvailableAt?: Date;
+}
+
+export interface VerifyFormalizationOtpResult {
+  success: boolean;
+  statusCode: number;
+  error?: string;
+  remainingAttempts?: number;
+  requiresRestart?: boolean;
+  acceptances?: LegalAcceptance[];
+}
+
+export interface FormalizationStatusResult {
+  requiresFormalization: boolean;
+  isFormalized: boolean;
+  formalizedAt: string | null;
+  requiredDocuments: string[];
+  acceptedDocuments: string[];
+}
+
+export interface FormalizationDocumentsResult {
+  requiresFormalization: boolean;
+  isFormalized: boolean;
+  user?: {
+    id: string;
+    email: string;
+    name: string;
+    role: string;
+  };
+  documents: Array<{
+    document: string;
+    version: string;
+    title: string;
+    content: string;
+    contentSha256: string;
+    effectiveAt?: string;
+  }>;
+  message?: string;
+}
 
 type NotificationInput = InsertNotification & {
   relatedEntityType?: string;
@@ -73,6 +149,65 @@ type NotificationInput = InsertNotification & {
 };
 
 export interface IStorage {
+  // Legal operations (Bloque 2)
+  getLegalDocumentVersions(): Promise<LegalDocumentVersionDb[]>;
+  getLegalDocumentVersion(id: string): Promise<LegalDocumentVersionDb | undefined>;
+  getLegalAcceptancesByUser(userId: string): Promise<LegalAcceptance[]>;
+  getLegalAcceptanceById(id: string): Promise<LegalAcceptance | undefined>;
+  getAllLegalAcceptances(): Promise<LegalAcceptance[]>;
+  registerUserWithLegalEvidence(params: {
+    userData: {
+      email: string;
+      password: string;
+      firstName: string;
+      lastName: string;
+      authMethod: string;
+      role: string;
+      masterBrokerId?: string;
+      referralCode?: string;
+    };
+    evidence: {
+      ipAddress: string;
+      userAgent: string;
+      termsDoc: {
+        id: string;
+        document: string;
+        version: string;
+        contentSha256: string;
+      };
+      privacyDoc: {
+        id: string;
+        document: string;
+        version: string;
+        contentSha256: string;
+      };
+    };
+  }): Promise<{ user: User; acceptances: LegalAcceptance[] }>;
+
+  // Formalization OTP and Legal Agreement (Bloque 3B1)
+  getFormalizationDocuments(userId: string): Promise<FormalizationDocumentsResult>;
+  getFormalizationStatus(userId: string): Promise<FormalizationStatusResult>;
+  createOrResendFormalizationOtp(params: {
+    userId: string;
+    confirmedDocuments: Array<{ document: string; version: string }>;
+  }): Promise<CreateFormalizationOtpResult>;
+  invalidateFormalizationOtp(otpId: string, reason?: string): Promise<void>;
+  verifyAndFormalizeAgreementWithOtp(params: {
+    userId: string;
+    code: string;
+    confirmedDocuments: Array<{ document: string; version: string }>;
+    ipAddress: string;
+    userAgent: string;
+  }): Promise<VerifyFormalizationOtpResult>;
+  getLatestFormalizationOtpByUser(userId: string): Promise<FormalizationOtpRequest | undefined>;
+  countFormalizationOtpRequests(userId: string, since: Date): Promise<number>;
+  isUserFormalized(userId: string, role?: string): Promise<{ isFormalized: boolean; formalizedAt?: Date; acceptedDocuments: string[] }>;
+
+  // Broker Commission Acceptance operations
+  getBrokerCommissionAcceptances(userId: string): Promise<BrokerCommissionAcceptance[]>;
+  getBrokerCommissionAcceptance(userId: string, institutionId: string, ratesHash: string): Promise<BrokerCommissionAcceptance | undefined>;
+  createBrokerCommissionAcceptance(data: InsertBrokerCommissionAcceptance): Promise<BrokerCommissionAcceptance>;
+
   // Bank analysis report operations
   createBankAnalysisReport(report: InsertBankAnalysisReport): Promise<BankAnalysisReport>;
   getBankAnalysisReportById(id: string): Promise<BankAnalysisReport | undefined>;
@@ -374,11 +509,55 @@ export class MemStorage implements IStorage {
   }
   private creditSubmissionRequests: Map<string, CreditSubmissionRequest> = new Map();
   private creditSubmissionTargets: Map<string, CreditSubmissionTarget> = new Map();
+  private legalDocumentVersions: Map<string, LegalDocumentVersionDb> = new Map();
+  private legalAcceptances: Map<string, LegalAcceptance> = new Map();
+  private formalizationOtpRequests: Map<string, FormalizationOtpRequest> = new Map();
+  private brokerCommissionAcceptancesMap: Map<string, BrokerCommissionAcceptance> = new Map();
+  private userLocks: Map<string, Promise<void>> = new Map();
+
+  private async withUserLock<T>(userId: string, fn: () => Promise<T>): Promise<T> {
+    const currentLock = this.userLocks.get(userId) || Promise.resolve();
+    let release: () => void;
+    const nextLock = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    this.userLocks.set(userId, nextLock);
+    try {
+      await currentLock;
+      return await fn();
+    } finally {
+      release!();
+      if (this.userLocks.get(userId) === nextLock) {
+        this.userLocks.delete(userId);
+      }
+    }
+  }
 
   constructor() {
     this.seedData();
     this.migrateExistingData();
+    this.seedLegalDocumentVersions();
   }
+
+  private seedLegalDocumentVersions(): void {
+    for (const entry of catalog) {
+      if (this.legalDocumentVersions.has(entry.id)) {
+        continue;
+      }
+      this.legalDocumentVersions.set(entry.id, structuredClone({
+        id: entry.id,
+        document: entry.document,
+        title: entry.title,
+        version: entry.version,
+        sourceFile: entry.sourceFile,
+        content: entry.content,
+        contentSha256: entry.contentSha256,
+        effectiveAt: entry.effectiveAt ? new Date(entry.effectiveAt) : null,
+        createdAt: new Date(),
+      }));
+    }
+  }
+
 
   private createSeedFinancialInstitution(data: Partial<FinancialInstitution> & Pick<FinancialInstitution, "id" | "name">): FinancialInstitution {
     return {
@@ -1362,6 +1541,656 @@ export class MemStorage implements IStorage {
     this.users.set(id, user);
     return user;
   }
+
+  async getLegalDocumentVersions(): Promise<LegalDocumentVersionDb[]> {
+    return Array.from(this.legalDocumentVersions.values()).map((v) => structuredClone(v));
+  }
+
+  async getLegalDocumentVersion(id: string): Promise<LegalDocumentVersionDb | undefined> {
+    const doc = this.legalDocumentVersions.get(id);
+    return doc ? structuredClone(doc) : undefined;
+  }
+
+  async getLegalAcceptancesByUser(userId: string): Promise<LegalAcceptance[]> {
+    return Array.from(this.legalAcceptances.values())
+      .filter((a) => a.userId === userId)
+      .sort((a, b) => new Date(b.acceptedAt).getTime() - new Date(a.acceptedAt).getTime())
+      .map((a) => structuredClone(a));
+  }
+
+  async getLegalAcceptanceById(id: string): Promise<LegalAcceptance | undefined> {
+    const acc = this.legalAcceptances.get(id);
+    return acc ? structuredClone(acc) : undefined;
+  }
+
+  async getAllLegalAcceptances(): Promise<LegalAcceptance[]> {
+    return Array.from(this.legalAcceptances.values())
+      .sort((a, b) => new Date(b.acceptedAt).getTime() - new Date(a.acceptedAt).getTime())
+      .map((a) => structuredClone(a));
+  }
+
+  async registerUserWithLegalEvidence(params: {
+    userData: {
+      email: string;
+      password: string;
+      firstName: string;
+      lastName: string;
+      authMethod: string;
+      role: string;
+      masterBrokerId?: string;
+      referralCode?: string;
+    };
+    evidence: {
+      ipAddress: string;
+      userAgent: string;
+      termsDoc: {
+        id: string;
+        document: string;
+        version: string;
+        contentSha256: string;
+      };
+      privacyDoc: {
+        id: string;
+        document: string;
+        version: string;
+        contentSha256: string;
+      };
+    };
+  }): Promise<{ user: User; acceptances: LegalAcceptance[] }> {
+    // 1. Validate against approved catalog
+    const catalogTerms = getApprovedLegalDocument(params.evidence.termsDoc.document, params.evidence.termsDoc.version);
+    if (!catalogTerms) {
+      throw new Error(`La versión de Términos (${params.evidence.termsDoc.version}) no está aprobada en el catálogo.`);
+    }
+    if (catalogTerms.contentSha256 !== params.evidence.termsDoc.contentSha256) {
+      throw new Error("Discrepancia en el hash de los Términos y Condiciones.");
+    }
+
+    const catalogPrivacy = getApprovedLegalDocument(params.evidence.privacyDoc.document, params.evidence.privacyDoc.version);
+    if (!catalogPrivacy) {
+      throw new Error(`La versión del Aviso de Privacidad (${params.evidence.privacyDoc.version}) no está aprobada en el catálogo.`);
+    }
+    if (catalogPrivacy.contentSha256 !== params.evidence.privacyDoc.contentSha256) {
+      throw new Error("Discrepancia en el hash del Aviso de Privacidad.");
+    }
+
+    // 2. Verify persisted versions match catalog and hashes
+    const persistedTerms = this.legalDocumentVersions.get(params.evidence.termsDoc.id);
+    if (!persistedTerms) {
+      throw new Error(`La versión de Términos (${params.evidence.termsDoc.id}) no se encuentra persistida.`);
+    }
+    if (
+      persistedTerms.contentSha256 !== catalogTerms.contentSha256 ||
+      persistedTerms.document !== catalogTerms.document ||
+      persistedTerms.version !== catalogTerms.version
+    ) {
+      throw new Error("Discrepancia detectada entre Términos persistidos y catálogo aprobado.");
+    }
+    const termsHash = createHash("sha256").update(persistedTerms.content, "utf8").digest("hex");
+    if (termsHash !== catalogTerms.contentSha256) {
+      throw new Error("Discrepancia en la integridad del contenido persistido de Términos.");
+    }
+
+    const persistedPrivacy = this.legalDocumentVersions.get(params.evidence.privacyDoc.id);
+    if (!persistedPrivacy) {
+      throw new Error(`La versión del Aviso (${params.evidence.privacyDoc.id}) no se encuentra persistida.`);
+    }
+    if (
+      persistedPrivacy.contentSha256 !== catalogPrivacy.contentSha256 ||
+      persistedPrivacy.document !== catalogPrivacy.document ||
+      persistedPrivacy.version !== catalogPrivacy.version
+    ) {
+      throw new Error("Discrepancia detectada entre Aviso persistido y catálogo aprobado.");
+    }
+    const privacyHash = createHash("sha256").update(persistedPrivacy.content, "utf8").digest("hex");
+    if (privacyHash !== catalogPrivacy.contentSha256) {
+      throw new Error("Discrepancia en la integridad del contenido persistido de Aviso.");
+    }
+
+    // 3. Check duplicate email
+    const existing = await this.getUserByEmail(params.userData.email);
+    if (existing) {
+      throw new Error("Este email ya está registrado");
+    }
+
+    const id = randomUUID();
+    const now = new Date();
+    const user: User = {
+      id,
+      email: params.userData.email,
+      password: params.userData.password,
+      authMethod: params.userData.authMethod || "local",
+      firstName: params.userData.firstName,
+      lastName: params.userData.lastName,
+      role: params.userData.role || "broker",
+      profileImageUrl: null,
+      masterBrokerId: params.userData.masterBrokerId || null,
+      referralCode: params.userData.referralCode || null,
+      customLogo: null,
+      brandName: null,
+      primaryColor: null,
+      secondaryColor: null,
+      isWhiteLabel: false,
+      autoRegisterBrokers: false,
+      profileType: null,
+      profileData: {},
+      isActive: true,
+      createdAt: now,
+      updatedAt: now,
+    };
+
+    const registrationUserName = [user.firstName, user.lastName].filter(Boolean).join(" ").trim() || null;
+    const termsAcceptance: LegalAcceptance = {
+      id: randomUUID(),
+      userId: user.id,
+      userEmail: user.email!,
+      userName: registrationUserName,
+      documentId: params.evidence.termsDoc.id,
+      document: params.evidence.termsDoc.document,
+      version: params.evidence.termsDoc.version,
+      contentSha256: params.evidence.termsDoc.contentSha256,
+      acceptanceType: "accept_terms",
+      ipAddress: params.evidence.ipAddress,
+      userAgent: params.evidence.userAgent,
+      acceptedAt: now,
+    };
+
+    const privacyAcceptance: LegalAcceptance = {
+      id: randomUUID(),
+      userId: user.id,
+      userEmail: user.email!,
+      userName: registrationUserName,
+      documentId: params.evidence.privacyDoc.id,
+      document: params.evidence.privacyDoc.document,
+      version: params.evidence.privacyDoc.version,
+      contentSha256: params.evidence.privacyDoc.contentSha256,
+      acceptanceType: "acknowledge_privacy",
+      ipAddress: params.evidence.ipAddress,
+      userAgent: params.evidence.userAgent,
+      acceptedAt: now,
+    };
+
+    this.users.set(id, structuredClone(user));
+    this.legalAcceptances.set(termsAcceptance.id, structuredClone(termsAcceptance));
+    this.legalAcceptances.set(privacyAcceptance.id, structuredClone(privacyAcceptance));
+
+    return {
+      user: structuredClone(user),
+      acceptances: [structuredClone(termsAcceptance), structuredClone(privacyAcceptance)],
+    };
+  }
+
+  // Formalization OTP & Agreements (Bloque 3B1)
+  async getFormalizationDocuments(userId: string): Promise<FormalizationDocumentsResult> {
+    const user = await this.getUser(userId);
+    if (!user) {
+      throw new Error("Usuario no encontrado.");
+    }
+
+    if (!isRoleSubjectToFormalization(user.role)) {
+      return {
+        requiresFormalization: false,
+        isFormalized: true,
+        message: "El rol del usuario no requiere formalización de convenio.",
+        documents: [],
+      };
+    }
+
+    const status = await this.isUserFormalized(user.id, user.role);
+    const docs = getFormalizationCatalogDocuments(user.role);
+    const fullName = [user.firstName, user.lastName].filter(Boolean).join(" ").trim() || (user as any).accountHolder || user.email!;
+
+    return {
+      requiresFormalization: true,
+      isFormalized: status.isFormalized,
+      user: {
+        id: user.id,
+        email: user.email!,
+        name: fullName,
+        role: user.role,
+      },
+      documents: docs.map((d) => ({
+        document: d.document,
+        version: d.version,
+        title: d.title,
+        content: d.content,
+        contentSha256: d.contentSha256,
+        effectiveAt: d.effectiveAt,
+      })),
+    };
+  }
+
+  async getFormalizationStatus(userId: string): Promise<FormalizationStatusResult> {
+    const user = await this.getUser(userId);
+    if (!user) {
+      throw new Error("Usuario no encontrado.");
+    }
+
+    if (!isRoleSubjectToFormalization(user.role)) {
+      return {
+        requiresFormalization: false,
+        isFormalized: true,
+        formalizedAt: null,
+        requiredDocuments: [],
+        acceptedDocuments: [],
+      };
+    }
+
+    const requiredDocs = getRequiredFormalizationDocuments(user.role);
+    const status = await this.isUserFormalized(user.id, user.role);
+
+    return {
+      requiresFormalization: true,
+      isFormalized: status.isFormalized,
+      formalizedAt: status.formalizedAt ? status.formalizedAt.toISOString() : null,
+      requiredDocuments: requiredDocs,
+      acceptedDocuments: status.acceptedDocuments,
+    };
+  }
+
+  async createOrResendFormalizationOtp(params: {
+    userId: string;
+    confirmedDocuments: Array<{ document: string; version: string }>;
+  }): Promise<CreateFormalizationOtpResult> {
+    return await this.withUserLock(params.userId, async () => {
+      const user = await this.getUser(params.userId);
+      if (!user) {
+        return { success: false, statusCode: 404, error: "Usuario no encontrado." };
+      }
+
+      if (!isRoleSubjectToFormalization(user.role)) {
+        return { success: false, statusCode: 400, error: "El rol del usuario no requiere formalización." };
+      }
+
+      const status = await this.isUserFormalized(user.id, user.role);
+      if (status.isFormalized) {
+        return { success: false, statusCode: 400, error: "El usuario ya ha formalizado su Convenio." };
+      }
+
+      const validation = validateFormalizationConfirmation(user.role, params.confirmedDocuments);
+      if (!validation.valid) {
+        return { success: false, statusCode: 400, error: validation.error };
+      }
+
+      const oneHourAgo = new Date(Date.now() - FORMALIZATION_OTP_WINDOW_MS);
+      const recentCount = await this.countFormalizationOtpRequests(user.id, oneHourAgo);
+      if (recentCount >= FORMALIZATION_OTP_MAX_REQUESTS_PER_WINDOW) {
+        return {
+          success: false,
+          statusCode: 429,
+          error: "Has superado el límite de solicitudes de código. Por favor intenta más tarde.",
+        };
+      }
+
+      const now = new Date();
+
+      // Cooldown must be calculated from the latest emission of the user,
+      // even if that OTP was invalidated by email failure, max attempts, or identity change.
+      const latestOtp = Array.from(this.formalizationOtpRequests.values())
+        .filter((o) => o.userId === user.id)
+        .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())[0];
+
+      if (latestOtp) {
+        const resendAvailableAt = new Date(latestOtp.resendAvailableAt).getTime();
+        if (now.getTime() < resendAvailableAt) {
+          const remainingSeconds = Math.ceil((resendAvailableAt - now.getTime()) / 1000);
+          return {
+            success: false,
+            statusCode: 429,
+            error: `Debes esperar ${remainingSeconds} segundos antes de solicitar un nuevo código.`,
+            resendAvailableAt: latestOtp.resendAvailableAt,
+          };
+        }
+      }
+
+      // If there is an active (unconsumed and uninvalidated) OTP and cooldown has passed,
+      // invalidate it because this new emission supersedes it
+      const previousActiveOtp = Array.from(this.formalizationOtpRequests.values())
+        .filter((o) => o.userId === user.id && !o.consumed && !o.invalidated)
+        .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())[0];
+
+      if (previousActiveOtp) {
+        previousActiveOtp.invalidated = true;
+        previousActiveOtp.invalidatedAt = now;
+        this.formalizationOtpRequests.set(previousActiveOtp.id, structuredClone(previousActiveOtp));
+      }
+
+      const rawCode = generateOtpCode();
+      const codeHash = hashOtpCode(rawCode);
+      const expiresAt = new Date(now.getTime() + FORMALIZATION_OTP_EXPIRATION_MS);
+      const resendAvailableAt = new Date(now.getTime() + FORMALIZATION_OTP_COOLDOWN_MS);
+      const fullName = [user.firstName, user.lastName].filter(Boolean).join(" ").trim() || (user as any).accountHolder || user.email!;
+
+      const documentsSnapshot = validation.catalogDocs!.map((d) => ({
+        id: d.id,
+        document: d.document,
+        version: d.version,
+        title: d.title,
+        contentSha256: d.contentSha256,
+      }));
+
+      const newOtp: FormalizationOtpRequest = {
+        id: randomUUID(),
+        userId: user.id,
+        userEmail: user.email!,
+        userName: fullName,
+        userRole: user.role,
+        documentsSnapshot,
+        codeHash,
+        attempts: 0,
+        maxAttempts: FORMALIZATION_OTP_MAX_ATTEMPTS,
+        expiresAt,
+        resendAvailableAt,
+        consumed: false,
+        consumedAt: null,
+        invalidated: false,
+        invalidatedAt: null,
+        createdAt: now,
+      };
+
+      this.formalizationOtpRequests.set(newOtp.id, structuredClone(newOtp));
+
+      return {
+        success: true,
+        statusCode: 200,
+        otp: structuredClone(newOtp),
+        rawCode,
+        documentsForEmail: validation.catalogDocs!.map((d) => ({ title: d.title, version: d.version })),
+      };
+    });
+  }
+
+  async invalidateFormalizationOtp(otpId: string, reason?: string): Promise<void> {
+    const existing = this.formalizationOtpRequests.get(otpId);
+    if (existing) {
+      existing.invalidated = true;
+      existing.invalidatedAt = new Date();
+      this.formalizationOtpRequests.set(otpId, structuredClone(existing));
+    }
+  }
+
+  async verifyAndFormalizeAgreementWithOtp(params: {
+    userId: string;
+    code: string;
+    confirmedDocuments: Array<{ document: string; version: string }>;
+    ipAddress: string;
+    userAgent: string;
+  }): Promise<VerifyFormalizationOtpResult> {
+    return await this.withUserLock(params.userId, async () => {
+      const user = await this.getUser(params.userId);
+      if (!user) {
+        return { success: false, statusCode: 404, error: "Usuario no encontrado." };
+      }
+
+      const activeOtp = Array.from(this.formalizationOtpRequests.values())
+        .filter((o) => o.userId === user.id && !o.consumed && !o.invalidated)
+        .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())[0];
+
+      if (!activeOtp) {
+        return {
+          success: false,
+          statusCode: 400,
+          error: "No se encontró una solicitud activa de formalización para este usuario.",
+        };
+      }
+
+      const now = new Date();
+
+      if (activeOtp.attempts >= activeOtp.maxAttempts) {
+        activeOtp.invalidated = true;
+        activeOtp.invalidatedAt = now;
+        this.formalizationOtpRequests.set(activeOtp.id, structuredClone(activeOtp));
+        return {
+          success: false,
+          statusCode: 400,
+          error: "Has superado el límite máximo de 5 intentos fallidos. Solicita un nuevo código.",
+          remainingAttempts: 0,
+        };
+      }
+
+      if (now.getTime() > new Date(activeOtp.expiresAt).getTime()) {
+        activeOtp.invalidated = true;
+        activeOtp.invalidatedAt = now;
+        this.formalizationOtpRequests.set(activeOtp.id, structuredClone(activeOtp));
+        return {
+          success: false,
+          statusCode: 400,
+          error: "El código de verificación ha expirado. Solicita un nuevo código.",
+        };
+      }
+
+      // Check identity drift
+      const currentUserName = [user.firstName, user.lastName].filter(Boolean).join(" ").trim() || (user as any).accountHolder || user.email!;
+      if (
+        user.email !== activeOtp.userEmail ||
+        currentUserName !== activeOtp.userName ||
+        user.role !== activeOtp.userRole
+      ) {
+        activeOtp.invalidated = true;
+        activeOtp.invalidatedAt = now;
+        this.formalizationOtpRequests.set(activeOtp.id, structuredClone(activeOtp));
+        return {
+          success: false,
+          statusCode: 400,
+          error: "Los datos de identidad (nombre, correo o rol) han cambiado desde que se solicitó el código. Debes reiniciar el proceso de formalización.",
+          requiresRestart: true,
+        };
+      }
+
+      // Validate documents and active versions
+      const validation = validateFormalizationConfirmation(activeOtp.userRole, params.confirmedDocuments);
+      if (!validation.valid) {
+        return { success: false, statusCode: 400, error: validation.error };
+      }
+
+      const validatedCatalogDocs: LegalDocumentVersionDb[] = [];
+      for (const conf of params.confirmedDocuments) {
+        const activeDoc = getActiveFormalizationDocument(conf.document);
+        if (!activeDoc || activeDoc.version !== conf.version) {
+          return {
+            success: false,
+            statusCode: 400,
+            error: `La versión '${conf.version}' para el documento '${conf.document}' no está habilitada actualmente.`,
+          };
+        }
+
+        const docId = `${conf.document}:${conf.version}`;
+        const persisted = this.legalDocumentVersions.get(docId);
+        if (!persisted) {
+          return {
+            success: false,
+            statusCode: 400,
+            error: `La versión persistida no se encuentra disponible: ${docId}`,
+          };
+        }
+
+        // Validate document identity and version
+        if (persisted.id !== docId || persisted.document !== conf.document || persisted.version !== conf.version) {
+          return {
+            success: false,
+            statusCode: 400,
+            error: `Discrepancia en la identidad del documento persistido: ${docId}`,
+          };
+        }
+
+        // Recalculate SHA-256 of persisted content
+        const recomputedSha256 = createHash("sha256").update(persisted.content || "", "utf8").digest("hex");
+        if (recomputedSha256 !== persisted.contentSha256) {
+          return {
+            success: false,
+            statusCode: 400,
+            error: `Discrepancia de integridad en el contenido persistido: ${docId}`,
+          };
+        }
+
+        if (recomputedSha256 !== activeDoc.contentSha256 || persisted.contentSha256 !== activeDoc.contentSha256) {
+          return {
+            success: false,
+            statusCode: 400,
+            error: `Discrepancia de integridad con el catálogo activo: ${docId}`,
+          };
+        }
+
+        const snapshot = (activeOtp.documentsSnapshot as any[]).find((s) => s.document === conf.document);
+        if (
+          !snapshot ||
+          snapshot.id !== docId ||
+          snapshot.version !== conf.version ||
+          snapshot.contentSha256 !== activeDoc.contentSha256 ||
+          snapshot.contentSha256 !== recomputedSha256
+        ) {
+          return {
+            success: false,
+            statusCode: 400,
+            error: "Las versiones o el contenido de los documentos cambiaron desde la solicitud del código. Solicita un nuevo código.",
+          };
+        }
+
+        validatedCatalogDocs.push(persisted);
+      }
+
+      // Constant-time HMAC code verification
+      const isMatch = verifyOtpCode(params.code, activeOtp.codeHash);
+      if (!isMatch) {
+        activeOtp.attempts += 1;
+        const limitReached = activeOtp.attempts >= activeOtp.maxAttempts;
+        if (limitReached) {
+          activeOtp.invalidated = true;
+          activeOtp.invalidatedAt = now;
+        }
+        this.formalizationOtpRequests.set(activeOtp.id, structuredClone(activeOtp));
+
+        const remaining = Math.max(0, activeOtp.maxAttempts - activeOtp.attempts);
+        return {
+          success: false,
+          statusCode: 400,
+          error: limitReached
+            ? "Has superado el límite máximo de 5 intentos fallidos. Solicita un nuevo código."
+            : `Código incorrecto. Te quedan ${remaining} ${remaining === 1 ? "intento" : "intentos"}.`,
+          remainingAttempts: remaining,
+        };
+      }
+
+      // Mark OTP as consumed
+      activeOtp.consumed = true;
+      activeOtp.consumedAt = now;
+      this.formalizationOtpRequests.set(activeOtp.id, structuredClone(activeOtp));
+
+      // Create legal acceptances using confirmed identity snapshot
+      const createdAcceptances: LegalAcceptance[] = [];
+      for (const doc of validatedCatalogDocs) {
+        const acceptance: LegalAcceptance = {
+          id: randomUUID(),
+          userId: activeOtp.userId,
+          userEmail: activeOtp.userEmail,
+          userName: activeOtp.userName,
+          documentId: doc.id,
+          document: doc.document,
+          version: doc.version,
+          contentSha256: doc.contentSha256,
+          acceptanceType: `accept_${doc.document.replace(/-/g, "_")}`,
+          ipAddress: params.ipAddress,
+          userAgent: params.userAgent,
+          acceptedAt: now,
+        };
+        this.legalAcceptances.set(acceptance.id, structuredClone(acceptance));
+        createdAcceptances.push(structuredClone(acceptance));
+      }
+
+      return {
+        success: true,
+        statusCode: 200,
+        acceptances: createdAcceptances,
+      };
+    });
+  }
+
+  async getLatestFormalizationOtpByUser(userId: string): Promise<FormalizationOtpRequest | undefined> {
+    const otps = Array.from(this.formalizationOtpRequests.values())
+      .filter((o) => o.userId === userId)
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    return otps[0] ? structuredClone(otps[0]) : undefined;
+  }
+
+  async countFormalizationOtpRequests(userId: string, since: Date): Promise<number> {
+    const sinceTime = since.getTime();
+    return Array.from(this.formalizationOtpRequests.values()).filter(
+      (o) => o.userId === userId && new Date(o.createdAt).getTime() >= sinceTime,
+    ).length;
+  }
+
+  async isUserFormalized(userId: string, role?: string): Promise<{ isFormalized: boolean; formalizedAt?: Date; acceptedDocuments: string[] }> {
+    let userRole = role;
+    if (!userRole) {
+      const user = await this.getUser(userId);
+      userRole = user?.role;
+    }
+    const requiredDocs = getRequiredFormalizationDocuments(userRole);
+    if (requiredDocs.length === 0) {
+      return { isFormalized: true, acceptedDocuments: [] };
+    }
+
+    const acceptances = await this.getLegalAcceptancesByUser(userId);
+    const acceptedDocsMap = new Map<string, Date>();
+    for (const acc of acceptances) {
+      if (requiredDocs.includes(acc.document) && !acceptedDocsMap.has(acc.document)) {
+        acceptedDocsMap.set(acc.document, new Date(acc.acceptedAt));
+      }
+    }
+
+    const allAccepted = requiredDocs.every((doc) => acceptedDocsMap.has(doc));
+    if (!allAccepted) {
+      return {
+        isFormalized: false,
+        acceptedDocuments: Array.from(acceptedDocsMap.keys()),
+      };
+    }
+
+    let latestDate = new Date(0);
+    for (const doc of requiredDocs) {
+      const d = acceptedDocsMap.get(doc)!;
+      if (d.getTime() > latestDate.getTime()) {
+        latestDate = d;
+      }
+    }
+
+    return {
+      isFormalized: true,
+      formalizedAt: latestDate,
+      acceptedDocuments: Array.from(acceptedDocsMap.keys()),
+    };
+  }
+
+  // Broker Commission Acceptance operations
+  async getBrokerCommissionAcceptances(userId: string): Promise<BrokerCommissionAcceptance[]> {
+    return Array.from(this.brokerCommissionAcceptancesMap.values())
+      .filter((a) => a.userId === userId)
+      .sort((a, b) => new Date(b.acceptedAt).getTime() - new Date(a.acceptedAt).getTime());
+  }
+
+  async getBrokerCommissionAcceptance(userId: string, institutionId: string, ratesHash: string): Promise<BrokerCommissionAcceptance | undefined> {
+    return Array.from(this.brokerCommissionAcceptancesMap.values()).find(
+      (a) => a.userId === userId && a.institutionId === institutionId && a.ratesHash === ratesHash
+    );
+  }
+
+  async createBrokerCommissionAcceptance(data: InsertBrokerCommissionAcceptance): Promise<BrokerCommissionAcceptance> {
+    const id = (data as any).id || randomUUID();
+    const acceptance: BrokerCommissionAcceptance = {
+      id,
+      userId: data.userId,
+      institutionId: data.institutionId,
+      acceptedRates: data.acceptedRates ?? {},
+      ratesHash: data.ratesHash,
+      acceptedAt: new Date(),
+      ipAddress: data.ipAddress ?? null,
+      userAgent: data.userAgent ?? null,
+    };
+    this.brokerCommissionAcceptancesMap.set(id, acceptance);
+    return acceptance;
+  }
+
+
 
   async updateUser(id: string, userData: Partial<UpsertUser>): Promise<User | undefined> {
     const existing = this.users.get(id);

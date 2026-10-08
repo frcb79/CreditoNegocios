@@ -55,3 +55,15 @@ Actualizar cada vez que se completa una feature.
 	- Desempate determinista por orden de inserción en `MemStorage.getCommercialAuditLogs`.
 	- Corrección de delimitadores PL/pgSQL `$$` en migración 0004.
 	- Cobertura 100% pasando: 161 unit tests y 51 E2E tests en Staging.
+
+## 2026-10-07 — Cierre P0: Formalización Obligatoria y Cierre de Bypasses en Originación
+- **Cierre Integral de Bypasses de Originación (`server/tenantPermissions.ts` & `server/routes.ts`):**
+	- Implementación de `validateEffectiveBrokerFormalization` y pipeline `validateCommercialOriginationAndFormalization`.
+	- Protección estricta en todas las rutas de originación: `POST /api/clients`, `POST /api/credits`, `POST /api/credit-submissions`, `POST /api/credit-submissions/:id/targets`, `POST /api/mortgage-leads`, y `POST /api/clients/:id/opportunities`.
+	- Resolución del broker efectivo: bloqueo con `403 FORMALIZATION_REQUIRED` si el broker titular o delegado no cuenta con sus convenios vigentes, incluso cuando la acción es ejecutada por administradores o colaboradores en su nombre.
+	- Exención y preservación intacta de facultades para administradores que originan operaciones propias.
+	- Validación dinámica por rol: exigencia de Convenio y Reglas de Red para Brokers, y adicionalmente Reglas Master para Master Brokers (incluyendo casos de promoción).
+	- Preservación de la experiencia acordada: libre registro, login, consulta de perfil y navegación previa a formalizar.
+- **Suite de Pruebas Automatizadas (`tests/unit/broker-formalization-origination-gate.test.ts`):**
+	- 14 pruebas de integración unitarias cubriendo los 8 escenarios obligatorios al 100% (14/14 pasando).
+	- Regresión limpia: suite de formalización UI `broker-formalization-ui-block3b2a.test.ts` pasando al 100% (17/17).

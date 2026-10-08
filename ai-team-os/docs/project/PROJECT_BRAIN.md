@@ -56,22 +56,26 @@ Completado:
 	- Purga y depuración permanente de 5 entidades de pruebas pasadas (E2E Flujo Completo, Financiera Demo, Financiera Prueba Franco) para dejar el catálogo oficial limpio en exactamente 18 financieras sin duplicados ni faltantes.
 	- Implementación del endpoint y método `DELETE /api/financial-institutions/:id` con soporte de eliminación en cascada referencial y confirmación en UI (`Financieras.tsx`).
 - **Sprint 2026-10-07 (CreditoNegocios - Broker Network Transitions & Formalización):**
-	- **Misión Broker Network Transitions (`feat/broker-network-transitions` - HEAD `91be378`):**
+	- **Misión Broker Network Transitions (`feat/broker-network-transitions`):**
 		- QA técnico y funcional completado con éxito: TypeScript (`npm run check`) 0 errores, `npm run build` exitoso.
 		- 161/161 pruebas unitarias pasando (14 suites completas).
 		- 51/51 pruebas E2E pasando contra Staging (31/31 históricas + 20/20 gobernanza/normativa).
 		- Migración `0004_broker_network_transitions.sql` validada e idempotentemente ejecutada en Staging (Railway) con delimitadores PL/pgSQL corregidos (`DO $$`).
 		- Escenarios funcionales obligatorios A–F validados: A (Master A -> Master B), B (Master -> Directo Plataforma `masterBrokerId = null`), C (Directo -> Master B con preservación de origen), D (Promoción Broker -> Master Broker con conservación de identidad y tenant), E (Gobernanza de suspensiones y reactivación exclusiva por Super Admin), F (Lineage crítico Oportunidad -> Solicitud -> Crédito -> Comisión inmutable en Master A).
 		- Inmutabilidad verificada a nivel de triggers PostgreSQL en Staging (`trg_opportunity_origin_master_immutable`, `trg_submission_origin_master_immutable`, `trg_credits_origin_master_immutable`).
-		- Entorno productivo estrictamente no intervenido.
-	- **Misión Formalización Documental & Expediente del Broker (`feat/broker-formalization-ui-block-3b2a` - HEAD `3542f1d`):**
-		- Rama protegida independientemente; incluye formalización documental, expediente del broker y confirmación/aceptación comercial.
+	- **Misión Formalización Documental & Expediente del Broker (`feat/broker-formalization-origination-gate`):**
+		- Centralización del gate de formalización mediante `validateEffectiveBrokerFormalization` y pipeline `validateCommercialOriginationAndFormalization` en backend (`server/tenantPermissions.ts` y `server/routes.ts`).
+		- Blindaje integral de rutas de originación: `POST /api/clients`, `POST /api/credits`, `POST /api/credit-submissions`, `POST /api/credit-submissions/:id/targets`, `POST /api/mortgage-leads`, y `POST /api/clients/:id/opportunities`.
+		- Cierre de bypasses en originación delegada (colaboradores o admins actuando en nombre de un broker no formalizado son bloqueados con 403 `FORMALIZATION_REQUIRED`).
+		- Preservación de facultades para administradores que originan operaciones propias.
+		- Exigencia de documentos vigentes por rol: Convenio y Reglas de Red para Brokers; Convenio, Reglas de Red y Reglas Master para Master Brokers (incluyendo ascensos).
+		- Preservación de la experiencia pactada: registro libre, consulta de documentos y edición de perfil previa a formalización.
+		- Suite de 14 pruebas automatizadas con 100% de éxito y regresión limpia en suite UI 3b2a (17/17).
 
 En progreso:
-- Cierre de ciclo QA de transiciones y formalización.
+- Integración controlada en rama `integration/network-formalization`: consolidación de Network Transitions y Formalización Obligatoria con verificación de lineage y gobernanza de comisiones bancarias.
 
 Pendiente:
-- **Integración controlada de ramas:** Realizar la integración controlada entre `feat/broker-network-transitions` y `feat/broker-formalization-ui-block-3b2a` antes de merge a `main` o liberación a producción.
 - **Verificación de deploy en Staging:** Comprobar un deploy en Staging del commit exacto consolidado que finalmente se vaya a liberar.
 - **Siguiente bloque de producto:** Financieras, Ofertas, Variables Canónicas, Matching y Comisiones (arquitectura funcional en definición externa fuera de AG, se entregará con prompts específicos).
 - Revisión de items de `Pendientes.md` (logo/fondo transparente en sidebar, mensaje de devolución admin en modal de broker, tracking de pagos de sobretasa de financiera a super admin).
@@ -79,7 +83,7 @@ Pendiente:
 - Establecer ritual de sync periódico de aprendizajes al repositorio maestro.
 
 Bloqueadores:
-- Ninguno. Builds limpios, tests verdes (161 unit, 51 E2E) y base de datos Staging verificada.
+- Ninguno. Builds limpios, tests verdes y validación de base de datos intacta.
 
 ## HISTORIAL
 2026-04-17 — Sesion inicial: creacion de estructura base del sistema.
@@ -90,4 +94,4 @@ Bloqueadores:
 2026-09-04 — Implementación de Filtros de Clientes, Multi-Dispersión de Créditos con Comisiones Individuales, Red de Brokers 3-en-1 para Super Admin, y corrección de build Vercel (IIFE en JSX).
 2026-09-11 — Corrección de build en Railway, reparación de esquema PostgreSQL (`referral_code`), implementación de fallback nativo SQL en autenticación, restauración y blindaje de matriz RBAC (3 cuentas con `Prueba1$`) y validación live en producción.
 2026-09-17 — Procesamiento de `Plantilla_Comisiones_Financieras Luis.xlsx`, alta de 5 nuevas financieras (Altum, Cualli, Jeeves, Aspiria, Kapital) y actualización de Pretmex. Purga de 5 entidades de prueba e incorporación de eliminación permanente segura (`DELETE /api/financial-institutions/:id`). Catálogo consolidado en 18 financieras reales.
-2026-10-07 — Cierre de QA de Broker Network Transitions (migración 0004 en Staging, triggers de inmutabilidad, lineage de 4 etapas, 161 unit tests, 51 E2E) y protección de rama de formalización documental (`feat/broker-formalization-ui-block-3b2a`). Pendiente integración controlada pre-producción.
+2026-10-07 — Broker Network Transitions (migración 0004, triggers de inmutabilidad, lineage de 4 etapas, 161 unit tests) y Formalización Documental P0 (gate centralizado en backend con validación de broker efectivo, protección de 6 rutas clave, soporte para ascensos a Master Broker). Integración controlada en `integration/network-formalization`.

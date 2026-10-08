@@ -1,10 +1,13 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
+import { createHash } from "crypto";
 import { WebSocketServer, WebSocket } from "ws";
 import rateLimit from "express-rate-limit";
 import { pool } from "./db";
 import { storage } from "./storage";
 import { setupAuth, isAuthenticated } from "./auth";
+import { registerLegalRoutes } from "./legalRoutes";
+import { validateRegistrationAcceptance } from "./legalDocuments";
 import PDFDocument from "pdfkit";
 import bcrypt from "bcrypt";
 import { sendBrokerDeactivationRequestEmail, sendBrokerLeadEmail, sendPasswordResetEmail, sendWebsiteLeadEmail, sendWelcomeEmail, sendSuperAdminNotificationEmail } from "./emailService";
@@ -62,6 +65,7 @@ import {
   type UserStatusRequestStatus,
   type UserStatusRequestAction,
 } from "../shared/schema";
+import { isRoleSubjectToFormalization } from "../shared/legalDocuments";
 import { commercialConfigService } from "./commercialConfigService";
 
 import {
@@ -103,7 +107,9 @@ import {
 import {
   validateTenantMemberPermissions,
   checkTransactionalCreationAllowed,
-  validateCommercialOrigination
+  validateCommercialOrigination,
+  validateCommercialOriginationAndFormalization,
+  validateEffectiveBrokerFormalization
 } from "./tenantPermissions";
 
 // Ensure upload directory exists
@@ -845,6 +851,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Auth middleware
   await setupAuth(app);
 
+  // Register legal routes after session/Passport initialization
+  registerLegalRoutes(app);
+
   // Tenant context middleware - must be after auth setup
   app.use(tenantContextMiddleware);
 
@@ -970,11 +979,37 @@ export async function registerRoutes(app: Express): Promise<Server> {
     lastName: z.string().min(1, "Apellido requerido"),
     referralCode: z.string().optional(), // Clave de Franquicia del Master Broker
     promoCode: z.string().optional(), // Código promocional (beneficio comercial)
+    acceptTerms: z.literal(true, {
+      errorMap: () => ({ message: "Debes aceptar los Términos y Condiciones para continuar." }),
+    }),
+    termsVersion: z.string({
+      required_error: "La versión de Términos y Condiciones es requerida",
+      invalid_type_error: "La versión de Términos y Condiciones es requerida",
+    }),
+    acknowledgePrivacy: z.literal(true, {
+      errorMap: () => ({ message: "Debes confirmar que has leído el Aviso de Privacidad para continuar." }),
+    }),
+    privacyVersion: z.string({
+      required_error: "La versión del Aviso de Privacidad es requerida",
+      invalid_type_error: "La versión del Aviso de Privacidad es requerida",
+    }),
   });
 
   app.post('/api/auth/register', authMutationLimiter, async (req: any, res) => {
     try {
       const data = registerSchema.parse(req.body);
+
+      // Validate legal confirmations and active versions
+      const legalValidation = validateRegistrationAcceptance({
+        acceptTerms: data.acceptTerms,
+        termsVersion: data.termsVersion,
+        acknowledgePrivacy: data.acknowledgePrivacy,
+        privacyVersion: data.privacyVersion,
+      });
+
+      if (!legalValidation.valid || !legalValidation.termsDoc || !legalValidation.privacyDoc) {
+        return res.status(400).json({ message: legalValidation.error || "Aceptación legal inválida." });
+      }
       
       // Check if email already exists
       const existingUser = await storage.getUserByEmail(data.email);
@@ -1042,19 +1077,74 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Hash password
       const saltRounds = 10;
       const hashedPassword = await bcrypt.hash(data.password, saltRounds);
+
+      // Client IP captured via Express req.ip (honoring trust proxy configuration)
+      const clientIp = req.ip || req.socket?.remoteAddress || "";
+      const userAgent = (req.headers["user-agent"] as string) || "unknown";
       
-      // Canonical broker creation: identity + own organization + owner membership
-      // are committed atomically so the user can be safely moved/promoted later.
-      const brokerCreation = await createBrokerWithOrganization({
-        email: data.email,
-        password: hashedPassword,
-        firstName: data.firstName,
-        lastName: data.lastName,
-        authMethod: "local",
-        masterBrokerId: masterBrokerId || null,
-        isActive: true,
+      // Create user and legal evidence atomically
+      const { user } = await storage.registerUserWithLegalEvidence({
+        userData: {
+          email: data.email,
+          password: hashedPassword,
+          firstName: data.firstName,
+          lastName: data.lastName,
+          authMethod: "local",
+          role: "broker", // Default role for new registrations
+          masterBrokerId,
+        },
+        evidence: {
+          ipAddress: clientIp,
+          userAgent,
+          termsDoc: {
+            id: legalValidation.termsDoc.id,
+            document: legalValidation.termsDoc.document,
+            version: legalValidation.termsDoc.version,
+            contentSha256: legalValidation.termsDoc.contentSha256,
+          },
+          privacyDoc: {
+            id: legalValidation.privacyDoc.id,
+            document: legalValidation.privacyDoc.document,
+            version: legalValidation.privacyDoc.version,
+            contentSha256: legalValidation.privacyDoc.contentSha256,
+          },
+        },
       });
-      const user = brokerCreation.user;
+
+      // Canonical broker creation: provision own organization + owner membership
+      // so the user can be safely moved/promoted later in network transitions.
+      let brokerTenant: any = null;
+      try {
+        const platformTenant = (await storage.getTenants?.())?.find((t: any) => t.type === "platform") || (await storage.getTenants?.())?.[0];
+        let parentTenantId = platformTenant?.id || null;
+        if (masterBrokerId && storage.getTenants) {
+          const allTenants = await storage.getTenants();
+          const masterTenant = allTenants.find((t: any) => (t.settings as any)?.legacyOwnerUserId === masterBrokerId);
+          if (masterTenant) parentTenantId = masterTenant.id;
+        }
+
+        brokerTenant = await storage.createTenant({
+          name: `Broker ${user.firstName || ''} ${user.lastName || ''}`.trim() || user.email || "Broker",
+          slug: `broker-${user.id.slice(0, 8).toLowerCase()}`,
+          type: "broker",
+          parentTenantId,
+          settings: {
+            legacyOwnerUserId: user.id,
+            createdFrom: "canonical_broker_creation",
+          },
+          isActive: true,
+        });
+
+        await storage.createTenantMember({
+          tenantId: brokerTenant.id,
+          userId: user.id,
+          role: "owner",
+          canOriginate: true,
+          isActive: true,
+        });
+      } catch (tenantInitErr) {
+        console.warn("[REGISTER] Broker tenant initialization skipped or failed:", tenantInitErr);
+      }
 
       // Apply promotional redemption if promo was supplied
       if (validatedPromo) {
@@ -1062,7 +1152,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           await storage.createPromoRedemption({
             promoCodeId: validatedPromo.id,
             userId: user.id,
-            tenantId: brokerCreation.tenant.id,
+            tenantId: brokerTenant?.id || null,
             startsAt: new Date(),
             expiresAt: targetExpiresAt,
             status: "active",
@@ -1375,12 +1465,26 @@ export async function registerRoutes(app: Express): Promise<Server> {
           'firstName', 'lastName', 'phone', 'profileImageUrl',
           'brandName', 'customLogo', 'primaryColor', 'secondaryColor',
           'isWhiteLabel', 'bankName', 'clabe', 'accountHolder',
-          'commercialReferences', 'profileData'
+          'commercialReferences', 'profileData', 'taxId', 'businessName'
         ];
         for (const key of allowedFields) {
           if (userData[key] !== undefined) {
             sanitizedData[key] = userData[key];
           }
+        }
+        if (sanitizedData.taxId || sanitizedData.businessName || sanitizedData.phone) {
+          sanitizedData.profileData = {
+            ...(sanitizedData.profileData || {}),
+            ...(sanitizedData.taxId ? { taxId: sanitizedData.taxId, rfc: sanitizedData.taxId } : {}),
+            ...(sanitizedData.businessName ? { businessName: sanitizedData.businessName } : {}),
+            ...(sanitizedData.phone ? { phone: sanitizedData.phone } : {}),
+          };
+          if (sanitizedData.businessName && !sanitizedData.brandName) {
+            sanitizedData.brandName = sanitizedData.businessName;
+          }
+          delete sanitizedData.taxId;
+          delete sanitizedData.businessName;
+          delete sanitizedData.phone;
         }
       } else {
         // Admins can update user data, with protections
@@ -1388,6 +1492,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
         // An admin cannot promote anyone to super_admin unless they are super_admin
         if (currentUser.role !== 'super_admin' && sanitizedData.role === 'super_admin') {
           return res.status(403).json({ message: "Solo un Super Administrador puede asignar el rol de Super Administrador" });
+        }
+        if (sanitizedData.taxId || sanitizedData.businessName || sanitizedData.phone) {
+          sanitizedData.profileData = {
+            ...(sanitizedData.profileData || {}),
+            ...(sanitizedData.taxId ? { taxId: sanitizedData.taxId, rfc: sanitizedData.taxId } : {}),
+            ...(sanitizedData.businessName ? { businessName: sanitizedData.businessName } : {}),
+            ...(sanitizedData.phone ? { phone: sanitizedData.phone } : {}),
+          };
+          if (sanitizedData.businessName && !sanitizedData.brandName) {
+            sanitizedData.brandName = sanitizedData.businessName;
+          }
+          delete sanitizedData.taxId;
+          delete sanitizedData.businessName;
+          delete sanitizedData.phone;
         }
       }
       
@@ -3233,10 +3351,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post('/api/clients', isAuthenticated, requireModuleAndAction('clientes', 'edit'), async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
-      const user = await storage.getUser(userId);
+      const userId = req.user?.claims?.sub || req.user?.id || (req as any).dbUser?.id;
+      const user = (req as any).dbUser || (await storage.getUser(userId));
 
-      const originationCheck = await validateCommercialOrigination({
+      const originationCheck = await validateCommercialOriginationAndFormalization({
         callerUser: user,
         callerMembership: req.tenantContext?.membership,
         tenantId: req.tenantContext?.tenant?.id,
@@ -3244,7 +3362,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
 
       if (!originationCheck.allowed) {
-        return res.status(403).json({ message: originationCheck.message });
+        return res.status(originationCheck.statusCode || 403).json({
+          code: originationCheck.code,
+          message: originationCheck.message,
+        });
       }
 
       const clientData = updatedInsertClientSchema.parse({
@@ -3362,6 +3483,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       const isPlatformAdmin = Boolean(user?.role === 'super_admin' || req.tenantContext?.isPlatformAdmin);
       const targetBrokerId = (isPlatformAdmin && brokerId) ? brokerId : userId;
+
+      const formalizationCheck = await validateEffectiveBrokerFormalization(
+        {
+          callerUser: user,
+          effectiveBrokerId: targetBrokerId,
+        },
+        storage
+      );
+
+      if (!formalizationCheck.allowed) {
+        return res.status(formalizationCheck.statusCode || 403).json({
+          code: formalizationCheck.code,
+          message: formalizationCheck.message,
+        });
+      }
 
       const result = await commercialOpportunityService.createOpportunity({
         clientId: id,
@@ -3988,7 +4124,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const userId = req.user.claims.sub;
       const user = await storage.getUser(userId);
 
-      const originationCheck = await validateCommercialOrigination({
+      const originationCheck = await validateCommercialOriginationAndFormalization({
         callerUser: user,
         callerMembership: req.tenantContext?.membership,
         tenantId: req.tenantContext?.tenant?.id,
@@ -3996,7 +4132,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
 
       if (!originationCheck.allowed) {
-        return res.status(403).json({ message: originationCheck.message });
+        return res.status(originationCheck.statusCode || 403).json({
+          code: originationCheck.code,
+          message: originationCheck.message,
+        });
       }
 
       const creditData = insertCreditSchema.parse({
@@ -5761,6 +5900,297 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Error deleting document:", error);
       res.status(500).json({ message: "Failed to delete document" });
+    }
+  });
+
+  // Broker Expediente Documents (INE, CSF, Estado de Cuenta)
+  app.get('/api/broker/profile-documents', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub || req.user?.id;
+      const docs = await storage.getDocuments({ brokerId: userId });
+      const profileDocs = docs.filter(
+        (d) => !d.clientId && !d.creditId && ['ine', 'csf', 'bank_statement'].includes(d.type)
+      );
+      return res.json({ documents: profileDocs });
+    } catch (error) {
+      console.error('Error fetching broker profile documents:', error);
+      return res.status(500).json({ message: 'Error al consultar documentos de expediente' });
+    }
+  });
+
+  app.post('/api/broker/profile-documents', isAuthenticated, upload.single('file'), async (req: any, res) => {
+    let storedFilePath: string | undefined;
+    try {
+      const userId = req.user?.claims?.sub || req.user?.id;
+      const { type } = req.body;
+      const file = req.file;
+
+      if (!file) {
+        return res.status(400).json({ message: "No se seleccionó ningún archivo" });
+      }
+
+      if (!type || !['ine', 'csf', 'bank_statement'].includes(type)) {
+        return res.status(400).json({
+          message: "Tipo de documento no válido. Tipos aceptados: ine, csf, bank_statement",
+        });
+      }
+
+      const storedFile = await persistDocumentFile(file, {
+        brokerId: userId,
+        type,
+      });
+      storedFilePath = storedFile.filePath;
+
+      // Clean up any previous document of this type for this broker
+      const existingDocs = await storage.getDocuments({ brokerId: userId });
+      const prevDoc = existingDocs.find((d) => !d.clientId && !d.creditId && d.type === type);
+      if (prevDoc) {
+        try {
+          await removeStoredDocument(prevDoc.filePath);
+          await storage.deleteDocument(prevDoc.id);
+        } catch (cleanupErr) {
+          console.warn("Could not remove previous profile document:", cleanupErr);
+        }
+      }
+
+      const documentData = insertDocumentSchema.parse({
+        tenantId: req.tenantContext?.tenant?.id || null,
+        clientId: null,
+        creditId: null,
+        brokerId: userId,
+        uploadedBy: userId,
+        type,
+        fileName: file.originalname,
+        filePath: storedFile.filePath,
+        fileSize: file.size,
+        mimeType: file.mimetype,
+        extractedData: {},
+      });
+
+      const created = await storage.createDocument(documentData);
+      return res.status(201).json(created);
+    } catch (error: any) {
+      if (storedFilePath) {
+        try {
+          await removeStoredDocument(storedFilePath);
+        } catch (_) {}
+      }
+      console.error('Error uploading broker profile document:', error);
+      return res.status(500).json({ message: error.message || 'Error al subir documento de expediente' });
+    }
+  });
+
+  app.delete('/api/broker/profile-documents/:id', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub || req.user?.id;
+      const { id } = req.params;
+      const doc = await storage.getDocument(id);
+      if (!doc) {
+        return res.status(404).json({ message: "Documento no encontrado" });
+      }
+
+      if (doc.brokerId !== userId && doc.uploadedBy !== userId) {
+        return res.status(403).json({ message: "No autorizado para eliminar este documento" });
+      }
+
+      await removeStoredDocument(doc.filePath);
+      await storage.deleteDocument(doc.id);
+      return res.json({ success: true, message: "Documento eliminado correctamente" });
+    } catch (error) {
+      console.error('Error deleting broker profile document:', error);
+      return res.status(500).json({ message: 'Error al eliminar documento' });
+    }
+  });
+
+  app.get('/api/broker/profile-documents/:id/download', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub || req.user?.id;
+      const { id } = req.params;
+      const doc = await storage.getDocument(id);
+      if (!doc) {
+        return res.status(404).json({ message: "Documento no encontrado" });
+      }
+
+      const user = await storage.getUser(userId);
+      const isAdmin = user?.role === 'admin' || user?.role === 'super_admin';
+      if (doc.brokerId !== userId && doc.uploadedBy !== userId && !isAdmin) {
+        return res.status(403).json({ message: "Acceso no autorizado" });
+      }
+
+      const accessTarget = await getDocumentAccessTarget(doc.filePath, {
+        download: true,
+        fileName: doc.fileName,
+      });
+
+      if (accessTarget.kind === 'redirect') {
+        return res.redirect(accessTarget.url);
+      }
+
+      return res.download(accessTarget.absolutePath, doc.fileName);
+    } catch (error) {
+      console.error('Error downloading broker profile document:', error);
+      return res.status(500).json({ message: 'Error al descargar documento' });
+    }
+  });
+
+  // Helper to compute stable SHA-256 hash for commission rates
+  function computeCommissionRatesHash(rates: {
+    apertura?: any;
+    sobretasa?: any;
+    renovacion?: any;
+    [key: string]: any;
+  }): string {
+    const normApertura = String(rates?.apertura ?? '0').trim();
+    const normSobretasa = String(rates?.sobretasa ?? '0').trim();
+    const normRenovacion = String(rates?.renovacion ?? '0').trim();
+    const raw = `apertura:${normApertura}|sobretasa:${normSobretasa}|renovacion:${normRenovacion}`;
+    return createHash('sha256').update(raw).digest('hex');
+  }
+
+  // Helper to determine effective commission rates for user and institution
+  async function getEffectiveCommissionRatesForUser(user: any, institution: any) {
+    let rates = { apertura: '0', sobretasa: '0', renovacion: '0' };
+    let source: 'direct_broker' | 'network_broker' | 'master_broker' | 'default' = 'default';
+
+    if (user?.role === 'master_broker') {
+      source = 'master_broker';
+      const mbRates = (institution.commissionRates as any)?.masterBroker;
+      rates = {
+        apertura: String(mbRates?.apertura ?? institution.masterBrokerCommissionRate ?? institution.commissionRate ?? '0'),
+        sobretasa: String(mbRates?.sobretasa ?? institution.overrateCommissionRate ?? '0'),
+        renovacion: String(mbRates?.renovacion ?? '0'),
+      };
+    } else if (user?.role === 'broker' && user?.masterBrokerId) {
+      source = 'network_broker';
+      let mbUser: any = null;
+      try {
+        mbUser = await storage.getUser(user.masterBrokerId);
+      } catch (_) {}
+      const networkRates = (mbUser?.networkCommissionRates as any) || {};
+      const custom = networkRates[institution.id];
+      const brokerRates = (institution.commissionRates as any)?.broker;
+
+      rates = {
+        apertura: String(custom?.apertura ?? brokerRates?.apertura ?? institution.brokerCommissionRate ?? institution.commissionRate ?? '0'),
+        sobretasa: String(custom?.sobretasa ?? brokerRates?.sobretasa ?? institution.overrateCommissionRate ?? '0'),
+        renovacion: String(custom?.renovacion ?? brokerRates?.renovacion ?? '0'),
+      };
+    } else {
+      source = 'direct_broker';
+      const brokerRates = (institution.commissionRates as any)?.broker;
+      rates = {
+        apertura: String(brokerRates?.apertura ?? institution.brokerCommissionRate ?? institution.commissionRate ?? '0'),
+        sobretasa: String(brokerRates?.sobretasa ?? institution.overrateCommissionRate ?? '0'),
+        renovacion: String(brokerRates?.renovacion ?? '0'),
+      };
+    }
+
+    const ratesHash = computeCommissionRatesHash(rates);
+    return { rates, ratesHash, source };
+  }
+
+  // Broker Commission Acceptances status for all active institutions
+  app.get('/api/broker/commission-acceptances', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub || req.user?.id;
+      const user = await storage.getUser(userId);
+      if (!user) {
+        return res.status(404).json({ message: "Usuario no encontrado" });
+      }
+
+      const allInstitutions = await storage.getFinancialInstitutions(userId);
+      const activeInstitutions = allInstitutions.filter((i: any) => i.isActive);
+      const existingAcceptances = await storage.getBrokerCommissionAcceptances(userId);
+
+      const acceptancesByInst = new Map<string, any>();
+      for (const acc of existingAcceptances) {
+        if (!acceptancesByInst.has(acc.institutionId)) {
+          acceptancesByInst.set(acc.institutionId, acc);
+        }
+      }
+
+      const institutionStatuses: Record<string, {
+        institutionId: string;
+        institutionName: string;
+        rates: { apertura: string; sobretasa: string; renovacion: string };
+        ratesHash: string;
+        source: string;
+        isAccepted: boolean;
+        outdated: boolean;
+        acceptedAt?: string | Date;
+        lastAcceptedHash?: string;
+      }> = {};
+
+      for (const inst of activeInstitutions) {
+        const { rates, ratesHash, source } = await getEffectiveCommissionRatesForUser(user, inst);
+        const lastAcc = acceptancesByInst.get(inst.id);
+
+        const isAccepted = Boolean(lastAcc && lastAcc.ratesHash === ratesHash);
+        const outdated = Boolean(lastAcc && lastAcc.ratesHash !== ratesHash);
+
+        institutionStatuses[inst.id] = {
+          institutionId: inst.id,
+          institutionName: inst.name,
+          rates,
+          ratesHash,
+          source,
+          isAccepted,
+          outdated,
+          acceptedAt: isAccepted ? lastAcc?.acceptedAt : undefined,
+          lastAcceptedHash: lastAcc?.ratesHash,
+        };
+      }
+
+      return res.json({
+        acceptances: existingAcceptances,
+        institutionStatuses,
+      });
+    } catch (error) {
+      console.error("Error fetching broker commission acceptances:", error);
+      return res.status(500).json({ message: "Error al consultar estatus de aceptación de comisiones" });
+    }
+  });
+
+  // Accept commission scheme for a specific financial institution
+  app.post('/api/broker/commission-acceptances/:institutionId', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub || req.user?.id;
+      const user = await storage.getUser(userId);
+      if (!user) {
+        return res.status(404).json({ message: "Usuario no encontrado" });
+      }
+
+      const { institutionId } = req.params;
+      const institution = await storage.getFinancialInstitution(institutionId);
+      if (!institution) {
+        return res.status(404).json({ message: "Institución financiera no encontrada" });
+      }
+
+      const { rates, ratesHash, source } = await getEffectiveCommissionRatesForUser(user, institution);
+
+      const ipAddress = (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() || req.socket?.remoteAddress || '127.0.0.1';
+      const userAgent = req.headers['user-agent'] || 'Unknown';
+
+      const acceptance = await storage.createBrokerCommissionAcceptance({
+        userId,
+        institutionId,
+        acceptedRates: rates,
+        ratesHash,
+        ipAddress,
+        userAgent,
+      });
+
+      return res.status(201).json({
+        success: true,
+        message: `Esquema de comisiones aceptado correctamente para ${institution.name}`,
+        acceptance,
+        rates,
+        ratesHash,
+        source,
+      });
+    } catch (error: any) {
+      console.error("Error creating broker commission acceptance:", error);
+      return res.status(500).json({ message: error.message || "Error al registrar aceptación de comisiones" });
     }
   });
 
@@ -7684,7 +8114,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(403).json({ message: "You don't have permission to create credit submissions" });
       }
 
-      const originationCheck = await validateCommercialOrigination({
+      const originationCheck = await validateCommercialOriginationAndFormalization({
         callerUser: user,
         callerMembership: req.tenantContext?.membership,
         tenantId: req.tenantContext?.tenant?.id,
@@ -7692,7 +8122,36 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
 
       if (!originationCheck.allowed) {
-        return res.status(403).json({ message: originationCheck.message });
+        return res.status(originationCheck.statusCode || 403).json({
+          code: originationCheck.code,
+          message: originationCheck.message,
+        });
+      }
+
+      const effectiveBroker = originationCheck.effectiveBroker || user;
+      // Check commercial commission acceptance for broker / master_broker
+      if (effectiveBroker && (effectiveBroker.role === 'broker' || effectiveBroker.role === 'master_broker')) {
+        const instIds: string[] = Array.isArray(req.body.financialInstitutionIds) ? req.body.financialInstitutionIds : [];
+        const unacceptedInstitutions: Array<{ id: string; name: string }> = [];
+
+        for (const instId of instIds) {
+          const inst = await storage.getFinancialInstitution(instId);
+          if (!inst) continue;
+          const { ratesHash } = await getEffectiveCommissionRatesForUser(effectiveBroker, inst);
+          const acceptance = await storage.getBrokerCommissionAcceptance(effectiveBroker.id, instId, ratesHash);
+          if (!acceptance) {
+            unacceptedInstitutions.push({ id: inst.id, name: inst.name });
+          }
+        }
+
+        if (unacceptedInstitutions.length > 0) {
+          const names = unacceptedInstitutions.map((u) => u.name).join(", ");
+          return res.status(403).json({
+            error: "COMMISSION_ACCEPTANCE_REQUIRED",
+            message: `Debes revisar y aceptar el esquema comercial vigente de las siguientes financieras antes de poder cotizar o enviar la solicitud: ${names}.`,
+            unacceptedInstitutions,
+          });
+        }
       }
 
       const submissionData = insertCreditSubmissionRequestSchema.parse({
@@ -7841,15 +8300,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post('/api/mortgage-leads', isAuthenticated, requireModuleAndAction('creditos', 'submit_proposals'), async (req: any, res) => {
     let createdClientId: string | null = null;
     try {
-      const userId = req.user.claims.sub;
-      const user = await storage.getUser(userId);
+      const userId = req.user?.claims?.sub || req.user?.id || (req as any).dbUser?.id;
+      const user = (req as any).dbUser || (await storage.getUser(userId));
 
       const allowedRoles = ['broker', 'master_broker', 'admin', 'super_admin'];
       if (!user || !allowedRoles.includes(user.role)) {
         return res.status(403).json({ message: "No tienes permiso para registrar operaciones hipotecarias" });
       }
 
-      const originationCheck = await validateCommercialOrigination({
+      const originationCheck = await validateCommercialOriginationAndFormalization({
         callerUser: user,
         callerMembership: req.tenantContext?.membership,
         tenantId: req.tenantContext?.tenant?.id,
@@ -7857,7 +8316,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
 
       if (!originationCheck.allowed) {
-        return res.status(403).json({ message: originationCheck.message });
+        return res.status(originationCheck.statusCode || 403).json({
+          code: originationCheck.code,
+          message: originationCheck.message,
+        });
       }
 
       const tenantId = req.tenantContext?.tenant?.id || null;
@@ -8027,6 +8489,45 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const submission = await storage.getCreditSubmissionRequest(id);
       if (!submission) {
         return res.status(404).json({ message: "Solicitud de crédito no encontrada" });
+      }
+
+      const callerUser = (req as any).dbUser || (await storage.getUser(req.user?.claims?.sub || req.user?.id));
+      const formalizationCheck = await validateEffectiveBrokerFormalization(
+        {
+          callerUser,
+          effectiveBrokerId: submission.brokerId,
+        },
+        storage
+      );
+
+      if (!formalizationCheck.allowed) {
+        return res.status(formalizationCheck.statusCode || 403).json({
+          code: formalizationCheck.code,
+          message: formalizationCheck.message,
+        });
+      }
+
+      const effectiveBroker = formalizationCheck.effectiveBroker || callerUser;
+      if (effectiveBroker && (effectiveBroker.role === 'broker' || effectiveBroker.role === 'master_broker')) {
+        const unacceptedInstitutions: Array<{ id: string; name: string }> = [];
+        for (const institutionId of financialInstitutionIds) {
+          const inst = await storage.getFinancialInstitution(institutionId);
+          if (!inst) continue;
+          const { ratesHash } = await getEffectiveCommissionRatesForUser(effectiveBroker, inst);
+          const acceptance = await storage.getBrokerCommissionAcceptance(effectiveBroker.id, institutionId, ratesHash);
+          if (!acceptance) {
+            unacceptedInstitutions.push({ id: inst.id, name: inst.name });
+          }
+        }
+
+        if (unacceptedInstitutions.length > 0) {
+          const names = unacceptedInstitutions.map((u) => u.name).join(", ");
+          return res.status(403).json({
+            error: "COMMISSION_ACCEPTANCE_REQUIRED",
+            message: `Debes revisar y aceptar el esquema comercial vigente antes de canalizar a: ${names}.`,
+            unacceptedInstitutions,
+          });
+        }
       }
 
       const existingTargets = await storage.getCreditSubmissionTargets({ requestId: id });
