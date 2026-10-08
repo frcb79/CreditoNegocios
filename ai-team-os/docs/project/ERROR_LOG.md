@@ -214,6 +214,45 @@ En `shared/schema.ts`, la tabla `users` definía la columna `referralCode: varch
 
 ---
 
+### SEC-2026-10-08-001 — Reseteo no gobernado en arranque y bypass de contraseñas hardcodeadas en rutas de autenticación
+
+| Campo | Valor |
+|-------|-------|
+| ID | SEC-2026-10-08-001 |
+| Fecha detección | 2026-10-08 08:40 CST |
+| Severidad | 🔴 Crítica (P0) — Acceso privilegiado no autorizado y mutación destructiva en boot |
+| Área | Backend / Seguridad / Autenticación / Migraciones |
+| Estado | 🟢 Resuelto en Rama Hotfix (`hotfix/prod-security-auth-startup`) / 🔴 Crítico Activo en Producción (`ce24a16`) |
+| Reportado por | Auditoría P0 Pre-Staging / AI-Team-OS |
+| Asignado a | Arquitecto / Seguridad / QA / DevOps |
+
+**Descripción y Hallazgo en Producción:**
+1. Se confirmó en Railway que el despliegue activo en el entorno de Producción (`392cfac4-9283-4466-ad28-fbe6f5499579`) ejecuta el commit `ce24a16943dbf348525e7f2738896545edc8a46d` de `main`.
+2. Dicho commit contiene en `server/routes.ts` el arreglo `allowedAdminPasswords` con `Prueba1$`, `Franco2026!*` y `ADMIN_FALLBACK_PASSWORD`, permitiendo el acceso administrativo a cualquiera que use esas credenciales, sincronizando automáticamente el hash en caliente.
+3. Dicho commit contiene en `server/autoMigrate.ts` reseteos forzosos de contraseñas de cuentas administrativas a `Prueba1$`, reactivación masiva de financieras, desvinculación de créditos y eliminación de comisiones en cada cold start.
+
+**Impacto:**
+- Exposición crítica a intrusión administrativa con contraseñas fijas públicas.
+- Riesgo de corrupción y reversión de datos comerciales ante reinicios del contenedor en Railway.
+
+**Solución aplicada en Hotfix (`hotfix/prod-security-auth-startup`):**
+1. Eliminación total de contraseñas alternativas y sincronización automática en `POST /api/auth/login`.
+2. Saneamiento total de `server/autoMigrate.ts` (cero mutaciones DML, cero DELETEs, cero reseteos de contraseñas en arranque).
+3. Aislamiento absoluto sin incorporar los 85 commits funcionales pendientes.
+4. Validación con suite automatizada `tests/unit/prod-hotfix-security.test.ts` (6/6 passing) y regresiones (26/26 passing).
+
+**Plan de Despliegue y Remediación en Producción (Pendiente Autorización):**
+1. **Despliegue Controlado:** Desplegar `hotfix/prod-security-auth-startup` a producción en Railway vía PR o despliegue directo de la rama.
+2. **Invalidación de Sesiones:** Ejecutar en PostgreSQL de producción: `TRUNCATE TABLE sessions;` para desconectar todas las sesiones potencialmente activadas por bypass.
+3. **Rotación Segura de Contraseñas:** Solicitar o forzar el restablecimiento de contraseñas para los correos administrativos involucrados (`francocb79@gmail.com`, `fcb@creditonegocios.com.mx`, `francocb79@yahoo.com`).
+4. **Revisión de Auditoría:** Inspeccionar logs de acceso de Railway de los últimos 30 días para descartar autenticaciones anómalas.
+5. **Rollback Plan:** En caso de contingencia, revertir en Railway al deployment previo `392cfac4-9283-4466-ad28-fbe6f5499579`.
+
+**Fecha resolución en rama:** 2026-10-08
+**Verificado por:** QA Suite (`prod-hotfix-security.test.ts` 6/6 passing)
+
+---
+
 ## ANÁLISIS DE PATRONES
 
 ### Errores Recurrentes

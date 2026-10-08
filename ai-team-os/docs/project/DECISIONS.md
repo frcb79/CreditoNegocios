@@ -47,5 +47,15 @@ Formato: Fecha / Decision / Opciones evaluadas / Decision final / Por que
 	- Evita que los brókers o el super admin tengan que duplicar expedientes manualmente para cobrar comisiones de diferentes financieras.
 	- Garantiza que cada desembolso mantenga su botón de pago STP y tracking de dispersión sin bloquear a las demás propuestas en proceso.
 
+### 2026-10-08 / Hotfix de Seguridad Producción: Eliminación de Bypass de Login y Arranque No Destructivo
+- Opciones evaluadas:
+	- Opcion A: Desplegar la rama completa con los 85 commits funcionales pendientes (Network Transitions, Formalización, Comisiones) para resolver la vulnerabilidad.
+	- Opcion B: Crear un hotfix quirúrgico mínimo sobre la base exacta desplegada en producción (`ce24a16`), portando exclusivamente la eliminación de contraseñas alternativas (`allowedAdminPasswords`) y el saneamiento de `autoMigrate.ts` (cero mutaciones destructivas, cero reseteo de contraseñas en arranque), sin incorporar los 85 commits funcionales pendientes.
+- Decision final: Opcion B.
+- Por que:
+	- Minimiza a cero el riesgo de regresiones operativas en producción al no alterar modelos comerciales, linajes ni esquemas nuevos que no han sido validados en Staging.
+	- Cierra de forma inmediata y aislada la brecha crítica de seguridad (P0).
+	- Preserva la estabilidad y compatibilidad 100% con la base de datos productiva actual.
+
 ## DECISIONES CAMBIADAS
 [Si alguna se revirtio, documentar con la razon]

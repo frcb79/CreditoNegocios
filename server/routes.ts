@@ -1138,29 +1138,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(401).json({ message });
       }
       
-      // Verify password
+      // Verify password strictly with cryptographic hash
       let isValidPassword = false;
       if (user.password) {
         isValidPassword = await bcrypt.compare(data.password, user.password);
-      }
-      
-      // Master fallback for designated super admin accounts in case of locked password or emergency
-      const userEmail = (user.email || "").toLowerCase();
-      const isMasterAdmin = ['francocb79@gmail.com', 'francocb79@yahoo.com', 'fcb@creditonegocios.com.mx'].includes(userEmail) || user.role === 'super_admin';
-      
-      const allowedAdminPasswords = new Set([
-        'Prueba1$',
-        'Franco2026!*',
-        process.env.ADMIN_FALLBACK_PASSWORD,
-      ].filter(Boolean));
-
-      if (!isValidPassword && isMasterAdmin && allowedAdminPasswords.has(data.password)) {
-        isValidPassword = true;
-        // Automatically sync password hash so next login works directly
-        const newHash = await bcrypt.hash(data.password, 10);
-        await storage.updateUser(user.id, { password: newHash, authMethod: "local", isActive: true });
-        user.password = newHash;
-        console.log(`🔑 [AUTH] Super Admin fallback login verified and hash synchronized for: ${user.email}`);
       }
 
       if (!isValidPassword) {

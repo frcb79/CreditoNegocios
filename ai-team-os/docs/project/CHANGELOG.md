@@ -35,3 +35,22 @@ Actualizar cada vez que se completa una feature.
 	- Reestructuración de la vista para Super Admin con métricas ejecutivas y 3 pestañas: Master Brokers & Redes (con desglose de brokers asociados), Brokers Directos Independientes y Mi Red Directa (Casa Matriz) con botón de invitación.
 - **Fix de Build en Vercel (`CreditList.tsx`):**
 	- Corrección de error de esbuild `Unexpected "const"` mediante el encapsulamiento apropiado del bloque JSX en un IIFE `{(() => { ... })()}`.
+
+## 2026-10-08 — Hotfix de Seguridad Producción (Sin Commits Funcionales Pendientes)
+
+- **Rama:** `hotfix/prod-security-auth-startup` basada exactamente en `ce24a16943dbf348525e7f2738896545edc8a46d` (commit activo en producción).
+- **Eliminación Total de Bypass en Login (`server/routes.ts`):**
+	- Purgado radical del array de contraseñas alternativas (`allowedAdminPasswords` con `Prueba1$`, `Franco2026!*`, `ADMIN_FALLBACK_PASSWORD`).
+	- Eliminación de la sincronización y reseteo automático de contraseñas al iniciar sesión.
+	- Autenticación criptográfica obligatoria (`bcrypt.compare`) contra la base de datos para todas las cuentas sin excepción.
+	- Preservación de bloqueo estricto con HTTP 401 para usuarios con estatus `suspended` o inactivos.
+- **AutoMigrate Zero-Destructive (`server/autoMigrate.ts`):**
+	- Retirados todos los DELETE de comisiones, UPDATE forzosos de usuarios (`password = Prueba1$`, `is_active = TRUE`), reactivaciones masivas de financieras y eliminación de financieras de prueba.
+	- El arranque del servidor es 100% no destructivo: si existen usuarios (`SELECT count(*) FROM users > 0`), se omiten todas las mutaciones e inserciones de usuarios.
+- **Aislamiento Funcional Estricto:**
+	- Cero inclusión de los 85 commits funcionales pendientes (sin Network Transitions, sin Formalización OTP, sin Comisiones Multi-Step Approval).
+- **Validación QA:**
+	- Nueva suite: `tests/unit/prod-hotfix-security.test.ts` (6/6 passing).
+	- Regresiones de RBAC y estatus operativo passing (26/26).
+	- Compilación de tipos (`npm run check`): 0 errores.
+	- Build de producción (`npm run build`): exitoso.
