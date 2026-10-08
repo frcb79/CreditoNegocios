@@ -130,5 +130,15 @@ Formato: Fecha / Decision / Opciones evaluadas / Decision final / Por que
 	- Seguridad Bancaria: Los intentos de manipulación de CLABE (`CLABE_TAMPERING_ATTEMPT`) y dispersión a cuentas no validadas deben dejar rastro inmutable para auditoría y cumplimiento normativo.
 	- Gobernanza Financiera: Las discrepancias en importes congelados requieren un expediente administrativo explícito que justifique cualquier regularización manual antes de reintentar la dispersión, evitando bypasses operacionales.
 
+### 2026-10-08 / Desacoplamiento de Operaciones Administrativas y Blindaje Zero-Destructive del Arranque
+- Opciones evaluadas:
+	- Opcion A: Mantener las operaciones administrativas en `server/autoMigrate.ts` condicionadas por flags de entorno (`ENABLE_ADMIN_SEED=true`).
+	- Opcion B: Depurar integralmente `server/autoMigrate.ts` para que el arranque del servidor (`runAutoMigration`) sea 100% no destructivo e idempotente (estrictamente DDL y backfills protegidos por marcadores únicos `system_migration_markers` con `WHERE origin_master_broker_id IS NULL`), desacoplando toda inicialización de cuentas de prueba, reseteo de contraseñas, reactivación masiva y purga de financieras a un script CLI administrativo explícito (`scripts/admin-bootstrap-environment.ts`).
+- Decision final: Opcion B.
+- Por que:
+	- Un reinicio o cold start del servidor en Staging o Producción jamás debe restablecer contraseñas, reactivar usuarios suspendidos, cambiar roles, reasignar brokers a Masters o reactivar financieras desactivadas por negocio.
+	- Elimina el riesgo de corrupción en el linaje histórico de créditos al condicionar los backfills a `origin_master_broker_id IS NULL`.
+	- Mantiene la capacidad de aprovisionar ambientes nuevos de manera segura, auditable y bajo control deliberado del operador.
+
 ## DECISIONES CAMBIADAS
 [Si alguna se revirtio, documentar con la razon]

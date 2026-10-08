@@ -447,8 +447,47 @@ Reutilización de la fórmula de red (Opción B: broker + diferencial) sin condi
 **Aprendizaje:**
 Las entidades de red deben distinguir explícitamente entre operaciones de red (reparto) y operaciones directas (cuota única).
 
-**Fecha resolución:** 2026-10-07
-**Verificado por:** QA Suite (`tests/unit/commission-payout-integrity.test.ts` — 11/11 passing)
+### SEC-2026-10-08-001 — Reseteo no gobernado en arranque y bypass de contraseñas hardcodeadas en rutas de autenticación
+
+| Campo | Valor |
+|-------|-------|
+| ID | SEC-2026-10-08-001 |
+| Fecha detección | 2026-10-08 08:40 CST |
+| Severidad | 🔴 Crítica (P0) — Riesgo de acceso privilegiado y mutación destructiva en boot |
+| Área | Backend / Seguridad / Autenticación / Migraciones |
+| Estado | ⚠️ Mitigado en Arranque / Pendiente Autorización para Bypass en Login |
+| Reportado por | Auditoría P0 Pre-Staging / AI-Team-OS |
+| Asignado a | Arquitecto / Seguridad / Backend Dev |
+
+**Descripción:**
+1. En `server/autoMigrate.ts` heredado de `main`, cada arranque del servidor (`runAutoMigration()`) ejecutaba mutaciones DML destructivas de manera indiscriminada:
+   - Reseteo de contraseñas a valor fijo (`Prueba1$`) para cuentas de Super Admin, Master Broker y Broker.
+   - Forzado de roles (`role = 'admin'`, `'master_broker'`, `'broker'`).
+   - Reactivación indiscriminada de usuarios (`is_active = TRUE`).
+   - Reasignación de red forzosa de un broker (`francocb79@yahoo.com`) hacia un Master Broker sin validación comercial.
+   - Reactivación masiva de todas las financieras desactivadas (`UPDATE financial_institutions SET is_active = TRUE`).
+   - Eliminación de financieras marcadas como prueba y desvinculación de créditos.
+   - Sobrescritura de permisos RBAC en `tenant_members`.
+2. Durante la auditoría en modo de solo lectura de `server/routes.ts` (líneas 1403-1415), se identificó un bypass de login en `POST /api/auth/login`:
+   - Permite que correos específicos (`francocb79@gmail.com`, `fcb@creditonegocios.com.mx`, `francocb79@yahoo.com`) inicien sesión con contraseñas fijas (`Prueba1$`, `Franco2026!*`) omitiendo completamente la verificación criptográfica del hash (`verifyPassword`).
+
+**Impacto en negocio y seguridad:**
+- Un reinicio o cold start del servidor en Staging o Producción revertiría contraseñas cambiadas por los administradores a credenciales conocidas, reactivaría cuentas suspendidas y reactivaría financieras dadas de baja por negocio.
+- El bypass de autenticación en login permite el acceso no autorizado a roles privilegiados si un atacante conoce o compromete los nombres de usuario con contraseñas fijas conocidas.
+
+**Solución aplicada (Arranque Seguro):**
+1. Se despojó completamente `server/autoMigrate.ts` de todas las operaciones destructivas de DML: cero reseteos de contraseñas, cero cambios de roles, cero reactivaciones forzosas, cero mutaciones de redes, cero reactivaciones masivas de financieras y cero borrado de datos.
+2. Se implementó una comprobación segura en `autoMigrate.ts`: si la tabla `users` contiene usuarios (`SELECT count(*) > 0`), se omiten 100% las inserciones de bootstrap.
+3. Se crearon marcadores persistentes en `system_migration_markers` para garantizar que los backfills DDL/DML históricos corran exactamente una vez y nunca sobreescriban linajes actuales (`WHERE origin_master_broker_id IS NULL`).
+4. Se encapsularon los procedimientos administrativos y de aprovisionamiento de prueba en una herramienta CLI explícita y protegida: `scripts/admin-bootstrap-environment.ts` (`npm run admin:bootstrap`), exigiendo flags explícitos (`--seed-test-accounts`, `--force-reset-passwords`, `--cleanup-test-institutions`, `--sanitize-rbac`).
+5. Se creó la suite de validación `tests/unit/startup-migration-security.test.ts` (7/7 pruebas pasando), certificando que múltiples reinicios consecutivos no alteran el estado de la base de datos.
+
+**Propuesta de Remediación para Bypass en Login (Pendiente Autorización):**
+- En `server/routes.ts` (líneas 1403-1415), eliminar la cláusula condicional de bypass y hacer que todo intento de login pase exclusivamente por `crypto.verifyPassword(password, user.passwordHash)`.
+- Si las cuentas de prueba requieren acceso en Staging, restablecer sus hashes mediante el flujo oficial o el script administrativo gobernado `scripts/admin-bootstrap-environment.ts --force-reset-passwords`.
+
+**Fecha resolución parcial:** 2026-10-08
+**Verificado por:** QA Suite (`tests/unit/startup-migration-security.test.ts` — 7/7 passing)
 
 ---
 

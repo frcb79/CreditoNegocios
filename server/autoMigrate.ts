@@ -26,6 +26,19 @@ export async function runAutoMigration(): Promise<void> {
       console.log("ℹ️ [AutoMigrate] pgcrypto extension check:", (e as any).message);
     }
 
+    // 0b. Ensure system migration markers table exists for idempotent one-time executions
+    try {
+      await client.query(`
+        CREATE TABLE IF NOT EXISTS public.system_migration_markers (
+          key VARCHAR PRIMARY KEY,
+          applied_at TIMESTAMP NOT NULL DEFAULT NOW(),
+          metadata JSONB DEFAULT '{}'
+        );
+      `);
+    } catch (e) {
+      console.log("ℹ️ [AutoMigrate] system_migration_markers table check:", (e as any).message);
+    }
+
     // 1. Ensure sessions table exists for connect-pg-simple
     try {
       await client.query(`
@@ -103,12 +116,8 @@ export async function runAutoMigration(): Promise<void> {
 
       await client.query(`
         UPDATE public.users 
-        SET status = 'inactive' 
-        WHERE is_active = false AND (status IS NULL OR status = 'active');
-
-        UPDATE public.users 
         SET status = 'active' 
-        WHERE (is_active = true OR is_active IS NULL) AND status IS NULL;
+        WHERE status IS NULL;
       `);
       console.log("✅ [AutoMigrate] Users table and columns verified");
     } catch (err) {
@@ -196,9 +205,16 @@ export async function runAutoMigration(): Promise<void> {
         ALTER TABLE IF EXISTS public.tenant_members
           ADD COLUMN IF NOT EXISTS can_originate BOOLEAN DEFAULT false;
 
+        WITH marker AS (
+          INSERT INTO public.system_migration_markers (key, metadata)
+          VALUES ('tenant_members_owner_originate_v1', '{"purpose":"initialize owner can_originate=true"}'::jsonb)
+          ON CONFLICT (key) DO NOTHING
+          RETURNING key
+        )
         UPDATE public.tenant_members
-          SET can_originate = true
-          WHERE role = 'owner' AND can_originate IS NOT TRUE;
+        SET can_originate = true
+        FROM marker
+        WHERE role = 'owner' AND can_originate IS NOT TRUE;
       `);
       console.log("✅ [AutoMigrate] Tenant members table and indexes verified");
     } catch (err) {
@@ -266,51 +282,43 @@ export async function runAutoMigration(): Promise<void> {
         CREATE INDEX IF NOT EXISTS "credits_origin_master_broker_idx" ON public.credits ("origin_master_broker_id");
       `);
 
-      // Backfill exactly once. NULL remains a meaningful immutable value for
-      // credits originated directly under Crédito Negocios.
-      if (!originColumnAlreadyExisted) {
-        await client.query(`
-          UPDATE public.credits AS c
-          SET origin_master_broker_id = CASE
-            WHEN u.role = 'master_broker' THEN u.id
-            WHEN u.role = 'broker' AND mb.role = 'master_broker' THEN mb.id
-            ELSE NULL
-          END
-          FROM public.users AS u
-          LEFT JOIN public.users AS mb ON mb.id = u.master_broker_id
-          WHERE c.broker_id = u.id;
+      // Backfill exactly once using persistent marker. NULL remains a meaningful immutable value for
+      // credits originated directly under Crédito Negocios. Existing non-null origin masters are never overwritten.
+      await client.query(`
+        WITH marker AS (
+          INSERT INTO public.system_migration_markers (key, metadata)
+          VALUES ('credits_origin_master_snapshot_v1', '{"purpose":"freeze pre-transition Master Broker affiliation on legacy credits"}'::jsonb)
+          ON CONFLICT (key) DO NOTHING
+          RETURNING key
+        )
+        UPDATE public.credits AS c
+        SET origin_master_broker_id = CASE
+          WHEN u.role = 'master_broker' THEN u.id
+          WHEN u.role = 'broker' AND mb.role = 'master_broker' THEN mb.id
+          ELSE NULL
+        END
+        FROM public.users AS u
+        LEFT JOIN public.users AS mb ON mb.id = u.master_broker_id,
+        marker
+        WHERE c.broker_id = u.id
+          AND c.origin_master_broker_id IS NULL;
 
-          -- Legacy Casa Matriz links are direct platform affiliations, not Master Broker layers.
-          -- Normalize both the user link and the Broker tenant parent.
-          WITH platform_tenant AS (
-            SELECT id
-            FROM public.tenants
-            WHERE type = 'platform' OR slug = 'platform'
-            ORDER BY CASE WHEN type = 'platform' THEN 0 ELSE 1 END
-            LIMIT 1
-          ),
-          legacy_direct_brokers AS (
-            SELECT broker.id
-            FROM public.users AS broker
-            WHERE broker.role = 'broker'
-              AND broker.master_broker_id IS NOT NULL
-              AND NOT EXISTS (
-                SELECT 1
-                FROM public.users AS parent_user
-                WHERE parent_user.id = broker.master_broker_id
-                  AND parent_user.role = 'master_broker'
-              )
-          )
-          UPDATE public.tenants AS broker_tenant
-          SET parent_tenant_id = platform_tenant.id,
-              updated_at = NOW()
-          FROM platform_tenant, legacy_direct_brokers
-          WHERE broker_tenant.type = 'broker'
-            AND broker_tenant.settings->>'legacyOwnerUserId' = legacy_direct_brokers.id;
-
-          UPDATE public.users AS broker
-          SET master_broker_id = NULL,
-              updated_at = NOW()
+        WITH marker AS (
+          INSERT INTO public.system_migration_markers (key, metadata)
+          VALUES ('legacy_direct_brokers_normalize_v1', '{"purpose":"normalize legacy Casa Matriz links to platform"}'::jsonb)
+          ON CONFLICT (key) DO NOTHING
+          RETURNING key
+        ),
+        platform_tenant AS (
+          SELECT id
+          FROM public.tenants
+          WHERE type = 'platform' OR slug = 'platform'
+          ORDER BY CASE WHEN type = 'platform' THEN 0 ELSE 1 END
+          LIMIT 1
+        ),
+        legacy_direct_brokers AS (
+          SELECT broker.id
+          FROM public.users AS broker
           WHERE broker.role = 'broker'
             AND broker.master_broker_id IS NOT NULL
             AND NOT EXISTS (
@@ -318,9 +326,31 @@ export async function runAutoMigration(): Promise<void> {
               FROM public.users AS parent_user
               WHERE parent_user.id = broker.master_broker_id
                 AND parent_user.role = 'master_broker'
-            );
-        `);
-      }
+            )
+        )
+        UPDATE public.tenants AS broker_tenant
+        SET parent_tenant_id = platform_tenant.id,
+            updated_at = NOW()
+        FROM platform_tenant, legacy_direct_brokers, marker
+        WHERE broker_tenant.type = 'broker'
+          AND broker_tenant.settings->>'legacyOwnerUserId' = legacy_direct_brokers.id;
+
+        WITH marker AS (
+          SELECT key FROM public.system_migration_markers WHERE key = 'legacy_direct_brokers_normalize_v1'
+        )
+        UPDATE public.users AS broker
+        SET master_broker_id = NULL,
+            updated_at = NOW()
+        FROM marker
+        WHERE broker.role = 'broker'
+          AND broker.master_broker_id IS NOT NULL
+          AND NOT EXISTS (
+            SELECT 1
+            FROM public.users AS parent_user
+            WHERE parent_user.id = broker.master_broker_id
+              AND parent_user.role = 'master_broker'
+          );
+      `);
 
       await client.query(`
         DO $$ BEGIN
@@ -411,19 +441,35 @@ export async function runAutoMigration(): Promise<void> {
           ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT now();
       `);
 
-      // Safe deduplication before applying unique index (keep paid or most recent)
+      // Safe deduplication and legacy status normalization gated by persistent marker
       await client.query(`
+        WITH marker AS (
+          INSERT INTO public.system_migration_markers (key, metadata)
+          VALUES ('commissions_bloque6_cleanup_v1', '{"purpose":"safe deduplication and legacy status normalization for Bloque 6"}'::jsonb)
+          ON CONFLICT (key) DO NOTHING
+          RETURNING key
+        )
         DELETE FROM public.commissions
         WHERE id IN (
-          SELECT id FROM (
+          SELECT c.id FROM (
             SELECT id, ROW_NUMBER() OVER (
               PARTITION BY credit_id, commission_type 
               ORDER BY CASE WHEN status = 'paid' THEN 0 ELSE 1 END, created_at DESC
             ) as rn
             FROM public.commissions
             WHERE credit_id IS NOT NULL AND commission_type IS NOT NULL
-          ) t WHERE t.rn > 1
+          ) c
+          JOIN marker m ON true
+          WHERE c.rn > 1
         );
+
+        WITH marker AS (
+          SELECT key FROM public.system_migration_markers WHERE key = 'commissions_bloque6_cleanup_v1'
+        )
+        UPDATE public.commissions c
+        SET status = 'generated'
+        FROM marker
+        WHERE c.status = 'pending';
       `);
 
       // Ensure indexes and unique constraints
@@ -450,13 +496,6 @@ export async function runAutoMigration(): Promise<void> {
         );
         CREATE INDEX IF NOT EXISTS comm_audit_commission_idx ON public.commission_audit_logs (commission_id);
         CREATE INDEX IF NOT EXISTS comm_audit_created_at_idx ON public.commission_audit_logs (created_at);
-      `);
-
-      // Backfill status: 'pending' -> 'generated', preserve 'paid'
-      await client.query(`
-        UPDATE public.commissions
-        SET status = 'generated'
-        WHERE status = 'pending';
       `);
 
       // Backfill tenant_id from linked credits
@@ -492,263 +531,69 @@ export async function runAutoMigration(): Promise<void> {
           ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT NOW();
       `);
 
-      // Ensure all financial institutions are active
-      await client.query(`
-        UPDATE public.financial_institutions
-        SET is_active = TRUE, updated_at = NOW()
-        WHERE is_active IS NOT TRUE;
-      `);
-      console.log("✅ [AutoMigrate] Financial institutions table columns verified and all institutions activated");
+      console.log("✅ [AutoMigrate] Financial institutions table columns verified");
     } catch (err) {
       console.error("⚠️ [AutoMigrate] Error verifying financial institutions columns:", err);
     }
 
-    // 6. Update existing users to 'local' auth so they can authenticate locally
+    // 6. Update existing legacy users to 'local' auth so they can authenticate locally (preserves active status)
     try {
       await client.query(`
-        UPDATE public.users 
-        SET auth_method = 'local', is_active = TRUE, updated_at = NOW()
-        WHERE auth_method IS NULL OR auth_method = 'replit';
+        WITH marker AS (
+          INSERT INTO public.system_migration_markers (key, metadata)
+          VALUES ('users_auth_method_local_backfill_v1', '{"purpose":"normalize auth_method to local for legacy accounts"}'::jsonb)
+          ON CONFLICT (key) DO NOTHING
+          RETURNING key
+        )
+        UPDATE public.users u
+        SET auth_method = 'local', updated_at = NOW()
+        FROM marker
+        WHERE u.auth_method IS NULL OR u.auth_method = 'replit';
       `);
     } catch (err) {
       console.error("⚠️ [AutoMigrate] Error updating auth_method:", err);
     }
 
-    // 7. Setup / repair the 3 dedicated test accounts with their distinct roles and Prueba1$ password
-    const testPassword = process.env.ADMIN_FALLBACK_PASSWORD || 'Prueba1$';
-    const defaultHashedPassword = await bcrypt.hash(testPassword, 10);
+    // 7. Safe initial admin bootstrap ONLY if database is 100% empty (never alters existing accounts)
+    try {
+      const userCountRes = await client.query(`SELECT count(*)::int as count FROM public.users`);
+      const userCount = Number(userCountRes.rows[0]?.count ?? 0);
 
-    const dedicatedAccounts = [
-      { 
-        email: 'francocb79@gmail.com', 
-        firstName: 'Franco', 
-        lastName: 'Admin', 
-        role: 'super_admin',
-        referralCode: null,
-        permissions: JSON.stringify({ modules: ["*"], actions: ["*"] }),
-      },
-      { 
-        email: 'fcb@creditonegocios.com.mx', 
-        firstName: 'Franco', 
-        lastName: 'Carreño', 
-        role: 'master_broker',
-        referralCode: 'MB-FRANCO',
-        permissions: JSON.stringify({ 
-          modules: [
-            "dashboard", "clientes", "creditos", "comisiones", "financieras",
-            "sistema_productos", "red_brokers", "documentos", "reportes", "usuarios", "configuracion"
-          ], 
-          actions: ["view", "edit", "submit_proposals", "manage_users"],
-          scope: "network"
-        }),
-      },
-      { 
-        email: 'francocb79@yahoo.com', 
-        firstName: 'Franco', 
-        lastName: 'Broker', 
-        role: 'broker',
-        referralCode: null,
-        permissions: JSON.stringify({ 
-          modules: [
-            "dashboard", "clientes", "creditos", "comisiones", "financieras",
-            "sistema_productos", "documentos", "configuracion"
-          ], 
-          actions: ["view", "edit", "submit_proposals"],
-          scope: "own"
-        }),
-      },
-    ];
-
-    let masterBrokerDbId: string | null = null;
-
-    for (const acc of dedicatedAccounts) {
-      try {
-        const existing = await client.query(
-          `SELECT id, email, password, role, is_active, auth_method FROM public.users WHERE lower(trim(email)) = lower(trim($1))`,
-          [acc.email]
-        );
-
-        if (existing.rows.length === 0) {
-          const insertRes = await client.query(
-            `INSERT INTO public.users (
-              id, email, password, auth_method, first_name, last_name, role, referral_code, is_active, permissions, created_at, updated_at
+      if (userCount === 0 && process.env.AUTO_SEED_DEFAULT_ADMIN === 'true') {
+        const bootstrapAdminEmail = process.env.INITIAL_ADMIN_EMAIL || 'admin@creditonegocios.com.mx';
+        const bootstrapPassword = process.env.INITIAL_ADMIN_PASSWORD;
+        if (bootstrapPassword) {
+          const hashedPassword = await bcrypt.hash(bootstrapPassword, 10);
+          await client.query(`
+            INSERT INTO public.users (
+              id, email, password, auth_method, first_name, last_name, role, is_active, permissions, created_at, updated_at
             ) VALUES (
-              gen_random_uuid(), lower(trim($1)), $2, 'local', $3, $4, $5, $6, true, $7::jsonb, NOW(), NOW()
-            ) RETURNING id`,
-            [acc.email, defaultHashedPassword, acc.firstName, acc.lastName, acc.role, acc.referralCode, acc.permissions]
-          );
-          console.log(`✅ [AutoMigrate] Created ${acc.role} account: ${acc.email}`);
-          if (acc.role === 'master_broker') {
-            masterBrokerDbId = insertRes.rows[0]?.id;
-          }
+              gen_random_uuid(), lower(trim($1)), $2, 'local', 'Admin', 'Inicial', 'super_admin', true, '{"modules": ["*"], "actions": ["*"]}'::jsonb, NOW(), NOW()
+            ) ON CONFLICT (email) DO NOTHING;
+          `, [bootstrapAdminEmail, hashedPassword]);
+          console.log(`🛡️ [AutoMigrate] Created initial bootstrap admin for empty database: ${bootstrapAdminEmail}`);
         } else {
-          const updateRes = await client.query(
-            `UPDATE public.users 
-             SET role = $2, 
-                 is_active = TRUE, 
-                 auth_method = 'local',
-                 permissions = $3::jsonb,
-                 password = $4,
-                 first_name = COALESCE(first_name, $5),
-                 last_name = COALESCE(last_name, $6),
-                 referral_code = COALESCE(referral_code, $7),
-                 updated_at = NOW()
-             WHERE lower(trim(email)) = lower(trim($1))
-             RETURNING id`,
-            [acc.email, acc.role, acc.permissions, defaultHashedPassword, acc.firstName, acc.lastName, acc.referralCode]
-          );
-          console.log(`✅ [AutoMigrate] Synchronized ${acc.role} account: ${acc.email} (password set to: ${testPassword})`);
-          if (acc.role === 'master_broker') {
-            masterBrokerDbId = updateRes.rows[0]?.id;
-          }
+          console.log(`ℹ️ [AutoMigrate] Database is empty but INITIAL_ADMIN_PASSWORD is not set. Skipping admin creation.`);
         }
-      } catch (userErr) {
-        console.error(`⚠️ [AutoMigrate] Error syncing account ${acc.email}:`, userErr);
-      }
-    }
-
-    // Link the broker francocb79@yahoo.com to the master broker fcb@creditonegocios.com.mx
-    if (masterBrokerDbId) {
-      try {
-        await client.query(
-          `UPDATE public.users 
-           SET master_broker_id = $1 
-           WHERE lower(trim(email)) = 'francocb79@yahoo.com'`,
-          [masterBrokerDbId]
-        );
-        console.log(`✅ [AutoMigrate] Linked broker francocb79@yahoo.com to Master Broker fcb@creditonegocios.com.mx`);
-      } catch (linkErr) {
-        console.error("⚠️ [AutoMigrate] Error linking broker to master broker:", linkErr);
-      }
-    }
-
-    // 7B. Auto-sanitization across the database for RBAC modules & comisiones
-    try {
-      // Restore comisiones, financieras, sistema_productos to all brokers & master_brokers
-      const sanitizeRes = await client.query(`
-        SELECT id, email, role, permissions 
-        FROM public.users 
-        WHERE role IN ('broker', 'master_broker') 
-          AND permissions IS NOT NULL 
-          AND permissions != '{}'::jsonb
-      `);
-
-      for (const row of sanitizeRes.rows) {
-        const perms = row.permissions || {};
-        if (Array.isArray(perms.modules) && perms.modules.length > 0) {
-          const mods = new Set<string>(perms.modules);
-          let changed = false;
-
-          if (!mods.has('comisiones')) {
-            mods.add('comisiones');
-            changed = true;
-          }
-          if (!mods.has('financieras')) {
-            mods.add('financieras');
-            changed = true;
-          }
-          if (!mods.has('sistema_productos')) {
-            mods.add('sistema_productos');
-            changed = true;
-          }
-
-          if (changed) {
-            perms.modules = Array.from(mods);
-            await client.query(
-              `UPDATE public.users SET permissions = $1::jsonb, updated_at = NOW() WHERE id = $2`,
-              [JSON.stringify(perms), row.id]
-            );
-            console.log(`🛡️ [AutoMigrate] Sanitized permissions for user ${row.email || row.id} (${row.role})`);
-          }
-        }
-      }
-
-      // Ensure non-originators (can_originate = false) NEVER have comisiones in permissions
-      const nonOrigRes = await client.query(`
-        SELECT tm.user_id, u.permissions
-        FROM public.tenant_members tm
-        JOIN public.users u ON tm.user_id = u.id
-        WHERE tm.is_active = true 
-          AND tm.can_originate = false 
-          AND tm.role = 'member'
-          AND u.role NOT IN ('super_admin', 'admin')
-      `);
-
-      for (const row of nonOrigRes.rows) {
-        const perms = row.permissions || {};
-        if (Array.isArray(perms.modules) && perms.modules.includes('comisiones')) {
-          perms.modules = perms.modules.filter((m: string) => m !== 'comisiones');
-          await client.query(
-            `UPDATE public.users SET permissions = $1::jsonb, updated_at = NOW() WHERE id = $2`,
-            [JSON.stringify(perms), row.user_id]
-          );
-          console.log(`🛡️ [AutoMigrate] Removed comisiones for non-originating collaborator ${row.user_id}`);
-        }
-      }
-    } catch (sanErr) {
-      console.warn("⚠️ [AutoMigrate] Notice during auto-sanitization:", (sanErr as any)?.message);
-    }
-
-    // 8. Ensure system user 'user-super-admin' exists for FK integrity in legacy scripts & migrations
-    try {
-      const sysUser = await client.query(`SELECT id FROM public.users WHERE id = 'user-super-admin'`);
-      if (sysUser.rows.length === 0) {
-        await client.query(`
-          INSERT INTO public.users (
-            id, email, password, auth_method, first_name, last_name, role, is_active, permissions, created_at, updated_at
-          ) VALUES (
-            'user-super-admin', 'system-admin@creditonegocios.com.mx', $1, 'local', 'Sistema', 'SuperAdmin', 'super_admin', true, '{"modules": ["*"], "actions": ["*"]}', NOW(), NOW()
-          ) ON CONFLICT (id) DO UPDATE SET is_active = TRUE, role = 'super_admin'
-        `, [defaultHashedPassword]);
-        console.log("✅ [AutoMigrate] Created system user: user-super-admin");
       } else {
-        console.log("✅ [AutoMigrate] Verified system user: user-super-admin");
+        console.log(`✅ [AutoMigrate] User catalog verified (${userCount} existing users). Zero user mutations performed.`);
       }
+    } catch (bootstrapErr) {
+      console.error("⚠️ [AutoMigrate] Error verifying user catalog:", bootstrapErr);
+    }
+
+    // 8. Ensure system user 'user-super-admin' exists for FK integrity in legacy scripts & migrations (idempotent, never alters password or role)
+    try {
+      await client.query(`
+        INSERT INTO public.users (
+          id, email, password, auth_method, first_name, last_name, role, is_active, permissions, created_at, updated_at
+        ) VALUES (
+          'user-super-admin', 'system-admin@creditonegocios.com.mx', 'DISABLED_SYSTEM_ACCOUNT', 'local', 'Sistema', 'SuperAdmin', 'super_admin', true, '{"modules": ["*"], "actions": ["*"]}', NOW(), NOW()
+        ) ON CONFLICT (id) DO NOTHING;
+      `);
+      console.log("✅ [AutoMigrate] Verified system user: user-super-admin (idempotent)");
     } catch (sysErr) {
       console.error("⚠️ [AutoMigrate] Error verifying user-super-admin:", sysErr);
-    }
-
-    // 9. Clean up obsolete test financial institutions (E2E and dummy test records)
-    try {
-      const deleteResult = await client.query(`
-        WITH test_insts AS (
-          SELECT id FROM public.financial_institutions
-          WHERE name ILIKE 'E2E Flujo Completo%' 
-             OR name IN ('Financiera Demo', 'Financiera Prueba Franco')
-        ),
-        del_targets AS (
-          DELETE FROM public.credit_submission_targets
-          WHERE financial_institution_id IN (SELECT id FROM test_insts)
-        ),
-        upd_credits AS (
-          UPDATE public.credits
-          SET financial_institution_id = NULL
-          WHERE financial_institution_id IN (SELECT id FROM test_insts)
-        ),
-        upd_prod_reqs AS (
-          UPDATE public.product_requests
-          SET existing_institution_id = NULL
-          WHERE existing_institution_id IN (SELECT id FROM test_insts)
-        ),
-        del_inst_prods AS (
-          DELETE FROM public.institution_products
-          WHERE institution_id IN (SELECT id FROM test_insts)
-        ),
-        del_prods AS (
-          DELETE FROM public.products
-          WHERE institution_id IN (SELECT id FROM test_insts)
-        )
-        DELETE FROM public.financial_institutions
-        WHERE id IN (SELECT id FROM test_insts)
-        RETURNING id, name;
-      `);
-      if (deleteResult.rowCount && deleteResult.rowCount > 0) {
-        console.log(`🧹 [AutoMigrate] Cleaned up ${deleteResult.rowCount} test financial institutions:`, deleteResult.rows.map(r => r.name).join(', '));
-      } else {
-        console.log("✅ [AutoMigrate] Financial institutions catalog verified clean (no obsolete test records found).");
-      }
-    } catch (cleanErr) {
-      console.error("⚠️ [AutoMigrate] Error cleaning test financial institutions:", cleanErr);
     }
 
     // 10. Ensure promo_codes and promo_redemptions tables exist (Bloque 10)

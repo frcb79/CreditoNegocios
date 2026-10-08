@@ -151,4 +151,27 @@ Actualizar cada vez que se completa una feature.
 	- Auditoría de migraciones e idempotencia en `server/autoMigrate.ts` y SQL DDL.
 	- Documentación de protocolos de despliegue, rollback y checklist de validación sin afectar producción.
 
+## 2026-10-08 — P0: Seguridad del Arranque antes de Staging (Zero-Destructive Startup)
+
+- **Auditoría y Blindaje de `server/autoMigrate.ts`:**
+	- Se clasificaron y depuraron todas las operaciones de escritura en el arranque del servidor.
+	- **Cero Mutaciones Destructivas en Boot:** Se eliminó el reseteo forzoso de contraseñas (`Prueba1$`), alteración de roles de usuario, reactivación masiva de cuentas (`is_active = TRUE`), reasignaciones forzosas de broker a Master, reactivación indiscriminada de financieras y eliminación de financieras de prueba.
+	- **Idempotencia de Esquema y Marcadores de Migración:** Se creó la tabla `system_migration_markers` en el paso de arranque. Todos los backfills históricos DML/DDL se blindaron con marcadores unívocos (`credits_origin_master_snapshot_v1`, `tenant_members_owner_originate_v1`, `commissions_bloque6_cleanup_v1`, etc.) y con filtros estrictos `WHERE origin_master_broker_id IS NULL`, garantizando que transiciones de red actuales jamás contaminen el linaje de créditos históricos.
+	- **Arranque Seguro en Base Existente:** La inicialización de usuarios se condicionó a `SELECT count(*) FROM users`; si la base de datos ya contiene registros, no se ejecuta ninguna inserción o actualización de usuarios.
+- **Herramienta Administrativa Gobernada (`scripts/admin-bootstrap-environment.ts`):**
+	- Se desacoplaron las operaciones administrativas excepcionales en una herramienta CLI independiente (`npm run admin:bootstrap`) protegida con flags explícitos:
+		- `--seed-test-accounts`: Creación/actualización deliberada de cuentas de desarrollo.
+		- `--force-reset-passwords`: Restablecimiento intencional de credenciales de desarrollo.
+		- `--cleanup-test-institutions`: Desvinculación y saneamiento de financieras de prueba.
+		- `--sanitize-rbac`: Reasignación de permisos RBAC para pruebas.
+- **Aislamiento Staging / Producción y Auditoría de Seguridad:**
+	- Confirmado aislamiento físico estricto: `.env.staging.local` apunta a proxy aislado de Staging en Railway (`trolley.proxy.rlwy.net:43850`). Producción no se accede desde este entorno.
+	- Reportado Incidente `SEC-2026-10-08-001` en modo de solo lectura (detección de bypass de login en `server/routes.ts` líneas 1403-1415 con contraseñas fijas para correos específicos) con propuesta formal de remediación.
+- **Suite de Pruebas Automatizadas y Verificación:**
+	- Nueva suite: `tests/unit/startup-migration-security.test.ts` (7/7 pruebas pasando), comprobando no alteración de contraseñas, roles, estados, redes, financieras y comprobando idempotencia en reinicios múltiples.
+	- Regresión de endpoints: `tests/unit/p0-endpoint-integration.test.ts` (16/16 pasando).
+	- Compilación de tipos (`npm run check`): 0 errores.
+	- Build de producción (`npm run build`): exitoso sin advertencias de dependencias duplicadas.
+
+
 
