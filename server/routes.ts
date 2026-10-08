@@ -71,6 +71,7 @@ import {
 } from "./commercialAuthorizationService";
 import { commercialOpportunityService } from "./commercialOpportunityService";
 import { commercialHelpService } from "./commercialHelpService";
+import { isOfferEligibleForRequests } from "./offerVersionService";
 
 
 import { z } from "zod";
@@ -6925,9 +6926,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // 🔹 INSTITUTION PRODUCTS (Level 3A: Assigned to financieras)
   app.get('/api/institution-products', isAuthenticated, async (req: any, res) => {
     try {
-      const { institutionId } = req.query;
+      const { institutionId, status, eligibleOnly } = req.query;
 
-      const products = await storage.getInstitutionProducts(institutionId as string);
+      let products = await storage.getInstitutionProducts(institutionId as string);
+      if (status) {
+        products = products.filter(p => p.status === status);
+      }
+      if (eligibleOnly === 'true') {
+        products = products.filter(p => isOfferEligibleForRequests(p));
+      }
       res.json(products);
     } catch (error) {
       console.error("Error fetching institution products:", error);
@@ -6954,8 +6961,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get('/api/institution-products/template/:templateId', isAuthenticated, async (req: any, res) => {
     try {
       const { templateId } = req.params;
+      const { eligibleOnly } = req.query;
 
-      const products = await storage.getInstitutionProductsByTemplate(templateId);
+      let products = await storage.getInstitutionProductsByTemplate(templateId);
+      if (eligibleOnly === 'true') {
+        products = products.filter(p => isOfferEligibleForRequests(p));
+      }
       res.json(products);
     } catch (error) {
       console.error("Error fetching institution products by template:", error);
@@ -7036,12 +7047,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       
       res.json(product);
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error updating institution product:", error);
       if (error instanceof z.ZodError) {
         res.status(400).json({ message: 'Invalid data', errors: error.errors });
       } else {
-        res.status(500).json({ message: "Failed to update institution product" });
+        res.status(400).json({ message: error.message || "Failed to update institution product" });
       }
     }
   });

@@ -157,3 +157,43 @@ export function validateMinimumPublishConditions(params: {
     errors,
   };
 }
+
+/**
+ * Evalúa si una oferta/producto es elegible para nuevas solicitudes de crédito.
+ * - Ofertas nuevas en borrador ('draft'): NUNCA son elegibles para nuevas solicitudes.
+ * - Ofertas archivadas ('archived') o inactivas ('isActive: false'): NO son elegibles.
+ * - Ofertas publicadas ('published'): Requieren versión publicada para ser elegibles.
+ * - Registros legacy: Se preserva su operación existente (elegibles si isActive !== false y no son 'draft'/'archived').
+ */
+export function isOfferEligibleForRequests(
+  offer: {
+    status?: string | null;
+    isActive?: boolean | null;
+  },
+  activeVersion?: {
+    status?: string | null;
+  } | null
+): boolean {
+  // 1. Inactiva lógicamente -> No elegible
+  if (offer.isActive === false) {
+    return false;
+  }
+
+  // 2. En borrador -> NUNCA elegible para nuevas solicitudes
+  if (offer.status === "draft") {
+    return false;
+  }
+
+  // 3. Archivada -> No elegible
+  if (offer.status === "archived") {
+    return false;
+  }
+
+  // 4. Si se proporciona versión activa, debe estar publicada
+  if (activeVersion) {
+    return activeVersion.status === "published" || activeVersion.status === "active";
+  }
+
+  // 5. Ofertas publicadas o registros legacy (sin status o con status='active') -> Elegibles
+  return offer.status === "published" || offer.status === "active" || !offer.status;
+}

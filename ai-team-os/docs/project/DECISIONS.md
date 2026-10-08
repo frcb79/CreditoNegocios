@@ -79,5 +79,17 @@ Formato: Fecha / Decision / Opciones evaluadas / Decision final / Por que
 	- La documentación requerida queda sellada criptográficamente en el hash SHA-256 determinista.
 	- Se protege la trazabilidad legal impidiendo la eliminación destructiva de versiones publicadas o superseded utilizadas en el historial.
 
+### 2026-10-08 / Cierre Técnico A1.2: Normalización `created_at`, Blindaje Legacy y Desactivación Lógica
+- Opciones evaluadas:
+	- Opcion A: Permitir que endpoints legacy muten ofertas publicadas directamente y mantener eliminación física con desvinculación forzada de créditos en cascada.
+	- Opcion B: Normalizar a snake_case estricto `created_at` en migración y autoMigrate; bloquear mutaciones directas de estado (`published`) y condiciones en ofertas publicadas vía endpoints legacy obligando al uso de versiones; reemplazar la eliminación física de financieras u ofertas con historial por desactivación lógica (`isActive: false`, `status: 'archived'`); e inhabilitar la elegibilidad de ofertas en borrador para nuevas solicitudes sin romper el flujo operativo de registros legacy.
+- Decision final: Opcion B.
+- Por que:
+	- Previene inconsistencias de esquema entre PostgreSQL y Drizzle ORM garantizando que la columna sea invariablemente `created_at`.
+	- Impide que integraciones o endpoints legacy se salten el ciclo de vida de versionado y el gate de calidad comercial de ofertas vigentes.
+	- Protege la integridad histórica y jurídica del libro de créditos y solicitudes ante solicitudes de borrado, convirtiéndolo en desactivación lógica segura.
+	- Garantiza que los borradores incompletos nunca sean asignados a solicitudes reales mientras preserva la continuidad operativa de los productos preexistentes.
+
 ## DECISIONES CAMBIADAS
 - 2026-10-08: Se reemplaza la coexistencia de dos catálogos (`financial_institution_offers` y `institution_products`) por la unificación en `institution_products` como catálogo canónico, manteniendo aliases y vistas retrocompatibles para evitar romper integraciones.
+- 2026-10-08: Se reemplaza la eliminación física con desvinculación de créditos en `deleteFinancialInstitution` por desactivación lógica preservadora de historial (`isActive: false` y ofertas archivadas) cuando existen créditos, solicitudes o versiones publicadas asociadas.

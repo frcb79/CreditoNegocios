@@ -989,6 +989,35 @@ export class DbStorage implements IStorage {
 
   async updateInstitutionProduct(id: string, productData: Partial<InsertInstitutionProduct>): Promise<InstitutionProduct | undefined> {
     try {
+      const [existing] = await db.select().from(institutionProducts).where(eq(institutionProducts.id, id));
+      if (!existing) return undefined;
+
+      // 1. Prohibir cambiar el estado directamente a 'published' saltándose el versionado y gate de calidad
+      if (productData.status === 'published' && existing.status !== 'published') {
+        throw new Error("No se puede cambiar el estado a 'published' directamente; utilice el flujo de publicación de versiones con validación de condiciones mínimas.");
+      }
+
+      // 2. Si la oferta ya está publicada o tiene versiones publicadas/superseded, impedir alteración directa de condiciones
+      const publishedVersions = await db.select().from(institutionProductVersions)
+        .where(and(
+          eq(institutionProductVersions.institutionProductId, id),
+          or(
+            eq(institutionProductVersions.status, "published"),
+            eq(institutionProductVersions.status, "superseded"),
+            eq(institutionProductVersions.status, "active")
+          )
+        )).limit(1);
+
+      const isPublished = existing.status === 'published' || publishedVersions.length > 0;
+      if (isPublished) {
+        const touchesConditions = productData.configuration !== undefined || 
+          productData.targetProfiles !== undefined || 
+          productData.activeVariables !== undefined;
+        if (touchesConditions) {
+          throw new Error("No se pueden modificar directamente las condiciones de una oferta publicada; cree una nueva versión en borrador para modificar condiciones.");
+        }
+      }
+
       const [updated] = await db
         .update(institutionProducts)
         .set({ ...productData, updatedAt: new Date() })
@@ -997,7 +1026,7 @@ export class DbStorage implements IStorage {
       return updated;
     } catch (error) {
       console.error("Error updating institution product:", error);
-      return undefined;
+      throw error;
     }
   }
 
@@ -1445,16 +1474,36 @@ export class DbStorage implements IStorage {
 
   async deleteFinancialInstitution(id: string): Promise<boolean> {
     try {
-      // 1. Unlink foreign key references
-      await db.update(credits).set({ financialInstitutionId: null }).where(eq(credits.financialInstitutionId, id));
-      await db.update(productRequests).set({ existingInstitutionId: null }).where(eq(productRequests.existingInstitutionId, id));
-      
-      // 2. Delete dependent targets and products
+      // 1. Verificar si tiene historial en créditos, solicitudes o versiones publicadas
+      const linkedCredits = await db.select({ id: credits.id }).from(credits)
+        .where(eq(credits.financialInstitutionId, id)).limit(1);
+      const linkedTargets = await db.select({ id: creditSubmissionTargets.id }).from(creditSubmissionTargets)
+        .where(eq(creditSubmissionTargets.financialInstitutionId, id)).limit(1);
+      const linkedPublishedVersions = await db.select({ id: institutionProductVersions.id })
+        .from(institutionProductVersions)
+        .innerJoin(institutionProducts, eq(institutionProductVersions.institutionProductId, institutionProducts.id))
+        .where(and(
+          eq(institutionProducts.institutionId, id),
+          or(
+            eq(institutionProductVersions.status, "published"),
+            eq(institutionProductVersions.status, "superseded"),
+            eq(institutionProductVersions.status, "active")
+          )
+        )).limit(1);
+
+      const hasHistory = linkedCredits.length > 0 || linkedTargets.length > 0 || linkedPublishedVersions.length > 0;
+
+      if (hasHistory) {
+        // Desactivación lógica obligatoria: NUNCA eliminar solicitudes, créditos ni versiones utilizadas
+        await db.update(financialInstitutions).set({ isActive: false, updatedAt: new Date() }).where(eq(financialInstitutions.id, id));
+        await db.update(institutionProducts).set({ isActive: false, status: 'archived', updatedAt: new Date() }).where(eq(institutionProducts.institutionId, id));
+        return true;
+      }
+
+      // Si no tiene historial transaccional ni legal, eliminar de forma segura
       await db.delete(creditSubmissionTargets).where(eq(creditSubmissionTargets.financialInstitutionId, id));
       await db.delete(institutionProducts).where(eq(institutionProducts.institutionId, id));
       await db.delete(products).where(eq(products.institutionId, id));
-      
-      // 3. Delete financial institution
       const result = await db.delete(financialInstitutions).where(eq(financialInstitutions.id, id));
       return (result.rowCount ?? 0) > 0;
     } catch (error) {

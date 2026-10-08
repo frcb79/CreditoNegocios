@@ -34,7 +34,7 @@ CREATE TABLE IF NOT EXISTS public.institution_product_versions (
   published_at TIMESTAMP,
   published_by VARCHAR REFERENCES public.users(id),
   created_by VARCHAR REFERENCES public.users(id),
-  createdAt TIMESTAMP DEFAULT NOW(),
+  created_at TIMESTAMP DEFAULT NOW(),
   updated_at TIMESTAMP DEFAULT NOW()
 );
 

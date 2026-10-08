@@ -722,6 +722,13 @@ export async function runAutoMigration(): Promise<void> {
         CREATE INDEX IF NOT EXISTS "ipv_status_idx" ON public.institution_product_versions (status);
         CREATE UNIQUE INDEX IF NOT EXISTS "ipv_published_unique" ON public.institution_product_versions (institution_product_id) WHERE status = 'published';
 
+        -- Verificacion defensiva de columnas para tablas preexistentes
+        ALTER TABLE IF EXISTS public.institution_product_versions
+          ADD COLUMN IF NOT EXISTS published_at TIMESTAMP,
+          ADD COLUMN IF NOT EXISTS published_by VARCHAR,
+          ADD COLUMN IF NOT EXISTS created_at TIMESTAMP DEFAULT NOW(),
+          ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT NOW();
+
         -- Vista retrocompatible para interfaces legacy
         CREATE OR REPLACE VIEW public.financial_institution_offers AS
           SELECT 

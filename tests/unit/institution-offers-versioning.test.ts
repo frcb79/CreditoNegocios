@@ -1,10 +1,12 @@
 import { storage } from "../../server/storage";
 import { DbStorage } from "../../server/dbStorage";
+import { institutionProductVersions } from "../../shared/schema";
 import {
   computeInstitutionProductVersionHash,
   computeOfferVersionHash,
   validateMinimumPublishConditions,
   validateOfferVersionParameters,
+  isOfferEligibleForRequests,
 } from "../../server/offerVersionService";
 
 describe("Bloque A1.1 — Arquitectura Canónica de Ofertas y Versionado Aditivo Seguro", () => {
@@ -441,6 +443,192 @@ describe("Bloque A1.1 — Arquitectura Canónica de Ofertas y Versionado Aditivo
       // Ningún campo de comisión interna en la versión
       expect((version as any).appCommission).toBeUndefined();
       expect((version as any).platformShare).toBeUndefined();
+    });
+  });
+
+  describe("Cierre Técnico A1.2 — Requisito 1: Equivalencia y convención de columnas (created_at)", () => {
+    it("asegura que institution_product_versions define la columna created_at en snake_case", () => {
+      // Drizzle ORM column definition check
+      expect(institutionProductVersions.createdAt.name).toBe("created_at");
+      expect(institutionProductVersions.updatedAt.name).toBe("updated_at");
+      expect(institutionProductVersions.publishedAt.name).toBe("published_at");
+    });
+  });
+
+  describe("Cierre Técnico A1.2 — Requisito 3: Protección contra bypass de versionado en endpoints legacy", () => {
+    it("rechaza cambiar el estado directamente a 'published' a través de updateInstitutionProduct", async () => {
+      const { offer } = await storage.createOffer({
+        institutionId,
+        name: "Oferta Intento Bypass Estado",
+        productType: "arrendamiento",
+      });
+
+      expect(offer.status).toBe("draft");
+
+      await expect(
+        storage.updateInstitutionProduct(offer.id, { status: "published" as any })
+      ).rejects.toThrow(/No se puede cambiar el estado a 'published' directamente/);
+    });
+
+    it("rechaza modificar directamente condiciones de una oferta publicada mediante updateInstitutionProduct", async () => {
+      const { offer, version } = await storage.createOffer(
+        {
+          institutionId,
+          name: "Oferta Inmutable Publicada",
+          productType: "credito_simple",
+        },
+        {
+          conditions: { minAmount: 100000, maxAmount: 1000000, minInterestRate: 15, maxInterestRate: 20, minTermMonths: 6, maxTermMonths: 24 },
+          requirements: { targetProfiles: ["persona_moral"] },
+          requiredDocuments: ["ine", "acta_constitutiva"],
+          changeReason: "Versión inicial",
+        }
+      );
+
+      // Publicar oferta
+      await storage.publishOfferVersion(offer.id, version.id, {
+        publishedBy: "risk-officer-1",
+        changeReason: "Aprobación oficial",
+      });
+
+      // Modificar condiciones directamente debe ser bloqueado
+      await expect(
+        storage.updateInstitutionProduct(offer.id, {
+          configuration: { minAmount: 50000 },
+        } as any)
+      ).rejects.toThrow(/No se pueden modificar directamente las condiciones de una oferta publicada/);
+
+      // Modificar metadatos no comerciales (como descripción o isActive) sí está permitido
+      const updatedMeta = await storage.updateInstitutionProduct(offer.id, {
+        description: "Nueva descripción comercial amigable",
+        isActive: false,
+      } as any);
+      expect(updatedMeta?.description).toBe("Nueva descripción comercial amigable");
+      expect(updatedMeta?.isActive).toBe(false);
+    });
+
+    it("permite modificar condiciones directamente si la oferta aún se encuentra en borrador ('draft')", async () => {
+      const { offer } = await storage.createOffer({
+        institutionId,
+        name: "Oferta Borrador Editable",
+        productType: "credito_revolvente",
+      });
+
+      expect(offer.status).toBe("draft");
+
+      const updatedDraft = await storage.updateInstitutionProduct(offer.id, {
+        configuration: { initialNote: "Ajuste preliminar antes de publicar" },
+      } as any);
+
+      expect(updatedDraft).toBeDefined();
+      expect(updatedDraft?.configuration).toEqual({ initialNote: "Ajuste preliminar antes de publicar" });
+    });
+  });
+
+  describe("Cierre Técnico A1.2 — Requisito 4: Desactivación lógica de financieras y ofertas con historial", () => {
+    it("aplica desactivación lógica al eliminar una financiera con créditos o versiones publicadas", async () => {
+      const histInstId = "fin-hist-" + Date.now();
+      await storage.createFinancialInstitution({
+        id: histInstId,
+        name: "Financiera Histórica Protegida",
+        email: "hist@financiera.com",
+        isActive: true,
+      } as any);
+
+      const { offer, version } = await storage.createOffer(
+        {
+          institutionId: histInstId,
+          name: "Oferta con Historial Legal",
+          productType: "credito_simple",
+        },
+        {
+          conditions: { minAmount: 50000, maxAmount: 500000, minInterestRate: 12, maxInterestRate: 18, minTermMonths: 6, maxTermMonths: 12 },
+          requirements: { targetProfiles: ["persona_moral"] },
+          requiredDocuments: ["ine"],
+          changeReason: "Lanzamiento oficial",
+        }
+      );
+
+      await storage.publishOfferVersion(offer.id, version.id, {
+        publishedBy: "admin",
+        changeReason: "Publicación formal",
+      });
+
+      // Simular solicitud de crédito asociada a la financiera
+      await storage.createCredit({
+        clientId: "client-test-1",
+        financialInstitutionId: histInstId,
+        requestedAmount: "250000",
+        approvedAmount: "250000",
+        status: "active",
+      } as any);
+
+      // Eliminar financiera debe realizar desactivación lógica sin destruir datos
+      const deleted = await storage.deleteFinancialInstitution(histInstId);
+      expect(deleted).toBe(true);
+
+      // La financiera debe seguir existiendo pero marcada como inactiva
+      const instAfter = await storage.getFinancialInstitution(histInstId);
+      expect(instAfter).toBeDefined();
+      expect(instAfter?.isActive).toBe(false);
+
+      // La oferta asociada debe estar archivada e inactiva, pero no eliminada
+      const offerAfter = await storage.getOffer(offer.id);
+      expect(offerAfter).toBeDefined();
+      expect(offerAfter?.isActive).toBe(false);
+      expect(offerAfter?.status).toBe("archived");
+
+      // La versión publicada debe seguir intacta para fines regulatorios y de auditoría
+      const versionAfter = await storage.getOfferVersion(version.id);
+      expect(versionAfter).toBeDefined();
+      expect(versionAfter?.status).toBe("published");
+    });
+  });
+
+  describe("Cierre Técnico A1.2 — Requisito 5: Elegibilidad para nuevas solicitudes y preservación legacy", () => {
+    it("una oferta nueva en borrador ('draft') NUNCA es elegible para nuevas solicitudes", () => {
+      const draftOffer = {
+        id: "draft-offer-1",
+        status: "draft",
+        isActive: true,
+      };
+
+      expect(isOfferEligibleForRequests(draftOffer)).toBe(false);
+      expect(isOfferEligibleForRequests(draftOffer, { status: "draft" })).toBe(false);
+    });
+
+    it("una oferta publicada con versión activa SÍ es elegible para nuevas solicitudes", () => {
+      const publishedOffer = {
+        id: "published-offer-1",
+        status: "published",
+        isActive: true,
+      };
+
+      expect(isOfferEligibleForRequests(publishedOffer)).toBe(true);
+      expect(isOfferEligibleForRequests(publishedOffer, { status: "published" })).toBe(true);
+    });
+
+    it("preserva la operación de registros legacy existentes sin romper el flujo operativo", () => {
+      // Registro legacy sin campo status
+      const legacyWithoutStatus = {
+        id: "legacy-prod-1",
+        isActive: true,
+      };
+      expect(isOfferEligibleForRequests(legacyWithoutStatus)).toBe(true);
+
+      // Registro legacy con status 'active' tradicional
+      const legacyWithActiveStatus = {
+        id: "legacy-prod-2",
+        status: "active",
+        isActive: true,
+      };
+      expect(isOfferEligibleForRequests(legacyWithActiveStatus)).toBe(true);
+    });
+
+    it("ofertas inactivas o archivadas NO son elegibles para nuevas solicitudes", () => {
+      expect(isOfferEligibleForRequests({ status: "published", isActive: false })).toBe(false);
+      expect(isOfferEligibleForRequests({ status: "archived", isActive: true })).toBe(false);
+      expect(isOfferEligibleForRequests({ status: "archived", isActive: false })).toBe(false);
     });
   });
 });

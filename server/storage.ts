@@ -2157,19 +2157,42 @@ export class MemStorage implements IStorage {
   }
 
   async deleteFinancialInstitution(id: string): Promise<boolean> {
-    // Unlink credits
-    for (const [creditId, credit] of this.credits.entries()) {
-      if (credit.financialInstitutionId === id) {
-        this.credits.set(creditId, { ...credit, financialInstitutionId: null });
+    const inst = this.financialInstitutions.get(id);
+    if (!inst) return false;
+
+    // Verificar si tiene historial transaccional o versiones publicadas
+    const hasCredits = Array.from(this.credits.values()).some(c => c.financialInstitutionId === id);
+    const hasTargets = Array.from(this.creditSubmissionTargets.values()).some(t => t.financialInstitutionId === id);
+    const hasPublishedProducts = Array.from(this.institutionProducts.values()).some(p => {
+      if (p.institutionId !== id) return false;
+      return Array.from(this.institutionProductVersions.values()).some(v => 
+        (v.institutionProductId === p.id || v.offerId === p.id) && 
+        (v.status === 'published' || v.status === 'superseded' || v.status === 'active')
+      );
+    });
+
+    if (hasCredits || hasTargets || hasPublishedProducts) {
+      // Desactivación lógica: NUNCA eliminar solicitudes, créditos ni versiones utilizadas
+      this.financialInstitutions.set(id, { ...inst, isActive: false, updatedAt: new Date() });
+      for (const [ipId, ip] of this.institutionProducts.entries()) {
+        if (ip.institutionId === id) {
+          this.institutionProducts.set(ipId, { ...ip, isActive: false, status: 'archived', updatedAt: new Date() });
+        }
       }
+      return true;
     }
-    // Delete linked institution products
+
+    // Si no tiene historial transaccional ni regulatorio, permitir eliminación física limpia
     for (const [ipId, ip] of this.institutionProducts.entries()) {
       if (ip.institutionId === id) {
+        for (const [vId, v] of this.institutionProductVersions.entries()) {
+          if (v.institutionProductId === ipId || v.offerId === ipId) {
+            this.institutionProductVersions.delete(vId);
+          }
+        }
         this.institutionProducts.delete(ipId);
       }
     }
-    // Delete linked products
     for (const [pId, p] of this.products.entries()) {
       if (p.institutionId === id) {
         this.products.delete(pId);
@@ -2974,6 +2997,25 @@ export class MemStorage implements IStorage {
   async updateInstitutionProduct(id: string, productData: Partial<InsertInstitutionProduct>): Promise<InstitutionProduct | undefined> {
     const existing = this.institutionProducts.get(id);
     if (!existing) return undefined;
+
+    // 1. Prohibir cambiar el estado directamente a 'published' saltándose el versionado y gate de calidad
+    if (productData.status === 'published' && existing.status !== 'published') {
+      throw new Error("No se puede cambiar el estado a 'published' directamente; utilice el flujo de publicación de versiones con validación de condiciones mínimas.");
+    }
+
+    // 2. Si la oferta ya tiene versiones publicadas o está publicada, impedir alterar directamente condiciones comerciales
+    const hasPublishedVersion = Array.from(this.institutionProductVersions.values())
+      .some(v => (v.institutionProductId === id || v.offerId === id) && (v.status === 'published' || v.status === 'superseded' || v.status === 'active'));
+
+    const isPublished = existing.status === 'published' || hasPublishedVersion;
+    if (isPublished) {
+      const touchesConditions = productData.configuration !== undefined || 
+        productData.targetProfiles !== undefined || 
+        productData.activeVariables !== undefined;
+      if (touchesConditions) {
+        throw new Error("No se pueden modificar directamente las condiciones de una oferta publicada; cree una nueva versión en borrador para modificar condiciones.");
+      }
+    }
 
     const updated: InstitutionProduct = {
       ...existing,

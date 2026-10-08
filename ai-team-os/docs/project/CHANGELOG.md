@@ -107,3 +107,30 @@ Actualizar cada vez que se completa una feature.
 	- Suite de regresión: `tests/unit/storage.test.ts` (1/1 passing).
 	- Compilación TypeScript (`npm run check`): 0 errores.
 	- Empaquetado backend (`npm run build:server`): 0 errores.
+
+## 2026-10-08 — Cierre Técnico A1.2: Normalización de Esquema, Blindaje Legacy y Desactivación Lógica
+
+- **Rama:** `feat/institution-offers-versioning-a1`
+- **Requisito 1: Normalización de Columna snake_case (`created_at`):**
+	- Corrección en `migrations/0005_institution_offers_versioning.sql`: sustitución de `createdAt` por `created_at` en la definición DDL de `institution_product_versions`.
+	- Sincronización en `server/autoMigrate.ts`: verificación defensiva de columnas (`created_at`, `updated_at`, `published_at`, `published_by`) para tablas preexistentes, garantizando paridad 1:1 con Drizzle ORM y PostgreSQL.
+- **Requisito 2: Verificación de Aislamiento PostgreSQL:**
+	- Confirmado que el entorno de desarrollo local carece de servicio PostgreSQL en puerto 5432 y no dispone de Docker.
+	- Reportado transparentemente como pendiente para ambiente de CI/CD dedicado aislado, protegiendo estrictamente la base de datos de Producción/Staging contra ejecuciones de prueba.
+- **Requisito 3: Blindaje de Endpoints Legacy contra Bypass de Versionado:**
+	- `updateInstitutionProduct` en `storage.ts` y `dbStorage.ts` rechaza transiciones directas a `status: 'published'` sin pasar por el gate de validación.
+	- Bloqueada la mutación directa de condiciones (`configuration`, `targetProfiles`, `activeVariables`) en ofertas que ya cuentan con versiones publicadas; se exige generar una nueva versión en borrador.
+	- Permitida la edición directa de condiciones únicamente en ofertas que se encuentran en borrador (`draft`).
+	- `PUT /api/institution-products/:id` en `server/routes.ts` devuelve HTTP 400 descriptivo ante cualquier intento de bypass.
+- **Requisito 4: Desactivación Lógica Preservadora de Historial:**
+	- `deleteFinancialInstitution` en `storage.ts` y `dbStorage.ts` modificado para detectar si la financiera posee historial (créditos, solicitudes o versiones publicadas).
+	- Ante existencia de historial, se aplica desactivación lógica (`isActive: false` en financiera y `isActive: false, status: 'archived'` en ofertas vinculadas), sin desvincular ni eliminar créditos, solicitudes ni versiones utilizadas.
+	- La eliminación física queda restringida exclusivamente a entidades sin historial ni referencias regulatorias.
+- **Requisito 5: Elegibilidad para Nuevas Solicitudes y Preservación Legacy:**
+	- Implementación de `isOfferEligibleForRequests` en `server/offerVersionService.ts`: ofertas en `draft` o `archived` o con `isActive: false` quedan excluidas de nuevas solicitudes.
+	- Se preserva la operación ininterrumpida de registros legacy (sin status o con status `active`).
+	- Incorporado soporte de filtrado `eligibleOnly` en `GET /api/institution-products` y `GET /api/institution-products/template/:templateId`.
+- **Validación QA:**
+	- Suite automatizada: `tests/unit/institution-offers-versioning.test.ts` ampliada a **21/21 passing**.
+	- Compilación TypeScript (`npm run check`): **0 errores**.
+	- Empaquetado backend (`npm run build:server`): **0 errores** (`dist/index.js`, 921.3kb).

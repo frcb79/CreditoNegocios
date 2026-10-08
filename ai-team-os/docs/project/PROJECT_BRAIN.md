@@ -55,30 +55,32 @@ Completado:
 	- Alta e importación exitosa (100% - 9 perfiles/productos, 0 errores) en Railway Staging para 5 nuevas financieras: Altum, Cualli, Jeeves (con plantilla de producto "Credito Revolvente"), Aspiria, Kapital, y actualización de Pretmex con nuevas reglas y esquemas de comisión.
 	- Purga y depuración permanente de 5 entidades de pruebas pasadas (E2E Flujo Completo, Financiera Demo, Financiera Prueba Franco) para dejar el catálogo oficial limpio en exactamente 18 financieras sin duplicados ni faltantes.
 	- Implementación del endpoint y método `DELETE /api/financial-institutions/:id` con soporte de eliminación en cascada referencial y confirmación en UI (`Financieras.tsx`).
-- **Sprint 2026-10-08 (Bloque A1 & Corrección A1.1 — Consolidación Canónica y Hardening Transaccional de Ofertas):**
+- **Sprint 2026-10-08 (Bloque A1, Corrección A1.1 & Cierre Técnico A1.2 — Ofertas Canónicas, Versionado Seguro y Cierre de Riesgos):**
 	- Consolidación del catálogo canónico en `institution_products` con historial en `institution_product_versions`, eliminando catálogos duales y manteniendo retrocompatibilidad mediante vistas SQL y aliases TypeScript.
 	- Soporte para múltiples ofertas del mismo `product_type` por financiera sin colisiones de clave única.
 	- Ciclo de vida robusto: nuevas ofertas y versiones inician en `draft`; gate de calidad estricto antes de publicar (`validateMinimumPublishConditions`).
 	- Transaccionalidad atómica y concurrencia blindada: `publishInstitutionProductVersion` con locks pesimistas (`SELECT ... FOR UPDATE`) y actualización atómica de versión anterior a `superseded`.
 	- Restricción estricta de unicidad a nivel PostgreSQL: índice condicional `ipv_published_unique` (`WHERE status = 'published'`), garantizando un máximo de 1 versión activa.
 	- Hashes criptográficos SHA-256 (`version_hash`) extendidos para incluir `requiredDocuments` (ordenados determinísticamente) para auditoría jurídica de condiciones.
-	- Protección contra eliminación destructiva: prohibido el borrado físico de versiones `published` o `superseded`, y de productos con versiones activas/históricas.
+	- Normalización de esquema: corrección de `createdAt` a snake_case `created_at` en DDL y verificación defensiva de columnas en `autoMigrate.ts`.
+	- Blindaje contra bypass legacy: `updateInstitutionProduct` y `PUT /api/institution-products/:id` impiden publicar directamente o mutar condiciones de ofertas ya publicadas.
+	- Desactivación lógica: `deleteFinancialInstitution` y `deleteInstitutionProduct` aplican soft-deactivation (`isActive: false`, `archived`) cuando existen créditos o versiones publicadas, protegiendo el historial legal.
+	- Reglas de elegibilidad: `isOfferEligibleForRequests` excluye ofertas en borrador (`draft`) de nuevas solicitudes mientras preserva la operación continua de registros legacy.
 	- Aislamiento estricto de seguridad: comisiones internas de Crédito Negocios desacopladas de las ofertas.
-	- Implementación completa en `IStorage`, `MemStorage` y `DbStorage`.
-	- Migración SQL aditiva `migrations/0005_institution_offers_versioning.sql` y sincronización idempotente en `server/autoMigrate.ts`.
-	- Suite automatizada `tests/unit/institution-offers-versioning.test.ts` (12/12 tests passing).
+	- Suite automatizada: `tests/unit/institution-offers-versioning.test.ts` (21/21 tests passing).
 
 En progreso:
 - Preparación para bloques subsiguientes: Diccionario Canónico de Variables, Matching por Oferta, Esquemas de Comisiones y Aceptación Comercial.
 
 Pendiente:
+- Validación PostgreSQL en ambiente CI/CD aislado con motor Postgres dedicado (sin tocar Staging/Producción).
 - Bloques B y C: Matching contra versiones activas de ofertas y cálculo de comisiones desacopladas por rol.
 - Revisión de items de `Pendientes.md` (logo/fondo transparente en sidebar, mensaje de devolución admin en modal de broker, tracking de pagos de sobretasa de financiera a super admin).
 - Medir impacto del sistema en tiempo de arranque, calidad y velocidad de entrega.
 - Establecer ritual de sync periódico de aprendizajes al repositorio maestro.
 
 Bloqueadores:
-- Ninguno. Tests unitarios en verde (12/12), TypeScript sin errores (0 errores), build de servidor verificado, base de datos con migración idempotente y transacciones ACID.
+- Ninguno. Tests unitarios en verde (21/21), TypeScript sin errores (0 errores), build de servidor verificado (921.3kb), base de datos con migración idempotente y transacciones ACID.
 
 ## HISTORIAL
 2026-04-17 — Sesion inicial: creacion de estructura base del sistema.
@@ -89,4 +91,4 @@ Bloqueadores:
 2026-09-04 — Implementación de Filtros de Clientes, Multi-Dispersión de Créditos con Comisiones Individuales, Red de Brokers 3-en-1 para Super Admin, y corrección de build Vercel (IIFE en JSX).
 2026-09-11 — Corrección de build en Railway, reparación de esquema PostgreSQL (`referral_code`), implementación de fallback nativo SQL en autenticación, restauración y blindaje de matriz RBAC (3 cuentas con `Prueba1$`) y validación live en producción.
 2026-09-17 — Procesamiento de `Plantilla_Comisiones_Financieras Luis.xlsx`, alta de 5 nuevas financieras (Altum, Cualli, Jeeves, Aspiria, Kapital) y actualización de Pretmex. Purga de 5 entidades de prueba e incorporación de eliminación permanente segura (`DELETE /api/financial-institutions/:id`). Catálogo consolidado en 18 financieras reales.
-2026-10-08 — Implementación del Bloque A1 y Corrección A1.1: Consolidación de catálogo canónico en `institution_products`, versionado aditivo histórico inmutable, transacciones concurrentes ACID, hashes con requerimientos documentales y blindaje anti-destrucción en rama `feat/institution-offers-versioning-a1`.
+2026-10-08 — Implementación del Bloque A1, Corrección A1.1 y Cierre Técnico A1.2: Consolidación de catálogo canónico en `institution_products`, versionado aditivo histórico inmutable, transacciones concurrentes ACID, normalización snake_case `created_at`, blindaje contra bypass legacy, desactivación lógica y elegibilidad de borradores en rama `feat/institution-offers-versioning-a1`.
