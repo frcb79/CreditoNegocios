@@ -6984,6 +6984,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  app.get('/api/institution-products/:id/versions', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      const hasPermission = await requirePlatformRole(userId, ['super_admin', 'admin']);
+      if (!hasPermission) {
+        return res.status(403).json({ message: "Access denied - Admin privileges required" });
+      }
+
+      const { id } = req.params;
+      const versions = await storage.getInstitutionProductVersions(id);
+      res.json(versions);
+    } catch (error) {
+      console.error("Error fetching institution product versions:", error);
+      res.status(500).json({ message: "Failed to fetch institution product versions" });
+    }
+  });
+
   app.get('/api/institution-products/template/:templateId', isAuthenticated, async (req: any, res) => {
     try {
       const { templateId } = req.params;
@@ -7034,7 +7051,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
         targetProfiles, // Use copied or provided targetProfiles
         createdBy: userId, // Set automatically from authenticated user
       };
-      const product = await storage.createInstitutionProduct(productData);
+      const initialVersionData = {
+        versionNumber: 1,
+        status: 'draft',
+        conditions: (bodyData.configuration as any) || {},
+        requirements: { targetProfiles: targetProfiles || [] },
+        changeReason: "Alta inicial de oferta comercial en borrador",
+        createdBy: userId,
+      };
+      const product = await storage.createInstitutionProduct(productData, initialVersionData);
       
       res.status(201).json(product);
     } catch (error) {

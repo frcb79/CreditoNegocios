@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -31,6 +31,8 @@ import { FinancialInstitution, InstitutionProductWithTemplate } from "@shared/sc
 import NewFinancieraModal from "@/components/Modals/NewFinancieraModal";
 import RequestInstitutionModal from "@/components/Modals/RequestInstitutionModal";
 import ProductConfigurationModal from "@/components/Modals/ProductConfigurationModal";
+import AdminOffersList from "@/components/AdminOffers/AdminOffersList";
+import NewOfferModal from "@/components/AdminOffers/NewOfferModal";
 import { 
   Building2, 
   Search, 
@@ -57,6 +59,8 @@ export default function Financieras() {
   const [activeFilter, setActiveFilter] = useState<FilterType>('active');
   const [showNewModal, setShowNewModal] = useState(false);
   const [showRequestModal, setShowRequestModal] = useState(false);
+  const [showNewOfferModal, setShowNewOfferModal] = useState(false);
+  const [viewMode, setViewMode] = useState<'instituciones' | 'ofertas'>('instituciones');
   const [configModal, setConfigModal] = useState<{ show: boolean; financiera?: FinancialInstitution }>({ show: false });
   const [confirmDialog, setConfirmDialog] = useState<{ show: boolean; financiera?: FinancialInstitution }>({ show: false });
   const [deleteDialog, setDeleteDialog] = useState<{ show: boolean; financiera?: FinancialInstitution }>({ show: false });
@@ -65,6 +69,15 @@ export default function Financieras() {
   
   const isAdmin = user?.role === 'admin' || user?.role === 'super_admin';
   const isBroker = user?.role === 'broker' || user?.role === 'master_broker';
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const params = new URLSearchParams(window.location.search);
+      if ((params.get("tab") === "ofertas" || params.get("view") === "ofertas") && isAdmin) {
+        setViewMode("ofertas");
+      }
+    }
+  }, [isAdmin]);
 
   // Delete financial institution permanently
   const deleteMutation = useMutation({
@@ -227,83 +240,133 @@ export default function Financieras() {
       />
         
       <main className="flex-1 p-4 sm:p-6 lg:p-8 overflow-y-auto">
-        {/* Institutional Toolbar */}
-        <div className="bg-white border border-slate-200/80 rounded-xl shadow-sm p-4 sm:p-5 mb-6 flex flex-col md:flex-row gap-4 md:items-center md:justify-between">
-          <div className="flex flex-wrap items-center gap-2">
-            <div className="inline-flex rounded-lg border border-slate-200 bg-slate-50/80 p-1">
-              <button
-                onClick={() => setActiveFilter('active')}
-                className={cn(
-                  "px-3 py-1.5 rounded-md text-xs font-medium transition-all",
-                  activeFilter === 'active'
-                    ? "bg-white text-slate-900 shadow-sm"
-                    : "text-slate-600 hover:text-slate-900"
-                )}
-                data-testid="filter-active"
-              >
-                Activas ({activeCount})
-              </button>
-              <button
-                onClick={() => setActiveFilter('all')}
-                className={cn(
-                  "px-3 py-1.5 rounded-md text-xs font-medium transition-all",
-                  activeFilter === 'all'
-                    ? "bg-white text-slate-900 shadow-sm"
-                    : "text-slate-600 hover:text-slate-900"
-                )}
-                data-testid="filter-all"
-              >
-                Todas ({totalCount})
-              </button>
-              <button
-                onClick={() => setActiveFilter('inactive')}
-                className={cn(
-                  "px-3 py-1.5 rounded-md text-xs font-medium transition-all",
-                  activeFilter === 'inactive'
-                    ? "bg-white text-slate-900 shadow-sm"
-                    : "text-slate-600 hover:text-slate-900"
-                )}
-                data-testid="filter-inactive"
-              >
-                Inactivas ({inactiveCount})
-              </button>
-            </div>
+        {/* Admin Navigation View Switcher (Super Admin / Admin Only) */}
+        {isAdmin && (
+          <div className="flex items-center gap-2 mb-5 border-b border-slate-200/80 pb-3">
+            <button
+              onClick={() => setViewMode('instituciones')}
+              className={cn(
+                "flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-semibold transition-all",
+                viewMode === 'instituciones'
+                  ? "bg-[#101F35] text-white shadow-xs"
+                  : "bg-white text-slate-600 hover:text-slate-900 border border-slate-200/80 hover:bg-slate-50"
+              )}
+              data-testid="tab-switch-financieras"
+            >
+              <Building2 className="w-4 h-4 text-[#2463D6]" />
+              <span>Instituciones Financieras ({totalCount})</span>
+            </button>
+            <button
+              onClick={() => setViewMode('ofertas')}
+              className={cn(
+                "flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-semibold transition-all",
+                viewMode === 'ofertas'
+                  ? "bg-[#101F35] text-white shadow-xs"
+                  : "bg-white text-slate-600 hover:text-slate-900 border border-slate-200/80 hover:bg-slate-50"
+              )}
+              data-testid="tab-switch-ofertas"
+            >
+              <Layers className="w-4 h-4 text-[#2463D6]" />
+              <span>Catálogo Global de Ofertas</span>
+              <span className="text-[10px] font-mono font-bold px-1.5 py-0.2 rounded-full bg-blue-100 text-[#2463D6]">
+                {institutionProducts.length}
+              </span>
+            </button>
           </div>
+        )}
 
-          <div className="flex items-center gap-3 flex-1 md:max-w-md md:justify-end">
-            <div className="relative flex-1">
-              <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-              <Input
-                placeholder="Buscar por nombre de financiera..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                data-testid="input-search-financieras"
-                className="pl-9 h-9 text-xs placeholder:text-slate-400 border-slate-200 bg-slate-50/50 focus:bg-white transition-colors"
-              />
+        {isAdmin && viewMode === 'ofertas' ? (
+          <AdminOffersList />
+        ) : (
+          <>
+            {/* Institutional Toolbar */}
+            <div className="bg-white border border-slate-200/80 rounded-xl shadow-sm p-4 sm:p-5 mb-6 flex flex-col md:flex-row gap-4 md:items-center md:justify-between">
+              <div className="flex flex-wrap items-center gap-2">
+                <div className="inline-flex rounded-lg border border-slate-200 bg-slate-50/80 p-1">
+                  <button
+                    onClick={() => setActiveFilter('active')}
+                    className={cn(
+                      "px-3 py-1.5 rounded-md text-xs font-medium transition-all",
+                      activeFilter === 'active'
+                        ? "bg-white text-slate-900 shadow-sm"
+                        : "text-slate-600 hover:text-slate-900"
+                    )}
+                    data-testid="filter-active"
+                  >
+                    Activas ({activeCount})
+                  </button>
+                  <button
+                    onClick={() => setActiveFilter('all')}
+                    className={cn(
+                      "px-3 py-1.5 rounded-md text-xs font-medium transition-all",
+                      activeFilter === 'all'
+                        ? "bg-white text-slate-900 shadow-sm"
+                        : "text-slate-600 hover:text-slate-900"
+                    )}
+                    data-testid="filter-all"
+                  >
+                    Todas ({totalCount})
+                  </button>
+                  <button
+                    onClick={() => setActiveFilter('inactive')}
+                    className={cn(
+                      "px-3 py-1.5 rounded-md text-xs font-medium transition-all",
+                      activeFilter === 'inactive'
+                        ? "bg-white text-slate-900 shadow-sm"
+                        : "text-slate-600 hover:text-slate-900"
+                    )}
+                    data-testid="filter-inactive"
+                  >
+                    Inactivas ({inactiveCount})
+                  </button>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-3 flex-1 md:max-w-md md:justify-end">
+                <div className="relative flex-1">
+                  <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                  <Input
+                    placeholder="Buscar por nombre de financiera..."
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    data-testid="input-search-financieras"
+                    className="pl-9 h-9 text-xs placeholder:text-slate-400 border-slate-200 bg-slate-50/50 focus:bg-white transition-colors"
+                  />
+                </div>
+
+                {isAdmin ? (
+                  <div className="flex items-center gap-2 shrink-0">
+                    <Button 
+                      onClick={() => setShowNewOfferModal(true)}
+                      variant="outline"
+                      className="border-blue-200 text-[#2463D6] hover:bg-blue-50 text-xs font-semibold h-9 shadow-2xs gap-1.5"
+                      data-testid="button-toolbar-new-offer"
+                    >
+                      <Layers className="w-3.5 h-3.5" />
+                      <span>Nueva Oferta</span>
+                    </Button>
+                    <Button 
+                      onClick={() => setShowNewModal(true)}
+                      className="bg-primary hover:bg-primary-dark text-primary-foreground text-xs font-medium h-9 shadow-sm"
+                      data-testid="button-new-financiera"
+                    >
+                      <Plus className="w-3.5 h-3.5 mr-1.5" />
+                      <span>Nueva Financiera</span>
+                    </Button>
+                  </div>
+                ) : (
+                  <Button 
+                    onClick={() => setShowRequestModal(true)}
+                    variant="outline"
+                    className="text-xs font-medium h-9 border-slate-200 text-slate-700 hover:bg-slate-50 shrink-0"
+                    data-testid="button-request-financiera"
+                  >
+                    <Send className="w-3.5 h-3.5 mr-1.5 text-primary" />
+                    <span>Solicitar Financiera</span>
+                  </Button>
+                )}
+              </div>
             </div>
-
-            {isAdmin ? (
-              <Button 
-                onClick={() => setShowNewModal(true)}
-                className="bg-primary hover:bg-primary-dark text-primary-foreground text-xs font-medium h-9 shadow-sm shrink-0"
-                data-testid="button-new-financiera"
-              >
-                <Plus className="w-3.5 h-3.5 mr-1.5" />
-                <span>Nueva Financiera</span>
-              </Button>
-            ) : (
-              <Button 
-                onClick={() => setShowRequestModal(true)}
-                variant="outline"
-                className="text-xs font-medium h-9 border-slate-200 text-slate-700 hover:bg-slate-50 shrink-0"
-                data-testid="button-request-financiera"
-              >
-                <Send className="w-3.5 h-3.5 mr-1.5 text-primary" />
-                <span>Solicitar Financiera</span>
-              </Button>
-            )}
-          </div>
-        </div>
 
         {/* Financial Institutions Catalog: Desktop Table + Mobile Cards */}
         {filteredInstitutions.length === 0 ? (
@@ -499,6 +562,21 @@ export default function Financieras() {
                         {/* 7. Action */}
                         <td className="py-3 px-4 text-right whitespace-nowrap">
                           <div className="flex items-center justify-end gap-1.5">
+                            {isAdmin && (
+                              <Link href={`/financieras/${institution.id}?tab=ofertas`}>
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  className="h-7 text-xs px-2.5 font-semibold border-blue-200 text-[#2463D6] hover:bg-blue-50 shadow-none gap-1"
+                                  data-testid={`button-view-offers-${institution.id}`}
+                                  title="Ver y administrar ofertas comerciales de esta financiera"
+                                >
+                                  <Layers className="w-3 h-3" />
+                                  <span>Ofertas ({productsList.length})</span>
+                                </Button>
+                              </Link>
+                            )}
+
                             <Link href={`/financieras/${institution.id}`}>
                               <Button
                                 variant="outline"
@@ -506,7 +584,7 @@ export default function Financieras() {
                                 className="h-7 text-xs px-2.5 font-medium border-slate-200 text-slate-700 hover:bg-slate-50 hover:text-slate-900 shadow-none gap-1"
                                 data-testid={`button-view-financiera-${institution.id}`}
                               >
-                                <span>Ver productos y detalle</span>
+                                <span>Ver detalle</span>
                                 <ArrowRight className="w-3 h-3 text-slate-400" />
                               </Button>
                             </Link>
@@ -523,7 +601,15 @@ export default function Financieras() {
                                     <MoreHorizontal className="w-3.5 h-3.5" />
                                   </Button>
                                 </DropdownMenuTrigger>
-                                <DropdownMenuContent align="end" className="w-48 text-xs">
+                                <DropdownMenuContent align="end" className="w-52 text-xs">
+                                  <DropdownMenuItem asChild>
+                                    <Link href={`/financieras/${institution.id}?tab=ofertas`}>
+                                      <span className="flex items-center w-full cursor-pointer font-medium text-[#2463D6]">
+                                        <Layers className="w-3.5 h-3.5 mr-2 text-[#2463D6]" />
+                                        Ofertas comerciales ({productsList.length})
+                                      </span>
+                                    </Link>
+                                  </DropdownMenuItem>
                                   <DropdownMenuItem 
                                     onClick={() => setConfigModal({ show: true, financiera: institution })}
                                     data-testid={`button-config-financiera-${institution.id}`}
@@ -676,6 +762,22 @@ export default function Financieras() {
 
                     {/* Actions */}
                     <div className="flex items-center justify-between gap-2 pt-1">
+                      {isAdmin && (
+                        <Link href={`/financieras/${institution.id}?tab=ofertas`} className="flex-1">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="w-full text-xs font-semibold h-7 bg-blue-50/50 border-blue-200 text-[#2463D6] hover:bg-blue-50 shadow-none justify-between"
+                            data-testid={`button-view-offers-mobile-${institution.id}`}
+                          >
+                            <span className="flex items-center gap-1">
+                              <Layers className="w-3 h-3" />
+                              Ofertas ({productsList.length})
+                            </span>
+                            <ArrowRight className="w-3 h-3 text-[#2463D6]" />
+                          </Button>
+                        </Link>
+                      )}
                       <Link href={`/financieras/${institution.id}`} className="flex-1">
                         <Button
                           variant="outline"
@@ -700,7 +802,15 @@ export default function Financieras() {
                               <MoreHorizontal className="w-3.5 h-3.5" />
                             </Button>
                           </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end" className="w-48 text-xs">
+                          <DropdownMenuContent align="end" className="w-52 text-xs">
+                            <DropdownMenuItem asChild>
+                              <Link href={`/financieras/${institution.id}?tab=ofertas`}>
+                                <span className="flex items-center w-full cursor-pointer font-medium text-[#2463D6]">
+                                  <Layers className="w-3.5 h-3.5 mr-2 text-[#2463D6]" />
+                                  Ofertas comerciales ({productsList.length})
+                                </span>
+                              </Link>
+                            </DropdownMenuItem>
                             <DropdownMenuItem 
                               onClick={() => setConfigModal({ show: true, financiera: institution })}
                               data-testid={`button-config-financiera-mobile-${institution.id}`}
@@ -749,17 +859,25 @@ export default function Financieras() {
             </div>
           </>
         )}
+        </>
+      )}
       </main>
 
       {/* Modals */}
       {isAdmin ? (
-        <NewFinancieraModal 
-          isOpen={showNewModal}
-          onClose={() => setShowNewModal(false)}
-          onFinancieraCreated={(financiera) => {
-            setConfigModal({ show: true, financiera });
-          }}
-        />
+        <>
+          <NewFinancieraModal 
+            isOpen={showNewModal}
+            onClose={() => setShowNewModal(false)}
+            onFinancieraCreated={(financiera) => {
+              setConfigModal({ show: true, financiera });
+            }}
+          />
+          <NewOfferModal 
+            isOpen={showNewOfferModal}
+            onClose={() => setShowNewOfferModal(false)}
+          />
+        </>
       ) : (
         <RequestInstitutionModal 
           isOpen={showRequestModal}

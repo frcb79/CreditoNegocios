@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useParams, Link } from "wouter";
 import { useAuth } from "@/hooks/useAuth";
@@ -34,6 +34,8 @@ import {
 } from "lucide-react";
 import { FinancialInstitution, InstitutionProductWithTemplate } from "@shared/schema";
 import ProductConfigurationModal from "@/components/Modals/ProductConfigurationModal";
+import AdminOffersList from "@/components/AdminOffers/AdminOffersList";
+import { cn } from "@/lib/utils";
 
 export default function FinancieraDetail() {
   const { id } = useParams();
@@ -45,6 +47,15 @@ export default function FinancieraDetail() {
   const isBroker = user?.role === 'broker';
   const isMasterBroker = user?.role === 'master_broker';
   const isBrokerOrMaster = isBroker || isMasterBroker;
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const params = new URLSearchParams(window.location.search);
+      if (params.get("tab") === "ofertas" && isAdmin) {
+        setActiveTab("ofertas");
+      }
+    }
+  }, [isAdmin]);
 
   const { data: institution, isLoading } = useQuery<FinancialInstitution>({
     queryKey: [`/api/financial-institutions/${id}`],
@@ -178,6 +189,23 @@ export default function FinancieraDetail() {
                   </Button>
                 </Link>
                 {isAdmin && (
+                  <Button
+                    size="sm"
+                    variant={activeTab === "ofertas" ? "default" : "outline"}
+                    onClick={() => setActiveTab("ofertas")}
+                    className={cn(
+                      "h-8 text-xs gap-1.5 shadow-xs font-semibold",
+                      activeTab === "ofertas"
+                        ? "bg-[#2463D6] text-white hover:bg-[#1d52b3]"
+                        : "border-blue-200 text-[#2463D6] bg-blue-50/50 hover:bg-blue-50"
+                    )}
+                    data-testid="button-tab-ofertas-header"
+                  >
+                    <Layers className="w-3.5 h-3.5" />
+                    <span>Ofertas ({institutionProducts.length})</span>
+                  </Button>
+                )}
+                {isAdmin && (
                   <Button 
                     size="sm"
                     onClick={() => setConfigModal(true)}
@@ -245,7 +273,10 @@ export default function FinancieraDetail() {
           {/* Tabs Content */}
           <div className="bg-white border border-slate-200/80 rounded-xl p-5 sm:p-6 shadow-xs">
             <Tabs value={activeTab} onValueChange={setActiveTab}>
-              <TabsList className="grid w-full grid-cols-4 gap-1 bg-slate-100/80 p-1 rounded-lg border border-slate-200/60">
+              <TabsList className={cn(
+                "grid w-full gap-1 bg-slate-100/80 p-1 rounded-lg border border-slate-200/60",
+                isAdmin ? "grid-cols-5" : "grid-cols-4"
+              )}>
                 <TabsTrigger 
                   value="proceso" 
                   data-testid="tab-proceso"
@@ -278,6 +309,22 @@ export default function FinancieraDetail() {
                   <DollarSign className="w-3.5 h-3.5 mr-1.5" />
                   Comisiones
                 </TabsTrigger>
+                {isAdmin && (
+                  <TabsTrigger 
+                    value="ofertas" 
+                    data-testid="tab-ofertas"
+                    className="text-xs font-semibold py-1.5 data-[state=active]:bg-[#101F35] data-[state=active]:text-white data-[state=active]:shadow-2xs text-slate-700 hover:text-slate-900 transition-colors gap-1.5"
+                  >
+                    <Layers className="w-3.5 h-3.5 text-[#2463D6]" />
+                    <span>Ofertas</span>
+                    <Badge 
+                      variant="outline" 
+                      className="ml-1 text-[10px] px-1.5 py-0 bg-blue-50 text-[#2463D6] border-blue-200"
+                    >
+                      {institutionProducts.length}
+                    </Badge>
+                  </TabsTrigger>
+                )}
               </TabsList>
 
               {/* Proceso Tab */}
@@ -709,6 +756,17 @@ export default function FinancieraDetail() {
                   )}
                 </div>
               </TabsContent>
+
+              {/* Ofertas Comerciales Tab (Super Admin / Admin Only) */}
+              {isAdmin && (
+                <TabsContent value="ofertas" className="mt-6">
+                  <AdminOffersList 
+                    institutionId={id} 
+                    institutionName={institution.name} 
+                    hideHeaderBanner={false}
+                  />
+                </TabsContent>
+              )}
             </Tabs>
           </div>
         </div>
