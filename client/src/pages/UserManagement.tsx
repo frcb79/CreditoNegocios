@@ -3872,6 +3872,7 @@ export default function UserManagement() {
         onSuccess={() => {
           refetchLegacyUsers();
           queryClient.invalidateQueries({ queryKey: ["/api/broker-network"] });
+          queryClient.invalidateQueries({ queryKey: ["/api/admin/broker-network/transitions"] });
           queryClient.invalidateQueries({ queryKey: ["/api/tenants"] });
           if (selectedTenantId) {
             queryClient.invalidateQueries({ queryKey: ["/api/tenants", selectedTenantId, "members"] });
