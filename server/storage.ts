@@ -297,6 +297,12 @@ export interface IStorage {
     versionId: string,
     versionData: Partial<InsertInstitutionProductVersion>
   ): Promise<InstitutionProductVersion>;
+  updateInstitutionProductDraftAndParent(
+    productId: string,
+    versionId: string,
+    versionData: Partial<InsertInstitutionProductVersion>,
+    productData?: Partial<InsertInstitutionProduct>
+  ): Promise<{ product: InstitutionProduct; version: InstitutionProductVersion }>;
   deleteInstitutionProductVersion(id: string): Promise<boolean>;
 
   // Financial Institution Offers aliases (Retrocompatibilidad total con Bloque A1)
@@ -322,6 +328,12 @@ export interface IStorage {
     versionId: string,
     versionData: Partial<InsertFinancialInstitutionOfferVersion>
   ): Promise<FinancialInstitutionOfferVersion>;
+  updateOfferDraftAndParent(
+    offerId: string,
+    versionId: string,
+    versionData: Partial<InsertFinancialInstitutionOfferVersion>,
+    offerData?: Partial<InsertFinancialInstitutionOffer>
+  ): Promise<{ offer: FinancialInstitutionOffer; version: FinancialInstitutionOfferVersion }>;
   publishOfferVersion(
     offerId: string,
     versionId: string,
@@ -3232,11 +3244,12 @@ export class MemStorage implements IStorage {
     return publishedVersion;
   }
 
-  async updateInstitutionProductDraftVersion(
+  async updateInstitutionProductDraftAndParent(
     productId: string,
     versionId: string,
-    versionData: Partial<InsertInstitutionProductVersion>
-  ): Promise<InstitutionProductVersion> {
+    versionData: Partial<InsertInstitutionProductVersion>,
+    productData?: Partial<InsertInstitutionProduct>
+  ): Promise<{ product: InstitutionProduct; version: InstitutionProductVersion }> {
     const version = this.institutionProductVersions.get(versionId);
     if (!version || (version.institutionProductId !== productId && version.offerId !== productId)) {
       throw new Error(`Versión ${versionId} no encontrada para la oferta ${productId}`);
@@ -3279,8 +3292,30 @@ export class MemStorage implements IStorage {
       updatedAt: new Date(),
     };
 
+    let updatedProduct: any = this.institutionProducts.get(productId);
+    if (updatedProduct && productData) {
+      updatedProduct = {
+        ...updatedProduct,
+        ...productData,
+        updatedAt: new Date(),
+      };
+      this.institutionProducts.set(productId, updatedProduct);
+    }
+
     this.institutionProductVersions.set(versionId, updatedVersion);
-    return updatedVersion;
+    return {
+      product: updatedProduct,
+      version: updatedVersion,
+    };
+  }
+
+  async updateInstitutionProductDraftVersion(
+    productId: string,
+    versionId: string,
+    versionData: Partial<InsertInstitutionProductVersion>
+  ): Promise<InstitutionProductVersion> {
+    const res = await this.updateInstitutionProductDraftAndParent(productId, versionId, versionData);
+    return res.version;
   }
 
   async deleteInstitutionProductVersion(id: string): Promise<boolean> {
@@ -3404,6 +3439,16 @@ export class MemStorage implements IStorage {
     versionData: Partial<InsertFinancialInstitutionOfferVersion>
   ): Promise<FinancialInstitutionOfferVersion> {
     return this.updateInstitutionProductDraftVersion(offerId, versionId, versionData);
+  }
+
+  async updateOfferDraftAndParent(
+    offerId: string,
+    versionId: string,
+    versionData: Partial<InsertFinancialInstitutionOfferVersion>,
+    offerData?: Partial<InsertFinancialInstitutionOffer>
+  ): Promise<{ offer: FinancialInstitutionOffer; version: FinancialInstitutionOfferVersion }> {
+    const res = await this.updateInstitutionProductDraftAndParent(offerId, versionId, versionData, offerData);
+    return { offer: res.product, version: res.version };
   }
 
   async publishOfferVersion(

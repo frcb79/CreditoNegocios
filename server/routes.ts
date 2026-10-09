@@ -770,9 +770,39 @@ async function requirePlatformRole(userId: string, allowedRoles: string[]): Prom
   return user ? allowedRoles.includes(user.role) : false;
 }
 
-function sanitizeCommercialOffer(product: any) {
+function sanitizeCommercialOffer(product: any, userRole?: string) {
   if (!product) return product;
   const { createdBy, ...commercialOffer } = product;
+
+  // Preservar RBAC: Sanitizar comisiones individuales y condiciones económicas internas (B2.2)
+  if (commercialOffer.configuration && typeof commercialOffer.configuration === "object") {
+    const config = { ...commercialOffer.configuration };
+    if (config.commissionRates && typeof config.commissionRates === "object") {
+      const rawRates = config.commissionRates as Record<string, any>;
+      if (userRole === "super_admin" || userRole === "admin") {
+        // Super Admin ve las condiciones económicas completas
+        config.commissionRates = rawRates;
+      } else if (userRole === "master_broker") {
+        // Master Broker solo ve tiers masterBroker y broker, NUNCA financiera, superAdmin, platformNet ni notas internas
+        const sanitized: Record<string, any> = {};
+        if (rawRates.masterBroker) sanitized.masterBroker = rawRates.masterBroker;
+        if (rawRates.broker) sanitized.broker = rawRates.broker;
+        if (rawRates.type) sanitized.type = rawRates.type;
+        config.commissionRates = sanitized;
+      } else if (userRole === "broker") {
+        // Broker directo solo ve su tier broker autorizado, NUNCA masterBroker, financiera, platformNet ni notas internas
+        const sanitized: Record<string, any> = {};
+        if (rawRates.broker) sanitized.broker = rawRates.broker;
+        if (rawRates.type) sanitized.type = rawRates.type;
+        config.commissionRates = sanitized;
+      } else {
+        // Usuarios no comerciales o públicos: no exponer comisiones
+        delete config.commissionRates;
+      }
+    }
+    commercialOffer.configuration = config;
+  }
+
   return commercialOffer;
 }
 
@@ -7006,6 +7036,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       if (!isSuperAdmin) {
         // Brokers and Master Brokers must NEVER receive drafts, non-eligible offers, nor administrative metadata
+        const user = await storage.getUser(userId);
+        const userRole = user?.role || 'broker';
         const eligibleCommercialOffers = [];
         for (const p of products) {
           if (p.status === 'draft' || p.status === 'archived' || p.isActive === false) {
@@ -7013,7 +7045,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           }
           const versions = await storage.getInstitutionProductVersions(p.id);
           if (isOfferEligibleForRequests(p, versions)) {
-            eligibleCommercialOffers.push(sanitizeCommercialOffer(p));
+            eligibleCommercialOffers.push(sanitizeCommercialOffer(p, userRole));
           }
         }
         return res.json(eligibleCommercialOffers);
@@ -7058,7 +7090,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         if (!isOfferEligibleForRequests(product, versions)) {
           return res.status(404).json({ message: "Institution product not found" });
         }
-        return res.json(sanitizeCommercialOffer(product));
+        const user = await storage.getUser(userId);
+        const userRole = user?.role || 'broker';
+        return res.json(sanitizeCommercialOffer(product, userRole));
       }
       
       res.json(product);
@@ -7162,9 +7196,70 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (req.body.minTermMonths !== undefined) mergedConditions.minTermMonths = req.body.minTermMonths !== "" && req.body.minTermMonths !== null ? Number(req.body.minTermMonths) : undefined;
       if (req.body.maxTermMonths !== undefined) mergedConditions.maxTermMonths = req.body.maxTermMonths !== "" && req.body.maxTermMonths !== null ? Number(req.body.maxTermMonths) : undefined;
 
+      // Variables de elegibilidad (B2.1 / B2.2): asociadas a campos del expediente y pendientes en Matching
+      if (req.body.minCompanyAgeMonths !== undefined) mergedConditions.minCompanyAgeMonths = req.body.minCompanyAgeMonths !== "" && req.body.minCompanyAgeMonths !== null ? Number(req.body.minCompanyAgeMonths) : undefined;
+      if (req.body.minMonthlyRevenue !== undefined) mergedConditions.minMonthlyRevenue = req.body.minMonthlyRevenue !== "" && req.body.minMonthlyRevenue !== null ? Number(req.body.minMonthlyRevenue) : undefined;
+      if (req.body.bureauRequirement !== undefined) mergedConditions.bureauRequirement = req.body.bureauRequirement;
+      if (req.body.guaranteeType !== undefined) mergedConditions.guaranteeType = req.body.guaranteeType;
+      if (req.body.avalesType !== undefined) mergedConditions.avalesType = req.body.avalesType;
+
+      // Garantía de Integridad: Variables de elegibilidad no verificadas quedan pendientes y nunca activas en Matching
+      mergedConditions.eligibilityEvaluation = {
+        matchingActive: false,
+        status: "pending_verification",
+        backedByClientExpediente: true,
+      };
+
+      // Comisiones individuales por oferta (B2.2)
+      let commRates = req.body.commissionRates !== undefined
+        ? req.body.commissionRates
+        : (conditions?.commissionRates !== undefined ? conditions.commissionRates : currentConditions.commissionRates);
+
+      if (commRates && typeof commRates === "object") {
+        const finRate = commRates.financiera?.apertura !== undefined && commRates.financiera?.apertura !== "" && commRates.financiera?.apertura !== null
+          ? Number(commRates.financiera.apertura)
+          : undefined;
+        const mbRate = commRates.masterBroker?.apertura !== undefined && commRates.masterBroker?.apertura !== "" && commRates.masterBroker?.apertura !== null
+          ? Number(commRates.masterBroker.apertura)
+          : undefined;
+        const brkRate = commRates.broker?.apertura !== undefined && commRates.broker?.apertura !== "" && commRates.broker?.apertura !== null
+          ? Number(commRates.broker.apertura)
+          : undefined;
+
+        let platformNetApertura: number | undefined = undefined;
+        if (finRate !== undefined && !isNaN(finRate)) {
+          const ceiling = Math.max(
+            mbRate !== undefined && !isNaN(mbRate) ? mbRate : 0,
+            brkRate !== undefined && !isNaN(brkRate) ? brkRate : 0
+          );
+          platformNetApertura = Math.max(0, Number((finRate - ceiling).toFixed(4)));
+        }
+
+        mergedConditions.commissionRates = {
+          ...commRates,
+          financiera: {
+            ...commRates.financiera,
+            apertura: finRate,
+          },
+          masterBroker: {
+            ...commRates.masterBroker,
+            apertura: mbRate,
+          },
+          broker: {
+            ...commRates.broker,
+            apertura: brkRate,
+          },
+          platformNet: {
+            apertura: platformNetApertura,
+          },
+          type: commRates.type || "porcentaje",
+          notes: commRates.notes || "",
+        };
+      }
+
       Object.keys(mergedConditions).forEach(key => mergedConditions[key] === undefined && delete mergedConditions[key]);
 
-      // 2. Validar coherencia matemática de los datos capturados (permite incompletos)
+      // 2. Validar coherencia matemática de los datos capturados y comisiones (permite incompletos)
       const validation = validateOfferVersionParameters({ conditions: mergedConditions });
       if (!validation.isValid) {
         return res.status(400).json({
@@ -7179,33 +7274,39 @@ export async function registerRoutes(app: Express): Promise<Server> {
         ...currentReqs,
         ...(requirements || {}),
         targetProfiles: targetProfiles !== undefined ? targetProfiles : (currentReqs.targetProfiles || product.targetProfiles || []),
+        eligibilityVariablesStatus: {
+          matchingActive: false,
+          verified: false,
+        },
       };
 
       const docsList = requiredDocuments !== undefined
         ? (Array.isArray(requiredDocuments) ? requiredDocuments : [])
         : (draftVersion.requiredDocuments || []);
 
-      // 4. Actualizar versión en borrador mediante Storage (recalcula versionHash inmutable)
-      const updatedVersion = await storage.updateInstitutionProductDraftVersion(id, draftVersion.id, {
-        conditions: mergedConditions,
-        requirements: mergedRequirements,
-        requiredDocuments: docsList,
-        variablesConfiguration: variablesConfiguration !== undefined ? variablesConfiguration : draftVersion.variablesConfiguration,
-        changeReason: changeReason || "Edición de versión en borrador",
-      });
-
-      // 5. Sincronizar atributos descriptivos y configuración visual en el producto padre
-      const updatedProduct = await storage.updateInstitutionProduct(id, {
-        name: name !== undefined ? name : product.name,
-        customName: name !== undefined ? name : (product.customName || product.name),
-        description: description !== undefined ? description : product.description,
-        productType: productType !== undefined ? productType : product.productType,
-        targetProfiles: targetProfiles !== undefined ? targetProfiles : product.targetProfiles,
-        configuration: {
-          ...((product.configuration || {}) as Record<string, any>),
-          ...mergedConditions,
+      // 4. Guardado ATÓMICO de versión borrador y producto padre (Requisito 4)
+      const { product: updatedProduct, version: updatedVersion } = await storage.updateInstitutionProductDraftAndParent(
+        id,
+        draftVersion.id,
+        {
+          conditions: mergedConditions,
+          requirements: mergedRequirements,
+          requiredDocuments: docsList,
+          variablesConfiguration: variablesConfiguration !== undefined ? variablesConfiguration : draftVersion.variablesConfiguration,
+          changeReason: changeReason || "Edición de versión en borrador con comisiones individuales",
         },
-      });
+        {
+          name: name !== undefined ? name : product.name,
+          customName: name !== undefined ? name : (product.customName || product.name),
+          description: description !== undefined ? description : product.description,
+          productType: productType !== undefined ? productType : product.productType,
+          targetProfiles: targetProfiles !== undefined ? targetProfiles : product.targetProfiles,
+          configuration: {
+            ...((product.configuration || {}) as Record<string, any>),
+            ...mergedConditions,
+          },
+        }
+      );
 
       res.json({
         product: updatedProduct,
@@ -7227,6 +7328,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       let products = await storage.getInstitutionProductsByTemplate(templateId);
 
       if (!isSuperAdmin) {
+        const user = await storage.getUser(userId);
+        const userRole = user?.role || 'broker';
         const eligibleCommercialOffers = [];
         for (const p of products) {
           if (p.status === 'draft' || p.status === 'archived' || p.isActive === false) {
@@ -7234,7 +7337,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           }
           const versions = await storage.getInstitutionProductVersions(p.id);
           if (isOfferEligibleForRequests(p, versions)) {
-            eligibleCommercialOffers.push(sanitizeCommercialOffer(p));
+            eligibleCommercialOffers.push(sanitizeCommercialOffer(p, userRole));
           }
         }
         return res.json(eligibleCommercialOffers);

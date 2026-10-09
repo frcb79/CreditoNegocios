@@ -1245,11 +1245,12 @@ export class DbStorage implements IStorage {
     }
   }
 
-  async updateInstitutionProductDraftVersion(
+  async updateInstitutionProductDraftAndParent(
     productId: string,
     versionId: string,
-    versionData: Partial<InsertInstitutionProductVersion>
-  ): Promise<InstitutionProductVersion> {
+    versionData: Partial<InsertInstitutionProductVersion>,
+    productData?: Partial<InsertInstitutionProduct>
+  ): Promise<{ product: InstitutionProduct; version: InstitutionProductVersion }> {
     try {
       return await db.transaction(async (tx) => {
         const [version] = await tx.select().from(institutionProductVersions)
@@ -1300,12 +1301,41 @@ export class DbStorage implements IStorage {
           .where(eq(institutionProductVersions.id, versionId))
           .returning();
 
-        return { ...updatedVersion, offerId: productId };
+        let updatedProduct: any;
+        if (productData) {
+          const [prod] = await tx.update(institutionProducts)
+            .set({
+              ...productData,
+              updatedAt: new Date(),
+            })
+            .where(eq(institutionProducts.id, productId))
+            .returning();
+          updatedProduct = prod;
+        } else {
+          const [prod] = await tx.select().from(institutionProducts)
+            .where(eq(institutionProducts.id, productId))
+            .limit(1);
+          updatedProduct = prod;
+        }
+
+        return {
+          product: updatedProduct,
+          version: { ...updatedVersion, offerId: productId },
+        };
       });
     } catch (error) {
-      console.error(`Error updating draft version ${versionId} for product ${productId} in DbStorage:`, error);
+      console.error(`Error updating draft version and product ${productId} in DbStorage:`, error);
       throw error;
     }
+  }
+
+  async updateInstitutionProductDraftVersion(
+    productId: string,
+    versionId: string,
+    versionData: Partial<InsertInstitutionProductVersion>
+  ): Promise<InstitutionProductVersion> {
+    const res = await this.updateInstitutionProductDraftAndParent(productId, versionId, versionData);
+    return res.version;
   }
 
   async deleteInstitutionProductVersion(id: string): Promise<boolean> {
@@ -1442,6 +1472,16 @@ export class DbStorage implements IStorage {
     versionData: Partial<InsertFinancialInstitutionOfferVersion>
   ): Promise<FinancialInstitutionOfferVersion> {
     return this.updateInstitutionProductDraftVersion(offerId, versionId, versionData);
+  }
+
+  async updateOfferDraftAndParent(
+    offerId: string,
+    versionId: string,
+    versionData: Partial<InsertFinancialInstitutionOfferVersion>,
+    offerData?: Partial<InsertFinancialInstitutionOffer>
+  ): Promise<{ offer: FinancialInstitutionOffer; version: FinancialInstitutionOfferVersion }> {
+    const res = await this.updateInstitutionProductDraftAndParent(offerId, versionId, versionData, offerData);
+    return { offer: res.product, version: res.version };
   }
 
   async publishOfferVersion(

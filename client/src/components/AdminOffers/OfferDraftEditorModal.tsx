@@ -103,6 +103,12 @@ export default function OfferDraftEditorModal({
   const [minTerm, setMinTerm] = useState<string>("");
   const [maxTerm, setMaxTerm] = useState<string>("");
 
+  // Esquema de comisiones individual por oferta (B2.2)
+  const [finCommissionRate, setFinCommissionRate] = useState<string>("");
+  const [masterCommissionRate, setMasterCommissionRate] = useState<string>("");
+  const [brokerCommissionRate, setBrokerCommissionRate] = useState<string>("");
+  const [commissionNotes, setCommissionNotes] = useState<string>("");
+
   // Condiciones de elegibilidad configurables (variables recopiladas del cliente)
   const [minCompanyAgeMonths, setMinCompanyAgeMonths] = useState<string>("");
   const [minMonthlyRevenue, setMinMonthlyRevenue] = useState<string>("");
@@ -154,6 +160,19 @@ export default function OfferDraftEditorModal({
     setMaxRate(cond.maxInterestRate !== undefined && cond.maxInterestRate !== null ? String(cond.maxInterestRate) : "");
     setMinTerm(cond.minTermMonths !== undefined && cond.minTermMonths !== null ? String(cond.minTermMonths) : "");
     setMaxTerm(cond.maxTermMonths !== undefined && cond.maxTermMonths !== null ? String(cond.maxTermMonths) : "");
+
+    // Comisiones individuales por oferta (B2.2)
+    const comm = (cond.commissionRates || {}) as Record<string, any>;
+    setFinCommissionRate(
+      comm.financiera?.apertura !== undefined && comm.financiera?.apertura !== null ? String(comm.financiera.apertura) : ""
+    );
+    setMasterCommissionRate(
+      comm.masterBroker?.apertura !== undefined && comm.masterBroker?.apertura !== null ? String(comm.masterBroker.apertura) : ""
+    );
+    setBrokerCommissionRate(
+      comm.broker?.apertura !== undefined && comm.broker?.apertura !== null ? String(comm.broker.apertura) : ""
+    );
+    setCommissionNotes(comm.notes || "");
 
     // Condiciones de elegibilidad
     setMinCompanyAgeMonths(cond.minCompanyAgeMonths ? String(cond.minCompanyAgeMonths) : "");
@@ -284,7 +303,65 @@ export default function OfferDraftEditorModal({
       return;
     }
 
-    // Construir conditions combinando variables financieras y de elegibilidad
+    // Coherencia de comisiones individuales por oferta (B2.2)
+    const parsedFinComm = finCommissionRate.trim() !== "" ? parseFloat(finCommissionRate) : null;
+    const parsedMasterComm = masterCommissionRate.trim() !== "" ? parseFloat(masterCommissionRate) : null;
+    const parsedBrokerComm = brokerCommissionRate.trim() !== "" ? parseFloat(brokerCommissionRate) : null;
+
+    if (parsedFinComm !== null && (isNaN(parsedFinComm) || parsedFinComm < 0)) {
+      toast({
+        title: "Comisión Financiera inválida",
+        description: "La comisión pagada por la financiera debe ser un número mayor o igual a 0.",
+        variant: "destructive",
+      });
+      return;
+    }
+    if (parsedMasterComm !== null && (isNaN(parsedMasterComm) || parsedMasterComm < 0)) {
+      toast({
+        title: "Comisión Master Broker inválida",
+        description: "La comisión para Master Broker debe ser un número mayor o igual a 0.",
+        variant: "destructive",
+      });
+      return;
+    }
+    if (parsedBrokerComm !== null && (isNaN(parsedBrokerComm) || parsedBrokerComm < 0)) {
+      toast({
+        title: "Comisión Broker Directo inválida",
+        description: "La comisión para Broker Directo debe ser un número mayor o igual a 0.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (parsedFinComm !== null) {
+      if (parsedMasterComm !== null && parsedMasterComm > parsedFinComm) {
+        toast({
+          title: "Incoherencia en Comisión Master",
+          description: `La comisión para Master Broker (${parsedMasterComm}%) no puede ser superior a la comisión que paga la financiera (${parsedFinComm}%).`,
+          variant: "destructive",
+        });
+        return;
+      }
+      if (parsedBrokerComm !== null && parsedBrokerComm > parsedFinComm) {
+        toast({
+          title: "Incoherencia en Comisión Broker",
+          description: `La comisión para Broker Directo (${parsedBrokerComm}%) no puede ser superior a la comisión que paga la financiera (${parsedFinComm}%).`,
+          variant: "destructive",
+        });
+        return;
+      }
+    }
+
+    if (parsedMasterComm !== null && parsedBrokerComm !== null && parsedBrokerComm > parsedMasterComm) {
+      toast({
+        title: "Incoherencia de Comisiones",
+        description: `La comisión para Broker Directo (${parsedBrokerComm}%) no puede ser superior a la comisión autorizada para Master Broker (${parsedMasterComm}%).`,
+        variant: "destructive",
+      });
+      return;
+    }
+
+    // Construir conditions combinando variables financieras, comisiones y de elegibilidad
     const conditions: Record<string, any> = {};
     if (parsedMinAmt !== null) conditions.minAmount = parsedMinAmt;
     if (parsedMaxAmt !== null) conditions.maxAmount = parsedMaxAmt;
@@ -293,7 +370,18 @@ export default function OfferDraftEditorModal({
     if (parsedMinT !== null) conditions.minTermMonths = parsedMinT;
     if (parsedMaxT !== null) conditions.maxTermMonths = parsedMaxT;
 
-    // Variables de elegibilidad (recopiladas del cliente)
+    // Comisiones individuales por oferta
+    if (parsedFinComm !== null || parsedMasterComm !== null || parsedBrokerComm !== null || commissionNotes.trim() !== "") {
+      conditions.commissionRates = {
+        financiera: { apertura: parsedFinComm !== null ? parsedFinComm : undefined },
+        masterBroker: { apertura: parsedMasterComm !== null ? parsedMasterComm : undefined },
+        broker: { apertura: parsedBrokerComm !== null ? parsedBrokerComm : undefined },
+        type: "porcentaje",
+        notes: commissionNotes.trim(),
+      };
+    }
+
+    // Variables de elegibilidad (asociadas a campos reales del expediente)
     if (minCompanyAgeMonths.trim() !== "") {
       conditions.minCompanyAgeMonths = parseInt(minCompanyAgeMonths, 10);
     }
@@ -317,13 +405,17 @@ export default function OfferDraftEditorModal({
         bureauRequirement,
         guaranteeType,
         avalesType,
+        eligibilityVariablesStatus: {
+          matchingActive: false,
+          verified: false,
+        },
       },
       requiredDocuments: selectedDocs,
       variablesConfiguration: {
         garantias: guaranteeType,
         avales: avalesType,
       },
-      changeReason: changeReason.trim() || "Modificación de parámetros comerciales en borrador",
+      changeReason: changeReason.trim() || "Modificación de parámetros comerciales y comisiones en borrador",
     };
 
     saveMutation.mutate(payload);
@@ -376,31 +468,38 @@ export default function OfferDraftEditorModal({
           {/* Body with Tabs */}
           <div className="flex-1 overflow-y-auto p-5 sm:p-6">
             <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
-              <TabsList className="grid grid-cols-2 sm:grid-cols-4 bg-slate-100 p-1 rounded-xl h-auto gap-1">
+              <TabsList className="grid grid-cols-2 sm:grid-cols-5 bg-slate-100 p-1 rounded-xl h-auto gap-1">
                 <TabsTrigger
                   value="condiciones"
                   className="text-xs py-1.5 rounded-lg data-[state=active]:bg-white data-[state=active]:text-[#2463D6] data-[state=active]:font-semibold shadow-2xs"
                   data-testid="tab-condiciones"
                 >
-                  Condiciones Financieras
+                  Condiciones
+                </TabsTrigger>
+                <TabsTrigger
+                  value="comisiones"
+                  className="text-xs py-1.5 rounded-lg data-[state=active]:bg-white data-[state=active]:text-[#2463D6] data-[state=active]:font-semibold shadow-2xs"
+                  data-testid="tab-comisiones"
+                >
+                  Comisiones
                 </TabsTrigger>
                 <TabsTrigger
                   value="perfiles"
                   className="text-xs py-1.5 rounded-lg data-[state=active]:bg-white data-[state=active]:text-[#2463D6] data-[state=active]:font-semibold shadow-2xs"
                   data-testid="tab-perfiles"
                 >
-                  Perfiles Admitidos
+                  Perfiles
                 </TabsTrigger>
                 <TabsTrigger
                   value="elegibilidad"
                   className="text-xs py-1.5 rounded-lg data-[state=active]:bg-white data-[state=active]:text-[#2463D6] data-[state=active]:font-semibold shadow-2xs"
                   data-testid="tab-elegibilidad"
                 >
-                  Elegibilidad del Cliente
+                  Elegibilidad
                 </TabsTrigger>
                 <TabsTrigger
                   value="documentos"
-                  className="text-xs py-1.5 rounded-lg data-[state=active]:bg-white data-[state=active]:text-[#2463D6] data-[state=active]:font-semibold shadow-2xs"
+                  className="text-xs py-1.5 rounded-lg data-[state=active]:bg-white data-[state=active]:text-[#2463D6] data-[state=active]:font-semibold shadow-2xs col-span-2 sm:col-span-1"
                   data-testid="tab-documentos"
                 >
                   Documentación
@@ -557,7 +656,214 @@ export default function OfferDraftEditorModal({
                 </div>
               </TabsContent>
 
-              {/* TAB 2: PERFILES ADMITIDOS */}
+              {/* TAB 2: ESQUEMA DE COMISIONES POR OFERTA (B2.2) */}
+              <TabsContent value="comisiones" className="space-y-4 pt-1">
+                <div className="p-3.5 bg-blue-50/70 border border-blue-200/80 rounded-xl text-xs text-blue-950 leading-relaxed space-y-1">
+                  <div className="flex items-center gap-1.5 font-bold text-blue-900">
+                    <Percent className="w-4 h-4 text-[#2463D6]" />
+                    <span>Esquema Individual por Oferta (B2.2)</span>
+                  </div>
+                  <p className="text-[11px] text-blue-800 leading-normal">
+                    Cada oferta comercial conserva su propio esquema independiente de comisiones. Los cambios se guardan exclusivamente en esta versión borrador bajo control de versiones y auditoría (no se alteran versiones históricas ni otras ofertas).
+                  </p>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  {/* 1. Comisión Financiera a Plataforma */}
+                  <div className="p-3.5 bg-white rounded-xl border border-slate-200 shadow-2xs space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-bold text-[#101F35]">
+                        Comisión Financiera
+                      </span>
+                      <Badge variant="outline" className="text-[9px] bg-blue-50 text-blue-700 border-blue-200 font-semibold">
+                        Bolsa Bruta
+                      </Badge>
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-[10px] text-slate-500 font-medium">Apertura (% del crédito)</Label>
+                      <div className="relative">
+                        <Input
+                          type="number"
+                          step="0.01"
+                          min="0"
+                          value={finCommissionRate}
+                          onChange={(e) => setFinCommissionRate(e.target.value)}
+                          placeholder="Ej. 4.0"
+                          className="h-8 text-xs border-slate-200 pr-6"
+                          data-testid="input-fin-commission"
+                        />
+                        <span className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-slate-400 font-bold">%</span>
+                      </div>
+                    </div>
+                    <span className="text-[10px] text-slate-400 block leading-tight">
+                      Monto bruto que la financiera paga a Crédito Negocios por colocación.
+                    </span>
+                  </div>
+
+                  {/* 2. Comisión Master Broker */}
+                  <div className="p-3.5 bg-white rounded-xl border border-slate-200 shadow-2xs space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-bold text-[#101F35]">
+                        Master Broker
+                      </span>
+                      <Badge variant="outline" className="text-[9px] bg-purple-50 text-purple-700 border-purple-200 font-semibold">
+                        Techo de Red
+                      </Badge>
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-[10px] text-slate-500 font-medium">Apertura autorizada (%)</Label>
+                      <div className="relative">
+                        <Input
+                          type="number"
+                          step="0.01"
+                          min="0"
+                          value={masterCommissionRate}
+                          onChange={(e) => setMasterCommissionRate(e.target.value)}
+                          placeholder="Ej. 3.0"
+                          className="h-8 text-xs border-slate-200 pr-6"
+                          data-testid="input-master-commission"
+                        />
+                        <span className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-slate-400 font-bold">%</span>
+                      </div>
+                    </div>
+                    <span className="text-[10px] text-slate-400 block leading-tight">
+                      Tope de red. En colocación directa percibe este porcentaje; en red, percibe el diferencial.
+                    </span>
+                  </div>
+
+                  {/* 3. Comisión Broker Directo */}
+                  <div className="p-3.5 bg-white rounded-xl border border-slate-200 shadow-2xs space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-bold text-[#101F35]">
+                        Broker Directo
+                      </span>
+                      <Badge variant="outline" className="text-[9px] bg-emerald-50 text-emerald-700 border-emerald-200 font-semibold">
+                        Originador
+                      </Badge>
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-[10px] text-slate-500 font-medium">Apertura autorizada (%)</Label>
+                      <div className="relative">
+                        <Input
+                          type="number"
+                          step="0.01"
+                          min="0"
+                          value={brokerCommissionRate}
+                          onChange={(e) => setBrokerCommissionRate(e.target.value)}
+                          placeholder="Ej. 2.0"
+                          className="h-8 text-xs border-slate-200 pr-6"
+                          data-testid="input-broker-commission"
+                        />
+                        <span className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-slate-400 font-bold">%</span>
+                      </div>
+                    </div>
+                    <span className="text-[10px] text-slate-400 block leading-tight">
+                      Comisión garantizada al broker originador que registra la solicitud.
+                    </span>
+                  </div>
+                </div>
+
+                {/* Resumen Interactivo de Distribución Económica */}
+                {(() => {
+                  const pFin = finCommissionRate.trim() !== "" ? parseFloat(finCommissionRate) : null;
+                  const pMb = masterCommissionRate.trim() !== "" ? parseFloat(masterCommissionRate) : null;
+                  const pBrk = brokerCommissionRate.trim() !== "" ? parseFloat(brokerCommissionRate) : null;
+                  const ceiling = Math.max(pMb ?? 0, pBrk ?? 0);
+                  const netPlatform = pFin !== null ? Math.max(0, pFin - ceiling) : null;
+                  const mbMargin = (pMb !== null && pBrk !== null) ? Math.max(0, pMb - pBrk) : null;
+
+                  const hasMbError = pFin !== null && pMb !== null && pMb > pFin;
+                  const hasBrkError = pFin !== null && pBrk !== null && pBrk > pFin;
+                  const hasHierarchyError = pMb !== null && pBrk !== null && pBrk > pMb;
+
+                  return (
+                    <div className="p-4 bg-slate-50/90 rounded-xl border border-slate-200 space-y-3">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                          <span>Distribución Económica Resultante</span>
+                        </span>
+                        {hasMbError || hasBrkError || hasHierarchyError ? (
+                          <Badge variant="destructive" className="text-[10px]">
+                            Inconsistencia detectada
+                          </Badge>
+                        ) : pFin !== null ? (
+                          <Badge variant="outline" className="text-[10px] bg-emerald-50 text-emerald-700 border-emerald-200 font-semibold">
+                            Margen Plataforma: {netPlatform?.toFixed(2)}%
+                          </Badge>
+                        ) : (
+                          <Badge variant="outline" className="text-[10px] text-slate-400 border-slate-200">
+                            Borrador incompleto (permitido)
+                          </Badge>
+                        )}
+                      </div>
+
+                      {/* Warning Banners */}
+                      {hasMbError && (
+                        <div className="p-2.5 bg-red-50 border border-red-200 rounded-lg text-xs text-red-700 flex items-center gap-2">
+                          <AlertCircle className="w-4 h-4 shrink-0" />
+                          <span>La tasa para Master Broker ({pMb}%) supera la comisión pagada por la financiera ({pFin}%).</span>
+                        </div>
+                      )}
+                      {hasBrkError && (
+                        <div className="p-2.5 bg-red-50 border border-red-200 rounded-lg text-xs text-red-700 flex items-center gap-2">
+                          <AlertCircle className="w-4 h-4 shrink-0" />
+                          <span>La tasa para Broker Directo ({pBrk}%) supera la comisión pagada por la financiera ({pFin}%).</span>
+                        </div>
+                      )}
+                      {hasHierarchyError && (
+                        <div className="p-2.5 bg-red-50 border border-red-200 rounded-lg text-xs text-red-700 flex items-center gap-2">
+                          <AlertCircle className="w-4 h-4 shrink-0" />
+                          <span>La tasa para Broker Directo ({pBrk}%) no puede ser superior a la comisión para Master Broker ({pMb}%).</span>
+                        </div>
+                      )}
+
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-1 text-center">
+                        <div className="p-2.5 bg-white rounded-lg border border-slate-200/80">
+                          <span className="text-[10px] text-slate-400 block font-medium">Bolsa Financiera</span>
+                          <span className="text-sm font-bold text-blue-700 mt-0.5 block">
+                            {pFin !== null ? `${pFin}%` : "—"}
+                          </span>
+                        </div>
+                        <div className="p-2.5 bg-white rounded-lg border border-slate-200/80">
+                          <span className="text-[10px] text-slate-400 block font-medium">Broker Directo</span>
+                          <span className="text-sm font-bold text-emerald-700 mt-0.5 block">
+                            {pBrk !== null ? `${pBrk}%` : "—"}
+                          </span>
+                        </div>
+                        <div className="p-2.5 bg-white rounded-lg border border-slate-200/80">
+                          <span className="text-[10px] text-slate-400 block font-medium">Margen Red Master</span>
+                          <span className="text-sm font-bold text-purple-700 mt-0.5 block">
+                            {mbMargin !== null ? `+${mbMargin.toFixed(2)}%` : "—"}
+                          </span>
+                        </div>
+                        <div className="p-2.5 bg-white rounded-lg border border-slate-200/80">
+                          <span className="text-[10px] text-slate-400 block font-medium">Margen Plataforma</span>
+                          <span className="text-sm font-bold text-slate-900 mt-0.5 block">
+                            {netPlatform !== null ? `${netPlatform.toFixed(2)}%` : "—"}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })()}
+
+                {/* Notas de Comisiones */}
+                <div className="space-y-1">
+                  <Label htmlFor="comm-notes" className="text-xs font-semibold text-slate-700">
+                    Condiciones Especiales o Notas de Comisión
+                  </Label>
+                  <Textarea
+                    id="comm-notes"
+                    value={commissionNotes}
+                    onChange={(e) => setCommissionNotes(e.target.value)}
+                    placeholder="Acuerdos contractuales particulares con la financiera para esta oferta..."
+                    className="text-xs border-slate-200 bg-white min-h-[45px]"
+                    rows={2}
+                  />
+                </div>
+              </TabsContent>
+
+              {/* TAB 3: PERFILES ADMITIDOS */}
               <TabsContent value="perfiles" className="space-y-3 pt-1">
                 <div className="p-3 bg-slate-50/80 rounded-xl border border-slate-200/80 text-xs text-slate-600">
                   Selecciona los tipos de cliente admitidos para esta oferta comercial. Puedes guardar el borrador sin selección y definirlo más tarde.
@@ -603,10 +909,10 @@ export default function OfferDraftEditorModal({
                 </div>
               </TabsContent>
 
-              {/* TAB 3: CONDICIONES DE ELEGIBILIDAD */}
+              {/* TAB 4: CONDICIONES DE ELEGIBILIDAD */}
               <TabsContent value="elegibilidad" className="space-y-4 pt-1">
                 <div className="p-3 bg-amber-50/70 border border-amber-200/80 rounded-xl text-xs text-amber-900 leading-relaxed">
-                  <strong>Variables del Expediente:</strong> Estas condiciones corresponden a los datos reales capturados en el perfil y solicitud del cliente. Su evaluación automática está en preparación (conexión a Matching pendiente).
+                  <strong>Variables de Elegibilidad:</strong> No se asume que los datos estén recopilados. Únicamente se contrastan contra campos reales del expediente del cliente. Las condiciones no verificadas documentalmente quedan pendientes y nunca activas en el motor de Matching.
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -616,8 +922,8 @@ export default function OfferDraftEditorModal({
                       <Label className="text-xs font-bold text-slate-800">
                         Antigüedad Mínima del Negocio
                       </Label>
-                      <Badge variant="outline" className="text-[9px] bg-emerald-50 text-emerald-700 border-emerald-200">
-                        Recopilada del cliente
+                      <Badge variant="outline" className="text-[9px] bg-slate-100 text-slate-700 border-slate-200">
+                        En Expediente (Autodeclarado)
                       </Badge>
                     </div>
                     <div className="flex items-center gap-2">
@@ -630,8 +936,8 @@ export default function OfferDraftEditorModal({
                       />
                       <span className="text-xs text-slate-500 shrink-0 font-medium">Meses</span>
                     </div>
-                    <span className="text-[10px] text-slate-400 block">
-                      Matching: Conexión pendiente al motor de pre-calificación
+                    <span className="text-[10px] text-amber-700 bg-amber-50 px-2 py-0.5 rounded border border-amber-200/60 block">
+                      Matching: Inactivo (Pendiente de verificación en expediente)
                     </span>
                   </div>
 
@@ -641,8 +947,8 @@ export default function OfferDraftEditorModal({
                       <Label className="text-xs font-bold text-slate-800">
                         Facturación / Ingreso Mensual Mínimo
                       </Label>
-                      <Badge variant="outline" className="text-[9px] bg-emerald-50 text-emerald-700 border-emerald-200">
-                        Recopilada del cliente
+                      <Badge variant="outline" className="text-[9px] bg-slate-100 text-slate-700 border-slate-200">
+                        En Expediente (Autodeclarado)
                       </Badge>
                     </div>
                     <div className="flex items-center gap-2">
@@ -656,8 +962,8 @@ export default function OfferDraftEditorModal({
                       />
                       <span className="text-xs text-slate-500 shrink-0 font-medium">MXN</span>
                     </div>
-                    <span className="text-[10px] text-slate-400 block">
-                      Matching: Conexión pendiente al motor de pre-calificación
+                    <span className="text-[10px] text-amber-700 bg-amber-50 px-2 py-0.5 rounded border border-amber-200/60 block">
+                      Matching: Inactivo (Pendiente de comprobación fiscal/bancaria)
                     </span>
                   </div>
 
@@ -667,8 +973,8 @@ export default function OfferDraftEditorModal({
                       <Label className="text-xs font-bold text-slate-800">
                         Tolerancia de Buró de Crédito
                       </Label>
-                      <Badge variant="outline" className="text-[9px] bg-emerald-50 text-emerald-700 border-emerald-200">
-                        Recopilada del cliente
+                      <Badge variant="outline" className="text-[9px] bg-amber-50 text-amber-700 border-amber-200">
+                        Pendiente de Verificación Documental
                       </Badge>
                     </div>
                     <Select value={bureauRequirement} onValueChange={setBureauRequirement}>
@@ -682,8 +988,8 @@ export default function OfferDraftEditorModal({
                         <SelectItem value="flexible" className="text-xs">Buró flexible con quebrantos justificados</SelectItem>
                       </SelectContent>
                     </Select>
-                    <span className="text-[10px] text-slate-400 block">
-                      Matching: Conexión pendiente al motor de pre-calificación
+                    <span className="text-[10px] text-slate-500 bg-slate-50 px-2 py-0.5 rounded border border-slate-200 block">
+                      Matching: Inactivo (Requiere consulta de buró oficial — No activo)
                     </span>
                   </div>
 
@@ -693,8 +999,8 @@ export default function OfferDraftEditorModal({
                       <Label className="text-xs font-bold text-slate-800">
                         Requisito de Garantía
                       </Label>
-                      <Badge variant="outline" className="text-[9px] bg-emerald-50 text-emerald-700 border-emerald-200">
-                        Recopilada del cliente
+                      <Badge variant="outline" className="text-[9px] bg-amber-50 text-amber-700 border-amber-200">
+                        Pendiente de Verificación Documental
                       </Badge>
                     </div>
                     <Select value={guaranteeType} onValueChange={setGuaranteeType}>
@@ -708,8 +1014,8 @@ export default function OfferDraftEditorModal({
                         <SelectItem value="prendaria" className="text-xs">Garantía Prendaria (Maquinaria/Vehículo)</SelectItem>
                       </SelectContent>
                     </Select>
-                    <span className="text-[10px] text-slate-400 block">
-                      Matching: Conexión pendiente al motor de pre-calificación
+                    <span className="text-[10px] text-slate-500 bg-slate-50 px-2 py-0.5 rounded border border-slate-200 block">
+                      Matching: Inactivo (Requiere expediente de garantía — No activo)
                     </span>
                   </div>
 
@@ -719,8 +1025,8 @@ export default function OfferDraftEditorModal({
                       <Label className="text-xs font-bold text-slate-800">
                         Requisito de Aval / Obligado Solidario
                       </Label>
-                      <Badge variant="outline" className="text-[9px] bg-emerald-50 text-emerald-700 border-emerald-200">
-                        Recopilada del cliente
+                      <Badge variant="outline" className="text-[9px] bg-amber-50 text-amber-700 border-amber-200">
+                        Pendiente de Verificación Documental
                       </Badge>
                     </div>
                     <Select value={avalesType} onValueChange={setAvalesType}>
@@ -734,10 +1040,17 @@ export default function OfferDraftEditorModal({
                         <SelectItem value="aval_con_inmueble" className="text-xs">Aval con Inmueble Libre de Gravamen</SelectItem>
                       </SelectContent>
                     </Select>
-                    <span className="text-[10px] text-slate-400 block">
-                      Matching: Conexión pendiente al motor de pre-calificación
+                    <span className="text-[10px] text-slate-500 bg-slate-50 px-2 py-0.5 rounded border border-slate-200 block">
+                      Matching: Inactivo (Requiere validación de obligado solidario — No activo)
                     </span>
                   </div>
+                </div>
+
+                <div className="p-3 bg-slate-50/80 border border-slate-200/80 rounded-xl text-[11px] text-slate-600 flex items-start gap-2">
+                  <Info className="w-4 h-4 text-slate-400 shrink-0 mt-0.5" />
+                  <span>
+                    <strong>Garantía de Integridad:</strong> Ninguna condición de elegibilidad se encuentra activa en el motor de Matching hasta contar con la documentación y validación física en el expediente del cliente.
+                  </span>
                 </div>
               </TabsContent>
 

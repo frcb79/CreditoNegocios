@@ -76,6 +76,45 @@ export function validateOfferVersionParameters(data: Partial<InsertInstitutionPr
     if (typeof c.minInterestRate === "number" && typeof c.maxInterestRate === "number" && c.minInterestRate > c.maxInterestRate) {
       errors.push("minInterestRate no puede ser mayor que maxInterestRate");
     }
+
+    // Validación económica de comisiones por oferta (B2.2)
+    if (c.commissionRates && typeof c.commissionRates === "object") {
+      const cr = c.commissionRates as Record<string, any>;
+      const finRate = cr.financiera?.apertura !== undefined && cr.financiera?.apertura !== null && cr.financiera?.apertura !== ""
+        ? Number(cr.financiera.apertura)
+        : undefined;
+      const mbRate = cr.masterBroker?.apertura !== undefined && cr.masterBroker?.apertura !== null && cr.masterBroker?.apertura !== ""
+        ? Number(cr.masterBroker.apertura)
+        : undefined;
+      const brkRate = cr.broker?.apertura !== undefined && cr.broker?.apertura !== null && cr.broker?.apertura !== ""
+        ? Number(cr.broker.apertura)
+        : undefined;
+
+      if (finRate !== undefined && (isNaN(finRate) || finRate < 0)) {
+        errors.push("La comisión pagada por la financiera debe ser un número mayor o igual a 0");
+      }
+      if (mbRate !== undefined && (isNaN(mbRate) || mbRate < 0)) {
+        errors.push("La comisión para Master Broker debe ser un número mayor o igual a 0");
+      }
+      if (brkRate !== undefined && (isNaN(brkRate) || brkRate < 0)) {
+        errors.push("La comisión para Broker Directo debe ser un número mayor o igual a 0");
+      }
+
+      if (finRate !== undefined && !isNaN(finRate) && finRate >= 0) {
+        if (mbRate !== undefined && !isNaN(mbRate) && mbRate > finRate) {
+          errors.push(`La tasa para Master Broker (${mbRate}%) no puede ser superior a la comisión que paga la financiera a Crédito Negocios (${finRate}%)`);
+        }
+        if (brkRate !== undefined && !isNaN(brkRate) && brkRate > finRate) {
+          errors.push(`La tasa para Broker Directo (${brkRate}%) no puede ser superior a la comisión que paga la financiera a Crédito Negocios (${finRate}%)`);
+        }
+      }
+
+      if (mbRate !== undefined && brkRate !== undefined && !isNaN(mbRate) && !isNaN(brkRate)) {
+        if (brkRate > mbRate) {
+          errors.push(`La tasa para Broker Directo (${brkRate}%) no puede ser superior a la comisión para Master Broker (${mbRate}%)`);
+        }
+      }
+    }
   }
 
   return {

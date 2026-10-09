@@ -521,7 +521,13 @@ export default function AdminOffersList({
                         </span>
                       ))
                     ) : (
-                      <span className="text-[10px] text-slate-400 italic">Todos</span>
+                      <span className="text-[10px] text-slate-400 italic">Sin selección</span>
+                    )}
+
+                    {config.commissionRates?.broker?.apertura !== undefined && (
+                      <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-700 border border-emerald-200/80">
+                        Comisión Broker: {config.commissionRates.broker.apertura}%
+                      </span>
                     )}
                   </div>
 
