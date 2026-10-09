@@ -67,17 +67,18 @@ export default function Financieras() {
   const { toast } = useToast();
   const { user } = useAuth();
   
+  const isSuperAdmin = user?.role === 'super_admin';
   const isAdmin = user?.role === 'admin' || user?.role === 'super_admin';
   const isBroker = user?.role === 'broker' || user?.role === 'master_broker';
 
   useEffect(() => {
     if (typeof window !== "undefined") {
       const params = new URLSearchParams(window.location.search);
-      if ((params.get("tab") === "ofertas" || params.get("view") === "ofertas") && isAdmin) {
+      if ((params.get("tab") === "ofertas" || params.get("view") === "ofertas") && isSuperAdmin) {
         setViewMode("ofertas");
       }
     }
-  }, [isAdmin]);
+  }, [isSuperAdmin]);
 
   // Delete financial institution permanently
   const deleteMutation = useMutation({
@@ -240,8 +241,8 @@ export default function Financieras() {
       />
         
       <main className="flex-1 p-4 sm:p-6 lg:p-8 overflow-y-auto">
-        {/* Admin Navigation View Switcher (Super Admin / Admin Only) */}
-        {isAdmin && (
+        {/* Admin Navigation View Switcher (Super Admin Only - Diseño B1) */}
+        {isSuperAdmin && (
           <div className="flex items-center gap-2 mb-5 border-b border-slate-200/80 pb-3">
             <button
               onClick={() => setViewMode('instituciones')}
@@ -275,7 +276,7 @@ export default function Financieras() {
           </div>
         )}
 
-        {isAdmin && viewMode === 'ofertas' ? (
+        {isSuperAdmin && viewMode === 'ofertas' ? (
           <AdminOffersList />
         ) : (
           <>
@@ -336,15 +337,17 @@ export default function Financieras() {
 
                 {isAdmin ? (
                   <div className="flex items-center gap-2 shrink-0">
-                    <Button 
-                      onClick={() => setShowNewOfferModal(true)}
-                      variant="outline"
-                      className="border-blue-200 text-[#2463D6] hover:bg-blue-50 text-xs font-semibold h-9 shadow-2xs gap-1.5"
-                      data-testid="button-toolbar-new-offer"
-                    >
-                      <Layers className="w-3.5 h-3.5" />
-                      <span>Nueva Oferta</span>
-                    </Button>
+                    {isSuperAdmin && (
+                      <Button 
+                        onClick={() => setShowNewOfferModal(true)}
+                        variant="outline"
+                        className="border-blue-200 text-[#2463D6] hover:bg-blue-50 text-xs font-semibold h-9 shadow-2xs gap-1.5"
+                        data-testid="button-toolbar-new-offer"
+                      >
+                        <Layers className="w-3.5 h-3.5" />
+                        <span>Nueva Oferta</span>
+                      </Button>
+                    )}
                     <Button 
                       onClick={() => setShowNewModal(true)}
                       className="bg-primary hover:bg-primary-dark text-primary-foreground text-xs font-medium h-9 shadow-sm"
@@ -562,7 +565,7 @@ export default function Financieras() {
                         {/* 7. Action */}
                         <td className="py-3 px-4 text-right whitespace-nowrap">
                           <div className="flex items-center justify-end gap-1.5">
-                            {isAdmin && (
+                            {isSuperAdmin && (
                               <Link href={`/financieras/${institution.id}?tab=ofertas`}>
                                 <Button
                                   variant="outline"
@@ -602,14 +605,16 @@ export default function Financieras() {
                                   </Button>
                                 </DropdownMenuTrigger>
                                 <DropdownMenuContent align="end" className="w-52 text-xs">
-                                  <DropdownMenuItem asChild>
-                                    <Link href={`/financieras/${institution.id}?tab=ofertas`}>
-                                      <span className="flex items-center w-full cursor-pointer font-medium text-[#2463D6]">
-                                        <Layers className="w-3.5 h-3.5 mr-2 text-[#2463D6]" />
-                                        Ofertas comerciales ({productsList.length})
-                                      </span>
-                                    </Link>
-                                  </DropdownMenuItem>
+                                  {isSuperAdmin && (
+                                    <DropdownMenuItem asChild>
+                                      <Link href={`/financieras/${institution.id}?tab=ofertas`}>
+                                        <span className="flex items-center w-full cursor-pointer font-medium text-[#2463D6]">
+                                          <Layers className="w-3.5 h-3.5 mr-2 text-[#2463D6]" />
+                                          Ofertas comerciales ({productsList.length})
+                                        </span>
+                                      </Link>
+                                    </DropdownMenuItem>
+                                  )}
                                   <DropdownMenuItem 
                                     onClick={() => setConfigModal({ show: true, financiera: institution })}
                                     data-testid={`button-config-financiera-${institution.id}`}
@@ -762,7 +767,7 @@ export default function Financieras() {
 
                     {/* Actions */}
                     <div className="flex items-center justify-between gap-2 pt-1">
-                      {isAdmin && (
+                      {isSuperAdmin && (
                         <Link href={`/financieras/${institution.id}?tab=ofertas`} className="flex-1">
                           <Button
                             variant="outline"
@@ -803,14 +808,16 @@ export default function Financieras() {
                             </Button>
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end" className="w-52 text-xs">
-                            <DropdownMenuItem asChild>
-                              <Link href={`/financieras/${institution.id}?tab=ofertas`}>
-                                <span className="flex items-center w-full cursor-pointer font-medium text-[#2463D6]">
-                                  <Layers className="w-3.5 h-3.5 mr-2 text-[#2463D6]" />
-                                  Ofertas comerciales ({productsList.length})
-                                </span>
-                              </Link>
-                            </DropdownMenuItem>
+                            {isSuperAdmin && (
+                              <DropdownMenuItem asChild>
+                                <Link href={`/financieras/${institution.id}?tab=ofertas`}>
+                                  <span className="flex items-center w-full cursor-pointer font-medium text-[#2463D6]">
+                                    <Layers className="w-3.5 h-3.5 mr-2 text-[#2463D6]" />
+                                    Ofertas comerciales ({productsList.length})
+                                  </span>
+                                </Link>
+                              </DropdownMenuItem>
+                            )}
                             <DropdownMenuItem 
                               onClick={() => setConfigModal({ show: true, financiera: institution })}
                               data-testid={`button-config-financiera-mobile-${institution.id}`}

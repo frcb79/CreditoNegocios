@@ -1,5 +1,6 @@
 // @ts-nocheck
 import { randomUUID } from "crypto";
+import bcrypt from "bcrypt";
 import {
   users,
   clients,
@@ -741,6 +742,7 @@ export class MemStorage implements IStorage {
     const broker1 = this.createSeedUser({
       id: "broker-1",
       email: "broker1@brokerapp.mx",
+      password: bcrypt.hashSync("Broker123!", 10),
       firstName: "Luis",
       lastName: "Hernández",
       role: "broker",
@@ -790,6 +792,7 @@ export class MemStorage implements IStorage {
     const superAdmin = this.createSeedUser({
       id: "user-super-admin",
       email: "admin@brokerapp.mx",
+      password: bcrypt.hashSync("Admin123!", 10),
       firstName: "Platform",
       lastName: "Administrator",
       role: "super_admin",
@@ -1670,23 +1673,25 @@ export class MemStorage implements IStorage {
   }
 
   async upsertUser(userData: UpsertUser, replitId?: string): Promise<User> {
-    // If replitId is provided, use it as the user ID (for Replit Auth)
-    if (replitId) {
-      const existingUser = this.users.get(replitId);
+    const targetId = replitId || (userData as any).id;
+    // If targetId is provided, use it as the user ID (for Replit Auth or explicit user ID)
+    if (targetId) {
+      const existingUser = this.users.get(targetId);
       
       if (existingUser) {
         const updatedUser = {
           ...existingUser,
           ...userData,
+          id: targetId,
           updatedAt: new Date(),
         };
-        this.users.set(replitId, updatedUser);
+        this.users.set(targetId, updatedUser);
         return updatedUser;
       }
 
       const user: User = {
         ...userData,
-        id: replitId,
+        id: targetId,
         email: userData.email ?? null,
         firstName: userData.firstName ?? null,
         lastName: userData.lastName ?? null,
@@ -1705,7 +1710,7 @@ export class MemStorage implements IStorage {
         createdAt: new Date(),
         updatedAt: new Date(),
       };
-      this.users.set(replitId, user);
+      this.users.set(targetId, user);
       return user;
     }
 
@@ -2984,47 +2989,52 @@ export class MemStorage implements IStorage {
       updatedAt: now,
       institutionProductId: id,
     };
-    this.institutionProducts.set(id, institutionProduct);
+    try {
+      this.institutionProducts.set(id, institutionProduct);
 
-    if (initialVersion) {
-      const versionId = randomUUID();
-      const conditions = initialVersion.conditions ?? {};
-      const requirements = initialVersion.requirements ?? {};
-      const variablesConfig = initialVersion.variablesConfiguration ?? {};
-      const requiredDocuments = Array.isArray(initialVersion.requiredDocuments) ? initialVersion.requiredDocuments : [];
-      const versionHash = computeInstitutionProductVersionHash({
-        institutionProductId: id,
-        versionNumber: 1,
-        conditions,
-        requirements,
-        requiredDocuments,
-        variablesConfiguration: variablesConfig,
-      });
+      if (initialVersion) {
+        const versionId = randomUUID();
+        const conditions = initialVersion.conditions ?? {};
+        const requirements = initialVersion.requirements ?? {};
+        const variablesConfig = initialVersion.variablesConfiguration ?? {};
+        const requiredDocuments = Array.isArray(initialVersion.requiredDocuments) ? initialVersion.requiredDocuments : [];
+        const versionHash = computeInstitutionProductVersionHash({
+          institutionProductId: id,
+          versionNumber: 1,
+          conditions,
+          requirements,
+          requiredDocuments,
+          variablesConfiguration: variablesConfig,
+        });
 
-      const newVersion: InstitutionProductVersion = {
-        id: versionId,
-        institutionProductId: id,
-        offerId: id,
-        versionNumber: 1,
-        status: "draft", // Forzado a draft desde el servidor
-        effectiveFrom: null,
-        effectiveTo: null,
-        conditions,
-        requirements,
-        requiredDocuments,
-        variablesConfiguration: variablesConfig,
-        changeReason: initialVersion.changeReason ?? "Versión inicial en borrador",
-        versionHash,
-        publishedAt: null,
-        publishedBy: null,
-        createdBy: initialVersion.createdBy ?? productData.createdBy ?? null,
-        createdAt: now,
-        updatedAt: now,
-      };
-      this.institutionProductVersions.set(versionId, newVersion);
+        const newVersion: InstitutionProductVersion = {
+          id: versionId,
+          institutionProductId: id,
+          offerId: id,
+          versionNumber: 1,
+          status: "draft", // Forzado a draft desde el servidor
+          effectiveFrom: null,
+          effectiveTo: null,
+          conditions,
+          requirements,
+          requiredDocuments,
+          variablesConfiguration: variablesConfig,
+          changeReason: initialVersion.changeReason ?? "Versión inicial en borrador",
+          versionHash,
+          publishedAt: null,
+          publishedBy: null,
+          createdBy: initialVersion.createdBy ?? productData.createdBy ?? null,
+          createdAt: now,
+          updatedAt: now,
+        };
+        this.institutionProductVersions.set(versionId, newVersion);
+      }
+
+      return institutionProduct;
+    } catch (err) {
+      this.institutionProducts.delete(id);
+      throw err;
     }
-
-    return institutionProduct;
   }
 
   async updateInstitutionProduct(id: string, productData: Partial<InsertInstitutionProduct>): Promise<InstitutionProduct | undefined> {

@@ -765,14 +765,62 @@ async function authorizeTenantAccess(params: {
 }
 
 async function requirePlatformRole(userId: string, allowedRoles: string[]): Promise<boolean> {
+  if (!userId) return false;
   let user = await storage.getUser(userId);
   
-  // Fallback: If user not found by ID, try to get super admin for development
-  if (!user) {
+  // Fallback: If user not found by ID, try to get super admin for development only
+  if (!user && process.env.NODE_ENV === 'development') {
     user = await storage.getUserByEmail("admin@brokerapp.mx");
   }
   
   return user ? allowedRoles.includes(user.role) : false;
+}
+
+function sanitizeCommercialOffer(product: any) {
+  if (!product) return product;
+  const { createdBy, ...commercialOffer } = product;
+  return commercialOffer;
+}
+
+function sanitizeFinancialInstitutionCommissions(institution: any, userRole: string, masterBrokerRates?: any) {
+  if (!institution) return institution;
+  
+  // Super Admin and Admin can inspect internal platform commissions
+  if (userRole === 'super_admin' || userRole === 'admin') {
+    return institution;
+  }
+  
+  const rawRates = (institution.commissionRates as any) || {};
+  let sanitizedRates: any = {};
+  
+  if (userRole === 'master_broker') {
+    // Master Broker only sees masterBroker and broker ceilings, never internal platform / superAdmin commissions
+    if (rawRates.masterBroker) sanitizedRates.masterBroker = rawRates.masterBroker;
+    if (rawRates.broker) sanitizedRates.broker = rawRates.broker;
+  } else if (userRole === 'broker') {
+    // Broker only sees broker commission rate, customized if assigned by Master Broker
+    let brokerRate = rawRates.broker ? { ...rawRates.broker } : {};
+    if (masterBrokerRates && masterBrokerRates[institution.id] && masterBrokerRates[institution.id].apertura !== undefined) {
+      brokerRate = {
+        ...brokerRate,
+        apertura: masterBrokerRates[institution.id].apertura,
+        sobretasa: masterBrokerRates[institution.id].sobretasa ?? brokerRate.sobretasa,
+        renovacion: masterBrokerRates[institution.id].renovacion ?? brokerRate.renovacion,
+      };
+    }
+    sanitizedRates.broker = brokerRate;
+  } else {
+    // Any other commercial role: only public broker rate, never internal platform commissions
+    if (rawRates.broker) sanitizedRates.broker = rawRates.broker;
+  }
+
+  // Strip internal administrative notes for non-admin roles
+  const { notes, createdByAdmin, createdBy, ...safeInstitution } = institution;
+  
+  return {
+    ...safeInstitution,
+    commissionRates: sanitizedRates,
+  };
 }
 
 // STP Payment simulation
@@ -4109,33 +4157,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const user = await storage.getUser(userId);
       const institutions = await storage.getFinancialInstitutions(userId);
 
-      // If user is a broker belonging to a Master Broker, customize broker commission rates with their MB's assigned rates
+      let networkRates: any = null;
+      // If user is a broker belonging to a Master Broker, fetch assigned network rates
       if (user?.role === 'broker' && user?.masterBrokerId) {
         const masterBroker = await storage.getUser(user.masterBrokerId);
-        const networkRates = (masterBroker?.networkCommissionRates as any) || {};
-
-        const customized = institutions.map((inst: any) => {
-          const custom = networkRates[inst.id];
-          if (custom && custom.apertura !== undefined) {
-            return {
-              ...inst,
-              commissionRates: {
-                ...inst.commissionRates,
-                broker: {
-                  ...(inst.commissionRates as any)?.broker,
-                  apertura: custom.apertura,
-                  sobretasa: custom.sobretasa ?? (inst.commissionRates as any)?.broker?.sobretasa,
-                  renovacion: custom.renovacion ?? (inst.commissionRates as any)?.broker?.renovacion,
-                }
-              }
-            };
-          }
-          return inst;
-        });
-        return res.json(customized);
+        networkRates = (masterBroker?.networkCommissionRates as any) || {};
       }
 
-      res.json(institutions);
+      const role = user?.role || 'broker';
+      const sanitized = institutions.map((inst: any) => 
+        sanitizeFinancialInstitutionCommissions(inst, role, networkRates)
+      );
+
+      res.json(sanitized);
     } catch (error) {
       console.error("Error fetching financial institutions:", error);
       res.status(500).json({ message: "Failed to fetch financial institutions" });
@@ -4154,30 +4188,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ message: 'Financial institution not found' });
       }
 
-      // If user is a broker belonging to a Master Broker, customize broker rates
+      let networkRates: any = null;
       if (user?.role === 'broker' && user?.masterBrokerId) {
         const masterBroker = await storage.getUser(user.masterBrokerId);
-        const networkRates = (masterBroker?.networkCommissionRates as any) || {};
-        const custom = networkRates[id];
-
-        if (custom && custom.apertura !== undefined) {
-          const customized = {
-            ...institution,
-            commissionRates: {
-              ...institution.commissionRates,
-              broker: {
-                ...(institution.commissionRates as any)?.broker,
-                apertura: custom.apertura,
-                sobretasa: custom.sobretasa ?? (institution.commissionRates as any)?.broker?.sobretasa,
-                renovacion: custom.renovacion ?? (institution.commissionRates as any)?.broker?.renovacion,
-              }
-            }
-          };
-          return res.json(customized);
-        }
+        networkRates = (masterBroker?.networkCommissionRates as any) || {};
       }
+
+      const role = user?.role || 'broker';
+      const sanitized = sanitizeFinancialInstitutionCommissions(institution, role, networkRates);
       
-      res.json(institution);
+      res.json(sanitized);
     } catch (error) {
       console.error("Error fetching financial institution:", error);
       res.status(500).json({ message: "Failed to fetch financial institution" });
@@ -6945,9 +6965,27 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // 🔹 INSTITUTION PRODUCTS (Level 3A: Assigned to financieras)
   app.get('/api/institution-products', isAuthenticated, async (req: any, res) => {
     try {
+      const userId = req.user?.claims?.sub || req.user?.id;
+      const isSuperAdmin = await requirePlatformRole(userId, ['super_admin']);
       const { institutionId, status, eligibleOnly } = req.query;
 
       let products = await storage.getInstitutionProducts(institutionId as string);
+
+      if (!isSuperAdmin) {
+        // Brokers and Master Brokers must NEVER receive drafts, non-eligible offers, nor administrative metadata
+        const eligibleCommercialOffers = [];
+        for (const p of products) {
+          if (p.status === 'draft' || p.status === 'archived' || p.isActive === false) {
+            continue;
+          }
+          const versions = await storage.getInstitutionProductVersions(p.id);
+          if (isOfferEligibleForRequests(p, versions)) {
+            eligibleCommercialOffers.push(sanitizeCommercialOffer(p));
+          }
+        }
+        return res.json(eligibleCommercialOffers);
+      }
+
       if (status) {
         products = products.filter(p => p.status === status);
       }
@@ -6971,10 +7009,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get('/api/institution-products/:id', isAuthenticated, async (req: any, res) => {
     try {
       const { id } = req.params;
+      const userId = req.user?.claims?.sub || req.user?.id;
+      const isSuperAdmin = await requirePlatformRole(userId, ['super_admin']);
 
       const product = await storage.getInstitutionProduct(id);
       if (!product) {
         return res.status(404).json({ message: "Institution product not found" });
+      }
+
+      if (!isSuperAdmin) {
+        if (product.status === 'draft' || product.status === 'archived' || product.isActive === false) {
+          return res.status(404).json({ message: "Institution product not found" });
+        }
+        const versions = await storage.getInstitutionProductVersions(product.id);
+        if (!isOfferEligibleForRequests(product, versions)) {
+          return res.status(404).json({ message: "Institution product not found" });
+        }
+        return res.json(sanitizeCommercialOffer(product));
       }
       
       res.json(product);
@@ -6986,10 +7037,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.get('/api/institution-products/:id/versions', isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user?.claims?.sub;
-      const hasPermission = await requirePlatformRole(userId, ['super_admin', 'admin']);
+      const userId = req.user?.claims?.sub || req.user?.id;
+      const hasPermission = await requirePlatformRole(userId, ['super_admin']);
       if (!hasPermission) {
-        return res.status(403).json({ message: "Access denied - Admin privileges required" });
+        return res.status(403).json({ message: "Access denied - Super Admin privileges required" });
       }
 
       const { id } = req.params;
@@ -7004,9 +7055,26 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get('/api/institution-products/template/:templateId', isAuthenticated, async (req: any, res) => {
     try {
       const { templateId } = req.params;
+      const userId = req.user?.claims?.sub || req.user?.id;
+      const isSuperAdmin = await requirePlatformRole(userId, ['super_admin']);
       const { eligibleOnly } = req.query;
 
       let products = await storage.getInstitutionProductsByTemplate(templateId);
+
+      if (!isSuperAdmin) {
+        const eligibleCommercialOffers = [];
+        for (const p of products) {
+          if (p.status === 'draft' || p.status === 'archived' || p.isActive === false) {
+            continue;
+          }
+          const versions = await storage.getInstitutionProductVersions(p.id);
+          if (isOfferEligibleForRequests(p, versions)) {
+            eligibleCommercialOffers.push(sanitizeCommercialOffer(p));
+          }
+        }
+        return res.json(eligibleCommercialOffers);
+      }
+
       if (eligibleOnly === 'true') {
         const eligible = [];
         for (const p of products) {
@@ -7026,11 +7094,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post('/api/institution-products', isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const userId = req.user?.claims?.sub || req.user?.id;
       
-      const hasPermission = await requirePlatformRole(userId, ['super_admin', 'admin']);
+      const hasPermission = await requirePlatformRole(userId, ['super_admin']);
       if (!hasPermission) {
-        return res.status(403).json({ message: "Access denied - Admin privileges required" });
+        return res.status(403).json({ message: "Access denied - Super Admin privileges required" });
       }
 
       // Parse body but add createdBy automatically for security
@@ -7075,11 +7143,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.put('/api/institution-products/:id', isAuthenticated, async (req: any, res) => {
     try {
       const { id } = req.params;
-      const userId = req.user.claims.sub;
+      const userId = req.user?.claims?.sub || req.user?.id;
       
-      const hasPermission = await requirePlatformRole(userId, ['super_admin', 'admin']);
+      const hasPermission = await requirePlatformRole(userId, ['super_admin']);
       if (!hasPermission) {
-        return res.status(403).json({ message: "Access denied - Admin privileges required" });
+        return res.status(403).json({ message: "Access denied - Super Admin privileges required" });
       }
 
       const productData = insertInstitutionProductSchema.partial().parse(req.body);
@@ -7119,20 +7187,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.delete('/api/institution-products/:id', isAuthenticated, async (req: any, res) => {
     try {
       const { id } = req.params;
-      const userId = req.user.claims.sub;
+      const userId = req.user?.claims?.sub || req.user?.id;
       
-      const hasPermission = await requirePlatformRole(userId, ['super_admin', 'admin']);
+      const hasPermission = await requirePlatformRole(userId, ['super_admin']);
       if (!hasPermission) {
-        return res.status(403).json({ message: "Access denied - Admin privileges required" });
+        return res.status(403).json({ message: "Access denied - Super Admin privileges required" });
       }
 
       const success = await storage.deleteInstitutionProduct(id);
       
-      if (success) {
-        res.json({ message: "Institution product deleted successfully" });
-      } else {
-        res.status(404).json({ message: "Institution product not found" });
+      if (!success) {
+        return res.status(404).json({ message: "Institution product not found" });
       }
+      
+      res.json({ message: "Institution product deleted successfully" });
     } catch (error) {
       console.error("Error deleting institution product:", error);
       res.status(500).json({ message: "Failed to delete institution product" });

@@ -43,6 +43,7 @@ export default function FinancieraDetail() {
   const [configModal, setConfigModal] = useState(false);
   const [activeTab, setActiveTab] = useState("proceso");
   
+  const isSuperAdmin = user?.role === 'super_admin';
   const isAdmin = user?.role === 'admin' || user?.role === 'super_admin';
   const isBroker = user?.role === 'broker';
   const isMasterBroker = user?.role === 'master_broker';
@@ -51,11 +52,11 @@ export default function FinancieraDetail() {
   useEffect(() => {
     if (typeof window !== "undefined") {
       const params = new URLSearchParams(window.location.search);
-      if (params.get("tab") === "ofertas" && isAdmin) {
+      if (params.get("tab") === "ofertas" && isSuperAdmin) {
         setActiveTab("ofertas");
       }
     }
-  }, [isAdmin]);
+  }, [isSuperAdmin]);
 
   const { data: institution, isLoading } = useQuery<FinancialInstitution>({
     queryKey: [`/api/financial-institutions/${id}`],
@@ -188,7 +189,7 @@ export default function FinancieraDetail() {
                     Volver
                   </Button>
                 </Link>
-                {isAdmin && (
+                {isSuperAdmin && (
                   <Button
                     size="sm"
                     variant={activeTab === "ofertas" ? "default" : "outline"}
@@ -275,7 +276,7 @@ export default function FinancieraDetail() {
             <Tabs value={activeTab} onValueChange={setActiveTab}>
               <TabsList className={cn(
                 "grid w-full gap-1 bg-slate-100/80 p-1 rounded-lg border border-slate-200/60",
-                isAdmin ? "grid-cols-5" : "grid-cols-4"
+                isSuperAdmin ? "grid-cols-5" : "grid-cols-4"
               )}>
                 <TabsTrigger 
                   value="proceso" 
@@ -309,7 +310,7 @@ export default function FinancieraDetail() {
                   <DollarSign className="w-3.5 h-3.5 mr-1.5" />
                   Comisiones
                 </TabsTrigger>
-                {isAdmin && (
+                {isSuperAdmin && (
                   <TabsTrigger 
                     value="ofertas" 
                     data-testid="tab-ofertas"
@@ -757,8 +758,8 @@ export default function FinancieraDetail() {
                 </div>
               </TabsContent>
 
-              {/* Ofertas Comerciales Tab (Super Admin / Admin Only) */}
-              {isAdmin && (
+              {/* Ofertas Comerciales Tab (Super Admin Only - Diseño B1) */}
+              {isSuperAdmin && (
                 <TabsContent value="ofertas" className="mt-6">
                   <AdminOffersList 
                     institutionId={id} 

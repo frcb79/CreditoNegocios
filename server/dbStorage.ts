@@ -923,65 +923,67 @@ export class DbStorage implements IStorage {
         }
       }
 
-      const productId = (productData as any).id ?? randomUUID();
-      const now = new Date();
-      const offerName = (productData as any).name ?? productData.customName ?? null;
+      return await db.transaction(async (tx) => {
+        const productId = (productData as any).id ?? randomUUID();
+        const now = new Date();
+        const offerName = (productData as any).name ?? productData.customName ?? null;
 
-      const [created] = await db
-        .insert(institutionProducts)
-        .values({
-          ...productData,
-          id: productId,
-          name: offerName,
-          customName: productData.customName ?? offerName,
-          templateId: productData.templateId ?? null,
-          configuration: productData.configuration ?? {},
-          activeVariables: activeVariables,
-          status: "draft", // Forzado a draft desde el servidor; solo el flujo validado de publicación puede establecer published
-          currentVersionNumber: productData.currentVersionNumber ?? 1,
-          isActive: productData.isActive ?? true,
-          createdAt: now,
-          updatedAt: now,
-        })
-        .returning();
+        const [created] = await tx
+          .insert(institutionProducts)
+          .values({
+            ...productData,
+            id: productId,
+            name: offerName,
+            customName: productData.customName ?? offerName,
+            templateId: productData.templateId ?? null,
+            configuration: productData.configuration ?? {},
+            activeVariables: activeVariables,
+            status: "draft", // Forzado a draft desde el servidor; solo el flujo validado de publicación puede establecer published
+            currentVersionNumber: productData.currentVersionNumber ?? 1,
+            isActive: productData.isActive ?? true,
+            createdAt: now,
+            updatedAt: now,
+          })
+          .returning();
 
-      if (initialVersion) {
-        const versionId = randomUUID();
-        const conditions = initialVersion.conditions ?? {};
-        const requirements = initialVersion.requirements ?? {};
-        const variablesConfig = initialVersion.variablesConfiguration ?? {};
-        const requiredDocuments = Array.isArray(initialVersion.requiredDocuments) ? initialVersion.requiredDocuments : [];
-        const versionHash = computeInstitutionProductVersionHash({
-          institutionProductId: productId,
-          versionNumber: 1,
-          conditions,
-          requirements,
-          requiredDocuments,
-          variablesConfiguration: variablesConfig,
-        });
+        if (initialVersion) {
+          const versionId = randomUUID();
+          const conditions = initialVersion.conditions ?? {};
+          const requirements = initialVersion.requirements ?? {};
+          const variablesConfig = initialVersion.variablesConfiguration ?? {};
+          const requiredDocuments = Array.isArray(initialVersion.requiredDocuments) ? initialVersion.requiredDocuments : [];
+          const versionHash = computeInstitutionProductVersionHash({
+            institutionProductId: productId,
+            versionNumber: 1,
+            conditions,
+            requirements,
+            requiredDocuments,
+            variablesConfiguration: variablesConfig,
+          });
 
-        await db.insert(institutionProductVersions).values({
-          id: versionId,
-          institutionProductId: productId,
-          versionNumber: 1,
-          status: "draft", // Forzado a draft desde el servidor
-          effectiveFrom: null,
-          effectiveTo: null,
-          conditions,
-          requirements,
-          requiredDocuments,
-          variablesConfiguration: variablesConfig,
-          changeReason: initialVersion.changeReason ?? "Versión inicial en borrador",
-          versionHash,
-          publishedAt: initialVersion.publishedAt ?? null,
-          publishedBy: initialVersion.publishedBy ?? null,
-          createdBy: initialVersion.createdBy ?? productData.createdBy ?? null,
-          createdAt: now,
-          updatedAt: now,
-        });
-      }
+          await tx.insert(institutionProductVersions).values({
+            id: versionId,
+            institutionProductId: productId,
+            versionNumber: 1,
+            status: "draft", // Forzado a draft desde el servidor
+            effectiveFrom: null,
+            effectiveTo: null,
+            conditions,
+            requirements,
+            requiredDocuments,
+            variablesConfiguration: variablesConfig,
+            changeReason: initialVersion.changeReason ?? "Versión inicial en borrador",
+            versionHash,
+            publishedAt: initialVersion.publishedAt ?? null,
+            publishedBy: initialVersion.publishedBy ?? null,
+            createdBy: initialVersion.createdBy ?? productData.createdBy ?? null,
+            createdAt: now,
+            updatedAt: now,
+          });
+        }
 
-      return { ...created, institutionProductId: created.id };
+        return { ...created, institutionProductId: created.id };
+      });
     } catch (error) {
       console.error("Error creating institution product:", error);
       throw error;

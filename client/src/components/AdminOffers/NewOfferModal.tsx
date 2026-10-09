@@ -66,13 +66,13 @@ export default function NewOfferModal({
     "fisica_empresarial",
   ]);
 
-  // Initial conditions
-  const [minAmount, setMinAmount] = useState<string>("200000");
-  const [maxAmount, setMaxAmount] = useState<string>("5000000");
-  const [minRate, setMinRate] = useState<string>("18.0");
-  const [maxRate, setMaxRate] = useState<string>("28.0");
-  const [minTerm, setMinTerm] = useState<string>("12");
-  const [maxTerm, setMaxTerm] = useState<string>("36");
+  // Initial conditions - Inician vacíos para permitir datos pendientes sin precargas no confirmadas
+  const [minAmount, setMinAmount] = useState<string>("");
+  const [maxAmount, setMaxAmount] = useState<string>("");
+  const [minRate, setMinRate] = useState<string>("");
+  const [maxRate, setMaxRate] = useState<string>("");
+  const [minTerm, setMinTerm] = useState<string>("");
+  const [maxTerm, setMaxTerm] = useState<string>("");
 
   // Load institutions list for selection if not pre-locked
   const { data: institutions = [] } = useQuery<FinancialInstitution[]>({
@@ -103,15 +103,8 @@ export default function NewOfferModal({
       if (tmpl.targetProfiles && tmpl.targetProfiles.length > 0) {
         setSelectedProfiles(tmpl.targetProfiles);
       }
-      if (tmpl.baseConfiguration) {
-        const base = tmpl.baseConfiguration as any;
-        if (base.minAmount) setMinAmount(String(base.minAmount));
-        if (base.maxAmount) setMaxAmount(String(base.maxAmount));
-        if (base.minInterestRate) setMinRate(String(base.minInterestRate));
-        if (base.maxInterestRate) setMaxRate(String(base.maxInterestRate));
-        if (base.minTermMonths) setMinTerm(String(base.minTermMonths));
-        if (base.maxTermMonths) setMaxTerm(String(base.maxTermMonths));
-      }
+      // Note: No se precargan montos, tasas ni plazos no confirmados;
+      // se preserva el estado en blanco para capturar o validar solo lo ingresado
     }
   };
 
@@ -164,6 +157,12 @@ export default function NewOfferModal({
     setName("");
     setDescription("");
     setTemplateId("");
+    setMinAmount("");
+    setMaxAmount("");
+    setMinRate("");
+    setMaxRate("");
+    setMinTerm("");
+    setMaxTerm("");
     createMutation.reset();
     onClose();
   };
@@ -189,6 +188,62 @@ export default function NewOfferModal({
       return;
     }
 
+    // Parsear condiciones solo si fueron capturadas (permitir datos pendientes)
+    const parsedMinAmount = minAmount.trim() !== "" ? parseFloat(minAmount) : null;
+    const parsedMaxAmount = maxAmount.trim() !== "" ? parseFloat(maxAmount) : null;
+    const parsedMinRate = minRate.trim() !== "" ? parseFloat(minRate) : null;
+    const parsedMaxRate = maxRate.trim() !== "" ? parseFloat(maxRate) : null;
+    const parsedMinTerm = minTerm.trim() !== "" ? parseInt(minTerm, 10) : null;
+    const parsedMaxTerm = maxTerm.trim() !== "" ? parseInt(maxTerm, 10) : null;
+
+    // Validar exclusivamente valores capturados
+    if (parsedMinAmount !== null && (isNaN(parsedMinAmount) || parsedMinAmount < 0)) {
+      toast({ title: "Monto inválido", description: "El monto mínimo debe ser un número positivo.", variant: "destructive" });
+      return;
+    }
+    if (parsedMaxAmount !== null && (isNaN(parsedMaxAmount) || parsedMaxAmount < 0)) {
+      toast({ title: "Monto inválido", description: "El monto máximo debe ser un número positivo.", variant: "destructive" });
+      return;
+    }
+    if (parsedMinAmount !== null && parsedMaxAmount !== null && parsedMinAmount > parsedMaxAmount) {
+      toast({ title: "Montos incoherentes", description: "El monto mínimo no puede ser mayor que el monto máximo.", variant: "destructive" });
+      return;
+    }
+
+    if (parsedMinRate !== null && (isNaN(parsedMinRate) || parsedMinRate < 0)) {
+      toast({ title: "Tasa inválida", description: "La tasa mínima debe ser un porcentaje positivo.", variant: "destructive" });
+      return;
+    }
+    if (parsedMaxRate !== null && (isNaN(parsedMaxRate) || parsedMaxRate < 0)) {
+      toast({ title: "Tasa inválida", description: "La tasa máxima debe ser un porcentaje positivo.", variant: "destructive" });
+      return;
+    }
+    if (parsedMinRate !== null && parsedMaxRate !== null && parsedMinRate > parsedMaxRate) {
+      toast({ title: "Tasas incoherentes", description: "La tasa mínima no puede ser mayor que la tasa máxima.", variant: "destructive" });
+      return;
+    }
+
+    if (parsedMinTerm !== null && (isNaN(parsedMinTerm) || parsedMinTerm <= 0)) {
+      toast({ title: "Plazo inválido", description: "El plazo mínimo debe ser un número de meses mayor a 0.", variant: "destructive" });
+      return;
+    }
+    if (parsedMaxTerm !== null && (isNaN(parsedMaxTerm) || parsedMaxTerm <= 0)) {
+      toast({ title: "Plazo inválido", description: "El plazo máximo debe ser un número de meses mayor a 0.", variant: "destructive" });
+      return;
+    }
+    if (parsedMinTerm !== null && parsedMaxTerm !== null && parsedMinTerm > parsedMaxTerm) {
+      toast({ title: "Plazos incoherentes", description: "El plazo mínimo no puede ser mayor que el plazo máximo.", variant: "destructive" });
+      return;
+    }
+
+    const configuration: Record<string, any> = {};
+    if (parsedMinAmount !== null) configuration.minAmount = parsedMinAmount;
+    if (parsedMaxAmount !== null) configuration.maxAmount = parsedMaxAmount;
+    if (parsedMinRate !== null) configuration.minInterestRate = parsedMinRate;
+    if (parsedMaxRate !== null) configuration.maxInterestRate = parsedMaxRate;
+    if (parsedMinTerm !== null) configuration.minTermMonths = parsedMinTerm;
+    if (parsedMaxTerm !== null) configuration.maxTermMonths = parsedMaxTerm;
+
     const payload = {
       institutionId,
       name: name.trim(),
@@ -197,14 +252,7 @@ export default function NewOfferModal({
       templateId: templateId && templateId !== "none" ? templateId : null,
       description: description.trim() || null,
       targetProfiles: selectedProfiles,
-      configuration: {
-        minAmount: parseFloat(minAmount) || 0,
-        maxAmount: parseFloat(maxAmount) || 0,
-        minInterestRate: parseFloat(minRate) || 0,
-        maxInterestRate: parseFloat(maxRate) || 0,
-        minTermMonths: parseInt(minTerm, 10) || 0,
-        maxTermMonths: parseInt(maxTerm, 10) || 0,
-      },
+      configuration,
       // Note: server forces status: "draft"
       status: "draft",
       isActive: true,
@@ -376,7 +424,7 @@ export default function NewOfferModal({
                 <Label className="text-xs font-semibold text-slate-700">
                   Condiciones Comerciales Base (Borrador v1)
                 </Label>
-                <span className="text-[11px] text-slate-400">Podrán ajustarse o versionarse en B2</span>
+                <span className="text-[11px] text-slate-400">Datos pendientes permitidos; valida solo lo capturado</span>
               </div>
 
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 p-3.5 bg-white rounded-xl border border-slate-200 shadow-2xs">
@@ -388,7 +436,7 @@ export default function NewOfferModal({
                     value={minAmount}
                     onChange={(e) => setMinAmount(e.target.value)}
                     className="h-8 text-xs border-slate-200"
-                    placeholder="100,000"
+                    placeholder="Pendiente (ej. 100,000)"
                   />
                 </div>
                 <div className="space-y-1">
@@ -398,7 +446,7 @@ export default function NewOfferModal({
                     value={maxAmount}
                     onChange={(e) => setMaxAmount(e.target.value)}
                     className="h-8 text-xs border-slate-200"
-                    placeholder="5,000,000"
+                    placeholder="Pendiente (ej. 5,000,000)"
                   />
                 </div>
 
@@ -411,7 +459,7 @@ export default function NewOfferModal({
                     value={minRate}
                     onChange={(e) => setMinRate(e.target.value)}
                     className="h-8 text-xs border-slate-200"
-                    placeholder="18.0"
+                    placeholder="Pendiente (ej. 18.0)"
                   />
                 </div>
                 <div className="space-y-1">
@@ -422,7 +470,7 @@ export default function NewOfferModal({
                     value={maxRate}
                     onChange={(e) => setMaxRate(e.target.value)}
                     className="h-8 text-xs border-slate-200"
-                    placeholder="26.0"
+                    placeholder="Pendiente (ej. 26.0)"
                   />
                 </div>
 
@@ -434,7 +482,7 @@ export default function NewOfferModal({
                     value={minTerm}
                     onChange={(e) => setMinTerm(e.target.value)}
                     className="h-8 text-xs border-slate-200"
-                    placeholder="12"
+                    placeholder="Pendiente (ej. 12)"
                   />
                 </div>
                 <div className="space-y-1">
@@ -444,7 +492,7 @@ export default function NewOfferModal({
                     value={maxTerm}
                     onChange={(e) => setMaxTerm(e.target.value)}
                     className="h-8 text-xs border-slate-200"
-                    placeholder="36"
+                    placeholder="Pendiente (ej. 36)"
                   />
                 </div>
               </div>
