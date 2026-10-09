@@ -85,7 +85,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { cn } from "@/lib/utils";
-import { Link } from "wouter";
+import { Link, useSearch } from "wouter";
 import { 
   ArrowLeft,
   UserPlus, 
@@ -260,6 +260,7 @@ const legacyUserSchema = z.object({
 type LegacyUserFormData = z.infer<typeof legacyUserSchema>;
 
 export default function UserManagement() {
+  const search = useSearch();
   const [activeTab, setActiveTab] = useState<string>("organization");
   const [selectedTenantId, setSelectedTenantId] = useState<string>("");
   const [searchTerm, setSearchTerm] = useState("");
@@ -298,6 +299,14 @@ export default function UserManagement() {
 
   const isSuperAdmin = currentUser?.role === 'super_admin';
   const isPlatformAdmin = currentUser?.role === 'admin' || isSuperAdmin;
+
+  // Link directly to promotions from Super Admin settings without changing other roles.
+  // Respect authorization before selecting the administration-only tab.
+  useEffect(() => {
+    if (new URLSearchParams(search).get("tab") === "promos" && isPlatformAdmin) {
+      setActiveTab("promos");
+    }
+  }, [search, isPlatformAdmin]);
 
   const updateOperationalStatusMutation = useMutation({
     mutationFn: async ({ userId, status, reason, notes }: { userId: string; status: UserOperationalStatus; reason: string; notes?: string }) => {
