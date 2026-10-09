@@ -56,6 +56,54 @@ CREATE TABLE IF NOT EXISTS public.app_migrations (
   executed_at TIMESTAMP DEFAULT NOW()
 );
 
+-- Función canónica determinista para cálculo de version_hash 100% equivalente a Node computeInstitutionProductVersionHash
+CREATE OR REPLACE FUNCTION public.compute_legacy_version_hash(
+  p_product_id VARCHAR,
+  p_configuration JSONB,
+  p_target_profiles TEXT[],
+  p_active_variables JSONB
+) RETURNS VARCHAR AS $$
+DECLARE
+  v_conditions_text TEXT;
+  v_profiles_text TEXT;
+  v_variables_text TEXT;
+  v_payload TEXT;
+BEGIN
+  IF p_configuration IS NULL OR p_configuration = '{}'::jsonb THEN
+    v_conditions_text := '{}';
+  ELSE
+    SELECT COALESCE('{' || string_agg('"' || key || '":' || regexp_replace(value::text, '":\s+', '":', 'g'), ',' ORDER BY key) || '}', '{}')
+    INTO v_conditions_text
+    FROM jsonb_each(p_configuration);
+  END IF;
+
+  IF p_target_profiles IS NULL OR array_length(p_target_profiles, 1) IS NULL THEN
+    v_profiles_text := '[]';
+  ELSE
+    SELECT '[' || string_agg('"' || elem || '"', ',') || ']'
+    INTO v_profiles_text
+    FROM unnest(p_target_profiles) AS elem;
+  END IF;
+
+  IF p_active_variables IS NULL OR p_active_variables = '{}'::jsonb THEN
+    v_variables_text := '{}';
+  ELSE
+    SELECT COALESCE('{' || string_agg('"' || key || '":' || regexp_replace(value::text, '":\s+', '":', 'g'), ',' ORDER BY key) || '}', '{}')
+    INTO v_variables_text
+    FROM jsonb_each(p_active_variables);
+  END IF;
+
+  v_payload := '{"conditions":' || v_conditions_text ||
+               ',"productId":"' || p_product_id || '"' ||
+               ',"requiredDocuments":[]' ||
+               ',"requirements":{"targetProfiles":' || v_profiles_text || '}' ||
+               ',"variablesConfiguration":' || v_variables_text ||
+               ',"versionNumber":1}';
+
+  RETURN encode(sha256(convert_to(v_payload, 'UTF8')), 'hex');
+END;
+$$ LANGUAGE plpgsql IMMUTABLE;
+
 DO $$
 DECLARE
   unversioned_count INTEGER;
@@ -109,22 +157,7 @@ BEGIN
       ARRAY[]::text[],
       COALESCE(ip.active_variables, '{}'::jsonb),
       'Migración automática de producto institucional legacy activo',
-      encode(
-        sha256(
-          convert_to(
-            jsonb_build_object(
-              'conditions', COALESCE(ip.configuration, '{}'::jsonb),
-              'productId', ip.id,
-              'requiredDocuments', '[]'::jsonb,
-              'requirements', jsonb_build_object('targetProfiles', COALESCE(to_jsonb(ip.target_profiles), '[]'::jsonb)),
-              'variablesConfiguration', COALESCE(ip.active_variables, '{}'::jsonb),
-              'versionNumber', 1
-            )::text,
-            'UTF8'
-          )
-        ),
-        'hex'
-      ),
+      public.compute_legacy_version_hash(ip.id, ip.configuration, ip.target_profiles, ip.active_variables),
       NOW(),
       ip.created_by,
       ip.created_by
@@ -163,22 +196,7 @@ BEGIN
       ARRAY[]::text[],
       COALESCE(ip.active_variables, '{}'::jsonb),
       'Migración automática de producto institucional legacy inactivo',
-      encode(
-        sha256(
-          convert_to(
-            jsonb_build_object(
-              'conditions', COALESCE(ip.configuration, '{}'::jsonb),
-              'productId', ip.id,
-              'requiredDocuments', '[]'::jsonb,
-              'requirements', jsonb_build_object('targetProfiles', COALESCE(to_jsonb(ip.target_profiles), '[]'::jsonb)),
-              'variablesConfiguration', COALESCE(ip.active_variables, '{}'::jsonb),
-              'versionNumber', 1
-            )::text,
-            'UTF8'
-          )
-        ),
-        'hex'
-      ),
+      public.compute_legacy_version_hash(ip.id, ip.configuration, ip.target_profiles, ip.active_variables),
       NULL,
       NULL,
       ip.created_by

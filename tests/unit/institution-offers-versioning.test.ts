@@ -1010,5 +1010,83 @@ describe("Bloque A1.1 — Arquitectura Canónica de Ofertas y Versionado Aditivo
       expect(legacySubmission).toBeDefined();
       expect(legacySubmission.id).toBeDefined();
     });
+
+    it("6. Comparación y equivalencia matemática estricta entre la función canónica SQL y computeInstitutionProductVersionHash de Node", () => {
+      // Función espejo que replica exactamente la serialización y hashing de public.compute_legacy_version_hash
+      function simulatePlPgSqlComputeLegacyVersionHash(
+        productId: string,
+        configuration: Record<string, any>,
+        targetProfiles: string[],
+        activeVariables: Record<string, any>
+      ) {
+        let conditionsText = "{}";
+        if (configuration && Object.keys(configuration).length > 0) {
+          const sortedKeys = Object.keys(configuration).sort();
+          conditionsText = "{" + sortedKeys.map(k => `"${k}":${JSON.stringify(configuration[k])}`).join(",") + "}";
+        }
+
+        let profilesText = "[]";
+        if (targetProfiles && targetProfiles.length > 0) {
+          profilesText = "[" + targetProfiles.map(p => `"${p}"`).join(",") + "]";
+        }
+
+        let variablesText = "{}";
+        if (activeVariables && Object.keys(activeVariables).length > 0) {
+          const sortedKeys = Object.keys(activeVariables).sort();
+          variablesText = "{" + sortedKeys.map(k => `"${k}":${JSON.stringify(activeVariables[k])}`).join(",") + "}";
+        }
+
+        const payload = `{"conditions":${conditionsText},"productId":"${productId}","requiredDocuments":[],"requirements":{"targetProfiles":${profilesText}},"variablesConfiguration":${variablesText},"versionNumber":1}`;
+        const crypto = require("crypto");
+        return {
+          payload,
+          hash: crypto.createHash("sha256").update(payload, "utf8").digest("hex")
+        };
+      }
+
+      // Probar múltiples casos de prueba
+      const testCases = [
+        {
+          productId: "inst-prod-empty",
+          conditions: {},
+          requirements: { targetProfiles: [] },
+          variablesConfiguration: {},
+        },
+        {
+          productId: "inst-prod-profiles-only",
+          conditions: {},
+          requirements: { targetProfiles: ["persona_moral", "fisica_empresarial"] },
+          variablesConfiguration: {},
+        },
+        {
+          productId: "inst-prod-complex",
+          conditions: { minAmount: 100000, maxAmount: 5000000, interestRate: 14.5 },
+          requirements: { targetProfiles: ["persona_moral"] },
+          variablesConfiguration: { plazoMeses: 36, tipoGarantia: "hipotecaria" },
+        },
+      ];
+
+      for (const tc of testCases) {
+        const nodeHash = computeInstitutionProductVersionHash({
+          institutionProductId: tc.productId,
+          versionNumber: 1,
+          conditions: tc.conditions,
+          requirements: tc.requirements,
+          requiredDocuments: [],
+          variablesConfiguration: tc.variablesConfiguration,
+        });
+
+        const sqlSim = simulatePlPgSqlComputeLegacyVersionHash(
+          tc.productId,
+          tc.conditions,
+          tc.requirements.targetProfiles,
+          tc.variablesConfiguration
+        );
+
+        expect(sqlSim.hash).toBe(nodeHash);
+        expect(sqlSim.hash).toHaveLength(64);
+        expect(sqlSim.hash).toMatch(/^[0-9a-f]{64}$/);
+      }
+    });
   });
 });

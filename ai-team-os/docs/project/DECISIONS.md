@@ -120,6 +120,15 @@ Formato: Fecha / Decision / Opciones evaluadas / Decision final / Por que
 	- Garantiza que los productos legacy inactivos no queden en el limbo o sean borrados, sino preservados con versión archivada e inmutabilidad histórica.
 	- Asegura atomicidad e integridad: nunca se marca éxito en `app_migrations` si la migración histórica no completó el 100% de los registros legacy.
 
+### 2026-10-08 / Validación Final A1: CI con PostgreSQL Efímero y Función Canónica de Hash
+- Opciones evaluadas:
+	- Opcion A: Confiar exclusivamente en pruebas unitarias en memoria y no validar con motor PostgreSQL real hasta llegar a staging o producción; permitir discrepancias de formato entre hashes SQL y hashes de Node.
+	- Opcion B: Configurar un contenedor de servicio PostgreSQL 16 efímero en GitHub Actions para validar la migración 0005, el backfill, la idempotencia y la concurrencia en un entorno real aislado; e implementar una función SQL canónica `compute_legacy_version_hash` que replique exactamente el algoritmo y serialización de `computeInstitutionProductVersionHash` de Node.
+- Decision final: Opcion B.
+- Por que:
+	- Cumple la directriz estricta de no tocar Producción ni Staging mientras se valida la compatibilidad real del motor PostgreSQL.
+	- Elimina cualquier divergencia de hashing entre capas (SQL vs backend), asegurando que el libro inmutable de auditoría sea consistente en todas las plataformas.
+
 ## DECISIONES CAMBIADAS
 - 2026-10-08: Se reemplaza la coexistencia de dos catálogos (`financial_institution_offers` y `institution_products`) por la unificación en `institution_products` como catálogo canónico, manteniendo aliases y vistas retrocompatibles para evitar romper integraciones.
 - 2026-10-08: Se reemplaza la eliminación física con desvinculación de créditos en `deleteFinancialInstitution` por desactivación lógica preservadora de historial (`isActive: false` y ofertas archivadas) cuando existen créditos, solicitudes o versiones publicadas asociadas.

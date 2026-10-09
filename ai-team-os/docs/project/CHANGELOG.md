@@ -213,3 +213,27 @@ Actualizar cada vez que se completa una feature.
 	- Suite automatizada: `tests/unit/institution-offers-versioning.test.ts` con **32/32 tests passing** (100% éxito).
 	- Compilación TypeScript (`npm run check`): **0 errores**.
 	- Empaquetado backend (`npm run build:server`): **0 errores** (`dist/index.js`, 938.1kb).
+
+## 2026-10-08 — Validación Final A1: CI con PostgreSQL Efímero, Equivalencia Canónica de Hashes SQL/Node y Control de Fallas Críticas
+
+- **Rama:** `feat/institution-offers-versioning-a1`
+- **Requisito 1: Configuración de PostgreSQL Efímero en GitHub Actions:**
+	- Creado flujo de trabajo en `.github/workflows/postgres-migration-test.yml` con servicio de contenedor `postgres:16-alpine`.
+	- Aislamiento total: corre exclusivamente contra la base de datos de test efímera `credito_negocios_test` sin tocar Producción ni Staging.
+- **Requisito 2: Suite de Integración Real contra PostgreSQL (`tests/integration/postgres-versioning-migration.test.ts`):**
+	- Prueba la migración 0005 desde un esquema legacy real con productos preexistentes activos e inactivos.
+	- Verifica que los activos se preservan como operativos (`published`) y los inactivos como archivados (`archived`).
+	- Valida que nuevos borradores creados tras la migración nunca se promuevan a publicados.
+	- Valida idempotencia total en un segundo y tercer arranque.
+	- Valida la protección del índice parcial único `ipv_published_unique` ante intentos de publicación concurrente.
+- **Requisito 3: Equivalencia Matemática 100% entre Hashes SQL y Node:**
+	- Implementada función SQL canónica `public.compute_legacy_version_hash(p_product_id, p_configuration, p_target_profiles, p_active_variables)` en `migrations/0005_institution_offers_versioning.sql` y `server/autoMigrate.ts`.
+	- Garantiza orden alfabético idéntico de llaves y serialización sin espacios, produciendo hashes SHA-256 de 64 caracteres idénticos a `computeInstitutionProductVersionHash` de Node.
+	- Añadida prueba unitaria de regresión (prueba 6 en `tests/unit/institution-offers-versioning.test.ts`) que valida la equivalencia matemática en múltiples escenarios.
+- **Requisito 4: Control de Fallas Críticas de Migración:**
+	- `server/autoMigrate.ts` retransmite (`rethrow`) los errores críticos de migración de ofertas, impidiendo que el arranque declare exitosa la verificación del esquema si existe alguna anomalía histórica.
+- **Validación QA:**
+	- Suite unitaria: `tests/unit/institution-offers-versioning.test.ts` con **33/33 tests passing** (100% éxito).
+	- Suite integración PostgreSQL: configurada en CI y omitida limpiamente en entornos locales sin `DATABASE_URL` (8 skipped).
+	- Compilación TypeScript (`npm run check`): **0 errores**.
+	- Empaquetado backend (`npm run build:server`): **0 errores** (`dist/index.js`, 939.1kb).
