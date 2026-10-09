@@ -3,6 +3,7 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import MainLayout from "@/components/MainLayout";
 import Header from "@/components/Header";
 import BrokerNetworkTransitionDialog from "@/components/Users/BrokerNetworkTransitionDialog";
+import SuperAdminBrokerOverview from "@/components/Users/SuperAdminBrokerOverview";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -1826,6 +1827,14 @@ export default function UserManagement() {
               </div>
             </CardHeader>
             <CardContent className="p-0">
+              {isSuperAdmin && focusedGlobalUserId && visibleGlobalUsers?.[0] &&
+                (visibleGlobalUsers[0].role === "broker" || visibleGlobalUsers[0].role === "master_broker") && (
+                  <SuperAdminBrokerOverview
+                    key={visibleGlobalUsers[0].id}
+                    user={visibleGlobalUsers[0]}
+                    allUsers={legacyUsers || []}
+                  />
+                )}
               <div className="overflow-x-auto">
                 <table className="w-full min-w-[800px] text-sm">
                   <thead className="bg-muted/40 border-b text-xs uppercase text-muted-foreground">
@@ -1894,6 +1903,19 @@ export default function UserManagement() {
                         </td>
                         <td className="py-3 px-6 text-right">
                           <div className="flex items-center justify-end gap-1">
+                            {isSuperAdmin && !focusedGlobalUserId && (u.role === 'broker' || u.role === 'master_broker') && (
+                              <Link href={`/admin/usuarios?tab=global&userId=${encodeURIComponent(u.id)}`}>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="h-8 text-xs"
+                                  title="Ver cuenta e historial de movimientos de red"
+                                  data-testid={`button-account-overview-${u.id}`}
+                                >
+                                  Ficha
+                                </Button>
+                              </Link>
+                            )}
                             {isSuperAdmin && u.role === 'broker' && (
                               <Button
                                 variant="ghost"
