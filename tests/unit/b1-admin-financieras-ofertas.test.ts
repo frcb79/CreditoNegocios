@@ -430,13 +430,21 @@ describe("Bloque B1 — Catálogo de Financieras y Ofertas Comerciales para Supe
       expect(resAdmin.body.createdBy).toBe(testSuperAdminId);
     });
 
-    it("APIs de Financieras: comisiones internas superAdmin no se exponen a Brokers ni Master Brokers", async () => {
-      // Configurar financiera con comisiones en todos los niveles
+    it("APIs de Financieras: lista explícita por rol y no exposición de comisiones internas ni campos legacy sensibles", async () => {
+      // Configurar financiera con campos legacy, notas internas y comisiones en todos los niveles
       const fiTestId = "fi-comm-sec-" + Date.now();
       await storage.createFinancialInstitution({
         id: fiTestId,
         name: "Financiera Seguridad Comisiones",
         isActive: true,
+        notes: "Nota interna confidencial para administradores",
+        createdBy: testSuperAdminId,
+        createdByAdmin: true,
+        commissionRate: "5.0",
+        openingCommissionRate: "2.5",
+        overrateCommissionRate: "1.0",
+        masterBrokerCommissionRate: "30.0",
+        brokerCommissionRate: "70.0",
         commissionRates: {
           superAdmin: { apertura: 2.5, sobretasa: 0.5 },
           financiera: { apertura: 3.0, sobretasa: 0.5 },
@@ -445,31 +453,50 @@ describe("Bloque B1 — Catálogo de Financieras y Ofertas Comerciales para Supe
         },
       } as any);
 
-      // 1. Broker: no ve superAdmin, ni financiera, ni masterBroker
+      // 1. Broker: NO ve notas internas, createdBy, comisiones de plataforma ni tasas legacy sensibles
       const resBroker = await request(app)
         .get(`/api/financial-institutions/${fiTestId}`)
         .set("x-test-user-id", testBrokerId);
       expect(resBroker.status).toBe(200);
+      expect(resBroker.body.notes).toBeUndefined();
+      expect(resBroker.body.createdBy).toBeUndefined();
+      expect(resBroker.body.createdByAdmin).toBeUndefined();
+      expect(resBroker.body.commissionRate).toBeUndefined();
+      expect(resBroker.body.openingCommissionRate).toBeUndefined();
+      expect(resBroker.body.overrateCommissionRate).toBeUndefined();
+      expect(resBroker.body.masterBrokerCommissionRate).toBeUndefined();
+      expect(resBroker.body.brokerCommissionRate).toBe("70.0");
       expect(resBroker.body.commissionRates?.superAdmin).toBeUndefined();
       expect(resBroker.body.commissionRates?.financiera).toBeUndefined();
       expect(resBroker.body.commissionRates?.masterBroker).toBeUndefined();
       expect(resBroker.body.commissionRates?.broker).toBeDefined();
 
-      // 2. Master Broker: no ve superAdmin ni financiera, ve masterBroker y broker
+      // 2. Master Broker: NO ve notas internas ni comisiones de plataforma, pero sí ve masterBroker y broker
       const resMB = await request(app)
         .get(`/api/financial-institutions/${fiTestId}`)
         .set("x-test-user-id", masterBrokerId);
       expect(resMB.status).toBe(200);
+      expect(resMB.body.notes).toBeUndefined();
+      expect(resMB.body.createdBy).toBeUndefined();
+      expect(resMB.body.createdByAdmin).toBeUndefined();
+      expect(resMB.body.commissionRate).toBeUndefined();
+      expect(resMB.body.openingCommissionRate).toBeUndefined();
+      expect(resMB.body.overrateCommissionRate).toBeUndefined();
+      expect(resMB.body.masterBrokerCommissionRate).toBe("30.0");
+      expect(resMB.body.brokerCommissionRate).toBe("70.0");
       expect(resMB.body.commissionRates?.superAdmin).toBeUndefined();
       expect(resMB.body.commissionRates?.financiera).toBeUndefined();
       expect(resMB.body.commissionRates?.masterBroker).toBeDefined();
       expect(resMB.body.commissionRates?.broker).toBeDefined();
 
-      // 3. Super Admin: ve comisiones completas de plataforma
+      // 3. Super Admin: ve comisiones completas y campos administrativos
       const resAdmin = await request(app)
         .get(`/api/financial-institutions/${fiTestId}`)
         .set("x-test-user-id", testSuperAdminId);
       expect(resAdmin.status).toBe(200);
+      expect(resAdmin.body.notes).toBe("Nota interna confidencial para administradores");
+      expect(resAdmin.body.createdBy).toBe(testSuperAdminId);
+      expect(resAdmin.body.commissionRate).toBe("5.0");
       expect(resAdmin.body.commissionRates?.superAdmin).toBeDefined();
       expect(resAdmin.body.commissionRates?.superAdmin.apertura).toBe(2.5);
     });
@@ -499,6 +526,25 @@ describe("Bloque B1 — Catálogo de Financieras y Ofertas Comerciales para Supe
         const versions = await storage.getInstitutionProductVersions(corruptOfferId);
         expect(versions.length).toBeGreaterThanOrEqual(1);
       }
+    });
+
+    it("Seguridad RBAC: requirePlatformRole nunca eleve privilegios mediante usuarios de respaldo", async () => {
+      // 1. Un usuario inexistente jamás debe tener acceso administrativo por fallback
+      const resNonExistent = await request(app)
+        .get(`/api/institution-products/${publishedOfferId}/versions`)
+        .set("x-test-user-id", "usuario-fantasma-inexistente");
+      expect(resNonExistent.status).toBe(401);
+
+      // 2. Un broker sin permisos no puede crear ofertas ni se le eleva el rol
+      const resBroker = await request(app)
+        .post("/api/institution-products")
+        .set("x-test-user-id", testBrokerId)
+        .send({
+          institutionId,
+          name: "Oferta Intento Escalada",
+          productType: "credito_simple",
+        });
+      expect(resBroker.status).toBe(403);
     });
   });
 });

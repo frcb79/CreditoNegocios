@@ -38,8 +38,8 @@ export function getSession() {
     proxy: true,
     cookie: {
       httpOnly: true,
-      secure: process.env.COOKIE_SECURE === "false" ? false : isProduction,
-      sameSite: (process.env.COOKIE_SECURE === "false" || !isProduction) ? 'lax' : 'none',
+      secure: isProduction,
+      sameSite: isProduction ? 'none' : 'lax',
       maxAge: sessionTtl,
       path: '/',
     },
@@ -80,19 +80,6 @@ export async function setupAuth(app: Express) {
 }
 
 export const isAuthenticated: RequestHandler = async (req, res, next) => {
-  // Support isolated mock auth in automated test environment
-  if (process.env.NODE_ENV === "test" && req.headers?.["x-test-user-id"]) {
-    const testUserId = String(req.headers["x-test-user-id"]);
-    const testUser = await storage.getUser(testUserId);
-    if (testUser && testUser.isActive !== false) {
-      req.user = testUser;
-      (req.user as any).claims = { sub: testUser.id };
-      (req as any).dbUser = testUser;
-      (req as any).isAuthenticated = () => true;
-      return next();
-    }
-  }
-
   const user = req.user as any;
 
   // Check if user is authenticated at all

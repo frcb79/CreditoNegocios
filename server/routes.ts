@@ -766,13 +766,7 @@ async function authorizeTenantAccess(params: {
 
 async function requirePlatformRole(userId: string, allowedRoles: string[]): Promise<boolean> {
   if (!userId) return false;
-  let user = await storage.getUser(userId);
-  
-  // Fallback: If user not found by ID, try to get super admin for development only
-  if (!user && process.env.NODE_ENV === 'development') {
-    user = await storage.getUserByEmail("admin@brokerapp.mx");
-  }
-  
+  const user = await storage.getUser(userId);
   return user ? allowedRoles.includes(user.role) : false;
 }
 
@@ -782,23 +776,66 @@ function sanitizeCommercialOffer(product: any) {
   return commercialOffer;
 }
 
-function sanitizeFinancialInstitutionCommissions(institution: any, userRole: string, masterBrokerRates?: any) {
+const COMMERCIAL_FINANCIAL_INSTITUTION_FIELDS = [
+  "id",
+  "name",
+  "contactPerson",
+  "email",
+  "phone",
+  "street",
+  "number",
+  "interior",
+  "city",
+  "postalCode",
+  "state",
+  "description",
+  "additionalCosts",
+  "requirements",
+  "products",
+  "acceptedProfiles",
+  "applicationProcess",
+  "estimatedTimeframes",
+  "approvalTips",
+  "requiredDocuments",
+  "isActive",
+  "createdAt",
+  "updatedAt",
+] as const;
+
+function projectFinancialInstitutionByRole(institution: any, userRole: string, masterBrokerRates?: any): any {
   if (!institution) return institution;
   
-  // Super Admin and Admin can inspect internal platform commissions
+  // Super Admin and Admin have full access to internal notes, platform commissions, and legacy fields
   if (userRole === 'super_admin' || userRole === 'admin') {
     return institution;
   }
-  
+
+  // Explicit whitelist projection for non-administrative roles (no notes, createdBy, createdByAdmin)
+  const projected: Record<string, any> = {};
+  for (const field of COMMERCIAL_FINANCIAL_INSTITUTION_FIELDS) {
+    if (field in institution) {
+      projected[field] = institution[field];
+    }
+  }
+
   const rawRates = (institution.commissionRates as any) || {};
-  let sanitizedRates: any = {};
-  
+
   if (userRole === 'master_broker') {
-    // Master Broker only sees masterBroker and broker ceilings, never internal platform / superAdmin commissions
+    // Master Broker only sees masterBroker and broker tiers, never internal platform / superAdmin commissions
+    const sanitizedRates: Record<string, any> = {};
     if (rawRates.masterBroker) sanitizedRates.masterBroker = rawRates.masterBroker;
     if (rawRates.broker) sanitizedRates.broker = rawRates.broker;
-  } else if (userRole === 'broker') {
-    // Broker only sees broker commission rate, customized if assigned by Master Broker
+    projected.commissionRates = sanitizedRates;
+
+    // Legacy fields: only expose commercial broker rates, never platform commissionRate / openingCommissionRate / overrateCommissionRate
+    if (institution.masterBrokerCommissionRate !== undefined) {
+      projected.masterBrokerCommissionRate = institution.masterBrokerCommissionRate;
+    }
+    if (institution.brokerCommissionRate !== undefined) {
+      projected.brokerCommissionRate = institution.brokerCommissionRate;
+    }
+  } else {
+    // Broker & other commercial roles: only broker commission rate, customized if assigned by Master Broker
     let brokerRate = rawRates.broker ? { ...rawRates.broker } : {};
     if (masterBrokerRates && masterBrokerRates[institution.id] && masterBrokerRates[institution.id].apertura !== undefined) {
       brokerRate = {
@@ -808,20 +845,18 @@ function sanitizeFinancialInstitutionCommissions(institution: any, userRole: str
         renovacion: masterBrokerRates[institution.id].renovacion ?? brokerRate.renovacion,
       };
     }
-    sanitizedRates.broker = brokerRate;
-  } else {
-    // Any other commercial role: only public broker rate, never internal platform commissions
-    if (rawRates.broker) sanitizedRates.broker = rawRates.broker;
+    projected.commissionRates = { broker: brokerRate };
+
+    // Legacy fields: only brokerCommissionRate, never masterBrokerCommissionRate or platform commissionRate
+    if (institution.brokerCommissionRate !== undefined) {
+      projected.brokerCommissionRate = institution.brokerCommissionRate;
+    }
   }
 
-  // Strip internal administrative notes for non-admin roles
-  const { notes, createdByAdmin, createdBy, ...safeInstitution } = institution;
-  
-  return {
-    ...safeInstitution,
-    commissionRates: sanitizedRates,
-  };
+  return projected;
 }
+
+const sanitizeFinancialInstitutionCommissions = projectFinancialInstitutionByRole;
 
 // STP Payment simulation
 async function processStpPayment(amount: string, accountNumber: string) {
@@ -1981,8 +2016,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Tenant Context Testing Endpoint
   app.get('/api/tenant-context', isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user?.claims?.sub || "user-super-admin";
-      const user = await storage.getUser(userId);
+      const userId = req.user?.claims?.sub || req.user?.id;
+      const user = userId ? await storage.getUser(userId) : null;
       
       res.json({
         requestInfo: {
@@ -4166,7 +4201,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       const role = user?.role || 'broker';
       const sanitized = institutions.map((inst: any) => 
-        sanitizeFinancialInstitutionCommissions(inst, role, networkRates)
+        projectFinancialInstitutionByRole(inst, role, networkRates)
       );
 
       res.json(sanitized);
@@ -4195,7 +4230,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       const role = user?.role || 'broker';
-      const sanitized = sanitizeFinancialInstitutionCommissions(institution, role, networkRates);
+      const sanitized = projectFinancialInstitutionByRole(institution, role, networkRates);
       
       res.json(sanitized);
     } catch (error) {
@@ -6701,8 +6736,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // 🔹 PRODUCT VARIABLES (Level 1: Base catalog - Admin/SuperAdmin only)
   app.get('/api/product-variables', isAuthenticated, async (req: any, res) => {
     try {
-      // For development: use fallback user if claims not available
-      const userId = req.user?.claims?.sub || "user-super-admin";
+      const userId = req.user?.claims?.sub || req.user?.id;
       
       const hasPermission = await requirePlatformRole(userId, ['super_admin', 'admin']);
       if (!hasPermission) {
@@ -6763,8 +6797,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post('/api/product-variables', isAuthenticated, async (req: any, res) => {
     try {
-      // For development: use fallback user if claims not available  
-      const userId = req.user?.claims?.sub || "user-super-admin";
+      const userId = req.user?.claims?.sub || req.user?.id;
       
       const hasPermission = await requirePlatformRole(userId, ['super_admin', 'admin']);
       if (!hasPermission) {

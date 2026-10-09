@@ -1,6 +1,5 @@
 // @ts-nocheck
 import { randomUUID } from "crypto";
-import bcrypt from "bcrypt";
 import {
   users,
   clients,
@@ -742,7 +741,6 @@ export class MemStorage implements IStorage {
     const broker1 = this.createSeedUser({
       id: "broker-1",
       email: "broker1@brokerapp.mx",
-      password: bcrypt.hashSync("Broker123!", 10),
       firstName: "Luis",
       lastName: "Hernández",
       role: "broker",
@@ -792,7 +790,6 @@ export class MemStorage implements IStorage {
     const superAdmin = this.createSeedUser({
       id: "user-super-admin",
       email: "admin@brokerapp.mx",
-      password: bcrypt.hashSync("Admin123!", 10),
       firstName: "Platform",
       lastName: "Administrator",
       role: "super_admin",
