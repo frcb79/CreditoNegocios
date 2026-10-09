@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { useSearch } from "wouter";
+import { Link, useSearch } from "wouter";
 import LegalProfileDocuments from "@/components/LegalProfileDocuments";
 import BrokerExpedienteDocuments from "@/components/BrokerExpedienteDocuments";
 import { FORMALIZATION_NOTICE_TEXT, type FormalizationStatusResult } from "@shared/legalDocuments";
@@ -109,6 +109,7 @@ export default function Settings() {
   });
 
   const isBrokerOrMaster = user?.role === "broker" || user?.role === "master_broker";
+  const isSuperAdmin = user?.role === "super_admin";
 
   useEffect(() => {
     const params = new URLSearchParams(search);
@@ -1756,6 +1757,23 @@ export default function Settings() {
 
             {/* Beneficios y Acceso Comercial (Bloque 10) */}
             <TabsContent value="benefits" className="space-y-4 mt-3">
+              {isSuperAdmin && (
+                <Card className="border border-primary/25 shadow-xs">
+                  <CardHeader className="py-3 px-4 sm:px-6 border-b border-border/60">
+                    <CardTitle className="text-base font-semibold">Administración de códigos y cortesías</CardTitle>
+                    <CardDescription className="text-xs">
+                      La creación, consulta de canjes y activación de códigos de acceso gratuito, promociones y cortesías se realiza en Usuarios → Códigos Promocionales. Esta pestaña muestra el beneficio de la cuenta actual y permite canjear códigos.
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent className="p-4 sm:p-6">
+                    <Button asChild type="button" variant="outline" size="sm" className="text-xs">
+                      <Link href="/admin/usuarios?tab=promos">
+                        Administrar códigos y cortesías <ArrowRight className="h-3.5 w-3.5 ml-2" />
+                      </Link>
+                    </Button>
+                  </CardContent>
+                </Card>
+              )}
               {/* Status & Active Benefit Card */}
               <Card className="border border-border/80 shadow-xs">
                 <CardHeader className="py-3 px-4 sm:px-6 border-b border-border/60">

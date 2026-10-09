@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Link, useLocation } from "wouter";
+import { Link, useLocation, useSearch } from "wouter";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/useAuth";
 import { useNotifications } from "@/contexts/NotificationContext";
@@ -20,6 +20,8 @@ import {
   Layers,
   FileText,
   BarChart3,
+  Inbox,
+  ClipboardList,
   FileSpreadsheet,
   Users2,
   Settings,
@@ -36,6 +38,7 @@ interface NavItemDef {
   section: "operacion" | "catalogos" | "supervision" | "admin";
   adminOnly?: boolean;
   platformAdminOnly?: boolean;
+  superAdminOnly?: boolean;
   brokerOnly?: boolean;
 }
 
@@ -53,6 +56,8 @@ const navigation: NavItemDef[] = [
   // Supervisión y Red
   { name: 'Aprobaciones', href: '/solicitudes-pendientes', icon: Clock, platformAdminOnly: true, section: "supervision" },
   { name: 'Red de Brokers', href: '/red-brokers', icon: Network, adminOnly: true, section: "supervision" },
+  { name: 'Solicitudes de Estado', href: '/admin/usuarios?tab=status-requests', icon: Inbox, superAdminOnly: true, section: "supervision" },
+  { name: 'Auditoría Administrativa', href: '/admin/auditoria', icon: ClipboardList, superAdminOnly: true, section: "supervision" },
   { name: 'Reportes', href: '/reportes', icon: BarChart3, adminOnly: true, section: "supervision" },
 ];
 
@@ -75,6 +80,7 @@ const sectionLabels: Record<string, string> = {
 
 export default function Sidebar() {
   const [location] = useLocation();
+  const search = useSearch();
   const { user } = useAuth();
   const { unreadCount } = useNotifications();
   const [isMobileOpen, setIsMobileOpen] = useState(false);
@@ -104,6 +110,7 @@ export default function Sidebar() {
 
   const filteredNavigation = navigation.filter(item => {
     if (item.platformAdminOnly && !isFullAdmin) return false;
+    if (item.superAdminOnly && user?.role !== "super_admin") return false;
     if (item.adminOnly && !isAdmin) return false;
     if (item.brokerOnly && isFullAdmin) return false;
     return true;
@@ -136,6 +143,8 @@ export default function Sidebar() {
     '/reportes': 'reportes',
     '/importacion-masiva': 'importacion',
     '/admin/usuarios': 'usuarios',
+    '/admin/usuarios?tab=status-requests': 'usuarios',
+    '/admin/auditoria': 'usuarios',
     '/configuracion': 'configuracion',
   };
 
@@ -245,7 +254,10 @@ export default function Sidebar() {
             ) : null}
 
             {grp.items.map((item) => {
-              const isActive = location === item.href;
+              const isStatusRequests = new URLSearchParams(search).get("tab") === "status-requests";
+              const isActive = item.href === "/admin/usuarios?tab=status-requests"
+                ? location === "/admin/usuarios" && isStatusRequests
+                : location === item.href && !(item.href === "/admin/usuarios" && isStatusRequests);
               const IconComp = item.icon;
               
               return (

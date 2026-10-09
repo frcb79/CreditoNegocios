@@ -3,6 +3,7 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import MainLayout from "@/components/MainLayout";
 import Header from "@/components/Header";
 import BrokerNetworkTransitionDialog from "@/components/Users/BrokerNetworkTransitionDialog";
+import SuperAdminBrokerOverview from "@/components/Users/SuperAdminBrokerOverview";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -85,7 +86,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { cn } from "@/lib/utils";
-import { Link } from "wouter";
+import { Link, useSearch } from "wouter";
 import { 
   ArrowLeft,
   UserPlus, 
@@ -260,6 +261,7 @@ const legacyUserSchema = z.object({
 type LegacyUserFormData = z.infer<typeof legacyUserSchema>;
 
 export default function UserManagement() {
+  const search = useSearch();
   const [activeTab, setActiveTab] = useState<string>("organization");
   const [selectedTenantId, setSelectedTenantId] = useState<string>("");
   const [searchTerm, setSearchTerm] = useState("");
@@ -298,6 +300,19 @@ export default function UserManagement() {
 
   const isSuperAdmin = currentUser?.role === 'super_admin';
   const isPlatformAdmin = currentUser?.role === 'admin' || isSuperAdmin;
+
+  // Deep links only select tabs available to the signed-in role.
+  // The existing server-side permission checks remain authoritative.
+  useEffect(() => {
+    const requestedTab = new URLSearchParams(search).get("tab");
+    if (requestedTab === "promos" && isPlatformAdmin) {
+      setActiveTab("promos");
+    } else if (requestedTab === "status-requests" && isSuperAdmin) {
+      setActiveTab("status-requests");
+    } else if (requestedTab === "global" && isSuperAdmin) {
+      setActiveTab("global");
+    }
+  }, [search, isPlatformAdmin, isSuperAdmin]);
 
   const updateOperationalStatusMutation = useMutation({
     mutationFn: async ({ userId, status, reason, notes }: { userId: string; status: UserOperationalStatus; reason: string; notes?: string }) => {
@@ -624,6 +639,13 @@ export default function UserManagement() {
     queryKey: ["/api/users"],
     enabled: isPlatformAdmin,
   });
+
+  // A link from Red de Brokers can focus one known user without creating a second
+  // editing flow. Only Super Admin can use this account-level navigation aid.
+  const focusedGlobalUserId = isSuperAdmin ? new URLSearchParams(search).get("userId") : null;
+  const visibleGlobalUsers = focusedGlobalUserId
+    ? legacyUsers?.filter((entry) => entry.id === focusedGlobalUserId)
+    : legacyUsers;
 
   // Forms
   const createMemberForm = useForm<MemberCreateFormData>({
@@ -1784,16 +1806,35 @@ export default function UserManagement() {
         {/* Tab 2: Global Legacy Directory (SuperAdmin only) */}
         {activeTab === "global" && isPlatformAdmin && (
           <Card className="border border-border/60 shadow-sm">
-            <CardHeader className="py-4 px-6 border-b flex flex-row items-center justify-between">
+            <CardHeader className="py-4 px-6 border-b flex flex-row items-center justify-between gap-3 flex-wrap">
               <div>
                 <CardTitle className="text-base font-semibold">Directorio Global de Usuarios</CardTitle>
                 <p className="text-xs text-muted-foreground mt-0.5">
-                  Visualización técnica completa de registros en tabla users
+                  {focusedGlobalUserId
+                    ? "Cuenta seleccionada desde Red de Brokers; utiliza las acciones existentes de red, estado y acceso."
+                    : "Visualización técnica completa de registros en tabla users"}
                 </p>
               </div>
-              <Badge variant="secondary" className="font-mono text-xs">{legacyUsers?.length || 0}</Badge>
+              <div className="flex items-center gap-2">
+                {focusedGlobalUserId && (
+                  <Link href="/admin/usuarios?tab=global">
+                    <Button size="sm" variant="outline" className="text-xs" data-testid="button-show-all-global-users">
+                      Ver todos
+                    </Button>
+                  </Link>
+                )}
+                <Badge variant="secondary" className="font-mono text-xs">{visibleGlobalUsers?.length || 0}</Badge>
+              </div>
             </CardHeader>
             <CardContent className="p-0">
+              {isSuperAdmin && focusedGlobalUserId && visibleGlobalUsers?.[0] &&
+                (visibleGlobalUsers[0].role === "broker" || visibleGlobalUsers[0].role === "master_broker") && (
+                  <SuperAdminBrokerOverview
+                    key={visibleGlobalUsers[0].id}
+                    user={visibleGlobalUsers[0]}
+                    allUsers={legacyUsers || []}
+                  />
+                )}
               <div className="overflow-x-auto">
                 <table className="w-full min-w-[800px] text-sm">
                   <thead className="bg-muted/40 border-b text-xs uppercase text-muted-foreground">
@@ -1809,7 +1850,14 @@ export default function UserManagement() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-border/60">
-                    {legacyUsers?.map((u) => (
+                    {focusedGlobalUserId && !isLoadingLegacyUsers && visibleGlobalUsers?.length === 0 && (
+                      <tr>
+                        <td colSpan={8} className="py-5 px-6 text-xs text-muted-foreground">
+                          No se encontró la cuenta seleccionada. Selecciona "Ver todos" para consultar el directorio.
+                        </td>
+                      </tr>
+                    )}
+                    {visibleGlobalUsers?.map((u) => (
                       <tr key={u.id} className="hover:bg-muted/30">
                         <td className="py-3 px-6 font-medium">
                           {u.firstName} {u.lastName}
@@ -1855,6 +1903,19 @@ export default function UserManagement() {
                         </td>
                         <td className="py-3 px-6 text-right">
                           <div className="flex items-center justify-end gap-1">
+                            {isSuperAdmin && !focusedGlobalUserId && (u.role === 'broker' || u.role === 'master_broker') && (
+                              <Link href={`/admin/usuarios?tab=global&userId=${encodeURIComponent(u.id)}`}>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="h-8 text-xs"
+                                  title="Ver cuenta e historial de movimientos de red"
+                                  data-testid={`button-account-overview-${u.id}`}
+                                >
+                                  Ficha
+                                </Button>
+                              </Link>
+                            )}
                             {isSuperAdmin && u.role === 'broker' && (
                               <Button
                                 variant="ghost"
@@ -3811,6 +3872,7 @@ export default function UserManagement() {
         onSuccess={() => {
           refetchLegacyUsers();
           queryClient.invalidateQueries({ queryKey: ["/api/broker-network"] });
+          queryClient.invalidateQueries({ queryKey: ["/api/admin/broker-network/transitions"] });
           queryClient.invalidateQueries({ queryKey: ["/api/tenants"] });
           if (selectedTenantId) {
             queryClient.invalidateQueries({ queryKey: ["/api/tenants", selectedTenantId, "members"] });

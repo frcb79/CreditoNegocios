@@ -637,6 +637,14 @@ export default function BrokerNetworkComponent() {
             className="w-full bg-white pl-9 h-9 text-xs border-slate-200 rounded-lg"
           />
         </div>
+        {user?.role === 'super_admin' && (
+          <Link href="/admin/usuarios?tab=global">
+            <Button variant="outline" size="sm" className="h-9 text-xs font-semibold" data-testid="button-open-global-user-directory">
+              <Users className="w-3.5 h-3.5 mr-1.5" />
+              Directorio y movimientos
+            </Button>
+          </Link>
+        )}
         <Button 
           className="bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold gap-1.5 h-9"
           onClick={() => setShowInviteModal(true)}
@@ -720,6 +728,13 @@ export default function BrokerNetworkComponent() {
                         <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200 text-xs font-semibold">
                           {networkCount} broker{networkCount !== 1 ? 's' : ''} en red
                         </Badge>
+                        {user?.role === 'super_admin' && (
+                          <Link href={`/admin/usuarios?tab=global&userId=${encodeURIComponent(mb.id)}`}>
+                            <Button variant="outline" size="sm" className="h-8 text-xs" data-testid={`button-manage-master-${mb.id}`}>
+                              Administrar
+                            </Button>
+                          </Link>
+                        )}
                         <Button
                           size="sm"
                           variant="outline"
@@ -760,7 +775,16 @@ export default function BrokerNetworkComponent() {
                                   <p className="text-[11px] text-slate-500">{broker.email}</p>
                                 </div>
                               </div>
-                              {getBrokerStatusBadge(broker)}
+                              <div className="flex items-center gap-2">
+                                {getBrokerStatusBadge(broker)}
+                                {user?.role === 'super_admin' && (
+                                  <Link href={`/admin/usuarios?tab=global&userId=${encodeURIComponent(broker.id)}`}>
+                                    <Button variant="outline" size="sm" className="h-8 text-xs" data-testid={`button-manage-network-broker-${broker.id}`}>
+                                      Administrar
+                                    </Button>
+                                  </Link>
+                                )}
+                              </div>
                             </div>
                           ))}
                         </div>
@@ -820,7 +844,16 @@ export default function BrokerNetworkComponent() {
                           )}
                         </div>
                       </div>
-                      {getBrokerStatusBadge(broker)}
+                      <div className="flex items-center gap-2">
+                        {getBrokerStatusBadge(broker)}
+                        {user?.role === 'super_admin' && (
+                          <Link href={`/admin/usuarios?tab=global&userId=${encodeURIComponent(broker.id)}`}>
+                            <Button variant="outline" size="sm" className="h-8 text-xs" data-testid={`button-manage-direct-broker-${broker.id}`}>
+                              Administrar
+                            </Button>
+                          </Link>
+                        )}
+                      </div>
                     </div>
                   ))}
                 </div>
