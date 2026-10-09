@@ -11,6 +11,7 @@ describe("Bloque B3 — Publicación y Vigencia de Ofertas Comerciales (Super Ad
   let server: Server;
 
   const testSuperAdminId = "user-super-admin-b3";
+  const testAdminId = "user-admin-b3";
   const testMasterBrokerId = "user-master-broker-b3";
   const testBrokerId = "user-broker-b3";
   const institutionId = "fin-b3-test-" + Date.now();
@@ -39,6 +40,13 @@ describe("Bloque B3 — Publicación y Vigencia de Ofertas Comerciales (Super Ad
       id: testSuperAdminId,
       email: "superadmin-b3@creditonegocios.com",
       role: "super_admin",
+      isActive: true,
+    } as any);
+
+    await storage.upsertUser({
+      id: testAdminId,
+      email: "admin-b3@creditonegocios.com",
+      role: "admin",
       isActive: true,
     } as any);
 
@@ -340,7 +348,7 @@ describe("Bloque B3 — Publicación y Vigencia de Ofertas Comerciales (Super Ad
       expect(res.body.message).toContain("No se encontró una versión en borrador");
     });
 
-    it("Sustitución segura de versiones: Crea borrador v2, lo publica y desactiva v1 como 'superseded'", async () => {
+    it("Aislamiento total v1/v2: Editar la futura v2 en borrador NO altera las condiciones ni comisiones de la v1 vigente", async () => {
       // 1. Crear borrador v2 para oferta 1
       const draftV2 = await storage.createOfferVersion(offerId1, {
         conditions: {
@@ -361,19 +369,49 @@ describe("Bloque B3 — Publicación y Vigencia de Ofertas Comerciales (Super Ad
           },
         },
         requirements: { targetProfiles: ["persona_moral"] },
-        changeReason: "Actualización de tasas para versión 2",
+        changeReason: "Borrador inicial para versión 2",
         createdBy: testSuperAdminId,
       });
 
       expect(draftV2.versionNumber).toBe(2);
       expect(draftV2.status).toBe("draft");
 
-      // 2. Publicar versión 2
+      // 2. Modificar el borrador v2 vía PUT con montos y comisiones tentativas distintas
+      const editDraftRes = await request(app)
+        .put(`/api/institution-products/${offerId1}/draft`)
+        .set("x-test-user-id", testSuperAdminId)
+        .send({
+          minAmount: 888888,
+          maxAmount: 8888888,
+          commissionRates: {
+            financiera: { apertura: 5.5, sobretasa: 1.0 },
+            broker: { apertura: 2.5 },
+            masterBroker: { apertura: 3.5, sobretasa: 0.5 },
+          },
+          changeReason: "Edición tentativa de borrador v2",
+        });
+
+      expect(editDraftRes.status).toBe(200);
+      expect(editDraftRes.body.version.conditions.minAmount).toBe(888888);
+
+      // 3. AISLAMIENTO TOTAL: La oferta comercial publicada vigente sigue mostrando intacta la v1
+      const currentPublishedOfferRes = await request(app)
+        .get(`/api/institution-products/${offerId1}`)
+        .set("x-test-user-id", testSuperAdminId);
+
+      expect(currentPublishedOfferRes.status).toBe(200);
+      // Debe conservar las condiciones comerciales de v1 (200000 / 2000000), NUNCA los 888888 de la v2 en borrador
+      expect(currentPublishedOfferRes.body.configuration.minAmount).toBe(200000);
+      expect(currentPublishedOfferRes.body.configuration.maxAmount).toBe(2000000);
+      expect(currentPublishedOfferRes.body.configuration.commissionRates.financiera.apertura).toBe(4.5);
+      expect(currentPublishedOfferRes.body.currentVersionNumber).toBe(1);
+
+      // 4. Publicar versión 2 formalmente: Sincronización transaccional al publicar
       const resPub2 = await request(app)
         .post(`/api/institution-products/${offerId1}/publish`)
         .set("x-test-user-id", testSuperAdminId)
         .send({
-          changeReason: "Publicación formal de versión 2 con incremento de montos",
+          changeReason: "Publicación formal de versión 2 tras aprobación definitiva",
           confirmPublish: true,
         });
 
@@ -381,8 +419,11 @@ describe("Bloque B3 — Publicación y Vigencia de Ofertas Comerciales (Super Ad
       expect(resPub2.body.publishedVersion.versionNumber).toBe(2);
       expect(resPub2.body.publishedVersion.status).toBe("published");
       expect(resPub2.body.product.currentVersionNumber).toBe(2);
+      // Ahora sí se sincronizó transaccionalmente al producto comercial padre
+      expect(resPub2.body.product.configuration.minAmount).toBe(888888);
+      expect(resPub2.body.product.configuration.commissionRates.financiera.apertura).toBe(5.5);
 
-      // 3. Verificar que la versión 1 anterior pasó a estado 'superseded' con vigencia cerrada
+      // 5. Verificar que la versión 1 anterior pasó a estado 'superseded' con vigencia cerrada
       const allVersions = await storage.getInstitutionProductVersions(offerId1);
       const v1 = allVersions.find(v => v.versionNumber === 1);
       expect(v1).toBeDefined();
@@ -391,7 +432,7 @@ describe("Bloque B3 — Publicación y Vigencia de Ofertas Comerciales (Super Ad
     });
   });
 
-  describe("Requisito 4: Sobretasas Exclusivas de Super Admin", () => {
+  describe("Requisito 4 & B3.1: Sobretasas Exclusivas de Super Admin (NO admin, Brokers ni Masters)", () => {
     it("Super Admin ve las sobretasas en la consulta de oferta publicada", async () => {
       const res = await request(app)
         .get(`/api/institution-products/${offerId1}`)
@@ -403,6 +444,25 @@ describe("Bloque B3 — Publicación y Vigencia de Ofertas Comerciales (Super Ad
       expect(config.commissionRates?.masterBroker?.sobretasa).toBe(0.5);
     });
 
+    it("Admin regular NO ve sobretasas al consultar la oferta", async () => {
+      const res = await request(app)
+        .get(`/api/institution-products/${offerId1}`)
+        .set("x-test-user-id", testAdminId);
+
+      expect(res.status).toBe(200);
+      const rates = res.body.configuration?.commissionRates;
+      expect(rates).toBeDefined();
+      // Ve apertura comercial
+      expect(rates.financiera?.apertura).toBe(5.5);
+      expect(rates.broker?.apertura).toBe(2.5);
+      // NUNCA sobretasas
+      expect(rates.financiera?.sobretasa).toBeUndefined();
+      expect(rates.masterBroker?.sobretasa).toBeUndefined();
+      expect(rates.broker?.sobretasa).toBeUndefined();
+      expect(res.body.configuration?.overrateCommissionRate).toBeUndefined();
+      expect(res.body.configuration?.sobretasa).toBeUndefined();
+    });
+
     it("Master Broker NO ve sobretasas en ninguna estructura al consultar la oferta", async () => {
       const res = await request(app)
         .get(`/api/institution-products/${offerId1}`)
@@ -412,7 +472,7 @@ describe("Bloque B3 — Publicación y Vigencia de Ofertas Comerciales (Super Ad
       const rates = res.body.configuration?.commissionRates;
       expect(rates).toBeDefined();
       // Solo ve apertura comercial
-      expect(rates.masterBroker?.apertura).toBe(3.0);
+      expect(rates.masterBroker?.apertura).toBe(3.5);
       // NUNCA sobretasa
       expect(rates.masterBroker?.sobretasa).toBeUndefined();
       expect(rates.broker?.sobretasa).toBeUndefined();
@@ -427,25 +487,89 @@ describe("Bloque B3 — Publicación y Vigencia de Ofertas Comerciales (Super Ad
       expect(res.status).toBe(200);
       const rates = res.body.configuration?.commissionRates;
       expect(rates).toBeDefined();
-      expect(rates.broker?.apertura).toBe(2.0);
+      expect(rates.broker?.apertura).toBe(2.5);
       expect(rates.broker?.sobretasa).toBeUndefined();
       expect(res.body.configuration?.sobretasa).toBeUndefined();
     });
 
-    it("En GET /api/financial-institutions/:id, la sobretasa está oculta para brokers y master brokers", async () => {
-      const res = await request(app)
+    it("En GET /api/financial-institutions/:id, la sobretasa es visible para Super Admin y oculta para Admin y Brokers", async () => {
+      // Super Admin ve sobretasa
+      const resSuper = await request(app)
+        .get(`/api/financial-institutions/${institutionId}`)
+        .set("x-test-user-id", testSuperAdminId);
+      expect(resSuper.status).toBe(200);
+      expect(resSuper.body.overrateCommissionRate).toBe("1.5");
+      expect(resSuper.body.commissionRates?.financiera?.sobretasa).toBe("1.0");
+
+      // Admin regular NO ve sobretasa
+      const resAdmin = await request(app)
+        .get(`/api/financial-institutions/${institutionId}`)
+        .set("x-test-user-id", testAdminId);
+      expect(resAdmin.status).toBe(200);
+      expect(resAdmin.body.overrateCommissionRate).toBeUndefined();
+      expect(resAdmin.body.overRate).toBeUndefined();
+      expect(resAdmin.body.commissionRates?.financiera?.sobretasa).toBeUndefined();
+
+      // Broker NO ve sobretasa
+      const resBroker = await request(app)
         .get(`/api/financial-institutions/${institutionId}`)
         .set("x-test-user-id", testBrokerId);
+      expect(resBroker.status).toBe(200);
+      expect(resBroker.body.overrateCommissionRate).toBeUndefined();
+      expect(resBroker.body.overRate).toBeUndefined();
+      expect(resBroker.body.commissionRates?.broker?.sobretasa).toBeUndefined();
+    });
 
-      expect(res.status).toBe(200);
-      expect(res.body.overrateCommissionRate).toBeUndefined();
-      expect(res.body.overRate).toBeUndefined();
-      expect(res.body.commissionRates?.broker?.sobretasa).toBeUndefined();
+    it("En cálculo de comisiones, overrateCommission es exclusivo de Super Admin", async () => {
+      // Super Admin
+      const resSuper = await request(app)
+        .get(`/api/financial-institutions/${institutionId}/commission-calculation?amount=1000000`)
+        .set("x-test-user-id", testSuperAdminId);
+      expect(resSuper.status).toBe(200);
+      expect(resSuper.body.overrateCommission).toBeDefined();
+      expect(resSuper.body.breakdown?.overrateRate).toBeDefined();
+
+      // Admin regular NO lo ve
+      const resAdmin = await request(app)
+        .get(`/api/financial-institutions/${institutionId}/commission-calculation?amount=1000000`)
+        .set("x-test-user-id", testAdminId);
+      expect(resAdmin.status).toBe(200);
+      expect(resAdmin.body.overrateCommission).toBeUndefined();
+      expect(resAdmin.body.breakdown?.overrateRate).toBeUndefined();
+
+      // Broker NO lo ve
+      const resBroker = await request(app)
+        .get(`/api/financial-institutions/${institutionId}/commission-calculation?amount=1000000`)
+        .set("x-test-user-id", testBrokerId);
+      expect(resBroker.status).toBe(200);
+      expect(resBroker.body.overrateCommission).toBeUndefined();
+      expect(resBroker.body.breakdown?.overrateRate).toBeUndefined();
     });
   });
 
-  describe("Requisito 5: Margen pendiente cuando falta comisión (nunca 100% de la bolsa)", () => {
+  describe("Requisito 5 & B3.1: Margen pendiente cuando falta comisión (guardado y visualización)", () => {
     it("En preview y guardado, si falta comisión de broker, el margen directo queda pendiente y no como 4%", async () => {
+      // 1. Guardar borrador con comisión de broker faltante
+      const editRes = await request(app)
+        .put(`/api/institution-products/${offerId3}/draft`)
+        .set("x-test-user-id", testSuperAdminId)
+        .send({
+          commissionRates: {
+            financiera: { apertura: 4.0 },
+            // broker omitido
+          },
+          changeReason: "Guardado con comisión faltante para validar margen null",
+        });
+
+      expect(editRes.status).toBe(200);
+      const savedComm = editRes.body.version.conditions.commissionRates;
+      expect(savedComm.financiera.apertura).toBe(4.0);
+      expect(savedComm.broker.apertura).toBeNull();
+      // Guardado: margen debe ser null y bandera pendiente en true (NUNCA 4.0)
+      expect(savedComm.platformGrossMarginDirect).toBeNull();
+      expect(savedComm.isMarginDirectPending).toBe(true);
+
+      // 2. Preview de publicación: margen null y advertencia presente
       const res = await request(app)
         .get(`/api/institution-products/${offerId3}/publish-preview`)
         .set("x-test-user-id", testSuperAdminId);

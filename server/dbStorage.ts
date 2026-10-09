@@ -1304,20 +1304,30 @@ export class DbStorage implements IStorage {
           .returning();
 
         let updatedProduct: any;
-        if (productData) {
+        const [currentProd] = await tx.select().from(institutionProducts)
+          .where(eq(institutionProducts.id, productId))
+          .limit(1);
+
+        if (productData && currentProd) {
+          // B3.1: Aislamiento total - si el producto ya está publicado, no sobreescribir configuration comercial con la de un borrador
+          const finalProductData = currentProd.status === "published"
+            ? {
+                ...productData,
+                configuration: currentProd.configuration,
+                targetProfiles: currentProd.targetProfiles,
+              }
+            : productData;
+
           const [prod] = await tx.update(institutionProducts)
             .set({
-              ...productData,
+              ...finalProductData,
               updatedAt: new Date(),
             })
             .where(eq(institutionProducts.id, productId))
             .returning();
           updatedProduct = prod;
         } else {
-          const [prod] = await tx.select().from(institutionProducts)
-            .where(eq(institutionProducts.id, productId))
-            .limit(1);
-          updatedProduct = prod;
+          updatedProduct = currentProd;
         }
 
         return {

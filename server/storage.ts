@@ -3296,9 +3296,18 @@ export class MemStorage implements IStorage {
 
     let updatedProduct: any = this.institutionProducts.get(productId);
     if (updatedProduct && productData) {
+      // B3.1: Aislamiento total - si el producto ya está publicado, no sobreescribir configuration comercial con la de un borrador
+      const finalProductData = updatedProduct.status === "published"
+        ? {
+            ...productData,
+            configuration: updatedProduct.configuration,
+            targetProfiles: updatedProduct.targetProfiles,
+          }
+        : productData;
+
       updatedProduct = {
         ...updatedProduct,
-        ...productData,
+        ...finalProductData,
         updatedAt: new Date(),
       };
       this.institutionProducts.set(productId, updatedProduct);

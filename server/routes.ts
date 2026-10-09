@@ -778,14 +778,22 @@ function sanitizeCommercialOffer(product: any, userRole?: string) {
   if (!product) return product;
   const { createdBy, ...commercialOffer } = product;
 
-  // Preservar RBAC: Sanitizar comisiones individuales y condiciones económicas internas (B2.2 / B3)
+  // Preservar RBAC: Sanitizar comisiones individuales y condiciones económicas internas (B2.2 / B3 / B3.1)
   if (commercialOffer.configuration && typeof commercialOffer.configuration === "object") {
     const config = { ...commercialOffer.configuration };
     if (config.commissionRates && typeof config.commissionRates === "object") {
       const rawRates = config.commissionRates as Record<string, any>;
-      if (userRole === "super_admin" || userRole === "admin") {
-        // Super Admin ve las condiciones económicas completas (incluyendo sobretasas internas)
+      if (userRole === "super_admin") {
+        // EXCLUSIVO Super Admin (B3.1): Super Admin ve las condiciones económicas completas (incluyendo sobretasas internas)
         config.commissionRates = rawRates;
+      } else if (userRole === "admin") {
+        // Admin: ve comisiones comerciales pero NUNCA sobretasas internas
+        const sanitized: Record<string, any> = JSON.parse(JSON.stringify(rawRates));
+        if (sanitized.financiera) delete sanitized.financiera.sobretasa;
+        if (sanitized.masterBroker) delete sanitized.masterBroker.sobretasa;
+        if (sanitized.broker) delete sanitized.broker.sobretasa;
+        if (sanitized.superAdmin) delete sanitized.superAdmin.sobretasa;
+        config.commissionRates = sanitized;
       } else if (userRole === "master_broker") {
         // Master Broker solo ve tiers masterBroker y broker, NUNCA financiera, superAdmin, platformNet, notas internas NI sobretasas
         const sanitized: Record<string, any> = {};
@@ -814,18 +822,24 @@ function sanitizeCommercialOffer(product: any, userRole?: string) {
       }
     }
 
-    // Sobretasas exclusivas de Super Admin (Requisito 4): limpiar cualquier residuo en configuration
-    if (userRole !== "super_admin" && userRole !== "admin") {
+    // Sobretasas exclusivas de Super Admin (B3.1): limpiar cualquier residuo en configuration si no es super_admin
+    if (userRole !== "super_admin") {
       delete config.overrateCommissionRate;
       delete config.overRate;
       delete config.sobretasa;
+      if (config.commissionRates) {
+        if (config.commissionRates.financiera) delete config.commissionRates.financiera.sobretasa;
+        if (config.commissionRates.masterBroker) delete config.commissionRates.masterBroker.sobretasa;
+        if (config.commissionRates.broker) delete config.commissionRates.broker.sobretasa;
+        if (config.commissionRates.superAdmin) delete config.commissionRates.superAdmin.sobretasa;
+      }
     }
 
     commercialOffer.configuration = config;
   }
 
-  // Sobretasas exclusivas de Super Admin (Requisito 4): limpiar de raíz en producto comercial
-  if (userRole !== "super_admin" && userRole !== "admin") {
+  // Sobretasas exclusivas de Super Admin (B3.1): limpiar de raíz en producto comercial
+  if (userRole !== "super_admin") {
     delete commercialOffer.overrateCommissionRate;
     delete commercialOffer.overRate;
     delete commercialOffer.sobretasa;
@@ -863,9 +877,26 @@ const COMMERCIAL_FINANCIAL_INSTITUTION_FIELDS = [
 function projectFinancialInstitutionByRole(institution: any, userRole: string, masterBrokerRates?: any): any {
   if (!institution) return institution;
   
-  // Super Admin and Admin have full access to internal notes, platform commissions, and legacy fields
-  if (userRole === 'super_admin' || userRole === 'admin') {
+  // EXCLUSIVO Super Admin (B3.1): Solo Super Admin ve sobretasas internas y configuración completa
+  if (userRole === 'super_admin') {
     return institution;
+  }
+
+  // Admin tiene acceso administrativo pero NUNCA a sobretasas (B3.1: exclusivas de super_admin)
+  if (userRole === 'admin') {
+    const adminCopy = { ...institution };
+    delete adminCopy.overrateCommissionRate;
+    delete adminCopy.overRate;
+    delete adminCopy.sobretasa;
+    if (adminCopy.commissionRates && typeof adminCopy.commissionRates === 'object') {
+      const sanitized = JSON.parse(JSON.stringify(adminCopy.commissionRates));
+      if (sanitized.financiera) delete sanitized.financiera.sobretasa;
+      if (sanitized.masterBroker) delete sanitized.masterBroker.sobretasa;
+      if (sanitized.broker) delete sanitized.broker.sobretasa;
+      if (sanitized.superAdmin) delete sanitized.superAdmin.sobretasa;
+      adminCopy.commissionRates = sanitized;
+    }
+    return adminCopy;
   }
 
   // Explicit whitelist projection for non-administrative roles (no notes, createdBy, createdByAdmin)
@@ -917,7 +948,7 @@ function projectFinancialInstitutionByRole(institution: any, userRole: string, m
     }
   }
 
-  // Sobretasas exclusivas de Super Admin (Requisito 4): limpiar de raíz cualquier sobretasa residual en institución proyectada
+  // Sobretasas exclusivas de Super Admin (B3.1): limpiar de raíz cualquier sobretasa residual en institución proyectada
   delete projected.overrateCommissionRate;
   delete projected.overRate;
   delete projected.sobretasa;
@@ -4496,8 +4527,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const creditAmount = parseFloat(amount as string);
       
       // Calculate commissions
+      const isSuperAdmin = user?.role === 'super_admin';
       const openingCommission = (creditAmount * (parseFloat(institution.openingCommissionRate || "0"))) / 100;
-      const overrateCommission = (creditAmount * (parseFloat(institution.overrateCommissionRate || "0"))) / 100;
+      const overrateCommission = isSuperAdmin
+        ? (creditAmount * (parseFloat(institution.overrateCommissionRate || "0"))) / 100
+        : 0;
       const totalCommission = openingCommission + overrateCommission;
       
       // Calculate distribution based on user role and institution configuration
@@ -4527,10 +4561,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       const finalCommission = userCommission - totalAdditionalCosts;
       
-      res.json({
+      const calculationResult: Record<string, any> = {
         creditAmount,
         openingCommission,
-        overrateCommission,
         totalCommission,
         userCommission,
         masterBrokerCommission,
@@ -4538,12 +4571,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
         finalCommission: Math.max(0, finalCommission),
         breakdown: {
           openingRate: institution.openingCommissionRate || 0,
-          overrateRate: institution.overrateCommissionRate || 0,
           brokerRate: institution.brokerCommissionRate || 100,
           masterBrokerRate: institution.masterBrokerCommissionRate || 0,
           costs: additionalCosts
         }
-      });
+      };
+
+      if (isSuperAdmin) {
+        calculationResult.overrateCommission = overrateCommission;
+        calculationResult.breakdown.overrateRate = institution.overrateCommissionRate || 0;
+      }
+
+      res.json(calculationResult);
     } catch (error) {
       console.error('Error calculating commission:', error);
       res.status(500).json({ message: 'Failed to calculate commission' });
@@ -4792,7 +4831,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
             financialInstitution: institution ? {
               id: institution.id,
               name: institution.name,
-              overRate: (institution as any).overRate ?? (institution as any).overrateCommissionRate ?? (institution as any).commissionRates?.financiera?.sobretasa ?? 0,
+              ...(user?.role === 'super_admin' ? {
+                overRate: (institution as any).overRate ?? (institution as any).overrateCommissionRate ?? (institution as any).commissionRates?.financiera?.sobretasa ?? 0,
+              } : {}),
             } : null,
             broker,
             masterBroker,
@@ -7258,49 +7299,57 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (commRates && typeof commRates === "object") {
         const finRate = commRates.financiera?.apertura !== undefined && commRates.financiera?.apertura !== "" && commRates.financiera?.apertura !== null
           ? Number(commRates.financiera.apertura)
-          : undefined;
+          : null;
         const mbRate = commRates.masterBroker?.apertura !== undefined && commRates.masterBroker?.apertura !== "" && commRates.masterBroker?.apertura !== null
           ? Number(commRates.masterBroker.apertura)
-          : undefined;
+          : null;
         const brkRate = commRates.broker?.apertura !== undefined && commRates.broker?.apertura !== "" && commRates.broker?.apertura !== null
           ? Number(commRates.broker.apertura)
-          : undefined;
+          : null;
 
-        // Margen bruto de plataforma por canal (sin usar fórmula basada en max)
-        const platformMarginDirect = (finRate !== undefined && brkRate !== undefined && !isNaN(finRate) && !isNaN(brkRate))
-          ? Math.max(0, Number((finRate - brkRate).toFixed(4)))
-          : (finRate !== undefined && !isNaN(finRate) ? finRate : undefined);
+        const hasFin = finRate !== null && !isNaN(finRate);
+        const hasBrk = brkRate !== null && !isNaN(brkRate);
+        const hasMb = mbRate !== null && !isNaN(mbRate);
 
-        const platformMarginMaster = (finRate !== undefined && mbRate !== undefined && !isNaN(finRate) && !isNaN(mbRate))
-          ? Math.max(0, Number((finRate - mbRate).toFixed(4)))
-          : (finRate !== undefined && !isNaN(finRate) ? finRate : undefined);
+        // B3.1: Si falta la comisión de apertura de cualquier canal, su margen debe permanecer pendiente (null), tanto en guardado como en visualización
+        const platformMarginDirect = (hasFin && hasBrk)
+          ? Math.max(0, Number((finRate! - brkRate!).toFixed(4)))
+          : null;
+
+        const platformMarginMaster = (hasFin && hasMb)
+          ? Math.max(0, Number((finRate! - mbRate!).toFixed(4)))
+          : null;
 
         mergedConditions.commissionRates = {
           ...commRates,
           financiera: {
             ...commRates.financiera,
-            apertura: finRate,
+            apertura: hasFin ? finRate : null,
           },
           masterBroker: {
             ...commRates.masterBroker,
-            apertura: mbRate,
+            apertura: hasMb ? mbRate : null,
           },
           broker: {
             ...commRates.broker,
-            apertura: brkRate,
+            apertura: hasBrk ? brkRate : null,
           },
           channels: {
             directBroker: {
-              brokerRate: brkRate,
+              brokerRate: hasBrk ? brkRate : null,
               platformGrossMargin: platformMarginDirect,
+              isMarginPending: platformMarginDirect === null,
             },
             masterBroker: {
-              networkCeiling: mbRate,
+              networkCeiling: hasMb ? mbRate : null,
               platformGrossMargin: platformMarginMaster,
+              isMarginPending: platformMarginMaster === null,
             },
           },
           platformGrossMarginDirect: platformMarginDirect,
           platformGrossMarginMaster: platformMarginMaster,
+          isMarginDirectPending: platformMarginDirect === null,
+          isMarginMasterPending: platformMarginMaster === null,
           // Compatibilidad: la plataforma registra los márgenes de ambos canales independientes
           platformNet: {
             direct: platformMarginDirect,
@@ -7339,7 +7388,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
         ? (Array.isArray(requiredDocuments) ? requiredDocuments : [])
         : (draftVersion.requiredDocuments || []);
 
-      // 4. Guardado ATÓMICO de versión borrador y producto padre (Requisito 4)
+      // 4. Guardado ATÓMICO de versión borrador y producto padre (B3.1: Aislamiento total)
+      // Si la oferta ya está publicada (status === 'published'), la v1 vigente permanece intacta:
+      // editar la futura v2 NO altera las condiciones, comisiones ni datos visibles de la v1 vigente.
+      // Solo si el producto sigue en borrador inicial (status === 'draft'), se sincronizan metadatos de borrador.
+      const shouldSyncParentToDraft = product.status === "draft";
       const { product: updatedProduct, version: updatedVersion } = await storage.updateInstitutionProductDraftAndParent(
         id,
         draftVersion.id,
@@ -7350,7 +7403,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           variablesConfiguration: variablesConfiguration !== undefined ? variablesConfiguration : draftVersion.variablesConfiguration,
           changeReason: changeReason || "Edición de versión en borrador con comisiones individuales",
         },
-        {
+        shouldSyncParentToDraft ? {
           name: name !== undefined ? name : product.name,
           customName: name !== undefined ? name : (product.customName || product.name),
           description: description !== undefined ? description : product.description,
@@ -7360,7 +7413,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             ...((product.configuration || {}) as Record<string, any>),
             ...mergedConditions,
           },
-        }
+        } : undefined
       );
 
       res.json({
