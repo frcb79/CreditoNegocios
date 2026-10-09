@@ -300,13 +300,16 @@ export default function UserManagement() {
   const isSuperAdmin = currentUser?.role === 'super_admin';
   const isPlatformAdmin = currentUser?.role === 'admin' || isSuperAdmin;
 
-  // Link directly to promotions from Super Admin settings without changing other roles.
-  // Respect authorization before selecting the administration-only tab.
+  // Deep links only select tabs available to the signed-in role.
+  // The existing server-side permission checks remain authoritative.
   useEffect(() => {
-    if (new URLSearchParams(search).get("tab") === "promos" && isPlatformAdmin) {
+    const requestedTab = new URLSearchParams(search).get("tab");
+    if (requestedTab === "promos" && isPlatformAdmin) {
       setActiveTab("promos");
+    } else if (requestedTab === "status-requests" && isSuperAdmin) {
+      setActiveTab("status-requests");
     }
-  }, [search, isPlatformAdmin]);
+  }, [search, isPlatformAdmin, isSuperAdmin]);
 
   const updateOperationalStatusMutation = useMutation({
     mutationFn: async ({ userId, status, reason, notes }: { userId: string; status: UserOperationalStatus; reason: string; notes?: string }) => {
