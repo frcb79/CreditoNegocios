@@ -71,7 +71,11 @@ import {
 } from "./commercialAuthorizationService";
 import { commercialOpportunityService } from "./commercialOpportunityService";
 import { commercialHelpService } from "./commercialHelpService";
-import { isOfferEligibleForRequests, validateOfferVersionParameters } from "./offerVersionService";
+import { 
+  isOfferEligibleForRequests, 
+  validateOfferVersionParameters,
+  validateMinimumPublishConditions 
+} from "./offerVersionService";
 
 
 import { z } from "zod";
@@ -774,25 +778,34 @@ function sanitizeCommercialOffer(product: any, userRole?: string) {
   if (!product) return product;
   const { createdBy, ...commercialOffer } = product;
 
-  // Preservar RBAC: Sanitizar comisiones individuales y condiciones económicas internas (B2.2)
+  // Preservar RBAC: Sanitizar comisiones individuales y condiciones económicas internas (B2.2 / B3)
   if (commercialOffer.configuration && typeof commercialOffer.configuration === "object") {
     const config = { ...commercialOffer.configuration };
     if (config.commissionRates && typeof config.commissionRates === "object") {
       const rawRates = config.commissionRates as Record<string, any>;
       if (userRole === "super_admin" || userRole === "admin") {
-        // Super Admin ve las condiciones económicas completas
+        // Super Admin ve las condiciones económicas completas (incluyendo sobretasas internas)
         config.commissionRates = rawRates;
       } else if (userRole === "master_broker") {
-        // Master Broker solo ve tiers masterBroker y broker, NUNCA financiera, superAdmin, platformNet ni notas internas
+        // Master Broker solo ve tiers masterBroker y broker, NUNCA financiera, superAdmin, platformNet, notas internas NI sobretasas
         const sanitized: Record<string, any> = {};
-        if (rawRates.masterBroker) sanitized.masterBroker = rawRates.masterBroker;
-        if (rawRates.broker) sanitized.broker = rawRates.broker;
+        if (rawRates.masterBroker) {
+          const { sobretasa, ...cleanMb } = rawRates.masterBroker;
+          sanitized.masterBroker = cleanMb;
+        }
+        if (rawRates.broker) {
+          const { sobretasa, ...cleanBrk } = rawRates.broker;
+          sanitized.broker = cleanBrk;
+        }
         if (rawRates.type) sanitized.type = rawRates.type;
         config.commissionRates = sanitized;
       } else if (userRole === "broker") {
-        // Broker directo solo ve su tier broker autorizado, NUNCA masterBroker, financiera, platformNet ni notas internas
+        // Broker directo solo ve su tier broker autorizado, NUNCA masterBroker, financiera, platformNet, notas internas NI sobretasas
         const sanitized: Record<string, any> = {};
-        if (rawRates.broker) sanitized.broker = rawRates.broker;
+        if (rawRates.broker) {
+          const { sobretasa, ...cleanBrk } = rawRates.broker;
+          sanitized.broker = cleanBrk;
+        }
         if (rawRates.type) sanitized.type = rawRates.type;
         config.commissionRates = sanitized;
       } else {
@@ -800,7 +813,22 @@ function sanitizeCommercialOffer(product: any, userRole?: string) {
         delete config.commissionRates;
       }
     }
+
+    // Sobretasas exclusivas de Super Admin (Requisito 4): limpiar cualquier residuo en configuration
+    if (userRole !== "super_admin" && userRole !== "admin") {
+      delete config.overrateCommissionRate;
+      delete config.overRate;
+      delete config.sobretasa;
+    }
+
     commercialOffer.configuration = config;
+  }
+
+  // Sobretasas exclusivas de Super Admin (Requisito 4): limpiar de raíz en producto comercial
+  if (userRole !== "super_admin" && userRole !== "admin") {
+    delete commercialOffer.overrateCommissionRate;
+    delete commercialOffer.overRate;
+    delete commercialOffer.sobretasa;
   }
 
   return commercialOffer;
@@ -851,10 +879,16 @@ function projectFinancialInstitutionByRole(institution: any, userRole: string, m
   const rawRates = (institution.commissionRates as any) || {};
 
   if (userRole === 'master_broker') {
-    // Master Broker only sees masterBroker and broker tiers, never internal platform / superAdmin commissions
+    // Master Broker only sees masterBroker and broker tiers, never internal platform / superAdmin commissions nor sobretasas
     const sanitizedRates: Record<string, any> = {};
-    if (rawRates.masterBroker) sanitizedRates.masterBroker = rawRates.masterBroker;
-    if (rawRates.broker) sanitizedRates.broker = rawRates.broker;
+    if (rawRates.masterBroker) {
+      const { sobretasa, ...cleanMb } = rawRates.masterBroker;
+      sanitizedRates.masterBroker = cleanMb;
+    }
+    if (rawRates.broker) {
+      const { sobretasa, ...cleanBrk } = rawRates.broker;
+      sanitizedRates.broker = cleanBrk;
+    }
     projected.commissionRates = sanitizedRates;
 
     // Legacy fields: only expose commercial broker rates, never platform commissionRate / openingCommissionRate / overrateCommissionRate
@@ -865,23 +899,28 @@ function projectFinancialInstitutionByRole(institution: any, userRole: string, m
       projected.brokerCommissionRate = institution.brokerCommissionRate;
     }
   } else {
-    // Broker & other commercial roles: only broker commission rate, customized if assigned by Master Broker
+    // Broker & other commercial roles: only broker commission rate, customized if assigned by Master Broker (no sobretasas)
     let brokerRate = rawRates.broker ? { ...rawRates.broker } : {};
     if (masterBrokerRates && masterBrokerRates[institution.id] && masterBrokerRates[institution.id].apertura !== undefined) {
       brokerRate = {
         ...brokerRate,
         apertura: masterBrokerRates[institution.id].apertura,
-        sobretasa: masterBrokerRates[institution.id].sobretasa ?? brokerRate.sobretasa,
         renovacion: masterBrokerRates[institution.id].renovacion ?? brokerRate.renovacion,
       };
     }
-    projected.commissionRates = { broker: brokerRate };
+    const { sobretasa, ...cleanBrokerRate } = brokerRate;
+    projected.commissionRates = { broker: cleanBrokerRate };
 
     // Legacy fields: only brokerCommissionRate, never masterBrokerCommissionRate or platform commissionRate
     if (institution.brokerCommissionRate !== undefined) {
       projected.brokerCommissionRate = institution.brokerCommissionRate;
     }
   }
+
+  // Sobretasas exclusivas de Super Admin (Requisito 4): limpiar de raíz cualquier sobretasa residual en institución proyectada
+  delete projected.overrateCommissionRate;
+  delete projected.overRate;
+  delete projected.sobretasa;
 
   return projected;
 }
@@ -7331,6 +7370,162 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error: any) {
       console.error("Error updating draft version:", error);
       res.status(400).json({ message: error.message || "Failed to update draft version" });
+    }
+  });
+
+  // Revisión previa de publicación con validación, advertencias y datos completos (B3 - Solo Super Admin)
+  app.get('/api/institution-products/:id/publish-preview', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub || req.user?.id;
+      const isSuperAdmin = await requirePlatformRole(userId, ['super_admin']);
+      if (!isSuperAdmin) {
+        return res.status(403).json({ message: "Access denied - Super Admin privileges required" });
+      }
+
+      const { id } = req.params;
+      const product = await storage.getInstitutionProduct(id);
+      if (!product) {
+        return res.status(404).json({ message: "Institution product not found" });
+      }
+
+      const versions = await storage.getInstitutionProductVersions(id);
+      const draftVersion = versions.find(v => v.status === "draft") || null;
+      if (!draftVersion) {
+        return res.status(400).json({ message: "No se encontró una versión en borrador para publicar" });
+      }
+
+      const currentVersion = versions.find(v => v.status === "published" || v.status === "active") || null;
+
+      const cond = (draftVersion.conditions || {}) as Record<string, any>;
+      const reqs = (draftVersion.requirements || {}) as Record<string, any>;
+      const docs = draftVersion.requiredDocuments || [];
+
+      const validation = validateMinimumPublishConditions({
+        conditions: cond,
+        requirements: reqs,
+        requiredDocuments: docs,
+        changeReason: draftVersion.changeReason || "Revisión previa para publicación",
+        productType: product.productType,
+      });
+
+      // Comisiones y desglose económico independiente por canal
+      const cr = (cond.commissionRates || {}) as Record<string, any>;
+      const finRate = cr.financiera?.apertura !== undefined && cr.financiera?.apertura !== null && cr.financiera?.apertura !== ""
+        ? Number(cr.financiera.apertura) : null;
+      const brkRate = cr.broker?.apertura !== undefined && cr.broker?.apertura !== null && cr.broker?.apertura !== ""
+        ? Number(cr.broker.apertura) : null;
+      const mbRate = cr.masterBroker?.apertura !== undefined && cr.masterBroker?.apertura !== null && cr.masterBroker?.apertura !== ""
+        ? Number(cr.masterBroker.apertura) : null;
+
+      // Requisito 5: Si falta comisión, margen pendiente, nunca 100% de la bolsa
+      const marginDirect = (finRate !== null && brkRate !== null) ? Number((finRate - brkRate).toFixed(4)) : null;
+      const marginMaster = (finRate !== null && mbRate !== null) ? Number((finRate - mbRate).toFixed(4)) : null;
+
+      res.json({
+        product,
+        draftVersion,
+        currentVersion,
+        validation,
+        summary: {
+          amounts: {
+            min: cond.minAmount ?? null,
+            max: cond.maxAmount ?? null,
+            isPending: cond.minAmount === undefined && cond.maxAmount === undefined,
+          },
+          rates: {
+            min: cond.minInterestRate ?? null,
+            max: cond.maxInterestRate ?? null,
+            isPending: cond.minInterestRate === undefined || cond.maxInterestRate === undefined,
+          },
+          terms: {
+            min: cond.minTermMonths ?? null,
+            max: cond.maxTermMonths ?? null,
+            isPending: cond.minTermMonths === undefined || cond.maxTermMonths === undefined,
+          },
+          targetProfiles: reqs.targetProfiles || product.targetProfiles || [],
+          requiredDocuments: docs,
+          commissions: {
+            financiera: finRate,
+            brokerDirecto: brkRate,
+            masterBroker: mbRate,
+            platformMarginDirect: marginDirect,
+            platformMarginMaster: marginMaster,
+            isMarginDirectPending: marginDirect === null,
+            isMarginMasterPending: marginMaster === null,
+            notes: cr.notes || "",
+          },
+          eligibility: {
+            minCompanyAgeMonths: cond.minCompanyAgeMonths ?? null,
+            minMonthlyRevenue: cond.minMonthlyRevenue ?? null,
+            bureauRequirement: cond.bureauRequirement ?? "sin_requisito",
+            guaranteeType: cond.guaranteeType ?? "sin_garantia",
+            avalesType: cond.avalesType ?? "no_requerido",
+            matchingActive: false,
+            status: "pending_verification",
+          },
+        },
+      });
+    } catch (error: any) {
+      console.error("Error in publish-preview:", error);
+      res.status(500).json({ message: "Failed to generate publish preview" });
+    }
+  });
+
+  // Publicación formal de versión borrador (B3 - Solo Super Admin, Transaccional A1)
+  app.post('/api/institution-products/:id/publish', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub || req.user?.id;
+      const isSuperAdmin = await requirePlatformRole(userId, ['super_admin']);
+      if (!isSuperAdmin) {
+        return res.status(403).json({ message: "Access denied - Super Admin privileges required" });
+      }
+
+      const { id } = req.params;
+      const { changeReason, confirmPublish } = req.body;
+
+      // Requisito 1: Confirmación explícita obligatoria
+      if (!confirmPublish) {
+        return res.status(400).json({
+          message: "Debe confirmar explícitamente la publicación de la oferta comercial",
+        });
+      }
+
+      // Requisito 1 & 2: Auditoría y trazabilidad con motivo de cambio
+      if (!changeReason || typeof changeReason !== "string" || changeReason.trim().length < 3) {
+        return res.status(400).json({
+          message: "El motivo de cambio es obligatorio para publicar (mínimo 3 caracteres para trazabilidad y auditoría)",
+        });
+      }
+
+      const product = await storage.getInstitutionProduct(id);
+      if (!product) {
+        return res.status(404).json({ message: "Institution product not found" });
+      }
+
+      const versions = await storage.getInstitutionProductVersions(id);
+      const draftVersion = versions.find(v => v.status === "draft");
+      if (!draftVersion) {
+        return res.status(400).json({
+          message: "No se encontró una versión en borrador para publicar. Es posible que ya haya sido publicada.",
+        });
+      }
+
+      // Requisito 2: Publicación transaccional A1 mediante Storage (sustitución segura e historial inmutable)
+      const publishedVersion = await storage.publishInstitutionProductVersion(id, draftVersion.id, {
+        publishedBy: userId,
+        changeReason: changeReason.trim(),
+      });
+
+      const updatedProduct = await storage.getInstitutionProduct(id);
+
+      res.json({
+        message: "Oferta comercial publicada exitosamente",
+        product: updatedProduct,
+        publishedVersion,
+      });
+    } catch (error: any) {
+      console.error("Error publishing institution product version:", error);
+      res.status(400).json({ message: error.message || "Failed to publish version" });
     }
   });
 

@@ -44,6 +44,7 @@ import {
   Building2,
   Plus,
   Trash2,
+  Send,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -52,6 +53,7 @@ interface OfferDraftEditorModalProps {
   onClose: () => void;
   offer: InstitutionProductWithTemplate | null;
   financieraName?: string;
+  onOpenPublish?: (offer: InstitutionProductWithTemplate) => void;
 }
 
 const PRODUCT_TYPES = [
@@ -85,6 +87,7 @@ export default function OfferDraftEditorModal({
   onClose,
   offer,
   financieraName,
+  onOpenPublish,
 }: OfferDraftEditorModalProps) {
   const { toast } = useToast();
   const [activeTab, setActiveTab] = useState<string>("condiciones");
@@ -1203,6 +1206,22 @@ export default function OfferDraftEditorModal({
               >
                 Cancelar
               </Button>
+              {onOpenPublish && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    onClose();
+                    if (offer) onOpenPublish(offer);
+                  }}
+                  className="h-8 text-xs border-emerald-300 text-emerald-700 hover:bg-emerald-50 font-semibold gap-1.5"
+                  data-testid="button-open-publish-from-editor"
+                >
+                  <Send className="w-3.5 h-3.5" />
+                  <span>Revisar y Publicar</span>
+                </Button>
+              )}
               <Button
                 type="submit"
                 size="sm"

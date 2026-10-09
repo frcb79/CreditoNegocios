@@ -19,6 +19,7 @@ import {
 import NewOfferModal from "./NewOfferModal";
 import OfferVersionsModal from "./OfferVersionsModal";
 import OfferDraftEditorModal from "./OfferDraftEditorModal";
+import OfferPublishModal from "./OfferPublishModal";
 import {
   Search,
   Plus,
@@ -37,7 +38,8 @@ import {
   Percent,
   Calendar,
   ShieldCheck,
-  ChevronRight
+  ChevronRight,
+  Send
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -77,6 +79,7 @@ export default function AdminOffersList({
   const [showNewModal, setShowNewModal] = useState(false);
   const [versionModalOffer, setVersionModalOffer] = useState<InstitutionProductWithTemplate | null>(null);
   const [editingOffer, setEditingOffer] = useState<InstitutionProductWithTemplate | null>(null);
+  const [publishingOffer, setPublishingOffer] = useState<InstitutionProductWithTemplate | null>(null);
 
   // Fetch financial institutions for mapping names and filtering
   const { data: institutions = [] } = useQuery<FinancialInstitution[]>({
@@ -534,16 +537,28 @@ export default function AdminOffersList({
                   {/* Action buttons (Mobile-responsive with flex-wrap) */}
                   <div className="flex flex-wrap items-center gap-1.5 justify-end">
                     {offer.status === "draft" && (
-                      <Button
-                        variant="default"
-                        size="sm"
-                        onClick={() => setEditingOffer(offer)}
-                        className="h-7 text-[11px] font-semibold bg-amber-600 hover:bg-amber-700 text-white gap-1 px-2.5 shadow-2xs"
-                        data-testid={`button-edit-draft-${offer.id}`}
-                      >
-                        <FileEdit className="w-3 h-3" />
-                        <span>Editar Borrador</span>
-                      </Button>
+                      <>
+                        <Button
+                          variant="default"
+                          size="sm"
+                          onClick={() => setEditingOffer(offer)}
+                          className="h-7 text-[11px] font-semibold bg-amber-600 hover:bg-amber-700 text-white gap-1 px-2.5 shadow-2xs"
+                          data-testid={`button-edit-draft-${offer.id}`}
+                        >
+                          <FileEdit className="w-3 h-3" />
+                          <span>Editar Borrador</span>
+                        </Button>
+                        <Button
+                          variant="default"
+                          size="sm"
+                          onClick={() => setPublishingOffer(offer)}
+                          className="h-7 text-[11px] font-semibold bg-emerald-600 hover:bg-emerald-700 text-white gap-1 px-2.5 shadow-2xs"
+                          data-testid={`button-publish-draft-${offer.id}`}
+                        >
+                          <Send className="w-3 h-3" />
+                          <span>Revisar y Publicar</span>
+                        </Button>
+                      </>
                     )}
 
                     <Button
@@ -603,6 +618,21 @@ export default function AdminOffersList({
         financieraName={
           editingOffer
             ? institutionMap.get(editingOffer.institutionId) || institutionName
+            : institutionName
+        }
+        onOpenPublish={(off) => {
+          setEditingOffer(null);
+          setPublishingOffer(off);
+        }}
+      />
+
+      <OfferPublishModal
+        isOpen={!!publishingOffer}
+        onClose={() => setPublishingOffer(null)}
+        offer={publishingOffer}
+        financieraName={
+          publishingOffer
+            ? institutionMap.get(publishingOffer.institutionId) || institutionName
             : institutionName
         }
       />

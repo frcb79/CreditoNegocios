@@ -1233,6 +1233,8 @@ export class DbStorage implements IStorage {
           .set({
             status: "published",
             currentVersionNumber: version.versionNumber,
+            configuration: (version.conditions as Record<string, any>) || undefined,
+            targetProfiles: (version.requirements as any)?.targetProfiles || undefined,
             updatedAt: now,
           })
           .where(eq(institutionProducts.id, productId));

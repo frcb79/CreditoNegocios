@@ -3238,6 +3238,8 @@ export class MemStorage implements IStorage {
       ...product,
       status: "published",
       currentVersionNumber: version.versionNumber,
+      configuration: (version.conditions as Record<string, any>) || product.configuration,
+      targetProfiles: (version.requirements as any)?.targetProfiles || product.targetProfiles,
       updatedAt: now,
     });
 
