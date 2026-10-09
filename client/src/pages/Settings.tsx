@@ -1767,8 +1767,8 @@ export default function Settings() {
                   </CardHeader>
                   <CardContent className="p-4 sm:p-6">
                     <Button asChild type="button" variant="outline" size="sm" className="text-xs">
-                      <Link href="/admin/usuarios">
-                        Abrir Usuarios (selecciona Códigos Promocionales) <ArrowRight className="h-3.5 w-3.5 ml-2" />
+                      <Link href="/admin/usuarios?tab=promos">
+                        Administrar códigos y cortesías <ArrowRight className="h-3.5 w-3.5 ml-2" />
                       </Link>
                     </Button>
                   </CardContent>
