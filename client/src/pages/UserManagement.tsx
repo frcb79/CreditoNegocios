@@ -308,6 +308,8 @@ export default function UserManagement() {
       setActiveTab("promos");
     } else if (requestedTab === "status-requests" && isSuperAdmin) {
       setActiveTab("status-requests");
+    } else if (requestedTab === "global" && isSuperAdmin) {
+      setActiveTab("global");
     }
   }, [search, isPlatformAdmin, isSuperAdmin]);
 
@@ -636,6 +638,13 @@ export default function UserManagement() {
     queryKey: ["/api/users"],
     enabled: isPlatformAdmin,
   });
+
+  // A link from Red de Brokers can focus one known user without creating a second
+  // editing flow. Only Super Admin can use this account-level navigation aid.
+  const focusedGlobalUserId = isSuperAdmin ? new URLSearchParams(search).get("userId") : null;
+  const visibleGlobalUsers = focusedGlobalUserId
+    ? legacyUsers?.filter((entry) => entry.id === focusedGlobalUserId)
+    : legacyUsers;
 
   // Forms
   const createMemberForm = useForm<MemberCreateFormData>({
@@ -1796,14 +1805,25 @@ export default function UserManagement() {
         {/* Tab 2: Global Legacy Directory (SuperAdmin only) */}
         {activeTab === "global" && isPlatformAdmin && (
           <Card className="border border-border/60 shadow-sm">
-            <CardHeader className="py-4 px-6 border-b flex flex-row items-center justify-between">
+            <CardHeader className="py-4 px-6 border-b flex flex-row items-center justify-between gap-3 flex-wrap">
               <div>
                 <CardTitle className="text-base font-semibold">Directorio Global de Usuarios</CardTitle>
                 <p className="text-xs text-muted-foreground mt-0.5">
-                  Visualización técnica completa de registros en tabla users
+                  {focusedGlobalUserId
+                    ? "Cuenta seleccionada desde Red de Brokers; utiliza las acciones existentes de red, estado y acceso."
+                    : "Visualización técnica completa de registros en tabla users"}
                 </p>
               </div>
-              <Badge variant="secondary" className="font-mono text-xs">{legacyUsers?.length || 0}</Badge>
+              <div className="flex items-center gap-2">
+                {focusedGlobalUserId && (
+                  <Link href="/admin/usuarios?tab=global">
+                    <Button size="sm" variant="outline" className="text-xs" data-testid="button-show-all-global-users">
+                      Ver todos
+                    </Button>
+                  </Link>
+                )}
+                <Badge variant="secondary" className="font-mono text-xs">{visibleGlobalUsers?.length || 0}</Badge>
+              </div>
             </CardHeader>
             <CardContent className="p-0">
               <div className="overflow-x-auto">
@@ -1821,7 +1841,14 @@ export default function UserManagement() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-border/60">
-                    {legacyUsers?.map((u) => (
+                    {focusedGlobalUserId && !isLoadingLegacyUsers && visibleGlobalUsers?.length === 0 && (
+                      <tr>
+                        <td colSpan={8} className="py-5 px-6 text-xs text-muted-foreground">
+                          No se encontró la cuenta seleccionada. Selecciona "Ver todos" para consultar el directorio.
+                        </td>
+                      </tr>
+                    )}
+                    {visibleGlobalUsers?.map((u) => (
                       <tr key={u.id} className="hover:bg-muted/30">
                         <td className="py-3 px-6 font-medium">
                           {u.firstName} {u.lastName}
