@@ -7203,14 +7203,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (req.body.guaranteeType !== undefined) mergedConditions.guaranteeType = req.body.guaranteeType;
       if (req.body.avalesType !== undefined) mergedConditions.avalesType = req.body.avalesType;
 
-      // Garantía de Integridad: Variables de elegibilidad no verificadas quedan pendientes y nunca activas en Matching
+      // Garantía de Integridad: Variables de elegibilidad pendientes de cotejo contra expediente real (Matching inactivo)
       mergedConditions.eligibilityEvaluation = {
         matchingActive: false,
         status: "pending_verification",
-        backedByClientExpediente: true,
+        verified: false,
+        originFieldsChecked: false,
       };
 
-      // Comisiones individuales por oferta (B2.2)
+      // Comisiones individuales por oferta (B2.2 — Canales independientes Broker Directo y Master Broker)
       let commRates = req.body.commissionRates !== undefined
         ? req.body.commissionRates
         : (conditions?.commissionRates !== undefined ? conditions.commissionRates : currentConditions.commissionRates);
@@ -7226,14 +7227,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
           ? Number(commRates.broker.apertura)
           : undefined;
 
-        let platformNetApertura: number | undefined = undefined;
-        if (finRate !== undefined && !isNaN(finRate)) {
-          const ceiling = Math.max(
-            mbRate !== undefined && !isNaN(mbRate) ? mbRate : 0,
-            brkRate !== undefined && !isNaN(brkRate) ? brkRate : 0
-          );
-          platformNetApertura = Math.max(0, Number((finRate - ceiling).toFixed(4)));
-        }
+        // Margen bruto de plataforma por canal (sin usar fórmula basada en max)
+        const platformMarginDirect = (finRate !== undefined && brkRate !== undefined && !isNaN(finRate) && !isNaN(brkRate))
+          ? Math.max(0, Number((finRate - brkRate).toFixed(4)))
+          : (finRate !== undefined && !isNaN(finRate) ? finRate : undefined);
+
+        const platformMarginMaster = (finRate !== undefined && mbRate !== undefined && !isNaN(finRate) && !isNaN(mbRate))
+          ? Math.max(0, Number((finRate - mbRate).toFixed(4)))
+          : (finRate !== undefined && !isNaN(finRate) ? finRate : undefined);
 
         mergedConditions.commissionRates = {
           ...commRates,
@@ -7249,8 +7250,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
             ...commRates.broker,
             apertura: brkRate,
           },
+          channels: {
+            directBroker: {
+              brokerRate: brkRate,
+              platformGrossMargin: platformMarginDirect,
+            },
+            masterBroker: {
+              networkCeiling: mbRate,
+              platformGrossMargin: platformMarginMaster,
+            },
+          },
+          platformGrossMarginDirect: platformMarginDirect,
+          platformGrossMarginMaster: platformMarginMaster,
+          // Compatibilidad: la plataforma registra los márgenes de ambos canales independientes
           platformNet: {
-            apertura: platformNetApertura,
+            direct: platformMarginDirect,
+            master: platformMarginMaster,
+            apertura: platformMarginDirect,
           },
           type: commRates.type || "porcentaje",
           notes: commRates.notes || "",

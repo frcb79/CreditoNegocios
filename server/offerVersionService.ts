@@ -108,12 +108,6 @@ export function validateOfferVersionParameters(data: Partial<InsertInstitutionPr
           errors.push(`La tasa para Broker Directo (${brkRate}%) no puede ser superior a la comisión que paga la financiera a Crédito Negocios (${finRate}%)`);
         }
       }
-
-      if (mbRate !== undefined && brkRate !== undefined && !isNaN(mbRate) && !isNaN(brkRate)) {
-        if (brkRate > mbRate) {
-          errors.push(`La tasa para Broker Directo (${brkRate}%) no puede ser superior a la comisión para Master Broker (${mbRate}%)`);
-        }
-      }
     }
   }
 

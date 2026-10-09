@@ -352,15 +352,6 @@ export default function OfferDraftEditorModal({
       }
     }
 
-    if (parsedMasterComm !== null && parsedBrokerComm !== null && parsedBrokerComm > parsedMasterComm) {
-      toast({
-        title: "Incoherencia de Comisiones",
-        description: `La comisión para Broker Directo (${parsedBrokerComm}%) no puede ser superior a la comisión autorizada para Master Broker (${parsedMasterComm}%).`,
-        variant: "destructive",
-      });
-      return;
-    }
-
     // Construir conditions combinando variables financieras, comisiones y de elegibilidad
     const conditions: Record<string, any> = {};
     if (parsedMinAmt !== null) conditions.minAmount = parsedMinAmt;
@@ -763,32 +754,31 @@ export default function OfferDraftEditorModal({
                   </div>
                 </div>
 
-                {/* Resumen Interactivo de Distribución Económica */}
+                {/* Resumen Interactivo de Distribución Económica (Dos Canales Independientes) */}
                 {(() => {
                   const pFin = finCommissionRate.trim() !== "" ? parseFloat(finCommissionRate) : null;
                   const pMb = masterCommissionRate.trim() !== "" ? parseFloat(masterCommissionRate) : null;
                   const pBrk = brokerCommissionRate.trim() !== "" ? parseFloat(brokerCommissionRate) : null;
-                  const ceiling = Math.max(pMb ?? 0, pBrk ?? 0);
-                  const netPlatform = pFin !== null ? Math.max(0, pFin - ceiling) : null;
-                  const mbMargin = (pMb !== null && pBrk !== null) ? Math.max(0, pMb - pBrk) : null;
+
+                  const marginDirect = (pFin !== null && pBrk !== null) ? Math.max(0, pFin - pBrk) : (pFin !== null && pBrk === null ? pFin : null);
+                  const marginMaster = (pFin !== null && pMb !== null) ? Math.max(0, pFin - pMb) : (pFin !== null && pMb === null ? pFin : null);
 
                   const hasMbError = pFin !== null && pMb !== null && pMb > pFin;
                   const hasBrkError = pFin !== null && pBrk !== null && pBrk > pFin;
-                  const hasHierarchyError = pMb !== null && pBrk !== null && pBrk > pMb;
 
                   return (
                     <div className="p-4 bg-slate-50/90 rounded-xl border border-slate-200 space-y-3">
                       <div className="flex items-center justify-between">
                         <span className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
-                          <span>Distribución Económica Resultante</span>
+                          <span>Distribución Económica por Canal Comercial</span>
                         </span>
-                        {hasMbError || hasBrkError || hasHierarchyError ? (
+                        {hasMbError || hasBrkError ? (
                           <Badge variant="destructive" className="text-[10px]">
                             Inconsistencia detectada
                           </Badge>
                         ) : pFin !== null ? (
-                          <Badge variant="outline" className="text-[10px] bg-emerald-50 text-emerald-700 border-emerald-200 font-semibold">
-                            Margen Plataforma: {netPlatform?.toFixed(2)}%
+                          <Badge variant="outline" className="text-[10px] bg-blue-50 text-blue-700 border-blue-200 font-semibold">
+                            Bolsa Financiera: {pFin}%
                           </Badge>
                         ) : (
                           <Badge variant="outline" className="text-[10px] text-slate-400 border-slate-200">
@@ -810,36 +800,64 @@ export default function OfferDraftEditorModal({
                           <span>La tasa para Broker Directo ({pBrk}%) supera la comisión pagada por la financiera ({pFin}%).</span>
                         </div>
                       )}
-                      {hasHierarchyError && (
-                        <div className="p-2.5 bg-red-50 border border-red-200 rounded-lg text-xs text-red-700 flex items-center gap-2">
-                          <AlertCircle className="w-4 h-4 shrink-0" />
-                          <span>La tasa para Broker Directo ({pBrk}%) no puede ser superior a la comisión para Master Broker ({pMb}%).</span>
-                        </div>
-                      )}
 
-                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-1 text-center">
-                        <div className="p-2.5 bg-white rounded-lg border border-slate-200/80">
-                          <span className="text-[10px] text-slate-400 block font-medium">Bolsa Financiera</span>
-                          <span className="text-sm font-bold text-blue-700 mt-0.5 block">
-                            {pFin !== null ? `${pFin}%` : "—"}
+                      {/* Canales Separados */}
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                        {/* Canal 1: Broker Directo */}
+                        <div className="p-3 bg-white rounded-xl border border-emerald-200/80 shadow-2xs space-y-2">
+                          <div className="flex items-center justify-between">
+                            <span className="text-xs font-bold text-emerald-900 flex items-center gap-1">
+                              Canal Broker Directo
+                            </span>
+                            <Badge variant="outline" className="text-[9px] bg-emerald-50 text-emerald-700 border-emerald-200 font-semibold">
+                              Canal Directo
+                            </Badge>
+                          </div>
+                          <div className="grid grid-cols-2 gap-2 text-center pt-1">
+                            <div className="p-2 bg-emerald-50/50 rounded-lg border border-emerald-100">
+                              <span className="text-[10px] text-emerald-700 block font-medium">Comisión Broker</span>
+                              <span className="text-sm font-bold text-emerald-800 mt-0.5 block">
+                                {pBrk !== null ? `${pBrk}%` : "—"}
+                              </span>
+                            </div>
+                            <div className="p-2 bg-slate-50 rounded-lg border border-slate-200">
+                              <span className="text-[10px] text-slate-500 block font-medium">Margen Plataforma</span>
+                              <span className="text-sm font-bold text-slate-900 mt-0.5 block">
+                                {marginDirect !== null ? `${marginDirect.toFixed(2)}%` : "—"}
+                              </span>
+                            </div>
+                          </div>
+                          <span className="text-[10px] text-slate-400 block leading-tight">
+                            Colocaciones originadas por broker directo independiente.
                           </span>
                         </div>
-                        <div className="p-2.5 bg-white rounded-lg border border-slate-200/80">
-                          <span className="text-[10px] text-slate-400 block font-medium">Broker Directo</span>
-                          <span className="text-sm font-bold text-emerald-700 mt-0.5 block">
-                            {pBrk !== null ? `${pBrk}%` : "—"}
-                          </span>
-                        </div>
-                        <div className="p-2.5 bg-white rounded-lg border border-slate-200/80">
-                          <span className="text-[10px] text-slate-400 block font-medium">Margen Red Master</span>
-                          <span className="text-sm font-bold text-purple-700 mt-0.5 block">
-                            {mbMargin !== null ? `+${mbMargin.toFixed(2)}%` : "—"}
-                          </span>
-                        </div>
-                        <div className="p-2.5 bg-white rounded-lg border border-slate-200/80">
-                          <span className="text-[10px] text-slate-400 block font-medium">Margen Plataforma</span>
-                          <span className="text-sm font-bold text-slate-900 mt-0.5 block">
-                            {netPlatform !== null ? `${netPlatform.toFixed(2)}%` : "—"}
+
+                        {/* Canal 2: Master Broker */}
+                        <div className="p-3 bg-white rounded-xl border border-purple-200/80 shadow-2xs space-y-2">
+                          <div className="flex items-center justify-between">
+                            <span className="text-xs font-bold text-purple-900 flex items-center gap-1">
+                              Canal Master Broker
+                            </span>
+                            <Badge variant="outline" className="text-[9px] bg-purple-50 text-purple-700 border-purple-200 font-semibold">
+                              Canal Red
+                            </Badge>
+                          </div>
+                          <div className="grid grid-cols-2 gap-2 text-center pt-1">
+                            <div className="p-2 bg-purple-50/50 rounded-lg border border-purple-100">
+                              <span className="text-[10px] text-purple-700 block font-medium">Techo Red Master</span>
+                              <span className="text-sm font-bold text-purple-800 mt-0.5 block">
+                                {pMb !== null ? `${pMb}%` : "—"}
+                              </span>
+                            </div>
+                            <div className="p-2 bg-slate-50 rounded-lg border border-slate-200">
+                              <span className="text-[10px] text-slate-500 block font-medium">Margen Plataforma</span>
+                              <span className="text-sm font-bold text-slate-900 mt-0.5 block">
+                                {marginMaster !== null ? `${marginMaster.toFixed(2)}%` : "—"}
+                              </span>
+                            </div>
+                          </div>
+                          <span className="text-[10px] text-slate-400 block leading-tight">
+                            Techo asignado al Master. Su red de brokers se distribuye según reglas comerciales de red.
                           </span>
                         </div>
                       </div>
@@ -923,7 +941,7 @@ export default function OfferDraftEditorModal({
                         Antigüedad Mínima del Negocio
                       </Label>
                       <Badge variant="outline" className="text-[9px] bg-slate-100 text-slate-700 border-slate-200">
-                        En Expediente (Autodeclarado)
+                        Pendiente de Cotejo
                       </Badge>
                     </div>
                     <div className="flex items-center gap-2">
@@ -937,7 +955,7 @@ export default function OfferDraftEditorModal({
                       <span className="text-xs text-slate-500 shrink-0 font-medium">Meses</span>
                     </div>
                     <span className="text-[10px] text-amber-700 bg-amber-50 px-2 py-0.5 rounded border border-amber-200/60 block">
-                      Matching: Inactivo (Pendiente de verificación en expediente)
+                      Matching: Inactivo (Pendiente de comprobación en campo 'yearsInBusiness' del expediente)
                     </span>
                   </div>
 
@@ -948,7 +966,7 @@ export default function OfferDraftEditorModal({
                         Facturación / Ingreso Mensual Mínimo
                       </Label>
                       <Badge variant="outline" className="text-[9px] bg-slate-100 text-slate-700 border-slate-200">
-                        En Expediente (Autodeclarado)
+                        Pendiente de Cotejo
                       </Badge>
                     </div>
                     <div className="flex items-center gap-2">
@@ -963,7 +981,7 @@ export default function OfferDraftEditorModal({
                       <span className="text-xs text-slate-500 shrink-0 font-medium">MXN</span>
                     </div>
                     <span className="text-[10px] text-amber-700 bg-amber-50 px-2 py-0.5 rounded border border-amber-200/60 block">
-                      Matching: Inactivo (Pendiente de comprobación fiscal/bancaria)
+                      Matching: Inactivo (Pendiente de comprobación en campo 'ingresoMensualPromedio' del expediente)
                     </span>
                   </div>
 

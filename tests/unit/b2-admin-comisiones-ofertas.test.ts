@@ -225,7 +225,13 @@ describe("Bloque B2.2 — Comisiones Individuales por Oferta Comercial (Super Ad
       expect(conditions.commissionRates.financiera.apertura).toBe(4.5);
       expect(conditions.commissionRates.masterBroker.apertura).toBe(3.0);
       expect(conditions.commissionRates.broker.apertura).toBe(2.0);
-      expect(conditions.commissionRates.platformNet.apertura).toBe(1.5); // 4.5 - max(3.0, 2.0) = 1.5
+      // Márgenes brutos de plataforma por canal independiente (sin fórmula de max)
+      expect(conditions.commissionRates.platformGrossMarginDirect).toBe(2.5); // 4.5 - 2.0 = 2.5
+      expect(conditions.commissionRates.platformGrossMarginMaster).toBe(1.5); // 4.5 - 3.0 = 1.5
+      expect(conditions.commissionRates.channels.directBroker.platformGrossMargin).toBe(2.5);
+      expect(conditions.commissionRates.channels.masterBroker.platformGrossMargin).toBe(1.5);
+      expect(conditions.commissionRates.platformNet.direct).toBe(2.5);
+      expect(conditions.commissionRates.platformNet.master).toBe(1.5);
       expect(conditions.commissionRates.notes).toBe("Acuerdo de comisiones exclusivo para Oferta A");
 
       // Verificar sincronización atómica en el producto padre
@@ -261,7 +267,8 @@ describe("Bloque B2.2 — Comisiones Individuales por Oferta Comercial (Super Ad
       expect(resB.body.version.conditions.commissionRates.financiera.apertura).toBe(3.0);
       expect(resB.body.version.conditions.commissionRates.masterBroker.apertura).toBe(2.0);
       expect(resB.body.version.conditions.commissionRates.broker.apertura).toBe(1.5);
-      expect(resB.body.version.conditions.commissionRates.platformNet.apertura).toBe(1.0); // 3.0 - 2.0 = 1.0
+      expect(resB.body.version.conditions.commissionRates.platformGrossMarginDirect).toBe(1.5); // 3.0 - 1.5 = 1.5
+      expect(resB.body.version.conditions.commissionRates.platformGrossMarginMaster).toBe(1.0); // 3.0 - 2.0 = 1.0
 
       // Verificar que Oferta A sigue intacta con sus comisiones (4.5 / 3.0 / 2.0)
       const resA = await request(app)
@@ -321,7 +328,7 @@ describe("Bloque B2.2 — Comisiones Individuales por Oferta Comercial (Super Ad
       expect(res.body.errors.some((e: string) => e.includes("no puede ser superior a la comisión que paga la financiera"))).toBe(true);
     });
 
-    it("Rechaza si la tasa para Broker Directo supera la comisión autorizada para Master Broker", async () => {
+    it("Permite que la tasa para Broker Directo sea distinta o superior a la del Master Broker si ambas respetan la comisión de la financiera", async () => {
       const res = await request(app)
         .put(`/api/institution-products/${draftProductId1}/draft`)
         .set("x-test-user-id", testSuperAdminId)
@@ -333,8 +340,27 @@ describe("Bloque B2.2 — Comisiones Individuales por Oferta Comercial (Super Ad
           },
         });
 
+      expect(res.status).toBe(200);
+      const rates = res.body.version.conditions.commissionRates;
+      expect(rates.broker.apertura).toBe(3.0);
+      expect(rates.masterBroker.apertura).toBe(2.5);
+      expect(rates.platformGrossMarginDirect).toBe(1.0); // 4.0 - 3.0 = 1.0
+      expect(rates.platformGrossMarginMaster).toBe(1.5); // 4.0 - 2.5 = 1.5
+    });
+
+    it("Rechaza si la tasa para Broker Directo supera la comisión pagada por la financiera", async () => {
+      const res = await request(app)
+        .put(`/api/institution-products/${draftProductId1}/draft`)
+        .set("x-test-user-id", testSuperAdminId)
+        .send({
+          commissionRates: {
+            financiera: { apertura: 4.0 },
+            broker: { apertura: 4.5 },
+          },
+        });
+
       expect(res.status).toBe(400);
-      expect(res.body.errors.some((e: string) => e.includes("no puede ser superior a la comisión para Master Broker"))).toBe(true);
+      expect(res.body.errors.some((e: string) => e.includes("no puede ser superior a la comisión que paga la financiera"))).toBe(true);
     });
 
     it("Permite guardar borradores incompletos sin comisiones definidas", async () => {
@@ -443,11 +469,12 @@ describe("Bloque B2.2 — Comisiones Individuales por Oferta Comercial (Super Ad
       expect(cond.guaranteeType).toBe("hipotecaria");
       expect(cond.avalesType).toBe("un_aval");
 
-      // Garantía de Integridad: Matching inactivo preventivo
+      // Garantía de Integridad: Matching inactivo preventivo y sin afirmar cotejo previo
       expect(cond.eligibilityEvaluation).toBeDefined();
       expect(cond.eligibilityEvaluation.matchingActive).toBe(false);
       expect(cond.eligibilityEvaluation.status).toBe("pending_verification");
-      expect(cond.eligibilityEvaluation.backedByClientExpediente).toBe(true);
+      expect(cond.eligibilityEvaluation.verified).toBe(false);
+      expect(cond.eligibilityEvaluation.originFieldsChecked).toBe(false);
     });
   });
 });
