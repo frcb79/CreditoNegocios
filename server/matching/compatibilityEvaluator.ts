@@ -80,6 +80,23 @@ export function evaluateOfferCompatibility(
   const evaluations: CriterionEvaluation[] = [];
 
   // =========================================================================
+  // 0. VERIFICACIÓN DE CRITERIOS DE ORIGEN DE LA OFERTA
+  // Si un criterio obligatorio de la oferta está pendiente de verificación,
+  // clasificar como información insuficiente, nunca emitir compatibilidad definitiva.
+  // =========================================================================
+  const eligibilityEval = (version?.eligibilityEvaluation || cond.eligibilityEvaluation || (product as any)?.configuration?.eligibilityEvaluation) as Record<string, any> | undefined;
+  if (eligibilityEval && (eligibilityEval.verified === false || eligibilityEval.status === "pending_verification" || eligibilityEval.originFieldsChecked === false)) {
+    evaluations.push({
+      code: "eligibilityVerification",
+      name: "Verificación de Criterios de Oferta",
+      status: "MISSING_DATA",
+      requiredValue: "verified",
+      actualValue: eligibilityEval.status || "pending_verification",
+      reason: "Las variables y criterios de elegibilidad de esta oferta se encuentran pendientes de verificación de origen.",
+    });
+  }
+
+  // =========================================================================
   // 1. EVALUACIÓN DE PERFIL DEL SOLICITANTE
   // =========================================================================
   const targetProfiles = (req.targetProfiles || product?.targetProfiles || []) as string[];
@@ -212,7 +229,7 @@ export function evaluateOfferCompatibility(
   // =========================================================================
   const minAge = typeof cond.minCompanyAgeMonths === "number" ? cond.minCompanyAgeMonths : null;
   if (minAge !== null && minAge > 0) {
-    const ageMonths = extractCompanyAgeMonths(client);
+    const ageMonths = extractCompanyAgeMonths(client, credit);
     if (ageMonths === null) {
       evaluations.push({
         code: "companyAge",
@@ -248,7 +265,7 @@ export function evaluateOfferCompatibility(
   // =========================================================================
   const minRev = typeof cond.minMonthlyRevenue === "number" ? cond.minMonthlyRevenue : null;
   if (minRev !== null && minRev > 0) {
-    const revenue = extractMonthlyRevenue(client);
+    const revenue = extractMonthlyRevenue(client, credit);
     if (revenue === null) {
       evaluations.push({
         code: "monthlyRevenue",
@@ -284,7 +301,7 @@ export function evaluateOfferCompatibility(
   // =========================================================================
   const bureauReq = cond.bureauRequirement || "sin_requisito";
   if (bureauReq !== "sin_requisito") {
-    const { hasDelinquencies, rawStatus } = extractBureauStatus(client);
+    const { hasDelinquencies, rawStatus } = extractBureauStatus(client, credit);
     if (hasDelinquencies === null) {
       evaluations.push({
         code: "bureauRequirement",
@@ -320,7 +337,7 @@ export function evaluateOfferCompatibility(
   // =========================================================================
   const guarType = cond.guaranteeType || "sin_garantia";
   if (guarType !== "sin_garantia") {
-    const { hasGuarantee, guaranteeType: actualType } = extractHasGuarantee(client);
+    const { hasGuarantee, guaranteeType: actualType } = extractHasGuarantee(client, credit);
     if (hasGuarantee === null) {
       evaluations.push({
         code: "guaranteeType",
@@ -340,14 +357,56 @@ export function evaluateOfferCompatibility(
         reason: `La oferta requiere garantía real de tipo '${guarType}' y el cliente declaró no contar con garantía.`,
       });
     } else {
-      evaluations.push({
-        code: "guaranteeType",
-        name: "Requisito de Garantía Real",
-        status: "PASSED",
-        requiredValue: guarType,
-        actualValue: actualType || "garantia_disponible",
-        reason: "El cliente cuenta con garantía compatible registrada en el expediente.",
-      });
+      const normalizedReq = String(guarType).toLowerCase();
+      const normalizedActual = String(actualType || "").toLowerCase();
+      const isGeneralReq = normalizedReq === "general" || normalizedReq === "con_garantia" || normalizedReq === "cualquiera";
+
+      if (isGeneralReq) {
+        evaluations.push({
+          code: "guaranteeType",
+          name: "Requisito de Garantía Real",
+          status: "PASSED",
+          requiredValue: guarType,
+          actualValue: actualType || "garantia_disponible",
+          reason: "El cliente cuenta con garantía compatible registrada en el expediente.",
+        });
+      } else if (!actualType || actualType === "general") {
+        evaluations.push({
+          code: "guaranteeType",
+          name: "Requisito de Garantía Real",
+          status: "MISSING_DATA",
+          requiredValue: guarType,
+          actualValue: actualType || "tipo_no_especificado",
+          reason: `La oferta requiere garantía específica '${guarType}', pero no se ha detallado el tipo de garantía en el expediente.`,
+        });
+      } else {
+        const isHipMatch = (normalizedReq.includes("hipotec") || normalizedReq.includes("inmueble")) &&
+                           (normalizedActual.includes("hipotec") || normalizedActual.includes("inmueble"));
+        const isLiqMatch = normalizedReq.includes("liquid") && normalizedActual.includes("liquid");
+        const isPrendMatch = (normalizedReq.includes("prend") || normalizedReq.includes("maquinaria") || normalizedReq.includes("vehiculo")) &&
+                             (normalizedActual.includes("prend") || normalizedActual.includes("maquinaria") || normalizedActual.includes("vehiculo"));
+        const isDirectMatch = normalizedReq === normalizedActual;
+
+        if (isDirectMatch || isHipMatch || isLiqMatch || isPrendMatch) {
+          evaluations.push({
+            code: "guaranteeType",
+            name: "Requisito de Garantía Real",
+            status: "PASSED",
+            requiredValue: guarType,
+            actualValue: actualType,
+            reason: `El cliente cuenta con garantía compatible '${actualType}' para el requisito '${guarType}'.`,
+          });
+        } else {
+          evaluations.push({
+            code: "guaranteeType",
+            name: "Requisito de Garantía Real",
+            status: "FAILED",
+            requiredValue: guarType,
+            actualValue: actualType,
+            reason: `El tipo de garantía registrado ('${actualType}') no cumple con la garantía específica exigida por la oferta ('${guarType}').`,
+          });
+        }
+      }
     }
   }
 
@@ -356,7 +415,7 @@ export function evaluateOfferCompatibility(
   // =========================================================================
   const avalReq = cond.avalesType || "no_requerido";
   if (avalReq !== "no_requerido") {
-    const hasGuarantor = extractHasGuarantor(client);
+    const hasGuarantor = extractHasGuarantor(client, credit);
     if (hasGuarantor === null) {
       evaluations.push({
         code: "avalesType",
@@ -435,20 +494,101 @@ export function evaluateOfferCompatibility(
 }
 
 /**
+ * Determina si una oferta y su versión están publicadas, activas y vigentes.
+ * Filtra estrictamente:
+ * - Institución financiera debe estar activa (isActive === true)
+ * - Oferta comercial debe estar activa y no archivada
+ * - Versión debe ser estrictamente 'published' (excluye 'draft', 'superseded', 'archived')
+ * - Vigencia temporal: effectiveFrom <= now y (effectiveTo == null o effectiveTo > now)
+ */
+export function isVersionEligibleForMatching(
+  product: any,
+  version: any,
+  institution?: any
+): { eligible: boolean; reason?: string } {
+  if (institution && institution.isActive === false) {
+    return { eligible: false, reason: "Institución financiera inactiva" };
+  }
+
+  if (product) {
+    if (product.status === "archived") {
+      return { eligible: false, reason: "Oferta comercial archivada" };
+    }
+    if (product.isActive === false) {
+      return { eligible: false, reason: "Oferta comercial inactiva" };
+    }
+  }
+
+  if (!version) {
+    return { eligible: false, reason: "Versión no encontrada" };
+  }
+  if (version.status === "draft") {
+    return { eligible: false, reason: "Versión en borrador" };
+  }
+  if (version.status === "superseded") {
+    return { eligible: false, reason: "Versión superada por una versión posterior" };
+  }
+  if (version.status === "archived") {
+    return { eligible: false, reason: "Versión archivada" };
+  }
+  if (version.status !== "published" && version.status !== "active") {
+    return { eligible: false, reason: `Estado de versión no elegible (${version.status})` };
+  }
+
+  const now = new Date();
+  if (version.effectiveFrom) {
+    const fromDate = new Date(version.effectiveFrom);
+    if (!isNaN(fromDate.getTime()) && fromDate > now) {
+      return { eligible: false, reason: "Versión aún no vigente (fecha de vigencia futura)" };
+    }
+  }
+
+  if (version.effectiveTo) {
+    const toDate = new Date(version.effectiveTo);
+    if (!isNaN(toDate.getTime()) && toDate <= now) {
+      return { eligible: false, reason: "Versión expirada (vigencia concluida)" };
+    }
+  }
+
+  return { eligible: true };
+}
+
+/**
  * Evalúa una solicitud contra un catálogo de ofertas publicadas.
  * - Cero sesgo por comisiones o márgenes.
+ * - Filtra estrictamente versiones vigentes y publicadas.
  * - Clasifica en grupos objetivos por compatibilidad.
  */
 export function evaluateCatalogCompatibility(
   application: ApplicationInput,
-  offers: OfferVersionInput[]
+  offers: (OfferVersionInput & { institution?: any })[],
+  options?: { filterNonEligible?: boolean }
 ): {
   compatible: CompatibilityResult[];
   insufficientData: CompatibilityResult[];
   notCompatible: CompatibilityResult[];
   all: CompatibilityResult[];
+  excludedOffers: { offerId: string; reason: string }[];
 } {
-  const all = offers.map((offer) => evaluateOfferCompatibility(application, offer));
+  const shouldFilter = options?.filterNonEligible !== false;
+  const eligibleOffers: OfferVersionInput[] = [];
+  const excludedOffers: { offerId: string; reason: string }[] = [];
+
+  for (const offer of offers) {
+    if (shouldFilter) {
+      const eligibility = isVersionEligibleForMatching(offer.product, offer.version, offer.institution);
+      if (!eligibility.eligible) {
+        excludedOffers.push({
+          offerId: offer.product?.id || offer.version?.institutionProductId || "unknown",
+          reason: eligibility.reason || "No elegible",
+        });
+        continue;
+      }
+    }
+    eligibleOffers.push(offer);
+  }
+
+  const all = eligibleOffers.map((offer) => evaluateOfferCompatibility(application, offer));
 
   const compatible = all.filter((r) => r.status === "COMPATIBLE");
   const insufficientData = all.filter((r) => r.status === "INSUFFICIENT_DATA");
@@ -459,5 +599,6 @@ export function evaluateCatalogCompatibility(
     insufficientData,
     notCompatible,
     all,
+    excludedOffers,
   };
 }

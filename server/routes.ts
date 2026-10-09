@@ -76,6 +76,12 @@ import {
   validateOfferVersionParameters,
   validateMinimumPublishConditions 
 } from "./offerVersionService";
+import {
+  evaluateOfferCompatibility,
+  evaluateCatalogCompatibility,
+  isVersionEligibleForMatching,
+  type OfferVersionInput,
+} from "./matching/compatibilityEvaluator";
 
 
 import { z } from "zod";
@@ -4250,6 +4256,87 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Error fetching client credits:", error);
       res.status(500).json({ message: "Failed to fetch client credits" });
+    }
+  });
+
+  // =========================================================================
+  // Bloque Matching M2: Consulta Segura de Compatibilidad para Solicitudes
+  // - Conecta con expedientes reales respetando tenantId y permisos RBAC
+  // - Filtra estrictamente versiones publicadas y vigentes
+  // - Cero sesgo por comisiones/márgenes y sin decisiones automáticas
+  // =========================================================================
+  app.get('/api/credits/:id/matching', isAuthenticated, requireModuleAndAction('creditos', 'view'), async (req: any, res) => {
+    try {
+      const { id } = req.params;
+      const userId = req.user.claims.sub;
+      const user = await storage.getUser(userId);
+
+      // 1. Autorización multi-tenant y propiedad del expediente
+      const authResult = await authorizeCreditAccess(userId, user?.role || '', id, req.tenantContext);
+      if (!authResult.authorized) {
+        return res.status(authResult.reason === 'Credit not found' ? 404 : 403).json({ message: authResult.reason });
+      }
+
+      const credit = authResult.credit;
+
+      // 2. Obtener cliente asociado a la solicitud
+      const client = credit.clientId ? await storage.getClient(credit.clientId) : null;
+      if (!client) {
+        return res.status(404).json({ message: "Expediente del cliente no encontrado para la solicitud" });
+      }
+
+      // 3. Obtener instituciones financieras activas
+      const institutions = await storage.getFinancialInstitutions();
+      const activeInstMap = new Map(institutions.filter(i => i.isActive).map(i => [i.id, i]));
+
+      // 4. Obtener productos comerciales y filtrar versiones publicadas vigentes
+      const products = await storage.getInstitutionProducts();
+      const offerVersionCandidates: (OfferVersionInput & { institution?: any })[] = [];
+
+      for (const prod of products) {
+        const instId = prod.institutionId || (prod as any).financialInstitutionId;
+        const institution = activeInstMap.get(instId);
+        if (!institution) continue;
+        if (prod.status === "archived" || prod.isActive === false) continue;
+
+        const versions = await storage.getInstitutionProductVersions(prod.id);
+        for (const ver of versions) {
+          const eligibility = isVersionEligibleForMatching(prod, ver, institution);
+          if (eligibility.eligible) {
+            offerVersionCandidates.push({
+              product: prod,
+              version: ver,
+              institution,
+            });
+          }
+        }
+      }
+
+      // 5. Evaluar compatibilidad de catálogo con el motor neutral M1/M2
+      const evaluation = evaluateCatalogCompatibility(
+        { credit, client },
+        offerVersionCandidates,
+        { filterNonEligible: true }
+      );
+
+      // 6. Retornar dictámenes explicables (sólo consulta, sin modificar solicitud)
+      res.json({
+        creditId: credit.id,
+        clientId: client.id,
+        summary: {
+          totalEvaluated: evaluation.all.length,
+          compatibleCount: evaluation.compatible.length,
+          insufficientDataCount: evaluation.insufficientData.length,
+          notCompatibleCount: evaluation.notCompatible.length,
+        },
+        compatible: evaluation.compatible,
+        insufficientData: evaluation.insufficientData,
+        notCompatible: evaluation.notCompatible,
+        excludedOffers: evaluation.excludedOffers || [],
+      });
+    } catch (error) {
+      console.error("Error evaluating credit matching compatibility:", error);
+      res.status(500).json({ message: "Failed to evaluate credit matching compatibility" });
     }
   });
 

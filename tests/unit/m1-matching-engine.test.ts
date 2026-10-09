@@ -75,8 +75,10 @@ describe("Matching M1 — Motor de Compatibilidad y Datos Reales", () => {
       expect(extractCompanyAgeMonths({ antiguedadAnios: "2.5" })).toBe(30);
       // Meses directos
       expect(extractCompanyAgeMonths({ companyAgeMonths: 18 })).toBe(18);
-      // Rango o texto
-      expect(extractCompanyAgeMonths({ businessAge: "mas_de_2_anios" })).toBe(24);
+      // Texto verificado vs aproximaciones/antigüedad laboral
+      expect(extractCompanyAgeMonths({ tiempoActividad: "2 años" })).toBe(24);
+      expect(extractCompanyAgeMonths({ businessAge: "mas_de_2_anios" })).toBeNull();
+      expect(extractCompanyAgeMonths({ antiguedadLaboral: "3 años" })).toBeNull();
       expect(extractCompanyAgeMonths({})).toBeNull();
     });
 

@@ -63,16 +63,16 @@ export const VERIFIED_FIELDS_AUDIT_MAP: Record<string, FieldDefinition> = {
     description: "Régimen fiscal del cliente: persona_moral, fisica_empresarial, fisica, sin_sat.",
   },
 
-  // 4. Antigüedad del negocio / actividad
+  // 4. Antigüedad del negocio / operación comercial
   companyAgeMonths: {
     variableCode: "companyAgeMonths",
-    name: "Antigüedad Comercial / Laboral",
+    name: "Antigüedad Comercial / Operación del Negocio",
     sourceTable: "clients",
-    sourceFields: ["yearsInBusiness", "tiempoActividad", "antiguedadLaboral", "antiguedadEmpleo"],
+    sourceFields: ["yearsInBusiness", "tiempoActividad"],
     dataType: "integer",
     unit: "meses",
-    applicableProfiles: ["persona_moral", "fisica_empresarial", "fisica", "sin_sat"],
-    description: "Tiempo comprobable de operaciones o empleo en meses.",
+    applicableProfiles: ["persona_moral", "fisica_empresarial", "sin_sat"],
+    description: "Tiempo comprobable de operaciones comerciales del negocio en meses. No mezclar con antigüedad laboral.",
   },
 
   // 5. Facturación / Ingresos mensuales promedio
@@ -220,7 +220,7 @@ export function extractCompanyAgeMonths(client: any, credit?: any): number | nul
   const c = client || {};
   const cr = credit || {};
 
-  // 1. Campo explícito en años (Persona Moral / PFA)
+  // 1. Campo explícito en años de la empresa (Persona Moral / PFA)
   const yearsVal = c.yearsInBusiness ?? cr.yearsInBusiness ?? c.antiguedadAnios ?? cr.antiguedadAnios;
   if (yearsVal !== undefined && yearsVal !== null && yearsVal !== "") {
     const years = typeof yearsVal === "number" ? yearsVal : parseFloat(String(yearsVal));
@@ -229,37 +229,55 @@ export function extractCompanyAgeMonths(client: any, credit?: any): number | nul
     }
   }
 
-  // 1.1 Campo explícito en meses
+  // 1.1 Campo explícito en meses de la empresa
   const monthsVal = c.companyAgeMonths ?? cr.companyAgeMonths ?? c.antiguedadMeses ?? cr.antiguedadMeses;
   if (monthsVal !== undefined && monthsVal !== null && monthsVal !== "") {
     const m = typeof monthsVal === "number" ? monthsVal : parseInt(String(monthsVal), 10);
     if (!isNaN(m) && m >= 0) return m;
   }
 
-  // 2. Campos de texto con número (tiempoActividad, antiguedadLaboral, antiguedadEmpleo, businessAge)
+  // 2. Campo específico de tiempo de actividad de la empresa (tiempoActividad)
+  const candidateTexts = [c.tiempoActividad, cr.tiempoActividad].filter(Boolean);
+  for (const text of candidateTexts) {
+    const s = String(text).trim().toLowerCase();
+    // No convertir aproximaciones ambiguas como "mas_de_2_anios" en meses exactos inventados
+    if (s.includes("mas_de") || s.includes("menos_de") || s.includes("aproximad")) {
+      continue;
+    }
+    // Formato exacto con meses: "18 meses", "24 mes"
+    if (s.includes("mes")) {
+      const match = s.match(/(\d+)\s*mes/);
+      if (match) return parseInt(match[1], 10);
+    }
+    // Formato exacto con años: "2 años", "3.5 años"
+    if (s.includes("año") || s.includes("anio")) {
+      const match = s.match(/(\d+(\.\d+)?)\s*(?:año|anio)/);
+      if (match) return Math.round(parseFloat(match[1]) * 12);
+    }
+    // Si solo hay un número entero explícito
+    const num = parseFloat(s.replace(/[^0-9.]/g, ""));
+    if (!isNaN(num) && num > 0) {
+      // Si el número es pequeño (<= 10), suele registrarse en años
+      return num <= 10 ? Math.round(num * 12) : Math.round(num);
+    }
+  }
+
+  // Regla M2: Nunca usar antiguedadLaboral ni antiguedadEmpleo para inventar antigüedad de negocio
+  return null;
+}
+
+export function extractEmploymentAgeMonths(client: any, credit?: any): number | null {
+  const c = client || {};
+  const cr = credit || {};
   const candidateTexts = [
-    c.tiempoActividad,
-    cr.tiempoActividad,
     c.antiguedadLaboral,
     cr.antiguedadLaboral,
     c.antiguedadEmpleo,
     cr.antiguedadEmpleo,
-    c.businessAge,
-    cr.businessAge,
   ].filter(Boolean);
 
   for (const text of candidateTexts) {
-    const s = String(text).toLowerCase();
-    if (s.includes("mas_de_2_anios") || s.includes("mas_de_2_años")) {
-      return 24;
-    }
-    if (s.includes("mas_de_1_anio") || s.includes("mas_de_1_año")) {
-      return 12;
-    }
-    if (s.includes("menos_de_1_anio") || s.includes("menos_de_1_año")) {
-      return 6;
-    }
-    // Ejemplo: "2 años", "3 años y 6 meses", "18 meses"
+    const s = String(text).trim().toLowerCase();
     if (s.includes("mes")) {
       const match = s.match(/(\d+)\s*mes/);
       if (match) return parseInt(match[1], 10);
@@ -268,10 +286,8 @@ export function extractCompanyAgeMonths(client: any, credit?: any): number | nul
       const match = s.match(/(\d+(\.\d+)?)\s*(?:año|anio)/);
       if (match) return Math.round(parseFloat(match[1]) * 12);
     }
-    // Si solo hay un número entero puro
     const num = parseFloat(s.replace(/[^0-9.]/g, ""));
     if (!isNaN(num) && num > 0) {
-      // Si el número es pequeño (<= 10), suele ser años
       return num <= 10 ? Math.round(num * 12) : Math.round(num);
     }
   }
