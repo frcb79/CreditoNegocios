@@ -21,6 +21,7 @@ import {
   FileText,
   BarChart3,
   Inbox,
+  ClipboardList,
   FileSpreadsheet,
   Users2,
   Settings,
@@ -56,6 +57,7 @@ const navigation: NavItemDef[] = [
   { name: 'Aprobaciones', href: '/solicitudes-pendientes', icon: Clock, platformAdminOnly: true, section: "supervision" },
   { name: 'Red de Brokers', href: '/red-brokers', icon: Network, adminOnly: true, section: "supervision" },
   { name: 'Solicitudes de Estado', href: '/admin/usuarios?tab=status-requests', icon: Inbox, superAdminOnly: true, section: "supervision" },
+  { name: 'Auditoría Administrativa', href: '/admin/auditoria', icon: ClipboardList, superAdminOnly: true, section: "supervision" },
   { name: 'Reportes', href: '/reportes', icon: BarChart3, adminOnly: true, section: "supervision" },
 ];
 
@@ -142,6 +144,7 @@ export default function Sidebar() {
     '/importacion-masiva': 'importacion',
     '/admin/usuarios': 'usuarios',
     '/admin/usuarios?tab=status-requests': 'usuarios',
+    '/admin/auditoria': 'usuarios',
     '/configuracion': 'configuracion',
   };
 
