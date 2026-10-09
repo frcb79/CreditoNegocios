@@ -61,10 +61,7 @@ export default function NewOfferModal({
   const [productType, setProductType] = useState<string>("credito_simple");
   const [templateId, setTemplateId] = useState<string>("");
   const [description, setDescription] = useState<string>("");
-  const [selectedProfiles, setSelectedProfiles] = useState<string[]>([
-    "persona_moral",
-    "fisica_empresarial",
-  ]);
+  const [selectedProfiles, setSelectedProfiles] = useState<string[]>([]);
 
   // Initial conditions - Inician vacíos para permitir datos pendientes sin precargas no confirmadas
   const [minAmount, setMinAmount] = useState<string>("");
@@ -100,11 +97,6 @@ export default function NewOfferModal({
     if (tmpl) {
       if (!name) setName(tmpl.name);
       if (tmpl.description && !description) setDescription(tmpl.description);
-      if (tmpl.targetProfiles && tmpl.targetProfiles.length > 0) {
-        setSelectedProfiles(tmpl.targetProfiles);
-      }
-      // Note: No se precargan montos, tasas ni plazos no confirmados;
-      // se preserva el estado en blanco para capturar o validar solo lo ingresado
     }
   };
 
@@ -157,6 +149,7 @@ export default function NewOfferModal({
     setName("");
     setDescription("");
     setTemplateId("");
+    setSelectedProfiles([]);
     setMinAmount("");
     setMaxAmount("");
     setMinRate("");
@@ -273,7 +266,7 @@ export default function NewOfferModal({
                 Nueva Oferta Comercial
               </span>
               <span className="text-xs text-amber-700 bg-amber-50 px-2 py-0.5 rounded-full border border-amber-200/80 font-medium">
-                Alta en Borrador (B1)
+                Borrador Inicial (v1)
               </span>
             </div>
             <DialogTitle className="text-lg sm:text-xl font-bold text-[#101F35] tracking-tight">
@@ -290,8 +283,8 @@ export default function NewOfferModal({
             <div className="p-3.5 bg-amber-50/60 border border-amber-200/70 rounded-xl flex items-start gap-2.5 text-xs text-amber-900">
               <AlertCircle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
               <div className="leading-relaxed">
-                <strong>Garantía de Seguridad (B1):</strong> Toda oferta nueva se crea obligatoriamente en estado{" "}
-                <span className="font-semibold text-amber-800 underline">Borrador (draft)</span> con versión inicial v1. No será visible para brokers ni elegible para solicitudes hasta su posterior publicación auditada (B2).
+                <strong>Protección de Catálogo:</strong> Toda oferta comercial se registra inicialmente en estado{" "}
+                <span className="font-semibold text-amber-800 underline">Borrador (v1)</span>. No será visible para brokers ni elegible para solicitudes hasta que sea revisada y publicada por Super Admin.
               </div>
             </div>
 
@@ -359,16 +352,16 @@ export default function NewOfferModal({
             {/* Optional Template */}
             <div className="space-y-1.5">
               <Label className="text-xs font-semibold text-slate-700 flex items-center justify-between">
-                <span>Vincular a Plantilla Base (Opcional)</span>
-                <span className="text-[11px] font-normal text-slate-400">Hereda configuración sugerida</span>
+                <span>Plantilla de Referencia (Opcional)</span>
+                <span className="text-[11px] font-normal text-slate-400">Copia valores sugeridos</span>
               </Label>
               <Select value={templateId} onValueChange={handleTemplateChange}>
                 <SelectTrigger className="h-9 text-xs border-slate-200 bg-white">
-                  <SelectValue placeholder="Sin plantilla / Configuración independiente" />
+                  <SelectValue placeholder="Sin plantilla de referencia" />
                 </SelectTrigger>
                 <SelectContent className="max-h-56">
                   <SelectItem value="none" className="text-xs">
-                    Sin plantilla (Independiente)
+                    Sin plantilla de referencia
                   </SelectItem>
                   {templates.map((tmpl) => (
                     <SelectItem key={tmpl.id} value={tmpl.id} className="text-xs">
@@ -397,7 +390,7 @@ export default function NewOfferModal({
             {/* Target Profiles */}
             <div className="space-y-2">
               <Label className="text-xs font-semibold text-slate-700">
-                Perfiles de Cliente Aceptados
+                Perfiles de Cliente Admitidos
               </Label>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 bg-slate-50/70 p-3 rounded-xl border border-slate-200/80">
                 {TARGET_PROFILES.map((profile) => (

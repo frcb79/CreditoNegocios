@@ -292,6 +292,11 @@ export interface IStorage {
     versionId: string,
     options?: { publishedBy?: string; changeReason?: string }
   ): Promise<InstitutionProductVersion>;
+  updateInstitutionProductDraftVersion(
+    productId: string,
+    versionId: string,
+    versionData: Partial<InsertInstitutionProductVersion>
+  ): Promise<InstitutionProductVersion>;
   deleteInstitutionProductVersion(id: string): Promise<boolean>;
 
   // Financial Institution Offers aliases (Retrocompatibilidad total con Bloque A1)
@@ -311,6 +316,11 @@ export interface IStorage {
   createOfferVersion(
     offerId: string,
     versionData: Partial<InsertFinancialInstitutionOfferVersion> & { changeReason?: string }
+  ): Promise<FinancialInstitutionOfferVersion>;
+  updateOfferDraftVersion(
+    offerId: string,
+    versionId: string,
+    versionData: Partial<InsertFinancialInstitutionOfferVersion>
   ): Promise<FinancialInstitutionOfferVersion>;
   publishOfferVersion(
     offerId: string,
@@ -3222,6 +3232,57 @@ export class MemStorage implements IStorage {
     return publishedVersion;
   }
 
+  async updateInstitutionProductDraftVersion(
+    productId: string,
+    versionId: string,
+    versionData: Partial<InsertInstitutionProductVersion>
+  ): Promise<InstitutionProductVersion> {
+    const version = this.institutionProductVersions.get(versionId);
+    if (!version || (version.institutionProductId !== productId && version.offerId !== productId)) {
+      throw new Error(`Versión ${versionId} no encontrada para la oferta ${productId}`);
+    }
+
+    if (version.status !== "draft") {
+      throw new Error(`No se puede modificar una versión con estado '${version.status}'. Solo las versiones en borrador pueden ser modificadas.`);
+    }
+
+    // Validar coherencia de parámetros capturados (si se capturaron)
+    const validation = validateOfferVersionParameters(versionData);
+    if (!validation.isValid) {
+      throw new Error(`Inconsistencia en los datos capturados: ${validation.errors.join("; ")}`);
+    }
+
+    const conditions = versionData.conditions !== undefined ? versionData.conditions : version.conditions;
+    const requirements = versionData.requirements !== undefined ? versionData.requirements : version.requirements;
+    const variablesConfig = versionData.variablesConfiguration !== undefined ? versionData.variablesConfiguration : version.variablesConfiguration;
+    const requiredDocuments = versionData.requiredDocuments !== undefined
+      ? (Array.isArray(versionData.requiredDocuments) ? versionData.requiredDocuments : [])
+      : version.requiredDocuments;
+
+    const versionHash = computeInstitutionProductVersionHash({
+      institutionProductId: productId,
+      versionNumber: version.versionNumber,
+      conditions,
+      requirements,
+      requiredDocuments,
+      variablesConfiguration: variablesConfig,
+    });
+
+    const updatedVersion: InstitutionProductVersion = {
+      ...version,
+      conditions,
+      requirements,
+      requiredDocuments,
+      variablesConfiguration: variablesConfig,
+      changeReason: versionData.changeReason !== undefined ? versionData.changeReason : version.changeReason,
+      versionHash,
+      updatedAt: new Date(),
+    };
+
+    this.institutionProductVersions.set(versionId, updatedVersion);
+    return updatedVersion;
+  }
+
   async deleteInstitutionProductVersion(id: string): Promise<boolean> {
     const version = this.institutionProductVersions.get(id);
     if (!version) return false;
@@ -3335,6 +3396,14 @@ export class MemStorage implements IStorage {
     versionData: Partial<InsertFinancialInstitutionOfferVersion> & { changeReason?: string }
   ): Promise<FinancialInstitutionOfferVersion> {
     return this.createInstitutionProductDraftVersion(offerId, versionData);
+  }
+
+  async updateOfferDraftVersion(
+    offerId: string,
+    versionId: string,
+    versionData: Partial<InsertFinancialInstitutionOfferVersion>
+  ): Promise<FinancialInstitutionOfferVersion> {
+    return this.updateInstitutionProductDraftVersion(offerId, versionId, versionData);
   }
 
   async publishOfferVersion(

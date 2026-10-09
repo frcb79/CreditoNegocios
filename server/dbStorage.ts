@@ -1245,6 +1245,69 @@ export class DbStorage implements IStorage {
     }
   }
 
+  async updateInstitutionProductDraftVersion(
+    productId: string,
+    versionId: string,
+    versionData: Partial<InsertInstitutionProductVersion>
+  ): Promise<InstitutionProductVersion> {
+    try {
+      return await db.transaction(async (tx) => {
+        const [version] = await tx.select().from(institutionProductVersions)
+          .where(and(
+            eq(institutionProductVersions.id, versionId),
+            eq(institutionProductVersions.institutionProductId, productId)
+          )).limit(1);
+
+        if (!version) {
+          throw new Error(`Versión ${versionId} no encontrada para la oferta ${productId}`);
+        }
+
+        if (version.status !== "draft") {
+          throw new Error(`No se puede modificar una versión con estado '${version.status}'. Solo las versiones en borrador pueden ser modificadas.`);
+        }
+
+        const validation = validateOfferVersionParameters(versionData);
+        if (!validation.isValid) {
+          throw new Error(`Inconsistencia en los datos capturados: ${validation.errors.join("; ")}`);
+        }
+
+        const conditions = versionData.conditions !== undefined ? versionData.conditions : version.conditions;
+        const requirements = versionData.requirements !== undefined ? versionData.requirements : version.requirements;
+        const variablesConfig = versionData.variablesConfiguration !== undefined ? versionData.variablesConfiguration : version.variablesConfiguration;
+        const requiredDocuments = versionData.requiredDocuments !== undefined
+          ? (Array.isArray(versionData.requiredDocuments) ? versionData.requiredDocuments : [])
+          : (version.requiredDocuments || []);
+
+        const versionHash = computeInstitutionProductVersionHash({
+          institutionProductId: productId,
+          versionNumber: version.versionNumber,
+          conditions,
+          requirements,
+          requiredDocuments,
+          variablesConfiguration: variablesConfig,
+        });
+
+        const [updatedVersion] = await tx.update(institutionProductVersions)
+          .set({
+            conditions,
+            requirements,
+            requiredDocuments,
+            variablesConfiguration: variablesConfig,
+            changeReason: versionData.changeReason !== undefined ? versionData.changeReason : version.changeReason,
+            versionHash,
+            updatedAt: new Date(),
+          })
+          .where(eq(institutionProductVersions.id, versionId))
+          .returning();
+
+        return { ...updatedVersion, offerId: productId };
+      });
+    } catch (error) {
+      console.error(`Error updating draft version ${versionId} for product ${productId} in DbStorage:`, error);
+      throw error;
+    }
+  }
+
   async deleteInstitutionProductVersion(id: string): Promise<boolean> {
     try {
       const [version] = await db.select().from(institutionProductVersions)
@@ -1371,6 +1434,14 @@ export class DbStorage implements IStorage {
     versionData: Partial<InsertFinancialInstitutionOfferVersion> & { changeReason?: string }
   ): Promise<FinancialInstitutionOfferVersion> {
     return this.createInstitutionProductDraftVersion(offerId, versionData);
+  }
+
+  async updateOfferDraftVersion(
+    offerId: string,
+    versionId: string,
+    versionData: Partial<InsertFinancialInstitutionOfferVersion>
+  ): Promise<FinancialInstitutionOfferVersion> {
+    return this.updateInstitutionProductDraftVersion(offerId, versionId, versionData);
   }
 
   async publishOfferVersion(

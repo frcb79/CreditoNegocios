@@ -18,6 +18,7 @@ import {
 } from "@shared/schema";
 import NewOfferModal from "./NewOfferModal";
 import OfferVersionsModal from "./OfferVersionsModal";
+import OfferDraftEditorModal from "./OfferDraftEditorModal";
 import {
   Search,
   Plus,
@@ -32,6 +33,7 @@ import {
   CheckCircle2,
   AlertCircle,
   FileText,
+  FileEdit,
   Percent,
   Calendar,
   ShieldCheck,
@@ -74,6 +76,7 @@ export default function AdminOffersList({
   const [selectedInstId, setSelectedInstId] = useState<string>(institutionId || "all");
   const [showNewModal, setShowNewModal] = useState(false);
   const [versionModalOffer, setVersionModalOffer] = useState<InstitutionProductWithTemplate | null>(null);
+  const [editingOffer, setEditingOffer] = useState<InstitutionProductWithTemplate | null>(null);
 
   // Fetch financial institutions for mapping names and filtering
   const { data: institutions = [] } = useQuery<FinancialInstitution[]>({
@@ -522,13 +525,26 @@ export default function AdminOffersList({
                     )}
                   </div>
 
-                  {/* Action buttons */}
-                  <div className="flex items-center gap-2 justify-end">
+                  {/* Action buttons (Mobile-responsive with flex-wrap) */}
+                  <div className="flex flex-wrap items-center gap-1.5 justify-end">
+                    {offer.status === "draft" && (
+                      <Button
+                        variant="default"
+                        size="sm"
+                        onClick={() => setEditingOffer(offer)}
+                        className="h-7 text-[11px] font-semibold bg-amber-600 hover:bg-amber-700 text-white gap-1 px-2.5 shadow-2xs"
+                        data-testid={`button-edit-draft-${offer.id}`}
+                      >
+                        <FileEdit className="w-3 h-3" />
+                        <span>Editar Borrador</span>
+                      </Button>
+                    )}
+
                     <Button
                       variant="outline"
                       size="sm"
                       onClick={() => setVersionModalOffer(offer)}
-                      className="h-7 text-[11px] font-medium border-slate-200 text-slate-700 hover:bg-slate-50 gap-1 px-2.5"
+                      className="h-7 text-[11px] font-medium border-slate-200 text-slate-700 hover:bg-slate-50 gap-1 px-2"
                       data-testid={`button-versions-${offer.id}`}
                     >
                       <GitBranch className="w-3 h-3 text-[#2463D6]" />
@@ -570,6 +586,17 @@ export default function AdminOffersList({
         financieraName={
           versionModalOffer
             ? institutionMap.get(versionModalOffer.institutionId) || institutionName
+            : institutionName
+        }
+      />
+
+      <OfferDraftEditorModal
+        isOpen={!!editingOffer}
+        onClose={() => setEditingOffer(null)}
+        offer={editingOffer}
+        financieraName={
+          editingOffer
+            ? institutionMap.get(editingOffer.institutionId) || institutionName
             : institutionName
         }
       />

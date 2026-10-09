@@ -71,7 +71,7 @@ import {
 } from "./commercialAuthorizationService";
 import { commercialOpportunityService } from "./commercialOpportunityService";
 import { commercialHelpService } from "./commercialHelpService";
-import { isOfferEligibleForRequests } from "./offerVersionService";
+import { isOfferEligibleForRequests, validateOfferVersionParameters } from "./offerVersionService";
 
 
 import { z } from "zod";
@@ -7082,6 +7082,138 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Error fetching institution product versions:", error);
       res.status(500).json({ message: "Failed to fetch institution product versions" });
+    }
+  });
+
+  // Obtener oferta y su versión en borrador editable (Solo Super Admin)
+  app.get('/api/institution-products/:id/draft', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub || req.user?.id;
+      const hasPermission = await requirePlatformRole(userId, ['super_admin']);
+      if (!hasPermission) {
+        return res.status(403).json({ message: "Access denied - Super Admin privileges required" });
+      }
+
+      const { id } = req.params;
+      const product = await storage.getInstitutionProduct(id);
+      if (!product) {
+        return res.status(404).json({ message: "Institution product not found" });
+      }
+
+      const versions = await storage.getInstitutionProductVersions(id);
+      const draftVersion = versions.find(v => v.status === "draft") || null;
+
+      res.json({
+        product,
+        draftVersion,
+      });
+    } catch (error) {
+      console.error("Error fetching draft version:", error);
+      res.status(500).json({ message: "Failed to fetch draft version" });
+    }
+  });
+
+  // Editar y guardar versión en borrador existente (Solo Super Admin - Arquitectura A1)
+  app.put('/api/institution-products/:id/draft', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub || req.user?.id;
+      const hasPermission = await requirePlatformRole(userId, ['super_admin']);
+      if (!hasPermission) {
+        return res.status(403).json({ message: "Access denied - Super Admin privileges required" });
+      }
+
+      const { id } = req.params;
+      const product = await storage.getInstitutionProduct(id);
+      if (!product) {
+        return res.status(404).json({ message: "Institution product not found" });
+      }
+
+      const versions = await storage.getInstitutionProductVersions(id);
+      const draftVersion = versions.find(v => v.status === "draft");
+      if (!draftVersion) {
+        return res.status(400).json({
+          message: "No se encontró una versión en borrador editable para esta oferta. Las versiones publicadas o históricas son inmutables.",
+        });
+      }
+
+      const {
+        name,
+        description,
+        productType,
+        targetProfiles,
+        conditions,
+        requirements,
+        requiredDocuments,
+        variablesConfiguration,
+        changeReason,
+      } = req.body;
+
+      // 1. Extraer condiciones comerciales para la versión y configuration del producto
+      const currentConditions = (draftVersion.conditions || {}) as Record<string, any>;
+      const mergedConditions: Record<string, any> = {
+        ...currentConditions,
+        ...(conditions || {}),
+      };
+
+      if (req.body.minAmount !== undefined) mergedConditions.minAmount = req.body.minAmount !== "" && req.body.minAmount !== null ? Number(req.body.minAmount) : undefined;
+      if (req.body.maxAmount !== undefined) mergedConditions.maxAmount = req.body.maxAmount !== "" && req.body.maxAmount !== null ? Number(req.body.maxAmount) : undefined;
+      if (req.body.minInterestRate !== undefined) mergedConditions.minInterestRate = req.body.minInterestRate !== "" && req.body.minInterestRate !== null ? Number(req.body.minInterestRate) : undefined;
+      if (req.body.maxInterestRate !== undefined) mergedConditions.maxInterestRate = req.body.maxInterestRate !== "" && req.body.maxInterestRate !== null ? Number(req.body.maxInterestRate) : undefined;
+      if (req.body.minTermMonths !== undefined) mergedConditions.minTermMonths = req.body.minTermMonths !== "" && req.body.minTermMonths !== null ? Number(req.body.minTermMonths) : undefined;
+      if (req.body.maxTermMonths !== undefined) mergedConditions.maxTermMonths = req.body.maxTermMonths !== "" && req.body.maxTermMonths !== null ? Number(req.body.maxTermMonths) : undefined;
+
+      Object.keys(mergedConditions).forEach(key => mergedConditions[key] === undefined && delete mergedConditions[key]);
+
+      // 2. Validar coherencia matemática de los datos capturados (permite incompletos)
+      const validation = validateOfferVersionParameters({ conditions: mergedConditions });
+      if (!validation.isValid) {
+        return res.status(400).json({
+          message: "Inconsistencia en los datos capturados",
+          errors: validation.errors,
+        });
+      }
+
+      // 3. Normalizar requisitos y documentos
+      const currentReqs = (draftVersion.requirements || {}) as Record<string, any>;
+      const mergedRequirements: Record<string, any> = {
+        ...currentReqs,
+        ...(requirements || {}),
+        targetProfiles: targetProfiles !== undefined ? targetProfiles : (currentReqs.targetProfiles || product.targetProfiles || []),
+      };
+
+      const docsList = requiredDocuments !== undefined
+        ? (Array.isArray(requiredDocuments) ? requiredDocuments : [])
+        : (draftVersion.requiredDocuments || []);
+
+      // 4. Actualizar versión en borrador mediante Storage (recalcula versionHash inmutable)
+      const updatedVersion = await storage.updateInstitutionProductDraftVersion(id, draftVersion.id, {
+        conditions: mergedConditions,
+        requirements: mergedRequirements,
+        requiredDocuments: docsList,
+        variablesConfiguration: variablesConfiguration !== undefined ? variablesConfiguration : draftVersion.variablesConfiguration,
+        changeReason: changeReason || "Edición de versión en borrador",
+      });
+
+      // 5. Sincronizar atributos descriptivos y configuración visual en el producto padre
+      const updatedProduct = await storage.updateInstitutionProduct(id, {
+        name: name !== undefined ? name : product.name,
+        customName: name !== undefined ? name : (product.customName || product.name),
+        description: description !== undefined ? description : product.description,
+        productType: productType !== undefined ? productType : product.productType,
+        targetProfiles: targetProfiles !== undefined ? targetProfiles : product.targetProfiles,
+        configuration: {
+          ...((product.configuration || {}) as Record<string, any>),
+          ...mergedConditions,
+        },
+      });
+
+      res.json({
+        product: updatedProduct,
+        version: updatedVersion,
+      });
+    } catch (error: any) {
+      console.error("Error updating draft version:", error);
+      res.status(400).json({ message: error.message || "Failed to update draft version" });
     }
   });
 
