@@ -258,3 +258,16 @@ Actualizar cada vez que se completa una feature.
 	- Suite integración PostgreSQL: configurada y validada en modo seguro, omite sin falsos positivos cuando `TEST_DATABASE_URL` no está definida (8 skipped).
 	- Compilación TypeScript (`npm run check`): **0 errores**.
 	- Empaquetado backend (`npm run build:server`): **0 errores** (`dist/index.js`, 939.1kb).
+
+## 2026-10-08 — Último Ajuste A1: Detención de Arranque en Server Index y Restauración de Marcador tras Rollback en Test 2g
+
+- **Rama:** `feat/institution-offers-versioning-a1`
+- **Requisito 1: Detención de Arranque en `server/index.ts`:**
+	- Si `runAutoMigration()` falla y arroja error crítico, el bloque `catch` en `server/index.ts` ejecuta `process.exit(1)`, deteniendo inmediatamente el arranque del proceso e impidiendo registrar rutas o iniciar el servidor HTTP en un estado de base de datos inválido.
+- **Requisito 2: Corrección de Expectativa en Test PostgreSQL 2g:**
+	- En `tests/integration/postgres-versioning-migration.test.ts`, se ajustó la aserción de `app_migrations` tras el `ROLLBACK`: dado que el `DELETE` se ejecutó dentro de la transacción abortada, `ROLLBACK` restaura la fila preexistente del marcador (devolviendo 1 fila), al tiempo que descarta el producto huérfano simulado (devolviendo 0 filas).
+- **Validación QA:**
+	- Suite unitaria: `35/35 tests passing`.
+	- Suite de integración: 8 omitidas en local sin `TEST_DATABASE_URL`.
+	- TypeScript (`npm run check`): 0 errores.
+	- Build server (`npm run build:server`): compilación exitosa (`dist/index.js`, 939.2kb).

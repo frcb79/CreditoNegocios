@@ -86,7 +86,8 @@ app.use((req, res, next) => {
   try {
     await runAutoMigration();
   } catch (migErr) {
-    console.error("⚠️ [Startup] Auto-migration error:", migErr);
+    console.error("❌ [Startup] Critical database auto-migration failure. Aborting startup:", migErr);
+    process.exit(1);
   }
 
   const server = await registerRoutes(app);

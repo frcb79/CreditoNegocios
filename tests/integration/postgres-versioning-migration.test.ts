@@ -343,16 +343,22 @@ describePg("Integración PostgreSQL Real: Validación Canónica A1 de Migración
       }
     });
 
-    it("2g. Fallo crítico de migración y rollback seguro: error en transacción ejecuta ROLLBACK antes de consultas posteriores", async () => {
+    it("2g. Fallo crítico de migración y rollback seguro: error en transacción ejecuta ROLLBACK y restaura el estado previo", async () => {
       const client = await pool.connect();
       try {
+        // Verificar que el marcador existía antes de BEGIN
+        const beforeCheck = await client.query(
+          "SELECT * FROM public.app_migrations WHERE id = '0005_legacy_institution_products_backfill_a1';"
+        );
+        expect(beforeCheck.rows.length).toBe(1);
+
         await client.query("BEGIN;");
-        // Quitar marcador de app_migrations para forzar reintento
+        // Quitar marcador de app_migrations dentro de la transacción para simular reintento
         await client.query(
           "DELETE FROM public.app_migrations WHERE id = '0005_legacy_institution_products_backfill_a1';"
         );
 
-        // Insertar un producto corrupto sin versión
+        // Insertar un producto corrupto sin versión dentro de la transacción
         const orphanId = "prod-pg-orphan-" + Date.now();
         await client.query(`
           INSERT INTO public.institution_products (
@@ -396,11 +402,18 @@ describePg("Integración PostgreSQL Real: Validación Canónica A1 de Migración
         // OBLIGATORIO: ROLLBACK inmediato tras error dentro de transacción antes de realizar consultas posteriores en la conexión
         await client.query("ROLLBACK;");
 
-        // Ahora que la transacción fue revertida, verificar limpiamente que app_migrations NO tiene el marcador
+        // Al ejecutar ROLLBACK, la transacción se revierte por completo:
+        // 1. El DELETE dentro de la transacción se revierte, restaurando el marcador previo existente antes de BEGIN
         const markerCheck = await client.query(
           "SELECT * FROM public.app_migrations WHERE id = '0005_legacy_institution_products_backfill_a1';"
         );
-        expect(markerCheck.rows.length).toBe(0);
+        expect(markerCheck.rows.length).toBe(1);
+
+        // 2. El producto huérfano insertado dentro de la transacción fue revertido y no existe
+        const orphanCheck = await client.query(
+          `SELECT * FROM public.institution_products WHERE id = '${orphanId}';`
+        );
+        expect(orphanCheck.rows.length).toBe(0);
       } finally {
         client.release();
       }
