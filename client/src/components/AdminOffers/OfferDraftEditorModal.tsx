@@ -139,11 +139,13 @@ export default function OfferDraftEditorModal({
   useEffect(() => {
     if (!offer) return;
 
-    setName(offer.name || offer.customName || "");
-    setDescription(offer.description || "");
-    setProductType(offer.productType || "credito_simple");
-
     const draft = draftData?.draftVersion;
+    const futureMeta = (draft?.variablesConfiguration as any)?.futureMetadata;
+
+    setName(futureMeta?.name || offer.name || offer.customName || "");
+    setDescription(futureMeta?.description !== undefined ? futureMeta.description : (offer.description || ""));
+    setProductType(futureMeta?.productType || offer.productType || "credito_simple");
+
     const cond = (draft?.conditions || offer.configuration || {}) as Record<string, any>;
     const req = (draft?.requirements || {}) as Record<string, any>;
 
@@ -406,8 +408,14 @@ export default function OfferDraftEditorModal({
       },
       requiredDocuments: selectedDocs,
       variablesConfiguration: {
+        ...((draftData?.draftVersion?.variablesConfiguration as any) || {}),
         garantias: guaranteeType,
         avales: avalesType,
+        futureMetadata: {
+          name: name.trim(),
+          description: description.trim(),
+          productType,
+        },
       },
       changeReason: changeReason.trim() || "Modificación de parámetros comerciales y comisiones en borrador",
     };
@@ -763,8 +771,13 @@ export default function OfferDraftEditorModal({
                   const pMb = masterCommissionRate.trim() !== "" ? parseFloat(masterCommissionRate) : null;
                   const pBrk = brokerCommissionRate.trim() !== "" ? parseFloat(brokerCommissionRate) : null;
 
-                  const marginDirect = (pFin !== null && pBrk !== null) ? Math.max(0, pFin - pBrk) : (pFin !== null && pBrk === null ? pFin : null);
-                  const marginMaster = (pFin !== null && pMb !== null) ? Math.max(0, pFin - pMb) : (pFin !== null && pMb === null ? pFin : null);
+                  // B3.1 & M1: Si falta la comisión de apertura de cualquier canal, su margen debe ser null (Pendiente)
+                  const marginDirect = (pFin !== null && pBrk !== null && !isNaN(pFin) && !isNaN(pBrk))
+                    ? Math.max(0, pFin - pBrk)
+                    : null;
+                  const marginMaster = (pFin !== null && pMb !== null && !isNaN(pFin) && !isNaN(pMb))
+                    ? Math.max(0, pFin - pMb)
+                    : null;
 
                   const hasMbError = pFin !== null && pMb !== null && pMb > pFin;
                   const hasBrkError = pFin !== null && pBrk !== null && pBrk > pFin;
@@ -825,8 +838,8 @@ export default function OfferDraftEditorModal({
                             </div>
                             <div className="p-2 bg-slate-50 rounded-lg border border-slate-200">
                               <span className="text-[10px] text-slate-500 block font-medium">Margen Plataforma</span>
-                              <span className="text-sm font-bold text-slate-900 mt-0.5 block">
-                                {marginDirect !== null ? `${marginDirect.toFixed(2)}%` : "—"}
+                              <span className={`text-sm font-bold mt-0.5 block ${marginDirect !== null ? 'text-slate-900' : 'text-amber-600 italic text-xs'}`}>
+                                {marginDirect !== null ? `${marginDirect.toFixed(2)}%` : "Pendiente"}
                               </span>
                             </div>
                           </div>
@@ -854,8 +867,8 @@ export default function OfferDraftEditorModal({
                             </div>
                             <div className="p-2 bg-slate-50 rounded-lg border border-slate-200">
                               <span className="text-[10px] text-slate-500 block font-medium">Margen Plataforma</span>
-                              <span className="text-sm font-bold text-slate-900 mt-0.5 block">
-                                {marginMaster !== null ? `${marginMaster.toFixed(2)}%` : "—"}
+                              <span className={`text-sm font-bold mt-0.5 block ${marginMaster !== null ? 'text-slate-900' : 'text-amber-600 italic text-xs'}`}>
+                                {marginMaster !== null ? `${marginMaster.toFixed(2)}%` : "Pendiente"}
                               </span>
                             </div>
                           </div>

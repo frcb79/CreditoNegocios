@@ -7388,7 +7388,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
         ? (Array.isArray(requiredDocuments) ? requiredDocuments : [])
         : (draftVersion.requiredDocuments || []);
 
-      // 4. Guardado ATÓMICO de versión borrador y producto padre (B3.1: Aislamiento total)
+      // Preservar metadatos descriptivos de futuras versiones (M1) en el registro de versión
+      const existingVars = ((draftVersion.variablesConfiguration || {}) as Record<string, any>);
+      const incomingVars = ((variablesConfiguration || {}) as Record<string, any>);
+      const mergedVariablesConfiguration = {
+        ...existingVars,
+        ...incomingVars,
+        futureMetadata: {
+          name: name !== undefined ? name : (incomingVars.futureMetadata?.name || existingVars.futureMetadata?.name || product.name),
+          customName: name !== undefined ? name : (incomingVars.futureMetadata?.customName || existingVars.futureMetadata?.customName || product.customName || product.name),
+          description: description !== undefined ? description : (incomingVars.futureMetadata?.description ?? existingVars.futureMetadata?.description ?? product.description),
+          productType: productType !== undefined ? productType : (incomingVars.futureMetadata?.productType || existingVars.futureMetadata?.productType || product.productType),
+        },
+      };
+
+      // 4. Guardado ATÓMICO de versión borrador y producto padre (B3.1 & M1: Aislamiento total)
       // Si la oferta ya está publicada (status === 'published'), la v1 vigente permanece intacta:
       // editar la futura v2 NO altera las condiciones, comisiones ni datos visibles de la v1 vigente.
       // Solo si el producto sigue en borrador inicial (status === 'draft'), se sincronizan metadatos de borrador.
@@ -7400,7 +7414,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           conditions: mergedConditions,
           requirements: mergedRequirements,
           requiredDocuments: docsList,
-          variablesConfiguration: variablesConfiguration !== undefined ? variablesConfiguration : draftVersion.variablesConfiguration,
+          variablesConfiguration: mergedVariablesConfiguration,
           changeReason: changeReason || "Edición de versión en borrador con comisiones individuales",
         },
         shouldSyncParentToDraft ? {
