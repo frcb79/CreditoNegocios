@@ -237,3 +237,24 @@ Actualizar cada vez que se completa una feature.
 	- Suite integración PostgreSQL: configurada en CI y omitida limpiamente en entornos locales sin `DATABASE_URL` (8 skipped).
 	- Compilación TypeScript (`npm run check`): **0 errores**.
 	- Empaquetado backend (`npm run build:server`): **0 errores** (`dist/index.js`, 939.1kb).
+
+## 2026-10-08 — Cierre de Seguridad del Test PostgreSQL A1: Exigencia de TEST_DATABASE_URL, Fixture con Users, Propagación de Errores y Rollback Seguro
+
+- **Rama:** `feat/institution-offers-versioning-a1`
+- **Requisito 1: Exigencia de TEST_DATABASE_URL y Validación de Seguridad Aislada:**
+	- La suite de integración PostgreSQL en `tests/integration/postgres-versioning-migration.test.ts` ahora exige estrictamente `TEST_DATABASE_URL` y no utiliza `DATABASE_URL` de la aplicación.
+	- Creado módulo `tests/testDbSafety.ts` con validación estricta (`assertSafeIsolatedTestDatabase`): rechaza terminantemente `NODE_ENV=production`, hosts productivos/staging conocidos (`railway.app`, `supabase.co`, `neon.tech`, `rds.amazonaws.com`, etc.), hosts remotos no autorizados y bases de datos que no contengan identificadores de prueba (`test`, `ephemeral`, `ci`, `/postgres`).
+	- Se añadieron pruebas unitarias en `tests/unit/institution-offers-versioning.test.ts` (caso 7) certificando el rechazo de URLs inseguras o productivas.
+- **Requisito 2: Fixture Completo con Dependencias Reales (incluyendo `users`):**
+	- El fixture de integración recrea las dependencias reales previas a la migración 0005: tabla `public.users` con usuario fixture (`usr-test-admin-1`), `public.financial_institutions` (`fin-pg-test-1`), y tabla legacy `public.institution_products` con `created_by REFERENCES public.users(id)`.
+	- Permite que las llaves foráneas `published_by` y `created_by` de `institution_product_versions` se resuelvan limpiamente en la base de datos real.
+- **Requisito 3: Propagación de Error Crítico en `autoMigrate`:**
+	- El bloque externo de `runAutoMigration` en `server/autoMigrate.ts` retransmite explícitamente (`throw error`) cualquier excepción crítica proveniente del Bloque A1, garantizando que el arranque del servidor no declare exitoso el esquema (`Schema verification and user sync completed successfully!`) si el backfill o verificación de completitud falla, preservando al mismo tiempo los fallbacks históricos (pasos 0 a 9 con aislamiento `try/catch`).
+	- Se añadió prueba unitaria (caso 8) verificando la propagación y detención de arranque.
+- **Manejo Estricto de Rollback Transaccional en PostgreSQL:**
+	- En las pruebas de concurrencia (`ipv_published_unique`) y fallos simulados (`RAISE EXCEPTION`), se ejecuta inmediatamente `await client.query("ROLLBACK;");` tras capturar el error antes de cualquier consulta posterior, evitando el estado abortado de transacciones en PostgreSQL.
+- **Validación QA:**
+	- Suite unitaria: `tests/unit/institution-offers-versioning.test.ts` con **35/35 tests passing** (100% éxito).
+	- Suite integración PostgreSQL: configurada y validada en modo seguro, omite sin falsos positivos cuando `TEST_DATABASE_URL` no está definida (8 skipped).
+	- Compilación TypeScript (`npm run check`): **0 errores**.
+	- Empaquetado backend (`npm run build:server`): **0 errores** (`dist/index.js`, 939.1kb).

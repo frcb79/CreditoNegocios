@@ -1,24 +1,30 @@
 import pg from "pg";
 import { computeInstitutionProductVersionHash } from "../../server/offerVersionService";
+import { assertSafeIsolatedTestDatabase } from "../testDbSafety";
 
 /**
  * Suite de Integración Real en PostgreSQL A1
- * Ejecutada en CI (GitHub Actions) con servicio PostgreSQL efímero real.
- * Si DATABASE_URL no está configurada (ej. entorno local sin PostgreSQL),
- * la suite reporta estado pendiente sin emitir falsos positivos.
+ * Requiere estrictamente TEST_DATABASE_URL apuntando a un PostgreSQL aislado de pruebas.
+ * NUNCA utiliza DATABASE_URL de la aplicación ni ejecuta operaciones destructivas fuera de pruebas aisladas.
  */
-const databaseUrl = process.env.DATABASE_URL || process.env.POSTGRES_URL;
-const describePg = databaseUrl ? describe : describe.skip;
+
+const testDatabaseUrl = process.env.TEST_DATABASE_URL;
+const isConfigured = Boolean(testDatabaseUrl);
+
+if (isConfigured) {
+  assertSafeIsolatedTestDatabase(testDatabaseUrl);
+}
+
+const describePg = isConfigured ? describe : describe.skip;
 
 describePg("Integración PostgreSQL Real: Validación Canónica A1 de Migración y Versionado", () => {
   let pool: pg.Pool;
 
   beforeAll(async () => {
     pool = new pg.Pool({
-      connectionString: databaseUrl,
+      connectionString: testDatabaseUrl,
       max: 5,
     });
-    // Test connectivity
     const client = await pool.connect();
     client.release();
   });
@@ -29,7 +35,8 @@ describePg("Integración PostgreSQL Real: Validación Canónica A1 de Migración
     }
   });
 
-  describe("1. Migración 0005 desde un esquema legacy preexistente", () => {
+  describe("1. Migración 0005 desde un esquema legacy preexistente con dependencias reales", () => {
+    const fixtureUserId = "usr-test-admin-1";
     const institutionId = "fin-pg-test-1";
     const activeLegacyProductId = "prod-pg-active-1";
     const inactiveLegacyProductId = "prod-pg-inactive-2";
@@ -40,14 +47,33 @@ describePg("Integración PostgreSQL Real: Validación Canónica A1 de Migración
         await client.query("BEGIN;");
         await client.query('CREATE EXTENSION IF NOT EXISTS "pgcrypto";');
 
-        // Eliminar tablas previas para simular exactamente el estado legacy pre-0005
+        // Limpieza de objetos de prueba previos en orden de llaves foráneas
         await client.query("DROP VIEW IF EXISTS public.financial_institution_offers CASCADE;");
         await client.query("DROP TABLE IF EXISTS public.institution_product_versions CASCADE;");
         await client.query("DROP TABLE IF EXISTS public.app_migrations CASCADE;");
         await client.query("DROP TABLE IF EXISTS public.institution_products CASCADE;");
         await client.query("DROP TABLE IF EXISTS public.financial_institutions CASCADE;");
+        await client.query("DROP TABLE IF EXISTS public.users CASCADE;");
 
-        // Crear tabla de instituciones
+        // Dependencia real 1: users (referenciado por published_by y created_by)
+        await client.query(`
+          CREATE TABLE public.users (
+            id VARCHAR PRIMARY KEY DEFAULT gen_random_uuid(),
+            email VARCHAR UNIQUE NOT NULL,
+            first_name VARCHAR,
+            last_name VARCHAR,
+            role VARCHAR DEFAULT 'super_admin',
+            created_at TIMESTAMP DEFAULT NOW()
+          );
+        `);
+
+        // Insertar usuario fixture para resolver foreign keys
+        await client.query(`
+          INSERT INTO public.users (id, email, first_name, last_name, role)
+          VALUES ('${fixtureUserId}', 'admin@creditonegocios-test.com', 'Admin', 'Fixture', 'super_admin');
+        `);
+
+        // Dependencia real 2: financial_institutions (referenciado por institution_id)
         await client.query(`
           CREATE TABLE public.financial_institutions (
             id VARCHAR PRIMARY KEY,
@@ -57,7 +83,7 @@ describePg("Integración PostgreSQL Real: Validación Canónica A1 de Migración
           );
         `);
 
-        // Crear tabla legacy de institution_products (SIN name, product_type, slug, description, status, current_version_number)
+        // Dependencia real 3: esquema legacy de institution_products (SIN name, product_type, slug, description, status, current_version_number)
         await client.query(`
           CREATE TABLE public.institution_products (
             id VARCHAR PRIMARY KEY,
@@ -68,7 +94,7 @@ describePg("Integración PostgreSQL Real: Validación Canónica A1 de Migración
             target_profiles TEXT[] DEFAULT ARRAY[]::TEXT[],
             active_variables JSONB DEFAULT '{}',
             is_active BOOLEAN DEFAULT TRUE,
-            created_by VARCHAR,
+            created_by VARCHAR REFERENCES public.users(id),
             created_at TIMESTAMP DEFAULT NOW(),
             updated_at TIMESTAMP DEFAULT NOW()
           );
@@ -83,7 +109,7 @@ describePg("Integración PostgreSQL Real: Validación Canónica A1 de Migración
         // Insertar producto legacy activo
         await client.query(`
           INSERT INTO public.institution_products (
-            id, institution_id, custom_name, configuration, target_profiles, active_variables, is_active
+            id, institution_id, custom_name, configuration, target_profiles, active_variables, is_active, created_by
           ) VALUES (
             '${activeLegacyProductId}',
             '${institutionId}',
@@ -91,14 +117,15 @@ describePg("Integración PostgreSQL Real: Validación Canónica A1 de Migración
             '{"minAmount": 100000, "maxAmount": 5000000, "interestRate": 16.5}'::jsonb,
             ARRAY['persona_moral', 'fisica_empresarial'],
             '{"plazoMax": 36}'::jsonb,
-            true
+            true,
+            '${fixtureUserId}'
           );
         `);
 
         // Insertar producto legacy inactivo
         await client.query(`
           INSERT INTO public.institution_products (
-            id, institution_id, custom_name, configuration, target_profiles, active_variables, is_active
+            id, institution_id, custom_name, configuration, target_profiles, active_variables, is_active, created_by
           ) VALUES (
             '${inactiveLegacyProductId}',
             '${institutionId}',
@@ -106,7 +133,8 @@ describePg("Integración PostgreSQL Real: Validación Canónica A1 de Migración
             '{"minAmount": 50000, "maxAmount": 1000000}'::jsonb,
             ARRAY['persona_moral'],
             '{}'::jsonb,
-            false
+            false,
+            '${fixtureUserId}'
           );
         `);
 
@@ -227,21 +255,20 @@ describePg("Integración PostgreSQL Real: Validación Canónica A1 de Migración
     });
 
     it("2d. Borradores nuevos: nunca se convierten en publicados durante reinicio o autoMigrate", async () => {
-      // Crear una nueva oferta en borrador
       const newDraftId = "prod-pg-new-draft-" + Date.now();
       await pool.query(`
         INSERT INTO public.institution_products (
-          id, institution_id, name, product_type, status, current_version_number, is_active
+          id, institution_id, name, product_type, status, current_version_number, is_active, created_by
         ) VALUES (
-          '${newDraftId}', '${institutionId}', 'Nueva Oferta en Borrador Real', 'credito_simple', 'draft', 1, true
+          '${newDraftId}', '${institutionId}', 'Nueva Oferta en Borrador Real', 'credito_simple', 'draft', 1, true, '${fixtureUserId}'
         );
       `);
 
       await pool.query(`
         INSERT INTO public.institution_product_versions (
-          id, institution_product_id, version_number, status, conditions
+          id, institution_product_id, version_number, status, conditions, created_by
         ) VALUES (
-          gen_random_uuid(), '${newDraftId}', 1, 'draft', '{"minAmount": 50000}'::jsonb
+          gen_random_uuid(), '${newDraftId}', 1, 'draft', '{"minAmount": 50000}'::jsonb, '${fixtureUserId}'
         );
       `);
 
@@ -283,21 +310,40 @@ describePg("Integración PostgreSQL Real: Validación Canónica A1 de Migración
       expect(countsAfter.rows[0].c).toBe(countsBefore.rows[0].c);
     });
 
-    it("2f. Publicación concurrente: el índice parcial único ipv_published_unique rechaza colisiones", async () => {
-      // Intentar insertar una segunda versión 'published' para el mismo producto activo debe fallar con código 23505
-      await expect(
-        pool.query(`
-          INSERT INTO public.institution_product_versions (
-            id, institution_product_id, version_number, status
-          ) VALUES (
-            gen_random_uuid(), '${activeLegacyProductId}', 2, 'published'
-          );
-        `)
-      ).rejects.toThrow(/ipv_published_unique/);
+    it("2f. Publicación concurrente y rollback seguro: el índice parcial único ipv_published_unique rechaza colisiones y ejecuta ROLLBACK antes de otras consultas", async () => {
+      const client = await pool.connect();
+      try {
+        await client.query("BEGIN;");
+        let collisionError: any = null;
+        try {
+          await client.query(`
+            INSERT INTO public.institution_product_versions (
+              id, institution_product_id, version_number, status, created_by
+            ) VALUES (
+              gen_random_uuid(), '${activeLegacyProductId}', 2, 'published', '${fixtureUserId}'
+            );
+          `);
+        } catch (err) {
+          collisionError = err;
+        }
+
+        expect(collisionError).toBeDefined();
+        expect(collisionError.message).toMatch(/ipv_published_unique/);
+
+        // OBLIGATORIO: ROLLBACK inmediato tras error dentro de transacción antes de realizar consultas posteriores en la conexión
+        await client.query("ROLLBACK;");
+
+        // Comprobar limpiamente en la conexión tras el ROLLBACK que sigue existiendo únicamente 1 versión publicada
+        const checkCount = await client.query(
+          `SELECT COUNT(*) AS c FROM public.institution_product_versions WHERE institution_product_id = '${activeLegacyProductId}' AND status = 'published';`
+        );
+        expect(Number(checkCount.rows[0].c)).toBe(1);
+      } finally {
+        client.release();
+      }
     });
 
-    it("2g. Fallo crítico de migración: impide declarar el esquema listo y no registra app_migrations", async () => {
-      // Simular un producto huérfano sin versión borrando su versión pero dejando app_migrations pendiente
+    it("2g. Fallo crítico de migración y rollback seguro: error en transacción ejecuta ROLLBACK antes de consultas posteriores", async () => {
       const client = await pool.connect();
       try {
         await client.query("BEGIN;");
@@ -306,18 +352,17 @@ describePg("Integración PostgreSQL Real: Validación Canónica A1 de Migración
           "DELETE FROM public.app_migrations WHERE id = '0005_legacy_institution_products_backfill_a1';"
         );
 
-        // Insertar un producto corrupto que simula fallo
+        // Insertar un producto corrupto sin versión
         const orphanId = "prod-pg-orphan-" + Date.now();
         await client.query(`
           INSERT INTO public.institution_products (
-            id, institution_id, custom_name, is_active
+            id, institution_id, custom_name, is_active, created_by
           ) VALUES (
-            '${orphanId}', '${institutionId}', 'Producto Huérfano Test', true
+            '${orphanId}', '${institutionId}', 'Producto Huérfano Test', true, '${fixtureUserId}'
           );
         `);
 
-        // Simular ejecución manual donde la inserción de versiones se bloquee o falle
-        // El bloque DO $$ verifica unversioned_count > 0 y lanza RAISE EXCEPTION
+        // Simular bloque que verifica integridad
         const checkUnversionedSql = `
           DO $$
           DECLARE
@@ -338,15 +383,24 @@ describePg("Integración PostgreSQL Real: Validación Canónica A1 de Migración
           END $$;
         `;
 
-        await expect(client.query(checkUnversionedSql)).rejects.toThrow(/Backfill legacy incompleto/);
+        let migrationError: any = null;
+        try {
+          await client.query(checkUnversionedSql);
+        } catch (err) {
+          migrationError = err;
+        }
 
-        // Verificar que app_migrations NO tiene el marcador
+        expect(migrationError).toBeDefined();
+        expect(migrationError.message).toMatch(/Backfill legacy incompleto/);
+
+        // OBLIGATORIO: ROLLBACK inmediato tras error dentro de transacción antes de realizar consultas posteriores en la conexión
+        await client.query("ROLLBACK;");
+
+        // Ahora que la transacción fue revertida, verificar limpiamente que app_migrations NO tiene el marcador
         const markerCheck = await client.query(
           "SELECT * FROM public.app_migrations WHERE id = '0005_legacy_institution_products_backfill_a1';"
         );
         expect(markerCheck.rows.length).toBe(0);
-
-        await client.query("ROLLBACK;");
       } finally {
         client.release();
       }

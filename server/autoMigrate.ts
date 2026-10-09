@@ -937,6 +937,7 @@ export async function runAutoMigration(): Promise<void> {
     console.log("✨ [AutoMigrate] Schema verification and user sync completed successfully!");
   } catch (error) {
     console.error("❌ [AutoMigrate] General schema verification error:", error);
+    throw error;
   } finally {
     if (client) {
       client.release();

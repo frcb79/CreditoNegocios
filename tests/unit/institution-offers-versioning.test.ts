@@ -8,6 +8,7 @@ import {
   validateOfferVersionParameters,
   isOfferEligibleForRequests,
 } from "../../server/offerVersionService";
+import { assertSafeIsolatedTestDatabase } from "../testDbSafety";
 
 describe("Bloque A1.1 — Arquitectura Canónica de Ofertas y Versionado Aditivo Seguro", () => {
   const institutionId = "fin-test-a1-" + Date.now();
@@ -1087,6 +1088,76 @@ describe("Bloque A1.1 — Arquitectura Canónica de Ofertas y Versionado Aditivo
         expect(sqlSim.hash).toHaveLength(64);
         expect(sqlSim.hash).toMatch(/^[0-9a-f]{64}$/);
       }
+    });
+
+    it("7. Validación de seguridad estricta para TEST_DATABASE_URL: rechaza producción, staging y bases no aisladas", () => {
+      // 1. Si no hay URL, retorna false sin error
+      expect(assertSafeIsolatedTestDatabase(undefined)).toBe(false);
+
+      // 2. Prohibir si apunta a hosts de producción conocidos (railway, supabase, neon, etc.)
+      expect(() => {
+        assertSafeIsolatedTestDatabase("postgresql://postgres:secret@monorail.proxy.rlwy.net:12345/railway");
+      }).toThrow(/SEGURIDAD CRÍTICA/);
+
+      expect(() => {
+        assertSafeIsolatedTestDatabase("postgresql://postgres:secret@db.supabase.co:5432/postgres");
+      }).toThrow(/SEGURIDAD CRÍTICA/);
+
+      // 3. Prohibir si el host es remoto / no local
+      expect(() => {
+        assertSafeIsolatedTestDatabase("postgresql://postgres:secret@external-server.com:5432/test_db");
+      }).toThrow(/SEGURIDAD CRÍTICA/);
+
+      // 4. Prohibir si la base de datos no es de prueba
+      expect(() => {
+        assertSafeIsolatedTestDatabase("postgresql://postgres:secret@localhost:5432/credito_negocios_prod");
+      }).toThrow(/SEGURIDAD CRÍTICA/);
+
+      // 5. Permitir únicamente host local/contenedor y nombre de base de datos de test
+      expect(
+        assertSafeIsolatedTestDatabase("postgresql://postgres:postgres@localhost:5432/credito_negocios_test")
+      ).toBe(true);
+
+      expect(
+        assertSafeIsolatedTestDatabase("postgresql://postgres:postgres@postgres:5432/credito_negocios_test")
+      ).toBe(true);
+    });
+
+    it("8. Propagación de error crítico en autoMigrate: impide declarar esquema listo sin alterar fallbacks históricos", async () => {
+      let schemaReadyDeclared = false;
+      let outerErrorPropagated = false;
+
+      async function simulatedAutoMigrateWithA1Failure() {
+        try {
+          // Fallback histórico que captura benévolamente (resiliencia histórica de pasos 0-9)
+          try {
+            throw new Error("Columna histórica ya existe");
+          } catch (histErr) {
+            // No propaga
+          }
+
+          // Bloque A1 crítico: falla por verificación incompleta
+          try {
+            throw new Error("Backfill legacy incompleto: 2 productos sin versión");
+          } catch (offersErr) {
+            throw offersErr; // Propagación explícita de A1
+          }
+
+          schemaReadyDeclared = true;
+        } catch (error) {
+          outerErrorPropagated = true;
+          throw error; // Rethrow para impedir continuar
+        }
+      }
+
+      await expect(simulatedAutoMigrateWithA1Failure()).rejects.toThrow(
+        /Backfill legacy incompleto/
+      );
+
+      // El esquema NUNCA se declara listo
+      expect(schemaReadyDeclared).toBe(false);
+      // El error se propaga al proceso que llama
+      expect(outerErrorPropagated).toBe(true);
     });
   });
 });

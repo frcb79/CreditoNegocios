@@ -129,9 +129,21 @@ Formato: Fecha / Decision / Opciones evaluadas / Decision final / Por que
 	- Cumple la directriz estricta de no tocar Producción ni Staging mientras se valida la compatibilidad real del motor PostgreSQL.
 	- Elimina cualquier divergencia de hashing entre capas (SQL vs backend), asegurando que el libro inmutable de auditoría sea consistente en todas las plataformas.
 
+### 2026-10-08 / Cierre de Seguridad de Integración PostgreSQL A1: Exigencia de TEST_DATABASE_URL y Rollback Seguro
+- Opciones evaluadas:
+	- Opcion A: Permitir que los tests de integración lean `DATABASE_URL` general; asumir dependencias mínimas en el fixture sin `users`; y dejar que errores de `autoMigrate` se capturen silenciosamente sin propagar al inicio del servidor.
+	- Opcion B: Exigir estrictamente `TEST_DATABASE_URL` con validación de seguridad aislada (`assertSafeIsolatedTestDatabase`) prohibiendo terminantemente conexiones a bases productivas o staging; completar el fixture con `users` (`published_by`, `created_by`); ejecutar `ROLLBACK` obligatorio tras cualquier error dentro de una transacción; y propagar excepciones críticas de A1 en `runAutoMigration` para detener el arranque e impedir declarar el esquema listo, preservando los fallbacks históricos independientes.
+- Decision final: Opcion B.
+- Por que:
+	- Elimina el riesgo catastrófico de ejecutar sentencias `DROP` accidentales sobre bases de datos de aplicación o staging.
+	- Asegura que el motor PostgreSQL real ejecute la migración 0005 sin fallos de llave foránea inexistente.
+	- Garantiza que las conexiones de PostgreSQL no queden en estado de transacción abortada tras errores de prueba.
+	- Impide arrancar el backend en un estado inconsistente de esquema si falla la migración canónica A1.
+
 ## DECISIONES CAMBIADAS
 - 2026-10-08: Se reemplaza la coexistencia de dos catálogos (`financial_institution_offers` y `institution_products`) por la unificación en `institution_products` como catálogo canónico, manteniendo aliases y vistas retrocompatibles para evitar romper integraciones.
 - 2026-10-08: Se reemplaza la eliminación física con desvinculación de créditos en `deleteFinancialInstitution` por desactivación lógica preservadora de historial (`isActive: false` y ofertas archivadas) cuando existen créditos, solicitudes o versiones publicadas asociadas.
 - 2026-10-08: Se descarta la asignación indiscriminada de productos preexistentes a `draft`; se migran como `published` con versión inicial v1 publicada para garantizar continuidad comercial inmediata.
 - 2026-10-08: Se descarta permitir el parámetro `status` en la creación de ofertas; el servidor fuerza estrictamente `status: 'draft'`.
 - 2026-10-08: Se corrige el orden DDL de PostgreSQL: primero se agregan las columnas sin valor por defecto para posibilitar el backfill de filas preexistentes (`status IS NULL`), y el default se establece únicamente al finalizar el proceso.
+- 2026-10-08: Se prohíbe el uso de `DATABASE_URL` en tests de integración destructivos; se exige `TEST_DATABASE_URL` con validación de aislamiento estricta.
