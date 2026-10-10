@@ -41,6 +41,7 @@ import {
 } from "lucide-react";
 import FinalProposalModal from "@/components/Modals/FinalProposalModal";
 import MatchingComparisonTable from "@/components/MatchingAnalysis/MatchingComparisonTable";
+import CreditMatchingSection from "./CreditMatchingSection";
 import { submissionStatusConfig, creditStatusConfig, targetStatusConfig, getSubmissionStatusSummary, getStatusLabel } from "@/lib/statusConfig";
 import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
@@ -1026,6 +1027,12 @@ export default function CreditList() {
                 </CardContent>
               </Card>
 
+              {/* Sección de Compatibilidad y Resultados de Matching M3 */}
+              <CreditMatchingSection
+                creditId={selectedSubmission.id}
+                clientName={getClientName(selectedClient.id)}
+              />
+
               {/* Winning / Dispersed Offers Breakdown */}
               {(() => {
                 const currentTargets = submissionTargets || selectedSubmission.targets || [];
@@ -1482,6 +1489,12 @@ export default function CreditList() {
                   </div>
                 </CardContent>
               </Card>
+
+              {/* Sección de Compatibilidad y Resultados de Matching M3 */}
+              <CreditMatchingSection
+                creditId={selectedCreditItem.id}
+                clientName={getClientName(selectedCreditItem.clientId)}
+              />
             </div>
           ) : (
             <div className="space-y-4">

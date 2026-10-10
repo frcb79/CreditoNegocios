@@ -607,7 +607,22 @@ async function authorizeClientAccess(
 
 // Helper to check if user can access a credit
 async function authorizeCreditAccess(userId: string, userRole: string, creditId: string, tenantContext?: any): Promise<{ authorized: boolean; credit?: any; reason?: string }> {
-  const credit = await storage.getCredit(creditId);
+  let credit = await storage.getCredit(creditId);
+  if (!credit) {
+    const sub = await storage.getCreditSubmissionRequest(creditId);
+    if (sub) {
+      credit = {
+        id: sub.id,
+        clientId: sub.clientId,
+        amount: sub.requestedAmount,
+        requestedAmount: sub.requestedAmount,
+        term: (sub as any).term || (sub as any).plazoDeseado,
+        brokerId: sub.brokerId,
+        tenantId: sub.tenantId,
+        status: sub.status,
+      } as any;
+    }
+  }
   if (!credit) {
     return { authorized: false, reason: 'Credit not found' };
   }
@@ -4265,7 +4280,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // - Filtra estrictamente versiones publicadas y vigentes
   // - Cero sesgo por comisiones/márgenes y sin decisiones automáticas
   // =========================================================================
-  app.get('/api/credits/:id/matching', isAuthenticated, requireModuleAndAction('creditos', 'view'), async (req: any, res) => {
+  app.get(['/api/credits/:id/matching', '/api/credit-submissions/:id/matching'], isAuthenticated, requireModuleAndAction('creditos', 'view'), async (req: any, res) => {
     try {
       const { id } = req.params;
       const userId = req.user.claims.sub;
@@ -4319,7 +4334,45 @@ export async function registerRoutes(app: Express): Promise<Server> {
         { filterNonEligible: true }
       );
 
-      // 6. Retornar dictámenes explicables (sólo consulta, sin modificar solicitud)
+      // 6. Sanitizar resultados: blindar visibilidad comercial (cero exposición de comisiones o márgenes internos)
+      const sanitizeResult = (r: any) => ({
+        offerId: r.offerId,
+        offerName: r.offerName,
+        institutionId: r.institutionId,
+        institutionName: r.institutionName,
+        versionNumber: r.versionNumber,
+        status: r.status,
+        criteria: {
+          matched: (r.criteria?.matched || []).map((c: any) => ({
+            code: c.code,
+            name: c.name,
+            status: c.status,
+            requiredValue: c.requiredValue,
+            actualValue: c.actualValue,
+            reason: c.reason,
+          })),
+          failed: (r.criteria?.failed || []).map((c: any) => ({
+            code: c.code,
+            name: c.name,
+            status: c.status,
+            requiredValue: c.requiredValue,
+            actualValue: c.actualValue,
+            reason: c.reason,
+          })),
+          missing: (r.criteria?.missing || []).map((c: any) => ({
+            code: c.code,
+            name: c.name,
+            status: c.status,
+            requiredValue: c.requiredValue,
+            actualValue: c.actualValue,
+            reason: c.reason,
+          })),
+        },
+        reasons: r.reasons,
+        summary: r.summary,
+      });
+
+      // 7. Retornar dictámenes explicables (sólo consulta, sin modificar solicitud ni automatizar decisiones)
       res.json({
         creditId: credit.id,
         clientId: client.id,
@@ -4329,9 +4382,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
           insufficientDataCount: evaluation.insufficientData.length,
           notCompatibleCount: evaluation.notCompatible.length,
         },
-        compatible: evaluation.compatible,
-        insufficientData: evaluation.insufficientData,
-        notCompatible: evaluation.notCompatible,
+        compatible: evaluation.compatible.map(sanitizeResult),
+        insufficientData: evaluation.insufficientData.map(sanitizeResult),
+        notCompatible: evaluation.notCompatible.map(sanitizeResult),
         excludedOffers: evaluation.excludedOffers || [],
       });
     } catch (error) {

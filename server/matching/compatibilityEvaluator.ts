@@ -38,6 +38,7 @@ export interface CompatibilityResult {
   offerId: string;
   offerName: string;
   institutionId: string;
+  institutionName?: string;
   versionNumber: number;
   status: CompatibilityStatus;
   criteria: {
@@ -60,6 +61,115 @@ export interface OfferVersionInput {
 }
 
 /**
+ * Mapeo de alias para verificación de origen entre códigos de criterio,
+ * condiciones de oferta y nombres de campos en la solicitud/expediente.
+ */
+export const CRITERION_FIELD_ALIASES: Record<string, string[]> = {
+  targetProfiles: ["targetProfiles", "clientProfileType", "type", "profile", "perfil", "targetProfile"],
+  creditAmount: ["creditAmount", "amount", "monto", "minAmount", "maxAmount", "requestedAmount"],
+  creditTerm: ["creditTerm", "term", "plazo", "minTermMonths", "maxTermMonths", "requestedTerm"],
+  companyAge: ["companyAge", "companyAgeMonths", "minCompanyAgeMonths", "yearsInBusiness", "antiguedad", "tiempoActividad", "antiguedadAnios"],
+  monthlyRevenue: ["monthlyRevenue", "minMonthlyRevenue", "ingresoMensualPromedio", "revenue", "facturacion", "ingresoMensual"],
+  bureauRequirement: ["bureauRequirement", "bureauStatus", "atrasosDeudas", "buro", "buroEmpresa", "buroPersonaFisica"],
+  guaranteeType: ["guaranteeType", "hasGuarantee", "garantia", "garantias", "guarantee", "guarantees", "garantiaDetalles"],
+  avalesType: ["avalesType", "hasGuarantor", "aval", "avalObligadoSolidario", "guarantor", "guarantors", "obligadoSolidario"],
+};
+
+/**
+ * Comprueba si un criterio y sus datos fuente tienen origen verificado.
+ * Principio M3: Ningún criterio cuyo origen no esté verificado debe provocar un rechazo definitivo.
+ */
+export function isCriterionOriginVerified(
+  criterionCode: string,
+  offerInput: OfferVersionInput,
+  application: ApplicationInput
+): boolean {
+  const { product, version } = offerInput;
+  const { credit, client } = application;
+
+  const cond = (version?.conditions || product?.configuration || {}) as Record<string, any>;
+  const req = (version?.requirements || {}) as Record<string, any>;
+  const eligibilityEval = (
+    version?.eligibilityEvaluation ||
+    cond.eligibilityEvaluation ||
+    (product as any)?.configuration?.eligibilityEvaluation
+  ) as Record<string, any> | undefined;
+
+  // 1. Verificación a nivel oferta / versión global
+  if (version?.originVerified === false || cond?.originVerified === false || (product as any)?.originVerified === false) {
+    return false;
+  }
+  if (eligibilityEval) {
+    if (
+      eligibilityEval.verified === false ||
+      eligibilityEval.originFieldsChecked === false ||
+      eligibilityEval.originVerified === false ||
+      eligibilityEval.status === "pending_verification"
+    ) {
+      return false;
+    }
+  }
+
+  const aliases = CRITERION_FIELD_ALIASES[criterionCode] || [criterionCode];
+
+  // 2. Verificación específica del criterio en la oferta
+  const unverifiedInOffer: string[] = [
+    ...(Array.isArray(version?.unverifiedCriteria) ? version.unverifiedCriteria : []),
+    ...(Array.isArray(cond?.unverifiedCriteria) ? cond.unverifiedCriteria : []),
+    ...(Array.isArray(req?.unverifiedCriteria) ? req.unverifiedCriteria : []),
+    ...(Array.isArray(eligibilityEval?.unverifiedCriteria) ? eligibilityEval.unverifiedCriteria : []),
+    ...(Array.isArray(version?.unverifiedFields) ? version.unverifiedFields : []),
+    ...(Array.isArray(cond?.unverifiedFields) ? cond.unverifiedFields : []),
+  ];
+
+  if (aliases.some((alias) => unverifiedInOffer.includes(alias))) {
+    return false;
+  }
+
+  for (const alias of aliases) {
+    if (cond[alias]?.originVerified === false || cond[alias]?.verified === false) {
+      return false;
+    }
+    if (cond[`${alias}Verified`] === false || cond[`${alias}OriginVerified`] === false) {
+      return false;
+    }
+    if (version?.criteriaVerification?.[alias]?.verified === false) {
+      return false;
+    }
+  }
+
+  // 3. Verificación en el expediente / solicitud
+  if (client?.originVerified === false || credit?.originVerified === false) {
+    return false;
+  }
+
+  const unverifiedInApp: string[] = [
+    ...(Array.isArray(client?.unverifiedFields) ? client.unverifiedFields : []),
+    ...(Array.isArray(client?.unverifiedCriteria) ? client.unverifiedCriteria : []),
+    ...(Array.isArray(credit?.unverifiedFields) ? credit.unverifiedFields : []),
+    ...(Array.isArray(credit?.unverifiedCriteria) ? credit.unverifiedCriteria : []),
+  ];
+
+  if (aliases.some((alias) => unverifiedInApp.includes(alias))) {
+    return false;
+  }
+
+  for (const alias of aliases) {
+    if (client?.[`${alias}Verified`] === false || credit?.[`${alias}Verified`] === false) {
+      return false;
+    }
+    if (client?.verificationStatus?.[alias] === "pending" || client?.verificationStatus?.[alias] === "unverified") {
+      return false;
+    }
+    if (credit?.verificationStatus?.[alias] === "pending" || credit?.verificationStatus?.[alias] === "unverified") {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+/**
  * Evalúa la compatibilidad entre una solicitud y la versión publicada de una oferta
  */
 export function evaluateOfferCompatibility(
@@ -72,6 +182,11 @@ export function evaluateOfferCompatibility(
   const offerId = product?.id || version?.institutionProductId || version?.offerId || "unknown";
   const offerName = product?.name || product?.customName || "Oferta Comercial";
   const institutionId = product?.institutionId || "unknown";
+  const institutionName =
+    (offerInput as any)?.institution?.name ||
+    (product as any)?.financialInstitutionName ||
+    (product as any)?.institutionName ||
+    "Institución Financiera";
   const versionNumber = version?.versionNumber || product?.currentVersionNumber || 1;
 
   const cond = (version?.conditions || product?.configuration || {}) as Record<string, any>;
@@ -447,11 +562,37 @@ export function evaluateOfferCompatibility(
   }
 
   // =========================================================================
-  // CLASIFICACIÓN FINAL DE COMPATIBILIDAD
+  // CLASIFICACIÓN FINAL DE COMPATIBILIDAD (CON BLINDAJE M3 DE NO-RECHAZO DEFINITIVO)
+  // Regla M3: Ningún criterio cuyo origen no esté verificado debe provocar un rechazo definitivo.
+  // Mantenerlo pendiente (MISSING_DATA) hasta comprobar su correspondencia con el expediente real.
   // =========================================================================
-  const matched = evaluations.filter((e) => e.status === "PASSED");
-  const failed = evaluations.filter((e) => e.status === "FAILED");
-  const missing = evaluations.filter((e) => e.status === "MISSING_DATA");
+  const finalEvaluations: CriterionEvaluation[] = evaluations.map((item) => {
+    if (item.code === "eligibilityVerification") {
+      return item;
+    }
+    const isVerified = isCriterionOriginVerified(item.code, offerInput, application);
+    if (!isVerified) {
+      if (item.status === "FAILED") {
+        return {
+          ...item,
+          status: "MISSING_DATA",
+          reason: `${item.reason} [Pendiente de verificación: el origen del criterio o dato no está verificado en el expediente real, por lo que no se aplica rechazo definitivo]`,
+        };
+      }
+      if (item.status === "PASSED") {
+        return {
+          ...item,
+          status: "MISSING_DATA",
+          reason: `${item.reason} [Pendiente de verificación: requiere confirmación documental en el expediente real antes de dictamen definitivo]`,
+        };
+      }
+    }
+    return item;
+  });
+
+  const matched = finalEvaluations.filter((e) => e.status === "PASSED");
+  const failed = finalEvaluations.filter((e) => e.status === "FAILED");
+  const missing = finalEvaluations.filter((e) => e.status === "MISSING_DATA");
 
   let status: CompatibilityStatus;
   let summary: string;
@@ -481,6 +622,7 @@ export function evaluateOfferCompatibility(
     offerId,
     offerName,
     institutionId,
+    institutionName,
     versionNumber,
     status,
     criteria: {
@@ -536,18 +678,49 @@ export function isVersionEligibleForMatching(
   }
 
   const now = new Date();
-  if (version.effectiveFrom) {
-    const fromDate = new Date(version.effectiveFrom);
-    if (!isNaN(fromDate.getTime()) && fromDate > now) {
-      return { eligible: false, reason: "Versión aún no vigente (fecha de vigencia futura)" };
+  let fromDate: Date | null = null;
+  let toDate: Date | null = null;
+
+  if (version.effectiveFrom !== undefined && version.effectiveFrom !== null) {
+    if (
+      typeof version.effectiveFrom === "boolean" ||
+      (typeof version.effectiveFrom !== "string" &&
+        typeof version.effectiveFrom !== "number" &&
+        !(version.effectiveFrom instanceof Date))
+    ) {
+      return { eligible: false, reason: "Fecha de inicio de vigencia inválida o tipo no admitido" };
+    }
+    fromDate = new Date(version.effectiveFrom);
+    if (isNaN(fromDate.getTime())) {
+      return { eligible: false, reason: "Fecha de inicio de vigencia inválida" };
     }
   }
 
-  if (version.effectiveTo) {
-    const toDate = new Date(version.effectiveTo);
-    if (!isNaN(toDate.getTime()) && toDate <= now) {
-      return { eligible: false, reason: "Versión expirada (vigencia concluida)" };
+  if (version.effectiveTo !== undefined && version.effectiveTo !== null) {
+    if (
+      typeof version.effectiveTo === "boolean" ||
+      (typeof version.effectiveTo !== "string" &&
+        typeof version.effectiveTo !== "number" &&
+        !(version.effectiveTo instanceof Date))
+    ) {
+      return { eligible: false, reason: "Fecha de fin de vigencia inválida o tipo no admitido" };
     }
+    toDate = new Date(version.effectiveTo);
+    if (isNaN(toDate.getTime())) {
+      return { eligible: false, reason: "Fecha de fin de vigencia inválida" };
+    }
+  }
+
+  if (fromDate && toDate && fromDate > toDate) {
+    return { eligible: false, reason: "Rango de vigencia inválido (fecha de inicio posterior a fin)" };
+  }
+
+  if (fromDate && fromDate > now) {
+    return { eligible: false, reason: "Versión aún no vigente (fecha de vigencia futura)" };
+  }
+
+  if (toDate && toDate <= now) {
+    return { eligible: false, reason: "Versión expirada (vigencia concluida)" };
   }
 
   return { eligible: true };
