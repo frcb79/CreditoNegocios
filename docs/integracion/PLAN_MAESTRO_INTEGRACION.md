@@ -342,13 +342,23 @@ Bitácora integral de actividad, importación masiva avanzada, analítica avanza
 
 **Límites de este cierre:** no se integraron aún Legal, Red ni los cambios P0 de comisiones; no hay QA conjunta con PostgreSQL real, ni Staging, ni merge a `main`, ni despliegue. No se debe presentar 1A.1 como plataforma lista para producción.
 
-### 1A.2A — Documentos legales públicos: autorizada, ejecución pendiente de reporte
+### 1A.2A — Documentos legales públicos: cerrada
 
 - **Checkpoint:** continuar exclusivamente en `integration/phase-1a1-base-segura` desde `f83e25d`, sin tocar el workspace B1 ni `main`.
 - **Alcance autorizado:** recuperar selectivamente de `integration/network-formalization` el catálogo legal ya aprobado, versiones y huellas SHA-256, lectura pública de **Términos y Condiciones** y **Aviso de Privacidad** V1.0, páginas/rutas públicas `/legal/terminos` y `/legal/aviso`, enlaces de acceso/registro y pruebas relacionadas. Revisar únicamente dependencias necesarias en las rutas y en `client/src/App.tsx`.
 - **Restricciones:** conservar textos/hashes históricos; los convenios y reglas de Master/Red no se hacen públicos en este bloque. **No incorporar todavía** aceptación/persistencia de registro, formalización, OTP, gate de originación ni migraciones. Reutilizar código puntual, no fusionar ramas enteras.
 - **Validación solicitada:** pruebas legales públicas, suite unitaria completa, `npm run check`, `npm run build`, diff y aislamiento sin BD real.
-- **Estado de autorización:** el usuario autorizó enviar el prompt de 1A.2A a AG. **No implica** aprobación de su resultado, commit/push, merge, migración ni despliegue: requerirán revisión y autorización separadas.
+- **Resultado confirmado en GitHub (10-oct-2026):** commit [`ae02a2680d0b5182fc92cade4f51aebb398bc32d`](https://github.com/frcb79/CreditoNegocios/commit/ae02a2680d0b5182fc92cade4f51aebb398bc32d) publicado únicamente en `integration/phase-1a1-base-segura`, derivado de `f83e25d`. Verificación de coordinación: exactamente 18 archivos en ese commit; rama 2 commits adelante, 0 atrás respecto de `main`; `main` continuaba en `0c6b7bd`.
+- **Resultado de QA según reporte AG:** 15/15 suites, **180/180 pruebas unitarias**, 7/7 pruebas legales nuevas, TypeScript 0 errores, build correcto, `git diff --check` limpio. Coordinación verificó el commit y el inventario remoto; no reejecutó localmente el QA.
+- **Alcance realmente incorporado:** catálogo legal V1.0 con SHA-256 y lector público limitado a `terminos`/`aviso`; `GET /api/legal/:document` con versión, páginas y enlaces públicos en App/Landing/Settings y sitios estáticos, configuración Vercel y pruebas. El código no agrega registro de aceptaciones, formalización u OTP.
+- **Preservaciones y exclusiones reportadas:** se conservó la regla de Vercel `/api/public/website-leads`; `docs/legal-launch-blocks.md` de la rama original **no fue integrado** para evitar planes paralelos; excluidos `dist/`, `coverage/` y archivos temporales. B1, archivos locales y respaldos preservados según AG.
+- **Límite:** commit/push de rama aislada **no** significan merge a `main`, despliegue, prueba en navegador/Staging ni prueba en PostgreSQL real.
+
+### 1A.2B — Registro y evidencia de aceptación: siguiente bloque pendiente de autorización
+
+- **Checkpoint propuesto:** continuar en el mismo worktree/rama desde `ae02a26`; integrar puntualmente la aceptación de Términos y reconocimiento de Aviso al registrarse, con identificación de versión exacta, hash, fecha/hora, usuario, IP/User-Agent cuando estén disponibles y comprobante histórico consultable.
+- **Separación estricta:** NO adelantar convenios operativos, aceptación formalizada por OTP ni bloqueo de ingreso general; esos controles corresponden a 1A.3.
+- **Previo a prompt ejecutable:** delimitar en el código actual el endpoint de registro, el origen de documentos versionados y el contrato de persistencia de evidencias, y definir pruebas sin BD real. No autorizar migración/despliegue automático.
 
 ### Bloqueantes y seguimientos preservados
 
