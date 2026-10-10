@@ -226,6 +226,7 @@ Bitácora integral de actividad, importación masiva avanzada, analítica avanza
 - Se crea documento común versionado; no se ha ejecutado ninguna integración de código.
 - Precisión final de revisión cruzada (9-oct-2026): **sobretasas sólo Super Admin, sin excepciones automáticas**; **márgenes internos sólo Super Admin y Admin autorizado expresamente**. Fase 0 queda lista para auditoría técnica de lectura.
 - Fase 0A y 0B: inventario de ramas y dry-run de conflictos técnicos reportados por AG; soluciones propuestas, **todavía no ejecutadas ni probadas**.
+- Revisión cruzada de 0B: cinco precisiones del frente financiero registradas para 0C (aceptación versionada, congelamiento, Matching/verificación, visibilidad y pruebas migratorias con datos históricos).
 
 **Decisiones abiertas para resolver con AG y ambos chats:**
 - Evento técnico exacto de consolidación de propuesta y congelamiento económico por modalidad (incluida multidispersión).
@@ -274,9 +275,23 @@ Bitácora integral de actividad, importación masiva avanzada, analítica avanza
 
 **Precauciones:** la frase de AG "seguridad garantizada" sólo significa **riesgos identificados y resolución propuesta**, no pruebas superadas. Tampoco puede asumirse que únicamente existen tres intersecciones lógicas, ni que los modelos de aceptación por financiera y por oferta ya están conciliados. La compatibilidad de tablas y API sigue pendiente de pruebas reales.
 
+### Revisión cruzada de Fase 0B — Frente Financiero (9-oct-2026)
+
+**Dictamen:** 0B aceptada como diagnóstico técnico por ambas conversaciones; sus propuestas requieren validación funcional y pruebas antes de implementarse. La revisión financiera añadió cinco verificaciones obligatorias de 0C:
+
+1. **P0 · Aceptación comercial:** \`brokerCommissionAcceptances\` por financiera no se considera automáticamente aceptación de condiciones económicas por **oferta y versión**. Auditar evidencia vigente, alcance de la aceptación y opción convenio marco + condiciones versionadas + consentimiento ante cambios materiales, sin OTP por producto/solicitud.
+2. **P0 · Comisión congelada:** trazar código que aún pueda utilizar porcentajes generales de financiera o afiliación **actual** del broker. Identificar evento exacto de consolidación de propuesta, snapshot de tasas/beneficiario/versionado y su uso en dispersión; no aceptar fallbacks silenciosos.
+3. **P1 · Matching:** investigar tres excepciones señaladas por revisión financiera: versiones con estado \`active\` utilizadas como elegibles (no asumir que equivalen a \`published\`), oferta sin criterios marcada compatible y origen tratado como verificado sin evidencia positiva. Distinguir hallazgo reportado de prueba ejecutada y definir regla para ofertas legacy.
+4. **P0 · Visibilidad:** no restaurar tarjeta administrativa para brokers en \`FinancieraDetail.tsx\` sólo por conservar componentes. El flujo autorizado de aceptación debe separarse del catálogo administrativo; sobretasas exclusivas Super Admin; márgenes internos sólo Admin específicamente autorizado o Super Admin. Revisar API además del frontend.
+5. **P0 · Migraciones:** disyunción de tablas no acredita idempotencia, backfill ni ausencia de pérdida de información. AG debe proponer pruebas futuras con \`0004\`, \`0005\`, \`autoMigrate.ts\`, \`shared/schema.ts\` y **copia protegida de PostgreSQL con datos históricos**.
+
+**Verificación adicional requerida:** \`credit_submission_requests\` con expediente/cliente del tenant y broker realmente autorizados, incluso en originación delegada; sin cambiar atribución comercial histórica.
+
+**Alcance de 0C:** sólo rastreo de código y propuesta de decisión/pruebas; no repetir mapa de los diez archivos ni declarar seguridad o matching validados sin ejecución.
+
 ### Próximos pasos
 
-1. Revisión cruzada del informe 0B por las dos conversaciones, sin repetir el inventario.
+1. Revisión cruzada 0B completada y aceptada como **diagnóstico**, no como funcionalidad integrada.
 2. **Fase 0C (sólo lectura):** trazar el flujo real de formalización → solicitud → propuesta confirmada → snapshot económico → dispersión y liquidación, además de RBAC/sobretasas y Matching verificable en `credit_submission_requests`.
 3. Cerrar decisiones de negocio P0 abiertas y definir pruebas/criterios antes de autorizar una rama aislada desde main para Fase 1. **No autoriza merges ni deploy.**
 
