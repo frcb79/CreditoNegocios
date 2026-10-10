@@ -2,7 +2,7 @@
 
 **Fecha de corte:** 9 de octubre de 2026  
 **Repositorio:** frcb79/CreditoNegocios  
-**Estado:** Revisión cruzada de ambas conversaciones concluida; lista la Fase 0 de auditoría técnica de AG (sólo lectura).  
+**Estado:** Auditorías 0A–0C concluidas y aceptadas; Fase 1A.1 cerrada con commit y push en rama aislada; Fase 1A.2A autorizada para ejecución controlada (pendiente reporte de AG).  
 **Rama documental:** docs/plan-maestro-integracion-v1-1 (derivada de main, sin cambios de aplicación).  
 **Responsable de ejecución técnica futura:** Antigravity (AG).  
 **Autorizaciones:** NO autoriza merges, rebase, cherry-pick, migraciones, cambios de código ni despliegue.
@@ -326,3 +326,34 @@ Bitácora integral de actividad, importación masiva avanzada, analítica avanza
 3. Sólo tras autorización del usuario entregar a AG un prompt corto con checkpoint, archivos, tests y reporte/commit. Mantener copias y workflow local sin seguimiento.
 
 **No se autoriza aún** modificar ramas de código, ejecutar migraciones reales ni desplegar a Staging o producción.
+
+## 11. Seguimiento de ejecución de Fase 1A (10-oct-2026)
+
+> **Registro operativo del Plan Maestro v1.1, sin alterar decisiones comerciales ni autorizar merges o despliegues.** Los diagnósticos de §10 siguen siendo evidencia histórica de Fase 0.
+
+### 1A.1 — Base segura y pruebas P0: cerrada
+
+- **Base de partida:** `main` en `0c6b7bd18f6465c55d95f72a4f20ade339f1a553`. Se trabajó en el worktree independiente `wt-base-segura` y rama `integration/phase-1a1-base-segura`.
+- **Commit aprobado y publicado exclusivamente en esa rama:** [`f83e25dfd2ea14856a5a5306bd1cbb2c61a865fd`](https://github.com/frcb79/CreditoNegocios/commit/f83e25dfd2ea14856a5a5306bd1cbb2c61a865fd). Comparación GitHub: 1 commit adelante y 0 atrás respecto de ese `main`; `main` no fue modificado.
+- **Cambios de código:** ninguno. Sólo se modificaron `tests/unit/prod-hotfix-security.test.ts` (casos de autenticación, bootstrap y arranque seguro) y `tests/unit/commercial-ui.test.ts` (reloj simulado consistente; prueba de oportunidad vigente y vencida).
+- **Validación reportada por AG:** 14/14 suites y 173/173 pruebas unitarias aprobadas; pruebas P0 específicas 11/11; TypeScript sin errores; build cliente/servidor correcto; `git diff --check` limpio. La coordinación verificó en GitHub la rama, el commit y sus dos archivos, **no reejecutó las pruebas localmente**.
+- **Aislamiento:** AG reportó pruebas con mocks/MemStorage, sin conexiones a BD reales, migraciones ni despliegues. Se preservaron la rama financiera `feat/admin-financieras-ofertas-b1` (`cc6b151`), su archivo local sin seguimiento y respaldos `bloque_3b1.*` / `bloque_3b2a.*`. `coverage/` y `dist/` fueron generados localmente e ignorados por Git.
+- **Hallazgo resuelto:** la prueba comercial anterior mezclaba creación a 25-sep-2026 y evaluación de duplicados con reloj real, cuando la reserva predeterminada era de 7 días. Se corrigió exclusivamente el test, sin cambiar reglas comerciales. Esto **no** valida todavía los plazos definitivos de protección.
+
+**Límites de este cierre:** no se integraron aún Legal, Red ni los cambios P0 de comisiones; no hay QA conjunta con PostgreSQL real, ni Staging, ni merge a `main`, ni despliegue. No se debe presentar 1A.1 como plataforma lista para producción.
+
+### 1A.2A — Documentos legales públicos: autorizada, ejecución pendiente de reporte
+
+- **Checkpoint:** continuar exclusivamente en `integration/phase-1a1-base-segura` desde `f83e25d`, sin tocar el workspace B1 ni `main`.
+- **Alcance autorizado:** recuperar selectivamente de `integration/network-formalization` el catálogo legal ya aprobado, versiones y huellas SHA-256, lectura pública de **Términos y Condiciones** y **Aviso de Privacidad** V1.0, páginas/rutas públicas `/legal/terminos` y `/legal/aviso`, enlaces de acceso/registro y pruebas relacionadas. Revisar únicamente dependencias necesarias en las rutas y en `client/src/App.tsx`.
+- **Restricciones:** conservar textos/hashes históricos; los convenios y reglas de Master/Red no se hacen públicos en este bloque. **No incorporar todavía** aceptación/persistencia de registro, formalización, OTP, gate de originación ni migraciones. Reutilizar código puntual, no fusionar ramas enteras.
+- **Validación solicitada:** pruebas legales públicas, suite unitaria completa, `npm run check`, `npm run build`, diff y aislamiento sin BD real.
+- **Estado de autorización:** el usuario autorizó enviar el prompt de 1A.2A a AG. **No implica** aprobación de su resultado, commit/push, merge, migración ni despliegue: requerirán revisión y autorización separadas.
+
+### Bloqueantes y seguimientos preservados
+
+1. **Comisiones P0:** recuperar el gate de aprobación/dispersión exclusivamente Super Admin y conciliarlo con el modelo de ofertas/versiones en la fase correspondiente. **No habilitar pagos ni despliegue** con este P0 pendiente.
+2. **1A.2B / 1A.3:** aceptación y evidencia de Términos/Aviso al registro; después convenios versionados, OTP por correo y validación del broker originador efectivo en originación propia/delegada. No impedir acceso general por falta de convenios operativos.
+3. **1A.4 — Red:** reconciliar plazos 90/120 días y 12 meses con contratos y configuración efectiva de Super Admin, sin modificar retroactivamente derechos. Proteger oportunidades específicas, no clientes completos; conservar beneficiarios y comprobantes históricos, sin abrir expedientes ni PII posteriores al Master anterior.
+4. **Fase 2:** congelamiento económico, aceptación comercial por oferta/versión, Matching verificable y múltiples créditos por solicitud siguen sujetos a sus decisiones y pruebas propias.
+5. **Fase 4:** siguen pendientes pruebas migratorias reales y repetibles con PostgreSQL nuevo e histórico protegido, E2E/Staging y autorizaciones separadas para integración a `main` y producción.
