@@ -2,7 +2,7 @@
 
 **Fecha de corte:** 9 de octubre de 2026  
 **Repositorio:** frcb79/CreditoNegocios  
-**Estado:** Documento de coordinación, pendiente de validación cruzada y auditoría de AG (Fase 0).  
+**Estado:** Revisión cruzada de ambas conversaciones concluida; lista la Fase 0 de auditoría técnica de AG (sólo lectura).  
 **Rama documental:** docs/plan-maestro-integracion-v1-1 (derivada de main, sin cambios de aplicación).  
 **Responsable de ejecución técnica futura:** Antigravity (AG).  
 **Autorizaciones:** NO autoriza merges, rebase, cherry-pick, migraciones, cambios de código ni despliegue.
@@ -81,7 +81,7 @@ Consolidar la base segura actual con los desarrollos pendientes de Legal, formal
 3. **Sin fallback silencioso:** no usar comisiones generales de financiera o comisiones actuales de la red para reemplazar un dato específico faltante; tampoco suponer 0 como si fuera tasa aprobada. Estado correcto: **pendiente de revisión** y bloquear únicamente cálculo/pago no confiable según el flujo definido, con trazabilidad de la razón.
 4. **Beneficiario histórico:** no usar el Master actual de un broker para pagar créditos atribuibles al Master anterior.
 5. **Varias ofertas y dispersiones:** registrar aceptación, condiciones, versiones y liquidaciones independientes por propuesta/dispersión; impedir duplicados y no recalcular una oferta con tasas de otra.
-6. **Sobretasas y márgenes internos:** exclusivos de Super Admin; ni Broker ni Master ni Admin sin autorización expresa deben recibirlos, incluso por API.
+6. **Sobretasas:** exclusivas de Super Admin, sin excepciones automáticas ni posibilidad de habilitarlas a Admin por permisos genéricos; restringidas tanto en frontend como en todas las respuestas de API. **Márgenes internos:** visibles para Super Admin y, cuando corresponda, para Admin sólo mediante autorización expresa y específica. Broker y Master Broker nunca reciben sobretasas ni márgenes internos.
 
 **Decisión comercial pendiente antes de cerrar Fase 2:** mecanismo de aceptación. Propuesta: convenio marco + condiciones comerciales versionadas + aceptación explícita al existir un cambio material que afecte derechos económicos. NO exigir OTP por cada producto ni por cada solicitud por defecto. Debe poder demostrarse qué versión conoció/aceptó cada participante.
 
@@ -101,7 +101,7 @@ Consolidar la base segura actual con los desarrollos pendientes de Legal, formal
 | Rol | Alcance esperado |
 |---|---|
 | Super Admin | Catálogo financiero administrativo completo, condiciones comerciales, márgenes, sobretasas, redes, formalización, auditorías y operaciones globales |
-| Admin | Módulos y acciones explícitamente autorizadas; no heredar automáticamente datos reservados a Super Admin |
+| Admin | Módulos y acciones expresamente autorizadas; márgenes internos sólo con autorización específica; **nunca sobretasas** |
 | Master Broker | Su red, operaciones, comisiones y condiciones que le corresponden; productos generales/ofertas autorizadas, sin catálogo administrativo de financieras ni márgenes |
 | Broker | Sus operaciones y productos/ofertas autorizadas, sin catálogo administrativo de financieras ni márgenes internos |
 
@@ -178,7 +178,7 @@ Bitácora integral de actividad, importación masiva avanzada, analítica avanza
 3. **Solicitud con varias ofertas:** versiones, propuestas, condiciones y dispersiones independientes, sin duplicar pagos o mezclar tasas.
 4. **Datos faltantes/no verificados:** Matching no inventa datos, no genera falsos compatibles y no confunde compatibilidad preliminar con aprobación crediticia.
 
-**Otros:** confirmar evento real de congelamiento económico; aceptación por cambio material; falta de tasas deja pago pendiente; sobretasas invisibles para no autorizados; solicitud real credit_submission_requests (no sólo credits), sin aprobación automática ni sesgo por comisiones.
+**Otros:** confirmar evento real de congelamiento económico; aceptación por cambio material; falta de tasas deja pago pendiente; sobretasas invisibles para todos salvo Super Admin (incluido Admin con permiso de márgenes); solicitud real credit_submission_requests (no sólo credits), sin aprobación automática ni sesgo por comisiones.
 
 **Persistencia:** pruebas migratorias repetibles sobre BD nueva y copia protegida de datos existentes; invariantes, índices únicos y versiones, sin borrado histórico; respaldo verificable y recuperación probada antes de producción.
 
@@ -224,6 +224,7 @@ Bitácora integral de actividad, importación masiva avanzada, analítica avanza
 - Se agregan cuatro pruebas prioritarias: dos productos de una financiera, transferencia de Master, múltiples ofertas y datos incompletos.
 - Se explicita la comprobación con credit_submission_requests, aceptación comercial versionada sin OTP por cada producto/solicitud y retención de datos para analítica futura.
 - Se crea documento común versionado; no se ha ejecutado ninguna integración de código.
+- Precisión final de revisión cruzada (9-oct-2026): **sobretasas sólo Super Admin, sin excepciones automáticas**; **márgenes internos sólo Super Admin y Admin autorizado expresamente**. Fase 0 queda lista para auditoría técnica de lectura.
 
 **Decisiones abiertas para resolver con AG y ambos chats:**
 - Evento técnico exacto de consolidación de propuesta y congelamiento económico por modalidad (incluida multidispersión).
@@ -236,9 +237,8 @@ Bitácora integral de actividad, importación masiva avanzada, analítica avanza
 
 ## 10. Próxima acción autorizable
 
-1. Segunda revisión cruzada de este Plan Maestro v1.1 por ambas conversaciones.
-2. Preparación y aprobación por ambas conversaciones del prompt breve de **Fase 0 (sólo lectura)** para AG.
-3. AG inspecciona sin editar y devuelve un reporte de conflictos, decisiones y orden detallado.
-4. Las dos conversaciones cierran diferencias importantes; usuario autoriza cada fase posterior de cambios.
+1. Revisión cruzada v1.1 concluida. Preparar y revisar el prompt breve de **Fase 0 (sólo lectura)** con ambas conversaciones.
+2. AG inspecciona sin editar y devuelve un reporte de conflictos, decisiones y orden detallado.
+3. Las dos conversaciones evalúan el reporte y cierran decisiones importantes; usuario autoriza expresamente cada fase posterior de cambios.
 
 **Todavía no** fusionar a main, migrar bases de datos, cambiar permisos en producción, ni desplegar.
