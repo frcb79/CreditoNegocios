@@ -227,6 +227,7 @@ Bitácora integral de actividad, importación masiva avanzada, analítica avanza
 - Precisión final de revisión cruzada (9-oct-2026): **sobretasas sólo Super Admin, sin excepciones automáticas**; **márgenes internos sólo Super Admin y Admin autorizado expresamente**. Fase 0 queda lista para auditoría técnica de lectura.
 - Fase 0A y 0B: inventario de ramas y dry-run de conflictos técnicos reportados por AG; soluciones propuestas, **todavía no ejecutadas ni probadas**.
 - Revisión cruzada de 0B: cinco precisiones del frente financiero registradas para 0C (aceptación versionada, congelamiento, Matching/verificación, visibilidad y pruebas migratorias con datos históricos).
+- Fase 0C revisada por ambos frentes: se rechaza el límite de un ganador por solicitud, se distinguen tasas congeladas de importes por dispersión, y se documentan nueve salvaguardas P0/P1 y decisiones abiertas. No se autorizó código.
 
 **Decisiones abiertas para resolver con AG y ambos chats:**
 - Evento técnico exacto de consolidación de propuesta y congelamiento económico por modalidad (incluida multidispersión).
@@ -279,20 +280,49 @@ Bitácora integral de actividad, importación masiva avanzada, analítica avanza
 
 **Dictamen:** 0B aceptada como diagnóstico técnico por ambas conversaciones; sus propuestas requieren validación funcional y pruebas antes de implementarse. La revisión financiera añadió cinco verificaciones obligatorias de 0C:
 
-1. **P0 · Aceptación comercial:** \`brokerCommissionAcceptances\` por financiera no se considera automáticamente aceptación de condiciones económicas por **oferta y versión**. Auditar evidencia vigente, alcance de la aceptación y opción convenio marco + condiciones versionadas + consentimiento ante cambios materiales, sin OTP por producto/solicitud.
+1. **P0 · Aceptación comercial:** `brokerCommissionAcceptances` por financiera no se considera automáticamente aceptación de condiciones económicas por **oferta y versión**. Auditar evidencia vigente, alcance de la aceptación y opción convenio marco + condiciones versionadas + consentimiento ante cambios materiales, sin OTP por producto/solicitud.
 2. **P0 · Comisión congelada:** trazar código que aún pueda utilizar porcentajes generales de financiera o afiliación **actual** del broker. Identificar evento exacto de consolidación de propuesta, snapshot de tasas/beneficiario/versionado y su uso en dispersión; no aceptar fallbacks silenciosos.
-3. **P1 · Matching:** investigar tres excepciones señaladas por revisión financiera: versiones con estado \`active\` utilizadas como elegibles (no asumir que equivalen a \`published\`), oferta sin criterios marcada compatible y origen tratado como verificado sin evidencia positiva. Distinguir hallazgo reportado de prueba ejecutada y definir regla para ofertas legacy.
-4. **P0 · Visibilidad:** no restaurar tarjeta administrativa para brokers en \`FinancieraDetail.tsx\` sólo por conservar componentes. El flujo autorizado de aceptación debe separarse del catálogo administrativo; sobretasas exclusivas Super Admin; márgenes internos sólo Admin específicamente autorizado o Super Admin. Revisar API además del frontend.
-5. **P0 · Migraciones:** disyunción de tablas no acredita idempotencia, backfill ni ausencia de pérdida de información. AG debe proponer pruebas futuras con \`0004\`, \`0005\`, \`autoMigrate.ts\`, \`shared/schema.ts\` y **copia protegida de PostgreSQL con datos históricos**.
+3. **P1 · Matching:** investigar tres excepciones señaladas por revisión financiera: versiones con estado `active` utilizadas como elegibles (no asumir que equivalen a `published`), oferta sin criterios marcada compatible y origen tratado como verificado sin evidencia positiva. Distinguir hallazgo reportado de prueba ejecutada y definir regla para ofertas legacy.
+4. **P0 · Visibilidad:** no restaurar tarjeta administrativa para brokers en `FinancieraDetail.tsx` sólo por conservar componentes. El flujo autorizado de aceptación debe separarse del catálogo administrativo; sobretasas exclusivas Super Admin; márgenes internos sólo Admin específicamente autorizado o Super Admin. Revisar API además del frontend.
+5. **P0 · Migraciones:** disyunción de tablas no acredita idempotencia, backfill ni ausencia de pérdida de información. AG debe proponer pruebas futuras con `0004`, `0005`, `autoMigrate.ts`, `shared/schema.ts` y **copia protegida de PostgreSQL con datos históricos**.
 
-**Verificación adicional requerida:** \`credit_submission_requests\` con expediente/cliente del tenant y broker realmente autorizados, incluso en originación delegada; sin cambiar atribución comercial histórica.
+**Verificación adicional requerida:** `credit_submission_requests` con expediente/cliente del tenant y broker realmente autorizados, incluso en originación delegada; sin cambiar atribución comercial histórica.
 
 **Alcance de 0C:** sólo rastreo de código y propuesta de decisión/pruebas; no repetir mapa de los diez archivos ni declarar seguridad o matching validados sin ejecución.
 
-### Próximos pasos
+### Fase 0C — auditoría comercial AG y revisión cruzada (9-oct-2026)
 
-1. Revisión cruzada 0B completada y aceptada como **diagnóstico**, no como funcionalidad integrada.
-2. **Fase 0C (sólo lectura):** trazar el flujo real de formalización → solicitud → propuesta confirmada → snapshot económico → dispersión y liquidación, además de RBAC/sobretasas y Matching verificable en `credit_submission_requests`.
-3. Cerrar decisiones de negocio P0 abiertas y definir pruebas/criterios antes de autorizar una rama aislada desde main para Fase 1. **No autoriza merges ni deploy.**
+**Estado:** Auditoría estática 0C aceptada como diagnóstico por ambos frentes; soluciones de AG **no** aprobadas automáticamente. No existe rama consolidada ni QA de integración ejecutado.
 
-**Todavía no** fusionar a main, migrar bases de datos, cambiar permisos en producción, ni desplegar.
+**Hechos detectados en código B1 (revisados además en GitHub):**
+- `createCascadingCommissionRecord` y `mark-dispersed` mantienen fallbacks de tasas de financiera y/o cero y usan `broker.masterBrokerId` vigente, en vez de snapshot de la versión comercial y beneficiario histórico.
+- `GET /api/credit-submissions` usa la red de brokers actual; su enriquecimiento también consulta el Master actual. Deben separarse derechos históricos de comisión y permisos de consulta de expedientes.
+- `select-winner` actualiza un target y crea un crédito sin una salvaguarda transaccional/idempotente demostrada ni una validación explícita del estado permitido. **Se permiten múltiples financiamientos legítimos por solicitud**: NO imponer la regla de un solo ganador por solicitud.
+- Matching clasifica compatibles ofertas sin criterios evaluados, admite versiones `active` además de `published` y usa verificación por ausencia de marca negativa; esto requiere corrección/contrato de verificación.
+- La revisión financiera reporta ausencia de vínculo explícito `credit_submission_target` → versión de oferta, y manejo de excepción de comisión con simple log tras `mark-dispersed`: verificar el esquema y la persistencia para diseñar la conciliación.
+
+**Reglas a preservar para implementar tras aprobación:**
+1. **Multiplicidad real:** una solicitud puede terminar en varios créditos de distintas financieras, por propuestas y montos efectivamente aceptados. La unicidad e idempotencia son **por propuesta/financiamiento**, no por solicitud. Vincular inequívocamente `request → target/propuesta → versión de oferta → crédito → dispersión → comisión`; usar transacciones/constraints ante concurrencia y evitar repetición por reintentos.
+2. **Dos congelamientos:** fijar linaje originador/Master histórico cuando se origina la oportunidad o solicitud conforme a la regla comercial; congelar **tasas y condiciones económicas** cuando una propuesta económica formal esté confirmada y aceptada, **no** necesariamente al pulsar `select-winner` ni al dispersar. Para cambios materiales posteriores, nueva confirmación/versionado, sin reescribir acuerdos previos.
+3. **Importe variable por dispersión:** las tasas acordadas/versionadas se mantienen inmutables; cada desembolso real genera su base e importe pagadero según condiciones congeladas, con controles contra sobregiro, repetición y pagos duplicados. No confundir `frozenAmount` final con tasa acordada.
+4. **Condiciones para aceptar propuesta:** verificar estado autorizado del target, confirmación/aprobación económica requerida y usuario/tenant autorizado antes de crear crédito. No forzar el cierre de otros targets financiables. El evento técnico exacto y los estados de flujo se definirán tras inspección adicional y aprobación funcional.
+5. **Fallo en cálculo de comisiones:** registrar la dispersión real cuando exista, pero dejar su comisión como **conciliación pendiente**, con motivo, alerta/auditoría y pago bloqueado hasta resolver. No sustituir por tasa de financiera o `0` ni fingir éxito.
+6. **Visibilidad histórica limitada:** Master anterior conserva derechos y comprobantes históricos autorizados, **no** acceso indefinido a todo el expediente ni a información posterior del cliente. Aplicar RBAC, tenant y minimización de datos, tanto API como frontend.
+7. **Matching preliminar vs. definitivo:** permitir usar datos capturados para orientación preliminar, etiquetando las variables no verificadas. Si una condición exige evidencia y ésta falta, no mostrar compatibilidad definitiva: `INSUFFICIENT_DATA`/pendiente. Regla de evidencia positiva por **criterio y tipo de fuente**, no sólo Buró/Facturación, sin imponer documentos innecesarios a cada campo.
+8. **Versiones heredadas:** no convertir automáticamente `active` a `published`; primero auditar origen, aprobación y requisitos de publicación. Sólo versiones formalmente elegibles participan en el matching definitivo.
+9. **Matching en solicitudes:** demostrar procesamiento real de `credit_submission_requests` con su cliente/tenant autorizado; no asumir que reutilizar controlador de `credits` resuelve ese caso.
+10. **Aceptación comercial:** una aceptación por financiera es comprobante general y no acredita automáticamente oferta/versionado; definir convenio marco + condiciones versionadas + aceptación de cambios materiales, sin OTP por producto por defecto.
+
+**Acceso a márgenes — decisión aún por ratificar:** la revisión financiera propone que, **por ahora**, tanto márgenes internos como sobretasas sean visibles **sólo a Super Admin**. Esto es más restrictivo que la regla previa (márgenes accesibles a Admin con autorización expresa). Hasta que el usuario apruebe una política específica y exista control granular probado, **no habilitar acceso de Admin a márgenes por defecto**. Las sobretasas siguen siempre exclusivas de Super Admin.
+
+**Pruebas bloqueantes a diseñar para Fase 1/QA:** varias propuestas aprobadas con créditos distintos; retry/doble selección concurrente de una misma propuesta sin duplicados; vínculo target-version-crédito-dispersión-comisión; cambio Master con derechos históricos pero sin fuga de PII; propuesta sin estado autorizado rechazada; cambios de tasas antes/después de confirmación; multidispersión y fallo de cálculo → conciliación pendiente; Matching en solicitud real, evidencia insuficiente y versiones `active` no publicadas; accesos Admin y Master por API y URL.
+
+**Pendiente técnico antes de autorizar implementación:** revisar evento formal exacto de confirmación y estados de propuesta, esquema de enlace target/versión y forma de almacenar snapshots económicos e idempotencia, sin inventar nuevas operaciones financieras no contempladas.
+
+### Próximos pasos tras la revisión 0C
+
+1. Presentar al usuario las decisiones que requieren aprobación expresa: regla temporal de visibilidad de márgenes; evento exacto de confirmación económica y transición de estados; alcance de lectura histórica. La multiplicidad de créditos por solicitud se considera requisito ya acordado.
+2. Preparar el alcance del **primer bloque de integración Fase 1** en rama aislada desde main seguro: seguridad + Legal + Red. Los cambios financieros P0 se planifican en Fase 2, pero ninguna funcionalidad incompatible de comisión, propuestas o Matching se habilitará en producción antes de cerrar sus P0.
+3. Sólo tras autorización del usuario entregar a AG un prompt corto con checkpoint, archivos, tests y reporte/commit. Mantener copias y workflow local sin seguimiento.
+
+**No se autoriza aún** modificar ramas de código, ejecutar migraciones reales ni desplegar a Staging o producción.
