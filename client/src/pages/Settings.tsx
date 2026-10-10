@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import LegalLinks from "@/components/LegalLinks";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -539,6 +540,13 @@ export default function Settings() {
 
             {/* Profile Settings */}
             <TabsContent value="profile" className="space-y-4 mt-3">
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-base">Documentos legales</CardTitle>
+                  <CardDescription>Consulta los Términos y Condiciones y el Aviso de Privacidad vigentes.</CardDescription>
+                </CardHeader>
+                <CardContent><LegalLinks /></CardContent>
+              </Card>
               <Card className="border border-border/80 shadow-xs">
                 <CardHeader className="py-3 px-4 sm:px-6 border-b border-border/60">
                   <CardTitle className="text-base font-semibold">Información Personal</CardTitle>

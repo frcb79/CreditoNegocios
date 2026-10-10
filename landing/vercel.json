@@ -17,6 +17,16 @@
       "source": "/app",
       "destination": "https://app.creditonegocios.com.mx/",
       "permanent": false
+    },
+    {
+      "source": "/legal/terminos",
+      "destination": "https://app.creditonegocios.com.mx/legal/terminos",
+      "permanent": false
+    },
+    {
+      "source": "/legal/aviso",
+      "destination": "https://app.creditonegocios.com.mx/legal/aviso",
+      "permanent": false
     }
   ]
 }
