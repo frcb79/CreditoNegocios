@@ -235,10 +235,25 @@ Bitácora integral de actividad, importación masiva avanzada, analítica avanza
 - Selección futura de una sola bitácora de actividad.
 - Estado real de cambios locales AG y ramas al iniciar la Fase 0.
 
-## 10. Próxima acción autorizable
+## 10. Resultado de Fase 0A y próxima acción
 
-1. Revisión cruzada v1.1 concluida. Preparar y revisar el prompt breve de **Fase 0 (sólo lectura)** con ambas conversaciones.
-2. AG inspecciona sin editar y devuelve un reporte de conflictos, decisiones y orden detallado.
-3. Las dos conversaciones evalúan el reporte y cierran decisiones importantes; usuario autoriza expresamente cada fase posterior de cambios.
+### Fase 0A — inventario AG (9-oct-2026)
+
+**Resultado: inventario realizado, NO validación de integración.** AG inspeccionó ramas en su workspace sin cambiar rama, editar código ni aplicar migraciones.
+
+- Checkpoint reportado por AG: `feat/admin-financieras-ofertas-b1`, HEAD `cc6b15115d9a1f2170205fb8a40b683d9e6681c8`, archivos rastreados sin cambios pendientes.
+- Preservar archivo local sin seguimiento `.github/workflows/postgres-migration-test.yml` y respaldos locales de bloques de convenios 3B1/3B2A; nunca hacer clean/reset o reemplazarlos automáticamente.
+- Cadena técnica confirmada: `integration/network-formalization` → `fix/p0-security-hardening-commissions-gate` (+5 commits) → `feat/super-admin-settings-focus-chatgpt` (+15 commits propios); `feat/institution-offers-versioning-a1` incluida en `feat/admin-financieras-ofertas-b1`.
+- AG identificó diez archivos tocados por los frentes financiero y red/P0: seis de código (`shared/schema.ts`, `server/autoMigrate.ts`, `server/routes.ts`, `server/dbStorage.ts`, `server/storage.ts`, `client/src/pages/FinancieraDetail.tsx`) y cuatro de AI-Team-OS. **Archivos comunes NO equivalen por sí solos a conflictos textuales confirmados.**
+- Hotfix de producción: el test `tests/unit/prod-hotfix-security.test.ts` existe en `main` y B1, pero no en la rama de red/P0 consultada en GitHub. Preservar tanto estos hotfixes recientes de main como el endurecimiento distinto que aporta la rama P0.
+- Migraciones `0004_broker_network_transitions.sql` (red) y `0005_institution_offers_versioning.sql` (financieras): AG informó que afectan conjuntos principales de tablas distintos. **No constituye prueba de ejecución, compatibilidad de `autoMigrate.ts`, idempotencia ni seguridad en datos reales.**
+- Las dos implementaciones de bitácora `bloque-3-1-user-activity` no se integran por ahora.
+- **No ejecutado:** simulación de conflictos y pruebas TS/build, PostgreSQL conjunto, E2E, validación en Staging.
+
+### Próximos pasos
+
+1. **Fase 0B (sólo lectura):** AG analiza los seis archivos de código compartidos y el orden de migraciones; identifica colisiones textuales/semánticas y protecciones P0 que deben prevalecer, sin modificar workspace.
+2. Compartir el resultado 0B con ambas conversaciones, registrar hallazgos verificables y, si hace falta, realizar 0C de comisiones, permisos y Matching antes de implementar.
+3. Sólo después de cerrar bloqueantes y obtener autorización explícita, crear rama aislada desde main seguro para iniciar Fase 1; no hay autorización de merge o despliegue.
 
 **Todavía no** fusionar a main, migrar bases de datos, cambiar permisos en producción, ni desplegar.
