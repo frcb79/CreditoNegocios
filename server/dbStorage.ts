@@ -28,11 +28,14 @@ import {
   type PromoCode, type InsertPromoCode,
   type PromoRedemption, type InsertPromoRedemption,
   commercialAuditLogs, type UserOperationalStatus,
-  userStatusRequests, type UserStatusRequest, type UserStatusRequestStatus, type UserStatusRequestAction
+  userStatusRequests, type UserStatusRequest, type UserStatusRequestStatus, type UserStatusRequestAction,
+  legalDocumentVersions, legalAcceptances,
+  type LegalDocumentVersionDb, type LegalAcceptance
 } from "../shared/schema";
 import { eq, desc, asc, like, and, or, inArray, sql } from "drizzle-orm";
 
-import { randomUUID } from "crypto";
+import { randomUUID, createHash } from "crypto";
+import { getApprovedLegalDocument } from "./legalDocuments";
 
 import type { IStorage } from "./storage";
 
@@ -335,6 +338,169 @@ export class DbStorage implements IStorage {
       console.error("Error creating local user:", error);
       throw error;
     }
+  }
+
+  async getLegalDocumentVersions(): Promise<LegalDocumentVersionDb[]> {
+    return await db.select().from(legalDocumentVersions);
+  }
+
+  async getLegalDocumentVersion(id: string): Promise<LegalDocumentVersionDb | undefined> {
+    const [version] = await db
+      .select()
+      .from(legalDocumentVersions)
+      .where(eq(legalDocumentVersions.id, id));
+    return version;
+  }
+
+  async getLegalAcceptancesByUser(userId: string): Promise<LegalAcceptance[]> {
+    return await db
+      .select()
+      .from(legalAcceptances)
+      .where(eq(legalAcceptances.userId, userId))
+      .orderBy(desc(legalAcceptances.acceptedAt));
+  }
+
+  async registerUserWithLegalEvidence(params: {
+    userData: {
+      email: string;
+      password: string;
+      firstName: string;
+      lastName: string;
+      authMethod: string;
+      role: string;
+      masterBrokerId?: string;
+      referralCode?: string;
+    };
+    evidence: {
+      ipAddress: string | null;
+      userAgent: string;
+      termsDoc: {
+        id: string;
+        document: string;
+        version: string;
+        contentSha256: string;
+      };
+      privacyDoc: {
+        id: string;
+        document: string;
+        version: string;
+        contentSha256: string;
+      };
+    };
+  }): Promise<{ user: User; acceptances: LegalAcceptance[] }> {
+    return await db.transaction(async (tx) => {
+      // 1. Validate against approved catalog
+      const catalogTerms = getApprovedLegalDocument(params.evidence.termsDoc.document, params.evidence.termsDoc.version);
+      if (!catalogTerms) {
+        throw new Error(`La versión de Términos (${params.evidence.termsDoc.version}) no está aprobada en el catálogo.`);
+      }
+      if (catalogTerms.contentSha256 !== params.evidence.termsDoc.contentSha256) {
+        throw new Error("Discrepancia en el hash de los Términos y Condiciones.");
+      }
+
+      const catalogPrivacy = getApprovedLegalDocument(params.evidence.privacyDoc.document, params.evidence.privacyDoc.version);
+      if (!catalogPrivacy) {
+        throw new Error(`La versión del Aviso de Privacidad (${params.evidence.privacyDoc.version}) no está aprobada en el catálogo.`);
+      }
+      if (catalogPrivacy.contentSha256 !== params.evidence.privacyDoc.contentSha256) {
+        throw new Error("Discrepancia en el hash del Aviso de Privacidad.");
+      }
+
+      // 2. Verify persisted versions in the database match catalog and its hashes
+      const [persistedTerms] = await tx
+        .select()
+        .from(legalDocumentVersions)
+        .where(eq(legalDocumentVersions.id, params.evidence.termsDoc.id));
+      if (!persistedTerms) {
+        throw new Error(`La versión de Términos (${params.evidence.termsDoc.id}) no se encuentra persistida.`);
+      }
+      if (
+        persistedTerms.contentSha256 !== catalogTerms.contentSha256 ||
+        persistedTerms.document !== catalogTerms.document ||
+        persistedTerms.version !== catalogTerms.version
+      ) {
+        throw new Error("Discrepancia detectada entre Términos persistidos y catálogo aprobado.");
+      }
+      const termsHash = createHash("sha256").update(persistedTerms.content, "utf8").digest("hex");
+      if (termsHash !== catalogTerms.contentSha256) {
+        throw new Error("Discrepancia en la integridad del contenido persistido de Términos.");
+      }
+
+      const [persistedPrivacy] = await tx
+        .select()
+        .from(legalDocumentVersions)
+        .where(eq(legalDocumentVersions.id, params.evidence.privacyDoc.id));
+      if (!persistedPrivacy) {
+        throw new Error(`La versión del Aviso (${params.evidence.privacyDoc.id}) no se encuentra persistida.`);
+      }
+      if (
+        persistedPrivacy.contentSha256 !== catalogPrivacy.contentSha256 ||
+        persistedPrivacy.document !== catalogPrivacy.document ||
+        persistedPrivacy.version !== catalogPrivacy.version
+      ) {
+        throw new Error("Discrepancia detectada entre Aviso persistido y catálogo aprobado.");
+      }
+      const privacyHash = createHash("sha256").update(persistedPrivacy.content, "utf8").digest("hex");
+      if (privacyHash !== catalogPrivacy.contentSha256) {
+        throw new Error("Discrepancia en la integridad del contenido persistido de Aviso.");
+      }
+
+      // 3. User & Acceptances insertion (rolls back on any error above)
+      const [createdUser] = await tx
+        .insert(users)
+        .values({
+          email: params.userData.email,
+          password: params.userData.password,
+          firstName: params.userData.firstName,
+          lastName: params.userData.lastName,
+          authMethod: params.userData.authMethod,
+          role: params.userData.role,
+          masterBrokerId: params.userData.masterBrokerId || null,
+          referralCode: params.userData.referralCode || null,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        })
+        .returning();
+
+      const acceptedAt = new Date();
+
+      const [termsAcceptance] = await tx
+        .insert(legalAcceptances)
+        .values({
+          userId: createdUser.id,
+          userEmail: createdUser.email!,
+          documentId: params.evidence.termsDoc.id,
+          document: params.evidence.termsDoc.document,
+          version: params.evidence.termsDoc.version,
+          contentSha256: params.evidence.termsDoc.contentSha256,
+          acceptanceType: "accept_terms",
+          ipAddress: params.evidence.ipAddress ?? null,
+          userAgent: params.evidence.userAgent,
+          acceptedAt,
+        })
+        .returning();
+
+      const [privacyAcceptance] = await tx
+        .insert(legalAcceptances)
+        .values({
+          userId: createdUser.id,
+          userEmail: createdUser.email!,
+          documentId: params.evidence.privacyDoc.id,
+          document: params.evidence.privacyDoc.document,
+          version: params.evidence.privacyDoc.version,
+          contentSha256: params.evidence.privacyDoc.contentSha256,
+          acceptanceType: "acknowledge_privacy",
+          ipAddress: params.evidence.ipAddress ?? null,
+          userAgent: params.evidence.userAgent,
+          acceptedAt,
+        })
+        .returning();
+
+      return {
+        user: createdUser,
+        acceptances: [termsAcceptance, privacyAcceptance],
+      };
+    });
   }
 
   async updateUser(id: string, userData: Partial<UpsertUser>): Promise<User | undefined> {

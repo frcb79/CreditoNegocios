@@ -37,3 +37,76 @@ export function getPublishedLegalDocument(
   candidates.sort((a, b) => Date.parse(b.effectiveAt!) - Date.parse(a.effectiveAt!));
   return candidates[0] as Readonly<PublishedLegalDocument> | undefined;
 }
+
+export function getAllApprovedCatalogVersions(): readonly Readonly<LegalDocumentVersion>[] {
+  return versions;
+}
+
+export function getApprovedLegalDocument(
+  document: string,
+  version: string,
+): Readonly<LegalDocumentVersion> | undefined {
+  return versions.find((entry) => entry.document === document && entry.version === version);
+}
+
+export interface LegalAcceptanceValidationResult {
+  valid: boolean;
+  error?: string;
+  termsDoc?: PublishedLegalDocument;
+  privacyDoc?: PublishedLegalDocument;
+}
+
+export function validateRegistrationAcceptance(params: {
+  acceptTerms?: boolean;
+  termsVersion?: string;
+  acknowledgePrivacy?: boolean;
+  privacyVersion?: string;
+  now?: Date;
+}): LegalAcceptanceValidationResult {
+  if (params.acceptTerms !== true) {
+    return {
+      valid: false,
+      error: "Debes aceptar los Términos y Condiciones para registrarte.",
+    };
+  }
+  if (params.acknowledgePrivacy !== true) {
+    return {
+      valid: false,
+      error: "Debes confirmar que has leído el Aviso de Privacidad para registrarte.",
+    };
+  }
+
+  const currentTerms = getPublishedLegalDocument("terminos", undefined, params.now);
+  if (!currentTerms) {
+    return {
+      valid: false,
+      error: "Los Términos y Condiciones vigentes no están disponibles.",
+    };
+  }
+  if (!params.termsVersion || params.termsVersion !== currentTerms.version) {
+    return {
+      valid: false,
+      error: `La versión de Términos y Condiciones no está vigente o está desactualizada (vigente: ${currentTerms.version}).`,
+    };
+  }
+
+  const currentPrivacy = getPublishedLegalDocument("aviso", undefined, params.now);
+  if (!currentPrivacy) {
+    return {
+      valid: false,
+      error: "El Aviso de Privacidad vigente no está disponible.",
+    };
+  }
+  if (!params.privacyVersion || params.privacyVersion !== currentPrivacy.version) {
+    return {
+      valid: false,
+      error: `La versión del Aviso de Privacidad no está vigente o está desactualizada (vigente: ${currentPrivacy.version}).`,
+    };
+  }
+
+  return {
+    valid: true,
+    termsDoc: currentTerms,
+    privacyDoc: currentPrivacy,
+  };
+}

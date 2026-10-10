@@ -6,6 +6,7 @@ import { pool } from "./db";
 import { storage } from "./storage";
 import { setupAuth, isAuthenticated } from "./auth";
 import { registerLegalRoutes } from "./legalRoutes";
+import { validateRegistrationAcceptance } from "./legalDocuments";
 import PDFDocument from "pdfkit";
 import bcrypt from "bcrypt";
 import { sendBrokerDeactivationRequestEmail, sendBrokerLeadEmail, sendPasswordResetEmail, sendWebsiteLeadEmail, sendWelcomeEmail, sendSuperAdminNotificationEmail } from "./emailService";
@@ -799,7 +800,6 @@ function getDocumentExtractedData() {
 }
 
 export async function registerRoutes(app: Express): Promise<Server> {
-  registerLegalRoutes(app);
   app.get('/api/health', async (_req, res) => {
     const strictHealth = process.env.HEALTHCHECK_STRICT === 'true';
     const healthQueryTimeoutMs = Number(process.env.HEALTHCHECK_DB_TIMEOUT_MS ?? '2500');
@@ -839,6 +839,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Auth middleware
   await setupAuth(app);
+
+  // Register legal routes after session/Passport initialization
+  registerLegalRoutes(app);
 
   // Tenant context middleware - must be after auth setup
   app.use(tenantContextMiddleware);
@@ -962,11 +965,37 @@ export async function registerRoutes(app: Express): Promise<Server> {
     lastName: z.string().min(1, "Apellido requerido"),
     referralCode: z.string().optional(), // Clave de Franquicia del Master Broker
     promoCode: z.string().optional(), // Código promocional (beneficio comercial)
+    acceptTerms: z.literal(true, {
+      errorMap: () => ({ message: "Debes aceptar los Términos y Condiciones para continuar." }),
+    }),
+    termsVersion: z.string({
+      required_error: "La versión de Términos y Condiciones es requerida",
+      invalid_type_error: "La versión de Términos y Condiciones es requerida",
+    }),
+    acknowledgePrivacy: z.literal(true, {
+      errorMap: () => ({ message: "Debes confirmar que has leído el Aviso de Privacidad para continuar." }),
+    }),
+    privacyVersion: z.string({
+      required_error: "La versión del Aviso de Privacidad es requerida",
+      invalid_type_error: "La versión del Aviso de Privacidad es requerida",
+    }),
   });
 
   app.post('/api/auth/register', authMutationLimiter, async (req: any, res) => {
     try {
       const data = registerSchema.parse(req.body);
+
+      // Validate legal confirmations and active versions
+      const legalValidation = validateRegistrationAcceptance({
+        acceptTerms: data.acceptTerms,
+        termsVersion: data.termsVersion,
+        acknowledgePrivacy: data.acknowledgePrivacy,
+        privacyVersion: data.privacyVersion,
+      });
+
+      if (!legalValidation.valid || !legalValidation.termsDoc || !legalValidation.privacyDoc) {
+        return res.status(400).json({ message: legalValidation.error || "Aceptación legal inválida." });
+      }
       
       // Check if email already exists
       const existingUser = await storage.getUserByEmail(data.email);
@@ -1029,16 +1058,40 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Hash password
       const saltRounds = 10;
       const hashedPassword = await bcrypt.hash(data.password, saltRounds);
-      
-      // Create user
-      const user = await storage.createLocalUser({
-        email: data.email,
-        password: hashedPassword,
-        firstName: data.firstName,
-        lastName: data.lastName,
-        authMethod: "local",
-        role: "broker", // Default role for new registrations
-        masterBrokerId,
+
+      // Client IP captured via Express req.ip (honoring the real trust proxy configuration).
+      // Never trust raw headers directly; allow null if no verifiable IP source is present.
+      const rawIp = req.ip || req.socket?.remoteAddress;
+      const clientIp = typeof rawIp === "string" && rawIp.trim().length > 0 ? rawIp.trim() : null;
+      const userAgent = (req.headers["user-agent"] as string) || "unknown";
+
+      // Create user and legal evidence atomically
+      const { user } = await storage.registerUserWithLegalEvidence({
+        userData: {
+          email: data.email,
+          password: hashedPassword,
+          firstName: data.firstName,
+          lastName: data.lastName,
+          authMethod: "local",
+          role: "broker", // Default role for new registrations
+          masterBrokerId,
+        },
+        evidence: {
+          ipAddress: clientIp,
+          userAgent,
+          termsDoc: {
+            id: legalValidation.termsDoc.id,
+            document: legalValidation.termsDoc.document,
+            version: legalValidation.termsDoc.version,
+            contentSha256: legalValidation.termsDoc.contentSha256,
+          },
+          privacyDoc: {
+            id: legalValidation.privacyDoc.id,
+            document: legalValidation.privacyDoc.document,
+            version: legalValidation.privacyDoc.version,
+            contentSha256: legalValidation.privacyDoc.contentSha256,
+          },
+        },
       });
 
       // Apply promotional redemption if promo was supplied
