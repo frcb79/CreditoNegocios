@@ -440,18 +440,34 @@ describe("Fase 5: UI y Operación Real de Gobernanza Comercial", () => {
 
     expect(result2.success).toBe(false);
 
-    // Check duplicates debe advertir protección vigente
-    const dupCheck = await oppService.checkDuplicatesEnriched({
+    // Escenario 1: Oportunidad vigente bloquea duplicado
+    const dupCheckVigente = await oppService.checkDuplicatesEnriched({
       rfc: clientAlpha.rfc,
       financingNeedType: "credito_empresarial",
       currentUserId: brokerDormant.id,
       currentUserRole: "broker",
       userTenantId: tenantA,
       tenantContext: { tenant: { id: tenantA } },
+      now,
     });
 
-    expect(dupCheck.canCreateOpportunity).toBe(false);
-    expect(dupCheck.duplicateReason).toBe("client_has_protected_opportunity");
+    expect(dupCheckVigente.canCreateOpportunity).toBe(false);
+    expect(dupCheckVigente.duplicateReason).toBe("client_has_protected_opportunity");
+
+    // Escenario 2: Oportunidad vencida permite nueva oportunidad conforme a reglas existentes
+    const expiredDate = new Date(now.getTime() + 60 * 24 * 60 * 60 * 1000); // 60 días después
+    const dupCheckVencida = await oppService.checkDuplicatesEnriched({
+      rfc: clientAlpha.rfc,
+      financingNeedType: "credito_empresarial",
+      currentUserId: brokerDormant.id,
+      currentUserRole: "broker",
+      userTenantId: tenantA,
+      tenantContext: { tenant: { id: tenantA } },
+      now: expiredDate,
+    });
+
+    expect(dupCheckVencida.canCreateOpportunity).toBe(true);
+    expect(dupCheckVencida.duplicateReason).not.toBe("client_has_protected_opportunity");
   });
 
   // 10. UI refleja correctamente expiración y cálculo de días restantes
