@@ -225,6 +225,7 @@ Bitácora integral de actividad, importación masiva avanzada, analítica avanza
 - Se explicita la comprobación con credit_submission_requests, aceptación comercial versionada sin OTP por cada producto/solicitud y retención de datos para analítica futura.
 - Se crea documento común versionado; no se ha ejecutado ninguna integración de código.
 - Precisión final de revisión cruzada (9-oct-2026): **sobretasas sólo Super Admin, sin excepciones automáticas**; **márgenes internos sólo Super Admin y Admin autorizado expresamente**. Fase 0 queda lista para auditoría técnica de lectura.
+- Fase 0A y 0B: inventario de ramas y dry-run de conflictos técnicos reportados por AG; soluciones propuestas, **todavía no ejecutadas ni probadas**.
 
 **Decisiones abiertas para resolver con AG y ambos chats:**
 - Evento técnico exacto de consolidación de propuesta y congelamiento económico por modalidad (incluida multidispersión).
@@ -235,7 +236,7 @@ Bitácora integral de actividad, importación masiva avanzada, analítica avanza
 - Selección futura de una sola bitácora de actividad.
 - Estado real de cambios locales AG y ramas al iniciar la Fase 0.
 
-## 10. Resultado de Fase 0A y próxima acción
+## 10. Resultados de Fases 0A y 0B y siguiente acción
 
 ### Fase 0A — inventario AG (9-oct-2026)
 
@@ -250,10 +251,33 @@ Bitácora integral de actividad, importación masiva avanzada, analítica avanza
 - Las dos implementaciones de bitácora `bloque-3-1-user-activity` no se integran por ahora.
 - **No ejecutado:** simulación de conflictos y pruebas TS/build, PostgreSQL conjunto, E2E, validación en Staging.
 
+### Fase 0B — análisis técnico AG (9-oct-2026)
+
+**Resultado: auditoría semántica y dry-run de resolución de conflictos completados en modo de inspección. NO equivale a merge probado ni a aprobación de QA.** AG preservó la rama local `feat/admin-financieras-ofertas-b1` (`cc6b151`) y los archivos untracked/respaldo identificados en 0A.
+
+**Matriz de resolución identificada (pendiente de implementar y probar):**
+
+| Componente | Resultado de inspección de AG | Integración requerida |
+|---|---|---|
+| `server/autoMigrate.ts` | Conflicto textual y semántico P0 | Conservar arranque seguro/no destructivo de main + marcadores y triggers Red/P0 + catálogo legal + backfill de versionado B1; validar orden e idempotencia real |
+| `server/routes.ts` | Conflicto textual en imports y cambios semánticos P0 | Combinar rate limiting + authMethod sólo después de contraseña válida + estado suspendido + gate de aprobaciones de comisiones + endpoints de ofertas/matching |
+| `server/dbStorage.ts` | Conflictos en imports y en `createCredit` / `createCreditSubmissionRequest` | Preservar **ambas** validaciones: oferta publicada/vigente y linaje inmutable de originación, incluyendo originación delegada |
+| `shared/schema.ts` | Dry-run sin conflicto textual significativo; discrepancia semántica comercial | Unificar esquema, conservando modelo financiero por versión y aceptación legacy por financiera **sin decidir aún que ésta acredita aceptación específica de oferta** |
+| `server/storage.ts` | Conflictos de imports y propiedades de MemStorage | Conciliar métodos y colecciones; revisar contrato/asíncronía del constructor al implementar |
+| `client/src/pages/FinancieraDetail.tsx` | Conflicto en imports de editor de ofertas y diálogo de aceptación | Retener las dos funcionalidades, pero **corregir interfaz de sobretasas y permisos de Broker/Master** antes de validación |
+| Migraciones `0004` y `0005` | Conjuntos principales de tablas separados; numeración compatible en principio | Verificar sistema real de journal/marcadores, disparadores, dependencias, datos históricos e idempotencia mediante ejecución PostgreSQL posterior. `IF NOT EXISTS` no prueba equivalencia estructural |
+
+**Protecciones identificadas:**
+- De main: seguridad de bootstrap, ausencia de credenciales alternativas, actualización de authMethod después de validación de password y prohibición de cambios destructivos al iniciar.
+- De P0 de Red: rate limiting, gate Super Admin de aprobación/dispersión de comisiones, suspensiones, OTP/legal y origen histórico inmutable.
+- De B1: elegibilidad de versiones publicadas/vigentes y tasas Broker Directo/Master independientes.
+
+**Precauciones:** la frase de AG "seguridad garantizada" sólo significa **riesgos identificados y resolución propuesta**, no pruebas superadas. Tampoco puede asumirse que únicamente existen tres intersecciones lógicas, ni que los modelos de aceptación por financiera y por oferta ya están conciliados. La compatibilidad de tablas y API sigue pendiente de pruebas reales.
+
 ### Próximos pasos
 
-1. **Fase 0B (sólo lectura):** AG analiza los seis archivos de código compartidos y el orden de migraciones; identifica colisiones textuales/semánticas y protecciones P0 que deben prevalecer, sin modificar workspace.
-2. Compartir el resultado 0B con ambas conversaciones, registrar hallazgos verificables y, si hace falta, realizar 0C de comisiones, permisos y Matching antes de implementar.
-3. Sólo después de cerrar bloqueantes y obtener autorización explícita, crear rama aislada desde main seguro para iniciar Fase 1; no hay autorización de merge o despliegue.
+1. Revisión cruzada del informe 0B por las dos conversaciones, sin repetir el inventario.
+2. **Fase 0C (sólo lectura):** trazar el flujo real de formalización → solicitud → propuesta confirmada → snapshot económico → dispersión y liquidación, además de RBAC/sobretasas y Matching verificable en `credit_submission_requests`.
+3. Cerrar decisiones de negocio P0 abiertas y definir pruebas/criterios antes de autorizar una rama aislada desde main para Fase 1. **No autoriza merges ni deploy.**
 
 **Todavía no** fusionar a main, migrar bases de datos, cambiar permisos en producción, ni desplegar.
