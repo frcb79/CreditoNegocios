@@ -136,7 +136,7 @@
 | COM-04 | Master acuerda retribución Broker de su red dentro de límites. | Acordado |
 | COM-05 | Cargo de apertura al cliente no equivale a comisión pagada por la financiera. | Acordado |
 | COM-06 | Distribución total no rebasa comisión recibida; canal Broker Directo y Master independientes. | Acordado |
-| COM-07 | Congelar versión, tasa, originador y beneficiarios en evento comercial definido; resolver evento exacto. | Conciliar Fase 2 |
+| COM-07 | **Regla acordada:** congelar oferta/versión, tasas, originador y beneficiarios al consolidar formalmente la propuesta comercial; la aprobación administrativa del pago es un evento posterior que no debe sustituir ese corte. En 2B.1 `frozenAmount` se asigna sólo en `/api/commissions/:id/approve`. | **P0 — completar snapshot comercial y diferenciar congelamiento de derechos vs importe de desembolso** |
 | COM-08 | Cambio de Master no cambia derecho económico histórico. | Acordado |
 | COM-09 | Comisión definitiva se calcula sobre monto efectivamente dispersado y confirmado. | Acordado |
 | COM-10 | Cambios materiales comunicados y expresamente aceptados, sin retroactividad indebida. | Acordado |
@@ -145,6 +145,13 @@
 | COM-13 | Sobretasas sólo Super Admin; márgenes internos Super Admin o Admin explícitamente autorizado. | Acordado |
 | COM-14 | No fallback silencioso a tasas genéricas ni convertir dato ausente en 0. | Acordado |
 | COM-15 | Oferta múltiple y multidispersión: no mezclar ni duplicar liquidaciones. | Verificar |
+| COM-16 | **P0 versiones:** en `server/commissionService.ts` de `b97bf32`, si `versionNumber` solicitada no existe, `resolveOfferVersionCommissionRates` usa una versión publicada o la primera. Prohibir sustitución silenciosa; fallar cerrado y verificar snapshot histórico autorizado. | **Abierto — corregir antes de Staging** |
+| COM-17 | **P0 desembolso:** `calculateAndPersistCascadingCommission` cae a `linkedCredit.amount` si faltan `confirmedDisbursedAmount` y `dispersedAmount`. No representar monto del crédito como dispersión confirmada. Exigir evento/monto verificado, permitir cero legítimo sin fabricar comisión y cubrir multidispersión. | **Abierto — corregir y probar con fuente de dispersión real** |
+| COM-18 | **P0 integridad económica:** `safeFinRate > 0` condiciona el control de techo; si la comisión de financiera es `0` y se suministran participaciones positivas, puede omitirse el rechazo. Validar techo incluso en 0% y distinguir cero explícito de ausente. | **Abierto — prueba 0% financiera con broker/master positivos** |
+| COM-19 | **P0 tarifas de red históricas:** cálculo en 2B.1 consulta `masterUser.networkCommissionRates` actual, incluso en crédito con `originMasterBrokerId` histórico. Congelar tasa asignada al Broker/red en la propuesta y no recalcular usando acuerdos modificados posteriormente; preservar beneficiarios y tarifas aunque cambie Master/condiciones. | **Abierto — prueba cambio de tarifa después de propuesta** |
+| COM-20 | **Compatibilidad legacy acotada:** `resolveOfferVersionCommissionRates` incluye `institution_legacy` y defaults `?? 0` sin oferta. Restringir sólo a operaciones históricas verificadas; ofertas nuevas/versionadas no deben entrar al fallback ni convertir tasa ausente en 0. | **Abierto — definir/validar excepción histórica** |
+
+**Revisión técnica 11-oct-2026, Fase 2B.1 (`b97bf32`):** AG reportó 35/35 pruebas de comisiones, 107/107 de regresión, TS y build exitosos; el commit está en integración. **Las pruebas no acreditan todavía estos escenarios P0**: versión inexistente, dispersión no confirmada, 0% de financiera con distribución positiva y tarifa del Master modificada después de la propuesta. No autorizar pagos ni despliegue hasta cerrar COM-07 y COM-16–20, PAG-01/03 y MIG-01/05 con evidencia PostgreSQL/E2E cuando aplique.
 
 ## PAG — Pago documental
 
