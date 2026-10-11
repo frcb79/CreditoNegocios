@@ -7,6 +7,10 @@ import {
   resolveOfferVersionCommissionRates,
   auditCommissionPayout,
   MissingCommissionRateError,
+  MissingOfferVersionError,
+  UnconfirmedDispersalAmountError,
+  UnauthorizedDistributionError,
+  consolidateCommercialProposalSnapshot,
 } from "../../server/commissionService";
 import { registerRoutes } from "../../server/routes";
 import { randomUUID } from "crypto";
@@ -188,6 +192,7 @@ describe("Fase 2B.1 — Comisiones por Oferta, Atribución Histórica y Segurida
 
       const comm1 = await calculateAndPersistCascadingCommission({
         credit: credit1,
+        confirmedDisbursedAmount: 1000000,
         brokerRate: 2.0,
         masterBrokerRate: 1.0,
         financieraRate: 3.0,
@@ -215,6 +220,7 @@ describe("Fase 2B.1 — Comisiones por Oferta, Atribución Histórica y Segurida
 
       const comm2 = await calculateAndPersistCascadingCommission({
         credit: credit2,
+        confirmedDisbursedAmount: 2000000,
         brokerRate: 2.0,
         masterBrokerRate: 1.0,
         financieraRate: 3.0,
@@ -291,6 +297,7 @@ describe("Fase 2B.1 — Comisiones por Oferta, Atribución Histórica y Segurida
 
       const comm = await calculateAndPersistCascadingCommission({
         credit,
+        confirmedDisbursedAmount: 500000,
         brokerRate: resolved.broker.rate,
         masterBrokerRate: resolved.masterBroker.rate,
         financieraRate: resolved.financiera.rate,
@@ -357,6 +364,7 @@ describe("Fase 2B.1 — Comisiones por Oferta, Atribución Histórica y Segurida
       await expect(
         calculateAndPersistCascadingCommission({
           credit,
+          confirmedDisbursedAmount: 500000,
           institutionProductId: offer.id,
           versionNumber: ver.versionNumber,
           commissionType: "apertura",
@@ -538,6 +546,579 @@ describe("Fase 2B.1 — Comisiones por Oferta, Atribución Histórica y Segurida
       expect(adminFound.appShare).toBe("10000.00"); // Visible
       expect(adminFound.notes).toBe("Margen confidencial acordado"); // Visible
       expect(adminFound.financialInstitution?.overRate).toBe("1.5"); // Visible
+    });
+  });
+
+  // =========================================================================
+  // 7. FASE 2B.1A: CORRECCIONES DE INTEGRIDAD ECONÓMICA (COM-07, COM-16 A COM-20)
+  // =========================================================================
+  describe("7. Fase 2B.1A: Integridad Económica y Reglas de Negocio", () => {
+    // REGLA 1: Congelamiento comercial
+    describe("Regla 1 — Congelamiento comercial en la propuesta formal", () => {
+      it("Positiva: Consolida snapshot comercial inmutable en finalProposal con oferta, versión, tasas pactadas y beneficiarios", async () => {
+        const credit = {
+          id: `credit-${randomUUID()}`,
+          brokerId: "broker-origin-1",
+          originMasterBrokerId: "master-beneficiary-1",
+          institutionProductId: "prod-frozen-1",
+          versionNumber: 2,
+        };
+
+        const proposalInput = {
+          approvedAmount: 850000,
+          commissionRates: {
+            broker: { apertura: "1.75" },
+            masterBroker: { apertura: "0.75" },
+            financiera: { apertura: "2.5" },
+          },
+        };
+
+        const frozenSnapshot = consolidateCommercialProposalSnapshot({
+          credit,
+          proposalData: proposalInput,
+        });
+
+        expect(frozenSnapshot.isCommercialSnapshot).toBe(true);
+        expect(frozenSnapshot.snapshotCreatedAt).toBeDefined();
+        expect(frozenSnapshot.institutionProductId).toBe("prod-frozen-1");
+        expect(frozenSnapshot.versionNumber).toBe(2);
+        expect(frozenSnapshot.originBrokerId).toBe("broker-origin-1");
+        expect(frozenSnapshot.originMasterBrokerId).toBe("master-beneficiary-1");
+        expect(frozenSnapshot.commissionRates.broker.apertura).toBe("1.75");
+        expect(frozenSnapshot.commissionRates.masterBroker.apertura).toBe("0.75");
+        expect(frozenSnapshot.commissionRates.financiera.apertura).toBe("2.5");
+      });
+
+      it("Positiva: El cálculo definitivo sobre la dispersión confirmada respeta el snapshot congelado de la propuesta", async () => {
+        const credit = await storage.createCredit({
+          clientId: "client-freeze-test",
+          brokerId: "broker-freeze-1",
+          originMasterBrokerId: "master-freeze-1",
+          amount: "1000000.00", // Monto solicitado
+          status: "approved",
+          finalProposal: {
+            approvedAmount: 900000,
+            institutionProductId: "offer-freeze-1",
+            versionNumber: 3,
+            originBrokerId: "broker-freeze-1",
+            originMasterBrokerId: "master-freeze-1",
+            commissionRates: {
+              broker: { apertura: "1.80" },
+              masterBroker: { apertura: "0.60" },
+              financiera: { apertura: "2.40" },
+            },
+            isCommercialSnapshot: true,
+          },
+        } as any);
+
+        // Desembolso confirmado de $900,000 (monto definitivo diferente a solicitado)
+        const comm = await calculateAndPersistCascadingCommission({
+          credit,
+          confirmedDisbursedAmount: 900000,
+          commissionType: "apertura",
+        });
+
+        expect(comm.brokerId).toBe("broker-freeze-1");
+        expect(comm.masterBrokerId).toBe("master-freeze-1");
+        expect(parseFloat(comm.brokerShare || "0")).toBe(16200); // 1.80% de 900,000
+        expect(parseFloat(comm.masterBrokerShare || "0")).toBe(5400); // 0.60% de 900,000
+        expect(parseFloat(comm.amount || "0")).toBe(21600); // 2.40% de 900,000
+      });
+    });
+
+    // REGLA 2: Versiones exactas
+    describe("Regla 2 — Versiones exactas (COM-17)", () => {
+      it("Negativa: Bloquea el cálculo con MissingOfferVersionError si la versión solicitada no existe, sin fallback silencioso", async () => {
+        const institution = await storage.createFinancialInstitution({
+          name: `Financiera ExactVer-${randomUUID().slice(0, 8)}`,
+          commissionRate: "5.0",
+          isActive: true,
+        } as any);
+
+        const offer = await storage.createInstitutionProduct({
+          financialInstitutionId: institution.id,
+          name: "Oferta Versionada Estricta",
+          code: `VER-STR-${randomUUID().slice(0, 6)}`,
+          productType: "simple_credit",
+          isActive: true,
+        } as any);
+
+        // Versión 1 publicada
+        await storage.createInstitutionProductDraftVersion(offer.id, {
+          conditions: {
+            commissionRates: {
+              broker: { apertura: "2.0" },
+              masterBroker: { apertura: "1.0" },
+              financiera: { apertura: "3.0" },
+            },
+          },
+          status: "published",
+        } as any);
+
+        // Intentar resolver versión 99 (inexistente)
+        await expect(
+          resolveOfferVersionCommissionRates({
+            offerId: offer.id,
+            versionNumber: 99,
+            commissionType: "apertura",
+            institution,
+            hasMasterBroker: true,
+          })
+        ).rejects.toThrow(MissingOfferVersionError);
+
+        // Intentar calcular comisión solicitando versión 99
+        const credit = await storage.createCredit({
+          clientId: "client-ver-test",
+          brokerId: "broker-ver-1",
+          amount: "500000.00",
+          status: "approved",
+        } as any);
+
+        await expect(
+          calculateAndPersistCascadingCommission({
+            credit,
+            confirmedDisbursedAmount: 500000,
+            institutionProductId: offer.id,
+            versionNumber: 99,
+            commissionType: "apertura",
+          })
+        ).rejects.toThrow(MissingOfferVersionError);
+      });
+
+      it("Positiva: Resuelve exactamente la versión solicitada cuando existe", async () => {
+        const institution = await storage.createFinancialInstitution({
+          name: `Financiera MultiVer-${randomUUID().slice(0, 8)}`,
+          commissionRate: "4.0",
+          isActive: true,
+        } as any);
+
+        const offer = await storage.createInstitutionProduct({
+          financialInstitutionId: institution.id,
+          name: "Oferta MultiVersión",
+          code: `MVER-${randomUUID().slice(0, 6)}`,
+          productType: "simple_credit",
+          isActive: true,
+        } as any);
+
+        const v1 = await storage.createInstitutionProductDraftVersion(offer.id, {
+          conditions: {
+            commissionRates: {
+              broker: { apertura: "1.5" },
+              masterBroker: { apertura: "0.5" },
+              financiera: { apertura: "2.0" },
+            },
+          },
+          status: "published",
+        } as any);
+
+        const v2 = await storage.createInstitutionProductDraftVersion(offer.id, {
+          conditions: {
+            commissionRates: {
+              broker: { apertura: "2.2" },
+              masterBroker: { apertura: "0.8" },
+              financiera: { apertura: "3.0" },
+            },
+          },
+          status: "published",
+        } as any);
+
+        const resV1 = await resolveOfferVersionCommissionRates({
+          offerId: offer.id,
+          versionNumber: v1.versionNumber,
+          commissionType: "apertura",
+          institution,
+          hasMasterBroker: true,
+        });
+
+        const resV2 = await resolveOfferVersionCommissionRates({
+          offerId: offer.id,
+          versionNumber: v2.versionNumber,
+          commissionType: "apertura",
+          institution,
+          hasMasterBroker: true,
+        });
+
+        expect(resV1.versionNumber).toBe(v1.versionNumber);
+        expect(resV1.broker.rate).toBe(1.5);
+        expect(resV2.versionNumber).toBe(v2.versionNumber);
+        expect(resV2.broker.rate).toBe(2.2);
+      });
+    });
+
+    // REGLA 3: Dispersión confirmada
+    describe("Regla 3 — Dispersión confirmada únicamente (COM-18)", () => {
+      it("Negativa: Bloquea con UnconfirmedDispersalAmountError si no se envía monto de dispersión confirmado", async () => {
+        const credit = await storage.createCredit({
+          clientId: "client-unconfirmed",
+          brokerId: "broker-unconfirmed",
+          amount: "1500000.00", // Monto solicitado
+          status: "approved",
+          finalProposal: { approvedAmount: 1200000 },
+        } as any);
+
+        // Sin confirmedDisbursedAmount ni dispersedAmount
+        await expect(
+          calculateAndPersistCascadingCommission({
+            credit,
+            brokerRate: 2.0,
+            masterBrokerRate: 1.0,
+            financieraRate: 3.0,
+            commissionType: "apertura",
+          })
+        ).rejects.toThrow(UnconfirmedDispersalAmountError);
+
+        // Con monto cero o negativo
+        await expect(
+          calculateAndPersistCascadingCommission({
+            credit,
+            confirmedDisbursedAmount: 0,
+            brokerRate: 2.0,
+            masterBrokerRate: 1.0,
+            financieraRate: 3.0,
+            commissionType: "apertura",
+          })
+        ).rejects.toThrow(UnconfirmedDispersalAmountError);
+      });
+
+      it("Positiva: Calcula comisión únicamente sobre el monto confirmado y preserva multidispersión e idempotencia", async () => {
+        const credit = await storage.createCredit({
+          clientId: "client-multidisp",
+          brokerId: "broker-multidisp",
+          amount: "2000000.00",
+          status: "approved",
+        } as any);
+
+        const comm1 = await calculateAndPersistCascadingCommission({
+          credit,
+          confirmedDisbursedAmount: 800000,
+          brokerRate: 1.5,
+          masterBrokerRate: 0.5,
+          financieraRate: 2.0,
+          commissionType: "apertura",
+          dispersalIndex: 1,
+          idempotencyKey: `idemp-${credit.id}-part-1`,
+        });
+
+        expect(comm1.commissionType).toBe("apertura_parcial_1");
+        expect(parseFloat(comm1.brokerShare || "0")).toBe(12000); // 1.5% de 800k
+
+        // Idempotencia exacta para el mismo tramo
+        const comm1Dup = await calculateAndPersistCascadingCommission({
+          credit,
+          confirmedDisbursedAmount: 800000,
+          brokerRate: 1.5,
+          masterBrokerRate: 0.5,
+          financieraRate: 2.0,
+          commissionType: "apertura",
+          dispersalIndex: 1,
+          idempotencyKey: `idemp-${credit.id}-part-1`,
+        });
+
+        expect(comm1Dup.id).toBe(comm1.id);
+      });
+    });
+
+    // REGLA 4: Límites económicos
+    describe("Regla 4 — Límites económicos autorizados (COM-19)", () => {
+      it("Negativa: Arroja UnauthorizedDistributionError si Broker + Master excede la tasa autorizada por la financiera", async () => {
+        const credit = await storage.createCredit({
+          clientId: "client-exceed",
+          brokerId: "broker-exceed",
+          originMasterBrokerId: "master-exceed",
+          amount: "500000.00",
+          status: "approved",
+        } as any);
+
+        // Financiera autoriza 2.0%, pero Broker 1.5% + Master 1.0% = 2.5%
+        await expect(
+          calculateAndPersistCascadingCommission({
+            credit,
+            confirmedDisbursedAmount: 500000,
+            brokerRate: 1.5,
+            masterBrokerRate: 1.0,
+            financieraRate: 2.0,
+            commissionType: "apertura",
+          })
+        ).rejects.toThrow(UnauthorizedDistributionError);
+      });
+
+      it("Negativa: Arroja UnauthorizedDistributionError cuando la financiera autoriza 0% y se distribuye comisión", async () => {
+        const credit = await storage.createCredit({
+          clientId: "client-zero-exceed",
+          brokerId: "broker-zero-exceed",
+          amount: "500000.00",
+          status: "approved",
+        } as any);
+
+        // Financiera autoriza 0.0%, Broker pide 0.5%
+        await expect(
+          calculateAndPersistCascadingCommission({
+            credit,
+            confirmedDisbursedAmount: 500000,
+            brokerRate: 0.5,
+            financieraRate: 0.0,
+            commissionType: "apertura",
+          })
+        ).rejects.toThrow(UnauthorizedDistributionError);
+      });
+
+      it("Positiva: Tasa cero autorizada (0.0%) explícita se procesa con éxito", async () => {
+        const credit = await storage.createCredit({
+          clientId: "client-valid-zero",
+          brokerId: "broker-valid-zero",
+          amount: "500000.00",
+          status: "approved",
+        } as any);
+
+        const comm = await calculateAndPersistCascadingCommission({
+          credit,
+          confirmedDisbursedAmount: 500000,
+          brokerRate: 0.0,
+          masterBrokerRate: 0.0,
+          financieraRate: 0.0,
+          commissionType: "apertura",
+        });
+
+        expect(parseFloat(comm.amount || "0")).toBe(0);
+        expect(parseFloat(comm.brokerShare || "0")).toBe(0);
+        expect(parseFloat(comm.masterBrokerShare || "0")).toBe(0);
+      });
+    });
+
+    // REGLA 5: Derechos históricos
+    describe("Regla 5 — Derechos históricos e inmutabilidad ante cambios de red (COM-20)", () => {
+      it("Positiva: El cambio posterior de networkCommissionRates del Master Broker NO altera operaciones previamente congeladas", async () => {
+        const master = await storage.createUser({
+          email: `master-hist-${randomUUID()}@network.test`,
+          firstName: "Master",
+          lastName: "Hist",
+          role: "master_broker",
+          networkCommissionRates: {
+            "fin-test": { apertura: "1.5" },
+          },
+          isActive: true,
+          status: "active",
+        } as any);
+
+        const broker = await storage.createUser({
+          email: `broker-hist-${randomUUID()}@network.test`,
+          firstName: "Broker",
+          lastName: "Hist",
+          role: "broker",
+          masterBrokerId: master.id,
+          isActive: true,
+          status: "active",
+        } as any);
+
+        // Crédito con propuesta comercial consolidada y congelada con brokerRate: 2.0%
+        const credit = await storage.createCredit({
+          clientId: "client-hist-net",
+          brokerId: broker.id,
+          originMasterBrokerId: master.id,
+          financialInstitutionId: "fin-test",
+          amount: "1000000.00",
+          status: "approved",
+          finalProposal: {
+            approvedAmount: 1000000,
+            originBrokerId: broker.id,
+            originMasterBrokerId: master.id,
+            commissionRates: {
+              broker: { apertura: "2.0" },
+              masterBroker: { apertura: "1.0" },
+              financiera: { apertura: "3.0" },
+            },
+            isCommercialSnapshot: true,
+          },
+        } as any);
+
+        // Posterior en el tiempo: Master cambia su tasa de red a 0.5%
+        await storage.updateUser(master.id, {
+          networkCommissionRates: {
+            "fin-test": { apertura: "0.5" },
+          },
+        } as any);
+
+        // Al dispersar el crédito, DEBE usar el 2.0% congelado en la propuesta, NUNCA el 0.5% actual del Master
+        const comm = await calculateAndPersistCascadingCommission({
+          credit,
+          confirmedDisbursedAmount: 1000000,
+          commissionType: "apertura",
+        });
+
+        expect(parseFloat(comm.brokerShare || "0")).toBe(20000); // 2.0% congelado, NO 0.5% (5000)
+        expect(parseFloat(comm.masterBrokerShare || "0")).toBe(10000); // 1.0%
+      });
+
+      it("Positiva: Preserva Broker y Master beneficiarios históricos aun si el broker cambia de red", async () => {
+        const masterOld = await storage.createUser({
+          email: `master-old-${randomUUID()}@network.test`,
+          firstName: "Master",
+          lastName: "Old",
+          role: "master_broker",
+          isActive: true,
+          status: "active",
+        } as any);
+
+        const masterNew = await storage.createUser({
+          email: `master-new-${randomUUID()}@network.test`,
+          firstName: "Master",
+          lastName: "New",
+          role: "master_broker",
+          isActive: true,
+          status: "active",
+        } as any);
+
+        const broker = await storage.createUser({
+          email: `broker-move-${randomUUID()}@network.test`,
+          firstName: "Broker",
+          lastName: "Move",
+          role: "broker",
+          masterBrokerId: masterOld.id,
+          isActive: true,
+          status: "active",
+        } as any);
+
+        const credit = await storage.createCredit({
+          clientId: "client-move",
+          brokerId: broker.id,
+          originMasterBrokerId: masterOld.id,
+          amount: "1000000.00",
+          status: "approved",
+          finalProposal: {
+            originBrokerId: broker.id,
+            originMasterBrokerId: masterOld.id,
+            commissionRates: {
+              broker: { apertura: "2.0" },
+              masterBroker: { apertura: "1.0" },
+              financiera: { apertura: "3.0" },
+            },
+            isCommercialSnapshot: true,
+          },
+        } as any);
+
+        // El broker se mueve a masterNew en el sistema
+        await storage.updateUser(broker.id, { masterBrokerId: masterNew.id } as any);
+
+        // La comisión calculada debe pagar a masterOld
+        const comm = await calculateAndPersistCascadingCommission({
+          credit,
+          confirmedDisbursedAmount: 1000000,
+          commissionType: "apertura",
+        });
+
+        expect(comm.masterBrokerId).toBe(masterOld.id);
+        expect(comm.masterBrokerId).not.toBe(masterNew.id);
+      });
+    });
+
+    // REGLA 6: Operaciones legacy
+    describe("Regla 6 — Operaciones legacy y bloqueo de fallbacks en ofertas nuevas", () => {
+      it("Negativa: Oferta nueva no recurre a fallbacks institucionales ni valores cero ante tasas ausentes", async () => {
+        const institution = await storage.createFinancialInstitution({
+          name: `Financiera LegacyFallback-${randomUUID().slice(0, 8)}`,
+          commissionRate: "5.0", // Tasa general institucional
+          isActive: true,
+        } as any);
+
+        const offer = await storage.createInstitutionProduct({
+          financialInstitutionId: institution.id,
+          name: "Oferta Nueva Sin Tasa",
+          code: `NEW-NOTRATE-${randomUUID().slice(0, 6)}`,
+          productType: "simple_credit",
+          isActive: true,
+        } as any);
+
+        const ver = await storage.createInstitutionProductDraftVersion(offer.id, {
+          conditions: {
+            commissionRates: {}, // Tasas vacías
+          },
+          status: "published",
+        } as any);
+
+        const resolved = await resolveOfferVersionCommissionRates({
+          offerId: offer.id,
+          versionNumber: ver.versionNumber,
+          commissionType: "apertura",
+          institution,
+        });
+
+        // No debe tomar el 5.0% institucional
+        expect(resolved.source).toBe("offer_version");
+        expect(resolved.hasMissingRequiredRate).toBe(true);
+        expect(resolved.financiera.provided).toBe(false);
+        expect(resolved.broker.provided).toBe(false);
+
+        const credit = await storage.createCredit({
+          clientId: "client-no-fallback",
+          brokerId: "broker-no-fallback",
+          amount: "500000.00",
+          status: "approved",
+        } as any);
+
+        await expect(
+          calculateAndPersistCascadingCommission({
+            credit,
+            confirmedDisbursedAmount: 500000,
+            institutionProductId: offer.id,
+            versionNumber: ver.versionNumber,
+            commissionType: "apertura",
+          })
+        ).rejects.toThrow(MissingCommissionRateError);
+      });
+
+      it("Positiva legacy: Operación legacy sin oferta comercial calcula si la institución tiene datos verificables", async () => {
+        const legacyInstitution = await storage.createFinancialInstitution({
+          name: `Financiera LegacyVerifiable-${randomUUID().slice(0, 8)}`,
+          commissionRates: {
+            broker: { apertura: "1.8" },
+            masterBroker: { apertura: "0.6" },
+            financiera: { apertura: "2.4" },
+          },
+          isActive: true,
+        } as any);
+
+        const legacyCredit = await storage.createCredit({
+          clientId: "client-legacy-ok",
+          brokerId: "broker-legacy-ok",
+          financialInstitutionId: legacyInstitution.id,
+          amount: "1000000.00",
+          status: "approved",
+        } as any);
+
+        const comm = await calculateAndPersistCascadingCommission({
+          credit: legacyCredit,
+          confirmedDisbursedAmount: 1000000,
+          commissionType: "apertura",
+        });
+
+        expect(comm.commissionType).toBe("apertura");
+        expect(parseFloat(comm.brokerShare || "0")).toBe(18000);
+        expect(parseFloat(comm.amount || "0")).toBe(24000);
+      });
+
+      it("Negativa legacy: Operación legacy sin ninguna información económica verificable bloquea el cálculo", async () => {
+        const emptyInstitution = await storage.createFinancialInstitution({
+          name: `Financiera Empty-${randomUUID().slice(0, 8)}`,
+          commissionRates: {}, // Totalmente vacía
+          isActive: true,
+        } as any);
+
+        const legacyCredit = await storage.createCredit({
+          clientId: "client-legacy-empty",
+          brokerId: "broker-legacy-empty",
+          financialInstitutionId: emptyInstitution.id,
+          amount: "1000000.00",
+          status: "approved",
+        } as any);
+
+        await expect(
+          calculateAndPersistCascadingCommission({
+            credit: legacyCredit,
+            confirmedDisbursedAmount: 1000000,
+            commissionType: "apertura",
+          })
+        ).rejects.toThrow(MissingCommissionRateError);
+      });
     });
   });
 });

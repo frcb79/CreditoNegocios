@@ -32,6 +32,57 @@ export class MissingCommissionRateError extends Error {
 }
 
 /**
+ * Error lanzado cuando una versión específica requerida de una oferta no existe (COM-17).
+ * Prohibido sustituirla silenciosamente por otra versión.
+ */
+export class MissingOfferVersionError extends Error {
+  public readonly code = "MISSING_OFFER_VERSION";
+  public readonly offerId: string;
+  public readonly versionNumber: number;
+
+  constructor(offerId: string, versionNumber: number, offerName?: string | null) {
+    super(
+      `[COM-17] Versión requerida no encontrada: La versión ${versionNumber} de la oferta '${offerName || offerId}' no existe. Prohibido sustituir silenciosamente por otra versión.`
+    );
+    this.name = "MissingOfferVersionError";
+    this.offerId = offerId;
+    this.versionNumber = versionNumber;
+  }
+}
+
+/**
+ * Error lanzado cuando se intenta calcular comisiones sin un desembolso efectivamente confirmado (COM-18).
+ * Prohibido utilizar automáticamente el monto solicitado o aprobado del crédito.
+ */
+export class UnconfirmedDispersalAmountError extends Error {
+  public readonly code = "UNCONFIRMED_DISPERSAL_AMOUNT";
+
+  constructor(message?: string) {
+    super(
+      message ||
+        "[COM-18] Dispersión no confirmada: El cálculo de comisiones requiere un monto de dispersión efectivamente confirmado y verificable en servidor. Prohibido utilizar automáticamente el monto solicitado o aprobado."
+    );
+    this.name = "UnconfirmedDispersalAmountError";
+  }
+}
+
+/**
+ * Error lanzado cuando la distribución económica Broker + Master + plataforma excede lo autorizado por la financiera (COM-19).
+ */
+export class UnauthorizedDistributionError extends Error {
+  public readonly code = "UNAUTHORIZED_ECONOMIC_DISTRIBUTION";
+  public readonly totalDistributedRate: number;
+  public readonly authorizedRate: number;
+
+  constructor(message: string, totalDistributedRate?: number, authorizedRate?: number) {
+    super(message);
+    this.name = "UnauthorizedDistributionError";
+    this.totalDistributedRate = totalDistributedRate ?? 0;
+    this.authorizedRate = authorizedRate ?? 0;
+  }
+}
+
+/**
  * Error lanzado cuando se detecta discrepancia en importes congelados o liquidación.
  */
 export class CommissionFrozenDiscrepancyError extends Error {
@@ -80,6 +131,7 @@ export interface ResolvedCommissionRates {
   hasMissingRequiredRate: boolean;
   missingRateReasons: string[];
   notes?: string | null;
+  isFrozenSnapshot?: boolean;
 }
 
 function parseRateValue(val: unknown): ResolvedRateItem {
@@ -113,10 +165,16 @@ export async function resolveOfferVersionCommissionRates(params: {
   const commType = params.commissionType || "apertura";
   const missingReasons: string[] = [];
 
-  // 1. Si existe un snapshot explícito congelado en la propuesta comercial
+  // 1. Si existe un snapshot explícito congelado en la propuesta comercial (COM-07, COM-16, COM-20)
   if (params.proposalCommissionRates && typeof params.proposalCommissionRates === "object") {
     const pr = params.proposalCommissionRates;
-    const fin = parseRateValue(pr.financiera?.[commType] ?? pr.financiera?.apertura ?? pr.financiera?.total);
+    const fin = parseRateValue(
+      pr.financiera?.[commType] ??
+      pr.financiera?.apertura ??
+      pr.financiera?.total ??
+      pr.superAdmin?.[commType] ??
+      pr.superAdmin?.apertura
+    );
     const mb = parseRateValue(pr.masterBroker?.[commType] ?? pr.masterBroker?.apertura ?? pr.masterBroker?.total);
     const brk = parseRateValue(pr.broker?.[commType] ?? pr.broker?.apertura ?? pr.broker?.total);
 
@@ -134,19 +192,33 @@ export async function resolveOfferVersionCommissionRates(params: {
       hasMissingRequiredRate: missingReasons.length > 0,
       missingRateReasons: missingReasons,
       notes: pr.notes || null,
+      isFrozenSnapshot: true,
     };
   }
 
-  // 2. Si se especifica una oferta versionada (institutionProductId / offerId)
+  // 2. Si se especifica una oferta versionada (institutionProductId / offerId) (COM-17)
   if (params.offerId) {
     const offer = await storage.getInstitutionProduct(params.offerId);
+    if (!offer) {
+      throw new Error(`[COM-17] Oferta con ID '${params.offerId}' no encontrada.`);
+    }
     const allVersions = await storage.getInstitutionProductVersions(params.offerId);
     let version = null;
     if (params.versionNumber != null) {
       version = allVersions.find((v) => v.versionNumber === params.versionNumber) || null;
-    }
-    if (!version) {
-      version = allVersions.find((v) => v.status === "published" || v.status === "active") || allVersions[0] || null;
+      if (!version) {
+        // REGLA 2 (COM-17): Si una versión requerida no existe, bloquear el cálculo. Prohibido sustituirla silenciosamente.
+        throw new MissingOfferVersionError(params.offerId, params.versionNumber, offer.name);
+      }
+    } else {
+      // Si no se especifica versión explícita, buscar la versión publicada/activa
+      version = allVersions.find((v) => v.status === "published" || v.status === "active") || null;
+      if (!version && allVersions.length > 0) {
+        version = allVersions[0];
+      }
+      if (!version) {
+        throw new MissingOfferVersionError(params.offerId, 1, offer.name);
+      }
     }
 
     const conditions = (version?.conditions as any) || (offer?.configuration as any) || {};
@@ -156,20 +228,21 @@ export async function resolveOfferVersionCommissionRates(params: {
     const mb = parseRateValue(commRates.masterBroker?.[commType] ?? commRates.masterBroker?.apertura ?? commRates.masterBroker?.total);
     const brk = parseRateValue(commRates.broker?.[commType] ?? commRates.broker?.apertura ?? commRates.broker?.total);
 
+    // REGLA 4 y 6: Diferenciar tasa cero configurada de tasa ausente. No recurrir a fallbacks institucionales para ofertas versionadas.
     if (!fin.provided) {
-      missingReasons.push(`Tasa de Financiera ausente para tipo '${commType}' en oferta '${offer?.name || params.offerId}'`);
+      missingReasons.push(`Tasa de Financiera ausente para tipo '${commType}' en versión ${version.versionNumber} de oferta '${offer.name}'`);
     }
     if (params.hasMasterBroker && !mb.provided) {
-      missingReasons.push(`Tasa de Master Broker ausente para tipo '${commType}' en oferta '${offer?.name || params.offerId}'`);
+      missingReasons.push(`Tasa de Master Broker ausente para tipo '${commType}' en versión ${version.versionNumber} de oferta '${offer.name}'`);
     }
     if (!brk.provided) {
-      missingReasons.push(`Tasa de Broker ausente para tipo '${commType}' en oferta '${offer?.name || params.offerId}'`);
+      missingReasons.push(`Tasa de Broker ausente para tipo '${commType}' en versión ${version.versionNumber} de oferta '${offer.name}'`);
     }
 
     return {
       source: "offer_version",
       offerId: params.offerId,
-      versionNumber: version?.versionNumber ?? offer?.currentVersionNumber ?? 1,
+      versionNumber: version.versionNumber ?? offer.currentVersionNumber ?? 1,
       financiera: fin,
       masterBroker: mb,
       broker: brk,
@@ -179,41 +252,35 @@ export async function resolveOfferVersionCommissionRates(params: {
       hasMissingRequiredRate: missingReasons.length > 0,
       missingRateReasons: missingReasons,
       notes: commRates.notes || null,
+      isFrozenSnapshot: false,
     };
   }
 
-  // 3. Fallback retrocompatible para operaciones legadas sin oferta comercial
+  // 3. Fallback retrocompatible para operaciones legadas sin oferta comercial (Regla 6)
   const inst = params.institution || {};
   const instRates = inst.commissionRates || {};
-  const fin = parseRateValue(
-    instRates.financiera?.[commType] ??
-    instRates.financiera?.apertura ??
-    inst.openingCommissionRate ??
-    inst.commissionRate ??
-    0
-  );
-  const mb = parseRateValue(
-    instRates.masterBroker?.[commType] ??
-    instRates.masterBroker?.apertura ??
-    inst.masterBrokerCommissionRate ??
-    0
-  );
-  const brk = parseRateValue(
-    instRates.broker?.[commType] ??
-    instRates.broker?.apertura ??
-    inst.brokerCommissionRate ??
-    inst.commissionRate ??
-    0
-  );
+  const finRaw = instRates.financiera?.[commType] ?? instRates.financiera?.apertura ?? inst.openingCommissionRate ?? inst.commissionRate;
+  const mbRaw = instRates.masterBroker?.[commType] ?? instRates.masterBroker?.apertura ?? inst.masterBrokerCommissionRate;
+  const brkRaw = instRates.broker?.[commType] ?? instRates.broker?.apertura ?? inst.brokerCommissionRate ?? inst.commissionRate;
+
+  const fin = parseRateValue(finRaw);
+  const mb = parseRateValue(mbRaw);
+  const brk = parseRateValue(brkRaw);
+
+  // REGLA 6: Operaciones legacy solo con información económica verificable. No rellenar con ceros silenciosos.
+  if (!fin.provided && !mb.provided && !brk.provided) {
+    missingReasons.push(`Operación legacy sin información económica verificable en institución '${inst.name || 'desconocida'}'`);
+  }
 
   return {
     source: "institution_legacy",
     financiera: fin,
     masterBroker: mb,
     broker: brk,
-    hasMissingRequiredRate: false,
-    missingRateReasons: [],
+    hasMissingRequiredRate: missingReasons.length > 0,
+    missingRateReasons: missingReasons,
     notes: null,
+    isFrozenSnapshot: false,
   };
 }
 
@@ -375,8 +442,25 @@ export async function calculateAndPersistCascadingCommission(params: CascadingCo
   const linkedCredit = params.credit || (params.creditId ? await storage.getCredit(params.creditId) : null);
   const creditId = params.creditId || linkedCredit?.id;
   const brokerId = params.brokerId || linkedCredit?.brokerId;
-  const masterBrokerId = params.masterBrokerId !== undefined ? params.masterBrokerId : (linkedCredit?.originMasterBrokerId ?? null);
-  const dispersedAmount = params.confirmedDisbursedAmount ?? params.dispersedAmount ?? (linkedCredit ? parseFloat(linkedCredit.amount || '0') : 0);
+  const masterBrokerId = params.masterBrokerId !== undefined
+    ? params.masterBrokerId
+    : (linkedCredit?.originMasterBrokerId ?? (linkedCredit?.finalProposal as any)?.originMasterBrokerId ?? null);
+
+  // REGLA 3 (COM-18): Calcular comisiones únicamente sobre desembolsos efectivamente confirmados y verificables en servidor.
+  // Prohibido utilizar automáticamente el monto solicitado o aprobado del crédito.
+  const rawConfirmedAmount = params.confirmedDisbursedAmount ?? params.dispersedAmount;
+  if (
+    rawConfirmedAmount === undefined ||
+    rawConfirmedAmount === null ||
+    isNaN(Number(rawConfirmedAmount)) ||
+    Number(rawConfirmedAmount) <= 0
+  ) {
+    throw new UnconfirmedDispersalAmountError(
+      "[COM-18] Cálculo de comisiones bloqueado: Se requiere un monto de dispersión efectivamente confirmado y verificable en servidor. Prohibido utilizar automáticamente el monto solicitado o aprobado."
+    );
+  }
+  const dispersedAmount = Number(rawConfirmedAmount);
+
   const financialInstitutionId = params.financialInstitutionId ?? linkedCredit?.financialInstitutionId;
   const institutionProductId = params.institutionProductId;
   const versionNumber = params.versionNumber;
@@ -391,7 +475,7 @@ export async function calculateAndPersistCascadingCommission(params: CascadingCo
     throw new Error("creditId y brokerId son obligatorios para calcular la comisión.");
   }
 
-  // 1. Verificación de Idempotencia previa
+  // 1. Verificación de Idempotencia previa (Regla 3)
   if (idempotencyKey) {
     const existingKeyComms = await storage.getCommissions({ idempotencyKey });
     if (existingKeyComms.length > 0) {
@@ -400,19 +484,20 @@ export async function calculateAndPersistCascadingCommission(params: CascadingCo
     }
   }
 
-  // 2. Resolver crédito y afiliación histórica
+  // 2. Resolver crédito y afiliación histórica (Regla 1 y 5)
   const historicalMasterBrokerId = masterBrokerId;
 
   const resolvedIsMasterDirect = isMasterDirect !== undefined
     ? isMasterDirect
     : Boolean(historicalMasterBrokerId && brokerId && String(historicalMasterBrokerId) === String(brokerId));
 
-  // 3. Resolución de tasas de la oferta comercial versionada
+  // 3. Resolución de tasas de la propuesta comercial o de la oferta versionada
   let resolvedFinRate = params.financieraRate;
-  let resolvedMbRate = params.masterBrokerRate;
+  let resolvedMbRate = params.masterBrokerRate ?? (historicalMasterBrokerId ? undefined : 0);
   let resolvedBrkRate = params.brokerRate;
   const finalProposal = (linkedCredit?.finalProposal as any) || {};
   let isOfferBound = Boolean(institutionProductId || finalProposal.institutionProductId);
+  let isFrozenProposal = Boolean(finalProposal.commissionRates && typeof finalProposal.commissionRates === "object");
 
   if (
     resolvedFinRate === undefined ||
@@ -421,7 +506,7 @@ export async function calculateAndPersistCascadingCommission(params: CascadingCo
   ) {
     const ratesResolution = await resolveOfferVersionCommissionRates({
       offerId: institutionProductId || finalProposal.institutionProductId || finalProposal.offerId,
-      versionNumber: versionNumber || finalProposal.versionNumber,
+      versionNumber: versionNumber ?? finalProposal.versionNumber,
       commissionType,
       proposalCommissionRates: finalProposal.commissionRates,
       institution: financialInstitutionId ? await storage.getFinancialInstitution(financialInstitutionId) : null,
@@ -432,10 +517,13 @@ export async function calculateAndPersistCascadingCommission(params: CascadingCo
     if (ratesResolution.source === "offer_version") {
       isOfferBound = true;
     }
+    if (ratesResolution.source === "proposal_snapshot" || ratesResolution.isFrozenSnapshot) {
+      isFrozenProposal = true;
+    }
 
-    // Regla 4 y COM-14: Si la oferta versionada tiene una tasa requerida ausente
+    // Regla 4, 6 y COM-14: Si la tasa requerida está ausente
     if (ratesResolution.hasMissingRequiredRate) {
-      const errorMsg = `[COM-14] Tasa ausente en oferta versionada: ${ratesResolution.missingRateReasons.join("; ")}`;
+      const errorMsg = `[COM-14] Tasa ausente en oferta o propuesta: ${ratesResolution.missingRateReasons.join("; ")}`;
       if (strictRateCheck) {
         throw new MissingCommissionRateError(errorMsg, {
           offerId: ratesResolution.offerId,
@@ -451,7 +539,7 @@ export async function calculateAndPersistCascadingCommission(params: CascadingCo
     resolvedBrkRate = resolvedBrkRate ?? ratesResolution.broker.rate;
   }
 
-  // Respetar tasa cero explícitamente autorizada
+  // Respetar tasa cero explícitamente autorizada (Regla 4)
   let safeBrokerRate = Number.isFinite(resolvedBrkRate) && resolvedBrkRate >= 0 ? resolvedBrkRate : 0;
   const safeMasterRate = Number.isFinite(resolvedMbRate) && resolvedMbRate >= 0 ? resolvedMbRate : 0;
   const safeFinRate = Number.isFinite(resolvedFinRate) && resolvedFinRate >= 0 ? resolvedFinRate : 0;
@@ -466,30 +554,36 @@ export async function calculateAndPersistCascadingCommission(params: CascadingCo
     brokerAmount = masterBrokerAmount;
     ceilingRate = safeMasterRate;
   } else if (historicalMasterBrokerId) {
-    // 2. Broker en red: verificar tasa de red personalizada por el Master
-    try {
-      const mbUser = await storage.getUser(historicalMasterBrokerId);
-      const networkRates = (mbUser?.networkCommissionRates as any) || {};
-      const finId = financialInstitutionId || linkedCredit?.financialInstitutionId;
+    // 2. Broker en red:
+    // REGLA 5 (COM-20): NUNCA recalcular operaciones anteriores utilizando las tasas actuales del Master Broker.
+    // Si la propuesta ya fue congelada en finalProposal o viene con tasas pactadas fijas, NO consultar networkCommissionRates.
+    if (!isFrozenProposal && params.brokerRate === undefined) {
+      try {
+        const mbUser = await storage.getUser(historicalMasterBrokerId);
+        const networkRates = (mbUser?.networkCommissionRates as any) || {};
+        const finId = financialInstitutionId || linkedCredit?.financialInstitutionId;
 
-      if (finId && networkRates[finId]) {
-        const customRate = networkRates[finId][commissionType] ?? networkRates[finId].apertura;
-        if (customRate !== undefined && !isNaN(parseFloat(customRate))) {
-          safeBrokerRate = Math.min(safeMasterRate, Math.max(0, parseFloat(customRate)));
+        if (finId && networkRates[finId]) {
+          const customRate = networkRates[finId][commissionType] ?? networkRates[finId].apertura;
+          if (customRate !== undefined && !isNaN(parseFloat(customRate))) {
+            safeBrokerRate = Math.min(safeMasterRate, Math.max(0, parseFloat(customRate)));
+          }
         }
+      } catch (mbErr) {
+        console.warn("[Commission] Could not read MB network rates:", mbErr);
       }
-    } catch (mbErr) {
-      console.warn("[Commission] Could not read MB network rates:", mbErr);
     }
 
     brokerAmount = (dispersedAmount * safeBrokerRate) / 100;
     masterBrokerAmount = (dispersedAmount * safeMasterRate) / 100;
     ceilingRate = safeBrokerRate + safeMasterRate;
 
-    // Control: sin distribuciones superiores a lo autorizado por la financiera (Regla 2)
-    if (safeFinRate > 0 && ceilingRate > safeFinRate + 0.0001) {
-      throw new Error(
-        `Distribución económica no autorizada: La suma de tasas Broker (${safeBrokerRate}%) + Master (${safeMasterRate}%) = ${ceilingRate}% excede la tasa máxima autorizada por la financiera (${safeFinRate}%).`
+    // REGLA 4 (COM-19): Control estricto de distribución económica, incluyendo cuando la financiera autorizó 0%
+    if (ceilingRate > safeFinRate + 0.0001) {
+      throw new UnauthorizedDistributionError(
+        `[COM-19] Distribución económica no autorizada: La suma de tasas Broker (${safeBrokerRate}%) + Master (${safeMasterRate}%) = ${ceilingRate}% excede la tasa máxima autorizada por la financiera (${safeFinRate}%).`,
+        ceilingRate,
+        safeFinRate
       );
     }
   } else {
@@ -498,9 +592,12 @@ export async function calculateAndPersistCascadingCommission(params: CascadingCo
     masterBrokerAmount = 0;
     ceilingRate = safeBrokerRate;
 
-    if (safeFinRate > 0 && ceilingRate > safeFinRate + 0.0001) {
-      throw new Error(
-        `Distribución económica no autorizada: La tasa del Broker (${safeBrokerRate}%) excede la tasa máxima autorizada por la financiera (${safeFinRate}%).`
+    // REGLA 4 (COM-19): Control estricto de distribución económica
+    if (ceilingRate > safeFinRate + 0.0001) {
+      throw new UnauthorizedDistributionError(
+        `[COM-19] Distribución económica no autorizada: La tasa del Broker (${safeBrokerRate}%) excede la tasa máxima autorizada por la financiera (${safeFinRate}%).`,
+        ceilingRate,
+        safeFinRate
       );
     }
   }
@@ -514,7 +611,7 @@ export async function calculateAndPersistCascadingCommission(params: CascadingCo
     ? masterBrokerAmount + appAmount
     : brokerAmount + masterBrokerAmount + appAmount;
 
-  // Tipo de comisión considerando multidispersión para evitar colisión en índice único
+  // Tipo de comisión considerando multidispersión para evitar colisión en índice único (Regla 3)
   const resolvedCommissionType = dispersalIndex != null
     ? `${commissionType}_parcial_${dispersalIndex}`
     : commissionType;
@@ -631,4 +728,64 @@ export async function calculateAndPersistCascadingCommission(params: CascadingCo
   }
 
   return commission;
+}
+
+/**
+ * REGLA 1 (COM-07, COM-16): Congelamiento comercial al consolidar formalmente la propuesta.
+ * Preserva oferta, versión, tasas pactadas, Broker originador y Master beneficiario.
+ * Diferencia este snapshot del cálculo definitivo sobre la dispersión.
+ */
+export function consolidateCommercialProposalSnapshot(params: {
+  credit?: any;
+  proposalData: any;
+  institution?: any;
+}): any {
+  const credit = params.credit || {};
+  const data = params.proposalData || {};
+  const finalProposal = { ...data };
+
+  // 1. Preservar oferta y versión requeridas
+  finalProposal.institutionProductId =
+    data.institutionProductId ||
+    data.offerId ||
+    credit.institutionProductId ||
+    (credit.finalProposal as any)?.institutionProductId ||
+    (credit.finalProposal as any)?.offerId ||
+    null;
+
+  finalProposal.versionNumber =
+    data.versionNumber ??
+    credit.versionNumber ??
+    (credit.finalProposal as any)?.versionNumber ??
+    null;
+
+  // 2. Preservar beneficiarios originales (Broker originador y Master beneficiario)
+  finalProposal.originBrokerId =
+    data.originBrokerId ||
+    data.brokerId ||
+    credit.brokerId ||
+    (credit.finalProposal as any)?.originBrokerId;
+
+  finalProposal.originMasterBrokerId =
+    data.originMasterBrokerId !== undefined
+      ? data.originMasterBrokerId
+      : (data.masterBrokerId !== undefined
+          ? data.masterBrokerId
+          : (credit.originMasterBrokerId !== undefined
+              ? credit.originMasterBrokerId
+              : ((credit.finalProposal as any)?.originMasterBrokerId ?? null)));
+
+  // 3. Preservar tasas pactadas
+  if (data.commissionRates && typeof data.commissionRates === "object") {
+    finalProposal.commissionRates = { ...data.commissionRates };
+  }
+
+  // 4. Marca de snapshot comercial congelado
+  finalProposal.isCommercialSnapshot = true;
+  finalProposal.snapshotCreatedAt =
+    data.snapshotCreatedAt ||
+    (credit.finalProposal as any)?.snapshotCreatedAt ||
+    new Date().toISOString();
+
+  return finalProposal;
 }

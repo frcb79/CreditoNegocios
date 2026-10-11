@@ -72,23 +72,31 @@ import {
 } from "./offerVersionService";
 import {
   MissingCommissionRateError,
+  MissingOfferVersionError,
+  UnconfirmedDispersalAmountError,
+  UnauthorizedDistributionError,
   CommissionFrozenDiscrepancyError,
   type CommissionPayoutAuditResult,
   auditCommissionPayout,
   getCommissionPayoutAmount,
   resolveOfferVersionCommissionRates,
   calculateAndPersistCascadingCommission,
+  consolidateCommercialProposalSnapshot,
   type CascadingCommissionInput,
 } from "./commissionService";
 
 export {
   MissingCommissionRateError,
+  MissingOfferVersionError,
+  UnconfirmedDispersalAmountError,
+  UnauthorizedDistributionError,
   CommissionFrozenDiscrepancyError,
   type CommissionPayoutAuditResult,
   auditCommissionPayout,
   getCommissionPayoutAmount,
   resolveOfferVersionCommissionRates,
   calculateAndPersistCascadingCommission,
+  consolidateCommercialProposalSnapshot,
 };
 import { commercialConfigService } from "./commercialConfigService";
 
@@ -187,13 +195,21 @@ export async function createCascadingCommissionRecord(
   let commissionInput: CascadingCommissionInput;
 
   if (arg1 && typeof arg1 === "object" && "creditId" in arg1) {
-    const rawAmount = parseFloat(String(arg1.dispersedAmount || arg1.approvedAmount || arg1.amount || "0"));
+    const rawAmount = arg1.confirmedDisbursedAmount !== undefined && arg1.confirmedDisbursedAmount !== null
+      ? parseFloat(String(arg1.confirmedDisbursedAmount))
+      : (arg1.dispersedAmount !== undefined && arg1.dispersedAmount !== null
+          ? parseFloat(String(arg1.dispersedAmount))
+          : (arg1.approvedAmount !== undefined && arg1.approvedAmount !== null
+              ? parseFloat(String(arg1.approvedAmount))
+              : undefined));
+
     commissionInput = {
       creditId: arg1.creditId,
       brokerId: arg1.brokerId,
       masterBrokerId: arg1.masterBrokerId,
       commissionType: arg1.commissionType || "apertura",
       dispersedAmount: rawAmount,
+      confirmedDisbursedAmount: rawAmount,
       financialInstitutionId: arg1.financialInstitutionId || null,
       institutionProductId: arg1.institutionProductId || arg1.offerId || null,
       versionNumber: arg1.versionNumber || null,
@@ -209,7 +225,9 @@ export async function createCascadingCommissionRecord(
   } else {
     const credit = arg1;
     const institution = institutionArg;
-    const dispersedAmount = parseFloat(String(amountArg || credit?.amount || "0"));
+    const rawAmount = amountArg !== undefined && amountArg !== null
+      ? parseFloat(String(amountArg))
+      : undefined;
     const commType = commTypeArg || "apertura";
 
     commissionInput = {
@@ -219,7 +237,8 @@ export async function createCascadingCommissionRecord(
         ? credit.originMasterBrokerId
         : undefined,
       commissionType: commType,
-      dispersedAmount,
+      dispersedAmount: rawAmount,
+      confirmedDisbursedAmount: rawAmount,
       financialInstitutionId: credit?.financialInstitutionId || (institution as any)?.id || null,
       institutionProductId: credit?.institutionProductId || (credit?.finalProposal as any)?.institutionProductId || (credit?.finalProposal as any)?.offerId || null,
       versionNumber: (credit?.finalProposal as any)?.versionNumber || null,
@@ -4035,6 +4054,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       const creditData = insertCreditSchema.partial().parse(req.body);
       const oldCredit = authResult.credit;
+
+      // REGLA 1 (COM-07, COM-16): Preservar oferta, versión, tasas pactadas y beneficiarios al consolidar la propuesta formal
+      if (creditData.finalProposal) {
+        creditData.finalProposal = consolidateCommercialProposalSnapshot({
+          credit: oldCredit,
+          proposalData: creditData.finalProposal,
+        });
+      }
       
       const credit = await storage.updateCredit(id, creditData);
       
@@ -4047,80 +4074,92 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const isDispersed = credit.status === 'dispersado' || credit.status === 'disbursed';
       
       if (statusChanged && isDispersed) {
-        console.log(`[Commission Trigger] Credit ${id} status changed to ${credit.status}, calculating commissions...`);
+        console.log(`[Commission Trigger] Credit ${id} status changed to ${credit.status}`);
         
-        // Check if credit comes from a winning submission target
-        // If so, skip commission calculation here — commissions are handled by the target dispersal endpoint (PATCH mark-dispersed)
-        const submissionTarget = await storage.getCreditSubmissionTargetByCreditId(id);
-        const skipCommissionCalc = submissionTarget && (!submissionTarget.isWinner || submissionTarget.status !== 'dispersed');
-        if (skipCommissionCalc) {
-          console.warn(`[Commission Trigger] Credit ${id} comes from submission target but not winner or not dispersed yet, skipping commission calculation (handled by target dispersal flow)`);
-        }
-        
-        if (!skipCommissionCalc) {
-          // Get broker and master broker
-          const broker = await storage.getUser(credit.brokerId);
-          if (broker) {
-            const masterBrokerId = credit.originMasterBrokerId !== undefined
-              ? credit.originMasterBrokerId
-              : (broker.role === 'master_broker' ? broker.id : broker.masterBrokerId);
-            const isMasterDirect = Boolean(
-              masterBrokerId && credit.brokerId && String(masterBrokerId) === String(credit.brokerId)
-            ) || (broker.role === 'master_broker' && (!masterBrokerId || masterBrokerId === broker.id));
-            const finalProposal = credit.finalProposal as any;
-            const approvedAmount = parseFloat(finalProposal?.approvedAmount || credit.amount || '0');
-            const commissionsToApply = (finalProposal?.commissionsToApply && finalProposal.commissionsToApply.length)
-              ? finalProposal.commissionsToApply
-              : ['apertura'];
-            const commissionRates = finalProposal?.commissionRates || {};
-            const institution = credit.financialInstitutionId ? await storage.getFinancialInstitution(credit.financialInstitutionId) : null;
-            const instRates = (institution?.commissionRates as any) || {};
+        // REGLA 3 (COM-18): Solo calcular comisiones si existe un desembolso confirmado verificable
+        const rawConfirmedDisbursed = req.body.confirmedDisbursedAmount ?? req.body.dispersedAmount;
+        if (
+          rawConfirmedDisbursed === undefined ||
+          rawConfirmedDisbursed === null ||
+          isNaN(Number(rawConfirmedDisbursed)) ||
+          Number(rawConfirmedDisbursed) <= 0
+        ) {
+          console.warn(`[Commission Trigger] Cálculo de comisiones omitido para crédito ${id}: No se proporcionó un monto de dispersión confirmado verificable (COM-18).`);
+        } else {
+          // Check if credit comes from a winning submission target
+          // If so, skip commission calculation here — commissions are handled by the target dispersal endpoint (PATCH mark-dispersed)
+          const submissionTarget = await storage.getCreditSubmissionTargetByCreditId(id);
+          const skipCommissionCalc = submissionTarget && (!submissionTarget.isWinner || submissionTarget.status !== 'dispersed');
+          if (skipCommissionCalc) {
+            console.warn(`[Commission Trigger] Credit ${id} comes from submission target but not winner or not dispersed yet, skipping commission calculation (handled by target dispersal flow)`);
+          }
 
-            for (const commType of commissionsToApply) {
-              const brokerRate = parseFloat(
-                commissionRates.broker?.[commType] ||
-                commissionRates.broker?.apertura ||
-                instRates.broker?.[commType] ||
-                instRates.broker?.apertura ||
-                (institution as any)?.brokerCommissionRate ||
-                (institution as any)?.commissionRate ||
-                '0'
-              );
-              const masterRate = (masterBrokerId || isMasterDirect)
-                ? parseFloat(
-                    commissionRates.masterBroker?.[commType] ||
-                    commissionRates.masterBroker?.apertura ||
-                    instRates.masterBroker?.[commType] ||
-                    instRates.masterBroker?.apertura ||
-                    (institution as any)?.masterBrokerCommissionRate ||
-                    '0'
-                  )
-                : 0;
-              const superAdminRate = parseFloat(
-                commissionRates.financiera?.[commType] ||
-                commissionRates.financiera?.apertura ||
-                commissionRates.superAdmin?.[commType] ||
-                commissionRates.superAdmin?.apertura ||
-                instRates.financiera?.[commType] ||
-                instRates.financiera?.apertura ||
-                instRates.superAdmin?.[commType] ||
-                instRates.superAdmin?.apertura ||
-                (institution as any)?.commissionRate ||
-                '0'
-              );
+          if (!skipCommissionCalc) {
+            const confirmedDisbursedAmount = Number(rawConfirmedDisbursed);
+            // Get broker and master broker
+            const broker = await storage.getUser(credit.brokerId);
+            if (broker) {
+              const masterBrokerId = credit.originMasterBrokerId !== undefined
+                ? credit.originMasterBrokerId
+                : (broker.role === 'master_broker' ? broker.id : broker.masterBrokerId);
+              const isMasterDirect = Boolean(
+                masterBrokerId && credit.brokerId && String(masterBrokerId) === String(credit.brokerId)
+              ) || (broker.role === 'master_broker' && (!masterBrokerId || masterBrokerId === broker.id));
+              const finalProposal = credit.finalProposal as any;
+              const commissionsToApply = (finalProposal?.commissionsToApply && finalProposal.commissionsToApply.length)
+                ? finalProposal.commissionsToApply
+                : ['apertura'];
+              const commissionRates = finalProposal?.commissionRates || {};
+              const institution = credit.financialInstitutionId ? await storage.getFinancialInstitution(credit.financialInstitutionId) : null;
+              const instRates = (institution?.commissionRates as any) || {};
 
-              await createCascadingCommissionRecord({
-                creditId: credit.id,
-                brokerId: credit.brokerId,
-                masterBrokerId: masterBrokerId || null,
-                commissionType: commType,
-                approvedAmount,
-                financieraRate: superAdminRate,
-                masterBrokerRate: masterRate,
-                brokerRate,
-                financialInstitutionId: credit.financialInstitutionId || null,
-                isMasterDirect,
-              });
+              for (const commType of commissionsToApply) {
+                const brokerRate = parseFloat(
+                  commissionRates.broker?.[commType] ||
+                  commissionRates.broker?.apertura ||
+                  instRates.broker?.[commType] ||
+                  instRates.broker?.apertura ||
+                  (institution as any)?.brokerCommissionRate ||
+                  (institution as any)?.commissionRate ||
+                  '0'
+                );
+                const masterRate = (masterBrokerId || isMasterDirect)
+                  ? parseFloat(
+                      commissionRates.masterBroker?.[commType] ||
+                      commissionRates.masterBroker?.apertura ||
+                      instRates.masterBroker?.[commType] ||
+                      instRates.masterBroker?.apertura ||
+                      (institution as any)?.masterBrokerCommissionRate ||
+                      '0'
+                    )
+                  : 0;
+                const superAdminRate = parseFloat(
+                  commissionRates.financiera?.[commType] ||
+                  commissionRates.financiera?.apertura ||
+                  commissionRates.superAdmin?.[commType] ||
+                  commissionRates.superAdmin?.apertura ||
+                  instRates.financiera?.[commType] ||
+                  instRates.financiera?.apertura ||
+                  instRates.superAdmin?.[commType] ||
+                  instRates.superAdmin?.apertura ||
+                  (institution as any)?.commissionRate ||
+                  '0'
+                );
+
+                await createCascadingCommissionRecord({
+                  creditId: credit.id,
+                  brokerId: credit.brokerId,
+                  masterBrokerId: masterBrokerId || null,
+                  commissionType: commType,
+                  confirmedDisbursedAmount,
+                  dispersedAmount: confirmedDisbursedAmount,
+                  financieraRate: superAdminRate,
+                  masterBrokerRate: masterRate,
+                  brokerRate,
+                  financialInstitutionId: credit.financialInstitutionId || null,
+                  isMasterDirect,
+                });
+              }
             }
           }
         }

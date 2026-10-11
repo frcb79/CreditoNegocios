@@ -2938,13 +2938,17 @@ export class MemStorage implements IStorage {
     }
 
     if (!inheritedFromSubmission) {
-      const brokerAtOrigination = this.users.get(creditData.brokerId);
-      if (brokerAtOrigination?.role === "master_broker") {
-        originMasterBrokerId = brokerAtOrigination.id;
-      } else if (brokerAtOrigination?.role === "broker" && brokerAtOrigination.masterBrokerId) {
-        const parentAtOrigination = this.users.get(brokerAtOrigination.masterBrokerId);
-        originMasterBrokerId =
-          parentAtOrigination?.role === "master_broker" ? parentAtOrigination.id : null;
+      if ((creditData as any).originMasterBrokerId !== undefined) {
+        originMasterBrokerId = (creditData as any).originMasterBrokerId;
+      } else {
+        const brokerAtOrigination = this.users.get(creditData.brokerId);
+        if (brokerAtOrigination?.role === "master_broker") {
+          originMasterBrokerId = brokerAtOrigination.id;
+        } else if (brokerAtOrigination?.role === "broker" && brokerAtOrigination.masterBrokerId) {
+          const parentAtOrigination = this.users.get(brokerAtOrigination.masterBrokerId);
+          originMasterBrokerId =
+            parentAtOrigination?.role === "master_broker" ? parentAtOrigination.id : null;
+        }
       }
     }
 
