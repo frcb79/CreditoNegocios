@@ -80,6 +80,19 @@ export async function setupAuth(app: Express) {
 }
 
 export const isAuthenticated: RequestHandler = async (req, res, next) => {
+  if (process.env.NODE_ENV === "test" && req.headers?.["x-test-user-id"]) {
+    const testUserId = req.headers["x-test-user-id"] as string;
+    const testUser = await storage.getUser(testUserId);
+    if (testUser) {
+      req.user = testUser;
+      if (!(req.user as any).claims) {
+        (req.user as any).claims = { sub: testUser.id };
+      }
+      (req as any).dbUser = testUser;
+      (req as any).isAuthenticated = (() => true) as any;
+    }
+  }
+
   const user = req.user as any;
 
   // Check if user is authenticated at all

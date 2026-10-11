@@ -30,8 +30,23 @@ import {
   commercialAuditLogs, type UserOperationalStatus,
   userStatusRequests, type UserStatusRequest, type UserStatusRequestStatus, type UserStatusRequestAction,
   legalDocumentVersions, legalAcceptances, formalizationOtpRequests,
-  type LegalDocumentVersionDb, type LegalAcceptance, type FormalizationOtpRequest
+  type LegalDocumentVersionDb, type LegalAcceptance, type FormalizationOtpRequest,
+  institutionProductVersions,
+  type InstitutionProductVersion,
+  type InsertInstitutionProductVersion,
+  type FinancialInstitutionOffer,
+  type FinancialInstitutionOfferVersion,
+  type InsertFinancialInstitutionOffer,
+  type InsertFinancialInstitutionOfferVersion,
+  type FinancialInstitutionOfferWithVersion,
 } from "../shared/schema";
+import {
+  computeInstitutionProductVersionHash,
+  computeOfferVersionHash,
+  validateMinimumPublishConditions,
+  validateOfferVersionParameters,
+  isOfferEligibleForRequests,
+} from "./offerVersionService";
 import { eq, desc, asc, like, and, or, inArray, sql, gte } from "drizzle-orm";
 
 import { randomUUID, createHash } from "crypto";
@@ -1716,10 +1731,16 @@ export class DbStorage implements IStorage {
       return await db
         .select({
           id: institutionProducts.id,
+          name: institutionProducts.name,
+          customName: institutionProducts.customName,
+          productType: institutionProducts.productType,
+          slug: institutionProducts.slug,
+          description: institutionProducts.description,
+          status: institutionProducts.status,
+          currentVersionNumber: institutionProducts.currentVersionNumber,
           templateId: institutionProducts.templateId,
           institutionId: institutionProducts.institutionId,
           targetProfiles: institutionProducts.targetProfiles,
-          customName: institutionProducts.customName,
           configuration: institutionProducts.configuration,
           activeVariables: institutionProducts.activeVariables,
           isActive: institutionProducts.isActive,
@@ -1771,22 +1792,22 @@ export class DbStorage implements IStorage {
     }
   }
 
-  async createInstitutionProduct(productData: InsertInstitutionProduct): Promise<InstitutionProduct> {
+  async createInstitutionProduct(
+    productData: InsertInstitutionProduct,
+    initialVersion?: Partial<InsertInstitutionProductVersion>
+  ): Promise<InstitutionProduct> {
     try {
-      // Si no se proporcionan activeVariables, heredar de la plantilla
+      // Si no se proporcionan activeVariables, heredar de la plantilla si existe
       let activeVariables = productData.activeVariables ?? {};
       
-      if (!productData.activeVariables || Object.keys(productData.activeVariables).length === 0) {
+      if ((!productData.activeVariables || Object.keys(productData.activeVariables).length === 0) && productData.templateId) {
         try {
-          // Obtener la plantilla para heredar sus variables
           const template = await this.getProductTemplate(productData.templateId);
           if (template && template.availableVariables) {
-            // Obtener las variables reales de la tabla product_variables
             const variableIds = Object.keys(template.availableVariables);
             if (variableIds.length > 0) {
               const variables = await this.getProductVariablesByIds(variableIds);
-              // Convertir a formato activeVariables
-              activeVariables = variables.map((variable: ProductVariable, index: number) => ({
+              activeVariables = variables.map((variable: ProductVariable) => ({
                 id: variable.id,
                 name: variable.displayName || variable.name,
                 description: variable.description || '',
@@ -1803,23 +1824,70 @@ export class DbStorage implements IStorage {
           }
         } catch (error) {
           console.warn("Could not inherit variables from template:", error);
-          // Continue with empty activeVariables if there's an error
         }
       }
 
-      const [created] = await db
-        .insert(institutionProducts)
-        .values({
-          ...productData,
-          id: randomUUID(),
-          configuration: productData.configuration ?? {},
-          activeVariables: activeVariables,
-          isActive: productData.isActive ?? true,
-          createdAt: new Date(),
-          updatedAt: new Date(),
-        })
-        .returning();
-      return created;
+      return await db.transaction(async (tx) => {
+        const productId = (productData as any).id ?? randomUUID();
+        const now = new Date();
+        const offerName = (productData as any).name ?? productData.customName ?? null;
+
+        const [created] = await tx
+          .insert(institutionProducts)
+          .values({
+            ...productData,
+            id: productId,
+            name: offerName,
+            customName: productData.customName ?? offerName,
+            templateId: productData.templateId ?? null,
+            configuration: productData.configuration ?? {},
+            activeVariables: activeVariables,
+            status: "draft", // Forzado a draft desde el servidor; solo el flujo validado de publicación puede establecer published
+            currentVersionNumber: productData.currentVersionNumber ?? 1,
+            isActive: productData.isActive ?? true,
+            createdAt: now,
+            updatedAt: now,
+          })
+          .returning();
+
+        if (initialVersion) {
+          const versionId = randomUUID();
+          const conditions = initialVersion.conditions ?? {};
+          const requirements = initialVersion.requirements ?? {};
+          const variablesConfig = initialVersion.variablesConfiguration ?? {};
+          const requiredDocuments = Array.isArray(initialVersion.requiredDocuments) ? initialVersion.requiredDocuments : [];
+          const versionHash = computeInstitutionProductVersionHash({
+            institutionProductId: productId,
+            versionNumber: 1,
+            conditions,
+            requirements,
+            requiredDocuments,
+            variablesConfiguration: variablesConfig,
+          });
+
+          await tx.insert(institutionProductVersions).values({
+            id: versionId,
+            institutionProductId: productId,
+            versionNumber: 1,
+            status: "draft", // Forzado a draft desde el servidor
+            effectiveFrom: null,
+            effectiveTo: null,
+            conditions,
+            requirements,
+            requiredDocuments,
+            variablesConfiguration: variablesConfig,
+            changeReason: initialVersion.changeReason ?? "Versión inicial en borrador",
+            versionHash,
+            publishedAt: initialVersion.publishedAt ?? null,
+            publishedBy: initialVersion.publishedBy ?? null,
+            createdBy: initialVersion.createdBy ?? productData.createdBy ?? null,
+            createdAt: now,
+            updatedAt: now,
+          });
+        }
+
+        return { ...created, institutionProductId: created.id };
+      });
     } catch (error) {
       console.error("Error creating institution product:", error);
       throw error;
@@ -1828,6 +1896,35 @@ export class DbStorage implements IStorage {
 
   async updateInstitutionProduct(id: string, productData: Partial<InsertInstitutionProduct>): Promise<InstitutionProduct | undefined> {
     try {
+      const [existing] = await db.select().from(institutionProducts).where(eq(institutionProducts.id, id));
+      if (!existing) return undefined;
+
+      // 1. Prohibir cambiar el estado directamente a 'published' saltándose el versionado y gate de calidad
+      if (productData.status === 'published' && existing.status !== 'published') {
+        throw new Error("No se puede cambiar el estado a 'published' directamente; utilice el flujo de publicación de versiones con validación de condiciones mínimas.");
+      }
+
+      // 2. Si la oferta ya está publicada o tiene versiones publicadas/superseded, impedir alteración directa de condiciones
+      const publishedVersions = await db.select().from(institutionProductVersions)
+        .where(and(
+          eq(institutionProductVersions.institutionProductId, id),
+          or(
+            eq(institutionProductVersions.status, "published"),
+            eq(institutionProductVersions.status, "superseded"),
+            eq(institutionProductVersions.status, "active")
+          )
+        )).limit(1);
+
+      const isPublished = existing.status === 'published' || publishedVersions.length > 0;
+      if (isPublished) {
+        const touchesConditions = productData.configuration !== undefined ||
+          productData.targetProfiles !== undefined ||
+          productData.activeVariables !== undefined;
+        if (touchesConditions) {
+          throw new Error("No se pueden modificar directamente las condiciones de una oferta publicada; cree una nueva versión en borrador para modificar condiciones.");
+        }
+      }
+
       const [updated] = await db
         .update(institutionProducts)
         .set({ ...productData, updatedAt: new Date() })
@@ -1836,16 +1933,497 @@ export class DbStorage implements IStorage {
       return updated;
     } catch (error) {
       console.error("Error updating institution product:", error);
-      return undefined;
+      throw error;
     }
   }
 
   async deleteInstitutionProduct(id: string): Promise<boolean> {
     try {
+      // Protección: comprobar si hay versiones publicadas o superseded
+      const publishedVersions = await db.select().from(institutionProductVersions)
+        .where(and(
+          eq(institutionProductVersions.institutionProductId, id),
+          or(
+            eq(institutionProductVersions.status, "published"),
+            eq(institutionProductVersions.status, "superseded"),
+            eq(institutionProductVersions.status, "active")
+          )
+        )).limit(1);
+
+      if (publishedVersions.length > 0) {
+        throw new Error("No se puede eliminar una oferta con historial de versiones publicado o utilizado en solicitudes.");
+      }
+
+      // Eliminar versiones en borrador
+      await db.delete(institutionProductVersions).where(eq(institutionProductVersions.institutionProductId, id));
+
       const result = await db.delete(institutionProducts).where(eq(institutionProducts.id, id));
       return (result.rowCount ?? 0) > 0;
     } catch (error) {
       console.error("Error deleting institution product:", error);
+      throw error;
+    }
+  }
+
+  // ===== CANONICAL INSTITUTION PRODUCT VERSIONS (Bloque A1.1) =====
+  async getInstitutionProductVersions(productId: string): Promise<InstitutionProductVersion[]> {
+    try {
+      const versions = await db.select().from(institutionProductVersions)
+        .where(eq(institutionProductVersions.institutionProductId, productId))
+        .orderBy(desc(institutionProductVersions.versionNumber));
+      return versions.map(v => ({ ...v, offerId: v.institutionProductId }));
+    } catch (error) {
+      console.error(`Error getting product versions for ${productId} in DbStorage:`, error);
+      return [];
+    }
+  }
+
+  async getInstitutionProductVersion(id: string): Promise<InstitutionProductVersion | undefined> {
+    try {
+      const [version] = await db.select().from(institutionProductVersions)
+        .where(eq(institutionProductVersions.id, id))
+        .limit(1);
+      if (!version) return undefined;
+      return { ...version, offerId: version.institutionProductId };
+    } catch (error) {
+      console.error(`Error getting product version ${id} in DbStorage:`, error);
+      return undefined;
+    }
+  }
+
+  async getActiveInstitutionProductVersion(productId: string): Promise<InstitutionProductVersion | undefined> {
+    try {
+      const [activeVersion] = await db.select().from(institutionProductVersions)
+        .where(and(
+          eq(institutionProductVersions.institutionProductId, productId),
+          or(
+            eq(institutionProductVersions.status, "published"),
+            eq(institutionProductVersions.status, "active")
+          )
+        ))
+        .orderBy(desc(institutionProductVersions.versionNumber))
+        .limit(1);
+      if (!activeVersion) return undefined;
+      return { ...activeVersion, offerId: activeVersion.institutionProductId };
+    } catch (error) {
+      console.error(`Error getting active product version for ${productId} in DbStorage:`, error);
+      return undefined;
+    }
+  }
+
+  async createInstitutionProductDraftVersion(
+    productId: string,
+    versionData: Partial<InsertInstitutionProductVersion> & { changeReason?: string }
+  ): Promise<InstitutionProductVersion> {
+    try {
+      const [product] = await db.select().from(institutionProducts)
+        .where(eq(institutionProducts.id, productId))
+        .limit(1);
+      if (!product) {
+        throw new Error(`Oferta/Producto con ID ${productId} no encontrado`);
+      }
+
+      const existingVersions = await db.select().from(institutionProductVersions)
+        .where(eq(institutionProductVersions.institutionProductId, productId));
+      const maxVer = existingVersions.reduce((max, v) => Math.max(max, v.versionNumber), 0);
+      const nextVersionNumber = maxVer + 1;
+
+      const now = new Date();
+      const versionId = randomUUID();
+      const conditions = versionData.conditions ?? {};
+      const requirements = versionData.requirements ?? {};
+      const variablesConfig = versionData.variablesConfiguration ?? {};
+      const requiredDocuments = Array.isArray(versionData.requiredDocuments) ? versionData.requiredDocuments : [];
+      const versionHash = computeInstitutionProductVersionHash({
+        institutionProductId: productId,
+        versionNumber: nextVersionNumber,
+        conditions,
+        requirements,
+        requiredDocuments,
+        variablesConfiguration: variablesConfig,
+      });
+
+      const [createdVersion] = await db.insert(institutionProductVersions).values({
+        id: versionId,
+        institutionProductId: productId,
+        versionNumber: nextVersionNumber,
+        status: "draft",
+        effectiveFrom: null,
+        effectiveTo: null,
+        conditions,
+        requirements,
+        requiredDocuments,
+        variablesConfiguration: variablesConfig,
+        changeReason: versionData.changeReason ?? `Borrador para versión ${nextVersionNumber}`,
+        versionHash,
+        publishedAt: null,
+        publishedBy: null,
+        createdBy: versionData.createdBy ?? product.createdBy ?? null,
+        createdAt: now,
+        updatedAt: now,
+      }).returning();
+
+      return { ...createdVersion, offerId: productId };
+    } catch (error) {
+      console.error(`Error creating draft version for ${productId} in DbStorage:`, error);
+      throw error;
+    }
+  }
+
+  async publishInstitutionProductVersion(
+    productId: string,
+    versionId: string,
+    options?: { publishedBy?: string; changeReason?: string }
+  ): Promise<InstitutionProductVersion> {
+    try {
+      return await db.transaction(async (tx) => {
+        // Concurrencia segura: SELECT FOR UPDATE sobre el producto padre
+        await tx.execute(sql`SELECT id FROM institution_products WHERE id = ${productId} FOR UPDATE`);
+
+        const [version] = await tx.select().from(institutionProductVersions)
+          .where(and(
+            eq(institutionProductVersions.id, versionId),
+            eq(institutionProductVersions.institutionProductId, productId)
+          )).limit(1);
+
+        if (!version) {
+          throw new Error(`Versión ${versionId} no encontrada para la oferta ${productId}`);
+        }
+
+        if (version.status !== "draft") {
+          throw new Error(`Solo se pueden publicar versiones en borrador (estado actual: ${version.status})`);
+        }
+
+        // Gate de condiciones mínimas obligatorias antes de publicar
+        const validation = validateMinimumPublishConditions({
+          conditions: version.conditions,
+          requirements: version.requirements,
+          requiredDocuments: version.requiredDocuments ?? [],
+          changeReason: options?.changeReason || version.changeReason,
+          productType: (await tx.select({ productType: institutionProducts.productType }).from(institutionProducts).where(eq(institutionProducts.id, productId)))[0]?.productType,
+        });
+
+        if (!validation.isValid) {
+          throw new Error(`Condiciones mínimas de publicación no cumplidas: ${validation.errors.join("; ")}`);
+        }
+
+        const now = new Date();
+
+        // 1. Marcar versión publicada previa como superseded
+        await tx.update(institutionProductVersions)
+          .set({ status: "superseded", effectiveTo: now, updatedAt: now })
+          .where(and(
+            eq(institutionProductVersions.institutionProductId, productId),
+            or(
+              eq(institutionProductVersions.status, "published"),
+              eq(institutionProductVersions.status, "active")
+            )
+          ));
+
+        // 2. Publicar la versión objetivo
+        const [publishedVersion] = await tx.update(institutionProductVersions)
+          .set({
+            status: "published",
+            effectiveFrom: now,
+            publishedAt: now,
+            publishedBy: options?.publishedBy ?? null,
+            changeReason: options?.changeReason || version.changeReason,
+            updatedAt: now,
+          })
+          .where(eq(institutionProductVersions.id, versionId))
+          .returning();
+
+        // 3. Actualizar la oferta padre
+        await tx.update(institutionProducts)
+          .set({
+            status: "published",
+            currentVersionNumber: version.versionNumber,
+            configuration: (version.conditions as Record<string, any>) || undefined,
+            targetProfiles: (version.requirements as any)?.targetProfiles || undefined,
+            updatedAt: now,
+          })
+          .where(eq(institutionProducts.id, productId));
+
+        return { ...publishedVersion, offerId: productId };
+      });
+    } catch (error) {
+      console.error(`Error publishing version ${versionId} for product ${productId} in DbStorage:`, error);
+      throw error;
+    }
+  }
+
+  async updateInstitutionProductDraftAndParent(
+    productId: string,
+    versionId: string,
+    versionData: Partial<InsertInstitutionProductVersion>,
+    productData?: Partial<InsertInstitutionProduct>
+  ): Promise<{ product: InstitutionProduct; version: InstitutionProductVersion }> {
+    try {
+      return await db.transaction(async (tx) => {
+        const [version] = await tx.select().from(institutionProductVersions)
+          .where(and(
+            eq(institutionProductVersions.id, versionId),
+            eq(institutionProductVersions.institutionProductId, productId)
+          )).limit(1);
+
+        if (!version) {
+          throw new Error(`Versión ${versionId} no encontrada para la oferta ${productId}`);
+        }
+
+        if (version.status !== "draft") {
+          throw new Error(`No se puede modificar una versión con estado '${version.status}'. Solo las versiones en borrador pueden ser modificadas.`);
+        }
+
+        const validation = validateOfferVersionParameters(versionData);
+        if (!validation.isValid) {
+          throw new Error(`Inconsistencia en los datos capturados: ${validation.errors.join("; ")}`);
+        }
+
+        const conditions = versionData.conditions !== undefined ? versionData.conditions : version.conditions;
+        const requirements = versionData.requirements !== undefined ? versionData.requirements : version.requirements;
+        const variablesConfig = versionData.variablesConfiguration !== undefined ? versionData.variablesConfiguration : version.variablesConfiguration;
+        const requiredDocuments = versionData.requiredDocuments !== undefined
+          ? (Array.isArray(versionData.requiredDocuments) ? versionData.requiredDocuments : [])
+          : (version.requiredDocuments || []);
+
+        const versionHash = computeInstitutionProductVersionHash({
+          institutionProductId: productId,
+          versionNumber: version.versionNumber,
+          conditions,
+          requirements,
+          requiredDocuments,
+          variablesConfiguration: variablesConfig,
+        });
+
+        const [updatedVersion] = await tx.update(institutionProductVersions)
+          .set({
+            conditions,
+            requirements,
+            requiredDocuments,
+            variablesConfiguration: variablesConfig,
+            changeReason: versionData.changeReason !== undefined ? versionData.changeReason : version.changeReason,
+            versionHash,
+            updatedAt: new Date(),
+          })
+          .where(eq(institutionProductVersions.id, versionId))
+          .returning();
+
+        let updatedProduct: any;
+        const [currentProd] = await tx.select().from(institutionProducts)
+          .where(eq(institutionProducts.id, productId))
+          .limit(1);
+
+        if (productData && currentProd) {
+          // B3.1: Aislamiento total - si el producto ya está publicado, no sobreescribir configuration comercial con la de un borrador
+          const finalProductData = currentProd.status === "published"
+            ? {
+                ...productData,
+                configuration: currentProd.configuration,
+                targetProfiles: currentProd.targetProfiles,
+              }
+            : productData;
+
+          const [prod] = await tx.update(institutionProducts)
+            .set({
+              ...finalProductData,
+              updatedAt: new Date(),
+            })
+            .where(eq(institutionProducts.id, productId))
+            .returning();
+          updatedProduct = prod;
+        } else {
+          updatedProduct = currentProd;
+        }
+
+        return {
+          product: updatedProduct,
+          version: { ...updatedVersion, offerId: productId },
+        };
+      });
+    } catch (error) {
+      console.error(`Error updating draft version and product ${productId} in DbStorage:`, error);
+      throw error;
+    }
+  }
+
+  async updateInstitutionProductDraftVersion(
+    productId: string,
+    versionId: string,
+    versionData: Partial<InsertInstitutionProductVersion>
+  ): Promise<InstitutionProductVersion> {
+    const res = await this.updateInstitutionProductDraftAndParent(productId, versionId, versionData);
+    return res.version;
+  }
+
+  async deleteInstitutionProductVersion(id: string): Promise<boolean> {
+    try {
+      const [version] = await db.select().from(institutionProductVersions)
+        .where(eq(institutionProductVersions.id, id))
+        .limit(1);
+      if (!version) return false;
+
+      if (version.status === "published" || version.status === "superseded" || version.status === "active") {
+        throw new Error("No se puede eliminar una versión publicada o histórica (superseded). La integridad del historial es obligatoria.");
+      }
+
+      const result = await db.delete(institutionProductVersions).where(eq(institutionProductVersions.id, id));
+      return (result.rowCount ?? 0) > 0;
+    } catch (error) {
+      console.error(`Error deleting version ${id} in DbStorage:`, error);
+      throw error;
+    }
+  }
+
+  // ===== FINANCIAL INSTITUTION OFFERS ALIASES (Retrocompatibilidad total Bloque A1) =====
+  async getOffers(options?: { institutionId?: string; productType?: string; status?: string; isActive?: boolean }): Promise<FinancialInstitutionOffer[]> {
+    try {
+      const conditions = [];
+      if (options?.institutionId) conditions.push(eq(institutionProducts.institutionId, options.institutionId));
+      if (options?.productType) conditions.push(eq(institutionProducts.productType, options.productType));
+      if (options?.status) conditions.push(eq(institutionProducts.status, options.status));
+      if (options?.isActive !== undefined) conditions.push(eq(institutionProducts.isActive, options.isActive));
+
+      const query = db.select().from(institutionProducts);
+      const rows = conditions.length > 0
+        ? await query.where(and(...conditions)).orderBy(desc(institutionProducts.createdAt))
+        : await query.orderBy(desc(institutionProducts.createdAt));
+
+      return rows.map(r => ({
+        ...r,
+        name: r.name ?? r.customName ?? "",
+        institutionProductId: r.id,
+      }));
+    } catch (error) {
+      console.error("Error getting offers in DbStorage:", error);
+      return [];
+    }
+  }
+
+  async getOffer(id: string): Promise<FinancialInstitutionOffer | undefined> {
+    try {
+      const [offer] = await db.select().from(institutionProducts).where(eq(institutionProducts.id, id)).limit(1);
+      if (!offer) return undefined;
+      return {
+        ...offer,
+        name: offer.name ?? offer.customName ?? "",
+        institutionProductId: offer.id,
+      };
+    } catch (error) {
+      console.error(`Error getting offer ${id} in DbStorage:`, error);
+      return undefined;
+    }
+  }
+
+  async getOffersByInstitution(institutionId: string, options?: { includeInactive?: boolean }): Promise<FinancialInstitutionOffer[]> {
+    return this.getOffers({
+      institutionId,
+      isActive: options?.includeInactive ? undefined : true,
+    });
+  }
+
+  async getOffersByProductType(institutionId: string, productType: string): Promise<FinancialInstitutionOffer[]> {
+    return this.getOffers({
+      institutionId,
+      productType,
+      isActive: true,
+    });
+  }
+
+  async createOffer(
+    offerData: InsertFinancialInstitutionOffer & { name?: string },
+    initialVersion?: Partial<InsertFinancialInstitutionOfferVersion>
+  ): Promise<{ offer: FinancialInstitutionOffer; version: FinancialInstitutionOfferVersion }> {
+    const offerId = (offerData as any).id ?? randomUUID();
+    const offerName = offerData.name ?? offerData.customName ?? "Oferta Comercial";
+
+    const product = await this.createInstitutionProduct({
+      ...offerData,
+      id: offerId,
+      name: offerName,
+      customName: offerName,
+      status: "draft",
+    } as any);
+
+    const version = await this.createInstitutionProductDraftVersion(offerId, {
+      ...initialVersion,
+      status: "draft",
+      changeReason: initialVersion?.changeReason ?? "Versión inicial en borrador",
+    });
+
+    return {
+      offer: { ...product, name: offerName, institutionProductId: offerId, status: "draft" },
+      version: { ...version, offerId, status: "draft" },
+    };
+  }
+
+  async updateOffer(id: string, offerData: Partial<InsertFinancialInstitutionOffer>): Promise<FinancialInstitutionOffer | undefined> {
+    return this.updateInstitutionProduct(id, offerData);
+  }
+
+  async deleteOffer(id: string): Promise<boolean> {
+    return this.deleteInstitutionProduct(id);
+  }
+
+  async getOfferVersions(offerId: string): Promise<FinancialInstitutionOfferVersion[]> {
+    return this.getInstitutionProductVersions(offerId);
+  }
+
+  async getOfferVersion(id: string): Promise<FinancialInstitutionOfferVersion | undefined> {
+    return this.getInstitutionProductVersion(id);
+  }
+
+  async getActiveOfferVersion(offerId: string): Promise<FinancialInstitutionOfferVersion | undefined> {
+    return this.getActiveInstitutionProductVersion(offerId);
+  }
+
+  async createOfferVersion(
+    offerId: string,
+    versionData: Partial<InsertFinancialInstitutionOfferVersion> & { changeReason?: string }
+  ): Promise<FinancialInstitutionOfferVersion> {
+    return this.createInstitutionProductDraftVersion(offerId, versionData);
+  }
+
+  async updateOfferDraftVersion(
+    offerId: string,
+    versionId: string,
+    versionData: Partial<InsertFinancialInstitutionOfferVersion>
+  ): Promise<FinancialInstitutionOfferVersion> {
+    return this.updateInstitutionProductDraftVersion(offerId, versionId, versionData);
+  }
+
+  async updateOfferDraftAndParent(
+    offerId: string,
+    versionId: string,
+    versionData: Partial<InsertFinancialInstitutionOfferVersion>,
+    offerData?: Partial<InsertFinancialInstitutionOffer>
+  ): Promise<{ offer: FinancialInstitutionOffer; version: FinancialInstitutionOfferVersion }> {
+    const res = await this.updateInstitutionProductDraftAndParent(offerId, versionId, versionData, offerData);
+    return { offer: res.product, version: res.version };
+  }
+
+  async publishOfferVersion(
+    offerId: string,
+    versionId: string,
+    options?: { publishedBy?: string; changeReason?: string }
+  ): Promise<FinancialInstitutionOfferVersion> {
+    return this.publishInstitutionProductVersion(offerId, versionId, options);
+  }
+
+  async deleteOfferVersion(id: string): Promise<boolean> {
+    return this.deleteInstitutionProductVersion(id);
+  }
+
+  async supersedeOfferVersion(offerId: string, oldVersionNumber: number, supersededAt?: Date): Promise<boolean> {
+    try {
+      const result = await db.update(institutionProductVersions)
+        .set({ status: "superseded", effectiveTo: supersededAt ?? new Date(), updatedAt: new Date() })
+        .where(and(
+          eq(institutionProductVersions.institutionProductId, offerId),
+          eq(institutionProductVersions.versionNumber, oldVersionNumber)
+        ));
+      return (result.rowCount ?? 0) > 0;
+    } catch (error) {
+      console.error(`Error superseding version in DbStorage:`, error);
       return false;
     }
   }
@@ -1933,7 +2511,32 @@ export class DbStorage implements IStorage {
       await db.update(credits).set({ financialInstitutionId: null }).where(eq(credits.financialInstitutionId, id));
       await db.update(productRequests).set({ existingInstitutionId: null }).where(eq(productRequests.existingInstitutionId, id));
       
-      // 2. Delete dependent targets and products
+      // 2. Comprobar si existen créditos o versiones publicadas vinculadas
+      const linkedCredits = await db.select({ id: credits.id }).from(credits).where(eq(credits.financialInstitutionId, id)).limit(1);
+      const linkedTargets = await db.select({ id: creditSubmissionTargets.id }).from(creditSubmissionTargets)
+        .where(eq(creditSubmissionTargets.financialInstitutionId, id)).limit(1);
+      const linkedPublishedVersions = await db.select({ id: institutionProductVersions.id })
+        .from(institutionProductVersions)
+        .innerJoin(institutionProducts, eq(institutionProductVersions.institutionProductId, institutionProducts.id))
+        .where(and(
+          eq(institutionProducts.institutionId, id),
+          or(
+            eq(institutionProductVersions.status, "published"),
+            eq(institutionProductVersions.status, "superseded"),
+            eq(institutionProductVersions.status, "active")
+          )
+        )).limit(1);
+
+      const hasHistory = linkedCredits.length > 0 || linkedTargets.length > 0 || linkedPublishedVersions.length > 0;
+
+      if (hasHistory) {
+        // Desactivación lógica obligatoria: NUNCA eliminar solicitudes, créditos ni versiones utilizadas
+        await db.update(financialInstitutions).set({ isActive: false, updatedAt: new Date() }).where(eq(financialInstitutions.id, id));
+        await db.update(institutionProducts).set({ isActive: false, status: 'archived', updatedAt: new Date() }).where(eq(institutionProducts.institutionId, id));
+        return true;
+      }
+
+      // Si no tiene historial transaccional ni legal, eliminar de forma segura
       await db.delete(creditSubmissionTargets).where(eq(creditSubmissionTargets.financialInstitutionId, id));
       await db.delete(institutionProducts).where(eq(institutionProducts.institutionId, id));
       await db.delete(products).where(eq(products.institutionId, id));
@@ -2111,6 +2714,18 @@ export class DbStorage implements IStorage {
   
   async createCredit(credit: InsertCredit): Promise<Credit> {
     try {
+      const explicitOfferId = (credit as any).institutionProductId || (credit as any).offerId;
+      if (explicitOfferId) {
+        const product = await this.getInstitutionProduct(explicitOfferId);
+        if (!product) {
+          throw new Error("La oferta especificada no existe.");
+        }
+        const versions = await this.getInstitutionProductVersions(explicitOfferId);
+        if (!isOfferEligibleForRequests(product, versions)) {
+          throw new Error("La oferta seleccionada se encuentra en borrador o no cuenta con una versión publicada vigente.");
+        }
+      }
+
       // Commercial lineage is always derived server-side at creation time.
       // If the credit comes from a submission, inherit the immutable affiliation
       // captured when that submission was originated—even if the broker moved later.
@@ -3116,6 +3731,18 @@ export class DbStorage implements IStorage {
 
   async createCreditSubmissionRequest(requestData: InsertCreditSubmissionRequest): Promise<CreditSubmissionRequest> {
     try {
+      const explicitOfferId = (requestData as any).institutionProductId || (requestData as any).offerId;
+      if (explicitOfferId) {
+        const product = await this.getInstitutionProduct(explicitOfferId);
+        if (!product) {
+          throw new Error("La oferta especificada no existe.");
+        }
+        const versions = await this.getInstitutionProductVersions(explicitOfferId);
+        if (!isOfferEligibleForRequests(product, versions)) {
+          throw new Error("La oferta seleccionada se encuentra en borrador o no cuenta con una versión publicada vigente.");
+        }
+      }
+
       const brokerAtOrigination = await this.getUser(requestData.brokerId);
       let originMasterBrokerId: string | null = null;
       if (brokerAtOrigination?.role === "master_broker") {

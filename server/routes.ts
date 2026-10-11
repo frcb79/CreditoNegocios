@@ -40,6 +40,7 @@ import {
   insertProductRequestSchema,
   insertProductTemplateSchema,
   insertInstitutionProductSchema,
+  insertInstitutionProductVersionSchema,
   insertCreditSubmissionRequestSchema,
   insertCreditSubmissionTargetSchema,
   insertClientCreditHistorySchema,
@@ -64,6 +65,11 @@ import {
   type UserStatusRequestStatus,
   type UserStatusRequestAction,
 } from "../shared/schema";
+import {
+  isOfferEligibleForRequests,
+  validateMinimumPublishConditions,
+  validateOfferVersionParameters,
+} from "./offerVersionService";
 import { commercialConfigService } from "./commercialConfigService";
 
 import {
@@ -773,15 +779,194 @@ async function authorizeTenantAccess(params: {
 }
 
 async function requirePlatformRole(userId: string, allowedRoles: string[]): Promise<boolean> {
-  let user = await storage.getUser(userId);
-  
-  // Fallback: If user not found by ID, try to get super admin for development
-  if (!user) {
-    user = await storage.getUserByEmail("admin@brokerapp.mx");
-  }
-  
+  if (!userId) return false;
+  const user = await storage.getUser(userId);
   return user ? allowedRoles.includes(user.role) : false;
 }
+
+function sanitizeCommercialOffer(product: any, userRole?: string) {
+  if (!product) return product;
+  const { createdBy, ...commercialOffer } = product;
+
+  // Preservar RBAC: Sanitizar comisiones individuales y condiciones económicas internas (B2.2 / B3 / B3.1)
+  if (commercialOffer.configuration && typeof commercialOffer.configuration === "object") {
+    const config = { ...commercialOffer.configuration };
+    if (config.commissionRates && typeof config.commissionRates === "object") {
+      const rawRates = config.commissionRates as Record<string, any>;
+      if (userRole === "super_admin") {
+        // EXCLUSIVO Super Admin (B3.1): Super Admin ve las condiciones económicas completas (incluyendo sobretasas internas)
+        config.commissionRates = rawRates;
+      } else if (userRole === "admin") {
+        // Admin: ve comisiones comerciales pero NUNCA sobretasas internas
+        const sanitized: Record<string, any> = JSON.parse(JSON.stringify(rawRates));
+        if (sanitized.financiera) delete sanitized.financiera.sobretasa;
+        if (sanitized.masterBroker) delete sanitized.masterBroker.sobretasa;
+        if (sanitized.broker) delete sanitized.broker.sobretasa;
+        if (sanitized.superAdmin) delete sanitized.superAdmin.sobretasa;
+        config.commissionRates = sanitized;
+      } else if (userRole === "master_broker") {
+        // Master Broker solo ve tiers masterBroker y broker, NUNCA financiera, superAdmin, platformNet, notas internas NI sobretasas
+        const sanitized: Record<string, any> = {};
+        if (rawRates.masterBroker) {
+          const { sobretasa, ...cleanMb } = rawRates.masterBroker;
+          sanitized.masterBroker = cleanMb;
+        }
+        if (rawRates.broker) {
+          const { sobretasa, ...cleanBrk } = rawRates.broker;
+          sanitized.broker = cleanBrk;
+        }
+        if (rawRates.type) sanitized.type = rawRates.type;
+        config.commissionRates = sanitized;
+      } else if (userRole === "broker") {
+        // Broker directo solo ve su tier broker autorizado, NUNCA masterBroker, financiera, platformNet, notas internas NI sobretasas
+        const sanitized: Record<string, any> = {};
+        if (rawRates.broker) {
+          const { sobretasa, ...cleanBrk } = rawRates.broker;
+          sanitized.broker = cleanBrk;
+        }
+        if (rawRates.type) sanitized.type = rawRates.type;
+        config.commissionRates = sanitized;
+      } else {
+        // Usuarios no comerciales o públicos: no exponer comisiones
+        delete config.commissionRates;
+      }
+    }
+
+    // Sobretasas exclusivas de Super Admin (B3.1): limpiar cualquier residuo en configuration si no es super_admin
+    if (userRole !== "super_admin") {
+      delete config.overrateCommissionRate;
+      delete config.overRate;
+      delete config.sobretasa;
+      if (config.commissionRates) {
+        if (config.commissionRates.financiera) delete config.commissionRates.financiera.sobretasa;
+        if (config.commissionRates.masterBroker) delete config.commissionRates.masterBroker.sobretasa;
+        if (config.commissionRates.broker) delete config.commissionRates.broker.sobretasa;
+        if (config.commissionRates.superAdmin) delete config.commissionRates.superAdmin.sobretasa;
+      }
+    }
+
+    commercialOffer.configuration = config;
+  }
+
+  // Sobretasas exclusivas de Super Admin (B3.1): limpiar de raíz en producto comercial
+  if (userRole !== "super_admin") {
+    delete commercialOffer.overrateCommissionRate;
+    delete commercialOffer.overRate;
+    delete commercialOffer.sobretasa;
+  }
+
+  return commercialOffer;
+}
+
+const COMMERCIAL_FINANCIAL_INSTITUTION_FIELDS = [
+  "id",
+  "name",
+  "contactPerson",
+  "email",
+  "phone",
+  "street",
+  "number",
+  "interior",
+  "city",
+  "postalCode",
+  "state",
+  "description",
+  "additionalCosts",
+  "requirements",
+  "products",
+  "acceptedProfiles",
+  "applicationProcess",
+  "estimatedTimeframes",
+  "approvalTips",
+  "requiredDocuments",
+  "isActive",
+  "createdAt",
+  "updatedAt",
+] as const;
+
+function projectFinancialInstitutionByRole(institution: any, userRole: string, masterBrokerRates?: any): any {
+  if (!institution) return institution;
+  
+  // EXCLUSIVO Super Admin (B3.1): Solo Super Admin ve sobretasas internas y configuración completa
+  if (userRole === 'super_admin') {
+    return institution;
+  }
+
+  // Admin tiene acceso administrativo pero NUNCA a sobretasas (B3.1: exclusivas de super_admin)
+  if (userRole === 'admin') {
+    const adminCopy = { ...institution };
+    delete adminCopy.overrateCommissionRate;
+    delete adminCopy.overRate;
+    delete adminCopy.sobretasa;
+    if (adminCopy.commissionRates && typeof adminCopy.commissionRates === 'object') {
+      const sanitized = JSON.parse(JSON.stringify(adminCopy.commissionRates));
+      if (sanitized.financiera) delete sanitized.financiera.sobretasa;
+      if (sanitized.masterBroker) delete sanitized.masterBroker.sobretasa;
+      if (sanitized.broker) delete sanitized.broker.sobretasa;
+      if (sanitized.superAdmin) delete sanitized.superAdmin.sobretasa;
+      adminCopy.commissionRates = sanitized;
+    }
+    return adminCopy;
+  }
+
+  // Explicit whitelist projection for non-administrative roles (no notes, createdBy, createdByAdmin)
+  const projected: Record<string, any> = {};
+  for (const field of COMMERCIAL_FINANCIAL_INSTITUTION_FIELDS) {
+    if (field in institution) {
+      projected[field] = institution[field];
+    }
+  }
+
+  const rawRates = (institution.commissionRates as any) || {};
+
+  if (userRole === 'master_broker') {
+    // Master Broker only sees masterBroker and broker tiers, never internal platform / superAdmin commissions nor sobretasas
+    const sanitizedRates: Record<string, any> = {};
+    if (rawRates.masterBroker) {
+      const { sobretasa, ...cleanMb } = rawRates.masterBroker;
+      sanitizedRates.masterBroker = cleanMb;
+    }
+    if (rawRates.broker) {
+      const { sobretasa, ...cleanBrk } = rawRates.broker;
+      sanitizedRates.broker = cleanBrk;
+    }
+    projected.commissionRates = sanitizedRates;
+
+    // Legacy fields: only expose commercial broker rates, never platform commissionRate / openingCommissionRate / overrateCommissionRate
+    if (institution.masterBrokerCommissionRate !== undefined) {
+      projected.masterBrokerCommissionRate = institution.masterBrokerCommissionRate;
+    }
+    if (institution.brokerCommissionRate !== undefined) {
+      projected.brokerCommissionRate = institution.brokerCommissionRate;
+    }
+  } else {
+    // Broker & other commercial roles: only broker commission rate, customized if assigned by Master Broker (no sobretasas)
+    let brokerRate = rawRates.broker ? { ...rawRates.broker } : {};
+    if (masterBrokerRates && masterBrokerRates[institution.id] && masterBrokerRates[institution.id].apertura !== undefined) {
+      brokerRate = {
+        ...brokerRate,
+        apertura: masterBrokerRates[institution.id].apertura,
+        renovacion: masterBrokerRates[institution.id].renovacion ?? brokerRate.renovacion,
+      };
+    }
+    const { sobretasa, ...cleanBrokerRate } = brokerRate;
+    projected.commissionRates = { broker: cleanBrokerRate };
+
+    // Legacy fields: only brokerCommissionRate, never masterBrokerCommissionRate or platform commissionRate
+    if (institution.brokerCommissionRate !== undefined) {
+      projected.brokerCommissionRate = institution.brokerCommissionRate;
+    }
+  }
+
+  // Sobretasas exclusivas de Super Admin (B3.1): limpiar de raíz cualquier sobretasa residual en institución proyectada
+  delete projected.overrateCommissionRate;
+  delete projected.overRate;
+  delete projected.sobretasa;
+
+  return projected;
+}
+
+const sanitizeFinancialInstitutionCommissions = projectFinancialInstitutionByRole;
 
 // STP Payment simulation
 async function processStpPayment(amount: string, accountNumber: string) {
@@ -4173,33 +4358,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const user = await storage.getUser(userId);
       const institutions = await storage.getFinancialInstitutions(userId);
 
-      // If user is a broker belonging to a Master Broker, customize broker commission rates with their MB's assigned rates
+      let networkRates: any = null;
+      // If user is a broker belonging to a Master Broker, fetch assigned network rates
       if (user?.role === 'broker' && user?.masterBrokerId) {
         const masterBroker = await storage.getUser(user.masterBrokerId);
-        const networkRates = (masterBroker?.networkCommissionRates as any) || {};
-
-        const customized = institutions.map((inst: any) => {
-          const custom = networkRates[inst.id];
-          if (custom && custom.apertura !== undefined) {
-            return {
-              ...inst,
-              commissionRates: {
-                ...inst.commissionRates,
-                broker: {
-                  ...(inst.commissionRates as any)?.broker,
-                  apertura: custom.apertura,
-                  sobretasa: custom.sobretasa ?? (inst.commissionRates as any)?.broker?.sobretasa,
-                  renovacion: custom.renovacion ?? (inst.commissionRates as any)?.broker?.renovacion,
-                }
-              }
-            };
-          }
-          return inst;
-        });
-        return res.json(customized);
+        networkRates = (masterBroker?.networkCommissionRates as any) || {};
       }
 
-      res.json(institutions);
+      const role = user?.role || 'broker';
+      const sanitized = institutions.map((inst: any) =>
+        projectFinancialInstitutionByRole(inst, role, networkRates)
+      );
+
+      res.json(sanitized);
     } catch (error) {
       console.error("Error fetching financial institutions:", error);
       res.status(500).json({ message: "Failed to fetch financial institutions" });
@@ -4218,30 +4389,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ message: 'Financial institution not found' });
       }
 
-      // If user is a broker belonging to a Master Broker, customize broker rates
+      let networkRates: any = null;
       if (user?.role === 'broker' && user?.masterBrokerId) {
         const masterBroker = await storage.getUser(user.masterBrokerId);
-        const networkRates = (masterBroker?.networkCommissionRates as any) || {};
-        const custom = networkRates[id];
-
-        if (custom && custom.apertura !== undefined) {
-          const customized = {
-            ...institution,
-            commissionRates: {
-              ...institution.commissionRates,
-              broker: {
-                ...(institution.commissionRates as any)?.broker,
-                apertura: custom.apertura,
-                sobretasa: custom.sobretasa ?? (institution.commissionRates as any)?.broker?.sobretasa,
-                renovacion: custom.renovacion ?? (institution.commissionRates as any)?.broker?.renovacion,
-              }
-            }
-          };
-          return res.json(customized);
-        }
+        networkRates = (masterBroker?.networkCommissionRates as any) || {};
       }
+
+      const role = user?.role || 'broker';
+      const sanitized = projectFinancialInstitutionByRole(institution, role, networkRates);
       
-      res.json(institution);
+      res.json(sanitized);
     } catch (error) {
       console.error("Error fetching financial institution:", error);
       res.status(500).json({ message: "Failed to fetch financial institution" });
@@ -4436,8 +4593,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const creditAmount = parseFloat(amount as string);
       
       // Calculate commissions
+      const isSuperAdmin = user?.role === 'super_admin';
       const openingCommission = (creditAmount * (parseFloat(institution.openingCommissionRate || "0"))) / 100;
-      const overrateCommission = (creditAmount * (parseFloat(institution.overrateCommissionRate || "0"))) / 100;
+      const overrateCommission = isSuperAdmin
+        ? (creditAmount * (parseFloat(institution.overrateCommissionRate || "0"))) / 100
+        : 0;
       const totalCommission = openingCommission + overrateCommission;
       
       // Calculate distribution based on user role and institution configuration
@@ -4467,10 +4627,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       const finalCommission = userCommission - totalAdditionalCosts;
       
-      res.json({
+      const calculationResult: any = {
         creditAmount,
         openingCommission,
-        overrateCommission,
         totalCommission,
         userCommission,
         masterBrokerCommission,
@@ -4478,12 +4637,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
         finalCommission: Math.max(0, finalCommission),
         breakdown: {
           openingRate: institution.openingCommissionRate || 0,
-          overrateRate: institution.overrateCommissionRate || 0,
           brokerRate: institution.brokerCommissionRate || 100,
           masterBrokerRate: institution.masterBrokerCommissionRate || 0,
           costs: additionalCosts
         }
-      });
+      };
+
+      if (isSuperAdmin) {
+        calculationResult.overrateCommission = overrateCommission;
+        calculationResult.breakdown.overrateRate = institution.overrateCommissionRate || 0;
+      }
+
+      res.json(calculationResult);
     } catch (error) {
       console.error('Error calculating commission:', error);
       res.status(500).json({ message: 'Failed to calculate commission' });
@@ -7009,9 +7174,42 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // 🔹 INSTITUTION PRODUCTS (Level 3A: Assigned to financieras)
   app.get('/api/institution-products', isAuthenticated, async (req: any, res) => {
     try {
-      const { institutionId } = req.query;
+      const userId = req.user?.claims?.sub || req.user?.id;
+      const isSuperAdmin = await requirePlatformRole(userId, ['super_admin']);
+      const { institutionId, status, eligibleOnly } = req.query;
 
-      const products = await storage.getInstitutionProducts(institutionId as string);
+      let products = await storage.getInstitutionProducts(institutionId as string);
+
+      if (!isSuperAdmin) {
+        // Brokers and Master Brokers must NEVER receive drafts, non-eligible offers, nor administrative metadata
+        const user = await storage.getUser(userId);
+        const userRole = user?.role || 'broker';
+        const eligibleCommercialOffers = [];
+        for (const p of products) {
+          if (p.status === 'draft' || p.status === 'archived' || p.isActive === false) {
+            continue;
+          }
+          const versions = await storage.getInstitutionProductVersions(p.id);
+          if (isOfferEligibleForRequests(p, versions)) {
+            eligibleCommercialOffers.push(sanitizeCommercialOffer(p, userRole));
+          }
+        }
+        return res.json(eligibleCommercialOffers);
+      }
+
+      if (status) {
+        products = products.filter(p => p.status === status);
+      }
+      if (eligibleOnly === 'true') {
+        const eligible = [];
+        for (const p of products) {
+          const versions = await storage.getInstitutionProductVersions(p.id);
+          if (isOfferEligibleForRequests(p, versions)) {
+            eligible.push(p);
+          }
+        }
+        products = eligible;
+      }
       res.json(products);
     } catch (error) {
       console.error("Error fetching institution products:", error);
@@ -7022,10 +7220,25 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get('/api/institution-products/:id', isAuthenticated, async (req: any, res) => {
     try {
       const { id } = req.params;
+      const userId = req.user?.claims?.sub || req.user?.id;
+      const isSuperAdmin = await requirePlatformRole(userId, ['super_admin']);
 
       const product = await storage.getInstitutionProduct(id);
       if (!product) {
         return res.status(404).json({ message: "Institution product not found" });
+      }
+
+      if (!isSuperAdmin) {
+        if (product.status === 'draft' || product.status === 'archived' || product.isActive === false) {
+          return res.status(404).json({ message: "Institution product not found" });
+        }
+        const versions = await storage.getInstitutionProductVersions(product.id);
+        if (!isOfferEligibleForRequests(product, versions)) {
+          return res.status(404).json({ message: "Institution product not found" });
+        }
+        const user = await storage.getUser(userId);
+        const userRole = user?.role || 'broker';
+        return res.json(sanitizeCommercialOffer(product, userRole));
       }
       
       res.json(product);
@@ -7035,11 +7248,441 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  app.get('/api/institution-products/:id/versions', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub || req.user?.id;
+      const hasPermission = await requirePlatformRole(userId, ['super_admin']);
+      if (!hasPermission) {
+        return res.status(403).json({ message: "Access denied - Super Admin privileges required" });
+      }
+
+      const { id } = req.params;
+      const versions = await storage.getInstitutionProductVersions(id);
+      res.json(versions);
+    } catch (error) {
+      console.error("Error fetching institution product versions:", error);
+      res.status(500).json({ message: "Failed to fetch institution product versions" });
+    }
+  });
+
+  // Obtener oferta y su versión en borrador editable (Solo Super Admin)
+  app.get('/api/institution-products/:id/draft', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub || req.user?.id;
+      const hasPermission = await requirePlatformRole(userId, ['super_admin']);
+      if (!hasPermission) {
+        return res.status(403).json({ message: "Access denied - Super Admin privileges required" });
+      }
+
+      const { id } = req.params;
+      const product = await storage.getInstitutionProduct(id);
+      if (!product) {
+        return res.status(404).json({ message: "Institution product not found" });
+      }
+
+      const versions = await storage.getInstitutionProductVersions(id);
+      const draftVersion = versions.find(v => v.status === "draft") || null;
+
+      res.json({
+        product,
+        draftVersion,
+      });
+    } catch (error) {
+      console.error("Error fetching draft version:", error);
+      res.status(500).json({ message: "Failed to fetch draft version" });
+    }
+  });
+
+  // Editar y guardar versión en borrador existente (Solo Super Admin - Arquitectura A1)
+  app.put('/api/institution-products/:id/draft', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub || req.user?.id;
+      const hasPermission = await requirePlatformRole(userId, ['super_admin']);
+      if (!hasPermission) {
+        return res.status(403).json({ message: "Access denied - Super Admin privileges required" });
+      }
+
+      const { id } = req.params;
+      const product = await storage.getInstitutionProduct(id);
+      if (!product) {
+        return res.status(404).json({ message: "Institution product not found" });
+      }
+
+      const versions = await storage.getInstitutionProductVersions(id);
+      const draftVersion = versions.find(v => v.status === "draft");
+      if (!draftVersion) {
+        return res.status(400).json({
+          message: "No se encontró una versión en borrador editable para esta oferta. Las versiones publicadas o históricas son inmutables.",
+        });
+      }
+
+      const {
+        name,
+        description,
+        productType,
+        targetProfiles,
+        conditions,
+        requirements,
+        requiredDocuments,
+        variablesConfiguration,
+        changeReason,
+      } = req.body;
+
+      // 1. Extraer condiciones comerciales para la versión y configuration del producto
+      const currentConditions = (draftVersion.conditions || {}) as Record<string, any>;
+      const mergedConditions: Record<string, any> = {
+        ...currentConditions,
+        ...(conditions || {}),
+      };
+
+      if (req.body.minAmount !== undefined) mergedConditions.minAmount = req.body.minAmount !== "" && req.body.minAmount !== null ? Number(req.body.minAmount) : undefined;
+      if (req.body.maxAmount !== undefined) mergedConditions.maxAmount = req.body.maxAmount !== "" && req.body.maxAmount !== null ? Number(req.body.maxAmount) : undefined;
+      if (req.body.minInterestRate !== undefined) mergedConditions.minInterestRate = req.body.minInterestRate !== "" && req.body.minInterestRate !== null ? Number(req.body.minInterestRate) : undefined;
+      if (req.body.maxInterestRate !== undefined) mergedConditions.maxInterestRate = req.body.maxInterestRate !== "" && req.body.maxInterestRate !== null ? Number(req.body.maxInterestRate) : undefined;
+      if (req.body.minTermMonths !== undefined) mergedConditions.minTermMonths = req.body.minTermMonths !== "" && req.body.minTermMonths !== null ? Number(req.body.minTermMonths) : undefined;
+      if (req.body.maxTermMonths !== undefined) mergedConditions.maxTermMonths = req.body.maxTermMonths !== "" && req.body.maxTermMonths !== null ? Number(req.body.maxTermMonths) : undefined;
+
+      // Variables de elegibilidad (B2.1 / B2.2): asociadas a campos del expediente y pendientes en Matching
+      if (req.body.minCompanyAgeMonths !== undefined) mergedConditions.minCompanyAgeMonths = req.body.minCompanyAgeMonths !== "" && req.body.minCompanyAgeMonths !== null ? Number(req.body.minCompanyAgeMonths) : undefined;
+      if (req.body.minMonthlyRevenue !== undefined) mergedConditions.minMonthlyRevenue = req.body.minMonthlyRevenue !== "" && req.body.minMonthlyRevenue !== null ? Number(req.body.minMonthlyRevenue) : undefined;
+      if (req.body.bureauRequirement !== undefined) mergedConditions.bureauRequirement = req.body.bureauRequirement;
+      if (req.body.guaranteeType !== undefined) mergedConditions.guaranteeType = req.body.guaranteeType;
+      if (req.body.avalesType !== undefined) mergedConditions.avalesType = req.body.avalesType;
+
+      // Garantía de Integridad: Variables de elegibilidad pendientes de cotejo contra expediente real (Matching inactivo)
+      mergedConditions.eligibilityEvaluation = {
+        matchingActive: false,
+        status: "pending_verification",
+        verified: false,
+        originFieldsChecked: false,
+      };
+
+      // Comisiones individuales por oferta (B2.2 — Canales independientes Broker Directo y Master Broker)
+      let commRates = req.body.commissionRates !== undefined
+        ? req.body.commissionRates
+        : (conditions?.commissionRates !== undefined ? conditions.commissionRates : currentConditions.commissionRates);
+
+      if (commRates && typeof commRates === "object") {
+        const finRate = commRates.financiera?.apertura !== undefined && commRates.financiera?.apertura !== "" && commRates.financiera?.apertura !== null
+          ? Number(commRates.financiera.apertura)
+          : null;
+        const mbRate = commRates.masterBroker?.apertura !== undefined && commRates.masterBroker?.apertura !== "" && commRates.masterBroker?.apertura !== null
+          ? Number(commRates.masterBroker.apertura)
+          : null;
+        const brkRate = commRates.broker?.apertura !== undefined && commRates.broker?.apertura !== "" && commRates.broker?.apertura !== null
+          ? Number(commRates.broker.apertura)
+          : null;
+
+        const hasFin = finRate !== null && !isNaN(finRate);
+        const hasBrk = brkRate !== null && !isNaN(brkRate);
+        const hasMb = mbRate !== null && !isNaN(mbRate);
+
+        // B3.1: Si falta la comisión de apertura de cualquier canal, su margen debe permanecer pendiente (null), tanto en guardado como en visualización
+        const platformMarginDirect = (hasFin && hasBrk)
+          ? Math.max(0, Number((finRate! - brkRate!).toFixed(4)))
+          : null;
+
+        const platformMarginMaster = (hasFin && hasMb)
+          ? Math.max(0, Number((finRate! - mbRate!).toFixed(4)))
+          : null;
+
+        mergedConditions.commissionRates = {
+          ...commRates,
+          financiera: {
+            ...commRates.financiera,
+            apertura: hasFin ? finRate : null,
+          },
+          masterBroker: {
+            ...commRates.masterBroker,
+            apertura: hasMb ? mbRate : null,
+          },
+          broker: {
+            ...commRates.broker,
+            apertura: hasBrk ? brkRate : null,
+          },
+          channels: {
+            directBroker: {
+              brokerRate: hasBrk ? brkRate : null,
+              platformGrossMargin: platformMarginDirect,
+              isMarginPending: platformMarginDirect === null,
+            },
+            masterBroker: {
+              networkCeiling: hasMb ? mbRate : null,
+              platformGrossMargin: platformMarginMaster,
+              isMarginPending: platformMarginMaster === null,
+            },
+          },
+          platformGrossMarginDirect: platformMarginDirect,
+          platformGrossMarginMaster: platformMarginMaster,
+          isMarginDirectPending: platformMarginDirect === null,
+          isMarginMasterPending: platformMarginMaster === null,
+          // Compatibilidad: la plataforma registra los márgenes de ambos canales independientes
+          platformNet: {
+            direct: platformMarginDirect,
+            master: platformMarginMaster,
+            apertura: platformMarginDirect,
+          },
+          type: commRates.type || "porcentaje",
+          notes: commRates.notes || "",
+        };
+      }
+
+      Object.keys(mergedConditions).forEach(key => mergedConditions[key] === undefined && delete mergedConditions[key]);
+
+      // 2. Validar coherencia matemática de los datos capturados y comisiones (permite incompletos)
+      const validation = validateOfferVersionParameters({ conditions: mergedConditions });
+      if (!validation.isValid) {
+        return res.status(400).json({
+          message: "Inconsistencia en los datos capturados",
+          errors: validation.errors,
+        });
+      }
+
+      // 3. Normalizar requisitos y documentos
+      const currentReqs = (draftVersion.requirements || {}) as Record<string, any>;
+      const mergedRequirements: Record<string, any> = {
+        ...currentReqs,
+        ...(requirements || {}),
+        targetProfiles: targetProfiles !== undefined ? targetProfiles : (currentReqs.targetProfiles || product.targetProfiles || []),
+        eligibilityVariablesStatus: {
+          matchingActive: false,
+          verified: false,
+        },
+      };
+
+      const docsList = requiredDocuments !== undefined
+        ? (Array.isArray(requiredDocuments) ? requiredDocuments : [])
+        : (draftVersion.requiredDocuments || []);
+
+      // 4. Guardado ATÓMICO de versión borrador y producto padre (B3.1: Aislamiento total)
+      // Si la oferta ya está publicada (status === 'published'), la v1 vigente permanece intacta:
+      // editar la futura v2 NO altera las condiciones, comisiones ni datos visibles de la v1 vigente.
+      // Solo si el producto sigue en borrador inicial (status === 'draft'), se sincronizan metadatos de borrador.
+      const shouldSyncParentToDraft = product.status === "draft";
+      const { product: updatedProduct, version: updatedVersion } = await storage.updateInstitutionProductDraftAndParent(
+        id,
+        draftVersion.id,
+        {
+          conditions: mergedConditions,
+          requirements: mergedRequirements,
+          requiredDocuments: docsList,
+          variablesConfiguration: variablesConfiguration !== undefined ? variablesConfiguration : draftVersion.variablesConfiguration,
+          changeReason: changeReason || "Edición de versión en borrador con comisiones individuales",
+        },
+        shouldSyncParentToDraft ? {
+          name: name !== undefined ? name : product.name,
+          customName: name !== undefined ? name : (product.customName || product.name),
+          description: description !== undefined ? description : product.description,
+          productType: productType !== undefined ? productType : product.productType,
+          targetProfiles: targetProfiles !== undefined ? targetProfiles : product.targetProfiles,
+          configuration: {
+            ...((product.configuration || {}) as Record<string, any>),
+            ...mergedConditions,
+          },
+        } : undefined
+      );
+
+      res.json({
+        product: updatedProduct,
+        version: updatedVersion,
+      });
+    } catch (error: any) {
+      console.error("Error updating draft version:", error);
+      res.status(400).json({ message: error.message || "Failed to update draft version" });
+    }
+  });
+
+  // Revisión previa de publicación con validación, advertencias y datos completos (B3 - Solo Super Admin)
+  app.get('/api/institution-products/:id/publish-preview', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub || req.user?.id;
+      const isSuperAdmin = await requirePlatformRole(userId, ['super_admin']);
+      if (!isSuperAdmin) {
+        return res.status(403).json({ message: "Access denied - Super Admin privileges required" });
+      }
+
+      const { id } = req.params;
+      const product = await storage.getInstitutionProduct(id);
+      if (!product) {
+        return res.status(404).json({ message: "Institution product not found" });
+      }
+
+      const versions = await storage.getInstitutionProductVersions(id);
+      const draftVersion = versions.find(v => v.status === "draft") || null;
+      if (!draftVersion) {
+        return res.status(400).json({ message: "No se encontró una versión en borrador para publicar" });
+      }
+
+      const currentVersion = versions.find(v => v.status === "published" || v.status === "active") || null;
+
+      const cond = (draftVersion.conditions || {}) as Record<string, any>;
+      const reqs = (draftVersion.requirements || {}) as Record<string, any>;
+      const docs = draftVersion.requiredDocuments || [];
+
+      const validation = validateMinimumPublishConditions({
+        conditions: cond,
+        requirements: reqs,
+        requiredDocuments: docs,
+        changeReason: draftVersion.changeReason || "Revisión previa para publicación",
+        productType: product.productType,
+      });
+
+      // Comisiones y desglose económico independiente por canal
+      const cr = (cond.commissionRates || {}) as Record<string, any>;
+      const finRate = cr.financiera?.apertura !== undefined && cr.financiera?.apertura !== null && cr.financiera?.apertura !== ""
+        ? Number(cr.financiera.apertura) : null;
+      const brkRate = cr.broker?.apertura !== undefined && cr.broker?.apertura !== null && cr.broker?.apertura !== ""
+        ? Number(cr.broker.apertura) : null;
+      const mbRate = cr.masterBroker?.apertura !== undefined && cr.masterBroker?.apertura !== null && cr.masterBroker?.apertura !== ""
+        ? Number(cr.masterBroker.apertura) : null;
+
+      // Requisito 5: Si falta comisión, margen pendiente, nunca 100% de la bolsa
+      const marginDirect = (finRate !== null && brkRate !== null) ? Number((finRate - brkRate).toFixed(4)) : null;
+      const marginMaster = (finRate !== null && mbRate !== null) ? Number((finRate - mbRate).toFixed(4)) : null;
+
+      res.json({
+        product,
+        draftVersion,
+        currentVersion,
+        validation,
+        summary: {
+          amounts: {
+            min: cond.minAmount ?? null,
+            max: cond.maxAmount ?? null,
+            isPending: cond.minAmount === undefined && cond.maxAmount === undefined,
+          },
+          rates: {
+            min: cond.minInterestRate ?? null,
+            max: cond.maxInterestRate ?? null,
+            isPending: cond.minInterestRate === undefined || cond.maxInterestRate === undefined,
+          },
+          terms: {
+            min: cond.minTermMonths ?? null,
+            max: cond.maxTermMonths ?? null,
+            isPending: cond.minTermMonths === undefined || cond.maxTermMonths === undefined,
+          },
+          targetProfiles: reqs.targetProfiles || product.targetProfiles || [],
+          requiredDocuments: docs,
+          commissions: {
+            financiera: finRate,
+            brokerDirecto: brkRate,
+            masterBroker: mbRate,
+            platformMarginDirect: marginDirect,
+            platformMarginMaster: marginMaster,
+            isMarginDirectPending: marginDirect === null,
+            isMarginMasterPending: marginMaster === null,
+            notes: cr.notes || "",
+          },
+          eligibility: {
+            minCompanyAgeMonths: cond.minCompanyAgeMonths ?? null,
+            minMonthlyRevenue: cond.minMonthlyRevenue ?? null,
+            bureauRequirement: cond.bureauRequirement ?? "sin_requisito",
+            guaranteeType: cond.guaranteeType ?? "sin_garantia",
+            avalesType: cond.avalesType ?? "no_requerido",
+            matchingActive: false,
+            status: "pending_verification",
+          },
+        },
+      });
+    } catch (error: any) {
+      console.error("Error in publish-preview:", error);
+      res.status(500).json({ message: "Failed to generate publish preview" });
+    }
+  });
+
+  // Publicación formal de versión borrador (B3 - Solo Super Admin, Transaccional A1)
+  app.post('/api/institution-products/:id/publish', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub || req.user?.id;
+      const isSuperAdmin = await requirePlatformRole(userId, ['super_admin']);
+      if (!isSuperAdmin) {
+        return res.status(403).json({ message: "Access denied - Super Admin privileges required" });
+      }
+
+      const { id } = req.params;
+      const { changeReason, confirmPublish } = req.body;
+
+      // Requisito 1: Confirmación explícita obligatoria
+      if (!confirmPublish) {
+        return res.status(400).json({
+          message: "Debe confirmar explícitamente la publicación de la oferta comercial",
+        });
+      }
+
+      // Requisito 1 & 2: Auditoría y trazabilidad con motivo de cambio
+      if (!changeReason || typeof changeReason !== "string" || changeReason.trim().length < 3) {
+        return res.status(400).json({
+          message: "El motivo de cambio es obligatorio para publicar (mínimo 3 caracteres para trazabilidad y auditoría)",
+        });
+      }
+
+      const product = await storage.getInstitutionProduct(id);
+      if (!product) {
+        return res.status(404).json({ message: "Institution product not found" });
+      }
+
+      const versions = await storage.getInstitutionProductVersions(id);
+      const draftVersion = versions.find(v => v.status === "draft");
+      if (!draftVersion) {
+        return res.status(400).json({
+          message: "No se encontró una versión en borrador para publicar. Es posible que ya haya sido publicada.",
+        });
+      }
+
+      // Requisito 2: Publicación transaccional A1 mediante Storage (sustitución segura e historial inmutable)
+      const publishedVersion = await storage.publishInstitutionProductVersion(id, draftVersion.id, {
+        publishedBy: userId,
+        changeReason: changeReason.trim(),
+      });
+
+      const updatedProduct = await storage.getInstitutionProduct(id);
+
+      res.json({
+        message: "Oferta comercial publicada exitosamente",
+        product: updatedProduct,
+        publishedVersion,
+      });
+    } catch (error: any) {
+      console.error("Error publishing institution product version:", error);
+      res.status(400).json({ message: error.message || "Failed to publish version" });
+    }
+  });
+
   app.get('/api/institution-products/template/:templateId', isAuthenticated, async (req: any, res) => {
     try {
       const { templateId } = req.params;
+      const userId = req.user?.claims?.sub || req.user?.id;
+      const isSuperAdmin = await requirePlatformRole(userId, ['super_admin']);
+      const { eligibleOnly } = req.query;
 
-      const products = await storage.getInstitutionProductsByTemplate(templateId);
+      let products = await storage.getInstitutionProductsByTemplate(templateId);
+
+      if (!isSuperAdmin) {
+        const user = await storage.getUser(userId);
+        const userRole = user?.role || 'broker';
+        const eligibleCommercialOffers = [];
+        for (const p of products) {
+          if (p.status === 'draft' || p.status === 'archived' || p.isActive === false) {
+            continue;
+          }
+          const versions = await storage.getInstitutionProductVersions(p.id);
+          if (isOfferEligibleForRequests(p, versions)) {
+            eligibleCommercialOffers.push(sanitizeCommercialOffer(p, userRole));
+          }
+        }
+        return res.json(eligibleCommercialOffers);
+      }
+
+      if (eligibleOnly === 'true') {
+        const eligible = [];
+        for (const p of products) {
+          const versions = await storage.getInstitutionProductVersions(p.id);
+          if (isOfferEligibleForRequests(p, versions)) {
+            eligible.push(p);
+          }
+        }
+        products = eligible;
+      }
       res.json(products);
     } catch (error) {
       console.error("Error fetching institution products by template:", error);
@@ -7049,11 +7692,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post('/api/institution-products', isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const userId = req.user?.claims?.sub || req.user?.id;
       
-      const hasPermission = await requirePlatformRole(userId, ['super_admin', 'admin']);
+      const hasPermission = await requirePlatformRole(userId, ['super_admin']);
       if (!hasPermission) {
-        return res.status(403).json({ message: "Access denied - Admin privileges required" });
+        return res.status(403).json({ message: "Access denied - Super Admin privileges required" });
       }
 
       // Parse body but add createdBy automatically for security
@@ -7061,7 +7704,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       // Auto-copy targetProfiles from template if not provided
       let targetProfiles = bodyData.targetProfiles;
-      if (!targetProfiles || targetProfiles.length === 0) {
+      if ((!targetProfiles || targetProfiles.length === 0) && bodyData.templateId) {
         const template = await storage.getProductTemplate(bodyData.templateId);
         if (template && template.targetProfiles && template.targetProfiles.length > 0) {
           targetProfiles = template.targetProfiles;
@@ -7070,10 +7713,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       const productData = {
         ...bodyData,
+        status: 'draft', // Forzado a draft desde el servidor; solo el flujo validado de publicación puede establecer published
         targetProfiles, // Use copied or provided targetProfiles
         createdBy: userId, // Set automatically from authenticated user
       };
-      const product = await storage.createInstitutionProduct(productData);
+      const initialVersionData = {
+        versionNumber: 1,
+        status: 'draft',
+        conditions: (bodyData.configuration as any) || {},
+        requirements: { targetProfiles: targetProfiles || [] },
+        changeReason: "Alta inicial de oferta comercial en borrador",
+        createdBy: userId,
+      };
+      const product = await storage.createInstitutionProduct(productData, initialVersionData);
       
       res.status(201).json(product);
     } catch (error) {
@@ -7089,11 +7741,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.put('/api/institution-products/:id', isAuthenticated, async (req: any, res) => {
     try {
       const { id } = req.params;
-      const userId = req.user.claims.sub;
+      const userId = req.user?.claims?.sub || req.user?.id;
       
-      const hasPermission = await requirePlatformRole(userId, ['super_admin', 'admin']);
+      const hasPermission = await requirePlatformRole(userId, ['super_admin']);
       if (!hasPermission) {
-        return res.status(403).json({ message: "Access denied - Admin privileges required" });
+        return res.status(403).json({ message: "Access denied - Super Admin privileges required" });
       }
 
       const productData = insertInstitutionProductSchema.partial().parse(req.body);
@@ -7120,12 +7772,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       
       res.json(product);
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error updating institution product:", error);
       if (error instanceof z.ZodError) {
         res.status(400).json({ message: 'Invalid data', errors: error.errors });
       } else {
-        res.status(500).json({ message: "Failed to update institution product" });
+        res.status(400).json({ message: error.message || "Failed to update institution product" });
       }
     }
   });
@@ -7133,20 +7785,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.delete('/api/institution-products/:id', isAuthenticated, async (req: any, res) => {
     try {
       const { id } = req.params;
-      const userId = req.user.claims.sub;
+      const userId = req.user?.claims?.sub || req.user?.id;
       
-      const hasPermission = await requirePlatformRole(userId, ['super_admin', 'admin']);
+      const hasPermission = await requirePlatformRole(userId, ['super_admin']);
       if (!hasPermission) {
-        return res.status(403).json({ message: "Access denied - Admin privileges required" });
+        return res.status(403).json({ message: "Access denied - Super Admin privileges required" });
       }
 
       const success = await storage.deleteInstitutionProduct(id);
       
-      if (success) {
-        res.json({ message: "Institution product deleted successfully" });
-      } else {
-        res.status(404).json({ message: "Institution product not found" });
+      if (!success) {
+        return res.status(404).json({ message: "Institution product not found" });
       }
+
+      res.json({ message: "Institution product deleted successfully" });
     } catch (error) {
       console.error("Error deleting institution product:", error);
       res.status(500).json({ message: "Failed to delete institution product" });
