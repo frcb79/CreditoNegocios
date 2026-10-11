@@ -194,6 +194,17 @@
 | AUD-07 | Sólo una implementación bitácora; no fusionar dos esquemas divergentes. | Diferible según Plan v1.1 |
 | AUD-08 | Auditoría Administrativa no sustituye bitácora integral. | Acordado |
 
+## MIG — Migraciones y atribución histórica (P0)
+
+| ID | Regla/criterio | Estado o hito |
+|---|---|---|
+| MIG-01 | **P0 BLOQUEANTE:** Migración `0004_broker_network_transitions.sql` en commit `6c3cca5` realiza backfill inicial de `credits.origin_master_broker_id` y `credit_submission_requests.origin_master_broker_id` con `users.master_broker_id` **actual**. Si el Broker cambió de Master desde la originación, puede asignarse un beneficiario histórico equivocado y afectar comisiones. **PROHIBIDO ejecutar `0004` en Staging/producción o copias destinadas a promoción hasta resolverlo.** | **Abierto — bloquear ejecución de 0004 antes de Staging** |
+| MIG-02 | Corregir la reconstrucción histórica para usar evidencia verificable de la fecha/evento de originación (snapshots, auditoría, afiliaciones/transiciones fechadas). Si no existe evidencia suficiente, no inferir Master a partir de afiliación actual; marcar casos ambiguos para resolución controlada, **sin equiparar automáticamente desconocido a originación directa** ni reatribuir derechos. | Pendiente — condición de cierre MIG-01 |
+| MIG-03 | Probar migración `0004` en PostgreSQL **aislado**, sobre copia desidentificada con datos representativos: Broker A→B, Master→plataforma, origen directo con NULL, sin historial suficiente, varias solicitudes, pagos/comisiones previas; comparar antes/después crédito por crédito y acreditar idempotencia (segunda ejecución sin cambios). | Pendiente — evidencia SQL y reporte por escenario |
+| MIG-04 | Preservar estado de datos históricos de `commercial_opportunities`, `users`, `tenants` y reglas/triggers de inmutabilidad; no considerar aprobadas migraciones sólo por pruebas estáticas de texto o `IF NOT EXISTS`. Requerir backup/rollback y revisión de DBA/AG antes de autorizar ejecución. | Pendiente — QA de migraciones integral |
+
+**Origen:** revisión directa del SQL de `0004` en `integration/phase-1a1-base-segura` commit `6c3cca5` (11-oct-2026). El reporte de 1A.4A sólo validó AST/DDL estáticos y MemStorage, **no PostgreSQL real**. Este riesgo continúa aunque se corrigieron `created_at`, mutaciones de tenants/usuarios y reactivación expresa. **No repetir toda la auditoría:** resolver este riesgo de forma focalizada antes de ejecutar la migración en cualquier ruta de promoción a producción.
+
 ## QA — Validación y lanzamiento
 
 | ID | Regla/criterio | Estado o hito |
@@ -215,9 +226,10 @@
 5. **Comprobante**: AG 1A.3B reportó descarga TXT; versión PDF exacta y profesional pendiente. PDF no equivale a NOM-151.
 6. **1A.3A/1A.3B pruebas**: 1A.3A informó 21 pruebas focalizadas; 1A.3B informó 10 de esa suite. Conciliar cobertura; no inferir regresión sin inspección.
 7. **Bitácora integral** diferible según Plan Maestro v1.1; no incorporar implementaciones divergentes automáticamente.
+8. **P0 de migración histórica (MIG-01–04):** `0004` lee la afiliación *actual* del Broker para retroasignar un Master a créditos y solicitudes *pasadas*. Resolver mediante evidencia histórica y PostgreSQL aislado antes de ejecutar `0004`; no inventar beneficiarios ni confundir NULL directo con dato desconocido.
 
 ## Ciclo de control
 
 Por cada ID: identificar archivo/endpoint, test (negativo y positivo), evidencia de ejecución (SHA y entorno), estado `sin verificar | aprobado | observado | diferido expresamente`, fecha y responsable. No marcar aprobado por mera declaración en conversación o existencia de código en otra rama.
 
-**Regla operativa:** AG sigue con 1A.3C de manera acotada. Este archivo no autoriza que AG implemente todos los pendientes a la vez ni que modifique main. Actualizar el inventario por diferencias verificadas sin duplicar el Plan Maestro.
+**Regla operativa (11-oct-2026):** Legal + Red Comercial se han integrado localmente hasta `6c3cca5`; sigue Fase 2 por bloques selectivos. **MIG-01 impide ejecutar `0004`, pero no impide recuperar código financiero sin migrar datos.** Este archivo no autoriza que AG implemente todos los pendientes a la vez ni que modifique main. Actualizar el inventario por diferencias verificadas sin duplicar el Plan Maestro.
