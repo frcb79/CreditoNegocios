@@ -76,6 +76,7 @@ import {
   UnconfirmedDispersalAmountError,
   UnauthorizedDistributionError,
   CommissionFrozenDiscrepancyError,
+  ImmutableCommercialSnapshotError,
   type CommissionPayoutAuditResult,
   auditCommissionPayout,
   getCommissionPayoutAmount,
@@ -91,6 +92,7 @@ export {
   UnconfirmedDispersalAmountError,
   UnauthorizedDistributionError,
   CommissionFrozenDiscrepancyError,
+  ImmutableCommercialSnapshotError,
   type CommissionPayoutAuditResult,
   auditCommissionPayout,
   getCommissionPayoutAmount,
@@ -195,13 +197,18 @@ export async function createCascadingCommissionRecord(
   let commissionInput: CascadingCommissionInput;
 
   if (arg1 && typeof arg1 === "object" && "creditId" in arg1) {
+    // REGLA 1 (COM-21): Eliminar fallbacks a approvedAmount o montos no verificados
     const rawAmount = arg1.confirmedDisbursedAmount !== undefined && arg1.confirmedDisbursedAmount !== null
       ? parseFloat(String(arg1.confirmedDisbursedAmount))
       : (arg1.dispersedAmount !== undefined && arg1.dispersedAmount !== null
           ? parseFloat(String(arg1.dispersedAmount))
-          : (arg1.approvedAmount !== undefined && arg1.approvedAmount !== null
-              ? parseFloat(String(arg1.approvedAmount))
-              : undefined));
+          : undefined);
+
+    if (rawAmount === undefined || isNaN(rawAmount) || rawAmount <= 0) {
+      throw new UnconfirmedDispersalAmountError(
+        "[COM-21] Cálculo de comisiones bloqueado: Se requiere un monto de dispersión confirmado verificable en servidor. Fallback a approvedAmount o montos no confirmados eliminado."
+      );
+    }
 
     commissionInput = {
       creditId: arg1.creditId,
@@ -220,7 +227,7 @@ export async function createCascadingCommissionRecord(
       performedBy: arg1.performedBy,
       idempotencyKey: arg1.idempotencyKey,
       dispersalIndex: arg1.dispersalIndex,
-      strictRateCheck: arg1.strictRateCheck !== false,
+      strictRateCheck: true,
     };
   } else {
     const credit = arg1;
@@ -228,14 +235,26 @@ export async function createCascadingCommissionRecord(
     const rawAmount = amountArg !== undefined && amountArg !== null
       ? parseFloat(String(amountArg))
       : undefined;
+
+    if (rawAmount === undefined || isNaN(rawAmount) || rawAmount <= 0) {
+      throw new UnconfirmedDispersalAmountError(
+        "[COM-21] Cálculo de comisiones bloqueado: Se requiere un monto de dispersión confirmado verificable en servidor."
+      );
+    }
+
     const commType = commTypeArg || "apertura";
+
+    const masterBrokerId = credit?.originMasterBrokerId !== undefined
+      ? credit.originMasterBrokerId
+      : ((credit?.finalProposal as any)?.originMasterBrokerId ?? undefined);
+    const isMasterDirect = Boolean(
+      masterBrokerId && credit?.brokerId && String(masterBrokerId) === String(credit.brokerId)
+    );
 
     commissionInput = {
       creditId: credit?.id,
       brokerId: credit?.brokerId,
-      masterBrokerId: credit?.originMasterBrokerId !== undefined
-        ? credit.originMasterBrokerId
-        : undefined,
+      masterBrokerId,
       commissionType: commType,
       dispersedAmount: rawAmount,
       confirmedDisbursedAmount: rawAmount,
@@ -245,7 +264,8 @@ export async function createCascadingCommissionRecord(
       financieraRate: undefined,
       masterBrokerRate: undefined,
       brokerRate: undefined,
-      strictRateCheck: false,
+      isMasterDirect,
+      strictRateCheck: true,
     };
   }
 
@@ -4055,12 +4075,26 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const creditData = insertCreditSchema.partial().parse(req.body);
       const oldCredit = authResult.credit;
 
-      // REGLA 1 (COM-07, COM-16): Preservar oferta, versión, tasas pactadas y beneficiarios al consolidar la propuesta formal
-      if (creditData.finalProposal) {
-        creditData.finalProposal = consolidateCommercialProposalSnapshot({
-          credit: oldCredit,
-          proposalData: creditData.finalProposal,
-        });
+      // REGLA 1 y 2 (COM-07, COM-16, COM-22): Snapshot comercial inmutable
+      if (creditData.finalProposal !== undefined) {
+        try {
+          creditData.finalProposal = consolidateCommercialProposalSnapshot({
+            credit: oldCredit,
+            proposalData: creditData.finalProposal,
+          });
+        } catch (snapErr: any) {
+          if (snapErr instanceof ImmutableCommercialSnapshotError) {
+            return res.status(409).json({
+              message: snapErr.message,
+              code: snapErr.code,
+              details: snapErr.details,
+            });
+          }
+          throw snapErr;
+        }
+      } else if (oldCredit.finalProposal && (oldCredit.finalProposal as any).isCommercialSnapshot) {
+        // Preservar el snapshot consolidado existente intacto
+        creditData.finalProposal = oldCredit.finalProposal;
       }
       
       const credit = await storage.updateCredit(id, creditData);
@@ -4069,100 +4103,24 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ message: "Credit not found" });
       }
       
-      // Check if status changed to 'dispersado' or 'disbursed' - trigger commission calculation
+      // Check if status changed to 'dispersado' or 'disbursed'
       const statusChanged = oldCredit.status !== credit.status;
       const isDispersed = credit.status === 'dispersado' || credit.status === 'disbursed';
       
       if (statusChanged && isDispersed) {
         console.log(`[Commission Trigger] Credit ${id} status changed to ${credit.status}`);
         
-        // REGLA 3 (COM-18): Solo calcular comisiones si existe un desembolso confirmado verificable
-        const rawConfirmedDisbursed = req.body.confirmedDisbursedAmount ?? req.body.dispersedAmount;
-        if (
-          rawConfirmedDisbursed === undefined ||
-          rawConfirmedDisbursed === null ||
-          isNaN(Number(rawConfirmedDisbursed)) ||
-          Number(rawConfirmedDisbursed) <= 0
-        ) {
-          console.warn(`[Commission Trigger] Cálculo de comisiones omitido para crédito ${id}: No se proporcionó un monto de dispersión confirmado verificable (COM-18).`);
-        } else {
-          // Check if credit comes from a winning submission target
-          // If so, skip commission calculation here — commissions are handled by the target dispersal endpoint (PATCH mark-dispersed)
-          const submissionTarget = await storage.getCreditSubmissionTargetByCreditId(id);
-          const skipCommissionCalc = submissionTarget && (!submissionTarget.isWinner || submissionTarget.status !== 'dispersed');
-          if (skipCommissionCalc) {
-            console.warn(`[Commission Trigger] Credit ${id} comes from submission target but not winner or not dispersed yet, skipping commission calculation (handled by target dispersal flow)`);
-          }
-
-          if (!skipCommissionCalc) {
-            const confirmedDisbursedAmount = Number(rawConfirmedDisbursed);
-            // Get broker and master broker
-            const broker = await storage.getUser(credit.brokerId);
-            if (broker) {
-              const masterBrokerId = credit.originMasterBrokerId !== undefined
-                ? credit.originMasterBrokerId
-                : (broker.role === 'master_broker' ? broker.id : broker.masterBrokerId);
-              const isMasterDirect = Boolean(
-                masterBrokerId && credit.brokerId && String(masterBrokerId) === String(credit.brokerId)
-              ) || (broker.role === 'master_broker' && (!masterBrokerId || masterBrokerId === broker.id));
-              const finalProposal = credit.finalProposal as any;
-              const commissionsToApply = (finalProposal?.commissionsToApply && finalProposal.commissionsToApply.length)
-                ? finalProposal.commissionsToApply
-                : ['apertura'];
-              const commissionRates = finalProposal?.commissionRates || {};
-              const institution = credit.financialInstitutionId ? await storage.getFinancialInstitution(credit.financialInstitutionId) : null;
-              const instRates = (institution?.commissionRates as any) || {};
-
-              for (const commType of commissionsToApply) {
-                const brokerRate = parseFloat(
-                  commissionRates.broker?.[commType] ||
-                  commissionRates.broker?.apertura ||
-                  instRates.broker?.[commType] ||
-                  instRates.broker?.apertura ||
-                  (institution as any)?.brokerCommissionRate ||
-                  (institution as any)?.commissionRate ||
-                  '0'
-                );
-                const masterRate = (masterBrokerId || isMasterDirect)
-                  ? parseFloat(
-                      commissionRates.masterBroker?.[commType] ||
-                      commissionRates.masterBroker?.apertura ||
-                      instRates.masterBroker?.[commType] ||
-                      instRates.masterBroker?.apertura ||
-                      (institution as any)?.masterBrokerCommissionRate ||
-                      '0'
-                    )
-                  : 0;
-                const superAdminRate = parseFloat(
-                  commissionRates.financiera?.[commType] ||
-                  commissionRates.financiera?.apertura ||
-                  commissionRates.superAdmin?.[commType] ||
-                  commissionRates.superAdmin?.apertura ||
-                  instRates.financiera?.[commType] ||
-                  instRates.financiera?.apertura ||
-                  instRates.superAdmin?.[commType] ||
-                  instRates.superAdmin?.apertura ||
-                  (institution as any)?.commissionRate ||
-                  '0'
-                );
-
-                await createCascadingCommissionRecord({
-                  creditId: credit.id,
-                  brokerId: credit.brokerId,
-                  masterBrokerId: masterBrokerId || null,
-                  commissionType: commType,
-                  confirmedDisbursedAmount,
-                  dispersedAmount: confirmedDisbursedAmount,
-                  financieraRate: superAdminRate,
-                  masterBrokerRate: masterRate,
-                  brokerRate,
-                  financialInstitutionId: credit.financialInstitutionId || null,
-                  isMasterDirect,
-                });
-              }
-            }
-          }
-        }
+        // REGLA 1 (COM-21) y REGLA 3 (COM-23): Desembolsos verificables y eliminación de rutas no canónicas.
+        // Prohibido utilizar fallbacks a approvedAmount, credit.amount o montos declarados directamente por el frontend.
+        // Exigir evidencia confiable de dispersión confirmada en backend.
+        // Al no existir integración con Core Bancario (FIN-13/FIN-14 pendiente), se bloquea el cálculo automático
+        // y se reporta la dependencia expresamente; no se simulan confirmaciones ni se calculan comisiones arbitrarias.
+        console.warn(
+          `[COM-21] Cálculo de comisiones bloqueado para crédito ${id}: ` +
+          `Se exige evidencia confiable de dispersión bancaria confirmada en servidor. ` +
+          `Montos declarados por frontend y fallbacks a approvedAmount/credit.amount están prohibidos. ` +
+          `Dependencia requerida: FIN-13 / FIN-14 (Core Bancario / Dispersión Confirmada en Servidor).`
+        );
       }
       
       res.json(credit);
@@ -9405,19 +9363,46 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const client = await storage.getClient(request.clientId);
       const resolvedTenantId = request.tenantId || client?.tenantId || null;
       const proposal = target.institutionProposal as any;
+
+      // REGLA 2 (COM-22): Congelamiento comercial formal validado desde servidor
+      const brokerUser = await storage.getUser(request.brokerId);
+      const masterBrokerId = (request as any).originMasterBrokerId !== undefined
+        ? (request as any).originMasterBrokerId
+        : (brokerUser?.role === 'master_broker' ? brokerUser.id : brokerUser?.masterBrokerId || null);
+
+      const resolvedOfferId = (proposal as any)?.institutionProductId || (proposal as any)?.offerId || (request as any)?.institutionProductId || (request as any)?.offerId || null;
+      const resolvedVersionNumber = (proposal as any)?.versionNumber ?? (request as any)?.versionNumber ?? null;
+
+      const commercialSnapshot = consolidateCommercialProposalSnapshot({
+        proposalData: {
+          approvedAmount: proposal?.approvedAmount ? parseFloat(String(proposal.approvedAmount)) : undefined,
+          interestRate: proposal?.interestRate ? parseFloat(String(proposal.interestRate)) : undefined,
+          term: proposal?.term ? parseInt(String(proposal.term), 10) : undefined,
+          openingCommission: proposal?.openingCommission ? parseFloat(String(proposal.openingCommission)) : undefined,
+          institutionProductId: resolvedOfferId,
+          versionNumber: resolvedVersionNumber,
+          originBrokerId: request.brokerId,
+          originMasterBrokerId: masterBrokerId,
+          commissionRates: proposal?.commissionRates || undefined,
+          financialInstitutionId: target.financialInstitutionId,
+        },
+      });
+
       const credit = await storage.createCredit({
         tenantId: resolvedTenantId,
         clientId: request.clientId,
         brokerId: request.brokerId,
+        originMasterBrokerId: masterBrokerId,
         financialInstitutionId: target.financialInstitutionId,
         productTemplateId: request.productTemplateId,
         linkedSubmissionId: request.id,
-        amount: proposal.approvedAmount?.toString() || request.requestedAmount.toString(),
-        interestRate: proposal.interestRate?.toString(),
-        term: proposal.term,
+        amount: proposal?.approvedAmount?.toString() || request.requestedAmount.toString(),
+        interestRate: proposal?.interestRate?.toString(),
+        term: proposal?.term,
         purpose: request.purpose,
         mortgageData: request.mortgageData || {},
         status: 'approved',
+        finalProposal: commercialSnapshot,
       });
 
       await storage.updateCreditSubmissionTarget(id, {
@@ -9558,100 +9543,38 @@ export async function registerRoutes(app: Express): Promise<Server> {
         status: anyPendingOrEvaluating ? 'in_progress' : 'dispersed',
       });
 
-      // CREATE COMMISSIONS (Cascading waterfall breakdown)
+      // REGLA 1 (COM-21) y REGLA 3 (COM-23): Desembolsos verificables y eliminación de simulaciones.
+      // Prohibido calcular comisiones sobre approvedAmount, credit.amount o montos no verificados en servidor.
+      // Exigir evidencia confiable de dispersión bancaria confirmada en backend.
+      // Al no existir integración bancaria activa (FIN-13 / FIN-14 pendiente), se bloquea la generación automática
+      // de comisiones y se reporta la dependencia expresamente; no se simulan confirmaciones.
+      console.warn(
+        `[COM-21] Generación de comisiones bloqueada en mark-dispersed para target '${id}': ` +
+        `No existe integración con core bancario ni evidencia de dispersión confirmada en backend (FIN-13/FIN-14 pendiente). ` +
+        `Prohibido calcular comisiones sobre approvedAmount o importes simulados.`
+      );
+
       try {
         const broker = await storage.getUser(request.brokerId);
-        if (broker) {
-          const masterBrokerId = credit?.originMasterBrokerId !== undefined
-            ? credit.originMasterBrokerId
-            : ((request as any)?.originMasterBrokerId !== undefined
-                ? (request as any).originMasterBrokerId
-                : (broker.role === 'master_broker' ? broker.id : broker.masterBrokerId));
-          const isMasterDirect = Boolean(
-            masterBrokerId && request.brokerId && String(masterBrokerId) === String(request.brokerId)
-          ) || (broker.role === 'master_broker' && (!masterBrokerId || masterBrokerId === broker.id));
-          const approvedAmount = parseFloat(proposal?.approvedAmount || credit?.amount || request.requestedAmount?.toString() || '0');
-          
-          // Get institution for commission rates
-          const institution = await storage.getFinancialInstitution(target.financialInstitutionId);
-          const commissionRates = (institution?.commissionRates as any) || {};
-          
-          // Calculate opening commission for broker (even if 0%)
-          // IMPORTANT: proposal.openingCommission is the opening fee charged by the bank to the BORROWER.
-          // It MUST NEVER be used as the commission rate paid to brokers. Internal rates only.
-          const brokerOpeningRate = parseFloat(
-            commissionRates.broker?.apertura ||
-            (institution as any)?.brokerCommissionRate ||
-            (institution as any)?.commissionRate ||
-            (institution as any)?.openingCommissionRate ||
-            '0'
-          );
+        const institution = await storage.getFinancialInstitution(target.financialInstitutionId);
+        const client = await storage.getClient(request.clientId);
+        const clientName: string = (client ? (client.type === 'persona_moral' ? client.businessName : `${client.firstName} ${client.lastName || ''}`.trim()) : null) || 'Cliente';
+        const formattedAmount = proposal?.approvedAmount
+          ? `$${parseFloat(proposal.approvedAmount.toString()).toLocaleString('es-MX')} MXN`
+          : `$${parseFloat(request.requestedAmount.toString()).toLocaleString('es-MX')} MXN`;
 
-          // Calculate opening commission for master broker if exists (even if 0%)
-          let masterOpeningRate = 0;
-          if (masterBrokerId || isMasterDirect) {
-            masterOpeningRate = parseFloat(
-              commissionRates.masterBroker?.apertura ||
-              (institution as any)?.masterBrokerCommissionRate ||
-              '0'
-            );
-          }
-
-          // Calculate opening commission for Super Admin / Financiera
-          const superAdminOpeningRate = parseFloat(
-            commissionRates.financiera?.apertura ||
-            commissionRates.superAdmin?.apertura ||
-            (institution as any)?.commissionRate ||
-            '0'
-          );
-
-          const createdComm = await createCascadingCommissionRecord({
-            creditId: credit!.id,
-            brokerId: request.brokerId,
-            masterBrokerId: masterBrokerId || null,
-            commissionType: 'apertura',
-            approvedAmount,
-            financieraRate: superAdminOpeningRate,
-            masterBrokerRate: masterOpeningRate,
-            brokerRate: brokerOpeningRate,
-            financialInstitutionId: (request as any).financialInstitutionId || (target as any)?.institutionId || (institution as any)?.id || null,
-            isMasterDirect,
-          });
-
-          // Send email alert to Super Admin for dispersed credit with cascading breakdown
-          const client = await storage.getClient(request.clientId);
-          const clientName: string = (client ? (client.type === 'persona_moral' ? client.businessName : `${client.firstName} ${client.lastName || ''}`.trim()) : null) || 'Cliente';
-          
-          const commBrkAmount = parseFloat(createdComm?.brokerShare || '0');
-          const commMbAmount = parseFloat(createdComm?.masterBrokerShare || '0');
-          const commAppAmount = parseFloat(createdComm?.appShare || '0');
-          const commTotalGross = parseFloat(createdComm?.amount || '0');
-          const mbGrossPayout = commMbAmount + commBrkAmount;
-
-          sendSuperAdminNotificationEmail({
-            title: `Crédito Dispersado: ${clientName}`,
-            message: `El crédito para ${clientName} por $${approvedAmount.toLocaleString('es-MX', { minimumFractionDigits: 2 })} MXN con ${institution?.name || 'Financiera'} ha sido marcado como DISPERSADO. Se han generado las comisiones en cascada correspondientes.`,
-            type: 'credit_dispersed',
-            clientName,
-            brokerName: `${broker.firstName} ${broker.lastName || ''}`.trim(),
-            financialInstitutionName: institution?.name,
-            amount: approvedAmount,
-            actionUrl: `/comisiones?creditId=${credit!.id}`,
-            details: {
-              'Total Otorgado por Financiera': `$${commTotalGross.toLocaleString('es-MX', { minimumFractionDigits: 2 })} MXN (${superAdminOpeningRate}%)`,
-              'Ganancia Neta Plataforma': `$${commAppAmount.toLocaleString('es-MX', { minimumFractionDigits: 2 })} MXN`,
-              ...(masterBrokerId ? {
-                'Monto a Dispersar a Master Bróker (STP)': `$${mbGrossPayout.toLocaleString('es-MX', { minimumFractionDigits: 2 })} MXN`,
-                'Margen Neto Master Bróker': `$${commMbAmount.toLocaleString('es-MX', { minimumFractionDigits: 2 })} MXN`,
-                'Comisión a Pagar al Bróker': `$${commBrkAmount.toLocaleString('es-MX', { minimumFractionDigits: 2 })} MXN`,
-              } : {
-                'Monto a Dispersar a Bróker Directo (STP)': `$${commBrkAmount.toLocaleString('es-MX', { minimumFractionDigits: 2 })} MXN`,
-              }),
-            }
-          }).catch(e => console.error('[Email] Failed to send super admin dispersion email:', e));
-        }
-      } catch (commErr) {
-        console.error("[Commission] Error generating commissions on mark-dispersed:", commErr);
+        sendSuperAdminNotificationEmail({
+          title: `Crédito Marcado Dispersado: ${clientName}`,
+          message: `El crédito para ${clientName} por ${formattedAmount} con ${institution?.name || 'Financiera'} ha sido marcado como DISPERSADO. La generación de comisiones se encuentra retenida en espera de evidencia verificable de dispersión en backend (FIN-13/FIN-14 pendiente).`,
+          type: 'credit_dispersed',
+          clientName,
+          brokerName: broker ? `${broker.firstName} ${broker.lastName || ''}`.trim() : 'Bróker',
+          financialInstitutionName: institution?.name,
+          amount: formattedAmount,
+          actionUrl: `/solicitudes-pendientes`,
+        }).catch(e => console.error('[Email] Failed to send super admin dispersion email:', e));
+      } catch (emailErr) {
+        console.error("[Email] Error sending super admin notification on mark-dispersed:", emailErr);
       }
 
       // Auto-record in client credit history (#25)

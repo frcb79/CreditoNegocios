@@ -103,6 +103,20 @@ export class CommissionFrozenDiscrepancyError extends Error {
   }
 }
 
+/**
+ * Error lanzado cuando se intenta modificar un snapshot comercial previamente congelado (COM-22).
+ */
+export class ImmutableCommercialSnapshotError extends Error {
+  public readonly code = "COMMERCIAL_SNAPSHOT_IMMUTABLE";
+  public readonly details?: any;
+
+  constructor(message: string, details?: any) {
+    super(message);
+    this.name = "ImmutableCommercialSnapshotError";
+    this.details = details;
+  }
+}
+
 export interface CommissionPayoutAuditResult {
   payoutAmount: number;
   expectedAmount: number;
@@ -177,10 +191,12 @@ export async function resolveOfferVersionCommissionRates(params: {
     );
     const mb = parseRateValue(pr.masterBroker?.[commType] ?? pr.masterBroker?.apertura ?? pr.masterBroker?.total);
     const brk = parseRateValue(pr.broker?.[commType] ?? pr.broker?.apertura ?? pr.broker?.total);
+    const resolvedBrk = (params.isMasterDirect && !brk.provided && mb.provided) ? mb : brk;
 
     if (!fin.provided) missingReasons.push(`Financiera (${commType})`);
     if (params.hasMasterBroker && !mb.provided) missingReasons.push(`Master Broker (${commType})`);
-    if (!brk.provided) missingReasons.push(`Broker Directo (${commType})`);
+    if (!params.isMasterDirect && !brk.provided) missingReasons.push(`Broker Directo (${commType})`);
+    if (params.isMasterDirect && !resolvedBrk.provided && !mb.provided) missingReasons.push(`Master Broker Directo (${commType})`);
 
     return {
       source: "proposal_snapshot",
@@ -188,7 +204,7 @@ export async function resolveOfferVersionCommissionRates(params: {
       versionNumber: params.versionNumber || undefined,
       financiera: fin,
       masterBroker: mb,
-      broker: brk,
+      broker: resolvedBrk,
       hasMissingRequiredRate: missingReasons.length > 0,
       missingRateReasons: missingReasons,
       notes: pr.notes || null,
@@ -227,6 +243,7 @@ export async function resolveOfferVersionCommissionRates(params: {
     const fin = parseRateValue(commRates.financiera?.[commType] ?? commRates.financiera?.apertura ?? commRates.financiera?.total);
     const mb = parseRateValue(commRates.masterBroker?.[commType] ?? commRates.masterBroker?.apertura ?? commRates.masterBroker?.total);
     const brk = parseRateValue(commRates.broker?.[commType] ?? commRates.broker?.apertura ?? commRates.broker?.total);
+    const resolvedBrk = (params.isMasterDirect && !brk.provided && mb.provided) ? mb : brk;
 
     // REGLA 4 y 6: Diferenciar tasa cero configurada de tasa ausente. No recurrir a fallbacks institucionales para ofertas versionadas.
     if (!fin.provided) {
@@ -235,7 +252,7 @@ export async function resolveOfferVersionCommissionRates(params: {
     if (params.hasMasterBroker && !mb.provided) {
       missingReasons.push(`Tasa de Master Broker ausente para tipo '${commType}' en versión ${version.versionNumber} de oferta '${offer.name}'`);
     }
-    if (!brk.provided) {
+    if (!params.isMasterDirect && !brk.provided) {
       missingReasons.push(`Tasa de Broker ausente para tipo '${commType}' en versión ${version.versionNumber} de oferta '${offer.name}'`);
     }
 
@@ -245,7 +262,7 @@ export async function resolveOfferVersionCommissionRates(params: {
       versionNumber: version.versionNumber ?? offer.currentVersionNumber ?? 1,
       financiera: fin,
       masterBroker: mb,
-      broker: brk,
+      broker: resolvedBrk,
       overrateCommissionRate: commRates.overrateCommissionRate ? Number(commRates.overrateCommissionRate) : undefined,
       platformGrossMarginDirect: commRates.platformGrossMarginDirect !== undefined ? Number(commRates.platformGrossMarginDirect) : undefined,
       platformGrossMarginMaster: commRates.platformGrossMarginMaster !== undefined ? Number(commRates.platformGrossMarginMaster) : undefined,
@@ -469,7 +486,9 @@ export async function calculateAndPersistCascadingCommission(params: CascadingCo
   const performedBy = params.performedBy;
   const idempotencyKey = params.idempotencyKey;
   const dispersalIndex = params.dispersalIndex;
-  const strictRateCheck = params.strictRateCheck ?? true;
+  // REGLA 3 (COM-23): Cálculo canónico obligatorio. strictRateCheck es siempre obligatorio.
+  // Se prohíbe el uso de strictRateCheck: false para omitir validaciones.
+  const strictRateCheck = true;
 
   if (!creditId || !brokerId) {
     throw new Error("creditId y brokerId son obligatorios para calcular la comisión.");
@@ -540,7 +559,7 @@ export async function calculateAndPersistCascadingCommission(params: CascadingCo
   }
 
   // Respetar tasa cero explícitamente autorizada (Regla 4)
-  let safeBrokerRate = Number.isFinite(resolvedBrkRate) && resolvedBrkRate >= 0 ? resolvedBrkRate : 0;
+  const safeBrokerRate = Number.isFinite(resolvedBrkRate) && resolvedBrkRate >= 0 ? resolvedBrkRate : 0;
   const safeMasterRate = Number.isFinite(resolvedMbRate) && resolvedMbRate >= 0 ? resolvedMbRate : 0;
   const safeFinRate = Number.isFinite(resolvedFinRate) && resolvedFinRate >= 0 ? resolvedFinRate : 0;
 
@@ -555,25 +574,9 @@ export async function calculateAndPersistCascadingCommission(params: CascadingCo
     ceilingRate = safeMasterRate;
   } else if (historicalMasterBrokerId) {
     // 2. Broker en red:
-    // REGLA 5 (COM-20): NUNCA recalcular operaciones anteriores utilizando las tasas actuales del Master Broker.
-    // Si la propuesta ya fue congelada en finalProposal o viene con tasas pactadas fijas, NO consultar networkCommissionRates.
-    if (!isFrozenProposal && params.brokerRate === undefined) {
-      try {
-        const mbUser = await storage.getUser(historicalMasterBrokerId);
-        const networkRates = (mbUser?.networkCommissionRates as any) || {};
-        const finId = financialInstitutionId || linkedCredit?.financialInstitutionId;
-
-        if (finId && networkRates[finId]) {
-          const customRate = networkRates[finId][commissionType] ?? networkRates[finId].apertura;
-          if (customRate !== undefined && !isNaN(parseFloat(customRate))) {
-            safeBrokerRate = Math.min(safeMasterRate, Math.max(0, parseFloat(customRate)));
-          }
-        }
-      } catch (mbErr) {
-        console.warn("[Commission] Could not read MB network rates:", mbErr);
-      }
-    }
-
+    // REGLA 3 (COM-23) y REGLA 5 (COM-20): Cálculo canónico obligatorio.
+    // NUNCA consultar ni recalcular operaciones utilizando tarifas actuales del Master Broker (networkCommissionRates).
+    // Las tasas provienen canónicamente de la oferta versionada, el snapshot congelado o parámetros históricos fijados.
     brokerAmount = (dispersedAmount * safeBrokerRate) / 100;
     masterBrokerAmount = (dispersedAmount * safeMasterRate) / 100;
     ceilingRate = safeBrokerRate + safeMasterRate;
@@ -742,6 +745,74 @@ export function consolidateCommercialProposalSnapshot(params: {
 }): any {
   const credit = params.credit || {};
   const data = params.proposalData || {};
+
+  // REGLA 2 (COM-22): Snapshot comercial inmutable.
+  // Si ya existe un snapshot comercial formalmente congelado, se prohíbe modificar oferta, versión,
+  // tasas pactadas, Broker originador o Master beneficiario.
+  const existingSnapshot = credit.finalProposal;
+  if (existingSnapshot && (existingSnapshot as any).isCommercialSnapshot) {
+    const oldOfferId = existingSnapshot.institutionProductId || existingSnapshot.offerId || null;
+    const newOfferId = data.institutionProductId || data.offerId || null;
+    const offerMismatch = newOfferId !== null && oldOfferId !== null && String(newOfferId) !== String(oldOfferId);
+
+    const oldVer = existingSnapshot.versionNumber ?? null;
+    const newVer = data.versionNumber ?? null;
+    const verMismatch = newVer !== null && oldVer !== null && Number(newVer) !== Number(oldVer);
+
+    const oldBroker = existingSnapshot.originBrokerId || existingSnapshot.brokerId || null;
+    const newBroker = data.originBrokerId || data.brokerId || null;
+    const brokerMismatch = newBroker !== null && oldBroker !== null && String(newBroker) !== String(oldBroker);
+
+    const oldMaster = existingSnapshot.originMasterBrokerId !== undefined ? existingSnapshot.originMasterBrokerId : (existingSnapshot.masterBrokerId ?? null);
+    const newMaster = data.originMasterBrokerId !== undefined ? data.originMasterBrokerId : (data.masterBrokerId ?? null);
+    const masterMismatch = newMaster !== null && oldMaster !== null && String(newMaster) !== String(oldMaster);
+
+    let ratesMismatch = false;
+    if (data.commissionRates && typeof data.commissionRates === "object" && existingSnapshot.commissionRates) {
+      const oldRates = existingSnapshot.commissionRates;
+      const newRates = data.commissionRates;
+      for (const role of ["broker", "masterBroker", "financiera", "superAdmin"]) {
+        if (newRates[role] && oldRates[role]) {
+          for (const type of ["apertura", "sobretasa", "renovacion", "total"]) {
+            if (newRates[role][type] !== undefined && oldRates[role][type] !== undefined) {
+              if (String(newRates[role][type]) !== String(oldRates[role][type])) {
+                ratesMismatch = true;
+              }
+            }
+          }
+        } else if (newRates[role] && !oldRates[role]) {
+          ratesMismatch = true;
+        }
+      }
+    }
+
+    if (offerMismatch || verMismatch || brokerMismatch || masterMismatch || ratesMismatch) {
+      throw new ImmutableCommercialSnapshotError(
+        `[COM-22] Snapshot comercial consolidado inmutable: Prohibido modificar oferta, versión, tasas pactadas o beneficiarios previamente consolidados.`,
+        {
+          existing: {
+            offerId: oldOfferId,
+            versionNumber: oldVer,
+            originBrokerId: oldBroker,
+            originMasterBrokerId: oldMaster,
+            commissionRates: existingSnapshot.commissionRates,
+          },
+          attempted: {
+            offerId: newOfferId,
+            versionNumber: newVer,
+            originBrokerId: newBroker,
+            originMasterBrokerId: newMaster,
+            commissionRates: data.commissionRates,
+          },
+        }
+      );
+    }
+
+    // Conservar el snapshot original intacto sin modificar fechas ni condiciones consolidadas
+    return existingSnapshot;
+  }
+
+  // Consolidar por primera vez
   const finalProposal = { ...data };
 
   // 1. Preservar oferta y versión requeridas
@@ -764,7 +835,8 @@ export function consolidateCommercialProposalSnapshot(params: {
     data.originBrokerId ||
     data.brokerId ||
     credit.brokerId ||
-    (credit.finalProposal as any)?.originBrokerId;
+    (credit.finalProposal as any)?.originBrokerId ||
+    null;
 
   finalProposal.originMasterBrokerId =
     data.originMasterBrokerId !== undefined
