@@ -418,6 +418,8 @@ export const credits = pgTable("credits", {
   // Final proposal data (set by admin when credit is approved)
   finalProposal: jsonb("final_proposal").default('{}'), // { approvedAmount, term, commissionRates: { masterBroker: {...}, broker: {...} }, commissionsToApply: ['apertura', 'sobretasa'] }
   mortgageData: jsonb("mortgage_data").default('{}'), // Datos de operación para hipotecario vivienda
+  // Immutable Master Broker affiliation at credit creation / origination time.
+  originMasterBrokerId: varchar("origin_master_broker_id").references(() => users.id),
 
   notes: text("notes"),
   createdAt: timestamp("created_at").defaultNow(),
@@ -426,6 +428,7 @@ export const credits = pgTable("credits", {
   index("credits_tenant_idx").on(table.tenantId),
   index("credits_client_idx").on(table.clientId),
   index("credits_broker_idx").on(table.brokerId),
+  index("credits_origin_master_broker_idx").on(table.originMasterBrokerId),
 ]);
 
 
@@ -691,6 +694,8 @@ export const creditSubmissionRequests = pgTable("credit_submission_requests", {
   tenantId: varchar("tenant_id").references(() => tenants.id),
   clientId: varchar("client_id").notNull().references(() => clients.id),
   brokerId: varchar("broker_id").notNull().references(() => users.id),
+  // Immutable Master Broker affiliation at submission/origination time.
+  originMasterBrokerId: varchar("origin_master_broker_id").references(() => users.id),
   createdBy: varchar("created_by").references(() => users.id),
   productTemplateId: varchar("product_template_id").references(() => productTemplates.id), // Plantilla de producto solicitada
   requestedAmount: decimal("requested_amount", { precision: 15, scale: 2 }).notNull(),
@@ -702,6 +707,7 @@ export const creditSubmissionRequests = pgTable("credit_submission_requests", {
   updatedAt: timestamp("updated_at").defaultNow(),
 }, (table) => [
   index("credit_submissions_tenant_idx").on(table.tenantId),
+  index("credit_submissions_origin_master_idx").on(table.originMasterBrokerId),
 ]);
 
 export const creditSubmissionTargets = pgTable("credit_submission_targets", {
@@ -1244,6 +1250,7 @@ export const commercialOpportunities = pgTable("commercial_opportunities", {
 }, (table) => [
   index("opp_client_idx").on(table.clientId),
   index("opp_broker_idx").on(table.brokerId),
+  index("opp_master_broker_idx").on(table.masterBrokerId),
   index("opp_status_idx").on(table.status),
   index("opp_need_idx").on(table.clientId, table.financingNeedType),
 ]);
@@ -1517,6 +1524,9 @@ export const legalAcceptances = pgTable(
     ipAddress: varchar("ip_address", { length: 128 }),
     userAgent: text("user_agent").notNull(),
     acceptedAt: timestamp("accepted_at").defaultNow().notNull(),
+    templateSha256: varchar("template_sha256", { length: 64 }),
+    personalizedSha256: varchar("personalized_sha256", { length: 64 }),
+    personalizedSnapshot: jsonb("personalized_snapshot"),
   },
   (table) => [
     index("idx_legal_acceptances_user_id").on(table.userId),

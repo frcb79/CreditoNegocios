@@ -338,7 +338,6 @@ export default function BrokerNetworkComponent() {
   const { user, isLoading: isAuthLoading } = useAuth();
   const isAdmin = user?.role === 'admin' || user?.role === 'super_admin';
   const [showInviteModal, setShowInviteModal] = useState(false);
-  const [inviteMasterBrokerId, setInviteMasterBrokerId] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
   const [expandedMasterBroker, setExpandedMasterBroker] = useState<string | null>(null);
 
@@ -416,10 +415,7 @@ export default function BrokerNetworkComponent() {
                   </p>
                   <Button 
                     className="bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold gap-1.5"
-                    onClick={() => {
-                      setInviteMasterBrokerId(user?.id || null);
-                      setShowInviteModal(true);
-                    }}
+                    onClick={() => setShowInviteModal(true)}
                     data-testid="button-invite-broker"
                   >
                     <UserPlus className="w-3.5 h-3.5" />
@@ -487,10 +483,7 @@ export default function BrokerNetworkComponent() {
                       <Button 
                         className="bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold gap-1.5 shadow-xs"
                         size="sm"
-                        onClick={() => {
-                          setInviteMasterBrokerId(user?.id || null);
-                          setShowInviteModal(true);
-                        }}
+                        onClick={() => setShowInviteModal(true)}
                         data-testid="button-invite-broker"
                       >
                         <UserPlus className="w-3.5 h-3.5" />
@@ -557,8 +550,10 @@ export default function BrokerNetworkComponent() {
 
   // Vista exclusiva para SUPER ADMIN / ADMIN
   const masterBrokers = Array.isArray(networkData?.masterBrokers) ? networkData.masterBrokers : [];
-  const independentBrokers = Array.isArray(networkData?.independentBrokers) ? networkData.independentBrokers : [];
-  const adminBrokers = Array.isArray(networkData?.adminBrokers) ? networkData.adminBrokers : [];
+  const directBrokers = Array.isArray(networkData?.directBrokers)
+    ? networkData.directBrokers
+    : (Array.isArray(networkData?.independentBrokers) ? networkData.independentBrokers : []);
+  const allBrokers = Array.isArray(networkData?.allBrokers) ? networkData.allBrokers : [];
 
   const filteredMasterBrokers = masterBrokers.filter((mb: any) => {
     if (!mb) return false;
@@ -566,13 +561,7 @@ export default function BrokerNetworkComponent() {
     return text.includes(searchTerm.toLowerCase());
   });
 
-  const filteredIndependentBrokers = independentBrokers.filter((b: any) => {
-    if (!b) return false;
-    const text = `${b.firstName || ''} ${b.lastName || ''} ${b.email || ''}`.toLowerCase();
-    return text.includes(searchTerm.toLowerCase());
-  });
-
-  const filteredAdminBrokers = adminBrokers.filter((b: any) => {
+  const filteredDirectBrokers = directBrokers.filter((b: any) => {
     if (!b) return false;
     const text = `${b.firstName || ''} ${b.lastName || ''} ${b.email || ''}`.toLowerCase();
     return text.includes(searchTerm.toLowerCase());
@@ -614,7 +603,7 @@ export default function BrokerNetworkComponent() {
           <CardContent className="p-4 flex items-center justify-between">
             <div>
               <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Brokers Directos</p>
-              <p className="text-2xl font-bold text-slate-900 mt-1">{independentBrokers.length}</p>
+              <p className="text-2xl font-bold text-slate-900 mt-1">{directBrokers.length}</p>
               <p className="text-[11px] text-slate-400 mt-0.5 font-normal">Sin Master Broker asignado</p>
             </div>
             <div className="w-10 h-10 rounded-xl bg-amber-50 border border-amber-200 text-amber-700 flex items-center justify-center flex-shrink-0">
@@ -626,12 +615,12 @@ export default function BrokerNetworkComponent() {
         <Card className="border border-slate-200/80 shadow-sm bg-white">
           <CardContent className="p-4 flex items-center justify-between">
             <div>
-              <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Mi Red Directa</p>
-              <p className="text-2xl font-bold text-slate-900 mt-1">{adminBrokers.length}</p>
-              <p className="text-[11px] text-slate-400 mt-0.5 font-normal">Casa Matriz / Super Admin</p>
+              <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Total Brokers</p>
+              <p className="text-2xl font-bold text-slate-900 mt-1">{allBrokers.length}</p>
+              <p className="text-[11px] text-slate-400 mt-0.5 font-normal">Directos + redes Master Broker</p>
             </div>
             <div className="w-10 h-10 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-700 flex items-center justify-center flex-shrink-0">
-              <Crown className="w-5 h-5" />
+              <UserCheck className="w-5 h-5" />
             </div>
           </CardContent>
         </Card>
@@ -650,14 +639,11 @@ export default function BrokerNetworkComponent() {
         </div>
         <Button 
           className="bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold gap-1.5 h-9"
-          onClick={() => {
-            setInviteMasterBrokerId(user?.id || null);
-            setShowInviteModal(true);
-          }}
+          onClick={() => setShowInviteModal(true)}
           data-testid="button-invite-broker"
         >
           <UserPlus className="w-3.5 h-3.5" />
-          Invitar Broker a Mi Red
+          Invitar Broker Directo
         </Button>
       </div>
 
@@ -676,14 +662,7 @@ export default function BrokerNetworkComponent() {
             className="flex items-center gap-2 text-xs font-semibold data-[state=active]:bg-white data-[state=active]:text-slate-900 data-[state=active]:shadow-xs rounded-lg px-4 py-1.5 text-slate-600 transition-all whitespace-nowrap shrink-0"
           >
             <Users className="w-3.5 h-3.5" />
-            Brokers Directos ({filteredIndependentBrokers.length})
-          </TabsTrigger>
-          <TabsTrigger 
-            value="admin_network" 
-            className="flex items-center gap-2 text-xs font-semibold data-[state=active]:bg-white data-[state=active]:text-slate-900 data-[state=active]:shadow-xs rounded-lg px-4 py-1.5 text-slate-600 transition-all whitespace-nowrap shrink-0"
-          >
-            <Crown className="w-3.5 h-3.5" />
-            Mi Red Directa ({filteredAdminBrokers.length})
+            Brokers Directos ({filteredDirectBrokers.length})
           </TabsTrigger>
         </TabsList>
 
@@ -799,23 +778,23 @@ export default function BrokerNetworkComponent() {
           <Card className="border border-slate-200/80 shadow-sm bg-white overflow-hidden">
             <CardHeader className="p-5 border-b border-slate-100 flex flex-row items-center justify-between flex-wrap gap-2 bg-slate-50/40">
               <div>
-                <CardTitle className="text-base font-semibold text-slate-900">Brokers Directos Independientes</CardTitle>
+                <CardTitle className="text-base font-semibold text-slate-900">Brokers Directos · Crédito Negocios</CardTitle>
                 <CardDescription className="text-xs text-slate-500 mt-0.5">
-                  Brokers registrados que operan directamente sin pertenecer a la red de un Master Broker.
+                  Brokers que operan directamente bajo Crédito Negocios, sin una capa de Master Broker.
                 </CardDescription>
               </div>
               <Badge variant="outline" className="bg-amber-50 text-amber-800 border-amber-200 text-xs font-semibold">
-                {filteredIndependentBrokers.length} brokers directos
+                {filteredDirectBrokers.length} brokers directos
               </Badge>
             </CardHeader>
             <CardContent className="p-5">
-              {filteredIndependentBrokers.length === 0 ? (
+              {filteredDirectBrokers.length === 0 ? (
                 <div className="text-center py-8 text-slate-500 text-xs">
-                  No hay brokers directos independientes registrados.
+                  No hay brokers directos de Crédito Negocios registrados.
                 </div>
               ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                  {filteredIndependentBrokers.map((broker: any) => (
+                  {filteredDirectBrokers.map((broker: any) => (
                     <div 
                       key={broker.id}
                       className="p-3.5 border border-slate-200/80 rounded-xl flex items-center justify-between hover:bg-slate-50/70 transition-colors bg-white"
@@ -850,71 +829,6 @@ export default function BrokerNetworkComponent() {
           </Card>
         </TabsContent>
 
-        {/* 3. VISTA DE MI RED DIRECTA (SUPER ADMIN COMO CASA MATRIZ) */}
-        <TabsContent value="admin_network" className="mt-4">
-          <Card className="border border-slate-200/80 shadow-sm bg-white overflow-hidden">
-            <CardHeader className="p-5 border-b border-slate-100 flex items-center justify-between flex-wrap gap-3 bg-slate-50/40">
-              <div>
-                <CardTitle className="text-base font-semibold text-slate-900 flex items-center gap-2">
-                  <Crown className="w-4 h-4 text-emerald-600" />
-                  Red Directa de Casa Matriz (Super Admin)
-                </CardTitle>
-                <CardDescription className="text-xs text-slate-500 mt-0.5">
-                  Brokers directamente asociados a la red interna de administración de la plataforma.
-                </CardDescription>
-              </div>
-              <Button 
-                size="sm"
-                className="bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold gap-1.5"
-                onClick={() => {
-                  setInviteMasterBrokerId(user?.id || null);
-                  setShowInviteModal(true);
-                }}
-                data-testid="button-invite-broker"
-              >
-                <UserPlus className="w-3.5 h-3.5" />
-                Invitar a Mi Red
-              </Button>
-            </CardHeader>
-            <CardContent className="p-5">
-              {filteredAdminBrokers.length === 0 ? (
-                <div className="text-center py-10 text-slate-500">
-                  <Users className="w-8 h-8 text-slate-300 mx-auto mb-2" />
-                  <p className="font-semibold text-slate-800 text-xs">No tienes brokers directos asignados a tu red.</p>
-                  <p className="text-xs text-slate-500 mt-0.5">
-                    Invita brokers para que operen directamente bajo Casa Matriz.
-                  </p>
-                </div>
-              ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                  {filteredAdminBrokers.map((broker: any) => (
-                    <div 
-                      key={broker.id}
-                      className="p-3.5 border border-emerald-100 bg-emerald-50/20 rounded-xl flex items-center justify-between"
-                      data-testid={`broker-${broker.id}`}
-                    >
-                      <div className="flex items-center space-x-3">
-                        <Avatar className="h-9 w-9 border border-emerald-200">
-                          <AvatarFallback className="bg-emerald-700 text-white font-semibold text-xs">
-                            {broker.firstName?.[0]}{broker.lastName?.[0]}
-                          </AvatarFallback>
-                        </Avatar>
-                        <div>
-                          <p className="font-semibold text-xs text-slate-900">
-                            {broker.firstName} {broker.lastName}
-                          </p>
-                          <p className="text-xs text-slate-500">{broker.email}</p>
-                          <p className="text-[11px] text-emerald-800 font-medium mt-0.5">Broker Directo de Casa Matriz</p>
-                        </div>
-                      </div>
-                      {getBrokerStatusBadge(broker)}
-                    </div>
-                  ))}
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        </TabsContent>
       </Tabs>
 
       <InviteBrokerModal 

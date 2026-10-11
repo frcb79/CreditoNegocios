@@ -403,6 +403,10 @@ export class DbStorage implements IStorage {
       return undefined;
     }
 
+    if (acceptance.personalizedSnapshot) {
+      return acceptance.personalizedSnapshot as PersonalizedDocumentSnapshot;
+    }
+
     const [otpRecord] = await db
       .select()
       .from(formalizationOtpRequests)
@@ -1091,29 +1095,15 @@ export class DbStorage implements IStorage {
         };
       }
 
-      // Insert legal acceptances with confirmed identity snapshot
+      // Insert legal acceptances with confirmed identity snapshot and dual hashes (LEG-13)
       const createdAcceptances: LegalAcceptance[] = [];
       const createdSnapshots: PersonalizedDocumentSnapshot[] = [];
       for (const doc of validatedPersistedDocs) {
-        const [inserted] = await tx
-          .insert(legalAcceptances)
-          .values({
-            userId: activeOtp.userId,
-            userEmail: activeOtp.userEmail,
-            userName: activeOtp.userName,
-            documentId: doc.id,
-            document: doc.document,
-            version: doc.version,
-            contentSha256: doc.contentSha256,
-            acceptanceType: `accept_${doc.document.replace(/-/g, '_')}`,
-            ipAddress: params.ipAddress,
-            userAgent: params.userAgent,
-            acceptedAt: now,
-          })
-          .returning();
-        createdAcceptances.push(inserted);
+        let isConvenio = doc.document === "convenio";
+        let finalSha256: string | null = null;
+        let snapshotObj: PersonalizedDocumentSnapshot | null = null;
 
-        if (doc.document === "convenio") {
+        if (isConvenio) {
           const rawSnapshot = (activeOtp.documentsSnapshot as any[]).find((s) => s.document === "convenio");
           const finalPersonalizedText = buildPersonalizedAgreement(
             doc.content,
@@ -1130,10 +1120,9 @@ export class DbStorage implements IStorage {
               otpRequestId: activeOtp.id,
             }
           );
-          const finalSha256 = createHash("sha256").update(finalPersonalizedText, "utf8").digest("hex");
-
-          createdSnapshots.push({
-            id: inserted.id,
+          finalSha256 = createHash("sha256").update(finalPersonalizedText, "utf8").digest("hex");
+          snapshotObj = {
+            id: "", // updated below after insert
             document: "convenio",
             version: doc.version,
             title: doc.title,
@@ -1147,7 +1136,33 @@ export class DbStorage implements IStorage {
               userAgent: params.userAgent,
               otpMethod: "Correo Electrónico (OTP)",
             },
-          });
+          };
+        }
+
+        const [inserted] = await tx
+          .insert(legalAcceptances)
+          .values({
+            userId: activeOtp.userId,
+            userEmail: activeOtp.userEmail,
+            userName: activeOtp.userName,
+            documentId: doc.id,
+            document: doc.document,
+            version: doc.version,
+            contentSha256: doc.contentSha256,
+            acceptanceType: `accept_${doc.document.replace(/-/g, '_')}`,
+            ipAddress: params.ipAddress,
+            userAgent: params.userAgent,
+            acceptedAt: now,
+            templateSha256: isConvenio ? doc.contentSha256 : null,
+            personalizedSha256: isConvenio ? finalSha256 : null,
+            personalizedSnapshot: snapshotObj,
+          })
+          .returning();
+        createdAcceptances.push(inserted);
+
+        if (isConvenio && snapshotObj) {
+          snapshotObj.id = inserted.id;
+          createdSnapshots.push(snapshotObj);
         }
       }
 
@@ -2096,10 +2111,36 @@ export class DbStorage implements IStorage {
   
   async createCredit(credit: InsertCredit): Promise<Credit> {
     try {
+      // Commercial lineage is always derived server-side at creation time.
+      // If the credit comes from a submission, inherit the immutable affiliation
+      // captured when that submission was originated—even if the broker moved later.
+      let originMasterBrokerId: string | null = null;
+      let inheritedFromSubmission = false;
+
+      if (credit.linkedSubmissionId) {
+        const submission = await this.getCreditSubmissionRequest(credit.linkedSubmissionId);
+        if (submission) {
+          originMasterBrokerId = submission.originMasterBrokerId ?? null;
+          inheritedFromSubmission = true;
+        }
+      }
+      if (!inheritedFromSubmission) {
+        const brokerAtOrigination = await this.getUser(credit.brokerId);
+        if (brokerAtOrigination?.role === "master_broker") {
+          originMasterBrokerId = brokerAtOrigination.id;
+        } else if (brokerAtOrigination?.role === "broker" && brokerAtOrigination.masterBrokerId) {
+          const parentAtOrigination = await this.getUser(brokerAtOrigination.masterBrokerId);
+          // Casa Matriz / Admin is direct platform business, not a Master layer.
+          originMasterBrokerId =
+            parentAtOrigination?.role === "master_broker" ? parentAtOrigination.id : null;
+        }
+      }
+
       const [created] = await db
         .insert(credits)
         .values({
           ...credit,
+          originMasterBrokerId,
           createdAt: new Date(),
           updatedAt: new Date(),
         })
@@ -2113,10 +2154,11 @@ export class DbStorage implements IStorage {
   
   async updateCredit(id: string, credit: Partial<InsertCredit>): Promise<Credit | undefined> {
     try {
+      const { originMasterBrokerId: _immutableOrigin, ...safeCredit } = credit as any;
       const [updated] = await db
         .update(credits)
         .set({
-          ...credit,
+          ...safeCredit,
           updatedAt: new Date(),
         })
         .where(eq(credits.id, id))
@@ -3074,8 +3116,18 @@ export class DbStorage implements IStorage {
 
   async createCreditSubmissionRequest(requestData: InsertCreditSubmissionRequest): Promise<CreditSubmissionRequest> {
     try {
+      const brokerAtOrigination = await this.getUser(requestData.brokerId);
+      let originMasterBrokerId: string | null = null;
+      if (brokerAtOrigination?.role === "master_broker") {
+        originMasterBrokerId = brokerAtOrigination.id;
+      } else if (brokerAtOrigination?.role === "broker" && brokerAtOrigination.masterBrokerId) {
+        const parentAtOrigination = await this.getUser(brokerAtOrigination.masterBrokerId);
+        originMasterBrokerId =
+          parentAtOrigination?.role === "master_broker" ? parentAtOrigination.id : null;
+      }
+
       const result = await db.insert(creditSubmissionRequests)
-        .values(requestData)
+        .values({ ...requestData, originMasterBrokerId })
         .returning();
       return result[0];
     } catch (error) {
@@ -3086,8 +3138,9 @@ export class DbStorage implements IStorage {
 
   async updateCreditSubmissionRequest(id: string, requestData: Partial<InsertCreditSubmissionRequest>): Promise<CreditSubmissionRequest | undefined> {
     try {
+      const { originMasterBrokerId: _immutableOrigin, ...safeRequestData } = requestData as any;
       const result = await db.update(creditSubmissionRequests)
-        .set({ ...requestData, updatedAt: new Date() })
+        .set({ ...safeRequestData, updatedAt: new Date() })
         .where(eq(creditSubmissionRequests.id, id))
         .returning();
       return result[0];
@@ -3330,12 +3383,33 @@ export class DbStorage implements IStorage {
         throw new Error("Se requiere clientData (Camino A) o clientId (Camino B)");
       }
 
+      // Derive immutable master broker at submission origination
+      const [brokerAtOrigination] = await tx
+        .select()
+        .from(users)
+        .where(eq(users.id, params.submissionData.brokerId))
+        .limit(1);
+
+      let originMasterBrokerId: string | null = null;
+      if (brokerAtOrigination?.role === "master_broker") {
+        originMasterBrokerId = brokerAtOrigination.id;
+      } else if (brokerAtOrigination?.role === "broker" && brokerAtOrigination.masterBrokerId) {
+        const [parentAtOrigination] = await tx
+          .select()
+          .from(users)
+          .where(eq(users.id, brokerAtOrigination.masterBrokerId))
+          .limit(1);
+        originMasterBrokerId =
+          parentAtOrigination?.role === "master_broker" ? parentAtOrigination.id : null;
+      }
+
       // Insert credit submission request within transaction
       const [submission] = await tx
         .insert(creditSubmissionRequests)
         .values({
           ...params.submissionData,
           clientId: client.id,
+          originMasterBrokerId,
           createdAt: new Date(),
           updatedAt: new Date(),
         })
