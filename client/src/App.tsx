@@ -68,6 +68,9 @@ function Router() {
     <Switch>
       <Route path="/legal/terminos"><LegalDocumentPage document="terminos" /></Route>
       <Route path="/legal/aviso"><LegalDocumentPage document="aviso" /></Route>
+      <Route path="/legal/convenio"><LegalDocumentPage document="convenio" /></Route>
+      <Route path="/legal/reglas-red"><LegalDocumentPage document="reglas-red" /></Route>
+      <Route path="/legal/reglas-master"><LegalDocumentPage document="reglas-master" /></Route>
       {/* Reset password route - accessible without auth */}
       <Route path="/reset-password" component={ResetPassword} />
       {/* Design preview - accessible only in development for testing */}

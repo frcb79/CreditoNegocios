@@ -100,7 +100,9 @@ import {
 import {
   validateTenantMemberPermissions,
   checkTransactionalCreationAllowed,
-  validateCommercialOrigination
+  validateCommercialOrigination,
+  validateEffectiveBrokerFormalization,
+  validateCommercialOriginationAndFormalization
 } from "./tenantPermissions";
 
 // Ensure upload directory exists
@@ -3182,7 +3184,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const userId = req.user.claims.sub;
       const user = await storage.getUser(userId);
 
-      const originationCheck = await validateCommercialOrigination({
+      const originationCheck = await validateCommercialOriginationAndFormalization({
         callerUser: user,
         callerMembership: req.tenantContext?.membership,
         tenantId: req.tenantContext?.tenant?.id,
@@ -3190,7 +3192,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
 
       if (!originationCheck.allowed) {
-        return res.status(403).json({ message: originationCheck.message });
+        return res.status(originationCheck.statusCode || 403).json({
+          code: originationCheck.code,
+          message: originationCheck.message,
+        });
       }
 
       const clientData = updatedInsertClientSchema.parse({
@@ -3308,6 +3313,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       const isPlatformAdmin = Boolean(user?.role === 'super_admin' || req.tenantContext?.isPlatformAdmin);
       const targetBrokerId = (isPlatformAdmin && brokerId) ? brokerId : userId;
+
+      const formalizationCheck = await validateEffectiveBrokerFormalization(
+        {
+          callerUser: user,
+          effectiveBrokerId: targetBrokerId,
+        },
+        storage
+      );
+
+      if (!formalizationCheck.allowed) {
+        return res.status(formalizationCheck.statusCode || 403).json({
+          code: formalizationCheck.code,
+          message: formalizationCheck.message,
+        });
+      }
 
       const result = await commercialOpportunityService.createOpportunity({
         clientId: id,
@@ -3940,7 +3960,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const userId = req.user.claims.sub;
       const user = await storage.getUser(userId);
 
-      const originationCheck = await validateCommercialOrigination({
+      const originationCheck = await validateCommercialOriginationAndFormalization({
         callerUser: user,
         callerMembership: req.tenantContext?.membership,
         tenantId: req.tenantContext?.tenant?.id,
@@ -3948,7 +3968,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
 
       if (!originationCheck.allowed) {
-        return res.status(403).json({ message: originationCheck.message });
+        return res.status(originationCheck.statusCode || 403).json({
+          code: originationCheck.code,
+          message: originationCheck.message,
+        });
       }
 
       const creditData = insertCreditSchema.parse({
@@ -7593,7 +7616,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(403).json({ message: "You don't have permission to create credit submissions" });
       }
 
-      const originationCheck = await validateCommercialOrigination({
+      const originationCheck = await validateCommercialOriginationAndFormalization({
         callerUser: user,
         callerMembership: req.tenantContext?.membership,
         tenantId: req.tenantContext?.tenant?.id,
@@ -7601,7 +7624,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
 
       if (!originationCheck.allowed) {
-        return res.status(403).json({ message: originationCheck.message });
+        return res.status(originationCheck.statusCode || 403).json({
+          code: originationCheck.code,
+          message: originationCheck.message,
+        });
       }
 
       const submissionData = insertCreditSubmissionRequestSchema.parse({
@@ -7757,7 +7783,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(403).json({ message: "No tienes permiso para registrar operaciones hipotecarias" });
       }
 
-      const originationCheck = await validateCommercialOrigination({
+      const originationCheck = await validateCommercialOriginationAndFormalization({
         callerUser: user,
         callerMembership: req.tenantContext?.membership,
         tenantId: req.tenantContext?.tenant?.id,
@@ -7765,7 +7791,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
 
       if (!originationCheck.allowed) {
-        return res.status(403).json({ message: originationCheck.message });
+        return res.status(originationCheck.statusCode || 403).json({
+          code: originationCheck.code,
+          message: originationCheck.message,
+        });
       }
 
       const tenantId = req.tenantContext?.tenant?.id || null;
@@ -7935,6 +7964,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const submission = await storage.getCreditSubmissionRequest(id);
       if (!submission) {
         return res.status(404).json({ message: "Solicitud de crédito no encontrada" });
+      }
+
+      const callerUser = (req as any).dbUser || (await storage.getUser(req.user?.claims?.sub || req.user?.id));
+      const formalizationCheck = await validateEffectiveBrokerFormalization(
+        {
+          callerUser,
+          effectiveBrokerId: submission.brokerId,
+        },
+        storage
+      );
+
+      if (!formalizationCheck.allowed) {
+        return res.status(formalizationCheck.statusCode || 403).json({
+          code: formalizationCheck.code,
+          message: formalizationCheck.message,
+        });
       }
 
       const existingTargets = await storage.getCreditSubmissionTargets({ requestId: id });

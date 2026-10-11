@@ -45,7 +45,7 @@ export async function sendPasswordResetEmail(
     console.log(`[Email] Service initialized. Target: ${to}`);
     // Use FRONTEND_BASE_URL for custom domain, or get from REPLIT_DOMAINS, or fallback to localhost
     let baseUrl = process.env.FRONTEND_BASE_URL;
-    
+
     if (!baseUrl && process.env.REPLIT_DOMAINS) {
       // REPLIT_DOMAINS contains comma-separated list of domains, use the first one
       const domains = process.env.REPLIT_DOMAINS.split(',');
@@ -59,12 +59,12 @@ export async function sendPasswordResetEmail(
     if (!baseUrl && process.env.VERCEL_URL) {
       baseUrl = `https://${process.env.VERCEL_URL}`;
     }
-    
+
     if (!baseUrl) {
       baseUrl = 'https://creditonegocios-staging.up.railway.app';
       console.warn(`[Email] FRONTEND_BASE_URL not set, falling back to: ${baseUrl}`);
     }
-    
+
     const resetUrl = `${baseUrl.replace(/\/$/, '')}/reset-password?token=${resetToken}`;
     console.log('[Email] Generated reset URL:', resetUrl);
     const greeting = userName ? `Hola ${userName},` : 'Hola,';
@@ -88,34 +88,34 @@ export async function sendPasswordResetEmail(
               <h1 style="color: #1a365d; margin: 0; font-size: 28px;">${APP_NAME}</h1>
               <p style="color: #718096; margin-top: 5px; font-size: 14px;">Sistema de Gestión de Brokers</p>
             </div>
-            
+
             <h2 style="color: #2d3748; margin-bottom: 20px; font-size: 22px;">Restablecer Contraseña</h2>
-            
+
             <p style="margin-bottom: 15px;">${greeting}</p>
-            
+
             <p style="margin-bottom: 20px;">
-              Recibimos una solicitud para restablecer la contraseña de tu cuenta. 
+              Recibimos una solicitud para restablecer la contraseña de tu cuenta.
               Si no realizaste esta solicitud, puedes ignorar este correo de forma segura.
             </p>
-            
+
             <p style="margin-bottom: 25px;">
               Para restablecer tu contraseña, haz clic en el siguiente botón:
             </p>
-            
+
             <div style="text-align: center; margin: 30px 0;">
-              <a href="${resetUrl}" 
+              <a href="${resetUrl}"
                  style="background-color: #3182ce; color: #ffffff; padding: 14px 32px; text-decoration: none; border-radius: 6px; font-weight: 600; display: inline-block; font-size: 16px;">
                 Restablecer Contraseña
               </a>
             </div>
-            
+
             <p style="margin-bottom: 15px; color: #718096; font-size: 14px;">
               O copia y pega el siguiente enlace en tu navegador:
             </p>
             <p style="margin-bottom: 25px; word-break: break-all; background-color: #f7fafc; padding: 12px; border-radius: 4px; font-size: 13px; color: #4a5568;">
               ${resetUrl}
             </p>
-            
+
             <div style="border-top: 1px solid #e2e8f0; margin-top: 30px; padding-top: 20px;">
               <p style="color: #a0aec0; font-size: 13px; margin-bottom: 10px;">
                 <strong>Nota:</strong> Este enlace expirará en 1 hora por motivos de seguridad.
@@ -125,7 +125,7 @@ export async function sendPasswordResetEmail(
               </p>
             </div>
           </div>
-          
+
           <div style="text-align: center; margin-top: 20px; color: #a0aec0; font-size: 12px;">
             <p>&copy; ${new Date().getFullYear()} ${APP_NAME}. Todos los derechos reservados.</p>
           </div>
@@ -397,16 +397,16 @@ export async function sendWelcomeEmail(
               <h1 style="color: #ffffff; margin: 0; font-size: 32px; font-weight: 800;">¡Bienvenido, ${userName}!</h1>
               <p style="color: #dbeafe; margin-top: 10px; font-size: 18px;">Estamos emocionados de tenerte con nosotros.</p>
             </div>
-            
+
             <div style="padding: 40px;">
               <p style="font-size: 16px; margin-bottom: 25px;">
                 Gracias por unirte a <strong>${APP_NAME}</strong>, la plataforma líder para la gestión y colocación de créditos empresariales.
               </p>
-              
+
               <p style="font-size: 16px; margin-bottom: 25px;">
                 Desde ahora, tienes acceso a un ecosistema diseñado para potenciar tu negocio:
               </p>
-              
+
               <div style="background-color: #f1f5f9; border-radius: 12px; padding: 25px; margin-bottom: 30px;">
                 <ul style="margin: 0; padding-left: 20px; color: #475569;">
                   <li style="margin-bottom: 12px;"><strong>Gestión Centralizada:</strong> Administra todos tus clientes y solicitudes en un solo lugar.</li>
@@ -415,19 +415,19 @@ export async function sendWelcomeEmail(
                   <li style="margin-bottom: 0;"><strong>Comisiones Transparentes:</strong> Visualiza y gestiona tus ganancias de forma clara.</li>
                 </ul>
               </div>
-              
+
               <div style="text-align: center; margin: 40px 0;">
-                <a href="https://app.creditonegocios.com.mx" 
+                <a href="https://app.creditonegocios.com.mx"
                    style="background-color: #05478a; color: #ffffff; padding: 16px 36px; text-decoration: none; border-radius: 8px; font-weight: 700; display: inline-block; font-size: 16px; box-shadow: 0 4px 6px rgba(5, 71, 138, 0.2);">
                   Comenzar ahora
                 </a>
               </div>
-              
+
               <p style="font-size: 14px; color: #64748b; text-align: center;">
                 Si tienes alguna duda, nuestro equipo de soporte está listo para ayudarte.
               </p>
             </div>
-            
+
             <div style="background-color: #f8fafc; padding: 20px; text-align: center; border-top: 1px solid #e2e8f0;">
               <p style="color: #94a3b8; font-size: 12px; margin: 0;">
                 &copy; ${new Date().getFullYear()} ${APP_NAME}. Todos los derechos reservados.
@@ -562,7 +562,7 @@ export async function sendSuperAdminNotificationEmail(
     }
 
     let baseUrl = process.env.FRONTEND_BASE_URL || 'https://app.creditonegocios.com.mx';
-    const targetUrl = payload.actionUrl 
+    const targetUrl = payload.actionUrl
       ? `${baseUrl.replace(/\/$/, '')}/${payload.actionUrl.replace(/^\//, '')}`
       : baseUrl;
 
@@ -648,7 +648,7 @@ export async function sendSuperAdminNotificationEmail(
 
               <!-- Botón de acción -->
               <div style="text-align: center; margin: 32px 0 16px 0;">
-                <a href="${targetUrl}" 
+                <a href="${targetUrl}"
                    style="display: inline-block; background: linear-gradient(135deg, #059669 0%, #0d9488 100%); color: #ffffff; text-decoration: none; padding: 14px 28px; border-radius: 10px; font-weight: 700; font-size: 14px; box-shadow: 0 4px 12px rgba(5, 150, 105, 0.3);">
                   Gestionar en la Plataforma &rarr;
                 </a>
@@ -689,5 +689,145 @@ Crédito Negocios - Notificación para ${SUPERADMIN_NOTIFICATION_EMAIL}
   } catch (error: any) {
     console.error('[Email] Error sending super admin notification email:', error);
     return { success: false, error: error.message || 'Error desconocido' };
+  }
+}
+
+// In-memory test store for test suites to capture simulated emails without logging plaintext secrets
+export const _testEmailStore: {
+  lastFormalizationOtp?: {
+    to: string;
+    code: string;
+    role: string;
+    documents: Array<{ title: string; version: string }>;
+  };
+  simulateFailure?: boolean;
+} = {};
+
+export async function sendFormalizationOtpEmail(payload: {
+  to: string;
+  userName?: string;
+  code: string;
+  role: string;
+  documents: Array<{ title: string; version: string }>;
+}): Promise<{ success: boolean; error?: string }> {
+  try {
+    if (process.env.NODE_ENV === "test") {
+      if (_testEmailStore.simulateFailure) {
+        return { success: false, error: "Simulated email delivery failure in test" };
+      }
+      _testEmailStore.lastFormalizationOtp = {
+        to: payload.to,
+        code: payload.code,
+        role: payload.role,
+        documents: payload.documents,
+      };
+      return { success: true };
+    }
+
+    if (!resend) {
+      console.error("[Email] Formalization OTP email failed: missing email service provider configuration (RESEND_API_KEY)");
+      return { success: false, error: "Servicio de correo electrónico no configurado" };
+    }
+
+    const roleLabel = payload.role === "master_broker" ? "Master Broker" : "Broker";
+    const greeting = payload.userName ? `Hola ${payload.userName},` : "Hola,";
+    const docsListHtml = payload.documents
+      .map((d) => `<li style="margin-bottom: 4px;"><strong>${d.title}</strong> (Versión ${d.version})</li>`)
+      .join("");
+    const docsListText = payload.documents
+      .map((d) => `- ${d.title} (Versión ${d.version})`)
+      .join("\n");
+
+    const { error } = await resend.emails.send({
+      from: FROM_EMAIL,
+      to: [payload.to],
+      subject: `Código de verificación para Convenio de Colaboración - ${APP_NAME}`,
+      html: `
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <meta charset="utf-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1.0">
+          <title>Código de verificación</title>
+        </head>
+        <body style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; line-height: 1.6; color: #1e293b; max-width: 600px; margin: 0 auto; padding: 20px; background-color: #f8fafc;">
+          <div style="background-color: #ffffff; border-radius: 12px; padding: 36px; box-shadow: 0 4px 16px rgba(0,0,0,0.06); border: 1px solid #e2e8f0;">
+            <div style="text-align: center; margin-bottom: 28px;">
+              <h1 style="color: #05478a; margin: 0; font-size: 26px; font-weight: 800;">${APP_NAME}</h1>
+              <p style="color: #64748b; margin-top: 4px; font-size: 13px; text-transform: uppercase; letter-spacing: 0.1em;">Formalización de Colaborador (${roleLabel})</p>
+            </div>
+
+            <p style="margin-bottom: 16px; font-size: 15px;">${greeting}</p>
+
+            <p style="margin-bottom: 20px; font-size: 14px; color: #334155;">
+              Recibimos tu solicitud para formalizar tu relación comercial como <strong>${roleLabel}</strong> mediante la aceptación de los siguientes documentos legales vigentes:
+            </p>
+
+            <ul style="margin-bottom: 24px; padding-left: 20px; font-size: 14px; color: #1e293b;">
+              ${docsListHtml}
+            </ul>
+
+            <p style="margin-bottom: 12px; font-size: 14px; color: #334155; text-align: center;">
+              Tu código de verificación de un solo uso es:
+            </p>
+
+            <div style="text-align: center; margin: 24px 0;">
+              <div style="display: inline-block; background-color: #f0fdf4; border: 2px dashed #16a34a; border-radius: 10px; padding: 16px 36px; font-size: 32px; font-weight: 800; letter-spacing: 8px; color: #15803d; font-family: monospace;">
+                ${payload.code}
+              </div>
+            </div>
+
+            <div style="background-color: #f8fafc; border-radius: 8px; padding: 14px; margin-bottom: 20px; border: 1px solid #e2e8f0; font-size: 13px; color: #475569;">
+              <p style="margin: 0 0 6px 0;"><strong>Seguridad y Vigencia:</strong></p>
+              <ul style="margin: 0; padding-left: 18px;">
+                <li>Este código expirará en <strong>10 minutos</strong>.</li>
+                <li>Es de uso único y está vinculado a tu cuenta y a los documentos aprobados.</li>
+                <li>Tienes un máximo de 5 intentos para ingresarlo correctamente.</li>
+              </ul>
+            </div>
+
+            <p style="font-size: 12px; color: #94a3b8; margin: 0; text-align: center;">
+              Si no realizaste esta solicitud, puedes ignorar este mensaje de forma segura o comunicarte con nuestro equipo.
+            </p>
+          </div>
+          <div style="text-align: center; margin-top: 16px; font-size: 11px; color: #94a3b8;">
+            <p>&copy; ${new Date().getFullYear()} ${APP_NAME}. Todos los derechos reservados.</p>
+          </div>
+        </body>
+        </html>
+      `.trim(),
+      text: `
+${greeting}
+
+Recibimos tu solicitud para formalizar tu relación comercial como ${roleLabel} en ${APP_NAME}.
+
+Documentos a formalizar:
+${docsListText}
+
+Tu código de verificación de un solo uso es:
+${payload.code}
+
+Seguridad:
+- Este código expirará en 10 minutos.
+- Es de uso único y está vinculado exclusivamente a tu cuenta y versiones exactas de los documentos.
+- Tienes un máximo de 5 intentos.
+
+Si no realizaste esta solicitud, ignora este mensaje.
+
+---
+${APP_NAME}
+      `.trim(),
+    });
+
+    if (error) {
+      console.error("[Email] Resend formalization OTP error:", error);
+      return { success: false, error: error.message };
+    }
+
+    console.log(`[Email] Formalization OTP email sent successfully to ${payload.to}`);
+    return { success: true };
+  } catch (error: any) {
+    console.error("[Email] Error sending formalization OTP email:", error);
+    return { success: false, error: error.message || "Error desconocido" };
   }
 }

@@ -1,8 +1,28 @@
 // @ts-nocheck
 import { randomUUID, createHash } from "crypto";
 import catalog from "./legalDocumentCatalog.json";
-import { getApprovedLegalDocument } from "./legalDocuments";
 import {
+  getApprovedLegalDocument,
+  FORMALIZATION_OTP_EXPIRATION_MS,
+  FORMALIZATION_OTP_COOLDOWN_MS,
+  FORMALIZATION_OTP_MAX_ATTEMPTS,
+  FORMALIZATION_OTP_MAX_REQUESTS_PER_WINDOW,
+  FORMALIZATION_OTP_WINDOW_MS,
+  getActiveFormalizationDocument,
+  validateFormalizationConfirmation,
+  generateOtpCode,
+  hashOtpCode,
+  verifyOtpCode,
+} from "./legalDocuments";
+import {
+  isRoleSubjectToFormalization,
+  getRequiredFormalizationDocuments,
+  buildPersonalizedAgreement,
+  type PersonalizedAgreementData,
+  type PersonalizedDocumentSnapshot,
+} from "../shared/legalDocuments";
+import {
+
   users,
   clients,
   credits,
@@ -67,8 +87,10 @@ import {
   type UserStatusRequestAction,
   legalDocumentVersions,
   legalAcceptances,
+  formalizationOtpRequests,
   type LegalDocumentVersionDb,
-  type LegalAcceptance
+  type LegalAcceptance,
+  type FormalizationOtpRequest,
 } from "../shared/schema";
 
 
@@ -77,6 +99,61 @@ type NotificationInput = InsertNotification & {
   relatedEntityId?: string;
   metadata?: unknown;
 };
+
+export interface FormalizationDocumentItem {
+  id: string;
+  document: string;
+  title: string;
+  version: string;
+  content: string;
+  contentSha256: string;
+  effectiveAt?: string | Date | null;
+  isPrivate: boolean;
+  personalized?: boolean;
+  incorporatedData?: any;
+}
+
+export interface FormalizationDocumentsResult {
+  requiresFormalization: boolean;
+  isFormalized: boolean;
+  message?: string;
+  user?: {
+    id: string;
+    email: string;
+    name?: string;
+    role: string;
+  };
+  requiredDocuments?: string[];
+  documents: FormalizationDocumentItem[];
+}
+
+export interface FormalizationStatusResult {
+  requiresFormalization: boolean;
+  isFormalized: boolean;
+  formalizedAt?: Date | null;
+  requiredDocuments: string[];
+  acceptedDocuments: string[];
+}
+
+export interface CreateFormalizationOtpResult {
+  success: boolean;
+  statusCode: number;
+  error?: string;
+  resendAvailableAt?: Date;
+  otp?: FormalizationOtpRequest;
+  rawCode?: string;
+  documentsForEmail?: Array<{ title: string; version: string }>;
+}
+
+export interface VerifyFormalizationOtpResult {
+  success: boolean;
+  statusCode: number;
+  error?: string;
+  remainingAttempts?: number;
+  requiresRestart?: boolean;
+  acceptances?: LegalAcceptance[];
+  snapshots?: PersonalizedDocumentSnapshot[];
+}
 
 export interface IStorage {
   // Bank analysis report operations
@@ -354,6 +431,27 @@ export interface IStorage {
       };
     };
   }): Promise<{ user: User; acceptances: LegalAcceptance[] }>;
+  getLegalAcceptanceById(id: string): Promise<LegalAcceptance | undefined>;
+  getPersonalizedAgreementSnapshot(acceptanceId: string): Promise<PersonalizedDocumentSnapshot | undefined>;
+
+  // Formalization OTP and Legal Agreement (Bloque 3B)
+  getFormalizationDocuments(userId: string): Promise<FormalizationDocumentsResult>;
+  getFormalizationStatus(userId: string): Promise<FormalizationStatusResult>;
+  createOrResendFormalizationOtp(params: {
+    userId: string;
+    confirmedDocuments: Array<{ document: string; version: string }>;
+  }): Promise<CreateFormalizationOtpResult>;
+  invalidateFormalizationOtp(otpId: string, reason?: string): Promise<void>;
+  verifyAndFormalizeAgreementWithOtp(params: {
+    userId: string;
+    code: string;
+    confirmedDocuments: Array<{ document: string; version: string }>;
+    ipAddress: string;
+    userAgent: string;
+  }): Promise<VerifyFormalizationOtpResult>;
+  getLatestFormalizationOtpByUser(userId: string): Promise<FormalizationOtpRequest | undefined>;
+  countFormalizationOtpRequests(userId: string, since: Date): Promise<number>;
+  isUserFormalized(userId: string, role?: string): Promise<{ isFormalized: boolean; formalizedAt?: Date; acceptedDocuments: string[] }>;
 }
 
 export class MemStorage implements IStorage {
@@ -414,6 +512,27 @@ export class MemStorage implements IStorage {
   private creditSubmissionTargets: Map<string, CreditSubmissionTarget> = new Map();
   private legalDocumentVersions: Map<string, LegalDocumentVersionDb> = new Map();
   private legalAcceptances: Map<string, LegalAcceptance> = new Map();
+  private formalizationOtpRequests: Map<string, FormalizationOtpRequest> = new Map();
+  private personalizedSnapshots: Map<string, PersonalizedDocumentSnapshot> = new Map();
+  private userLocks: Map<string, Promise<void>> = new Map();
+
+  private async withUserLock<T>(userId: string, fn: () => Promise<T>): Promise<T> {
+    const currentLock = this.userLocks.get(userId) || Promise.resolve();
+    let release: () => void = () => {};
+    const nextLock = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    this.userLocks.set(userId, nextLock);
+    try {
+      await currentLock;
+      return await fn();
+    } finally {
+      release();
+      if (this.userLocks.get(userId) === nextLock) {
+        this.userLocks.delete(userId);
+      }
+    }
+  }
 
   constructor() {
     this.seedData();
@@ -1478,6 +1597,16 @@ export class MemStorage implements IStorage {
       .map((a) => structuredClone(a));
   }
 
+  async getLegalAcceptanceById(id: string): Promise<LegalAcceptance | undefined> {
+    const acc = this.legalAcceptances.get(id);
+    return acc ? structuredClone(acc) : undefined;
+  }
+
+  async getPersonalizedAgreementSnapshot(acceptanceId: string): Promise<PersonalizedDocumentSnapshot | undefined> {
+    const snap = this.personalizedSnapshots.get(acceptanceId);
+    return snap ? structuredClone(snap) : undefined;
+  }
+
   async registerUserWithLegalEvidence(params: {
     userData: {
       email: string;
@@ -1623,6 +1752,564 @@ export class MemStorage implements IStorage {
     return {
       user: structuredClone(user),
       acceptances: [structuredClone(termsAcceptance), structuredClone(privacyAcceptance)],
+    };
+  }
+
+  async getFormalizationDocuments(userId: string): Promise<FormalizationDocumentsResult> {
+    const user = await this.getUser(userId);
+    if (!user) {
+      throw new Error("Usuario no encontrado.");
+    }
+
+    const requires = isRoleSubjectToFormalization(user.role);
+    const fullName = [user.firstName, user.lastName].filter(Boolean).join(" ").trim() || (user as any).accountHolder || user.email!;
+
+    if (!requires) {
+      return {
+        requiresFormalization: false,
+        isFormalized: true,
+        message: "El rol del usuario no requiere formalización de convenio.",
+        user: {
+          id: user.id,
+          email: user.email!,
+          name: fullName,
+          role: user.role,
+        },
+        requiredDocuments: [],
+        documents: [],
+      };
+    }
+
+    const status = await this.isUserFormalized(user.id, user.role);
+    const requiredDocs = getRequiredFormalizationDocuments(user.role);
+
+    const personalizedData: PersonalizedAgreementData = {
+      fullName,
+      rfc: (user as any).profileData?.rfc || (user as any).rfc || null,
+      address: (user as any).profileData?.address || (user as any).address || null,
+      email: user.email!,
+      phone: (user as any).profileData?.phone || (user as any).phone || null,
+      role: user.role,
+      bankName: (user as any).bankName || null,
+      clabe: (user as any).clabe || null,
+    };
+
+    const documentItems: FormalizationDocumentItem[] = [];
+    for (const docType of requiredDocs) {
+      const docVer = (await this.getLegalDocumentVersion(`${docType}:1.0`)) || getApprovedLegalDocument(docType, "1.0");
+      if (!docVer) continue;
+
+      if (docType === "convenio") {
+        const personalizedContent = buildPersonalizedAgreement(docVer.content, personalizedData);
+        documentItems.push({
+          id: docVer.id,
+          document: docVer.document,
+          title: docVer.title,
+          version: docVer.version,
+          content: personalizedContent,
+          contentSha256: docVer.contentSha256,
+          effectiveAt: docVer.effectiveAt,
+          isPrivate: true,
+          personalized: true,
+          incorporatedData: personalizedData,
+        });
+      } else {
+        documentItems.push({
+          id: docVer.id,
+          document: docVer.document,
+          title: docVer.title,
+          version: docVer.version,
+          content: docVer.content,
+          contentSha256: docVer.contentSha256,
+          effectiveAt: docVer.effectiveAt,
+          isPrivate: true,
+          personalized: false,
+        });
+      }
+    }
+
+    return {
+      requiresFormalization: true,
+      isFormalized: status.isFormalized,
+      user: {
+        id: user.id,
+        email: user.email!,
+        name: fullName,
+        role: user.role,
+      },
+      requiredDocuments: requiredDocs,
+      documents: documentItems,
+    };
+  }
+
+  async getFormalizationStatus(userId: string): Promise<FormalizationStatusResult> {
+    const user = await this.getUser(userId);
+    if (!user) {
+      return {
+        requiresFormalization: false,
+        isFormalized: false,
+        formalizedAt: null,
+        requiredDocuments: [],
+        acceptedDocuments: [],
+      };
+    }
+
+    const requires = isRoleSubjectToFormalization(user.role);
+    if (!requires) {
+      return {
+        requiresFormalization: false,
+        isFormalized: true,
+        formalizedAt: null,
+        requiredDocuments: [],
+        acceptedDocuments: [],
+      };
+    }
+
+    const status = await this.isUserFormalized(user.id, user.role);
+    return {
+      requiresFormalization: true,
+      isFormalized: status.isFormalized,
+      formalizedAt: status.formalizedAt || null,
+      requiredDocuments: getRequiredFormalizationDocuments(user.role),
+      acceptedDocuments: status.acceptedDocuments,
+    };
+  }
+
+  async createOrResendFormalizationOtp(params: {
+    userId: string;
+    confirmedDocuments: Array<{ document: string; version: string }>;
+  }): Promise<CreateFormalizationOtpResult> {
+    return await this.withUserLock(params.userId, async () => {
+      const user = await this.getUser(params.userId);
+      if (!user) {
+        return { success: false, statusCode: 404, error: "Usuario no encontrado." };
+      }
+
+      if (!isRoleSubjectToFormalization(user.role)) {
+        return { success: false, statusCode: 400, error: "El rol del usuario no requiere formalización." };
+      }
+
+      const status = await this.isUserFormalized(user.id, user.role);
+      if (status.isFormalized) {
+        return { success: false, statusCode: 400, error: "El usuario ya ha formalizado su Convenio." };
+      }
+
+      const validation = validateFormalizationConfirmation(user.role, params.confirmedDocuments);
+      if (!validation.valid) {
+        return { success: false, statusCode: 400, error: validation.error };
+      }
+
+      const oneHourAgo = new Date(Date.now() - FORMALIZATION_OTP_WINDOW_MS);
+      const recentCount = await this.countFormalizationOtpRequests(user.id, oneHourAgo);
+      if (recentCount >= FORMALIZATION_OTP_MAX_REQUESTS_PER_WINDOW) {
+        return {
+          success: false,
+          statusCode: 429,
+          error: "Has superado el límite de solicitudes de código. Por favor intenta más tarde.",
+        };
+      }
+
+      const now = new Date();
+
+      const latestOtp = Array.from(this.formalizationOtpRequests.values())
+        .filter((o) => o.userId === user.id)
+        .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())[0];
+
+      if (latestOtp) {
+        const resendAvailableAt = new Date(latestOtp.resendAvailableAt).getTime();
+        if (now.getTime() < resendAvailableAt) {
+          const remainingSeconds = Math.ceil((resendAvailableAt - now.getTime()) / 1000);
+          return {
+            success: false,
+            statusCode: 429,
+            error: `Debes esperar ${remainingSeconds} segundos antes de solicitar un nuevo código.`,
+            resendAvailableAt: latestOtp.resendAvailableAt,
+          };
+        }
+      }
+
+      const previousActiveOtp = Array.from(this.formalizationOtpRequests.values())
+        .filter((o) => o.userId === user.id && !o.consumed && !o.invalidated)
+        .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())[0];
+
+      if (previousActiveOtp) {
+        previousActiveOtp.invalidated = true;
+        previousActiveOtp.invalidatedAt = now;
+        this.formalizationOtpRequests.set(previousActiveOtp.id, structuredClone(previousActiveOtp));
+      }
+
+      const rawCode = generateOtpCode();
+      const codeHash = hashOtpCode(rawCode);
+      const expiresAt = new Date(now.getTime() + FORMALIZATION_OTP_EXPIRATION_MS);
+      const resendAvailableAt = new Date(now.getTime() + FORMALIZATION_OTP_COOLDOWN_MS);
+      const fullName = [user.firstName, user.lastName].filter(Boolean).join(" ").trim() || (user as any).accountHolder || user.email!;
+
+      const personalizedData: PersonalizedAgreementData = {
+        fullName,
+        rfc: (user as any).profileData?.rfc || (user as any).rfc || null,
+        address: (user as any).profileData?.address || (user as any).address || null,
+        email: user.email!,
+        phone: (user as any).profileData?.phone || (user as any).phone || null,
+        role: user.role,
+        bankName: (user as any).bankName || null,
+        clabe: (user as any).clabe || null,
+      };
+
+      const documentsSnapshot = validation.catalogDocs!.map((d) => {
+        if (d.document === "convenio") {
+          const personalizedText = buildPersonalizedAgreement(d.content, personalizedData);
+          const personalizedSha = createHash("sha256").update(personalizedText, "utf8").digest("hex");
+          return {
+            id: d.id,
+            document: d.document,
+            version: d.version,
+            title: d.title,
+            templateSha256: d.contentSha256,
+            contentSha256: d.contentSha256,
+            personalizedContent: personalizedText,
+            personalizedSha256: personalizedSha,
+            incorporatedData: personalizedData,
+          };
+        }
+        return {
+          id: d.id,
+          document: d.document,
+          version: d.version,
+          title: d.title,
+          contentSha256: d.contentSha256,
+          content: d.content,
+        };
+      });
+
+      const newOtp: FormalizationOtpRequest = {
+        id: randomUUID(),
+        userId: user.id,
+        userEmail: user.email!,
+        userName: fullName,
+        userRole: user.role,
+        documentsSnapshot,
+        codeHash,
+        attempts: 0,
+        maxAttempts: FORMALIZATION_OTP_MAX_ATTEMPTS,
+        expiresAt,
+        resendAvailableAt,
+        consumed: false,
+        consumedAt: null,
+        invalidated: false,
+        invalidatedAt: null,
+        createdAt: now,
+      };
+
+      this.formalizationOtpRequests.set(newOtp.id, structuredClone(newOtp));
+
+      return {
+        success: true,
+        statusCode: 200,
+        otp: structuredClone(newOtp),
+        rawCode,
+        documentsForEmail: validation.catalogDocs!.map((d) => ({ title: d.title, version: d.version })),
+      };
+    });
+  }
+
+  async invalidateFormalizationOtp(otpId: string, reason?: string): Promise<void> {
+    const existing = this.formalizationOtpRequests.get(otpId);
+    if (existing) {
+      existing.invalidated = true;
+      existing.invalidatedAt = new Date();
+      this.formalizationOtpRequests.set(otpId, structuredClone(existing));
+    }
+  }
+
+  async verifyAndFormalizeAgreementWithOtp(params: {
+    userId: string;
+    code: string;
+    confirmedDocuments: Array<{ document: string; version: string }>;
+    ipAddress: string;
+    userAgent: string;
+  }): Promise<VerifyFormalizationOtpResult> {
+    return await this.withUserLock(params.userId, async () => {
+      const user = await this.getUser(params.userId);
+      if (!user) {
+        return { success: false, statusCode: 404, error: "Usuario no encontrado." };
+      }
+
+      const activeOtp = Array.from(this.formalizationOtpRequests.values())
+        .filter((o) => o.userId === user.id && !o.consumed && !o.invalidated)
+        .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())[0];
+
+      if (!activeOtp) {
+        return {
+          success: false,
+          statusCode: 400,
+          error: "No se encontró una solicitud activa de formalización para este usuario.",
+        };
+      }
+
+      const now = new Date();
+
+      if (activeOtp.attempts >= activeOtp.maxAttempts) {
+        activeOtp.invalidated = true;
+        activeOtp.invalidatedAt = now;
+        this.formalizationOtpRequests.set(activeOtp.id, structuredClone(activeOtp));
+        return {
+          success: false,
+          statusCode: 400,
+          error: "Has superado el límite máximo de 5 intentos fallidos. Solicita un nuevo código.",
+          remainingAttempts: 0,
+        };
+      }
+
+      if (now.getTime() > new Date(activeOtp.expiresAt).getTime()) {
+        activeOtp.invalidated = true;
+        activeOtp.invalidatedAt = now;
+        this.formalizationOtpRequests.set(activeOtp.id, structuredClone(activeOtp));
+        return {
+          success: false,
+          statusCode: 400,
+          error: "El código de verificación ha expirado. Solicita un nuevo código.",
+        };
+      }
+
+      // Check identity drift
+      const currentUserName = [user.firstName, user.lastName].filter(Boolean).join(" ").trim() || (user as any).accountHolder || user.email!;
+      if (
+        user.email !== activeOtp.userEmail ||
+        currentUserName !== activeOtp.userName ||
+        user.role !== activeOtp.userRole
+      ) {
+        activeOtp.invalidated = true;
+        activeOtp.invalidatedAt = now;
+        this.formalizationOtpRequests.set(activeOtp.id, structuredClone(activeOtp));
+        return {
+          success: false,
+          statusCode: 400,
+          error: "Los datos de identidad (nombre, correo o rol) han cambiado desde que se solicitó el código. Debes reiniciar el proceso de formalización.",
+          requiresRestart: true,
+        };
+      }
+
+      // Validate documents and active versions
+      const validation = validateFormalizationConfirmation(activeOtp.userRole, params.confirmedDocuments);
+      if (!validation.valid) {
+        return { success: false, statusCode: 400, error: validation.error };
+      }
+
+      const validatedCatalogDocs: LegalDocumentVersionDb[] = [];
+      for (const conf of params.confirmedDocuments) {
+        const activeDoc = getActiveFormalizationDocument(conf.document);
+        if (!activeDoc || activeDoc.version !== conf.version) {
+          return {
+            success: false,
+            statusCode: 400,
+            error: `La versión '${conf.version}' para el documento '${conf.document}' no está habilitada actualmente.`,
+          };
+        }
+
+        const docId = `${conf.document}:${conf.version}`;
+        const persisted = this.legalDocumentVersions.get(docId);
+        if (!persisted) {
+          return {
+            success: false,
+            statusCode: 400,
+            error: `La versión persistida no se encuentra disponible: ${docId}`,
+          };
+        }
+
+        if (persisted.id !== docId || persisted.document !== conf.document || persisted.version !== conf.version) {
+          return {
+            success: false,
+            statusCode: 400,
+            error: `Discrepancia en la identidad del documento persistido: ${docId}`,
+          };
+        }
+
+        const recomputedSha256 = createHash("sha256").update(persisted.content || "", "utf8").digest("hex");
+        if (recomputedSha256 !== persisted.contentSha256) {
+          return {
+            success: false,
+            statusCode: 400,
+            error: `Discrepancia de integridad en el contenido persistido: ${docId}`,
+          };
+        }
+
+        if (recomputedSha256 !== activeDoc.contentSha256 || persisted.contentSha256 !== activeDoc.contentSha256) {
+          return {
+            success: false,
+            statusCode: 400,
+            error: `Discrepancia de integridad con el catálogo activo: ${docId}`,
+          };
+        }
+
+        const snapshot = (activeOtp.documentsSnapshot as any[]).find((s) => s.document === conf.document);
+        if (
+          !snapshot ||
+          snapshot.id !== docId ||
+          snapshot.version !== conf.version ||
+          snapshot.contentSha256 !== activeDoc.contentSha256 ||
+          snapshot.contentSha256 !== recomputedSha256
+        ) {
+          return {
+            success: false,
+            statusCode: 400,
+            error: "Las versiones o el contenido de los documentos cambiaron desde la solicitud del código. Solicita un nuevo código.",
+          };
+        }
+
+        validatedCatalogDocs.push(persisted);
+      }
+
+      // Constant-time HMAC code verification
+      const isMatch = verifyOtpCode(params.code, activeOtp.codeHash);
+      if (!isMatch) {
+        activeOtp.attempts += 1;
+        const limitReached = activeOtp.attempts >= activeOtp.maxAttempts;
+        if (limitReached) {
+          activeOtp.invalidated = true;
+          activeOtp.invalidatedAt = now;
+        }
+        this.formalizationOtpRequests.set(activeOtp.id, structuredClone(activeOtp));
+
+        const remaining = Math.max(0, activeOtp.maxAttempts - activeOtp.attempts);
+        return {
+          success: false,
+          statusCode: 400,
+          error: limitReached
+            ? "Has superado el límite máximo de 5 intentos fallidos. Solicita un nuevo código."
+            : `Código incorrecto. Te quedan ${remaining} ${remaining === 1 ? "intento" : "intentos"}.`,
+          remainingAttempts: remaining,
+        };
+      }
+
+      // Mark OTP as consumed
+      activeOtp.consumed = true;
+      activeOtp.consumedAt = now;
+      this.formalizationOtpRequests.set(activeOtp.id, structuredClone(activeOtp));
+
+      // Create legal acceptances and immutable snapshots
+      const createdAcceptances: LegalAcceptance[] = [];
+      const createdSnapshots: PersonalizedDocumentSnapshot[] = [];
+      for (const doc of validatedCatalogDocs) {
+        const acceptance: LegalAcceptance = {
+          id: randomUUID(),
+          userId: activeOtp.userId,
+          userEmail: activeOtp.userEmail,
+          userName: activeOtp.userName,
+          documentId: doc.id,
+          document: doc.document,
+          version: doc.version,
+          contentSha256: doc.contentSha256,
+          acceptanceType: `accept_${doc.document.replace(/-/g, "_")}`,
+          ipAddress: params.ipAddress,
+          userAgent: params.userAgent,
+          acceptedAt: now,
+        };
+        this.legalAcceptances.set(acceptance.id, structuredClone(acceptance));
+        createdAcceptances.push(structuredClone(acceptance));
+
+        // Create immutable snapshot for convenio
+        if (doc.document === "convenio") {
+          const rawSnapshot = (activeOtp.documentsSnapshot as any[]).find((s) => s.document === "convenio");
+          const finalPersonalizedText = buildPersonalizedAgreement(
+            doc.content,
+            rawSnapshot?.incorporatedData || {
+              fullName: activeOtp.userName,
+              email: activeOtp.userEmail,
+              role: activeOtp.userRole,
+            },
+            {
+              acceptedAt: now,
+              ipAddress: params.ipAddress,
+              userAgent: params.userAgent,
+              otpMethod: "Correo Electrónico (OTP)",
+              otpRequestId: activeOtp.id,
+            }
+          );
+          const finalSha256 = createHash("sha256").update(finalPersonalizedText, "utf8").digest("hex");
+
+          const snapshotObj: PersonalizedDocumentSnapshot = {
+            id: acceptance.id,
+            document: "convenio",
+            version: doc.version,
+            title: doc.title,
+            templateSha256: doc.contentSha256,
+            personalizedSha256: finalSha256,
+            personalizedContent: finalPersonalizedText,
+            incorporatedData: rawSnapshot?.incorporatedData,
+            evidence: {
+              acceptedAt: now.toISOString(),
+              ipAddress: params.ipAddress,
+              userAgent: params.userAgent,
+              otpMethod: "Correo Electrónico (OTP)",
+            },
+          };
+          this.personalizedSnapshots.set(acceptance.id, snapshotObj);
+          createdSnapshots.push(snapshotObj);
+        }
+      }
+
+      return {
+        success: true,
+        statusCode: 200,
+        acceptances: createdAcceptances,
+        snapshots: createdSnapshots,
+      };
+    });
+  }
+
+  async getLatestFormalizationOtpByUser(userId: string): Promise<FormalizationOtpRequest | undefined> {
+    const otps = Array.from(this.formalizationOtpRequests.values())
+      .filter((o) => o.userId === userId)
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    return otps[0] ? structuredClone(otps[0]) : undefined;
+  }
+
+  async countFormalizationOtpRequests(userId: string, since: Date): Promise<number> {
+    const sinceTime = since.getTime();
+    return Array.from(this.formalizationOtpRequests.values()).filter(
+      (o) => o.userId === userId && new Date(o.createdAt).getTime() >= sinceTime,
+    ).length;
+  }
+
+  async isUserFormalized(userId: string, role?: string): Promise<{ isFormalized: boolean; formalizedAt?: Date; acceptedDocuments: string[] }> {
+    let userRole = role;
+    if (!userRole) {
+      const user = await this.getUser(userId);
+      userRole = user?.role;
+    }
+    const requiredDocs = getRequiredFormalizationDocuments(userRole);
+    if (requiredDocs.length === 0) {
+      return { isFormalized: true, acceptedDocuments: [] };
+    }
+
+    const acceptances = await this.getLegalAcceptancesByUser(userId);
+    const acceptedDocsMap = new Map<string, Date>();
+    for (const acc of acceptances) {
+      if (requiredDocs.includes(acc.document) && !acceptedDocsMap.has(acc.document)) {
+        acceptedDocsMap.set(acc.document, new Date(acc.acceptedAt));
+      }
+    }
+
+    const allAccepted = requiredDocs.every((doc) => acceptedDocsMap.has(doc));
+    if (!allAccepted) {
+      return {
+        isFormalized: false,
+        acceptedDocuments: Array.from(acceptedDocsMap.keys()),
+      };
+    }
+
+    let latestDate = new Date(0);
+    for (const doc of requiredDocs) {
+      const d = acceptedDocsMap.get(doc)!;
+      if (d.getTime() > latestDate.getTime()) {
+        latestDate = d;
+      }
+    }
+
+    return {
+      isFormalized: true,
+      formalizedAt: latestDate,
+      acceptedDocuments: Array.from(acceptedDocsMap.keys()),
     };
   }
 
