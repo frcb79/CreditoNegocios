@@ -104,6 +104,8 @@
 | FIN-10 | Catálogo inicial revisado antes de importar valores financieros definitivos; no inventar tasas. | Acordado |
 | FIN-11 | Importadores deben validar y aislar ofertas; no confundir vacío con cero. | Verificar |
 | FIN-12 | No mostrar catálogo administrativo de financieras ni márgenes a Broker/Master. | Acordado |
+| FIN-13 | **P0 revisión RBAC y alcance:** en `01580c0`, `GET /api/financial-institutions/:id` exige autenticación pero no verifica explícitamente módulo/alcance de institución-oferta. `GET /api/financial-institutions` permite lectura por ciertos módulos. Confirmar que Broker/Master no puedan consultar catálogo administrativo fuera del contexto de ofertas autorizadas, incluyendo acceso directo por ID. Filtrar datos en respuestas no sustituye autorización. | **Abierto — verificar/corregir antes de Staging; no presumir regresión nueva** |
+| FIN-14 | Verificar filtrado profundo de márgenes/costos internos en `projectFinancialInstitutionByRole`, especialmente rol Admin que recibe copia con exclusión de sobretasas pero puede conservar otros campos. Admin ve margen sólo bajo permiso específico; Master/Broker nunca. | **Abierto — prueba de filtración por rol** |
 
 ## MAT — Matching
 
@@ -202,6 +204,7 @@
 | MIG-02 | Corregir la reconstrucción histórica para usar evidencia verificable de la fecha/evento de originación (snapshots, auditoría, afiliaciones/transiciones fechadas). Si no existe evidencia suficiente, no inferir Master a partir de afiliación actual; marcar casos ambiguos para resolución controlada, **sin equiparar automáticamente desconocido a originación directa** ni reatribuir derechos. | Pendiente — condición de cierre MIG-01 |
 | MIG-03 | Probar migración `0004` en PostgreSQL **aislado**, sobre copia desidentificada con datos representativos: Broker A→B, Master→plataforma, origen directo con NULL, sin historial suficiente, varias solicitudes, pagos/comisiones previas; comparar antes/después crédito por crédito y acreditar idempotencia (segunda ejecución sin cambios). | Pendiente — evidencia SQL y reporte por escenario |
 | MIG-04 | Preservar estado de datos históricos de `commercial_opportunities`, `users`, `tenants` y reglas/triggers de inmutabilidad; no considerar aprobadas migraciones sólo por pruebas estáticas de texto o `IF NOT EXISTS`. Requerir backup/rollback y revisión de DBA/AG antes de autorizar ejecución. | Pendiente — QA de migraciones integral |
+| MIG-05 | **P0 antes de ejecutar `0005_institution_offers_versioning.sql`:** crea versiones y modifica estado de ofertas legacy (publicado/archivado), genera hashes y usa marcador `app_migrations`. Validar en PostgreSQL aislado con copia histórica, estados anteriores, referencias de créditos, versiones, semántica de publicación, idempotencia y rollback. No ejecutar `0005` en Staging/producción sin evidencia y autorización. | **Abierto — QA migración financiera 0005** |
 
 **Origen:** revisión directa del SQL de `0004` en `integration/phase-1a1-base-segura` commit `6c3cca5` (11-oct-2026). El reporte de 1A.4A sólo validó AST/DDL estáticos y MemStorage, **no PostgreSQL real**. Este riesgo continúa aunque se corrigieron `created_at`, mutaciones de tenants/usuarios y reactivación expresa. **No repetir toda la auditoría:** resolver este riesgo de forma focalizada antes de ejecutar la migración en cualquier ruta de promoción a producción.
 
@@ -227,6 +230,8 @@
 6. **1A.3A/1A.3B pruebas**: 1A.3A informó 21 pruebas focalizadas; 1A.3B informó 10 de esa suite. Conciliar cobertura; no inferir regresión sin inspección.
 7. **Bitácora integral** diferible según Plan Maestro v1.1; no incorporar implementaciones divergentes automáticamente.
 8. **P0 de migración histórica (MIG-01–04):** `0004` lee la afiliación *actual* del Broker para retroasignar un Master a créditos y solicitudes *pasadas*. Resolver mediante evidencia histórica y PostgreSQL aislado antes de ejecutar `0004`; no inventar beneficiarios ni confundir NULL directo con dato desconocido.
+
+**Actualización 11-oct-2026, Fase 2A (`01580c0`):** catálogo financiero/plantillas/ofertas versionadas integrado localmente; 190 pruebas reportadas en 14 suites seleccionadas (no equivalen a E2E/PG). Verificar FIN-13/14 y MIG-05 antes de declarar listo el flujo financiero para Staging. La migración `0004` sigue bloqueada por MIG-01.
 
 ## Ciclo de control
 
