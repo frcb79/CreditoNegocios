@@ -331,7 +331,7 @@ export async function executeBrokerNetworkTransition(input: BrokerNetworkTransit
     let targetMaster: any = null;
     let targetMasterTenant: any = null;
     let referralCode = broker.referralCode || null;
-    const reactivate = input.action === "promote_master" ? true : input.reactivate !== false;
+    const reactivate = input.reactivate === true;
 
     if (input.action === "assign_master") {
       if (!input.targetMasterBrokerId) {

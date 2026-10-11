@@ -19,11 +19,11 @@ CREATE TABLE IF NOT EXISTS public.formalization_otp_requests (
   consumed_at TIMESTAMP,
   invalidated BOOLEAN NOT NULL DEFAULT FALSE,
   invalidated_at TIMESTAMP,
-  createdAt TIMESTAMP NOT NULL DEFAULT NOW()
+  created_at TIMESTAMP NOT NULL DEFAULT NOW()
 );
 
 CREATE INDEX IF NOT EXISTS idx_formalization_otp_user_id ON public.formalization_otp_requests(user_id);
-CREATE INDEX IF NOT EXISTS idx_formalization_otp_created_at ON public.formalization_otp_requests(createdAt);
+CREATE INDEX IF NOT EXISTS idx_formalization_otp_created_at ON public.formalization_otp_requests(created_at);
 
 -- 2. Asegurar columnas de snapshots personalizados y dual-hash en evidencias legales (legal_acceptances)
 ALTER TABLE public.legal_acceptances

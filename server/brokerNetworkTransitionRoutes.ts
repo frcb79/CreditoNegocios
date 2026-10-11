@@ -8,13 +8,13 @@ import {
   getBrokerNetworkTransitionHistory,
 } from "./brokerNetworkTransitionService";
 
-const transitionSchema = z
+export const transitionSchema = z
   .object({
     brokerId: z.string().min(1, "Broker requerido"),
     action: z.enum(["assign_master", "assign_platform", "promote_master"]),
     targetMasterBrokerId: z.string().min(1).nullable().optional(),
     reason: z.string().trim().min(3, "El motivo es obligatorio").max(1000),
-    reactivate: z.boolean().optional().default(true),
+    reactivate: z.boolean().optional().default(false),
   })
   .superRefine((data, ctx) => {
     if (data.action === "assign_master" && !data.targetMasterBrokerId) {

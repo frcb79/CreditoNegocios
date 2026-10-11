@@ -101,7 +101,7 @@ export default function BrokerNetworkTransitionDialog({
   const [action, setAction] = useState<TransitionAction>("assign_master");
   const [targetMasterBrokerId, setTargetMasterBrokerId] = useState("");
   const [reason, setReason] = useState("");
-  const [reactivate, setReactivate] = useState(true);
+  const [reactivate, setReactivate] = useState(false);
 
   const contextQuery = useQuery<TransitionContext>({
     queryKey: ["/api/admin/broker-network/transition-context", broker?.id],
@@ -120,7 +120,7 @@ export default function BrokerNetworkTransitionDialog({
     setAction("assign_master");
     setTargetMasterBrokerId("");
     setReason("");
-    setReactivate(true);
+    setReactivate(false);
   }, [open, broker?.id]);
 
   const context = contextQuery.data;
@@ -268,7 +268,7 @@ export default function BrokerNetworkTransitionDialog({
               <span className="font-semibold">{destination}</span>
             </div>
 
-            {needsReactivation && action !== "promote_master" && (
+            {needsReactivation && (
               <label className="flex items-start gap-3 rounded-lg border p-3 cursor-pointer">
                 <Checkbox
                   checked={reactivate}
@@ -277,9 +277,9 @@ export default function BrokerNetworkTransitionDialog({
                   data-testid="checkbox-reactivate-broker"
                 />
                 <div>
-                  <div className="text-sm font-semibold">Reactivar al aplicar el movimiento</div>
+                  <div className="text-sm font-semibold">Reactivar expresamente al aplicar el movimiento</div>
                   <div className="text-xs text-muted-foreground">
-                    Super Admin puede reactivar al broker dentro de la red destino en la misma operación.
+                    El broker se encuentra actualmente inactivo/suspendido. Si no se marca esta casilla, conservará su estado operativo anterior.
                   </div>
                 </div>
               </label>

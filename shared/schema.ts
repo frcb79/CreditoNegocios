@@ -1531,6 +1531,8 @@ export const legalAcceptances = pgTable(
   (table) => [
     index("idx_legal_acceptances_user_id").on(table.userId),
     index("idx_legal_acceptances_document_id").on(table.documentId),
+    index("idx_legal_acceptances_personalized_sha256").on(table.personalizedSha256),
+    index("idx_legal_acceptances_template_sha256").on(table.templateSha256),
   ],
 );
 
