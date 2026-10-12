@@ -19,6 +19,7 @@ describePg("MIG-01 — 0004 no inventa atribución histórica de Masters", () =>
     pool = new pg.Pool({ connectionString: url });
     // Este fixture es destructivo sólo sobre DB local de pruebas aislada y expresamente validada.
     await pool.query(`
+      DROP TABLE IF EXISTS public.origin_attribution_reviews CASCADE;
       DROP VIEW IF EXISTS public.financial_institution_offers CASCADE;
       DROP TABLE IF EXISTS public.institution_product_versions CASCADE;
       DROP TABLE IF EXISTS public.app_migrations CASCADE;
@@ -47,6 +48,7 @@ describePg("MIG-01 — 0004 no inventa atribución histórica de Masters", () =>
       );
       INSERT INTO public.users(id, role, master_broker_id) VALUES
         ('master-actual', 'master_broker', NULL),
+        ('master-historico', 'master_broker', NULL),
         ('broker-historico', 'broker', 'master-actual');
       INSERT INTO public.credits(id, broker_id)
         VALUES ('credito-anterior-al-cambio', 'broker-historico');
@@ -70,20 +72,24 @@ describePg("MIG-01 — 0004 no inventa atribución histórica de Masters", () =>
     expect((await pool.query("SELECT COUNT(*)::int AS n FROM public.credits")).rows[0].n).toBe(1);
   });
 
-  it("ejecuta sólo después de proporcionar atribución explícita preexistente sin tocar datos", async () => {
-    // Simula conciliación anterior, no acredita que una afiliación histórica concreta sea auténtica.
+  it("migra únicamente revisiones documentadas: Master anterior en crédito y canal directo en solicitud", async () => {
+    const preflight = fs.readFileSync(
+      path.resolve(process.cwd(), "migrations/preflight_0004_origin_attribution_reviews.sql"),
+      "utf8"
+    );
+    await pool.query(preflight);
     await pool.query(`
-      ALTER TABLE public.credits ADD COLUMN origin_master_broker_id VARCHAR;
-      ALTER TABLE public.credit_submission_requests ADD COLUMN origin_master_broker_id VARCHAR;
-      UPDATE public.credits SET origin_master_broker_id = NULL;
-      UPDATE public.credit_submission_requests SET origin_master_broker_id = NULL;
+      INSERT INTO public.origin_attribution_reviews
+        (record_type, record_id, channel_type, origin_master_broker_id, evidence_reference, reviewed_by)
+      VALUES
+        ('credits', 'credito-anterior-al-cambio', 'master_network', 'master-historico', 'fixture-contrato-fechado', 'ci-reviewer'),
+        ('credit_submission_requests', 'solicitud-anterior-al-cambio', 'direct', NULL, 'fixture-directo-fechado', 'ci-reviewer');
     `);
     await pool.query(migration);
-    expect((await pool.query("SELECT origin_master_broker_id FROM public.credits WHERE id='credito-anterior-al-cambio'")).rows[0].origin_master_broker_id).toBeNull();
-    // 0004 no debe inferir el Master actual ni cambiar NULL.
-    await pool.query(migration); // idempotencia
-    const rows = await pool.query("SELECT origin_master_broker_id FROM public.credit_submission_requests");
-    expect(rows.rows[0].origin_master_broker_id).toBeNull();
+    expect((await pool.query("SELECT origin_master_broker_id FROM public.credits WHERE id='credito-anterior-al-cambio'")).rows[0].origin_master_broker_id).toBe('master-historico');
+    await pool.query(migration); // idempotencia sin reinterpretar por afiliación actual
+    expect((await pool.query("SELECT origin_master_broker_id FROM public.credit_submission_requests")).rows[0].origin_master_broker_id).toBeNull();
+    expect((await pool.query("SELECT COUNT(*)::int n FROM public.app_migrations WHERE id='0004_origin_attribution_reviewed_v1'")).rows[0].n).toBe(1);
   });
 
   it("prohíbe cambios retroactivos de Master una vez instalado el trigger", async () => {
