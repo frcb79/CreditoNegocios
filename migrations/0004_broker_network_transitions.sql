@@ -1,78 +1,38 @@
--- Bloque: Gobernanza de movimientos Broker / Master Broker
--- Reservamos 0004 porque Bloque 3.1 de actividad utiliza 0003 en su rama paralela.
---
--- IMPORTANTE: NULL en origin_master_broker_id significa legítimamente
--- "originado directo bajo Crédito Negocios". El backfill sólo puede ocurrir
--- cuando la columna se crea por primera vez.
+-- Gobernanza de movimientos Broker / Master Broker (MIG-01).
+-- PROHIBIDO inferir atribución de operaciones históricas desde users.master_broker_id actual.
+-- Este script es aditivo y fail-closed: ante un histórico sin snapshot, aborta.
+-- Para datos legacy el operador debe reconstruir explícitamente la atribución
+-- con evidencia fechada antes de crear origin_master_broker_id; NULL histórico sin
+-- evidencia NO se puede considerar originación directa.
+BEGIN;
 
 DO $$
-DECLARE
-  origin_column_already_existed BOOLEAN;
 BEGIN
-  SELECT EXISTS (
-    SELECT 1
-    FROM information_schema.columns
-    WHERE table_schema = 'public'
-      AND table_name = 'credits'
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = 'public' AND table_name = 'credits'
       AND column_name = 'origin_master_broker_id'
-  ) INTO origin_column_already_existed;
+  ) AND EXISTS (SELECT 1 FROM public.credits LIMIT 1) THEN
+    RAISE EXCEPTION 'MIG-01: credits contiene registros historicos sin atribucion verificada. No se permite inferir Master desde afiliacion actual. Ejecutar conciliacion manual documentada antes de 0004.';
+  END IF;
 
-  ALTER TABLE public.credits
-    ADD COLUMN IF NOT EXISTS origin_master_broker_id VARCHAR;
-
-  IF NOT origin_column_already_existed THEN
-    -- Congelar la afiliación existente únicamente al crear la columna por primera vez.
-    -- Si el broker no tenía Master Broker (o pertenecía directamente a Crédito Negocios),
-    -- se preserva NULL de manera estricta para respetar la originación directa de plataforma.
-    UPDATE public.credits AS c
-    SET origin_master_broker_id = CASE
-      WHEN u.role = 'master_broker' THEN u.id
-      WHEN u.role = 'broker' AND mb.role = 'master_broker' THEN mb.id
-      ELSE NULL
-    END
-    FROM public.users AS u
-    LEFT JOIN public.users AS mb ON mb.id = u.master_broker_id
-    WHERE c.broker_id = u.id
-      AND c.origin_master_broker_id IS NULL;
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = 'public' AND table_name = 'credit_submission_requests'
+      AND column_name = 'origin_master_broker_id'
+  ) AND EXISTS (SELECT 1 FROM public.credit_submission_requests LIMIT 1) THEN
+    RAISE EXCEPTION 'MIG-01: credit_submission_requests contiene historicos sin atribucion verificada. Resolver con evidencia fechada antes de 0004.';
   END IF;
 END
 $$;
 
+ALTER TABLE public.credits
+  ADD COLUMN IF NOT EXISTS origin_master_broker_id VARCHAR;
 CREATE INDEX IF NOT EXISTS credits_origin_master_broker_idx
   ON public.credits (origin_master_broker_id);
 
-DO $$
-DECLARE
-  sub_origin_column_already_existed BOOLEAN;
-BEGIN
-  SELECT EXISTS (
-    SELECT 1
-    FROM information_schema.columns
-    WHERE table_schema = 'public'
-      AND table_name = 'credit_submission_requests'
-      AND column_name = 'origin_master_broker_id'
-  ) INTO sub_origin_column_already_existed;
-
-  ALTER TABLE public.credit_submission_requests
-    ADD COLUMN IF NOT EXISTS origin_master_broker_id VARCHAR;
-
-  IF NOT sub_origin_column_already_existed THEN
-    -- Congelar la afiliación existente únicamente al crear la columna por primera vez.
-    -- Se preserva NULL si no hay Master Broker activo para respetar la originación directa de plataforma.
-    UPDATE public.credit_submission_requests AS submission
-    SET origin_master_broker_id = CASE
-      WHEN broker.role = 'master_broker' THEN broker.id
-      WHEN broker.role = 'broker' AND parent_master.role = 'master_broker' THEN parent_master.id
-      ELSE NULL
-    END
-    FROM public.users AS broker
-    LEFT JOIN public.users AS parent_master ON parent_master.id = broker.master_broker_id
-    WHERE submission.broker_id = broker.id
-      AND submission.origin_master_broker_id IS NULL;
-  END IF;
-END
-$$;
-
+ALTER TABLE public.credit_submission_requests
+  ADD COLUMN IF NOT EXISTS origin_master_broker_id VARCHAR;
 CREATE INDEX IF NOT EXISTS credit_submissions_origin_master_idx
   ON public.credit_submission_requests (origin_master_broker_id);
 
@@ -160,3 +120,5 @@ CREATE TRIGGER trg_submission_origin_master_immutable
 BEFORE UPDATE OF origin_master_broker_id ON public.credit_submission_requests
 FOR EACH ROW
 EXECUTE FUNCTION public.prevent_submission_origin_master_change();
+
+COMMIT;
