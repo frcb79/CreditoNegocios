@@ -691,6 +691,19 @@ describe("AG — QA FINANCIERO CONSOLIDADO | CIERRE FASE 2B", () => {
     });
   });
 
+  describe("FIN-13: catálogo financiero administrativo por ID", () => {
+    it("deniega a Broker el acceso directo por ID y mantiene Super Admin autorizado", async () => {
+      const broker = await createBroker();
+      currentAuthUser = broker;
+      const forbidden = await request(app).get("/api/financial-institutions/id-que-no-existe");
+      expect(forbidden.status).toBe(403);
+
+      currentAuthUser = await createSuperAdmin();
+      const missing = await request(app).get("/api/financial-institutions/id-que-no-existe");
+      expect(missing.status).toBe(404);
+    });
+  });
+
   // =========================================================================
   // 5. CANDADOS DE DESEMBOLSO EN PROPUESTAS Y CRÉDITOS (OPE-10/11/12, COM-21/22/23)
   // =========================================================================
