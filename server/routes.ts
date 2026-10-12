@@ -4214,6 +4214,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
       }
 
+      // OPE-09: generic create cannot impersonate verified disbursement.
+      const claimedProposal = req.body?.finalProposal;
+      const verifiedKeys = ["disbursementStatus", "disbursementConfirmation",
+        "disbursementTranches", "confirmedDisbursedAmount", "disbursementConfirmedAt",
+        "disbursementConfirmedBy"];
+      if (["disbursed", "dispersado", "dispersed", "active", "completed", "defaulted"].includes(req.body?.status) ||
+          (claimedProposal && typeof claimedProposal === "object" &&
+            verifiedKeys.some(key => Object.prototype.hasOwnProperty.call(claimedProposal, key)))) {
+        return res.status(409).json({
+          code: "DISBURSEMENT_CONFIRMATION_REQUIRED",
+          message: "El desembolso sólo puede confirmarse mediante el flujo autorizado de Super Admin.",
+        });
+      }
+
       const creditData = insertCreditSchema.parse({
         ...req.body,
         tenantId: req.tenantContext?.tenant?.id || null,
@@ -4253,6 +4267,27 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       const creditData = insertCreditSchema.partial().parse(req.body);
       const oldCredit = authResult.credit;
+
+      // OPE-09/10: no generic client can forge official disbursement evidence.
+      const incomingProposal = req.body?.finalProposal;
+      const protectedFields = ["disbursementStatus", "disbursementConfirmation",
+        "disbursementTranches", "confirmedDisbursedAmount", "disbursementConfirmedAt",
+        "disbursementConfirmedBy"];
+      if (incomingProposal && typeof incomingProposal === "object" &&
+          protectedFields.some(key => Object.prototype.hasOwnProperty.call(incomingProposal, key))) {
+        return res.status(409).json({
+          code: "DISBURSEMENT_EVIDENCE_WRITE_FORBIDDEN",
+          message: "La evidencia de confirmación no puede modificarse en la edición general del crédito.",
+        });
+      }
+      if (creditData.status &&
+          ["disbursed", "dispersado", "dispersed", "active", "completed", "defaulted"].includes(creditData.status) &&
+          !isCreditDisbursementConfirmed(oldCredit)) {
+        return res.status(409).json({
+          code: "DISBURSEMENT_CONFIRMATION_REQUIRED",
+          message: "Se requiere confirmación oficial de desembolso por Super Admin antes de avanzar el estado.",
+        });
+      }
 
       // REGLA 1 y 2 (COM-07, COM-16, COM-22): Snapshot comercial inmutable
       if (creditData.finalProposal !== undefined) {
