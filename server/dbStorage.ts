@@ -3177,6 +3177,95 @@ export class DbStorage implements IStorage {
   }
 
   /**
+   * OPE-12: winner eligibility, historical attribution, optional credit creation,
+   * target linkage, tranche, commission and audit all commit in one PG transaction.
+   * No Master affiliation is ever inferred from the Broker's CURRENT parent.
+   */
+  async confirmTargetDisbursementAtomic(
+    params: Parameters<NonNullable<IStorage["confirmTargetDisbursementAtomic"]>>[0]
+  ): ReturnType<NonNullable<IStorage["confirmTargetDisbursementAtomic"]>> {
+    return db.transaction(async rawTx => {
+      const tx = rawTx as unknown as typeof db;
+      const [target] = await tx.select().from(creditSubmissionTargets)
+        .where(eq(creditSubmissionTargets.id, params.targetId)).for("update");
+      if (!target || target.requestId !== params.requestId) {
+        throw new Error("DISBURSEMENT_TARGET_NOT_FOUND");
+      }
+      if (!target.isWinner || ["cancelled", "rejected"].includes(target.status)) {
+        throw new Error("DISBURSEMENT_TARGET_NOT_ELIGIBLE");
+      }
+      if (JSON.stringify(target.institutionProposal || {}) !==
+          JSON.stringify(params.expectedTargetProposal || {})) {
+        throw new Error("DISBURSEMENT_TARGET_PROPOSAL_CHANGED");
+      }
+      const [request] = await tx.select().from(creditSubmissionRequests)
+        .where(eq(creditSubmissionRequests.id, target.requestId)).limit(1);
+      if (!request || request.brokerId !== params.expectedBrokerId ||
+          (request.originMasterBrokerId || null) !== params.expectedOriginMasterBrokerId) {
+        throw new Error("DISBURSEMENT_REQUEST_ATTRIBUTION_CHANGED");
+      }
+      let creditId = target.creditId;
+      if (!creditId) {
+        const proposed = params.newCredit;
+        if (!proposed || !proposed.id || proposed.brokerId !== request.brokerId ||
+            (proposed.originMasterBrokerId || null) !== (request.originMasterBrokerId || null) ||
+            proposed.financialInstitutionId !== target.financialInstitutionId ||
+            proposed.linkedSubmissionId !== request.id ||
+            proposed.clientId !== request.clientId ||
+            proposed.amount !== params.expectedAmount ||
+            JSON.stringify(proposed.finalProposal || {}) !==
+              JSON.stringify(params.expectedProposal || {})) {
+          throw new Error("DISBURSEMENT_TARGET_CREDIT_INVALID");
+        }
+        const [created] = await tx.insert(credits).values({
+          ...proposed,
+          id: proposed.id,
+          status: "approved",
+          brokerId: request.brokerId,
+          originMasterBrokerId: request.originMasterBrokerId || null,
+          financialInstitutionId: target.financialInstitutionId,
+          linkedSubmissionId: request.id,
+          clientId: request.clientId,
+        }).returning();
+        creditId = created.id;
+      } else {
+        const [existing] = await tx.select().from(credits)
+          .where(eq(credits.id, creditId)).limit(1);
+        if (!existing || existing.brokerId !== request.brokerId ||
+            existing.linkedSubmissionId !== request.id ||
+            existing.financialInstitutionId !== target.financialInstitutionId ||
+            (existing.originMasterBrokerId || null) !== (request.originMasterBrokerId || null)) {
+          throw new Error("DISBURSEMENT_TARGET_CREDIT_LINEAGE_MISMATCH");
+        }
+      }
+
+      const result = await this.confirmCreditDisbursementInTx(tx, {
+        creditId,
+        expectedProposal: params.expectedProposal,
+        expectedAmount: params.expectedAmount,
+        confirmedAmount: params.confirmedAmount,
+        dispersalIndex: params.dispersalIndex,
+        commission: { ...params.commission, creditId },
+        performedBy: params.performedBy,
+        actorEmail: params.actorEmail,
+        notes: params.notes,
+        idempotencyKey: params.idempotencyKey,
+      });
+
+      const [updatedTarget] = await tx.update(creditSubmissionTargets)
+        .set({
+          creditId,
+          status: "dispersed",
+          dispersedAt: target.dispersedAt || new Date(),
+          updatedAt: new Date(),
+        })
+        .where(eq(creditSubmissionTargets.id, target.id)).returning();
+      if (!updatedTarget) throw new Error("DISBURSEMENT_TARGET_UPDATE_FAILED");
+      return { ...result, target: updatedTarget };
+    });
+  }
+
+  /**
    * Record a verified manual payout atomically in PostgreSQL.
    * Row locking serializes two operators on one commission; reference-scoped
    * advisory locks prevent two commissions using the same SPEI reference.
