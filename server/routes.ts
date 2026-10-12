@@ -811,6 +811,12 @@ function projectFinancialInstitutionByRole(institution: any, userRole: string, m
   // Admin tiene acceso administrativo pero NUNCA a sobretasas (B3.1: exclusivas de super_admin)
   if (userRole === 'admin') {
     const adminCopy = { ...institution };
+    // El rol Admin estándar no hereda acceso a margenes internos/sobretasas.
+    delete adminCopy.commissionRate;
+    delete adminCopy.openingCommissionRate;
+    delete adminCopy.platformMargin;
+    delete adminCopy.appShare;
+    delete adminCopy.platformCommissionRate;
     delete adminCopy.overrateCommissionRate;
     delete adminCopy.overRate;
     delete adminCopy.sobretasa;
@@ -820,6 +826,11 @@ function projectFinancialInstitutionByRole(institution: any, userRole: string, m
       if (sanitized.masterBroker) delete sanitized.masterBroker.sobretasa;
       if (sanitized.broker) delete sanitized.broker.sobretasa;
       if (sanitized.superAdmin) delete sanitized.superAdmin.sobretasa;
+      delete sanitized.financiera;
+      delete sanitized.superAdmin;
+      delete sanitized.platform;
+      delete sanitized.app;
+      delete sanitized.internal;
       adminCopy.commissionRates = sanitized;
     }
     return adminCopy;
