@@ -4682,11 +4682,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Get single financial institution by ID
-  app.get('/api/financial-institutions/:id', isAuthenticated, async (req: any, res) => {
+  app.get('/api/financial-institutions/:id', isAuthenticated, requireModuleAndAction('financieras', 'view'), async (req: any, res) => {
     try {
       const { id } = req.params;
       const userId = req.user?.claims?.sub || req.user?.id;
       const user = await storage.getUser(userId);
+      // Este endpoint es del catálogo administrativo; los Brokers consultan productos/ofertas autorizadas.
+      if (!user || (user.role !== 'super_admin' && user.role !== 'admin')) {
+        return res.status(403).json({ message: "Catálogo financiero administrativo no autorizado." });
+      }
       const institution: any = await storage.getFinancialInstitution(id);
       
       if (!institution) {
