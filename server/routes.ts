@@ -71,6 +71,11 @@ import {
   validateOfferVersionParameters,
 } from "./offerVersionService";
 import {
+  evaluateCatalogCompatibility,
+  isVersionEligibleForMatching,
+  type OfferVersionInput,
+} from "./matching/compatibilityEvaluator";
+import {
   MissingCommissionRateError,
   MissingOfferVersionError,
   UnconfirmedDispersalAmountError,
@@ -4633,6 +4638,108 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.status(500).json({ message: "Failed to fetch client credits" });
     }
   });
+
+  // Matching M2 — consultas read-only para créditos y solicitudes independientes.
+  // Se usan exclusivamente versiones PUBLICADAS y vigentes. Sin decisiones automáticas.
+  app.get(
+    ['/api/credits/:id/matching', '/api/credit-submissions/:id/matching'],
+    isAuthenticated, requireModuleAndAction('creditos', 'view'),
+    async (req: any, res) => {
+      try {
+        const userId = req.user?.claims?.sub || req.user?.id;
+        const user = await storage.getUser(userId);
+        if (!user) return res.status(403).json({ message: 'Usuario no autorizado' });
+
+        const isSubmission = req.path.startsWith('/api/credit-submissions/');
+        let applicationRecord: any;
+        if (!isSubmission) {
+          const access = await authorizeCreditAccess(userId, user.role, req.params.id, req.tenantContext);
+          if (!access.authorized || !access.credit) {
+            return res.status(access.reason === 'Credit not found' ? 404 : 403)
+              .json({ message: 'Sin acceso al crédito solicitado' });
+          }
+          applicationRecord = access.credit;
+        } else {
+          const submission = await storage.getCreditSubmissionRequest(req.params.id);
+          if (!submission) return res.status(404).json({ message: 'Solicitud no encontrada' });
+
+          // No bastan el módulo o el identificador: se necesita propiedad comercial y tenant.
+          const tenantId = req.tenantContext?.tenant?.id;
+          const owner = submission.brokerId === userId;
+          const networkMaster = user.role === 'master_broker' &&
+            submission.originMasterBrokerId === userId && tenantId &&
+            submission.tenantId === tenantId;
+          const scopedAdmin = user.role === 'admin' && tenantId &&
+            submission.tenantId === tenantId;
+          if (user.role !== 'super_admin' && !owner && !networkMaster && !scopedAdmin) {
+            return res.status(403).json({ message: 'Sin acceso a esta solicitud' });
+          }
+          applicationRecord = {
+            ...submission,
+            // Las solicitudes independientes aún no tienen todos los campos de credits:
+            // sólo normalizar lo capturado, nunca inventar plazo ni evaluación.
+            amount: submission.requestedAmount,
+            term: (submission as any).term ?? null,
+          };
+        }
+
+        const client = await storage.getClient(applicationRecord.clientId);
+        if (!client) return res.status(404).json({ message: 'Expediente no encontrado' });
+        if (applicationRecord.tenantId && client.tenantId &&
+            String(applicationRecord.tenantId) !== String(client.tenantId)) {
+          return res.status(403).json({ message: 'Expediente fuera del tenant' });
+        }
+
+        const institutions = await storage.getFinancialInstitutions();
+        const active = new Map(institutions.filter(i => i.isActive !== false).map(i => [i.id, i]));
+        const offers: (OfferVersionInput & { institution?: any })[] = [];
+
+        for (const product of await storage.getInstitutionProducts()) {
+          const institution = active.get(product.institutionId);
+          if (!institution || product.isActive === false || product.status === 'archived') continue;
+          for (const version of await storage.getInstitutionProductVersions(product.id)) {
+            if (isVersionEligibleForMatching(product, version, institution).eligible) {
+              offers.push({ product, version, institution });
+            }
+          }
+        }
+
+        const result = evaluateCatalogCompatibility(
+          { credit: applicationRecord, client }, offers, { filterNonEligible: true }
+        );
+        // Respuesta de lista blanca. No exponer comisiones, márgenes, versiones draft
+        // ni inventario interno de ofertas excluidas.
+        const sanitize = (item: any) => ({
+          offerId: item.offerId,
+          offerName: item.offerName,
+          institutionId: item.institutionId,
+          institutionName: item.institutionName,
+          versionNumber: item.versionNumber,
+          status: item.status,
+          criteria: item.criteria,
+          reasons: item.reasons,
+          summary: item.summary,
+        });
+        return res.json({
+          requestId: req.params.id,
+          requestType: isSubmission ? 'credit_submission_request' : 'credit',
+          clientId: client.id,
+          summary: {
+            totalEvaluated: result.all.length,
+            compatibleCount: result.compatible.length,
+            insufficientDataCount: result.insufficientData.length,
+            notCompatibleCount: result.notCompatible.length,
+          },
+          compatible: result.compatible.map(sanitize),
+          insufficientData: result.insufficientData.map(sanitize),
+          notCompatible: result.notCompatible.map(sanitize),
+        });
+      } catch (error) {
+        console.error('[Matching] Error de evaluación:', error);
+        return res.status(500).json({ message: 'No fue posible evaluar las ofertas' });
+      }
+    }
+  );
 
   // Re-gestion (expiring credits for renewal)
   app.get('/api/re-gestion', isAuthenticated, requireModuleAndAction('creditos', 'view'), async (req: any, res) => {
