@@ -5557,12 +5557,32 @@ function maskCLABE(clabe?: string | null): string | null {
     }
   });
 
-  // Get commission audit logs
+  // Auditoría sólo por comisión autorizada; detalles bancarios exclusivos de Super Admin.
   app.get('/api/commissions/:id/audit-logs', isAuthenticated, requireModuleAndAction('comisiones', 'view'), async (req: any, res) => {
     try {
       const { id } = req.params;
+      const userId = req.user.claims.sub;
+      const user = await storage.getUser(userId);
+      const commission = await storage.getCommission(id);
+      if (!commission) return res.status(404).json({ message: "Comisión no encontrada." });
+
+      const credit = commission.creditId ? await storage.getCredit(commission.creditId) : null;
+      const historicalMasterId = commission.masterBrokerId || credit?.originMasterBrokerId || null;
+      const isPlatformAdmin = user?.role === 'super_admin' || user?.role === 'admin';
+      if (!isPlatformAdmin && commission.brokerId !== userId && historicalMasterId !== userId) {
+        return res.status(403).json({ message: "No autorizado para consultar esta comisión." });
+      }
+
       const logs = await storage.getCommissionAuditLogs(id);
-      res.json(logs);
+      if (user?.role === 'super_admin') return res.json(logs);
+      return res.json(logs.map((entry: any) => ({
+        id: entry.id,
+        commissionId: entry.commissionId,
+        action: entry.action,
+        previousStatus: entry.previousStatus,
+        newStatus: entry.newStatus,
+        createdAt: entry.createdAt,
+      })));
     } catch (error) {
       console.error("Error fetching commission audit logs:", error);
       res.status(500).json({ message: "Error al consultar la bitácora de auditoría" });
@@ -6985,29 +7005,32 @@ function maskCLABE(clabe?: string | null): string | null {
     }
   });
 
-  // Consulta de estatus de validación de una comisión
-  app.get('/api/commissions/:id/payout-validation', isAuthenticated, async (req: any, res) => {
+  // Validación por comisión: sólo Super Admin ve detalles bancarios y documentación sensible.
+  app.get('/api/commissions/:id/payout-validation', isAuthenticated, requireModuleAndAction('comisiones', 'view'), async (req: any, res) => {
     try {
       const { id } = req.params;
       const userId = req.user.claims.sub;
       const user = await storage.getUser(userId);
       const commission = await storage.getCommission(id);
-      if (!commission) {
-        return res.status(404).json({ message: "Comisión no encontrada." });
-      }
+      if (!commission) return res.status(404).json({ message: "Comisión no encontrada." });
 
-      const isSuperAdmin = user?.role === 'super_admin';
-      const isAdmin = user?.role === 'admin' || isSuperAdmin;
-      if (!isAdmin) {
-        const isBroker = commission.brokerId === userId;
-        const isMaster = commission.masterBrokerId === userId;
-        if (!isBroker && !isMaster) {
-          return res.status(403).json({ message: "No tienes permiso para consultar esta comisión." });
-        }
+      const credit = commission.creditId ? await storage.getCredit(commission.creditId) : null;
+      const historicalMasterId = commission.masterBrokerId || credit?.originMasterBrokerId || null;
+      const isPlatformAdmin = user?.role === 'super_admin' || user?.role === 'admin';
+      if (!isPlatformAdmin && commission.brokerId !== userId && historicalMasterId !== userId) {
+        return res.status(403).json({ message: "No tienes permiso para consultar esta comisión." });
       }
 
       const result = await validateCommissionPayoutPrerequisites(commission, storage);
-      return res.json(result);
+      if (user?.role === 'super_admin') return res.json(result);
+      // No revelar CLABE, cuenta, nombre de titular ni revisión documental de terceros.
+      return res.json({
+        canPayout: result.canPayout,
+        documentationStatus: result.canPayout ? 'ready' : 'pending',
+        message: result.canPayout
+          ? 'El beneficiario de Crédito Negocios cumple los requisitos de liquidación.'
+          : 'La validación documental o bancaria del beneficiario está pendiente.',
+      });
     } catch (error) {
       console.error("Error validating commission payout prerequisites:", error);
       res.status(500).json({ message: "Error al validar los requisitos de la comisión." });
