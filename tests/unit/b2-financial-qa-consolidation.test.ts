@@ -691,6 +691,43 @@ describe("AG — QA FINANCIERO CONSOLIDADO | CIERRE FASE 2B", () => {
     });
   });
 
+  describe("MAT-14/15: Matching en credits y credit_submission_requests", () => {
+    it("permite consultar una solicitud independiente sin crédito y no aprueba automáticamente", async () => {
+      const broker = await createBroker();
+      const client = await storage.createClient({
+        firstName: "Cliente", lastName: "Matching",
+        email: `matching-${randomUUID()}@test.local`, phone: "5512345678", brokerId: broker.id,
+      } as any);
+      const submission = await storage.createCreditSubmissionRequest({
+        clientId: client.id, brokerId: broker.id, requestedAmount: "150000.00",
+        status: "pending_admin", purpose: "Capital de trabajo",
+      } as any);
+      currentAuthUser = broker;
+      const result = await request(app).get(`/api/credit-submissions/${submission.id}/matching`);
+      expect(result.status).toBe(200);
+      expect(result.body.requestType).toBe("credit_submission_request");
+      expect(result.body.summary).toHaveProperty("totalEvaluated");
+      expect(result.body).not.toHaveProperty("commissions");
+      expect((await storage.getCreditSubmissionRequest(submission.id))?.status).toBe("pending_admin");
+    });
+
+    it("deniega por ID el matching de solicitud a otro Broker", async () => {
+      const owner = await createBroker();
+      const outsider = await createBroker();
+      const client = await storage.createClient({
+        firstName: "Cliente", lastName: "Ajeno",
+        email: `matching-${randomUUID()}@test.local`, phone: "5512345678", brokerId: owner.id,
+      } as any);
+      const submission = await storage.createCreditSubmissionRequest({
+        clientId: client.id, brokerId: owner.id, requestedAmount: "250000.00",
+        status: "pending_admin",
+      } as any);
+      currentAuthUser = outsider;
+      const forbidden = await request(app).get(`/api/credit-submissions/${submission.id}/matching`);
+      expect(forbidden.status).toBe(403);
+    });
+  });
+
   describe("FIN-13: catálogo financiero administrativo por ID", () => {
     it("deniega a Broker el acceso directo por ID y mantiene Super Admin autorizado", async () => {
       const broker = await createBroker();
