@@ -3034,6 +3034,16 @@ export class DbStorage implements IStorage {
     notes?: string | null;
     idempotencyKey?: string | null;
   }): Promise<{ credit: Credit; commission: Commission; alreadyConfirmed: boolean }> {
+    return db.transaction(tx => this.confirmCreditDisbursementInTx(
+      tx as unknown as typeof db, params
+    ));
+  }
+
+  private async confirmCreditDisbursementInTx(
+    tx: typeof db,
+    params: Parameters<NonNullable<IStorage["confirmCreditDisbursementAtomic"]>>[0]
+  ): Promise<{ credit: Credit; commission: Commission; alreadyConfirmed: boolean }> {
+
     const amount = Number(params.confirmedAmount);
     const index = Number(params.dispersalIndex);
     const key = params.idempotencyKey?.trim() || null;
@@ -3044,7 +3054,6 @@ export class DbStorage implements IStorage {
       throw new Error("DISBURSEMENT_INVALID_INPUT");
     }
 
-    return db.transaction(async tx => {
       const [locked] = await tx.select().from(credits)
         .where(eq(credits.id, params.creditId)).for("update");
       if (!locked) throw new Error("DISBURSEMENT_CREDIT_NOT_FOUND");
@@ -3165,7 +3174,6 @@ export class DbStorage implements IStorage {
         },
       ]);
       return { credit: updatedCredit, commission: createdCommission, alreadyConfirmed: false };
-    });
   }
 
   /**
