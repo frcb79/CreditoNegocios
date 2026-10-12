@@ -130,10 +130,10 @@ describe("AG — QA FINANCIERO CONSOLIDADO | CIERRE FASE 2B", () => {
   }
 
   // =========================================================================
-  // 1. DISPERSIONES MULTI-BENEFICIARIO Y AUDITORÍA DE PAGOS (PAG-01 a PAG-11)
+  // 1. DISPERSIONES Y LIQUIDACIÓN SEGÚN CANAL COMERCIAL (COM-03/06, PAG-08/12/13/14)
   // =========================================================================
-  describe("1. Dispersiones Multi-Beneficiario y Liquidación Independiente (PAG-01 a PAG-11)", () => {
-    it("Calcula shares independientes para Broker y Master Broker en auditCommissionPayout sin mezclar cuentas", () => {
+  describe("1. Dispersiones y Liquidación según Canal Comercial (COM-03/06, PAG-08/12/13/14)", () => {
+    it("Calcula shares independientes para Broker y Master Broker en auditCommissionPayout y registra networkObligation", () => {
       const audit = auditCommissionPayout({
         id: "comm-split-1",
         amount: "50000.00",
@@ -148,15 +148,16 @@ describe("AG — QA FINANCIERO CONSOLIDADO | CIERRE FASE 2B", () => {
       expect(audit.beneficiaryShares).toBeDefined();
       expect(audit.beneficiaryShares?.broker?.amount).toBe(30000);
       expect(audit.beneficiaryShares?.masterBroker?.amount).toBe(10000);
+      expect(audit.networkObligation).toBeDefined();
+      expect(audit.networkObligation?.status).toBe("pending_master_payout");
+      expect(audit.networkObligation?.brokerShare).toBe(30000);
     });
 
-    it("POST /api/commissions/:id/pay dispersa a cada beneficiario a su CLABE autorizada y registra beneficiaryPayouts", async () => {
+    it("POST /api/commissions/:id/pay bloquea desembolso real (PAG-12/13: STP es simulador y pagos reales deshabilitados)", async () => {
       const admin = await createSuperAdmin();
       const master = await createMasterBroker("012180001111111111");
       const broker = await createBroker(master.id, "014180002222222222");
 
-      // Provisionar documentación aprobada para ambos beneficiarios
-      await provisionAllApprovedDocs(broker.id, admin.id);
       await provisionAllApprovedDocs(master.id, admin.id);
 
       const client = await storage.createClient({
@@ -192,55 +193,58 @@ describe("AG — QA FINANCIERO CONSOLIDADO | CIERRE FASE 2B", () => {
       } as any);
 
       currentAuthUser = admin;
-      const payRes = await request(app)
+
+      // 1. Llamada a /pay sin simulate: true debe ser bloqueada (PAG-12/13)
+      const payRealRes = await request(app)
         .post(`/api/commissions/${commission.id}/pay`)
-        .send({
-          accountNumber: master.clabe,
-        });
+        .send();
 
-      expect(payRes.status).toBe(200);
-      expect(payRes.body.beneficiaryPayouts).toBeDefined();
-      expect(payRes.body.beneficiaryPayouts.broker.amount).toBe(15000);
-      expect(payRes.body.beneficiaryPayouts.broker.clabe).toBe("014180002222222222");
-      expect(payRes.body.beneficiaryPayouts.masterBroker.amount).toBe(5000);
-      expect(payRes.body.beneficiaryPayouts.masterBroker.clabe).toBe("012180001111111111");
+      expect(payRealRes.status).toBe(400);
+      expect(payRealRes.body.code).toBe("SIMULATED_STP_CANNOT_DISBURSE");
 
-      // Verificar que ambos beneficiarios recibieron notificación individual
-      const brokerNotifs = await storage.getNotifications(broker.id);
-      expect(brokerNotifs.some((n: any) => n.type === "commission_paid" && n.message.includes("$15,000.00"))).toBe(true);
+      // 2. Llamada a /pay con simulate: true ejecuta prueba hacia el Master sin marcar pagado
+      const paySimRes = await request(app)
+        .post(`/api/commissions/${commission.id}/pay`)
+        .send({ simulate: true });
 
-      const masterNotifs = await storage.getNotifications(master.id);
-      expect(masterNotifs.some((n: any) => n.type === "commission_paid" && n.message.includes("$5,000.00"))).toBe(true);
+      expect(paySimRes.status).toBe(200);
+      expect(paySimRes.body.simulated).toBe(true);
+      expect(paySimRes.body.paid).toBe(false);
+      expect(paySimRes.body.payoutAmount).toBe(20000);
+      expect(paySimRes.body.payoutBeneficiary.userId).toBe(master.id);
+
+      // Estado permanece 'approved' (no se marca paid)
+      const commCheck = await storage.getCommission(commission.id);
+      expect(commCheck?.status).toBe("approved");
     });
 
-    it("POST /api/commissions/:id/pay bloquea la dispersión si algún beneficiario no tiene CLABE válida de 18 dígitos", async () => {
+    it("POST /api/commissions/:id/pay bloquea si el beneficiario legítimo que recibe de CN no tiene CLABE válida de 18 dígitos", async () => {
       const admin = await createSuperAdmin();
-      const master = await createMasterBroker("012180001111111111");
-      const brokerNoClabe = await createBroker(master.id, ""); // Sin CLABE
+      const masterNoClabe = await createMasterBroker(""); // Master sin CLABE
+      const broker = await createBroker(masterNoClabe.id, "014180002222222222");
 
-      await provisionAllApprovedDocs(brokerNoClabe.id, admin.id);
-      await provisionAllApprovedDocs(master.id, admin.id);
+      await provisionAllApprovedDocs(masterNoClabe.id, admin.id);
 
       const client = await storage.createClient({
         firstName: "Empresa",
         lastName: "Cliente",
         email: `client-${randomUUID()}@corp.test`,
         phone: "5512345678",
-        brokerId: brokerNoClabe.id,
+        brokerId: broker.id,
       } as any);
 
       const credit = await storage.createCredit({
         clientId: client.id,
-        brokerId: brokerNoClabe.id,
-        originMasterBrokerId: master.id,
+        brokerId: broker.id,
+        originMasterBrokerId: masterNoClabe.id,
         amount: "500000.00",
         status: "approved",
       } as any);
 
       const commission = await storage.createCommission({
         creditId: credit.id,
-        brokerId: brokerNoClabe.id,
-        masterBrokerId: master.id,
+        brokerId: broker.id,
+        masterBrokerId: masterNoClabe.id,
         amount: "500000.00",
         totalCommission: "25000.00",
         brokerShare: "15000.00",
@@ -255,21 +259,18 @@ describe("AG — QA FINANCIERO CONSOLIDADO | CIERRE FASE 2B", () => {
       currentAuthUser = admin;
       const res = await request(app)
         .post(`/api/commissions/${commission.id}/pay`)
-        .send({
-          accountNumber: master.clabe,
-        });
+        .send({ simulate: true });
 
       expect(res.status).toBe(400);
       expect(res.body.message).toContain("CLABE");
     });
 
-    it("POST /api/commissions/:id/mark-paid registra pagos manuales independientes por beneficiario y notifica por separado", async () => {
+    it("POST /api/commissions/:id/mark-paid liquida exclusivamente al Master por operaciones de red y registra obligación Master->Broker (COM-03/06, PAG-08/13/14)", async () => {
       const admin = await createSuperAdmin();
-      const master = await createMasterBroker();
-      const broker = await createBroker(master.id);
+      const master = await createMasterBroker("012180001111111111");
+      const broker = await createBroker(master.id, "014180002222222222");
 
-      // Provisionar documentación aprobada
-      await provisionAllApprovedDocs(broker.id, admin.id);
+      // Provisionar documentación aprobada del Master únicamente (el Broker subordinado no la requiere para liquidar al Master)
       await provisionAllApprovedDocs(master.id, admin.id);
 
       const client = await storage.createClient({
@@ -308,23 +309,153 @@ describe("AG — QA FINANCIERO CONSOLIDADO | CIERRE FASE 2B", () => {
       const res = await request(app)
         .post(`/api/commissions/${commission.id}/mark-paid`)
         .send({
-          notes: "Pago directo por tesorería corporativa",
-          reference: "TRANSF-MANUAL-778899",
+          notes: "Liquidación consolidada al Master Broker por transferencia SPEI",
+          reference: "SPEI-BBVA-20261012-778899",
         });
 
       expect(res.status).toBe(200);
       expect(res.body.commission.status).toBe("paid");
 
       const providerResp = res.body.commission.providerResponse;
-      expect(providerResp?.beneficiaryPayouts).toBeDefined();
-      expect(providerResp.beneficiaryPayouts.broker.amount).toBe(35000);
-      expect(providerResp.beneficiaryPayouts.masterBroker.amount).toBe(10000);
+      expect(providerResp?.payoutBeneficiary).toBeDefined();
+      expect(providerResp.payoutBeneficiary.userId).toBe(master.id);
+      expect(providerResp.payoutBeneficiary.role).toBe("master_broker");
+      expect(providerResp.payoutBeneficiary.amount).toBe(45000);
+      expect(providerResp.payoutBeneficiary.clabe).toBe(master.clabe);
+      expect(providerResp.payoutBeneficiary.reference).toBe("SPEI-BBVA-20261012-778899");
 
-      const brokerNotifs = await storage.getNotifications(broker.id);
-      expect(brokerNotifs.some((n: any) => n.type === "commission_paid" && n.message.includes("$35,000.00"))).toBe(true);
+      // Registro de obligación Master -> Broker sin marcarla pagada por CN
+      expect(providerResp?.networkObligation).toBeDefined();
+      expect(providerResp.networkObligation.brokerId).toBe(broker.id);
+      expect(providerResp.networkObligation.brokerShare).toBe(35000);
+      expect(providerResp.networkObligation.masterBrokerId).toBe(master.id);
+      expect(providerResp.networkObligation.status).toBe("pending_master_payout");
 
+      // Notificación al Master exclusivamente
       const masterNotifs = await storage.getNotifications(master.id);
-      expect(masterNotifs.some((n: any) => n.type === "commission_paid" && n.message.includes("$10,000.00"))).toBe(true);
+      expect(masterNotifs.some((n: any) => n.type === "commission_paid" && n.message.includes("$45,000.00"))).toBe(true);
+
+      // Broker NO recibe notificación de pago directo de CN
+      const brokerNotifs = await storage.getNotifications(broker.id);
+      expect(brokerNotifs.length).toBe(0);
+    });
+
+    it("POST /api/commissions/:id/mark-paid liquida directamente al Broker en canal Broker Directo (sin Master)", async () => {
+      const admin = await createSuperAdmin();
+      const brokerDirecto = await createBroker(undefined, "014180003333333333");
+
+      await provisionAllApprovedDocs(brokerDirecto.id, admin.id);
+
+      const client = await storage.createClient({
+        firstName: "Empresa",
+        lastName: "Directa",
+        email: `client-dir-${randomUUID()}@corp.test`,
+        phone: "5512345678",
+        brokerId: brokerDirecto.id,
+      } as any);
+
+      const credit = await storage.createCredit({
+        clientId: client.id,
+        brokerId: brokerDirecto.id,
+        amount: "500000.00",
+        status: "approved",
+      } as any);
+
+      const commission = await storage.createCommission({
+        creditId: credit.id,
+        brokerId: brokerDirecto.id,
+        amount: "500000.00",
+        totalCommission: "25000.00",
+        brokerShare: "20000.00",
+        masterBrokerShare: "0.00",
+        appShare: "5000.00",
+        frozenAmount: "20000.00",
+        status: "approved",
+        approvedBy: admin.id,
+        approvedAt: new Date(),
+        commissionType: "apertura",
+      } as any);
+
+      currentAuthUser = admin;
+      const res = await request(app)
+        .post(`/api/commissions/${commission.id}/mark-paid`)
+        .send({
+          notes: "Pago directo a Broker independiente",
+          reference: "SPEI-SANTANDER-DIRECTO-001",
+        });
+
+      expect(res.status).toBe(200);
+      expect(res.body.commission.status).toBe("paid");
+
+      const providerResp = res.body.commission.providerResponse;
+      expect(providerResp?.payoutBeneficiary).toBeDefined();
+      expect(providerResp.payoutBeneficiary.userId).toBe(brokerDirecto.id);
+      expect(providerResp.payoutBeneficiary.role).toBe("broker");
+      expect(providerResp.payoutBeneficiary.amount).toBe(20000);
+      expect(providerResp.payoutBeneficiary.clabe).toBe(brokerDirecto.clabe);
+      expect(providerResp?.networkObligation).toBeUndefined();
+
+      const brokerNotifs = await storage.getNotifications(brokerDirecto.id);
+      expect(brokerNotifs.some((n: any) => n.type === "commission_paid" && n.message.includes("$20,000.00"))).toBe(true);
+    });
+
+    it("POST /api/commissions/:id/mark-paid liquida directamente al Master en canal Master Directo", async () => {
+      const admin = await createSuperAdmin();
+      const masterDirecto = await createMasterBroker("012180004444444444");
+
+      await provisionAllApprovedDocs(masterDirecto.id, admin.id);
+
+      const client = await storage.createClient({
+        firstName: "Empresa",
+        lastName: "MasterDirect",
+        email: `client-md-${randomUUID()}@corp.test`,
+        phone: "5512345678",
+        brokerId: masterDirecto.id,
+      } as any);
+
+      const credit = await storage.createCredit({
+        clientId: client.id,
+        brokerId: masterDirecto.id,
+        originMasterBrokerId: masterDirecto.id,
+        amount: "600000.00",
+        status: "approved",
+      } as any);
+
+      const commission = await storage.createCommission({
+        creditId: credit.id,
+        brokerId: masterDirecto.id,
+        masterBrokerId: masterDirecto.id,
+        amount: "600000.00",
+        totalCommission: "30000.00",
+        brokerShare: "0.00",
+        masterBrokerShare: "25000.00",
+        appShare: "5000.00",
+        frozenAmount: "25000.00",
+        status: "approved",
+        approvedBy: admin.id,
+        approvedAt: new Date(),
+        commissionType: "apertura",
+      } as any);
+
+      currentAuthUser = admin;
+      const res = await request(app)
+        .post(`/api/commissions/${commission.id}/mark-paid`)
+        .send({
+          notes: "Pago directo a Master por originación propia",
+          reference: "SPEI-BBVA-MD-002",
+        });
+
+      expect(res.status).toBe(200);
+      expect(res.body.commission.status).toBe("paid");
+
+      const providerResp = res.body.commission.providerResponse;
+      expect(providerResp?.payoutBeneficiary).toBeDefined();
+      expect(providerResp.payoutBeneficiary.userId).toBe(masterDirecto.id);
+      expect(providerResp.payoutBeneficiary.amount).toBe(25000);
+      expect(providerResp?.networkObligation).toBeUndefined();
+
+      const masterNotifs = await storage.getNotifications(masterDirecto.id);
+      expect(masterNotifs.some((n: any) => n.type === "commission_paid" && n.message.includes("$25,000.00"))).toBe(true);
     });
   });
 

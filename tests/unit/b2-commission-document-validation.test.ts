@@ -332,7 +332,7 @@ describe("FASE 2B.2C: Validación Documental Obligatoria para Pago de Comisiones
       expect(comm?.status).toBe("approved");
     });
 
-    it("AUTORIZA /pay cuando Broker Directo cuenta con INE, CSF, Estado de Cuenta y datos bancarios aprobados", async () => {
+    it("AUTORIZA /pay con simulate: true cuando Broker Directo cuenta con INE, CSF, Estado de Cuenta y datos bancarios aprobados (sin marcarlo pagado)", async () => {
       currentAuthUser = superAdmin;
 
       await provisionApprovedDocument(brokerUser.id, "ine", superAdmin.id);
@@ -341,19 +341,21 @@ describe("FASE 2B.2C: Validación Documental Obligatoria para Pago de Comisiones
 
       const res = await request(app)
         .post(`/api/commissions/${commission.id}/pay`)
-        .send();
+        .send({ simulate: true });
 
       expect(res.status).toBe(200);
+      expect(res.body.simulated).toBe(true);
+      expect(res.body.paid).toBe(false);
       expect(res.body.transactionId).toBeDefined();
       expect(res.body.payoutAmount).toBe(30000);
 
       const comm = await storage.getCommission(commission.id);
-      expect(comm?.status).toBe("paid");
+      expect(comm?.status).toBe("approved"); // Simulación nunca transiciona a 'paid' (PAG-12/13)
     });
   });
 
   // =========================================================================
-  // 3. REGLA 4: CASOS MASTER DIRECTO Y BROKER DE RED
+  // 3. REGLA 4: CASOS MASTER DIRECTO Y BROKER DE RED (COM-03/06, PAG-08/13/14)
   // =========================================================================
   describe("3. Liquidación a Master Directo y Broker de Red", () => {
     let superAdmin: any;
@@ -432,7 +434,7 @@ describe("FASE 2B.2C: Validación Documental Obligatoria para Pago de Comisiones
       // Sin documentos -> bloquea
       const resBlock = await request(app)
         .post(`/api/commissions/${commission.id}/pay`)
-        .send();
+        .send({ simulate: true });
       expect(resBlock.status).toBe(400);
 
       // Provisionar documentación completa aprobada al Master
@@ -442,12 +444,12 @@ describe("FASE 2B.2C: Validación Documental Obligatoria para Pago de Comisiones
 
       const resSuccess = await request(app)
         .post(`/api/commissions/${commission.id}/pay`)
-        .send();
+        .send({ simulate: true });
       expect(resSuccess.status).toBe(200);
       expect(resSuccess.body.payoutAmount).toBe(20000);
     });
 
-    it("Broker de Red: bloquea si el Master o el Broker de red tienen documentación pendiente", async () => {
+    it("Broker de Red: liquida al Master si tiene documentación aprobada, sin exigir documentación del Broker de red (COM-03/06, PAG-08/13/14)", async () => {
       currentAuthUser = superAdmin;
 
       const client = await storage.createClient({
@@ -480,32 +482,33 @@ describe("FASE 2B.2C: Validación Documental Obligatoria para Pago de Comisiones
         commissionType: "apertura",
       } as any);
 
-      // Solo el Master tiene documentos aprobados; el Broker subordinado NO tiene
+      // 1. Si el Master NO tiene documentos aprobados -> bloquea
+      const resBlockMaster = await request(app)
+        .post(`/api/commissions/${commission.id}/pay`)
+        .send({ simulate: true });
+
+      expect(resBlockMaster.status).toBe(400);
+      expect(resBlockMaster.body.code).toBe("DOCUMENTATION_PREREQUISITES_MISSING");
+      expect(resBlockMaster.body.missingRequirements.some((r: string) => /Master/i.test(r))).toBe(true);
+
+      // 2. Provisionar documentos SOLO al Master; el Broker de red NO tiene documentos
       await provisionApprovedDocument(masterUser.id, "ine", superAdmin.id);
       await provisionApprovedDocument(masterUser.id, "csf", superAdmin.id);
       await provisionApprovedDocument(masterUser.id, "estado_cuenta", superAdmin.id);
 
-      const resPartial = await request(app)
-        .post(`/api/commissions/${commission.id}/pay`)
-        .send();
-
-      expect(resPartial.status).toBe(400);
-      expect(resPartial.body.code).toBe("DOCUMENTATION_PREREQUISITES_MISSING");
-      // Reporta claramente que al Broker Subordinado le faltan requisitos
-      expect(resPartial.body.missingRequirements.some((r: string) => /Bróker.*Subordinado/i.test(r))).toBe(true);
-
-      // Ahora provisionar al Broker subordinado
-      await provisionApprovedDocument(networkBrokerUser.id, "ine", superAdmin.id);
-      await provisionApprovedDocument(networkBrokerUser.id, "csf", superAdmin.id);
-      await provisionApprovedDocument(networkBrokerUser.id, "estado_cuenta", superAdmin.id);
-
-      // Ahora ambos tienen documentos válidos aprobados -> éxito
+      // Conforme a la regla obligatoria (COM-03/06, PAG-08/13/14):
+      // Crédito Negocios liquida exclusivamente al Master ($40,000.00 = 25k + 15k) sin exigir documentos del Broker de red
       const resSuccess = await request(app)
         .post(`/api/commissions/${commission.id}/pay`)
-        .send();
+        .send({ simulate: true });
 
       expect(resSuccess.status).toBe(200);
       expect(resSuccess.body.transactionId).toBeDefined();
+      expect(resSuccess.body.payoutAmount).toBe(40000);
+      expect(resSuccess.body.payoutBeneficiary.userId).toBe(masterUser.id);
+      expect(resSuccess.body.networkObligation).toBeDefined();
+      expect(resSuccess.body.networkObligation.brokerShare).toBe(25000);
+      expect(resSuccess.body.networkObligation.status).toBe("pending_master_payout");
     });
   });
 
@@ -590,7 +593,7 @@ describe("FASE 2B.2C: Validación Documental Obligatoria para Pago de Comisiones
 
       const res = await request(app)
         .post("/api/commissions/bulk-pay")
-        .send({ ids: [commA.id, commB.id] });
+        .send({ ids: [commA.id, commB.id], simulate: true });
 
       expect(res.status).toBe(200);
 
@@ -605,7 +608,7 @@ describe("FASE 2B.2C: Validación Documental Obligatoria para Pago de Comisiones
       // Verificar estados finales
       const updatedA = await storage.getCommission(commA.id);
       const updatedB = await storage.getCommission(commB.id);
-      expect(updatedA?.status).toBe("paid");
+      expect(updatedA?.status).toBe("approved"); // Simulación STP nunca marca comisiones como paid (PAG-12/13)
       expect(updatedB?.status).toBe("approved"); // Permanece approved, no pagada
     });
   });

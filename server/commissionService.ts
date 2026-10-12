@@ -128,6 +128,13 @@ export interface CommissionPayoutAuditResult {
     broker: { userId: string | null; amount: number };
     masterBroker: { userId: string | null; amount: number } | null;
   };
+  networkObligation?: {
+    brokerId: string | null;
+    brokerShare: number;
+    masterBrokerId: string | null;
+    status: 'pending_master_payout';
+    notes: string;
+  } | null;
 }
 
 export interface ResolvedRateItem {
@@ -371,6 +378,16 @@ export function auditCommissionPayout(comm: {
       : null,
   };
 
+  const networkObligation = (isMb && !isMasterDirect)
+    ? {
+        brokerId: comm.brokerId || null,
+        brokerShare,
+        masterBrokerId: historicalMasterId,
+        status: 'pending_master_payout' as const,
+        notes: 'Crédito Negocios liquida al Master Bróker. La dispersión al Bróker de red es obligación posterior del Master.',
+      }
+    : null;
+
   if (isFrozenExplicit) {
     const frozen = parseFloat(String(comm.frozenAmount));
 
@@ -384,6 +401,7 @@ export function auditCommissionPayout(comm: {
         discrepancyReason: `Importe congelado explícito de $0.00 detectado (importe esperado: $${expectedAmount.toFixed(2)}). Requiere revisión administrativa auditada.`,
         isMasterDirect,
         beneficiaryShares,
+        networkObligation,
       };
     }
 
@@ -397,6 +415,7 @@ export function auditCommissionPayout(comm: {
         discrepancyReason: `Discrepancia en importe congelado: El importe congelado ($${frozen.toFixed(2)}) excede la participación legítima ($${singleShare.toFixed(2)}) para Master Directo. Posible doble conteo histórico detectado. Requiere revisión administrativa auditada antes de su liquidación.`,
         isMasterDirect,
         beneficiaryShares,
+        networkObligation,
       };
     }
 
@@ -410,6 +429,7 @@ export function auditCommissionPayout(comm: {
         discrepancyReason: `Discrepancia en importe congelado: El importe congelado ($${frozen.toFixed(2)}) difiere del cálculo reglamentario ($${expectedAmount.toFixed(2)}). Requiere revisión administrativa auditada antes de su liquidación.`,
         isMasterDirect,
         beneficiaryShares,
+        networkObligation,
       };
     }
 
@@ -421,6 +441,7 @@ export function auditCommissionPayout(comm: {
       discrepancyReason: null,
       isMasterDirect,
       beneficiaryShares,
+      networkObligation,
     };
   }
 
@@ -432,6 +453,7 @@ export function auditCommissionPayout(comm: {
     discrepancyReason: null,
     isMasterDirect,
     beneficiaryShares,
+    networkObligation,
   };
 }
 

@@ -327,18 +327,20 @@ describe("P0 - Temporal Commission Gate & Login Security Hardening", () => {
       expect(res.body.message).toMatch(/Solo Super Admin/i);
     });
 
-    it("Dispersión individual /pay: PROCEDE exitosamente si cuenta con aprobación completa de Super Admin", async () => {
+    it("Dispersión individual /pay: PROCEDE como simulación técnica (PAG-12/13) si cuenta con aprobación completa de Super Admin", async () => {
       currentAuthUser = superAdmin;
       const res = await request(app)
         .post(`/api/commissions/${commissionApproved.id}/pay`)
-        .send();
+        .send({ simulate: true });
 
       expect(res.status).toBe(200);
+      expect(res.body.simulated).toBe(true);
+      expect(res.body.paid).toBe(false);
       expect(res.body.transactionId).toBeDefined();
       expect(res.body.payoutAmount).toBe(15000);
 
       const updated = await storage.getCommission(commissionApproved.id);
-      expect(updated?.status).toBe("paid");
+      expect(updated?.status).toBe("approved"); // Simulación nunca marca paid (PAG-12/13)
     });
 
     // 2.3 Liquidación manual /mark-paid
@@ -368,7 +370,7 @@ describe("P0 - Temporal Commission Gate & Login Security Hardening", () => {
       currentAuthUser = superAdmin;
       const res = await request(app)
         .post("/api/commissions/bulk-pay")
-        .send({ ids: [commissionPending.id] });
+        .send({ ids: [commissionPending.id], simulate: true });
 
       expect(res.status).toBe(200);
       expect(res.body.failed.length).toBe(1);

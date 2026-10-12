@@ -437,21 +437,14 @@ export async function validateCommissionPayoutPrerequisites(
       share: brokerShare > 0 ? brokerShare : parseFloat(commission.amount || "0"),
     });
   } else {
-    // Caso 3: Broker de Red (Broker y Master Broker con participación económica)
-    if (masterBrokerShare > 0 && historicalMasterBrokerId) {
-      beneficiariesToCheck.push({
-        id: historicalMasterBrokerId,
-        role: "master_broker",
-        share: masterBrokerShare,
-      });
-    }
-    if (brokerShare > 0 && commission.brokerId) {
-      beneficiariesToCheck.push({
-        id: commission.brokerId,
-        role: "broker",
-        share: brokerShare,
-      });
-    }
+    // Caso 3: Broker de Red (Crédito Negocios liquida exclusivamente al Master Bróker)
+    // El Master recibe su participación y la correspondiente a sus brokers (masterBrokerShare + brokerShare).
+    // Conforme a COM-03/06 y PAG-01/08/13/14, no se exige documentación del Broker de red para liquidar al Master.
+    beneficiariesToCheck.push({
+      id: historicalMasterBrokerId!,
+      role: "master_broker",
+      share: masterBrokerShare + brokerShare,
+    });
   }
 
   const allMissingRequirements: string[] = [];
