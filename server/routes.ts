@@ -1,4 +1,5 @@
 import type { Express } from "express";
+import { randomUUID } from "node:crypto";
 import { createServer, type Server } from "http";
 import { WebSocketServer, WebSocket } from "ws";
 import rateLimit from "express-rate-limit";
@@ -11067,6 +11068,133 @@ function maskCLABE(clabe?: string | null): string | null {
       const validDispersalIndex = dispersalIndex != null && !isNaN(Number(dispersalIndex)) && Number(dispersalIndex) > 0
         ? Number(dispersalIndex)
         : 1;
+
+      // PostgreSQL transactional path: lock the winning target, preserve the
+      // immutable historical Master, and settle target + credit + commission + audit
+      // in one commit. Existing MemStorage behavior remains for unit fixtures.
+      const transactionalStorage: IStorage = storage;
+      if (transactionalStorage.confirmTargetDisbursementAtomic) {
+        try {
+          const linked = target.creditId ? await storage.getCredit(target.creditId) : null;
+          const proposal = (target.institutionProposal as any) || {};
+          let newCredit: any = undefined;
+
+          if (!linked) {
+            const client = await storage.getClient(request.clientId);
+            const originationMasterId = request.originMasterBrokerId ?? null;
+            const offerId = proposal.institutionProductId || proposal.offerId ||
+              (request as any).institutionProductId || (request as any).offerId || null;
+            const versionNumber = proposal.versionNumber ?? (request as any).versionNumber ?? null;
+            const frozenProposal = consolidateCommercialProposalSnapshot({
+              proposalData: {
+                approvedAmount: proposal.approvedAmount ? Number(proposal.approvedAmount) : undefined,
+                interestRate: proposal.interestRate ? Number(proposal.interestRate) : undefined,
+                term: proposal.term ? Number(proposal.term) : undefined,
+                openingCommission: proposal.openingCommission ? Number(proposal.openingCommission) : undefined,
+                institutionProductId: offerId,
+                versionNumber,
+                originBrokerId: request.brokerId,
+                originMasterBrokerId: originationMasterId,
+                commissionRates: proposal.commissionRates || undefined,
+                financialInstitutionId: target.financialInstitutionId,
+              },
+            });
+            newCredit = {
+              id: randomUUID(),
+              tenantId: request.tenantId || client?.tenantId || null,
+              clientId: request.clientId,
+              brokerId: request.brokerId,
+              originMasterBrokerId: originationMasterId,
+              financialInstitutionId: target.financialInstitutionId,
+              productTemplateId: request.productTemplateId,
+              linkedSubmissionId: request.id,
+              amount: String(proposal.approvedAmount || request.requestedAmount),
+              interestRate: proposal.interestRate ? String(proposal.interestRate) : null,
+              term: proposal.term || null,
+              purpose: request.purpose,
+              mortgageData: request.mortgageData || {},
+              status: "approved",
+              finalProposal: frozenProposal,
+            };
+          }
+          const previewCredit = linked || newCredit;
+          if (!previewCredit) {
+            throw new Error("DISBURSEMENT_TARGET_CREDIT_INVALID");
+          }
+          const frozen = (previewCredit.finalProposal as any) || {};
+          const commType = req.body?.commissionType || frozen.commissionsToApply?.[0] || "apertura";
+          const idKey = idempotencyKey ? String(idempotencyKey).trim() : null;
+          const preview = await calculateAndPersistCascadingCommission({
+            credit: previewCredit,
+            creditId: previewCredit.id,
+            commissionType: commType,
+            confirmedDisbursedAmount: validConfirmedAmount,
+            dispersalIndex: validDispersalIndex,
+            idempotencyKey: idKey || undefined,
+            financialInstitutionId: target.financialInstitutionId,
+            institutionProductId: frozen.institutionProductId || frozen.offerId || null,
+            versionNumber: frozen.versionNumber ?? null,
+            performedBy: userId,
+            previewOnly: true,
+          });
+          const result = await transactionalStorage.confirmTargetDisbursementAtomic({
+            targetId: id,
+            requestId: request.id,
+            expectedTargetProposal: target.institutionProposal,
+            expectedBrokerId: request.brokerId,
+            expectedOriginMasterBrokerId: request.originMasterBrokerId ?? null,
+            newCredit,
+            expectedProposal: previewCredit.finalProposal,
+            expectedAmount: previewCredit.amount,
+            confirmedAmount: validConfirmedAmount,
+            dispersalIndex: validDispersalIndex,
+            commission: preview,
+            performedBy: userId,
+            actorEmail: user.email,
+            notes: notes ? String(notes).trim() : null,
+            idempotencyKey: idKey,
+          });
+          if (!result.alreadyConfirmed) {
+            try {
+              const notification = await storage.createNotification({
+                userId: request.brokerId,
+                type: "disbursement_confirmed",
+                title: "Desembolso confirmado y comisión calculada",
+                message: `Confirmación de desembolso por $${validConfirmedAmount.toFixed(2)} MXN.`,
+                relatedEntityType: "credit",
+                relatedEntityId: result.credit.id,
+                priority: "high",
+              });
+              broadcastToUser(request.brokerId, { type: "notification", notification });
+            } catch (notifyErr) {
+              console.warn("[Target disbursement] Committed but notification failed:", notifyErr);
+            }
+          }
+          return res.json({
+            message: result.alreadyConfirmed
+              ? "Este tramo ya había sido confirmado."
+              : "Desembolso confirmado en una transacción con comisión y auditoría.",
+            ...result,
+          });
+        } catch (error: any) {
+          const code = String(error?.message || "");
+          if (error instanceof MissingCommissionRateError ||
+              error instanceof MissingOfferVersionError ||
+              error instanceof UnauthorizedDistributionError ||
+              error instanceof UnconfirmedDispersalAmountError) {
+            return res.status(400).json({
+              message: error.message, code: error.code || "CANONICAL_CALCULATION_ERROR",
+            });
+          }
+          if (code.startsWith("DISBURSEMENT_") || code === "TOTAL_DISBURSEMENT_EXCEEDS_APPROVED_AMOUNT") {
+            return res.status(409).json({
+              message: "No se pudo confirmar: revisar propuesta, afiliación histórica, monto o idempotencia.",
+              code,
+            });
+          }
+          throw error;
+        }
+      }
 
       // REGLA 4: Si el crédito no existe, crearlo con estricta preservación de atribución histórica
       let credit = target.creditId ? await storage.getCredit(target.creditId) : null;
