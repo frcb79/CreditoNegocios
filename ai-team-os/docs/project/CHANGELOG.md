@@ -57,3 +57,27 @@ Actualizar cada vez que se completa una feature.
 	- Regresiones de RBAC, storage y estatus operativo passing (27/27).
 	- Compilación de tipos (`npm run check`): 0 errores.
 	- Build de producción (`npm run build`): exitoso.
+
+## 2026-10-12 — Cierre Correctivo Fase 2B: Modelo de Pagos, Candado STP y Liquidación Manual
+
+- **Rama:** `integration/phase-1a1-base-segura` — Commit: `964762c`.
+- **Modelo de Pagos Obligatorio (COM-03/06, PAG-08/13/14):**
+	- Liquidación exclusiva al Master Broker por operaciones de su red (`masterBrokerShare + brokerShare`, sin margen CN).
+	- Eliminación definitiva de transferencias directas duales que dispersaban al Broker subordinado desde CN.
+	- Registro de obligación diferida Master → Broker como `networkObligation` con estado `'pending_master_payout'` y monto `brokerShare`, sin marcarla como pagada por CN.
+	- Preservación de 3 canales canónicos: (1) Broker Directo: CN paga a Broker; (2) Master Directo: CN paga a Master; (3) Broker de Red: CN paga monto consolidado al Master.
+- **Validación Documental Focalizada (PAG-01/07/09/10/11, FIN-13/14):**
+	- Expediente completo (INE, CSF, estado de cuenta) y CLABE interbancaria exigidos estrictamente al beneficiario que recibe de CN.
+	- Eliminado el bloqueo erróneo que requería documentos del Broker subordinado para liquidar al Master Broker.
+- **Candado de Simulador STP y Liquidación Manual (PAG-12/13):**
+	- `processStpPayment` confinado como simulador técnico; transferencias reales deshabilitadas.
+	- Bloqueo en `/pay` y `/bulk-pay` ante llamadas sin `simulate: true` con HTTP 400 (`SIMULATED_STP_CANNOT_DISBURSE`).
+	- Pruebas simuladas devuelven `{ simulated: true, paid: false }` y mantienen la comisión en `approved`.
+	- Liquidación real autorizada exclusivamente manual por Super Admin en `/mark-paid` con clave de rastreo SPEI verificable obligatoria y justificación en bitácora.
+- **Validación QA y Builds:**
+	- `b2-commission-document-validation.test.ts`: 14/14 tests pasando.
+	- `b2-financial-qa-consolidation.test.ts`: 12/12 tests pasando.
+	- `commission-gate-security.test.ts`: 13/13 tests pasando.
+	- `commission-historical-beneficiary.test.ts`: 3/3 tests pasando.
+	- `npm run check`: 0 errores TypeScript.
+	- `npm run build`: bundle cliente y servidor exitosos (0 errores).

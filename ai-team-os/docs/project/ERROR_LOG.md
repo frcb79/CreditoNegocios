@@ -13,8 +13,8 @@
 | 🔴 Errores Críticos Abiertos | 0 |
 | 🟠 Errores Altos Abiertos | 0 |
 | 🟡 Errores Medios Abiertos | 0 |
-| Total Errores Resueltos | 3 |
-| Último Incidente | 2026-09-11 (ERR-2026-09-11-002) |
+| Total Errores Resueltos | 4 |
+| Último Incidente | 2026-10-12 (ERR-2026-10-12-001) |
 
 ---
 
@@ -93,6 +93,44 @@ _Ninguno activo en este momento._
 ---
 
 ## ERRORES RESUELTOS
+
+### ERR-2026-10-12-001 — Doble dispersión directa en créditos de red y falso positivo de liquidación en STP simulado
+
+| Campo | Valor |
+|-------|-------|
+| ID | ERR-2026-10-12-001 |
+| Fecha detección | 2026-10-12 10:00 CST |
+| Severidad | 🔴 Crítico (integridad financiera y fiscal de comisiones) |
+| Área | Backend / Comisiones / Integración Financiera |
+| Estado | ✅ Verificado |
+| Reportado por | CEO / Plan Maestro v1.1 |
+| Asignado a | Fullstack Dev / CFO Financiero / Seguridad |
+
+**Descripción:**
+En checkpoint 64ad33b los endpoints `/pay` y `/bulk-pay` ejecutaban dispersiones duales directas desde Crédito Negocios (una al Broker de red y otra al Master), contraviniendo la regla de negocio donde Crédito Negocios paga exclusivamente al Master y este dispersa a sus brokers. Adicionalmente, el mock de STP marcaba comisiones en estado `paid` mediante identificadores generados localmente sin dispersión bancaria real ni comprobante SPEI.
+
+**Pasos para reproducir:**
+1. Crear una comisión de red con brokerShare y masterBrokerShare positivos.
+2. Invocar `/api/commissions/:id/pay` o `/api/commissions/:id/mark-paid`.
+3. Se generaban 2 pagos bancarios directos desde CN y el simulador marcaba la comisión como `paid`.
+
+**Impacto en negocio:**
+Distorsión en las responsabilidades contractuales entre Master y Broker, riesgo de dobles pagos de comisiones y asientos de pagos definitivos sin salida bancaria verificada en libros.
+
+**Solución aplicada:**
+1. Reestructuración de la cadena de pagos: CN liquida exclusivamente el total de red al Master Broker (`masterBrokerShare + brokerShare`); se registra la obligación Master → Broker como `networkObligation` con estado `'pending_master_payout'` sin marcarla pagada por CN.
+2. Candado estricto contra simulaciones (PAG-12/13): las llamadas a `/pay` sin `simulate: true` devuelven HTTP 400 (`SIMULATED_STP_CANNOT_DISBURSE`); las llamadas con `simulate: true` devuelven `{ simulated: true, paid: false }` y mantienen la comisión en `approved`.
+3. Liquidación real autorizada exclusivamente manual por Super Admin en `/mark-paid` exigiendo referencia bancaria verificable (SPEI/folio de rastreo) y justificación en bitácora.
+4. Validación documental y CLABE focalizada exclusivamente al receptor legítimo de CN (Master en red, Broker en directo).
+
+**Causa raíz:**
+Desalineación entre la implementación preliminar de payouts multi-beneficiario y el modelo de negocio formal de intermediación financiera de Crédito Negocios.
+
+**Aprendizaje:**
+Un simulador técnico local nunca debe tener la capacidad de asentar estados de dispersión real o contable; las liquidaciones en redes deben preservar estrictamente el canal primario de dispersión para evitar contingencias fiscales y operativas.
+
+**Fecha resolución:** 2026-10-12
+**Verificado por:** QA Testing / Jest Suites (14 doc, 12 consol, 13 gate, 3 hist)
 
 ### ERR-2026-09-04-001 — esbuild Unexpected "const" en build de Vercel (CreditList.tsx)
 

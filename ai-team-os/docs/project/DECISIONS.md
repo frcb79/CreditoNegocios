@@ -67,5 +67,26 @@ Formato: Fecha / Decision / Opciones evaluadas / Decision final / Por que
 	- Impide que cualquier entorno nuevo o recreado arranque con contraseñas conocidas.
 	- Elimina sobrescrituras arbitrarias de decisiones de negocio (`can_originate`, `status`) en cada reinicio del servidor.
 
+### 2026-10-12 / Modelo de Pago Consolidado Exclusivo a Master Broker en Redes (COM-03/06, PAG-08/13/14)
+- Opciones evaluadas:
+	- Opcion A: Dispersar transferencias directas duales desde Crédito Negocios (una al Broker subordinado y otra al Master Broker).
+	- Opcion B: Crédito Negocios paga exclusivamente al Master Broker el total correspondiente a su red (`masterBrokerShare + brokerShare`); el Master dispersa posteriormente a sus Brokers; la plataforma registra la obligación Master → Broker como `networkObligation` con estado `'pending_master_payout'` sin marcarla pagada por CN.
+- Decision final: Opcion B.
+- Por que:
+	- Respeta la jerarquía de intermediación y los acuerdos comerciales privados entre el Master Broker y su red.
+	- Evita que Crédito Negocios asuma obligaciones directas de dispersión a subordinados de redes privadas.
+	- Conserva la trazabilidad y desglose histórico completo de cuotas para fiscalidad y auditoría.
+
+### 2026-10-12 / Candado Estricto de Simulador STP y Liquidación Manual Verificable (PAG-12/13)
+- Opciones evaluadas:
+	- Opcion A: Permitir que `processStpPayment` marque comisiones como `paid` directamente mediante identificadores de transacción simulados.
+	- Opcion B: Mantener transferencias reales deshabilitadas en código; prohibir terminantemente que resultados simulados marquen comisiones como `paid`; exigir que las pruebas de pasarela (`/pay` y `/bulk-pay`) requieran explícitamente `simulate: true` y mantengan el estado `approved`; autorizar pagos reales exclusivamente de forma manual por Super Admin en `/mark-paid` con clave de rastreo bancaria SPEI verificable obligatoria y justificación en bitácora.
+- Decision final: Opcion B.
+- Por que:
+	- Previene el riesgo crítico de falsos positivos financieros donde comisiones queden marcadas como pagadas sin salida real de tesorería bancaria.
+	- Garantiza auditoría e idempotencia estricta por Super Admin con folio de rastreo verificable antes de asentar pagos en libros.
+
 ## DECISIONES CAMBIADAS
-[Si alguna se revirtio, documentar con la razon]
+### 2026-10-12 / Reversión selectiva de transferencias directas duales introducidas en 64ad33b
+- Decisión anterior: En checkpoint `64ad33b` se implementó que `/pay` y `/mark-paid` dispersaran dos transferencias bancarias separadas (una al Broker y una al Master Broker) para créditos de red.
+- Razón del cambio: Decisión de negocio vinculante (Plan Maestro v1.1). Crédito Negocios liquida consolidado al Master (`masterBrokerShare + brokerShare`); el Master tiene la responsabilidad jurídica y operativa de dispersar posteriormente a sus brokers de red. Se revirtieron las transferencias duales hacia el modelo de pago consolidado único al Master y registro de obligación diferida `pending_master_payout`.
