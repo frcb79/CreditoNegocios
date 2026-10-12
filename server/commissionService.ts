@@ -351,7 +351,8 @@ export function auditCommissionPayout(comm: {
   );
 
   const singleShare = masterBrokerShare > 0 ? masterBrokerShare : brokerShare > 0 ? brokerShare : grossAmount;
-  const isMb = Boolean(historicalMasterId && masterBrokerShare > 0);
+  // El canal de pago lo determina la atribución histórica, no si la cuota propia del Master es positiva.
+  const isMb = Boolean(historicalMasterId && !isMasterDirect);
 
   // Importe legítimo esperado
   const expectedAmount = isMasterDirect
