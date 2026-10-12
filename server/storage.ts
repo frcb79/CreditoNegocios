@@ -277,6 +277,19 @@ export interface IStorage {
   ): Promise<Commission | null>;
   createCommissionAuditLog(logData: InsertCommissionAuditLog): Promise<CommissionAuditLog>;
   /** Atomic PostgreSQL settlement: status, bank reference and audit are committed together. */
+  /** PostgreSQL credit-confirmation unit of work: one credit lock, commission, audit, tranche. */
+  confirmCreditDisbursementAtomic?(params: {
+    creditId: string;
+    expectedProposal: Credit["finalProposal"];
+    expectedAmount: string;
+    confirmedAmount: number;
+    dispersalIndex: number;
+    commission: InsertCommission;
+    performedBy: string;
+    actorEmail?: string | null;
+    notes?: string | null;
+    idempotencyKey?: string | null;
+  }): Promise<{ credit: Credit; commission: Commission; alreadyConfirmed: boolean }>;
   recordManualCommissionPayment?(params: {
     commissionId: string;
     expected: Commission;
