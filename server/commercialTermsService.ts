@@ -131,12 +131,13 @@ export class CommercialTermsService {
               effectiveDate: (v.effectiveAt || v.createdAt || new Date()).toISOString(),
               updatedAt: (v.createdAt || new Date()).toISOString(),
             };
-            this.networkVersions.set(masterBrokerId, netData);
             const numMatch = v.version.match(/net-(\d+)\.0/);
             if (numMatch) {
               const count = parseInt(numMatch[1], 10);
               const prevCount = this.networkVersionCounters.get(masterBrokerId) || 0;
               if (count > prevCount) {
+                // Version rows can arrive unordered: never revert to an older network rate.
+                this.networkVersions.set(masterBrokerId, netData);
                 this.networkVersionCounters.set(masterBrokerId, count);
               }
             }
@@ -232,7 +233,7 @@ export class CommercialTermsService {
 
     // Persistir en legal_document_versions con metadatos estructurados
     const metaEnvelope = `\n<!-- METADATA: ${JSON.stringify({ versionData })} -->`;
-    await storage.createLegalDocumentVersion({
+    const persisted = await storage.createLegalDocumentVersion({
       id: `condiciones-comerciales:${nextVersion}`,
       document: "condiciones-comerciales",
       title: versionData.title,
@@ -242,6 +243,9 @@ export class CommercialTermsService {
       contentSha256,
       effectiveAt: new Date(),
     });
+    if (persisted.document !== 'condiciones-comerciales' || persisted.version !== nextVersion || persisted.contentSha256 !== contentSha256) {
+      throw new Error('COMMERCIAL_TERMS_VERSION_CONFLICT');
+    }
     this.globalVersions.set(nextVersion, versionData);
     this.currentGlobalVersion = nextVersion;
 
@@ -346,7 +350,7 @@ export class CommercialTermsService {
 
     // Persistir en legal_document_versions con metadatos estructurados
     const metaEnvelope = `\n<!-- METADATA: ${JSON.stringify({ versionData })} -->`;
-    await storage.createLegalDocumentVersion({
+    const persistedNetwork = await storage.createLegalDocumentVersion({
       id: `comisiones-red:${masterBrokerId}:${networkVersion}`,
       document: "comisiones-red",
       title: versionData.title,
@@ -356,6 +360,9 @@ export class CommercialTermsService {
       contentSha256,
       effectiveAt: new Date(),
     });
+    if (persistedNetwork.document !== 'comisiones-red' || persistedNetwork.version !== networkVersion || persistedNetwork.contentSha256 !== contentSha256) {
+      throw new Error('COMMERCIAL_NETWORK_VERSION_CONFLICT');
+    }
     this.networkVersions.set(masterBrokerId, versionData);
     this.networkVersionCounters.set(masterBrokerId, counter);
 
