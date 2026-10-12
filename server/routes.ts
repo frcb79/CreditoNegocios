@@ -6404,7 +6404,10 @@ function maskCLABE(clabe?: string | null): string | null {
       }
 
       if (commission.status === 'paid') {
-        return res.json({ message: "La comisión ya estaba marcada como pagada", commission });
+        if (typeof reference === "string" && reference.trim() && commission.trackingKey !== reference.trim()) {
+          return res.status(409).json({ code: "MANUAL_PAYOUT_ALREADY_PAID_DIFFERENT_REFERENCE", message: "La comisión ya registra otro folio bancario." });
+        }
+        return res.json({ message: "La comisión ya estaba marcada como pagada", commission, alreadyPaid: true });
       }
 
       const hasValidApproval = (
@@ -6574,8 +6577,8 @@ function maskCLABE(clabe?: string | null): string | null {
         paidAt: new Date().toISOString(),
       };
 
-      const updated = await storage.updateCommission(id, {
-        status: 'paid',
+      const manualPaymentUpdates = {
+        status: 'paid' as const,
         paidAt: new Date(),
         paidBy: userId,
         paymentMethod: 'manual',
@@ -6589,9 +6592,8 @@ function maskCLABE(clabe?: string | null): string | null {
           payoutBeneficiary,
           ...(networkObligation ? { networkObligation } : {}),
         },
-      });
-
-      await storage.createCommissionAuditLog({
+      };
+      const manualPaymentAudit = {
         commissionId: id,
         performedBy: userId,
         action: 'marked_paid_manually',
@@ -6606,8 +6608,26 @@ function maskCLABE(clabe?: string | null): string | null {
           payoutBeneficiary,
           ...(networkObligation ? { networkObligation } : {}),
         },
-      });
+      };
 
+      const settled = storage.recordManualCommissionPayment
+        ? await storage.recordManualCommissionPayment({
+            commissionId: id, expected: commission,
+            updates: manualPaymentUpdates, audit: manualPaymentAudit,
+          })
+        : { commission: (await storage.updateCommission(id, manualPaymentUpdates))!, alreadyPaid: false };
+
+      // MemStorage remains a test implementation; live DbStorage settles audit in the transaction.
+      if (!storage.recordManualCommissionPayment) {
+        await storage.createCommissionAuditLog(manualPaymentAudit);
+      }
+      if (settled.alreadyPaid) {
+        return res.json({ message: "La comisión ya estaba marcada como pagada", commission: settled.commission, alreadyPaid: true });
+      }
+      const updated = settled.commission;
+
+      // A notification failure after COMMIT must not present payment as failed.
+      try {
       // Notificar exclusivamente al beneficiario que efectivamente recibió el pago de Crédito Negocios
       if (isSplitNetwork) {
         const masterNotif = await storage.createNotification({
@@ -6634,9 +6654,19 @@ function maskCLABE(clabe?: string | null): string | null {
         broadcastToUser(beneficiaryId, { type: 'notification', notification: paidNotification });
       }
 
+      } catch (notificationError) {
+        console.error("[Manual payout] Settlement committed; notification failed:", notificationError);
+      }
+
       res.json({ message: "Comisión marcada como pagada exitosamente", commission: updated });
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error marking commission as paid:", error);
+      if (typeof error?.message === "string" && error.message.startsWith("MANUAL_PAYOUT_")) {
+        return res.status(409).json({
+          code: error.message,
+          message: "Liquidación bloqueada por datos aprobados modificados, pago previo o referencia bancaria duplicada.",
+        });
+      }
       res.status(500).json({ message: "Error al marcar la comisión como pagada" });
     }
   });
