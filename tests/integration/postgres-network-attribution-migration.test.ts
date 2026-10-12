@@ -62,7 +62,14 @@ describePg("MIG-01 — 0004 no inventa atribución histórica de Masters", () =>
   });
 
   it("aborta si hay créditos/solicitudes históricas sin snapshot, en lugar de asignar Master actual", async () => {
-    await expect(pool.query(migration)).rejects.toThrow(/MIG-01/);
+    const connection = await pool.connect();
+    try {
+      await expect(connection.query(migration)).rejects.toThrow(/MIG-01/);
+    } finally {
+      // Si una instrucción del script falló tras BEGIN, limpiar la sesión.
+      await connection.query("ROLLBACK");
+      connection.release();
+    }
     const existingColumns = await pool.query(`
       SELECT table_name, column_name FROM information_schema.columns
       WHERE table_schema='public' AND column_name='origin_master_broker_id'
