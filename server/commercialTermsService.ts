@@ -144,7 +144,9 @@ export class CommercialTermsService {
         }
       }
     } catch (err) {
-      console.warn("[CommercialTermsService] Error syncing versions from storage:", err);
+      // Never silently treat an unreadable version ledger as "no pending acceptance".
+      console.error("[CommercialTermsService] Version ledger unavailable:", err);
+      throw new Error("COMMERCIAL_TERMS_STORAGE_UNAVAILABLE");
     }
   }
 
@@ -202,8 +204,7 @@ export class CommercialTermsService {
     // Calcular siguiente versión incremental (ej. 1.0 -> 1.1 -> 1.2 ...)
     const currentNum = parseFloat(this.currentGlobalVersion) || 1.0;
     const nextVersion = (Math.round((currentNum + 0.1) * 10) / 10).toFixed(1);
-    this.currentGlobalVersion = nextVersion;
-
+    // Do not activate a version until its immutable document is persisted.
     const nowIso = new Date().toISOString();
     const summary = params.reason || `Actualización de parámetros comerciales y plazos: ${params.modifiedParams.join(", ")}`;
     const content = `CONDICIONES COMERCIALES Y PLAZOS OPERATIVOS V${nextVersion}\n` +
@@ -229,8 +230,6 @@ export class CommercialTermsService {
       updatedAt: nowIso,
     };
 
-    this.globalVersions.set(nextVersion, versionData);
-
     // Persistir en legal_document_versions con metadatos estructurados
     const metaEnvelope = `\n<!-- METADATA: ${JSON.stringify({ versionData })} -->`;
     await storage.createLegalDocumentVersion({
@@ -243,6 +242,8 @@ export class CommercialTermsService {
       contentSha256,
       effectiveAt: new Date(),
     });
+    this.globalVersions.set(nextVersion, versionData);
+    this.currentGlobalVersion = nextVersion;
 
     // Notificar individualmente a todos los Brokers y Master Brokers activos (Regla 3)
     try {
@@ -315,7 +316,6 @@ export class CommercialTermsService {
     await this.syncFromStorage(storage);
 
     const counter = (this.networkVersionCounters.get(masterBrokerId) || 0) + 1;
-    this.networkVersionCounters.set(masterBrokerId, counter);
     const networkVersion = `net-${counter}.0`;
 
     const masterUser = await storage.getUser(masterBrokerId);
@@ -344,8 +344,6 @@ export class CommercialTermsService {
       updatedAt: nowIso,
     };
 
-    this.networkVersions.set(masterBrokerId, versionData);
-
     // Persistir en legal_document_versions con metadatos estructurados
     const metaEnvelope = `\n<!-- METADATA: ${JSON.stringify({ versionData })} -->`;
     await storage.createLegalDocumentVersion({
@@ -358,6 +356,8 @@ export class CommercialTermsService {
       contentSha256,
       effectiveAt: new Date(),
     });
+    this.networkVersions.set(masterBrokerId, versionData);
+    this.networkVersionCounters.set(masterBrokerId, counter);
 
     // Notificar EXCLUSIVAMENTE a los Brokers pertenecientes a este Master Broker
     try {
@@ -534,28 +534,6 @@ export class CommercialTermsService {
 
     const effectiveMasterBrokerId = type === "network" ? user.masterBrokerId : null;
 
-    // 2. Verificación de Idempotencia (Regla 2 y 4)
-    const existingAcceptances = await storage.getLegalAcceptancesByUser(params.userId);
-    const existing = existingAcceptances.find((a) => {
-      if (a.document !== documentType || a.version !== params.version) {
-        return false;
-      }
-      if (type === "network") {
-        const snap = a.personalizedSnapshot as any;
-        return snap?.masterBrokerId === effectiveMasterBrokerId;
-      }
-      return true;
-    });
-
-    if (existing) {
-      return {
-        success: true,
-        alreadyAccepted: true,
-        acceptance: existing,
-        message: "Condiciones comerciales ya aceptadas previamente.",
-      };
-    }
-
     // 3. Obtener metadatos de la versión
     let title = "";
     let contentSha256 = "";
@@ -589,6 +567,39 @@ export class CommercialTermsService {
       previousConditions = globData.previousConditions;
       newConditions = globData.newConditions;
       effectiveDate = globData.effectiveDate;
+    }
+
+    // Fail closed: only the current version of the current affiliation may be accepted.
+    if (type === "global" && params.version !== this.currentGlobalVersion) {
+      throw new Error(`La versión '${params.version}' ya no está vigente; acepta la versión actual '${this.currentGlobalVersion}'.`);
+    }
+    if (!params.version || !contentSha256) {
+      throw new Error("No es posible registrar una aceptación sin versión y huella verificable.");
+    }
+
+    // Idempotencia únicamente DESPUÉS de validar vigencia y red actual
+    const existingAcceptances = await storage.getLegalAcceptancesByUser(params.userId);
+    const existing = existingAcceptances.find((a) => {
+      if (a.document !== documentType || a.version !== params.version) {
+        return false;
+      }
+      if (type === "network") {
+        const snap = a.personalizedSnapshot as any;
+        return snap?.masterBrokerId === effectiveMasterBrokerId;
+      }
+      return true;
+    });
+
+    if (existing) {
+      if (existing.contentSha256 !== contentSha256 || existing.templateSha256 !== contentSha256) {
+        throw new Error("La evidencia previa no corresponde al hash vigente del documento.");
+      }
+      return {
+        success: true,
+        alreadyAccepted: true,
+        acceptance: existing,
+        message: "Condiciones comerciales ya aceptadas previamente.",
+      };
     }
 
     const userName = `${user.firstName || ""} ${user.lastName || ""}`.trim() || user.email;
