@@ -258,7 +258,8 @@ describe("Fase 2B.2A — Validación Manual de Créditos y Comisiones por Super 
       // Verificar crédito asociado
       const linkedCredit = await storage.getCredit(res.body.creditId);
       expect(linkedCredit).toBeDefined();
-      expect(linkedCredit?.status).toBe("disbursed");
+      expect(linkedCredit?.status).toBe("approved");
+      // Sólo la confirmación expresa por Super Admin podrá pasar a disbursed.
       // Debe registrarse como reportado, NO como confirmado
       expect((linkedCredit?.finalProposal as any)?.disbursementStatus).toBe("reported");
 
