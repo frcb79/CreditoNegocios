@@ -5118,8 +5118,8 @@ function maskCLABE(clabe?: string | null): string | null {
           let effectiveBankAccount = null;
 
           const historicalMasterBrokerId = comm.masterBrokerId || (credit?.originMasterBrokerId ?? null);
-          const hasHistoricalMasterShare = Boolean(
-            historicalMasterBrokerId && parseFloat(comm.masterBrokerShare || '0') > 0
+          const hasHistoricalMasterPayee = Boolean(
+            historicalMasterBrokerId
           );
           const isMasterDirect = Boolean(
             historicalMasterBrokerId &&
@@ -5157,7 +5157,7 @@ function maskCLABE(clabe?: string | null): string | null {
               };
 
               // Si es red con margen de master o master directo, la cuenta de dispersión pertenece al Master histórico
-              if (hasHistoricalMasterShare || isMasterDirect) {
+              if (hasHistoricalMasterPayee || isMasterDirect) {
                 effectiveBankAccount = {
                   beneficiaryType: 'master_broker',
                   beneficiaryId: mbUser.id,
@@ -5179,14 +5179,14 @@ function maskCLABE(clabe?: string | null): string | null {
             };
           }
 
-          const isMb = Boolean(historicalMasterBrokerId && parseFloat(comm.masterBrokerShare || '0') > 0);
+          const isMb = Boolean(historicalMasterBrokerId && !isMasterDirect);
           const audit = auditCommissionPayout({
             ...comm,
             originMasterBrokerId: historicalMasterBrokerId,
           });
           const payoutAmount = audit.payoutAmount;
 
-          const effectiveBeneficiary = (hasHistoricalMasterShare || isMasterDirect) && masterBroker
+          const effectiveBeneficiary = (hasHistoricalMasterPayee || isMasterDirect) && masterBroker
             ? {
                 id: masterBroker.id,
                 name: masterBroker.accountHolder || `${masterBroker.firstName || ''} ${masterBroker.lastName || ''}`.trim() || masterBroker.brandName,
@@ -5213,7 +5213,7 @@ function maskCLABE(clabe?: string | null): string | null {
             payoutAmount,
             hasFrozenDiscrepancy: audit.hasDiscrepancy,
             frozenDiscrepancyReason: audit.discrepancyReason,
-            isNetworkPayout: !!(hasHistoricalMasterShare && !isMasterDirect),
+            isNetworkPayout: !!(hasHistoricalMasterPayee && !isMasterDirect),
             isMasterDirect,
             effectiveBeneficiary,
             credit: credit ? {
@@ -5374,8 +5374,8 @@ function maskCLABE(clabe?: string | null): string | null {
       let effectiveBankAccount = null;
 
       const historicalMasterBrokerId = commission.masterBrokerId || (credit?.originMasterBrokerId ?? null);
-      const hasHistoricalMasterShare = Boolean(
-        historicalMasterBrokerId && parseFloat(commission.masterBrokerShare || '0') > 0
+      const hasHistoricalMasterPayee = Boolean(
+        historicalMasterBrokerId
       );
       const isMasterDirect = Boolean(
         historicalMasterBrokerId &&
@@ -5412,7 +5412,7 @@ function maskCLABE(clabe?: string | null): string | null {
             accountHolder: mbUser.accountHolder,
           };
 
-          if (hasHistoricalMasterShare || isMasterDirect) {
+          if (hasHistoricalMasterPayee || isMasterDirect) {
             effectiveBankAccount = {
               beneficiaryType: 'master_broker',
               beneficiaryId: mbUser.id,
@@ -5440,7 +5440,7 @@ function maskCLABE(clabe?: string | null): string | null {
       });
       const payoutAmount = audit.payoutAmount;
 
-      const effectiveBeneficiary = (hasHistoricalMasterShare || isMasterDirect) && masterBroker
+      const effectiveBeneficiary = (hasHistoricalMasterPayee || isMasterDirect) && masterBroker
         ? {
             id: masterBroker.id,
             name: masterBroker.accountHolder || `${masterBroker.firstName || ''} ${masterBroker.lastName || ''}`.trim() || masterBroker.brandName,
@@ -5475,7 +5475,7 @@ function maskCLABE(clabe?: string | null): string | null {
         baseDisbursedAmount,
         hasFrozenDiscrepancy: audit.hasDiscrepancy,
         frozenDiscrepancyReason: audit.discrepancyReason,
-        isNetworkPayout: !!(hasHistoricalMasterShare && !isMasterDirect),
+        isNetworkPayout: !!(hasHistoricalMasterPayee && !isMasterDirect),
         isMasterDirect,
         effectiveBeneficiary,
         effectiveBankAccount,
@@ -5818,7 +5818,7 @@ function maskCLABE(clabe?: string | null): string | null {
       // 3. Resolve beneficiary and 18-digit CLABE from historical master / broker of the operation
       const linkedCredit = commission.creditId ? await storage.getCredit(commission.creditId) : null;
       const historicalMasterBrokerId = commission.masterBrokerId || (linkedCredit?.originMasterBrokerId ?? null);
-      const isMbCredit = Boolean(historicalMasterBrokerId && parseFloat(commission.masterBrokerShare || '0') > 0);
+      const isMbCredit = Boolean(historicalMasterBrokerId);
       const isMasterDirect = Boolean(
         historicalMasterBrokerId &&
         commission.brokerId &&
@@ -6108,7 +6108,7 @@ function maskCLABE(clabe?: string | null): string | null {
 
           const linkedCredit = commission.creditId ? await storage.getCredit(commission.creditId) : null;
           const historicalMasterBrokerId = commission.masterBrokerId || (linkedCredit?.originMasterBrokerId ?? null);
-          const isMbCredit = Boolean(historicalMasterBrokerId && parseFloat(commission.masterBrokerShare || '0') > 0);
+          const isMbCredit = Boolean(historicalMasterBrokerId);
           const isMasterDirect = Boolean(
             historicalMasterBrokerId &&
             commission.brokerId &&
@@ -6312,7 +6312,7 @@ function maskCLABE(clabe?: string | null): string | null {
         commission.brokerId &&
         String(commission.brokerId) === String(historicalMasterBrokerId)
       );
-      const isMbCredit = Boolean(historicalMasterBrokerId && parseFloat(commission.masterBrokerShare || '0') > 0);
+      const isMbCredit = Boolean(historicalMasterBrokerId);
       const audit = auditCommissionPayout({
         ...commission,
         originMasterBrokerId: historicalMasterBrokerId,
