@@ -73,23 +73,114 @@ export class CommercialTermsService {
     this.globalVersions.set("1.0", defaultData);
   }
 
-  public resetForTesting(): void {
+  public async syncFromStorage(targetStorage?: IStorage): Promise<void> {
+    const storage = targetStorage || defaultStorage;
+    try {
+      const versions = await storage.getLegalDocumentVersions();
+      for (const v of versions) {
+        if (v.document === "condiciones-comerciales") {
+          let metadata: any = null;
+          if (v.content && v.content.includes("<!-- METADATA:")) {
+            try {
+              const metaStr = v.content.split("<!-- METADATA:")[1].split("-->")[0].trim();
+              metadata = JSON.parse(metaStr)?.versionData;
+            } catch {}
+          }
+          const versionData: GlobalCommercialTermsVersionData = metadata || {
+            version: v.version,
+            document: "condiciones-comerciales",
+            title: v.title,
+            summary: v.title,
+            content: v.content,
+            contentSha256: v.contentSha256,
+            previousConditions: {},
+            newConditions: {},
+            modifiedParams: [],
+            effectiveDate: (v.effectiveAt || v.createdAt || new Date()).toISOString(),
+            updatedBy: null,
+            updatedAt: (v.createdAt || new Date()).toISOString(),
+          };
+          this.globalVersions.set(v.version, versionData);
+          const vNum = parseFloat(v.version) || 0;
+          const currNum = parseFloat(this.currentGlobalVersion) || 0;
+          if (vNum > currNum) {
+            this.currentGlobalVersion = v.version;
+          }
+        } else if (v.document === "comisiones-red") {
+          // Format id: comisiones-red:${masterBrokerId}:${version}
+          const parts = v.id.split(":");
+          const masterBrokerId = parts[1] || "";
+          if (masterBrokerId) {
+            let metadata: any = null;
+            if (v.content && v.content.includes("<!-- METADATA:")) {
+              try {
+                const metaStr = v.content.split("<!-- METADATA:")[1].split("-->")[0].trim();
+                metadata = JSON.parse(metaStr)?.versionData;
+              } catch {}
+            }
+            const netData: NetworkRatesVersionData = metadata || {
+              masterBrokerId,
+              document: "comisiones-red",
+              version: v.version,
+              title: v.title,
+              summary: v.title,
+              content: v.content,
+              contentSha256: v.contentSha256,
+              previousRates: {},
+              newRates: {},
+              effectiveDate: (v.effectiveAt || v.createdAt || new Date()).toISOString(),
+              updatedAt: (v.createdAt || new Date()).toISOString(),
+            };
+            this.networkVersions.set(masterBrokerId, netData);
+            const numMatch = v.version.match(/net-(\d+)\.0/);
+            if (numMatch) {
+              const count = parseInt(numMatch[1], 10);
+              const prevCount = this.networkVersionCounters.get(masterBrokerId) || 0;
+              if (count > prevCount) {
+                this.networkVersionCounters.set(masterBrokerId, count);
+              }
+            }
+          }
+        }
+      }
+    } catch (err) {
+      console.warn("[CommercialTermsService] Error syncing versions from storage:", err);
+    }
+  }
+
+  public resetForTesting(targetStorage?: IStorage): void {
     this.currentGlobalVersion = "1.0";
     this.globalVersions.clear();
     this.networkVersions.clear();
     this.networkVersionCounters.clear();
     this.initDefaultGlobalVersion();
+    const st: any = targetStorage || defaultStorage;
+    if (st && st.legalDocumentVersions && typeof st.legalDocumentVersions.forEach === "function") {
+      const keysToDelete: string[] = [];
+      st.legalDocumentVersions.forEach((_val: any, key: string) => {
+        if (key.startsWith("condiciones-comerciales:") || key.startsWith("comisiones-red:")) {
+          keysToDelete.push(key);
+        }
+      });
+      keysToDelete.forEach((k: string) => st.legalDocumentVersions.delete(k));
+    }
   }
 
   public getCurrentGlobalVersion(): string {
     return this.currentGlobalVersion;
   }
 
-  public getGlobalVersionData(version: string): GlobalCommercialTermsVersionData | undefined {
+  public async getGlobalVersionData(version: string, targetStorage?: IStorage): Promise<GlobalCommercialTermsVersionData | undefined> {
+    if (!this.globalVersions.has(version)) {
+      await this.syncFromStorage(targetStorage);
+    }
     return this.globalVersions.get(version);
   }
 
-  public getNetworkVersionData(masterBrokerId: string): NetworkRatesVersionData | undefined {
+  public async getNetworkVersionData(masterBrokerId: string, targetStorage?: IStorage): Promise<NetworkRatesVersionData | undefined> {
+    if (!this.networkVersions.has(masterBrokerId)) {
+      await this.syncFromStorage(targetStorage);
+    }
     return this.networkVersions.get(masterBrokerId);
   }
 
@@ -106,6 +197,7 @@ export class CommercialTermsService {
     targetStorage?: IStorage;
   }): Promise<GlobalCommercialTermsVersionData> {
     const storage = params.targetStorage || defaultStorage;
+    await this.syncFromStorage(storage);
 
     // Calcular siguiente versión incremental (ej. 1.0 -> 1.1 -> 1.2 ...)
     const currentNum = parseFloat(this.currentGlobalVersion) || 1.0;
@@ -139,14 +231,15 @@ export class CommercialTermsService {
 
     this.globalVersions.set(nextVersion, versionData);
 
-    // Persistir en legal_document_versions
+    // Persistir en legal_document_versions con metadatos estructurados
+    const metaEnvelope = `\n<!-- METADATA: ${JSON.stringify({ versionData })} -->`;
     await storage.createLegalDocumentVersion({
       id: `condiciones-comerciales:${nextVersion}`,
       document: "condiciones-comerciales",
       title: versionData.title,
       version: nextVersion,
       sourceFile: "commercial_config",
-      content,
+      content: content + metaEnvelope,
       contentSha256,
       effectiveAt: new Date(),
     });
@@ -219,6 +312,7 @@ export class CommercialTermsService {
     }
   ): Promise<NetworkRatesVersionData> {
     const storage = params.targetStorage || defaultStorage;
+    await this.syncFromStorage(storage);
 
     const counter = (this.networkVersionCounters.get(masterBrokerId) || 0) + 1;
     this.networkVersionCounters.set(masterBrokerId, counter);
@@ -252,14 +346,15 @@ export class CommercialTermsService {
 
     this.networkVersions.set(masterBrokerId, versionData);
 
-    // Persistir en legal_document_versions
+    // Persistir en legal_document_versions con metadatos estructurados
+    const metaEnvelope = `\n<!-- METADATA: ${JSON.stringify({ versionData })} -->`;
     await storage.createLegalDocumentVersion({
       id: `comisiones-red:${masterBrokerId}:${networkVersion}`,
       document: "comisiones-red",
       title: versionData.title,
       version: networkVersion,
       sourceFile: "network_rates",
-      content,
+      content: content + metaEnvelope,
       contentSha256,
       effectiveAt: new Date(),
     });
@@ -268,7 +363,7 @@ export class CommercialTermsService {
     try {
       const downlineBrokers = await storage.getUsersByMasterBroker(masterBrokerId);
       const activeBrokers = downlineBrokers.filter(
-        (b) => b.role === "broker" && b.isActive !== false && b.status !== "inactive"
+        (b) => b.role === "broker" && b.isActive !== false && b.status !== "inactive" && b.masterBrokerId === masterBrokerId
       );
 
       for (const broker of activeBrokers) {
@@ -301,6 +396,7 @@ export class CommercialTermsService {
     targetStorage?: IStorage
   ): Promise<PendingCommercialTermsStatus> {
     const storage = targetStorage || defaultStorage;
+    await this.syncFromStorage(storage);
     const user = await storage.getUser(userId);
 
     // Administradores de plataforma no requieren aceptación comercial
@@ -416,6 +512,7 @@ export class CommercialTermsService {
     message: string;
   }> {
     const storage = targetStorage || defaultStorage;
+    await this.syncFromStorage(storage);
     const user = await storage.getUser(params.userId);
     if (!user) {
       throw new Error("Usuario no encontrado.");
@@ -425,7 +522,19 @@ export class CommercialTermsService {
     const documentType = type === "network" ? "comisiones-red" : "condiciones-comerciales";
     const acceptanceType = type === "network" ? "accept_network_rates" : "accept_commercial_terms";
 
-    // 1. Verificación de Idempotencia (Regla 2 y 4)
+    // 1. Verificación de Red y Elegibilidad
+    if (type === "network") {
+      if (user.role !== "broker" || !user.masterBrokerId) {
+        throw new Error("El usuario no pertenece a ninguna red de Master Broker.");
+      }
+      if (params.masterBrokerId && String(params.masterBrokerId).trim() !== String(user.masterBrokerId).trim()) {
+        throw new Error("No puedes aceptar comisiones de una red ajena a tu Master Broker asignado.");
+      }
+    }
+
+    const effectiveMasterBrokerId = type === "network" ? user.masterBrokerId : null;
+
+    // 2. Verificación de Idempotencia (Regla 2 y 4)
     const existingAcceptances = await storage.getLegalAcceptancesByUser(params.userId);
     const existing = existingAcceptances.find((a) => {
       if (a.document !== documentType || a.version !== params.version) {
@@ -433,7 +542,7 @@ export class CommercialTermsService {
       }
       if (type === "network") {
         const snap = a.personalizedSnapshot as any;
-        return snap?.masterBrokerId === (params.masterBrokerId || user.masterBrokerId);
+        return snap?.masterBrokerId === effectiveMasterBrokerId;
       }
       return true;
     });
@@ -447,7 +556,7 @@ export class CommercialTermsService {
       };
     }
 
-    // 2. Obtener metadatos de la versión
+    // 3. Obtener metadatos de la versión
     let title = "";
     let contentSha256 = "";
     let previousConditions: any = {};
@@ -456,13 +565,13 @@ export class CommercialTermsService {
     let documentId = `${documentType}:${params.version}`;
 
     if (type === "network") {
-      const mbId = params.masterBrokerId || user.masterBrokerId;
-      if (!mbId) {
-        throw new Error("No se especificó el Master Broker para la aceptación de comisiones de red.");
-      }
+      const mbId = effectiveMasterBrokerId!;
       const netData = this.networkVersions.get(mbId);
       if (!netData) {
-        throw new Error(`La versión de comisiones de red '${params.version}' no existe.`);
+        throw new Error(`La versión de comisiones de red '${params.version}' no existe para tu Master Broker.`);
+      }
+      if (netData.version !== params.version) {
+        throw new Error(`La versión solicitada '${params.version}' no corresponde a la versión vigente ('${netData.version}') de tu Master Broker.`);
       }
       title = netData.title;
       contentSha256 = netData.contentSha256;
@@ -494,7 +603,7 @@ export class CommercialTermsService {
       userEmail: user.email,
       userName,
       userRole: user.role,
-      masterBrokerId: type === "network" ? (params.masterBrokerId || user.masterBrokerId) : (user.masterBrokerId || null),
+      masterBrokerId: effectiveMasterBrokerId || (user.masterBrokerId || null),
       scope: type,
       previousConditions,
       newConditions,

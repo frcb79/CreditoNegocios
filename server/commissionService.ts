@@ -124,6 +124,10 @@ export interface CommissionPayoutAuditResult {
   hasDiscrepancy: boolean;
   discrepancyReason: string | null;
   isMasterDirect: boolean;
+  beneficiaryShares: {
+    broker: { userId: string | null; amount: number };
+    masterBroker: { userId: string | null; amount: number } | null;
+  };
 }
 
 export interface ResolvedRateItem {
@@ -354,6 +358,19 @@ export function auditCommissionPayout(comm: {
   const isFrozenExplicit =
     comm.frozenAmount !== undefined && comm.frozenAmount !== null && String(comm.frozenAmount).trim() !== "";
 
+  const beneficiaryShares = {
+    broker: {
+      userId: comm.brokerId || null,
+      amount: isMasterDirect ? singleShare : brokerShare,
+    },
+    masterBroker: (isMb && !isMasterDirect)
+      ? {
+          userId: historicalMasterId,
+          amount: masterBrokerShare,
+        }
+      : null,
+  };
+
   if (isFrozenExplicit) {
     const frozen = parseFloat(String(comm.frozenAmount));
 
@@ -366,6 +383,7 @@ export function auditCommissionPayout(comm: {
         hasDiscrepancy: expectedAmount > 0,
         discrepancyReason: `Importe congelado explícito de $0.00 detectado (importe esperado: $${expectedAmount.toFixed(2)}). Requiere revisión administrativa auditada.`,
         isMasterDirect,
+        beneficiaryShares,
       };
     }
 
@@ -378,6 +396,7 @@ export function auditCommissionPayout(comm: {
         hasDiscrepancy: true,
         discrepancyReason: `Discrepancia en importe congelado: El importe congelado ($${frozen.toFixed(2)}) excede la participación legítima ($${singleShare.toFixed(2)}) para Master Directo. Posible doble conteo histórico detectado. Requiere revisión administrativa auditada antes de su liquidación.`,
         isMasterDirect,
+        beneficiaryShares,
       };
     }
 
@@ -390,6 +409,7 @@ export function auditCommissionPayout(comm: {
         hasDiscrepancy: true,
         discrepancyReason: `Discrepancia en importe congelado: El importe congelado ($${frozen.toFixed(2)}) difiere del cálculo reglamentario ($${expectedAmount.toFixed(2)}). Requiere revisión administrativa auditada antes de su liquidación.`,
         isMasterDirect,
+        beneficiaryShares,
       };
     }
 
@@ -400,6 +420,7 @@ export function auditCommissionPayout(comm: {
       hasDiscrepancy: false,
       discrepancyReason: null,
       isMasterDirect,
+      beneficiaryShares,
     };
   }
 
@@ -410,6 +431,7 @@ export function auditCommissionPayout(comm: {
     hasDiscrepancy: false,
     discrepancyReason: null,
     isMasterDirect,
+    beneficiaryShares,
   };
 }
 
