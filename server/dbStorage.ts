@@ -3197,7 +3197,7 @@ export class DbStorage implements IStorage {
    */
   async confirmTargetDisbursementAtomic(
     params: Parameters<NonNullable<IStorage["confirmTargetDisbursementAtomic"]>>[0]
-  ): ReturnType<NonNullable<IStorage["confirmTargetDisbursementAtomic"]>> {
+  ): Promise<{ target: CreditSubmissionTarget; credit: Credit; commission: Commission; alreadyConfirmed: boolean }> {
     return db.transaction(async rawTx => {
       const tx = rawTx as unknown as typeof db;
       const [target] = await tx.select().from(creditSubmissionTargets)
