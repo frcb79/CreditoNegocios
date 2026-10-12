@@ -59,6 +59,30 @@ describe("COM-25/26 commercial acceptance: current version and durable publicati
     expect(commercialTermsService.getCurrentGlobalVersion()).toBe("1.0");
   });
 
+  it("rejects an alternate PostgreSQL winner for the same global version", async () => {
+    const simulatedConcurrentStorage = Object.create(storage);
+    simulatedConcurrentStorage.createLegalDocumentVersion = async (value: any) =>
+      ({ ...value, contentSha256: "other-instance-hash" });
+    await expect(commercialTermsService.publishGlobalCommercialTermsUpdate({
+      previousConditions: {},
+      newConditions: { activeRelationshipValidityDays: 103 },
+      modifiedParams: ["activeRelationshipValidityDays"],
+      targetStorage: simulatedConcurrentStorage,
+    })).rejects.toThrow("COMMERCIAL_TERMS_VERSION_CONFLICT");
+    expect(commercialTermsService.getCurrentGlobalVersion()).toBe("1.0");
+  });
+
+  it("rejects a conflicting persisted network document", async () => {
+    const master = await user("master_broker");
+    const simulatedConcurrentStorage = Object.create(storage);
+    simulatedConcurrentStorage.createLegalDocumentVersion = async (value: any) =>
+      ({ ...value, contentSha256: "other-instance-hash" });
+    await expect(commercialTermsService.publishNetworkRatesUpdate(master.id, {
+      previousRates: {}, newRates: { apertura: 2 },
+      targetStorage: simulatedConcurrentStorage,
+    })).rejects.toThrow("COMMERCIAL_NETWORK_VERSION_CONFLICT");
+  });
+
   it("fails closed if version ledger cannot be read", async () => {
     const failStorage = Object.create(storage);
     failStorage.getLegalDocumentVersions = async () => { throw new Error("PG unavailable"); };
