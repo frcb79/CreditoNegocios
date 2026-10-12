@@ -620,4 +620,24 @@ describe("Matching M1 — Motor de Compatibilidad y Datos Reales", () => {
       expect(parentAfterPublish?.currentVersionNumber).toBe(2);
     });
   });
+}  describe("Prelanzamiento: evidencia positiva y ofertas sin reglas", () => {
+    test("una oferta sin criterios evaluables NO es COMPATIBLE por defecto", () => {
+      const result = evaluateOfferCompatibility(
+        { credit: { amount: 100000 }, client: { type: "persona_moral" } },
+        { product: { id: "no-rules", name: "Sin requisitos configurados", institutionId: "inst" },
+          version: { id: "v1", versionNumber: 1, status: "published", conditions: {} } }
+      );
+      expect(result.status).toBe("INSUFFICIENT_DATA");
+    });
+
+    test("un campo requerido sin origen capturado no genera aprobación ni rechazo definitivo", () => {
+      const result = evaluateOfferCompatibility(
+        { credit: {}, client: {} },
+        { product: { id: "missing-source", name: "Origen sin comprobar", institutionId: "inst" },
+          version: { id: "v1", versionNumber: 1, status: "published",
+            conditions: { minAmount: 500000 } } }
+      );
+      expect(result.status).toBe("INSUFFICIENT_DATA");
+    });
+  });
 });
