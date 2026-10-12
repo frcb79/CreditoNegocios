@@ -11108,7 +11108,7 @@ function maskCLABE(clabe?: string | null): string | null {
               financialInstitutionId: target.financialInstitutionId,
               productTemplateId: request.productTemplateId,
               linkedSubmissionId: request.id,
-              amount: String(proposal.approvedAmount || request.requestedAmount),
+              amount: Number(proposal.approvedAmount || request.requestedAmount).toFixed(2),
               interestRate: proposal.interestRate ? String(proposal.interestRate) : null,
               term: proposal.term || null,
               purpose: request.purpose,
