@@ -3,7 +3,7 @@ import { createServer, type Server } from "http";
 import { WebSocketServer, WebSocket } from "ws";
 import rateLimit from "express-rate-limit";
 import { pool } from "./db";
-import { storage } from "./storage";
+import { storage, type IStorage } from "./storage";
 import { setupAuth, isAuthenticated } from "./auth";
 import { registerLegalRoutes } from "./legalRoutes";
 import { validateRegistrationAcceptance } from "./legalDocuments";
@@ -6610,15 +6610,17 @@ function maskCLABE(clabe?: string | null): string | null {
         },
       };
 
-      const settled = storage.recordManualCommissionPayment
-        ? await storage.recordManualCommissionPayment({
+      // Cast to the common contract: MemStorage deliberately lacks this optional PG method.
+      const payoutStorage: IStorage = storage;
+      const settled = payoutStorage.recordManualCommissionPayment
+        ? await payoutStorage.recordManualCommissionPayment({
             commissionId: id, expected: commission,
             updates: manualPaymentUpdates, audit: manualPaymentAudit,
           })
         : { commission: (await storage.updateCommission(id, manualPaymentUpdates))!, alreadyPaid: false };
 
       // MemStorage remains a test implementation; live DbStorage settles audit in the transaction.
-      if (!storage.recordManualCommissionPayment) {
+      if (!payoutStorage.recordManualCommissionPayment) {
         await storage.createCommissionAuditLog(manualPaymentAudit);
       }
       if (settled.alreadyPaid) {
