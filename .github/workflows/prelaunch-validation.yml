@@ -28,7 +28,7 @@ jobs:
       - name: Build
         run: npm run build
       - name: Financial P0 regression tests (MemStorage only)
-        run: npm test -- --runInBand --coverage=false --forceExit tests/unit/b2-financial-qa-consolidation.test.ts tests/unit/b2-commission-document-validation.test.ts tests/unit/commission-gate-security.test.ts tests/unit/commission-historical-beneficiary.test.ts
+        run: npm test -- --runInBand --coverage=false --forceExit tests/unit/b2-financial-qa-consolidation.test.ts tests/unit/b2-commission-document-validation.test.ts tests/unit/commission-gate-security.test.ts tests/unit/commission-historical-beneficiary.test.ts tests/unit/m1-matching-engine.test.ts
 
   postgres-migrations:
     runs-on: ubuntu-latest
