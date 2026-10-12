@@ -508,13 +508,17 @@ export interface CascadingCommissionInput {
   idempotencyKey?: string | null;
   dispersalIndex?: number;
   strictRateCheck?: boolean;
+  /** Compute a canonical immutable draft without writing; PostgreSQL confirms it atomically. */
+  previewOnly?: boolean;
 }
 
 /**
  * Calcula y persiste las comisiones en cascada de acuerdo a la oferta versionada y
  * el monto efectivamente dispersado, con atribución histórica e idempotencia.
  */
-export async function calculateAndPersistCascadingCommission(params: CascadingCommissionInput): Promise<Commission> {
+export function calculateAndPersistCascadingCommission(params: CascadingCommissionInput & { previewOnly: true }): Promise<InsertCommission>;
+export function calculateAndPersistCascadingCommission(params: CascadingCommissionInput): Promise<Commission>;
+export async function calculateAndPersistCascadingCommission(params: CascadingCommissionInput): Promise<Commission | InsertCommission> {
   const linkedCredit = params.credit || (params.creditId ? await storage.getCredit(params.creditId) : null);
   const creditId = params.creditId || linkedCredit?.id;
   const brokerId = params.brokerId || linkedCredit?.brokerId;
@@ -554,7 +558,7 @@ export async function calculateAndPersistCascadingCommission(params: CascadingCo
   }
 
   // 1. Verificación de Idempotencia previa (Regla 3)
-  if (idempotencyKey) {
+  if (idempotencyKey && !params.previewOnly) {
     const existingKeyComms = await storage.getCommissions({ idempotencyKey });
     if (existingKeyComms.length > 0) {
       console.log(`[Commission Idempotency] Retornando comisión existente para idempotencyKey=${idempotencyKey}`);
@@ -677,6 +681,28 @@ export async function calculateAndPersistCascadingCommission(params: CascadingCo
   const resolvedCommissionType = dispersalIndex != null
     ? `${commissionType}_parcial_${dispersalIndex}`
     : commissionType;
+
+  if (params.previewOnly) {
+    // Safe preview: read business metadata but never write a commission or audit.
+    // The database transaction will enforce row uniqueness and frozen affiliation.
+    const previewTenantId = linkedCredit?.tenantId || null;
+    return {
+      creditId,
+      tenantId: previewTenantId,
+      brokerId,
+      masterBrokerId: historicalMasterBrokerId || null,
+      amount: totalGrossAmount.toFixed(2),
+      brokerShare: brokerAmount.toFixed(2),
+      masterBrokerShare: masterBrokerAmount.toFixed(2),
+      appShare: appAmount.toFixed(2),
+      status: "generated",
+      commissionType: resolvedCommissionType,
+      idempotencyKey: idempotencyKey || null,
+      notes: isOfferBound
+        ? `Calculado sobre oferta versionada (monto dispersado ${dispersedAmount.toFixed(2)})`
+        : null,
+    };
+  }
 
   // Buscar registro duplicado para este crédito y tipo
   const existing = await storage.getCommissions({ creditId });
