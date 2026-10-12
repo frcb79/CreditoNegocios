@@ -100,6 +100,19 @@ export {
   calculateAndPersistCascadingCommission,
   consolidateCommercialProposalSnapshot,
 };
+import {
+  validateCommissionPayoutPrerequisites,
+  validateBeneficiaryPayoutDocuments,
+  type BeneficiaryPayoutValidationResult,
+  type CommissionPayoutValidationResult,
+} from "./commissionDocumentValidationService";
+
+export {
+  validateCommissionPayoutPrerequisites,
+  validateBeneficiaryPayoutDocuments,
+  type BeneficiaryPayoutValidationResult,
+  type CommissionPayoutValidationResult,
+};
 import { commercialConfigService } from "./commercialConfigService";
 import { commercialTermsService } from "./commercialTermsService";
 
@@ -5839,6 +5852,30 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const effectiveBankName = targetUser.bankName || null;
       const effectiveAccountHolder = targetUser.accountHolder || `${targetUser.firstName || ''} ${targetUser.lastName || ''}`.trim() || null;
 
+      // 3.6 Documentary & Banking Validation Gate (FASE 2B.2C / PAG-01 a PAG-06)
+      const docValidation = await validateCommissionPayoutPrerequisites(commission, storage);
+      if (!docValidation.canPayout) {
+        await storage.createCommissionAuditLog({
+          commissionId: id,
+          performedBy: userId,
+          action: 'dispersion_blocked',
+          previousStatus: commission.status,
+          newStatus: commission.status,
+          details: {
+            actorRole: user.role,
+            reason: 'DOCUMENTATION_PREREQUISITES_MISSING',
+            missingRequirements: docValidation.missingRequirements,
+            beneficiaries: docValidation.beneficiaries,
+          },
+        });
+        return res.status(400).json({
+          message: `Dispersión bloqueada: Faltan requisitos documentales o bancarios validados por Super Admin: ${docValidation.missingRequirements.join("; ")}`,
+          code: "DOCUMENTATION_PREREQUISITES_MISSING",
+          missingRequirements: docValidation.missingRequirements,
+          beneficiaries: docValidation.beneficiaries,
+        });
+      }
+
       // 4. Atomic concurrency lock: transition status to 'dispersing'
       const lockedComm = await storage.transitionCommissionStatus(
         id,
@@ -6074,6 +6111,29 @@ export async function registerRoutes(app: Express): Promise<Server> {
             continue;
           }
 
+          // Documentary & Banking Validation Gate (FASE 2B.2C / PAG-01 a PAG-06)
+          const docValidation = await validateCommissionPayoutPrerequisites(commission, storage);
+          if (!docValidation.canPayout) {
+            await storage.createCommissionAuditLog({
+              commissionId: id,
+              performedBy: userId,
+              action: 'dispersion_blocked',
+              previousStatus: commission.status,
+              newStatus: commission.status,
+              details: {
+                actorRole: user.role,
+                reason: 'DOCUMENTATION_PREREQUISITES_MISSING',
+                missingRequirements: docValidation.missingRequirements,
+                bulk: true,
+              },
+            });
+            failed.push({
+              id,
+              reason: `Documentación incompleta o no aprobada: ${docValidation.missingRequirements.join("; ")}`,
+            });
+            continue;
+          }
+
           const locked = await storage.transitionCommissionStatus(
             id,
             ['approved'],
@@ -6268,6 +6328,31 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       const payoutAmount = audit.payoutAmount;
+
+      // Documentary & Banking Validation Gate (FASE 2B.2C / PAG-01 a PAG-06)
+      const docValidation = await validateCommissionPayoutPrerequisites(commission, storage);
+      if (!docValidation.canPayout) {
+        await storage.createCommissionAuditLog({
+          commissionId: id,
+          performedBy: userId,
+          action: 'dispersion_blocked',
+          previousStatus: commission.status,
+          newStatus: commission.status,
+          details: {
+            actorRole: user.role,
+            reason: 'DOCUMENTATION_PREREQUISITES_MISSING',
+            missingRequirements: docValidation.missingRequirements,
+            manual: true,
+            beneficiaries: docValidation.beneficiaries,
+          },
+        });
+        return res.status(400).json({
+          message: `Liquidación manual bloqueada: Faltan requisitos documentales o bancarios validados por Super Admin: ${docValidation.missingRequirements.join("; ")}`,
+          code: "DOCUMENTATION_PREREQUISITES_MISSING",
+          missingRequirements: docValidation.missingRequirements,
+          beneficiaries: docValidation.beneficiaries,
+        });
+      }
 
       const updated = await storage.updateCommission(id, {
         status: 'paid',
@@ -6640,6 +6725,146 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Error deleting document:", error);
       res.status(500).json({ message: "Failed to delete document" });
+    }
+  });
+
+  // =========================================================================
+  // FASE 2B.2C: VALIDACIÓN ADMINISTRATIVA DOCUMENTAL DE COMISIONES (PAG-01 A PAG-06)
+  // =========================================================================
+
+  // Dictamen / revisión administrativa de documentos por Super Admin
+  app.post('/api/documents/:id/review', isAuthenticated, async (req: any, res) => {
+    try {
+      const { id } = req.params;
+      const { status, notes, expiresAt } = req.body;
+      const userId = req.user.claims?.sub || req.user.id;
+      const user = await storage.getUser(userId);
+
+      // Regla 2: Exclusividad Super Admin
+      if (!user || user.role !== 'super_admin') {
+        return res.status(403).json({
+          message: "Solo Super Admin puede dictaminar y validar documentos para cobro de comisiones.",
+        });
+      }
+
+      if (!status || !['approved', 'rejected'].includes(status)) {
+        return res.status(400).json({
+          message: "El campo 'status' es obligatorio y debe ser 'approved' o 'rejected'.",
+        });
+      }
+
+      if (status === 'rejected' && (!notes || !String(notes).trim())) {
+        return res.status(400).json({
+          message: "Es obligatorio proporcionar un motivo o justificación ('notes') al rechazar un documento.",
+        });
+      }
+
+      const document = await storage.getDocument(id);
+      if (!document) {
+        return res.status(404).json({ message: "Documento no encontrado." });
+      }
+
+      // Regla 2: Prohibición estricta de auto-aprobación
+      if (document.brokerId === userId || document.uploadedBy === userId) {
+        return res.status(403).json({
+          message: "Conflicto de interés: Un usuario no puede auto-aprobar o dictaminar sus propios documentos.",
+        });
+      }
+
+      const updatedDoc = await storage.updateDocument(id, {
+        isValid: status === 'approved',
+        expiresAt: expiresAt ? (typeof expiresAt === 'string' && expiresAt.includes('T') ? expiresAt.split('T')[0] : String(expiresAt)) : (document.expiresAt || null),
+        extractedData: {
+          ...((document.extractedData as any) || {}),
+          status,
+          reviewedBy: userId,
+          reviewedByName: `${user.firstName || ''} ${user.lastName || ''}`.trim() || user.email,
+          reviewedAt: new Date().toISOString(),
+          reviewRole: 'super_admin',
+          reviewNotes: notes ? String(notes).trim() : null,
+          rejectionReason: status === 'rejected' ? String(notes).trim() : null,
+        },
+      });
+
+      // Notificar al beneficiario del dictamen
+      const beneficiaryId = document.brokerId || document.uploadedBy;
+      if (beneficiaryId) {
+        try {
+          const notification = await storage.createNotification({
+            userId: beneficiaryId,
+            type: status === 'approved' ? 'document_approved' : 'document_rejected',
+            title: status === 'approved' ? 'Documento aprobado por Super Admin' : 'Documento rechazado por Super Admin',
+            message: status === 'approved'
+              ? `Tu documento (${document.fileName}) ha sido aprobado para cobro de comisiones.`
+              : `Tu documento (${document.fileName}) fue rechazado: ${notes ? String(notes).trim() : 'Revisión no aprobada'}.`,
+            relatedEntityType: 'document',
+            relatedEntityId: document.id,
+            priority: status === 'rejected' ? 'high' : 'normal',
+          });
+          broadcastToUser(beneficiaryId, { type: 'notification', notification });
+        } catch (notifErr) {
+          console.error("Error creating document review notification:", notifErr);
+        }
+      }
+
+      return res.json({
+        message: `Documento ${status === 'approved' ? 'aprobado' : 'rechazado'} exitosamente.`,
+        document: updatedDoc,
+      });
+    } catch (error) {
+      console.error("Error reviewing document:", error);
+      res.status(500).json({ message: "Error al dictaminar el documento." });
+    }
+  });
+
+  // Alias para aprobación directa
+  app.post('/api/documents/:id/approve', isAuthenticated, async (req: any, res) => {
+    req.body = { ...req.body, status: 'approved' };
+    return (app as any)._router.handle({ ...req, url: `/api/documents/${req.params.id}/review`, method: 'POST' }, res);
+  });
+
+  // Alias para rechazo directo
+  app.post('/api/documents/:id/reject', isAuthenticated, async (req: any, res) => {
+    req.body = { ...req.body, status: 'rejected' };
+    return (app as any)._router.handle({ ...req, url: `/api/documents/${req.params.id}/review`, method: 'POST' }, res);
+  });
+
+  // Consulta de estatus de validación de beneficiario
+  app.get('/api/beneficiaries/:id/payout-validation', isAuthenticated, async (req: any, res) => {
+    try {
+      const { id } = req.params;
+      const userId = req.user.claims?.sub || req.user.id;
+      const user = await storage.getUser(userId);
+
+      // Un broker/master puede ver el suyo; Super Admin y Admin pueden ver cualquiera
+      const isSelf = userId === id;
+      const isAdmin = user?.role === 'super_admin' || user?.role === 'admin';
+      if (!isSelf && !isAdmin) {
+        return res.status(403).json({ message: "No autorizado para consultar este beneficiario." });
+      }
+
+      const result = await validateBeneficiaryPayoutDocuments(id, storage);
+      return res.json(result);
+    } catch (error) {
+      console.error("Error validating beneficiary payout documents:", error);
+      res.status(500).json({ message: "Error al validar la documentación del beneficiario." });
+    }
+  });
+
+  // Consulta de estatus de validación de una comisión
+  app.get('/api/commissions/:id/payout-validation', isAuthenticated, async (req: any, res) => {
+    try {
+      const { id } = req.params;
+      const commission = await storage.getCommission(id);
+      if (!commission) {
+        return res.status(404).json({ message: "Comisión no encontrada." });
+      }
+
+      const result = await validateCommissionPayoutPrerequisites(commission, storage);
+      return res.json(result);
+    } catch (error) {
+      console.error("Error validating commission payout prerequisites:", error);
+      res.status(500).json({ message: "Error al validar los requisitos de la comisión." });
     }
   });
 

@@ -16,6 +16,10 @@ import {
   Loader2,
   RefreshCw,
   ShieldCheck,
+  CreditCard,
+  Building2,
+  XCircle,
+  Clock,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import {
@@ -143,6 +147,26 @@ export default function LegalProfileDocuments({
       return res.json();
     },
     staleTime: 15000,
+  });
+
+  // Consulta de estatus de validación para cobro de comisiones (FASE 2B.2C / PAG-01 a PAG-06)
+  const {
+    data: payoutValidation,
+    isLoading: isLoadingPayoutValidation,
+    refetch: refetchPayoutValidation,
+  } = useQuery({
+    queryKey: [`/api/beneficiaries/${currentUser?.id}/payout-validation`],
+    enabled: Boolean(currentUser?.id && isBrokerOrMaster),
+    queryFn: async () => {
+      const res = await fetch(buildApiUrl(`/api/beneficiaries/${currentUser?.id}/payout-validation`), {
+        credentials: "include",
+      });
+      if (!res.ok) {
+        throw new Error("No fue posible consultar el estado de validación para cobro.");
+      }
+      return res.json();
+    },
+    staleTime: 30000,
   });
 
   const handleAcceptCommercialTerms = async (term: PendingCommercialTerm) => {
@@ -512,6 +536,255 @@ export default function LegalProfileDocuments({
           </div>
         </CardContent>
       </Card>
+
+      {/* 3. Requisitos Documentales y Bancarios para Cobro de Comisiones (FASE 2B.2C) */}
+      {isBrokerOrMaster && (
+        <Card className="border border-border/80 shadow-xs" data-testid="card-payout-validation">
+          <CardHeader className="py-4 px-4 sm:px-6 border-b border-border/60 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+            <div>
+              <CardTitle className="text-base font-semibold flex items-center gap-2">
+                <CreditCard className="h-5 w-5 text-primary" />
+                Expediente para Cobro y Dispersión de Comisiones
+              </CardTitle>
+              <CardDescription className="text-xs sm:text-sm mt-0.5">
+                Requisitos documentales y cuenta CLABE obligatorios para autorizar pagos y dispersiones STP.
+              </CardDescription>
+            </div>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => refetchPayoutValidation()}
+                className="h-7 text-xs bg-background/80 hover:bg-background"
+                disabled={isLoadingPayoutValidation}
+              >
+                <RefreshCw className={`h-3 w-3 mr-1 ${isLoadingPayoutValidation ? 'animate-spin' : ''}`} />
+                Actualizar
+              </Button>
+            </div>
+          </CardHeader>
+
+          <CardContent className="p-4 sm:p-6 space-y-4">
+            {isLoadingPayoutValidation ? (
+              <div className="py-6 flex flex-col items-center justify-center text-muted-foreground gap-2">
+                <Loader2 className="h-5 w-5 animate-spin text-primary" />
+                <p className="text-xs font-medium">Verificando estatus documental para pagos...</p>
+              </div>
+            ) : payoutValidation ? (
+              <>
+                {payoutValidation.canPayout ? (
+                  <Alert className="border-emerald-300 bg-emerald-50/90 text-emerald-900 dark:border-emerald-800 dark:bg-emerald-950/30 dark:text-emerald-200">
+                    <CheckCircle2 className="h-4 w-4 text-emerald-600 mt-0.5 shrink-0" />
+                    <div>
+                      <AlertTitle className="font-semibold text-emerald-900 dark:text-emerald-100 text-sm">
+                        Expediente de Cobro Autorizado
+                      </AlertTitle>
+                      <AlertDescription className="text-xs text-emerald-800 dark:text-emerald-300 mt-0.5 leading-relaxed">
+                        Cuentas con toda la documentación oficial (INE vigente, CSF y Estado de cuenta) aprobada por Super Admin y tus datos bancarios verificados para recibir transferencias de comisiones.
+                      </AlertDescription>
+                    </div>
+                  </Alert>
+                ) : (
+                  <Alert className="border-amber-300 bg-amber-50/90 text-amber-900 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-200">
+                    <AlertCircle className="h-4 w-4 text-amber-600 mt-0.5 shrink-0" />
+                    <div>
+                      <AlertTitle className="font-semibold text-amber-900 dark:text-amber-100 text-sm">
+                        Documentación Pendiente para Cobro de Comisiones
+                      </AlertTitle>
+                      <AlertDescription className="text-xs text-amber-800 dark:text-amber-300 mt-0.5 leading-relaxed">
+                        Para recibir transferencias de comisiones es requisito contar con tus documentos oficiales aprobados por Super Admin.
+                        <strong className="block mt-1 text-amber-950 dark:text-amber-100 font-medium">
+                          Nota importante: Estos requisitos aplican exclusivamente a la dispersión de pagos; no bloquean tu registro, firma de contratos, captura de prospectos ni confirmación de créditos.
+                        </strong>
+                      </AlertDescription>
+                    </div>
+                  </Alert>
+                )}
+
+                {/* Grid de 4 requisitos */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 pt-2">
+                  {/* 1. INE */}
+                  <div className="rounded-lg border border-border/70 p-3 bg-muted/20 flex flex-col justify-between">
+                    <div>
+                      <div className="flex items-center justify-between gap-1 mb-1.5">
+                        <span className="font-semibold text-xs text-foreground flex items-center gap-1.5">
+                          <FileText className="h-3.5 w-3.5 text-muted-foreground" />
+                          INE Vigente
+                        </span>
+                        <Badge
+                          variant="outline"
+                          className={`text-[10px] px-1.5 py-0.5 ${
+                            payoutValidation.documents?.ine?.status === 'approved'
+                              ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                              : payoutValidation.documents?.ine?.status === 'rejected'
+                              ? 'bg-rose-50 text-rose-700 border-rose-200'
+                              : payoutValidation.documents?.ine?.status === 'expired'
+                              ? 'bg-orange-50 text-orange-700 border-orange-200'
+                              : 'bg-amber-50 text-amber-700 border-amber-200'
+                          }`}
+                        >
+                          {payoutValidation.documents?.ine?.status === 'approved'
+                            ? 'Aprobada'
+                            : payoutValidation.documents?.ine?.status === 'rejected'
+                            ? 'Rechazada'
+                            : payoutValidation.documents?.ine?.status === 'expired'
+                            ? 'Vencida'
+                            : payoutValidation.documents?.ine?.hasDocument
+                            ? 'En revisión'
+                            : 'No cargada'}
+                        </Badge>
+                      </div>
+                      <p className="text-[11px] text-muted-foreground">
+                        Identificación oficial para acreditación de titularidad.
+                      </p>
+                      {payoutValidation.documents?.ine?.notes && (
+                        <p className="text-[10px] text-amber-700 dark:text-amber-300 mt-1 italic">
+                          Nota: {payoutValidation.documents?.ine?.notes}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* 2. CSF */}
+                  <div className="rounded-lg border border-border/70 p-3 bg-muted/20 flex flex-col justify-between">
+                    <div>
+                      <div className="flex items-center justify-between gap-1 mb-1.5">
+                        <span className="font-semibold text-xs text-foreground flex items-center gap-1.5">
+                          <FileText className="h-3.5 w-3.5 text-muted-foreground" />
+                          Constancia Fiscal (CSF)
+                        </span>
+                        <Badge
+                          variant="outline"
+                          className={`text-[10px] px-1.5 py-0.5 ${
+                            payoutValidation.documents?.csf?.status === 'approved'
+                              ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                              : payoutValidation.documents?.csf?.status === 'rejected'
+                              ? 'bg-rose-50 text-rose-700 border-rose-200'
+                              : payoutValidation.documents?.csf?.status === 'expired'
+                              ? 'bg-orange-50 text-orange-700 border-orange-200'
+                              : 'bg-amber-50 text-amber-700 border-amber-200'
+                          }`}
+                        >
+                          {payoutValidation.documents?.csf?.status === 'approved'
+                            ? 'Aprobada'
+                            : payoutValidation.documents?.csf?.status === 'rejected'
+                            ? 'Rechazada'
+                            : payoutValidation.documents?.csf?.status === 'expired'
+                            ? 'Vencida'
+                            : payoutValidation.documents?.csf?.hasDocument
+                            ? 'En revisión'
+                            : 'No cargada'}
+                        </Badge>
+                      </div>
+                      <p className="text-[11px] text-muted-foreground">
+                        Constancia de Situación Fiscal SAT para emisión de comprobantes.
+                      </p>
+                      {payoutValidation.documents?.csf?.notes && (
+                        <p className="text-[10px] text-amber-700 dark:text-amber-300 mt-1 italic">
+                          Nota: {payoutValidation.documents?.csf?.notes}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* 3. Estado de Cuenta */}
+                  <div className="rounded-lg border border-border/70 p-3 bg-muted/20 flex flex-col justify-between">
+                    <div>
+                      <div className="flex items-center justify-between gap-1 mb-1.5">
+                        <span className="font-semibold text-xs text-foreground flex items-center gap-1.5">
+                          <FileText className="h-3.5 w-3.5 text-muted-foreground" />
+                          Estado de Cuenta
+                        </span>
+                        <Badge
+                          variant="outline"
+                          className={`text-[10px] px-1.5 py-0.5 ${
+                            payoutValidation.documents?.estado_cuenta?.status === 'approved'
+                              ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                              : payoutValidation.documents?.estado_cuenta?.status === 'rejected'
+                              ? 'bg-rose-50 text-rose-700 border-rose-200'
+                              : payoutValidation.documents?.estado_cuenta?.status === 'expired'
+                              ? 'bg-orange-50 text-orange-700 border-orange-200'
+                              : 'bg-amber-50 text-amber-700 border-amber-200'
+                          }`}
+                        >
+                          {payoutValidation.documents?.estado_cuenta?.status === 'approved'
+                            ? 'Aprobado'
+                            : payoutValidation.documents?.estado_cuenta?.status === 'rejected'
+                            ? 'Rechazado'
+                            : payoutValidation.documents?.estado_cuenta?.status === 'expired'
+                            ? 'Vencido'
+                            : payoutValidation.documents?.estado_cuenta?.hasDocument
+                            ? 'En revisión'
+                            : 'No cargado'}
+                        </Badge>
+                      </div>
+                      <p className="text-[11px] text-muted-foreground">
+                        Comprobante bancario que respalda la CLABE registrada.
+                      </p>
+                      {payoutValidation.documents?.estado_cuenta?.notes && (
+                        <p className="text-[10px] text-amber-700 dark:text-amber-300 mt-1 italic">
+                          Nota: {payoutValidation.documents?.estado_cuenta?.notes}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* 4. Cuenta Bancaria */}
+                  <div className="rounded-lg border border-border/70 p-3 bg-muted/20 flex flex-col justify-between">
+                    <div>
+                      <div className="flex items-center justify-between gap-1 mb-1.5">
+                        <span className="font-semibold text-xs text-foreground flex items-center gap-1.5">
+                          <Building2 className="h-3.5 w-3.5 text-muted-foreground" />
+                          Cuenta Bancaria
+                        </span>
+                        <Badge
+                          variant="outline"
+                          className={`text-[10px] px-1.5 py-0.5 ${
+                            payoutValidation.banking?.isClabeValid &&
+                            payoutValidation.banking?.isBankNameValid &&
+                            payoutValidation.banking?.isAccountHolderValid
+                              ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                              : 'bg-amber-50 text-amber-700 border-amber-200'
+                          }`}
+                        >
+                          {payoutValidation.banking?.isClabeValid &&
+                          payoutValidation.banking?.isBankNameValid &&
+                          payoutValidation.banking?.isAccountHolderValid
+                            ? 'Completa'
+                            : 'Incompleta'}
+                        </Badge>
+                      </div>
+                      <p className="text-[11px] text-muted-foreground font-mono truncate">
+                        {payoutValidation.banking?.clabe
+                          ? `CLABE: ${payoutValidation.banking.clabe.slice(0, 4)}••••${payoutValidation.banking.clabe.slice(-4)}`
+                          : 'Sin CLABE de 18 dígitos'}
+                      </p>
+                      <p className="text-[10px] text-muted-foreground truncate">
+                        {payoutValidation.banking?.bankName ? `${payoutValidation.banking.bankName}` : 'Sin banco'}
+                        {payoutValidation.banking?.accountHolder ? ` - ${payoutValidation.banking.accountHolder}` : ''}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Lista de pendientes específicos si los hay */}
+                {payoutValidation.missingRequirements?.length > 0 && (
+                  <div className="pt-2 text-xs">
+                    <p className="font-medium text-amber-900 dark:text-amber-100 mb-1">
+                      Requisitos pendientes para autorizar liquidaciones:
+                    </p>
+                    <ul className="list-disc list-inside space-y-0.5 text-muted-foreground">
+                      {payoutValidation.missingRequirements.map((req: string, index: number) => (
+                        <li key={index} className="text-amber-800 dark:text-amber-300">{req}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </>
+            ) : null}
+          </CardContent>
+        </Card>
+      )}
 
       {/* Modal para formalización con código OTP */}
       <BrokerFormalizationDialog

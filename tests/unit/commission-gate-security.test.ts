@@ -213,6 +213,37 @@ describe("P0 - Temporal Commission Gate & Login Security Hardening", () => {
         frozenAmount: "15000.00",
         commissionType: "apertura",
       } as any);
+
+      // Provisionar documentación aprobada por Super Admin para brokerUser (FASE 2B.2C)
+      await storage.createDocument({
+        brokerId: brokerUser.id,
+        uploadedBy: brokerUser.id,
+        type: "ine",
+        fileName: "ine_broker.pdf",
+        filePath: "/uploads/ine_broker.pdf",
+        isValid: true,
+        extractedData: { status: "approved", reviewedBy: superAdmin.id, reviewRole: "super_admin" },
+      } as any);
+
+      await storage.createDocument({
+        brokerId: brokerUser.id,
+        uploadedBy: brokerUser.id,
+        type: "csf",
+        fileName: "csf_broker.pdf",
+        filePath: "/uploads/csf_broker.pdf",
+        isValid: true,
+        extractedData: { status: "approved", reviewedBy: superAdmin.id, reviewRole: "super_admin" },
+      } as any);
+
+      await storage.createDocument({
+        brokerId: brokerUser.id,
+        uploadedBy: brokerUser.id,
+        type: "estado_cuenta",
+        fileName: "estado_cuenta_broker.pdf",
+        filePath: "/uploads/estado_cuenta_broker.pdf",
+        isValid: true,
+        extractedData: { status: "approved", reviewedBy: superAdmin.id, reviewRole: "super_admin" },
+      } as any);
     });
 
     // 2.1 Aprobación individual y exclusividad de Super Admin
