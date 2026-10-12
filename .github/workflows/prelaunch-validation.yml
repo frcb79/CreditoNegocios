@@ -1,0 +1,31 @@
+name: Credito Negocios - QA prelaunch (isolated)
+on:
+  push:
+    branches:
+      - 'fix/prelaunch-p0-gpt6-*'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  typescript-build-unit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      NODE_ENV: test
+      USE_MEMORY_STORAGE: 'true'
+      DATABASE_URL: postgresql://local:local@localhost:5432/creditonegocios_test
+      SESSION_SECRET: prelaunch-ci-only-not-production-secret
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+      - name: Install locked dependencies
+        run: npm ci --no-audit --no-fund
+      - name: TypeScript
+        run: npm run check
+      - name: Build
+        run: npm run build
+      - name: Financial P0 regression tests (MemStorage only)
+        run: npm test -- --runInBand --coverage=false --forceExit tests/unit/b2-financial-qa-consolidation.test.ts tests/unit/b2-commission-document-validation.test.ts tests/unit/commission-gate-security.test.ts tests/unit/commission-historical-beneficiary.test.ts
