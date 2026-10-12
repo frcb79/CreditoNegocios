@@ -3053,13 +3053,6 @@ export class DbStorage implements IStorage {
         throw new Error("DISBURSEMENT_CREDIT_NOT_ELIGIBLE");
       }
       const sourceProposal = (locked.finalProposal || {}) as Record<string, any>;
-      if (JSON.stringify(sourceProposal) !== JSON.stringify(params.expectedProposal || {}) ||
-          String(locked.amount) !== String(params.expectedAmount) ||
-          locked.brokerId !== params.commission.brokerId ||
-          (locked.originMasterBrokerId || sourceProposal.originMasterBrokerId || null) !==
-            (params.commission.masterBrokerId || null)) {
-        throw new Error("DISBURSEMENT_STALE_COMMERCIAL_SNAPSHOT");
-      }
       const priorTranches: any[] = Array.isArray(sourceProposal.disbursementTranches)
         ? sourceProposal.disbursementTranches
         : sourceProposal.disbursementConfirmation ? [sourceProposal.disbursementConfirmation] : [];
@@ -3075,6 +3068,15 @@ export class DbStorage implements IStorage {
         return { credit: locked, commission: prior, alreadyConfirmed: true };
       }
 
+      // Validate a fresh commercial snapshot only for a NEW tranche.
+      // Identical retries have already been safely resolved under the row lock.
+      if (JSON.stringify(sourceProposal) !== JSON.stringify(params.expectedProposal || {}) ||
+          String(locked.amount) !== String(params.expectedAmount) ||
+          locked.brokerId !== params.commission.brokerId ||
+          (locked.originMasterBrokerId || sourceProposal.originMasterBrokerId || null) !==
+            (params.commission.masterBrokerId || null)) {
+        throw new Error("DISBURSEMENT_STALE_COMMERCIAL_SNAPSHOT");
+      }
       const maxAmount = Number(locked.amount);
       const previousTotal = priorTranches.reduce((sum, t) => sum + Number(t.confirmedAmount || 0), 0);
       if (!Number.isFinite(maxAmount) || maxAmount <= 0 || previousTotal + amount > maxAmount + 0.01) {
