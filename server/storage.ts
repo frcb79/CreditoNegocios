@@ -4199,9 +4199,14 @@ export class MemStorage implements IStorage {
     };
     this.institutionProductVersions.set(versionId, publishedVersion);
 
-    // 3. Actualizar la oferta padre
+    // 3. Actualizar la oferta padre con metadatos de la NUEVA version, no durante el draft.
+    const futureMeta = (version.variablesConfiguration as any)?.futureMetadata;
     this.institutionProducts.set(productId, {
       ...product,
+      name: futureMeta?.name || product.name,
+      customName: futureMeta?.customName || product.customName,
+      description: futureMeta?.description !== undefined ? futureMeta.description : product.description,
+      productType: futureMeta?.productType || product.productType,
       status: "published",
       currentVersionNumber: version.versionNumber,
       configuration: (version.conditions as Record<string, any>) || product.configuration,
