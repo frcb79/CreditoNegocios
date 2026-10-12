@@ -29,3 +29,36 @@ jobs:
         run: npm run build
       - name: Financial P0 regression tests (MemStorage only)
         run: npm test -- --runInBand --coverage=false --forceExit tests/unit/b2-financial-qa-consolidation.test.ts tests/unit/b2-commission-document-validation.test.ts tests/unit/commission-gate-security.test.ts tests/unit/commission-historical-beneficiary.test.ts
+
+  postgres-migrations:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: ci
+          POSTGRES_PASSWORD: ci_only
+          POSTGRES_DB: creditonegocios_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U ci -d creditonegocios_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    env:
+      NODE_ENV: test
+      USE_MEMORY_STORAGE: 'true'
+      TEST_DATABASE_URL: postgresql://ci:ci_only@localhost:5432/creditonegocios_test
+      DATABASE_URL: postgresql://ci:ci_only@localhost:5432/creditonegocios_test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+      - name: Install dependencies
+        run: npm ci --no-audit --no-fund
+      - name: Test isolated PostgreSQL migration 0005
+        run: npm test -- --runInBand --coverage=false --forceExit tests/integration/postgres-versioning-migration.test.ts
