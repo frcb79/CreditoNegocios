@@ -3076,6 +3076,12 @@ export class DbStorage implements IStorage {
         throw new Error("DISBURSEMENT_CREDIT_NOT_ELIGIBLE");
       }
       const sourceProposal = (locked.finalProposal || {}) as Record<string, any>;
+      // The immutable database lineage is authoritative; never let editable
+      // proposal JSON invent a Master beneficiary for a historical credit.
+      if (sourceProposal.originMasterBrokerId !== undefined &&
+          (sourceProposal.originMasterBrokerId || null) !== (locked.originMasterBrokerId || null)) {
+        throw new Error("DISBURSEMENT_ORIGIN_LINEAGE_MISMATCH");
+      }
       const priorTranches: any[] = Array.isArray(sourceProposal.disbursementTranches)
         ? sourceProposal.disbursementTranches
         : sourceProposal.disbursementConfirmation ? [sourceProposal.disbursementConfirmation] : [];
@@ -3096,7 +3102,7 @@ export class DbStorage implements IStorage {
       if (stableJsonSnapshot(sourceProposal) !== stableJsonSnapshot(params.expectedProposal || {}) ||
           String(locked.amount) !== String(params.expectedAmount) ||
           locked.brokerId !== params.commission.brokerId ||
-          (locked.originMasterBrokerId || sourceProposal.originMasterBrokerId || null) !==
+          (locked.originMasterBrokerId || null) !==
             (params.commission.masterBrokerId || null)) {
         throw new Error("DISBURSEMENT_STALE_COMMERCIAL_SNAPSHOT");
       }
@@ -3121,7 +3127,7 @@ export class DbStorage implements IStorage {
         ...params.commission,
         tenantId: locked.tenantId || params.commission.tenantId || null,
         brokerId: locked.brokerId,
-        masterBrokerId: locked.originMasterBrokerId || sourceProposal.originMasterBrokerId || null,
+        masterBrokerId: locked.originMasterBrokerId || null,
         creditId: locked.id,
         idempotencyKey: key,
         status: "generated",
