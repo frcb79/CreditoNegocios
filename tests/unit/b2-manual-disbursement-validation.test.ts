@@ -127,7 +127,7 @@ describe("Fase 2B.2A — Validación Manual de Créditos y Comisiones por Super 
       brokerId: brokerUser.id,
       originMasterBrokerId: masterBrokerUser.id,
       financialInstitutionId: institution.id,
-      amount: "1000000.00",
+      amount: customProposal?.approvedAmount ? String(customProposal.approvedAmount) : "1000000.00",
       status: "approved",
       finalProposal: snapshot,
     } as any);
@@ -438,13 +438,14 @@ describe("Fase 2B.2A — Validación Manual de Créditos y Comisiones por Super 
   // =========================================================================
   describe("4. Revisión y Aprobación de Comisiones por Super Admin (Regla 4)", () => {
     it("Detalle financiero: Super Admin revisa monto base, desglose y beneficiarios vía GET /api/commissions/:id", async () => {
-      const { credit } = await createTestCreditWithSnapshot();
+      const { credit } = await createTestCreditWithSnapshot({ approvedAmount: 1200000 });
       currentAuthUser = superAdminUser;
 
       const confirmRes = await request(app)
         .post(`/api/credits/${credit.id}/confirm-disbursement`)
         .send({ confirmedAmount: 1200000 });
 
+      expect(confirmRes.status).toBe(200);
       const commId = confirmRes.body.commission.id;
 
       const detailRes = await request(app).get(`/api/commissions/${commId}`);
@@ -567,6 +568,230 @@ describe("Fase 2B.2A — Validación Manual de Créditos y Comisiones por Super 
 
       expect(approveRes.status).toBe(200);
       expect(approveRes.body.commission.status).toBe("approved");
+    });
+  });
+
+  // =========================================================================
+  // 6. FASE 2B.2A.1: CIERRE DE VALIDACIÓN MANUAL (OPE-09 A OPE-12 / PAG-05/06)
+  // =========================================================================
+  describe("6. Fase 2B.2A.1 — Cierre de Validación Manual: Atomicidad, Tramos, Estados y Atribución", () => {
+    it("Atomicidad: si las condiciones económicas fallan, el crédito NO queda confirmado sin comisión válida", async () => {
+      // Crédito sin tasas de comisión completas
+      const client = await storage.createClient({
+        firstName: "Carlos",
+        lastName: "Romero",
+        brokerId: brokerUser.id,
+      } as any);
+
+      const institution = await storage.createFinancialInstitution({
+        name: `Financiera Incompleta ${randomUUID().slice(0, 6)}`,
+        commissionRate: "0",
+        active: true,
+      } as any);
+
+      const credit = await storage.createCredit({
+        clientId: client.id,
+        brokerId: brokerUser.id,
+        financialInstitutionId: institution.id,
+        amount: "600000.00",
+        status: "approved",
+        finalProposal: {
+          approvedAmount: 600000,
+          commissionRates: {
+            broker: { apertura: 1.0 },
+            // Faltan financiera y master
+          },
+        },
+      } as any);
+
+      currentAuthUser = superAdminUser;
+      const res = await request(app)
+        .post(`/api/credits/${credit.id}/confirm-disbursement`)
+        .send({ confirmedAmount: 600000 });
+
+      expect(res.status).toBe(400);
+      expect(res.body.code).toBe("MISSING_COMMISSION_RATE");
+
+      // El crédito permanece intacto sin quedar confirmado
+      const creditAfter = await storage.getCredit(credit.id);
+      expect(creditAfter?.status).toBe("approved");
+      expect((creditAfter?.finalProposal as any)?.disbursementStatus).not.toBe("confirmed");
+
+      // Cero comisiones creadas
+      const comms = await storage.getCommissions({ creditId: credit.id });
+      expect(comms.length).toBe(0);
+    });
+
+    it("Idempotencia y multidispersión: impide alterar el importe de un tramo ya confirmado", async () => {
+      const { credit } = await createTestCreditWithSnapshot();
+      currentAuthUser = superAdminUser;
+
+      // Confirmar tramo 1 por $400,000
+      const res1 = await request(app)
+        .post(`/api/credits/${credit.id}/confirm-disbursement`)
+        .send({ confirmedAmount: 400000, dispersalIndex: 1 });
+      expect(res1.status).toBe(200);
+
+      // Reintentar tramo 1 con el mismo importe -> respuesta idempotente
+      const resIdemp = await request(app)
+        .post(`/api/credits/${credit.id}/confirm-disbursement`)
+        .send({ confirmedAmount: 400000, dispersalIndex: 1 });
+      expect(resIdemp.status).toBe(200);
+      expect(resIdemp.body.alreadyConfirmed).toBe(true);
+
+      // Intentar alterar el importe del tramo 1 confirmado a $450,000 -> BLOQUEADO
+      const resAlter = await request(app)
+        .post(`/api/credits/${credit.id}/confirm-disbursement`)
+        .send({ confirmedAmount: 450000, dispersalIndex: 1 });
+      expect(resAlter.status).toBe(400);
+      expect(resAlter.body.code).toBe("CANNOT_ALTER_CONFIRMED_TRANCHE_AMOUNT");
+    });
+
+    it("Multidispersión: impide sobrepasar el monto correspondiente autorizado del crédito", async () => {
+      const { credit } = await createTestCreditWithSnapshot();
+      // Crédito de $1,000,000
+      currentAuthUser = superAdminUser;
+
+      // Tramo 1: $600,000
+      const res1 = await request(app)
+        .post(`/api/credits/${credit.id}/confirm-disbursement`)
+        .send({ confirmedAmount: 600000, dispersalIndex: 1 });
+      expect(res1.status).toBe(200);
+
+      // Tramo 2: intenta $500,000 (total acumulado sería $1,100,000 > $1,000,000) -> BLOQUEADO
+      const resExceed = await request(app)
+        .post(`/api/credits/${credit.id}/confirm-disbursement`)
+        .send({ confirmedAmount: 500000, dispersalIndex: 2 });
+      expect(resExceed.status).toBe(400);
+      expect(resExceed.body.code).toBe("TOTAL_DISBURSEMENT_EXCEEDS_APPROVED_AMOUNT");
+
+      // Tramo 2: confirma $400,000 (total acumulado $1,000,000 <= $1,000,000) -> EXITOSO
+      const resValid = await request(app)
+        .post(`/api/credits/${credit.id}/confirm-disbursement`)
+        .send({ confirmedAmount: 400000, dispersalIndex: 2 });
+      expect(resValid.status).toBe(200);
+
+      // Verificar que el historial de tramos preserva usuario, importe y fecha
+      const updatedCredit = await storage.getCredit(credit.id);
+      const tranches = (updatedCredit?.finalProposal as any)?.disbursementTranches;
+      expect(Array.isArray(tranches)).toBe(true);
+      expect(tranches.length).toBe(2);
+      expect(tranches[0].dispersalIndex).toBe(1);
+      expect(tranches[0].confirmedAmount).toBe(600000);
+      expect(tranches[0].confirmedBy).toBe(superAdminUser.id);
+      expect(tranches[1].dispersalIndex).toBe(2);
+      expect(tranches[1].confirmedAmount).toBe(400000);
+      expect(tranches[1].confirmedBy).toBe(superAdminUser.id);
+    });
+
+    it("Estados correctos: separa desembolso reportado de confirmado en créditos y métricas", async () => {
+      currentAuthUser = superAdminUser;
+
+      // 1. Crear crédito reportado (no confirmado expresamente)
+      const client = await storage.createClient({
+        firstName: "Reportado",
+        lastName: "Prueba",
+        brokerId: brokerUser.id,
+      } as any);
+
+      const institution = await storage.createFinancialInstitution({
+        name: "Financiera Métricas",
+        active: true,
+      } as any);
+
+      const reqDispersed = await storage.createCreditSubmissionRequest({
+        clientId: client.id,
+        brokerId: brokerUser.id,
+        requestedAmount: 700000,
+        purpose: "Expansión",
+        status: "in_progress",
+      } as any);
+
+      const target = await storage.createCreditSubmissionTarget({
+        requestId: reqDispersed.id,
+        financialInstitutionId: institution.id,
+        isWinner: true,
+        status: "selected_winner",
+        institutionProposal: { approvedAmount: 700000, interestRate: 15, term: 12 },
+      } as any);
+
+      await request(app)
+        .patch(`/api/credit-submission-targets/${target.id}/mark-dispersed`)
+        .send();
+
+      // 2. Crear crédito confirmado expresamente
+      const { credit: creditConfirmado } = await createTestCreditWithSnapshot();
+      await request(app)
+        .post(`/api/credits/${creditConfirmado.id}/confirm-disbursement`)
+        .send({ confirmedAmount: 500000 });
+
+      // 3. Consultar métricas del dashboard
+      const metricsRes = await request(app).get("/api/dashboard/metrics");
+      expect(metricsRes.status).toBe(200);
+      expect(metricsRes.body.broker.disbursedCredits).toBeDefined();
+
+      // En pipeline, sólo los confirmados computan en dispersion
+      const pipelineRes = await request(app).get("/api/dashboard/pipeline");
+      expect(pipelineRes.status).toBe(200);
+      expect(pipelineRes.body.pipeline.dispersion).toBeDefined();
+      expect(pipelineRes.body.pipeline.dispersion_reportada).toBeDefined();
+      expect(pipelineRes.body.pipeline.dispersion_reportada).toBeGreaterThanOrEqual(1);
+    });
+
+    it("Atribución histórica: rechaza confirmación si falta Broker originador", async () => {
+      currentAuthUser = superAdminUser;
+      const client = await storage.createClient({
+        firstName: "Sin",
+        lastName: "Broker",
+      } as any);
+
+      const institution = await storage.createFinancialInstitution({
+        name: "Financiera Directa",
+        active: true,
+      } as any);
+
+      const creditSinBroker = await storage.createCredit({
+        clientId: client.id,
+        financialInstitutionId: institution.id,
+        amount: "500000",
+        status: "approved",
+        finalProposal: { approvedAmount: 500000 },
+      } as any);
+
+      const res = await request(app)
+        .post(`/api/credits/${creditSinBroker.id}/confirm-disbursement`)
+        .send({ confirmedAmount: 500000 });
+
+      expect(res.status).toBe(400);
+      expect(res.body.code).toBe("MISSING_ORIGIN_BROKER");
+    });
+
+    it("Revisión de comisiones: GET expone tasas, shares y beneficiarios; approve bloquea alteración de monto", async () => {
+      const { credit } = await createTestCreditWithSnapshot();
+      currentAuthUser = superAdminUser;
+
+      const confirmRes = await request(app)
+        .post(`/api/credits/${credit.id}/confirm-disbursement`)
+        .send({ confirmedAmount: 1000000 });
+
+      const commId = confirmRes.body.commission.id;
+
+      // GET con detalle
+      const detailRes = await request(app).get(`/api/commissions/${commId}`);
+      expect(detailRes.status).toBe(200);
+      expect(detailRes.body.rates).toBeDefined();
+      expect(detailRes.body.shares).toBeDefined();
+      expect(detailRes.body.historicalBeneficiaries).toBeDefined();
+      expect(detailRes.body.shares.brokerShare).toBe("20000.00");
+      expect(detailRes.body.shares.masterBrokerShare).toBe("10000.00");
+
+      // Intento de alterar el importe al aprobar -> BLOQUEADO
+      const alterApproveRes = await request(app)
+        .post(`/api/commissions/${commId}/approve`)
+        .send({ amount: 99999 });
+
+      expect(alterApproveRes.status).toBe(400);
+      expect(alterApproveRes.body.code).toBe("COMMISSION_AMOUNT_ALTERATION_FORBIDDEN");
     });
   });
 });

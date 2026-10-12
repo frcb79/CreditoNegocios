@@ -347,6 +347,20 @@ export async function createCascadingCommissionRecord(
   return commission;
 }
 
+/**
+ * REGLA 3 (FASE 2B.2A.1 / OPE-09 / PAG-05): Helper canónico para verificar si un crédito
+ * cuenta con confirmación expresa de desembolso emitida exclusivamente por Super Admin.
+ */
+export function isCreditDisbursementConfirmed(credit: any): boolean {
+  if (!credit) return false;
+  const prop = (credit.finalProposal as any) || {};
+  return (
+    prop.disbursementStatus === 'confirmed' ||
+    (credit as any).disbursementStatus === 'confirmed' ||
+    prop.disbursementConfirmation?.status === 'confirmed'
+  );
+}
+
 async function ensureCommissionRecord(params: {
   creditId: string;
   brokerId: string;
@@ -605,9 +619,23 @@ async function enrichCreditSubmissionTarget(target: any) {
   }
   
   const productTemplate = await resolveProductTemplate(request.productTemplateId, request.purpose);
-  
+
+  let targetCredit = target.creditId ? await storage.getCredit(target.creditId) : null;
+  const targetProp = (targetCredit?.finalProposal as any) || (target.institutionProposal as any) || {};
+  const isConfirmed = targetProp.disbursementStatus === 'confirmed' ||
+    (targetCredit as any)?.disbursementStatus === 'confirmed' ||
+    targetProp.disbursementConfirmation?.status === 'confirmed';
+  const targetDisbursementStatus = isConfirmed
+    ? 'confirmed'
+    : ((target.status === 'dispersed' || targetProp.disbursementStatus === 'reported') ? 'reported' : 'unconfirmed');
+  const targetConfirmedDisbursedAmount = targetProp.disbursementConfirmation?.confirmedAmount ??
+    (targetCredit as any)?.confirmedDisbursedAmount ?? null;
+
   return {
     ...target,
+    disbursementStatus: targetDisbursementStatus,
+    isDisbursementConfirmed: isConfirmed,
+    confirmedDisbursedAmount: targetConfirmedDisbursedAmount,
     request: {
       ...request,
       broker,
@@ -2173,11 +2201,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
         userCredits = allCredits.filter(c => c.brokerId === userId);
       }
 
+      // REGLA 3 (FASE 2B.2A.1): Separar desembolsos reportados de confirmados.
+      // Sólo la confirmación expresa de Super Admin computa como desembolso confirmado en métricas.
       const disbursedCredits = userCredits.filter(c =>
-        c.status === 'disbursed' || c.status === 'dispersed' || c.status === 'dispersado' || c.status === 'active'
+        (c.status === 'disbursed' || c.status === 'dispersed' || c.status === 'dispersado' || c.status === 'active') &&
+        isCreditDisbursementConfirmed(c)
+      );
+      const reportedDisbursedCredits = userCredits.filter(c =>
+        (c.status === 'disbursed' || c.status === 'dispersed' || c.status === 'dispersado') &&
+        !isCreditDisbursementConfirmed(c)
       );
       const disbursedCount = disbursedCredits.length;
-      const disbursedVolume = disbursedCredits.reduce((sum, c) => sum + parseFloat(c.amount || '0'), 0);
+      const disbursedVolume = disbursedCredits.reduce((sum, c) => {
+        const prop = (c.finalProposal as any) || {};
+        const confirmedAmt = prop.disbursementConfirmation?.confirmedAmount ?? (c as any).confirmedDisbursedAmount;
+        return sum + (confirmedAmt != null ? parseFloat(String(confirmedAmt)) : parseFloat(c.amount || '0'));
+      }, 0);
 
       // Suggested metrics: Average Ticket & Conversion Rate (#27)
       const avgTicket = disbursedCount > 0 ? disbursedVolume / disbursedCount : 0;
@@ -2302,9 +2341,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       if (isMasterBroker) {
         const networkDisbursedCredits = userCredits.filter(c =>
-          c.brokerId !== userId && (c.status === 'disbursed' || c.status === 'dispersed' || c.status === 'active')
+          c.brokerId !== userId &&
+          (c.status === 'disbursed' || c.status === 'dispersed' || c.status === 'active') &&
+          isCreditDisbursementConfirmed(c)
         );
-        const networkDisbursedVol = networkDisbursedCredits.reduce((sum, c) => sum + parseFloat(c.amount || '0'), 0);
+        const networkDisbursedVol = networkDisbursedCredits.reduce((sum, c) => {
+          const prop = (c.finalProposal as any) || {};
+          const confirmedAmt = prop.disbursementConfirmation?.confirmedAmount ?? (c as any).confirmedDisbursedAmount;
+          return sum + (confirmedAmt != null ? parseFloat(String(confirmedAmt)) : parseFloat(c.amount || '0'));
+        }, 0);
         const networkActiveSubmissions = userSubmissions.filter(s =>
           s.brokerId !== userId && (s.status === 'submitted' || s.status === 'evaluating' || s.status === 'under_review' || s.status === 'in_progress')
         ).length;
@@ -2398,7 +2443,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
       ).length;
 
       const dispersion = userCredits.filter(c =>
-        c.status === 'disbursed' || c.status === 'dispersed' || c.status === 'dispersado' || c.status === 'active'
+        (c.status === 'disbursed' || c.status === 'dispersed' || c.status === 'dispersado' || c.status === 'active') &&
+        isCreditDisbursementConfirmed(c)
+      ).length;
+
+      const dispersion_reportada = userCredits.filter(c =>
+        (c.status === 'disbursed' || c.status === 'dispersed' || c.status === 'dispersado') &&
+        !isCreditDisbursementConfirmed(c)
       ).length;
 
       const pipeline = {
@@ -2407,6 +2458,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         aprobacion,
         por_firmar,
         dispersion,
+        dispersion_reportada,
       };
 
       // Helper to resolve client display name
@@ -3963,8 +4015,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
             }
           }
 
+          const prop = (credit.finalProposal as any) || {};
+          const isConfirmed = isCreditDisbursementConfirmed(credit);
+          const disbursementStatus = isConfirmed
+            ? 'confirmed'
+            : ((credit.status === 'disbursed' || credit.status === 'dispersed' || credit.status === 'dispersado' || prop.disbursementStatus === 'reported') ? 'reported' : 'unconfirmed');
+          const confirmedDisbursedAmount = prop.disbursementConfirmation?.confirmedAmount ??
+            (credit as any)?.confirmedDisbursedAmount ?? null;
+
           return {
             ...credit,
+            disbursementStatus,
+            isDisbursementConfirmed: isConfirmed,
+            confirmedDisbursedAmount,
             client: client ? {
               id: client.id,
               firstName: client.firstName,
@@ -4130,7 +4193,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // REGLAS 1, 2 y 3 (FASE 2B.2A / COM-21 / OPE-09): Confirmación manual de desembolsos por Super Admin y cálculo canónico
+  // REGLAS 1, 2, 3 y 4 (FASE 2B.2A.1 / COM-21 / OPE-09 / PAG-05): Confirmación manual de desembolsos por Super Admin
   app.post('/api/credits/:id/confirm-disbursement', isAuthenticated, requireModuleAndAction('creditos', 'edit'), async (req: any, res) => {
     try {
       const { id } = req.params;
@@ -4150,9 +4213,26 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ message: "Crédito no encontrado" });
       }
 
+      // REGLA 4: Atribución Histórica y Elegibilidad
+      if (!credit.brokerId) {
+        return res.status(400).json({
+          message: "Operación no elegible para confirmación de desembolso: Falta el Bróker originador.",
+          code: "MISSING_ORIGIN_BROKER",
+        });
+      }
+
+      const existingProposal = (credit.finalProposal as any) || {};
+      const financialInstitutionId = credit.financialInstitutionId || existingProposal.financialInstitutionId;
+      if (!financialInstitutionId) {
+        return res.status(400).json({
+          message: "Operación no elegible para confirmación de desembolso: Falta la Financiera oferente.",
+          code: "MISSING_FINANCIAL_INSTITUTION",
+        });
+      }
+
       const { confirmedAmount, notes, dispersalIndex, idempotencyKey } = req.body;
 
-      // Validación estricta del monto efectivamente desembolsado (Regla 1 y Regla 2)
+      // Validación estricta del monto efectivamente desembolsado
       if (
         confirmedAmount === undefined ||
         confirmedAmount === null ||
@@ -4171,7 +4251,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
         ? Number(dispersalIndex)
         : 1;
 
-      // Idempotencia: si ya existe comisión calculada con la misma idempotencyKey, retornarla
+      // REGLA 2: Idempotencia y Multidispersión
+      const existingTranches: any[] = Array.isArray(existingProposal.disbursementTranches)
+        ? existingProposal.disbursementTranches
+        : (existingProposal.disbursementConfirmation ? [existingProposal.disbursementConfirmation] : []);
+
+      // 1. Idempotency Key check
       if (idempotencyKey) {
         const existingComms = await storage.getCommissions({ idempotencyKey: String(idempotencyKey).trim() });
         if (existingComms.length > 0) {
@@ -4184,47 +4269,154 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
       }
 
-      // Actualizar el estado del crédito registrando auditoría de confirmación expresa
-      const existingProposal = (credit.finalProposal as any) || {};
-      const updatedProposal = {
-        ...existingProposal,
-        disbursementConfirmation: {
-          confirmedAmount: validConfirmedAmount,
-          confirmedAt: new Date().toISOString(),
-          confirmedBy: userId,
-          confirmedByEmail: user.email,
-          notes: notes ? String(notes).trim() : null,
-          dispersalIndex: validDispersalIndex,
-          status: 'confirmed',
-        },
-        disbursementStatus: 'confirmed',
-        confirmedDisbursedAmount: validConfirmedAmount,
+      // 2. Comprobar si el tramo específico ya fue confirmado previamente
+      const existingTranche = existingTranches.find((t: any) => Number(t.dispersalIndex || 1) === validDispersalIndex);
+      if (existingTranche) {
+        const prevAmount = Number(existingTranche.confirmedAmount || 0);
+        if (Math.abs(prevAmount - validConfirmedAmount) < 0.01) {
+          const commType = req.body?.commissionType || existingProposal.commissionsToApply?.[0] || 'apertura';
+          const resolvedCommType = validDispersalIndex > 1 ? `${commType}_parcial_${validDispersalIndex}` : commType;
+          const existingComms = await storage.getCommissions({ creditId: credit.id });
+          const matchComm = existingComms.find(c => c.commissionType === resolvedCommType || c.id === existingTranche.commissionId);
+          return res.json({
+            message: "Este tramo de desembolso ya se encuentra confirmado con el mismo importe.",
+            credit,
+            commission: matchComm || existingComms[0] || null,
+            alreadyConfirmed: true,
+          });
+        } else {
+          return res.status(400).json({
+            message: `Prohibido alterar el importe de un tramo confirmado: El tramo #${validDispersalIndex} ya fue confirmado previamente por $${prevAmount.toFixed(2)} MXN y es inmutable.`,
+            code: "CANNOT_ALTER_CONFIRMED_TRANCHE_AMOUNT",
+            details: {
+              dispersalIndex: validDispersalIndex,
+              previousConfirmedAmount: prevAmount,
+              attemptedAmount: validConfirmedAmount,
+            },
+          });
+        }
+      }
+
+      // 3. Impedir sobrepasar el monto máximo autorizado del crédito
+      const maxCreditAmount = Number(credit.amount || existingProposal.approvedAmount || 0);
+      const otherTranchesTotal = existingTranches
+        .filter((t: any) => Number(t.dispersalIndex || 1) !== validDispersalIndex)
+        .reduce((sum: number, t: any) => sum + Number(t.confirmedAmount || 0), 0);
+
+      if (maxCreditAmount > 0 && (otherTranchesTotal + validConfirmedAmount) > (maxCreditAmount + 0.01)) {
+        return res.status(400).json({
+          message: `El monto acumulado de desembolsos ($${(otherTranchesTotal + validConfirmedAmount).toFixed(2)}) sobrepasa el monto máximo autorizado del crédito ($${maxCreditAmount.toFixed(2)}).`,
+          code: "TOTAL_DISBURSEMENT_EXCEEDS_APPROVED_AMOUNT",
+          details: {
+            maxCreditAmount,
+            otherTranchesTotal,
+            attemptedAmount: validConfirmedAmount,
+            accumulatedTotal: otherTranchesTotal + validConfirmedAmount,
+          },
+        });
+      }
+
+      // REGLA 1: Atomicidad y Pre-validación económica antes de actualizar el estado
+      const commType = req.body?.commissionType || existingProposal.commissionsToApply?.[0] || 'apertura';
+      const offerId = existingProposal.institutionProductId || existingProposal.offerId || (credit as any).institutionProductId || null;
+      const versionNumber = existingProposal.versionNumber ?? null;
+      const proposalCommissionRates = existingProposal.commissionRates || undefined;
+      const institution = financialInstitutionId ? await storage.getFinancialInstitution(financialInstitutionId) : undefined;
+      const historicalMasterBrokerId = credit.originMasterBrokerId || existingProposal.originMasterBrokerId || null;
+
+      try {
+        await resolveOfferVersionCommissionRates({
+          offerId,
+          versionNumber,
+          commissionType: commType,
+          proposalCommissionRates,
+          institution,
+          hasMasterBroker: Boolean(historicalMasterBrokerId),
+          isMasterDirect: Boolean(historicalMasterBrokerId && credit.brokerId && String(historicalMasterBrokerId) === String(credit.brokerId)),
+        });
+      } catch (preCheckErr: any) {
+        if (
+          preCheckErr instanceof MissingCommissionRateError ||
+          preCheckErr instanceof MissingOfferVersionError ||
+          preCheckErr instanceof UnauthorizedDistributionError
+        ) {
+          return res.status(400).json({
+            message: preCheckErr.message,
+            code: preCheckErr.code || "CANONICAL_CALCULATION_ERROR",
+            details: (preCheckErr as any).details || null,
+          });
+        }
+      }
+
+      // Estructurar el nuevo tramo e historial
+      const newTranche = {
+        dispersalIndex: validDispersalIndex,
+        confirmedAmount: validConfirmedAmount,
+        confirmedAt: new Date().toISOString(),
+        confirmedBy: userId,
+        confirmedByEmail: user.email,
+        notes: notes ? String(notes).trim() : null,
+        idempotencyKey: idempotencyKey ? String(idempotencyKey).trim() : null,
+        status: 'confirmed',
+        commissionId: undefined as string | undefined,
       };
 
-      const updatedCredit = await storage.updateCredit(credit.id, {
+      const updatedTranches = [
+        ...existingTranches.filter((t: any) => Number(t.dispersalIndex || 1) !== validDispersalIndex),
+        newTranche,
+      ].sort((a, b) => Number(a.dispersalIndex || 1) - Number(b.dispersalIndex || 1));
+
+      const totalDisbursedSoFar = updatedTranches.reduce((sum, t) => sum + Number(t.confirmedAmount || 0), 0);
+
+      const updatedProposal = {
+        ...existingProposal,
+        disbursementConfirmation: newTranche,
+        disbursementTranches: updatedTranches,
+        disbursementStatus: 'confirmed',
+        confirmedDisbursedAmount: totalDisbursedSoFar,
+      };
+
+      // Respaldo de estado anterior para rollback atómico
+      const previousCreditState = {
+        status: credit.status,
+        finalProposal: credit.finalProposal,
+        notes: credit.notes,
+      };
+
+      let updatedCredit = await storage.updateCredit(credit.id, {
         status: 'disbursed',
         finalProposal: updatedProposal,
         notes: notes ? (credit.notes ? `${credit.notes} | Confirmación: ${notes}` : `Confirmación: ${notes}`) : credit.notes,
       });
 
-      // Asegurar campos en memoria si la base subyacente no es relacional
       if (updatedCredit) {
         (updatedCredit as any).disbursementStatus = 'confirmed';
-        (updatedCredit as any).confirmedDisbursedAmount = validConfirmedAmount;
+        (updatedCredit as any).confirmedDisbursedAmount = totalDisbursedSoFar;
         (updatedCredit as any).disbursementConfirmedAt = new Date();
         (updatedCredit as any).disbursementConfirmedBy = userId;
       }
 
-      // Cálculo mediante servicio canónico utilizando oferta, versión, tasas y beneficiarios históricos congelados (Regla 3)
+      // Cálculo y persistencia canónica con protección de rollback
+      let commission: any;
       try {
-        const commission = await calculateAndPersistCascadingCommission({
+        commission = await calculateAndPersistCascadingCommission({
           credit: updatedCredit || credit,
           creditId: credit.id,
-          commissionType: req.body?.commissionType || (credit?.finalProposal as any)?.commissionsToApply?.[0] || 'apertura',
+          commissionType: commType,
           confirmedDisbursedAmount: validConfirmedAmount,
           dispersalIndex: validDispersalIndex,
           idempotencyKey: idempotencyKey ? String(idempotencyKey).trim() : undefined,
           performedBy: userId,
+        });
+
+        // Enlazar id de comisión al tramo
+        newTranche.commissionId = commission.id;
+        await storage.updateCredit(credit.id, {
+          finalProposal: {
+            ...updatedProposal,
+            disbursementConfirmation: newTranche,
+            disbursementTranches: updatedTranches,
+          },
         });
 
         await storage.createCommissionAuditLog({
@@ -4237,11 +4429,29 @@ export async function registerRoutes(app: Express): Promise<Server> {
             actorRole: user.role,
             confirmedAmount: validConfirmedAmount,
             dispersalIndex: validDispersalIndex,
-            confirmedAt: new Date().toISOString(),
+            confirmedAt: newTranche.confirmedAt,
             notes: notes ? String(notes).trim() : null,
             creditId: credit.id,
           },
         });
+
+        // Notificaciones a administradores y bróker originador
+        try {
+          if (credit.brokerId) {
+            const notif = await storage.createNotification({
+              userId: credit.brokerId,
+              type: 'disbursement_confirmed',
+              title: '✅ Desembolso Confirmado y Comisión Calculada',
+              message: `El desembolso por $${validConfirmedAmount.toLocaleString('es-MX', { minimumFractionDigits: 2 })} MXN fue confirmado por Super Admin y la comisión fue calculada exitosamente.`,
+              relatedEntityType: 'credit',
+              relatedEntityId: credit.id,
+              priority: 'high',
+            });
+            broadcastToUser(credit.brokerId, { type: 'notification', notification: notif });
+          }
+        } catch (notifErr) {
+          console.warn("[Notification] Error notifying broker of confirmed disbursement:", notifErr);
+        }
 
         res.json({
           message: "Desembolso confirmado exitosamente y comisión calculada mediante servicio canónico.",
@@ -4249,6 +4459,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
           commission,
         });
       } catch (calcErr: any) {
+        // ROLLBACK ATÓMICO (Regla 1): Restaurar estado del crédito
+        console.error("[Atomic Rollback] Error en cálculo de comisión, revirtiendo estado del crédito:", calcErr);
+        try {
+          await storage.updateCredit(credit.id, {
+            status: previousCreditState.status,
+            finalProposal: previousCreditState.finalProposal as any,
+            notes: previousCreditState.notes,
+          });
+        } catch (rbErr) {
+          console.error("[Atomic Rollback Failure] Error revirtiendo crédito:", rbErr);
+        }
+
         if (
           calcErr instanceof MissingCommissionRateError ||
           calcErr instanceof MissingOfferVersionError ||
@@ -4261,7 +4483,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
             details: (calcErr as any).details || null,
           });
         }
-        throw calcErr;
+
+        return res.status(500).json({
+          message: "Fallo en la persistencia de comisión. El crédito no fue confirmado.",
+          code: "COMMISSION_PERSISTENCE_FAILED",
+        });
       }
     } catch (error) {
       console.error("Error confirming credit disbursement:", error);
@@ -5136,6 +5362,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
         } : null,
         broker,
         masterBroker,
+        rates: {
+          financiera: proposal?.commissionRates?.financiera ?? null,
+          broker: proposal?.commissionRates?.broker ?? null,
+          masterBroker: proposal?.commissionRates?.masterBroker ?? null,
+        },
+        shares: {
+          brokerShare: commission.brokerShare,
+          masterBrokerShare: commission.masterBrokerShare,
+          appShare: isSuperAdmin ? commission.appShare : undefined,
+          totalAmount: commission.amount,
+        },
+        historicalBeneficiaries: {
+          broker,
+          masterBroker,
+          originMasterBrokerId: historicalMasterBrokerId,
+        },
         auditLogs,
       };
 
@@ -5192,7 +5434,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const linkedCredit = commission.creditId ? await storage.getCredit(commission.creditId) : null;
       const historicalMasterBrokerId = commission.masterBrokerId || (linkedCredit?.originMasterBrokerId ?? null);
 
-      // Anti-Reatribución (Regla 4): Prohibir modificaciones a los beneficiarios históricos
+      // Anti-Reatribución y alteración (Regla 4 y 5): Prohibir modificaciones a los beneficiarios e importes históricos
       if (req.body?.brokerId && String(req.body.brokerId) !== String(commission.brokerId)) {
         return res.status(400).json({
           message: "Prohibido alterar el Bróker beneficiario: la atribución de comisiones es inmutable y no permite reatribuciones.",
@@ -5207,11 +5449,35 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
       }
 
-      // Calculate and freeze final payout amount using canonical attribution
-      const payoutAmount = getCommissionPayoutAmount({
+      if (req.body?.amount && Math.abs(parseFloat(String(req.body.amount)) - parseFloat(commission.amount)) > 0.01) {
+        return res.status(400).json({
+          message: "Prohibido alterar el importe total de la comisión durante la aprobación.",
+          code: "COMMISSION_AMOUNT_ALTERATION_FORBIDDEN",
+        });
+      }
+
+      // Calculate and verify final payout amount using canonical attribution
+      const audit = auditCommissionPayout({
         ...commission,
-        masterBrokerId: historicalMasterBrokerId,
+        originMasterBrokerId: historicalMasterBrokerId,
       });
+
+      if (audit.hasDiscrepancy) {
+        return res.status(400).json({
+          message: `Bloqueo de seguridad: No se puede aprobar una comisión con discrepancia financiera. Motivo: ${audit.discrepancyReason || 'Discrepancia detectada'}`,
+          code: "COMMISSION_FROZEN_DISCREPANCY",
+          details: audit,
+        });
+      }
+
+      const payoutAmount = audit.payoutAmount;
+
+      if (req.body?.payoutAmount && Math.abs(parseFloat(String(req.body.payoutAmount)) - payoutAmount) > 0.01) {
+        return res.status(400).json({
+          message: "Prohibido alterar el monto neto a pagar durante la aprobación.",
+          code: "COMMISSION_AMOUNT_ALTERATION_FORBIDDEN",
+        });
+      }
 
       const updated = await storage.updateCommission(id, {
         status: 'approved',
@@ -10006,7 +10272,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // REGLAS 1, 2 y 3 (FASE 2B.2A / COM-21 / OPE-09): Confirmación de desembolso sobre target por Super Admin
+  // REGLAS 1, 2, 3 y 4 (FASE 2B.2A.1 / COM-21 / OPE-09 / PAG-05): Confirmación de desembolso sobre target por Super Admin
   app.post('/api/credit-submission-targets/:id/confirm-disbursement', isAuthenticated, async (req: any, res) => {
     try {
       const { id } = req.params;
@@ -10030,26 +10296,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ message: "Credit submission request not found" });
       }
 
-      let credit = target.creditId ? await storage.getCredit(target.creditId) : null;
-      if (!credit) {
-        const client = await storage.getClient(request.clientId);
-        const resolvedTenantId = request.tenantId || client?.tenantId || null;
-        const proposal = target.institutionProposal as any;
-        credit = await storage.createCredit({
-          tenantId: resolvedTenantId,
-          clientId: request.clientId,
-          brokerId: request.brokerId,
-          financialInstitutionId: target.financialInstitutionId,
-          productTemplateId: request.productTemplateId,
-          linkedSubmissionId: request.id,
-          amount: proposal?.approvedAmount?.toString() || request.requestedAmount.toString(),
-          interestRate: proposal?.interestRate?.toString(),
-          term: proposal?.term,
-          purpose: request.purpose,
-          mortgageData: request.mortgageData || {},
-          status: 'disbursed',
+      // REGLA 4: Atribución Histórica y Elegibilidad
+      if (!request.brokerId) {
+        return res.status(400).json({
+          message: "Operación no elegible para confirmación de desembolso: Falta el Bróker originador.",
+          code: "MISSING_ORIGIN_BROKER",
         });
-        await storage.updateCreditSubmissionTarget(id, { creditId: credit.id });
+      }
+
+      const financialInstitutionId = target.financialInstitutionId;
+      if (!financialInstitutionId) {
+        return res.status(400).json({
+          message: "Operación no elegible para confirmación de desembolso: Falta la Financiera oferente.",
+          code: "MISSING_FINANCIAL_INSTITUTION",
+        });
       }
 
       const { confirmedAmount, notes, dispersalIndex, idempotencyKey } = req.body;
@@ -10072,6 +10332,61 @@ export async function registerRoutes(app: Express): Promise<Server> {
         ? Number(dispersalIndex)
         : 1;
 
+      // REGLA 4: Si el crédito no existe, crearlo con estricta preservación de atribución histórica
+      let credit = target.creditId ? await storage.getCredit(target.creditId) : null;
+      if (!credit) {
+        const client = await storage.getClient(request.clientId);
+        const resolvedTenantId = request.tenantId || client?.tenantId || null;
+        const proposal = (target.institutionProposal as any) || {};
+
+        const brokerUser = await storage.getUser(request.brokerId);
+        const masterBrokerId = (request as any).originMasterBrokerId !== undefined
+          ? (request as any).originMasterBrokerId
+          : (brokerUser?.role === 'master_broker' ? brokerUser.id : brokerUser?.masterBrokerId || null);
+
+        const resolvedOfferId = proposal?.institutionProductId || proposal?.offerId || (request as any)?.institutionProductId || (request as any)?.offerId || null;
+        const resolvedVersionNumber = proposal?.versionNumber ?? (request as any)?.versionNumber ?? null;
+
+        const commercialSnapshot = consolidateCommercialProposalSnapshot({
+          proposalData: {
+            approvedAmount: proposal?.approvedAmount ? parseFloat(String(proposal.approvedAmount)) : undefined,
+            interestRate: proposal?.interestRate ? parseFloat(String(proposal.interestRate)) : undefined,
+            term: proposal?.term ? parseInt(String(proposal.term), 10) : undefined,
+            openingCommission: proposal?.openingCommission ? parseFloat(String(proposal.openingCommission)) : undefined,
+            institutionProductId: resolvedOfferId,
+            versionNumber: resolvedVersionNumber,
+            originBrokerId: request.brokerId,
+            originMasterBrokerId: masterBrokerId,
+            commissionRates: proposal?.commissionRates || undefined,
+            financialInstitutionId: target.financialInstitutionId,
+          },
+        });
+
+        credit = await storage.createCredit({
+          tenantId: resolvedTenantId,
+          clientId: request.clientId,
+          brokerId: request.brokerId,
+          originMasterBrokerId: masterBrokerId,
+          financialInstitutionId: target.financialInstitutionId,
+          productTemplateId: request.productTemplateId,
+          linkedSubmissionId: request.id,
+          amount: proposal?.approvedAmount?.toString() || request.requestedAmount.toString(),
+          interestRate: proposal?.interestRate?.toString(),
+          term: proposal?.term,
+          purpose: request.purpose,
+          mortgageData: request.mortgageData || {},
+          status: 'disbursed',
+          finalProposal: commercialSnapshot,
+        });
+        await storage.updateCreditSubmissionTarget(id, { creditId: credit.id });
+      }
+
+      // REGLA 2: Idempotencia y Multidispersión
+      const existingProposal = (credit.finalProposal as any) || {};
+      const existingTranches: any[] = Array.isArray(existingProposal.disbursementTranches)
+        ? existingProposal.disbursementTranches
+        : (existingProposal.disbursementConfirmation ? [existingProposal.disbursementConfirmation] : []);
+
       if (idempotencyKey) {
         const existingComms = await storage.getCommissions({ idempotencyKey: String(idempotencyKey).trim() });
         if (existingComms.length > 0) {
@@ -10086,20 +10401,117 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
       }
 
-      const existingProposal = (credit.finalProposal as any) || {};
+      const existingTranche = existingTranches.find((t: any) => Number(t.dispersalIndex || 1) === validDispersalIndex);
+      if (existingTranche) {
+        const prevAmount = Number(existingTranche.confirmedAmount || 0);
+        if (Math.abs(prevAmount - validConfirmedAmount) < 0.01) {
+          const commType = req.body?.commissionType || existingProposal.commissionsToApply?.[0] || 'apertura';
+          const resolvedCommType = validDispersalIndex > 1 ? `${commType}_parcial_${validDispersalIndex}` : commType;
+          const existingComms = await storage.getCommissions({ creditId: credit.id });
+          const matchComm = existingComms.find(c => c.commissionType === resolvedCommType || c.id === existingTranche.commissionId);
+          const enrichedTarget = await enrichCreditSubmissionTarget(target);
+          return res.json({
+            message: "Este tramo de desembolso ya se encuentra confirmado con el mismo importe.",
+            target: enrichedTarget,
+            credit,
+            commission: matchComm || existingComms[0] || null,
+            alreadyConfirmed: true,
+          });
+        } else {
+          return res.status(400).json({
+            message: `Prohibido alterar el importe de un tramo confirmado: El tramo #${validDispersalIndex} ya fue confirmado previamente por $${prevAmount.toFixed(2)} MXN y es inmutable.`,
+            code: "CANNOT_ALTER_CONFIRMED_TRANCHE_AMOUNT",
+            details: {
+              dispersalIndex: validDispersalIndex,
+              previousConfirmedAmount: prevAmount,
+              attemptedAmount: validConfirmedAmount,
+            },
+          });
+        }
+      }
+
+      // Impedir sobrepasar el monto máximo autorizado del crédito
+      const maxCreditAmount = Number(credit.amount || existingProposal.approvedAmount || 0);
+      const otherTranchesTotal = existingTranches
+        .filter((t: any) => Number(t.dispersalIndex || 1) !== validDispersalIndex)
+        .reduce((sum: number, t: any) => sum + Number(t.confirmedAmount || 0), 0);
+
+      if (maxCreditAmount > 0 && (otherTranchesTotal + validConfirmedAmount) > (maxCreditAmount + 0.01)) {
+        return res.status(400).json({
+          message: `El monto acumulado de desembolsos ($${(otherTranchesTotal + validConfirmedAmount).toFixed(2)}) sobrepasa el monto máximo autorizado del crédito ($${maxCreditAmount.toFixed(2)}).`,
+          code: "TOTAL_DISBURSEMENT_EXCEEDS_APPROVED_AMOUNT",
+          details: {
+            maxCreditAmount,
+            otherTranchesTotal,
+            attemptedAmount: validConfirmedAmount,
+            accumulatedTotal: otherTranchesTotal + validConfirmedAmount,
+          },
+        });
+      }
+
+      // REGLA 1: Atomicidad y Pre-validación económica antes de actualizar el estado
+      const commType = req.body?.commissionType || existingProposal.commissionsToApply?.[0] || 'apertura';
+      const offerId = existingProposal.institutionProductId || existingProposal.offerId || (credit as any).institutionProductId || null;
+      const versionNumber = existingProposal.versionNumber ?? null;
+      const proposalCommissionRates = existingProposal.commissionRates || undefined;
+      const institution = target.financialInstitutionId ? await storage.getFinancialInstitution(target.financialInstitutionId) : undefined;
+      const historicalMasterBrokerId = credit.originMasterBrokerId || existingProposal.originMasterBrokerId || null;
+
+      try {
+        await resolveOfferVersionCommissionRates({
+          offerId,
+          versionNumber,
+          commissionType: commType,
+          proposalCommissionRates,
+          institution,
+          hasMasterBroker: Boolean(historicalMasterBrokerId),
+          isMasterDirect: Boolean(historicalMasterBrokerId && credit.brokerId && String(historicalMasterBrokerId) === String(credit.brokerId)),
+        });
+      } catch (preCheckErr: any) {
+        if (
+          preCheckErr instanceof MissingCommissionRateError ||
+          preCheckErr instanceof MissingOfferVersionError ||
+          preCheckErr instanceof UnauthorizedDistributionError
+        ) {
+          return res.status(400).json({
+            message: preCheckErr.message,
+            code: preCheckErr.code || "CANONICAL_CALCULATION_ERROR",
+            details: (preCheckErr as any).details || null,
+          });
+        }
+      }
+
+      const newTranche = {
+        dispersalIndex: validDispersalIndex,
+        confirmedAmount: validConfirmedAmount,
+        confirmedAt: new Date().toISOString(),
+        confirmedBy: userId,
+        confirmedByEmail: user.email,
+        notes: notes ? String(notes).trim() : null,
+        idempotencyKey: idempotencyKey ? String(idempotencyKey).trim() : null,
+        status: 'confirmed',
+        commissionId: undefined as string | undefined,
+      };
+
+      const updatedTranches = [
+        ...existingTranches.filter((t: any) => Number(t.dispersalIndex || 1) !== validDispersalIndex),
+        newTranche,
+      ].sort((a, b) => Number(a.dispersalIndex || 1) - Number(b.dispersalIndex || 1));
+
+      const totalDisbursedSoFar = updatedTranches.reduce((sum, t) => sum + Number(t.confirmedAmount || 0), 0);
+
       const updatedProposal = {
         ...existingProposal,
-        disbursementConfirmation: {
-          confirmedAmount: validConfirmedAmount,
-          confirmedAt: new Date().toISOString(),
-          confirmedBy: userId,
-          confirmedByEmail: user.email,
-          notes: notes ? String(notes).trim() : null,
-          dispersalIndex: validDispersalIndex,
-          status: 'confirmed',
-        },
+        disbursementConfirmation: newTranche,
+        disbursementTranches: updatedTranches,
         disbursementStatus: 'confirmed',
-        confirmedDisbursedAmount: validConfirmedAmount,
+        confirmedDisbursedAmount: totalDisbursedSoFar,
+      };
+
+      const previousCreditState = {
+        status: credit.status,
+        finalProposal: credit.finalProposal,
+        notes: credit.notes,
       };
 
       const updatedCredit = await storage.updateCredit(credit.id, {
@@ -10110,7 +10522,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       if (updatedCredit) {
         (updatedCredit as any).disbursementStatus = 'confirmed';
-        (updatedCredit as any).confirmedDisbursedAmount = validConfirmedAmount;
+        (updatedCredit as any).confirmedDisbursedAmount = totalDisbursedSoFar;
         (updatedCredit as any).disbursementConfirmedAt = new Date();
         (updatedCredit as any).disbursementConfirmedBy = userId;
       }
@@ -10121,15 +10533,25 @@ export async function registerRoutes(app: Express): Promise<Server> {
         creditId: credit.id,
       });
 
+      let commission: any;
       try {
-        const commission = await calculateAndPersistCascadingCommission({
+        commission = await calculateAndPersistCascadingCommission({
           credit: updatedCredit || credit,
           creditId: credit.id,
-          commissionType: req.body?.commissionType || (credit?.finalProposal as any)?.commissionsToApply?.[0] || 'apertura',
+          commissionType: commType,
           confirmedDisbursedAmount: validConfirmedAmount,
           dispersalIndex: validDispersalIndex,
           idempotencyKey: idempotencyKey ? String(idempotencyKey).trim() : undefined,
           performedBy: userId,
+        });
+
+        newTranche.commissionId = commission.id;
+        await storage.updateCredit(credit.id, {
+          finalProposal: {
+            ...updatedProposal,
+            disbursementConfirmation: newTranche,
+            disbursementTranches: updatedTranches,
+          },
         });
 
         await storage.createCommissionAuditLog({
@@ -10142,12 +10564,29 @@ export async function registerRoutes(app: Express): Promise<Server> {
             actorRole: user.role,
             confirmedAmount: validConfirmedAmount,
             dispersalIndex: validDispersalIndex,
-            confirmedAt: new Date().toISOString(),
+            confirmedAt: newTranche.confirmedAt,
             notes: notes ? String(notes).trim() : null,
             creditId: credit.id,
             targetId: id,
           },
         });
+
+        try {
+          if (credit.brokerId) {
+            const notif = await storage.createNotification({
+              userId: credit.brokerId,
+              type: 'disbursement_confirmed',
+              title: '✅ Desembolso Confirmado y Comisión Calculada',
+              message: `El desembolso por $${validConfirmedAmount.toLocaleString('es-MX', { minimumFractionDigits: 2 })} MXN fue confirmado por Super Admin y la comisión fue calculada exitosamente.`,
+              relatedEntityType: 'credit',
+              relatedEntityId: credit.id,
+              priority: 'high',
+            });
+            broadcastToUser(credit.brokerId, { type: 'notification', notification: notif });
+          }
+        } catch (notifErr) {
+          console.warn("[Notification] Error notifying broker of confirmed target disbursement:", notifErr);
+        }
 
         const enrichedTarget = await enrichCreditSubmissionTarget(target);
         res.json({
@@ -10157,6 +10596,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
           commission,
         });
       } catch (calcErr: any) {
+        console.error("[Atomic Rollback] Error en cálculo de comisión sobre target, revirtiendo crédito:", calcErr);
+        try {
+          await storage.updateCredit(credit.id, {
+            status: previousCreditState.status,
+            finalProposal: previousCreditState.finalProposal as any,
+            notes: previousCreditState.notes,
+          });
+        } catch (rbErr) {
+          console.error("[Atomic Rollback Failure] Error revirtiendo crédito sobre target:", rbErr);
+        }
+
         if (
           calcErr instanceof MissingCommissionRateError ||
           calcErr instanceof MissingOfferVersionError ||
@@ -10169,7 +10619,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
             details: (calcErr as any).details || null,
           });
         }
-        throw calcErr;
+
+        return res.status(500).json({
+          message: "Fallo en la persistencia de comisión. El crédito no fue confirmado.",
+          code: "COMMISSION_PERSISTENCE_FAILED",
+        });
       }
     } catch (error) {
       console.error("Error confirming target disbursement:", error);
