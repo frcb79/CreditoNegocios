@@ -10849,7 +10849,9 @@ function maskCLABE(clabe?: string | null): string | null {
         const existingCredit = await storage.getCredit(target.creditId);
         const existingProposal = (existingCredit?.finalProposal as any) || currentProposal || {};
         credit = await storage.updateCredit(target.creditId, {
-          status: 'disbursed',
+          // OPE-09: report is not Super Admin confirmation or proof of disbursement.
+          status: existingCredit && isCreditDisbursementConfirmed(existingCredit)
+            ? existingCredit.status : 'approved',
           ...(resolvedTenantId ? { tenantId: resolvedTenantId } : {}),
           linkedSubmissionId: request.id, // Backfill link to original submission
           productTemplateId: request.productTemplateId, // Backfill product template
@@ -10875,7 +10877,7 @@ function maskCLABE(clabe?: string | null): string | null {
           term: proposal.term,
           purpose: request.purpose,
           mortgageData: request.mortgageData || {},
-          status: 'disbursed', // Start as disbursed since we're dispersing it
+          status: 'approved', // Reporting alone must not create a disbursed credit
           finalProposal: {
             ...(proposal || {}),
             disbursementStatus: 'reported',
