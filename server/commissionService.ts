@@ -186,11 +186,25 @@ export async function resolveOfferVersionCommissionRates(params: {
       pr.financiera?.[commType] ??
       pr.financiera?.apertura ??
       pr.financiera?.total ??
+      pr.financiera?.rate ??
+      (typeof pr.financiera === 'number' || typeof pr.financiera === 'string' ? pr.financiera : undefined) ??
       pr.superAdmin?.[commType] ??
       pr.superAdmin?.apertura
     );
-    const mb = parseRateValue(pr.masterBroker?.[commType] ?? pr.masterBroker?.apertura ?? pr.masterBroker?.total);
-    const brk = parseRateValue(pr.broker?.[commType] ?? pr.broker?.apertura ?? pr.broker?.total);
+    const mb = parseRateValue(
+      pr.masterBroker?.[commType] ??
+      pr.masterBroker?.apertura ??
+      pr.masterBroker?.total ??
+      pr.masterBroker?.rate ??
+      (typeof pr.masterBroker === 'number' || typeof pr.masterBroker === 'string' ? pr.masterBroker : undefined)
+    );
+    const brk = parseRateValue(
+      pr.broker?.[commType] ??
+      pr.broker?.apertura ??
+      pr.broker?.total ??
+      pr.broker?.rate ??
+      (typeof pr.broker === 'number' || typeof pr.broker === 'string' ? pr.broker : undefined)
+    );
     const resolvedBrk = (params.isMasterDirect && !brk.provided && mb.provided) ? mb : brk;
 
     if (!fin.provided) missingReasons.push(`Financiera (${commType})`);

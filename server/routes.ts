@@ -4130,6 +4130,145 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // REGLAS 1, 2 y 3 (FASE 2B.2A / COM-21 / OPE-09): Confirmación manual de desembolsos por Super Admin y cálculo canónico
+  app.post('/api/credits/:id/confirm-disbursement', isAuthenticated, requireModuleAndAction('creditos', 'edit'), async (req: any, res) => {
+    try {
+      const { id } = req.params;
+      const userId = req.user.claims.sub;
+      const user = await storage.getUser(userId);
+
+      // Exclusividad estricta para Super Admin (Regla 1)
+      if (!user || user.role !== 'super_admin') {
+        return res.status(403).json({
+          message: "Acceso denegado: La validación y confirmación de desembolsos está reservada exclusivamente para Super Admin.",
+          code: "FORBIDDEN_SUPER_ADMIN_REQUIRED",
+        });
+      }
+
+      const credit = await storage.getCredit(id);
+      if (!credit) {
+        return res.status(404).json({ message: "Crédito no encontrado" });
+      }
+
+      const { confirmedAmount, notes, dispersalIndex, idempotencyKey } = req.body;
+
+      // Validación estricta del monto efectivamente desembolsado (Regla 1 y Regla 2)
+      if (
+        confirmedAmount === undefined ||
+        confirmedAmount === null ||
+        isNaN(Number(confirmedAmount)) ||
+        Number(confirmedAmount) <= 0 ||
+        !Number.isFinite(Number(confirmedAmount))
+      ) {
+        return res.status(400).json({
+          message: "El monto efectivamente dispersado debe ser un número positivo mayor a cero.",
+          code: "INVALID_CONFIRMED_AMOUNT",
+        });
+      }
+
+      const validConfirmedAmount = Number(confirmedAmount);
+      const validDispersalIndex = dispersalIndex != null && !isNaN(Number(dispersalIndex)) && Number(dispersalIndex) > 0
+        ? Number(dispersalIndex)
+        : 1;
+
+      // Idempotencia: si ya existe comisión calculada con la misma idempotencyKey, retornarla
+      if (idempotencyKey) {
+        const existingComms = await storage.getCommissions({ idempotencyKey: String(idempotencyKey).trim() });
+        if (existingComms.length > 0) {
+          return res.json({
+            message: "Desembolso ya confirmado previamente con esta clave de idempotencia.",
+            credit,
+            commission: existingComms[0],
+            alreadyConfirmed: true,
+          });
+        }
+      }
+
+      // Actualizar el estado del crédito registrando auditoría de confirmación expresa
+      const existingProposal = (credit.finalProposal as any) || {};
+      const updatedProposal = {
+        ...existingProposal,
+        disbursementConfirmation: {
+          confirmedAmount: validConfirmedAmount,
+          confirmedAt: new Date().toISOString(),
+          confirmedBy: userId,
+          confirmedByEmail: user.email,
+          notes: notes ? String(notes).trim() : null,
+          dispersalIndex: validDispersalIndex,
+          status: 'confirmed',
+        },
+        disbursementStatus: 'confirmed',
+        confirmedDisbursedAmount: validConfirmedAmount,
+      };
+
+      const updatedCredit = await storage.updateCredit(credit.id, {
+        status: 'disbursed',
+        finalProposal: updatedProposal,
+        notes: notes ? (credit.notes ? `${credit.notes} | Confirmación: ${notes}` : `Confirmación: ${notes}`) : credit.notes,
+      });
+
+      // Asegurar campos en memoria si la base subyacente no es relacional
+      if (updatedCredit) {
+        (updatedCredit as any).disbursementStatus = 'confirmed';
+        (updatedCredit as any).confirmedDisbursedAmount = validConfirmedAmount;
+        (updatedCredit as any).disbursementConfirmedAt = new Date();
+        (updatedCredit as any).disbursementConfirmedBy = userId;
+      }
+
+      // Cálculo mediante servicio canónico utilizando oferta, versión, tasas y beneficiarios históricos congelados (Regla 3)
+      try {
+        const commission = await calculateAndPersistCascadingCommission({
+          credit: updatedCredit || credit,
+          creditId: credit.id,
+          commissionType: req.body?.commissionType || (credit?.finalProposal as any)?.commissionsToApply?.[0] || 'apertura',
+          confirmedDisbursedAmount: validConfirmedAmount,
+          dispersalIndex: validDispersalIndex,
+          idempotencyKey: idempotencyKey ? String(idempotencyKey).trim() : undefined,
+          performedBy: userId,
+        });
+
+        await storage.createCommissionAuditLog({
+          commissionId: commission.id,
+          performedBy: userId,
+          action: 'disbursement_confirmed',
+          previousStatus: commission.status,
+          newStatus: commission.status,
+          details: {
+            actorRole: user.role,
+            confirmedAmount: validConfirmedAmount,
+            dispersalIndex: validDispersalIndex,
+            confirmedAt: new Date().toISOString(),
+            notes: notes ? String(notes).trim() : null,
+            creditId: credit.id,
+          },
+        });
+
+        res.json({
+          message: "Desembolso confirmado exitosamente y comisión calculada mediante servicio canónico.",
+          credit: updatedCredit || credit,
+          commission,
+        });
+      } catch (calcErr: any) {
+        if (
+          calcErr instanceof MissingCommissionRateError ||
+          calcErr instanceof MissingOfferVersionError ||
+          calcErr instanceof UnauthorizedDistributionError ||
+          calcErr instanceof UnconfirmedDispersalAmountError
+        ) {
+          return res.status(400).json({
+            message: calcErr.message,
+            code: calcErr.code || "CANONICAL_CALCULATION_ERROR",
+            details: (calcErr as any).details || null,
+          });
+        }
+        throw calcErr;
+      }
+    } catch (error) {
+      console.error("Error confirming credit disbursement:", error);
+      res.status(500).json({ message: "Error interno al confirmar el desembolso del crédito" });
+    }
+  });
+
   app.get('/api/credits/client/:clientId', isAuthenticated, requireModuleAndAction('creditos', 'view'), async (req: any, res) => {
     try {
       const { clientId } = req.params;
@@ -4815,6 +4954,203 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // REGLA 4 (FASE 2B.2A / COM-21): Detalle de comisión con desglose financiero completo para revisión de Super Admin
+  app.get('/api/commissions/:id', isAuthenticated, requireModuleAndAction('comisiones', 'view'), async (req: any, res) => {
+    try {
+      const { id } = req.params;
+      const userId = req.user.claims.sub;
+      const user = await storage.getUser(userId);
+
+      const activeMembership = req.tenantContext?.membership;
+      if (activeMembership && activeMembership.canOriginate === false && activeMembership.role !== 'owner' && user?.role !== 'super_admin' && user?.role !== 'admin') {
+        return res.status(403).json({
+          message: "Operación restringida: Los colaboradores no originadores no tienen acceso al módulo de comisiones comerciales."
+        });
+      }
+
+      const commission = await storage.getCommission(id);
+      if (!commission) {
+        return res.status(404).json({ message: "Comisión no encontrada" });
+      }
+
+      const isSuperAdmin = user?.role === 'super_admin';
+      const isAdmin = user?.role === 'admin' || isSuperAdmin;
+      if (!isAdmin) {
+        if (user?.role === 'broker' && commission.brokerId !== userId) {
+          return res.status(403).json({ message: "No tienes permiso para ver esta comisión" });
+        }
+        if (user?.role === 'master_broker') {
+          const isDirect = commission.brokerId === userId;
+          const isNetwork = commission.masterBrokerId === userId;
+          if (!isDirect && !isNetwork) {
+            return res.status(403).json({ message: "No tienes permiso para ver esta comisión" });
+          }
+        }
+      }
+
+      let credit = null;
+      let client = null;
+      let institution = null;
+      if (commission.creditId) {
+        credit = await storage.getCredit(commission.creditId);
+        if (credit) {
+          if (credit.clientId) {
+            client = await storage.getClient(credit.clientId);
+          }
+          if (credit.financialInstitutionId) {
+            institution = await storage.getFinancialInstitution(credit.financialInstitutionId);
+          }
+        }
+      }
+
+      let broker = null;
+      let masterBroker = null;
+      let effectiveBankAccount = null;
+
+      const historicalMasterBrokerId = commission.masterBrokerId || (credit?.originMasterBrokerId ?? null);
+      const hasHistoricalMasterShare = Boolean(
+        historicalMasterBrokerId && parseFloat(commission.masterBrokerShare || '0') > 0
+      );
+      const isMasterDirect = Boolean(
+        historicalMasterBrokerId &&
+        commission.brokerId &&
+        String(commission.brokerId) === String(historicalMasterBrokerId)
+      );
+
+      if (commission.brokerId) {
+        const brokerUser = await storage.getUser(commission.brokerId);
+        if (brokerUser) {
+          broker = {
+            id: brokerUser.id,
+            firstName: brokerUser.firstName,
+            lastName: brokerUser.lastName,
+            email: brokerUser.email,
+            bankName: brokerUser.bankName,
+            clabe: brokerUser.clabe,
+            accountHolder: brokerUser.accountHolder,
+          };
+        }
+      }
+
+      if (historicalMasterBrokerId) {
+        const mbUser = await storage.getUser(historicalMasterBrokerId);
+        if (mbUser) {
+          masterBroker = {
+            id: mbUser.id,
+            firstName: mbUser.firstName,
+            lastName: mbUser.lastName,
+            email: mbUser.email,
+            brandName: mbUser.brandName,
+            bankName: mbUser.bankName,
+            clabe: mbUser.clabe,
+            accountHolder: mbUser.accountHolder,
+          };
+
+          if (hasHistoricalMasterShare || isMasterDirect) {
+            effectiveBankAccount = {
+              beneficiaryType: 'master_broker',
+              beneficiaryId: mbUser.id,
+              beneficiaryName: mbUser.accountHolder || `${mbUser.firstName || ''} ${mbUser.lastName || ''}`.trim() || mbUser.brandName,
+              bankName: mbUser.bankName,
+              clabe: mbUser.clabe,
+            };
+          }
+        }
+      }
+
+      if (!effectiveBankAccount && broker) {
+        effectiveBankAccount = {
+          beneficiaryType: 'broker',
+          beneficiaryId: broker.id,
+          beneficiaryName: broker.accountHolder || `${broker.firstName || ''} ${broker.lastName || ''}`.trim(),
+          bankName: broker.bankName,
+          clabe: broker.clabe,
+        };
+      }
+
+      const audit = auditCommissionPayout({
+        ...commission,
+        originMasterBrokerId: historicalMasterBrokerId,
+      });
+      const payoutAmount = audit.payoutAmount;
+
+      const effectiveBeneficiary = (hasHistoricalMasterShare || isMasterDirect) && masterBroker
+        ? {
+            id: masterBroker.id,
+            name: masterBroker.accountHolder || `${masterBroker.firstName || ''} ${masterBroker.lastName || ''}`.trim() || masterBroker.brandName,
+            email: masterBroker.email,
+            role: 'master_broker',
+            bankName: masterBroker.bankName,
+            clabe: masterBroker.clabe,
+            accountHolder: masterBroker.accountHolder,
+            isMasterBroker: true,
+          }
+        : (broker ? {
+            id: broker.id,
+            name: broker.accountHolder || `${broker.firstName || ''} ${broker.lastName || ''}`.trim() || broker.email,
+            email: broker.email,
+            role: 'broker',
+            bankName: broker.bankName,
+            clabe: broker.clabe,
+            accountHolder: broker.accountHolder,
+            isMasterBroker: false,
+          } : null);
+
+      const auditLogs = await storage.getCommissionAuditLogs(id);
+      const proposal = (credit?.finalProposal as any) || {};
+      const disbursementConfirmation = proposal.disbursementConfirmation || null;
+      const baseDisbursedAmount = disbursementConfirmation?.confirmedAmount
+        ?? (credit as any)?.confirmedDisbursedAmount
+        ?? null;
+
+      const detailedComm: any = {
+        ...commission,
+        payoutAmount,
+        baseDisbursedAmount,
+        hasFrozenDiscrepancy: audit.hasDiscrepancy,
+        frozenDiscrepancyReason: audit.discrepancyReason,
+        isNetworkPayout: !!(hasHistoricalMasterShare && !isMasterDirect),
+        isMasterDirect,
+        effectiveBeneficiary,
+        effectiveBankAccount,
+        credit: credit ? {
+          id: credit.id,
+          amount: credit.amount,
+          term: credit.term,
+          interestRate: credit.interestRate,
+          status: credit.status,
+          disbursementStatus: proposal.disbursementStatus || (credit as any).disbursementStatus || 'unconfirmed',
+          disbursementConfirmation,
+        } : null,
+        client: client ? {
+          id: client.id,
+          firstName: client.firstName,
+          lastName: client.lastName,
+          businessName: client.businessName,
+          type: client.type,
+        } : null,
+        financialInstitution: institution ? {
+          id: institution.id,
+          name: institution.name,
+          overRate: isSuperAdmin ? ((institution as any).overRate ?? (institution as any).overrateCommissionRate ?? (institution as any).commissionRates?.financiera?.sobretasa ?? 0) : undefined,
+        } : null,
+        broker,
+        masterBroker,
+        auditLogs,
+      };
+
+      if (!isSuperAdmin) {
+        delete detailedComm.appShare;
+        delete detailedComm.notes;
+      }
+
+      res.json(detailedComm);
+    } catch (error) {
+      console.error("Error fetching commission detail:", error);
+      res.status(500).json({ message: "Error al consultar el detalle de la comisión" });
+    }
+  });
+
   // Get commission audit logs
   app.get('/api/commissions/:id/audit-logs', isAuthenticated, requireModuleAndAction('comisiones', 'view'), async (req: any, res) => {
     try {
@@ -4827,7 +5163,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Approve a commission (Super Admin only - Gate de seguridad)
+  // Approve a commission (Super Admin only - Gate de seguridad - Regla 4)
   app.post('/api/commissions/:id/approve', isAuthenticated, requireModuleAndAction('comisiones', 'approve_disperse'), async (req: any, res) => {
     try {
       const { id } = req.params;
@@ -4844,7 +5180,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       if (commission.status === 'approved') {
-        return res.json({ message: "La comisión ya se encuentra aprobada", commission });
+        return res.json({ message: "La comisión ya se encuentra aprobada", commission, alreadyApproved: true });
       }
 
       if (['paid', 'dispersing', 'cancelled'].includes(commission.status)) {
@@ -4853,9 +5189,25 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
       }
 
-      // Calculate and freeze final payout amount using canonical attribution
       const linkedCredit = commission.creditId ? await storage.getCredit(commission.creditId) : null;
       const historicalMasterBrokerId = commission.masterBrokerId || (linkedCredit?.originMasterBrokerId ?? null);
+
+      // Anti-Reatribución (Regla 4): Prohibir modificaciones a los beneficiarios históricos
+      if (req.body?.brokerId && String(req.body.brokerId) !== String(commission.brokerId)) {
+        return res.status(400).json({
+          message: "Prohibido alterar el Bróker beneficiario: la atribución de comisiones es inmutable y no permite reatribuciones.",
+          code: "COMMISSION_REATTRIBUTION_FORBIDDEN",
+        });
+      }
+
+      if (req.body?.masterBrokerId && String(req.body.masterBrokerId) !== String(historicalMasterBrokerId)) {
+        return res.status(400).json({
+          message: "Prohibido alterar el Master Bróker beneficiario: la atribución de comisiones es inmutable y no permite reatribuciones.",
+          code: "COMMISSION_REATTRIBUTION_FORBIDDEN",
+        });
+      }
+
+      // Calculate and freeze final payout amount using canonical attribution
       const payoutAmount = getCommissionPayoutAmount({
         ...commission,
         masterBrokerId: historicalMasterBrokerId,
@@ -4878,6 +5230,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           actorRole: user.role,
           frozenAmount: payoutAmount.toFixed(2),
           approvedBy: userId,
+          notes: req.body?.notes ? String(req.body.notes).trim() : null,
         },
       });
 
@@ -9502,14 +9855,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const resolvedTenantId = request.tenantId || client?.tenantId || null;
       
       // Check if credit already exists (from select-winner flow)
+      const currentProposal = (target.institutionProposal as any) || {};
       if (target.creditId) {
         // Reuse existing credit, update status AND backfill linked fields
+        const existingCredit = await storage.getCredit(target.creditId);
+        const existingProposal = (existingCredit?.finalProposal as any) || currentProposal || {};
         credit = await storage.updateCredit(target.creditId, {
           status: 'disbursed',
           ...(resolvedTenantId ? { tenantId: resolvedTenantId } : {}),
           linkedSubmissionId: request.id, // Backfill link to original submission
           productTemplateId: request.productTemplateId, // Backfill product template
           mortgageData: request.mortgageData || {},
+          finalProposal: {
+            ...existingProposal,
+            disbursementStatus: existingProposal.disbursementStatus === 'confirmed' ? 'confirmed' : 'reported',
+            disbursementReportedAt: new Date().toISOString(),
+            disbursementReportedBy: userId,
+          },
         });
       } else {
         // Create new credit in credits table with linked submission
@@ -9526,6 +9888,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
           purpose: request.purpose,
           mortgageData: request.mortgageData || {},
           status: 'disbursed', // Start as disbursed since we're dispersing it
+          finalProposal: {
+            ...(proposal || {}),
+            disbursementStatus: 'reported',
+            disbursementReportedAt: new Date().toISOString(),
+            disbursementReportedBy: userId,
+          },
         });
       }
 
@@ -9635,6 +10003,177 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Error marking as dispersed:", error);
       res.status(500).json({ message: "Failed to mark as dispersed" });
+    }
+  });
+
+  // REGLAS 1, 2 y 3 (FASE 2B.2A / COM-21 / OPE-09): Confirmación de desembolso sobre target por Super Admin
+  app.post('/api/credit-submission-targets/:id/confirm-disbursement', isAuthenticated, async (req: any, res) => {
+    try {
+      const { id } = req.params;
+      const userId = req.user.claims.sub;
+      const user = await storage.getUser(userId);
+
+      if (!user || user.role !== 'super_admin') {
+        return res.status(403).json({
+          message: "Acceso denegado: La validación y confirmación de desembolsos está reservada exclusivamente para Super Admin.",
+          code: "FORBIDDEN_SUPER_ADMIN_REQUIRED",
+        });
+      }
+
+      const target = await storage.getCreditSubmissionTarget(id);
+      if (!target) {
+        return res.status(404).json({ message: "Credit submission target not found" });
+      }
+
+      const request = await storage.getCreditSubmissionRequest(target.requestId);
+      if (!request) {
+        return res.status(404).json({ message: "Credit submission request not found" });
+      }
+
+      let credit = target.creditId ? await storage.getCredit(target.creditId) : null;
+      if (!credit) {
+        const client = await storage.getClient(request.clientId);
+        const resolvedTenantId = request.tenantId || client?.tenantId || null;
+        const proposal = target.institutionProposal as any;
+        credit = await storage.createCredit({
+          tenantId: resolvedTenantId,
+          clientId: request.clientId,
+          brokerId: request.brokerId,
+          financialInstitutionId: target.financialInstitutionId,
+          productTemplateId: request.productTemplateId,
+          linkedSubmissionId: request.id,
+          amount: proposal?.approvedAmount?.toString() || request.requestedAmount.toString(),
+          interestRate: proposal?.interestRate?.toString(),
+          term: proposal?.term,
+          purpose: request.purpose,
+          mortgageData: request.mortgageData || {},
+          status: 'disbursed',
+        });
+        await storage.updateCreditSubmissionTarget(id, { creditId: credit.id });
+      }
+
+      const { confirmedAmount, notes, dispersalIndex, idempotencyKey } = req.body;
+
+      if (
+        confirmedAmount === undefined ||
+        confirmedAmount === null ||
+        isNaN(Number(confirmedAmount)) ||
+        Number(confirmedAmount) <= 0 ||
+        !Number.isFinite(Number(confirmedAmount))
+      ) {
+        return res.status(400).json({
+          message: "El monto efectivamente dispersado debe ser un número positivo mayor a cero.",
+          code: "INVALID_CONFIRMED_AMOUNT",
+        });
+      }
+
+      const validConfirmedAmount = Number(confirmedAmount);
+      const validDispersalIndex = dispersalIndex != null && !isNaN(Number(dispersalIndex)) && Number(dispersalIndex) > 0
+        ? Number(dispersalIndex)
+        : 1;
+
+      if (idempotencyKey) {
+        const existingComms = await storage.getCommissions({ idempotencyKey: String(idempotencyKey).trim() });
+        if (existingComms.length > 0) {
+          const enrichedTarget = await enrichCreditSubmissionTarget(target);
+          return res.json({
+            message: "Desembolso ya confirmado previamente con esta clave de idempotencia.",
+            target: enrichedTarget,
+            credit,
+            commission: existingComms[0],
+            alreadyConfirmed: true,
+          });
+        }
+      }
+
+      const existingProposal = (credit.finalProposal as any) || {};
+      const updatedProposal = {
+        ...existingProposal,
+        disbursementConfirmation: {
+          confirmedAmount: validConfirmedAmount,
+          confirmedAt: new Date().toISOString(),
+          confirmedBy: userId,
+          confirmedByEmail: user.email,
+          notes: notes ? String(notes).trim() : null,
+          dispersalIndex: validDispersalIndex,
+          status: 'confirmed',
+        },
+        disbursementStatus: 'confirmed',
+        confirmedDisbursedAmount: validConfirmedAmount,
+      };
+
+      const updatedCredit = await storage.updateCredit(credit.id, {
+        status: 'disbursed',
+        finalProposal: updatedProposal,
+        notes: notes ? (credit.notes ? `${credit.notes} | Confirmación: ${notes}` : `Confirmación: ${notes}`) : credit.notes,
+      });
+
+      if (updatedCredit) {
+        (updatedCredit as any).disbursementStatus = 'confirmed';
+        (updatedCredit as any).confirmedDisbursedAmount = validConfirmedAmount;
+        (updatedCredit as any).disbursementConfirmedAt = new Date();
+        (updatedCredit as any).disbursementConfirmedBy = userId;
+      }
+
+      await storage.updateCreditSubmissionTarget(id, {
+        status: 'dispersed',
+        dispersedAt: target.dispersedAt || new Date(),
+        creditId: credit.id,
+      });
+
+      try {
+        const commission = await calculateAndPersistCascadingCommission({
+          credit: updatedCredit || credit,
+          creditId: credit.id,
+          commissionType: req.body?.commissionType || (credit?.finalProposal as any)?.commissionsToApply?.[0] || 'apertura',
+          confirmedDisbursedAmount: validConfirmedAmount,
+          dispersalIndex: validDispersalIndex,
+          idempotencyKey: idempotencyKey ? String(idempotencyKey).trim() : undefined,
+          performedBy: userId,
+        });
+
+        await storage.createCommissionAuditLog({
+          commissionId: commission.id,
+          performedBy: userId,
+          action: 'disbursement_confirmed',
+          previousStatus: commission.status,
+          newStatus: commission.status,
+          details: {
+            actorRole: user.role,
+            confirmedAmount: validConfirmedAmount,
+            dispersalIndex: validDispersalIndex,
+            confirmedAt: new Date().toISOString(),
+            notes: notes ? String(notes).trim() : null,
+            creditId: credit.id,
+            targetId: id,
+          },
+        });
+
+        const enrichedTarget = await enrichCreditSubmissionTarget(target);
+        res.json({
+          message: "Desembolso confirmado exitosamente y comisión calculada mediante servicio canónico.",
+          target: enrichedTarget,
+          credit: updatedCredit || credit,
+          commission,
+        });
+      } catch (calcErr: any) {
+        if (
+          calcErr instanceof MissingCommissionRateError ||
+          calcErr instanceof MissingOfferVersionError ||
+          calcErr instanceof UnauthorizedDistributionError ||
+          calcErr instanceof UnconfirmedDispersalAmountError
+        ) {
+          return res.status(400).json({
+            message: calcErr.message,
+            code: calcErr.code || "CANONICAL_CALCULATION_ERROR",
+            details: (calcErr as any).details || null,
+          });
+        }
+        throw calcErr;
+      }
+    } catch (error) {
+      console.error("Error confirming target disbursement:", error);
+      res.status(500).json({ message: "Error interno al confirmar el desembolso del target" });
     }
   });
 

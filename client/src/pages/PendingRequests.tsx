@@ -28,6 +28,7 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import CommercialDisputesView from "@/components/Commercial/CommercialDisputesView";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/hooks/useAuth";
 import { apiRequest, invalidateAllCreditQueries } from "@/lib/queryClient";
 import { buildApiUrl } from "@/lib/runtimeConfig";
 import { 
@@ -169,6 +170,10 @@ export default function PendingRequests() {
   const [expandedSubmissions, setExpandedSubmissions] = useState<Set<string>>(new Set());
   const [expandedInstitutionsPerSubmission, setExpandedInstitutionsPerSubmission] = useState<Record<string, Set<string>>>({});
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const { user } = useAuth();
+  const [confirmingTarget, setConfirmingTarget] = useState<CreditSubmissionTarget | null>(null);
+  const [confirmedAmountInput, setConfirmedAmountInput] = useState<string>("");
+  const [confirmationNotes, setConfirmationNotes] = useState<string>("");
   
   // Filter states
   const [searchTerm, setSearchTerm] = useState("");
@@ -301,6 +306,33 @@ export default function PendingRequests() {
         description: "El crédito ha sido marcado como dispersado y la comisión fue generada exitosamente",
       });
       invalidateAllCreditQueries(queryClient);
+    },
+  });
+
+  const confirmDisbursementMutation = useMutation({
+    mutationFn: async ({ targetId, confirmedAmount, notes }: { targetId: string; confirmedAmount: number; notes?: string }) => {
+      const res = await apiRequest("POST", `/api/credit-submission-targets/${targetId}/confirm-disbursement`, {
+        confirmedAmount,
+        notes,
+      });
+      return res.json();
+    },
+    onSuccess: (data) => {
+      toast({
+        title: "Desembolso confirmado",
+        description: data.message || "El desembolso fue confirmado exitosamente por Super Admin.",
+      });
+      invalidateAllCreditQueries(queryClient);
+      setConfirmingTarget(null);
+      setConfirmedAmountInput("");
+      setConfirmationNotes("");
+    },
+    onError: (err: any) => {
+      toast({
+        title: "Error al confirmar desembolso",
+        description: err.message || "No se pudo confirmar el desembolso",
+        variant: "destructive",
+      });
     },
   });
 
@@ -1171,9 +1203,25 @@ export default function PendingRequests() {
                                                 Comisión Pendiente (${parseFloat(targetComm.amount).toLocaleString('es-MX')} MXN)
                                               </Badge>
                                             ) : (
-                                              <Badge variant="outline" className="text-emerald-700 border-emerald-300 text-2xs">
+                                              <div className="flex items-center gap-2 flex-wrap">
+                                                <Badge variant="outline" className="text-emerald-700 border-emerald-300 text-2xs">
                                                 Dispersión Registrada
                                               </Badge>
+                                                {user?.role === 'super_admin' && (
+                                                  <Button
+                                                    size="sm"
+                                                    className="h-6 text-2xs font-semibold bg-emerald-700 hover:bg-emerald-800 text-white shadow-xs px-2"
+                                                    onClick={() => {
+                                                      setConfirmingTarget(target);
+                                                      setConfirmedAmountInput(String(target.institutionProposal?.approvedAmount || ""));
+                                                    }}
+                                                    data-testid={`button-confirm-disbursement-${target.id}`}
+                                                  >
+                                                    <CheckCircle className="w-3 h-3 mr-1" />
+                                                    Confirmar Desembolso
+                                                  </Button>
+                                                )}
+                                              </div>
                                             )}
                                           </div>
 
@@ -1473,6 +1521,85 @@ export default function PendingRequests() {
                     </DialogFooter>
                   </form>
                 </Form>
+              </DialogContent>
+            </Dialog>
+
+            {/* Modal Confirmación de Desembolso Expresa (Super Admin) */}
+            <Dialog open={!!confirmingTarget} onOpenChange={(open) => !open && setConfirmingTarget(null)}>
+              <DialogContent className="max-w-md">
+                <DialogHeader>
+                  <DialogTitle className="text-base font-bold flex items-center gap-2">
+                    <CheckCircle className="w-5 h-5 text-emerald-600" />
+                    Confirmación Manual de Desembolso Real
+                  </DialogTitle>
+                  <DialogDescription className="text-xs text-slate-500">
+                    Confirmación expresa del monto efectivamente dispersado por la financiera. Como Super Admin, este importe servirá de base canónica para el cálculo inmutable de comisiones.
+                  </DialogDescription>
+                </DialogHeader>
+
+                {confirmingTarget && (
+                  <div className="space-y-4 py-2">
+                    <div>
+                      <label className="text-xs font-semibold text-slate-700 block mb-1">
+                        Monto Efectivamente Dispersado (MXN)*
+                      </label>
+                      <Input
+                        type="number"
+                        step="0.01"
+                        min="1"
+                        value={confirmedAmountInput}
+                        onChange={(e) => setConfirmedAmountInput(e.target.value)}
+                        placeholder="Ej. 1000000"
+                        className="h-9 text-sm font-semibold"
+                        data-testid="input-confirmed-disbursement-amount"
+                      />
+                      <span className="text-2xs text-slate-400 mt-1 block">
+                        Propuesta autorizada: ${parseFloat(String(confirmingTarget.institutionProposal?.approvedAmount || 0)).toLocaleString('es-MX')} MXN
+                      </span>
+                    </div>
+
+                    <div>
+                      <label className="text-xs font-semibold text-slate-700 block mb-1">
+                        Notas de Auditoría (Opcional)
+                      </label>
+                      <Textarea
+                        value={confirmationNotes}
+                        onChange={(e) => setConfirmationNotes(e.target.value)}
+                        placeholder="Referencia bancaria, fecha efectiva o folio de confirmación..."
+                        className="text-xs resize-none h-18"
+                        data-testid="input-confirmed-disbursement-notes"
+                      />
+                    </div>
+                  </div>
+                )}
+
+                <DialogFooter className="gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setConfirmingTarget(null)}
+                    disabled={confirmDisbursementMutation.isPending}
+                  >
+                    Cancelar
+                  </Button>
+                  <Button
+                    size="sm"
+                    className="bg-emerald-600 hover:bg-emerald-700 text-white font-medium"
+                    disabled={confirmDisbursementMutation.isPending || !confirmedAmountInput || parseFloat(confirmedAmountInput) <= 0}
+                    onClick={() => {
+                      if (confirmingTarget && confirmedAmountInput) {
+                        confirmDisbursementMutation.mutate({
+                          targetId: confirmingTarget.id,
+                          confirmedAmount: parseFloat(confirmedAmountInput),
+                          notes: confirmationNotes || undefined,
+                        });
+                      }
+                    }}
+                    data-testid="button-submit-confirm-disbursement"
+                  >
+                    {confirmDisbursementMutation.isPending ? "Confirmando..." : "Confirmar y Calcular Comisiones"}
+                  </Button>
+                </DialogFooter>
               </DialogContent>
             </Dialog>
           </>
