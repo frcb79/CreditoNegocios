@@ -65,3 +65,5 @@ jobs:
         run: npm ci --no-audit --no-fund
       - name: Test isolated PostgreSQL migration 0005
         run: npm test -- --runInBand --coverage=false --forceExit tests/integration/postgres-versioning-migration.test.ts
+      - name: Test historical Master attribution migration 0004
+        run: npm test -- --runInBand --coverage=false --forceExit tests/integration/postgres-network-attribution-migration.test.ts
