@@ -429,7 +429,7 @@ export async function validateCommissionPayoutPrerequisites(
       role: "master_broker",
       share: masterBrokerShare > 0 ? masterBrokerShare : brokerShare,
     });
-  } else if (!historicalMasterBrokerId || masterBrokerShare === 0) {
+  } else if (!historicalMasterBrokerId) {
     // Caso 2: Broker Directo (sin Master o cuota de Master = 0)
     beneficiariesToCheck.push({
       id: commission.brokerId,

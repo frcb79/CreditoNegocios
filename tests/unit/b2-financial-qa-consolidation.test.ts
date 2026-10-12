@@ -340,6 +340,41 @@ describe("AG — QA FINANCIERO CONSOLIDADO | CIERRE FASE 2B", () => {
       expect(brokerNotifs.length).toBe(0);
     });
 
+    it("PAG-15: un Master histórico con margen propio cero sigue siendo el beneficiario único de CN", async () => {
+      const admin = await createSuperAdmin();
+      const master = await createMasterBroker("012180001111111111");
+      const broker = await createBroker(master.id, "014180002222222222");
+      await provisionAllApprovedDocs(master.id, admin.id); // Broker subordinado sin documentos para liquidación CN
+
+      const client = await storage.createClient({
+        firstName: "Cliente", lastName: "Red", email: `client-${randomUUID()}@corp.test`,
+        phone: "5512345678", brokerId: broker.id,
+      } as any);
+      const credit = await storage.createCredit({
+        clientId: client.id, brokerId: broker.id, originMasterBrokerId: master.id,
+        amount: "100000.00", status: "approved",
+      } as any);
+      const commission = await storage.createCommission({
+        creditId: credit.id, brokerId: broker.id, masterBrokerId: master.id,
+        amount: "100000.00", totalCommission: "3000.00",
+        brokerShare: "2000.00", masterBrokerShare: "0.00", appShare: "1000.00",
+        frozenAmount: "2000.00", status: "approved",
+        approvedBy: admin.id, approvedAt: new Date(), commissionType: "apertura",
+      } as any);
+
+      const audit = auditCommissionPayout(commission);
+      expect(audit.payoutAmount).toBe(2000);
+      expect(audit.networkObligation?.masterBrokerId).toBe(master.id);
+      currentAuthUser = admin;
+      const res = await request(app).post(`/api/commissions/${commission.id}/mark-paid`).send({
+        notes: "Transferencia manual confirmada a Master", reference: "SPEI-RED-CERO-20261012",
+      });
+      expect(res.status).toBe(200);
+      expect(res.body.commission.providerResponse.payoutBeneficiary.userId).toBe(master.id);
+      expect(res.body.commission.providerResponse.networkObligation.brokerShare).toBe(2000);
+      expect(res.body.commission.providerResponse.networkObligation.status).toBe("pending_master_payout");
+    });
+
     it("POST /api/commissions/:id/mark-paid liquida directamente al Broker en canal Broker Directo (sin Master)", async () => {
       const admin = await createSuperAdmin();
       const brokerDirecto = await createBroker(undefined, "014180003333333333");
@@ -615,6 +650,94 @@ describe("AG — QA FINANCIERO CONSOLIDADO | CIERRE FASE 2B", () => {
       expect(adminRes.status).toBe(200);
       expect(adminRes.body.appShare).toBe("5000.00");
       expect(adminRes.body.masterBroker.clabe).toBe("012180001111111111");
+    });
+  });
+
+  describe("PAG-16: privacidad de validación y auditoría de comisiones", () => {
+    it("un Broker de red ve el estado de validación, nunca los datos bancarios del Master", async () => {
+      const admin = await createSuperAdmin();
+      const master = await createMasterBroker("012180001111111111");
+      const broker = await createBroker(master.id);
+      await provisionAllApprovedDocs(master.id, admin.id);
+      const client = await storage.createClient({
+        firstName: "Cliente", lastName: "Privacidad",
+        email: `client-${randomUUID()}@corp.test`, phone: "5512345678", brokerId: broker.id,
+      } as any);
+      const credit = await storage.createCredit({
+        clientId: client.id, brokerId: broker.id, originMasterBrokerId: master.id,
+        amount: "200000.00", status: "approved",
+      } as any);
+      const commission = await storage.createCommission({
+        creditId: credit.id, brokerId: broker.id, masterBrokerId: master.id,
+        amount: "200000.00", brokerShare: "3000.00", masterBrokerShare: "0.00",
+        frozenAmount: "3000.00", status: "approved",
+      } as any);
+
+      currentAuthUser = broker;
+      const payoutResponse = await request(app).get(`/api/commissions/${commission.id}/payout-validation`);
+      expect(payoutResponse.status).toBe(200);
+      expect(payoutResponse.body).toHaveProperty("canPayout");
+      expect(JSON.stringify(payoutResponse.body)).not.toContain(master.clabe);
+      expect(payoutResponse.body.beneficiaries).toBeUndefined();
+
+      const logsResponse = await request(app).get(`/api/commissions/${commission.id}/audit-logs`);
+      expect(logsResponse.status).toBe(200);
+      expect(JSON.stringify(logsResponse.body)).not.toContain(master.clabe);
+
+      const outsider = await createBroker();
+      currentAuthUser = outsider;
+      expect((await request(app).get(`/api/commissions/${commission.id}/audit-logs`)).status).toBe(403);
+      expect((await request(app).get(`/api/commissions/${commission.id}/payout-validation`)).status).toBe(403);
+    });
+  });
+
+  describe("MAT-14/15: Matching en credits y credit_submission_requests", () => {
+    it("permite consultar una solicitud independiente sin crédito y no aprueba automáticamente", async () => {
+      const broker = await createBroker();
+      const client = await storage.createClient({
+        firstName: "Cliente", lastName: "Matching",
+        email: `matching-${randomUUID()}@test.local`, phone: "5512345678", brokerId: broker.id,
+      } as any);
+      const submission = await storage.createCreditSubmissionRequest({
+        clientId: client.id, brokerId: broker.id, requestedAmount: "150000.00",
+        status: "pending_admin", purpose: "Capital de trabajo",
+      } as any);
+      currentAuthUser = broker;
+      const result = await request(app).get(`/api/credit-submissions/${submission.id}/matching`);
+      expect(result.status).toBe(200);
+      expect(result.body.requestType).toBe("credit_submission_request");
+      expect(result.body.summary).toHaveProperty("totalEvaluated");
+      expect(result.body).not.toHaveProperty("commissions");
+      expect((await storage.getCreditSubmissionRequest(submission.id))?.status).toBe("pending_admin");
+    });
+
+    it("deniega por ID el matching de solicitud a otro Broker", async () => {
+      const owner = await createBroker();
+      const outsider = await createBroker();
+      const client = await storage.createClient({
+        firstName: "Cliente", lastName: "Ajeno",
+        email: `matching-${randomUUID()}@test.local`, phone: "5512345678", brokerId: owner.id,
+      } as any);
+      const submission = await storage.createCreditSubmissionRequest({
+        clientId: client.id, brokerId: owner.id, requestedAmount: "250000.00",
+        status: "pending_admin",
+      } as any);
+      currentAuthUser = outsider;
+      const forbidden = await request(app).get(`/api/credit-submissions/${submission.id}/matching`);
+      expect(forbidden.status).toBe(403);
+    });
+  });
+
+  describe("FIN-13: catálogo financiero administrativo por ID", () => {
+    it("deniega a Broker el acceso directo por ID y mantiene Super Admin autorizado", async () => {
+      const broker = await createBroker();
+      currentAuthUser = broker;
+      const forbidden = await request(app).get("/api/financial-institutions/id-que-no-existe");
+      expect(forbidden.status).toBe(403);
+
+      currentAuthUser = await createSuperAdmin();
+      const missing = await request(app).get("/api/financial-institutions/id-que-no-existe");
+      expect(missing.status).toBe(404);
     });
   });
 

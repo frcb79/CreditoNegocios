@@ -71,6 +71,11 @@ import {
   validateOfferVersionParameters,
 } from "./offerVersionService";
 import {
+  evaluateCatalogCompatibility,
+  isVersionEligibleForMatching,
+  type OfferVersionInput,
+} from "./matching/compatibilityEvaluator";
+import {
   MissingCommissionRateError,
   MissingOfferVersionError,
   UnconfirmedDispersalAmountError,
@@ -811,6 +816,12 @@ function projectFinancialInstitutionByRole(institution: any, userRole: string, m
   // Admin tiene acceso administrativo pero NUNCA a sobretasas (B3.1: exclusivas de super_admin)
   if (userRole === 'admin') {
     const adminCopy = { ...institution };
+    // El rol Admin estándar no hereda acceso a margenes internos/sobretasas.
+    delete adminCopy.commissionRate;
+    delete adminCopy.openingCommissionRate;
+    delete adminCopy.platformMargin;
+    delete adminCopy.appShare;
+    delete adminCopy.platformCommissionRate;
     delete adminCopy.overrateCommissionRate;
     delete adminCopy.overRate;
     delete adminCopy.sobretasa;
@@ -820,6 +831,11 @@ function projectFinancialInstitutionByRole(institution: any, userRole: string, m
       if (sanitized.masterBroker) delete sanitized.masterBroker.sobretasa;
       if (sanitized.broker) delete sanitized.broker.sobretasa;
       if (sanitized.superAdmin) delete sanitized.superAdmin.sobretasa;
+      delete sanitized.financiera;
+      delete sanitized.superAdmin;
+      delete sanitized.platform;
+      delete sanitized.app;
+      delete sanitized.internal;
       adminCopy.commissionRates = sanitized;
     }
     return adminCopy;
@@ -4623,6 +4639,108 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Matching M2 — consultas read-only para créditos y solicitudes independientes.
+  // Se usan exclusivamente versiones PUBLICADAS y vigentes. Sin decisiones automáticas.
+  app.get(
+    ['/api/credits/:id/matching', '/api/credit-submissions/:id/matching'],
+    isAuthenticated, requireModuleAndAction('creditos', 'view'),
+    async (req: any, res) => {
+      try {
+        const userId = req.user?.claims?.sub || req.user?.id;
+        const user = await storage.getUser(userId);
+        if (!user) return res.status(403).json({ message: 'Usuario no autorizado' });
+
+        const isSubmission = req.path.startsWith('/api/credit-submissions/');
+        let applicationRecord: any;
+        if (!isSubmission) {
+          const access = await authorizeCreditAccess(userId, user.role, req.params.id, req.tenantContext);
+          if (!access.authorized || !access.credit) {
+            return res.status(access.reason === 'Credit not found' ? 404 : 403)
+              .json({ message: 'Sin acceso al crédito solicitado' });
+          }
+          applicationRecord = access.credit;
+        } else {
+          const submission = await storage.getCreditSubmissionRequest(req.params.id);
+          if (!submission) return res.status(404).json({ message: 'Solicitud no encontrada' });
+
+          // No bastan el módulo o el identificador: se necesita propiedad comercial y tenant.
+          const tenantId = req.tenantContext?.tenant?.id;
+          const owner = submission.brokerId === userId;
+          const networkMaster = user.role === 'master_broker' &&
+            submission.originMasterBrokerId === userId && tenantId &&
+            submission.tenantId === tenantId;
+          const scopedAdmin = user.role === 'admin' && tenantId &&
+            submission.tenantId === tenantId;
+          if (user.role !== 'super_admin' && !owner && !networkMaster && !scopedAdmin) {
+            return res.status(403).json({ message: 'Sin acceso a esta solicitud' });
+          }
+          applicationRecord = {
+            ...submission,
+            // Las solicitudes independientes aún no tienen todos los campos de credits:
+            // sólo normalizar lo capturado, nunca inventar plazo ni evaluación.
+            amount: submission.requestedAmount,
+            term: (submission as any).term ?? null,
+          };
+        }
+
+        const client = await storage.getClient(applicationRecord.clientId);
+        if (!client) return res.status(404).json({ message: 'Expediente no encontrado' });
+        if (applicationRecord.tenantId && client.tenantId &&
+            String(applicationRecord.tenantId) !== String(client.tenantId)) {
+          return res.status(403).json({ message: 'Expediente fuera del tenant' });
+        }
+
+        const institutions = await storage.getFinancialInstitutions();
+        const active = new Map(institutions.filter(i => i.isActive !== false).map(i => [i.id, i]));
+        const offers: (OfferVersionInput & { institution?: any })[] = [];
+
+        for (const product of await storage.getInstitutionProducts()) {
+          const institution = active.get(product.institutionId);
+          if (!institution || product.isActive === false || product.status === 'archived') continue;
+          for (const version of await storage.getInstitutionProductVersions(product.id)) {
+            if (isVersionEligibleForMatching(product, version, institution).eligible) {
+              offers.push({ product, version, institution });
+            }
+          }
+        }
+
+        const result = evaluateCatalogCompatibility(
+          { credit: applicationRecord, client }, offers, { filterNonEligible: true }
+        );
+        // Respuesta de lista blanca. No exponer comisiones, márgenes, versiones draft
+        // ni inventario interno de ofertas excluidas.
+        const sanitize = (item: any) => ({
+          offerId: item.offerId,
+          offerName: item.offerName,
+          institutionId: item.institutionId,
+          institutionName: item.institutionName,
+          versionNumber: item.versionNumber,
+          status: item.status,
+          criteria: item.criteria,
+          reasons: item.reasons,
+          summary: item.summary,
+        });
+        return res.json({
+          requestId: req.params.id,
+          requestType: isSubmission ? 'credit_submission_request' : 'credit',
+          clientId: client.id,
+          summary: {
+            totalEvaluated: result.all.length,
+            compatibleCount: result.compatible.length,
+            insufficientDataCount: result.insufficientData.length,
+            notCompatibleCount: result.notCompatible.length,
+          },
+          compatible: result.compatible.map(sanitize),
+          insufficientData: result.insufficientData.map(sanitize),
+          notCompatible: result.notCompatible.map(sanitize),
+        });
+      } catch (error) {
+        console.error('[Matching] Error de evaluación:', error);
+        return res.status(500).json({ message: 'No fue posible evaluar las ofertas' });
+      }
+    }
+  );
+
   // Re-gestion (expiring credits for renewal)
   app.get('/api/re-gestion', isAuthenticated, requireModuleAndAction('creditos', 'view'), async (req: any, res) => {
     try {
@@ -4682,25 +4800,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Get single financial institution by ID
-  app.get('/api/financial-institutions/:id', isAuthenticated, async (req: any, res) => {
+  app.get('/api/financial-institutions/:id', isAuthenticated, requireModuleAndAction('financieras', 'view'), async (req: any, res) => {
     try {
       const { id } = req.params;
       const userId = req.user?.claims?.sub || req.user?.id;
       const user = await storage.getUser(userId);
+      // Este endpoint es del catálogo administrativo; los Brokers consultan productos/ofertas autorizadas.
+      if (!user || (user.role !== 'super_admin' && user.role !== 'admin')) {
+        return res.status(403).json({ message: "Catálogo financiero administrativo no autorizado." });
+      }
       const institution: any = await storage.getFinancialInstitution(id);
       
       if (!institution) {
         return res.status(404).json({ message: 'Financial institution not found' });
       }
 
-      let networkRates: any = null;
-      if (user?.role === 'broker' && user?.masterBrokerId) {
-        const masterBroker = await storage.getUser(user.masterBrokerId);
-        networkRates = (masterBroker?.networkCommissionRates as any) || {};
-      }
-
-      const role = user?.role || 'broker';
-      const sanitized = projectFinancialInstitutionByRole(institution, role, networkRates);
+      const sanitized = projectFinancialInstitutionByRole(institution, user.role);
       
       res.json(sanitized);
     } catch (error) {
@@ -5118,8 +5233,8 @@ function maskCLABE(clabe?: string | null): string | null {
           let effectiveBankAccount = null;
 
           const historicalMasterBrokerId = comm.masterBrokerId || (credit?.originMasterBrokerId ?? null);
-          const hasHistoricalMasterShare = Boolean(
-            historicalMasterBrokerId && parseFloat(comm.masterBrokerShare || '0') > 0
+          const hasHistoricalMasterPayee = Boolean(
+            historicalMasterBrokerId
           );
           const isMasterDirect = Boolean(
             historicalMasterBrokerId &&
@@ -5157,7 +5272,7 @@ function maskCLABE(clabe?: string | null): string | null {
               };
 
               // Si es red con margen de master o master directo, la cuenta de dispersión pertenece al Master histórico
-              if (hasHistoricalMasterShare || isMasterDirect) {
+              if (hasHistoricalMasterPayee || isMasterDirect) {
                 effectiveBankAccount = {
                   beneficiaryType: 'master_broker',
                   beneficiaryId: mbUser.id,
@@ -5179,14 +5294,14 @@ function maskCLABE(clabe?: string | null): string | null {
             };
           }
 
-          const isMb = Boolean(historicalMasterBrokerId && parseFloat(comm.masterBrokerShare || '0') > 0);
+          const isMb = Boolean(historicalMasterBrokerId && !isMasterDirect);
           const audit = auditCommissionPayout({
             ...comm,
             originMasterBrokerId: historicalMasterBrokerId,
           });
           const payoutAmount = audit.payoutAmount;
 
-          const effectiveBeneficiary = (hasHistoricalMasterShare || isMasterDirect) && masterBroker
+          const effectiveBeneficiary = (hasHistoricalMasterPayee || isMasterDirect) && masterBroker
             ? {
                 id: masterBroker.id,
                 name: masterBroker.accountHolder || `${masterBroker.firstName || ''} ${masterBroker.lastName || ''}`.trim() || masterBroker.brandName,
@@ -5213,7 +5328,7 @@ function maskCLABE(clabe?: string | null): string | null {
             payoutAmount,
             hasFrozenDiscrepancy: audit.hasDiscrepancy,
             frozenDiscrepancyReason: audit.discrepancyReason,
-            isNetworkPayout: !!(hasHistoricalMasterShare && !isMasterDirect),
+            isNetworkPayout: !!(hasHistoricalMasterPayee && !isMasterDirect),
             isMasterDirect,
             effectiveBeneficiary,
             credit: credit ? {
@@ -5374,8 +5489,8 @@ function maskCLABE(clabe?: string | null): string | null {
       let effectiveBankAccount = null;
 
       const historicalMasterBrokerId = commission.masterBrokerId || (credit?.originMasterBrokerId ?? null);
-      const hasHistoricalMasterShare = Boolean(
-        historicalMasterBrokerId && parseFloat(commission.masterBrokerShare || '0') > 0
+      const hasHistoricalMasterPayee = Boolean(
+        historicalMasterBrokerId
       );
       const isMasterDirect = Boolean(
         historicalMasterBrokerId &&
@@ -5412,7 +5527,7 @@ function maskCLABE(clabe?: string | null): string | null {
             accountHolder: mbUser.accountHolder,
           };
 
-          if (hasHistoricalMasterShare || isMasterDirect) {
+          if (hasHistoricalMasterPayee || isMasterDirect) {
             effectiveBankAccount = {
               beneficiaryType: 'master_broker',
               beneficiaryId: mbUser.id,
@@ -5440,7 +5555,7 @@ function maskCLABE(clabe?: string | null): string | null {
       });
       const payoutAmount = audit.payoutAmount;
 
-      const effectiveBeneficiary = (hasHistoricalMasterShare || isMasterDirect) && masterBroker
+      const effectiveBeneficiary = (hasHistoricalMasterPayee || isMasterDirect) && masterBroker
         ? {
             id: masterBroker.id,
             name: masterBroker.accountHolder || `${masterBroker.firstName || ''} ${masterBroker.lastName || ''}`.trim() || masterBroker.brandName,
@@ -5475,7 +5590,7 @@ function maskCLABE(clabe?: string | null): string | null {
         baseDisbursedAmount,
         hasFrozenDiscrepancy: audit.hasDiscrepancy,
         frozenDiscrepancyReason: audit.discrepancyReason,
-        isNetworkPayout: !!(hasHistoricalMasterShare && !isMasterDirect),
+        isNetworkPayout: !!(hasHistoricalMasterPayee && !isMasterDirect),
         isMasterDirect,
         effectiveBeneficiary,
         effectiveBankAccount,
@@ -5557,12 +5672,32 @@ function maskCLABE(clabe?: string | null): string | null {
     }
   });
 
-  // Get commission audit logs
+  // Auditoría sólo por comisión autorizada; detalles bancarios exclusivos de Super Admin.
   app.get('/api/commissions/:id/audit-logs', isAuthenticated, requireModuleAndAction('comisiones', 'view'), async (req: any, res) => {
     try {
       const { id } = req.params;
+      const userId = req.user.claims.sub;
+      const user = await storage.getUser(userId);
+      const commission = await storage.getCommission(id);
+      if (!commission) return res.status(404).json({ message: "Comisión no encontrada." });
+
+      const credit = commission.creditId ? await storage.getCredit(commission.creditId) : null;
+      const historicalMasterId = commission.masterBrokerId || credit?.originMasterBrokerId || null;
+      const isPlatformAdmin = user?.role === 'super_admin' || user?.role === 'admin';
+      if (!isPlatformAdmin && commission.brokerId !== userId && historicalMasterId !== userId) {
+        return res.status(403).json({ message: "No autorizado para consultar esta comisión." });
+      }
+
       const logs = await storage.getCommissionAuditLogs(id);
-      res.json(logs);
+      if (user?.role === 'super_admin') return res.json(logs);
+      return res.json(logs.map((entry: any) => ({
+        id: entry.id,
+        commissionId: entry.commissionId,
+        action: entry.action,
+        previousStatus: entry.previousStatus,
+        newStatus: entry.newStatus,
+        createdAt: entry.createdAt,
+      })));
     } catch (error) {
       console.error("Error fetching commission audit logs:", error);
       res.status(500).json({ message: "Error al consultar la bitácora de auditoría" });
@@ -5818,7 +5953,7 @@ function maskCLABE(clabe?: string | null): string | null {
       // 3. Resolve beneficiary and 18-digit CLABE from historical master / broker of the operation
       const linkedCredit = commission.creditId ? await storage.getCredit(commission.creditId) : null;
       const historicalMasterBrokerId = commission.masterBrokerId || (linkedCredit?.originMasterBrokerId ?? null);
-      const isMbCredit = Boolean(historicalMasterBrokerId && parseFloat(commission.masterBrokerShare || '0') > 0);
+      const isMbCredit = Boolean(historicalMasterBrokerId);
       const isMasterDirect = Boolean(
         historicalMasterBrokerId &&
         commission.brokerId &&
@@ -6108,7 +6243,7 @@ function maskCLABE(clabe?: string | null): string | null {
 
           const linkedCredit = commission.creditId ? await storage.getCredit(commission.creditId) : null;
           const historicalMasterBrokerId = commission.masterBrokerId || (linkedCredit?.originMasterBrokerId ?? null);
-          const isMbCredit = Boolean(historicalMasterBrokerId && parseFloat(commission.masterBrokerShare || '0') > 0);
+          const isMbCredit = Boolean(historicalMasterBrokerId);
           const isMasterDirect = Boolean(
             historicalMasterBrokerId &&
             commission.brokerId &&
@@ -6312,7 +6447,7 @@ function maskCLABE(clabe?: string | null): string | null {
         commission.brokerId &&
         String(commission.brokerId) === String(historicalMasterBrokerId)
       );
-      const isMbCredit = Boolean(historicalMasterBrokerId && parseFloat(commission.masterBrokerShare || '0') > 0);
+      const isMbCredit = Boolean(historicalMasterBrokerId);
       const audit = auditCommissionPayout({
         ...commission,
         originMasterBrokerId: historicalMasterBrokerId,
@@ -6985,29 +7120,32 @@ function maskCLABE(clabe?: string | null): string | null {
     }
   });
 
-  // Consulta de estatus de validación de una comisión
-  app.get('/api/commissions/:id/payout-validation', isAuthenticated, async (req: any, res) => {
+  // Validación por comisión: sólo Super Admin ve detalles bancarios y documentación sensible.
+  app.get('/api/commissions/:id/payout-validation', isAuthenticated, requireModuleAndAction('comisiones', 'view'), async (req: any, res) => {
     try {
       const { id } = req.params;
       const userId = req.user.claims.sub;
       const user = await storage.getUser(userId);
       const commission = await storage.getCommission(id);
-      if (!commission) {
-        return res.status(404).json({ message: "Comisión no encontrada." });
-      }
+      if (!commission) return res.status(404).json({ message: "Comisión no encontrada." });
 
-      const isSuperAdmin = user?.role === 'super_admin';
-      const isAdmin = user?.role === 'admin' || isSuperAdmin;
-      if (!isAdmin) {
-        const isBroker = commission.brokerId === userId;
-        const isMaster = commission.masterBrokerId === userId;
-        if (!isBroker && !isMaster) {
-          return res.status(403).json({ message: "No tienes permiso para consultar esta comisión." });
-        }
+      const credit = commission.creditId ? await storage.getCredit(commission.creditId) : null;
+      const historicalMasterId = commission.masterBrokerId || credit?.originMasterBrokerId || null;
+      const isPlatformAdmin = user?.role === 'super_admin' || user?.role === 'admin';
+      if (!isPlatformAdmin && commission.brokerId !== userId && historicalMasterId !== userId) {
+        return res.status(403).json({ message: "No tienes permiso para consultar esta comisión." });
       }
 
       const result = await validateCommissionPayoutPrerequisites(commission, storage);
-      return res.json(result);
+      if (user?.role === 'super_admin') return res.json(result);
+      // No revelar CLABE, cuenta, nombre de titular ni revisión documental de terceros.
+      return res.json({
+        canPayout: result.canPayout,
+        documentationStatus: result.canPayout ? 'ready' : 'pending',
+        message: result.canPayout
+          ? 'El beneficiario de Crédito Negocios cumple los requisitos de liquidación.'
+          : 'La validación documental o bancaria del beneficiario está pendiente.',
+      });
     } catch (error) {
       console.error("Error validating commission payout prerequisites:", error);
       res.status(500).json({ message: "Error al validar los requisitos de la comisión." });

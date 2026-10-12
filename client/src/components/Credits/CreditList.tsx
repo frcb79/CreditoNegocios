@@ -41,6 +41,7 @@ import {
 } from "lucide-react";
 import FinalProposalModal from "@/components/Modals/FinalProposalModal";
 import MatchingComparisonTable from "@/components/MatchingAnalysis/MatchingComparisonTable";
+import CreditMatchingSection from "@/components/Credits/CreditMatchingSection";
 import { submissionStatusConfig, creditStatusConfig, targetStatusConfig, getSubmissionStatusSummary, getStatusLabel } from "@/lib/statusConfig";
 import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
@@ -1489,6 +1490,20 @@ export default function CreditList() {
               <Skeleton className="h-64 w-full" />
             </div>
           )}
+
+          {/* M3: compatibilidad preliminar explicable; no constituye aprobación crediticia. */}
+          {selectedSubmissionId && selectedSubmission ? (
+            <CreditMatchingSection
+              creditId={selectedSubmission.id}
+              requestType="submission"
+              clientName={selectedClient ? getClientName(selectedClient.id) : undefined}
+            />
+          ) : selectedCreditItem?.type === 'credit' && selectedCreditItem?.id ? (
+            <CreditMatchingSection
+              creditId={selectedCreditItem.id}
+              requestType="credit"
+            />
+          ) : null}
 
           <DialogFooter className="flex flex-col-reverse sm:flex-row sm:justify-between items-center gap-2 pt-4 border-t">
             <Button

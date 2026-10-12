@@ -2159,15 +2159,21 @@ export class DbStorage implements IStorage {
           .where(eq(institutionProductVersions.id, versionId))
           .returning();
 
-        // 3. Actualizar la oferta padre
+        // 3. Promover metadatos futuros del borrador solo tras publicar.
+        const futureMeta = (version.variablesConfiguration as any)?.futureMetadata;
+        const parentUpdate: Record<string, any> = {
+          status: "published",
+          currentVersionNumber: version.versionNumber,
+          configuration: (version.conditions as Record<string, any>) || undefined,
+          targetProfiles: (version.requirements as any)?.targetProfiles || undefined,
+          updatedAt: now,
+        };
+        if (futureMeta?.name) parentUpdate.name = futureMeta.name;
+        if (futureMeta?.customName) parentUpdate.customName = futureMeta.customName;
+        if (futureMeta?.description !== undefined) parentUpdate.description = futureMeta.description;
+        if (futureMeta?.productType) parentUpdate.productType = futureMeta.productType;
         await tx.update(institutionProducts)
-          .set({
-            status: "published",
-            currentVersionNumber: version.versionNumber,
-            configuration: (version.conditions as Record<string, any>) || undefined,
-            targetProfiles: (version.requirements as any)?.targetProfiles || undefined,
-            updatedAt: now,
-          })
+          .set(parentUpdate)
           .where(eq(institutionProducts.id, productId));
 
         return { ...publishedVersion, offerId: productId };
