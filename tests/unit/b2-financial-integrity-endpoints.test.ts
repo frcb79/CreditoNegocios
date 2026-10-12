@@ -123,12 +123,38 @@ describe("Fase 2B.1B — Cierre de Integridad Financiera y Eliminación de Rutas
           confirmedDisbursedAmount: 800000,
         });
 
-      expect(res.status).toBe(200);
-      expect(res.body.status).toBe("disbursed");
+      expect(res.status).toBe(409);
+      expect(res.body.code).toBe("DISBURSEMENT_CONFIRMATION_REQUIRED");
+      const unchanged = await storage.getCredit(credit.id);
+      expect(unchanged?.status).toBe("approved");
 
       // Verificar que NO se crearon comisiones espurias sin evidencia real de core bancario
       const comms = await storage.getCommissions({ creditId: credit.id });
       expect(comms.length).toBe(0);
+    });
+
+    it("Seguridad: PUT no permite inyectar evidencia de dispersión confirmada en finalProposal", async () => {
+      const admin = await storage.createUser({
+        email: `admin-forged-${randomUUID()}@example.com`,
+        firstName: "Admin", lastName: "Forged", role: "admin", isActive: true, status: "active",
+      } as any);
+      currentAuthUser = admin;
+      const credit = await storage.createCredit({
+        clientId: `client-${randomUUID().slice(0, 8)}`,
+        brokerId: admin.id,
+        amount: "100000.00",
+        status: "approved",
+      } as any);
+      const forged = await request(app)
+        .put(`/api/credits/${credit.id}`)
+        .send({ finalProposal: {
+          disbursementStatus: "confirmed",
+          disbursementConfirmation: { confirmedAmount: 100000, status: "confirmed" },
+        }});
+      expect(forged.status).toBe(409);
+      expect(forged.body.code).toBe("DISBURSEMENT_EVIDENCE_WRITE_FORBIDDEN");
+      const unchanged = await storage.getCredit(credit.id);
+      expect((unchanged?.finalProposal as any)?.disbursementStatus).not.toBe("confirmed");
     });
 
     it("Seguridad: mark-dispersed actualiza estado a dispersed pero bloquea comisiones sobre approvedAmount reportando dependencia FIN-13/14", async () => {
