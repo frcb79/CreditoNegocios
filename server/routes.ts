@@ -4697,14 +4697,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ message: 'Financial institution not found' });
       }
 
-      let networkRates: any = null;
-      if (user?.role === 'broker' && user?.masterBrokerId) {
-        const masterBroker = await storage.getUser(user.masterBrokerId);
-        networkRates = (masterBroker?.networkCommissionRates as any) || {};
-      }
-
-      const role = user?.role || 'broker';
-      const sanitized = projectFinancialInstitutionByRole(institution, role, networkRates);
+      const sanitized = projectFinancialInstitutionByRole(institution, user.role);
       
       res.json(sanitized);
     } catch (error) {
