@@ -276,6 +276,13 @@ export interface IStorage {
     additionalUpdates?: Partial<Commission>
   ): Promise<Commission | null>;
   createCommissionAuditLog(logData: InsertCommissionAuditLog): Promise<CommissionAuditLog>;
+  /** Atomic PostgreSQL settlement: status, bank reference and audit are committed together. */
+  recordManualCommissionPayment?(params: {
+    commissionId: string;
+    expected: Commission;
+    updates: Partial<Commission>;
+    audit: InsertCommissionAuditLog;
+  }): Promise<{ commission: Commission; alreadyPaid: boolean }>;
   getCommissionAuditLogs(commissionId: string): Promise<CommissionAuditLog[]>;
 
   // Notification operations
