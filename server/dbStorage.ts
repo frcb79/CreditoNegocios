@@ -80,6 +80,20 @@ import type {
   VerifyFormalizationOtpResult,
 } from "./storage";
 
+/**
+ * Order-independent comparison of JSONB snapshots, including nested rate maps.
+ * PostgreSQL jsonb reorders keys; raw JSON.stringify would reject valid snapshots.
+ */
+function stableJsonSnapshot(value: any): string {
+  if (value === undefined || value === null) return "null";
+  if (Array.isArray(value)) return "[" + value.map(stableJsonSnapshot).join(",") + "]";
+  if (typeof value === "object") {
+    return "{" + Object.keys(value).filter(key => value[key] !== undefined).sort()
+      .map(key => JSON.stringify(key) + ":" + stableJsonSnapshot(value[key])).join(",") + "}";
+  }
+  return JSON.stringify(value);
+}
+
 export class DbStorage implements IStorage {
   
   constructor() {
@@ -3079,7 +3093,7 @@ export class DbStorage implements IStorage {
 
       // Validate a fresh commercial snapshot only for a NEW tranche.
       // Identical retries have already been safely resolved under the row lock.
-      if (JSON.stringify(sourceProposal) !== JSON.stringify(params.expectedProposal || {}) ||
+      if (stableJsonSnapshot(sourceProposal) !== stableJsonSnapshot(params.expectedProposal || {}) ||
           String(locked.amount) !== String(params.expectedAmount) ||
           locked.brokerId !== params.commission.brokerId ||
           (locked.originMasterBrokerId || sourceProposal.originMasterBrokerId || null) !==
@@ -3194,8 +3208,8 @@ export class DbStorage implements IStorage {
       if (!target.isWinner || ["cancelled", "rejected"].includes(target.status)) {
         throw new Error("DISBURSEMENT_TARGET_NOT_ELIGIBLE");
       }
-      if (JSON.stringify(target.institutionProposal || {}) !==
-          JSON.stringify(params.expectedTargetProposal || {})) {
+      if (stableJsonSnapshot(target.institutionProposal || {}) !==
+          stableJsonSnapshot(params.expectedTargetProposal || {})) {
         throw new Error("DISBURSEMENT_TARGET_PROPOSAL_CHANGED");
       }
       const [request] = await tx.select().from(creditSubmissionRequests)
@@ -3213,8 +3227,8 @@ export class DbStorage implements IStorage {
             proposed.linkedSubmissionId !== request.id ||
             proposed.clientId !== request.clientId ||
             proposed.amount !== params.expectedAmount ||
-            JSON.stringify(proposed.finalProposal || {}) !==
-              JSON.stringify(params.expectedProposal || {})) {
+            stableJsonSnapshot(proposed.finalProposal || {}) !==
+              stableJsonSnapshot(params.expectedProposal || {})) {
           throw new Error("DISBURSEMENT_TARGET_CREDIT_INVALID");
         }
         const [created] = await tx.insert(credits).values({
