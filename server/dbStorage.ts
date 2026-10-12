@@ -3018,6 +3018,155 @@ export class DbStorage implements IStorage {
   }
 
   /**
+   * OPE-10/11: Confirm a tranche and calculate its prepared commission as ONE
+   * PostgreSQL transaction. Locks the credit so the second request re-evaluates
+   * the approved limit and confirmed tranches against the committed first one.
+   */
+  async confirmCreditDisbursementAtomic(params: {
+    creditId: string;
+    expectedProposal: Credit["finalProposal"];
+    expectedAmount: string;
+    confirmedAmount: number;
+    dispersalIndex: number;
+    commission: InsertCommission;
+    performedBy: string;
+    actorEmail?: string | null;
+    notes?: string | null;
+    idempotencyKey?: string | null;
+  }): Promise<{ credit: Credit; commission: Commission; alreadyConfirmed: boolean }> {
+    const amount = Number(params.confirmedAmount);
+    const index = Number(params.dispersalIndex);
+    const key = params.idempotencyKey?.trim() || null;
+    if (!Number.isFinite(amount) || amount <= 0 || !Number.isInteger(index) || index < 1 ||
+        params.commission.creditId !== params.creditId ||
+        params.commission.status !== "generated" ||
+        (params.commission.idempotencyKey || null) !== key) {
+      throw new Error("DISBURSEMENT_INVALID_INPUT");
+    }
+
+    return db.transaction(async tx => {
+      const [locked] = await tx.select().from(credits)
+        .where(eq(credits.id, params.creditId)).for("update");
+      if (!locked) throw new Error("DISBURSEMENT_CREDIT_NOT_FOUND");
+      if (["cancelled", "rejected"].includes(locked.status) || !locked.brokerId ||
+          !locked.financialInstitutionId) {
+        throw new Error("DISBURSEMENT_CREDIT_NOT_ELIGIBLE");
+      }
+      const sourceProposal = (locked.finalProposal || {}) as Record<string, any>;
+      if (JSON.stringify(sourceProposal) !== JSON.stringify(params.expectedProposal || {}) ||
+          String(locked.amount) !== String(params.expectedAmount) ||
+          locked.brokerId !== params.commission.brokerId ||
+          (locked.originMasterBrokerId || sourceProposal.originMasterBrokerId || null) !==
+            (params.commission.masterBrokerId || null)) {
+        throw new Error("DISBURSEMENT_STALE_COMMERCIAL_SNAPSHOT");
+      }
+      const priorTranches: any[] = Array.isArray(sourceProposal.disbursementTranches)
+        ? sourceProposal.disbursementTranches
+        : sourceProposal.disbursementConfirmation ? [sourceProposal.disbursementConfirmation] : [];
+      const existingTranche = priorTranches.find(t => Number(t.dispersalIndex || 1) === index);
+      if (existingTranche) {
+        if (Math.abs(Number(existingTranche.confirmedAmount) - amount) >= 0.01 ||
+            (key && existingTranche.idempotencyKey && existingTranche.idempotencyKey !== key)) {
+          throw new Error("DISBURSEMENT_TRANCHE_ALREADY_CONFIRMED");
+        }
+        const [prior] = await tx.select().from(commissions)
+          .where(eq(commissions.id, existingTranche.commissionId || "")).limit(1);
+        if (!prior) throw new Error("DISBURSEMENT_INCONSISTENT_EXISTING_TRANCHE");
+        return { credit: locked, commission: prior, alreadyConfirmed: true };
+      }
+
+      const maxAmount = Number(locked.amount);
+      const previousTotal = priorTranches.reduce((sum, t) => sum + Number(t.confirmedAmount || 0), 0);
+      if (!Number.isFinite(maxAmount) || maxAmount <= 0 || previousTotal + amount > maxAmount + 0.01) {
+        throw new Error("TOTAL_DISBURSEMENT_EXCEEDS_APPROVED_AMOUNT");
+      }
+
+      // Do not allow idempotency keys to be reused on other credits or tranches.
+      if (key) {
+        const [duplicateKey] = await tx.select().from(commissions)
+          .where(eq(commissions.idempotencyKey, key)).limit(1);
+        if (duplicateKey) throw new Error("DISBURSEMENT_DUPLICATE_IDEMPOTENCY_KEY");
+      }
+      const [duplicateType] = await tx.select().from(commissions)
+        .where(and(eq(commissions.creditId, locked.id),
+          eq(commissions.commissionType, params.commission.commissionType || ""))).limit(1);
+      if (duplicateType) throw new Error("DISBURSEMENT_COMMISSION_ALREADY_EXISTS");
+
+      const [createdCommission] = await tx.insert(commissions).values({
+        ...params.commission,
+        tenantId: locked.tenantId || params.commission.tenantId || null,
+        brokerId: locked.brokerId,
+        masterBrokerId: locked.originMasterBrokerId || sourceProposal.originMasterBrokerId || null,
+        creditId: locked.id,
+        idempotencyKey: key,
+        status: "generated",
+      }).returning();
+
+      const now = new Date();
+      const tranche = {
+        dispersalIndex: index,
+        confirmedAmount: amount,
+        confirmedAt: now.toISOString(),
+        confirmedBy: params.performedBy,
+        confirmedByEmail: params.actorEmail || null,
+        notes: params.notes || null,
+        idempotencyKey: key,
+        commissionId: createdCommission.id,
+        status: "confirmed",
+      };
+      const updatedTranches = [...priorTranches, tranche]
+        .sort((a, b) => Number(a.dispersalIndex || 1) - Number(b.dispersalIndex || 1));
+      const updatedProposal = {
+        ...sourceProposal,
+        disbursementConfirmation: tranche,
+        disbursementTranches: updatedTranches,
+        disbursementStatus: "confirmed",
+        confirmedDisbursedAmount: previousTotal + amount,
+      };
+      const [updatedCredit] = await tx.update(credits)
+        .set({
+          status: "disbursed",
+          finalProposal: updatedProposal,
+          notes: params.notes
+            ? (locked.notes ? locked.notes + " | Confirmación: " + params.notes : "Confirmación: " + params.notes)
+            : locked.notes,
+          updatedAt: now,
+        })
+        .where(eq(credits.id, locked.id)).returning();
+
+      // Both audit rows are mandatory, never swallowed. Any insert failure rolls back all changes.
+      await tx.insert(commissionAuditLogs).values([
+        {
+          commissionId: createdCommission.id,
+          action: "created",
+          performedBy: params.performedBy,
+          previousStatus: null,
+          newStatus: "generated",
+          details: {
+            creditId: locked.id, commissionType: createdCommission.commissionType,
+            confirmedAmount: amount, dispersalIndex: index,
+            originMasterBrokerId: locked.originMasterBrokerId,
+            idempotencyKey: key,
+          },
+        },
+        {
+          commissionId: createdCommission.id,
+          action: "disbursement_confirmed",
+          performedBy: params.performedBy,
+          previousStatus: "generated",
+          newStatus: "generated",
+          details: {
+            creditId: locked.id, confirmedAmount: amount,
+            dispersalIndex: index, confirmedAt: now.toISOString(),
+            notes: params.notes || null,
+          },
+        },
+      ]);
+      return { credit: updatedCredit, commission: createdCommission, alreadyConfirmed: false };
+    });
+  }
+
+  /**
    * Record a verified manual payout atomically in PostgreSQL.
    * Row locking serializes two operators on one commission; reference-scoped
    * advisory locks prevent two commissions using the same SPEI reference.
