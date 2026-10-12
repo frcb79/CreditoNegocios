@@ -20,6 +20,7 @@ import {
   extractBureauStatus,
   extractHasGuarantee,
   extractHasGuarantor,
+  extractApplicationVariables,
   type ClientProfileType,
 } from "./fieldMapping";
 
@@ -166,7 +167,22 @@ export function isCriterionOriginVerified(
     }
   }
 
-  return true;
+  // Requisito de prueba positiva: cada criterio debe tener un campo fuente real
+  // capturado y extraíble en la solicitud. La ausencia de flags negativos NO basta.
+  const actual = extractApplicationVariables(credit, client);
+  const verifiedByCapturedSource: Record<string, boolean> = {
+    targetProfiles: actual.clientProfileType !== null,
+    creditAmount: actual.requestedAmount !== null,
+    creditTerm: actual.requestedTermMonths !== null,
+    companyAge: actual.companyAgeMonths !== null,
+    monthlyRevenue: actual.monthlyRevenue !== null,
+    bureauRequirement: actual.bureauStatus?.hasDelinquencies !== null &&
+      actual.bureauStatus?.hasDelinquencies !== undefined,
+    guaranteeType: actual.hasGuarantee?.hasGuarantee !== null &&
+      actual.hasGuarantee?.hasGuarantee !== undefined,
+    avalesType: actual.hasGuarantor !== null,
+  };
+  return verifiedByCapturedSource[criterionCode] === true;
 }
 
 /**
@@ -607,9 +623,9 @@ export function evaluateOfferCompatibility(
     status = "COMPATIBLE";
     summary = `Compatible: cumple con éxito las ${matched.length} condiciones configuradas de la oferta.`;
   } else {
-    // Si la oferta no tenía ninguna condición restrictiva configurada
-    status = "COMPATIBLE";
-    summary = "Compatible: la oferta no define condiciones mínimas excluyentes.";
+    // Ningún criterio evaluable no es compatibilidad probada.
+    status = "INSUFFICIENT_DATA";
+    summary = "Información insuficiente: la oferta no tiene criterios de elegibilidad verificables configurados.";
   }
 
   const reasons = [
