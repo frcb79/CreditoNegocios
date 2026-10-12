@@ -2548,8 +2548,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
         c.status === 'validacion_juridica' || c.status === 'en_mesa_control'
       ).length;
 
+      const isReportedUnconfirmed = (c: any) =>
+        !isCreditDisbursementConfirmed(c) &&
+        ((c.finalProposal as any)?.disbursementStatus === 'reported' ||
+          ['disbursed', 'dispersed', 'dispersado'].includes(c.status));
+
       const aprobacion = userCredits.filter(c =>
-        c.status === 'approved' || c.status === 'aprobado'
+        (c.status === 'approved' || c.status === 'aprobado') && !isReportedUnconfirmed(c)
       ).length;
 
       const por_firmar = userSubmissions.filter(s =>
@@ -2563,10 +2568,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         isCreditDisbursementConfirmed(c)
       ).length;
 
-      const dispersion_reportada = userCredits.filter(c =>
-        (c.status === 'disbursed' || c.status === 'dispersed' || c.status === 'dispersado') &&
-        !isCreditDisbursementConfirmed(c)
-      ).length;
+      // A reported credit remains 'approved' until Super Admin confirmation,
+      // but is shown in the reporting stage rather than counted twice as approved.
+      const dispersion_reportada = userCredits.filter(isReportedUnconfirmed).length;
 
       const pipeline = {
         en_revision,
