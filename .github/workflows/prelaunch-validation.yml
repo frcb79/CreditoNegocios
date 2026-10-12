@@ -72,3 +72,5 @@ jobs:
         run: npm test -- --runInBand --coverage=false --forceExit tests/integration/postgres-manual-payout.test.ts
       - name: Test atomic credit disbursements and concurrent partialities in isolated PostgreSQL
         run: npm test -- --runInBand --coverage=false --forceExit tests/integration/postgres-credit-disbursement.test.ts
+      - name: Test winner-target atomic creation, linkage, rollback and lineage in PostgreSQL
+        run: npm test -- --runInBand --coverage=false --forceExit tests/integration/postgres-target-disbursement.test.ts
