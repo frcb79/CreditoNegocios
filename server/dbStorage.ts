@@ -3017,6 +3017,70 @@ export class DbStorage implements IStorage {
     }
   }
 
+  /**
+   * Record a verified manual payout atomically in PostgreSQL.
+   * Row locking serializes two operators on one commission; reference-scoped
+   * advisory locks prevent two commissions using the same SPEI reference.
+   * Notification sending intentionally belongs OUTSIDE the transaction.
+   */
+  async recordManualCommissionPayment(params: {
+    commissionId: string;
+    expected: Commission;
+    updates: Partial<Commission>;
+    audit: InsertCommissionAuditLog;
+  }): Promise<{ commission: Commission; alreadyPaid: boolean }> {
+    const reference = String(params.updates.trackingKey || "").trim();
+    if (!reference || params.updates.status !== "paid" || params.audit.commissionId !== params.commissionId) {
+      throw new Error("MANUAL_PAYOUT_INVALID_INPUT");
+    }
+
+    return db.transaction(async (tx) => {
+      const [locked] = await tx.select().from(commissions)
+        .where(eq(commissions.id, params.commissionId)).for("update");
+      if (!locked) throw new Error("MANUAL_PAYOUT_NOT_FOUND");
+      if (locked.status === "paid") {
+        if (locked.trackingKey !== reference) throw new Error("MANUAL_PAYOUT_ALREADY_PAID_DIFFERENT_REFERENCE");
+        return { commission: locked, alreadyPaid: true };
+      }
+      if (locked.status !== "approved" || !locked.approvedAt || !locked.approvedBy ||
+          locked.frozenAmount === null || !Number.isFinite(Number(locked.frozenAmount))) {
+        throw new Error("MANUAL_PAYOUT_NOT_APPROVED");
+      }
+      const reviewedFields: (keyof Commission)[] = [
+        "creditId", "brokerId", "masterBrokerId", "amount", "brokerShare",
+        "masterBrokerShare", "appShare", "frozenAmount", "approvedBy",
+      ];
+      if (reviewedFields.some(k => String(locked[k] ?? "") !== String(params.expected[k] ?? "")) ||
+          locked.approvedAt.getTime() !== (params.expected.approvedAt?.getTime() ?? -1)) {
+        throw new Error("MANUAL_PAYOUT_STALE_REVIEW");
+      }
+
+      // Serializes concurrent references even without schema changes/migrations.
+      await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${reference}))`);
+      const existing = await tx.select({ id: commissions.id }).from(commissions)
+        .where(and(eq(commissions.status, "paid"), eq(commissions.trackingKey, reference)))
+        .limit(1);
+      if (existing.some(row => row.id !== params.commissionId)) {
+        throw new Error("MANUAL_PAYOUT_DUPLICATE_BANK_REFERENCE");
+      }
+
+      const [updated] = await tx.update(commissions)
+        .set({ ...params.updates, status: "paid", updatedAt: new Date() })
+        .where(and(eq(commissions.id, params.commissionId), eq(commissions.status, "approved")))
+        .returning();
+      if (!updated) throw new Error("MANUAL_PAYOUT_CONCURRENT_CHANGE");
+
+      // If audit insertion fails, the paid state rolls back with it.
+      await tx.insert(commissionAuditLogs).values({
+        ...params.audit,
+        commissionId: params.commissionId,
+        previousStatus: "approved",
+        newStatus: "paid",
+      });
+      return { commission: updated, alreadyPaid: false };
+    });
+  }
+
   async createCommissionAuditLog(logData: InsertCommissionAuditLog): Promise<CommissionAuditLog> {
     try {
       const [created] = await db.insert(commissionAuditLogs).values(logData).returning();
