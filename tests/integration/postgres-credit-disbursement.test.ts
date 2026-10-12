@@ -151,6 +151,19 @@ describePg("OPE-10/11: atomic and idempotent credit disbursements in PostgreSQL"
     await expect(settle(requestFor(credit,1000,1))).rejects.toThrow("DISBURSEMENT_STALE_COMMERCIAL_SNAPSHOT");
   });
 
+  it("rejects a Master beneficiary forged in editable proposal JSON", async () => {
+    const credit = await seed("credit-forged-master");
+    await pool.query(`UPDATE credits SET final_proposal =
+      jsonb_set(final_proposal, '{originMasterBrokerId}', '"fake-master"'::jsonb)
+      WHERE id='credit-forged-master'`);
+    const poisoned = await creditState(credit.id);
+    const draft = requestFor(poisoned, 1000, 1);
+    draft.commission.masterBrokerId = "fake-master";
+    await expect(settle(draft)).rejects.toThrow("DISBURSEMENT_ORIGIN_LINEAGE_MISMATCH");
+    const comms = await db.select().from(commissions).where(eq(commissions.creditId, credit.id));
+    expect(comms).toHaveLength(0);
+  });
+
   it("does not allow one idempotency key to be reused on another credit", async () => {
     const a = await seed("credit-key-a"), b = await seed("credit-key-b");
     await settle(requestFor(a,500,1,"same-key-global"));
