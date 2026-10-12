@@ -276,6 +276,30 @@ export interface IStorage {
     additionalUpdates?: Partial<Commission>
   ): Promise<Commission | null>;
   createCommissionAuditLog(logData: InsertCommissionAuditLog): Promise<CommissionAuditLog>;
+  /** Atomic winner-target confirmation, including creating and linking a missing credit. */
+  confirmTargetDisbursementAtomic?(params: {
+    targetId: string;
+    requestId: string;
+    expectedTargetProposal: CreditSubmissionTarget["institutionProposal"];
+    expectedBrokerId: string;
+    expectedOriginMasterBrokerId: string | null;
+    newCredit?: InsertCredit & { id: string };
+    expectedProposal: Credit["finalProposal"];
+    expectedAmount: string;
+    confirmedAmount: number;
+    dispersalIndex: number;
+    commission: InsertCommission;
+    performedBy: string;
+    actorEmail?: string | null;
+    notes?: string | null;
+    idempotencyKey?: string | null;
+  }): Promise<{
+    target: CreditSubmissionTarget;
+    credit: Credit;
+    commission: Commission;
+    alreadyConfirmed: boolean;
+  }>;
+
   /** Atomic PostgreSQL settlement: status, bank reference and audit are committed together. */
   /** PostgreSQL credit-confirmation unit of work: one credit lock, commission, audit, tranche. */
   confirmCreditDisbursementAtomic?(params: {
