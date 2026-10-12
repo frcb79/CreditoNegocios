@@ -4374,6 +4374,83 @@ export async function registerRoutes(app: Express): Promise<Server> {
         ? Number(dispersalIndex)
         : 1;
 
+      // Real PostgreSQL path (OPE-10/11): lock credit and persist tranche,
+      // commission and two audit entries in one transaction. MemStorage keeps
+      // the legacy route exclusively for in-memory tests.
+      const transactionalStorage: IStorage = storage;
+      if (transactionalStorage.confirmCreditDisbursementAtomic) {
+        try {
+          const existingProposal = (credit.finalProposal as any) || {};
+          const commType = req.body?.commissionType || existingProposal.commissionsToApply?.[0] || "apertura";
+          const institutionId = credit.financialInstitutionId || existingProposal.financialInstitutionId;
+          const preview = await calculateAndPersistCascadingCommission({
+            credit,
+            creditId: credit.id,
+            commissionType: commType,
+            confirmedDisbursedAmount: validConfirmedAmount,
+            dispersalIndex: validDispersalIndex,
+            idempotencyKey: idempotencyKey ? String(idempotencyKey).trim() : undefined,
+            financialInstitutionId: institutionId,
+            institutionProductId: existingProposal.institutionProductId || existingProposal.offerId || null,
+            versionNumber: existingProposal.versionNumber ?? null,
+            performedBy: userId,
+            previewOnly: true,
+          });
+          const result = await transactionalStorage.confirmCreditDisbursementAtomic({
+            creditId: credit.id,
+            expectedProposal: credit.finalProposal,
+            expectedAmount: credit.amount,
+            confirmedAmount: validConfirmedAmount,
+            dispersalIndex: validDispersalIndex,
+            commission: preview,
+            performedBy: userId,
+            actorEmail: user.email,
+            notes: notes ? String(notes).trim() : null,
+            idempotencyKey: idempotencyKey ? String(idempotencyKey).trim() : null,
+          });
+          // Never send notifications until PostgreSQL COMMIT has succeeded.
+          if (!result.alreadyConfirmed && credit.brokerId) {
+            try {
+              const notif = await storage.createNotification({
+                userId: credit.brokerId,
+                type: "disbursement_confirmed",
+                title: "Desembolso confirmado y comisión calculada",
+                message: `Confirmación de desembolso por $${validConfirmedAmount.toFixed(2)} MXN.`,
+                relatedEntityType: "credit",
+                relatedEntityId: credit.id,
+                priority: "high",
+              });
+              broadcastToUser(credit.brokerId, { type: "notification", notification: notif });
+            } catch (notificationErr) {
+              console.warn("[Disbursement] Committed but notification failed:", notificationErr);
+            }
+          }
+          return res.json({
+            message: result.alreadyConfirmed
+              ? "Este tramo ya había sido confirmado."
+              : "Desembolso confirmado con comisión y auditoría atómicas.",
+            ...result,
+          });
+        } catch (error: any) {
+          const code = String(error?.message || "");
+          if (error instanceof MissingCommissionRateError ||
+              error instanceof MissingOfferVersionError ||
+              error instanceof UnauthorizedDistributionError ||
+              error instanceof UnconfirmedDispersalAmountError) {
+            return res.status(400).json({
+              message: error.message, code: error.code || "CANONICAL_CALCULATION_ERROR",
+            });
+          }
+          if (code.startsWith("DISBURSEMENT_") || code === "TOTAL_DISBURSEMENT_EXCEEDS_APPROVED_AMOUNT") {
+            return res.status(409).json({
+              message: "No pudo confirmarse el tramo: conflicto de estado, monto o idempotencia.",
+              code,
+            });
+          }
+          throw error;
+        }
+      }
+
       // REGLA 2: Idempotencia y Multidispersión
       const existingTranches: any[] = Array.isArray(existingProposal.disbursementTranches)
         ? existingProposal.disbursementTranches
