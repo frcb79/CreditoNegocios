@@ -17,9 +17,12 @@ import {
   RefreshCw,
   ShieldCheck,
 } from "lucide-react";
+import { useToast } from "@/hooks/use-toast";
 import {
   type LegalAcceptanceRecord,
   type FormalizationStatusResult,
+  type PendingCommercialTermsStatus,
+  type PendingCommercialTerm,
   FORMALIZATION_NOTICE_TEXT,
   shouldShowFormalizationNotice,
   getExactDocumentUrl,
@@ -119,10 +122,119 @@ export default function LegalProfileDocuments({
     staleTime: 30000,
   });
 
+  const { toast } = useToast();
+  const [acceptingDoc, setAcceptingDoc] = useState<string | null>(null);
+
+  // Consulta de estado de condiciones comerciales pendientes para Broker / Master
+  const {
+    data: commercialTermsStatus,
+    isLoading: isLoadingCommercialTerms,
+    refetch: refetchCommercialTerms,
+  } = useQuery<PendingCommercialTermsStatus>({
+    queryKey: ["/api/commercial-terms/status", currentUser?.id],
+    enabled: Boolean(currentUser?.id && isBrokerOrMaster),
+    queryFn: async () => {
+      const res = await fetch(buildApiUrl("/api/commercial-terms/status"), {
+        credentials: "include",
+      });
+      if (!res.ok) {
+        throw new Error("No fue posible consultar las condiciones comerciales pendientes.");
+      }
+      return res.json();
+    },
+    staleTime: 15000,
+  });
+
+  const handleAcceptCommercialTerms = async (term: PendingCommercialTerm) => {
+    try {
+      setAcceptingDoc(term.document);
+      const res = await fetch(buildApiUrl("/api/commercial-terms/accept"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          document: term.document,
+          version: term.version,
+        }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.message || "Error al aceptar las condiciones comerciales");
+      }
+      toast({
+        title: "Condiciones Aceptadas",
+        description: `Has aceptado expresamente la versión ${term.version} de ${term.title}.`,
+      });
+      await Promise.all([refetchCommercialTerms(), refetch()]);
+    } catch (error: any) {
+      toast({
+        title: "Error",
+        description: error.message || "No se pudo registrar la aceptación.",
+        variant: "destructive",
+      });
+    } finally {
+      setAcceptingDoc(null);
+    }
+  };
+
   const acceptances = data?.acceptances || [];
 
   return (
     <div className="space-y-4" data-testid="legal-profile-documents-section">
+      {/* 0. Alerta de condiciones comerciales pendientes de aceptación expresa */}
+      {isBrokerOrMaster && commercialTermsStatus?.hasPending && commercialTermsStatus.pendingTerms.length > 0 && (
+        <Alert
+          className="border-indigo-300 bg-indigo-50/90 text-indigo-950 dark:border-indigo-800 dark:bg-indigo-950/30 dark:text-indigo-200 shadow-2xs"
+          data-testid="alert-pending-commercial-terms"
+        >
+          <AlertCircle className="h-5 w-5 text-indigo-600 dark:text-indigo-400 mt-0.5 shrink-0" />
+          <div className="flex-1 space-y-2">
+            <AlertTitle className="font-semibold text-indigo-950 dark:text-indigo-100 text-sm">
+              Actualización de Condiciones Comerciales Pendientes de Aceptación
+            </AlertTitle>
+            <AlertDescription className="text-xs sm:text-sm text-indigo-900 dark:text-indigo-300 leading-relaxed">
+              Se han actualizado plazos o esquemas de comisiones comerciales aplicables a tu cuenta. De conformidad con las reglas de la plataforma, debes aceptar expresamente las nuevas condiciones vigentes para poder originar nuevas operaciones o expedientes de crédito. Tus operaciones y derechos económicos previos se mantienen inalterados.
+            </AlertDescription>
+            <div className="mt-3 space-y-2">
+              {commercialTermsStatus.pendingTerms.map((term) => (
+                <div
+                  key={`${term.document}-${term.version}`}
+                  className="flex flex-col sm:flex-row sm:items-center justify-between p-3 rounded-md bg-white/80 dark:bg-background/80 border border-indigo-200 dark:border-indigo-900/50 gap-2"
+                  data-testid={`pending-term-item-${term.document}`}
+                >
+                  <div>
+                    <div className="font-medium text-xs sm:text-sm text-foreground flex items-center gap-2">
+                      <span>{term.title}</span>
+                      <Badge variant="outline" className="font-mono text-xs">
+                        v{term.version}
+                      </Badge>
+                    </div>
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      {term.description}
+                    </p>
+                  </div>
+                  <Button
+                    size="sm"
+                    className="bg-indigo-600 hover:bg-indigo-700 text-white shrink-0 text-xs h-8"
+                    onClick={() => handleAcceptCommercialTerms(term)}
+                    disabled={acceptingDoc === term.document}
+                    data-testid={`button-accept-commercial-term-${term.document}`}
+                  >
+                    {acceptingDoc === term.document ? (
+                      <>
+                        <Loader2 className="h-3 w-3 mr-1 animate-spin" /> Registrando...
+                      </>
+                    ) : (
+                      "Aceptar Condiciones Expresamente"
+                    )}
+                  </Button>
+                </div>
+              ))}
+            </div>
+          </div>
+        </Alert>
+      )}
+
       {/* 1. Aviso de formalización o estatus completado para Broker / Master Broker */}
       {shouldRenderNotice && (
         <>

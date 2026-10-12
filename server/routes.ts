@@ -101,6 +101,7 @@ export {
   consolidateCommercialProposalSnapshot,
 };
 import { commercialConfigService } from "./commercialConfigService";
+import { commercialTermsService } from "./commercialTermsService";
 
 import {
   commercialAuthorizationService,
@@ -2012,7 +2013,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const parsed = updateCommercialRulesConfigSchema.parse(req.body);
       const { reason, ...updates } = parsed;
 
+      const current = await commercialConfigService.getConfig();
       const result = await commercialConfigService.updateConfig(updates, userId, reason);
+
+      if (result.modifiedParams && result.modifiedParams.length > 0) {
+        await commercialTermsService.publishGlobalCommercialTermsUpdate({
+          previousConditions: current,
+          newConditions: result.updatedConfig,
+          modifiedParams: result.modifiedParams,
+          updatedBy: userId,
+          reason,
+          targetStorage: storage,
+        });
+      }
+
       res.json({
         success: true,
         message: "Configuración de gobernanza comercial actualizada correctamente.",
@@ -2045,6 +2059,76 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error: any) {
       console.error("[COMMERCIAL CONFIG AUDIT] Error:", error);
       res.status(500).json({ message: "Error al consultar bitácora de configuración comercial." });
+    }
+  });
+
+  // =========================================================================
+  // FASE 2B.2B: CAMBIOS Y ACEPTACIÓN COMERCIAL (COM-07, COM-10, COM-11)
+  // =========================================================================
+
+  // Consultar estado de condiciones comerciales pendientes para el usuario autenticado
+  app.get('/api/commercial-terms/status', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = getAuthUserId(req);
+      if (!userId) {
+        return res.status(401).json({ message: "No autenticado." });
+      }
+      const status = await commercialTermsService.getPendingCommercialTermsForUser(userId, storage);
+      return res.json(status);
+    } catch (error: any) {
+      console.error("Error al consultar estado de condiciones comerciales:", error);
+      return res.status(500).json({ message: "Error al consultar estado de condiciones comerciales." });
+    }
+  });
+
+  // Historial de aceptaciones y versiones de condiciones comerciales
+  app.get('/api/commercial-terms/history', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = getAuthUserId(req);
+      if (!userId) {
+        return res.status(401).json({ message: "No autenticado." });
+      }
+      const history = await commercialTermsService.getCommercialAcceptancesHistory(userId, storage);
+      const versions = commercialTermsService.getCommercialVersionsHistory();
+      return res.json({ versions, acceptances: history });
+    } catch (error: any) {
+      console.error("Error al consultar historial de condiciones comerciales:", error);
+      return res.status(500).json({ message: "Error al consultar historial de condiciones comerciales." });
+    }
+  });
+
+  // Aceptar expresamente una versión de condiciones comerciales o de red (Idempotente)
+  app.post('/api/commercial-terms/accept', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = getAuthUserId(req);
+      if (!userId) {
+        return res.status(401).json({ message: "No autenticado." });
+      }
+      const { version, type, document, masterBrokerId } = req.body || {};
+      if (!version || typeof version !== 'string') {
+        return res.status(400).json({ message: "Se requiere especificar la versión a aceptar." });
+      }
+
+      const clientIp = req.headers['x-forwarded-for'] || req.socket?.remoteAddress || req.ip;
+      const userAgent = (req.headers['user-agent'] as string) || 'unknown';
+      const resolvedType = type === 'network' || document === 'comisiones-red' ? 'network' : 'global';
+
+      const result = await commercialTermsService.acceptCommercialTerms(
+        {
+          userId,
+          version: version.trim(),
+          type: resolvedType,
+          masterBrokerId,
+          ipAddress: typeof clientIp === 'string' ? clientIp : Array.isArray(clientIp) ? clientIp[0] : null,
+          userAgent,
+        },
+        storage
+      );
+
+      return res.json(result);
+    } catch (error: any) {
+      console.error("Error al registrar aceptación de condiciones comerciales:", error);
+      return res.status(400).json({ message: error.message || "Error al aceptar condiciones comerciales." });
     }
   });
 
@@ -4730,6 +4814,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       const updatedInstitution = await storage.updateFinancialInstitution(id, updateData);
 
+      if (updateData.commissionRates || updateData.commissionRate !== undefined) {
+        await commercialTermsService.publishFinancialInstitutionCommissionUpdate({
+          institutionId: id,
+          institutionName: institution.name,
+          previousRates: (institution as any).commissionRates || { rate: (institution as any).commissionRate },
+          newRates: updatedInstitution?.commissionRates || { rate: (updatedInstitution as any)?.commissionRate },
+          updatedBy: userId,
+          targetStorage: storage,
+        });
+      }
+
       res.json(updatedInstitution);
     } catch (error) {
       console.error("Error updating financial institution:", error);
@@ -6774,8 +6869,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
         };
       }
 
+      const previousRates = (user.networkCommissionRates as any) || {};
       const updatedUser = await storage.updateUser(userId, {
         networkCommissionRates: sanitizedRates,
+      });
+
+      await commercialTermsService.publishNetworkRatesUpdate(userId, {
+        previousRates,
+        newRates: sanitizedRates,
+        updatedBy: userId,
+        targetStorage: storage,
       });
 
       res.json({

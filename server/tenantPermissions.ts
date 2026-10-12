@@ -2,6 +2,7 @@ import { storage, type IStorage } from "./storage";
 import { getEffectivePermissions } from "./middleware/rbacMiddleware";
 import type { TenantMemberPermissions } from "../shared/schema";
 import { isRoleSubjectToFormalization } from "../shared/legalDocuments";
+import { commercialTermsService } from "./commercialTermsService";
 
 export interface ValidationParams {
   permissions: TenantMemberPermissions | any;
@@ -302,6 +303,26 @@ export async function validateEffectiveBrokerFormalization(
     return {
       allowed: false,
       code: "FORMALIZATION_REQUIRED",
+      statusCode: 403,
+      message,
+      effectiveBroker,
+    };
+  }
+
+  const hasPendingCommercialTerms = await commercialTermsService.hasPendingCommercialAcceptance(
+    effectiveBroker.id,
+    targetStorage
+  );
+  if (hasPendingCommercialTerms) {
+    const isSelf = callerUser && callerUser.id === effectiveBroker.id;
+    const message = isSelf
+      ? "Debes aceptar las condiciones comerciales vigentes antes de generar nuevas operaciones."
+      : `El broker originador (${effectiveBroker.firstName || ""} ${effectiveBroker.lastName || ""})`.trim() +
+        " debe aceptar las condiciones comerciales vigentes antes de que se puedan originar operaciones en su nombre.";
+
+    return {
+      allowed: false,
+      code: "PENDING_COMMERCIAL_TERMS_ACCEPTANCE",
       statusCode: 403,
       message,
       effectiveBroker,

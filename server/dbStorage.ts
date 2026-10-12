@@ -30,7 +30,7 @@ import {
   commercialAuditLogs, type UserOperationalStatus,
   userStatusRequests, type UserStatusRequest, type UserStatusRequestStatus, type UserStatusRequestAction,
   legalDocumentVersions, legalAcceptances, formalizationOtpRequests,
-  type LegalDocumentVersionDb, type LegalAcceptance, type FormalizationOtpRequest,
+  type LegalDocumentVersionDb, type InsertLegalDocumentVersionDb, type LegalAcceptance, type InsertLegalAcceptance, type FormalizationOtpRequest,
   institutionProductVersions,
   type InstitutionProductVersion,
   type InsertInstitutionProductVersion,
@@ -393,12 +393,38 @@ export class DbStorage implements IStorage {
     return version;
   }
 
+  async createLegalDocumentVersion(data: InsertLegalDocumentVersionDb): Promise<LegalDocumentVersionDb> {
+    const id = data.id || `${data.document}:${data.version}`;
+    const [created] = await db
+      .insert(legalDocumentVersions)
+      .values({
+        id,
+        document: data.document,
+        title: data.title,
+        version: data.version,
+        sourceFile: data.sourceFile || "commercial_config",
+        content: data.content,
+        contentSha256: data.contentSha256,
+        effectiveAt: data.effectiveAt ? new Date(data.effectiveAt) : new Date(),
+      })
+      .onConflictDoNothing()
+      .returning();
+    if (created) return created;
+    const existing = await this.getLegalDocumentVersion(id);
+    return existing!;
+  }
+
   async getLegalAcceptancesByUser(userId: string): Promise<LegalAcceptance[]> {
     return await db
       .select()
       .from(legalAcceptances)
       .where(eq(legalAcceptances.userId, userId))
       .orderBy(desc(legalAcceptances.acceptedAt));
+  }
+
+  async createLegalAcceptance(data: InsertLegalAcceptance): Promise<LegalAcceptance> {
+    const [created] = await db.insert(legalAcceptances).values(data).returning();
+    return created;
   }
 
   async getLegalAcceptanceById(id: string): Promise<LegalAcceptance | undefined> {

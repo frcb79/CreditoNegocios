@@ -1,6 +1,7 @@
 export type PublicLegalDocument = "terminos" | "aviso";
 export type PrivateLegalDocument = "convenio" | "reglas-red" | "reglas-master";
-export type LegalDocumentType = PublicLegalDocument | PrivateLegalDocument;
+export type CommercialLegalDocument = "condiciones-comerciales" | "comisiones-red";
+export type LegalDocumentType = PublicLegalDocument | PrivateLegalDocument | CommercialLegalDocument;
 
 export interface LegalDocumentVersion {
   id: string;
@@ -24,7 +25,9 @@ export type LegalAcceptanceType =
   | "accept_agreement"
   | "accept_convenio"
   | "accept_reglas_red"
-  | "accept_reglas_master";
+  | "accept_reglas_master"
+  | "accept_commercial_terms"
+  | "accept_network_rates";
 
 export interface LegalAcceptanceRecord {
   id: string;
@@ -199,6 +202,26 @@ export function buildPersonalizedAgreement(
 }
 
 
+export interface PendingCommercialTerm {
+  type: "global" | "network";
+  document: string;
+  version: string;
+  title: string;
+  description: string;
+  effectiveDate: string;
+  previousConditions?: Record<string, any>;
+  newConditions: Record<string, any>;
+  modifiedParams?: string[];
+  masterBrokerId?: string;
+  masterBrokerName?: string;
+}
+
+export interface PendingCommercialTermsStatus {
+  hasPending: boolean;
+  currentGlobalVersion: string;
+  pendingTerms: PendingCommercialTerm[];
+}
+
 export function getExactDocumentUrl(document: string, version: string): string {
   return `/legal/${encodeURIComponent(document)}?version=${encodeURIComponent(version)}`;
 }
@@ -215,6 +238,10 @@ export function getDocumentTitle(document: string): string {
       return "Reglas de la Red";
     case "reglas-master":
       return "Reglas Master Broker";
+    case "condiciones-comerciales":
+      return "Condiciones Comerciales y Plazos Operativos";
+    case "comisiones-red":
+      return "Comisiones de Red";
     default:
       return document;
   }
@@ -233,6 +260,10 @@ export function getAcceptanceTypeLabel(type: string): string {
       return "Aceptación de Reglas de la Red";
     case "accept_reglas_master":
       return "Aceptación de Reglas Master Broker";
+    case "accept_commercial_terms":
+      return "Aceptación de Condiciones Comerciales";
+    case "accept_network_rates":
+      return "Aceptación de Comisiones de Red";
     default:
       return type;
   }

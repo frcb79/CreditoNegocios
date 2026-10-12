@@ -89,7 +89,9 @@ import {
   legalAcceptances,
   formalizationOtpRequests,
   type LegalDocumentVersionDb,
+  type InsertLegalDocumentVersionDb,
   type LegalAcceptance,
+  type InsertLegalAcceptance,
   type FormalizationOtpRequest,
   type InstitutionProductVersion,
   type InsertInstitutionProductVersion,
@@ -482,7 +484,9 @@ export interface IStorage {
   // Legal document versions & acceptances (Bloque 2)
   getLegalDocumentVersions(): Promise<LegalDocumentVersionDb[]>;
   getLegalDocumentVersion(id: string): Promise<LegalDocumentVersionDb | undefined>;
+  createLegalDocumentVersion(version: InsertLegalDocumentVersionDb): Promise<LegalDocumentVersionDb>;
   getLegalAcceptancesByUser(userId: string): Promise<LegalAcceptance[]>;
+  createLegalAcceptance(acceptance: InsertLegalAcceptance): Promise<LegalAcceptance>;
   registerUserWithLegalEvidence(params: {
     userData: {
       email: string;
@@ -1676,11 +1680,51 @@ export class MemStorage implements IStorage {
     return doc ? structuredClone(doc) : undefined;
   }
 
+  async createLegalDocumentVersion(data: InsertLegalDocumentVersionDb): Promise<LegalDocumentVersionDb> {
+    const id = data.id || `${data.document}:${data.version}`;
+    const doc: LegalDocumentVersionDb = {
+      id,
+      document: data.document,
+      title: data.title,
+      version: data.version,
+      sourceFile: data.sourceFile || "commercial_config",
+      content: data.content,
+      contentSha256: data.contentSha256,
+      effectiveAt: data.effectiveAt ? new Date(data.effectiveAt) : new Date(),
+      createdAt: new Date(),
+    };
+    this.legalDocumentVersions.set(doc.id, structuredClone(doc));
+    return structuredClone(doc);
+  }
+
   async getLegalAcceptancesByUser(userId: string): Promise<LegalAcceptance[]> {
     return Array.from(this.legalAcceptances.values())
       .filter((a) => a.userId === userId)
       .sort((a, b) => new Date(b.acceptedAt).getTime() - new Date(a.acceptedAt).getTime())
       .map((a) => structuredClone(a));
+  }
+
+  async createLegalAcceptance(data: InsertLegalAcceptance): Promise<LegalAcceptance> {
+    const id = (data as any).id || randomUUID();
+    const acceptance: LegalAcceptance = {
+      id,
+      userId: data.userId,
+      userEmail: data.userEmail,
+      userName: data.userName ?? null,
+      documentId: data.documentId,
+      document: data.document,
+      version: data.version,
+      contentSha256: data.contentSha256,
+      acceptanceType: data.acceptanceType,
+      ipAddress: data.ipAddress ?? null,
+      userAgent: data.userAgent,
+      acceptedAt: (data as any).acceptedAt ? new Date((data as any).acceptedAt) : new Date(),
+      templateSha256: data.templateSha256 ?? null,
+      personalizedSha256: data.personalizedSha256 ?? null,
+      personalizedSnapshot: data.personalizedSnapshot ?? null,
+    };
+    this.legalAcceptances.set(acceptance.id, structuredClone(acceptance));
+    return structuredClone(acceptance);
   }
 
   async getLegalAcceptanceById(id: string): Promise<LegalAcceptance | undefined> {
