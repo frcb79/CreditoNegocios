@@ -70,3 +70,5 @@ jobs:
         run: npm test -- --runInBand --coverage=false --forceExit tests/integration/postgres-network-attribution-migration.test.ts
       - name: Test atomic manual commission settlement in isolated PostgreSQL
         run: npm test -- --runInBand --coverage=false --forceExit tests/integration/postgres-manual-payout.test.ts
+      - name: Test atomic credit disbursements and concurrent partialities in isolated PostgreSQL
+        run: npm test -- --runInBand --coverage=false --forceExit tests/integration/postgres-credit-disbursement.test.ts
