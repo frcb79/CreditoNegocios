@@ -620,7 +620,8 @@ describe("Matching M1 — Motor de Compatibilidad y Datos Reales", () => {
       expect(parentAfterPublish?.currentVersionNumber).toBe(2);
     });
   });
-}  describe("Prelanzamiento: evidencia positiva y ofertas sin reglas", () => {
+
+  describe("Prelanzamiento: evidencia positiva y ofertas sin reglas", () => {
     test("una oferta sin criterios evaluables NO es COMPATIBLE por defecto", () => {
       const result = evaluateOfferCompatibility(
         { credit: { amount: 100000 }, client: { type: "persona_moral" } },
