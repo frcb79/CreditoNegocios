@@ -407,6 +407,92 @@ export class DbStorage implements IStorage {
     return version;
   }
 
+  /**
+   * COM-27: serialized, all-or-nothing Master network rate change and its
+   * contractual version. Avoid a silent update if immutable publication fails.
+   */
+  async updateNetworkRatesWithVersionAtomic(params: {
+    masterBrokerId: string;
+    newRates: Record<string, any>;
+    changedBy: string;
+  }): Promise<{
+    changed: boolean;
+    rates: Record<string, any>;
+    version: import("./commercialTermsService").NetworkRatesVersionData | null;
+  }> {
+    const { masterBrokerId, changedBy } = params;
+    if (!masterBrokerId || masterBrokerId !== changedBy ||
+        !params.newRates || Array.isArray(params.newRates) ||
+        typeof params.newRates !== "object") {
+      throw new Error("NETWORK_RATES_INVALID_INPUT");
+    }
+    // Timestamp fields are UI bookkeeping; only actual economic changes need
+    // a new contract. Canonicalize nesting to avoid JSON key-order mismatches.
+    const economicSnapshot = (value: unknown): string => {
+      if (Array.isArray(value)) return "[" + value.map(economicSnapshot).join(",") + "]";
+      if (value && typeof value === "object") {
+        const obj = value as Record<string, unknown>;
+        return "{" + Object.keys(obj).filter(k => k !== "updatedAt" && obj[k] !== undefined).sort()
+          .map(k => JSON.stringify(k) + ":" + economicSnapshot(obj[k])).join(",") + "}";
+      }
+      return JSON.stringify(value);
+    };
+    return db.transaction(async tx => {
+      await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${"cn:network-rates:" + masterBrokerId}))`);
+      const result = await tx.execute(sql`SELECT id, role, brand_name, first_name, last_name, network_commission_rates
+        FROM users WHERE id = ${masterBrokerId} FOR UPDATE`);
+      const row = result.rows?.[0] as Record<string, any> | undefined;
+      if (!row || row.role !== "master_broker") {
+        throw new Error("NETWORK_RATES_MASTER_NOT_FOUND");
+      }
+      const oldRates = (row.network_commission_rates && typeof row.network_commission_rates === "object")
+        ? row.network_commission_rates as Record<string, any> : {};
+      if (economicSnapshot(oldRates) === economicSnapshot(params.newRates)) {
+        return { changed: false, rates: oldRates, version: null };
+      }
+
+      const existing = await tx.select({ id: legalDocumentVersions.id, version: legalDocumentVersions.version })
+        .from(legalDocumentVersions)
+        .where(like(legalDocumentVersions.id, `comisiones-red:${masterBrokerId}:net-%`));
+      const highest = existing.reduce((n, doc) => {
+        const match = /^net-(\d+)\.0$/.exec(doc.version);
+        if (!match) throw new Error("NETWORK_RATES_VERSION_INVALID");
+        return Math.max(n, Number(match[1]));
+      }, 0);
+      const versionNumber = `net-${highest + 1}.0`;
+      const masterName = row.brand_name ||
+        [row.first_name, row.last_name].filter(Boolean).join(" ") || "Master Broker";
+      const effectiveDate = new Date().toISOString();
+      const summary = `Actualización de comisiones de red asignadas por ${masterName}`;
+      const content = [
+        `COMISIONES DE RED - MASTER BROKER: ${masterName}`,
+        `Versión: ${versionNumber}`,
+        `Fecha: ${effectiveDate}`,
+        `Tasas asignadas:\n${JSON.stringify(params.newRates, null, 2)}`,
+      ].join("\n");
+      const contentSha256 = createHash("sha256").update(content, "utf8").digest("hex");
+      const versionData: import("./commercialTermsService").NetworkRatesVersionData = {
+        masterBrokerId, document: "comisiones-red", version: versionNumber,
+        title: `Comisiones de Red (${masterName}) v${versionNumber}`,
+        summary, content, contentSha256,
+        previousRates: oldRates, newRates: params.newRates,
+        effectiveDate, updatedAt: effectiveDate,
+      };
+      await tx.insert(legalDocumentVersions).values({
+        id: `comisiones-red:${masterBrokerId}:${versionNumber}`,
+        document: "comisiones-red", title: versionData.title,
+        version: versionNumber, sourceFile: "network_rates",
+        content: content + "\n<!-- METADATA: " + JSON.stringify({ versionData }) + " -->",
+        contentSha256, effectiveAt: new Date(effectiveDate),
+      });
+      await tx.update(users).set({
+        networkCommissionRates: params.newRates,
+        updatedAt: new Date(),
+      }).where(eq(users.id, masterBrokerId));
+      return { changed: true, rates: params.newRates, version: versionData };
+    });
+  }
+
   async createLegalDocumentVersion(data: InsertLegalDocumentVersionDb): Promise<LegalDocumentVersionDb> {
     const id = data.id || `${data.document}:${data.version}`;
     const [created] = await db
