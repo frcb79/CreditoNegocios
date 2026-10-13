@@ -119,7 +119,10 @@ describePg("OPE-10/11: atomic and idempotent credit disbursements in PostgreSQL"
     expect(results.filter(r=>r.status==="rejected")).toHaveLength(1);
     const stored = await creditState(credit.id);
     expect((stored.finalProposal as any).confirmedDisbursedAmount).toBe(6000);
-    const remainingAttempt = requestFor(stored,6000,2);
+    // Either tranche can win the row lock. Retry ONLY the losing tranche:
+    // retrying the winner is a valid idempotent success, not over-disbursement.
+    const losingIndex = results[0].status === "rejected" ? 1 : 2;
+    const remainingAttempt = requestFor(stored,6000,losingIndex);
     await expect(settle(remainingAttempt)).rejects.toThrow("TOTAL_DISBURSEMENT_EXCEEDS_APPROVED_AMOUNT");
   });
 
