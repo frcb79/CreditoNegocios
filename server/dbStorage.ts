@@ -2292,6 +2292,9 @@ export class DbStorage implements IStorage {
   ): Promise<{ product: InstitutionProduct; version: InstitutionProductVersion }> {
     try {
       return await db.transaction(async (tx) => {
+        // Match publication lock order: parent first, then draft version.
+        // Otherwise a publish may commit between draft status read and write.
+        await tx.execute(sql`SELECT id FROM institution_products WHERE id = ${productId} FOR UPDATE`);
         const [version] = await tx.select().from(institutionProductVersions)
           .where(and(
             eq(institutionProductVersions.id, versionId),
@@ -2337,8 +2340,15 @@ export class DbStorage implements IStorage {
             versionHash,
             updatedAt: new Date(),
           })
-          .where(eq(institutionProductVersions.id, versionId))
+          .where(and(
+            eq(institutionProductVersions.id, versionId),
+            eq(institutionProductVersions.institutionProductId, productId),
+            eq(institutionProductVersions.status, "draft")
+          ))
           .returning();
+        if (!updatedVersion) {
+          throw new Error("OFFER_DRAFT_ALREADY_PUBLISHED_OR_CHANGED");
+        }
 
         let updatedProduct: any;
         const [currentProd] = await tx.select().from(institutionProducts)
