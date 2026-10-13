@@ -246,9 +246,28 @@ export class CommercialTermsService {
     if (persisted.document !== 'condiciones-comerciales' || persisted.version !== nextVersion || persisted.contentSha256 !== contentSha256) {
       throw new Error('COMMERCIAL_TERMS_VERSION_CONFLICT');
     }
-    this.globalVersions.set(nextVersion, versionData);
-    this.currentGlobalVersion = nextVersion;
+    await this.announceCommittedGlobalVersion(versionData, storage);
 
+    return versionData;
+  }
+
+  /**
+   * Only call after the version row is durably committed. In-memory maps and
+   * user notifications are downstream of the PostgreSQL commit, never before.
+   */
+  async announceCommittedGlobalVersion(
+    versionData: GlobalCommercialTermsVersionData,
+    targetStorage?: IStorage
+  ): Promise<void> {
+    const storage = targetStorage || defaultStorage;
+    this.globalVersions.set(versionData.version, versionData);
+    if (Number(versionData.version) > Number(this.currentGlobalVersion)) {
+      this.currentGlobalVersion = versionData.version;
+    }
+    const nextVersion = versionData.version;
+    const nowIso = versionData.effectiveDate;
+    const summary = versionData.summary;
+    const params = { modifiedParams: versionData.modifiedParams };
     // Notificar individualmente a todos los Brokers y Master Brokers activos (Regla 3)
     try {
       const users = await storage.getAllUsers();
@@ -279,7 +298,6 @@ export class CommercialTermsService {
       console.error("[CommercialTermsService] Error enviando notificaciones globales:", err);
     }
 
-    return versionData;
   }
 
   /**
