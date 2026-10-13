@@ -300,6 +300,48 @@ describePg("OPE-12: winning target and credit creation in one PostgreSQL transac
     expect(target.creditId).toBe(p.id);
   });
 
+  it("OPE-P0 locks selected target against all administrative review reversals", async () => {
+    const fixture = await seed("frozen-admin-review", true);
+    const frozenBefore = fixture.target;
+    const submitBefore = fixture.request;
+    const run = async (action: "approve" | "reject" | "return") => {
+      if(action==="approve") return DbStorage.prototype.approveCreditSubmissionTarget(
+        fixture.target.id,"test-admin","changed");
+      if(action==="reject") return DbStorage.prototype.rejectCreditSubmissionTarget(
+        fixture.target.id,"test-admin","changed");
+      return DbStorage.prototype.returnCreditSubmissionTargetToBroker(
+        fixture.target.id,"test-admin","changed");
+    };
+    for(const action of ["approve","reject","return"] as const) {
+      await expect(run(action)).rejects.toThrow("TARGET_ALREADY_SELECTED");
+    }
+    await expect(DbStorage.prototype.updateCreditSubmissionTarget(fixture.target.id,
+      {status:"sent"})).rejects.toThrow("TARGET_ALREADY_SELECTED");
+    const [after] = await db.select().from(creditSubmissionTargets)
+      .where(eq(creditSubmissionTargets.id, fixture.target.id));
+    const [submissionAfter] = await db.select().from(creditSubmissionRequests)
+      .where(eq(creditSubmissionRequests.id, fixture.request.id));
+    expect(after.status).toBe(frozenBefore.status);
+    expect(after.isWinner).toBe(frozenBefore.isWinner);
+    expect(after.creditId).toBe(frozenBefore.creditId);
+    expect(submissionAfter.status).toBe(submitBefore.status);
+  });
+
+  it("OPE-P0 still permits reviewing a different target of the same request",async()=> {
+    const fixture = await seed("frozen-sibling-primary",true);
+    const siblingId="frozen-sibling-pending";
+    await pool.query(`INSERT INTO credit_submission_targets
+      (id,request_id,financial_institution_id,status,is_winner,institution_proposal)
+      VALUES($1,$2,'another-financial','pending_admin',false,'{}'::jsonb)`,
+      [siblingId,fixture.request.id]);
+    const ok=await DbStorage.prototype.approveCreditSubmissionTarget(siblingId,"admin-a");
+    expect(ok?.status).toBe("approved");
+    const [first] = await db.select().from(creditSubmissionTargets)
+      .where(eq(creditSubmissionTargets.id,fixture.target.id));
+    expect(first.isWinner).toBe(true);
+    expect(first.status).toBe("selected_winner");
+  });
+
   it("OPE-06 rolls back a winner on credit insertion failure and supports clean retry",async()=>{
     const fixture = await seed("target-winner-failure");
     const data = paramsFor(fixture,"winner-failure-credit");

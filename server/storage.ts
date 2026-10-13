@@ -1,5 +1,6 @@
 // @ts-nocheck
 import { randomUUID, createHash } from "crypto";
+import { assertTargetReviewMutable } from "./targetReviewTransitions";
 import catalog from "./legalDocumentCatalog.json";
 import {
   getApprovedLegalDocument,
@@ -4967,6 +4968,11 @@ export class MemStorage implements IStorage {
   async updateCreditSubmissionTarget(id: string, targetData: Partial<InsertCreditSubmissionTarget>): Promise<CreditSubmissionTarget | undefined> {
     const existing = this.creditSubmissionTargets.get(id);
     if (!existing) return undefined;
+    if (targetData.institutionProposal !== undefined ||
+        ["institution_approved", "institution_rejected", "approved", "rejected",
+          "returned_to_broker", "sent"].includes(targetData.status || "")) {
+      assertTargetReviewMutable(existing);
+    }
 
     const updated: CreditSubmissionTarget = {
       ...existing,
@@ -4980,6 +4986,7 @@ export class MemStorage implements IStorage {
   async approveCreditSubmissionTarget(targetId: string, adminId: string, adminNotes?: string, details?: string): Promise<CreditSubmissionTarget | undefined> {
     const existing = this.creditSubmissionTargets.get(targetId);
     if (!existing) return undefined;
+    assertTargetReviewMutable(existing);
 
     const updated: CreditSubmissionTarget = {
       ...existing,
@@ -4997,6 +5004,7 @@ export class MemStorage implements IStorage {
   async rejectCreditSubmissionTarget(targetId: string, adminId: string, adminNotes?: string): Promise<CreditSubmissionTarget | undefined> {
     const existing = this.creditSubmissionTargets.get(targetId);
     if (!existing) return undefined;
+    assertTargetReviewMutable(existing);
 
     const updated: CreditSubmissionTarget = {
       ...existing,
@@ -5013,6 +5021,7 @@ export class MemStorage implements IStorage {
   async returnCreditSubmissionTargetToBroker(targetId: string, adminId: string, details?: string, adminNotes?: string): Promise<CreditSubmissionTarget | undefined> {
     const existing = this.creditSubmissionTargets.get(targetId);
     if (!existing) return undefined;
+    assertTargetReviewMutable(existing);
 
     const updated: CreditSubmissionTarget = {
       ...existing,

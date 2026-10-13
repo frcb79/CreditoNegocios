@@ -153,6 +153,57 @@ describe("Fase 2B.1B — Cierre de Integridad Financiera y Eliminación de Rutas
     });
   });
 
+  describe("OPE-P0: selected target cannot be administratively reopened", () => {
+    it("rejects approving, rejecting, returning and resending a winner; siblings stay reviewable", async () => {
+      const admin = await storage.createUser({
+        email: `frozen-review-admin-${randomUUID()}@example.test`,
+        role: "super_admin", isActive: true,
+      } as any);
+      const broker = await storage.createUser({
+        email: `frozen-review-broker-${randomUUID()}@example.test`,
+        role: "broker", isActive: true,
+      } as any);
+      const client = await storage.createClient({
+        brokerId: broker.id, type: "persona_moral", businessName: "Historial Protegido",
+      } as any);
+      const instA = await storage.createFinancialInstitution({
+        name: `Financiera Estado A ${randomUUID()}`, isActive: true,
+      } as any);
+      const instB = await storage.createFinancialInstitution({
+        name: `Financiera Estado B ${randomUUID()}`, isActive: true,
+      } as any);
+      const submission = await storage.createCreditSubmissionRequest({
+        clientId: client.id, brokerId: broker.id, requestedAmount: "120000.00",
+        status: "in_progress",
+      } as any);
+      const winner = await storage.createCreditSubmissionTarget({
+        requestId: submission.id, financialInstitutionId: instA.id,
+        status: "selected_winner", isWinner: true, creditId: "historical-credit-A",
+      } as any);
+      const sibling = await storage.createCreditSubmissionTarget({
+        requestId: submission.id, financialInstitutionId: instB.id,
+        status: "pending_admin",
+      } as any);
+      currentAuthUser = admin;
+      for(const path of ["approve", "reject", "return-to-broker", "mark-sent"]) {
+        const result = await request(app)
+          .patch(`/api/credit-submission-targets/${winner.id}/${path}`).send({});
+        expect(result.status).toBe(409);
+        expect(result.body.code).toBe("TARGET_ALREADY_SELECTED");
+      }
+      const frozen = await storage.getCreditSubmissionTarget(winner.id);
+      expect(frozen?.status).toBe("selected_winner");
+      expect(frozen?.creditId).toBe("historical-credit-A");
+      expect(frozen?.isWinner).toBe(true);
+      expect((await storage.getCreditSubmissionRequest(submission.id))?.status).toBe("in_progress");
+      // Different institution/target remains independently actionable.
+      const valid = await request(app)
+        .patch(`/api/credit-submission-targets/${sibling.id}/approve`).send({});
+      expect(valid.status).toBe(200);
+      expect((await storage.getCreditSubmissionTarget(sibling.id))?.status).toBe("approved");
+    });
+  });
+
   describe("FIN-P0: institution proposal keeps canonical offer/version", () => {
     it("preserves explicit published version and derives its rates on the server", async () => {
       const admin = await storage.createUser({

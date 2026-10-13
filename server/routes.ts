@@ -10410,6 +10410,12 @@ function maskCLABE(clabe?: string | null): string | null {
       const target = await enrichCreditSubmissionTarget(rawTarget);
       res.json(projectSubmissionTarget(target, user.role));
     } catch (error) {
+      if (error instanceof Error && error.message === "TARGET_ALREADY_SELECTED") {
+        return res.status(409).json({
+          code: "TARGET_ALREADY_SELECTED",
+          message: "Esta propuesta ya fue seleccionada o tiene un crédito vinculado.",
+        });
+      }
       console.error("Error approving credit submission target:", error);
       res.status(500).json({ message: "Failed to approve credit submission target" });
     }
@@ -10468,6 +10474,12 @@ function maskCLABE(clabe?: string | null): string | null {
       const target = await enrichCreditSubmissionTarget(rawTarget);
       res.json(projectSubmissionTarget(target, user.role));
     } catch (error) {
+      if (error instanceof Error && error.message === "TARGET_ALREADY_SELECTED") {
+        return res.status(409).json({
+          code: "TARGET_ALREADY_SELECTED",
+          message: "Esta propuesta ya fue seleccionada o tiene un crédito vinculado.",
+        });
+      }
       console.error("Error rejecting credit submission target:", error);
       res.status(500).json({ message: "Failed to reject credit submission target" });
     }
@@ -10527,6 +10539,12 @@ function maskCLABE(clabe?: string | null): string | null {
       const target = await enrichCreditSubmissionTarget(rawTarget);
       res.json(projectSubmissionTarget(target, user.role));
     } catch (error) {
+      if (error instanceof Error && error.message === "TARGET_ALREADY_SELECTED") {
+        return res.status(409).json({
+          code: "TARGET_ALREADY_SELECTED",
+          message: "Esta propuesta ya fue seleccionada o tiene un crédito vinculado.",
+        });
+      }
       console.error("Error returning credit submission target to broker:", error);
       res.status(500).json({ message: "Failed to return credit submission target to broker" });
     }
@@ -10715,6 +10733,12 @@ function maskCLABE(clabe?: string | null): string | null {
       const target = await enrichCreditSubmissionTarget(rawTarget);
       res.json(projectSubmissionTarget(target, user.role));
     } catch (error) {
+      if (error instanceof Error && error.message === "TARGET_ALREADY_SELECTED") {
+        return res.status(409).json({
+          code: "TARGET_ALREADY_SELECTED",
+          message: "Esta propuesta ya fue seleccionada o tiene un crédito vinculado.",
+        });
+      }
       console.error("Error marking as sent:", error);
       res.status(500).json({ message: "Failed to mark as sent" });
     }
@@ -10891,6 +10915,12 @@ function maskCLABE(clabe?: string | null): string | null {
       if (code.startsWith("OFFER_VERSION_")) {
         return res.status(409).json({ code, message: "La oferta o versión no coincide con la propuesta." });
       }
+      if (error instanceof Error && error.message === "TARGET_ALREADY_SELECTED") {
+        return res.status(409).json({
+          code: "TARGET_ALREADY_SELECTED",
+          message: "Esta propuesta ya fue seleccionada o tiene un crédito vinculado.",
+        });
+      }
       console.error("Error saving institution proposal:", error);
       res.status(500).json({ message: "Failed to save institution proposal" });
     }
@@ -10984,6 +11014,12 @@ function maskCLABE(clabe?: string | null): string | null {
       const code = error instanceof Error ? error.message : "";
       if (code.startsWith("OFFER_VERSION_")) {
         return res.status(409).json({ code, message: "La oferta o versión no coincide con la respuesta." });
+      }
+      if (error instanceof Error && error.message === "TARGET_ALREADY_SELECTED") {
+        return res.status(409).json({
+          code: "TARGET_ALREADY_SELECTED",
+          message: "Esta propuesta ya fue seleccionada o tiene un crédito vinculado.",
+        });
       }
       console.error("Error recording institution response:", error);
       res.status(500).json({ message: "Failed to record institution response" });

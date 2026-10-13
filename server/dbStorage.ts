@@ -50,6 +50,7 @@ import {
 import { eq, desc, asc, like, and, or, inArray, sql, gte } from "drizzle-orm";
 
 import { assertFrozenOfferLineage, readFrozenOfferLineage } from "./offerLineageService";
+import { assertTargetReviewMutable } from "./targetReviewTransitions";
 import { randomUUID, createHash } from "crypto";
 import {
   getApprovedLegalDocument,
@@ -4483,17 +4484,15 @@ export class DbStorage implements IStorage {
   async updateCreditSubmissionTarget(id: string, targetData: Partial<InsertCreditSubmissionTarget>): Promise<CreditSubmissionTarget | undefined> {
     // This path can compete with selectWinningTargetAtomic. Both lock the same
     // target row so a late financial proposal cannot replace a frozen winner.
-    const isInstitutionResponse = targetData.institutionProposal !== undefined ||
-      targetData.status === "institution_approved" || targetData.status === "institution_rejected";
-    if (isInstitutionResponse) {
+    const isReviewTransition = targetData.institutionProposal !== undefined ||
+      ["institution_approved", "institution_rejected", "approved", "rejected",
+       "returned_to_broker", "sent"].includes(targetData.status || "");
+    if (isReviewTransition) {
       return db.transaction(async tx => {
         const [locked] = await tx.select().from(creditSubmissionTargets)
           .where(eq(creditSubmissionTargets.id, id)).for("update");
         if (!locked) return undefined;
-        if (locked.isWinner || locked.creditId ||
-            ["selected_winner", "dispersed"].includes(locked.status)) {
-          throw new Error("PROPOSAL_LOCKED");
-        }
+        assertTargetReviewMutable(locked);
         const frozen = readFrozenOfferLineage(targetData.institutionProposal !== undefined
           ? targetData.institutionProposal : locked.institutionProposal);
         const persisted = locked.institutionProductId || locked.versionNumber != null
@@ -4533,107 +4532,60 @@ export class DbStorage implements IStorage {
   }
 
   async approveCreditSubmissionTarget(targetId: string, adminId: string, adminNotes?: string, details?: string): Promise<CreditSubmissionTarget | undefined> {
-    try {
-      // First, get the target to find the associated submission
-      const target = await db.select().from(creditSubmissionTargets).where(eq(creditSubmissionTargets.id, targetId)).limit(1);
-      if (!target || target.length === 0) {
-        return undefined;
-      }
-      
-      const requestId = target[0].requestId;
-      
-      // Update the target status to approved
-      const result = await db.update(creditSubmissionTargets)
-        .set({
-          status: "approved",
-          adminNotes: adminNotes || "",
-          details: details || "",
-          reviewedBy: adminId,
-          reviewedAt: new Date(),
-          updatedAt: new Date()
-        })
-        .where(eq(creditSubmissionTargets.id, targetId))
-        .returning();
-      
-      // Update the submission status to sent_to_institutions only if all targets are processed
-      const pendingTargets = await db.select()
+    // Same target-row lock as selectWinningTargetAtomic: an administrator cannot
+    // approve a selected winner even when both actions race across processes.
+    return db.transaction(async tx => {
+      const [locked] = await tx.select().from(creditSubmissionTargets)
+        .where(eq(creditSubmissionTargets.id, targetId)).for("update");
+      if (!locked) return undefined;
+      assertTargetReviewMutable(locked);
+      const [updated] = await tx.update(creditSubmissionTargets).set({
+        status: "approved", adminNotes: adminNotes || "", details: details || "",
+        reviewedBy: adminId, reviewedAt: new Date(), updatedAt: new Date(),
+      }).where(eq(creditSubmissionTargets.id, targetId)).returning();
+      const pending = await tx.select({ id: creditSubmissionTargets.id })
         .from(creditSubmissionTargets)
-        .where(
-          and(
-            eq(creditSubmissionTargets.requestId, requestId),
-            eq(creditSubmissionTargets.status, "pending_admin")
-          )
-        );
-      
-      if (pendingTargets.length === 0) {
-        // All targets have been reviewed — advance request status
-        await db.update(creditSubmissionRequests)
-          .set({ status: "sent_to_institutions", updatedAt: new Date() })
-          .where(eq(creditSubmissionRequests.id, requestId));
+        .where(and(eq(creditSubmissionTargets.requestId, locked.requestId),
+          eq(creditSubmissionTargets.status, "pending_admin"))).limit(1);
+      if (pending.length === 0) {
+        await tx.update(creditSubmissionRequests).set({
+          status: "sent_to_institutions", updatedAt: new Date(),
+        }).where(eq(creditSubmissionRequests.id, locked.requestId));
       }
-      
-      return result[0];
-    } catch (error) {
-      console.error("Error approving credit submission target:", error);
-      return undefined;
-    }
+      return updated;
+    });
   }
 
   async rejectCreditSubmissionTarget(targetId: string, adminId: string, adminNotes?: string): Promise<CreditSubmissionTarget | undefined> {
-    try {
-      const result = await db.update(creditSubmissionTargets)
-        .set({
-          status: "rejected",
-          adminNotes: adminNotes || "",
-          reviewedBy: adminId,
-          reviewedAt: new Date(),
-          updatedAt: new Date()
-        })
-        .where(eq(creditSubmissionTargets.id, targetId))
-        .returning();
-      return result[0];
-    } catch (error) {
-      console.error("Error rejecting credit submission target:", error);
-      return undefined;
-    }
+    return db.transaction(async tx => {
+      const [locked] = await tx.select().from(creditSubmissionTargets)
+        .where(eq(creditSubmissionTargets.id, targetId)).for("update");
+      if (!locked) return undefined;
+      assertTargetReviewMutable(locked);
+      const [updated] = await tx.update(creditSubmissionTargets).set({
+        status: "rejected", adminNotes: adminNotes || "",
+        reviewedBy: adminId, reviewedAt: new Date(), updatedAt: new Date(),
+      }).where(eq(creditSubmissionTargets.id, targetId)).returning();
+      return updated;
+    });
   }
 
   async returnCreditSubmissionTargetToBroker(targetId: string, adminId: string, details?: string, adminNotes?: string): Promise<CreditSubmissionTarget | undefined> {
-    try {
-      // First, get the target to find the associated submission
-      const target = await db.select().from(creditSubmissionTargets).where(eq(creditSubmissionTargets.id, targetId)).limit(1);
-      if (!target || target.length === 0) {
-        return undefined;
-      }
-      
-      const requestId = target[0].requestId;
-      
-      // Update the target status
-      const result = await db.update(creditSubmissionTargets)
-        .set({
-          status: "returned_to_broker",
-          adminNotes: adminNotes || "",
-          details: details || "", // Comments for broker
-          reviewedBy: adminId,
-          reviewedAt: new Date(),
-          updatedAt: new Date()
-        })
-        .where(eq(creditSubmissionTargets.id, targetId))
-        .returning();
-      
-      // Also update the submission status so it appears in the broker's list
-      await db.update(creditSubmissionRequests)
-        .set({
-          status: "returned_to_broker",
-          updatedAt: new Date()
-        })
-        .where(eq(creditSubmissionRequests.id, requestId));
-      
-      return result[0];
-    } catch (error) {
-      console.error("Error returning credit submission target to broker:", error);
-      return undefined;
-    }
+    return db.transaction(async tx => {
+      const [locked] = await tx.select().from(creditSubmissionTargets)
+        .where(eq(creditSubmissionTargets.id, targetId)).for("update");
+      if (!locked) return undefined;
+      assertTargetReviewMutable(locked);
+      const [updated] = await tx.update(creditSubmissionTargets).set({
+        status: "returned_to_broker", adminNotes: adminNotes || "",
+        details: details || "", reviewedBy: adminId,
+        reviewedAt: new Date(), updatedAt: new Date(),
+      }).where(eq(creditSubmissionTargets.id, targetId)).returning();
+      await tx.update(creditSubmissionRequests).set({
+        status: "returned_to_broker", updatedAt: new Date(),
+      }).where(eq(creditSubmissionRequests.id, locked.requestId));
+      return updated;
+    });
   }
 
   // Bloque 11: Real PostgreSQL Transaction for Mortgage Lead Creation
