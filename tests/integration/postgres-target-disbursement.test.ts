@@ -127,6 +127,79 @@ describePg("OPE-12: winning target and credit creation in one PostgreSQL transac
     };
   }
 
+  // OPE-06 is a distinct step from confirmation of actual disbursement.
+  const select = (p: Parameters<DbStorage["selectWinningTargetAtomic"]>[0]) =>
+    DbStorage.prototype.selectWinningTargetAtomic(p);
+
+  it("OPE-06 serializes winner double-clicks and creates exactly one linked credit",async()=>{
+    const fixture = await seed("target-winner-concurrency", true, "master-original-winner");
+    const base = paramsFor(fixture,"winner-concurrency-one");
+    const first = {
+      targetId: fixture.target.id, requestId: fixture.request.id,
+      expectedProposal: fixture.target.institutionProposal,
+      newCredit: base.newCredit!,
+    };
+    const second = {
+      ...first,
+      newCredit: { ...base.newCredit!, id: "winner-concurrency-two" },
+    };
+    const outcomes = await Promise.all([select(first),select(second)]);
+    expect(outcomes.map(o=>o.alreadySelected).sort()).toEqual([false,true]);
+    expect(outcomes[0].credit.id).toBe(outcomes[1].credit.id);
+    const all = await db.select().from(credits);
+    expect(all.filter(c=>c.linkedSubmissionId === fixture.request.id)).toHaveLength(1);
+    const [target] = await db.select().from(creditSubmissionTargets)
+      .where(eq(creditSubmissionTargets.id,fixture.target.id));
+    expect(target.creditId).toBe(outcomes[0].credit.id);
+    expect(outcomes[0].credit.originMasterBrokerId).toBe("master-original-winner");
+  });
+
+  it("OPE-06 rolls back a winner on credit insertion failure and supports clean retry",async()=>{
+    const fixture = await seed("target-winner-failure");
+    const data = paramsFor(fixture,"winner-failure-credit");
+    const draft = {
+      targetId: fixture.target.id, requestId: fixture.request.id,
+      expectedProposal: fixture.target.institutionProposal,
+      newCredit: data.newCredit!,
+    };
+    await pool.query(`CREATE FUNCTION pg_winner_fail_credit() RETURNS trigger LANGUAGE plpgsql AS $
+      BEGIN IF NEW.id='winner-failure-credit' THEN
+        RAISE EXCEPTION 'injected winner credit insert failure';
+      END IF; RETURN NEW; END $`);
+    await pool.query(`CREATE TRIGGER pg_winner_fail_credit_trigger BEFORE INSERT ON credits
+      FOR EACH ROW EXECUTE FUNCTION pg_winner_fail_credit()`);
+    try {
+      await expect(select(draft)).rejects.toThrow("injected winner credit insert failure");
+      const [target] = await db.select().from(creditSubmissionTargets)
+        .where(eq(creditSubmissionTargets.id,fixture.target.id));
+      expect(target.creditId).toBeNull();
+      const found = await db.select().from(credits).where(eq(credits.id,draft.newCredit.id));
+      expect(found).toHaveLength(0);
+    } finally {
+      await pool.query("DROP TRIGGER pg_winner_fail_credit_trigger ON credits");
+      await pool.query("DROP FUNCTION pg_winner_fail_credit()");
+    }
+    const completed = await select(draft);
+    expect(completed.alreadySelected).toBe(false);
+    expect(completed.credit.id).toBe("winner-failure-credit");
+  });
+
+  it("OPE-06 prevents selecting incomplete financial proposals",async()=>{
+    const fixture = await seed("target-winner-incomplete");
+    const data = paramsFor(fixture,"winner-incomplete-credit");
+    await pool.query(`UPDATE credit_submission_targets
+      SET institution_proposal='{"approvedAmount":8000,"interestRate":12}'::jsonb
+      WHERE id='target-winner-incomplete'`);
+    const [target] = await db.select().from(creditSubmissionTargets)
+      .where(eq(creditSubmissionTargets.id,fixture.target.id));
+    await expect(select({
+      targetId: target.id, requestId: fixture.request.id,
+      expectedProposal: target.institutionProposal, newCredit: data.newCredit!,
+    })).rejects.toThrow("WINNER_PROPOSAL_INCOMPLETE");
+    const found = await db.select().from(credits).where(eq(credits.id,data.newCredit!.id));
+    expect(found).toHaveLength(0);
+  });
+
   it("creates credit and links winner exactly once for concurrent requests",async()=>{
     const fixture = await seed("target-same");
     const data = paramsFor(fixture,"credit-target-same");
