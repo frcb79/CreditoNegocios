@@ -157,6 +157,9 @@ describe("Fase 2B.1B — Cierre de Integridad Financiera y Eliminación de Rutas
       expect(allowed.body.commissionRates?.platformNet).toBeUndefined();
       expect(allowed.body.commissionRates?.channels).toBeUndefined();
       expect(allowed.body.notes).toBeUndefined();
+      // A module view grant is not an implicit grant to see credit files.
+      expect((await request(app).get("/api/credit-submissions")).status).toBe(403);
+      expect((await request(app).get("/api/credit-submission-requests/my-submissions")).status).toBe(403);
       expect((await request(app).patch(`/api/financial-institutions/${inst.id}`)
         .send({ description: "Unauthorized edit" })).status).toBe(403);
       expect((await request(app).patch(`/api/financial-institutions/${inst.id}/toggle-status`)
