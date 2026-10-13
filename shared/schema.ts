@@ -783,7 +783,11 @@ export const creditSubmissionTargets = pgTable("credit_submission_targets", {
   creditId: varchar("credit_id").references(() => credits.id), // Created credit after selection as winner
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
-});
+}, (table) => [
+  // Multiple targets of one request may each finance independently, but
+  // the same credit must never belong to two different proposals.
+  uniqueIndex("cst_credit_link_unique").on(table.creditId),
+]);
 
 export const insertCreditSubmissionRequestSchema = createInsertSchema(creditSubmissionRequests).omit({
   id: true,

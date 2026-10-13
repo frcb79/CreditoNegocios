@@ -90,3 +90,8 @@ Formato: Fecha / Decision / Opciones evaluadas / Decision final / Por que
 ### 2026-10-12 / Reversión selectiva de transferencias directas duales introducidas en 64ad33b
 - Decisión anterior: En checkpoint `64ad33b` se implementó que `/pay` y `/mark-paid` dispersaran dos transferencias bancarias separadas (una al Broker y una al Master Broker) para créditos de red.
 - Razón del cambio: Decisión de negocio vinculante (Plan Maestro v1.1). Crédito Negocios liquida consolidado al Master (`masterBrokerShare + brokerShare`); el Master tiene la responsabilidad jurídica y operativa de dispersar posteriormente a sus brokers de red. Se revirtieron las transferencias duales hacia el modelo de pago consolidado único al Master y registro de obligación diferida `pending_master_payout`.
+### 2026-10-12 / OPE-06: unicidad por target, no por solicitud
+- Regla vinculante del Plan Maestro v1.1: una solicitud puede producir múltiples créditos legítimos de diferentes financieras/propuestas. No crear índice UNIQUE por requestId.
+- Un target/propuesta debe enlazar como máximo un crédito; reintentos de selección devuelven el mismo crédito y fallas de inserción revierten la transacción.
+- Para evitar compartir un crédito entre distintas propuestas, preparar índice único de credit_submission_targets.credit_id (NULL permitido) con verificación previa de duplicados históricos; migración 0008 solo después de conciliación y autorización operativa.
+- Evidencia: regresiones PostgreSQL aisladas para múltiples targets, concurrencia, rollback y rechazo de credit_id repetido. No implica ejecución de migración en bases existentes ni autorización de despliegue.

@@ -53,6 +53,8 @@ describePg("OPE-12: winning target and credit creation in one PostgreSQL transac
       credit_id varchar REFERENCES credits(id),
       created_at timestamp DEFAULT now(), updated_at timestamp DEFAULT now()
     )`);
+    await pool.query(`CREATE UNIQUE INDEX cst_credit_link_unique
+      ON credit_submission_targets (credit_id)`);
     await pool.query(`CREATE TABLE commissions (
       id varchar PRIMARY KEY DEFAULT gen_random_uuid(), tenant_id varchar,
       credit_id varchar NOT NULL REFERENCES credits(id), broker_id varchar NOT NULL,
@@ -188,6 +190,28 @@ describePg("OPE-12: winning target and credit creation in one PostgreSQL transac
     const replays = await Promise.all([select(selectionA), select(selectionB)]);
     expect(replays.every(r => r.alreadySelected)).toBe(true);
     expect(replays.map(r => r.credit.id)).toEqual(results.map(r => r.credit.id));
+  });
+
+  it("OPE-06 forbids linking one credit to two different targets", async () => {
+    const fixture = await seed("target-credit-unique-one");
+    const creditData = paramsFor(fixture, "target-credit-unique-credit").newCredit!;
+    const selected = await select({
+      targetId: fixture.target.id, requestId: fixture.request.id,
+      expectedProposal: fixture.target.institutionProposal,
+      newCredit: creditData,
+    });
+    const secondId = "target-credit-unique-two";
+    await pool.query(`INSERT INTO credit_submission_targets
+      (id,request_id,financial_institution_id,status,is_winner,institution_proposal)
+      VALUES ($1,$2,'test-financial-two','institution_approved',false,$3::jsonb)`,
+      [secondId, fixture.request.id, JSON.stringify(fixture.target.institutionProposal)]);
+    await expect(pool.query(
+      "UPDATE credit_submission_targets SET credit_id=$1 WHERE id=$2",
+      [selected.credit.id, secondId]
+    )).rejects.toThrow(/duplicate key value violates unique constraint/);
+    const [other] = await db.select().from(creditSubmissionTargets)
+      .where(eq(creditSubmissionTargets.id, secondId));
+    expect(other.creditId).toBeNull();
   });
 
   it("OPE-06 rolls back a winner on credit insertion failure and supports clean retry",async()=>{
