@@ -5035,6 +5035,37 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // Parse update data directly from request body
       const updateData = req.body;
+      const touchesLegacyRates = Object.prototype.hasOwnProperty.call(updateData, "commissionRates") ||
+        Object.prototype.hasOwnProperty.call(updateData, "commissionRate");
+      if (touchesLegacyRates) {
+        // COM-28: all real commercial rates belong to an institution's
+        // individually published OFFER VERSION, never a global institution rate.
+        // Prevent modifying a legacy fallback after it could affect an existing
+        // proposal, credit or network commission agreement.
+        if (user.role !== "super_admin") {
+          return res.status(403).json({
+            code: "OFFER_COMMISSION_SUPER_ADMIN_REQUIRED",
+            message: "Las comisiones financieras sólo pueden ser modificadas por Super Admin.",
+          });
+        }
+        const offers = await storage.getInstitutionProducts(id);
+        let hasPublishedOffer = false;
+        for (const offer of offers) {
+          const versions = await storage.getInstitutionProductVersions(offer.id);
+          if (versions.some(v => ["published", "superseded"].includes(v.status))) {
+            hasPublishedOffer = true;
+            break;
+          }
+        }
+        const creditsForInstitution = (await storage.getCredits({}))
+          .some(c => c.financialInstitutionId === id);
+        if (hasPublishedOffer || creditsForInstitution) {
+          return res.status(409).json({
+            code: "OFFER_SCOPED_COMMISSION_VERSION_REQUIRED",
+            message: "Esta financiera ya tiene operaciones u ofertas publicadas. Las comisiones se modifican creando una nueva versión de cada oferta afectada; no editando tasas generales.",
+          });
+        }
+      }
 
       // Validate rate hierarchies and bounds if commissionRates or commissionRate is provided
       if (updateData.commissionRates || updateData.commissionRate !== undefined) {
@@ -5078,16 +5109,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       const updatedInstitution = await storage.updateFinancialInstitution(id, updateData);
 
-      if (updateData.commissionRates || updateData.commissionRate !== undefined) {
-        await commercialTermsService.publishFinancialInstitutionCommissionUpdate({
-          institutionId: id,
-          institutionName: institution.name,
-          previousRates: (institution as any).commissionRates || { rate: (institution as any).commissionRate },
-          newRates: updatedInstitution?.commissionRates || { rate: (updatedInstitution as any)?.commissionRate },
-          updatedBy: userId,
-          targetStorage: storage,
-        });
-      }
+      // A legacy institution-only draft update has no published offers or
+      // credits to affect. Do NOT broadcast a false global contract change.
+      // Once an offer is published, its commission changes require its own
+      // versioned publication workflow (not this endpoint).
 
       res.json(updatedInstitution);
     } catch (error) {
