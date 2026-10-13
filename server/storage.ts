@@ -185,6 +185,17 @@ export interface IStorage {
   createLocalUser(userData: { email: string; password: string; firstName: string; lastName: string; authMethod: string; role: string; masterBrokerId?: string; referralCode?: string }): Promise<User>;
   upsertUser(user: UpsertUser & { id: string }, replitId?: string): Promise<User>;
   updateUser(id: string, userData: Partial<UpsertUser>): Promise<User | undefined>;
+  /** COM-27: one PostgreSQL commit for current network rates and immutable rate version. */
+  updateNetworkRatesWithVersionAtomic?(params: {
+    masterBrokerId: string;
+    newRates: Record<string, any>;
+    changedBy: string;
+  }): Promise<{
+    changed: boolean;
+    rates: Record<string, any>;
+    version: import("./commercialTermsService").NetworkRatesVersionData | null;
+  }>;
+
   getUsersByMasterBroker(masterBrokerId: string): Promise<User[]>;
   setPasswordResetToken(userId: string, token: string, expiry: Date): Promise<void>;
   getUserByResetToken(token: string): Promise<User | undefined>;
