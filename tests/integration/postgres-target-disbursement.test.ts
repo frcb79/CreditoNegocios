@@ -163,10 +163,10 @@ describePg("OPE-12: winning target and credit creation in one PostgreSQL transac
       expectedProposal: fixture.target.institutionProposal,
       newCredit: data.newCredit!,
     };
-    await pool.query(`CREATE FUNCTION pg_winner_fail_credit() RETURNS trigger LANGUAGE plpgsql AS $
+    await pool.query(`CREATE FUNCTION pg_winner_fail_credit() RETURNS trigger LANGUAGE plpgsql AS $$
       BEGIN IF NEW.id='winner-failure-credit' THEN
         RAISE EXCEPTION 'injected winner credit insert failure';
-      END IF; RETURN NEW; END $`);
+      END IF; RETURN NEW; END $$`);
     await pool.query(`CREATE TRIGGER pg_winner_fail_credit_trigger BEFORE INSERT ON credits
       FOR EACH ROW EXECUTE FUNCTION pg_winner_fail_credit()`);
     try {
