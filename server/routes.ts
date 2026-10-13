@@ -1527,6 +1527,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       
       // Proteger estado operativo contra modificaciones directas fuera de la lógica central
+      // Commission schedules must only change through the versioned Master flow.
+      delete sanitizedData.networkCommissionRates;
       delete sanitizedData.status;
       delete sanitizedData.isActive;
       delete sanitizedData.statusChangedAt;
@@ -2812,6 +2814,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       // Proteger estado operativo contra modificaciones directas fuera de la lógica central
+      // Preserve immutable contractual rate publication: not a generic user field.
+      delete (userData as any).networkCommissionRates;
       delete (userData as any).status;
       delete (userData as any).isActive;
       delete (userData as any).statusChangedAt;
