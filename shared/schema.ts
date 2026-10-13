@@ -783,7 +783,12 @@ export const creditSubmissionTargets = pgTable("credit_submission_targets", {
   creditId: varchar("credit_id").references(() => credits.id), // Created credit after selection as winner
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
-});
+}, (table) => [
+  // DB backstop against alternate write paths and concurrently selected targets.
+  // Apply migration 0008 only after its historical-duplicate preflight passes.
+  uniqueIndex("cst_one_winner_per_request_idx").on(table.requestId)
+    .where(sql`is_winner IS TRUE OR credit_id IS NOT NULL OR status IN ('selected_winner', 'dispersed')`),
+]);
 
 export const insertCreditSubmissionRequestSchema = createInsertSchema(creditSubmissionRequests).omit({
   id: true,

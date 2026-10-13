@@ -53,6 +53,10 @@ describePg("OPE-12: winning target and credit creation in one PostgreSQL transac
       credit_id varchar REFERENCES credits(id),
       created_at timestamp DEFAULT now(), updated_at timestamp DEFAULT now()
     )`);
+    await pool.query(`CREATE UNIQUE INDEX cst_one_winner_per_request_idx
+      ON credit_submission_targets (request_id)
+      WHERE is_winner IS TRUE OR credit_id IS NOT NULL
+        OR status IN ('selected_winner', 'dispersed')`);
     await pool.query(`CREATE TABLE commissions (
       id varchar PRIMARY KEY DEFAULT gen_random_uuid(), tenant_id varchar,
       credit_id varchar NOT NULL REFERENCES credits(id), broker_id varchar NOT NULL,
@@ -215,6 +219,22 @@ describePg("OPE-12: winning target and credit creation in one PostgreSQL transac
     const all = await db.select().from(credits)
       .where(eq(credits.linkedSubmissionId, fixture.request.id));
     expect(all).toHaveLength(1);
+  });
+
+  it("OPE-06 database index also denies bypassing the winner transaction", async () => {
+    const fixture = await seed("winner-db-unique-main");
+    const otherId = "winner-db-unique-second";
+    await pool.query(`INSERT INTO credit_submission_targets
+      (id,request_id,financial_institution_id,status,is_winner,institution_proposal)
+      VALUES ($1,$2,'test-financial-two','institution_approved',false,$3::jsonb)`,
+      [otherId, fixture.request.id, JSON.stringify(fixture.target.institutionProposal)]);
+    await expect(pool.query(`UPDATE credit_submission_targets
+      SET is_winner=true, status='selected_winner' WHERE id=$1`, [otherId]))
+      .rejects.toThrow(/duplicate key value violates unique constraint/);
+    const targets = await db.select().from(creditSubmissionTargets)
+      .where(eq(creditSubmissionTargets.requestId, fixture.request.id));
+    expect(targets.filter(x => x.isWinner)).toHaveLength(1);
+    expect(targets.filter(x => x.id === otherId)[0].isWinner).toBe(false);
   });
 
   it("OPE-06 rolls back a winner on credit insertion failure and supports clean retry",async()=>{
