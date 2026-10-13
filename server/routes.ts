@@ -9564,7 +9564,7 @@ function maskCLABE(clabe?: string | null): string | null {
   // ================================
 
   // Get credit submission requests - Admin can see all, brokers see their own
-  app.get('/api/credit-submissions', isAuthenticated, async (req: any, res) => {
+  app.get('/api/credit-submissions', isAuthenticated, requireModuleAndAction('creditos', 'view'), async (req: any, res) => {
     try {
       const userId = req.user.claims.sub;
       const user = await storage.getUser(userId);
@@ -9647,7 +9647,7 @@ function maskCLABE(clabe?: string | null): string | null {
   });
 
   // Get specific credit submission request
-  app.get('/api/credit-submissions/:id', isAuthenticated, async (req: any, res) => {
+  app.get('/api/credit-submissions/:id', isAuthenticated, requireModuleAndAction('creditos', 'view'), async (req: any, res) => {
     try {
       const { id } = req.params;
       const userId = req.user.claims.sub;
@@ -9706,7 +9706,7 @@ function maskCLABE(clabe?: string | null): string | null {
   });
 
   // Get broker's own submissions with targets - ENRICHED with related data
-  app.get('/api/credit-submission-requests/my-submissions', isAuthenticated, async (req: any, res) => {
+  app.get('/api/credit-submission-requests/my-submissions', isAuthenticated, requireModuleAndAction('creditos', 'view'), async (req: any, res) => {
     try {
       const userId = req.user.claims.sub;
       const user = await storage.getUser(userId);
@@ -9769,7 +9769,7 @@ function maskCLABE(clabe?: string | null): string | null {
   });
 
   // Get specific submission request
-  app.get('/api/credit-submission-requests/:id', isAuthenticated, async (req: any, res) => {
+  app.get('/api/credit-submission-requests/:id', isAuthenticated, requireModuleAndAction('creditos', 'view'), async (req: any, res) => {
     try {
       const { id } = req.params;
       const userId = req.user.claims.sub;
@@ -10271,7 +10271,7 @@ function maskCLABE(clabe?: string | null): string | null {
   });
 
   // Get credit submission targets
-  app.get('/api/credit-submission-targets', isAuthenticated, requireAnyModule('aprobaciones', 'creditos'), async (req: any, res) => {
+  app.get('/api/credit-submission-targets', isAuthenticated, requireAnyModule('aprobaciones', 'creditos'), requireAction('view'), async (req: any, res) => {
     try {
       const userId = req.user.claims.sub;
       const user = await storage.getUser(userId);
