@@ -849,6 +849,8 @@ function sanitizeCommercialOffer(product: any, userRole?: string) {
 const COMMERCIAL_FINANCIAL_INSTITUTION_FIELDS = [
   "id",
   "name",
+  "logoUrl",
+  "category",
   "contactPerson",
   "email",
   "phone",
@@ -882,7 +884,23 @@ function projectFinancialInstitutionByRole(institution: any, userRole: string, m
 
   // Admin tiene acceso administrativo pero NUNCA a sobretasas (B3.1: exclusivas de super_admin)
   if (userRole === 'admin') {
-    const adminCopy = { ...institution };
+    const adminCopy: Record<string, any> = {};
+    for (const key of COMMERCIAL_FINANCIAL_INSTITUTION_FIELDS) {
+      if (Object.prototype.hasOwnProperty.call(institution, key)) {
+        adminCopy[key] = institution[key];
+      }
+    }
+    // Admin may inspect network-facing rates but never platform margins,
+    // internal notes, overrides or financial institution gross commission.
+    if (institution.commissionRates && typeof institution.commissionRates === "object") {
+      adminCopy.commissionRates = institution.commissionRates;
+    }
+    if (institution.brokerCommissionRate !== undefined) {
+      adminCopy.brokerCommissionRate = institution.brokerCommissionRate;
+    }
+    if (institution.masterBrokerCommissionRate !== undefined) {
+      adminCopy.masterBrokerCommissionRate = institution.masterBrokerCommissionRate;
+    }
     // El rol Admin estándar no hereda acceso a margenes internos/sobretasas.
     delete adminCopy.commissionRate;
     delete adminCopy.openingCommissionRate;
