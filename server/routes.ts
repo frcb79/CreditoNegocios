@@ -9531,7 +9531,8 @@ function maskCLABE(clabe?: string | null): string | null {
         filters.status = req.query.status as string;
       }
 
-      const submissions = await storage.getCreditSubmissionRequests(filters);
+      const submissions = (await storage.getCreditSubmissionRequests(filters))
+        .filter(submission => canReadCreditSubmission(user, submission));
       
       // Enrich with related data (client, broker, masterBroker, productTemplate, targets)
       const enrichedSubmissions = await Promise.all(
@@ -9547,7 +9548,7 @@ function maskCLABE(clabe?: string | null): string | null {
               const institution = await storage.getFinancialInstitution(target.financialInstitutionId);
               return {
                 ...target,
-                institution
+                institution: projectSubmissionInstitution(institution)
               };
             })
           );
@@ -9575,7 +9576,7 @@ function maskCLABE(clabe?: string | null): string | null {
               role: masterBroker.role,
               brandName: (masterBroker as any).brandName
             } : null,
-            targets: enrichedTargets
+            targets: enrichedTargets.map(t => projectSubmissionTarget(t, user.role))
           };
         })
       );
@@ -9599,8 +9600,7 @@ function maskCLABE(clabe?: string | null): string | null {
         return res.status(404).json({ message: "Credit submission not found" });
       }
 
-      // Authorization check - brokers can only see their own submissions
-      if ((user?.role === 'broker' || user?.role === 'master_broker') && submission.brokerId !== userId) {
+      if (!canReadCreditSubmission(user, submission)) {
         return res.status(403).json({ message: "Access denied" });
       }
 
@@ -9615,7 +9615,7 @@ function maskCLABE(clabe?: string | null): string | null {
           const institution = await storage.getFinancialInstitution(target.financialInstitutionId);
           return {
             ...target,
-            institution
+            institution: projectSubmissionInstitution(institution)
           };
         })
       );
@@ -9639,7 +9639,7 @@ function maskCLABE(clabe?: string | null): string | null {
           lastName: masterBroker.lastName,
           brandName: (masterBroker as any).brandName
         } : null,
-        targets: enrichedTargets
+        targets: enrichedTargets.map(t => projectSubmissionTarget(t, user?.role))
       });
     } catch (error) {
       console.error("Error fetching credit submission:", error);
@@ -9671,6 +9671,9 @@ function maskCLABE(clabe?: string | null): string | null {
         submissions = await storage.getCreditSubmissionRequests({ brokerId: userId });
       }
       
+      // A tenant membership alone never confers permission to see a
+      // different Broker's confidential submission within that tenant.
+      submissions = submissions.filter(submission => canReadCreditSubmission(user, submission));
       const submissionsWithEnrichedData = await Promise.all(
         submissions.map(async (submission) => {
           // Get related data
@@ -9685,7 +9688,7 @@ function maskCLABE(clabe?: string | null): string | null {
               const institution = await storage.getFinancialInstitution(target.financialInstitutionId);
               return {
                 ...target,
-                institution
+                institution: projectSubmissionInstitution(institution)
               };
             })
           );
@@ -9694,8 +9697,8 @@ function maskCLABE(clabe?: string | null): string | null {
             ...submission,
             client,
             productTemplate,
-            broker,
-            targets: enrichedTargets
+            broker: projectSubmissionPerson(broker),
+            targets: enrichedTargets.map(t => projectSubmissionTarget(t, user.role))
           };
         })
       );
@@ -9725,14 +9728,7 @@ function maskCLABE(clabe?: string | null): string | null {
       }
 
       // Authorization check - tenant/broker access
-      const authResult = await authorizeTenantOrBrokerResource({
-        currentUserId: userId,
-        resourceBrokerId: submission.brokerId,
-        resourceTenantId: submission.tenantId,
-        currentUserRole: user.role,
-        tenantContext: req.tenantContext,
-      });
-      if (!authResult.authorized) {
+      if (!canReadCreditSubmission(user, submission)) {
         return res.status(403).json({ message: "Access denied" });
       }
 
@@ -9744,7 +9740,7 @@ function maskCLABE(clabe?: string | null): string | null {
   });
 
   // Get credit submissions for a specific client - ENRICHED with related data
-  app.get('/api/credit-submissions/client/:clientId', isAuthenticated, async (req: any, res) => {
+  app.get('/api/credit-submissions/client/:clientId', isAuthenticated, requireModuleAndAction('creditos', 'view'), async (req: any, res) => {
     try {
       const { clientId } = req.params;
       const userId = req.user.claims.sub;
@@ -9754,8 +9750,16 @@ function maskCLABE(clabe?: string | null): string | null {
         return res.status(404).json({ message: "User not found" });
       }
 
-      // Get all submissions for this client
-      const allSubmissions = await storage.getCreditSubmissionRequests({ clientId });
+      // Authorize the client boundary BEFORE reading related submissions.
+      const auth = await authorizeClientAccess(userId, user.role, clientId, req.tenantContext);
+      if (!auth.authorized) {
+        return res.status(auth.reason === "Client not found" ? 404 : 403)
+          .json({ message: "Access denied" });
+      }
+      // Commercial access to a CLIENT is not access to every Broker's
+      // opportunity: filter each submission by its historical origin.
+      const allSubmissions = (await storage.getCreditSubmissionRequests({ clientId }))
+        .filter(submission => canReadCreditSubmission(user, submission));
       
       // Enrich with related data
       const submissionsWithEnrichedData = await Promise.all(
@@ -9772,7 +9776,7 @@ function maskCLABE(clabe?: string | null): string | null {
               const institution = await storage.getFinancialInstitution(target.financialInstitutionId);
               return {
                 ...target,
-                institution
+                institution: projectSubmissionInstitution(institution)
               };
             })
           );
@@ -9781,8 +9785,8 @@ function maskCLABE(clabe?: string | null): string | null {
             ...submission,
             client,
             productTemplate,
-            broker,
-            targets: enrichedTargets
+            broker: projectSubmissionPerson(broker),
+            targets: enrichedTargets.map(t => projectSubmissionTarget(t, user.role))
           };
         })
       );
@@ -10218,19 +10222,9 @@ function maskCLABE(clabe?: string | null): string | null {
       // Enrich targets with request, broker, master broker, and client information
       const enrichedTargets = await Promise.all(targets.map(enrichCreditSubmissionTarget));
 
-      // Ownership/role filter — prevent exposing other brokers' data
-      let filteredTargets = enrichedTargets;
-      if (user.role === 'broker') {
-        // Broker: only see their own submissions
-        filteredTargets = enrichedTargets.filter((t: any) => t.request?.brokerId === userId);
-      } else if (user.role === 'master_broker') {
-        // Master broker: direct originations + submissions historically originated under its network.
-        filteredTargets = enrichedTargets.filter((t: any) =>
-          t.request?.brokerId === userId || t.request?.originMasterBrokerId === userId
-        );
-      }
-      // admin / super_admin: see all (no filter)
-      
+      const filteredTargets = enrichedTargets
+        .filter((t: any) => canReadCreditSubmission(user, t.request))
+        .map((t: any) => projectSubmissionTarget(t, user.role));
       res.json(filteredTargets);
     } catch (error) {
       console.error("Error fetching credit submission targets:", error);
@@ -10626,12 +10620,18 @@ function maskCLABE(clabe?: string | null): string | null {
   });
 
   // 3b. Serve proposal document safely
-  app.get('/api/credit-submission-targets/:id/proposal-document', isAuthenticated, async (req: any, res) => {
+  app.get('/api/credit-submission-targets/:id/proposal-document', isAuthenticated, requireModuleAndAction('creditos', 'view'), async (req: any, res) => {
     try {
       const { id } = req.params;
       const target = await storage.getCreditSubmissionTarget(id);
       if (!target || !target.proposalDocument) {
         return res.status(404).json({ message: "No se encontró el documento de propuesta" });
+      }
+      const userId = req.user?.claims?.sub;
+      const user = userId ? await storage.getUser(userId) : null;
+      const parent = await storage.getCreditSubmissionRequest(target.requestId);
+      if (!canReadCreditSubmission(user, parent)) {
+        return res.status(403).json({ message: "Access denied" });
       }
 
       const filePath = path.resolve(target.proposalDocument);
