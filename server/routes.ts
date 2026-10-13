@@ -9819,7 +9819,14 @@ function maskCLABE(clabe?: string | null): string | null {
       // network after a Broker transfer, but not submissions of other originators.
       const isHistoricMaster = user.role === "master_broker" &&
         allSubmissions.some(sub => sub.originMasterBrokerId === user.id);
-      if (!auth.authorized && !isHistoricMaster) {
+      // A Broker may consult their OWN submitted opportunity even when the
+      // separate relationship-reservation lease has expired or is absent.
+      const hasOwnedSubmission = user.role === "broker" &&
+        allSubmissions.some(sub => sub.brokerId === user.id);
+      const hasNoCrossTenantConflict = !client.tenantId ||
+        auth.authorized || isHistoricMaster;
+      if ((!auth.authorized && !isHistoricMaster && !hasOwnedSubmission) ||
+          !hasNoCrossTenantConflict) {
         return res.status(403).json({ message: "Access denied" });
       }
       
