@@ -4187,7 +4187,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
           clientId: clientId as string,
           status: status as string,
         });
-        rawCredits = allCredits.filter(c => c.brokerId === userId || c.tenantId === tenant.id);
+        // Shared tenant membership does not authorize every Broker to read
+        // another originator's confidential credit.
+        rawCredits = allCredits.filter(c => c.brokerId === userId);
       } else {
         rawCredits = await storage.getCredits({
           brokerId: userId,
@@ -4210,7 +4212,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
             submission = await storage.getCreditSubmissionRequest(credit.linkedSubmissionId);
             if (submission) {
               const rawTargets = await storage.getCreditSubmissionTargetsByRequest(submission.id);
-              targets = await Promise.all(rawTargets.map(t => enrichCreditSubmissionTarget(t)));
+              targets = (await Promise.all(rawTargets.map(t => enrichCreditSubmissionTarget(t))))
+                .filter(t => canReadCreditSubmission(user, t.request))
+                .map(t => projectSubmissionTarget(t, user?.role));
             }
           }
 
@@ -9786,16 +9790,20 @@ function maskCLABE(clabe?: string | null): string | null {
         return res.status(404).json({ message: "User not found" });
       }
 
-      // Authorize the client boundary BEFORE reading related submissions.
+      // The client is a real ownership boundary; do not grant visibility
+      // to every historical opportunity just because the client is shared.
+      const client = await storage.getClient(clientId);
+      if (!client) return res.status(404).json({ message: "Client not found" });
       const auth = await authorizeClientAccess(userId, user.role, clientId, req.tenantContext);
-      if (!auth.authorized) {
-        return res.status(auth.reason === "Client not found" ? 404 : 403)
-          .json({ message: "Access denied" });
-      }
-      // Commercial access to a CLIENT is not access to every Broker's
-      // opportunity: filter each submission by its historical origin.
       const allSubmissions = (await storage.getCreditSubmissionRequests({ clientId }))
         .filter(submission => canReadCreditSubmission(user, submission));
+      // Historical Master can still consult a submission from its former
+      // network after a Broker transfer, but not submissions of other originators.
+      const isHistoricMaster = user.role === "master_broker" &&
+        allSubmissions.some(sub => sub.originMasterBrokerId === user.id);
+      if (!auth.authorized && !isHistoricMaster) {
+        return res.status(403).json({ message: "Access denied" });
+      }
       
       // Enrich with related data
       const submissionsWithEnrichedData = await Promise.all(
