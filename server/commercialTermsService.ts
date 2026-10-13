@@ -381,9 +381,30 @@ export class CommercialTermsService {
     if (persistedNetwork.document !== 'comisiones-red' || persistedNetwork.version !== networkVersion || persistedNetwork.contentSha256 !== contentSha256) {
       throw new Error('COMMERCIAL_NETWORK_VERSION_CONFLICT');
     }
-    this.networkVersions.set(masterBrokerId, versionData);
-    this.networkVersionCounters.set(masterBrokerId, counter);
+    await this.announceCommittedNetworkVersion(versionData, storage);
 
+    return versionData;
+  }
+
+  /** Notify only this Master's currently affiliated Brokers after durable commit. */
+  async announceCommittedNetworkVersion(
+    versionData: NetworkRatesVersionData,
+    targetStorage?: IStorage
+  ): Promise<void> {
+    const storage = targetStorage || defaultStorage;
+    const masterBrokerId = versionData.masterBrokerId;
+    const networkVersion = versionData.version;
+    const masterUser = await storage.getUser(masterBrokerId);
+    const masterName = masterUser?.brandName ||
+      [masterUser?.firstName, masterUser?.lastName].filter(Boolean).join(" ") ||
+      "Master Broker";
+    const effectiveDate = versionData.effectiveDate;
+    const currentCount = this.networkVersionCounters.get(masterBrokerId) || 0;
+    const nextCount = Number(/^net-(\d+)\.0$/.exec(networkVersion)?.[1] || 0);
+    if (nextCount >= currentCount) {
+      this.networkVersions.set(masterBrokerId, versionData);
+      this.networkVersionCounters.set(masterBrokerId, nextCount);
+    }
     // Notificar EXCLUSIVAMENTE a los Brokers pertenecientes a este Master Broker
     try {
       const downlineBrokers = await storage.getUsersByMasterBroker(masterBrokerId);
@@ -402,7 +423,7 @@ export class CommercialTermsService {
             scope: "network",
             masterBrokerId,
             version: networkVersion,
-            effectiveDate: nowIso,
+            effectiveDate: effectiveDate,
           },
         });
       }
@@ -410,7 +431,6 @@ export class CommercialTermsService {
       console.error("[CommercialTermsService] Error notificando red del Master:", err);
     }
 
-    return versionData;
   }
 
   /**
