@@ -69,7 +69,7 @@ function generateOfficialVoucherText(
     out += `Institución Bancaria:              ${snapshot.incorporatedData.bankName || "Pendiente de proporcionar"}\n`;
     out += `Cuenta Bancaria:                   ${snapshot.incorporatedData.bankAccount || "Pendiente de proporcionar"}\n`;
     out += `CLABE Interbancaria:               ${snapshot.incorporatedData.bankClabe || "Pendiente de proporcionar"}\n`;
-    out += `Plazos Comerciales Aplicables:     90 días naturales, 120 días naturales y 12 meses\n`;
+    out += `Plazos Comerciales Aplicables:     Consultar el contenido histórico íntegro incorporado a continuación\n`;
   }
 
   out += `\n${divider}\n`;
