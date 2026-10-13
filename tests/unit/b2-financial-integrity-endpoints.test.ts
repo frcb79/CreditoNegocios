@@ -48,6 +48,28 @@ describe("Fase 2B.1B — Cierre de Integridad Financiera y Eliminación de Rutas
     currentAuthUser = null;
   });
 
+  describe("COM-28: generic product edits must not rewrite published offer economics", () => {
+    it("forbids commission and matching modifications outside the draft/publish flow", async () => {
+      const admin = await storage.createUser({
+        email: `offer-bypass-${randomUUID()}@example.test`,
+        firstName: "Admin", lastName: "Version",
+        role: "super_admin", isActive: true, status: "active",
+      } as any);
+      currentAuthUser = admin;
+      const res = await request(app)
+        .put("/api/institution-products/some-offer")
+        .send({ configuration: { commissionRates: { financiera: { apertura: 10 } } } });
+      expect(res.status).toBe(409);
+      expect(res.body.code).toBe("OFFER_VERSIONED_EDIT_REQUIRED");
+
+      const forcedStatus = await request(app)
+        .put("/api/institution-products/some-offer")
+        .send({ status: "published" });
+      expect(forcedStatus.status).toBe(409);
+      expect(forcedStatus.body.code).toBe("OFFER_VERSIONED_EDIT_REQUIRED");
+    });
+  });
+
   describe("COM-28: institution defaults cannot bypass offer-level versions", () => {
     it("rejects financial commission edits when there is a published offer", async () => {
       const admin = await storage.createUser({
