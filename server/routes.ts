@@ -684,6 +684,13 @@ function projectSubmissionTarget(target: any, userRole?: string) {
   };
 }
 
+// ASTRA-02: Redact frozen economic allocation from ordinary winner-credit responses.
+function projectSubmissionCredit(credit: any, userRole?: string) {
+  if (!credit || userRole === "super_admin") return credit;
+  const safeProposal = projectSubmissionTarget({ institutionProposal: credit.finalProposal }, userRole).institutionProposal;
+  return { ...credit, finalProposal: safeProposal };
+}
+
 // Helper function to enrich credit submission target with related data
 async function enrichCreditSubmissionTarget(target: any) {
   const request = await storage.getCreditSubmissionRequest(target.requestId);
@@ -10902,7 +10909,7 @@ function maskCLABE(clabe?: string | null): string | null {
   });
 
   // 5. Select winner - Brokers and admins can select
-  app.patch('/api/credit-submission-targets/:id/select-winner', isAuthenticated, async (req: any, res) => {
+  app.patch('/api/credit-submission-targets/:id/select-winner', isAuthenticated, requireModuleAndAction('creditos', 'edit'), async (req: any, res) => {
     try {
       const { id } = req.params;
       const userId = req.user.claims.sub;
@@ -11053,7 +11060,7 @@ function maskCLABE(clabe?: string | null): string | null {
       }
 
       const enrichedTarget = await enrichCreditSubmissionTarget(selectedTarget);
-      res.json({ target: projectSubmissionTarget(enrichedTarget, user.role), credit, alreadySelected });
+      res.json({ target: projectSubmissionTarget(enrichedTarget, user.role), credit: projectSubmissionCredit(credit, user.role), alreadySelected });
     } catch (error: any) {
       const code = String(error?.message || "");
       if (code.startsWith("WINNER_")) {

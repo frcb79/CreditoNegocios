@@ -84,6 +84,7 @@ describe("Fase 2B.1B — Cierre de Integridad Financiera y Eliminación de Rutas
       expect((await request(app).get(`/api/credit-submissions/${submission.id}`)).status).toBe(403);
       expect((await request(app).get(`/api/credit-submission-requests/${submission.id}`)).status).toBe(403);
       expect((await request(app).get(`/api/credit-submission-targets/${target.id}/proposal-document`)).status).toBe(403);
+      expect((await request(app).patch(`/api/credit-submission-targets/${target.id}/select-winner`).send({})).status).toBe(403);
 
       currentAuthUser = brokerA;
       const own = await request(app).get(`/api/credit-submissions/client/${client.id}`);
@@ -136,6 +137,17 @@ describe("Fase 2B.1B — Cierre de Integridad Financiera y Eliminación de Rutas
       currentAuthUser = masterA;
       expect((await request(app).get(`/api/credit-submissions/${sub.id}`)).status).toBe(200);
       expect((await request(app).get(`/api/credit-submission-targets/${target.id}/proposal-document`)).status).toBe(200);
+    });
+
+    it("denies winner selection to finance-only Admin without credit edit permission", async () => {
+      const admin = await storage.createUser({
+        email: `limited-winner-${randomUUID()}@example.test`,
+        role: "admin", isActive: true, status: "active",
+        permissions: { modules: ["financieras"], actions: ["view"], scope: "global" },
+      } as any);
+      currentAuthUser = admin;
+      const res = await request(app).patch("/api/credit-submission-targets/nonexistent/select-winner").send({});
+      expect(res.status).toBe(403);
     });
 
     it("Admin without financiera.edit cannot change institutions; finance.view never reveals platform margins", async () => {
@@ -526,13 +538,23 @@ describe("Fase 2B.1B — Cierre de Integridad Financiera y Eliminación de Rutas
       expect(res.status).toBe(200);
       expect(res.body.credit).toBeDefined();
 
-      const createdCredit = res.body.credit;
+      expect(res.body.credit.finalProposal.commissionRates).toBeUndefined();
+      const createdCredit = await storage.getCredit(res.body.credit.id) as any;
       expect(createdCredit.finalProposal).toBeDefined();
       expect(createdCredit.finalProposal.isCommercialSnapshot).toBe(true);
       expect(createdCredit.finalProposal.originBrokerId).toBe(broker.id);
       expect(createdCredit.finalProposal.originMasterBrokerId).toBe(master.id);
       expect(createdCredit.finalProposal.commissionRates.broker.apertura).toBe("1.75");
       expect(createdCredit.finalProposal.commissionRates.masterBroker.apertura).toBe("0.75");
+
+      currentAuthUser = broker;
+      const replay = await request(app)
+        .patch(`/api/credit-submission-targets/${target.id}/select-winner`).send({});
+      expect(replay.status).toBe(200);
+      expect(replay.body.alreadySelected).toBe(true);
+      expect(replay.body.credit.id).toBe(createdCredit.id);
+      expect(replay.body.credit.finalProposal.commissionRates).toBeUndefined();
+      expect(replay.body.target.institutionProposal.commissionRates).toBeUndefined();
     });
 
     it("Negativa: consolidateCommercialProposalSnapshot bloquea modificación de snapshot comercial congelado", () => {
