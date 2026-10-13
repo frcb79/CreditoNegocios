@@ -3078,7 +3078,15 @@ export class DbStorage implements IStorage {
 
   async createCommission(commissionData: InsertCommission): Promise<Commission> {
     try {
-      const [created] = await db.insert(commissions).values(commissionData).returning();
+      const [credit] = await db.select().from(credits).where(eq(credits.id, commissionData.creditId)).limit(1);
+      if (!credit) throw new Error("COMMISSION_CREDIT_NOT_FOUND");
+      if ((commissionData.institutionProductId || commissionData.versionNumber != null) &&
+          (commissionData.institutionProductId !== credit.institutionProductId ||
+           commissionData.versionNumber !== credit.versionNumber)) throw new Error("COMMISSION_OFFER_VERSION_MISMATCH");
+      const [created] = await db.insert(commissions).values({
+        ...commissionData, institutionProductId: credit.institutionProductId ?? null,
+        versionNumber: credit.versionNumber ?? null,
+      }).returning();
       return created;
     } catch (error) {
       console.error("Error creating commission:", error);
@@ -3173,6 +3181,13 @@ export class DbStorage implements IStorage {
         throw new Error("DISBURSEMENT_CREDIT_NOT_ELIGIBLE");
       }
       const sourceProposal = (locked.finalProposal || {}) as Record<string, any>;
+      const frozen = readFrozenOfferLineage(sourceProposal);
+      if ((locked.institutionProductId || locked.versionNumber != null) &&
+          (locked.institutionProductId !== frozen?.institutionProductId ||
+           locked.versionNumber !== frozen?.versionNumber)) throw new Error("DISBURSEMENT_OFFER_VERSION_MISMATCH");
+      if ((params.commission.institutionProductId || params.commission.versionNumber != null) &&
+          (params.commission.institutionProductId !== locked.institutionProductId ||
+           params.commission.versionNumber !== locked.versionNumber)) throw new Error("DISBURSEMENT_OFFER_VERSION_MISMATCH");
       // The immutable database lineage is authoritative; never let editable
       // proposal JSON invent a Master beneficiary for a historical credit.
       if (sourceProposal.originMasterBrokerId !== undefined &&
@@ -3226,6 +3241,8 @@ export class DbStorage implements IStorage {
         brokerId: locked.brokerId,
         masterBrokerId: locked.originMasterBrokerId || null,
         creditId: locked.id,
+        institutionProductId: locked.institutionProductId ?? null,
+        versionNumber: locked.versionNumber ?? null,
         idempotencyKey: key,
         status: "generated",
       }).returning();
@@ -3311,6 +3328,12 @@ export class DbStorage implements IStorage {
         .where(eq(creditSubmissionRequests.id, target.requestId)).limit(1);
       if (!request) throw new Error("WINNER_REQUEST_NOT_FOUND");
 
+      const offerLineage = readFrozenOfferLineage(target.institutionProposal);
+      if ((target.institutionProductId || target.versionNumber != null) &&
+          (target.institutionProductId !== offerLineage?.institutionProductId ||
+           target.versionNumber !== offerLineage?.versionNumber)) {
+        throw new Error("OFFER_VERSION_IDENTITY_MISMATCH");
+      }
       if (target.creditId) {
         const [existing] = await tx.select().from(credits)
           .where(eq(credits.id, target.creditId)).limit(1);
@@ -3323,6 +3346,9 @@ export class DbStorage implements IStorage {
         }
         if (!target.isWinner) throw new Error("WINNER_TARGET_CREDIT_NOT_SELECTED");
         assertFrozenOfferLineage(target.institutionProposal, existing.finalProposal);
+        if ((existing.institutionProductId || existing.versionNumber != null) &&
+            (existing.institutionProductId !== offerLineage?.institutionProductId ||
+             existing.versionNumber !== offerLineage?.versionNumber)) throw new Error("OFFER_VERSION_IDENTITY_MISMATCH");
         return { target, credit: existing, alreadySelected: true };
       }
 
@@ -3359,9 +3385,13 @@ export class DbStorage implements IStorage {
         ...proposed,
         id: proposed.id,
         originMasterBrokerId: request.originMasterBrokerId || null,
+        institutionProductId: offerLineage?.institutionProductId ?? null,
+        versionNumber: offerLineage?.versionNumber ?? null,
         status: "approved",
       }).returning();
       const [selected] = await tx.update(creditSubmissionTargets).set({
+        institutionProductId: offerLineage?.institutionProductId ?? null,
+        versionNumber: offerLineage?.versionNumber ?? null,
         creditId: created.id,
         isWinner: true,
         status: "selected_winner",
@@ -3400,8 +3430,10 @@ export class DbStorage implements IStorage {
           (request.originMasterBrokerId || null) !== params.expectedOriginMasterBrokerId) {
         throw new Error("DISBURSEMENT_REQUEST_ATTRIBUTION_CHANGED");
       }
-      // Protect both fresh creation and replay from a different offer/version.
-      assertFrozenOfferLineage(target.institutionProposal, params.expectedProposal);
+      const offerLineage = assertFrozenOfferLineage(target.institutionProposal, params.expectedProposal);
+      if ((target.institutionProductId || target.versionNumber != null) &&
+          (target.institutionProductId !== offerLineage?.institutionProductId ||
+           target.versionNumber !== offerLineage?.versionNumber)) throw new Error("OFFER_VERSION_IDENTITY_MISMATCH");
       let creditId = target.creditId;
       if (!creditId) {
         const proposed = params.newCredit;
@@ -3425,12 +3457,17 @@ export class DbStorage implements IStorage {
           financialInstitutionId: target.financialInstitutionId,
           linkedSubmissionId: request.id,
           clientId: request.clientId,
+          institutionProductId: offerLineage?.institutionProductId ?? null,
+          versionNumber: offerLineage?.versionNumber ?? null,
         }).returning();
         creditId = created.id;
       } else {
         const [existing] = await tx.select().from(credits)
           .where(eq(credits.id, creditId)).limit(1);
         assertFrozenOfferLineage(target.institutionProposal, existing?.finalProposal);
+        if ((existing?.institutionProductId || existing?.versionNumber != null) &&
+            (existing?.institutionProductId !== offerLineage?.institutionProductId ||
+             existing?.versionNumber !== offerLineage?.versionNumber)) throw new Error("OFFER_VERSION_IDENTITY_MISMATCH");
         if (!existing || existing.brokerId !== request.brokerId ||
             existing.linkedSubmissionId !== request.id ||
             existing.financialInstitutionId !== target.financialInstitutionId ||
@@ -3455,6 +3492,8 @@ export class DbStorage implements IStorage {
       const [updatedTarget] = await tx.update(creditSubmissionTargets)
         .set({
           creditId,
+          institutionProductId: offerLineage?.institutionProductId ?? null,
+          versionNumber: offerLineage?.versionNumber ?? null,
           status: "dispersed",
           dispersedAt: target.dispersedAt || new Date(),
           updatedAt: new Date(),
@@ -4386,8 +4425,15 @@ export class DbStorage implements IStorage {
 
   async createCreditSubmissionTarget(targetData: InsertCreditSubmissionTarget): Promise<CreditSubmissionTarget> {
     try {
+      const frozen = readFrozenOfferLineage(targetData.institutionProposal);
+      const supplied = targetData.institutionProductId || targetData.versionNumber != null
+        ? readFrozenOfferLineage({ institutionProductId: targetData.institutionProductId,
+            versionNumber: targetData.versionNumber }) : null;
+      if (supplied && (!frozen || supplied.institutionProductId !== frozen.institutionProductId ||
+          supplied.versionNumber !== frozen.versionNumber)) throw new Error("OFFER_VERSION_IDENTITY_MISMATCH");
       const result = await db.insert(creditSubmissionTargets)
-        .values(targetData)
+        .values({ ...targetData, institutionProductId: frozen?.institutionProductId ?? null,
+          versionNumber: frozen?.versionNumber ?? null })
         .returning();
       return result[0];
     } catch (error) {
@@ -4410,6 +4456,15 @@ export class DbStorage implements IStorage {
             ["selected_winner", "dispersed"].includes(locked.status)) {
           throw new Error("PROPOSAL_LOCKED");
         }
+        const frozen = readFrozenOfferLineage(targetData.institutionProposal !== undefined
+          ? targetData.institutionProposal : locked.institutionProposal);
+        const persisted = locked.institutionProductId || locked.versionNumber != null
+          ? readFrozenOfferLineage({ institutionProductId: locked.institutionProductId,
+              versionNumber: locked.versionNumber }) : null;
+        if (persisted && (!frozen || persisted.institutionProductId !== frozen.institutionProductId ||
+            persisted.versionNumber !== frozen.versionNumber)) {
+          throw new Error("OFFER_VERSION_IDENTITY_MISMATCH");
+        }
         if (targetData.institutionProposal !== undefined) {
           const oldIdentity = readFrozenOfferLineage(locked.institutionProposal);
           if (oldIdentity) {
@@ -4421,7 +4476,8 @@ export class DbStorage implements IStorage {
           }
         }
         const [updated] = await tx.update(creditSubmissionTargets)
-          .set({ ...targetData, updatedAt: new Date() })
+          .set({ ...targetData, institutionProductId: frozen?.institutionProductId ?? null,
+            versionNumber: frozen?.versionNumber ?? null, updatedAt: new Date() })
           .where(eq(creditSubmissionTargets.id, id)).returning();
         return updated;
       });
