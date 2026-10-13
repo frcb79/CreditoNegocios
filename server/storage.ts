@@ -287,6 +287,21 @@ export interface IStorage {
     additionalUpdates?: Partial<Commission>
   ): Promise<Commission | null>;
   createCommissionAuditLog(logData: InsertCommissionAuditLog): Promise<CommissionAuditLog>;
+  /**
+   * OPE-06: winner selection atomically creates or reuses exactly one credit
+   * for this target. The target and immutable commercial snapshot commit together.
+   */
+  selectWinningTargetAtomic?(params: {
+    targetId: string;
+    requestId: string;
+    expectedProposal: CreditSubmissionTarget["institutionProposal"];
+    newCredit: InsertCredit & { id: string };
+  }): Promise<{
+    target: CreditSubmissionTarget;
+    credit: Credit;
+    alreadySelected: boolean;
+  }>;
+
   /** Atomic winner-target confirmation, including creating and linking a missing credit. */
   confirmTargetDisbursementAtomic?(params: {
     targetId: string;
