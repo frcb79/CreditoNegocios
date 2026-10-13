@@ -48,6 +48,65 @@ describe("Fase 2B.1B — Cierre de Integridad Financiera y Eliminación de Rutas
     currentAuthUser = null;
   });
 
+  describe("COM-28: institution defaults cannot bypass offer-level versions", () => {
+    it("rejects financial commission edits when there is a published offer", async () => {
+      const admin = await storage.createUser({
+        email: `offer-rates-${randomUUID()}@example.test`,
+        firstName: "Admin", lastName: "Offers",
+        role: "super_admin", isActive: true, status: "active",
+      } as any);
+      const inst = await storage.createFinancialInstitution({
+        name: `Offer Commission Guard ${randomUUID()}`,
+        commissionRate: "4.0", isActive: true,
+      } as any);
+      currentAuthUser = admin;
+      const offersSpy = jest.spyOn(storage,"getInstitutionProducts")
+        .mockResolvedValue([{ id: "offer-versioned" }] as any);
+      const versionsSpy = jest.spyOn(storage,"getInstitutionProductVersions")
+        .mockResolvedValue([{ status: "published", versionNumber: 1 }] as any);
+      const creditsSpy = jest.spyOn(storage,"getCredits").mockResolvedValue([]);
+      try {
+        const res = await request(app)
+          .patch(`/api/financial-institutions/${inst.id}`)
+          .send({ commissionRate: "5.0" });
+        expect(res.status).toBe(409);
+        expect(res.body.code).toBe("OFFER_SCOPED_COMMISSION_VERSION_REQUIRED");
+        const unchanged = await storage.getFinancialInstitution(inst.id);
+        expect(unchanged?.commissionRate).toBe("4.0");
+      } finally {
+        offersSpy.mockRestore();
+        versionsSpy.mockRestore();
+        creditsSpy.mockRestore();
+      }
+    });
+
+    it("allows legacy pre-publication drafts without globally revoking commercial acceptance", async () => {
+      const admin = await storage.createUser({
+        email: `offer-draft-${randomUUID()}@example.test`,
+        firstName: "Admin", lastName: "Draft",
+        role: "super_admin", isActive: true, status: "active",
+      } as any);
+      const inst = await storage.createFinancialInstitution({
+        name: `Draft Rate ${randomUUID()}`,
+        commissionRate: "4.0", isActive: true,
+      } as any);
+      currentAuthUser = admin;
+      const offersSpy = jest.spyOn(storage,"getInstitutionProducts").mockResolvedValue([]);
+      const creditsSpy = jest.spyOn(storage,"getCredits").mockResolvedValue([]);
+      try {
+        const res = await request(app)
+          .patch(`/api/financial-institutions/${inst.id}`)
+          .send({ commissionRate: "5.0" });
+        expect(res.status).toBe(200);
+        const updated = await storage.getFinancialInstitution(inst.id);
+        expect(updated?.commissionRate).toBe("5.0");
+      } finally {
+        offersSpy.mockRestore();
+        creditsSpy.mockRestore();
+      }
+    });
+  });
+
   // =========================================================================
   // 1. REGLA 1 (COM-21): DESEMBOLSOS VERIFICABLES
   // =========================================================================
