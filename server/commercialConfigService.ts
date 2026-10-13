@@ -294,6 +294,95 @@ export class DrizzleCommercialConfigStorage implements ICommercialConfigStorage 
     return rows[0];
   }
 
+
+  /**
+   * COM-27: rules, immutable acceptance-required document and audit rows
+   * are committed together. One advisory lock serializes concurrent updates.
+   */
+  async updateConfigWithVersionAtomic(
+    updates: Partial<CommercialRulesConfig>,
+    changedBy?: string | null,
+    reason?: string
+  ): Promise<{
+    updatedConfig: CommercialRulesConfig;
+    modifiedParams: string[];
+    publishedVersion: GlobalCommercialTermsVersionData | null;
+  }> {
+    const keys: (keyof CommercialRulesConfig)[] = [
+      "activeRelationshipValidityDays", "initialOpportunityHoldDays",
+      "opportunityInactivityProtectionDays", "inboundPriorityHours",
+      "renewalWindowDaysBeforeMaturity", "renewalOriginatorPriorityDays",
+      "brokerElectionTokenValidityHours",
+    ];
+    return this.db.transaction(async (tx: any) => {
+      await tx.execute(sql.raw("SELECT pg_advisory_xact_lock(hashtext('cn:global-commercial-terms'))"));
+      const rows = await tx.select().from(commercialConfigurations)
+        .where(eq(commercialConfigurations.id, "default")).for("update").limit(1);
+      const previous = Object.fromEntries(keys.map(k => [
+        k, rows[0]?.[k] ?? DEFAULT_COMMERCIAL_RULES_CONFIG[k],
+      ])) as CommercialRulesConfig;
+      const modifiedParams = keys.filter(k => updates[k] !== undefined && updates[k] !== previous[k]);
+      if (!modifiedParams.length) {
+        return { updatedConfig: previous, modifiedParams: [], publishedVersion: null };
+      }
+      const next = { ...previous, ...updates };
+      const ledger = await tx.select({ version: legalDocumentVersions.version })
+        .from(legalDocumentVersions).where(eq(legalDocumentVersions.document, "condiciones-comerciales"));
+      const latestTenths = ledger.reduce((max: number, row: { version: string }) => {
+        if (!/^\d+\.\d$/.test(row.version)) {
+          throw new Error("COMMERCIAL_TERMS_VERSION_INVALID");
+        }
+        return Math.max(max, Math.round(Number(row.version) * 10));
+      }, 10);
+      const nextVersion = ((latestTenths + 1) / 10).toFixed(1);
+      const now = new Date();
+      const nowIso = now.toISOString();
+      const summary = reason || "Actualización de parámetros comerciales y plazos: " + modifiedParams.join(", ");
+      const content = [
+        "CONDICIONES COMERCIALES Y PLAZOS OPERATIVOS V" + nextVersion,
+        "Fecha de vigencia: " + nowIso,
+        "Motivo: " + summary,
+        "Parámetros modificados:",
+        ...modifiedParams.map(k => "- " + k + ": anterior = " + previous[k] + ", nuevo = " + next[k]),
+      ].join("\n");
+      const contentSha256 = createHash("sha256").update(content, "utf8").digest("hex");
+      const publishedVersion: GlobalCommercialTermsVersionData = {
+        version: nextVersion, document: "condiciones-comerciales",
+        title: "Condiciones Comerciales y Plazos Operativos V" + nextVersion,
+        summary, content, contentSha256, previousConditions: previous,
+        newConditions: next, modifiedParams, effectiveDate: nowIso,
+        updatedBy: changedBy ?? null, updatedAt: nowIso,
+      };
+      await tx.insert(legalDocumentVersions).values({
+        id: "condiciones-comerciales:" + nextVersion,
+        document: "condiciones-comerciales",
+        title: publishedVersion.title,
+        version: nextVersion,
+        sourceFile: "commercial_config",
+        content: content + "\n<!-- METADATA: " + JSON.stringify({ versionData: publishedVersion }) + " -->",
+        contentSha256,
+        effectiveAt: now,
+      });
+
+      if (rows.length) {
+        await tx.update(commercialConfigurations).set({
+          ...updates, updatedBy: changedBy ?? null, updatedAt: now,
+        }).where(eq(commercialConfigurations.id, "default"));
+      } else {
+        await tx.insert(commercialConfigurations).values({
+          id: "default", ...next, updatedBy: changedBy ?? null, updatedAt: now,
+        });
+      }
+      await tx.insert(commercialConfigAuditLogs).values(modifiedParams.map(k => ({
+        parameterKey: k,
+        previousValue: String(previous[k]), newValue: String(next[k]),
+        changedBy: changedBy ?? null,
+        changeReason: reason || "Ajuste administrativo de parámetro comercial " + k,
+      })));
+      return { updatedConfig: next, modifiedParams, publishedVersion };
+    });
+  }
+
   async getAuditLogs(limit = 100): Promise<CommercialConfigAuditLog[]> {
     return await this.db
       .select()
