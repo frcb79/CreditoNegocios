@@ -109,7 +109,11 @@ export class CommercialConfigService implements ICommercialConfigService {
     updates: Partial<CommercialRulesConfig>,
     changedByUserId?: string | null,
     reason?: string
-  ): Promise<{ updatedConfig: CommercialRulesConfig; modifiedParams: string[] }> {
+  ): Promise<{
+    updatedConfig: CommercialRulesConfig;
+    modifiedParams: string[];
+    publishedVersion?: GlobalCommercialTermsVersionData | null;
+  }> {
     if (this.storage.updateConfigWithVersionAtomic) {
       const committed = await this.storage.updateConfigWithVersionAtomic(updates, changedByUserId, reason);
       this.clearCache();
