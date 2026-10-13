@@ -215,6 +215,48 @@ describePg("OPE-12: winning target and credit creation in one PostgreSQL transac
     expect(other.creditId).toBeNull();
   });
 
+  it("FIN-P0 persists exact target -> credit -> commission offer/version in PostgreSQL", async () => {
+    const fixture = await seed("target-version-chain", true, "master-chain");
+    const taggedProposal = {
+      ...(fixture.target.institutionProposal as Record<string, unknown>),
+      institutionProductId: "offer-chain-A", versionNumber: 3,
+    };
+    await pool.query("UPDATE credit_submission_targets SET institution_proposal=$1::jsonb WHERE id=$2",
+      [JSON.stringify(taggedProposal), fixture.target.id]);
+    const [target] = await db.select().from(creditSubmissionTargets)
+      .where(eq(creditSubmissionTargets.id, fixture.target.id));
+    const data = paramsFor({ request: fixture.request, target }, "credit-version-chain");
+    const snapshot = { ...(data.newCredit!.finalProposal as Record<string, unknown>),
+      institutionProductId: "offer-chain-A", versionNumber: 3 };
+    const winner = await select({ targetId: target.id, requestId: fixture.request.id,
+      expectedProposal: taggedProposal,
+      newCredit: { ...data.newCredit!, finalProposal: snapshot } });
+    expect(winner.target.institutionProductId).toBe("offer-chain-A");
+    expect(winner.target.versionNumber).toBe(3);
+    expect(winner.credit.institutionProductId).toBe("offer-chain-A");
+    expect(winner.credit.versionNumber).toBe(3);
+    const settled = await settle({ ...data, newCredit: undefined,
+      expectedTargetProposal: taggedProposal, expectedProposal: snapshot });
+    expect(settled.commission.institutionProductId).toBe("offer-chain-A");
+    expect(settled.commission.versionNumber).toBe(3);
+    const [stored] = await db.select().from(commissions)
+      .where(eq(commissions.id, settled.commission.id));
+    expect(stored.versionNumber).toBe(3);
+  });
+
+  it("FIN-P0 refuses a commission with a different version, atomically", async () => {
+    const fixture = await seed("target-version-wrong-commission");
+    const data = paramsFor(fixture,"credit-wrong-commission-version");
+    await expect(settle({ ...data, commission: {
+      ...data.commission, institutionProductId: "other-offer", versionNumber: 2,
+    } })).rejects.toThrow("DISBURSEMENT_OFFER_VERSION_MISMATCH");
+    expect(await db.select().from(credits)
+      .where(eq(credits.id, data.newCredit!.id))).toHaveLength(0);
+    const [target] = await db.select().from(creditSubmissionTargets)
+      .where(eq(creditSubmissionTargets.id, fixture.target.id));
+    expect(target.creditId).toBeNull();
+  });
+
   it("FIN-P0 rejects offer/version switching during winner selection without persisting credit", async () => {
     const fixture = await seed("winner-version-mismatch");
     const targetProposal = {

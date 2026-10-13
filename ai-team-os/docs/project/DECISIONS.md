@@ -95,3 +95,8 @@ Formato: Fecha / Decision / Opciones evaluadas / Decision final / Por que
 - Un target/propuesta debe enlazar como máximo un crédito; reintentos de selección devuelven el mismo crédito y fallas de inserción revierten la transacción.
 - Para evitar compartir un crédito entre distintas propuestas, preparar índice único de credit_submission_targets.credit_id (NULL permitido) con verificación previa de duplicados históricos; migración 0008 solo después de conciliación y autorización operativa.
 - Evidencia: regresiones PostgreSQL aisladas para múltiples targets, concurrencia, rollback y rechazo de credit_id repetido. No implica ejecución de migración en bases existentes ni autorización de despliegue.
+
+### 2026-10-13 / FIN-P0: persistencia oferta-versión por financiamiento
+- Una solicitud puede tener varios targets financiables; la referencia canónica institutionProductId + versionNumber pertenece a cada target, crédito y comisión, no a una financiera genérica ni a la solicitud completa.
+- Las columnas aditivas se escriben desde la propuesta congelada y se heredan hasta la comisión. Los identificadores contradictorios se rechazan en el flujo transaccional; operaciones históricas sin identidad explícita quedan con NULL hasta conciliación, sin inventar relaciones.
+- Migración 0009 preparada con pares obligatorios y FK compuesta para nuevas escrituras; **no ejecutarla** en bases existentes antes del preflight 0004/0005, respaldo, rollback y certificación de ASTRA.
