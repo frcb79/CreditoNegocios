@@ -787,6 +787,10 @@ function sanitizeCommercialOffer(product: any, userRole?: string) {
         if (sanitized.masterBroker) delete sanitized.masterBroker.sobretasa;
         if (sanitized.broker) delete sanitized.broker.sobretasa;
         if (sanitized.superAdmin) delete sanitized.superAdmin.sobretasa;
+        delete sanitized.platformNet;
+        delete sanitized.platformMargin;
+        delete sanitized.channels;
+        delete sanitized.internal;
         config.commissionRates = sanitized;
       } else if (userRole === "master_broker") {
         // Master Broker solo ve tiers masterBroker y broker, NUNCA financiera, superAdmin, platformNet, notas internas NI sobretasas
@@ -899,6 +903,10 @@ function projectFinancialInstitutionByRole(institution: any, userRole: string, m
       delete sanitized.platform;
       delete sanitized.app;
       delete sanitized.internal;
+      delete sanitized.platformNet;
+      delete sanitized.platformMargin;
+      // Channel margins belong exclusively to Super Admin.
+      delete sanitized.channels;
       adminCopy.commissionRates = sanitized;
     }
     return adminCopy;
@@ -5012,7 +5020,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post('/api/financial-institutions', isAuthenticated, async (req: any, res) => {
+  app.post('/api/financial-institutions', isAuthenticated, requireModuleAndAction('financieras', 'edit'), async (req: any, res) => {
     try {
       const userId = req.user?.claims?.sub;
       const user = await storage.getUser(userId);
@@ -5022,6 +5030,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(403).json({ message: 'Insufficient permissions' });
       }
       
+      const adminOnlyEconomicFields = [
+        "commissionRate", "commissionRates", "openingCommissionRate",
+        "brokerCommissionRate", "masterBrokerCommissionRate",
+        "overrateCommissionRate", "overRate", "sobretasa",
+        "platformMargin", "appShare", "platformCommissionRate",
+      ];
+      if (user.role !== "super_admin" &&
+          adminOnlyEconomicFields.some(key => Object.prototype.hasOwnProperty.call(req.body || {}, key))) {
+        return res.status(403).json({
+          code: "FINANCIAL_INTERNAL_RATE_SUPER_ADMIN_REQUIRED",
+          message: "Sólo Super Admin puede establecer condiciones económicas internas.",
+        });
+      }
       const institutionData = insertFinancialInstitutionSchema.parse({
         ...req.body,
         createdBy: userId,
@@ -5029,7 +5050,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
       
       const institution = await storage.createFinancialInstitution(institutionData);
-      res.status(201).json(institution);
+      res.status(201).json(projectFinancialInstitutionByRole(institution, user.role));
     } catch (error) {
       console.error("Error creating financial institution:", error);
       if (error instanceof z.ZodError) {
@@ -5041,7 +5062,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Toggle financial institution active status
-  app.patch('/api/financial-institutions/:id/toggle-status', isAuthenticated, async (req: any, res) => {
+  app.patch('/api/financial-institutions/:id/toggle-status', isAuthenticated, requireModuleAndAction('financieras', 'edit'), async (req: any, res) => {
     try {
       const { id } = req.params;
       const userId = req.user?.claims?.sub;
@@ -5071,7 +5092,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
       }
 
-      res.json(updatedInstitution);
+      res.json(projectFinancialInstitutionByRole(updatedInstitution, user.role));
     } catch (error) {
       console.error("Error toggling financial institution status:", error);
       res.status(500).json({ message: "Failed to toggle financial institution status" });
@@ -5079,7 +5100,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Update financial institution data
-  app.patch('/api/financial-institutions/:id', isAuthenticated, async (req: any, res) => {
+  app.patch('/api/financial-institutions/:id', isAuthenticated, requireModuleAndAction('financieras', 'edit'), async (req: any, res) => {
     try {
       const { id } = req.params;
       const userId = req.user?.claims?.sub;
@@ -5093,6 +5114,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const institution = await storage.getFinancialInstitution(id);
       if (!institution) {
         return res.status(404).json({ message: 'Financial institution not found' });
+      }
+
+      // Protect internal rates and margins regardless of module visibility.
+      const superAdminRateFields = [
+        "commissionRate", "commissionRates", "openingCommissionRate",
+        "masterBrokerCommissionRate", "brokerCommissionRate",
+        "overrateCommissionRate", "overRate", "sobretasa",
+        "platformMargin", "appShare", "platformCommissionRate",
+      ];
+      if (user.role !== "super_admin" &&
+          superAdminRateFields.some(key => Object.prototype.hasOwnProperty.call(req.body || {}, key))) {
+        return res.status(403).json({
+          code: "FINANCIAL_INTERNAL_RATE_SUPER_ADMIN_REQUIRED",
+          message: "Sólo Super Admin puede cambiar comisiones o márgenes internos.",
+        });
       }
 
       // Parse update data directly from request body
@@ -5176,7 +5212,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Once an offer is published, its commission changes require its own
       // versioned publication workflow (not this endpoint).
 
-      res.json(updatedInstitution);
+      res.json(projectFinancialInstitutionByRole(updatedInstitution, user.role));
     } catch (error) {
       console.error("Error updating financial institution:", error);
       if (error instanceof z.ZodError) {
