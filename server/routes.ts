@@ -9202,6 +9202,22 @@ function maskCLABE(clabe?: string | null): string | null {
         return res.status(403).json({ message: "Access denied - Super Admin privileges required" });
       }
 
+      // COM-28: the generic editor may change descriptive metadata only.
+      // Commercial economics, matching requirements and publication status
+      // MUST pass through the draft + explicit publish/version workflow.
+      const versionedOnlyFields = [
+        "configuration", "activeVariables", "targetProfiles",
+        "status", "currentVersionNumber", "institutionId",
+        "templateId", "productType",
+      ];
+      const forbiddenField = versionedOnlyFields.find(field =>
+        Object.prototype.hasOwnProperty.call(req.body || {}, field));
+      if (forbiddenField) {
+        return res.status(409).json({
+          code: "OFFER_VERSIONED_EDIT_REQUIRED",
+          message: "El campo " + forbiddenField + " requiere guardar un borrador y publicar una nueva versión de la oferta.",
+        });
+      }
       const productData = insertInstitutionProductSchema.partial().parse(req.body);
 
       // Prevent logical inconsistency: cannot activate a product if institution is inactive.
