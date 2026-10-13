@@ -7532,19 +7532,36 @@ function maskCLABE(clabe?: string | null): string | null {
         };
       }
 
+      const networkStorage: IStorage = storage;
+      if (networkStorage.updateNetworkRatesWithVersionAtomic) {
+        // PostgreSQL: current rates and contractual terms must commit together.
+        const committed = await networkStorage.updateNetworkRatesWithVersionAtomic({
+          masterBrokerId: userId,
+          changedBy: userId,
+          newRates: sanitizedRates,
+        });
+        if (committed.version) {
+          await commercialTermsService.announceCommittedNetworkVersion(committed.version, storage);
+        }
+        return res.json({
+          message: committed.changed
+            ? "Comisiones de red actualizadas y nueva versión publicada."
+            : "Sin cambios materiales en las comisiones de red.",
+          rates: committed.rates,
+          version: committed.version?.version || null,
+          changed: committed.changed,
+        });
+      }
+
+      // MemStorage-only deterministic unit fallback; never used with PostgreSQL.
       const previousRates = (user.networkCommissionRates as any) || {};
       const updatedUser = await storage.updateUser(userId, {
         networkCommissionRates: sanitizedRates,
       });
-
       await commercialTermsService.publishNetworkRatesUpdate(userId, {
-        previousRates,
-        newRates: sanitizedRates,
-        updatedBy: userId,
-        targetStorage: storage,
+        previousRates, newRates: sanitizedRates, updatedBy: userId, targetStorage: storage,
       });
-
-      res.json({
+      return res.json({
         message: "Comisiones de red actualizadas exitosamente",
         rates: updatedUser?.networkCommissionRates || sanitizedRates,
       });
