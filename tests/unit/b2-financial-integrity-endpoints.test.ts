@@ -48,6 +48,139 @@ describe("Fase 2B.1B — Cierre de Integridad Financiera y Eliminación de Rutas
     currentAuthUser = null;
   });
 
+  describe("ASTRA-01/02: submission authorization and financial DTO isolation", () => {
+    it("denies Broker B access to Broker A's client submissions and proposal document", async () => {
+      const brokerA = await storage.createUser({
+        email: `broker-a-astra-${randomUUID()}@example.test`,
+        firstName: "Broker", lastName: "A", role: "broker", isActive: true,
+      } as any);
+      const brokerB = await storage.createUser({
+        email: `broker-b-astra-${randomUUID()}@example.test`,
+        firstName: "Broker", lastName: "B", role: "broker", isActive: true,
+      } as any);
+      const client = await storage.createClient({
+        brokerId: brokerA.id, type: "persona_moral", businessName: "Cliente Privado Astra",
+      } as any);
+      const institution = await storage.createFinancialInstitution({
+        name: `Financiera Confidencial ${randomUUID()}`,
+        commissionRate: "6.0",
+        commissionRates: { financiera: { apertura: 6 }, broker: { apertura: 2 },
+          platformNet: 3.5 },
+        notes: "interno-no-exponer",
+      } as any);
+      const submission = await storage.createCreditSubmissionRequest({
+        clientId: client.id, brokerId: brokerA.id,
+        requestedAmount: "100000.00", status: "in_progress",
+      } as any);
+      const target = await storage.createCreditSubmissionTarget({
+        requestId: submission.id, financialInstitutionId: institution.id,
+        status: "institution_approved", proposalDocument: "package.json",
+        institutionProposal: { approvedAmount: 90000, interestRate: 12, term: 24,
+          commissionRates: { financiera: { apertura: 6 }, broker: { apertura: 2 } } },
+      } as any);
+
+      currentAuthUser = brokerB;
+      expect((await request(app).get(`/api/credit-submissions/client/${client.id}`)).status).toBe(403);
+      expect((await request(app).get(`/api/credit-submissions/${submission.id}`)).status).toBe(403);
+      expect((await request(app).get(`/api/credit-submission-requests/${submission.id}`)).status).toBe(403);
+      expect((await request(app).get(`/api/credit-submission-targets/${target.id}/proposal-document`)).status).toBe(403);
+
+      currentAuthUser = brokerA;
+      const own = await request(app).get(`/api/credit-submissions/client/${client.id}`);
+      expect(own.status).toBe(200);
+      expect(own.body).toHaveLength(1);
+      expect(own.body[0].broker?.password).toBeUndefined();
+      expect(own.body[0].targets[0].institution?.commissionRates).toBeUndefined();
+      expect(own.body[0].targets[0].institution?.notes).toBeUndefined();
+      expect(own.body[0].targets[0].institutionProposal?.commissionRates).toBeUndefined();
+      expect((await request(app).get(`/api/credit-submission-targets/${target.id}/proposal-document`)).status).toBe(200);
+
+      const my = await request(app).get("/api/credit-submission-requests/my-submissions");
+      expect(my.status).toBe(200);
+      const mine = my.body.find((x: any) => x.id === submission.id);
+      expect(mine).toBeDefined();
+      expect(mine.broker?.password).toBeUndefined();
+      expect(mine.targets[0].institution?.commissionRates).toBeUndefined();
+    });
+
+    it("preserves historical Master A access and excludes new Master B", async () => {
+      const masterA = await storage.createUser({
+        email: `master-a-astra-${randomUUID()}@example.test`,
+        role: "master_broker", firstName: "Master", lastName: "A",
+      } as any);
+      const masterB = await storage.createUser({
+        email: `master-b-astra-${randomUUID()}@example.test`,
+        role: "master_broker", firstName: "Master", lastName: "B",
+      } as any);
+      const broker = await storage.createUser({
+        email: `broker-m-astra-${randomUUID()}@example.test`,
+        role: "broker", masterBrokerId: masterA.id,
+      } as any);
+      const client = await storage.createClient({
+        brokerId: broker.id, type: "persona_moral", businessName: "Historico",
+      } as any);
+      const inst = await storage.createFinancialInstitution({
+        name: `Financial Master Lineage ${randomUUID()}`,
+      } as any);
+      const sub = await storage.createCreditSubmissionRequest({
+        clientId: client.id, brokerId: broker.id,
+        originMasterBrokerId: masterA.id, requestedAmount: "100000.00",
+      } as any);
+      const target = await storage.createCreditSubmissionTarget({
+        requestId: sub.id, financialInstitutionId: inst.id, proposalDocument: "package.json",
+      } as any);
+      await storage.updateUser(broker.id, { masterBrokerId: masterB.id });
+      currentAuthUser = masterB;
+      expect((await request(app).get(`/api/credit-submissions/${sub.id}`)).status).toBe(403);
+      expect((await request(app).get(`/api/credit-submission-targets/${target.id}/proposal-document`)).status).toBe(403);
+      currentAuthUser = masterA;
+      expect((await request(app).get(`/api/credit-submissions/${sub.id}`)).status).toBe(200);
+      expect((await request(app).get(`/api/credit-submission-targets/${target.id}/proposal-document`)).status).toBe(200);
+    });
+
+    it("Admin without financiera.edit cannot change institutions; finance.view never reveals platform margins", async () => {
+      const inst = await storage.createFinancialInstitution({
+        name: `Financial Restricted ${randomUUID()}`, isActive: true,
+        commissionRates: {
+          financiera: { apertura: 5 }, broker: { apertura: 2 },
+          platformNet: 3, channels: { directBroker: { platformGrossMargin: 3 } },
+        },
+        notes: "Secret internal",
+      } as any);
+      const restricted = await storage.createUser({
+        email: `restricted-astra-${randomUUID()}@example.test`,
+        role: "admin", permissions: {modules:["financieras"], actions:["view"], scope:"global"},
+      } as any);
+      currentAuthUser = restricted;
+      const allowed = await request(app).get(`/api/financial-institutions/${inst.id}`);
+      expect(allowed.status).toBe(200);
+      expect(allowed.body.commissionRates?.platformNet).toBeUndefined();
+      expect(allowed.body.commissionRates?.channels).toBeUndefined();
+      expect(allowed.body.notes).toBeUndefined();
+      expect((await request(app).patch(`/api/financial-institutions/${inst.id}`)
+        .send({ description: "Unauthorized edit" })).status).toBe(403);
+      expect((await request(app).patch(`/api/financial-institutions/${inst.id}/toggle-status`)
+        .send({})).status).toBe(403);
+    });
+
+    it("Admin with edit rights still cannot alter Super Admin-only commissions", async () => {
+      const inst = await storage.createFinancialInstitution({
+        name: `Financial Restricted Economics ${randomUUID()}`,
+        commissionRate: "4.0",
+      } as any);
+      const admin = await storage.createUser({
+        email: `economic-admin-astra-${randomUUID()}@example.test`,
+        role: "admin", permissions: {modules:["financieras"], actions:["view","edit"], scope:"global"},
+      } as any);
+      currentAuthUser = admin;
+      const res = await request(app).patch(`/api/financial-institutions/${inst.id}`)
+        .send({ commissionRate: "7.0" });
+      expect(res.status).toBe(403);
+      expect(res.body.code).toBe("FINANCIAL_INTERNAL_RATE_SUPER_ADMIN_REQUIRED");
+      expect((await storage.getFinancialInstitution(inst.id))?.commissionRate).toBe("4.0");
+    });
+  });
+
   describe("COM-28: generic product edits must not rewrite published offer economics", () => {
     it("forbids commission and matching modifications outside the draft/publish flow", async () => {
       const admin = await storage.createUser({
