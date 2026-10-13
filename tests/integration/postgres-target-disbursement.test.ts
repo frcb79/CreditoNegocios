@@ -214,6 +214,32 @@ describePg("OPE-12: winning target and credit creation in one PostgreSQL transac
     expect(other.creditId).toBeNull();
   });
 
+  it("FIN-P0 rejects offer/version switching during winner selection without persisting credit", async () => {
+    const fixture = await seed("winner-version-mismatch");
+    const targetProposal = {
+      ...(fixture.target.institutionProposal as object),
+      institutionProductId: "published-product-A",
+      versionNumber: 2,
+    };
+    await pool.query("UPDATE credit_submission_targets SET institution_proposal=$1::jsonb WHERE id=$2",
+      [JSON.stringify(targetProposal), fixture.target.id]);
+    const badCredit = paramsFor(fixture, "version-switch-credit").newCredit!;
+    await expect(select({
+      targetId: fixture.target.id, requestId: fixture.request.id,
+      expectedProposal: targetProposal,
+      newCredit: {
+        ...badCredit,
+        finalProposal: { ...(badCredit.finalProposal as object), institutionProductId: "published-product-B", versionNumber: 2 },
+      },
+    })).rejects.toThrow("OFFER_VERSION_IDENTITY_MISMATCH");
+    const creditsForRequest = await db.select().from(credits)
+      .where(eq(credits.linkedSubmissionId, fixture.request.id));
+    expect(creditsForRequest).toHaveLength(0);
+    const [target] = await db.select().from(creditSubmissionTargets)
+      .where(eq(creditSubmissionTargets.id, fixture.target.id));
+    expect(target.creditId).toBeNull();
+  });
+
   it("OPE-06 rolls back a winner on credit insertion failure and supports clean retry",async()=>{
     const fixture = await seed("target-winner-failure");
     const data = paramsFor(fixture,"winner-failure-credit");

@@ -49,6 +49,7 @@ import {
 } from "./offerVersionService";
 import { eq, desc, asc, like, and, or, inArray, sql, gte } from "drizzle-orm";
 
+import { assertFrozenOfferLineage } from "./offerLineageService";
 import { randomUUID, createHash } from "crypto";
 import {
   getApprovedLegalDocument,
@@ -3321,6 +3322,7 @@ export class DbStorage implements IStorage {
           throw new Error("WINNER_EXISTING_CREDIT_LINEAGE_MISMATCH");
         }
         if (!target.isWinner) throw new Error("WINNER_TARGET_CREDIT_NOT_SELECTED");
+        assertFrozenOfferLineage(target.institutionProposal, existing.finalProposal);
         return { target, credit: existing, alreadySelected: true };
       }
 
@@ -3341,6 +3343,8 @@ export class DbStorage implements IStorage {
         throw new Error("WINNER_PROPOSAL_CHANGED");
       }
       const proposed = params.newCredit;
+      // One offer and exact version travel with the target into its frozen credit.
+      assertFrozenOfferLineage(target.institutionProposal, proposed?.finalProposal);
       if (!proposed || !proposed.id || proposed.clientId !== request.clientId ||
           proposed.brokerId !== request.brokerId ||
           proposed.linkedSubmissionId !== request.id ||
@@ -3396,6 +3400,8 @@ export class DbStorage implements IStorage {
           (request.originMasterBrokerId || null) !== params.expectedOriginMasterBrokerId) {
         throw new Error("DISBURSEMENT_REQUEST_ATTRIBUTION_CHANGED");
       }
+      // Protect both fresh creation and replay from a different offer/version.
+      assertFrozenOfferLineage(target.institutionProposal, params.expectedProposal);
       let creditId = target.creditId;
       if (!creditId) {
         const proposed = params.newCredit;
@@ -3409,6 +3415,7 @@ export class DbStorage implements IStorage {
               stableJsonSnapshot(params.expectedProposal || {})) {
           throw new Error("DISBURSEMENT_TARGET_CREDIT_INVALID");
         }
+        assertFrozenOfferLineage(target.institutionProposal, proposed.finalProposal);
         const [created] = await tx.insert(credits).values({
           ...proposed,
           id: proposed.id,
@@ -3423,6 +3430,7 @@ export class DbStorage implements IStorage {
       } else {
         const [existing] = await tx.select().from(credits)
           .where(eq(credits.id, creditId)).limit(1);
+        assertFrozenOfferLineage(target.institutionProposal, existing?.finalProposal);
         if (!existing || existing.brokerId !== request.brokerId ||
             existing.linkedSubmissionId !== request.id ||
             existing.financialInstitutionId !== target.financialInstitutionId ||
