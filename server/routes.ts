@@ -10868,7 +10868,7 @@ function maskCLABE(clabe?: string | null): string | null {
       }
 
       const target = await enrichCreditSubmissionTarget(rawTarget);
-      res.json(target);
+      res.json(projectSubmissionTarget(target, user.role));
     } catch (error) {
       const code = error instanceof Error ? error.message : "";
       if (code.startsWith("OFFER_VERSION_")) {
@@ -10962,7 +10962,7 @@ function maskCLABE(clabe?: string | null): string | null {
       }
 
       const target = await enrichCreditSubmissionTarget(rawTarget);
-      res.json(target);
+      res.json(projectSubmissionTarget(target, user.role));
     } catch (error) {
       const code = error instanceof Error ? error.message : "";
       if (code.startsWith("OFFER_VERSION_")) {

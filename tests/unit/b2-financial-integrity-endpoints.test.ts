@@ -122,6 +122,18 @@ describe("Fase 2B.1B — Cierre de Integridad Financiera y Eliminación de Rutas
       expect(snapshot.commissionRates.broker.apertura).toBe(2);
       expect(snapshot.commissionRates.financiera.apertura).toBe(5);
 
+      const limitedAdmin = await storage.createUser({
+        email: `offer-lineage-limited-${randomUUID()}@example.test`,
+        role: "admin", firstName: "Admin", lastName: "Limitado", isActive: true,
+      } as any);
+      currentAuthUser = limitedAdmin;
+      const redacted = await request(app)
+        .post(`/api/credit-submission-targets/${target.id}/institution-proposal`)
+        .send(proposal);
+      expect(redacted.status).toBe(200);
+      expect(redacted.body.institutionProposal.commissionRates).toBeUndefined();
+      currentAuthUser = admin;
+
       const erase = await request(app)
         .post(`/api/credit-submission-targets/${target.id}/institution-proposal`)
         .send({ approvedAmount: 90000, interestRate: 12, term: 24 });
