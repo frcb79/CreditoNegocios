@@ -103,6 +103,8 @@ interface CreditSubmissionTarget {
     interestRate: number;
     term: number;
     openingCommission?: number;
+    institutionProductId?: string;
+    versionNumber?: number;
   };
   proposalDocument?: string;
   proposalReceivedAt?: string;
@@ -154,6 +156,8 @@ const proposalSchema = z.object({
   interestRate: z.number().min(0, "Tasa debe ser positiva"),
   term: z.number().min(1, "Plazo requerido"),
   openingCommission: z.number().min(0).optional(),
+  institutionProductId: z.string().optional(),
+  versionNumber: z.number().int().positive().optional(),
 });
 
 type ReviewForm = z.infer<typeof reviewSchema>;
@@ -198,6 +202,27 @@ export default function PendingRequests() {
       openingCommission: 0,
     },
   });
+
+  // Each approved proposal must link the exact offer/version, not only its lender.
+  const { data: institutionOffers = [], isLoading: institutionOffersLoading } = useQuery<Array<{
+    id: string; name?: string | null; customName?: string | null;
+    currentVersionNumber?: number | null; status?: string | null;
+  }>>({
+    queryKey: ["/api/institution-products", selectedTarget?.financialInstitutionId],
+    enabled: showProposalModal && Boolean(selectedTarget?.financialInstitutionId),
+    queryFn: async () => {
+      if (!selectedTarget?.financialInstitutionId) return [];
+      const institutionId = encodeURIComponent(selectedTarget.financialInstitutionId);
+      const response = await fetch(buildApiUrl(`/api/institution-products?institutionId=${institutionId}&eligibleOnly=true`), {
+        credentials: "include",
+      });
+      if (!response.ok) throw new Error("No fue posible consultar las ofertas vigentes");
+      return response.json();
+    },
+  });
+  const publishedOffers = institutionOffers.filter(o =>
+    o.status === "published" && Number.isSafeInteger(Number(o.currentVersionNumber)) &&
+    Number(o.currentVersionNumber) > 0);
 
   const { data: allTargets, isLoading: targetsLoading } = useQuery<CreditSubmissionTarget[]>({
     queryKey: ['/api/credit-submission-targets'],
@@ -381,6 +406,14 @@ export default function PendingRequests() {
 
   const handleProposalSubmit = (data: ProposalForm) => {
     if (!selectedTarget) return;
+    if (institutionOffersLoading) {
+      toast({ title: "Consultando ofertas vigentes", description: "Verifica primero la oferta correspondiente.", variant: "destructive" });
+      return;
+    }
+    if (publishedOffers.length > 0 && (!data.institutionProductId || !data.versionNumber)) {
+      toast({ title: "Selecciona la oferta exacta", description: "La propuesta debe vincularse al producto y versión publicados.", variant: "destructive" });
+      return;
+    }
     proposalMutation.mutate({
       targetId: selectedTarget.id,
       proposal: data,
@@ -1114,6 +1147,8 @@ export default function PendingRequests() {
                                                 interestRate: Number(target.institutionProposal.interestRate || 0),
                                                 term: Number(target.institutionProposal.term || 12),
                                                 openingCommission: Number(target.institutionProposal.openingCommission || 0),
+                                                institutionProductId: target.institutionProposal.institutionProductId,
+                                                versionNumber: target.institutionProposal.versionNumber,
                                               });
                                             }
                                             setShowProposalModal(true);
@@ -1421,6 +1456,45 @@ export default function PendingRequests() {
 
                 <Form {...proposalForm}>
                   <form onSubmit={proposalForm.handleSubmit(handleProposalSubmit)} className="space-y-4">
+                    {publishedOffers.length > 0 ? (
+                      <FormField
+                        control={proposalForm.control}
+                        name="institutionProductId"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Oferta financiera publicada *</FormLabel>
+                            <Select
+                              value={field.value || undefined}
+                              onValueChange={(id) => {
+                                field.onChange(id);
+                                const offer = publishedOffers.find(o => o.id === id);
+                                proposalForm.setValue("versionNumber", offer?.currentVersionNumber
+                                  ? Number(offer.currentVersionNumber) : undefined);
+                              }}
+                            >
+                              <FormControl>
+                                <SelectTrigger><SelectValue placeholder="Selecciona producto y versión" /></SelectTrigger>
+                              </FormControl>
+                              <SelectContent>
+                                {publishedOffers.map(offer => (
+                                  <SelectItem key={offer.id} value={offer.id}>
+                                    {offer.name || offer.customName || "Oferta"} — v{offer.currentVersionNumber}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                    ) : (
+                      <p className="text-xs text-muted-foreground">
+                        {institutionOffersLoading
+                          ? "Consultando ofertas publicadas..."
+                          : "No hay una oferta versionada publicada para esta financiera. Se conservará el flujo histórico sin inferir una oferta."}
+                      </p>
+                    )}
+
                     <FormField
                       control={proposalForm.control}
                       name="approvedAmount"
