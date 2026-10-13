@@ -5,6 +5,7 @@ import { WebSocketServer, WebSocket } from "ws";
 import rateLimit from "express-rate-limit";
 import { pool } from "./db";
 import { storage, type IStorage } from "./storage";
+import { readFrozenOfferLineage } from "./offerLineageService";
 import { setupAuth, isAuthenticated } from "./auth";
 import { registerLegalRoutes } from "./legalRoutes";
 import { validateRegistrationAcceptance } from "./legalDocuments";
@@ -649,6 +650,44 @@ function projectSubmissionPerson(person: any) {
     role: person.role,
     brandName: person.brandName || null,
     isActive: person.isActive,
+  };
+}
+
+/**
+ * FIN-P0: Keep the exact published product/version from the institution's
+ * offer. Never guess an offer from only financialInstitutionId and never
+ * accept client-supplied commission allocation as a commercial authority.
+ */
+async function validateTargetOfferVersion(
+  target: { financialInstitutionId: string; institutionProposal: unknown },
+  proposal: Record<string, any>,
+): Promise<Record<string, any>> {
+  const incoming = readFrozenOfferLineage(proposal);
+  const previous = readFrozenOfferLineage(target.institutionProposal);
+  if (previous && (!incoming ||
+      previous.institutionProductId !== incoming.institutionProductId ||
+      previous.versionNumber !== incoming.versionNumber)) {
+    throw new Error("OFFER_VERSION_IDENTITY_MISMATCH");
+  }
+  if (!incoming) return proposal; // Historical institution-only proposals remain readable.
+  const product = await storage.getInstitutionProduct(incoming.institutionProductId);
+  if (!product || product.institutionId !== target.financialInstitutionId) {
+    throw new Error("OFFER_VERSION_INSTITUTION_MISMATCH");
+  }
+  const versions = await storage.getInstitutionProductVersions(incoming.institutionProductId);
+  const version = versions.find(v => v.versionNumber === incoming.versionNumber);
+  if (!version || (version.status !== "published" &&
+      !(previous && version.status === "superseded"))) {
+    throw new Error("OFFER_VERSION_NOT_PUBLISHED");
+  }
+  const conditions = (version.conditions || {}) as Record<string, unknown>;
+  return {
+    ...proposal,
+    institutionProductId: incoming.institutionProductId,
+    versionNumber: incoming.versionNumber,
+    // Server-owned, version-specific rates: never take a rate map from the request.
+    ...(conditions.commissionRates && typeof conditions.commissionRates === "object"
+      ? { commissionRates: conditions.commissionRates } : {}),
   };
 }
 
@@ -10749,9 +10788,18 @@ function maskCLABE(clabe?: string | null): string | null {
         interestRate: z.number(),
         term: z.number(),
         openingCommission: z.number().optional(),
+        institutionProductId: z.string().trim().min(1).optional(),
+        offerId: z.string().trim().min(1).optional(),
+        versionNumber: z.number().int().positive().optional(),
       });
 
-      const proposal = proposalSchema.parse(req.body);
+      const targetBefore = await storage.getCreditSubmissionTarget(id);
+      if (!targetBefore) return res.status(404).json({ message: "Credit submission target not found" });
+      if (targetBefore.isWinner || targetBefore.creditId ||
+          ["selected_winner", "dispersed"].includes(targetBefore.status)) {
+        return res.status(409).json({ code: "PROPOSAL_LOCKED", message: "La propuesta ya está seleccionada o vinculada a un crédito." });
+      }
+      const proposal = await validateTargetOfferVersion(targetBefore, proposalSchema.parse(req.body));
 
       const rawTarget = await storage.updateCreditSubmissionTarget(id, {
         institutionProposal: proposal,
@@ -10822,6 +10870,10 @@ function maskCLABE(clabe?: string | null): string | null {
       const target = await enrichCreditSubmissionTarget(rawTarget);
       res.json(target);
     } catch (error) {
+      const code = error instanceof Error ? error.message : "";
+      if (code.startsWith("OFFER_VERSION_")) {
+        return res.status(409).json({ code, message: "La oferta o versión no coincide con la propuesta." });
+      }
       console.error("Error saving institution proposal:", error);
       res.status(500).json({ message: "Failed to save institution proposal" });
     }
@@ -10846,15 +10898,24 @@ function maskCLABE(clabe?: string | null): string | null {
           interestRate: z.number(),
           term: z.number(),
           openingCommission: z.number().optional(),
+          institutionProductId: z.string().trim().min(1).optional(),
+          offerId: z.string().trim().min(1).optional(),
+          versionNumber: z.number().int().positive().optional(),
         }).optional(),
       });
 
       const { approved, adminNotes, proposal } = bodySchema.parse(req.body);
+      const targetBefore = await storage.getCreditSubmissionTarget(id);
+      if (!targetBefore) return res.status(404).json({ message: "Credit submission target not found" });
+      if (targetBefore.isWinner || targetBefore.creditId ||
+          ["selected_winner", "dispersed"].includes(targetBefore.status)) {
+        return res.status(409).json({ code: "PROPOSAL_LOCKED", message: "No se permite reabrir una propuesta seleccionada." });
+      }
 
       const newStatus = approved ? 'institution_approved' : 'institution_rejected';
       const updatePayload: any = { status: newStatus };
       if (approved && proposal) {
-        updatePayload.institutionProposal = proposal;
+        updatePayload.institutionProposal = await validateTargetOfferVersion(targetBefore, proposal);
         updatePayload.proposalReceivedAt = new Date();
       }
       if (adminNotes) updatePayload.adminNotes = adminNotes;
@@ -10903,6 +10964,10 @@ function maskCLABE(clabe?: string | null): string | null {
       const target = await enrichCreditSubmissionTarget(rawTarget);
       res.json(target);
     } catch (error) {
+      const code = error instanceof Error ? error.message : "";
+      if (code.startsWith("OFFER_VERSION_")) {
+        return res.status(409).json({ code, message: "La oferta o versión no coincide con la respuesta." });
+      }
       console.error("Error recording institution response:", error);
       res.status(500).json({ message: "Failed to record institution response" });
     }
