@@ -136,13 +136,20 @@ describe("Fase 2B.1B — Cierre de Integridad Financiera y Eliminación de Rutas
       expect(movedNetwork.body.code).toBe("SUBMISSION_NOT_AUTHORIZED");
 
       expect(await storage.getCreditSubmissionTargets({ requestId: submission.id })).toHaveLength(0);
+
+      // Platform-owned direct origination is exempt from Broker formalization;
+      // verify legitimate administrator channeling remains available.
+      const platformSubmission = await storage.createCreditSubmissionRequest({
+        clientId: client.id, brokerId: admin.id, requestedAmount: "100000.00", status: "approved",
+      } as any);
       currentAuthUser = admin;
-      const allowed = await request(app).post(`/api/credit-submissions/${submission.id}/targets`)
+      const allowed = await request(app).post(`/api/credit-submissions/${platformSubmission.id}/targets`)
         .send({ financialInstitutionIds: [lender.id] });
       expect(allowed.status).toBe(201);
-      const targets = await storage.getCreditSubmissionTargets({ requestId: submission.id });
+      const targets = await storage.getCreditSubmissionTargets({ requestId: platformSubmission.id });
       expect(targets).toHaveLength(1);
       expect(targets[0].financialInstitutionId).toBe(lender.id);
+      expect(await storage.getCreditSubmissionTargets({ requestId: submission.id })).toHaveLength(0);
     });
   });
 
