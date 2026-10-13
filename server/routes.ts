@@ -622,6 +622,68 @@ async function resolveProductTemplate(productTemplateId?: string | null, fallbac
   return productTemplate;
 }
 
+/**
+ * ASTRA-01: Authorization for one concrete submission, NOT a general client or
+ * shared-tenant membership. Moving a Broker to another Master never gives the
+ * new network access to operations historically originated for the old Master.
+ */
+function canReadCreditSubmission(user: any, submission: any): boolean {
+  if (!user || !submission) return false;
+  if (user.role === "super_admin" || user.role === "admin") return true;
+  if (user.role === "broker") return submission.brokerId === user.id;
+  if (user.role === "master_broker") {
+    return submission.brokerId === user.id ||
+      (submission.originMasterBrokerId != null && submission.originMasterBrokerId === user.id);
+  }
+  return false;
+}
+
+/** ASTRA-02: positive projections prevent password/CLABE and internal margins escaping. */
+function projectSubmissionPerson(person: any) {
+  if (!person) return null;
+  return {
+    id: person.id,
+    firstName: person.firstName,
+    lastName: person.lastName,
+    email: person.email,
+    role: person.role,
+    brandName: person.brandName || null,
+    isActive: person.isActive,
+  };
+}
+
+function projectSubmissionInstitution(institution: any) {
+  if (!institution) return null;
+  // Only contextual public information; use the official admin financial
+  // endpoints for privileged institutional/commercial details.
+  const keys = ["id", "name", "logoUrl", "category", "description", "isActive"];
+  const safe: Record<string, any> = {};
+  for (const key of keys) {
+    if (Object.prototype.hasOwnProperty.call(institution, key)) safe[key] = institution[key];
+  }
+  return safe;
+}
+
+function projectSubmissionTarget(target: any, userRole?: string) {
+  if (!target) return target;
+  const { adminNotes, details, reviewedBy, institutionProposal, institution, ...publicFields } = target;
+  const cleanProposal = institutionProposal && typeof institutionProposal === "object"
+    ? { ...institutionProposal } : institutionProposal;
+  if (cleanProposal && typeof cleanProposal === "object" && userRole !== "super_admin") {
+    for (const key of ["commissionRates", "platformNet", "platformMargin",
+       "platformGrossMargin", "internalNotes", "overRate", "sobretasa"]) {
+      delete cleanProposal[key];
+    }
+  }
+  return {
+    ...publicFields,
+    ...(userRole === "super_admin" || userRole === "admin"
+      ? { adminNotes, details, reviewedBy } : {}),
+    institutionProposal: cleanProposal,
+    institution: projectSubmissionInstitution(institution),
+  };
+}
+
 // Helper function to enrich credit submission target with related data
 async function enrichCreditSubmissionTarget(target: any) {
   const request = await storage.getCreditSubmissionRequest(target.requestId);
@@ -658,14 +720,14 @@ async function enrichCreditSubmissionTarget(target: any) {
     confirmedDisbursedAmount: targetConfirmedDisbursedAmount,
     request: {
       ...request,
-      broker,
+      broker: projectSubmissionPerson(broker),
       client,
       productTemplate
     },
-    broker,
-    masterBroker,
+    broker: projectSubmissionPerson(broker),
+    masterBroker: projectSubmissionPerson(masterBroker),
     client,
-    institution,
+    institution: projectSubmissionInstitution(institution),
     productTemplate
   };
 }
