@@ -10704,7 +10704,7 @@ function maskCLABE(clabe?: string | null): string | null {
   });
 
   // 3. Upload proposal document
-  app.post('/api/credit-submission-targets/:id/upload-proposal', isAuthenticated, upload.single('proposalDocument'), async (req: any, res) => {
+  app.post('/api/credit-submission-targets/:id/upload-proposal', isAuthenticated, requireModuleAndAction('aprobaciones', 'edit'), upload.single('proposalDocument'), async (req: any, res) => {
     try {
       const { id } = req.params;
       const userId = req.user.claims.sub;
@@ -10773,7 +10773,7 @@ function maskCLABE(clabe?: string | null): string | null {
   });
 
   // 4. Save institution proposal - Admins only
-  app.post('/api/credit-submission-targets/:id/institution-proposal', isAuthenticated, async (req: any, res) => {
+  app.post('/api/credit-submission-targets/:id/institution-proposal', isAuthenticated, requireModuleAndAction('aprobaciones', 'edit'), async (req: any, res) => {
     try {
       const { id } = req.params;
       const userId = req.user.claims.sub;
@@ -10880,7 +10880,7 @@ function maskCLABE(clabe?: string | null): string | null {
   });
 
   // Institution response (approve or reject from institution side) - Admins only
-  app.patch('/api/credit-submission-targets/:id/mark-institution-response', isAuthenticated, async (req: any, res) => {
+  app.patch('/api/credit-submission-targets/:id/mark-institution-response', isAuthenticated, requireModuleAndAction('aprobaciones', 'edit'), async (req: any, res) => {
     try {
       const { id } = req.params;
       const userId = req.user.claims.sub;

@@ -48,6 +48,43 @@ describe("Fase 2B.1B — Cierre de Integridad Financiera y Eliminación de Rutas
     currentAuthUser = null;
   });
 
+  describe("ASTRA-02: limited Admin cannot mutate financial proposals without permissions", () => {
+    it("rejects proposal write, institution response and file upload for Admin with view-only permissions", async () => {
+      const limited = await storage.createUser({
+        email: `admin-no-approval-${randomUUID()}@example.test`,
+        role: "admin", firstName: "Admin", lastName: "Limitado", isActive: true,
+        permissions: { modules: ["dashboard", "creditos"], actions: ["view"], scope: "global" },
+      } as any);
+      const broker = await storage.createUser({
+        email: `broker-limited-target-${randomUUID()}@example.test`,
+        role: "broker", firstName: "Broker", lastName: "Prueba", isActive: true,
+      } as any);
+      const client = await storage.createClient({
+        brokerId: broker.id, type: "persona_moral", businessName: "Cliente Seguro",
+      } as any);
+      const institution = await storage.createFinancialInstitution({
+        name: `Financiera RBAC ${randomUUID()}`, isActive: true,
+      } as any);
+      const submission = await storage.createCreditSubmissionRequest({
+        clientId: client.id, brokerId: broker.id, requestedAmount: "100000.00",
+      } as any);
+      const target = await storage.createCreditSubmissionTarget({
+        requestId: submission.id, financialInstitutionId: institution.id, status: "sent",
+      } as any);
+      currentAuthUser = limited;
+      const original = await storage.getCreditSubmissionTarget(target.id);
+      const proposal = { approvedAmount: 50000, interestRate: 12, term: 12 };
+      expect((await request(app).post(`/api/credit-submission-targets/${target.id}/institution-proposal`).send(proposal)).status).toBe(403);
+      expect((await request(app).patch(`/api/credit-submission-targets/${target.id}/mark-institution-response`).send({ approved: true, proposal })).status).toBe(403);
+      expect((await request(app).post(`/api/credit-submission-targets/${target.id}/upload-proposal`)
+        .attach("proposalDocument", Buffer.from("test"), "test.txt")).status).toBe(403);
+      const after = await storage.getCreditSubmissionTarget(target.id);
+      expect(after?.status).toBe(original?.status);
+      expect(after?.institutionProposal).toEqual(original?.institutionProposal);
+      expect(after?.proposalDocument).toBe(original?.proposalDocument);
+    });
+  });
+
   describe("FIN-P0: institution proposal keeps canonical offer/version", () => {
     it("preserves explicit published version and derives its rates on the server", async () => {
       const admin = await storage.createUser({
