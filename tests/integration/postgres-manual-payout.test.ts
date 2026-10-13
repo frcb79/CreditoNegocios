@@ -22,7 +22,7 @@ describePg("Manual payout: PostgreSQL ACID and concurrency", () => {
     await pool.query(`CREATE TABLE commissions (
       id varchar PRIMARY KEY, tenant_id varchar, credit_id varchar NOT NULL,
       broker_id varchar NOT NULL, master_broker_id varchar, commission_type varchar,
-      amount numeric(15,2) NOT NULL, broker_share numeric(15,2),
+      institution_product_id varchar, version_number integer, amount numeric(15,2) NOT NULL, broker_share numeric(15,2),
       master_broker_share numeric(15,2), app_share numeric(15,2),
       frozen_amount numeric(15,2), status varchar NOT NULL,
       approved_at timestamp, approved_by varchar, paid_at timestamp,

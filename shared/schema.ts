@@ -399,6 +399,8 @@ export const credits = pgTable("credits", {
   brokerId: varchar("broker_id").notNull().references(() => users.id),
   createdBy: varchar("created_by").references(() => users.id),
   financialInstitutionId: varchar("financial_institution_id").references(() => financialInstitutions.id),
+  institutionProductId: varchar("institution_product_id"),
+  versionNumber: integer("version_number"),
   productTemplateId: varchar("product_template_id").references(() => productTemplates.id), // Tipo de crédito
   linkedSubmissionId: varchar("linked_submission_id").references(() => creditSubmissionRequests.id), // Link to original submission request
   amount: decimal("amount", { precision: 15, scale: 2 }).notNull(),
@@ -447,6 +449,8 @@ export const commissions = pgTable("commissions", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   tenantId: varchar("tenant_id").references(() => tenants.id),
   creditId: varchar("credit_id").notNull().references(() => credits.id),
+  institutionProductId: varchar("institution_product_id"),
+  versionNumber: integer("version_number"),
   brokerId: varchar("broker_id").notNull().references(() => users.id),
   masterBrokerId: varchar("master_broker_id").references(() => users.id),
   commissionType: varchar("commission_type"), // "total", "apertura", "sobretasa", "renovacion"
@@ -765,6 +769,8 @@ export const creditSubmissionTargets = pgTable("credit_submission_targets", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   requestId: varchar("request_id").notNull().references(() => creditSubmissionRequests.id, { onDelete: 'cascade' }),
   financialInstitutionId: varchar("financial_institution_id").notNull().references(() => financialInstitutions.id),
+  institutionProductId: varchar("institution_product_id"),
+  versionNumber: integer("version_number"),
   status: varchar("status").notNull().default("pending_admin"), // "pending_admin", "approved", "returned_to_broker", "sent", "institution_approved", "institution_rejected", "selected_winner", "dispersed"
   adminNotes: text("admin_notes"), // Admin internal notes
   details: text("details"), // Details sent to broker (when returned) or to institution (when approved)

@@ -23,7 +23,7 @@ describePg("OPE-10/11: atomic and idempotent credit disbursements in PostgreSQL"
     await pool.query(`CREATE TABLE credits (
       id varchar PRIMARY KEY, tenant_id varchar, client_id varchar NOT NULL,
       broker_id varchar NOT NULL, created_by varchar, financial_institution_id varchar,
-      product_template_id varchar, linked_submission_id varchar, amount numeric(15,2) NOT NULL,
+      institution_product_id varchar, version_number integer, product_template_id varchar, linked_submission_id varchar, amount numeric(15,2) NOT NULL,
       interest_rate numeric(5,2), term integer, frequency varchar, purpose text,
       status varchar NOT NULL DEFAULT 'draft', start_date date, end_date date,
       payment_amount numeric(15,2), remaining_balance numeric(15,2),
@@ -36,7 +36,7 @@ describePg("OPE-10/11: atomic and idempotent credit disbursements in PostgreSQL"
       id varchar PRIMARY KEY DEFAULT gen_random_uuid(), tenant_id varchar,
       credit_id varchar NOT NULL REFERENCES credits(id),
       broker_id varchar NOT NULL, master_broker_id varchar, commission_type varchar,
-      amount numeric(15,2) NOT NULL, broker_share numeric(15,2),
+      institution_product_id varchar, version_number integer, amount numeric(15,2) NOT NULL, broker_share numeric(15,2),
       master_broker_share numeric(15,2), app_share numeric(15,2),
       frozen_amount numeric(15,2), status varchar NOT NULL,
       approved_at timestamp, approved_by varchar, paid_at timestamp,
