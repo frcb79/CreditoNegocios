@@ -78,6 +78,10 @@ describe("Fase 2B.1B — Cierre de Integridad Financiera y Eliminación de Rutas
       expect((await request(app).patch(`/api/credit-submission-targets/${target.id}/mark-institution-response`).send({ approved: true, proposal })).status).toBe(403);
       expect((await request(app).post(`/api/credit-submission-targets/${target.id}/upload-proposal`)
         .attach("proposalDocument", Buffer.from("test"), "test.txt")).status).toBe(403);
+      expect((await request(app).patch(`/api/credit-submission-targets/${target.id}/approve`).send({})).status).toBe(403);
+      expect((await request(app).patch(`/api/credit-submission-targets/${target.id}/reject`).send({})).status).toBe(403);
+      expect((await request(app).patch(`/api/credit-submission-targets/${target.id}/return-to-broker`).send({})).status).toBe(403);
+      expect((await request(app).patch(`/api/credit-submission-targets/${target.id}/mark-sent`).send({})).status).toBe(403);
       const after = await storage.getCreditSubmissionTarget(target.id);
       expect(after?.status).toBe(original?.status);
       expect(after?.institutionProposal).toEqual(original?.institutionProposal);
@@ -215,6 +219,7 @@ describe("Fase 2B.1B — Cierre de Integridad Financiera y Eliminación de Rutas
       expect((await request(app).get(`/api/credit-submissions/${submission.id}`)).status).toBe(403);
       expect((await request(app).get(`/api/credit-submission-requests/${submission.id}`)).status).toBe(403);
       expect((await request(app).get(`/api/credit-submission-targets/${target.id}/proposal-document`)).status).toBe(403);
+      expect((await request(app).post(`/api/credit-submission-targets/${target.id}/generate-pdf`)).status).toBe(403);
       expect((await request(app).patch(`/api/credit-submission-targets/${target.id}/select-winner`).send({})).status).toBe(403);
 
       currentAuthUser = brokerA;
@@ -226,6 +231,9 @@ describe("Fase 2B.1B — Cierre de Integridad Financiera y Eliminación de Rutas
       expect(own.body[0].targets[0].institution?.notes).toBeUndefined();
       expect(own.body[0].targets[0].institutionProposal?.commissionRates).toBeUndefined();
       expect((await request(app).get(`/api/credit-submission-targets/${target.id}/proposal-document`)).status).toBe(200);
+      const ownPdf = await request(app).post(`/api/credit-submission-targets/${target.id}/generate-pdf`);
+      expect(ownPdf.status).toBe(200);
+      expect(ownPdf.headers["content-type"]).toContain("application/pdf");
 
       const my = await request(app).get("/api/credit-submission-requests/my-submissions");
       expect(my.status).toBe(200);

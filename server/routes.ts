@@ -10348,7 +10348,7 @@ function maskCLABE(clabe?: string | null): string | null {
   });
 
   // Approve credit submission target - Admins only
-  app.patch('/api/credit-submission-targets/:id/approve', isAuthenticated, requireModule('aprobaciones'), async (req: any, res) => {
+  app.patch('/api/credit-submission-targets/:id/approve', isAuthenticated, requireModuleAndAction('aprobaciones', 'edit'), async (req: any, res) => {
     try {
       const { id } = req.params;
       const { adminNotes, details } = req.body;
@@ -10398,7 +10398,7 @@ function maskCLABE(clabe?: string | null): string | null {
       }
 
       const target = await enrichCreditSubmissionTarget(rawTarget);
-      res.json(target);
+      res.json(projectSubmissionTarget(target, user.role));
     } catch (error) {
       console.error("Error approving credit submission target:", error);
       res.status(500).json({ message: "Failed to approve credit submission target" });
@@ -10406,7 +10406,7 @@ function maskCLABE(clabe?: string | null): string | null {
   });
 
   // Reject credit submission target - Admins only (for institution rejections)
-  app.patch('/api/credit-submission-targets/:id/reject', isAuthenticated, requireModule('aprobaciones'), async (req: any, res) => {
+  app.patch('/api/credit-submission-targets/:id/reject', isAuthenticated, requireModuleAndAction('aprobaciones', 'edit'), async (req: any, res) => {
     try {
       const { id } = req.params;
       const { adminNotes } = req.body;
@@ -10456,7 +10456,7 @@ function maskCLABE(clabe?: string | null): string | null {
       }
 
       const target = await enrichCreditSubmissionTarget(rawTarget);
-      res.json(target);
+      res.json(projectSubmissionTarget(target, user.role));
     } catch (error) {
       console.error("Error rejecting credit submission target:", error);
       res.status(500).json({ message: "Failed to reject credit submission target" });
@@ -10464,7 +10464,7 @@ function maskCLABE(clabe?: string | null): string | null {
   });
 
   // Return credit submission target to broker - Admins only
-  app.patch('/api/credit-submission-targets/:id/return-to-broker', isAuthenticated, requireModule('aprobaciones'), async (req: any, res) => {
+  app.patch('/api/credit-submission-targets/:id/return-to-broker', isAuthenticated, requireModuleAndAction('aprobaciones', 'edit'), async (req: any, res) => {
     try {
       const { id } = req.params;
       const { adminNotes, details } = req.body;
@@ -10515,7 +10515,7 @@ function maskCLABE(clabe?: string | null): string | null {
       }
 
       const target = await enrichCreditSubmissionTarget(rawTarget);
-      res.json(target);
+      res.json(projectSubmissionTarget(target, user.role));
     } catch (error) {
       console.error("Error returning credit submission target to broker:", error);
       res.status(500).json({ message: "Failed to return credit submission target to broker" });
@@ -10523,7 +10523,7 @@ function maskCLABE(clabe?: string | null): string | null {
   });
 
   // 1. Generate PDF for credit submission target
-  app.post('/api/credit-submission-targets/:id/generate-pdf', isAuthenticated, async (req: any, res) => {
+  app.post('/api/credit-submission-targets/:id/generate-pdf', isAuthenticated, requireModuleAndAction('creditos', 'view'), async (req: any, res) => {
     try {
       const { id } = req.params;
       const rawTarget = await storage.getCreditSubmissionTarget(id);
@@ -10532,7 +10532,14 @@ function maskCLABE(clabe?: string | null): string | null {
         return res.status(404).json({ message: "Credit submission target not found" });
       }
 
-      const target = await enrichCreditSubmissionTarget(rawTarget);
+      const userId = req.user?.claims?.sub || req.user?.id;
+      const user = userId ? await storage.getUser(userId) : null;
+      const submission = await storage.getCreditSubmissionRequest(rawTarget.requestId);
+      if (!canReadCreditSubmission(user, submission)) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      // Limit broker-facing PDFs to contextual information; never render admin-only notes.
+      const target = projectSubmissionTarget(await enrichCreditSubmissionTarget(rawTarget), user?.role);
 
       const doc = new PDFDocument({ margin: 50 });
       
@@ -10664,7 +10671,7 @@ function maskCLABE(clabe?: string | null): string | null {
   });
 
   // 2. Mark submission target as sent - Admins only
-  app.patch('/api/credit-submission-targets/:id/mark-sent', isAuthenticated, async (req: any, res) => {
+  app.patch('/api/credit-submission-targets/:id/mark-sent', isAuthenticated, requireModuleAndAction('aprobaciones', 'edit'), async (req: any, res) => {
     try {
       const { id } = req.params;
       const userId = req.user.claims.sub;
@@ -10696,7 +10703,7 @@ function maskCLABE(clabe?: string | null): string | null {
       });
 
       const target = await enrichCreditSubmissionTarget(rawTarget);
-      res.json(target);
+      res.json(projectSubmissionTarget(target, user.role));
     } catch (error) {
       console.error("Error marking as sent:", error);
       res.status(500).json({ message: "Failed to mark as sent" });
@@ -10727,7 +10734,7 @@ function maskCLABE(clabe?: string | null): string | null {
       }
 
       const target = await enrichCreditSubmissionTarget(rawTarget);
-      res.json(target);
+      res.json(projectSubmissionTarget(target, user.role));
     } catch (error) {
       console.error("Error uploading proposal:", error);
       res.status(500).json({ message: "Failed to upload proposal" });
