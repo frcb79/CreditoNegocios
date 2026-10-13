@@ -10932,21 +10932,15 @@ function maskCLABE(clabe?: string | null): string | null {
         return res.status(403).json({ message: "Only the broker who created the submission or admins can select the winner" });
       }
 
-      // Update selected target to winner / selected_winner without overriding other approved/dispersed targets
-      await storage.updateCreditSubmissionTarget(id, {
-        isWinner: true,
-        status: 'selected_winner',
-      });
+      // The winning TARGET (not the entire request) owns its credit.
+      // PostgreSQL locks this row and changes winner + credit together.
 
       const client = await storage.getClient(request.clientId);
       const resolvedTenantId = request.tenantId || client?.tenantId || null;
       const proposal = target.institutionProposal as any;
 
       // REGLA 2 (COM-22): Congelamiento comercial formal validado desde servidor
-      const brokerUser = await storage.getUser(request.brokerId);
-      const masterBrokerId = (request as any).originMasterBrokerId !== undefined
-        ? (request as any).originMasterBrokerId
-        : (brokerUser?.role === 'master_broker' ? brokerUser.id : brokerUser?.masterBrokerId || null);
+      const masterBrokerId = request.originMasterBrokerId ?? null;
 
       const resolvedOfferId = (proposal as any)?.institutionProductId || (proposal as any)?.offerId || (request as any)?.institutionProductId || (request as any)?.offerId || null;
       const resolvedVersionNumber = (proposal as any)?.versionNumber ?? (request as any)?.versionNumber ?? null;
@@ -10966,7 +10960,7 @@ function maskCLABE(clabe?: string | null): string | null {
         },
       });
 
-      const credit = await storage.createCredit({
+      const creditData = {
         tenantId: resolvedTenantId,
         clientId: request.clientId,
         brokerId: request.brokerId,
@@ -10981,14 +10975,39 @@ function maskCLABE(clabe?: string | null): string | null {
         mortgageData: request.mortgageData || {},
         status: 'approved',
         finalProposal: commercialSnapshot,
-      });
+      } as any;
+      const transactionStorage: IStorage = storage;
+      let credit: any;
+      let selectedTarget: any = target;
+      let alreadySelected = false;
+      if (transactionStorage.selectWinningTargetAtomic) {
+        const settled = await transactionStorage.selectWinningTargetAtomic({
+          targetId: id,
+          requestId: request.id,
+          expectedProposal: target.institutionProposal,
+          newCredit: { ...creditData, id: randomUUID() },
+        });
+        credit = settled.credit;
+        selectedTarget = settled.target;
+        alreadySelected = settled.alreadySelected;
+      } else {
+        // Only MemStorage fixtures use this legacy fallback. PostgreSQL always
+        // uses the locked transaction to prevent orphan and duplicate credits.
+        if (target.creditId) {
+          const existing = await storage.getCredit(target.creditId);
+          if (!existing) throw new Error("WINNER_EXISTING_CREDIT_NOT_FOUND");
+          credit = existing;
+          alreadySelected = true;
+        } else {
+          credit = await storage.createCredit(creditData);
+          selectedTarget = await storage.updateCreditSubmissionTarget(id, {
+            isWinner: true, status: 'selected_winner', creditId: credit.id,
+          });
+        }
+      }
 
-      await storage.updateCreditSubmissionTarget(id, {
-        creditId: credit.id,
-      });
-
-      // Notify Super Admins & Admins that a winning proposal was selected and is ready for dispersal
-      try {
+      // Notifications are best-effort only AFTER the transactional commit.
+      if (!alreadySelected) try {
         const institution = target.financialInstitutionId 
           ? await storage.getFinancialInstitution(target.financialInstitutionId) 
           : null;
@@ -11033,9 +11052,13 @@ function maskCLABE(clabe?: string | null): string | null {
         console.error("Error creating notifications for admins on winner selection:", notifErr);
       }
 
-      const enrichedTarget = await enrichCreditSubmissionTarget(target);
-      res.json({ target: enrichedTarget, credit });
-    } catch (error) {
+      const enrichedTarget = await enrichCreditSubmissionTarget(selectedTarget);
+      res.json({ target: projectSubmissionTarget(enrichedTarget, user.role), credit, alreadySelected });
+    } catch (error: any) {
+      const code = String(error?.message || "");
+      if (code.startsWith("WINNER_")) {
+        return res.status(409).json({ code, message: "No puede seleccionarse esta propuesta sin validación adicional." });
+      }
       console.error("Error selecting winner:", error);
       res.status(500).json({ message: "Failed to select winner" });
     }
