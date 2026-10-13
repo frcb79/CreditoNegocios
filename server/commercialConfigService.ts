@@ -1,6 +1,9 @@
-import { eq, desc } from "drizzle-orm";
+import { eq, desc, sql } from "drizzle-orm";
+import { createHash } from "node:crypto";
+import type { GlobalCommercialTermsVersionData } from "./commercialTermsService";
 import {
   commercialConfigurations,
+  legalDocumentVersions,
   commercialConfigAuditLogs,
   DEFAULT_COMMERCIAL_RULES_CONFIG,
   type CommercialConfiguration,
@@ -18,6 +21,13 @@ export interface ICommercialConfigStorage {
   ): Promise<CommercialConfiguration>;
   createAuditLog(log: InsertCommercialConfigAuditLog): Promise<CommercialConfigAuditLog>;
   getAuditLogs(limit?: number): Promise<CommercialConfigAuditLog[]>;
+  updateConfigWithVersionAtomic?(
+    updates: Partial<CommercialRulesConfig>, changedBy?: string | null, reason?: string
+  ): Promise<{
+    updatedConfig: CommercialRulesConfig;
+    modifiedParams: string[];
+    publishedVersion: GlobalCommercialTermsVersionData | null;
+  }>;
 }
 
 export interface ICommercialConfigService {
@@ -26,7 +36,11 @@ export interface ICommercialConfigService {
     updates: Partial<CommercialRulesConfig>,
     changedByUserId?: string | null,
     reason?: string
-  ): Promise<{ updatedConfig: CommercialRulesConfig; modifiedParams: string[] }>;
+  ): Promise<{
+    updatedConfig: CommercialRulesConfig;
+    modifiedParams: string[];
+    publishedVersion?: GlobalCommercialTermsVersionData | null;
+  }>;
   getAuditHistory(limit?: number): Promise<CommercialConfigAuditLog[]>;
   clearCache(): void;
 }
@@ -79,8 +93,8 @@ export class CommercialConfigService implements ICommercialConfigService {
         };
       }
     } catch (err) {
-      // Fallback seguro a los defaults normativos
-      this.cachedConfig = { ...DEFAULT_COMMERCIAL_RULES_CONFIG };
+      this.clearCache();
+      throw new Error("COMMERCIAL_CONFIG_STORAGE_UNAVAILABLE");
     }
 
     this.cacheExpiresAt = now + this.cacheTtlMs;
@@ -96,6 +110,11 @@ export class CommercialConfigService implements ICommercialConfigService {
     changedByUserId?: string | null,
     reason?: string
   ): Promise<{ updatedConfig: CommercialRulesConfig; modifiedParams: string[] }> {
+    if (this.storage.updateConfigWithVersionAtomic) {
+      const committed = await this.storage.updateConfigWithVersionAtomic(updates, changedByUserId, reason);
+      this.clearCache();
+      return committed;
+    }
     const current = await this.getConfig(true);
     const modifiedParams: string[] = [];
 
