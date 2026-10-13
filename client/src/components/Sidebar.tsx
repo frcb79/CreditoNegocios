@@ -21,6 +21,7 @@ import {
   FileText,
   BarChart3,
   FileSpreadsheet,
+  ClipboardList,
   Users2,
   Settings,
   HelpCircle,
@@ -36,6 +37,7 @@ interface NavItemDef {
   section: "operacion" | "catalogos" | "supervision" | "admin";
   adminOnly?: boolean;
   platformAdminOnly?: boolean;
+  superAdminOnly?: boolean;
   brokerOnly?: boolean;
 }
 
@@ -53,6 +55,7 @@ const navigation: NavItemDef[] = [
   // Supervisión y Red
   { name: 'Aprobaciones', href: '/solicitudes-pendientes', icon: Clock, platformAdminOnly: true, section: "supervision" },
   { name: 'Red de Brokers', href: '/red-brokers', icon: Network, adminOnly: true, section: "supervision" },
+  { name: 'Auditoría Administrativa', href: '/admin/auditoria', icon: ClipboardList, superAdminOnly: true, section: "supervision" },
   { name: 'Reportes', href: '/reportes', icon: BarChart3, adminOnly: true, section: "supervision" },
 ];
 
@@ -104,6 +107,7 @@ export default function Sidebar() {
 
   const filteredNavigation = navigation.filter(item => {
     if (item.platformAdminOnly && !isFullAdmin) return false;
+    if (item.superAdminOnly && user?.role !== "super_admin") return false;
     if (item.adminOnly && !isAdmin) return false;
     if (item.brokerOnly && isFullAdmin) return false;
     return true;

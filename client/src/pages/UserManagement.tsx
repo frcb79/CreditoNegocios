@@ -3,6 +3,7 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import MainLayout from "@/components/MainLayout";
 import Header from "@/components/Header";
 import BrokerNetworkTransitionDialog from "@/components/Users/BrokerNetworkTransitionDialog";
+import SuperAdminBrokerOverview from "@/components/Users/SuperAdminBrokerOverview";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -295,6 +296,7 @@ export default function UserManagement() {
   const [operationalStatusReason, setOperationalStatusReason] = useState<string>("");
   const [operationalStatusNotes, setOperationalStatusNotes] = useState<string>("");
   const [networkTransitionUser, setNetworkTransitionUser] = useState<User | null>(null);
+  const [networkHistoryUser, setNetworkHistoryUser] = useState<User | null>(null);
 
   const isSuperAdmin = currentUser?.role === 'super_admin';
   const isPlatformAdmin = currentUser?.role === 'admin' || isSuperAdmin;
@@ -1855,6 +1857,17 @@ export default function UserManagement() {
                         </td>
                         <td className="py-3 px-6 text-right">
                           <div className="flex items-center justify-end gap-1">
+                            {isSuperAdmin && (u.role === 'broker' || u.role === 'master_broker') && (
+                              <Button
+                                variant="ghost" size="sm"
+                                onClick={() => setNetworkHistoryUser(u)}
+                                className="h-8 text-xs"
+                                title="Consultar afiliación y movimientos históricos de red"
+                                data-testid={`button-network-history-${u.id}`}
+                              >
+                                <Eye className="h-3.5 w-3.5 mr-1" /> Historial
+                              </Button>
+                            )}
                             {isSuperAdmin && u.role === 'broker' && (
                               <Button
                                 variant="ghost"
@@ -3801,6 +3814,20 @@ export default function UserManagement() {
           </DialogContent>
         </Dialog>
       )}
+
+      <Dialog open={Boolean(networkHistoryUser)} onOpenChange={(open) => { if (!open) setNetworkHistoryUser(null); }}>
+        <DialogContent className="max-w-3xl w-[95vw] max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Historial comercial y afiliación</DialogTitle>
+            <DialogDescription>Consulta de solo lectura; conserva los movimientos y la atribución histórica.</DialogDescription>
+          </DialogHeader>
+          {networkHistoryUser && <SuperAdminBrokerOverview
+            key={networkHistoryUser.id}
+            user={networkHistoryUser}
+            allUsers={legacyUsers || []}
+          />}
+        </DialogContent>
+      </Dialog>
 
       <BrokerNetworkTransitionDialog
         broker={networkTransitionUser}

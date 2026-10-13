@@ -31,6 +31,7 @@ import PendingRequests from "@/pages/PendingRequests";
 import MySubmissions from "@/pages/MySubmissions";
 import ProposalComparison from "@/pages/ProposalComparison";
 import UserManagement from "@/pages/UserManagement";
+import SuperAdminAudit from "@/pages/SuperAdminAudit";
 import DesignPreview from "@/pages/DesignPreview";
 import BulkImport from "@/pages/BulkImport";
 import Notifications from "@/pages/Notifications";
@@ -46,7 +47,7 @@ function Router() {
     // Only redirect if we're on a protected route and definitely not authenticated
     if (!isLoading && !isAuthenticated) {
       const currentPath = window.location.pathname;
-      const protectedRoutes = ['/clientes', '/creditos', '/re-gestion', '/red-brokers', '/comisiones', '/financieras', '/documentos', '/reportes', '/configuracion', '/sistema-productos', '/solicitudes-pendientes', '/mis-solicitudes', '/admin/usuarios', '/importacion-masiva', '/notificaciones'];
+      const protectedRoutes = ['/clientes', '/creditos', '/re-gestion', '/red-brokers', '/comisiones', '/financieras', '/documentos', '/reportes', '/configuracion', '/sistema-productos', '/solicitudes-pendientes', '/mis-solicitudes', '/admin/usuarios', '/admin/auditoria', '/importacion-masiva', '/notificaciones'];
       
       // Check if current path starts with any protected route
       const isProtected = protectedRoutes.some(route => currentPath.startsWith(route));
@@ -99,6 +100,7 @@ function Router() {
           <ProtectedRoute path="/mis-solicitudes" component={MySubmissions} requiredModule="creditos" />
           <ProtectedRoute path="/comparar-propuestas/:requestId" component={ProposalComparison} requiredModule="creditos" />
           <ProtectedRoute path="/admin/usuarios" component={UserManagement} />
+          <ProtectedRoute path="/admin/auditoria" component={SuperAdminAudit} allowedRoles={['super_admin']} />
           <ProtectedRoute path="/notificaciones" component={Notifications} />
           <ProtectedRoute path="/importacion-masiva" component={BulkImport} allowedRoles={['admin', 'super_admin']} requiredModule="importacion" />
           <ProtectedRoute path="/ayuda" component={HelpCenterPage} />
