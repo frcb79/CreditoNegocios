@@ -10,6 +10,7 @@ import {
 } from "../shared/legalDocuments";
 import { sendFormalizationOtpEmail } from "./emailService";
 import { storage } from "./storage";
+import { renderLegalVoucherPdf } from "./legalVoucherPdf";
 
 /**
  * Formatea el texto plano oficial del comprobante de aceptación legal e histórico.
@@ -189,6 +190,20 @@ export function registerLegalRoutes(app: Express) {
 
       const shouldDownload =
         req.query.download === "true" || req.headers.accept?.includes("text/plain");
+
+      // LEG-14: default download is PDF, with explicit TXT for legacy clients.
+      // PDF uses exactly the persisted snapshot text already shown in JSON.
+      const wantsPdf = req.query.format === "pdf" ||
+        (req.query.download === "true" && req.query.format !== "txt" && !req.headers.accept?.includes("text/plain")) ||
+        req.headers.accept?.includes("application/pdf");
+      if (wantsPdf) {
+        const pdf = await renderLegalVoucherPdf(voucherText);
+        const safeName = `comprobante-${String(acceptance.document).replace(/[^a-z0-9_-]/gi, "-")}-${String(acceptance.id).replace(/[^a-z0-9_-]/gi, "-")}.pdf`;
+        res.setHeader("Content-Type", "application/pdf");
+        res.setHeader("Content-Disposition", `attachment; filename="${safeName}"`);
+        res.setHeader("Cache-Control", "private, no-store");
+        return res.send(pdf);
+      }
 
       if (shouldDownload) {
         res.setHeader("Content-Type", "text/plain; charset=utf-8");
