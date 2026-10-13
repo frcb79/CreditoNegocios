@@ -47,7 +47,7 @@ import {
   validateOfferVersionParameters,
   isOfferEligibleForRequests,
 } from "./offerVersionService";
-import { eq, desc, asc, like, and, or, inArray, sql, gte } from "drizzle-orm";
+import { eq, ne, isNotNull, desc, asc, like, and, or, inArray, sql, gte } from "drizzle-orm";
 
 import { assertFrozenOfferLineage, readFrozenOfferLineage } from "./offerLineageService";
 import { assertTargetReviewMutable } from "./targetReviewTransitions";
@@ -4547,10 +4547,26 @@ export class DbStorage implements IStorage {
         .from(creditSubmissionTargets)
         .where(and(eq(creditSubmissionTargets.requestId, locked.requestId),
           eq(creditSubmissionTargets.status, "pending_admin"))).limit(1);
-      if (pending.length === 0) {
+      const [otherWinner] = await tx.select({ id: creditSubmissionTargets.id })
+              .from(creditSubmissionTargets)
+              .where(and(
+                eq(creditSubmissionTargets.requestId, locked.requestId),
+                ne(creditSubmissionTargets.id, locked.id),
+                or(
+                  eq(creditSubmissionTargets.isWinner, true),
+                  isNotNull(creditSubmissionTargets.creditId),
+                  inArray(creditSubmissionTargets.status, ["selected_winner", "dispersed"])
+                )
+              )).limit(1);
+      if (pending.length === 0 && !otherWinner) {
+        // Do not regress an active/partially funded request during sibling review.
         await tx.update(creditSubmissionRequests).set({
           status: "sent_to_institutions", updatedAt: new Date(),
-        }).where(eq(creditSubmissionRequests.id, locked.requestId));
+        }).where(and(
+          eq(creditSubmissionRequests.id, locked.requestId),
+          inArray(creditSubmissionRequests.status,
+            ["pending_admin", "approved", "returned_to_broker"])
+        ));
       }
       return updated;
     });
@@ -4581,9 +4597,26 @@ export class DbStorage implements IStorage {
         details: details || "", reviewedBy: adminId,
         reviewedAt: new Date(), updatedAt: new Date(),
       }).where(eq(creditSubmissionTargets.id, targetId)).returning();
-      await tx.update(creditSubmissionRequests).set({
-        status: "returned_to_broker", updatedAt: new Date(),
-      }).where(eq(creditSubmissionRequests.id, locked.requestId));
+      const [otherWinner] = await tx.select({ id: creditSubmissionTargets.id })
+        .from(creditSubmissionTargets)
+        .where(and(
+          eq(creditSubmissionTargets.requestId, locked.requestId),
+          ne(creditSubmissionTargets.id, locked.id),
+          or(
+            eq(creditSubmissionTargets.isWinner, true),
+            isNotNull(creditSubmissionTargets.creditId),
+            inArray(creditSubmissionTargets.status, ["selected_winner", "dispersed"])
+          )
+        )).limit(1);
+      if (!otherWinner) {
+        await tx.update(creditSubmissionRequests).set({
+          status: "returned_to_broker", updatedAt: new Date(),
+        }).where(and(
+          eq(creditSubmissionRequests.id, locked.requestId),
+          inArray(creditSubmissionRequests.status,
+            ["pending_admin", "approved", "sent_to_institutions", "returned_to_broker"])
+        ));
+      }
       return updated;
     });
   }

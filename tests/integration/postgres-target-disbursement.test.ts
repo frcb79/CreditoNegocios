@@ -340,6 +340,15 @@ describePg("OPE-12: winning target and credit creation in one PostgreSQL transac
       .where(eq(creditSubmissionTargets.id,fixture.target.id));
     expect(first.isWinner).toBe(true);
     expect(first.status).toBe("selected_winner");
+    const [requestAfterApprove] = await db.select().from(creditSubmissionRequests)
+      .where(eq(creditSubmissionRequests.id, fixture.request.id));
+    expect(requestAfterApprove.status).toBe(fixture.request.status);
+    const returned = await DbStorage.prototype.returnCreditSubmissionTargetToBroker(
+      siblingId, "admin-a", "needs additional evidence");
+    expect(returned?.status).toBe("returned_to_broker");
+    const [requestAfterReturn] = await db.select().from(creditSubmissionRequests)
+      .where(eq(creditSubmissionRequests.id, fixture.request.id));
+    expect(requestAfterReturn.status).toBe(fixture.request.status);
   });
 
   it("OPE-06 rolls back a winner on credit insertion failure and supports clean retry",async()=>{
