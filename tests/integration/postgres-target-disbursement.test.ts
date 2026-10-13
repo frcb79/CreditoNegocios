@@ -81,7 +81,7 @@ describePg("OPE-12: winning target and credit creation in one PostgreSQL transac
     await pool.query(`INSERT INTO credit_submission_requests
       (id,client_id,broker_id,origin_master_broker_id,requested_amount,status)
       VALUES ($1,'test-client','test-broker',$2,10000,'approved')`, [requestId,historicalMaster]);
-    const proposal = { approvedAmount: 8000, commissionRates: {
+    const proposal = { approvedAmount: 8000, interestRate: 12, term: 24, commissionRates: {
       financiera: { apertura: 5 }, broker: { apertura: 2 }, masterBroker: { apertura: 1 },
     }};
     await pool.query(`INSERT INTO credit_submission_targets
@@ -110,6 +110,7 @@ describePg("OPE-12: winning target and credit creation in one PostgreSQL transac
         originMasterBrokerId: request.originMasterBrokerId,
         financialInstitutionId: target.financialInstitutionId,
         linkedSubmissionId: request.id, amount: "8000.00",
+        interestRate: "12.00", term: 24,
         status: "approved", finalProposal: snapshot,
       },
       expectedProposal: snapshot, expectedAmount: "8000.00",
