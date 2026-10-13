@@ -48,6 +48,88 @@ describe("Fase 2B.1B — Cierre de Integridad Financiera y Eliminación de Rutas
     currentAuthUser = null;
   });
 
+  describe("FIN-P0: institution proposal keeps canonical offer/version", () => {
+    it("preserves explicit published version and derives its rates on the server", async () => {
+      const admin = await storage.createUser({
+        email: `offer-lineage-admin-${randomUUID()}@example.test`, role: "super_admin",
+        firstName: "Admin", lastName: "Financiero", isActive: true,
+      } as any);
+      const broker = await storage.createUser({
+        email: `offer-lineage-broker-${randomUUID()}@example.test`, role: "broker",
+        firstName: "Broker", lastName: "Linea", isActive: true,
+      } as any);
+      const inst = await storage.createFinancialInstitution({
+        name: `Financiera Oferta Identificada ${randomUUID()}`, isActive: true,
+      } as any);
+      const otherInstitution = await storage.createFinancialInstitution({
+        name: `Financiera Ajena ${randomUUID()}`, isActive: true,
+      } as any);
+      const offer = await storage.createInstitutionProduct({
+        institutionId: inst.id, name: "PyME Lineage", customName: "PyME Lineage",
+        productType: "credito_simple", isActive: true,
+      } as any, {
+        versionNumber: 1,
+        conditions: {
+          minAmount: 10000, maxAmount: 250000, minTermMonths: 6, maxTermMonths: 48,
+          commissionRates: {
+            financiera: { apertura: 5 }, masterBroker: { apertura: 1 }, broker: { apertura: 2 },
+          },
+        },
+        requirements: { targetProfiles: ["persona_moral"] },
+        changeReason: "Version inicial para trazabilidad",
+      } as any);
+      const [draft] = await storage.getInstitutionProductVersions(offer.id);
+      await storage.publishInstitutionProductVersion(offer.id, draft.id, {
+        publishedBy: admin.id, changeReason: "Publicacion vigente para prueba",
+      });
+      const client = await storage.createClient({
+        brokerId: broker.id, type: "persona_moral", businessName: "Cliente Lineage",
+      } as any);
+      const sub = await storage.createCreditSubmissionRequest({
+        clientId: client.id, brokerId: broker.id, requestedAmount: "100000.00",
+      } as any);
+      const target = await storage.createCreditSubmissionTarget({
+        requestId: sub.id, financialInstitutionId: inst.id, status: "sent",
+      } as any);
+      const wrongInstitutionTarget = await storage.createCreditSubmissionTarget({
+        requestId: sub.id, financialInstitutionId: otherInstitution.id, status: "sent",
+      } as any);
+      const proposal = {
+        approvedAmount: 90000, interestRate: 12, term: 24,
+        institutionProductId: offer.id, versionNumber: 1,
+      };
+      currentAuthUser = admin;
+      const wrong = await request(app)
+        .post(`/api/credit-submission-targets/${wrongInstitutionTarget.id}/institution-proposal`)
+        .send(proposal);
+      expect(wrong.status).toBe(409);
+      expect(wrong.body.code).toBe("OFFER_VERSION_INSTITUTION_MISMATCH");
+
+      const incomplete = await request(app)
+        .post(`/api/credit-submission-targets/${target.id}/institution-proposal`)
+        .send({ ...proposal, versionNumber: undefined });
+      expect(incomplete.status).toBe(409);
+      expect(incomplete.body.code).toBe("OFFER_VERSION_IDENTITY_INCOMPLETE");
+
+      const saved = await request(app)
+        .post(`/api/credit-submission-targets/${target.id}/institution-proposal`)
+        .send({ ...proposal, commissionRates: { broker: { apertura: 99 } } });
+      expect(saved.status).toBe(200);
+      const persisted = await storage.getCreditSubmissionTarget(target.id);
+      const snapshot = persisted?.institutionProposal as any;
+      expect(snapshot.institutionProductId).toBe(offer.id);
+      expect(snapshot.versionNumber).toBe(1);
+      expect(snapshot.commissionRates.broker.apertura).toBe(2);
+      expect(snapshot.commissionRates.financiera.apertura).toBe(5);
+
+      const erase = await request(app)
+        .post(`/api/credit-submission-targets/${target.id}/institution-proposal`)
+        .send({ approvedAmount: 90000, interestRate: 12, term: 24 });
+      expect(erase.status).toBe(409);
+      expect(erase.body.code).toBe("OFFER_VERSION_IDENTITY_MISMATCH");
+    });
+  });
+
   describe("ASTRA-01/02: submission authorization and financial DTO isolation", () => {
     it("denies Broker B access to Broker A's client submissions and proposal document", async () => {
       const brokerA = await storage.createUser({
