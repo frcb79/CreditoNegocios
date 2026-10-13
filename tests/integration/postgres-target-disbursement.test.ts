@@ -155,6 +155,68 @@ describePg("OPE-12: winning target and credit creation in one PostgreSQL transac
     expect(outcomes[0].credit.originMasterBrokerId).toBe("master-original-winner");
   });
 
+  it("OPE-06 permits exactly one winner across competing financial targets", async () => {
+    const initial = await seed("target-winner-cross-a", false, "master-cross-winner");
+    await pool.query(`UPDATE credit_submission_targets SET status='institution_approved'
+      WHERE id=$1`, [initial.target.id]);
+    const [targetA] = await db.select().from(creditSubmissionTargets)
+      .where(eq(creditSubmissionTargets.id, initial.target.id));
+    const targetBId = "target-winner-cross-b";
+    await pool.query(`INSERT INTO credit_submission_targets
+      (id,request_id,financial_institution_id,status,is_winner,institution_proposal)
+      VALUES ($1,$2,'test-financial-two','institution_approved',false,$3::jsonb)`,
+      [targetBId, initial.request.id, JSON.stringify(targetA.institutionProposal)]);
+    const [targetB] = await db.select().from(creditSubmissionTargets)
+      .where(eq(creditSubmissionTargets.id, targetBId));
+    const firstCredit = paramsFor({ request: initial.request, target: targetA }, "cross-a-credit").newCredit!;
+    const selectionA = {
+      targetId: targetA.id, requestId: initial.request.id,
+      expectedProposal: targetA.institutionProposal, newCredit: firstCredit,
+    };
+    const selectionB = {
+      targetId: targetB.id, requestId: initial.request.id,
+      expectedProposal: targetB.institutionProposal,
+      newCredit: { ...firstCredit, id: "cross-b-credit", financialInstitutionId: targetB.financialInstitutionId },
+    };
+    const outcomes = await Promise.allSettled([select(selectionA), select(selectionB)]);
+    expect(outcomes.map(o => o.status).sort()).toEqual(["fulfilled", "rejected"]);
+    const success = outcomes.find((o): o is PromiseFulfilledResult<Awaited<ReturnType<typeof select>>> =>
+      o.status === "fulfilled");
+    const failure = outcomes.find((o): o is PromiseRejectedResult => o.status === "rejected");
+    expect(success?.value.alreadySelected).toBe(false);
+    expect(failure?.reason?.message).toBe("WINNER_ALREADY_SELECTED_FOR_REQUEST");
+    const targets = await db.select().from(creditSubmissionTargets)
+      .where(eq(creditSubmissionTargets.requestId, initial.request.id));
+    expect(targets.filter(x => x.isWinner)).toHaveLength(1);
+    expect(targets.filter(x => x.creditId !== null)).toHaveLength(1);
+    const linked = await db.select().from(credits)
+      .where(eq(credits.linkedSubmissionId, initial.request.id));
+    expect(linked).toHaveLength(1);
+    expect(linked[0].id).toBe(success?.value.credit.id);
+    const winningSelection = success?.value.target.id === targetA.id ? selectionA : selectionB;
+    const losingSelection = success?.value.target.id === targetA.id ? selectionB : selectionA;
+    expect((await select(winningSelection)).alreadySelected).toBe(true);
+    await expect(select(losingSelection)).rejects.toThrow("WINNER_ALREADY_SELECTED_FOR_REQUEST");
+  });
+
+  it("OPE-06 rejects another winner when a legacy credit already references the request", async () => {
+    const fixture = await seed("target-winner-legacy-credit", false);
+    await pool.query(`UPDATE credit_submission_targets SET status='institution_approved'
+      WHERE id=$1`, [fixture.target.id]);
+    const newCredit = paramsFor(fixture, "winner-legacy-new-credit").newCredit!;
+    await pool.query(`INSERT INTO credits
+      (id, client_id, broker_id, linked_submission_id, amount, status)
+      VALUES ($1, $2, $3, $4, 8000, 'approved')`,
+      ["winner-legacy-old-credit", fixture.request.clientId, fixture.request.brokerId, fixture.request.id]);
+    await expect(select({
+      targetId: fixture.target.id, requestId: fixture.request.id,
+      expectedProposal: fixture.target.institutionProposal, newCredit,
+    })).rejects.toThrow("WINNER_REQUEST_CREDIT_ALREADY_EXISTS");
+    const all = await db.select().from(credits)
+      .where(eq(credits.linkedSubmissionId, fixture.request.id));
+    expect(all).toHaveLength(1);
+  });
+
   it("OPE-06 rolls back a winner on credit insertion failure and supports clean retry",async()=>{
     const fixture = await seed("target-winner-failure");
     const data = paramsFor(fixture,"winner-failure-credit");

@@ -47,7 +47,7 @@ import {
   validateOfferVersionParameters,
   isOfferEligibleForRequests,
 } from "./offerVersionService";
-import { eq, desc, asc, like, and, or, inArray, sql, gte } from "drizzle-orm";
+import { eq, ne, isNotNull, desc, asc, like, and, or, inArray, sql, gte } from "drizzle-orm";
 
 import { randomUUID, createHash } from "crypto";
 import {
@@ -3293,22 +3293,36 @@ export class DbStorage implements IStorage {
   }
 
   /**
-   * OPE-06: serialize double clicks and multiple processes on the TARGET row.
-   * An already selected target returns its previously linked credit; an error
-   * while creating or linking the credit rolls back both changes.
+   * OPE-06: lock the REQUEST before any target, so different financial targets
+   * cannot both win the same request under concurrent transactions.
+   * Same-target replays return their original credit; failures roll back all writes.
    */
   async selectWinningTargetAtomic(
     params: Parameters<NonNullable<IStorage["selectWinningTargetAtomic"]>>[0]
   ): Promise<{ target: CreditSubmissionTarget; credit: Credit; alreadySelected: boolean }> {
     return db.transaction(async tx => {
+      const [request] = await tx.select().from(creditSubmissionRequests)
+        .where(eq(creditSubmissionRequests.id, params.requestId)).for("update");
+      if (!request) throw new Error("WINNER_REQUEST_NOT_FOUND");
       const [target] = await tx.select().from(creditSubmissionTargets)
         .where(eq(creditSubmissionTargets.id, params.targetId)).for("update");
-      if (!target || target.requestId !== params.requestId) {
+      if (!target || target.requestId !== request.id) {
         throw new Error("WINNER_TARGET_NOT_FOUND");
       }
-      const [request] = await tx.select().from(creditSubmissionRequests)
-        .where(eq(creditSubmissionRequests.id, target.requestId)).limit(1);
-      if (!request) throw new Error("WINNER_REQUEST_NOT_FOUND");
+      // Covers partially migrated/legacy winner states as well as fully linked winners.
+      // Crucially, this query runs AFTER the request-level lock has been acquired.
+      const [anotherWinner] = await tx.select({ id: creditSubmissionTargets.id })
+        .from(creditSubmissionTargets)
+        .where(and(
+          eq(creditSubmissionTargets.requestId, request.id),
+          ne(creditSubmissionTargets.id, target.id),
+          or(
+            eq(creditSubmissionTargets.isWinner, true),
+            isNotNull(creditSubmissionTargets.creditId),
+            inArray(creditSubmissionTargets.status, ["selected_winner", "dispersed"])
+          )
+        )).limit(1);
+      if (anotherWinner) throw new Error("WINNER_ALREADY_SELECTED_FOR_REQUEST");
 
       if (target.creditId) {
         const [existing] = await tx.select().from(credits)
@@ -3351,6 +3365,11 @@ export class DbStorage implements IStorage {
           Number(proposed.term) !== term) {
         throw new Error("WINNER_CREDIT_PROPOSAL_MISMATCH");
       }
+      // Do not mint a second credit for this request even if a legacy target
+      // points to no credit, leaving a detached historical credit behind.
+      const [linkedCredit] = await tx.select({ id: credits.id }).from(credits)
+        .where(eq(credits.linkedSubmissionId, request.id)).limit(1);
+      if (linkedCredit) throw new Error("WINNER_REQUEST_CREDIT_ALREADY_EXISTS");
       const [created] = await tx.insert(credits).values({
         ...proposed,
         id: proposed.id,
