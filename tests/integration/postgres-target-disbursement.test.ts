@@ -240,6 +240,23 @@ describePg("OPE-12: winning target and credit creation in one PostgreSQL transac
     expect(target.creditId).toBeNull();
   });
 
+  it("FIN-P0 freezes institution proposal updates after winner selection", async () => {
+    const fixture = await seed("winner-proposal-edit-frozen");
+    const p = paramsFor(fixture,"winner-proposal-edit-credit").newCredit!;
+    await select({
+      targetId: fixture.target.id, requestId: fixture.request.id,
+      expectedProposal: fixture.target.institutionProposal, newCredit: p,
+    });
+    await expect(DbStorage.prototype.updateCreditSubmissionTarget(fixture.target.id, {
+      status: "institution_approved",
+      institutionProposal: { approvedAmount: 7000, interestRate: 14, term: 24 },
+    })).rejects.toThrow("PROPOSAL_LOCKED");
+    const [target] = await db.select().from(creditSubmissionTargets)
+      .where(eq(creditSubmissionTargets.id, fixture.target.id));
+    expect((target.institutionProposal as any).approvedAmount).toBe(8000);
+    expect(target.creditId).toBe(p.id);
+  });
+
   it("OPE-06 rolls back a winner on credit insertion failure and supports clean retry",async()=>{
     const fixture = await seed("target-winner-failure");
     const data = paramsFor(fixture,"winner-failure-credit");

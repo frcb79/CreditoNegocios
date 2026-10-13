@@ -49,7 +49,7 @@ import {
 } from "./offerVersionService";
 import { eq, desc, asc, like, and, or, inArray, sql, gte } from "drizzle-orm";
 
-import { assertFrozenOfferLineage } from "./offerLineageService";
+import { assertFrozenOfferLineage, readFrozenOfferLineage } from "./offerLineageService";
 import { randomUUID, createHash } from "crypto";
 import {
   getApprovedLegalDocument,
@@ -4397,6 +4397,35 @@ export class DbStorage implements IStorage {
   }
 
   async updateCreditSubmissionTarget(id: string, targetData: Partial<InsertCreditSubmissionTarget>): Promise<CreditSubmissionTarget | undefined> {
+    // This path can compete with selectWinningTargetAtomic. Both lock the same
+    // target row so a late financial proposal cannot replace a frozen winner.
+    const isInstitutionResponse = targetData.institutionProposal !== undefined ||
+      targetData.status === "institution_approved" || targetData.status === "institution_rejected";
+    if (isInstitutionResponse) {
+      return db.transaction(async tx => {
+        const [locked] = await tx.select().from(creditSubmissionTargets)
+          .where(eq(creditSubmissionTargets.id, id)).for("update");
+        if (!locked) return undefined;
+        if (locked.isWinner || locked.creditId ||
+            ["selected_winner", "dispersed"].includes(locked.status)) {
+          throw new Error("PROPOSAL_LOCKED");
+        }
+        if (targetData.institutionProposal !== undefined) {
+          const oldIdentity = readFrozenOfferLineage(locked.institutionProposal);
+          if (oldIdentity) {
+            assertFrozenOfferLineage(locked.institutionProposal, targetData.institutionProposal);
+          } else {
+            // A newly identified proposal is allowed before winning, but never
+            // silently replace previously bound offer/version identifiers.
+            readFrozenOfferLineage(targetData.institutionProposal);
+          }
+        }
+        const [updated] = await tx.update(creditSubmissionTargets)
+          .set({ ...targetData, updatedAt: new Date() })
+          .where(eq(creditSubmissionTargets.id, id)).returning();
+        return updated;
+      });
+    }
     try {
       const result = await db.update(creditSubmissionTargets)
         .set({ ...targetData, updatedAt: new Date() })
