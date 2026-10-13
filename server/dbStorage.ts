@@ -3283,6 +3283,82 @@ export class DbStorage implements IStorage {
   }
 
   /**
+   * OPE-06: serialize double clicks and multiple processes on the TARGET row.
+   * An already selected target returns its previously linked credit; an error
+   * while creating or linking the credit rolls back both changes.
+   */
+  async selectWinningTargetAtomic(
+    params: Parameters<NonNullable<IStorage["selectWinningTargetAtomic"]>>[0]
+  ): Promise<{ target: CreditSubmissionTarget; credit: Credit; alreadySelected: boolean }> {
+    return db.transaction(async tx => {
+      const [target] = await tx.select().from(creditSubmissionTargets)
+        .where(eq(creditSubmissionTargets.id, params.targetId)).for("update");
+      if (!target || target.requestId !== params.requestId) {
+        throw new Error("WINNER_TARGET_NOT_FOUND");
+      }
+      const [request] = await tx.select().from(creditSubmissionRequests)
+        .where(eq(creditSubmissionRequests.id, target.requestId)).limit(1);
+      if (!request) throw new Error("WINNER_REQUEST_NOT_FOUND");
+
+      if (target.creditId) {
+        const [existing] = await tx.select().from(credits)
+          .where(eq(credits.id, target.creditId)).limit(1);
+        if (!existing || existing.linkedSubmissionId !== request.id ||
+            existing.financialInstitutionId !== target.financialInstitutionId ||
+            existing.clientId !== request.clientId ||
+            existing.brokerId !== request.brokerId ||
+            (existing.originMasterBrokerId || null) !== (request.originMasterBrokerId || null)) {
+          throw new Error("WINNER_EXISTING_CREDIT_LINEAGE_MISMATCH");
+        }
+        if (!target.isWinner) throw new Error("WINNER_TARGET_CREDIT_NOT_SELECTED");
+        return { target, credit: existing, alreadySelected: true };
+      }
+
+      if (!["approved", "institution_approved", "selected_winner"].includes(target.status)) {
+        throw new Error("WINNER_TARGET_NOT_ELIGIBLE");
+      }
+      const proposal = (target.institutionProposal || {}) as Record<string, unknown>;
+      const approved = Number(proposal.approvedAmount);
+      const rate = Number(proposal.interestRate);
+      const term = Number(proposal.term);
+      if (!Number.isFinite(approved) || approved <= 0 ||
+          !Number.isFinite(rate) || rate < 0 ||
+          !Number.isInteger(term) || term <= 0) {
+        throw new Error("WINNER_PROPOSAL_INCOMPLETE");
+      }
+      if (stableJsonSnapshot(target.institutionProposal || {}) !==
+          stableJsonSnapshot(params.expectedProposal || {})) {
+        throw new Error("WINNER_PROPOSAL_CHANGED");
+      }
+      const proposed = params.newCredit;
+      if (!proposed || !proposed.id || proposed.clientId !== request.clientId ||
+          proposed.brokerId !== request.brokerId ||
+          proposed.linkedSubmissionId !== request.id ||
+          proposed.financialInstitutionId !== target.financialInstitutionId ||
+          (proposed.originMasterBrokerId || null) !== (request.originMasterBrokerId || null) ||
+          Number(proposed.amount) !== approved ||
+          Number(proposed.interestRate) !== rate ||
+          Number(proposed.term) !== term) {
+        throw new Error("WINNER_CREDIT_PROPOSAL_MISMATCH");
+      }
+      const [created] = await tx.insert(credits).values({
+        ...proposed,
+        id: proposed.id,
+        originMasterBrokerId: request.originMasterBrokerId || null,
+        status: "approved",
+      }).returning();
+      const [selected] = await tx.update(creditSubmissionTargets).set({
+        creditId: created.id,
+        isWinner: true,
+        status: "selected_winner",
+        updatedAt: new Date(),
+      }).where(eq(creditSubmissionTargets.id, target.id)).returning();
+      if (!selected) throw new Error("WINNER_TARGET_UPDATE_FAILED");
+      return { target: selected, credit: created, alreadySelected: false };
+    });
+  }
+
+  /**
    * OPE-12: winner eligibility, historical attribution, optional credit creation,
    * target linkage, tranche, commission and audit all commit in one PG transaction.
    * No Master affiliation is ever inferred from the Broker's CURRENT parent.
