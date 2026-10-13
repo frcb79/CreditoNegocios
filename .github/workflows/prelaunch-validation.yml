@@ -74,3 +74,5 @@ jobs:
         run: npm test -- --runInBand --coverage=false --forceExit tests/integration/postgres-credit-disbursement.test.ts
       - name: Test winner-target atomic creation, linkage, rollback and lineage in PostgreSQL
         run: npm test -- --runInBand --coverage=false --forceExit tests/integration/postgres-target-disbursement.test.ts
+      - name: Test commercial configuration, legal publication and audits as one PostgreSQL transaction
+        run: npm test -- --runInBand --coverage=false --forceExit tests/integration/postgres-commercial-config-atomic.test.ts
