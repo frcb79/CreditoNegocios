@@ -2048,7 +2048,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const current = await commercialConfigService.getConfig();
       const result = await commercialConfigService.updateConfig(updates, userId, reason);
 
-      if (result.modifiedParams && result.modifiedParams.length > 0) {
+      if (result.publishedVersion) {
+        // PostgreSQL committed the new rule values, audit and legal version as
+        // one ACID unit. Announce only AFTER COMMIT; never double-publish.
+        await commercialTermsService.announceCommittedGlobalVersion(result.publishedVersion, storage);
+      } else if (result.modifiedParams && result.modifiedParams.length > 0) {
+        // In-memory storage is used only by deterministic unit tests.
         await commercialTermsService.publishGlobalCommercialTermsUpdate({
           previousConditions: current,
           newConditions: result.updatedConfig,
