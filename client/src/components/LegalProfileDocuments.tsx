@@ -36,6 +36,7 @@ import {
 } from "@shared/legalDocuments";
 import BrokerFormalizationDialog from "./BrokerFormalizationDialog";
 import AcceptedDocumentDetailDialog from "./AcceptedDocumentDetailDialog";
+import BrokerExpedienteDocuments from "./BrokerExpedienteDocuments";
 
 export {
   FORMALIZATION_NOTICE_TEXT,
@@ -536,6 +537,8 @@ export default function LegalProfileDocuments({
           </div>
         </CardContent>
       </Card>
+
+      {isBrokerOrMaster && <BrokerExpedienteDocuments user={currentUser} />}
 
       {/* 3. Requisitos Documentales y Bancarios para Cobro de Comisiones (FASE 2B.2C) */}
       {isBrokerOrMaster && (

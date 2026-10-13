@@ -149,6 +149,14 @@ export function evaluateDocumentStatus(doc: Document): {
     };
   }
 
+  // A fresh/replaced document awaits a new Super Admin review. It is
+  // ineligible for payout, but must not be mislabeled as explicitly rejected.
+  if (extracted.status === "pending") {
+    return { status: "pending", notes: extracted.reviewNotes || null,
+      reviewedBy: null, reviewedAt: null,
+      expiresAt: doc.expiresAt ? new Date(doc.expiresAt).toISOString() : null };
+  }
+
   // Si está explícitamente rechazado
   if (extracted.status === "rejected" || doc.isValid === false) {
     return {
@@ -225,6 +233,9 @@ export async function validateBeneficiaryPayoutDocuments(
   };
 
   for (const doc of rawDocs) {
+    // Client/credit documents must not satisfy the beneficiary's personal
+    // KYB/KYC payout requirements merely because the broker originated them.
+    if (doc.clientId || doc.creditId) continue;
     const matchedType = matchDocumentRequirement(doc.type);
     if (matchedType) {
       categorized[matchedType].push(doc);

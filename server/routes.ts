@@ -6991,6 +6991,133 @@ function maskCLABE(clabe?: string | null): string | null {
   });
 
   // Document management with OCR
+
+  // PAG-01/02: personal INE/CSF/bank statement for Broker and Master.
+  // Never expose or mutate another beneficiary's file through this self-service API.
+  const profileDocumentTypes = new Set(["ine", "csf", "bank_statement"]);
+  const isOwnProfileDocument = (doc: any, id: string) =>
+    doc?.brokerId === id && !doc.clientId && !doc.creditId &&
+    profileDocumentTypes.has(doc.type);
+
+  const requireProfileDocumentOwner = async (req: any, res: any, next: any) => {
+    const userId = req.user?.claims?.sub || req.user?.id;
+    const user = userId ? await storage.getUser(userId) : undefined;
+    if (!user || !["broker", "master_broker"].includes(user.role) ||
+        user.isActive === false || user.status === "inactive" || user.status === "suspended") {
+      return res.status(403).json({ message: "Expediente disponible sólo para Broker o Master Broker activos." });
+    }
+    req.profileUserId = userId;
+    next();
+  };
+
+  app.get("/api/broker/profile-documents", isAuthenticated, requireProfileDocumentOwner, async (req: any, res) => {
+    try {
+      const documents = (await storage.getDocuments({ brokerId: req.profileUserId }))
+        .filter((doc) => isOwnProfileDocument(doc, req.profileUserId))
+        .map((doc) => ({
+          id: doc.id,
+          type: doc.type,
+          fileName: doc.fileName,
+          fileSize: doc.fileSize,
+          mimeType: doc.mimeType,
+          uploadedAt: doc.uploadedAt,
+        }));
+      return res.json({ documents });
+    } catch (error) {
+      console.error("Error loading broker profile documents", error);
+      return res.status(500).json({ message: "No fue posible consultar el expediente." });
+    }
+  });
+
+  app.post("/api/broker/profile-documents", isAuthenticated, requireProfileDocumentOwner, upload.single("file"), async (req: any, res) => {
+    let newPath: string | undefined;
+    try {
+      const userId = req.profileUserId as string;
+      const type = String(req.body?.type || "").trim();
+      if (!profileDocumentTypes.has(type)) {
+        if (req.file?.path) await removeStoredDocument(req.file.path);
+        return res.status(400).json({ message: "Tipo de documento no permitido." });
+      }
+      if (!req.file) return res.status(400).json({ message: "Se requiere un archivo." });
+      // Avoid trusting a supplied beneficiary, tenant, client or credit ID.
+      const file = req.file;
+      const ownDocuments = (await storage.getDocuments({ brokerId: userId }))
+        .filter(doc => isOwnProfileDocument(doc, userId));
+      const previous = ownDocuments.find(doc => doc.type === type);
+      const saved = await persistDocumentFile(file, { brokerId: userId, type });
+      newPath = saved.filePath;
+
+      const nextData = {
+        brokerId: userId, uploadedBy: userId, type,
+        fileName: file.originalname, filePath: saved.filePath,
+        fileSize: file.size, mimeType: file.mimetype,
+        isValid: false, expiresAt: null,
+        extractedData: { status: "pending", reviewedBy: null, reviewedAt: null,
+          reviewRole: null, reviewNotes: null, rejectionReason: null },
+      };
+      // Updating the existing document preserves its identity and invalidates its
+      // previous approval. No previous file is deleted until persistence succeeds.
+      const result = previous
+        ? await storage.updateDocument(previous.id, nextData)
+        : await storage.createDocument(insertDocumentSchema.parse({
+            ...nextData, clientId: null, creditId: null,
+            tenantId: req.tenantContext?.tenant?.id || null,
+          }));
+      if (!result) throw new Error("No fue posible persistir el documento.");
+      if (previous && previous.filePath !== saved.filePath) {
+        try { await removeStoredDocument(previous.filePath); }
+        catch (cleanupErr) { console.warn("Previous document cleanup pending", cleanupErr); }
+      }
+      return res.status(previous ? 200 : 201).json({
+        document: { id: result.id, type: result.type, fileName: result.fileName },
+        status: "pending", requiresReview: true,
+      });
+    } catch (error) {
+      if (newPath) {
+        try { await removeStoredDocument(newPath); } catch (_) {}
+      } else if (req.file?.path) {
+        try { await removeStoredDocument(req.file.path); } catch (_) {}
+      }
+      console.error("Error uploading broker profile document", error);
+      return res.status(500).json({ message: "No fue posible guardar el documento." });
+    }
+  });
+
+  app.delete("/api/broker/profile-documents/:id", isAuthenticated, requireProfileDocumentOwner, async (req: any, res) => {
+    try {
+      const doc = await storage.getDocument(req.params.id);
+      if (!doc) return res.status(404).json({ message: "Documento no encontrado." });
+      if (!isOwnProfileDocument(doc, req.profileUserId)) {
+        return res.status(403).json({ message: "No puedes eliminar documentos ajenos ni expedientes de clientes." });
+      }
+      const deleted = await storage.deleteDocument(doc.id);
+      if (!deleted) return res.status(500).json({ message: "No fue posible eliminar el registro." });
+      try { await removeStoredDocument(doc.filePath); }
+      catch (cleanupErr) { console.warn("Profile document file cleanup pending", cleanupErr); }
+      return res.json({ success: true });
+    } catch (error) {
+      console.error("Error deleting profile document", error);
+      return res.status(500).json({ message: "No fue posible eliminar el documento." });
+    }
+  });
+
+  app.get("/api/broker/profile-documents/:id/download", isAuthenticated, requireProfileDocumentOwner, async (req: any, res) => {
+    try {
+      const doc = await storage.getDocument(req.params.id);
+      if (!doc) return res.status(404).json({ message: "Documento no encontrado." });
+      if (!isOwnProfileDocument(doc, req.profileUserId)) {
+        return res.status(403).json({ message: "No puedes consultar documentos ajenos." });
+      }
+      const target = await getDocumentAccessTarget(doc.filePath, { download: true, fileName: doc.fileName });
+      res.setHeader("Cache-Control", "private, no-store");
+      if (target.kind === "redirect") return res.redirect(target.url);
+      return res.download(target.absolutePath, doc.fileName);
+    } catch (error) {
+      console.error("Error downloading profile document", error);
+      return res.status(500).json({ message: "No fue posible descargar el documento." });
+    }
+  });
+
   app.post('/api/documents', isAuthenticated, requireModuleAndAction('documentos', 'edit'), upload.single('file'), async (req: any, res) => {
     let storedFilePath: string | undefined;
 
