@@ -293,7 +293,7 @@ describePg("OPE-12: winning target and credit creation in one PostgreSQL transac
     await expect(DbStorage.prototype.updateCreditSubmissionTarget(fixture.target.id, {
       status: "institution_approved",
       institutionProposal: { approvedAmount: 7000, interestRate: 14, term: 24 },
-    })).rejects.toThrow("PROPOSAL_LOCKED");
+    })).rejects.toThrow("TARGET_ALREADY_SELECTED");
     const [target] = await db.select().from(creditSubmissionTargets)
       .where(eq(creditSubmissionTargets.id, fixture.target.id));
     expect((target.institutionProposal as any).approvedAmount).toBe(8000);
