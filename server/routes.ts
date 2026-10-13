@@ -10276,6 +10276,16 @@ function maskCLABE(clabe?: string | null): string | null {
       }
 
       const callerUser = (req as any).dbUser || (await storage.getUser(req.user?.claims?.sub || req.user?.id));
+      // This modifies a specific historical opportunity, not a generic tenant
+      // resource. Changing a broker's network cannot grant the new master
+      // rights to channel prior submissions; non-owners are rejected BEFORE
+      // querying commercial/formalization details of the originator.
+      if (!canReadCreditSubmission(callerUser, submission)) {
+        return res.status(403).json({
+          code: "SUBMISSION_NOT_AUTHORIZED",
+          message: "No tienes permiso para canalizar esta solicitud.",
+        });
+      }
       const formalizationCheck = await validateEffectiveBrokerFormalization(
         {
           callerUser,

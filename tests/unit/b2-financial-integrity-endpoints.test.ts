@@ -89,6 +89,63 @@ describe("Fase 2B.1B — Cierre de Integridad Financiera y Eliminación de Rutas
     });
   });
 
+  describe("ASTRA-01: canalización de oportunidades por propietario histórico", () => {
+    it("rechaza a otro Broker y al nuevo Master sin alterar targets; conserva el acceso administrativo", async () => {
+      const brokerA = await storage.createUser({
+        email: `channel-owner-${randomUUID()}@example.test`,
+        role: "broker", isActive: true, firstName: "Broker", lastName: "Origen",
+      } as any);
+      const brokerB = await storage.createUser({
+        email: `channel-other-${randomUUID()}@example.test`,
+        role: "broker", isActive: true, firstName: "Broker", lastName: "Ajeno",
+      } as any);
+      const masterOld = await storage.createUser({
+        email: `channel-old-master-${randomUUID()}@example.test`,
+        role: "master_broker", isActive: true, firstName: "Master", lastName: "Histórico",
+      } as any);
+      const masterNew = await storage.createUser({
+        email: `channel-new-master-${randomUUID()}@example.test`,
+        role: "master_broker", isActive: true, firstName: "Master", lastName: "Nuevo",
+      } as any);
+      const admin = await storage.createUser({
+        email: `channel-admin-${randomUUID()}@example.test`,
+        role: "super_admin", isActive: true, firstName: "Super", lastName: "Admin",
+      } as any);
+      const client = await storage.createClient({
+        brokerId: brokerA.id, type: "persona_moral", businessName: "Oportunidad de Origen",
+      } as any);
+      const lender = await storage.createFinancialInstitution({
+        name: `Financiera Canalización ${randomUUID()}`, isActive: true,
+      } as any);
+      const submission = await storage.createCreditSubmissionRequest({
+        clientId: client.id, brokerId: brokerA.id, originMasterBrokerId: masterOld.id,
+        requestedAmount: "100000.00", status: "approved",
+      } as any);
+      await storage.updateUser(brokerA.id, { masterBrokerId: masterNew.id } as any);
+
+      currentAuthUser = brokerB;
+      const outsider = await request(app).post(`/api/credit-submissions/${submission.id}/targets`)
+        .send({ financialInstitutionIds: [lender.id] });
+      expect(outsider.status).toBe(403);
+      expect(outsider.body.code).toBe("SUBMISSION_NOT_AUTHORIZED");
+
+      currentAuthUser = masterNew;
+      const movedNetwork = await request(app).post(`/api/credit-submissions/${submission.id}/targets`)
+        .send({ financialInstitutionIds: [lender.id] });
+      expect(movedNetwork.status).toBe(403);
+      expect(movedNetwork.body.code).toBe("SUBMISSION_NOT_AUTHORIZED");
+
+      expect(await storage.getCreditSubmissionTargets({ requestId: submission.id })).toHaveLength(0);
+      currentAuthUser = admin;
+      const allowed = await request(app).post(`/api/credit-submissions/${submission.id}/targets`)
+        .send({ financialInstitutionIds: [lender.id] });
+      expect(allowed.status).toBe(201);
+      const targets = await storage.getCreditSubmissionTargets({ requestId: submission.id });
+      expect(targets).toHaveLength(1);
+      expect(targets[0].financialInstitutionId).toBe(lender.id);
+    });
+  });
+
   describe("FIN-P0: institution proposal keeps canonical offer/version", () => {
     it("preserves explicit published version and derives its rates on the server", async () => {
       const admin = await storage.createUser({
