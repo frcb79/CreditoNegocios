@@ -2857,15 +2857,31 @@ export class DbStorage implements IStorage {
   
   async createCredit(credit: InsertCredit): Promise<Credit> {
     try {
-      const explicitOfferId = (credit as any).institutionProductId || (credit as any).offerId;
-      if (explicitOfferId) {
-        const product = await this.getInstitutionProduct(explicitOfferId);
-        if (!product) {
-          throw new Error("La oferta especificada no existe.");
+      const snapshotLineage = readFrozenOfferLineage(credit.finalProposal);
+      const explicitLineage = credit.institutionProductId || credit.versionNumber != null
+        ? readFrozenOfferLineage({
+            institutionProductId: credit.institutionProductId, versionNumber: credit.versionNumber,
+          }) : null;
+      if (explicitLineage && (!snapshotLineage ||
+          explicitLineage.institutionProductId !== snapshotLineage.institutionProductId ||
+          explicitLineage.versionNumber !== snapshotLineage.versionNumber)) {
+        throw new Error("OFFER_VERSION_IDENTITY_MISMATCH");
+      }
+      const canonical = snapshotLineage || explicitLineage;
+      if (canonical) {
+        const product = await this.getInstitutionProduct(canonical.institutionProductId);
+        if (!product || (credit.financialInstitutionId &&
+            product.institutionId !== credit.financialInstitutionId)) {
+          throw new Error("OFFER_VERSION_INSTITUTION_MISMATCH");
         }
-        const versions = await this.getInstitutionProductVersions(explicitOfferId);
-        if (!isOfferEligibleForRequests(product, versions)) {
-          throw new Error("La oferta seleccionada se encuentra en borrador o no cuenta con una versión publicada vigente.");
+        const versions = await this.getInstitutionProductVersions(canonical.institutionProductId);
+        const version = versions.find(v => v.versionNumber === canonical.versionNumber);
+        if (!version || !["published", "superseded"].includes(version.status)) {
+          throw new Error("OFFER_VERSION_NOT_PUBLISHED");
+        }
+        // A newer version cannot alter the version already frozen for this financing.
+        if (version.status === "superseded" && !credit.linkedSubmissionId) {
+          throw new Error("OFFER_VERSION_NOT_CURRENT");
         }
       }
 
@@ -2898,6 +2914,8 @@ export class DbStorage implements IStorage {
         .insert(credits)
         .values({
           ...credit,
+          institutionProductId: canonical?.institutionProductId ?? null,
+          versionNumber: canonical?.versionNumber ?? null,
           originMasterBrokerId,
           createdAt: new Date(),
           updatedAt: new Date(),
@@ -2912,7 +2930,27 @@ export class DbStorage implements IStorage {
   
   async updateCredit(id: string, credit: Partial<InsertCredit>): Promise<Credit | undefined> {
     try {
-      const { originMasterBrokerId: _immutableOrigin, ...safeCredit } = credit as any;
+      const { originMasterBrokerId: _immutableOrigin,
+        institutionProductId: _immutableOffer, versionNumber: _immutableVersion,
+        ...safeCredit } = credit as any;
+      if (safeCredit.finalProposal !== undefined) {
+        const [existing] = await db.select().from(credits).where(eq(credits.id, id)).limit(1);
+        if (!existing) return undefined;
+        const oldLineage = readFrozenOfferLineage(existing.finalProposal);
+        const newLineage = readFrozenOfferLineage(safeCredit.finalProposal);
+        if (oldLineage || existing.institutionProductId || existing.versionNumber != null) {
+          assertFrozenOfferLineage(existing.finalProposal, safeCredit.finalProposal);
+          if (existing.institutionProductId !== (newLineage?.institutionProductId ?? null) ||
+              existing.versionNumber !== (newLineage?.versionNumber ?? null)) {
+            // Existing pre-0009 versioned credits require audited historical reconciliation.
+            if (existing.institutionProductId || existing.versionNumber != null) {
+              throw new Error("OFFER_VERSION_IDENTITY_MISMATCH");
+            }
+          }
+        } else if (newLineage) {
+          throw new Error("OFFER_VERSION_REQUIRES_RECONCILIATION");
+        }
+      }
       const [updated] = await db
         .update(credits)
         .set({
