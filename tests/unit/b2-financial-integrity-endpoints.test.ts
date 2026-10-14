@@ -267,6 +267,19 @@ describe("Fase 2B.1B — Cierre de Integridad Financiera y Eliminación de Rutas
       expect(incomplete.status).toBe(409);
       expect(incomplete.body.code).toBe("OFFER_VERSION_IDENTITY_INCOMPLETE");
 
+      const noVersion = await request(app)
+        .post(`/api/credit-submission-targets/${target.id}/institution-proposal`)
+        .send({ approvedAmount: 90000, interestRate: 12, term: 24 });
+      expect(noVersion.status).toBe(409);
+      expect(noVersion.body.code).toBe("OFFER_VERSION_REQUIRED_FOR_PUBLISHED_INSTITUTION");
+      expect((await storage.getCreditSubmissionTarget(target.id))?.institutionProposal).toBeFalsy();
+
+      const noVersionViaResponse = await request(app)
+        .patch(`/api/credit-submission-targets/${target.id}/mark-institution-response`)
+        .send({ approved: true, proposal: { approvedAmount: 90000, interestRate: 12, term: 24 } });
+      expect(noVersionViaResponse.status).toBe(409);
+      expect(noVersionViaResponse.body.code).toBe("OFFER_VERSION_REQUIRED_FOR_PUBLISHED_INSTITUTION");
+
       const saved = await request(app)
         .post(`/api/credit-submission-targets/${target.id}/institution-proposal`)
         .send({ ...proposal, commissionRates: { broker: { apertura: 99 } } });
