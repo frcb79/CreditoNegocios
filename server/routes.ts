@@ -10923,9 +10923,6 @@ function maskCLABE(clabe?: string | null): string | null {
         return res.status(400).json({ message: "El monto solicitado es requerido y debe ser mayor a cero" });
       }
 
-      // Ensure Hipotecario Vivienda template exists
-      const hipoTemplate = await ensureHipotecarioViviendaTemplate();
-
       let finalClientId = clientId;
       let clientData: any = undefined;
 
@@ -10967,6 +10964,10 @@ function maskCLABE(clabe?: string | null): string | null {
           });
         }
       }
+
+      // Only mutate reference catalogs after validating the selected client.
+      // A forged existing-client ID must not even create a template.
+      const hipoTemplate = await ensureHipotecarioViviendaTemplate();
 
       const mortgageData = {
         propertyValue: propertyValue || null,
