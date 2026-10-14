@@ -346,4 +346,37 @@ describe("P0 - HTTP Registration, Legal Acceptance & Network Affiliation", () =>
   });
 
 
+
+  describe("P0 - Notificaciones con aislamiento estricto de propietario", () => {
+    it("niega PATCH/PUT cruzados sin mutar estado y permite al destinatario", async () => {
+      const owner = await storage.createUser({
+        email: "notification-owner-" + randomUUID() + "@network.test",
+        firstName: "Owner", lastName: "Notifications", role: "broker",
+        isActive: true, status: "active",
+      } as any);
+      const outsider = await storage.createUser({
+        email: "notification-outsider-" + randomUUID() + "@network.test",
+        firstName: "Other", lastName: "Notifications", role: "admin",
+        isActive: true, status: "active",
+      } as any);
+      const notification = await storage.createNotification({
+        userId: owner.id, type: "security_test",
+        title: "Privada", message: "Solo destinatario",
+      } as any);
+      currentAuthUser = outsider;
+      for (const method of ["patch", "put"] as const) {
+        const response = await request(app)[method]("/api/notifications/" + notification.id + "/read");
+        expect(response.status).toBe(404);
+        expect((await storage.getNotifications(owner.id)).find(n => n.id === notification.id)?.isRead).toBe(false);
+      }
+      expect((await storage.getNotifications(outsider.id)).some(n => n.id === notification.id)).toBe(false);
+      currentAuthUser = owner;
+      const ownResponse = await request(app).patch("/api/notifications/" + notification.id + "/read");
+      expect(ownResponse.status).toBe(200);
+      expect((await storage.getNotifications(owner.id)).find(n => n.id === notification.id)?.isRead).toBe(true);
+      const ownPut = await request(app).put("/api/notifications/" + notification.id + "/read");
+      expect(ownPut.status).toBe(200);
+    });
+  });
+
 });
