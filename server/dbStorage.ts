@@ -3020,20 +3020,64 @@ export class DbStorage implements IStorage {
       }
 
       const [created] = await db.transaction(async (tx) => {
-        if (!credit.linkedSubmissionId) {
-          if (canonical) {
-            await assertOfferCommissionAcceptanceInTransaction(tx, {
-              offerId: canonical.institutionProductId,
-              versionNumber: canonical.versionNumber,
-              financialInstitutionId: credit.financialInstitutionId || null,
-              brokerId: credit.brokerId,
-              originMasterBrokerId,
-            });
-          } else {
-            await assertLegacyProposalPredatesPublishedCatalogInTransaction(tx, {
-              financialInstitutionId: credit.financialInstitutionId || null,
-            });
+        let proposalRecordedAt: Date | null = null;
+        if (credit.linkedSubmissionId) {
+          // FIN-P0: Even the legacy mark-dispersed/confirm routes MUST NOT
+          // evade the locked economic gate just because a linkedSubmissionId
+          // was supplied. Resolve a real winning target and its trusted quote
+          // timestamp from PostgreSQL inside the same credit transaction.
+          const [submission] = await tx.select({
+            id: creditSubmissionRequests.id, brokerId: creditSubmissionRequests.brokerId,
+            clientId: creditSubmissionRequests.clientId,
+            originMasterBrokerId: creditSubmissionRequests.originMasterBrokerId,
+          }).from(creditSubmissionRequests)
+            .where(eq(creditSubmissionRequests.id, credit.linkedSubmissionId)).limit(1);
+          if (!submission || submission.brokerId !== credit.brokerId ||
+              submission.clientId !== credit.clientId ||
+              submission.originMasterBrokerId !== originMasterBrokerId) {
+            throw new Error("OFFER_LINKED_SUBMISSION_ATTRIBUTION_MISMATCH");
           }
+          await tx.execute(sql`SELECT id FROM credit_submission_targets
+            WHERE request_id = ${credit.linkedSubmissionId}
+              AND financial_institution_id = ${credit.financialInstitutionId || ""}
+              AND is_winner = true FOR UPDATE`);
+          const candidates = await tx.select().from(creditSubmissionTargets)
+            .where(and(
+              eq(creditSubmissionTargets.requestId, credit.linkedSubmissionId),
+              eq(creditSubmissionTargets.isWinner, true),
+              eq(creditSubmissionTargets.financialInstitutionId, credit.financialInstitutionId || ""),
+            ));
+          // Multiple targets for the same institution can exist. Never guess
+          // the winner if the candidate is ambiguous or already linked.
+          const unlinked = candidates.filter(t => !t.creditId);
+          if (unlinked.length !== 1 || !unlinked[0].institutionProposal) {
+            throw new Error("OFFER_LINKED_WINNER_TARGET_NOT_VERIFIED");
+          }
+          const winner = unlinked[0];
+          const targetLineage = readFrozenOfferLineage(winner.institutionProposal);
+          if ((!canonical && targetLineage) || (canonical && !targetLineage) ||
+              (canonical && targetLineage &&
+                (canonical.institutionProductId !== targetLineage.institutionProductId ||
+                  canonical.versionNumber !== targetLineage.versionNumber))) {
+            throw new Error("OFFER_VERSION_IDENTITY_MISMATCH");
+          }
+          proposalRecordedAt = winner.proposalReceivedAt || null;
+        }
+
+        if (canonical) {
+          await assertOfferCommissionAcceptanceInTransaction(tx, {
+            offerId: canonical.institutionProductId,
+            versionNumber: canonical.versionNumber,
+            financialInstitutionId: credit.financialInstitutionId || null,
+            brokerId: credit.brokerId,
+            originMasterBrokerId,
+            proposalRecordedAt,
+          });
+        } else {
+          await assertLegacyProposalPredatesPublishedCatalogInTransaction(tx, {
+            financialInstitutionId: credit.financialInstitutionId || null,
+            proposalRecordedAt,
+          });
         }
         return tx.insert(credits).values({
           ...credit,
