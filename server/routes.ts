@@ -696,7 +696,15 @@ async function checkOfferCommissionAcceptanceForNewOperation(args: {
   const primary = await storage.getUser(args.brokerId);
   if (!primary) return { code: "OFFER_ACCEPTANCE_ORIGINATOR_UNAVAILABLE", message: "Originador no disponible." };
   if (primary.role === "broker" && primary.masterBrokerId && !args.originMasterBrokerId) {
-    return { code: "MISSING_ORIGIN_MASTER_FOR_OFFER", message: "La operación de red requiere atribución histórica de Master Broker." };
+    const parent = await storage.getUser(primary.masterBrokerId);
+    if (!parent) return {
+      code: "OFFER_MASTER_AFFILIATION_UNVERIFIED",
+      message: "La afiliación comercial no pudo verificarse.",
+    };
+    if (parent.role === "master_broker") {
+      return { code: "MISSING_ORIGIN_MASTER_FOR_OFFER",
+        message: "La operación de red requiere atribución histórica de Master Broker." };
+    }
   }
   const ids = Array.from(new Set([args.brokerId, args.originMasterBrokerId].filter((v): v is string => typeof v === "string" && v.length > 0)));
   for (const userId of ids) {
@@ -9855,11 +9863,19 @@ function maskCLABE(clabe?: string | null): string | null {
           const allUsers = await storage.getAllUsers();
           for (const recipient of allUsers) {
             if (recipient.isActive === false || recipient.status === "inactive") continue;
-            const directBroker = recipient.role === "broker" && !recipient.masterBrokerId;
+            const parent = recipient.role === "broker" && recipient.masterBrokerId
+              ? allUsers.find(u => u.id === recipient.masterBrokerId) ||
+                await storage.getUser(recipient.masterBrokerId) : null;
+            if (recipient.role === "broker" && recipient.masterBrokerId && !parent) {
+              notificationsFailed++;
+              continue;
+            }
+            const inMasterNetwork = parent?.role === "master_broker";
+            const directBroker = recipient.role === "broker" && !inMasterNetwork;
             const master = recipient.role === "master_broker";
             const affected = (directBroker && commercialChange.directBrokerChanged) ||
               (master && commercialChange.masterBrokerChanged);
-            const networkInformation = recipient.role === "broker" && Boolean(recipient.masterBrokerId) &&
+            const networkInformation = recipient.role === "broker" && inMasterNetwork &&
               commercialChange.masterBrokerChanged;
             if (!affected && !networkInformation) continue;
             notificationsAttempted++;
