@@ -2935,6 +2935,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(403).json({ message: "Sólo Super Admin puede asignar privilegios administrativos." });
       }
 
+      // Onboarding through Administration must never bypass first-login legal evidence.
+      // All Broker/Master accounts start with an activation link and no password.
+      const isCommercialInvite = userData.role === "broker" || userData.role === "master_broker";
+      if (userData.role === "master_broker" && currentUser?.role !== "super_admin") {
+        return res.status(403).json({ message: "Sólo Super Admin puede invitar nuevos Master Brokers." });
+      }
+
       // Auto-generate unique referralCode for master_broker if not provided
       if (userData.role === 'master_broker' && !userData.referralCode) {
         const prefix = (userData.firstName ? userData.firstName.substring(0, 3).toUpperCase() : 'MB');
@@ -2944,7 +2951,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       // Account passwords must never be stored as plaintext, including
       // the legacy Super Admin/Admin user-creation endpoint.
-      if (userData.password) {
+      if (!isCommercialInvite && userData.password) {
         const supplied = String(userData.password);
         if (supplied.length < 12) {
           return res.status(400).json({ message: "La contraseña inicial debe tener al menos 12 caracteres." });
@@ -2958,27 +2965,39 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ message: "El email ya está registrado en el sistema" });
       }
       
-      // Reuse the approved canonical transaction: user + own tenant + owner.
-      // A plain createUser here generated orphan Brokers in earlier integration.
-      const newUser = (userData.role === 'broker' || userData.role === 'master_broker')
+      const activationSecret = isCommercialInvite
+        ? (await import("node:crypto")).randomBytes(32).toString("hex")
+        : null;
+      const activationExpires = activationSecret ? new Date(Date.now() + 24 * 60 * 60 * 1000) : null;
+
+      // Reuse the canonical transaction: identity + tenant + owner. Never persist
+      // an administrator-supplied password for Broker/Master; collect legal
+      // confirmations atomically at the token activation endpoint instead.
+      const newUser = isCommercialInvite
         ? (await createBrokerWithOrganization({
             email: userData.email, firstName: userData.firstName,
-            lastName: userData.lastName, password: userData.password,
+            lastName: userData.lastName, password: null,
             authMethod: userData.authMethod || "local",
-            role: userData.role,
-            masterBrokerId: userData.role === 'broker' ? userData.masterBrokerId : null,
+            role: userData.role as "broker" | "master_broker",
+            masterBrokerId: userData.role === "broker" ? userData.masterBrokerId : null,
+            resetToken: activationSecret,
+            resetTokenExpiry: activationExpires,
             profileData: userData.profileData || {},
             isActive: userData.isActive !== false,
           })).user
         : await storage.createUser(userData);
-      
-      // Send welcome email to the new broker
-      if (newUser.email && (newUser.role === 'broker' || newUser.role === 'master_broker')) {
-        const fullName = `${newUser.firstName || ''} ${newUser.lastName || ''}`.trim() || newUser.email;
-        console.log(`[EMAIL] Sending welcome email to new user: ${newUser.email}`);
-        await sendWelcomeEmail(newUser.email, fullName);
+
+      if (isCommercialInvite && newUser.email && activationSecret) {
+        const fullName = [newUser.firstName, newUser.lastName].filter(Boolean).join(" ") || undefined;
+        const delivery = await sendAccountInvitationEmail(newUser.email, activationSecret, userData.role as "broker" | "master_broker", fullName);
+        return res.status(delivery.success ? 201 : 202).json({
+          ...publicUserForManagement(newUser),
+          invitationSent: delivery.success,
+          message: delivery.success
+            ? "Invitación enviada: el usuario activará su cuenta y aceptará los documentos legales."
+            : "Cuenta pendiente de activación: el correo no se pudo enviar; reintenta la invitación.",
+        });
       }
-      
       res.status(201).json(publicUserForManagement(newUser));
     } catch (error: any) {
       console.error("Error creating user:", error);
