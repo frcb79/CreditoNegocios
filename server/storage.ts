@@ -1849,6 +1849,9 @@ export class MemStorage implements IStorage {
       personalizedSha256: data.personalizedSha256 ?? null,
       personalizedSnapshot: data.personalizedSnapshot ?? null,
     };
+    if (this.legalAcceptances.has(acceptance.id)) {
+      throw Object.assign(new Error("Duplicate legal acceptance primary key"), { code: "23505" });
+    }
     this.legalAcceptances.set(acceptance.id, structuredClone(acceptance));
     return structuredClone(acceptance);
   }
