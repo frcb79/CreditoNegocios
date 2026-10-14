@@ -6,6 +6,7 @@ import rateLimit from "express-rate-limit";
 import { pool } from "./db";
 import { storage, type IStorage } from "./storage";
 import { readFrozenOfferLineage } from "./offerLineageService";
+import { authorizeClientSensitiveDisclosure } from "./clientConsentGate";
 import { setupAuth, isAuthenticated } from "./auth";
 import { registerLegalRoutes } from "./legalRoutes";
 import { validateRegistrationAcceptance, getPublishedLegalDocument } from "./legalDocuments";
@@ -11276,6 +11277,17 @@ function maskCLABE(clabe?: string | null): string | null {
       if (!canReadCreditSubmission(user, submission)) {
         return res.status(403).json({ message: "Access denied" });
       }
+      // LEG-10: This PDF contains client identifiers and financial purpose.
+      // It is an exportable institution-target package, not merely an
+      // in-app draft. Deny before piping any PDF bytes to the response.
+      const pdfClient = submission ? await storage.getClient(submission.clientId) : null;
+      const pdfConsent = authorizeClientSensitiveDisclosure({
+        clientId: submission?.clientId,
+        tenantId: submission?.tenantId || pdfClient?.tenantId || null,
+        recipientInstitutionId: rawTarget.financialInstitutionId,
+        purpose: "financial_institution_pdf_export",
+      });
+      if (!pdfConsent.authorized) return res.status(409).json(pdfConsent);
       // Limit broker-facing PDFs to contextual information; never render admin-only notes.
       const target = projectSubmissionTarget(await enrichCreditSubmissionTarget(rawTarget), user?.role);
 
@@ -11424,6 +11436,27 @@ function maskCLABE(clabe?: string | null): string | null {
       if (!existingTarget) {
         return res.status(404).json({ message: "Credit submission target not found" });
       }
+      // Preserve the historical TARGET_ALREADY_SELECTED refusal before the
+      // consent gate; a final/winning target cannot be reopened either way.
+      if (existingTarget.isWinner || existingTarget.creditId ||
+          ["selected_winner", "dispersed"].includes(existingTarget.status)) {
+        return res.status(409).json({
+          code: "TARGET_ALREADY_SELECTED",
+          message: "Esta propuesta ya fue seleccionada o tiene un crédito vinculado.",
+        });
+      }
+      const sendRequest = await storage.getCreditSubmissionRequest(existingTarget.requestId);
+      if (!sendRequest) {
+        return res.status(404).json({ message: "Credit submission request not found" });
+      }
+      const sendClient = await storage.getClient(sendRequest.clientId);
+      const disclosureConsent = authorizeClientSensitiveDisclosure({
+        clientId: sendRequest.clientId,
+        tenantId: sendRequest.tenantId || sendClient?.tenantId || null,
+        recipientInstitutionId: existingTarget.financialInstitutionId,
+        purpose: "financial_institution_submission",
+      });
+      if (!disclosureConsent.authorized) return res.status(409).json(disclosureConsent);
 
       const rawTarget = await storage.updateCreditSubmissionTarget(id, {
         status: 'sent',
