@@ -450,6 +450,13 @@ describe("P0 - HTTP Registration, Legal Acceptance & Network Affiliation", () =>
       });
       expect(forgedOpening.status).toBe(409);
       expect(forgedOpening.body.code).toBe("OFFER_VERSION_REQUIRED_FOR_COMMISSION_RATES");
+      const conflict = await request(app).post("/api/credits").send({
+        clientId: randomUUID(), amount: "200000",
+        institutionProductId: "offer-A", versionNumber: 2,
+        finalProposal: { institutionProductId: "offer-B", versionNumber: 1 },
+      });
+      expect(conflict.status).toBe(409);
+      expect(conflict.body.code).toBe("OFFER_VERSION_IDENTITY_MISMATCH");
     });
   });
 
