@@ -702,11 +702,18 @@ async function checkOfferCommissionAcceptanceForNewOperation(args: {
       message: "La afiliación comercial no pudo verificarse.",
     };
     if (parent.role === "master_broker") {
+      // A missing historical Master cannot be silently replaced by the current
+      // Master or classified as a directly paid Broker.
       return { code: "MISSING_ORIGIN_MASTER_FOR_OFFER",
-        message: "La operación de red requiere atribución histórica de Master Broker." };
+        message: "La operación requiere una atribución histórica de Master verificable." };
     }
   }
-  const ids = Array.from(new Set([args.brokerId, args.originMasterBrokerId].filter((v): v is string => typeof v === "string" && v.length > 0)));
+  // CN pays Master for network operations; the network Broker has a separate
+  // contractual acceptance with that Master. Never require the Broker to
+  // accept wholesale network rates or approve the same money twice.
+  const ids = args.originMasterBrokerId
+    ? [args.originMasterBrokerId]
+    : [args.brokerId];
   for (const userId of ids) {
     const responsibleUser = userId === primary.id ? primary : await storage.getUser(userId);
     if (!responsibleUser) {
