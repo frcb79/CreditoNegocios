@@ -657,6 +657,57 @@ function projectSubmissionPerson(person: any) {
 }
 
 /**
+ * COM-28 shared financial gate: newly created credits and winner/dispersal
+ * routes must not bypass the versioned economic acceptance. Superseded
+ * snapshots remain historical (no retroactive acceptance).
+ */
+async function checkOfferCommissionAcceptanceForNewOperation(args: {
+  offerId: unknown;
+  versionNumber: unknown;
+  brokerId: string | null | undefined;
+  originMasterBrokerId?: string | null;
+}): Promise<{ code: string; message: string; offerId?: string; versionNumber?: number; pendingFor?: string } | null> {
+  if (!args.offerId && args.versionNumber == null) return null; // legacy unversioned operation
+  if (typeof args.offerId !== "string" || !args.offerId.trim() ||
+      !Number.isSafeInteger(Number(args.versionNumber)) || Number(args.versionNumber) <= 0) {
+    return { code: "OFFER_VERSION_IDENTITY_INCOMPLETE", message: "Falta una identidad válida de oferta y versión." };
+  }
+  const offerId = args.offerId;
+  const versionNumber = Number(args.versionNumber);
+  const product = await storage.getInstitutionProduct(offerId);
+  if (!product) return { code: "OFFER_NOT_FOUND", message: "La oferta económica ya no existe." };
+  const versions = await storage.getInstitutionProductVersions(offerId);
+  const chosen = versions.find(v => v.versionNumber === versionNumber);
+  if (!chosen || !["published", "superseded"].includes(chosen.status)) {
+    return { code: "OFFER_VERSION_NOT_PUBLISHED", message: "La versión económica no está publicada." };
+  }
+  if (chosen.status === "superseded") return null; // historical/frozen, never reprice
+  if (!args.brokerId) return { code: "MISSING_ORIGIN_BROKER", message: "Sin Broker originador para aceptar condiciones." };
+  const primary = await storage.getUser(args.brokerId);
+  if (!primary) return { code: "OFFER_ACCEPTANCE_ORIGINATOR_UNAVAILABLE", message: "Originador no disponible." };
+  if (primary.role === "broker" && primary.masterBrokerId && !args.originMasterBrokerId) {
+    return { code: "MISSING_ORIGIN_MASTER_FOR_OFFER", message: "La operación de red requiere atribución histórica de Master Broker." };
+  }
+  const ids = Array.from(new Set([args.brokerId, args.originMasterBrokerId].filter((v): v is string => typeof v === "string" && v.length > 0)));
+  for (const userId of ids) {
+    const responsibleUser = userId === primary.id ? primary : await storage.getUser(userId);
+    if (!responsibleUser) {
+      return { code: "OFFER_ACCEPTANCE_ORIGINATOR_UNAVAILABLE", message: "Beneficiario histórico no disponible." };
+    }
+    const status = await getOfferCommissionStatus(storage, responsibleUser, offerId, versionNumber);
+    if (status.pending) {
+      return {
+        code: "OFFER_COMMISSION_ACCEPTANCE_REQUIRED",
+        message: "Se requiere aceptar las condiciones económicas vigentes antes de avanzar con esta operación.",
+        offerId, versionNumber,
+        pendingFor: responsibleUser.role === "master_broker" ? "master_broker" : "broker",
+      };
+    }
+  }
+  return null;
+}
+
+/**
  * FIN-P0: Keep the exact published product/version from the institution's
  * offer. Never guess an offer from only financialInstitutionId and never
  * accept client-supplied commission allocation as a commercial authority.
@@ -11575,41 +11626,12 @@ function maskCLABE(clabe?: string | null): string | null {
       const resolvedOfferId = (proposal as any)?.institutionProductId || (proposal as any)?.offerId || (request as any)?.institutionProductId || (request as any)?.offerId || null;
       const resolvedVersionNumber = (proposal as any)?.versionNumber ?? (request as any)?.versionNumber ?? null;
 
-      // COM-28: Enforce acceptance only on NEW winner selections referencing
-      // a currently published, materially changed offer/version. Already
-      // frozen/linked credits are explicitly grandfathered, never repriced.
-      if (!target.creditId && !target.isWinner && resolvedOfferId && resolvedVersionNumber != null) {
-        const offerId = String(resolvedOfferId);
-        const versionNumber = Number(resolvedVersionNumber);
-        if (!Number.isSafeInteger(versionNumber) || versionNumber <= 0) {
-          return res.status(409).json({ code: "INVALID_OFFER_VERSION" });
-        }
-        const candidateVersions = await storage.getInstitutionProductVersions(offerId);
-        const chosen = candidateVersions.find(v => v.versionNumber === versionNumber);
-        if (!chosen || !["published", "superseded"].includes(chosen.status)) {
-          return res.status(409).json({ code: "OFFER_VERSION_NOT_PUBLISHED" });
-        }
-        if (chosen.status === "published") {
-          const responsibleIds = Array.from(new Set([
-            request.brokerId,
-            masterBrokerId,
-          ].filter((id): id is string => typeof id === "string" && id.length > 0)));
-          for (const responsibleId of responsibleIds) {
-            const responsibleUser = await storage.getUser(responsibleId);
-            if (!responsibleUser) {
-              return res.status(409).json({ code: "OFFER_ACCEPTANCE_ORIGINATOR_UNAVAILABLE" });
-            }
-            const status = await getOfferCommissionStatus(storage, responsibleUser, offerId, versionNumber);
-            if (status.pending) {
-              return res.status(409).json({
-                code: "OFFER_COMMISSION_ACCEPTANCE_REQUIRED",
-                message: "La oferta tiene nuevas condiciones económicas pendientes de aceptación por el beneficiario correspondiente.",
-                offerId, versionNumber,
-                pendingFor: responsibleUser.role === "master_broker" ? "master_broker" : "broker",
-              });
-            }
-          }
-        }
+      if (!target.creditId && !target.isWinner) {
+        const blocked = await checkOfferCommissionAcceptanceForNewOperation({
+          offerId: resolvedOfferId, versionNumber: resolvedVersionNumber,
+          brokerId: request.brokerId, originMasterBrokerId: masterBrokerId,
+        });
+        if (blocked) return res.status(409).json(blocked);
       }
 
       const commercialSnapshot = consolidateCommercialProposalSnapshot({
