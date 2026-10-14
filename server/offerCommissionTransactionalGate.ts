@@ -11,6 +11,53 @@ import {
 import { compareOfferIntermediaryCommissions } from "./offerVersionService";
 
 /**
+ * A proposal created BEFORE a financial institution first published an offer
+ * may be kept as legacy history. If a catalog already existed, creating a NEW
+ * unversioned credit must fail; there is no approved commission schedule.
+ *
+ * This is evaluated in the same transaction as the financial write, using
+ * server-owned proposalReceivedAt and publishedAt (never a client timestamp).
+ */
+export async function assertLegacyProposalPredatesPublishedCatalogInTransaction(
+  tx: any,
+  args: { financialInstitutionId: string | null; proposalRecordedAt?: Date | string | null },
+): Promise<void> {
+  if (!args.financialInstitutionId) return; // unassigned draft (no institution)
+  const products = await tx.select({ id: institutionProducts.id }).from(institutionProducts)
+    .where(and(
+      eq(institutionProducts.institutionId, args.financialInstitutionId),
+      eq(institutionProducts.status, "published"),
+      eq(institutionProducts.isActive, true),
+    ));
+  if (!products.length) return; // institution does not yet have a published catalog
+  const timestamp = args.proposalRecordedAt
+    ? new Date(args.proposalRecordedAt).getTime() : NaN;
+  if (!Number.isFinite(timestamp)) {
+    throw new Error("OFFER_VERSION_REQUIRED_FOR_PUBLISHED_INSTITUTION");
+  }
+  let earliestPublishedAt = Infinity;
+  for (const product of products) {
+    const versions = await tx.select({
+      publishedAt: institutionProductVersions.publishedAt,
+    }).from(institutionProductVersions).where(and(
+      eq(institutionProductVersions.institutionProductId, product.id),
+    ));
+    for (const item of versions) {
+      if (!item.publishedAt) continue;
+      const when = new Date(item.publishedAt).getTime();
+      if (Number.isFinite(when)) earliestPublishedAt = Math.min(earliestPublishedAt, when);
+    }
+  }
+  if (timestamp >= earliestPublishedAt) {
+    throw new Error("OFFER_VERSION_REQUIRED_FOR_PUBLISHED_INSTITUTION");
+  }
+  if (earliestPublishedAt === Infinity) {
+    // Missing authoritative publication timestamps must not permit a bypass.
+    throw new Error("OFFER_VERSION_PUBLICATION_HISTORY_UNVERIFIED");
+  }
+}
+
+/**
  * COM-28: Re-check version + accepted SHA *inside the same PostgreSQL
  * transaction* as winner/credit creation. Lock the parent offer so publish
  * cannot supersede this version between the gate and the financial write.
