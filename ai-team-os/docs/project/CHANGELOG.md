@@ -93,3 +93,8 @@ Actualizar cada vez que se completa una feature.
 - Bloqueo de escalamiento Admin → Super Admin por `PUT/PATCH /api/users/:id`, prohibición de editar cuentas Super Admin desde Admin y reserva de cambios de estado operativo para Super Admin/Master según alcance autorizado.
 - Regresiones HTTP para notificaciones ajenas, intentos de escalamiento, edición privilegiada y cambio de estado indebido en `tests/unit/prelaunch-registration-http.test.ts`.
 - **QA:** checkpoint previo `a4e42970` con Actions `38508592693` verde en ambos jobs; correcciones posteriores publicadas aún pendientes de certificación CI y E2E. `main`, migraciones y Producción no fueron modificadas.
+
+## 2026-10-14 — Control puntual de bitácoras y permisos de creación (prelaunch)
+- Verificada existencia de bitácoras comercial, configuración, comisión y formalización; vista Super Admin presenta sólo fuentes seleccionadas, no auditoría completa de seguridad/operación.
+- Ampliadas pruebas HTTP de evento de suspensión (actor, estado anterior/nuevo, motivo) y prohibición de acceso global por Broker/Master.
+- Bloqueado `POST /api/users` para que Admin/Master no asignen arbitrariamente módulos y acciones a nuevos usuarios; regresión específica. Cambios sólo en rama de integración, sin deploy; CI del nuevo HEAD por certificar.
