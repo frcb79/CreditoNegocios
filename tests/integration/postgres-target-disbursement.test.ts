@@ -220,6 +220,54 @@ describePg("OPE-12: winning target and credit creation in one PostgreSQL transac
     expect(linked.creditId).toBe(created.id);
   });
 
+  it("P0 linked creation rejects a falsified approved amount or interest rate", async () => {
+    const fixture = await seed("target-linked-terms-tampered");
+    const original = paramsFor(fixture, "tampered-winner-terms").newCredit!;
+    const storage = Object.create(DbStorage.prototype) as DbStorage;
+    for (const tampered of [
+      { ...original, amount: "9000.00" },
+      { ...original, interestRate: "14.00" },
+      { ...original, term: 36 },
+    ]) {
+      await expect(storage.createCredit(tampered as any))
+        .rejects.toThrow("OFFER_LINKED_WINNER_CREDIT_TERMS_MISMATCH");
+    }
+    expect(await db.select().from(credits)
+      .where(eq(credits.linkedSubmissionId, fixture.request.id))).toHaveLength(0);
+    const [winner] = await db.select().from(creditSubmissionTargets)
+      .where(eq(creditSubmissionTargets.id, fixture.target.id));
+    expect(winner.creditId).toBeNull();
+  });
+
+  it("P0 linked creation refuses client-supplied commission rates that differ from the winner", async () => {
+    const fixture = await seed("target-linked-rates-tampered");
+    const original = paramsFor(fixture, "tampered-winner-rates").newCredit!;
+    const proposed = {
+      ...original,
+      finalProposal: {
+        ...(original.finalProposal as Record<string, unknown>),
+        commissionRates: { financiera: { apertura: 5 }, broker: { apertura: 99 }, masterBroker: { apertura: 1 } },
+      },
+    };
+    const storage = Object.create(DbStorage.prototype) as DbStorage;
+    await expect(storage.createCredit(proposed as any))
+      .rejects.toThrow("OFFER_LINKED_WINNER_CREDIT_TERMS_MISMATCH");
+    expect(await db.select().from(credits)
+      .where(eq(credits.linkedSubmissionId, fixture.request.id))).toHaveLength(0);
+  });
+
+  it("P0 linked creation denies a cancelled winning target", async () => {
+    const fixture = await seed("target-linked-cancelled");
+    await pool.query("UPDATE credit_submission_targets SET status='cancelled' WHERE id=$1",
+      [fixture.target.id]);
+    const proposed = paramsFor(fixture, "linked-cancelled-credit").newCredit!;
+    const storage = Object.create(DbStorage.prototype) as DbStorage;
+    await expect(storage.createCredit(proposed as any))
+      .rejects.toThrow("OFFER_LINKED_WINNER_NOT_ELIGIBLE");
+    expect(await db.select().from(credits)
+      .where(eq(credits.linkedSubmissionId, fixture.request.id))).toHaveLength(0);
+  });
+
   it("P0 serializes concurrent legacy linked credit creation and links exactly once", async () => {
     const fixture = await seed("target-linked-double-insert");
     const first = paramsFor(fixture, "linked-concurrency-one").newCredit!;
