@@ -181,6 +181,22 @@ describe("COM-28 - Aceptación económica por beneficiario y versión", () => {
       "2026-10-14T14:59:00.000Z")).toBe(false);
   });
 
+  it("la evidencia de aceptación conserva validez al reordenarse como JSONB", async () => {
+    const { storage, acceptances } = setup();
+    const broker = user("broker");
+    await acceptOfferCommission(storage, broker, offerId, 2, "127.0.0.1", "jsonb");
+    expect(acceptances).toHaveLength(1);
+    const flip = (value: any): any =>
+      Array.isArray(value) ? value.map(flip) :
+      value && typeof value === "object"
+        ? Object.fromEntries(Object.entries(value).reverse().map(([k, v]) => [k, flip(v)]))
+        : value;
+    acceptances[0].personalizedSnapshot = flip(acceptances[0].personalizedSnapshot);
+    expect((await getOfferCommissionStatus(storage, broker, offerId, 2)).accepted).toBe(true);
+    acceptances[0].personalizedSnapshot.applicableRole = "master_broker";
+    expect((await getOfferCommissionStatus(storage, broker, offerId, 2)).pending).toBe(true);
+  });
+
   it("el SHA del documento permanece estable ante reordenamiento de claves JSONB", () => {
     const { previous, published, doc } = setup();
     const flip = (value: any): any =>
