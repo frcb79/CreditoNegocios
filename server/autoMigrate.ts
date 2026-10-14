@@ -389,7 +389,7 @@ export async function runAutoMigration(): Promise<void> {
         // Explicit bootstrap only: no fixed personal email on clean Production.
         const initialPassword = process.env.ADMIN_INITIAL_PASSWORD?.trim();
         const initialEmail = process.env.ADMIN_INITIAL_EMAIL?.trim().toLowerCase();
-        const isExplicitEmail = Boolean(initialEmail && /^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(initialEmail));
+        const isExplicitEmail = Boolean(initialEmail && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(initialEmail));
         const isSecurePassword = Boolean(
           initialPassword && isExplicitEmail &&
           initialPassword.length >= 12 && 
