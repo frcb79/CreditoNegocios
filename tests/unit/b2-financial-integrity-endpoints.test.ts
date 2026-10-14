@@ -172,6 +172,62 @@ describe("Fase 2B.1B — Cierre de Integridad Financiera y Eliminación de Rutas
     });
   });
 
+  describe("SEC-P0: identity/lineage cannot be mass-assigned via edit routes", () => {
+    it("does not move a client or a credit to another Broker/client/tenant", async () => {
+      const admin = await storage.createUser({
+        email: `immutable-owner-admin-${randomUUID()}@example.test`,
+        role: "super_admin", isActive: true,
+      } as any);
+      const brokerA = await storage.createUser({
+        email: `immutable-broker-a-${randomUUID()}@example.test`,
+        role: "broker", isActive: true,
+      } as any);
+      const brokerB = await storage.createUser({
+        email: `immutable-broker-b-${randomUUID()}@example.test`,
+        role: "broker", isActive: true,
+      } as any);
+      const clientA = await storage.createClient({
+        type: "persona_moral", brokerId: brokerA.id, businessName: "Cliente irreversible A",
+      } as any);
+      const clientB = await storage.createClient({
+        type: "persona_moral", brokerId: brokerB.id, businessName: "Cliente irreversible B",
+      } as any);
+      const credit = await storage.createCredit({
+        brokerId: brokerA.id, clientId: clientA.id,
+        amount: "200000.00", status: "draft",
+      } as any);
+      currentAuthUser = admin;
+
+      const changedClient = await request(app).put(`/api/clients/${clientA.id}`)
+        .send({ brokerId: brokerB.id, businessName: "Cliente retitulado" });
+      expect(changedClient.status).toBe(409);
+      expect(changedClient.body.code).toBe("CLIENT_OWNERSHIP_IMMUTABLE");
+      const changedCredit = await request(app).put(`/api/credits/${credit.id}`)
+        .send({ clientId: clientB.id, brokerId: brokerB.id, amount: "500000.00" });
+      expect(changedCredit.status).toBe(409);
+      expect(changedCredit.body.code).toBe("CREDIT_OWNERSHIP_IMMUTABLE");
+
+      const alteredLineage = await request(app).put(`/api/credits/${credit.id}`)
+        .send({ linkedSubmissionId: `forged-${randomUUID()}` });
+      expect(alteredLineage.status).toBe(409);
+      expect(alteredLineage.body.code).toBe("CREDIT_OWNERSHIP_IMMUTABLE");
+
+      const savedClient = await storage.getClient(clientA.id);
+      const savedCredit = await storage.getCredit(credit.id);
+      expect(savedClient?.brokerId).toBe(brokerA.id);
+      expect(savedClient?.businessName).toBe("Cliente irreversible A");
+      expect(savedCredit?.clientId).toBe(clientA.id);
+      expect(savedCredit?.brokerId).toBe(brokerA.id);
+      expect(savedCredit?.amount).toBe("200000.00");
+
+      // Generic editing of non-identity profile fields remains available.
+      const allowedProfile = await request(app).put(`/api/clients/${clientA.id}`)
+        .send({ businessName: "Cliente A actualizado" });
+      expect(allowedProfile.status).toBe(200);
+      expect(allowedProfile.body.brokerId).toBe(brokerA.id);
+    });
+  });
+
   describe("ASTRA-01: canalización de oportunidades por propietario histórico", () => {
     it("rechaza a otro Broker y al nuevo Master sin alterar targets; conserva el acceso administrativo", async () => {
       const brokerA = await storage.createUser({
