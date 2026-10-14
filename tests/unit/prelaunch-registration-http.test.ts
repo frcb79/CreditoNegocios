@@ -91,6 +91,16 @@ describe("P0 - HTTP Registration, Legal Acceptance & Network Affiliation", () =>
       expect(target).not.toHaveProperty("resetTokenExpiry");
     });
 
+    it("GET /api/auth/user no devuelve secretos de recuperación al propio usuario", async () => {
+      currentAuthUser = broker;
+      const res = await request(app).get("/api/auth/user");
+      expect(res.status).toBe(200);
+      expect(res.body.id).toBe(broker.id);
+      expect(res.body).not.toHaveProperty("password");
+      expect(res.body).not.toHaveProperty("resetToken");
+      expect(res.body).not.toHaveProperty("resetTokenExpiry");
+    });
+
     it("PATCH /api/users rechaza mutación de tokens, passwords o traslados", async () => {
       currentAuthUser = superAdmin;
       for (const update of [

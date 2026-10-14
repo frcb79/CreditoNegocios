@@ -1125,8 +1125,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       
       const memberships = await storage.getTenantMembersByUser(userId);
+      // The authenticated account must never receive password hashes or reset bearer
+      // tokens in its profile JSON; the SPA has no legitimate need for these.
+      const safeUser: Record<string, unknown> = { ...user };
+      delete safeUser.password;
+      delete safeUser.resetToken;
+      delete safeUser.resetTokenExpiry;
       res.json({
-        ...user,
+        ...safeUser,
         memberships,
       });
     } catch (error) {
