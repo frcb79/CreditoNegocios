@@ -58,6 +58,11 @@ describePg("ASTRA-07: published offer versions remain immutable under concurrent
     // relying on whichever migration suite ran first in the CI job.
     await pool.query("DROP TABLE IF EXISTS legal_acceptances CASCADE");
     await pool.query("DROP TABLE IF EXISTS legal_document_versions CASCADE");
+    await pool.query("DROP TABLE IF EXISTS users CASCADE");
+    await pool.query(`CREATE TABLE users (
+      id varchar PRIMARY KEY, role varchar NOT NULL DEFAULT 'broker',
+      master_broker_id varchar
+    )`);
     await pool.query(`CREATE TABLE legal_document_versions (
       id varchar PRIMARY KEY, document varchar(64) NOT NULL, title varchar(255) NOT NULL,
       version varchar(32) NOT NULL, source_file varchar(255) NOT NULL,
@@ -66,7 +71,7 @@ describePg("ASTRA-07: published offer versions remain immutable under concurrent
     )`);
     await pool.query(`CREATE TABLE legal_acceptances (
       id varchar PRIMARY KEY,
-      user_id varchar NOT NULL,
+      user_id varchar NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
       user_email varchar NOT NULL, user_name varchar,
       document_id varchar NOT NULL REFERENCES legal_document_versions(id),
       document varchar(64) NOT NULL, version varchar(32) NOT NULL,
@@ -74,11 +79,6 @@ describePg("ASTRA-07: published offer versions remain immutable under concurrent
       ip_address varchar(128), user_agent text NOT NULL,
       accepted_at timestamp DEFAULT now() NOT NULL, template_sha256 varchar(64),
       personalized_sha256 varchar(64), personalized_snapshot jsonb
-    )`);
-    await pool.query("DROP TABLE IF EXISTS users CASCADE");
-    await pool.query(`CREATE TABLE users (
-      id varchar PRIMARY KEY, role varchar NOT NULL DEFAULT 'broker',
-      master_broker_id varchar
     )`);
   });
   afterAll(async () => { await pool?.end(); });
