@@ -5,6 +5,8 @@ import { db } from "../../server/db";
 import { institutionProductVersions } from "../../shared/schema";
 import { computeInstitutionProductVersionHash } from "../../server/offerVersionService";
 import { buildOfferCommissionDocument } from "../../server/offerCommissionAcceptance";
+import { acceptOfferCommission } from "../../server/offerCommissionAcceptance";
+import { assertOfferCommissionAcceptanceInTransaction } from "../../server/offerCommissionTransactionalGate";
 import { assertSafeIsolatedTestDatabase } from "../testDbSafety";
 
 const testUrl = process.env.TEST_DATABASE_URL;
@@ -52,16 +54,38 @@ describePg("ASTRA-07: published offer versions remain immutable under concurrent
       created_at timestamp DEFAULT now(), updated_at timestamp DEFAULT now(),
       UNIQUE(institution_product_id,version_number)
     )`);
-    await pool.query(`CREATE TABLE IF NOT EXISTS legal_document_versions (
+    // Dedicated synthetic PostgreSQL only. Recreate legal fixtures to avoid
+    // relying on whichever migration suite ran first in the CI job.
+    await pool.query("DROP TABLE IF EXISTS legal_acceptances CASCADE");
+    await pool.query("DROP TABLE IF EXISTS legal_document_versions CASCADE");
+    await pool.query(`CREATE TABLE legal_document_versions (
       id varchar PRIMARY KEY, document varchar(64) NOT NULL, title varchar(255) NOT NULL,
       version varchar(32) NOT NULL, source_file varchar(255) NOT NULL,
       content text NOT NULL, content_sha256 varchar(64) NOT NULL,
       effective_at timestamp, created_at timestamp DEFAULT now() NOT NULL
     )`);
+    await pool.query(`CREATE TABLE legal_acceptances (
+      id varchar PRIMARY KEY,
+      user_id varchar NOT NULL,
+      user_email varchar NOT NULL, user_name varchar,
+      document_id varchar NOT NULL REFERENCES legal_document_versions(id),
+      document varchar(64) NOT NULL, version varchar(32) NOT NULL,
+      content_sha256 varchar(64) NOT NULL, acceptance_type varchar(64) NOT NULL,
+      ip_address varchar(128), user_agent text NOT NULL,
+      accepted_at timestamp DEFAULT now() NOT NULL, template_sha256 varchar(64),
+      personalized_sha256 varchar(64), personalized_snapshot jsonb
+    )`);
+    await pool.query("DROP TABLE IF EXISTS users CASCADE");
+    await pool.query(`CREATE TABLE users (
+      id varchar PRIMARY KEY, role varchar NOT NULL DEFAULT 'broker',
+      master_broker_id varchar
+    )`);
   });
   afterAll(async () => { await pool?.end(); });
   beforeEach(async () => {
-    await pool.query("DELETE FROM legal_document_versions WHERE document = 'comisiones-oferta' AND id LIKE $1", [`%:${offerId}:%`]);
+    await pool.query("DELETE FROM legal_acceptances");
+    await pool.query("DELETE FROM users");
+    await pool.query("DELETE FROM legal_document_versions");
     await pool.query("DELETE FROM institution_product_versions");
     await pool.query("DELETE FROM institution_products");
     await pool.query(`INSERT INTO institution_products
@@ -174,6 +198,32 @@ describePg("ASTRA-07: published offer versions remain immutable under concurrent
     });
     expect((await pool.query("SELECT status FROM institution_product_versions WHERE id = 'astra-race-draft'")).rows[0].status)
       .toBe("superseded");
+  });
+
+  it("serializes financial acceptance: deny without PG evidence, allow exact SHA, then deny wrong payee", async () => {
+    await prepareSecondDraft(3.5, 4.5);
+    await DbStorage.prototype.publishInstitutionProductVersion(offerId, "astra-race-v2", {
+      changeReason: "Cambio material de cuotas",
+    });
+    await pool.query("INSERT INTO users (id,role) VALUES ('com28-broker','broker'),('com28-other','broker')");
+    const params = {
+      offerId, versionNumber: 2,
+      brokerId: "com28-broker", originMasterBrokerId: null,
+      financialInstitutionId: "financial-test",
+    };
+    const check = () => db.transaction(async tx =>
+      assertOfferCommissionAcceptanceInTransaction(tx, params));
+    await expect(check()).rejects.toThrow("OFFER_COMMISSION_ACCEPTANCE_REQUIRED");
+    // Acceptance must be durable in the SAME isolated PostgreSQL database.
+    const broker = { id: "com28-broker", email: "com28@example.test", role: "broker",
+      firstName: "Prueba", lastName: "PG", masterBrokerId: null } as any;
+    const accepted = await acceptOfferCommission(new DbStorage(), broker, offerId, 2,
+      "127.0.0.1", "pg-regression");
+    expect(accepted.status.accepted).toBe(true);
+    await expect(check()).resolves.toBeUndefined();
+    await expect(db.transaction(async tx =>
+      assertOfferCommissionAcceptanceInTransaction(tx, { ...params, brokerId: "com28-other" })))
+      .rejects.toThrow("OFFER_COMMISSION_ACCEPTANCE_REQUIRED");
   });
 
   it("rolls back offer publication if an immutable economic document hash conflicts", async () => {
