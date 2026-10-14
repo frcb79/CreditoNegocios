@@ -364,11 +364,12 @@ describe("P0 - HTTP Registration, Legal Acceptance & Network Affiliation", () =>
         title: "Privada", message: "Solo destinatario",
       } as any);
       currentAuthUser = outsider;
-      for (const method of ["patch", "put"] as const) {
-        const response = await request(app)[method]("/api/notifications/" + notification.id + "/read");
-        expect(response.status).toBe(404);
-        expect((await storage.getNotifications(owner.id)).find(n => n.id === notification.id)?.isRead).toBe(false);
-      }
+      const foreignPatch = await request(app).patch("/api/notifications/" + notification.id + "/read");
+      expect(foreignPatch.status).toBe(404);
+      expect((await storage.getNotifications(owner.id)).find(n => n.id === notification.id)?.isRead).toBe(false);
+      const foreignPut = await request(app).put("/api/notifications/" + notification.id + "/read");
+      expect(foreignPut.status).toBe(404);
+      expect((await storage.getNotifications(owner.id)).find(n => n.id === notification.id)?.isRead).toBe(false);
       expect((await storage.getNotifications(outsider.id)).some(n => n.id === notification.id)).toBe(false);
       currentAuthUser = owner;
       const ownResponse = await request(app).patch("/api/notifications/" + notification.id + "/read");
