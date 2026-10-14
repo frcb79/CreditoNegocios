@@ -64,3 +64,9 @@ Se actualiza via sync desde cada proyecto al master.
 - Invitar con correo de usuario + token de uso único, no contraseñas; incorporar aceptación legal atómica también en invitación, no sólo autorregistro.
 - Datos totalmente ficticios: Producción nueva limpia y Staging de prueba preservado puede ser más seguro que borrar datos; validar costo y rollback antes de aprovisionar.
 - Antes del GO probar consentimiento de cliente, permisos, comisiones, documentos y correos reales en Staging; CI verde no reemplaza E2E.
+
+## Lección adicional prelaunch 2026-10-13 — Seguridad de recursos y privilegios
+- Un endpoint autenticado que recibe ID de recurso no está autorizado automáticamente: las mutaciones de notificaciones deben incluir el dueño en la condición de UPDATE, no sólo comprobar que el ID exista.
+- No usar correo conocido, cuenta de pruebas ni rol Admin como sustitutos de `super_admin` para avisos financieros privilegiados.
+- Revisar TODAS las rutas legacy PUT/PATCH y los cambios de estado: los nombres `isSuperAdmin` que incluyen `admin` son una fuente real de escalamiento. Reglas RBAC deben probarse desde API con usuarios de distintos roles, nunca sólo con visibilidad de pantalla.
+- Separar commit/push y QA: un cambio P0 corregido en GitHub queda **sin certificación** hasta CI del SHA nuevo y prueba E2E cuando aplique.
