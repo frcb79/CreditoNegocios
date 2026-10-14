@@ -146,6 +146,32 @@ describe("Fase 2B.1B — Cierre de Integridad Financiera y Eliminación de Rutas
     });
   });
 
+  describe("SEC-P0: Master read access cannot mutate Broker documents", () => {
+    it("rejects modification and deletion of subordinate's file", async () => {
+      const master = await storage.createUser({
+        email: `doc-master-${randomUUID()}@example.test`,
+        role: "master_broker", isActive: true,
+      } as any);
+      const broker = await storage.createUser({
+        email: `doc-subordinate-${randomUUID()}@example.test`,
+        role: "broker", masterBrokerId: master.id, isActive: true,
+      } as any);
+      const document = await storage.createDocument({
+        brokerId: broker.id, uploadedBy: broker.id, type: "ine",
+        fileName: "subordinado.pdf", filePath: "/uploads/subordinado-no-real.pdf",
+      } as any);
+      currentAuthUser = master;
+      const update = await request(app).put(`/api/documents/${document.id}`)
+        .send({ type: "rfc" });
+      expect(update.status).toBe(403);
+      const deletion = await request(app).delete(`/api/documents/${document.id}`);
+      expect(deletion.status).toBe(403);
+      const unchanged = await storage.getDocument(document.id);
+      expect(unchanged?.type).toBe("ine");
+      expect(unchanged?.brokerId).toBe(broker.id);
+    });
+  });
+
   describe("ASTRA-01: canalización de oportunidades por propietario histórico", () => {
     it("rechaza a otro Broker y al nuevo Master sin alterar targets; conserva el acceso administrativo", async () => {
       const brokerA = await storage.createUser({
