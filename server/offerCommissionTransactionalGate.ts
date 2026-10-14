@@ -26,37 +26,38 @@ export async function assertLegacyProposalPredatesPublishedCatalogInTransaction(
   // Same parent-row lock used by publisher; serializes the historical
   // eligibility check with an in-flight publication.
   await tx.execute(sql`SELECT id FROM institution_products WHERE institution_id = ${args.financialInstitutionId} FOR UPDATE`);
+  // Include offers later archived or disabled: otherwise disabling the
+  // catalog would let NEW unversioned credits bypass previously approved
+  // versioned economics.
   const products = await tx.select({ id: institutionProducts.id }).from(institutionProducts)
-    .where(and(
-      eq(institutionProducts.institutionId, args.financialInstitutionId),
-      eq(institutionProducts.status, "published"),
-      eq(institutionProducts.isActive, true),
-    ));
-  if (!products.length) return; // institution does not yet have a published catalog
-  const timestamp = args.proposalRecordedAt
-    ? new Date(args.proposalRecordedAt).getTime() : NaN;
-  if (!Number.isFinite(timestamp)) {
-    throw new Error("OFFER_VERSION_REQUIRED_FOR_PUBLISHED_INSTITUTION");
-  }
+    .where(eq(institutionProducts.institutionId, args.financialInstitutionId));
+  if (!products.length) return; // no catalog of any type
   let earliestPublishedAt = Infinity;
+  let hasPublishedHistory = false;
   for (const product of products) {
     const versions = await tx.select({
       publishedAt: institutionProductVersions.publishedAt,
-    }).from(institutionProductVersions).where(and(
+      status: institutionProductVersions.status,
+    }).from(institutionProductVersions).where(
       eq(institutionProductVersions.institutionProductId, product.id),
-    ));
+    );
     for (const item of versions) {
+      if (item.publishedAt || ["published", "superseded", "archived"].includes(item.status)) {
+        hasPublishedHistory = true;
+      }
       if (!item.publishedAt) continue;
       const when = new Date(item.publishedAt).getTime();
       if (Number.isFinite(when)) earliestPublishedAt = Math.min(earliestPublishedAt, when);
     }
   }
-  if (timestamp >= earliestPublishedAt) {
-    throw new Error("OFFER_VERSION_REQUIRED_FOR_PUBLISHED_INSTITUTION");
-  }
+  if (!hasPublishedHistory) return; // draft-only catalog; no binding economics
   if (earliestPublishedAt === Infinity) {
-    // Missing authoritative publication timestamps must not permit a bypass.
     throw new Error("OFFER_VERSION_PUBLICATION_HISTORY_UNVERIFIED");
+  }
+  const timestamp = args.proposalRecordedAt
+    ? new Date(args.proposalRecordedAt).getTime() : NaN;
+  if (!Number.isFinite(timestamp) || timestamp >= earliestPublishedAt) {
+    throw new Error("OFFER_VERSION_REQUIRED_FOR_PUBLISHED_INSTITUTION");
   }
 }
 
