@@ -1311,9 +1311,8 @@ export class CommercialOpportunityService {
     logs: CommercialAuditLog[];
   }> {
     const { userRole, entityType, entityId, limit = 100, tenantContext } = params;
-    const isPlatformAdmin = Boolean(
-      userRole === "super_admin" || userRole === "admin" || tenantContext?.isPlatformAdmin === true
-    );
+    // Do not treat a tenant context as a platform-audit authorization.
+    const isPlatformAdmin = userRole === "super_admin" || userRole === "admin";
 
     if (!isPlatformAdmin) {
       return { logs: [] };
