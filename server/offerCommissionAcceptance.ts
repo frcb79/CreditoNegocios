@@ -88,7 +88,7 @@ export async function getOfferCommissionStatus(
     throw new Error("OFFER_VERSION_NOT_CURRENT");
   }
   const previous = versions
-    .filter(v => v.versionNumber < versionNumber && ["superseded", "published", "active"].includes(v.status))
+    .filter(v => v.versionNumber < versionNumber && v.status !== "draft")
     .sort((a, b) => b.versionNumber - a.versionNumber)[0] || null;
   // A Broker affiliated to a Master must NOT see or accept the Master's
   // wholesale offer margin. Their individual rate is governed by the
