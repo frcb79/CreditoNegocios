@@ -144,7 +144,7 @@ export async function getOfferCommissionStatus(
   };
 }
 
-function isOfferCommissionAcceptanceValid(
+export function isOfferCommissionAcceptanceValid(
   a: LegalAcceptance, documentId: string, sha: string, applicableRole: string,
 ): boolean {
   const snapshot = a.personalizedSnapshot as any;
