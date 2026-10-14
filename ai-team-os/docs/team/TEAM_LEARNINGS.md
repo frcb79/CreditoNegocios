@@ -82,3 +82,8 @@ Se actualiza via sync desde cada proyecto al master.
 - Nunca exponer la comisión mayorista Master a Brokers de red; el Master acepta su participación de oferta y su Broker su propio instrumento de red.
 - La aceptación no debe invalidar snapshots históricos ni depender de una notificación enviada; las rutas que generan nuevos créditos, no sólo selección de ganador, tienen que comprobarla.
 - Los casos de prueba añadidos requieren ejecución real PostgreSQL y E2E antes de tomar decisiones de deploy.
+
+## Lección prelaunch 2026-10-14 — Compatibilidad legacy sólo por evidencia del tiempo
+- Cuando se añade obligatoriedad de identidad oferta/version, no basta una excepción `if (!offerId) return`: eso permite a las operaciones nuevas eludir aceptaciones económicas.
+- Para propuestas previas al primer catálogo de la financiera, preservar su historia sin recálculo; para una nueva operación, comprobar publicación vigente y fecha histórica **desde el servidor**, bajo lock de producto y dentro de la transacción PG.
+- Nunca confundir existencia de tests nuevos, fixtures PostgreSQL mínimos o checks Vercel con CI y E2E ejecutados en el SHA final.
