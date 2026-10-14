@@ -103,11 +103,17 @@ export async function getOfferCommissionStatus(
   const previous = versions
     .filter(v => v.versionNumber < versionNumber && v.status !== "draft")
     .sort((a, b) => b.versionNumber - a.versionNumber)[0] || null;
-  // A Broker affiliated to a Master must NOT see or accept the Master's
-  // wholesale offer margin. Their individual rate is governed by the
-  // separate, accepted network-rate document.
+  // Only actual Master-Broker affiliation makes this a network operation.
+  // Brokers under a platform Admin remain DIRECT, even if a parent ID exists.
+  // Fail closed on an orphaned parent rather than misattribute economic rights.
+  const parent = user.role === "broker" && user.masterBrokerId
+    ? await targetStorage.getUser(user.masterBrokerId) : null;
+  if (user.role === "broker" && user.masterBrokerId && !parent) {
+    throw new Error("OFFER_MASTER_AFFILIATION_UNVERIFIED");
+  }
+  const isInMasterNetwork = parent?.role === "master_broker";
   const applicableRole = user.role === "master_broker" ? "master_broker" :
-    user.role === "broker" && !user.masterBrokerId ? "broker_directo" : null;
+    user.role === "broker" && !isInMasterNetwork ? "broker_directo" : null;
   const summary: OfferCommissionStatus = {
     offerId, versionNumber, requiresAcceptance: false, accepted: true, pending: false,
     documentId: null, contentSha256: null, applicableRole,
