@@ -170,7 +170,7 @@ export function isOfferCommissionAcceptanceValid(
     snapshot?.applicableRole === applicableRole &&
     snapshot?.documentId === documentId &&
     snapshot?.contentSha256 === sha &&
-    a.personalizedSha256 === createHash("sha256").update(JSON.stringify(snapshot), "utf8").digest("hex");
+    a.personalizedSha256 === createHash("sha256").update(stableEconomicJson(snapshot), "utf8").digest("hex");
 }
 
 export async function acceptOfferCommission(
@@ -211,7 +211,7 @@ export async function acceptOfferCommission(
     ipAddress,
     userAgent,
     templateSha256: doc.contentSha256,
-    personalizedSha256: createHash("sha256").update(JSON.stringify(snapshot), "utf8").digest("hex"),
+    personalizedSha256: createHash("sha256").update(stableEconomicJson(snapshot), "utf8").digest("hex"),
     personalizedSnapshot: snapshot,
   };
   try {
