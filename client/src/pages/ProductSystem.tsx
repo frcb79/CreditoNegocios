@@ -20,6 +20,7 @@ import ProductVariables from "@/components/ProductSystem/ProductVariables";
 import ProductTemplates from "@/components/ProductSystem/ProductTemplates";
 import InstitutionProducts from "@/components/ProductSystem/InstitutionProducts";
 import BrokerProducts from "@/components/ProductSystem/BrokerProducts";
+import PendingOfferCommissionAcceptances from "@/components/ProductSystem/PendingOfferCommissionAcceptances";
 
 type TabValue = "templates" | "institution" | "tenant" | "variables";
 
@@ -70,6 +71,7 @@ export default function ProductSystem() {
         
       <main className="flex-1 p-4 sm:p-6 lg:p-8 overflow-y-auto">
         <div className="max-w-7xl mx-auto space-y-6">
+          {(user?.role === "broker" || user?.role === "master_broker") && <PendingOfferCommissionAcceptances />}
           {/* Overview Cards (Platform Admins only) */}
           {isAdmin && (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
