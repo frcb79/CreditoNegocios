@@ -4631,6 +4631,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
         createdBy: userId,
       });
       
+      const claimedLineage = (creditData.finalProposal as any) || {};
+      const blocked = await checkOfferCommissionAcceptanceForNewOperation({
+        offerId: claimedLineage.institutionProductId || claimedLineage.offerId || (creditData as any).institutionProductId || null,
+        versionNumber: claimedLineage.versionNumber ?? null,
+        brokerId: creditData.brokerId,
+        originMasterBrokerId: (creditData as any).originMasterBrokerId ?? null,
+      });
+      if (blocked) return res.status(409).json(blocked);
+
       const credit = await storage.createCredit(creditData);
       
       // Create notification
@@ -11813,7 +11822,17 @@ function maskCLABE(clabe?: string | null): string | null {
           },
         });
       } else {
-        // Create new credit in credits table with linked submission
+        // The legacy dispersed route cannot bypass acceptance if it must create
+        // a new credit for a published, materially modified offer.
+        const offerLineage = (proposal || {}) as any;
+        const blocked = await checkOfferCommissionAcceptanceForNewOperation({
+          offerId: offerLineage.institutionProductId || offerLineage.offerId ||
+            (request as any).institutionProductId || (request as any).offerId || null,
+          versionNumber: offerLineage.versionNumber ?? (request as any).versionNumber ?? null,
+          brokerId: request.brokerId,
+          originMasterBrokerId: request.originMasterBrokerId ?? null,
+        });
+        if (blocked) return res.status(409).json(blocked);
         credit = await storage.createCredit({
           tenantId: resolvedTenantId,
           clientId: request.clientId,
@@ -11998,6 +12017,20 @@ function maskCLABE(clabe?: string | null): string | null {
           message: "Operación no elegible para confirmación de desembolso: Falta la Financiera oferente.",
           code: "MISSING_FINANCIAL_INSTITUTION",
         });
+      }
+
+      // A newly created target-linked credit needs accepted current economics.
+      // Previously linked credits preserve their immutable historical rates.
+      if (!target.creditId) {
+        const proposal = (target.institutionProposal || {}) as any;
+        const blocked = await checkOfferCommissionAcceptanceForNewOperation({
+          offerId: proposal.institutionProductId || proposal.offerId ||
+            (request as any).institutionProductId || (request as any).offerId || null,
+          versionNumber: proposal.versionNumber ?? (request as any).versionNumber ?? null,
+          brokerId: request.brokerId,
+          originMasterBrokerId: request.originMasterBrokerId ?? null,
+        });
+        if (blocked) return res.status(409).json(blocked);
       }
 
       const { confirmedAmount, notes, dispersalIndex, idempotencyKey } = req.body;
