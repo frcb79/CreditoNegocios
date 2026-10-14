@@ -248,6 +248,16 @@ describePg("ASTRA-07: published offer versions remain immutable under concurrent
       }))).resolves.toBeUndefined();
   });
 
+  it("archivar una oferta publicada no vuelve a habilitar créditos nuevos sin versión", async () => {
+    await publish();
+    await pool.query("UPDATE institution_products SET status='archived',is_active=false WHERE id=$1", [offerId]);
+    await pool.query("UPDATE institution_product_versions SET status='archived' WHERE id=$1", [draftId]);
+    await expect(db.transaction(async tx =>
+      assertLegacyProposalPredatesPublishedCatalogInTransaction(tx, {
+        financialInstitutionId: "financial-test",
+      }))).rejects.toThrow("OFFER_VERSION_REQUIRED_FOR_PUBLISHED_INSTITUTION");
+  });
+
   it("network operation requires Master acceptance, not the Broker's wholesale signature", async () => {
     await prepareSecondDraft(3.5, 4.5);
     await DbStorage.prototype.publishInstitutionProductVersion(offerId, "astra-race-v2", {
