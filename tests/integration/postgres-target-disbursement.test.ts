@@ -81,15 +81,41 @@ describePg("OPE-12: winning target and credit creation in one PostgreSQL transac
     // transactions, so this fixture must also create the parent catalog.
     await pool.query("DROP TABLE IF EXISTS institution_product_versions CASCADE");
     await pool.query("DROP TABLE IF EXISTS institution_products CASCADE");
+    // These tables are selected through shared Drizzle models by the
+    // transactional COM-28 gate. Keep the synthetic schema aligned with the
+    // columns read there, not only the columns written by individual tests.
     await pool.query(`CREATE TABLE institution_products (
-      id varchar PRIMARY KEY, institution_id varchar NOT NULL,
-      status varchar DEFAULT 'draft', is_active boolean DEFAULT true
+      id varchar PRIMARY KEY, template_id varchar, institution_id varchar NOT NULL,
+      name varchar, custom_name varchar, product_type varchar, slug varchar,
+      description text, configuration jsonb DEFAULT '{}', target_profiles text[],
+      active_variables jsonb DEFAULT '{}', status varchar NOT NULL DEFAULT 'draft',
+      current_version_number integer NOT NULL DEFAULT 1,
+      is_active boolean DEFAULT true, created_by varchar,
+      created_at timestamp DEFAULT now(), updated_at timestamp DEFAULT now()
     )`);
     await pool.query(`CREATE TABLE institution_product_versions (
       id varchar PRIMARY KEY, institution_product_id varchar NOT NULL
         REFERENCES institution_products(id),
-      status varchar DEFAULT 'draft', published_at timestamp
+      version_number integer NOT NULL DEFAULT 1,
+      status varchar NOT NULL DEFAULT 'draft',
+      effective_from timestamp, effective_to timestamp,
+      conditions jsonb DEFAULT '{}', requirements jsonb DEFAULT '{}',
+      required_documents text[] DEFAULT ARRAY[]::text[],
+      variables_configuration jsonb DEFAULT '{}',
+      change_reason text, version_hash varchar,
+      published_at timestamp, published_by varchar, created_by varchar,
+      created_at timestamp DEFAULT now(), updated_at timestamp DEFAULT now(),
+      UNIQUE (institution_product_id, version_number)
     )`);
+    // The earlier MIG-01 suite normally creates users. This suite must also
+    // work independently rather than relying on another suite's side effects.
+    await pool.query(`CREATE TABLE IF NOT EXISTS users (
+      id varchar PRIMARY KEY, role varchar, master_broker_id varchar
+    )`);
+    await pool.query(`INSERT INTO users (id,role,master_broker_id) VALUES
+      ('test-broker','broker',NULL), ('master-chain','master_broker',NULL)
+      ON CONFLICT (id) DO UPDATE SET role=EXCLUDED.role,
+        master_broker_id=EXCLUDED.master_broker_id`);
   });
   afterAll(async () => { await pool?.end(); });
 
@@ -308,6 +334,15 @@ describePg("OPE-12: winning target and credit creation in one PostgreSQL transac
     const data = paramsFor({ request: fixture.request, target }, "credit-version-chain");
     const snapshot = { ...(data.newCredit!.finalProposal as Record<string, unknown>),
       institutionProductId: "offer-chain-A", versionNumber: 3 };
+    // This is a real, published versioned-offer test. Without a matching
+    // catalog fixture it would be rejected before reaching lineage assertions.
+    await pool.query(`INSERT INTO institution_products
+      (id,institution_id,status,current_version_number,is_active)
+      VALUES ('offer-chain-A','test-financial','published',3,true)`);
+    await pool.query(`INSERT INTO institution_product_versions
+      (id,institution_product_id,version_number,status,published_at)
+      VALUES ('offer-chain-A-v3','offer-chain-A',3,'published',NOW())`);
+    try {
     const winner = await select({ targetId: target.id, requestId: fixture.request.id,
       expectedProposal: taggedProposal,
       newCredit: { ...data.newCredit!, finalProposal: snapshot } });
@@ -322,6 +357,11 @@ describePg("OPE-12: winning target and credit creation in one PostgreSQL transac
     const [stored] = await db.select().from(commissions)
       .where(eq(commissions.id, settled.commission.id));
     expect(stored.versionNumber).toBe(3);
+    } finally {
+      // Later legacy cases must not inherit a published institution catalog.
+      await pool.query("DELETE FROM institution_product_versions WHERE id='offer-chain-A-v3'");
+      await pool.query("DELETE FROM institution_products WHERE id='offer-chain-A'");
+    }
   });
 
   it("FIN-P0 refuses a commission with a different version, atomically", async () => {
