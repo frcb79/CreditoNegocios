@@ -49,6 +49,9 @@ function setup(opts?: { missingDocument?: boolean }) {
   if (opts?.missingDocument) documentMap.clear();
   const storage = {
     getInstitutionProductVersions: async () => [previous, published],
+    getUser: async (id: string) =>
+      id === "master-123" ? ({ id, role: "master_broker" } as any) :
+      id === "admin-123" ? ({ id, role: "admin" } as any) : undefined,
     getLegalDocumentVersion: async (id: string) => documentMap.get(id),
     getLegalAcceptancesByUser: async (userId: string) => acceptances.filter(a => a.userId === userId),
     getLegalAcceptanceById: async (id: string) => acceptances.find(a => a.id === id),
@@ -90,6 +93,22 @@ describe("COM-28 - Aceptación económica por beneficiario y versión", () => {
     await expect(acceptOfferCommission(storage, networkBroker, offerId, 2, null, "test"))
       .rejects.toThrow("OFFER_COMMISSIONS_NOT_PENDING");
     expect(acceptances).toHaveLength(0);
+  });
+
+  it("Broker bajo Admin de plataforma conserva comisión directa y exige aceptación", async () => {
+    const { storage, doc } = setup();
+    const directPlatformBroker = user("broker", "admin-123");
+    const status = await getOfferCommissionStatus(storage, directPlatformBroker, offerId, 2);
+    expect(status.applicableRole).toBe("broker_directo");
+    expect(status.pending).toBe(true);
+    expect(status.contentSha256).toBe(doc.contentSha256);
+    expect(JSON.stringify(status.newRates)).not.toContain("masterBroker");
+  });
+
+  it("afiliación huérfana no puede convertirse silenciosamente en canal directo", async () => {
+    const { storage } = setup();
+    await expect(getOfferCommissionStatus(storage, user("broker", "missing-parent"), offerId, 2))
+      .rejects.toThrow("OFFER_MASTER_AFFILIATION_UNVERIFIED");
   });
 
   it("Master acepta sólo su cuota y la aceptación no sirve para otro usuario", async () => {
