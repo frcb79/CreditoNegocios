@@ -153,6 +153,56 @@ describe("Fase 2B.1B — Cierre de Integridad Financiera y Eliminación de Rutas
     });
   });
 
+  describe("LEG-10: no institution disclosure without verified CLIENT consent", () => {
+    it("fails closed for mark-sent and institution PDF, ignoring operator-supplied consent", async () => {
+      const admin = await storage.createUser({
+        email: `leg10-admin-${randomUUID()}@example.test`,
+        role: "super_admin", isActive: true,
+      } as any);
+      const broker = await storage.createUser({
+        email: `leg10-broker-${randomUUID()}@example.test`,
+        role: "broker", isActive: true,
+      } as any);
+      const client = await storage.createClient({
+        brokerId: broker.id, type: "persona_moral",
+        businessName: "Consentimiento del cliente pendiente",
+      } as any);
+      const institution = await storage.createFinancialInstitution({
+        name: `Financiera LEG10 ${randomUUID()}`, isActive: true,
+      } as any);
+      const submission = await storage.createCreditSubmissionRequest({
+        clientId: client.id, brokerId: broker.id,
+        requestedAmount: "100000.00", status: "approved",
+      } as any);
+      const target = await storage.createCreditSubmissionTarget({
+        requestId: submission.id, financialInstitutionId: institution.id,
+        status: "approved", isWinner: false,
+      } as any);
+
+      currentAuthUser = admin;
+      const forged = await request(app)
+        .patch(`/api/credit-submission-targets/${target.id}/mark-sent`)
+        .send({ consentAccepted: true, consentSigner: client.id, signedByBroker: true });
+      expect(forged.status).toBe(409);
+      expect(forged.body.code).toBe("CLIENT_CONSENT_REQUIRED");
+
+      const pdf = await request(app)
+        .post(`/api/credit-submission-targets/${target.id}/generate-pdf`)
+        .send({ clientConsent: true, consentDocumentId: "fictional" });
+      expect(pdf.status).toBe(409);
+      expect(pdf.body.code).toBe("CLIENT_CONSENT_REQUIRED");
+      expect(String(pdf.headers["content-type"])).toContain("application/json");
+      expect(pdf.headers["content-disposition"]).toBeUndefined();
+
+      // Neither route can mutate the target or pretend transmission occurred.
+      const stored = await storage.getCreditSubmissionTarget(target.id);
+      const parent = await storage.getCreditSubmissionRequest(submission.id);
+      expect(stored?.status).toBe("approved");
+      expect(stored?.creditId).toBeNull();
+      expect(parent?.status).toBe("approved");
+    });
+  });
+
   describe("OPE-P0: selected target cannot be administratively reopened", () => {
     it("rejects approving, rejecting, returning and resending a winner; siblings stay reviewable", async () => {
       const admin = await storage.createUser({
