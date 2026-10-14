@@ -114,6 +114,22 @@ describe("Fase 2B.1B — Cierre de Integridad Financiera y Eliminación de Rutas
       expect(foreignUpload.body.code).toBe("DOCUMENT_CLIENT_NOT_AUTHORIZED");
       expect(await storage.getDocuments({ clientId: clientA.id })).toHaveLength(0);
 
+      const clientC = await storage.createClient({
+        type: "persona_moral", brokerId: brokerA.id, businessName: "Empresa propia C",
+      } as any);
+      const creditC = await storage.createCredit({
+        brokerId: brokerA.id, clientId: clientC.id, amount: "120000.00", status: "draft",
+      } as any);
+      currentAuthUser = brokerA;
+      const mismatched = await request(app).post("/api/documents")
+        .field("clientId", clientA.id).field("creditId", creditC.id).field("type", "rfc")
+        .attach("file", Buffer.from("%PDF-1.4 cliente distinto"), {
+          filename: "mismatch.pdf", contentType: "application/pdf",
+        });
+      expect(mismatched.status).toBe(409);
+      expect(mismatched.body.code).toBe("DOCUMENT_CLIENT_CREDIT_MISMATCH");
+      expect(await storage.getDocuments({ clientId: clientA.id })).toHaveLength(0);
+
       const original = await storage.createDocument({
         brokerId: brokerA.id, uploadedBy: brokerA.id, clientId: clientA.id,
         type: "ine", fileName: "protegido.pdf",
