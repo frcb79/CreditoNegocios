@@ -3736,9 +3736,10 @@ export class DbStorage implements IStorage {
     }
   }
 
-  async markNotificationAsRead(id: string): Promise<boolean> {
+  async markNotificationAsRead(id: string, userId: string): Promise<boolean> {
     try {
-      const result = await db.update(notifications).set({ isRead: true }).where(eq(notifications.id, id));
+      // Ownership check is part of the atomic UPDATE to prevent cross-user mutations.
+      const result = await db.update(notifications).set({ isRead: true }).where(and(eq(notifications.id, id), eq(notifications.userId, userId)));
       return (result as any).rowCount > 0;
     } catch (error) {
       console.error("Error marking notification as read:", error);
