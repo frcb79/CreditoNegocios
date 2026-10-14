@@ -4754,7 +4754,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
       
       res.status(201).json(credit);
-    } catch (error) {
+    } catch (error: any) {
+      const code = String(error?.message || "");
+      if (code.startsWith("OFFER_") || code === "MISSING_ORIGIN_MASTER_FOR_OFFER") {
+        return res.status(409).json({ code, message: "Las condiciones de oferta o aceptación necesitan revisión." });
+      }
       console.error("Error creating credit:", error);
       res.status(500).json({ message: "Failed to create credit" });
     }
@@ -4984,7 +4988,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
               message: error.message, code: error.code || "CANONICAL_CALCULATION_ERROR",
             });
           }
-          if (code.startsWith("DISBURSEMENT_") || code === "TOTAL_DISBURSEMENT_EXCEEDS_APPROVED_AMOUNT") {
+          if (code.startsWith("DISBURSEMENT_") || code.startsWith("OFFER_") ||
+              code === "MISSING_ORIGIN_MASTER_FOR_OFFER" ||
+              code === "TOTAL_DISBURSEMENT_EXCEEDS_APPROVED_AMOUNT") {
             return res.status(409).json({
               message: "No pudo confirmarse el tramo: conflicto de estado, monto o idempotencia.",
               code,
@@ -11865,7 +11871,8 @@ function maskCLABE(clabe?: string | null): string | null {
       res.json({ target: projectSubmissionTarget(enrichedTarget, user.role), credit: projectSubmissionCredit(credit, user.role), alreadySelected });
     } catch (error: any) {
       const code = String(error?.message || "");
-      if (code.startsWith("WINNER_")) {
+      if (code.startsWith("WINNER_") || code.startsWith("OFFER_") ||
+          code === "MISSING_ORIGIN_MASTER_FOR_OFFER") {
         return res.status(409).json({ code, message: "No puede seleccionarse esta propuesta sin validación adicional." });
       }
       console.error("Error selecting winner:", error);
@@ -12283,7 +12290,9 @@ function maskCLABE(clabe?: string | null): string | null {
               message: error.message, code: error.code || "CANONICAL_CALCULATION_ERROR",
             });
           }
-          if (code.startsWith("DISBURSEMENT_") || code === "TOTAL_DISBURSEMENT_EXCEEDS_APPROVED_AMOUNT") {
+          if (code.startsWith("DISBURSEMENT_") || code.startsWith("OFFER_") ||
+              code === "MISSING_ORIGIN_MASTER_FOR_OFFER" ||
+              code === "TOTAL_DISBURSEMENT_EXCEEDS_APPROVED_AMOUNT") {
             return res.status(409).json({
               message: "No se pudo confirmar: revisar propuesta, afiliación histórica, monto o idempotencia.",
               code,
