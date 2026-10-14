@@ -364,7 +364,7 @@ export interface IStorage {
   // Notification operations
   getNotifications(userId: string): Promise<Notification[]>;
   createNotification(notification: NotificationInput): Promise<Notification>;
-  markNotificationAsRead(id: string): Promise<boolean>;
+  markNotificationAsRead(id: string, userId: string): Promise<boolean>;
   getUnreadNotificationCount(userId: string): Promise<number>;
 
   // Document operations
@@ -3567,9 +3567,9 @@ export class MemStorage implements IStorage {
     return notification;
   }
 
-  async markNotificationAsRead(id: string): Promise<boolean> {
+  async markNotificationAsRead(id: string, userId: string): Promise<boolean> {
     const notification = this.notifications.get(id);
-    if (!notification) return false;
+    if (!notification || notification.userId !== userId) return false;
 
     notification.isRead = true;
     this.notifications.set(id, notification);
