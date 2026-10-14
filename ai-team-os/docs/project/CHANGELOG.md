@@ -107,3 +107,9 @@ Actualizar cada vez que se completa una feature.
 - Nueva regresión unitaria `offer-commission-material-delta.test.ts` (7 escenarios) seleccionada en GitHub Actions prelaunch.
 - Auditoría global comercial endurecida por rol real en ruta y servicio, sin confiar exclusivamente en contexto de tenant.
 - Rama de integración exclusivamente, commits pusheados; CI del SHA nuevo no certificado. No se ejecutó ninguna migración ni se desplegó Producción.
+
+## 2026-10-14 — COM-28: documento económico y aceptación por oferta/version
+- Se reutilizan tablas legales ya existentes para registrar versión, SHA-256, rol y evidencia personalizada de aceptación; publicación de documento económico en la misma transacción PostgreSQL que publica la oferta. Sin SQL nuevo desplegado.
+- Añadidas API de consulta/aceptación, bandeja y UI existente de productos para Broker directo y Master; Broker de red no accede a cuota mayorista, acepta su propia red por mecanismo anterior.
+- Gate de nuevas operaciones (selección de ganador, crédito directo, dispersión legacy y confirmación que crea crédito) sin recalcular operaciones históricas; publicación avisa a destinatarios pertinentes.
+- Pruebas unitarias de aceptación, alcance, inmutabilidad y validación de hash; PostgreSQL de publicación con rollback por conflicto; se actualizaron suites CI. **CI del HEAD y E2E aún pendientes**, no declarar COM-28 certificado hasta ejecutarlos.
