@@ -163,6 +163,52 @@ Sistema de Gestión de Brokers
   }
 }
 
+
+/** Activation mail: username + personal one-time link, never a shared password. */
+export async function sendAccountInvitationEmail(
+  to: string, token: string, role: "broker" | "master_broker", name?: string,
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    if (!resend) return { success: false, error: "Servicio de correo no configurado" };
+    const baseUrl = process.env.FRONTEND_BASE_URL?.trim();
+    if (!baseUrl?.startsWith("https://")) return { success: false, error: "URL de activación HTTPS no configurada" };
+    const link = baseUrl.replace(/\/$/, "") + "/reset-password?token=" + encodeURIComponent(token);
+    const safe = (text: string) => text.replace(/&/g, "&amp;").replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+    const displayRole = role === "master_broker" ? "Master Broker" : "Broker";
+    const greeting = name?.trim() || "colaborador";
+    const message = "Te invitamos a Crédito Negocios como " + displayRole + ".";
+    const html = [
+      "<div style='font-family:Arial,sans-serif;max-width:590px;margin:auto;padding:32px;color:#183153'>",
+      "<h1>Crédito Negocios</h1><h2>¡Bienvenido!</h2>",
+      "<p>Hola " + safe(greeting) + ",</p>",
+      "<p>" + message + "</p>",
+      "<p><strong>Tu usuario:</strong> " + safe(to) + "</p>",
+      "<p>Para activar tu cuenta, crea tu propia contraseña segura.</p>",
+      '<p><a style="display:inline-block;background:#147d52;color:white;padding:12px 24px;border-radius:5px;text-decoration:none" href="' + link + '">Activar mi cuenta</a></p>',
+      "<p>Enlace personal de un solo uso, válido por 24 horas.</p>",
+      "<p>Después completa tu perfil y revisa y formaliza los documentos legales antes de operar.</p>",
+      "<p>Si no esperabas esta invitación, puedes ignorarla y contactar a soporte.</p>",
+      "</div>",
+    ].join("");
+    const text = [
+      "Crédito Negocios — Bienvenido", "Hola " + greeting + ",", message,
+      "Tu usuario es: " + to,
+      "Activa tu cuenta creando tu propia contraseña:", link,
+      "Enlace de un solo uso, válido por 24 horas.",
+      "Después completa tu perfil y formaliza los documentos legales.",
+      "Si no esperabas esta invitación, ignórala."
+    ].join("\n");
+    const result = await resend.emails.send({
+      from: FROM_EMAIL, to: [to], subject: "Bienvenido a Crédito Negocios | Activa tu cuenta de " + displayRole,
+      html, text
+    });
+    return result.error ? { success: false, error: result.error.message } : { success: true };
+  } catch (err: any) {
+    return { success: false, error: err?.message || "Error al enviar invitación" };
+  }
+}
+
 export async function sendBrokerLeadEmail(
   payload: BrokerLeadPayload,
 ): Promise<{ success: boolean; error?: string }> {

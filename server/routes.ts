@@ -11,7 +11,7 @@ import { registerLegalRoutes } from "./legalRoutes";
 import { validateRegistrationAcceptance } from "./legalDocuments";
 import PDFDocument from "pdfkit";
 import bcrypt from "bcrypt";
-import { sendBrokerDeactivationRequestEmail, sendBrokerLeadEmail, sendPasswordResetEmail, sendWebsiteLeadEmail, sendWelcomeEmail, sendSuperAdminNotificationEmail } from "./emailService";
+import { sendBrokerDeactivationRequestEmail, sendBrokerLeadEmail, sendAccountInvitationEmail, sendPasswordResetEmail, sendWebsiteLeadEmail, sendWelcomeEmail, sendSuperAdminNotificationEmail } from "./emailService";
 import { getDocumentAccessTarget, persistDocumentFile, removeStoredDocument } from "./documentStorage";
 import { 
   generateFinancierasTemplate, 
@@ -7714,10 +7714,16 @@ function maskCLABE(clabe?: string | null): string | null {
         phone: z.string().trim().max(35).optional(),
         message: z.string().trim().max(500).optional(),
         masterBrokerId: z.string().trim().optional(),
+        role: z.enum(["broker", "master_broker"]).default("broker"),
       }).safeParse(req.body);
       if (!input.success) return res.status(400).json({ message: "Datos de invitación inválidos." });
       const data = input.data;
       const normalizedEmail = data.email.toLowerCase();
+      const invitedRole = data.role;
+      if (invitedRole === "master_broker" && inviter.role !== "super_admin")
+        return res.status(403).json({ message: "Sólo Super Admin puede invitar nuevos Master Brokers." });
+      if (inviter.role === "admin" && data.masterBrokerId)
+        return res.status(403).json({ message: "Sólo Super Admin puede afiliar Brokers a un Master." });
 
       // An invitation must not link to a staging domain by accidental fallback.
       const baseUrl = process.env.FRONTEND_BASE_URL;
@@ -7728,8 +7734,8 @@ function maskCLABE(clabe?: string | null): string | null {
         return res.status(503).json({ message: "Servicio de correo no configurado para enviar invitaciones." });
       }
 
-      const targetMasterBrokerId = inviter.role === "master_broker"
-        ? inviter.id : (data.masterBrokerId || null);
+      const targetMasterBrokerId = invitedRole === "master_broker"
+        ? null : inviter.role === "master_broker" ? inviter.id : (data.masterBrokerId || null);
       const previous = await storage.getUserByEmail(normalizedEmail);
       const crypto = await import("node:crypto");
       const resetToken = crypto.randomBytes(32).toString("hex");
@@ -7743,14 +7749,14 @@ function maskCLABE(clabe?: string | null): string | null {
         // owned Broker identity already created through the canonical path.
         const allTenants = await storage.getTenants();
         const owned = allTenants.filter(t =>
-          t.type === "broker" && (t.settings as any)?.legacyOwnerUserId === previous.id
+          t.type === invitedRole && (t.settings as any)?.legacyOwnerUserId === previous.id
         );
         const members = owned.length === 1 ? await storage.getTenantMembers(owned[0].id) : [];
         const ownedByBroker = members.some(m =>
           m.userId === previous.id && m.role === "owner" && m.isActive !== false
         );
         const isSameNetwork = (previous.masterBrokerId || null) === targetMasterBrokerId;
-        if (previous.role !== "broker" || previous.password ||
+        if (previous.role !== invitedRole || previous.password ||
             !isSameNetwork || !ownedByBroker) {
           return res.status(409).json({
             message: "El usuario ya existe o pertenece a otra red. Los cambios de afiliación requieren autorización de Super Admin."
@@ -7765,7 +7771,7 @@ function maskCLABE(clabe?: string | null): string | null {
           firstName: data.firstName || null,
           lastName: data.lastName || null,
           password: null, authMethod: "local",
-          role: "broker", masterBrokerId: targetMasterBrokerId,
+          role: invitedRole, masterBrokerId: targetMasterBrokerId,
           resetToken, resetTokenExpiry,
           profileData: {
             phone: data.phone || "",
@@ -7778,12 +7784,12 @@ function maskCLABE(clabe?: string | null): string | null {
       }
 
       const recipientName = [targetBroker.firstName, targetBroker.lastName].filter(Boolean).join(" ") || undefined;
-      const sent = await sendPasswordResetEmail(normalizedEmail, resetToken, recipientName);
+      const sent = await sendAccountInvitationEmail(normalizedEmail, resetToken, invitedRole, recipientName);
       if (!sent.success) {
         console.error("[Invitation] Email delivery failed; invitation remains pending:", sent.error);
         return res.status(202).json({
           invitationSent: false,
-          message: "Broker registrado, pero no se entregó el correo. Reintenta la invitación.",
+          message: "Cuenta registrada, pero no se entregó el correo. Reintenta la invitación.",
           broker: { id: targetBroker.id, email: targetBroker.email, role: targetBroker.role },
           invitationKind,
         });
@@ -7792,7 +7798,7 @@ function maskCLABE(clabe?: string | null): string | null {
       await storage.createNotification({
         userId,
         type: "broker_invitation_sent",
-        title: "Invitación de Broker enviada",
+        title: "Invitación de acceso enviada",
         message: `Invitación enviada a ${normalizedEmail}`,
         data: { email: normalizedEmail, brokerId: targetBroker.id },
         priority: "medium",
