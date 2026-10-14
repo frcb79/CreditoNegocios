@@ -101,3 +101,9 @@ Actualizar cada vez que se completa una feature.
 
 ## 2026-10-14 — Validación de tipo de aceptación comercial (COM-28)
 - La API genérica de aceptación comercial ahora rechaza tipos/descriptores de oferta o financiera no soportados, en vez de confundirlos con aceptación global. Prueba HTTP negativa añadida; aceptación material por oferta/version sigue pendiente de implementación/QA como requisito prelaunch. Sin cambios de infraestructura.
+
+## 2026-10-14 — COM-28: detector de cambios materiales de comisión por oferta (sin activar aceptación)
+- Se agregó comparación determinista por oferta/version y destinatario económico en `server/offerVersionService.ts`; `/api/institution-products/:id/publish` incluye evaluación, declara que el gate de aceptación aún NO está implementado.
+- Nueva regresión unitaria `offer-commission-material-delta.test.ts` (7 escenarios) seleccionada en GitHub Actions prelaunch.
+- Auditoría global comercial endurecida por rol real en ruta y servicio, sin confiar exclusivamente en contexto de tenant.
+- Rama de integración exclusivamente, commits pusheados; CI del SHA nuevo no certificado. No se ejecutó ninguna migración ni se desplegó Producción.
