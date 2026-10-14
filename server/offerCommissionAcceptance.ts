@@ -70,7 +70,7 @@ export type OfferCommissionStatus = {
   pending: boolean;
   documentId: string | null;
   contentSha256: string | null;
-  applicableRole: "broker_directo" | "broker_red" | "master_broker" | null;
+  applicableRole: "broker_directo" | "master_broker" | null;
   previousRates: unknown;
   newRates: unknown;
   reason?: string;
@@ -90,8 +90,11 @@ export async function getOfferCommissionStatus(
   const previous = versions
     .filter(v => v.versionNumber < versionNumber && ["superseded", "published", "active"].includes(v.status))
     .sort((a, b) => b.versionNumber - a.versionNumber)[0] || null;
+  // A Broker affiliated to a Master must NOT see or accept the Master's
+  // wholesale offer margin. Their individual rate is governed by the
+  // separate, accepted network-rate document.
   const applicableRole = user.role === "master_broker" ? "master_broker" :
-    user.role === "broker" ? (user.masterBrokerId ? "broker_red" : "broker_directo") : null;
+    user.role === "broker" && !user.masterBrokerId ? "broker_directo" : null;
   const summary: OfferCommissionStatus = {
     offerId, versionNumber, requiresAcceptance: false, accepted: true, pending: false,
     documentId: null, contentSha256: null, applicableRole,
