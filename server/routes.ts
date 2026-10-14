@@ -666,6 +666,7 @@ async function checkOfferCommissionAcceptanceForNewOperation(args: {
   versionNumber: unknown;
   brokerId: string | null | undefined;
   originMasterBrokerId?: string | null;
+  snapshotRecordedAt?: string | Date | null;
 }): Promise<{ code: string; message: string; offerId?: string; versionNumber?: number; pendingFor?: string } | null> {
   if (!args.offerId && args.versionNumber == null) return null; // legacy unversioned operation
   if (typeof args.offerId !== "string" || !args.offerId.trim() ||
@@ -681,7 +682,18 @@ async function checkOfferCommissionAcceptanceForNewOperation(args: {
   if (!chosen || !["published", "superseded"].includes(chosen.status)) {
     return { code: "OFFER_VERSION_NOT_PUBLISHED", message: "La versión económica no está publicada." };
   }
-  if (chosen.status === "superseded") return null; // historical/frozen, never reprice
+  if (chosen.status === "superseded") {
+    // Only a quote/proposal evidenced BEFORE this version was superseded
+    // qualifies for grandfathering. A newly submitted direct credit must not
+    // pick old economics simply to bypass a new acceptance requirement.
+    const recorded = args.snapshotRecordedAt ? new Date(args.snapshotRecordedAt).getTime() : NaN;
+    const supersededAt = chosen.effectiveTo ? new Date(chosen.effectiveTo).getTime() : NaN;
+    if (Number.isFinite(recorded) && Number.isFinite(supersededAt) && recorded < supersededAt) {
+      return null;
+    }
+    return { code: "OFFER_VERSION_SUPERSEDED_NEW_OPERATION",
+      message: "Sólo se conservan las condiciones antiguas en propuestas con registro anterior verificable." };
+  }
   if (!args.brokerId) return { code: "MISSING_ORIGIN_BROKER", message: "Sin Broker originador para aceptar condiciones." };
   const primary = await storage.getUser(args.brokerId);
   if (!primary) return { code: "OFFER_ACCEPTANCE_ORIGINATOR_UNAVAILABLE", message: "Originador no disponible." };
@@ -11639,6 +11651,7 @@ function maskCLABE(clabe?: string | null): string | null {
         const blocked = await checkOfferCommissionAcceptanceForNewOperation({
           offerId: resolvedOfferId, versionNumber: resolvedVersionNumber,
           brokerId: request.brokerId, originMasterBrokerId: masterBrokerId,
+          snapshotRecordedAt: target.proposalReceivedAt,
         });
         if (blocked) return res.status(409).json(blocked);
       }
@@ -11831,6 +11844,7 @@ function maskCLABE(clabe?: string | null): string | null {
           versionNumber: offerLineage.versionNumber ?? (request as any).versionNumber ?? null,
           brokerId: request.brokerId,
           originMasterBrokerId: request.originMasterBrokerId ?? null,
+          snapshotRecordedAt: target.proposalReceivedAt,
         });
         if (blocked) return res.status(409).json(blocked);
         credit = await storage.createCredit({
@@ -12029,6 +12043,7 @@ function maskCLABE(clabe?: string | null): string | null {
           versionNumber: proposal.versionNumber ?? (request as any).versionNumber ?? null,
           brokerId: request.brokerId,
           originMasterBrokerId: request.originMasterBrokerId ?? null,
+          snapshotRecordedAt: target.proposalReceivedAt,
         });
         if (blocked) return res.status(409).json(blocked);
       }
