@@ -181,6 +181,20 @@ describe("COM-28 - Aceptación económica por beneficiario y versión", () => {
       "2026-10-14T14:59:00.000Z")).toBe(false);
   });
 
+  it("el SHA del documento permanece estable ante reordenamiento de claves JSONB", () => {
+    const { previous, published, doc } = setup();
+    const flip = (value: any): any =>
+      Array.isArray(value) ? value.map(flip) :
+      value && typeof value === "object"
+        ? Object.fromEntries(Object.entries(value).reverse().map(([k, v]) => [k, flip(v)]))
+        : value;
+    const reorderPrevious = { ...previous, conditions: flip(previous.conditions) };
+    const reorderPublished = { ...published, conditions: flip(published.conditions) };
+    const recomputed = buildOfferCommissionDocument(reorderPrevious, reorderPublished);
+    expect(recomputed?.contentSha256).toBe(doc.contentSha256);
+    expect(recomputed?.content).toBe(doc.content);
+  });
+
   it("documento de primera publicación no obliga reaceptaciones", () => {
     expect(buildOfferCommissionDocument(null, version(1, 2, 3, "published"))).toBeNull();
   });
