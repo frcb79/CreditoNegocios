@@ -212,6 +212,7 @@ describe("AG — FASE 2B.2B: Cambios y Aceptación Comercial", () => {
       const acceptRes = await request(app)
         .post("/api/commercial-terms/accept")
         .set("User-Agent", "Mozilla/5.0 TestBrowser/1.0")
+        .set("X-Forwarded-For", "203.0.113.222")
         .send({
           document: pending.document,
           version: pending.version,
@@ -222,6 +223,8 @@ describe("AG — FASE 2B.2B: Cambios y Aceptación Comercial", () => {
       expect(acceptRes.body.acceptance.version).toBe(pending.version);
       expect(acceptRes.body.acceptance.document).toBe(pending.document);
       expect(acceptRes.body.acceptance.evidence.userAgent).toBe("Mozilla/5.0 TestBrowser/1.0");
+      // X-Forwarded-For from an untrusted caller must not falsify evidence.
+      expect(acceptRes.body.acceptance.evidence.ipAddress).not.toBe("203.0.113.222");
 
       // Consultar de nuevo: ya no tiene pendientes
       const afterRes = await request(app).get("/api/commercial-terms/status");
