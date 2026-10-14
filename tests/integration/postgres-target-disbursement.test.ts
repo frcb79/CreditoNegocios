@@ -166,12 +166,19 @@ describePg("OPE-12: winning target and credit creation in one PostgreSQL transac
     await pool.query(`INSERT INTO institution_product_versions
       (id,institution_product_id,status,published_at)
       VALUES ('linked-fixture-v1','linked-fixture-offer','published',NOW())`);
-    const proposed = paramsFor(fixture, "linked-bypass-published").newCredit!;
-    const storage = Object.create(DbStorage.prototype) as DbStorage;
-    await expect(storage.createCredit(proposed as any))
-      .rejects.toThrow("OFFER_VERSION_REQUIRED_FOR_PUBLISHED_INSTITUTION");
-    const found = await db.select().from(credits).where(eq(credits.id, proposed.id));
-    expect(found).toHaveLength(0);
+    try {
+      const proposed = paramsFor(fixture, "linked-bypass-published").newCredit!;
+      const storage = Object.create(DbStorage.prototype) as DbStorage;
+      await expect(storage.createCredit(proposed as any))
+        .rejects.toThrow("OFFER_VERSION_REQUIRED_FOR_PUBLISHED_INSTITUTION");
+      const found = await db.select().from(credits).where(eq(credits.id, proposed.id));
+      expect(found).toHaveLength(0);
+    } finally {
+      // This file intentionally shares a synthetic database across tests.
+      // Never poison the legacy eligibility state of following cases.
+      await pool.query("DELETE FROM institution_product_versions WHERE id='linked-fixture-v1'");
+      await pool.query("DELETE FROM institution_products WHERE id='linked-fixture-offer'");
+    }
   });
 
   it("P0 linked legacy insert with no published catalog verifies winner and attribution", async () => {
