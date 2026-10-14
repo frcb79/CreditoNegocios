@@ -130,3 +130,8 @@ Actualizar cada vez que se completa una feature.
 - Dentro de las transacciones PG de nuevo crédito/ganador/confirmación se distingue propuesta legacy anterior a la primera oferta publicada por fecha `proposalReceivedAt` verificable, con lock de productos para evitar carrera de publicación.
 - Tests PostgreSQL agregados para firma Master/red, evidencia modificada, retención FK y cronología antigua vs nueva; pruebas HTTP negativas complementadas.
 - Continúan CI y Staging/E2E **sin evidencia de aprobación**, LEG-10 pendiente de decisión legal. Sin modificaciones en main/infraestructura.
+
+## 2026-10-14 — Correcciones de hashes para jsonb y anti-bypass por oferta archivada
+- COM-28: SHA determinista al generar y al verificar documento y snapshot de aceptación; evitar que PostgreSQL reordene JSONB y cause evidencias falsamente inválidas. Regresiones de reordenamiento y tampering añadidas.
+- La suite PG de ofertas usa `Object.create(DbStorage.prototype)` en lugar de disparar inicialización/semillas de negocio al probar aceptación aislada.
+- Gate PostgreSQL de nuevas operaciones sin oferta/version también revisa catálogos históricos archivados/inactivos; regresión específica. Sin DB desplegadas, main ni infraestructura modificadas. CI del HEAD nuevo no certificado.
