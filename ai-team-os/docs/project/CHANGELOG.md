@@ -124,3 +124,9 @@ Actualizar cada vez que se completa una feature.
 - Ampliada suite PostgreSQL de carrera/publicación para demostrar aceptación exacta y rechazo de comprobantes ajenos; todavía sin evidencia de ejecución del SHA.
 - Endurecida captura de IP en aceptación comercial/reglas para no confiar en encabezados sin validar; regresión HTTP de encabezado falsificado.
 - Especificación LEG-10 del consentimiento financiero específico del cliente, sin texto legal inventado ni despliegue, permanece requisito para GO.
+
+## 2026-10-14 — Legacy financial proposal version gate
+- Nueva propuesta sin versión rechazada cuando la financiera tiene un catálogo publicado/activo; creación directa y respuesta aprobatoria tampoco admiten omisión de identidad económica. No se alteraron créditos históricos.
+- Dentro de las transacciones PG de nuevo crédito/ganador/confirmación se distingue propuesta legacy anterior a la primera oferta publicada por fecha `proposalReceivedAt` verificable, con lock de productos para evitar carrera de publicación.
+- Tests PostgreSQL agregados para firma Master/red, evidencia modificada, retención FK y cronología antigua vs nueva; pruebas HTTP negativas complementadas.
+- Continúan CI y Staging/E2E **sin evidencia de aprobación**, LEG-10 pendiente de decisión legal. Sin modificaciones en main/infraestructura.
