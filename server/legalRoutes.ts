@@ -68,7 +68,7 @@ function generateOfficialVoucherText(
     out += `Rol en Plataforma:                 ${snapshot.incorporatedData.role || "N/A"}\n`;
     out += `Institución Bancaria:              ${snapshot.incorporatedData.bankName || "Pendiente de proporcionar"}\n`;
     out += `Cuenta Bancaria:                   ${snapshot.incorporatedData.bankAccount || "Pendiente de proporcionar"}\n`;
-    out += `CLABE Interbancaria:               ${snapshot.incorporatedData.bankClabe || "Pendiente de proporcionar"}\n`;
+    out += `CLABE Interbancaria:               ${snapshot.incorporatedData.bankClabe || snapshot.incorporatedData.clabe || "Pendiente de proporcionar"}\n`;
     out += `Plazos Comerciales Aplicables:     Consultar el contenido histórico íntegro incorporado a continuación\n`;
   }
 
