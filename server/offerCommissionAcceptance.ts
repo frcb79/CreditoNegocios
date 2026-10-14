@@ -6,6 +6,19 @@ import { compareOfferIntermediaryCommissions, computeInstitutionProductVersionHa
 type OfferVersion = Pick<InstitutionProductVersion, "institutionProductId" | "versionNumber" | "versionHash" | "conditions" | "requirements" | "requiredDocuments" | "variablesConfiguration" | "status">;
 export const OFFER_COMMISSION_DOCUMENT = "comisiones-oferta";
 
+/** Historical waiver is valid only when the quote was documented BEFORE
+ * the offer was superseded. Do not accept a newly claimed old version. */
+export function isQuoteHistoricallyFrozen(
+  version: Pick<InstitutionProductVersion, "status" | "effectiveTo">,
+  recordedAt?: string | Date | null,
+): boolean {
+  if (version.status !== "superseded" || !recordedAt || !version.effectiveTo) return false;
+  const recorded = new Date(recordedAt).getTime();
+  const supersededAt = new Date(version.effectiveTo).getTime();
+  return Number.isFinite(recorded) && Number.isFinite(supersededAt) &&
+    recorded < supersededAt;
+}
+
 export function offerCommissionDocumentId(offerId: string, versionNumber: number): string {
   return `${OFFER_COMMISSION_DOCUMENT}:${offerId}:${versionNumber}`;
 }
