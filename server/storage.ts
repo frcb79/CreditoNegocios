@@ -585,7 +585,7 @@ export interface IStorage {
         contentSha256: string;
       };
     };
-  }): Promise<{ user: User; acceptances: LegalAcceptance[] }>;
+  }): Promise<{ user: User; acceptances: LegalAcceptance[]; tenant: Tenant; member: TenantMember }>;
   getLegalAcceptanceById(id: string): Promise<LegalAcceptance | undefined>;
   getPersonalizedAgreementSnapshot(acceptanceId: string): Promise<PersonalizedDocumentSnapshot | undefined>;
 
@@ -1835,7 +1835,7 @@ export class MemStorage implements IStorage {
         contentSha256: string;
       };
     };
-  }): Promise<{ user: User; acceptances: LegalAcceptance[] }> {
+  }): Promise<{ user: User; acceptances: LegalAcceptance[]; tenant: Tenant; member: TenantMember }> {
     // 1. Validate against approved catalog
     const catalogTerms = getApprovedLegalDocument(params.evidence.termsDoc.document, params.evidence.termsDoc.version);
     if (!catalogTerms) {
@@ -1946,13 +1946,59 @@ export class MemStorage implements IStorage {
       acceptedAt: now,
     };
 
+    // Recovered atomic Broker tenant and owner membership from the approved
+    // network-formalization branch. Resolve topology BEFORE any write.
+    let parentTenantId: string;
+    if (params.userData.masterBrokerId) {
+      const master = this.users.get(params.userData.masterBrokerId);
+      const status = master?.status || (master?.isActive ? "active" : "inactive");
+      if (!master || master.role !== "master_broker" || master.isActive === false || status !== "active") {
+        throw new Error("El Master Broker de afiliación no es válido o no está activo.");
+      }
+      const owned = Array.from(this.tenants.values()).filter((t) =>
+        t.type === "master_broker" &&
+        ((t.settings as any)?.legacyOwnerUserId === master.id ||
+          Array.from(this.tenantMembers.values()).some((m) =>
+            m.tenantId === t.id && m.userId === master.id && m.role === "owner" && m.isActive !== false
+          ))
+      );
+      if (owned.length !== 1) {
+        throw new Error("No se encontró de forma unívoca la organización del Master Broker.");
+      }
+      parentTenantId = owned[0].id;
+    } else {
+      const platform = Array.from(this.tenants.values()).filter((t) => t.type === "platform" || t.slug === "platform");
+      if (platform.length !== 1) {
+        throw new Error("No se encontró de forma unívoca la organización de plataforma requerida para el registro directo.");
+      }
+      parentTenantId = platform[0].id;
+    }
+
+    const tenant: Tenant = {
+      id: randomUUID(),
+      name: (`Broker ${user.firstName || ""} ${user.lastName || ""}`).trim(),
+      slug: `broker-${id.slice(0, 8).toLowerCase()}`,
+      type: "broker", parentTenantId,
+      settings: { legacyOwnerUserId: id, createdFrom: "canonical_broker_creation" },
+      isActive: true, createdAt: now, updatedAt: now,
+    };
+    const member: TenantMember = {
+      id: randomUUID(), tenantId: tenant.id, userId: id,
+      role: "owner", canOriginate: true, isActive: true,
+      joinedAt: now, updatedAt: now,
+    };
+
     this.users.set(id, structuredClone(user));
     this.legalAcceptances.set(termsAcceptance.id, structuredClone(termsAcceptance));
     this.legalAcceptances.set(privacyAcceptance.id, structuredClone(privacyAcceptance));
+    this.tenants.set(tenant.id, structuredClone(tenant));
+    this.tenantMembers.set(member.id, structuredClone(member));
 
     return {
       user: structuredClone(user),
       acceptances: [structuredClone(termsAcceptance), structuredClone(privacyAcceptance)],
+      tenant: structuredClone(tenant),
+      member: structuredClone(member),
     };
   }
 

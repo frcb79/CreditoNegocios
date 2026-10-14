@@ -42,6 +42,7 @@ export interface CreateBrokerWithOrganizationInput {
   password?: string | null;
   authMethod?: string;
   masterBrokerId?: string | null;
+  role?: "broker" | "master_broker";
   profileData?: unknown;
   isActive?: boolean;
 }
@@ -94,6 +95,10 @@ export async function createBrokerWithOrganization(input: CreateBrokerWithOrgani
     }
 
     const platformTenant = await getPlatformTenant(tx);
+    const createMaster = input.role === "master_broker";
+    if (createMaster && input.masterBrokerId) {
+      throw new BrokerNetworkTransitionError("Un Master nuevo no puede afiliarse bajo otro Master.", 400, "INVALID_MASTER_PARENT");
+    }
     let parentTenantId = platformTenant.id;
     let masterBrokerId: string | null = null;
 
@@ -129,8 +134,9 @@ export async function createBrokerWithOrganization(input: CreateBrokerWithOrgani
         lastName: input.lastName?.trim() || null,
         password: input.password || null,
         authMethod: input.authMethod || "local",
-        role: "broker",
+        role: createMaster ? "master_broker" : "broker",
         masterBrokerId,
+        referralCode: createMaster ? await ensureUniqueMasterReferralCode(tx) : null,
         profileData: input.profileData || {},
         isActive: input.isActive !== false,
         status: input.isActive === false ? "inactive" : "active",
@@ -148,7 +154,7 @@ export async function createBrokerWithOrganization(input: CreateBrokerWithOrgani
       .insert(tenants)
       .values({
         id: randomUUID(),
-        type: "broker",
+        type: createMaster ? "master_broker" : "broker",
         name,
         slug,
         parentTenantId,
@@ -186,7 +192,7 @@ function ownerUserIdPredicate(userId: string) {
   return sql`${tenants.settings}->>'legacyOwnerUserId' = ${userId}`;
 }
 
-async function getPlatformTenant(tx: any): Promise<typeof tenants.$inferSelect> {
+export async function getPlatformTenant(tx: any): Promise<typeof tenants.$inferSelect> {
   const matches = await tx
     .select()
     .from(tenants)
@@ -205,7 +211,7 @@ async function getPlatformTenant(tx: any): Promise<typeof tenants.$inferSelect> 
   return unique[0];
 }
 
-async function getOwnedTenant(tx: any, userId: string, expectedType?: "broker" | "master_broker"): Promise<typeof tenants.$inferSelect> {
+export async function getOwnedTenant(tx: any, userId: string, expectedType?: "broker" | "master_broker"): Promise<typeof tenants.$inferSelect> {
   const conditions: any[] = [ownerUserIdPredicate(userId)];
   if (expectedType) conditions.push(eq(tenants.type, expectedType));
 

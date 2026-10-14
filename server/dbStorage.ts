@@ -51,6 +51,7 @@ import { eq, ne, isNotNull, desc, asc, like, and, or, inArray, sql, gte } from "
 
 import { assertFrozenOfferLineage, readFrozenOfferLineage } from "./offerLineageService";
 import { assertTargetReviewMutable } from "./targetReviewTransitions";
+import { getPlatformTenant, getOwnedTenant } from "./brokerNetworkTransitionService";
 import { randomUUID, createHash } from "crypto";
 import {
   getApprovedLegalDocument,
@@ -637,7 +638,7 @@ export class DbStorage implements IStorage {
         contentSha256: string;
       };
     };
-  }): Promise<{ user: User; acceptances: LegalAcceptance[] }> {
+  }): Promise<{ user: User; acceptances: LegalAcceptance[]; tenant: Tenant; member: TenantMember }> {
     return await db.transaction(async (tx) => {
       // 1. Validate against approved catalog
       const catalogTerms = getApprovedLegalDocument(params.evidence.termsDoc.document, params.evidence.termsDoc.version);
@@ -746,9 +747,44 @@ export class DbStorage implements IStorage {
         })
         .returning();
 
+
+      // Parent organization selection and Broker ownership in the SAME
+      // transaction as identity + both legal evidence rows.
+      let parentTenantId: string;
+      if (params.userData.masterBrokerId) {
+        const [master] = await tx.select().from(users)
+          .where(eq(users.id, params.userData.masterBrokerId)).limit(1);
+        const status = master?.status || (master?.isActive ? "active" : "inactive");
+        if (!master || master.role !== "master_broker" || master.isActive === false || status !== "active") {
+          throw new Error("El Master Broker de afiliación no es válido o no está activo.");
+        }
+        const ownMasterTenant = await getOwnedTenant(tx, master.id, "master_broker");
+        parentTenantId = ownMasterTenant.id;
+      } else {
+        const platformTenant = await getPlatformTenant(tx);
+        parentTenantId = platformTenant.id;
+      }
+
+      const now = new Date();
+      const [brokerTenant] = await tx.insert(tenants).values({
+        type: "broker",
+        name: (`Broker ${createdUser.firstName || ""} ${createdUser.lastName || ""}`).trim(),
+        slug: `broker-${createdUser.id.slice(0, 8).toLowerCase()}`,
+        parentTenantId,
+        settings: { legacyOwnerUserId: createdUser.id, createdFrom: "canonical_broker_creation" },
+        isActive: true, createdAt: now, updatedAt: now,
+      }).returning();
+      const [ownerMember] = await tx.insert(tenantMembers).values({
+        tenantId: brokerTenant.id, userId: createdUser.id,
+        role: "owner", canOriginate: true, isActive: true,
+        joinedAt: now, updatedAt: now,
+      }).returning();
+
       return {
         user: createdUser,
         acceptances: [termsAcceptance, privacyAcceptance],
+        tenant: brokerTenant,
+        member: ownerMember,
       };
     });
   }

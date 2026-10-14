@@ -190,6 +190,29 @@ export async function runAutoMigration(): Promise<void> {
       console.error("⚠️ [AutoMigrate] Error verifying tenant_members table/indexes:", err);
     }
 
+
+    // Core organization bootstrap: not sample data. Required by the canonical
+    // Broker registration and invitation transaction on a NEW empty Production DB.
+    try {
+      const existingPlatform = await client.query(
+        `SELECT id FROM public.tenants WHERE type = 'platform' OR slug = 'platform' LIMIT 2`
+      );
+      if (existingPlatform.rows.length === 0) {
+        await client.query(`
+          INSERT INTO public.tenants
+            (id, type, name, slug, parent_tenant_id, settings, is_active, created_at, updated_at)
+          VALUES ('tenant-platform', 'platform', 'Credito Negocios', 'platform',
+            NULL, '{}'::jsonb, TRUE, NOW(), NOW())
+          ON CONFLICT DO NOTHING
+        `);
+        console.log("[AutoMigrate] Canonical platform organization initialized.");
+      } else if (existingPlatform.rows.length > 1) {
+        console.error("[AutoMigrate] Multiple platform tenants detected: resolve before onboarding Brokers.");
+      }
+    } catch (err) {
+      console.error("[AutoMigrate] Platform organization bootstrap failed:", err);
+    }
+
     // 3. Ensure clients table columns exist
     try {
       await client.query(`
@@ -358,7 +381,7 @@ export async function runAutoMigration(): Promise<void> {
 
     // 6. User catalog verification (Zero-destructive startup: never reset passwords, change roles, or overwrite users on existing DB)
     try {
-      const userCountRes = await client.query(`SELECT count(*) as count FROM public.users`);
+      const userCountRes = await client.query(`SELECT count(*) as count FROM public.users WHERE id <> 'user-super-admin'`);
       const totalUsers = parseInt(userCountRes.rows[0]?.count || "0", 10);
 
       if (totalUsers === 0) {

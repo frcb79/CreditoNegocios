@@ -131,6 +131,7 @@ import {
 import { commercialOpportunityService } from "./commercialOpportunityService";
 import { commercialHelpService } from "./commercialHelpService";
 import { registerBrokerNetworkTransitionRoutes } from "./brokerNetworkTransitionRoutes";
+import { createBrokerWithOrganization } from "./brokerNetworkTransitionService";
 
 
 import { z } from "zod";
@@ -2866,15 +2867,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ message: "El email es requerido" });
       }
 
-      // Master Broker security enforcement
+      // Master may invite only a Broker in its own network (never grant admin/Master roles).
       if (isMasterBroker) {
+        userData.role = 'broker';
         userData.masterBrokerId = currentUser.id;
-        if (userData.role === 'admin' || userData.role === 'super_admin') {
-          userData.role = 'broker';
-        }
         if (userData.permissions && typeof userData.permissions === 'object') {
           (userData.permissions as any).scope = 'network';
         }
+      }
+
+      // A platform Admin cannot create a new Admin or Super Admin.
+      if (currentUser?.role === 'admin' &&
+          (userData.role === 'super_admin' || userData.role === 'admin')) {
+        return res.status(403).json({ message: "Sólo Super Admin puede asignar privilegios administrativos." });
       }
 
       // Auto-generate unique referralCode for master_broker if not provided
@@ -2890,7 +2895,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ message: "El email ya está registrado en el sistema" });
       }
       
-      const newUser = await storage.createUser(userData);
+      // Reuse the approved canonical transaction: user + own tenant + owner.
+      // A plain createUser here generated orphan Brokers in earlier integration.
+      const newUser = (userData.role === 'broker' || userData.role === 'master_broker')
+        ? (await createBrokerWithOrganization({
+            email: userData.email, firstName: userData.firstName,
+            lastName: userData.lastName, password: userData.password,
+            authMethod: userData.authMethod || "local",
+            role: userData.role,
+            masterBrokerId: userData.role === 'broker' ? userData.masterBrokerId : null,
+            profileData: userData.profileData || {},
+            isActive: userData.isActive !== false,
+          })).user
+        : await storage.createUser(userData);
       
       // Send welcome email to the new broker
       if (newUser.email && (newUser.role === 'broker' || newUser.role === 'master_broker')) {
