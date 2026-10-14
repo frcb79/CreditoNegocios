@@ -1,6 +1,7 @@
 // @ts-nocheck
 import { randomUUID, createHash } from "crypto";
 import { assertTargetReviewMutable } from "./targetReviewTransitions";
+import { buildOfferCommissionDocument } from "./offerCommissionAcceptance";
 import catalog from "./legalDocumentCatalog.json";
 import {
   getApprovedLegalDocument,
@@ -4344,6 +4345,22 @@ export class MemStorage implements IStorage {
     }
 
     const now = new Date();
+
+    const priorVersion = Array.from(this.institutionProductVersions.values())
+      .filter(v => (v.institutionProductId === productId || v.offerId === productId) &&
+        (v.status === "published" || v.status === "active"))
+      .sort((a, b) => b.versionNumber - a.versionNumber)[0] || null;
+    const economicDocument = buildOfferCommissionDocument(priorVersion, version);
+    if (economicDocument) {
+      const existing = this.legalDocumentVersions.get(economicDocument.id);
+      if (existing && (existing.contentSha256 !== economicDocument.contentSha256 ||
+          existing.content !== economicDocument.content)) {
+        throw new Error("OFFER_COMMISSION_DOCUMENT_HASH_CONFLICT");
+      }
+      if (!existing) {
+        await this.createLegalDocumentVersion({ ...economicDocument, effectiveAt: now });
+      }
+    }
 
     // 1. Desactivar versión publicada previa marcándola como 'superseded'
     for (const [vId, v] of this.institutionProductVersions.entries()) {
