@@ -11664,6 +11664,15 @@ function maskCLABE(clabe?: string | null): string | null {
         return res.status(409).json({ code: "PROPOSAL_LOCKED", message: "No se permite reabrir una propuesta seleccionada." });
       }
 
+      // Cannot fabricate a financial approval with no actual proposal on
+      // the target. Existing historical proposals remain readable/approvable.
+      if (approved && !proposal && !targetBefore.institutionProposal) {
+        return res.status(409).json({
+          code: "INSTITUTION_PROPOSAL_REQUIRED",
+          message: "Se requiere una propuesta financiera registrada antes de aprobar.",
+        });
+      }
+
       const newStatus = approved ? 'institution_approved' : 'institution_rejected';
       const updatePayload: any = { status: newStatus };
       if (approved && proposal) {
