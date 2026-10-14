@@ -49,6 +49,7 @@ import {
 } from "./offerVersionService";
 import { eq, ne, isNotNull, desc, asc, like, and, or, inArray, sql, gte } from "drizzle-orm";
 
+import { buildOfferCommissionDocument } from "./offerCommissionAcceptance";
 import { assertFrozenOfferLineage, readFrozenOfferLineage } from "./offerLineageService";
 import { assertTargetReviewMutable } from "./targetReviewTransitions";
 import { getPlatformTenant, getOwnedTenant } from "./brokerNetworkTransitionService";
@@ -2322,6 +2323,26 @@ export class DbStorage implements IStorage {
         }
 
         const now = new Date();
+
+        // COM-28: Same transaction as version publication. Without the
+        // immutable economic document, no new payout terms can be accepted.
+        const previousPublished = (await tx.select().from(institutionProductVersions)
+          .where(and(eq(institutionProductVersions.institutionProductId, productId),
+            or(eq(institutionProductVersions.status, "published"),
+              eq(institutionProductVersions.status, "active")))))
+          .sort((a, b) => b.versionNumber - a.versionNumber)[0] || null;
+        const economicDocument = buildOfferCommissionDocument(previousPublished, version);
+        if (economicDocument) {
+          await tx.insert(legalDocumentVersions).values({
+            ...economicDocument, effectiveAt: now,
+          }).onConflictDoNothing();
+          const [persisted] = await tx.select().from(legalDocumentVersions)
+            .where(eq(legalDocumentVersions.id, economicDocument.id));
+          if (!persisted || persisted.contentSha256 !== economicDocument.contentSha256 ||
+              persisted.content !== economicDocument.content) {
+            throw new Error("OFFER_COMMISSION_DOCUMENT_HASH_CONFLICT");
+          }
+        }
 
         // 1. Marcar versión publicada previa como superseded
         await tx.update(institutionProductVersions)
