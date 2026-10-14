@@ -4,6 +4,7 @@ import {
   buildOfferCommissionDocument,
   getOfferCommissionStatus,
   acceptOfferCommission,
+  isQuoteHistoricallyFrozen,
 } from "../../server/offerCommissionAcceptance";
 import type { IStorage } from "../../server/storage";
 
@@ -136,6 +137,20 @@ describe("COM-28 - Aceptación económica por beneficiario y versión", () => {
     published.versionHash = "forged";
     expect(() => buildOfferCommissionDocument(previous, published))
       .toThrow("OFFER_VERSION_HASH_MISMATCH");
+  });
+
+  it("no usa una versión sustituida como nueva oferta sin fecha histórica anterior", () => {
+    const superseded = {
+      status: "superseded",
+      effectiveTo: new Date("2026-10-14T15:00:00.000Z"),
+    };
+    expect(isQuoteHistoricallyFrozen(superseded, null)).toBe(false);
+    expect(isQuoteHistoricallyFrozen(superseded, "2026-10-14T15:00:00.000Z")).toBe(false);
+    expect(isQuoteHistoricallyFrozen(superseded, "2026-10-14T15:01:00.000Z")).toBe(false);
+    expect(isQuoteHistoricallyFrozen(superseded, "invalid-date")).toBe(false);
+    expect(isQuoteHistoricallyFrozen(superseded, "2026-10-14T14:59:00.000Z")).toBe(true);
+    expect(isQuoteHistoricallyFrozen({ ...superseded, status: "published" },
+      "2026-10-14T14:59:00.000Z")).toBe(false);
   });
 
   it("documento de primera publicación no obliga reaceptaciones", () => {
