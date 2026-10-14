@@ -6,6 +6,20 @@ import { compareOfferIntermediaryCommissions, computeInstitutionProductVersionHa
 type OfferVersion = Pick<InstitutionProductVersion, "institutionProductId" | "versionNumber" | "versionHash" | "conditions" | "requirements" | "requiredDocuments" | "variablesConfiguration" | "status">;
 export const OFFER_COMMISSION_DOCUMENT = "comisiones-oferta";
 
+/** PostgreSQL jsonb does not retain client insertion order. All fingerprints
+ * and exact document snapshots must use deterministic deep key ordering. */
+function stableEconomicJson(value: unknown): string {
+  if (Array.isArray(value)) return "[" + value.map(stableEconomicJson).join(",") + "]";
+  if (value && typeof value === "object") {
+    const fields = Object.entries(value as Record<string, unknown>)
+      .filter(([, child]) => child !== undefined)
+      .sort(([left], [right]) => left.localeCompare(right));
+    return "{" + fields.map(([key, child]) =>
+      JSON.stringify(key) + ":" + stableEconomicJson(child)).join(",") + "}";
+  }
+  return JSON.stringify(value === undefined ? null : value);
+}
+
 /** Historical waiver is valid only when the quote was documented BEFORE
  * the offer was superseded. Do not accept a newly claimed old version. */
 export function isQuoteHistoricallyFrozen(
@@ -51,7 +65,7 @@ export function buildOfferCommissionDocument(
   if (!published.versionHash || published.versionHash !== hash) {
     throw new Error("OFFER_VERSION_HASH_MISMATCH");
   }
-  const content = JSON.stringify({
+  const content = stableEconomicJson({
     instrument: OFFER_COMMISSION_DOCUMENT,
     offerId: published.institutionProductId,
     versionNumber: published.versionNumber,
