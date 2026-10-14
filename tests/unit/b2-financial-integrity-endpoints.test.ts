@@ -415,9 +415,13 @@ describe("Fase 2B.1B — Cierre de Integridad Financiera y Eliminación de Rutas
       expect(own.body[0].targets[0].institution?.notes).toBeUndefined();
       expect(own.body[0].targets[0].institutionProposal?.commissionRates).toBeUndefined();
       expect((await request(app).get(`/api/credit-submission-targets/${target.id}/proposal-document`)).status).toBe(200);
+      // LEG-10: ownership allows internal reading, but not exporting a
+      // client-data package for the institution without the client's consent.
       const ownPdf = await request(app).post(`/api/credit-submission-targets/${target.id}/generate-pdf`);
-      expect(ownPdf.status).toBe(200);
-      expect(ownPdf.headers["content-type"]).toContain("application/pdf");
+      expect(ownPdf.status).toBe(409);
+      expect(ownPdf.body.code).toBe("CLIENT_CONSENT_REQUIRED");
+      expect(ownPdf.headers["content-type"]).toContain("application/json");
+      expect(ownPdf.headers["content-disposition"]).toBeUndefined();
 
       const my = await request(app).get("/api/credit-submission-requests/my-submissions");
       expect(my.status).toBe(200);
