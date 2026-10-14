@@ -272,6 +272,13 @@ export default function PendingRequests() {
       });
       invalidateAllCreditQueries(queryClient);
     },
+    onError: (error: any) => {
+      toast({
+        title: "Expediente no enviado",
+        description: error?.message || "Se requiere autorización verificable del cliente para compartir el expediente con la financiera.",
+        variant: "destructive",
+      });
+    },
   });
 
   const proposalMutation = useMutation({
@@ -1037,6 +1044,9 @@ export default function PendingRequests() {
                                         <Send className="w-3.5 h-3.5 mr-1.5" />
                                         Marcar como Enviado a Financiera
                                       </Button>
+                                      <p className="mt-1 text-xs text-amber-700">
+                                        El envío requiere autorización verificable del cliente. El visto bueno interno no constituye esa autorización.
+                                      </p>
                                     </div>
                                   )}
 
