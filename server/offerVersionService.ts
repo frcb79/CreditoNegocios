@@ -53,6 +53,85 @@ export function computeInstitutionProductVersionHash(params: {
   return crypto.createHash("sha256").update(serialized).digest("hex");
 }
 
+/**
+ * COM-28: Identifica cambios económicos visibles al intermediario entre
+ * versiones de UNA misma oferta. No compara márgenes internos de la plataforma,
+ * evita inventar aprobaciones, y nunca recalcula operaciones congeladas.
+ *
+ * IMPORTANTE: detectar el cambio NO equivale a aceptación: el registro de
+ * aceptación y el bloqueo de nuevas operaciones quedan como gate de release.
+ */
+export function compareOfferIntermediaryCommissions(
+  previous: Pick<InstitutionProductVersion, "conditions"> | null | undefined,
+  next: Pick<InstitutionProductVersion, "conditions">,
+): {
+  isInitialPublication: boolean;
+  requiresManualReview: boolean;
+  directBrokerChanged: boolean;
+  masterBrokerChanged: boolean;
+  requiresAnyAcceptance: boolean;
+} {
+  const base = {
+    isInitialPublication: !previous,
+    requiresManualReview: false,
+    directBrokerChanged: false,
+    masterBrokerChanged: false,
+    requiresAnyAcceptance: false,
+  };
+  if (!previous) return base;
+
+  const previousRates = (previous.conditions as Record<string, unknown> | null)?.commissionRates;
+  const nextRates = (next.conditions as Record<string, unknown> | null)?.commissionRates;
+  if (!previousRates || !nextRates ||
+      typeof previousRates !== "object" || typeof nextRates !== "object") {
+    return { ...base, requiresManualReview: true };
+  }
+
+  const normalize = (value: unknown): unknown => {
+    if (value === undefined || value === null || value === "") return null;
+    if (typeof value === "number") return Number.isFinite(value) ? value : null;
+    if (typeof value === "string") {
+      const cleaned = value.trim();
+      if (cleaned && Number.isFinite(Number(cleaned))) return Number(cleaned);
+      return cleaned;
+    }
+    if (Array.isArray(value)) return value.map(normalize);
+    if (typeof value === "object") {
+      return Object.fromEntries(
+        Object.entries(value as Record<string, unknown>)
+          .sort(([a], [b]) => a.localeCompare(b))
+          .map(([key, v]) => [key, normalize(v)]),
+      );
+    }
+    return value;
+  };
+
+  const previousData = previousRates as Record<string, unknown>;
+  const nextData = nextRates as Record<string, unknown>;
+  // An unset actor share is not equivalent to a genuinely unchanged schedule.
+  const missingActorRate = ["broker", "masterBroker"].some(key =>
+    !previousData[key] || typeof previousData[key] !== "object" ||
+    !nextData[key] || typeof nextData[key] !== "object");
+  if (missingActorRate) return { ...base, requiresManualReview: true };
+
+  const actorChanged = (key: "broker" | "masterBroker") =>
+    JSON.stringify(normalize({
+      commissionType: previousData.type,
+      share: previousData[key],
+    })) !== JSON.stringify(normalize({
+      commissionType: nextData.type,
+      share: nextData[key],
+    }));
+  const directBrokerChanged = actorChanged("broker");
+  const masterBrokerChanged = actorChanged("masterBroker");
+  return {
+    ...base,
+    directBrokerChanged,
+    masterBrokerChanged,
+    requiresAnyAcceptance: directBrokerChanged || masterBrokerChanged,
+  };
+}
+
 // Alias retrocompatible
 export const computeOfferVersionHash = computeInstitutionProductVersionHash;
 
