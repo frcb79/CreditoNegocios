@@ -1,5 +1,20 @@
 # Crédito Negocios — Estado operativo de cierre prelaunch
 
+**Corte actualizado:** 13 de octubre de 2026. **Rama única:** `integration/phase-1a1-base-segura`. **PR:** [#10 Draft](https://github.com/frcb79/CreditoNegocios/pull/10). **Checkpoint certificado de CI:** `a4e42970b57cb162484fab2712b57a11ecf4661e`, [run 38508592693](https://github.com/frcb79/CreditoNegocios/actions/runs/38508592693): jobs `typescript-build-unit` y `postgres-migrations` SUCCESS. **Trabajo correctivo posterior:** hasta `6fdf2b15da9d048c2cdb3ba52d9d062f478daa30`, aún SIN CI certificado a la hora de esta actualización. **NO GO**, sin E2E Staging ni autorización para merge/despliegue.
+
+## Actualización puntual — 13-oct-2026, verificación GPT-6
+
+- GitHub PR #10 permanece abierto y Draft, base `main` en `0c6b7bd18f6465c55d95f72a4f20ade339f1a553`; HEAD comprobado antes de corrección `a4e42970`. Comparación entre `a4edbc1` y `a4e42970`: 22 commits adelante, ninguno detrás (no confundir con los nueve commits solicitados como revisión reciente).
+- CI `38508592693` ambos jobs SUCCESS: TypeScript, build, suites unitarias seleccionadas; PostgreSQL 16 aislado para 0004/0005/0009, pago manual atómico, dispersión parcial, target ganador, publicación concurrente de ofertas, transacción de configuración comercial y tasas de red. **No cubre E2E real, datos históricos existentes ni infraestructura activa.**
+- Hallazgo P0 de RBAC: PATCH y PUT `/api/notifications/:id/read` no restringían la mutación al usuario destinatario. Se corrigió en rutas, contrato, MemStorage y UPDATE atómico PostgreSQL por `id+userId`; regresión HTTP añadida a la suite existente. Se retiró la selección de destinatario financiero por correo hardcodeado y Admin genérico; sólo `super_admin` recibe notificación de comisión de plataforma. **Cambios pusheados, pendientes de CI del nuevo SHA y posterior E2E.**
+- Diferencia histórica concreta: `CommissionAcceptanceDialog.tsx` legado exige aceptación por *financiera*; no existe en rama consolidada. Modelo actual tiene estado/historial/aceptación comercial global y de red por versión. **No restaurar el diálogo antiguo**: exige verificación aparte de cambios materiales por **oferta/version** y su exigibilidad antes de operar.
+- **LEG-10 no certificado:** en `ClientForm.tsx`, `CreditRequestModal.tsx` y `MortgageLeadModal.tsx` no se encontró captura de consentimiento específico del **cliente** para tratamiento/compartición de información financiera y patrimonial. Las aceptaciones legales de los usuarios Broker/Master no lo reemplazan. Falta determinar texto aprobado, titular/representación, evento de aceptación y persistencia antes de operar con clientes reales.
+- Dos implementaciones históricas de heartbeat/tiempo de uso siguen diferidas expresamente; **no** integrarlas. Sí siguen obligatorias las bitácoras transaccionales de operaciones y seguridad.
+- Los contrastes con ramas divergentes muestran cambios antiguos de financiera, red, Super Admin y Legal que exigen evaluación por comportamiento y no merge masivo. No se declara aún prueba de equivalencia exhaustiva por rol y escenario.
+- Bloqueos de GO vigentes: aislamiento Storage Staging/Prod, migraciones y bootstrap en BD nueva limpia (sujeto a autorización), configuración correo/OTP, E2E por cuatro roles, consentimiento LEG-10, aceptación material oferta/version y documentación de rollback. Ninguna BD o servicio fue alterado por estas revisiones.
+
+## Acta anterior conservada íntegra (checkpoint histórico)
+
 **Corte:** 13 de octubre de 2026. **Rama única:** `integration/phase-1a1-base-segura`. **PR:** [#10 Draft](https://github.com/frcb79/CreditoNegocios/pull/10). **Base de trabajo:** `fb56db2` (último CI en proceso al redactar esta acta). Este archivo no certifica GO ni autoriza merge/despliegue.
 
 ## Fuente de verdad
