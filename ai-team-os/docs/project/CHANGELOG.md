@@ -87,3 +87,9 @@ Actualizar cada vez que se completa una feature.
 - Restaurados Plan Maestro v1.1, Registro Maestro y planificación legal histórica con estado actual en `docs/integracion/ESTADO_CIERRE_PRELAUNCH.md`.
 - Nueva Producción será Supabase Free limpio; preservar datos de prueba en infra existente. **No crear ni pagar recursos adicionales sin autorización.**
 - Bitácora avanzada diferida; auditorías operativas obligatorias. CI y E2E se reportan por SHA, sin confundir build con GO.
+
+## 2026-10-13 — Cierre focal P0 RBAC y notificaciones (prelaunch sin despliegue)
+- Rama única `integration/phase-1a1-base-segura`: corrección del acceso cruzado a `PATCH/PUT /api/notifications/:id/read` con dueño obligatorio tanto en MemStorage como en UPDATE atómico PostgreSQL; eliminación del destinatario de notificación financiera por correo fijo/rol Admin (sólo Super Admin).
+- Bloqueo de escalamiento Admin → Super Admin por `PUT/PATCH /api/users/:id`, prohibición de editar cuentas Super Admin desde Admin y reserva de cambios de estado operativo para Super Admin/Master según alcance autorizado.
+- Regresiones HTTP para notificaciones ajenas, intentos de escalamiento, edición privilegiada y cambio de estado indebido en `tests/unit/prelaunch-registration-http.test.ts`.
+- **QA:** checkpoint previo `a4e42970` con Actions `38508592693` verde en ambos jobs; correcciones posteriores publicadas aún pendientes de certificación CI y E2E. `main`, migraciones y Producción no fueron modificadas.
