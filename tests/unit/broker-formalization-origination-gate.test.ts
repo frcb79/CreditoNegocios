@@ -229,6 +229,57 @@ describe("Cierre P0: Formalización Obligatoria y Cierre de Bypasses en Originac
     });
   });
 
+  describe("PRE-P0: identificación del cliente no concede derecho a originar", () => {
+    it("Broker B formalizado no puede crear crédito, solicitud ni hipotecario sobre cliente de Broker A", async () => {
+      const brokerA = await createTestUser("broker", "Broker Titular");
+      const brokerB = await createTestUser("broker", "Broker Ajeno");
+      await formalizeUserViaOtp(brokerA);
+      await formalizeUserViaOtp(brokerB);
+      const client = await storage.createClient({
+        type: "persona_moral",
+        businessName: "Cliente Ajeno protegido",
+        brokerId: brokerA.id,
+        firstName: "Cliente",
+        lastName: "Titular",
+      } as any);
+
+      currentAuthUser = brokerB;
+      const credit = await request(app).post("/api/credits").send({
+        clientId: client.id, amount: "100000.00", purpose: "Liquidez",
+      });
+      expect(credit.status).toBe(403);
+      expect(credit.body.code).toBe("CLIENT_ORIGINATION_NOT_AUTHORIZED");
+
+      const submission = await request(app).post("/api/credit-submissions").send({
+        clientId: client.id, requestedAmount: "100000.00",
+        purpose: "Capital de trabajo", financialInstitutionIds: [],
+      });
+      expect(submission.status).toBe(403);
+      expect(submission.body.code).toBe("CLIENT_ORIGINATION_NOT_AUTHORIZED");
+
+      const mortgage = await request(app).post("/api/mortgage-leads").send({
+        clientId: client.id, requestedAmount: "900000.00",
+        propertyValue: "1200000.00", incomeType: "asalariado",
+      });
+      expect(mortgage.status).toBe(403);
+      expect(mortgage.body.code).toBe("CLIENT_ORIGINATION_NOT_AUTHORIZED");
+
+      // Invalid requests must not alter any of the customer's operations.
+      expect(await storage.getCredits({ clientId: client.id })).toHaveLength(0);
+      expect(await storage.getCreditSubmissionRequests({ clientId: client.id })).toHaveLength(0);
+
+      // Do not regress the rightful Broker's ability to record a request.
+      currentAuthUser = brokerA;
+      const ownSubmission = await request(app).post("/api/credit-submissions").send({
+        clientId: client.id, requestedAmount: "100000.00",
+        purpose: "Capital de trabajo", financialInstitutionIds: [],
+      });
+      expect(ownSubmission.status).toBe(201);
+      expect(ownSubmission.body.submission.brokerId).toBe(brokerA.id);
+      expect((await storage.getCreditSubmissionRequests({ clientId: client.id }))).toHaveLength(1);
+    });
+  });
+
   describe("2. Broker formalizado: operación permitida", () => {
     it("Broker formalizado puede dar de alta cliente, crédito y prospecto hipotecario", async () => {
       const broker = await createTestUser("broker", "Broker Formalizado OK");
