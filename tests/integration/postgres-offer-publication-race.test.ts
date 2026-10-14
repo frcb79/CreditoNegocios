@@ -217,7 +217,7 @@ describePg("ASTRA-07: published offer versions remain immutable under concurrent
     // Acceptance must be durable in the SAME isolated PostgreSQL database.
     const broker = { id: "com28-broker", email: "com28@example.test", role: "broker",
       firstName: "Prueba", lastName: "PG", masterBrokerId: null } as any;
-    const accepted = await acceptOfferCommission(new DbStorage(), broker, offerId, 2,
+    const accepted = await acceptOfferCommission(Object.create(DbStorage.prototype) as DbStorage, broker, offerId, 2,
       "127.0.0.1", "pg-regression");
     expect(accepted.status.accepted).toBe(true);
     await expect(check()).resolves.toBeUndefined();
@@ -263,7 +263,7 @@ describePg("ASTRA-07: published offer versions remain immutable under concurrent
     const check = () => db.transaction(async tx =>
       assertOfferCommissionAcceptanceInTransaction(tx, params));
     await expect(check()).rejects.toThrow("OFFER_COMMISSION_ACCEPTANCE_REQUIRED");
-    await acceptOfferCommission(new DbStorage(), {
+    await acceptOfferCommission(Object.create(DbStorage.prototype) as DbStorage, {
       id: "com28-master", role: "master_broker", email: "master@example.test",
       firstName: "Master", lastName: "QA",
     } as any, offerId, 2, null, "pg-master");
@@ -281,7 +281,7 @@ describePg("ASTRA-07: published offer versions remain immutable under concurrent
       changeReason: "Condiciones verificables",
     });
     await pool.query("INSERT INTO users (id,role) VALUES ('com28-broker','broker')");
-    await acceptOfferCommission(new DbStorage(), {
+    await acceptOfferCommission(Object.create(DbStorage.prototype) as DbStorage, {
       id: "com28-broker", role: "broker", email: "broker@example.test",
       firstName: "Broker", lastName: "QA",
     } as any, offerId, 2, null, "pg-tamper");
