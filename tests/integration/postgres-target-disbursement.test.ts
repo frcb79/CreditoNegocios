@@ -149,6 +149,41 @@ describePg("OPE-12: winning target and credit creation in one PostgreSQL transac
   const select = (p: Parameters<DbStorage["selectWinningTargetAtomic"]>[0]) =>
     DbStorage.prototype.selectWinningTargetAtomic(p);
 
+  it("P0 linked legacy insert rejects a missing winner even when linkedSubmissionId exists", async () => {
+    const fixture = await seed("target-linked-no-winner", false);
+    const proposed = paramsFor(fixture, "linked-bypass-no-winner").newCredit!;
+    const storage = Object.create(DbStorage.prototype) as DbStorage;
+    await expect(storage.createCredit(proposed as any))
+      .rejects.toThrow("OFFER_LINKED_WINNER_TARGET_NOT_VERIFIED");
+    const found = await db.select().from(credits).where(eq(credits.id, proposed.id));
+    expect(found).toHaveLength(0);
+  });
+
+  it("P0 linked legacy insert denies new versionless credits after published catalog", async () => {
+    const fixture = await seed("target-linked-published-bypass");
+    await pool.query(`INSERT INTO institution_products
+      (id,institution_id,status,is_active) VALUES ('linked-fixture-offer','test-financial','published',true)`);
+    await pool.query(`INSERT INTO institution_product_versions
+      (id,institution_product_id,status,published_at)
+      VALUES ('linked-fixture-v1','linked-fixture-offer','published',NOW())`);
+    const proposed = paramsFor(fixture, "linked-bypass-published").newCredit!;
+    const storage = Object.create(DbStorage.prototype) as DbStorage;
+    await expect(storage.createCredit(proposed as any))
+      .rejects.toThrow("OFFER_VERSION_REQUIRED_FOR_PUBLISHED_INSTITUTION");
+    const found = await db.select().from(credits).where(eq(credits.id, proposed.id));
+    expect(found).toHaveLength(0);
+  });
+
+  it("P0 linked legacy insert with no published catalog verifies winner and attribution", async () => {
+    const fixture = await seed("target-linked-legacy-valid");
+    const proposed = paramsFor(fixture, "linked-legacy-allowed").newCredit!;
+    const storage = Object.create(DbStorage.prototype) as DbStorage;
+    const created = await storage.createCredit(proposed as any);
+    expect(created.id).toBe(proposed.id);
+    expect(created.linkedSubmissionId).toBe(fixture.request.id);
+    expect(created.originMasterBrokerId).toBeNull();
+  });
+
   it("OPE-06 serializes winner double-clicks and creates exactly one linked credit",async()=>{
     const fixture = await seed("target-winner-concurrency", true, "master-original-winner");
     const base = paramsFor(fixture,"winner-concurrency-one");
