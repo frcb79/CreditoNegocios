@@ -1550,8 +1550,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         if (process.env.NODE_ENV !== 'production') {
           return res.json({ 
             message: `Solicitud procesada, pero el servicio de correo (Resend) reportó: ${emailResult.error || 'No entregado'}.`,
-            resetUrl: resetUrl,
-            warning: "Revisa la configuración de Resend (dominio o clave API) o utiliza el enlace directo de restablecimiento provisto.",
+            warning: "Revisa la configuración de Resend; no se puede mostrar un enlace de recuperación en la respuesta.",
           });
         }
       } else {
