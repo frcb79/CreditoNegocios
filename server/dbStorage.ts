@@ -3055,6 +3055,23 @@ export class DbStorage implements IStorage {
             throw new Error("OFFER_LINKED_WINNER_TARGET_NOT_VERIFIED");
           }
           const winner = unlinked[0];
+          // A linked credit must use the winning target's actual frozen quote.
+          // A generic/legacy caller may supply a linkedSubmissionId, but may
+          // not use it to change the approved amount, rate, term, or fees.
+          const quote = winner.institutionProposal as Record<string, any>;
+          if (!["approved", "institution_approved", "selected_winner"].includes(winner.status) ||
+              !Number.isFinite(Number(quote.approvedAmount)) || Number(quote.approvedAmount) <= 0 ||
+              !Number.isFinite(Number(quote.interestRate)) || Number(quote.interestRate) < 0 ||
+              !Number.isSafeInteger(Number(quote.term)) || Number(quote.term) <= 0) {
+            throw new Error("OFFER_LINKED_WINNER_NOT_ELIGIBLE");
+          }
+          if (Number(credit.amount) !== Number(quote.approvedAmount) ||
+              Number(credit.interestRate) !== Number(quote.interestRate) ||
+              Number(credit.term) !== Number(quote.term) ||
+              stableJsonSnapshot((credit.finalProposal as any)?.commissionRates ?? null) !==
+                stableJsonSnapshot(quote.commissionRates ?? null)) {
+            throw new Error("OFFER_LINKED_WINNER_CREDIT_TERMS_MISMATCH");
+          }
           winnerTargetId = winner.id;
           const targetLineage = readFrozenOfferLineage(winner.institutionProposal);
           if ((!canonical && targetLineage) || (canonical && !targetLineage) ||
