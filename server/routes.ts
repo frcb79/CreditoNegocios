@@ -748,7 +748,17 @@ async function validateTargetOfferVersion(
       previous.versionNumber !== incoming.versionNumber)) {
     throw new Error("OFFER_VERSION_IDENTITY_MISMATCH");
   }
-  if (!incoming) return proposal; // Historical institution-only proposals remain readable.
+  if (!incoming) {
+    // Historical institution-only proposals remain READABLE. A NEW proposal
+    // cannot omit the exact published offer/version after the institution has
+    // an active published catalog; otherwise the commission gate is bypassed.
+    const catalog = await storage.getInstitutionProducts();
+    const hasPublished = catalog.some(p =>
+      p.institutionId === target.financialInstitutionId &&
+      p.status === "published" && p.isActive !== false);
+    if (hasPublished) throw new Error("OFFER_VERSION_REQUIRED_FOR_PUBLISHED_INSTITUTION");
+    return proposal; // Legacy institutions with no published catalog yet.
+  }
   const product = await storage.getInstitutionProduct(incoming.institutionProductId);
   if (!product || product.institutionId !== target.financialInstitutionId) {
     throw new Error("OFFER_VERSION_INSTITUTION_MISMATCH");
@@ -4671,6 +4681,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
         req.body?.institutionProductId || null;
       const explicitVersion = rawProposal.versionNumber ?? req.body?.versionNumber ?? null;
       const hasLineage = Boolean(explicitOfferId) || explicitVersion != null;
+      // A new direct credit for an institution already offering published
+      // products must identify which exact economics apply. Draft exploration
+      // without a selected financial institution remains possible.
+      if (!hasLineage && req.body?.financialInstitutionId) {
+        const catalog = await storage.getInstitutionProducts();
+        if (catalog.some(p =>
+          p.institutionId === req.body.financialInstitutionId &&
+          p.status === "published" && p.isActive !== false)) {
+          return res.status(409).json({
+            code: "OFFER_VERSION_REQUIRED_FOR_PUBLISHED_INSTITUTION",
+            message: "Selecciona un producto y versión publicada de la financiera.",
+          });
+        }
+      }
       const clientEconomicKeys = ["commissionRates", "financiera", "broker", "masterBroker",
         "platformNet", "platformMargin", "platformGrossMargin", "overRate", "sobretasa",
         "networkCommissionRates", "commissionsToApply", "openingCommission",
