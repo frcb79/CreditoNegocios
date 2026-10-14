@@ -118,3 +118,9 @@ Actualizar cada vez que se completa una feature.
 - La vinculación por rol valida si el padre del Broker es realmente `master_broker`; Broker bajo Admin tiene economía de canal directo, sin filtración mayorista Master; padre huérfano falla cerrado. Se agregó cobertura Jest.
 - Crédito directo con versión publicada obliga resolver financiera y cuotas desde servidor y rechaza comisiones u opening fee arbitrarios y desajustes entre versión de crédito y snapshot. Pruebas HTTP negativas agregadas.
 - LEG-10 permanece P0 de cliente separado de aceptaciones del Broker; no inventar redacción jurídica. Evidencia de CI/PG/E2E sigue pendiente; ningún GO ni deploy.
+
+## 2026-10-14 — Gate COM-28 dentro de transacciones PostgreSQL
+- Bloqueo por `FOR UPDATE` de oferta y comprobación de versión, destinatario histórico, documento SHA y evidencia aceptada en las transacciones que crean créditos; rutas de rechazo devuelven 409, no 500.
+- Ampliada suite PostgreSQL de carrera/publicación para demostrar aceptación exacta y rechazo de comprobantes ajenos; todavía sin evidencia de ejecución del SHA.
+- Endurecida captura de IP en aceptación comercial/reglas para no confiar en encabezados sin validar; regresión HTTP de encabezado falsificado.
+- Especificación LEG-10 del consentimiento financiero específico del cliente, sin texto legal inventado ni despliegue, permanece requisito para GO.
