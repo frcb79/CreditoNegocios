@@ -458,6 +458,30 @@ describe("P0 - HTTP Registration, Legal Acceptance & Network Affiliation", () =>
       expect(conflict.status).toBe(409);
       expect(conflict.body.code).toBe("OFFER_VERSION_IDENTITY_MISMATCH");
     });
+
+    it("rechaza crédito directo sin versión cuando su financiera ya publica productos", async () => {
+      const superAdmin = await storage.createUser({
+        email: "version-credit-" + randomUUID() + "@network.test",
+        firstName: "Super", lastName: "Admin", role: "super_admin",
+        permissions: { modules: ["*"], actions: ["*"] },
+        isActive: true, status: "active",
+      } as any);
+      currentAuthUser = superAdmin;
+      const institutionId = "published-institution-" + randomUUID();
+      const listSpy = jest.spyOn(storage, "getInstitutionProducts").mockResolvedValue([
+        { id: randomUUID(), institutionId, status: "published", isActive: true } as any,
+      ]);
+      try {
+        const response = await request(app).post("/api/credits").send({
+          clientId: randomUUID(), financialInstitutionId: institutionId,
+          amount: "200000", finalProposal: {},
+        });
+        expect(response.status).toBe(409);
+        expect(response.body.code).toBe("OFFER_VERSION_REQUIRED_FOR_PUBLISHED_INSTITUTION");
+      } finally {
+        listSpy.mockRestore();
+      }
+    });
   });
 
   describe("P0 - Notificaciones con aislamiento estricto de propietario", () => {
