@@ -1,5 +1,22 @@
 # Crédito Negocios — Estado operativo de cierre prelaunch
 
+## Estado vigente — corte técnico del 14 de octubre de 2026
+
+- **Rama única** `integration/phase-1a1-base-segura`; **PR #10 abierto / Draft / NO MERGE**; `main` en `0c6b7bd18f6465c55d95f72a4f20ade339f1a553`.
+- **Último SHA con CI integral verificado:** `1defffcc60b1aaaf9347ced36190c24bcc1cb6d9` — [Actions 38651741756](https://github.com/frcb79/CreditoNegocios/actions/runs/38651741756) **SUCCESS**: TypeScript, build, 24/24 suites unitarias, **321/321 pruebas** y 9/9 suites PostgreSQL aislado.
+- **Cambios posteriores en rama, todavía SIN CI certificado a la hora de redactar esta actualización:** ajustes de mensaje/UI LEG-10 y prueba de selección de financieras hasta `f14f670f09f26f0d0ec4c92f29aee69601e474eb`. **No atribuirles** el CI de `1defffc`.
+- **P0 de autorización corregidos y probados en `1defffc`:** validar vinculación del cliente antes de crear crédito, solicitud o hipotecario con cliente existente; comprobar cliente/tenant/crédito en altas y reasignaciones de documentos; impedir modificaciones/borrados desde supervisión Master; inmutabilidad de atribución/linaje al editar cliente y crédito en rutas genéricas. Las pruebas HTTP controlan casos positivos/negativos; la suite de autorización comercial usa MemStorage canónico en modo test.
+- **LEG-10** sólo dispone de un **gate preventivo fail-closed** para `mark-sent` y PDF institucional, probado contra intentos de consentimiento unilateral del Broker. **NO existe todavía el consentimiento real del cliente**, firma/representación, versión de instrumento aprobada, revocación ni evidencia persistida; las rutas de transmisión permanecen bloqueadas.
+- **Bitácora**: existe auditoría comercial, configuración, cambios de estado y flujos económicos; no se presume bitácora universal. Avanzada de heartbeat queda explícitamente diferida.
+- **Railway consultado en lectura**: web de Staging conectado a `main`, con un Postgres Railway desplegado en entorno staging; web de Producción sin servicio Postgres dentro de ese entorno. Se observó que ambos web desplegaron `0c6b7bd` el 8-oct. Las URLs/secretos están enmascarados: **no se ha certificado separación efectiva de DB, Supabase Storage ni credenciales**. Se mantiene prohibido probar con archivos sensibles o realizar migraciones/cambios/borrados sin autorización.
+- **GO bloqueado:** instrumento y flujo firmante LEG-10 aprobados; almacenamiento de evidencia inmutable/revocación; comprobación operativa de aislamiento DB/Storage y control de auto-deploy; E2E multirol con datos sintéticos en Staging aislado, rollback y ASTRA independiente; autorización explícita para merge y despliegue por separado. No hay clientes/créditos reales: **Producción deberá arrancar limpia** con respaldo/corte autorizados, no mediante limpieza improvisada.
+
+> Esta sección representa el estado vigente. Las actas que siguen se conservan como **historial fechado** y sus referencias a checkpoints previos o pendientes ya cerrados no deben leerse como estado actual.
+
+---
+
+## Acta histórica conservada — 13 de octubre de 2026
+
 **Corte actualizado:** 13 de octubre de 2026. **Rama única:** `integration/phase-1a1-base-segura`. **PR:** [#10 Draft](https://github.com/frcb79/CreditoNegocios/pull/10). **Checkpoint certificado de CI:** `a4e42970b57cb162484fab2712b57a11ecf4661e`, [run 38508592693](https://github.com/frcb79/CreditoNegocios/actions/runs/38508592693): jobs `typescript-build-unit` y `postgres-migrations` SUCCESS. **Trabajo correctivo posterior:** hasta `27b9b5835f7e2df2a731d61e9c201ffb816fe6fc`, aún SIN CI certificado a la hora de esta actualización. **NO GO**, sin E2E Staging ni autorización para merge/despliegue.
 
 ## Actualización puntual — 13-oct-2026, verificación GPT-6
