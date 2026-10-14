@@ -132,6 +132,11 @@ export default function BrokerExpedienteDocuments({ user: propUser }: BrokerExpe
       queryClient.invalidateQueries({
         queryKey: ["/api/broker/profile-documents", currentUser?.id],
       });
+      // Never keep displaying a prior "canPayout" result after file replacement.
+      queryClient.setQueryData([`/api/beneficiaries/${currentUser?.id}/payout-validation`], undefined);
+      queryClient.invalidateQueries({
+        queryKey: [`/api/beneficiaries/${currentUser?.id}/payout-validation`],
+      });
     },
     onError: (err: any) => {
       toast({
@@ -167,6 +172,8 @@ export default function BrokerExpedienteDocuments({ user: propUser }: BrokerExpe
       queryClient.invalidateQueries({
         queryKey: ["/api/broker/profile-documents", currentUser?.id],
       });
+      queryClient.setQueryData([`/api/beneficiaries/${currentUser?.id}/payout-validation`], undefined);
+      queryClient.invalidateQueries({ queryKey: [`/api/beneficiaries/${currentUser?.id}/payout-validation`] });
     },
     onError: (err: any) => {
       toast({

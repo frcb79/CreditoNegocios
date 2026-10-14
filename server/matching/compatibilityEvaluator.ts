@@ -689,7 +689,8 @@ export function isVersionEligibleForMatching(
   if (version.status === "archived") {
     return { eligible: false, reason: "Versión archivada" };
   }
-  if (version.status !== "published" && version.status !== "active") {
+  // FIN: legacy "active" is not proof of formal publication.
+  if (version.status !== "published") {
     return { eligible: false, reason: `Estado de versión no elegible (${version.status})` };
   }
 

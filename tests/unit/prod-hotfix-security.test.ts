@@ -352,7 +352,7 @@ describe("P0 Hotfix - Production Security & Zero-Destructive Startup", () => {
           if (/SELECT\s+count\(\*\)\s+as\s+count\s+FROM\s+public\.users/i.test(normalizedSql)) {
             return { rows: [{ count: "0" }] }; // DB vacía
           }
-          if (/INSERT INTO public\.users/i.test(normalizedSql) && /francocb79@gmail\.com/i.test(normalizedSql)) {
+          if (/INSERT INTO public\.users/i.test(normalizedSql) && /'Administrador', 'Inicial'/i.test(normalizedSql)) {
             insertedUsers.push(params);
             return { rows: [], rowCount: 1 };
           }
@@ -399,10 +399,17 @@ describe("P0 Hotfix - Production Security & Zero-Destructive Startup", () => {
 
       // Con contraseña explícita y segura (>= 12 chars, mayúscula, minúscula, número)
       process.env.ADMIN_INITIAL_PASSWORD = "SuperSecureAdminPassword2026!";
+      delete process.env.ADMIN_INITIAL_EMAIL;
+      await runAutoMigration();
+      expect(insertedUsers.length).toBe(0); // Password alone never creates a fixed-email Super Admin.
+
+      process.env.ADMIN_INITIAL_EMAIL = "admin@launch.example";
       await runAutoMigration();
       expect(insertedUsers.length).toBe(1);
       expect(await bcrypt.compare("SuperSecureAdminPassword2026!", insertedUsers[0][0])).toBe(true);
+      expect(insertedUsers[0][1]).toBe("admin@launch.example");
 
+      delete process.env.ADMIN_INITIAL_EMAIL;
       delete process.env.ADMIN_INITIAL_PASSWORD;
     });
 
@@ -423,6 +430,7 @@ describe("P0 Hotfix - Production Security & Zero-Destructive Startup", () => {
           }
           if (/INSERT INTO public\.users/i.test(normalizedSql) && /user-super-admin/i.test(normalizedSql)) {
             sysUserInserted = true;
+            expect(normalizedSql).toMatch(/'system', false, 'inactive', '\{\}'/i);
             insertedPasswordHash = params?.[0] || "";
             return { rows: [], rowCount: 1 };
           }
