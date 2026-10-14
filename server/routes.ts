@@ -4652,7 +4652,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const hasLineage = Boolean(explicitOfferId) || explicitVersion != null;
       const clientEconomicKeys = ["commissionRates", "financiera", "broker", "masterBroker",
         "platformNet", "platformMargin", "platformGrossMargin", "overRate", "sobretasa",
-        "networkCommissionRates", "commissionsToApply"];
+        "networkCommissionRates", "commissionsToApply", "openingCommission",
+        "masterBrokerShare", "brokerShare", "netCommission", "totalCommission"];
       if (!hasLineage && clientEconomicKeys.some(key =>
         Object.prototype.hasOwnProperty.call(rawProposal, key))) {
         return res.status(409).json({
@@ -4661,6 +4662,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
       }
       let validatedProposal = { ...rawProposal };
+      let canonicalFinancialInstitutionId: string | null = req.body?.financialInstitutionId || null;
       if (hasLineage) {
         if (typeof explicitOfferId !== "string" || !explicitOfferId.trim() ||
             !Number.isSafeInteger(Number(explicitVersion)) || Number(explicitVersion) <= 0) {
@@ -4677,6 +4679,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         if (!currentVersion) {
           return res.status(409).json({ code: "OFFER_VERSION_NOT_CURRENT" });
         }
+        canonicalFinancialInstitutionId = product.institutionId;
         const rates = (currentVersion.conditions as any)?.commissionRates;
         if (!rates || typeof rates !== "object") {
           return res.status(409).json({ code: "OFFER_COMMISSION_SCHEDULE_UNAVAILABLE" });
@@ -4694,6 +4697,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const creditData = insertCreditSchema.parse({
         ...req.body,
         finalProposal: validatedProposal,
+        financialInstitutionId: canonicalFinancialInstitutionId,
         tenantId: req.tenantContext?.tenant?.id || null,
         brokerId: originationCheck.brokerId,
         createdBy: userId,
