@@ -73,7 +73,7 @@ import {
   validateOfferVersionParameters,
   compareOfferIntermediaryCommissions,
 } from "./offerVersionService";
-import { getOfferCommissionStatus, acceptOfferCommission } from "./offerCommissionAcceptance";
+import { getOfferCommissionStatus, acceptOfferCommission, isQuoteHistoricallyFrozen } from "./offerCommissionAcceptance";
 import {
   evaluateCatalogCompatibility,
   isVersionEligibleForMatching,
@@ -686,9 +686,7 @@ async function checkOfferCommissionAcceptanceForNewOperation(args: {
     // Only a quote/proposal evidenced BEFORE this version was superseded
     // qualifies for grandfathering. A newly submitted direct credit must not
     // pick old economics simply to bypass a new acceptance requirement.
-    const recorded = args.snapshotRecordedAt ? new Date(args.snapshotRecordedAt).getTime() : NaN;
-    const supersededAt = chosen.effectiveTo ? new Date(chosen.effectiveTo).getTime() : NaN;
-    if (Number.isFinite(recorded) && Number.isFinite(supersededAt) && recorded < supersededAt) {
+    if (isQuoteHistoricallyFrozen(chosen, args.snapshotRecordedAt)) {
       return null;
     }
     return { code: "OFFER_VERSION_SUPERSEDED_NEW_OPERATION",
