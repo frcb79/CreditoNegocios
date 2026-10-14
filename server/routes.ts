@@ -11170,7 +11170,7 @@ function maskCLABE(clabe?: string | null): string | null {
         submission,
         targets,
         message: targets.length > 0
-          ? "Oportunidad hipotecaria registrada y canalizada exitosamente"
+          ? "Oportunidad hipotecaria registrada; financieras seleccionadas pendientes de revisión interna (sin envío externo)"
           : "Oportunidad hipotecaria registrada exitosamente para revisión y canalización"
       });
     } catch (error: any) {
@@ -11179,14 +11179,14 @@ function maskCLABE(clabe?: string | null): string | null {
     }
   });
 
-  // POST /api/credit-submissions/:id/targets - Channel submission to institutions (EVENT 2)
+  // POST /api/credit-submissions/:id/targets - Select institution targets internally (NOT external disclosure)
   app.post('/api/credit-submissions/:id/targets', isAuthenticated, requireModuleAndAction('creditos', 'submit_proposals'), async (req: any, res) => {
     try {
       const { id } = req.params;
       const { financialInstitutionIds } = req.body;
 
       if (!Array.isArray(financialInstitutionIds) || financialInstitutionIds.length === 0) {
-        return res.status(400).json({ message: "Debes seleccionar al menos una institución financiera para canalizar" });
+        return res.status(400).json({ message: "Debes seleccionar al menos una institución financiera para preparar la solicitud" });
       }
 
       const submission = await storage.getCreditSubmissionRequest(id);
@@ -11202,7 +11202,7 @@ function maskCLABE(clabe?: string | null): string | null {
       if (!canReadCreditSubmission(callerUser, submission)) {
         return res.status(403).json({
           code: "SUBMISSION_NOT_AUTHORIZED",
-          message: "No tienes permiso para canalizar esta solicitud.",
+          message: "No tienes permiso para modificar las financieras seleccionadas en esta solicitud.",
         });
       }
       const formalizationCheck = await validateEffectiveBrokerFormalization(
@@ -11236,12 +11236,12 @@ function maskCLABE(clabe?: string | null): string | null {
       }
 
       res.status(201).json({
-        message: `Solicitud canalizada a ${newTargets.length} financiera(s)`,
+        message: `${newTargets.length} financiera(s) agregadas para revisión interna; no se compartió el expediente`,
         targets: newTargets,
       });
     } catch (error: any) {
       console.error("Error channeling submission:", error);
-      res.status(500).json({ message: "Error al canalizar la solicitud" });
+      res.status(500).json({ message: "Error al registrar financieras para revisión" });
     }
   });
 
