@@ -2960,6 +2960,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(403).json({ message: "Sólo Super Admin puede asignar privilegios administrativos." });
       }
 
+      // A new Broker's initial affiliation is also structural governance:
+      // Admin cannot silently place a new identity inside any Master network.
+      if (currentUser?.role === "admin" && userData.role === "broker" && userData.masterBrokerId) {
+        return res.status(403).json({ message: "Sólo Super Admin puede asignar nuevos Brokers a una red Master." });
+      }
+
       // Onboarding through Administration must never bypass first-login legal evidence.
       // All Broker/Master accounts start with an activation link and no password.
       const isCommercialInvite = userData.role === "broker" || userData.role === "master_broker";
