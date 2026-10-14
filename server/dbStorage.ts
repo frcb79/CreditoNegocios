@@ -51,6 +51,7 @@ import { eq, ne, isNotNull, desc, asc, like, and, or, inArray, sql, gte } from "
 
 import { buildOfferCommissionDocument } from "./offerCommissionAcceptance";
 import { assertFrozenOfferLineage, readFrozenOfferLineage } from "./offerLineageService";
+import { assertOfferCommissionAcceptanceInTransaction } from "./offerCommissionTransactionalGate";
 import { assertTargetReviewMutable } from "./targetReviewTransitions";
 import { getPlatformTenant, getOwnedTenant } from "./brokerNetworkTransitionService";
 import { randomUUID, createHash } from "crypto";
@@ -3527,6 +3528,16 @@ export class DbStorage implements IStorage {
           Number(proposed.term) !== term) {
         throw new Error("WINNER_CREDIT_PROPOSAL_MISMATCH");
       }
+      if (offerLineage) {
+        await assertOfferCommissionAcceptanceInTransaction(tx, {
+          offerId: offerLineage.institutionProductId,
+          versionNumber: offerLineage.versionNumber,
+          financialInstitutionId: target.financialInstitutionId,
+          brokerId: request.brokerId,
+          originMasterBrokerId: request.originMasterBrokerId ?? null,
+          proposalRecordedAt: target.proposalReceivedAt,
+        });
+      }
       const [created] = await tx.insert(credits).values({
         ...proposed,
         id: proposed.id,
@@ -3594,6 +3605,16 @@ export class DbStorage implements IStorage {
           throw new Error("DISBURSEMENT_TARGET_CREDIT_INVALID");
         }
         assertFrozenOfferLineage(target.institutionProposal, proposed.finalProposal);
+        if (offerLineage) {
+          await assertOfferCommissionAcceptanceInTransaction(tx, {
+            offerId: offerLineage.institutionProductId,
+            versionNumber: offerLineage.versionNumber,
+            financialInstitutionId: target.financialInstitutionId,
+            brokerId: request.brokerId,
+            originMasterBrokerId: request.originMasterBrokerId ?? null,
+            proposalRecordedAt: target.proposalReceivedAt,
+          });
+        }
         const [created] = await tx.insert(credits).values({
           ...proposed,
           id: proposed.id,
