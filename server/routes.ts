@@ -4750,6 +4750,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // Origin Master for a *new direct credit* must match the storage-side
       // attribution logic. Never rely on a client-supplied Master ID.
+      // Formalization ordinarily resolves this ID; fail closed if an
+      // inconsistent allowed result reaches this route.
+      if (!originationCheck.brokerId) {
+        return res.status(409).json({ code: "CREDIT_ORIGINATOR_NOT_VERIFIED" });
+      }
       const originator = await storage.getUser(originationCheck.brokerId);
       let effectiveMasterBrokerId: string | null = null;
       if (originator?.role === "master_broker") {
