@@ -70,3 +70,8 @@ Se actualiza via sync desde cada proyecto al master.
 - No usar correo conocido, cuenta de pruebas ni rol Admin como sustitutos de `super_admin` para avisos financieros privilegiados.
 - Revisar TODAS las rutas legacy PUT/PATCH y los cambios de estado: los nombres `isSuperAdmin` que incluyen `admin` son una fuente real de escalamiento. Reglas RBAC deben probarse desde API con usuarios de distintos roles, nunca sólo con visibilidad de pantalla.
 - Separar commit/push y QA: un cambio P0 corregido en GitHub queda **sin certificación** hasta CI del SHA nuevo y prueba E2E cuando aplique.
+
+## Lección prelaunch 2026-10-14 — Una bitácora inicial no equivale a seguimiento de sesiones
+- Certificar cada evento crítico desde la misma transacción de negocio y probar permisos de consulta/propiedad. No confundir existencia de `commercial_audit_logs` con cobertura de login, documentos, créditos y comisiones ni con una pantalla unificada.
+- En pruebas unitarias `MemStorage` y `MockCommercialOpportunityStorage` pueden ser implementaciones separadas; comprobar eventos en almacenamiento real del caso, sin afirmar que el endpoint PostgreSQL fue validado por un mock.
+- La restricción de escalamiento debe cubrir creación, además de edición: Admin/Master no deben suministrar permisos globales al crear usuarios.
