@@ -380,4 +380,46 @@ describe("P0 - HTTP Registration, Legal Acceptance & Network Affiliation", () =>
     });
   });
 
+  describe("P0 - Admin cannot escalate to Super Admin via legacy user endpoints", () => {
+    it("rejects role elevation, permissions changes, Super Admin editing and unauthorized status changes", async () => {
+      const admin = await storage.createUser({
+        email: "rbac-admin-" + randomUUID() + "@network.test",
+        firstName: "Admin", lastName: "Limited", role: "admin",
+        permissions: { modules: ["*"], actions: ["*"] },
+        isActive: true, status: "active",
+      } as any);
+      const superAdmin = await storage.createUser({
+        email: "rbac-super-" + randomUUID() + "@network.test",
+        firstName: "Super", lastName: "Admin", role: "super_admin",
+        permissions: { modules: ["*"], actions: ["*"] },
+        isActive: true, status: "active",
+      } as any);
+      const broker = await storage.createUser({
+        email: "rbac-broker-" + randomUUID() + "@network.test",
+        firstName: "Normal", lastName: "Broker", role: "broker",
+        isActive: true, status: "active",
+      } as any);
+      currentAuthUser = admin;
+      const promotePut = await request(app).put("/api/users/" + admin.id).send({ role: "super_admin" });
+      expect(promotePut.status).toBe(403);
+      const promotePatch = await request(app).patch("/api/users/" + admin.id).send({ role: "super_admin" });
+      expect(promotePatch.status).toBe(403);
+      const editSuperPut = await request(app).put("/api/users/" + superAdmin.id).send({ firstName: "Tampered" });
+      expect(editSuperPut.status).toBe(403);
+      const editSuperPatch = await request(app).patch("/api/users/" + superAdmin.id).send({ firstName: "Tampered" });
+      expect(editSuperPatch.status).toBe(403);
+      const elevatePerms = await request(app).patch("/api/users/" + admin.id).send({
+        permissions: { modules: ["*"], actions: ["*"], scope: "all" },
+      });
+      expect(elevatePerms.status).toBe(403);
+      const alterStatus = await request(app).patch("/api/admin/users/" + broker.id + "/operational-status")
+        .send({ status: "suspended", reason: "Intento no autorizado" });
+      expect(alterStatus.status).toBe(403);
+      expect((await storage.getUser(admin.id))?.role).toBe("admin");
+      expect((await storage.getUser(superAdmin.id))?.firstName).toBe("Super");
+      expect((await storage.getUser(broker.id))?.status).toBe("active");
+    });
+  });
+
+
 });
