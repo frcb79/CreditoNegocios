@@ -87,3 +87,8 @@ Se actualiza via sync desde cada proyecto al master.
 - Cuando se añade obligatoriedad de identidad oferta/version, no basta una excepción `if (!offerId) return`: eso permite a las operaciones nuevas eludir aceptaciones económicas.
 - Para propuestas previas al primer catálogo de la financiera, preservar su historia sin recálculo; para una nueva operación, comprobar publicación vigente y fecha histórica **desde el servidor**, bajo lock de producto y dentro de la transacción PG.
 - Nunca confundir existencia de tests nuevos, fixtures PostgreSQL mínimos o checks Vercel con CI y E2E ejecutados en el SHA final.
+
+## 2026-10-14 — Evidencia verificable en JSONB y catálogos desactivados
+- Nunca calcular huellas legales persistentes con `JSON.stringify` de objetos cuyo destino es `jsonb` sin serialización canónica; usar el mismo algoritmo para emisión y verificación de snapshots personalizados. Añadir pruebas reordenando claves antes y después.
+- Los estados `archived`/`inactive` no deben borrar la regla histórica: una financiera que publicó una oferta no puede permitir nuevos créditos anónimos al desactivarla. Conservar sólo propuestas con fecha anterior al primer `publishedAt` verificable.
+- En suites SQL aisladas, evitar constructores con autoseeding o consultas asíncronas a otras tablas que no forman parte del fixture. Las pruebas agregadas son propuestas hasta contar con resultados de Actions.
