@@ -9579,6 +9579,30 @@ function maskCLABE(clabe?: string | null): string | null {
     }
   });
 
+  // COM-28: Dedicated inbox, no master/institution financial catalog exposed.
+  app.get("/api/commercial/offer-acceptances/pending", isAuthenticated, async (req: any, res) => {
+    try {
+      const user = await storage.getUser(req.user.claims.sub);
+      if (!user || !["broker", "master_broker"].includes(user.role)) {
+        return res.status(403).json({ code: "OFFER_ACCEPTANCE_ROLE_FORBIDDEN" });
+      }
+      const products = await storage.getInstitutionProducts();
+      const pending = [];
+      for (const product of products) {
+        if (product.status !== "published" || product.isActive === false) continue;
+        const versions = await storage.getInstitutionProductVersions(product.id);
+        const current = versions.find(v => v.status === "published");
+        if (!current) continue;
+        const status = await getOfferCommissionStatus(storage, user, product.id, current.versionNumber);
+        if (status.pending) pending.push(status);
+      }
+      return res.json({ pending });
+    } catch (error: any) {
+      console.error("Error consulting pending offer commissions:", error);
+      return res.status(500).json({ code: "OFFER_ACCEPTANCES_UNAVAILABLE" });
+    }
+  });
+
   // COM-28: Broker/Master checks the exact published economic instrument.
   // Never expose platform or financial-institution internal commission rates.
   app.get("/api/institution-products/:id/commission-acceptance", isAuthenticated, async (req: any, res) => {
