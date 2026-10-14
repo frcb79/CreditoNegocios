@@ -89,6 +89,47 @@ describe("Fase 2B.1B — Cierre de Integridad Financiera y Eliminación de Rutas
     });
   });
 
+  describe("SEC-P0: document upload and reassignment are client-scoped", () => {
+    it("denies file attachment to a foreign client and cross-client reassignment", async () => {
+      const brokerA = await storage.createUser({
+        email: `doc-owner-${randomUUID()}@example.test`, role: "broker", isActive: true,
+      } as any);
+      const brokerB = await storage.createUser({
+        email: `doc-outsider-${randomUUID()}@example.test`, role: "broker", isActive: true,
+      } as any);
+      const clientA = await storage.createClient({
+        type: "persona_moral", brokerId: brokerA.id, businessName: "Empresa protegida A",
+      } as any);
+      const clientB = await storage.createClient({
+        type: "persona_moral", brokerId: brokerB.id, businessName: "Empresa protegida B",
+      } as any);
+
+      currentAuthUser = brokerB;
+      const foreignUpload = await request(app).post("/api/documents")
+        .field("clientId", clientA.id).field("type", "ine")
+        .attach("file", Buffer.from("%PDF-1.4 prueba"), {
+          filename: "documento.pdf", contentType: "application/pdf",
+        });
+      expect(foreignUpload.status).toBe(403);
+      expect(foreignUpload.body.code).toBe("DOCUMENT_CLIENT_NOT_AUTHORIZED");
+      expect(await storage.getDocuments({ clientId: clientA.id })).toHaveLength(0);
+
+      const original = await storage.createDocument({
+        brokerId: brokerA.id, uploadedBy: brokerA.id, clientId: clientA.id,
+        type: "ine", fileName: "protegido.pdf",
+        filePath: "/uploads/fake-original.pdf",
+      } as any);
+      currentAuthUser = brokerA;
+      const retarget = await request(app).put(`/api/documents/${original.id}`)
+        .send({ clientId: clientB.id, type: "rfc" });
+      expect(retarget.status).toBe(403);
+      expect(retarget.body.code).toBe("DOCUMENT_CLIENT_NOT_AUTHORIZED");
+      const after = await storage.getDocument(original.id);
+      expect(after?.clientId).toBe(clientA.id);
+      expect(after?.type).toBe("ine");
+    });
+  });
+
   describe("ASTRA-01: canalización de oportunidades por propietario histórico", () => {
     it("rechaza a otro Broker y al nuevo Master sin alterar targets; conserva el acceso administrativo", async () => {
       const brokerA = await storage.createUser({
