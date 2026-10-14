@@ -576,6 +576,49 @@ async function validateClientOriginationAccess(params: {
   return { allowed: true };
 }
 
+/**
+ * SEC-P0: validate both a document's client and credit destination before
+ * storing or reassigning a file. A supplied UUID never grants write access.
+ * Keep a historical originating Broker's own client upload available, while
+ * Master's oversight-only and unrelated Broker access remain read-only.
+ */
+async function validateDocumentWriteDestination(params: {
+  userId: string;
+  userRole: string;
+  tenantContext?: any;
+  clientId?: string | null;
+  creditId?: string | null;
+}): Promise<{ allowed: boolean; statusCode?: number; code?: string; message?: string;
+  client?: any; credit?: any }> {
+  const { userId, userRole, tenantContext, clientId, creditId } = params;
+  let credit: any = null;
+  if (creditId) {
+    const access = await authorizeCreditAccess(userId, userRole, creditId, tenantContext);
+    if (!access.authorized || !access.credit) {
+      return { allowed: false, statusCode: access.reason === "Credit not found" ? 404 : 403,
+        code: "DOCUMENT_CREDIT_NOT_AUTHORIZED", message: "No tienes acceso al crédito indicado." };
+    }
+    credit = access.credit;
+  }
+  if (clientId && credit && credit.clientId !== clientId) {
+    return { allowed: false, statusCode: 409, code: "DOCUMENT_CLIENT_CREDIT_MISMATCH",
+      message: "El crédito no pertenece al cliente seleccionado." };
+  }
+  const effectiveClientId = clientId || credit?.clientId;
+  if (!effectiveClientId) return { allowed: true, credit };
+  const auth = await authorizeClientAccess(userId, userRole, effectiveClientId, tenantContext);
+  if (!auth.authorized || !auth.client) {
+    return { allowed: false, statusCode: auth.reason === "Client not found" ? 404 : 403,
+      code: "DOCUMENT_CLIENT_NOT_AUTHORIZED", message: "No tienes acceso al expediente del cliente." };
+  }
+  const historicalOwner = auth.scope === "historical_scoped" && auth.client.brokerId === userId;
+  if (!auth.capabilities.canUploadDocuments && !historicalOwner) {
+    return { allowed: false, statusCode: 403, code: "DOCUMENT_CLIENT_NOT_AUTHORIZED",
+      message: "Este nivel de acceso no permite agregar documentos al expediente." };
+  }
+  return { allowed: true, client: auth.client, credit };
+}
+
 // Helper to check if user can access a credit
 async function authorizeCreditAccess(userId: string, userRole: string, creditId: string, tenantContext?: any): Promise<{ authorized: boolean; credit?: any; reason?: string }> {
   const credit = await storage.getCredit(creditId);
@@ -7588,22 +7631,24 @@ function maskCLABE(clabe?: string | null): string | null {
         return res.status(400).json({ message: "No file uploaded" });
       }
 
-      // Inherit tenant from client, credit, or active tenant
-      let documentTenantId = req.tenantContext?.tenant?.id || null;
-      let documentBrokerId = userId;
-      if (clientId) {
-        const client = await storage.getClient(clientId);
-        if (client) {
-          if (client.tenantId) documentTenantId = client.tenantId;
-          if (client.brokerId) documentBrokerId = client.brokerId;
-        }
-      } else if (creditId) {
-        const credit = await storage.getCredit(creditId);
-        if (credit) {
-          if (credit.tenantId) documentTenantId = credit.tenantId;
-          if (credit.brokerId) documentBrokerId = credit.brokerId;
-        }
+      const uploadUser = await storage.getUser(userId);
+      const destination = await validateDocumentWriteDestination({
+        userId, userRole: uploadUser?.role || "", tenantContext: req.tenantContext,
+        clientId: clientId || null, creditId: creditId || null,
+      });
+      if (!destination.allowed) {
+        // Multer already wrote the temporary file; reject without leaving
+        // unowned sensitive bytes on disk or uploading them to Supabase.
+        await removeStoredDocument(file.path);
+        return res.status(destination.statusCode || 403).json({
+          code: destination.code, message: destination.message,
+        });
       }
+      // Resolve ownership from *authorized* resources only.
+      const documentTenantId = destination.client?.tenantId ||
+        destination.credit?.tenantId || req.tenantContext?.tenant?.id || null;
+      const documentBrokerId = destination.credit?.brokerId ||
+        destination.client?.brokerId || userId;
       
       const extractedData = {
         ...getDocumentExtractedData(),
@@ -7814,11 +7859,23 @@ function maskCLABE(clabe?: string | null): string | null {
       
       const { clientId, creditId, type } = req.body;
       const file = req.file;
-      
+      const nextClientId = clientId !== undefined ? (clientId || null) : authResult.document.clientId;
+      const nextCreditId = creditId !== undefined ? (creditId || null) : authResult.document.creditId;
+      const destination = await validateDocumentWriteDestination({
+        userId, userRole: user?.role || "", tenantContext: req.tenantContext,
+        clientId: nextClientId, creditId: nextCreditId,
+      });
+      if (!destination.allowed) {
+        if (file?.path) await removeStoredDocument(file.path);
+        return res.status(destination.statusCode || 403).json({
+          code: destination.code, message: destination.message,
+        });
+      }
+
       let updateData: any = {
-        clientId: clientId || null,
-        creditId: creditId || null,
-        type,
+        clientId: nextClientId,
+        creditId: nextCreditId,
+        type: type ?? authResult.document.type,
       };
       
       // If new file is uploaded, update file information and process OCR
