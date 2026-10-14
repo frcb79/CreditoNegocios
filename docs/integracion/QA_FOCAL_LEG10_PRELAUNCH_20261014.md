@@ -39,11 +39,13 @@ Fecha de preparación: 14-oct-2026. **NO GO general.** Sin datos ni consentimien
 | SEC-04 | Broker A con documento propio | PUT documento intentando reasignarlo a cliente de Broker B | 403, documento y titular original intactos | HTTP + estado antes/después |
 | SEC-05 | Master / tenant distinto | Referenciar crédito y cliente de diferentes titulares en un solo documento | Rechazo `DOCUMENT_CLIENT_CREDIT_MISMATCH`, sin escribir archivo | E2E/HTTP aislado |
 | SEC-06 | Master con supervisión | PUT/DELETE documento no vinculado de su Broker subordinado | 403; lectura de red no concede escritura ni borrado | HTTP + estado antes/después |
+| SEC-07 | Super Admin / Broker con edición | PUT cliente con `brokerId` / `tenantId` distinto | 409 `CLIENT_OWNERSHIP_IMMUTABLE`; identidad histórica intacta | HTTP + persistencia |
+| SEC-08 | Super Admin / Broker con edición | PUT crédito con `clientId`, `brokerId` o `linkedSubmissionId` diferente | 409 `CREDIT_OWNERSHIP_IMMUTABLE`; linaje original intacto | HTTP + persistencia |
 | LEG-01 | Master/Broker | OTP, formalización, versiones | Documento personalizado exacto, OTP y evidencia histórica | hash, timestamps, comprobante PDF |
 | OPS-01 | Equipo autorizado | Ensayo de despliegue en Staging aislado | Sin conexión a BD, Storage, sesiones, emails o secretos de Producción | checksums de configuración |
 | OPS-02 | Equipo autorizado | Restore/rollback de copia sintética | Migraciones 0004–0009 + nuevas pendientes sin pérdida de historial | backup + restore drill |
 
-**Estado:** LEG10-01–03 y SEC-02–06 cuentan con cobertura HTTP unitaria escrita, sujeta a CI del SHA nuevo. El resto exige ejecución/evidencias adicionales; LEG10-06–12 requieren redacción legal, verificación del firmante, persistencia, revocación y UI **aún no implementadas**.
+**Estado:** LEG10-01–03 y SEC-02–08 cuentan con cobertura HTTP unitaria escrita, sujeta a CI del SHA nuevo. El resto exige ejecución/evidencias adicionales; LEG10-06–12 requieren redacción legal, verificación del firmante, persistencia, revocación y UI **aún no implementadas**.
 
 ## Diseño legal a aprobar (el equipo técnico NO selecciona excepciones por cuenta propia)
 1. Texto versionado y exacto del instrumento de consentimiento para PF/PFAE/PM; aviso de privacidad correcto y fecha efectiva.
