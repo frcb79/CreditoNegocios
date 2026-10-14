@@ -135,3 +135,8 @@ Actualizar cada vez que se completa una feature.
 - COM-28: SHA determinista al generar y al verificar documento y snapshot de aceptación; evitar que PostgreSQL reordene JSONB y cause evidencias falsamente inválidas. Regresiones de reordenamiento y tampering añadidas.
 - La suite PG de ofertas usa `Object.create(DbStorage.prototype)` en lugar de disparar inicialización/semillas de negocio al probar aceptación aislada.
 - Gate PostgreSQL de nuevas operaciones sin oferta/version también revisa catálogos históricos archivados/inactivos; regresión específica. Sin DB desplegadas, main ni infraestructura modificadas. CI del HEAD nuevo no certificado.
+
+## 2026-10-14 — P0: cierre de bypass de creación linked y doble crédito legacy
+- `DbStorage.createCredit` ya NO omite aceptación financiera por `linkedSubmissionId`. Comprueba en transacción PG solicitud, Broker/Master histórico, winner real, versión económica y consentimiento, o cronología legacy autorizada.
+- Inserción de crédito y asignación `credit_submission_targets.credit_id` ahora atómicas para creación legacy, bloqueadas frente a carreras.
+- Suites PG de ganador/desembolso extendidas para validar casos sin winner, catálogo publicado sin versión, legado válido y doble ejecución concurrente. Validación ejecutada/CI del nuevo SHA aún pendiente.
