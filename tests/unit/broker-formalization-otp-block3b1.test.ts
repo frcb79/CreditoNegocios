@@ -1015,6 +1015,14 @@ describe("Bloque 3B1 (MemStorage): Backend de aceptación del Convenio mediante 
 
       brokerUser = reg.user;
       currentAuthUser = brokerUser;
+      await storage.updateUser(brokerUser.id, {
+        bankName: "BBVA",
+        clabe: "012345678901234567",
+        profileData: {
+          address: { street: "Calle Comprobante", exteriorNumber: "18",
+            colonia: "Centro", city: "CDMX", state: "CDMX", postalCode: "06000" },
+        },
+      } as any);
 
       // Formalize
       await request(app)
@@ -1053,6 +1061,9 @@ describe("Bloque 3B1 (MemStorage): Backend de aceptación del Convenio mediante 
       expect(res.body.voucherText).toContain("Laura Comprobante Master");
       expect(res.body.voucherText).toContain("Folio de Aceptación:");
       expect(res.body.voucherText).toContain("Huella Contenido Exacto (SHA-256):");
+      expect(res.body.voucherText).toContain("CLABE Interbancaria:               012345678901234567");
+      expect(res.body.voucherText).toContain("Calle Comprobante, Ext. 18, Centro, CDMX, CDMX, C.P. 06000");
+      expect(res.body.voucherText).not.toContain("[object Object]");
     });
 
     it("descarga el comprobante oficial en PDF válido, no texto plano legado", async () => {
