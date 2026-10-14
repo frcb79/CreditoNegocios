@@ -24,8 +24,13 @@ describe("P0 - HTTP Registration, Legal Acceptance & Network Affiliation", () =>
 
     // Mock authentication middleware before registering routes
     app.use((req: any, _res: any, next: any) => {
-      req.login = (_claims: any, cb: any) => cb(null);
-      req.session = { save: (cb: any) => cb(null) };
+      // passport.initialize() installs its own req.logIn handler; mock a real
+      // express-session contract including regenerate() to exercise that handler.
+      req.session = {
+        regenerate: (cb: any) => cb(null),
+        save: (cb: any) => cb(null),
+        destroy: (cb: any) => cb(null),
+      };
       if (currentAuthUser) {
         req.isAuthenticated = () => true;
         req.user = currentAuthUser;
