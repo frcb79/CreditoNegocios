@@ -189,6 +189,30 @@ describePg("OPE-12: winning target and credit creation in one PostgreSQL transac
     expect(created.id).toBe(proposed.id);
     expect(created.linkedSubmissionId).toBe(fixture.request.id);
     expect(created.originMasterBrokerId).toBeNull();
+    const [linked] = await db.select().from(creditSubmissionTargets)
+      .where(eq(creditSubmissionTargets.id, fixture.target.id));
+    expect(linked.creditId).toBe(created.id);
+  });
+
+  it("P0 serializes concurrent legacy linked credit creation and links exactly once", async () => {
+    const fixture = await seed("target-linked-double-insert");
+    const first = paramsFor(fixture, "linked-concurrency-one").newCredit!;
+    const second = { ...first, id: "linked-concurrency-two" };
+    const storage = Object.create(DbStorage.prototype) as DbStorage;
+    const attempts = await Promise.allSettled([
+      storage.createCredit(first as any),
+      storage.createCredit(second as any),
+    ]);
+    expect(attempts.filter(x => x.status === "fulfilled")).toHaveLength(1);
+    const denied = attempts.filter(x => x.status === "rejected") as PromiseRejectedResult[];
+    expect(denied).toHaveLength(1);
+    expect(String(denied[0].reason)).toContain("OFFER_LINKED_WINNER_TARGET_NOT_VERIFIED");
+    const linkedCredits = await db.select().from(credits);
+    expect(linkedCredits.filter(x => x.linkedSubmissionId === fixture.request.id)).toHaveLength(1);
+    const [linked] = await db.select().from(creditSubmissionTargets)
+      .where(eq(creditSubmissionTargets.id, fixture.target.id));
+    const winnerCredit = linkedCredits.find(x => x.linkedSubmissionId === fixture.request.id);
+    expect(linked.creditId).toBe(winnerCredit?.id);
   });
 
   it("OPE-06 serializes winner double-clicks and creates exactly one linked credit",async()=>{
