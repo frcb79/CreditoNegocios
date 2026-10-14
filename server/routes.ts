@@ -522,6 +522,60 @@ async function authorizeClientAccess(
   });
 }
 
+/**
+ * PRE-P0: resolve an existing client against the caller's commercial and
+ * tenant scope BEFORE creating a new credit/submission/linked mortgage lead.
+ *
+ * Origination and Broker formalization are necessary but not sufficient:
+ * knowing another client's UUID must never be a write capability.
+ * Administrative platform operations are intentionally allowed in their
+ * own name; delegated origination also checks the effective Broker's link.
+ */
+async function validateClientOriginationAccess(params: {
+  clientId: unknown;
+  callerUser: any;
+  effectiveBrokerId: string | null | undefined;
+  tenantContext?: any;
+}): Promise<{ allowed: boolean; statusCode?: number; code?: string; message?: string }> {
+  const { clientId, callerUser, effectiveBrokerId, tenantContext } = params;
+  if (typeof clientId !== "string" || !clientId.trim()) {
+    return { allowed: false, statusCode: 400, code: "CLIENT_ID_REQUIRED", message: "Debes seleccionar un cliente válido." };
+  }
+  const client = await storage.getClient(clientId);
+  if (!client) {
+    return { allowed: false, statusCode: 404, code: "CLIENT_NOT_FOUND", message: "Cliente no encontrado." };
+  }
+  if (!callerUser?.id || !effectiveBrokerId) {
+    return { allowed: false, statusCode: 403, code: "CLIENT_ORIGINATION_NOT_AUTHORIZED", message: "Originador no autorizado." };
+  }
+
+  const isPlatformAdmin = callerUser.role === "super_admin" || callerUser.role === "admin";
+  if (!isPlatformAdmin) {
+    const access = await authorizeClientAccess(callerUser.id, callerUser.role, clientId, tenantContext);
+    if (!access.authorized || !access.capabilities.canViewBasicProfile) {
+      return { allowed: false, statusCode: 403, code: "CLIENT_ORIGINATION_NOT_AUTHORIZED", message: "No puedes originar operaciones para este cliente." };
+    }
+  }
+
+  // A delegated Broker must have its own legitimate link to the client; an
+  // admin's or a Master's broad visibility alone cannot invent origination.
+  if (effectiveBrokerId !== callerUser.id) {
+    const effectiveBroker = await storage.getUser(effectiveBrokerId);
+    if (!effectiveBroker) {
+      return { allowed: false, statusCode: 403, code: "CLIENT_ORIGINATION_NOT_AUTHORIZED", message: "Originador no válido." };
+    }
+    if (effectiveBroker.role === "broker" || effectiveBroker.role === "master_broker") {
+      const brokerAccess = await authorizeClientAccess(
+        effectiveBroker.id, effectiveBroker.role, clientId
+      );
+      if (!brokerAccess.authorized || !brokerAccess.capabilities.canViewBasicProfile) {
+        return { allowed: false, statusCode: 403, code: "CLIENT_ORIGINATION_NOT_AUTHORIZED", message: "El Broker originador no tiene vínculo comercial con este cliente." };
+      }
+    }
+  }
+  return { allowed: true };
+}
+
 // Helper to check if user can access a credit
 async function authorizeCreditAccess(userId: string, userRole: string, creditId: string, tenantContext?: any): Promise<{ authorized: boolean; credit?: any; reason?: string }> {
   const credit = await storage.getCredit(creditId);
@@ -4738,6 +4792,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
           financialInstitutionId: product.institutionId,
           commissionRates: rates,
         };
+      }
+
+      const creditClientAccess = await validateClientOriginationAccess({
+        clientId: req.body?.clientId,
+        callerUser: user,
+        effectiveBrokerId: originationCheck.brokerId,
+        tenantContext: req.tenantContext,
+      });
+      if (!creditClientAccess.allowed) {
+        return res.status(creditClientAccess.statusCode || 403).json({
+          code: creditClientAccess.code, message: creditClientAccess.message,
+        });
       }
 
       const creditData = insertCreditSchema.parse({
@@ -10650,6 +10716,18 @@ function maskCLABE(clabe?: string | null): string | null {
         });
       }
 
+      const submissionClientAccess = await validateClientOriginationAccess({
+        clientId: req.body?.clientId,
+        callerUser: user,
+        effectiveBrokerId: originationCheck.brokerId,
+        tenantContext: req.tenantContext,
+      });
+      if (!submissionClientAccess.allowed) {
+        return res.status(submissionClientAccess.statusCode || 403).json({
+          code: submissionClientAccess.code, message: submissionClientAccess.message,
+        });
+      }
+
       const submissionData = insertCreditSubmissionRequestSchema.parse({
         ...req.body,
         tenantId: req.tenantContext?.tenant?.id || null,
@@ -10875,10 +10953,18 @@ function maskCLABE(clabe?: string | null): string | null {
           street: propertyLocation || null,
         });
       } else {
-        // Camino B: Validar cliente existente
-        const existingClient = await storage.getClient(finalClientId);
-        if (!existingClient) {
-          return res.status(404).json({ message: "Cliente no encontrado" });
+        // Camino B: an existing client must belong to this originating
+        // commercial scope; never link a mortgage lead by guessing an ID.
+        const mortgageClientAccess = await validateClientOriginationAccess({
+          clientId: finalClientId,
+          callerUser: user,
+          effectiveBrokerId: brokerId,
+          tenantContext: req.tenantContext,
+        });
+        if (!mortgageClientAccess.allowed) {
+          return res.status(mortgageClientAccess.statusCode || 403).json({
+            code: mortgageClientAccess.code, message: mortgageClientAccess.message,
+          });
         }
       }
 
