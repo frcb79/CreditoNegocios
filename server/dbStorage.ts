@@ -51,7 +51,7 @@ import { eq, ne, isNotNull, desc, asc, like, and, or, inArray, sql, gte } from "
 
 import { buildOfferCommissionDocument } from "./offerCommissionAcceptance";
 import { assertFrozenOfferLineage, readFrozenOfferLineage } from "./offerLineageService";
-import { assertOfferCommissionAcceptanceInTransaction } from "./offerCommissionTransactionalGate";
+import { assertOfferCommissionAcceptanceInTransaction, assertLegacyProposalPredatesPublishedCatalogInTransaction } from "./offerCommissionTransactionalGate";
 import { assertTargetReviewMutable } from "./targetReviewTransitions";
 import { getPlatformTenant, getOwnedTenant } from "./brokerNetworkTransitionService";
 import { randomUUID, createHash } from "crypto";
@@ -3020,17 +3020,20 @@ export class DbStorage implements IStorage {
       }
 
       const [created] = await db.transaction(async (tx) => {
-        if (canonical && !credit.linkedSubmissionId) {
-          // Direct-credit insert is subject to the same parent offer lock as
-          // publishing. Legacy target-linked credits use their historical
-          // target timestamp and the dedicated atomic target path.
-          await assertOfferCommissionAcceptanceInTransaction(tx, {
-            offerId: canonical.institutionProductId,
-            versionNumber: canonical.versionNumber,
-            financialInstitutionId: credit.financialInstitutionId || null,
-            brokerId: credit.brokerId,
-            originMasterBrokerId,
-          });
+        if (!credit.linkedSubmissionId) {
+          if (canonical) {
+            await assertOfferCommissionAcceptanceInTransaction(tx, {
+              offerId: canonical.institutionProductId,
+              versionNumber: canonical.versionNumber,
+              financialInstitutionId: credit.financialInstitutionId || null,
+              brokerId: credit.brokerId,
+              originMasterBrokerId,
+            });
+          } else {
+            await assertLegacyProposalPredatesPublishedCatalogInTransaction(tx, {
+              financialInstitutionId: credit.financialInstitutionId || null,
+            });
+          }
         }
         return tx.insert(credits).values({
           ...credit,
@@ -3548,6 +3551,11 @@ export class DbStorage implements IStorage {
           originMasterBrokerId: request.originMasterBrokerId ?? null,
           proposalRecordedAt: target.proposalReceivedAt,
         });
+      } else {
+        await assertLegacyProposalPredatesPublishedCatalogInTransaction(tx, {
+          financialInstitutionId: target.financialInstitutionId,
+          proposalRecordedAt: target.proposalReceivedAt,
+        });
       }
       const [created] = await tx.insert(credits).values({
         ...proposed,
@@ -3623,6 +3631,11 @@ export class DbStorage implements IStorage {
             financialInstitutionId: target.financialInstitutionId,
             brokerId: request.brokerId,
             originMasterBrokerId: request.originMasterBrokerId ?? null,
+            proposalRecordedAt: target.proposalReceivedAt,
+          });
+        } else {
+          await assertLegacyProposalPredatesPublishedCatalogInTransaction(tx, {
+            financialInstitutionId: target.financialInstitutionId,
             proposalRecordedAt: target.proposalReceivedAt,
           });
         }
