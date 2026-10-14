@@ -6,7 +6,7 @@ import { institutionProductVersions } from "../../shared/schema";
 import { computeInstitutionProductVersionHash } from "../../server/offerVersionService";
 import { buildOfferCommissionDocument } from "../../server/offerCommissionAcceptance";
 import { acceptOfferCommission } from "../../server/offerCommissionAcceptance";
-import { assertOfferCommissionAcceptanceInTransaction } from "../../server/offerCommissionTransactionalGate";
+import { assertOfferCommissionAcceptanceInTransaction, assertLegacyProposalPredatesPublishedCatalogInTransaction } from "../../server/offerCommissionTransactionalGate";
 import { assertSafeIsolatedTestDatabase } from "../testDbSafety";
 
 const testUrl = process.env.TEST_DATABASE_URL;
@@ -224,6 +224,28 @@ describePg("ASTRA-07: published offer versions remain immutable under concurrent
     await expect(db.transaction(async tx =>
       assertOfferCommissionAcceptanceInTransaction(tx, { ...params, brokerId: "com28-other" })))
       .rejects.toThrow("OFFER_COMMISSION_ACCEPTANCE_REQUIRED");
+  });
+
+  it("preserves only verifiably pre-catalog legacy quotes, rejecting new unversioned finance", async () => {
+    await publish();
+    const [published] = await db.select().from(institutionProductVersions)
+      .where(eq(institutionProductVersions.id, draftId));
+    const firstPublication = published.publishedAt!;
+    expect(firstPublication).toBeInstanceOf(Date);
+    const check = (proposalRecordedAt?: Date) => db.transaction(async tx =>
+      assertLegacyProposalPredatesPublishedCatalogInTransaction(tx, {
+        financialInstitutionId: "financial-test",
+        proposalRecordedAt,
+      }));
+    await expect(check()).rejects.toThrow("OFFER_VERSION_REQUIRED_FOR_PUBLISHED_INSTITUTION");
+    await expect(check(new Date(firstPublication.getTime() + 1000)))
+      .rejects.toThrow("OFFER_VERSION_REQUIRED_FOR_PUBLISHED_INSTITUTION");
+    await expect(check(new Date(firstPublication.getTime() - 1000))).resolves.toBeUndefined();
+    // No financial institution has been selected: ordinary draft remains legal.
+    await expect(db.transaction(async tx =>
+      assertLegacyProposalPredatesPublishedCatalogInTransaction(tx, {
+        financialInstitutionId: null,
+      }))).resolves.toBeUndefined();
   });
 
   it("network operation requires Master acceptance, not the Broker's wholesale signature", async () => {
