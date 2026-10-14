@@ -344,7 +344,7 @@ export async function createCascadingCommissionRecord(
   if (appAmount > 0 || totalGrossAmount > 0) {
     try {
       const allUsers = await storage.getAllUsers();
-      const superAdminUser = allUsers.find(u => u.role === 'super_admin' || u.role === 'admin' || u.email === 'fcb@creditonegocios.com.mx');
+      const superAdminUser = allUsers.find(u => u.role === 'super_admin');
       if (superAdminUser) {
         await storage.createNotification({
           userId: superAdminUser.id,
@@ -2865,7 +2865,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.patch('/api/notifications/:id/read', isAuthenticated, async (req: any, res) => {
     try {
       const { id } = req.params;
-      const success = await storage.markNotificationAsRead(id);
+      const success = await storage.markNotificationAsRead(id, req.user.claims.sub);
       
       if (success) {
         res.json({ message: "Notification marked as read" });
@@ -2881,7 +2881,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.put('/api/notifications/:id/read', isAuthenticated, async (req: any, res) => {
     try {
       const { id } = req.params;
-      const success = await storage.markNotificationAsRead(id);
+      const success = await storage.markNotificationAsRead(id, req.user.claims.sub);
       
       if (success) {
         res.json({ message: "Notification marked as read" });
