@@ -81,3 +81,9 @@ Actualizar cada vez que se completa una feature.
 	- `commission-historical-beneficiary.test.ts`: 3/3 tests pasando.
 	- `npm run check`: 0 errores TypeScript.
 	- `npm run build`: bundle cliente y servidor exitosos (0 errores).
+## 2026-10-13 — Consolidación prelaunch, recuperación funcional y control de costos
+- Rama única de integración y PR #10 Draft; sin cambios autorizados en main ni despliegues de Producción.
+- Recuperación selectiva de expediente Broker/Master, Matching M2/M3, registro atómico, invitaciones Broker/Master con token, activación con Términos/Aviso verificables y seguridad de credenciales.
+- Restaurados Plan Maestro v1.1, Registro Maestro y planificación legal histórica con estado actual en `docs/integracion/ESTADO_CIERRE_PRELAUNCH.md`.
+- Nueva Producción será Supabase Free limpio; preservar datos de prueba en infra existente. **No crear ni pagar recursos adicionales sin autorización.**
+- Bitácora avanzada diferida; auditorías operativas obligatorias. CI y E2E se reportan por SHA, sin confundir build con GO.

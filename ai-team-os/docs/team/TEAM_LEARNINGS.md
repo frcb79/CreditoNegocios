@@ -58,3 +58,9 @@ Se actualiza via sync desde cada proyecto al master.
 - **Aislamiento de pasos en auto-migración:** Envolver cada sentencia `ALTER TABLE` o actualización de usuario en bloques independientes `try/catch` para que una advertencia secundaria nunca aborte el proceso general.
 - **Registro de Obligación Diferida de Red (`networkObligation`):** Desglosar y persistir formalmente la cuota correspondiente al Broker de red dentro de la metadata del pago al Master, permitiendo trazabilidad cuando el Master liquide a su agente.
 - **Liquidación Manual Auditada por Super Admin (`/mark-paid`):** Canalizar pagos reales mediante formulario administrativo que exija referencia bancaria verificable (SPEI/folio), importe auditado no discrepante y notas justificativas en bitácora inmutable.
+## Lección prelaunch 2026-10-13 — Integración verificable sin aumentar complejidad
+- Recuperar **comportamientos**, no fusionar ramas completas ni reintroducir diálogos/endpoints cuando las reglas económicas ya cambiaron.
+- Separar conexiones SQL y almacenamiento de objetos por ambiente; la misma clave `service_role` compartida impide aislamiento efectivo aunque haya bases distintas.
+- Invitar con correo de usuario + token de uso único, no contraseñas; incorporar aceptación legal atómica también en invitación, no sólo autorregistro.
+- Datos totalmente ficticios: Producción nueva limpia y Staging de prueba preservado puede ser más seguro que borrar datos; validar costo y rollback antes de aprovisionar.
+- Antes del GO probar consentimiento de cliente, permisos, comisiones, documentos y correos reales en Staging; CI verde no reemplaza E2E.
