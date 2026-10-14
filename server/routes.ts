@@ -2451,7 +2451,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
       }
 
-      const clientIp = req.headers['x-forwarded-for'] || req.socket?.remoteAddress || req.ip;
+      // Legal evidence: let Express validate trusted proxies (req.ip); never
+      // accept an arbitrary X-Forwarded-For value as the signer IP.
+      const rawClientIp = req.ip || req.socket?.remoteAddress || null;
+      const clientIp = typeof rawClientIp === 'string' && rawClientIp.trim() ? rawClientIp.trim() : null;
       const userAgent = (req.headers['user-agent'] as string) || 'unknown';
       const resolvedType = type === 'network' || document === 'comisiones-red' ? 'network' : 'global';
 
@@ -2461,7 +2464,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           version: version.trim(),
           type: resolvedType,
           masterBrokerId,
-          ipAddress: typeof clientIp === 'string' ? clientIp : Array.isArray(clientIp) ? clientIp[0] : null,
+          ipAddress: clientIp,
           userAgent,
         },
         storage
@@ -4274,11 +4277,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ message: "Se requiere ruleVersionId o version" });
       }
 
-      const clientIp = req.headers['x-forwarded-for'] || req.socket.remoteAddress || req.ip;
+      const clientIp = req.ip || req.socket?.remoteAddress || undefined;
       const result = await commercialHelpService.recordAcknowledgment(
         userId,
         targetVersion,
-        typeof clientIp === 'string' ? clientIp : Array.isArray(clientIp) ? clientIp[0] : undefined
+        typeof clientIp === 'string' ? clientIp : undefined
       );
 
       res.json(result);
