@@ -76,6 +76,7 @@ import {
 
 import type {
   IStorage,
+  InvitationActivationInput,
   FormalizationDocumentItem,
   FormalizationDocumentsResult,
   FormalizationStatusResult,
@@ -1538,6 +1539,55 @@ export class DbStorage implements IStorage {
       console.error("Error updating user password:", error);
       throw error;
     }
+  }
+
+
+  async completeInvitationActivation(params: InvitationActivationInput): Promise<LegalAcceptance[]> {
+    return db.transaction(async (tx) => {
+      const [user] = await tx.select().from(users)
+        .where(eq(users.id, params.userId)).for("update");
+      if (!user || user.resetToken !== params.token || user.password ||
+          !user.resetTokenExpiry || new Date(user.resetTokenExpiry).getTime() <= Date.now()) {
+        throw new Error("Token de activación inválido, consumido o expirado.");
+      }
+      for (const candidate of [params.termsDoc, params.privacyDoc]) {
+        const official = getApprovedLegalDocument(candidate.document, candidate.version);
+        const [persisted] = await tx.select().from(legalDocumentVersions)
+          .where(eq(legalDocumentVersions.id, candidate.id));
+        if (!official || !persisted || official.id !== candidate.id ||
+            official.contentSha256 !== candidate.contentSha256 ||
+            persisted.contentSha256 !== candidate.contentSha256 ||
+            createHash("sha256").update(persisted.content, "utf8").digest("hex") !== candidate.contentSha256) {
+          throw new Error("Documento legal de activación no vigente o no verificable.");
+        }
+      }
+      const existing = await tx.select().from(legalAcceptances)
+        .where(eq(legalAcceptances.userId, user.id));
+      if (existing.some(a => a.document === "terminos" || a.document === "aviso")) {
+        throw new Error("La activación legal ya fue registrada. Contacta soporte.");
+      }
+      const now = new Date();
+      const fullName = [user.firstName, user.lastName].filter(Boolean).join(" ").trim() || null;
+      const [terms] = await tx.insert(legalAcceptances).values({
+        userId: user.id, userEmail: user.email!, userName: fullName,
+        documentId: params.termsDoc.id, document: params.termsDoc.document,
+        version: params.termsDoc.version, contentSha256: params.termsDoc.contentSha256,
+        acceptanceType: "accept_terms", ipAddress: params.ipAddress,
+        userAgent: params.userAgent, acceptedAt: now,
+      }).returning();
+      const [privacy] = await tx.insert(legalAcceptances).values({
+        userId: user.id, userEmail: user.email!, userName: fullName,
+        documentId: params.privacyDoc.id, document: params.privacyDoc.document,
+        version: params.privacyDoc.version, contentSha256: params.privacyDoc.contentSha256,
+        acceptanceType: "acknowledge_privacy", ipAddress: params.ipAddress,
+        userAgent: params.userAgent, acceptedAt: now,
+      }).returning();
+      await tx.update(users).set({
+        password: params.passwordHash, resetToken: null,
+        resetTokenExpiry: null, updatedAt: now,
+      }).where(eq(users.id, user.id));
+      return [terms, privacy];
+    });
   }
 
   async createCommercialAuditLog(logData: any): Promise<any> {

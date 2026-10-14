@@ -117,6 +117,17 @@ type NotificationInput = InsertNotification & {
   metadata?: unknown;
 };
 
+
+export interface InvitationActivationInput {
+  userId: string;
+  token: string;
+  passwordHash: string;
+  ipAddress: string | null;
+  userAgent: string;
+  termsDoc: { id: string; document: string; version: string; contentSha256: string };
+  privacyDoc: { id: string; document: string; version: string; contentSha256: string };
+}
+
 export interface FormalizationDocumentItem {
   id: string;
   document: string;
@@ -202,6 +213,7 @@ export interface IStorage {
   getUserByResetToken(token: string): Promise<User | undefined>;
   clearPasswordResetToken(userId: string): Promise<void>;
   updateUserPassword(userId: string, hashedPassword: string): Promise<void>;
+  completeInvitationActivation(params: InvitationActivationInput): Promise<LegalAcceptance[]>;
   updateUserOperationalStatus(params: {
     userId: string;
     targetStatus: UserOperationalStatus;
@@ -1740,6 +1752,48 @@ export class MemStorage implements IStorage {
     const user = this.users.get(userId);
     if (!user) return;
     this.users.set(userId, { ...user, password: hashedPassword, authMethod: user.authMethod || 'local', updatedAt: new Date() } as User);
+  }
+
+
+  async completeInvitationActivation(params: InvitationActivationInput): Promise<LegalAcceptance[]> {
+    return this.withUserLock(params.userId, async () => {
+      const user = this.users.get(params.userId);
+      if (!user || user.resetToken !== params.token || user.password ||
+          !user.resetTokenExpiry || new Date(user.resetTokenExpiry).getTime() <= Date.now()) {
+        throw new Error("Token de activación inválido, consumido o expirado.");
+      }
+      for (const candidate of [params.termsDoc, params.privacyDoc]) {
+        const official = getApprovedLegalDocument(candidate.document, candidate.version);
+        const persisted = this.legalDocumentVersions.get(candidate.id);
+        if (!official || !persisted || official.id !== candidate.id ||
+            official.contentSha256 !== candidate.contentSha256 ||
+            persisted.contentSha256 !== candidate.contentSha256 ||
+            createHash("sha256").update(persisted.content, "utf8").digest("hex") !== candidate.contentSha256) {
+          throw new Error("Documento legal de activación no vigente o no verificable.");
+        }
+      }
+      const prior = Array.from(this.legalAcceptances.values()).filter(a =>
+        a.userId === user.id && (a.document === "terminos" || a.document === "aviso")
+      );
+      if (prior.length) throw new Error("La activación legal ya fue registrada. Contacta soporte.");
+      const now = new Date();
+      const fullName = [user.firstName, user.lastName].filter(Boolean).join(" ").trim() || null;
+      const makeEvidence = (doc: InvitationActivationInput["termsDoc"], acceptanceType: string): LegalAcceptance => ({
+        id: randomUUID(), userId: user.id, userEmail: user.email!,
+        userName: fullName, documentId: doc.id, document: doc.document,
+        version: doc.version, contentSha256: doc.contentSha256,
+        acceptanceType, ipAddress: params.ipAddress, userAgent: params.userAgent,
+        acceptedAt: now,
+      });
+      const terms = makeEvidence(params.termsDoc, "accept_terms");
+      const privacy = makeEvidence(params.privacyDoc, "acknowledge_privacy");
+      // The following writes are synchronous under the user lock; no partial activation.
+      this.legalAcceptances.set(terms.id, structuredClone(terms));
+      this.legalAcceptances.set(privacy.id, structuredClone(privacy));
+      this.users.set(user.id, { ...user, password: params.passwordHash,
+        resetToken: null, resetTokenExpiry: null, updatedAt: now });
+      return [structuredClone(terms), structuredClone(privacy)];
+    });
   }
 
   async getLegalDocumentVersions(): Promise<LegalDocumentVersionDb[]> {

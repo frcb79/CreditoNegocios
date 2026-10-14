@@ -8,7 +8,7 @@ import { storage, type IStorage } from "./storage";
 import { readFrozenOfferLineage } from "./offerLineageService";
 import { setupAuth, isAuthenticated } from "./auth";
 import { registerLegalRoutes } from "./legalRoutes";
-import { validateRegistrationAcceptance } from "./legalDocuments";
+import { validateRegistrationAcceptance, getPublishedLegalDocument } from "./legalDocuments";
 import PDFDocument from "pdfkit";
 import bcrypt from "bcrypt";
 import { sendBrokerDeactivationRequestEmail, sendBrokerLeadEmail, sendAccountInvitationEmail, sendPasswordResetEmail, sendWebsiteLeadEmail, sendWelcomeEmail, sendSuperAdminNotificationEmail } from "./emailService";
@@ -1569,10 +1569,36 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Reset Password - Set new password with token
+  // Invitation context: token holder sees legal versions, no account secrets.
+  app.get('/api/auth/invitation-context', authMutationLimiter, async (req, res) => {
+    const token = typeof req.query.token === "string" ? req.query.token : "";
+    if (!token || token.length > 256) return res.status(400).json({ message: "Token inválido." });
+    const user = await storage.getUserByResetToken(token);
+    if (!user || !user.resetTokenExpiry || new Date(user.resetTokenExpiry) <= new Date()) {
+      return res.status(400).json({ message: "Enlace inválido o expirado." });
+    }
+    const needsLegal = !user.password;
+    const termsDoc = needsLegal ? getPublishedLegalDocument("terminos") : null;
+    const privacyDoc = needsLegal ? getPublishedLegalDocument("aviso") : null;
+    if (needsLegal && (!termsDoc || !privacyDoc)) {
+      return res.status(503).json({ message: "Documentos legales vigentes no disponibles." });
+    }
+    return res.json({
+      requiresLegal: needsLegal,
+      role: user.role === "master_broker" ? "master_broker" : "broker",
+      termsVersion: termsDoc?.version || null,
+      privacyVersion: privacyDoc?.version || null,
+    });
+  });
+
+  // Password reset or first-time activation: strong password and separate legal evidence.
   const resetPasswordSchema = z.object({
     token: z.string().min(1, "Token requerido"),
-    password: z.string().min(6, "La contraseña debe tener al menos 6 caracteres"),
+    password: z.string().min(12, "La contraseña debe tener al menos 12 caracteres"),
+    acceptTerms: z.boolean().optional(),
+    termsVersion: z.string().optional(),
+    acknowledgePrivacy: z.boolean().optional(),
+    privacyVersion: z.string().optional(),
   });
 
   app.post('/api/auth/reset-password', async (req, res) => {
@@ -1591,14 +1617,36 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ message: "El token ha expirado. Por favor solicita uno nuevo." });
       }
       
-      // Hash new password
-      const saltRounds = 10;
-      const hashedPassword = await bcrypt.hash(data.password, saltRounds);
-      
-      // Update password and clear reset token
-      await storage.updateUserPassword(user.id, hashedPassword);
-      await storage.clearPasswordResetToken(user.id);
-      
+      const hashedPassword = await bcrypt.hash(data.password, 12);
+      if (!user.password) {
+        const legal = validateRegistrationAcceptance({
+          acceptTerms: data.acceptTerms,
+          termsVersion: data.termsVersion,
+          acknowledgePrivacy: data.acknowledgePrivacy,
+          privacyVersion: data.privacyVersion,
+        });
+        if (!legal.valid || !legal.termsDoc || !legal.privacyDoc) {
+          return res.status(400).json({ message: legal.error || "Aceptación legal requerida." });
+        }
+        const rawIp = req.ip || req.socket?.remoteAddress;
+        await storage.completeInvitationActivation({
+          userId: user.id, token: data.token, passwordHash: hashedPassword,
+          ipAddress: typeof rawIp === "string" ? rawIp : null,
+          userAgent: req.headers["user-agent"] || "unknown",
+          termsDoc: {
+            id: legal.termsDoc.id, document: legal.termsDoc.document,
+            version: legal.termsDoc.version, contentSha256: legal.termsDoc.contentSha256,
+          },
+          privacyDoc: {
+            id: legal.privacyDoc.id, document: legal.privacyDoc.document,
+            version: legal.privacyDoc.version, contentSha256: legal.privacyDoc.contentSha256,
+          },
+        });
+      } else {
+        // Existing-account password recovery remains a separate route.
+        await storage.updateUserPassword(user.id, hashedPassword);
+        await storage.clearPasswordResetToken(user.id);
+      }
       res.json({ message: "Contraseña actualizada exitosamente. Ya puedes iniciar sesión." });
     } catch (error) {
       if (error instanceof z.ZodError) {
