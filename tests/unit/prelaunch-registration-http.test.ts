@@ -376,10 +376,14 @@ describe("P0 - HTTP Registration, Legal Acceptance & Network Affiliation", () =>
         .patch("/api/admin/users/" + saOwnedBroker.id + "/operational-status")
         .send({ status: "suspended", reason: "Control de seguridad prelaunch" });
       expect(suspend.status).toBe(200);
+      // The unit HTTP server wires a separate MockCommercialOpportunityStorage
+      // for the audit GET; verify the canonical operational log in MemStorage.
+      // PostgreSQL-backed read/write equivalence remains a Staging E2E gate.
       const logsResponse = await request(app)
         .get("/api/commercial/audit-logs?entityType=user&entityId=" + saOwnedBroker.id);
       expect(logsResponse.status).toBe(200);
-      const record = logsResponse.body.find((x: any) =>
+      const persistedEvents = await storage.getCommercialAuditLogs({ entityType: "user", entityId: saOwnedBroker.id });
+      const record = persistedEvents.find((x: any) =>
         x.entityType === "user" && x.entityId === saOwnedBroker.id && x.action === "suspend");
       expect(record).toBeDefined();
       expect(record.performedBy).toBe(sa.id);
