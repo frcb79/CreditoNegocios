@@ -567,7 +567,17 @@ describe("Matching M1 — Motor de Compatibilidad y Datos Reales", () => {
         {
           versionNumber: 1,
           status: "draft",
-          conditions: { minAmount: 100000, maxAmount: 1000000, minTermMonths: 6, maxTermMonths: 24 },
+          conditions: {
+            minAmount: 100000, maxAmount: 1000000, minTermMonths: 6, maxTermMonths: 24,
+            // COM-28: Both versions carry complete, unchanged economic terms.
+            // This case tests descriptive metadata promotion, not commission changes.
+            commissionRates: {
+              type: "apertura",
+              financiera: { apertura: 3 },
+              broker: { apertura: 1 },
+              masterBroker: { apertura: 0.5 },
+            },
+          },
           requirements: { targetProfiles: ["persona_moral"] },
           changeReason: "Borrador inicial",
         } as any
@@ -587,7 +597,15 @@ describe("Matching M1 — Motor de Compatibilidad y Datos Reales", () => {
     test("crear un borrador v2 con metadatos descriptivos futuros NO contamina la v1 publicada", async () => {
       // 1. Crear borrador v2 con futureMetadata
       const v2Draft = await storage.createInstitutionProductDraftVersion(productId, {
-        conditions: { minAmount: 200000, maxAmount: 2000000, minTermMonths: 12, maxTermMonths: 36 },
+        conditions: {
+          minAmount: 200000, maxAmount: 2000000, minTermMonths: 12, maxTermMonths: 36,
+          commissionRates: {
+            type: "apertura",
+            financiera: { apertura: 3 },
+            broker: { apertura: 1 },
+            masterBroker: { apertura: 0.5 },
+          },
+        },
         requirements: { targetProfiles: ["persona_moral"] },
         changeReason: "Preparando v2",
         variablesConfiguration: {
