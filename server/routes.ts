@@ -2954,13 +2954,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ message: "El email es requerido" });
       }
 
+      // Admin/Master must not supply arbitrary modules/actions while creating
+      // identities. Only Super Admin can grant user-level privileges.
+      if (currentUser?.role !== 'super_admin' && userData.permissions !== undefined) {
+        return res.status(403).json({ message: "Sólo Super Admin puede definir permisos de nuevos usuarios." });
+      }
+
       // Master may invite only a Broker in its own network (never grant admin/Master roles).
       if (isMasterBroker) {
         userData.role = 'broker';
         userData.masterBrokerId = currentUser.id;
-        if (userData.permissions && typeof userData.permissions === 'object') {
-          (userData.permissions as any).scope = 'network';
-        }
       }
 
       // A platform Admin cannot create a new Admin or Super Admin.
