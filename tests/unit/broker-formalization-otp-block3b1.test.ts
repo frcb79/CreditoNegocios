@@ -42,11 +42,54 @@ import {
   maskEmail,
   getDocumentTitle,
   getAcceptanceTypeLabel,
+  buildPersonalizedAgreement,
 } from "../../shared/legalDocuments";
 import { _testEmailStore } from "../../server/emailService";
 import { pool } from "../../server/db";
 
 describe("Bloque 3B1 (MemStorage): Backend de aceptación del Convenio mediante OTP por correo", () => {
+  it("personaliza domicilio estructurado real del perfil para Broker/Master sin romper la firma", () => {
+    const template = getApprovedLegalDocument("convenio", "1.0")!.content;
+    const masterContent = buildPersonalizedAgreement(template, {
+      fullName: "María Master de Prueba",
+      email: "master-prueba@example.test",
+      role: "master_broker",
+      rfc: "AAAA010101AAA",
+      phone: "5512345678",
+      bankName: "BBVA",
+      clabe: "012345678901234567",
+      address: {
+        street: "Avenida Reforma", exteriorNumber: "123", interiorNumber: "5",
+        colonia: "Juárez", city: "Ciudad de México", state: "CDMX",
+        postalCode: "06600",
+      },
+    }, {
+      acceptedAt: "2026-10-14T18:30:00.000Z",
+      ipAddress: null,
+      otpMethod: "Correo Electrónico (OTP)",
+    });
+    expect(masterContent).toContain("María Master de Prueba");
+    expect(masterContent).toContain("AAAA010101AAA");
+    expect(masterContent).toContain("Avenida Reforma, Ext. 123, Int. 5, Juárez, Ciudad de México, CDMX, C.P. 06600");
+    expect(masterContent).toContain("BBVA / 012345678901234567");
+    expect(masterContent).toContain("☐ Broker    ☑ Master Broker");
+    expect(masterContent).toContain("Aceptado electrónicamente mediante Código de Verificación OTP");
+    expect(masterContent).not.toContain("[object Object]");
+
+    const brokerContent = buildPersonalizedAgreement(template, {
+      fullName: "Ana Broker Prueba", email: "broker-prueba@example.test",
+      role: "broker", address: "Calle Norte 45, Guadalajara",
+    });
+    expect(brokerContent).toContain("Calle Norte 45, Guadalajara");
+    expect(brokerContent).toContain("☑ Broker    ☐ Master Broker");
+
+    const withoutAddress = buildPersonalizedAgreement(template, {
+      fullName: "Broker Sin Domicilio", email: "sin-domicilio@example.test",
+      role: "broker", address: {},
+    });
+    expect(withoutAddress).toContain("Pendiente de proporcionar");
+  });
+
   let app: express.Express;
   let currentAuthUser: any = null;
 
