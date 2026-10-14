@@ -2360,6 +2360,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ message: "Se requiere especificar la versión a aceptar." });
       }
 
+      // Only the implemented global/network instruments can be accepted here.
+      // A per-financial-institution or per-offer/version acceptance must NEVER
+      // be recorded as if it were a global or network acceptance.
+      if ((type !== undefined && type !== 'global' && type !== 'network') ||
+          (document !== undefined && document !== 'condiciones-comerciales' && document !== 'comisiones-red') ||
+          (type === 'global' && document === 'comisiones-red') ||
+          (type === 'network' && document === 'condiciones-comerciales')) {
+        return res.status(400).json({
+          message: "El tipo de aceptación solicitado no corresponde a las condiciones globales o de red admitidas.",
+          code: "UNSUPPORTED_COMMERCIAL_ACCEPTANCE_TYPE",
+        });
+      }
+
       const clientIp = req.headers['x-forwarded-for'] || req.socket?.remoteAddress || req.ip;
       const userAgent = (req.headers['user-agent'] as string) || 'unknown';
       const resolvedType = type === 'network' || document === 'comisiones-red' ? 'network' : 'global';
