@@ -1531,12 +1531,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Save token to database
       await storage.setPasswordResetToken(user.id, resetToken, resetTokenExpiry);
       
-      // Determine reset URL and log it for reference
-      const baseUrl = process.env.FRONTEND_BASE_URL || (process.env.RAILWAY_STATIC_URL ? `https://${process.env.RAILWAY_STATIC_URL}` : 'https://creditonegocios-staging.up.railway.app');
-      const resetUrl = `${baseUrl.replace(/\/$/, '')}/reset-password?token=${resetToken}`;
-      if (process.env.NODE_ENV !== 'production') {
-        console.log(`🔑 [AUTH RESET URL] Generated reset URL for ${user.email}: ${resetUrl}`);
-      }
+      // Never log or expose reset bearer tokens in any environment.
+      // sendPasswordResetEmail constructs the reset link directly.
       
       // Send password reset email
       const userName = user.firstName || undefined;
@@ -1549,9 +1545,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         console.error('⚠️ [AUTH WARNING] Failed to deliver password reset email:');
         console.error('   - Target Email:', user.email);
         console.error('   - Error:', emailResult.error);
-        if (process.env.NODE_ENV !== 'production') {
-          console.error(`   - Direct Reset URL available: ${resetUrl}`);
-        }
+        // Avoid revealing password-reset links to runtime logs.
 
         if (process.env.NODE_ENV !== 'production') {
           return res.json({ 
@@ -2889,6 +2883,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
         userData.referralCode = `${prefix}-${randomDigits}`;
       }
       
+      // Account passwords must never be stored as plaintext, including
+      // the legacy Super Admin/Admin user-creation endpoint.
+      if (userData.password) {
+        const supplied = String(userData.password);
+        if (supplied.length < 12) {
+          return res.status(400).json({ message: "La contraseña inicial debe tener al menos 12 caracteres." });
+        }
+        userData.password = await bcrypt.hash(supplied, 12);
+      }
+
       // Check if email already exists
       const existingUser = await storage.getUserByEmail(userData.email);
       if (existingUser) {
@@ -2925,6 +2929,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Check for duplicate key constraint
       if (error?.code === '23505' || error?.constraint?.includes('email')) {
         return res.status(400).json({ message: "El email ya está registrado en el sistema" });
+      }
+      if (error?.statusCode >= 400 && error?.statusCode < 500) {
+        return res.status(error.statusCode).json({ message: error.message });
       }
       res.status(500).json({ message: "Failed to create user" });
     }

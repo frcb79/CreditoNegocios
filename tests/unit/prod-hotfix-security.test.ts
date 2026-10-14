@@ -445,6 +445,8 @@ describe("P0 Hotfix - Production Security & Zero-Destructive Startup", () => {
 
       expect(sysUserQueried).toBe(true);
       expect(sysUserInserted).toBe(true);
+      // Technical FK actor must never be usable as a login-enabled Super Admin.
+      expect(insertedPasswordHash.length).toBeGreaterThan(55);
       expect(insertedPasswordHash.startsWith("$2b$")).toBe(true); // Valid bcrypt hash
     });
 
