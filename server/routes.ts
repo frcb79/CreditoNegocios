@@ -71,6 +71,7 @@ import {
   isOfferEligibleForRequests,
   validateMinimumPublishConditions,
   validateOfferVersionParameters,
+  compareOfferIntermediaryCommissions,
 } from "./offerVersionService";
 import {
   evaluateCatalogCompatibility,
@@ -9614,11 +9615,21 @@ function maskCLABE(clabe?: string | null): string | null {
         });
       }
 
+      // Compare against the previous published economics, never a draft or
+      // arbitrary institution-level schedule. This does NOT create acceptance.
+      const previousPublishedVersion = versions
+        .filter(v => v.status === "published" && v.versionNumber < draftVersion.versionNumber)
+        .sort((a, b) => b.versionNumber - a.versionNumber)[0] || null;
+
       // Requisito 2: Publicación transaccional A1 mediante Storage (sustitución segura e historial inmutable)
       const publishedVersion = await storage.publishInstitutionProductVersion(id, draftVersion.id, {
         publishedBy: userId,
         changeReason: changeReason.trim(),
       });
+      const commercialChange = compareOfferIntermediaryCommissions(
+        previousPublishedVersion,
+        publishedVersion,
+      );
 
       const updatedProduct = await storage.getInstitutionProduct(id);
 
@@ -9626,6 +9637,10 @@ function maskCLABE(clabe?: string | null): string | null {
         message: "Oferta comercial publicada exitosamente",
         product: updatedProduct,
         publishedVersion,
+        commercialChange,
+        // COM-28 P0: the actual per-offer acceptance ledger, notification and
+        // pre-operation gate are NOT implemented; never advertise them as active.
+        offerVersionAcceptanceEnforced: false,
       });
     } catch (error: any) {
       console.error("Error publishing institution product version:", error);
