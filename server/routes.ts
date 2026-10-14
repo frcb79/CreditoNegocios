@@ -4108,7 +4108,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const userId = req.user.claims.sub;
       const user = await storage.getUser(userId);
-      const isPlatformAdmin = Boolean(user?.role === 'super_admin' || user?.role === 'admin' || req.tenantContext?.isPlatformAdmin);
+      // The global audit feed includes cross-tenant data: enforce the verified
+      // platform ROLE, not a tenant-context flag as a substitute for RBAC.
+      const isPlatformAdmin = user?.role === 'super_admin' || user?.role === 'admin';
 
       if (!isPlatformAdmin) {
         return res.status(403).json({ message: "Acceso exclusivo para Mesa de Control o Administradores de Plataforma." });
