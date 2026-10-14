@@ -4634,19 +4634,78 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
       }
 
+      // A generic credit form is NOT an authority for commission splits.
+      // Only a published, same-institution offer/version may define economics.
+      const rawProposal = (req.body?.finalProposal && typeof req.body.finalProposal === "object" &&
+        !Array.isArray(req.body.finalProposal)) ? req.body.finalProposal as Record<string, any> : {};
+      const explicitOfferId = rawProposal.institutionProductId || rawProposal.offerId ||
+        req.body?.institutionProductId || null;
+      const explicitVersion = rawProposal.versionNumber ?? req.body?.versionNumber ?? null;
+      const hasLineage = Boolean(explicitOfferId) || explicitVersion != null;
+      const clientEconomicKeys = ["commissionRates", "financiera", "broker", "masterBroker",
+        "platformNet", "platformMargin", "platformGrossMargin", "overRate", "sobretasa",
+        "networkCommissionRates", "commissionsToApply"];
+      if (!hasLineage && clientEconomicKeys.some(key =>
+        Object.prototype.hasOwnProperty.call(rawProposal, key))) {
+        return res.status(409).json({
+          code: "OFFER_VERSION_REQUIRED_FOR_COMMISSION_RATES",
+          message: "No se pueden declarar comisiones sin una oferta y versión comercial verificables.",
+        });
+      }
+      let validatedProposal = { ...rawProposal };
+      if (hasLineage) {
+        if (typeof explicitOfferId !== "string" || !explicitOfferId.trim() ||
+            !Number.isSafeInteger(Number(explicitVersion)) || Number(explicitVersion) <= 0) {
+          return res.status(409).json({ code: "OFFER_VERSION_IDENTITY_INCOMPLETE" });
+        }
+        const product = await storage.getInstitutionProduct(explicitOfferId);
+        if (!product || (req.body?.financialInstitutionId &&
+            product.institutionId !== req.body.financialInstitutionId)) {
+          return res.status(409).json({ code: "OFFER_VERSION_INSTITUTION_MISMATCH" });
+        }
+        const versions = await storage.getInstitutionProductVersions(explicitOfferId);
+        const currentVersion = versions.find(v => v.versionNumber === Number(explicitVersion) &&
+          v.status === "published");
+        if (!currentVersion) {
+          return res.status(409).json({ code: "OFFER_VERSION_NOT_CURRENT" });
+        }
+        const rates = (currentVersion.conditions as any)?.commissionRates;
+        if (!rates || typeof rates !== "object") {
+          return res.status(409).json({ code: "OFFER_COMMISSION_SCHEDULE_UNAVAILABLE" });
+        }
+        for (const key of clientEconomicKeys) delete validatedProposal[key];
+        validatedProposal = {
+          ...validatedProposal,
+          institutionProductId: explicitOfferId,
+          versionNumber: currentVersion.versionNumber,
+          financialInstitutionId: product.institutionId,
+          commissionRates: rates,
+        };
+      }
+
       const creditData = insertCreditSchema.parse({
         ...req.body,
+        finalProposal: validatedProposal,
         tenantId: req.tenantContext?.tenant?.id || null,
         brokerId: originationCheck.brokerId,
         createdBy: userId,
       });
-      
-      const claimedLineage = (creditData.finalProposal as any) || {};
+
+      // Origin Master for a *new direct credit* must match the storage-side
+      // attribution logic. Never rely on a client-supplied Master ID.
+      const originator = await storage.getUser(originationCheck.brokerId);
+      let effectiveMasterBrokerId: string | null = null;
+      if (originator?.role === "master_broker") {
+        effectiveMasterBrokerId = originator.id;
+      } else if (originator?.role === "broker" && originator.masterBrokerId) {
+        const parent = await storage.getUser(originator.masterBrokerId);
+        effectiveMasterBrokerId = parent?.role === "master_broker" ? parent.id : null;
+      }
+
       const blocked = await checkOfferCommissionAcceptanceForNewOperation({
-        offerId: claimedLineage.institutionProductId || claimedLineage.offerId || (creditData as any).institutionProductId || null,
-        versionNumber: claimedLineage.versionNumber ?? null,
+        offerId: explicitOfferId, versionNumber: explicitVersion,
         brokerId: creditData.brokerId,
-        originMasterBrokerId: (creditData as any).originMasterBrokerId ?? null,
+        originMasterBrokerId: effectiveMasterBrokerId,
       });
       if (blocked) return res.status(409).json(blocked);
 
