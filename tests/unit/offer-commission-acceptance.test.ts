@@ -123,6 +123,15 @@ describe("COM-28 - Aceptación económica por beneficiario y versión", () => {
       .rejects.toThrow("OFFER_COMMISSION_DOCUMENT_UNAVAILABLE");
   });
 
+  it("una versión económica previa archivada no permite omitir la aceptación pendiente", async () => {
+    const { storage, previous } = setup();
+    previous.status = "archived";
+    const broker = user("broker");
+    const status = await getOfferCommissionStatus(storage, broker, offerId, 2);
+    expect(status.pending).toBe(true);
+    expect(status.requiresAcceptance).toBe(true);
+  });
+
   it("no acepta una versión antigua o distinta de la publicada", async () => {
     const { storage } = setup();
     await expect(getOfferCommissionStatus(storage, user("broker"), offerId, 1))
