@@ -7854,9 +7854,21 @@ function maskCLABE(clabe?: string | null): string | null {
       // Authorization check - broker/tenant access
       const authResult = await authorizeDocumentAccess(userId, user?.role || '', id, req.tenantContext);
       if (!authResult.authorized) {
+        if (req.file?.path) await removeStoredDocument(req.file.path);
         return res.status(authResult.reason === 'Document not found' ? 404 : 403).json({ message: authResult.reason });
       }
-      
+      // Read/supervision permission must not become write permission over
+      // another Broker's or beneficiary's document.
+      const ownsDocument = authResult.document?.brokerId === userId ||
+        authResult.document?.uploadedBy === userId;
+      if (user?.role !== "super_admin" && user?.role !== "admin" && !ownsDocument) {
+        if (req.file?.path) await removeStoredDocument(req.file.path);
+        return res.status(403).json({
+          code: "DOCUMENT_WRITE_OWNER_REQUIRED",
+          message: "La supervisión de red no autoriza modificar documentos de otros Brokers.",
+        });
+      }
+
       const { clientId, creditId, type } = req.body;
       const file = req.file;
       const nextClientId = clientId !== undefined ? (clientId || null) : authResult.document.clientId;
@@ -7963,7 +7975,25 @@ function maskCLABE(clabe?: string | null): string | null {
       if (!authResult.authorized) {
         return res.status(authResult.reason === 'Document not found' ? 404 : 403).json({ message: authResult.reason });
       }
-      
+      const ownsDocument = authResult.document?.brokerId === userId ||
+        authResult.document?.uploadedBy === userId;
+      if (user?.role !== "super_admin" && user?.role !== "admin" && !ownsDocument) {
+        return res.status(403).json({
+          code: "DOCUMENT_WRITE_OWNER_REQUIRED",
+          message: "La supervisión de red no autoriza eliminar documentos de otros Brokers.",
+        });
+      }
+      const deletionScope = await validateDocumentWriteDestination({
+        userId, userRole: user?.role || "", tenantContext: req.tenantContext,
+        clientId: authResult.document?.clientId,
+        creditId: authResult.document?.creditId,
+      });
+      if (!deletionScope.allowed) {
+        return res.status(deletionScope.statusCode || 403).json({
+          code: deletionScope.code, message: deletionScope.message,
+        });
+      }
+
       const success = await storage.deleteDocument(id);
       
       if (success) {
