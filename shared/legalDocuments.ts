@@ -77,7 +77,15 @@ export function maskEmail(email: string): string {
 export interface PersonalizedAgreementData {
   fullName: string;
   rfc?: string | null;
-  address?: string | null;
+  address?: string | {
+    street?: string | null;
+    exteriorNumber?: string | null;
+    interiorNumber?: string | null;
+    colonia?: string | null;
+    city?: string | null;
+    state?: string | null;
+    postalCode?: string | null;
+  } | null;
   email: string;
   phone?: string | null;
   role: string;
@@ -165,7 +173,23 @@ export function buildPersonalizedAgreement(
   evidence?: PersonalizedAgreementEvidence,
 ): string {
   const rfcText = data.rfc?.trim() || "Pendiente de proporcionar";
-  const addressText = data.address?.trim() || "Pendiente de proporcionar";
+  // Settings persists profileData.address as a structured object, while
+  // older profiles may carry an address string. Render BOTH safely before
+  // snapshotting the legal agreement; never call .trim() on an object.
+  const addressText = typeof data.address === "string"
+    ? (data.address.trim() || "Pendiente de proporcionar")
+    : data.address && typeof data.address === "object"
+    ? ([
+        data.address.street,
+        data.address.exteriorNumber && `Ext. ${data.address.exteriorNumber}`,
+        data.address.interiorNumber && `Int. ${data.address.interiorNumber}`,
+        data.address.colonia,
+        data.address.city,
+        data.address.state,
+        data.address.postalCode && `C.P. ${data.address.postalCode}`,
+      ].filter((part): part is string => typeof part === "string" && Boolean(part.trim()))
+        .join(", ") || "Pendiente de proporcionar")
+    : "Pendiente de proporcionar";
   const phoneText = data.phone?.trim() || "Pendiente de proporcionar";
   const bankClabeText =
     data.bankName?.trim() && data.clabe?.trim()
