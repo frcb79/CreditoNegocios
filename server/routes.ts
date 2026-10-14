@@ -4495,7 +4495,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
       }
       
+      // PRE-P0: generic profile editing cannot transfer a client to another
+      // tenant/Broker or rewrite authorship. Network transitions have a
+      // dedicated audited workflow.
+      const clientIdentityFields = ["id", "brokerId", "tenantId", "createdBy"];
+      const clientIdentityChanged = clientIdentityFields.some(key =>
+        Object.prototype.hasOwnProperty.call(req.body || {}, key) &&
+        req.body[key] !== (authResult.client as any)[key]
+      );
+      if (clientIdentityChanged) {
+        return res.status(409).json({
+          code: "CLIENT_OWNERSHIP_IMMUTABLE",
+          message: "La identidad y atribución del cliente no se cambia mediante edición general.",
+        });
+      }
       const clientData = updatedInsertClientSchema.partial().parse(req.body);
+      for (const key of clientIdentityFields) delete (clientData as any)[key];
       const client = await storage.updateClient(id, clientData);
       
       if (!client) {
@@ -4915,8 +4930,27 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(authResult.reason === 'Credit not found' ? 404 : 403).json({ message: authResult.reason });
       }
       
-      const creditData = insertCreditSchema.partial().parse(req.body);
       const oldCredit = authResult.credit;
+      // PRE-P0: once created, a credit's client, Broker, tenant, historical
+      // origin and linked opportunity are not freely reassignable. This also
+      // prevents bypassing immutable economic/commission provenance.
+      const creditIdentityFields = [
+        "id", "clientId", "brokerId", "tenantId", "createdBy",
+        "originMasterBrokerId", "linkedSubmissionId",
+        "institutionProductId", "versionNumber",
+      ];
+      const creditIdentityChanged = creditIdentityFields.some(key =>
+        Object.prototype.hasOwnProperty.call(req.body || {}, key) &&
+        req.body[key] !== (oldCredit as any)[key]
+      );
+      if (creditIdentityChanged) {
+        return res.status(409).json({
+          code: "CREDIT_OWNERSHIP_IMMUTABLE",
+          message: "No se puede cambiar el cliente, originador o linaje de un crédito mediante edición general.",
+        });
+      }
+      const creditData = insertCreditSchema.partial().parse(req.body);
+      for (const key of creditIdentityFields) delete (creditData as any)[key];
 
       // OPE-09/10: no generic client can forge official disbursement evidence.
       const incomingProposal = req.body?.finalProposal;
