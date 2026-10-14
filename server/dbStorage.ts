@@ -3019,17 +3019,28 @@ export class DbStorage implements IStorage {
         }
       }
 
-      const [created] = await db
-        .insert(credits)
-        .values({
+      const [created] = await db.transaction(async (tx) => {
+        if (canonical && !credit.linkedSubmissionId) {
+          // Direct-credit insert is subject to the same parent offer lock as
+          // publishing. Legacy target-linked credits use their historical
+          // target timestamp and the dedicated atomic target path.
+          await assertOfferCommissionAcceptanceInTransaction(tx, {
+            offerId: canonical.institutionProductId,
+            versionNumber: canonical.versionNumber,
+            financialInstitutionId: credit.financialInstitutionId || null,
+            brokerId: credit.brokerId,
+            originMasterBrokerId,
+          });
+        }
+        return tx.insert(credits).values({
           ...credit,
           institutionProductId: canonical?.institutionProductId ?? null,
           versionNumber: canonical?.versionNumber ?? null,
           originMasterBrokerId,
           createdAt: new Date(),
           updatedAt: new Date(),
-        })
-        .returning();
+        }).returning();
+      });
       return created;
     } catch (error) {
       console.error("Error creating credit:", error);
