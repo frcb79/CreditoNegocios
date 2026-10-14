@@ -76,6 +76,20 @@ describePg("OPE-12: winning target and credit creation in one PostgreSQL transac
       action varchar NOT NULL, performed_by varchar, previous_status varchar,
       new_status varchar, details jsonb DEFAULT '{}', created_at timestamp DEFAULT now()
     )`);
+
+    // COM-28 legacy chronology gate is now inside PG winner/disbursement
+    // transactions, so this fixture must also create the parent catalog.
+    await pool.query("DROP TABLE IF EXISTS institution_product_versions CASCADE");
+    await pool.query("DROP TABLE IF EXISTS institution_products CASCADE");
+    await pool.query(`CREATE TABLE institution_products (
+      id varchar PRIMARY KEY, institution_id varchar NOT NULL,
+      status varchar DEFAULT 'draft', is_active boolean DEFAULT true
+    )`);
+    await pool.query(`CREATE TABLE institution_product_versions (
+      id varchar PRIMARY KEY, institution_product_id varchar NOT NULL
+        REFERENCES institution_products(id),
+      status varchar DEFAULT 'draft', published_at timestamp
+    )`);
   });
   afterAll(async () => { await pool?.end(); });
 
