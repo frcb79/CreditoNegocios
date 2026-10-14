@@ -7789,7 +7789,9 @@ function maskCLABE(clabe?: string | null): string | null {
       const isAdmin = user?.role === 'admin' || user?.role === 'super_admin';
 
       if (isAdmin) {
-        const allUsers = await storage.getAllUsers();
+        // API never sends hashed passwords or reusable reset tokens to a
+        // Super Admin / Admin browser, including nested broker networks.
+        const allUsers = (await storage.getAllUsers()).map(publicUserForManagement);
         const masterBrokers = allUsers.filter(u => u.role === 'master_broker');
         const allBrokers = allUsers.filter(u => u.role === 'broker');
 
@@ -7815,7 +7817,7 @@ function maskCLABE(clabe?: string | null): string | null {
 
       // If user is a Master Broker, return their own brokers
       const brokers = await storage.getUsersByMasterBroker(userId);
-      res.json(brokers);
+      res.json(brokers.map(publicUserForManagement));
     } catch (error) {
       console.error("Error fetching broker network:", error);
       res.status(500).json({ message: "Failed to fetch broker network" });
