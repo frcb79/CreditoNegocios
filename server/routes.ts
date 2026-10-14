@@ -1696,12 +1696,31 @@ export async function registerRoutes(app: Express): Promise<Server> {
           }
         }
       } else {
-        // Admins can update user data, with protections
-        sanitizedData = { ...userData };
-        // An admin cannot promote anyone to super_admin unless they are super_admin
-        if (currentUser.role !== 'super_admin' && sanitizedData.role === 'super_admin') {
-          return res.status(403).json({ message: "Solo un Super Administrador puede asignar el rol de Super Administrador" });
+        // Existing Admin profile UI stays functional, but cannot edit passwords,
+        // recovery credentials or structural network/role assignments.
+        const protectedAuthFields = ["password", "resetToken", "resetTokenExpiry"];
+        if (protectedAuthFields.some((field) => Object.prototype.hasOwnProperty.call(userData || {}, field))) {
+          return res.status(403).json({ message: "Las credenciales se administran sólo mediante autenticación segura." });
         }
+        const targetUser = await storage.getUser(id);
+        if (!targetUser) return res.status(404).json({ message: "Usuario no encontrado" });
+        if (userData.masterBrokerId !== undefined && userData.masterBrokerId !== targetUser.masterBrokerId) {
+          return res.status(409).json({ message: "Reasignación de Brokers requiere la transición autorizada de Super Admin." });
+        }
+        if (userData.role !== undefined && userData.role !== targetUser.role &&
+            (["broker", "master_broker"].includes(targetUser.role) ||
+             ["broker", "master_broker"].includes(userData.role))) {
+          return res.status(409).json({ message: "Las promociones y cambios de red requieren transición autorizada." });
+        }
+        if (currentUser.role !== "super_admin" && userData.permissions !== undefined) {
+          return res.status(403).json({ message: "Sólo Super Admin puede asignar permisos." });
+        }
+        sanitizedData = { ...userData };
+        delete sanitizedData.password;
+        delete sanitizedData.resetToken;
+        delete sanitizedData.resetTokenExpiry;
+        delete sanitizedData.masterBrokerId;
+        if (["broker", "master_broker"].includes(targetUser.role)) delete sanitizedData.role;
       }
       
       // Proteger estado operativo contra modificaciones directas fuera de la lógica central
@@ -1720,7 +1739,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ message: "User not found" });
       }
       
-      res.json(user);
+      res.json(publicUserForManagement(user));
     } catch (error) {
       console.error("Error updating user profile:", error);
       res.status(500).json({ message: "Failed to update user profile" });
@@ -3478,7 +3497,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       return res.json({
         message: "Solicitud aprobada y estado operativo actualizado exitosamente",
         request: resolvedRequest,
-        user: updatedUser,
+        user: publicUserForManagement(updatedUser),
       });
     } catch (error: any) {
       console.error("Error approving status request:", error);

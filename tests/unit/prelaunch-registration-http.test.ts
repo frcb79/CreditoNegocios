@@ -104,6 +104,12 @@ describe("P0 - HTTP Registration, Legal Acceptance & Network Affiliation", () =>
       const transfer = await request(app).patch("/api/users/" + broker.id)
         .send({ masterBrokerId: "forged-master-id" });
       expect(transfer.status).toBe(409);
+      const alternateRoute = await request(app).put("/api/users/" + broker.id)
+        .send({ resetToken: "HIJACK" });
+      expect(alternateRoute.status).toBe(403);
+      const alternateMove = await request(app).put("/api/users/" + broker.id)
+        .send({ masterBrokerId: "evil-master" });
+      expect(alternateMove.status).toBe(409);
       expect((await storage.getUser(broker.id))?.resetToken).toBe("PRIVATE_RESET_TOKEN_NEVER_RETURN");
     });
   });
