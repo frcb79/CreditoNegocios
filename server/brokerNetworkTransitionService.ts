@@ -43,6 +43,8 @@ export interface CreateBrokerWithOrganizationInput {
   authMethod?: string;
   masterBrokerId?: string | null;
   role?: "broker" | "master_broker";
+  resetToken?: string | null;
+  resetTokenExpiry?: Date | null;
   profileData?: unknown;
   isActive?: boolean;
 }
@@ -133,6 +135,8 @@ export async function createBrokerWithOrganization(input: CreateBrokerWithOrgani
         firstName: input.firstName?.trim() || null,
         lastName: input.lastName?.trim() || null,
         password: input.password || null,
+        resetToken: input.resetToken || null,
+        resetTokenExpiry: input.resetTokenExpiry || null,
         authMethod: input.authMethod || "local",
         role: createMaster ? "master_broker" : "broker",
         masterBrokerId,

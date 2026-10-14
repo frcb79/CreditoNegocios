@@ -66,7 +66,7 @@ export async function sendPasswordResetEmail(
     }
 
     const resetUrl = `${baseUrl.replace(/\/$/, '')}/reset-password?token=${resetToken}`;
-    console.log('[Email] Generated reset URL:', resetUrl);
+    // Never log invitation/password-reset links: they contain bearer tokens.
     const greeting = userName ? `Hola ${userName},` : 'Hola,';
 
     console.log(`[Email] Preparing to send reset email to ${to}...`);

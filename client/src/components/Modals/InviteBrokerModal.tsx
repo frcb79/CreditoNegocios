@@ -60,10 +60,18 @@ export default function InviteBrokerModal({ isOpen, onClose }: InviteBrokerModal
       const response = await apiRequest("POST", "/api/broker-invitations", data);
       return await response.json();
     },
-    onSuccess: () => {
+    onSuccess: (data: { invitationSent?: boolean; message?: string }) => {
+      if (!data.invitationSent) {
+        toast({
+          title: "Invitación pendiente de envío",
+          description: data.message || "El correo no salió. Intenta reenviar la invitación.",
+          variant: "destructive",
+        });
+        return;
+      }
       toast({
         title: "Invitación enviada",
-        description: "Se ha enviado la invitación al broker exitosamente",
+        description: "El correo de activación se envió al Broker.",
       });
       queryClient.invalidateQueries({ queryKey: ["/api/broker-network"] });
       form.reset();

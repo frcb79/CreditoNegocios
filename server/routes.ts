@@ -7691,81 +7691,121 @@ function maskCLABE(clabe?: string | null): string | null {
     }
   });
 
-  // Broker invitations
-  app.post('/api/broker-invitations', isAuthenticated, async (req: any, res) => {
+  // Approved launch onboarding: invitation must produce real mail and canonical
+  // organization ownership. Never silently reassign an existing Broker.
+  app.post('/api/broker-invitations', isAuthenticated, authMutationLimiter, async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
-      const user = await storage.getUser(userId);
-      
-      if (user?.role !== 'master_broker' && user?.role !== 'admin' && user?.role !== 'super_admin') {
-        return res.status(403).json({ message: "Access denied" });
+      const userId = req.user?.claims?.sub || req.user?.id;
+      const inviter = await storage.getUser(userId);
+      if (!inviter || !["master_broker", "admin", "super_admin"].includes(inviter.role)) {
+        return res.status(403).json({ message: "No autorizado para invitar Brokers." });
       }
 
-      const { email, firstName, lastName, phone, message } = req.body;
-      
-      if (!email) {
-        return res.status(400).json({ message: "El correo electrónico es requerido" });
+      const input = z.object({
+        email: z.string().trim().email().max(320),
+        firstName: z.string().trim().max(120).optional(),
+        lastName: z.string().trim().max(120).optional(),
+        phone: z.string().trim().max(35).optional(),
+        message: z.string().trim().max(500).optional(),
+        masterBrokerId: z.string().trim().optional(),
+      }).safeParse(req.body);
+      if (!input.success) return res.status(400).json({ message: "Datos de invitación inválidos." });
+      const data = input.data;
+      const normalizedEmail = data.email.toLowerCase();
+
+      // An invitation must not link to a staging domain by accidental fallback.
+      const baseUrl = process.env.FRONTEND_BASE_URL;
+      if (!baseUrl || !/^https:\/\//i.test(baseUrl)) {
+        return res.status(503).json({ message: "La URL segura de invitaciones no está configurada." });
+      }
+      if (!process.env.RESEND_API_KEY && process.env.NODE_ENV !== "test") {
+        return res.status(503).json({ message: "Servicio de correo no configurado para enviar invitaciones." });
       }
 
-      // Check if user already exists or create new broker in network
-      const existingUser = await storage.getUserByEmail(email);
-      let targetBroker: any = existingUser;
+      const targetMasterBrokerId = inviter.role === "master_broker"
+        ? inviter.id : (data.masterBrokerId || null);
+      const previous = await storage.getUserByEmail(normalizedEmail);
+      const crypto = await import("node:crypto");
+      const resetToken = crypto.randomBytes(32).toString("hex");
+      const resetTokenExpiry = new Date(Date.now() + 24 * 60 * 60 * 1000);
+      let targetBroker: any;
+      let invitationKind: "created" | "resent" = "created";
 
-      if (existingUser) {
-        // Link to master broker if this is invited by a master broker
-        if (user.role === 'master_broker' && (!existingUser.masterBrokerId || existingUser.masterBrokerId !== userId)) {
-          targetBroker = await storage.updateUser(existingUser.id, {
-            masterBrokerId: userId,
+      if (previous) {
+        // This route is not a transfer-of-network API.
+        // Only re-send a setup link to an unfinished, correctly affiliated,
+        // owned Broker identity already created through the canonical path.
+        const allTenants = await storage.getTenants();
+        const owned = allTenants.filter(t =>
+          t.type === "broker" && (t.settings as any)?.legacyOwnerUserId === previous.id
+        );
+        const members = owned.length === 1 ? await storage.getTenantMembers(owned[0].id) : [];
+        const ownedByBroker = members.some(m =>
+          m.userId === previous.id && m.role === "owner" && m.isActive !== false
+        );
+        const isSameNetwork = (previous.masterBrokerId || null) === targetMasterBrokerId;
+        if (previous.role !== "broker" || previous.password ||
+            !isSameNetwork || !ownedByBroker) {
+          return res.status(409).json({
+            message: "El usuario ya existe o pertenece a otra red. Los cambios de afiliación requieren autorización de Super Admin."
           });
         }
+        await storage.setPasswordResetToken(previous.id, resetToken, resetTokenExpiry);
+        targetBroker = previous;
+        invitationKind = "resent";
       } else {
-        // Create new broker user record under master broker
-        targetBroker = await storage.createUser({
-          email,
-          firstName: firstName || '',
-          lastName: lastName || '',
-          role: 'broker',
-          masterBrokerId: user.role === 'master_broker' ? userId : (req.body.masterBrokerId || null),
-          isActive: true,
+        const result = await createBrokerWithOrganization({
+          email: normalizedEmail,
+          firstName: data.firstName || null,
+          lastName: data.lastName || null,
+          password: null, authMethod: "local",
+          role: "broker", masterBrokerId: targetMasterBrokerId,
+          resetToken, resetTokenExpiry,
           profileData: {
-            phone: phone || '',
+            phone: data.phone || "",
             invitedBy: userId,
-            invitationMessage: message || '',
+            invitationMessage: data.message || "",
           },
+          isActive: true,
+        });
+        targetBroker = result.user;
+      }
+
+      const recipientName = [targetBroker.firstName, targetBroker.lastName].filter(Boolean).join(" ") || undefined;
+      const sent = await sendPasswordResetEmail(normalizedEmail, resetToken, recipientName);
+      if (!sent.success) {
+        console.error("[Invitation] Email delivery failed; invitation remains pending:", sent.error);
+        return res.status(202).json({
+          invitationSent: false,
+          message: "Broker registrado, pero no se entregó el correo. Reintenta la invitación.",
+          broker: { id: targetBroker.id, email: targetBroker.email, role: targetBroker.role },
+          invitationKind,
         });
       }
 
-      // Create a notification for sender
-      const notification = await storage.createNotification({
+      await storage.createNotification({
         userId,
-        type: 'broker_invitation_sent',
-        title: 'Invitación de broker enviada',
-        message: `Invitación enviada a ${firstName} ${lastName} (${email})`,
-        data: { 
-          email, 
-          firstName, 
-          lastName, 
-          phone,
-          brokerId: targetBroker?.id,
-          invitationMessage: message 
-        },
-        priority: 'medium',
-      });
-      
-      // Broadcast real-time notification
-      broadcastToUser(userId, {
-        type: 'notification',
-        notification,
-      });
+        type: "broker_invitation_sent",
+        title: "Invitación de Broker enviada",
+        message: `Invitación enviada a ${normalizedEmail}`,
+        data: { email: normalizedEmail, brokerId: targetBroker.id },
+        priority: "medium",
+      }).catch(err => console.warn("[Invitation] Sender notification pending", err));
 
-      res.status(201).json({ 
-        message: "Invitation sent successfully",
-        broker: targetBroker,
-        invitation: { email, firstName, lastName, phone }
+      return res.status(invitationKind === "created" ? 201 : 200).json({
+        invitationSent: true,
+        invitationKind,
+        message: "Invitación enviada por correo correctamente.",
+        broker: { id: targetBroker.id, email: targetBroker.email, role: targetBroker.role },
       });
-    } catch (error) {
-      console.error("Error sending broker invitation:", error);
-      res.status(500).json({ message: "Failed to send broker invitation" });
+    } catch (error: any) {
+      console.error("Error inviting Broker:", error);
+      if (error?.code === "EMAIL_ALREADY_EXISTS" || error?.code === "23505") {
+        return res.status(409).json({ message: "El usuario ya existe. Vuelve a cargar la red antes de invitar." });
+      }
+      if (error?.name === "ZodError") return res.status(400).json({ message: "Datos de invitación inválidos." });
+      return res.status(error?.statusCode && error.statusCode >= 400 && error.statusCode < 500 ? error.statusCode : 500)
+        .json({ message: error?.statusCode ? error.message : "No fue posible crear la invitación." });
     }
   });
 
