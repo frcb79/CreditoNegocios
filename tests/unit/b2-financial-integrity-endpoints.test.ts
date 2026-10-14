@@ -285,9 +285,13 @@ describe("Fase 2B.1B — Cierre de Integridad Financiera y Eliminación de Rutas
       const allowed = await request(app).post(`/api/credit-submissions/${platformSubmission.id}/targets`)
         .send({ financialInstitutionIds: [lender.id] });
       expect(allowed.status).toBe(201);
+      // Selecting candidate institutions is an internal review operation.
+      // It is NOT evidence of client consent nor of an external transfer.
+      expect(allowed.body.message).toContain("no se compartió el expediente");
       const targets = await storage.getCreditSubmissionTargets({ requestId: platformSubmission.id });
       expect(targets).toHaveLength(1);
       expect(targets[0].financialInstitutionId).toBe(lender.id);
+      expect(targets[0].status).toBe("pending_admin");
       expect(await storage.getCreditSubmissionTargets({ requestId: submission.id })).toHaveLength(0);
     });
   });
