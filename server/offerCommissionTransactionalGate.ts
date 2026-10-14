@@ -49,19 +49,20 @@ export async function assertOfferCommissionAcceptanceInTransaction(
     return;
   }
 
-  const [broker] = await tx.select().from(users)
+  const payeeColumns = { id: users.id, role: users.role, masterBrokerId: users.masterBrokerId };
+  const [broker] = await tx.select(payeeColumns).from(users)
     .where(eq(users.id, args.brokerId)).limit(1);
   if (!broker) throw new Error("OFFER_ACCEPTANCE_ORIGINATOR_UNAVAILABLE");
 
   const payeeId = args.originMasterBrokerId || args.brokerId;
-  const [payee] = payeeId === broker.id ? [broker] : await tx.select().from(users)
+  const [payee] = payeeId === broker.id ? [broker] : await tx.select(payeeColumns).from(users)
     .where(eq(users.id, payeeId)).limit(1);
   if (!payee) throw new Error("OFFER_ACCEPTANCE_PAYEE_NOT_FOUND");
   if (args.originMasterBrokerId && payee.role !== "master_broker") {
     throw new Error("OFFER_ACCEPTANCE_MASTER_ROLE_MISMATCH");
   }
   if (!args.originMasterBrokerId && broker.role === "broker" && broker.masterBrokerId) {
-    const [parent] = await tx.select().from(users)
+    const [parent] = await tx.select(payeeColumns).from(users)
       .where(eq(users.id, broker.masterBrokerId)).limit(1);
     if (!parent) throw new Error("OFFER_MASTER_AFFILIATION_UNVERIFIED");
     if (parent.role === "master_broker") throw new Error("MISSING_ORIGIN_MASTER_FOR_OFFER");
