@@ -34,11 +34,15 @@ Fecha de preparación: 14-oct-2026. **NO GO general.** Sin datos ni consentimien
 | COM-01 | Super Admin | Aprobación de comisión con cargo vigente | Verifica monto congelado y receptor Master o Broker directo | auditoría, sin pago simulado |
 | PAG-01 | Super Admin | Pago manual documental | CSF, INE y estado de cuenta del receptor real; referencia no reutilizable | documentos y auditoría |
 | SEC-01 | Broker | Intento de leer CLABE o auditoría de otro usuario | 403/404, sin fuga por lista ni download | HTTP cuerpo filtrado |
+| SEC-02 | Broker B formalizado | POST crédito/solicitud/hipoteca con `clientId` de Broker A | 403 `CLIENT_ORIGINATION_NOT_AUTHORIZED` sin crear crédito ni solicitud | HTTP + storage antes/después |
+| SEC-03 | Broker B | POST documento con `clientId` ajeno | 403 `DOCUMENT_CLIENT_NOT_AUTHORIZED`; no persistir fichero, registro ni fuga | HTTP + storage + limpieza temporal |
+| SEC-04 | Broker A con documento propio | PUT documento intentando reasignarlo a cliente de Broker B | 403, documento y titular original intactos | HTTP + estado antes/después |
+| SEC-05 | Master / tenant distinto | Referenciar crédito y cliente de diferentes titulares en un solo documento | Rechazo `DOCUMENT_CLIENT_CREDIT_MISMATCH`, sin escribir archivo | E2E/HTTP aislado |
 | LEG-01 | Master/Broker | OTP, formalización, versiones | Documento personalizado exacto, OTP y evidencia histórica | hash, timestamps, comprobante PDF |
 | OPS-01 | Equipo autorizado | Ensayo de despliegue en Staging aislado | Sin conexión a BD, Storage, sesiones, emails o secretos de Producción | checksums de configuración |
 | OPS-02 | Equipo autorizado | Restore/rollback de copia sintética | Migraciones 0004–0009 + nuevas pendientes sin pérdida de historial | backup + restore drill |
 
-**Estado:** LEG10-01–03 tienen cobertura HTTP nueva escrita (no aprobar sin CI SHA exacto). Resto exige ejecución/evidencias adicionales; LEG10-06–12 requieren redacción legal, verificación del firmante, persistencia, revocación y UI **aún no implementadas**.
+**Estado:** LEG10-01–03 y SEC-02–04 cuentan con cobertura HTTP unitaria escrita, sujeta a CI del SHA nuevo; SEC-05 requiere un caso adicional de prueba focal. El resto exige ejecución/evidencias adicionales; LEG10-06–12 requieren redacción legal, verificación del firmante, persistencia, revocación y UI **aún no implementadas**.
 
 ## Diseño legal a aprobar (el equipo técnico NO selecciona excepciones por cuenta propia)
 1. Texto versionado y exacto del instrumento de consentimiento para PF/PFAE/PM; aviso de privacidad correcto y fecha efectiva.
