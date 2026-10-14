@@ -466,6 +466,12 @@ describe("P0 - HTTP Registration, Legal Acceptance & Network Affiliation", () =>
         permissions: { modules: ["*"], actions: ["*"], scope: "all" },
       });
       expect(elevatePerms.status).toBe(403);
+      const unauthorizedCreate = await request(app).post("/api/users").send({
+        email: "rbac-injected-" + randomUUID() + "@network.test",
+        firstName: "Privileged", lastName: "Broker", role: "broker",
+        permissions: { modules: ["*"], actions: ["*"], scope: "platform" },
+      });
+      expect(unauthorizedCreate.status).toBe(403);
       const alterStatus = await request(app).patch("/api/admin/users/" + broker.id + "/operational-status")
         .send({ status: "suspended", reason: "Intento no autorizado" });
       expect(alterStatus.status).toBe(403);
