@@ -75,3 +75,10 @@ Se actualiza via sync desde cada proyecto al master.
 - Certificar cada evento crítico desde la misma transacción de negocio y probar permisos de consulta/propiedad. No confundir existencia de `commercial_audit_logs` con cobertura de login, documentos, créditos y comisiones ni con una pantalla unificada.
 - En pruebas unitarias `MemStorage` y `MockCommercialOpportunityStorage` pueden ser implementaciones separadas; comprobar eventos en almacenamiento real del caso, sin afirmar que el endpoint PostgreSQL fue validado por un mock.
 - La restricción de escalamiento debe cubrir creación, además de edición: Admin/Master no deben suministrar permisos globales al crear usuarios.
+
+## Lección 2026-10-14 — Aceptación económica por oferta y rol
+- No sustituir evidencia por oferta/version por aceptación comercial global o por institución; el hash debe referirse a la versión efectivamente publicada.
+- El documento económico se persiste en la transacción de publicación: si falla, la versión no puede considerarse vigente.
+- Nunca exponer la comisión mayorista Master a Brokers de red; el Master acepta su participación de oferta y su Broker su propio instrumento de red.
+- La aceptación no debe invalidar snapshots históricos ni depender de una notificación enviada; las rutas que generan nuevos créditos, no sólo selección de ganador, tienen que comprobarla.
+- Los casos de prueba añadidos requieren ejecución real PostgreSQL y E2E antes de tomar decisiones de deploy.
