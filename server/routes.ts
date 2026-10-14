@@ -1274,7 +1274,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const cleanCode = data.referralCode.trim().toUpperCase();
         const allUsers = await storage.getAllUsers();
         const masterBroker = allUsers.find(
-          u => u.referralCode && u.referralCode.toUpperCase() === cleanCode && (u.role === 'master_broker' || u.role === 'admin' || u.role === 'super_admin')
+          u => u.referralCode && u.referralCode.toUpperCase() === cleanCode &&
+            u.role === 'master_broker' && u.isActive !== false &&
+            u.status !== 'suspended' && u.status !== 'inactive'
         );
         if (masterBroker) {
           masterBrokerId = masterBroker.id;
