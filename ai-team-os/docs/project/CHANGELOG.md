@@ -98,3 +98,6 @@ Actualizar cada vez que se completa una feature.
 - Verificada existencia de bitácoras comercial, configuración, comisión y formalización; vista Super Admin presenta sólo fuentes seleccionadas, no auditoría completa de seguridad/operación.
 - Ampliadas pruebas HTTP de evento de suspensión (actor, estado anterior/nuevo, motivo) y prohibición de acceso global por Broker/Master.
 - Bloqueado `POST /api/users` para que Admin/Master no asignen arbitrariamente módulos y acciones a nuevos usuarios; regresión específica. Cambios sólo en rama de integración, sin deploy; CI del nuevo HEAD por certificar.
+
+## 2026-10-14 — Validación de tipo de aceptación comercial (COM-28)
+- La API genérica de aceptación comercial ahora rechaza tipos/descriptores de oferta o financiera no soportados, en vez de confundirlos con aceptación global. Prueba HTTP negativa añadida; aceptación material por oferta/version sigue pendiente de implementación/QA como requisito prelaunch. Sin cambios de infraestructura.
