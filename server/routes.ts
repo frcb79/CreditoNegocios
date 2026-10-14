@@ -4646,6 +4646,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Only a published, same-institution offer/version may define economics.
       const rawProposal = (req.body?.finalProposal && typeof req.body.finalProposal === "object" &&
         !Array.isArray(req.body.finalProposal)) ? req.body.finalProposal as Record<string, any> : {};
+      // Reject inconsistent identity claims across the credit and its frozen
+      // proposal before trusting either source or freezing monetary terms.
+      const offeredIds = [rawProposal.institutionProductId, rawProposal.offerId,
+        req.body?.institutionProductId].filter((v: unknown) => v !== undefined && v !== null && v !== "");
+      const offeredVersions = [rawProposal.versionNumber, req.body?.versionNumber]
+        .filter((v: unknown) => v !== undefined && v !== null);
+      if ((offeredIds.length > 1 && offeredIds.some((v: unknown) => v !== offeredIds[0])) ||
+          (offeredVersions.length > 1 &&
+            offeredVersions.some((v: unknown) => Number(v) !== Number(offeredVersions[0])))) {
+        return res.status(409).json({ code: "OFFER_VERSION_IDENTITY_MISMATCH" });
+      }
       const explicitOfferId = rawProposal.institutionProductId || rawProposal.offerId ||
         req.body?.institutionProductId || null;
       const explicitVersion = rawProposal.versionNumber ?? req.body?.versionNumber ?? null;
