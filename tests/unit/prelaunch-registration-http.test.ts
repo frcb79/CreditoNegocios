@@ -347,6 +347,56 @@ describe("P0 - HTTP Registration, Legal Acceptance & Network Affiliation", () =>
 
 
 
+
+  describe("P0 - Bitácora operativa básica: integridad y RBAC HTTP", () => {
+    it("Super Admin observa actor, antes/después y motivo de suspensión; Broker/Master no leen auditoría global", async () => {
+      const sa = await storage.createUser({
+        email: "audit-sa-" + randomUUID() + "@network.test",
+        firstName: "Super", lastName: "Auditor", role: "super_admin",
+        permissions: { modules: ["*"], actions: ["*"] },
+        isActive: true, status: "active",
+      } as any);
+      const master = await storage.createUser({
+        email: "audit-master-" + randomUUID() + "@network.test",
+        firstName: "Master", lastName: "Auditor", role: "master_broker",
+        isActive: true, status: "active",
+      } as any);
+      const broker = await storage.createUser({
+        email: "audit-broker-" + randomUUID() + "@network.test",
+        firstName: "Broker", lastName: "Auditor", role: "broker",
+        isActive: true, status: "active",
+      } as any);
+      const saOwnedBroker = await storage.createUser({
+        email: "audit-target-" + randomUUID() + "@network.test",
+        firstName: "Objetivo", lastName: "Auditor", role: "broker",
+        isActive: true, status: "active",
+      } as any);
+      currentAuthUser = sa;
+      const suspend = await request(app)
+        .patch("/api/admin/users/" + saOwnedBroker.id + "/operational-status")
+        .send({ status: "suspended", reason: "Control de seguridad prelaunch" });
+      expect(suspend.status).toBe(200);
+      const logsResponse = await request(app)
+        .get("/api/commercial/audit-logs?entityType=user&entityId=" + saOwnedBroker.id);
+      expect(logsResponse.status).toBe(200);
+      const record = logsResponse.body.find((x: any) =>
+        x.entityType === "user" && x.entityId === saOwnedBroker.id && x.action === "suspend");
+      expect(record).toBeDefined();
+      expect(record.performedBy).toBe(sa.id);
+      expect(record.previousState).toBe("active");
+      expect(record.newState).toBe("suspended");
+      expect(record.metadata?.reason).toBe("Control de seguridad prelaunch");
+      expect((await storage.getUser(saOwnedBroker.id))?.status).toBe("suspended");
+
+      currentAuthUser = broker;
+      expect((await request(app).get("/api/commercial/audit-logs?entityType=user")).status).toBe(403);
+      expect((await request(app).get("/api/admin/commercial-config/audit")).status).toBe(403);
+      currentAuthUser = master;
+      expect((await request(app).get("/api/commercial/audit-logs?entityType=user")).status).toBe(403);
+      expect((await request(app).get("/api/admin/commercial-config/audit")).status).toBe(403);
+    });
+  });
+
   describe("P0 - Notificaciones con aislamiento estricto de propietario", () => {
     it("niega PATCH/PUT cruzados sin mutar estado y permite al destinatario", async () => {
       const owner = await storage.createUser({
