@@ -73,6 +73,7 @@ import {
   validateOfferVersionParameters,
   compareOfferIntermediaryCommissions,
 } from "./offerVersionService";
+import { getOfferCommissionStatus, acceptOfferCommission } from "./offerCommissionAcceptance";
 import {
   evaluateCatalogCompatibility,
   isVersionEligibleForMatching,
@@ -9575,6 +9576,63 @@ function maskCLABE(clabe?: string | null): string | null {
     } catch (error: any) {
       console.error("Error in publish-preview:", error);
       res.status(500).json({ message: "Failed to generate publish preview" });
+    }
+  });
+
+  // COM-28: Broker/Master checks the exact published economic instrument.
+  // Never expose platform or financial-institution internal commission rates.
+  app.get("/api/institution-products/:id/commission-acceptance", isAuthenticated, async (req: any, res) => {
+    try {
+      const user = await storage.getUser(req.user.claims.sub);
+      if (!user || (user.role !== "broker" && user.role !== "master_broker")) {
+        return res.status(403).json({ code: "OFFER_ACCEPTANCE_ROLE_FORBIDDEN" });
+      }
+      const product = await storage.getInstitutionProduct(req.params.id);
+      if (!product || product.status !== "published" || product.isActive === false) {
+        return res.status(404).json({ code: "OFFER_NOT_PUBLISHED" });
+      }
+      const versionNumber = Number(req.query.versionNumber ?? product.currentVersionNumber);
+      if (!Number.isSafeInteger(versionNumber) || versionNumber <= 0) {
+        return res.status(400).json({ code: "INVALID_OFFER_VERSION" });
+      }
+      return res.json(await getOfferCommissionStatus(storage, user, product.id, versionNumber));
+    } catch (error: any) {
+      return res.status(error?.message === "OFFER_VERSION_NOT_CURRENT" ? 409 : 500)
+        .json({ code: error?.message || "OFFER_ACCEPTANCE_STATUS_ERROR" });
+    }
+  });
+
+  app.post("/api/institution-products/:id/commission-acceptance", isAuthenticated, async (req: any, res) => {
+    try {
+      const user = await storage.getUser(req.user.claims.sub);
+      if (!user || (user.role !== "broker" && user.role !== "master_broker")) {
+        return res.status(403).json({ code: "OFFER_ACCEPTANCE_ROLE_FORBIDDEN" });
+      }
+      const product = await storage.getInstitutionProduct(req.params.id);
+      if (!product || product.status !== "published" || product.isActive === false) {
+        return res.status(404).json({ code: "OFFER_NOT_PUBLISHED" });
+      }
+      const versionNumber = Number(req.body?.versionNumber);
+      const expectedHash = req.body?.contentSha256;
+      if (!Number.isSafeInteger(versionNumber) || versionNumber <= 0 ||
+          typeof expectedHash !== "string" || !/^[a-f0-9]{64}$/.test(expectedHash)) {
+        return res.status(400).json({ code: "OFFER_ACCEPTANCE_VERSION_AND_HASH_REQUIRED" });
+      }
+      // A client may only accept the exact document it was shown.
+      const status = await getOfferCommissionStatus(storage, user, product.id, versionNumber);
+      if (!status.contentSha256 || status.contentSha256 !== expectedHash) {
+        return res.status(409).json({ code: "OFFER_ACCEPTANCE_STALE_DOCUMENT" });
+      }
+      const ipValue = req.ip || req.socket?.remoteAddress || null;
+      const result = await acceptOfferCommission(storage, user, product.id, versionNumber,
+        typeof ipValue === "string" ? ipValue : null,
+        String(req.headers["user-agent"] || "unknown"));
+      return res.json(result);
+    } catch (error: any) {
+      const code = error?.message || "OFFER_ACCEPTANCE_ERROR";
+      const status = code === "OFFER_VERSION_NOT_CURRENT" || code === "OFFER_COMMISSIONS_NOT_PENDING" ||
+        code === "OFFER_COMMISSION_DOCUMENT_UNAVAILABLE" ? 409 : 500;
+      return res.status(status).json({ code });
     }
   });
 
