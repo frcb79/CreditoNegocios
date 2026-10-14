@@ -427,6 +427,32 @@ describe("P0 - HTTP Registration, Legal Acceptance & Network Affiliation", () =>
     });
   });
 
+  describe("P0 - Crédito directo no acepta comisiones arbitrarias del cliente", () => {
+    it("rechaza un desglose de comisión sin identidad exacta de oferta/version", async () => {
+      const superAdmin = await storage.createUser({
+        email: "credit-economics-" + randomUUID() + "@network.test",
+        firstName: "Super", lastName: "Admin", role: "super_admin",
+        permissions: { modules: ["*"], actions: ["*"] },
+        isActive: true, status: "active",
+      } as any);
+      currentAuthUser = superAdmin;
+      const forged = await request(app).post("/api/credits").send({
+        clientId: randomUUID(), amount: "200000",
+        finalProposal: {
+          commissionRates: { broker: { apertura: 99 }, masterBroker: { apertura: 99 } },
+        },
+      });
+      expect(forged.status).toBe(409);
+      expect(forged.body.code).toBe("OFFER_VERSION_REQUIRED_FOR_COMMISSION_RATES");
+      const forgedOpening = await request(app).post("/api/credits").send({
+        clientId: randomUUID(), amount: "200000",
+        finalProposal: { openingCommission: 99 },
+      });
+      expect(forgedOpening.status).toBe(409);
+      expect(forgedOpening.body.code).toBe("OFFER_VERSION_REQUIRED_FOR_COMMISSION_RATES");
+    });
+  });
+
   describe("P0 - Notificaciones con aislamiento estricto de propietario", () => {
     it("niega PATCH/PUT cruzados sin mutar estado y permite al destinatario", async () => {
       const owner = await storage.createUser({
