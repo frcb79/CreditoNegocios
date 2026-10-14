@@ -113,3 +113,8 @@ Actualizar cada vez que se completa una feature.
 - Añadidas API de consulta/aceptación, bandeja y UI existente de productos para Broker directo y Master; Broker de red no accede a cuota mayorista, acepta su propia red por mecanismo anterior.
 - Gate de nuevas operaciones (selección de ganador, crédito directo, dispersión legacy y confirmación que crea crédito) sin recalcular operaciones históricas; publicación avisa a destinatarios pertinentes.
 - Pruebas unitarias de aceptación, alcance, inmutabilidad y validación de hash; PostgreSQL de publicación con rollback por conflicto; se actualizaron suites CI. **CI del HEAD y E2E aún pendientes**, no declarar COM-28 certificado hasta ejecutarlos.
+
+## 2026-10-14 — Hardening final COM-28, atribución Admin/Master y crédito directo
+- La vinculación por rol valida si el padre del Broker es realmente `master_broker`; Broker bajo Admin tiene economía de canal directo, sin filtración mayorista Master; padre huérfano falla cerrado. Se agregó cobertura Jest.
+- Crédito directo con versión publicada obliga resolver financiera y cuotas desde servidor y rechaza comisiones u opening fee arbitrarios y desajustes entre versión de crédito y snapshot. Pruebas HTTP negativas agregadas.
+- LEG-10 permanece P0 de cliente separado de aceptaciones del Broker; no inventar redacción jurídica. Evidencia de CI/PG/E2E sigue pendiente; ningún GO ni deploy.
