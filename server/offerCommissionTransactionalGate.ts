@@ -23,6 +23,9 @@ export async function assertLegacyProposalPredatesPublishedCatalogInTransaction(
   args: { financialInstitutionId: string | null; proposalRecordedAt?: Date | string | null },
 ): Promise<void> {
   if (!args.financialInstitutionId) return; // unassigned draft (no institution)
+  // Same parent-row lock used by publisher; serializes the historical
+  // eligibility check with an in-flight publication.
+  await tx.execute(sql`SELECT id FROM institution_products WHERE institution_id = ${args.financialInstitutionId} FOR UPDATE`);
   const products = await tx.select({ id: institutionProducts.id }).from(institutionProducts)
     .where(and(
       eq(institutionProducts.institutionId, args.financialInstitutionId),
