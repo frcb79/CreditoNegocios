@@ -626,6 +626,45 @@ export class DrizzleCommercialAuthStorage implements ICommercialAuthStorage {
   }
 }
 
+/**
+ * The HTTP integration suites run routes against the canonical in-memory
+ * `storage` singleton. A fresh, unseeded MockCommercialAuthStorage sees none
+ * of those clients and produces false CLIENT_NOT_FOUND / authorization passes.
+ *
+ * Keep explicit MockCommercialAuthStorage instances deterministic for pure
+ * unit tests, but resolve the *default* runtime test service against the
+ * same canonical users/clients/credits as the Express handlers.
+ * Lazy require avoids an import cycle with server/storage.ts.
+ */
+class RuntimeTestCommercialAuthStorage extends MockCommercialAuthStorage {
+  private canonical(): any {
+    return require("./storage").storage;
+  }
+
+  async getClient(id: string): Promise<Client | undefined> {
+    return (await this.canonical().getClient(id)) || super.getClient(id);
+  }
+
+  async getUser(id: string): Promise<User | undefined> {
+    return (await this.canonical().getUser(id)) || super.getUser(id);
+  }
+
+  async getCredits(clientId: string, brokerId?: string): Promise<Credit[]> {
+    const stored = await this.canonical().getCredits({ clientId, brokerId });
+    return stored.length ? stored : super.getCredits(clientId, brokerId);
+  }
+
+  async getNetworkBrokers(masterBrokerId: string): Promise<User[]> {
+    const stored = await this.canonical().getUsersByMasterBroker(masterBrokerId);
+    return stored.length ? stored : super.getNetworkBrokers(masterBrokerId);
+  }
+
+  async getTenantsByParent(parentId: string): Promise<any[]> {
+    const stored = await this.canonical().getTenantsByParent(parentId);
+    return stored.length ? stored : super.getTenantsByParent(parentId);
+  }
+}
+
 export function createCommercialAuthorizationService(
   storageOverride?: ICommercialAuthStorage
 ): CommercialAuthorizationService {
@@ -634,7 +673,7 @@ export function createCommercialAuthorizationService(
   }
   const isMemory = process.env.USE_MEMORY_STORAGE === "true" || process.env.NODE_ENV === "test";
   if (isMemory) {
-    return new CommercialAuthorizationService(new MockCommercialAuthStorage());
+    return new CommercialAuthorizationService(new RuntimeTestCommercialAuthStorage());
   }
   const { db } = require("./db");
   return new CommercialAuthorizationService(new DrizzleCommercialAuthStorage(db));
