@@ -9716,15 +9716,56 @@ function maskCLABE(clabe?: string | null): string | null {
       );
 
       const updatedProduct = await storage.getInstitutionProduct(id);
+      // Notify affected users after the atomic publication. Notifications carry
+      // no confidential master/platform rate details; acceptance is always
+      // verified against PostgreSQL evidence, never against notification state.
+      let notificationsAttempted = 0;
+      let notificationsFailed = 0;
+      if (commercialChange.requiresAnyAcceptance) {
+        try {
+          const allUsers = await storage.getAllUsers();
+          for (const recipient of allUsers) {
+            if (recipient.isActive === false || recipient.status === "inactive") continue;
+            const directBroker = recipient.role === "broker" && !recipient.masterBrokerId;
+            const master = recipient.role === "master_broker";
+            const affected = (directBroker && commercialChange.directBrokerChanged) ||
+              (master && commercialChange.masterBrokerChanged);
+            const networkInformation = recipient.role === "broker" && Boolean(recipient.masterBrokerId) &&
+              commercialChange.masterBrokerChanged;
+            if (!affected && !networkInformation) continue;
+            notificationsAttempted++;
+            try {
+              await storage.createNotification({
+                userId: recipient.id,
+                type: "offer_commission_version_changed",
+                title: "Condiciones comerciales de oferta actualizadas",
+                message: affected
+                  ? "Se publicaron cambios en una oferta que requieren tu aceptación expresa antes de seleccionar nuevas operaciones bajo esa versión."
+                  : "Se actualizaron condiciones de una oferta de tu red. Tu Master Broker revisará las condiciones correspondientes.",
+                relatedEntityType: "institution_product",
+                relatedEntityId: id,
+                priority: "high",
+                data: { versionNumber: publishedVersion.versionNumber, scope: "offer", requiresAcceptance: affected },
+              });
+            } catch (notificationError) {
+              notificationsFailed++;
+              console.error("[COM-28] Error notificando cambio económico de oferta:", notificationError);
+            }
+          }
+        } catch (err) {
+          notificationsFailed++;
+          console.error("[COM-28] Error enumerando destinatarios:", err);
+        }
+      }
 
       res.json({
         message: "Oferta comercial publicada exitosamente",
         product: updatedProduct,
         publishedVersion,
         commercialChange,
-        // COM-28 P0: the actual per-offer acceptance ledger, notification and
-        // pre-operation gate are NOT implemented; never advertise them as active.
-        offerVersionAcceptanceEnforced: false,
+        offerVersionAcceptanceEnforced: true,
+        notificationsAttempted,
+        notificationsFailed,
       });
     } catch (error: any) {
       console.error("Error publishing institution product version:", error);
