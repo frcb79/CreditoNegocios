@@ -47,7 +47,7 @@ import {
   validateOfferVersionParameters,
   isOfferEligibleForRequests,
 } from "./offerVersionService";
-import { eq, ne, isNotNull, desc, asc, like, and, or, inArray, sql, gte } from "drizzle-orm";
+import { eq, ne, isNotNull, isNull, desc, asc, like, and, or, inArray, sql, gte } from "drizzle-orm";
 
 import { buildOfferCommissionDocument } from "./offerCommissionAcceptance";
 import { assertFrozenOfferLineage, readFrozenOfferLineage } from "./offerLineageService";
@@ -3021,6 +3021,7 @@ export class DbStorage implements IStorage {
 
       const [created] = await db.transaction(async (tx) => {
         let proposalRecordedAt: Date | null = null;
+        let winnerTargetId: string | null = null;
         if (credit.linkedSubmissionId) {
           // FIN-P0: Even the legacy mark-dispersed/confirm routes MUST NOT
           // evade the locked economic gate just because a linkedSubmissionId
@@ -3054,6 +3055,7 @@ export class DbStorage implements IStorage {
             throw new Error("OFFER_LINKED_WINNER_TARGET_NOT_VERIFIED");
           }
           const winner = unlinked[0];
+          winnerTargetId = winner.id;
           const targetLineage = readFrozenOfferLineage(winner.institutionProposal);
           if ((!canonical && targetLineage) || (canonical && !targetLineage) ||
               (canonical && targetLineage &&
@@ -3079,7 +3081,7 @@ export class DbStorage implements IStorage {
             proposalRecordedAt,
           });
         }
-        return tx.insert(credits).values({
+        const createdCredits = await tx.insert(credits).values({
           ...credit,
           institutionProductId: canonical?.institutionProductId ?? null,
           versionNumber: canonical?.versionNumber ?? null,
@@ -3087,6 +3089,19 @@ export class DbStorage implements IStorage {
           createdAt: new Date(),
           updatedAt: new Date(),
         }).returning();
+        if (winnerTargetId) {
+          // No gap between INSERT credits and winner.creditId: concurrent
+          // mark-dispersed operations must never create two linked credits.
+          const linked = await tx.update(creditSubmissionTargets)
+            .set({ creditId: createdCredits[0].id, updatedAt: new Date() })
+            .where(and(
+              eq(creditSubmissionTargets.id, winnerTargetId),
+              isNull(creditSubmissionTargets.creditId),
+              eq(creditSubmissionTargets.isWinner, true),
+            )).returning({ id: creditSubmissionTargets.id });
+          if (linked.length !== 1) throw new Error("OFFER_LINKED_WINNER_CONCURRENTLY_ASSIGNED");
+        }
+        return createdCredits;
       });
       return created;
     } catch (error) {
