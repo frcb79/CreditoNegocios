@@ -401,6 +401,32 @@ describe("P0 - HTTP Registration, Legal Acceptance & Network Affiliation", () =>
     });
   });
 
+
+  describe("P0 - Integridad de tipo de aceptación comercial", () => {
+    it("no permite registrar una aceptación de oferta/financiera como aceptación global o de red", async () => {
+      const broker = await storage.createUser({
+        email: "terms-type-" + randomUUID() + "@network.test",
+        firstName: "Broker", lastName: "Versiones", role: "broker",
+        isActive: true, status: "active",
+      } as any);
+      currentAuthUser = broker;
+      for (const invalid of [
+        { type: "offer", document: "condiciones-comerciales" },
+        { type: "financial_institution" },
+        { type: "global", document: "comisiones-red" },
+        { type: "network", document: "condiciones-comerciales" },
+        { document: "aceptacion-financiera" },
+      ]) {
+        const response = await request(app).post("/api/commercial-terms/accept")
+          .send({ version: "1.0.0", ...invalid });
+        expect(response.status).toBe(400);
+        expect(response.body.code).toBe("UNSUPPORTED_COMMERCIAL_ACCEPTANCE_TYPE");
+      }
+      const acceptances = await storage.getLegalAcceptancesByUser(broker.id);
+      expect(acceptances.filter(x => x.document === "condiciones-comerciales" || x.document === "comisiones-red")).toHaveLength(0);
+    });
+  });
+
   describe("P0 - Notificaciones con aislamiento estricto de propietario", () => {
     it("niega PATCH/PUT cruzados sin mutar estado y permite al destinatario", async () => {
       const owner = await storage.createUser({
