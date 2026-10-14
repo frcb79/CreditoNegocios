@@ -2869,6 +2869,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // User-management API must not expose credential material to Admin/Master clients.
+  const publicUserForManagement = (user: any) => {
+    if (!user) return user;
+    const safe = { ...user };
+    delete safe.password;
+    delete safe.resetToken;
+    delete safe.resetTokenExpiry;
+    return safe;
+  };
+
   // User Management (Super Admin, Admin, and Master Broker scoped to their network)
   app.get('/api/users', isAuthenticated, requireModuleAndAction('usuarios', 'manage_users'), async (req: any, res) => {
     try {
@@ -2882,11 +2892,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Master Broker only sees users in their own network
       if (currentUser.role === 'master_broker') {
         const networkUsers = await storage.getUsersByMasterBroker(currentUser.id);
-        return res.json(networkUsers);
+        return res.json(networkUsers.map(publicUserForManagement));
       }
       
       const users = await storage.getAllUsers();
-      res.json(users);
+      res.json(users.map(publicUserForManagement));
     } catch (error) {
       console.error("Error fetching users:", error);
       res.status(500).json({ message: "Failed to fetch users" });
@@ -2969,7 +2979,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         await sendWelcomeEmail(newUser.email, fullName);
       }
       
-      res.status(201).json(newUser);
+      res.status(201).json(publicUserForManagement(newUser));
     } catch (error: any) {
       console.error("Error creating user:", error);
       if (error instanceof z.ZodError) {
@@ -3009,8 +3019,29 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(403).json({ message: "No tienes permiso para modificar usuarios fuera de tu red." });
       }
       
+      // Credentials and password-reset tokens may only change through the dedicated
+      // authenticated password recovery / change-password flows.
+      const forbiddenAuthFields = ["password", "resetToken", "resetTokenExpiry"];
+      if (forbiddenAuthFields.some((field) => Object.prototype.hasOwnProperty.call(req.body || {}, field))) {
+        return res.status(403).json({ message: "No se permiten cambios de credenciales por edición de usuarios." });
+      }
+
       const userData = insertUserSchema.partial().parse(req.body);
-      
+
+      // All structural network transfers / broker promotions need the audited
+      // Super Admin transition flow, not a generic user update.
+      if (userData.masterBrokerId !== undefined && userData.masterBrokerId !== targetUser.masterBrokerId) {
+        return res.status(409).json({ message: "Los cambios de red requieren transición autorizada por Super Admin." });
+      }
+      if (userData.role !== undefined && userData.role !== targetUser.role &&
+          (["broker", "master_broker"].includes(targetUser.role) ||
+            ["broker", "master_broker"].includes(userData.role))) {
+        return res.status(409).json({ message: "La promoción o cambio de rol comercial requiere transición autorizada." });
+      }
+      if (isMasterBroker && userData.permissions !== undefined) {
+        return res.status(403).json({ message: "El Master Broker no puede modificar permisos de acceso mediante esta ruta." });
+      }
+
       // Prevent Master Broker from escalating privileges
       if (isMasterBroker) {
         delete userData.role;
@@ -3044,7 +3075,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ message: "Usuario no encontrado" });
       }
       
-      res.json(updatedUser);
+      res.json(publicUserForManagement(updatedUser));
     } catch (error: any) {
       console.error("Error updating user:", error);
       if (error instanceof z.ZodError) {
@@ -3111,7 +3142,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
     return res.json({
       message: `Estado operativo actualizado exitosamente a ${requestedStatus}`,
-      user: updatedUser,
+      user: publicUserForManagement(updatedUser),
     });
   }
 

@@ -60,6 +60,54 @@ describe("P0 - HTTP Registration, Legal Acceptance & Network Affiliation", () =>
     }
   });
 
+  describe("P0 - Usuario y Credenciales (respuestas administrativas)", () => {
+    let superAdmin: any;
+    let broker: any;
+    beforeAll(async () => {
+      superAdmin = await storage.createUser({
+        email: "api-sec-admin-" + randomUUID() + "@network.test",
+        role: "super_admin", firstName: "Admin", lastName: "Seguro",
+        permissions: { modules: ["*"], actions: ["*"] },
+        isActive: true, status: "active",
+      } as any);
+      broker = await storage.createUser({
+        email: "api-sec-broker-" + randomUUID() + "@network.test",
+        role: "broker", firstName: "Broker", lastName: "Prueba",
+        password: "$2b$hash-that-must-never-be-public",
+        isActive: true, status: "active",
+      } as any);
+      await storage.setPasswordResetToken(broker.id, "PRIVATE_RESET_TOKEN_NEVER_RETURN", new Date(Date.now() + 3600000));
+    });
+
+    it("GET /api/users oculta hash y token de restablecimiento", async () => {
+      currentAuthUser = superAdmin;
+      const res = await request(app).get("/api/users");
+      expect(res.status).toBe(200);
+      const target = res.body.find((u: any) => u.id === broker.id);
+      expect(target).toBeDefined();
+      expect(target.email).toBe(broker.email);
+      expect(target).not.toHaveProperty("password");
+      expect(target).not.toHaveProperty("resetToken");
+      expect(target).not.toHaveProperty("resetTokenExpiry");
+    });
+
+    it("PATCH /api/users rechaza mutación de tokens, passwords o traslados", async () => {
+      currentAuthUser = superAdmin;
+      for (const update of [
+        { resetToken: "ATTACKER_SESSION" },
+        { password: "NewPasswordAttacker123!" },
+        { resetTokenExpiry: new Date(Date.now() + 86400000).toISOString() },
+      ]) {
+        const response = await request(app).patch("/api/users/" + broker.id).send(update);
+        expect(response.status).toBe(403);
+      }
+      const transfer = await request(app).patch("/api/users/" + broker.id)
+        .send({ masterBrokerId: "forged-master-id" });
+      expect(transfer.status).toBe(409);
+      expect((await storage.getUser(broker.id))?.resetToken).toBe("PRIVATE_RESET_TOKEN_NEVER_RETURN");
+    });
+  });
+
   // -------------------------------------------------------------------------
   // 1. POST /api/auth/register (Registration Atomicity, Affiliation & Rollback)
   // -------------------------------------------------------------------------
