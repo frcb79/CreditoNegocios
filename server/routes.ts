@@ -11510,6 +11510,43 @@ function maskCLABE(clabe?: string | null): string | null {
       const resolvedOfferId = (proposal as any)?.institutionProductId || (proposal as any)?.offerId || (request as any)?.institutionProductId || (request as any)?.offerId || null;
       const resolvedVersionNumber = (proposal as any)?.versionNumber ?? (request as any)?.versionNumber ?? null;
 
+      // COM-28: Enforce acceptance only on NEW winner selections referencing
+      // a currently published, materially changed offer/version. Already
+      // frozen/linked credits are explicitly grandfathered, never repriced.
+      if (!target.creditId && !target.isWinner && resolvedOfferId && resolvedVersionNumber != null) {
+        const offerId = String(resolvedOfferId);
+        const versionNumber = Number(resolvedVersionNumber);
+        if (!Number.isSafeInteger(versionNumber) || versionNumber <= 0) {
+          return res.status(409).json({ code: "INVALID_OFFER_VERSION" });
+        }
+        const candidateVersions = await storage.getInstitutionProductVersions(offerId);
+        const chosen = candidateVersions.find(v => v.versionNumber === versionNumber);
+        if (!chosen || !["published", "superseded"].includes(chosen.status)) {
+          return res.status(409).json({ code: "OFFER_VERSION_NOT_PUBLISHED" });
+        }
+        if (chosen.status === "published") {
+          const responsibleIds = Array.from(new Set([
+            request.brokerId,
+            masterBrokerId,
+          ].filter((id): id is string => typeof id === "string" && id.length > 0)));
+          for (const responsibleId of responsibleIds) {
+            const responsibleUser = await storage.getUser(responsibleId);
+            if (!responsibleUser) {
+              return res.status(409).json({ code: "OFFER_ACCEPTANCE_ORIGINATOR_UNAVAILABLE" });
+            }
+            const status = await getOfferCommissionStatus(storage, responsibleUser, offerId, versionNumber);
+            if (status.pending) {
+              return res.status(409).json({
+                code: "OFFER_COMMISSION_ACCEPTANCE_REQUIRED",
+                message: "La oferta tiene nuevas condiciones económicas pendientes de aceptación por el beneficiario correspondiente.",
+                offerId, versionNumber,
+                pendingFor: responsibleUser.role === "master_broker" ? "master_broker" : "broker",
+              });
+            }
+          }
+        }
+      }
+
       const commercialSnapshot = consolidateCommercialProposalSnapshot({
         proposalData: {
           approvedAmount: proposal?.approvedAmount ? parseFloat(String(proposal.approvedAmount)) : undefined,
