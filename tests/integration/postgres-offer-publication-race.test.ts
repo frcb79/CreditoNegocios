@@ -226,6 +226,59 @@ describePg("ASTRA-07: published offer versions remain immutable under concurrent
       .rejects.toThrow("OFFER_COMMISSION_ACCEPTANCE_REQUIRED");
   });
 
+  it("network operation requires Master acceptance, not the Broker's wholesale signature", async () => {
+    await prepareSecondDraft(3.5, 4.5);
+    await DbStorage.prototype.publishInstitutionProductVersion(offerId, "astra-race-v2", {
+      changeReason: "Cambio de condiciones pagaderas al Master",
+    });
+    await pool.query(`INSERT INTO users (id,role,master_broker_id)
+      VALUES ('com28-master','master_broker',NULL),
+             ('com28-network-broker','broker','com28-master')`);
+    const params = {
+      offerId, versionNumber: 2, brokerId: "com28-network-broker",
+      originMasterBrokerId: "com28-master", financialInstitutionId: "financial-test",
+    };
+    const check = () => db.transaction(async tx =>
+      assertOfferCommissionAcceptanceInTransaction(tx, params));
+    await expect(check()).rejects.toThrow("OFFER_COMMISSION_ACCEPTANCE_REQUIRED");
+    await acceptOfferCommission(new DbStorage(), {
+      id: "com28-master", role: "master_broker", email: "master@example.test",
+      firstName: "Master", lastName: "QA",
+    } as any, offerId, 2, null, "pg-master");
+    await expect(check()).resolves.toBeUndefined();
+    const evidence = await pool.query(
+      "SELECT user_id, personalized_snapshot FROM legal_acceptances WHERE document='comisiones-oferta'");
+    expect(evidence.rows).toHaveLength(1);
+    expect(evidence.rows[0].user_id).toBe("com28-master");
+    expect(evidence.rows[0].personalized_snapshot.applicableRole).toBe("master_broker");
+  });
+
+  it("tampered acceptance snapshot cannot satisfy a PostgreSQL payout/version check", async () => {
+    await prepareSecondDraft(3.5, 4.5);
+    await DbStorage.prototype.publishInstitutionProductVersion(offerId, "astra-race-v2", {
+      changeReason: "Condiciones verificables",
+    });
+    await pool.query("INSERT INTO users (id,role) VALUES ('com28-broker','broker')");
+    await acceptOfferCommission(new DbStorage(), {
+      id: "com28-broker", role: "broker", email: "broker@example.test",
+      firstName: "Broker", lastName: "QA",
+    } as any, offerId, 2, null, "pg-tamper");
+    const params = {
+      offerId, versionNumber: 2, brokerId: "com28-broker",
+      originMasterBrokerId: null, financialInstitutionId: "financial-test",
+    };
+    await expect(db.transaction(async tx =>
+      assertOfferCommissionAcceptanceInTransaction(tx, params))).resolves.toBeUndefined();
+    // Synthetic isolated fixture permits the mutation to prove the verifier
+    // fails closed; real deployed tables prohibit UPDATE via immutable triggers.
+    await pool.query(`UPDATE legal_acceptances SET
+      personalized_snapshot = jsonb_set(personalized_snapshot, '{applicableRole}', '"master_broker"'::jsonb)
+      WHERE user_id = 'com28-broker'`);
+    await expect(db.transaction(async tx =>
+      assertOfferCommissionAcceptanceInTransaction(tx, params)))
+      .rejects.toThrow("OFFER_COMMISSION_ACCEPTANCE_REQUIRED");
+  });
+
   it("rolls back offer publication if an immutable economic document hash conflicts", async () => {
     await prepareSecondDraft(3.5, 4.5);
     await pool.query(`INSERT INTO legal_document_versions
