@@ -92,3 +92,7 @@ Se actualiza via sync desde cada proyecto al master.
 - Nunca calcular huellas legales persistentes con `JSON.stringify` de objetos cuyo destino es `jsonb` sin serialización canónica; usar el mismo algoritmo para emisión y verificación de snapshots personalizados. Añadir pruebas reordenando claves antes y después.
 - Los estados `archived`/`inactive` no deben borrar la regla histórica: una financiera que publicó una oferta no puede permitir nuevos créditos anónimos al desactivarla. Conservar sólo propuestas con fecha anterior al primer `publishedAt` verificable.
 - En suites SQL aisladas, evitar constructores con autoseeding o consultas asíncronas a otras tablas que no forman parte del fixture. Las pruebas agregadas son propuestas hasta contar con resultados de Actions.
+
+## Lección prelaunch — No usar atributos de vínculo como exención de un gate financiero
+- Un `linkedSubmissionId` solo demuestra una referencia, **no** certifica origen, canal, propuesta ganadora, versión de oferta ni aceptación de comisión. Validar contra PostgreSQL y proteger inserción + vínculo en la misma transacción.
+- Una verificación HTTP anterior a un `INSERT credits` no protege frente a publicación concurrente ni evita dos altas si la asignación al target ocurre después del commit. Probar carreras reales con dos transacciones.
