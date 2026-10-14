@@ -1710,6 +1710,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
         const targetUser = await storage.getUser(id);
         if (!targetUser) return res.status(404).json({ message: "Usuario no encontrado" });
+        // Admin may manage permitted profiles, but cannot edit Super Admins
+        // or promote anyone through the legacy profile endpoint.
+        if (currentUser.role !== "super_admin" && targetUser.role === "super_admin") {
+          return res.status(403).json({ message: "Sólo Super Admin puede editar cuentas Super Admin." });
+        }
+        if (currentUser.role !== "super_admin" &&
+            userData.role !== undefined && userData.role !== targetUser.role) {
+          return res.status(403).json({ message: "Sólo Super Admin puede cambiar roles administrativos." });
+        }
         if (userData.masterBrokerId !== undefined && userData.masterBrokerId !== targetUser.masterBrokerId) {
           return res.status(409).json({ message: "Reasignación de Brokers requiere la transición autorizada de Super Admin." });
         }
@@ -3064,6 +3073,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ message: "Usuario no encontrado" });
       }
 
+      // Admin cannot mutate Super Admin identity/privileges via user-management.
+      if (currentUser.role === "admin" && targetUser.role === "super_admin") {
+        return res.status(403).json({ message: "Sólo Super Admin puede editar cuentas Super Admin." });
+      }
       // If Master Broker, verify target belongs to their network
       if (isMasterBroker && targetUser.masterBrokerId !== currentUser.id) {
         return res.status(403).json({ message: "No tienes permiso para modificar usuarios fuera de tu red." });
@@ -3077,6 +3090,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       const userData = insertUserSchema.partial().parse(req.body);
+      if (currentUser.role === "admin" &&
+          userData.role !== undefined && userData.role !== targetUser.role) {
+        return res.status(403).json({ message: "Sólo Super Admin puede cambiar roles administrativos." });
+      }
+      if (currentUser.role === "admin" && userData.permissions !== undefined) {
+        return res.status(403).json({ message: "Sólo Super Admin puede asignar permisos." });
+      }
 
       // All structural network transfers / broker promotions need the audited
       // Super Admin transition flow, not a generic user update.
@@ -3146,7 +3166,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       return res.status(401).json({ message: "Usuario no autenticado" });
     }
 
-    const isSuperAdmin = callerUser.role === 'admin' || callerUser.role === 'super_admin';
+    const isSuperAdmin = callerUser.role === 'super_admin';
     const isMasterBroker = callerUser.role === 'master_broker';
 
     if (!isSuperAdmin && !isMasterBroker) {
