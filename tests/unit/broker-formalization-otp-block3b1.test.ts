@@ -1012,15 +1012,15 @@ describe("Bloque 3B1 (MemStorage): Backend de aceptación del Convenio mediante 
       expect(res.body.voucherText).toContain("Huella Contenido Exacto (SHA-256):");
     });
 
-    it("descarga el comprobante como archivo de texto plano cuando se incluye ?download=true", async () => {
+    it("descarga el comprobante oficial en PDF válido, no texto plano legado", async () => {
       const res = await request(app).get(`/api/legal/my-acceptances/${convenioAcceptanceId}/comprobante?download=true`);
       expect(res.status).toBe(200);
-      expect(res.headers["content-type"]).toContain("text/plain");
+      expect(res.headers["content-type"]).toContain("application/pdf");
       expect(res.headers["content-disposition"]).toContain("attachment; filename=");
-      expect(res.text).toContain("COMPROBANTE OFICIAL DE FORMALIZACIÓN Y ACEPTACIÓN LEGAL ELECTRÓNICA");
-      expect(res.text).toContain("Laura Comprobante Master");
-      expect(res.text).toContain("90 días naturales, 120 días naturales y 12 meses");
-      expect(res.text).toContain("CONTENIDO ÍNTEGRO DEL DOCUMENTO PERSONALIZADO");
+      const bytes = Buffer.isBuffer(res.body) ? res.body : Buffer.from(res.text || "", "binary");
+      expect(bytes.length).toBeGreaterThan(300);
+      expect(bytes.subarray(0, 5).toString("ascii")).toBe("%PDF-");
+      expect(bytes.toString("latin1")).toContain("%%EOF");
     });
 
     it("rechaza la descarga del comprobante a usuarios no autorizados con 403", async () => {

@@ -51,15 +51,24 @@ describe("Phase 1A.4A: Security and Migration Safety Verifications", () => {
       expect(migration0004Sql).toContain("CREATE INDEX IF NOT EXISTS opp_master_broker_idx");
     });
 
-    it("respeta NULL en créditos y solicitudes para originaciones directas de plataforma", () => {
-      expect(migration0004Sql).toContain("WHEN u.role = 'broker' AND mb.role = 'master_broker' THEN mb.id");
-      expect(migration0004Sql).toContain("ELSE NULL");
-      expect(migration0004Sql).toContain("WHEN broker.role = 'broker' AND parent_master.role = 'master_broker' THEN parent_master.id");
+    it("preserva originaciones directas con NULL y sólo acepta atribución histórica revisada", () => {
+      expect(migration0004Sql).toContain("CREATE TABLE IF NOT EXISTS public.origin_attribution_reviews");
+      expect(migration0004Sql).toContain("channel_type = 'direct' AND origin_master_broker_id IS NULL");
+      expect(migration0004Sql).toContain("channel_type = 'master_network' AND origin_master_broker_id IS NOT NULL");
+      expect(migration0004Sql).toContain("evidence_reference TEXT NOT NULL");
+      expect(migration0004Sql).toContain("FROM public.origin_attribution_reviews r");
+      expect(migration0004Sql).not.toContain("SET origin_master_broker_id = mb.id");
+      expect(migration0004Sql).not.toContain("SET origin_master_broker_id = parent_master.id");
     });
 
-    it("garantiza idempotencia condicionando la ejecución de backfill al alta inicial de columnas", () => {
-      expect(migration0004Sql).toContain("IF NOT origin_column_already_existed THEN");
-      expect(migration0004Sql).toContain("IF NOT sub_origin_column_already_existed THEN");
+    it("bloquea sin revisión histórica, evita sobrescribir snapshots y aplica sólo una vez", () => {
+      expect(migration0004Sql).toContain("WHERE r.record_id IS NULL");
+      expect(migration0004Sql).toContain("IF missing_credits > 0 OR missing_submissions > 0 THEN");
+      expect(migration0004Sql).toContain("MIG-01: snapshot historico preexistente contradice revision");
+      expect(migration0004Sql).toContain("0004_origin_attribution_reviewed_v1");
+      expect(migration0004Sql).toContain("ON CONFLICT (id) DO NOTHING");
+      expect(migration0004Sql).toContain("UPDATE public.credits c SET origin_master_broker_id = r.origin_master_broker_id");
+      expect(migration0004Sql).toContain("UPDATE public.credit_submission_requests s SET origin_master_broker_id = r.origin_master_broker_id");
     });
 
     it("declara triggers de inmutabilidad estricta contra UPDATE de origin_master_broker_id", () => {
