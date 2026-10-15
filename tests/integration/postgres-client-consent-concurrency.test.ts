@@ -71,7 +71,7 @@ describeIsolated("LEG-10 real PostgreSQL concurrency: revocation vs send",()=>{
     await db.query(
       "INSERT INTO public.client_consent_document_versions(id,version,title,content,content_sha256,status,effective_at,published_at) "+
       "VALUES($1,$2,'Ficticio', $3,$4,'published',NOW(),NOW())",
-      [version,"test-"+id,document,digest(document)]);
+      [version,"test-"+id.slice(0,18),document,digest(document)]);
     await db.query(
       "INSERT INTO public.client_consent_challenges(id,tenant_id,client_id,target_id,institution_id,document_version_id,"+
       "exact_document_content,exact_document_sha256,purpose,signer_name,signer_email,signer_capacity,"+
@@ -150,6 +150,19 @@ describeIsolated("LEG-10 real PostgreSQL concurrency: revocation vs send",()=>{
       await unlock();
     }
   }
+  it("rolls back both status changes if the request update fails",async()=>{
+    const f=await seed();
+    await db.query("CREATE OR REPLACE FUNCTION public.leg10_reject_request_update() RETURNS TRIGGER LANGUAGE plpgsql AS $ BEGIN RAISE EXCEPTION 'synthetic request write failure'; END; $");
+    await db.query("CREATE TRIGGER leg10_reject_request_update BEFORE UPDATE ON public.credit_submission_requests FOR EACH ROW EXECUTE FUNCTION public.leg10_reject_request_update()");
+    try{
+      await expect(f.send()).rejects.toThrow("synthetic request write failure");
+      const state=await db.query("SELECT t.status AS target_status,s.status AS request_status FROM public.credit_submission_targets t JOIN public.credit_submission_requests s ON s.id=t.request_id WHERE t.id=$1",[f.target]);
+      expect(state.rows[0]).toMatchObject({target_status:"approved",request_status:"approved"});
+    }finally{
+      await db.query("DROP TRIGGER leg10_reject_request_update ON public.credit_submission_requests");
+      await db.query("DROP FUNCTION public.leg10_reject_request_update()");
+    }
+  },20000);
   it("revocation locks first: a competing send is rejected, both states stay unchanged",async()=>{
     await order("revoke");
   },20000);
