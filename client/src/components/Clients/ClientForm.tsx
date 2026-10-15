@@ -242,6 +242,14 @@ export default function ClientForm({ client, onSuccess }: ClientFormProps) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [clientType, setClientType] = useState<"persona_moral" | "fisica_empresarial" | "fisica" | "sin_sat">(client?.type || "fisica");
+  // The customer's own legal representative will receive LEG-10 OTP; never
+  // substitute the Broker's business contact or personal email.
+  const [clientRepresentativeName,setClientRepresentativeName]=useState<string>(
+    (client?.legalRepresentative as any)?.name || (client?.legalRepresentative as any)?.fullName || ""
+  );
+  const [clientRepresentativeEmail,setClientRepresentativeEmail]=useState<string>(
+    (client?.legalRepresentative as any)?.email || ""
+  );
   const [duplicateCheckResult, setDuplicateCheckResult] = useState<DuplicateCheckResult | null>(null);
   const [isCheckingDuplicate, setIsCheckingDuplicate] = useState(false);
 
@@ -430,6 +438,12 @@ export default function ClientForm({ client, onSuccess }: ClientFormProps) {
 
     const submitData = {
       ...data,
+      legalRepresentative: clientType === "persona_moral" ? {
+        ...((client?.legalRepresentative && typeof client.legalRepresentative === "object" &&
+              !Array.isArray(client.legalRepresentative)) ? client.legalRepresentative : {}),
+        name: clientRepresentativeName.trim(),
+        email: clientRepresentativeEmail.trim().toLowerCase(),
+      } : data.legalRepresentative,
       creditosVigentesDetalles: (data.creditosVigentes === "si" && cleanedCredits.length > 0) ? cleanedCredits : [],
       type: clientType,
     };
@@ -1373,6 +1387,30 @@ export default function ClientForm({ client, onSuccess }: ClientFormProps) {
                     )}
                   />
                   
+                  {clientType === "persona_moral" && (
+                    <section className="rounded-lg border border-blue-200 bg-blue-50/40 p-4 space-y-3">
+                      <h3 className="text-sm font-semibold">Representante que puede autorizar compartir el expediente</h3>
+                      <p className="text-xs text-muted-foreground">
+                        Para solicitar autorización a una financiera, registraremos al representante
+                        legal de la empresa. Recibirá su propio enlace y código OTP por correo.
+                        No se requiere hasta que se prepare el envío.
+                      </p>
+                      <label className="block text-sm font-medium" htmlFor="client-legal-rep-name">
+                        Nombre completo del representante
+                      </label>
+                      <Input id="client-legal-rep-name" value={clientRepresentativeName}
+                        onChange={e=>setClientRepresentativeName(e.target.value)}
+                        placeholder="Nombre y apellidos" data-testid="client-legal-representative-name" />
+                      <label className="block text-sm font-medium" htmlFor="client-legal-rep-email">
+                        Correo propio del representante
+                      </label>
+                      <Input id="client-legal-rep-email" type="email" value={clientRepresentativeEmail}
+                        onChange={e=>setClientRepresentativeEmail(e.target.value)}
+                        placeholder="representante@empresa.com"
+                        data-testid="client-legal-representative-email" />
+                    </section>
+                  )}
+
                   {/* Dirección separada en campos */}
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <FormField
