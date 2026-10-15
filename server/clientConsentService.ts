@@ -257,3 +257,37 @@ export async function verifyCompanySignerAuthority(input:{
     throw e;
   } finally{db.release();}
 }
+
+
+/** Historical customer receipt, viewable by the original bearer only while its
+ * link is valid. Data is read from signed append-only evidence, never rebuilt. */
+export async function getClientConsentReceipt(token:string){
+  if(!validToken(token)) deny(404,"CLIENT_CONSENT_LINK_INVALID","Enlace inválido.");
+  const result=await pool.query(
+    "SELECT e.id,e.exact_document_content,e.exact_document_sha256,e.accepted_at,e.signer_name,"+
+    "e.signer_email,e.otp_method,e.signer_capacity, "+
+    "d.version,d.content_sha256 AS template_hash,r.id AS revocation_id "+
+    "FROM public.client_consent_challenges c "+
+    "JOIN public.client_consent_evidences e ON e.challenge_id=c.id "+
+    "JOIN public.client_consent_document_versions d ON d.id=e.document_version_id "+
+    "LEFT JOIN public.client_consent_revocations r ON r.evidence_id=e.id "+
+    "WHERE c.token_hash=$1 AND c.status='verified' AND c.token_expires_at > NOW() LIMIT 1",
+    [sha(token)],
+  );
+  const e=result.rows[0];
+  if(!e || sha(e.exact_document_content)!==e.exact_document_sha256)
+    deny(404,"CLIENT_CONSENT_RECEIPT_MISSING","Comprobante no disponible.");
+  const text="COMPROBANTE HISTÓRICO DE AUTORIZACIÓN DEL CLIENTE\n"+
+    "Crédito Negocios | LEG-10\n"+
+    "Folio: "+e.id+"\n"+
+    "Firmante: "+e.signer_name+"\n"+
+    "Correo: "+e.signer_email+"\n"+
+    "Fecha UTC: "+new Date(e.accepted_at).toISOString()+"\n"+
+    "Versión legal: "+e.version+"\n"+
+    "Huella plantilla SHA-256: "+e.template_hash+"\n"+
+    "Huella documento exacto SHA-256: "+e.exact_document_sha256+"\n"+
+    "Método: "+e.otp_method+"\n"+
+    "Estado: "+(e.revocation_id?"REVOCADA (se conserva la evidencia histórica)":"Firma registrada")+"\n\n"+
+    e.exact_document_content+"\n";
+  return {text,evidenceId:e.id as string,revoked:Boolean(e.revocation_id)};
+}
