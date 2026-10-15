@@ -106,12 +106,24 @@ export async function inspectConsentLink(token: string) {
     [sha(token)],
   );
   const r = rows.rows[0];
-  if (!r || r.status !== "pending" || new Date(r.token_expires_at).getTime() <= Date.now() ||
+  if (!r || new Date(r.token_expires_at).getTime() <= Date.now() ||
       sha(r.exact_document_content) !== r.exact_document_sha256) {
     deny(404,"CLIENT_CONSENT_LINK_INVALID","Enlace inválido o expirado.");
   }
+  if (r.status === "verified") {
+    const v=await pool.query(
+      "SELECT v.id AS revoked FROM public.client_consent_evidences e " +
+      "LEFT JOIN public.client_consent_revocations v ON v.evidence_id=e.id " +
+      "WHERE e.challenge_id=$1",[r.id],
+    );
+    return {signerName:r.signer_name as string,signerCapacity:r.signer_capacity as string,
+      expiresAt:r.token_expires_at as Date,signed:true,
+      revoked:Boolean(v.rows[0]?.revoked)};
+  }
+  if(r.status !== "pending") deny(404,"CLIENT_CONSENT_LINK_INVALID","Enlace no vigente.");
   return { signerName:r.signer_name as string, signerCapacity:r.signer_capacity as string,
-    document:r.exact_document_content as string, expiresAt:r.token_expires_at as Date };
+    document:r.exact_document_content as string, expiresAt:r.token_expires_at as Date,
+    signed:false,revoked:false };
 }
 export async function prepareConsentOtp(token: string) {
   if (!validToken(token)) deny(404,"CLIENT_CONSENT_LINK_INVALID","Enlace inválido.");
