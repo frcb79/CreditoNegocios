@@ -2187,6 +2187,14 @@ export class MemStorage implements IStorage {
         return { success: false, statusCode: 400, error: "El rol del usuario no requiere formalización." };
       }
 
+      // Identity of a company and its signer must be complete BEFORE issuing OTP.
+      // An account holder cannot claim another person's representation by typing
+      // their name in the company field and receiving OTP at their own mailbox.
+      const companyIdentityError = validateCompanyAgreementIdentity(derivePersonalizedAgreementData(user));
+      if (companyIdentityError) {
+        return { success: false, statusCode: 409, error: companyIdentityError };
+      }
+
       const status = await this.isUserFormalized(user.id, user.role);
       if (status.isFormalized) {
         return { success: false, statusCode: 400, error: "El usuario ya ha formalizado su Convenio." };
