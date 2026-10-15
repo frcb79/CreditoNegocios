@@ -176,6 +176,10 @@ export default function PendingRequests() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { user } = useAuth();
   const [confirmingTarget, setConfirmingTarget] = useState<CreditSubmissionTarget | null>(null);
+  const [clientConsentReviewTarget, setClientConsentReviewTarget] = useState<CreditSubmissionTarget | null>(null);
+  const [clientConsentReviewEvidenceId,setClientConsentReviewEvidenceId] = useState("");
+  const [clientConsentReviewDocumentId,setClientConsentReviewDocumentId] = useState("");
+  const [clientConsentReviewNotes,setClientConsentReviewNotes] = useState("");
   const [confirmedAmountInput, setConfirmedAmountInput] = useState<string>("");
   const [confirmationNotes, setConfirmationNotes] = useState<string>("");
   
@@ -230,6 +234,49 @@ export default function PendingRequests() {
 
   const { data: commissions } = useQuery<any[]>({
     queryKey: ['/api/commissions'],
+  });
+
+  const clientConsentEvidenceQueryKey = [
+    "/api/credit-submission-targets",clientConsentReviewTarget?.id || "", "client-consent-evidence",
+  ];
+  const {data:clientConsentReviewData,isLoading:clientConsentEvidenceLoading,
+    error:clientConsentEvidenceError}=useQuery<{
+      evidence:Array<{id:string;signerName:string;signerCapacity:string;acceptedAt:string;
+        legalVersion:string;representationReview:string|null;revoked:boolean}>;
+      documents:Array<{id:string;fileName:string;type:string;isValid:boolean|null}>;
+    }>({
+    queryKey:clientConsentEvidenceQueryKey,
+    enabled:Boolean(clientConsentReviewTarget?.id && user?.role==="super_admin"),
+    queryFn:async()=>{
+      const targetId=clientConsentReviewTarget?.id;
+      if(!targetId) return {evidence:[],documents:[]};
+      const r=await fetch(buildApiUrl(`/api/credit-submission-targets/${targetId}/client-consent-evidence`),
+        {credentials:"include"});
+      if(!r.ok){
+        const error=await r.json().catch(()=>({}));
+        throw new Error(error.message||"No se pudo consultar la evidencia");
+      }
+      return r.json();
+    },
+  });
+  const verifyClientRepresentativeMutation=useMutation({
+    mutationFn:async(input:{targetId:string;evidenceId:string;documentId:string;notes:string})=>{
+      const response=await apiRequest("POST",
+        `/api/credit-submission-targets/${input.targetId}/verify-client-representative`,
+        {evidenceId:input.evidenceId,documentId:input.documentId,notes:input.notes});
+      return response.json();
+    },
+    onSuccess:()=>{
+      toast({title:"Representación verificada",
+        description:"Se registró evidencia histórica de la revisión del representante legal."});
+      queryClient.invalidateQueries({queryKey:clientConsentEvidenceQueryKey});
+      setClientConsentReviewTarget(null);
+      setClientConsentReviewEvidenceId("");
+      setClientConsentReviewDocumentId("");
+      setClientConsentReviewNotes("");
+    },
+    onError:(e:any)=>toast({title:"Verificación pendiente",
+      description:e?.message||"No se pudo confirmar el documento.",variant:"destructive"}),
   });
 
   const reviewMutation = useMutation({
@@ -1059,6 +1106,20 @@ export default function PendingRequests() {
                                         <Send className="w-3.5 h-3.5 mr-1.5" />
                                         Marcar como Enviado a Financiera
                                       </Button>
+                                      {user?.role === "super_admin" && (
+                                        <div className="mt-2">
+                                          <Button size="sm" variant="outline"
+                                            className="h-8 text-xs" onClick={()=>{
+                                              setClientConsentReviewTarget(target);
+                                              setClientConsentReviewEvidenceId("");
+                                              setClientConsentReviewDocumentId("");
+                                              setClientConsentReviewNotes("");
+                                            }} data-testid={`button-review-client-consent-${target.id}`}>
+                                            <ShieldCheck className="w-3.5 h-3.5 mr-1.5" />
+                                            Revisar firma y representación del cliente
+                                          </Button>
+                                        </div>
+                                      )}
                                       <div className="mt-2">
                                         <Button size="sm" variant="outline"
                                           disabled={requestClientConsentMutation.isPending}
@@ -1632,6 +1693,95 @@ export default function PendingRequests() {
                     </DialogFooter>
                   </form>
                 </Form>
+              </DialogContent>
+            </Dialog>
+
+            {/* LEG-10: manual, evidence-linked company signer authority review.
+                OTP alone must never be treated as proof of powers of attorney. */}
+            <Dialog open={!!clientConsentReviewTarget}
+              onOpenChange={(open)=>{if(!open)setClientConsentReviewTarget(null);}}>
+              <DialogContent className="max-w-xl">
+                <DialogHeader>
+                  <DialogTitle>Autorización del cliente y facultades del firmante</DialogTitle>
+                  <DialogDescription>
+                    Revisión exclusiva de Super Admin. Confirma la firma OTP y
+                    verifica las facultades empresariales contra un documento ya archivado.
+                  </DialogDescription>
+                </DialogHeader>
+                {clientConsentEvidenceLoading && <p className="text-sm">Consultando evidencias...</p>}
+                {clientConsentEvidenceError &&
+                  <p role="alert" className="text-sm text-destructive">
+                    {clientConsentEvidenceError.message}
+                  </p>}
+                {clientConsentReviewData && <div className="space-y-4 max-h-[65vh] overflow-y-auto">
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium">Firma del representante a revisar</label>
+                    {clientConsentReviewData.evidence.length === 0 &&
+                      <p className="text-xs text-amber-700">El cliente aún no ha firmado la autorización.</p>}
+                    {clientConsentReviewData.evidence.map(e=>(
+                      <label key={e.id} className="flex items-start gap-2 border rounded p-2 text-xs">
+                        <input type="radio" name="clientConsentReviewEvidence"
+                          disabled={e.revoked || e.signerCapacity!=="legal_representative" ||
+                            Boolean(e.representationReview)}
+                          checked={clientConsentReviewEvidenceId===e.id}
+                          onChange={()=>setClientConsentReviewEvidenceId(e.id)}/>
+                        <span>{e.signerName} · {new Date(e.acceptedAt).toLocaleString("es-MX")} ·
+                          Versión {e.legalVersion}
+                          {e.revoked ? " · Revocada" : e.representationReview
+                            ? " · Revisión: "+e.representationReview
+                            : e.signerCapacity==="legal_representative"
+                              ? " · Pendiente de acreditar facultades"
+                              : " · Firma del cliente titular"}
+                        </span>
+                      </label>
+                    ))}
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium">Documento de facultades archivado</label>
+                    <Select value={clientConsentReviewDocumentId}
+                      onValueChange={setClientConsentReviewDocumentId}>
+                      <SelectTrigger data-testid="select-client-representative-proof">
+                        <SelectValue placeholder="Selecciona un poder, acta u otro documento pertinente"/>
+                      </SelectTrigger>
+                      <SelectContent>
+                        {clientConsentReviewData.documents.filter(d=>d.isValid!==false).map(d=>(
+                          <SelectItem key={d.id} value={d.id}>{d.fileName} · {d.type}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <p className="text-xs text-slate-500">
+                      Revisa el documento original del expediente antes de confirmar.
+                      No basta con elegir cualquier archivo.
+                    </p>
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium" htmlFor="client-rep-review-notes">
+                      Detalles de la verificación (obligatorios)
+                    </label>
+                    <Textarea id="client-rep-review-notes"
+                      value={clientConsentReviewNotes}
+                      onChange={e=>setClientConsentReviewNotes(e.target.value)}
+                      placeholder="Documento, facultades verificadas, vigencia y nombre del firmante..."
+                      data-testid="textarea-client-representative-review"/>
+                  </div>
+                  <DialogFooter>
+                    <Button variant="outline" onClick={()=>setClientConsentReviewTarget(null)}>
+                      Cancelar
+                    </Button>
+                    <Button
+                      disabled={!clientConsentReviewTarget||!clientConsentReviewEvidenceId||
+                        !clientConsentReviewDocumentId||
+                        clientConsentReviewNotes.trim().length<15||
+                        verifyClientRepresentativeMutation.isPending}
+                      onClick={()=>clientConsentReviewTarget && verifyClientRepresentativeMutation.mutate({
+                        targetId:clientConsentReviewTarget.id,evidenceId:clientConsentReviewEvidenceId,
+                        documentId:clientConsentReviewDocumentId,notes:clientConsentReviewNotes,
+                      })}
+                      data-testid="button-verify-client-representative">
+                      {verifyClientRepresentativeMutation.isPending?"Registrando...":"Confirmar facultades"}
+                    </Button>
+                  </DialogFooter>
+                </div>}
               </DialogContent>
             </Dialog>
 
