@@ -43,6 +43,7 @@ CREATE TABLE IF NOT EXISTS public.client_consent_challenges (
   otp_hash VARCHAR(64),
   otp_expires_at TIMESTAMPTZ,
   otp_attempts INTEGER NOT NULL DEFAULT 0,
+  otp_request_count INTEGER NOT NULL DEFAULT 0,
   otp_max_attempts INTEGER NOT NULL DEFAULT 5,
   otp_requested_at TIMESTAMPTZ,
   otp_resend_after TIMESTAMPTZ,
