@@ -244,6 +244,29 @@ export async function hasValidClientConsent(scope: {
 }
 
 
+/** Read-only, minimal review metadata for authorized Super Admin only.
+ * Do not return link tokens, OTP data, IP, browser fingerprints or raw document content. */
+export async function listClientConsentEvidenceForTarget(scope:{
+  tenantId:string;clientId:string;targetId:string;institutionId:string;
+}){
+  if(!scope.tenantId||!scope.clientId||!scope.targetId||!scope.institutionId)
+    deny(409,"CLIENT_CONSENT_SCOPE_INCOMPLETE","No es posible comprobar el alcance de esta solicitud.");
+  const result=await pool.query(
+    "SELECT e.id, e.signer_name AS \"signerName\",e.signer_capacity AS \"signerCapacity\", "+
+    "e.accepted_at AS \"acceptedAt\",d.version AS \"legalVersion\", "+
+    "rep.result AS \"representationReview\", "+
+    "CASE WHEN rev.id IS NULL THEN false ELSE true END AS \"revoked\" "+
+    "FROM public.client_consent_evidences e "+
+    "JOIN public.client_consent_document_versions d ON d.id=e.document_version_id "+
+    "LEFT JOIN public.client_consent_representation_reviews rep ON rep.evidence_id=e.id "+
+    "LEFT JOIN public.client_consent_revocations rev ON rev.evidence_id=e.id "+
+    "WHERE e.tenant_id=$1 AND e.client_id=$2 AND e.target_id=$3 AND e.institution_id=$4 "+
+    "ORDER BY e.accepted_at DESC",
+    [scope.tenantId,scope.clientId,scope.targetId,scope.institutionId],
+  );
+  return result.rows;
+}
+
 /** Only a reviewer with supporting evidence can make a PM OTP usable for disclosure.
  * Caller authorization is enforced by the authenticated Super Admin endpoint. */
 export async function verifyCompanySignerAuthority(input:{
