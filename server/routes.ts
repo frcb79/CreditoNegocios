@@ -10,7 +10,7 @@ import { authorizeClientSensitiveDisclosure } from "./clientConsentGate";
 import { setupAuth, isAuthenticated } from "./auth";
 import { registerLegalRoutes } from "./legalRoutes";
 import { registerClientConsentPublicRoutes } from "./clientConsentRoutes";
-import { startClientConsent, invalidateConsentRequest, hasValidClientConsent, ClientConsentError } from "./clientConsentService";
+import { startClientConsent, invalidateConsentRequest, hasValidClientConsent, verifyCompanySignerAuthority, ClientConsentError } from "./clientConsentService";
 import { sendClientConsentLinkEmail } from "./emailService";
 import { validateRegistrationAcceptance, getPublishedLegalDocument } from "./legalDocuments";
 import PDFDocument from "pdfkit";
@@ -11574,6 +11574,31 @@ function maskCLABE(clabe?: string | null): string | null {
         return res.json({authorized,
           message:authorized?"Cliente autorizado para esta financiera.":"Autorización del cliente pendiente o no validada."});
       } catch { return res.status(503).json({message:"No disponible."}); }
+    });
+
+  app.post('/api/credit-submission-targets/:id/verify-client-representative',
+    isAuthenticated,requireModuleAndAction('aprobaciones','edit'),async(req:any,res)=>{
+      try {
+        const reviewerId=req.user?.claims?.sub||req.user?.id;
+        const reviewer=reviewerId?await storage.getUser(reviewerId):null;
+        if(!reviewer||reviewer.role!=='super_admin')
+          return res.status(403).json({message:"La revisión de facultades corresponde a Super Admin."});
+        const target=await storage.getCreditSubmissionTarget(req.params.id);
+        const submission=target?await storage.getCreditSubmissionRequest(target.requestId):null;
+        if(!target||!submission) return res.status(404).json({message:"Solicitud no encontrada."});
+        const output=await verifyCompanySignerAuthority({
+          targetId:target.id,clientId:submission.clientId,
+          evidenceId:String(req.body?.evidenceId||""),
+          documentId:String(req.body?.documentId||""),
+          notes:String(req.body?.notes||""),reviewedBy:reviewerId,
+        });
+        return res.json(output);
+      }catch(e:any){
+        if(e instanceof ClientConsentError) return res.status(e.status).json({code:e.code,message:e.message});
+        if(e?.code==='23505') return res.status(409).json({message:"Esta evidencia ya tiene una revisión registrada."});
+        console.error("LEG10 review failed:",e?.message||e);
+        return res.status(503).json({message:"No se pudo registrar la revisión del representante."});
+      }
     });
 
   // 1. Generate PDF for credit submission target
