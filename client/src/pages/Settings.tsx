@@ -62,6 +62,8 @@ const notificationSchema = z.object({
 
 const businessSchema = z.object({
   businessName: z.string().optional(),
+  legalRepresentativeName: z.string().optional(),
+  legalRepresentativePosition: z.string().optional(),
   taxId: z.string().optional(),
   businessAddress: z.string().optional(),
   businessPhone: z.string().optional(),
@@ -267,12 +269,15 @@ export default function Settings() {
   const businessForm = useForm({
     resolver: zodResolver(businessSchema),
     defaultValues: {
-      businessName: "",
-      taxId: "",
-      businessAddress: "",
-      businessPhone: "",
-      website: "",
-      specialization: "",
+      businessName: (user?.profileData as any)?.business?.businessName || "",
+      legalRepresentativeName: (user?.profileData as any)?.business?.legalRepresentativeName ||
+        [user?.firstName, user?.lastName].filter(Boolean).join(" "),
+      legalRepresentativePosition: (user?.profileData as any)?.business?.legalRepresentativePosition || "",
+      taxId: (user?.profileData as any)?.business?.taxId || "",
+      businessAddress: (user?.profileData as any)?.business?.businessAddress || "",
+      businessPhone: (user?.profileData as any)?.business?.businessPhone || "",
+      website: (user?.profileData as any)?.business?.website || "",
+      specialization: (user?.profileData as any)?.business?.specialization || "",
     },
   });
 
@@ -410,7 +415,12 @@ export default function Settings() {
   };
 
   const onBusinessSubmit = (data: any) => {
-    updateProfileMutation.mutate(data);
+    updateProfileMutation.mutate({
+      profileData: {
+        ...((user?.profileData && typeof user.profileData === "object") ? user.profileData : {}),
+        business: data,
+      },
+    });
   };
 
   const onProfilingSubmit = (data: any) => {
@@ -1069,6 +1079,41 @@ export default function Settings() {
                           </FormItem>
                         )}
                       />
+
+                      <div className="space-y-2 rounded-md border p-3 bg-muted/20">
+                        <p className="text-xs font-semibold">Representante que firma por la empresa</p>
+                        <p className="text-[11px] text-muted-foreground">
+                          Si operas como persona moral, identifica a la empresa y al representante legal.
+                          La firma OTP se enviará al correo personal de esta cuenta; el nombre del
+                          representante debe coincidir con el titular que recibe el código.
+                        </p>
+                        <FormField
+                          control={businessForm.control}
+                          name="legalRepresentativeName"
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel className="text-xs font-medium">Nombre completo del representante legal</FormLabel>
+                              <FormControl>
+                                <Input className="h-9 text-xs" placeholder="Nombre y apellidos" {...field} data-testid="input-legal-representative-name" />
+                              </FormControl>
+                              <FormMessage className="text-xs" />
+                            </FormItem>
+                          )}
+                        />
+                        <FormField
+                          control={businessForm.control}
+                          name="legalRepresentativePosition"
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel className="text-xs font-medium">Cargo o carácter del representante (opcional)</FormLabel>
+                              <FormControl>
+                                <Input className="h-9 text-xs" placeholder="Administrador único, apoderado, representante legal..." {...field} data-testid="input-legal-representative-position" />
+                              </FormControl>
+                              <FormMessage className="text-xs" />
+                            </FormItem>
+                          )}
+                        />
+                      </div>
 
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                         <FormField
