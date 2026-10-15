@@ -64,7 +64,15 @@ function generateOfficialVoucherText(
   if (isPersonalized && snapshot.incorporatedData) {
     out += `\n[DATOS INCORPORADOS AL DOCUMENTO PERSONALIZADO]\n`;
     out += `${subDivider}\n`;
-    out += `Nombre / Razón Social:             ${snapshot.incorporatedData.fullName || "N/A"}\n`;
+    const isCompanySigner = snapshot.incorporatedData.profileType === "persona_moral";
+    const legalCompanyName = isCompanySigner
+      ? (snapshot.incorporatedData.businessName || "Pendiente de proporcionar")
+      : (snapshot.incorporatedData.fullName || "N/A");
+    out += `Nombre / Razón Social:             ${legalCompanyName}\n`;
+    if (isCompanySigner) {
+      out += `Representante Firmante:            ${snapshot.incorporatedData.legalRepresentativeName || "Pendiente de proporcionar"}\n`;
+      out += `Carácter del Firmante:              ${snapshot.incorporatedData.legalRepresentativePosition || "No especificado"}\n`;
+    }
     out += `Rol en Plataforma:                 ${snapshot.incorporatedData.role || "N/A"}\n`;
     out += `Institución Bancaria:              ${snapshot.incorporatedData.bankName || "Pendiente de proporcionar"}\n`;
     out += `Cuenta Bancaria:                   ${snapshot.incorporatedData.bankAccount || "Pendiente de proporcionar"}\n`;
