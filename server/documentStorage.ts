@@ -24,6 +24,20 @@ const supabaseAdmin = supabaseUrl && supabaseServiceRoleKey
     })
   : null;
 
+
+/** Prevent Staging from touching shared Production-capable Supabase Storage. */
+export function assertDocumentStorageEnvironmentIsolated(
+  configuredBucket:string=supabaseStorageBucket,
+  requestedBucket:string=configuredBucket,
+){
+  if((process.env.RAILWAY_ENVIRONMENT_NAME||"").toLowerCase()!=="staging")return;
+  // Approval requires a staging-prefixed bucket and separately constrained
+  // credentials. This check protects application paths, not a leaked service key.
+  if(process.env.STAGING_DOCUMENT_STORAGE_ISOLATED!=="true"||
+     !configuredBucket.startsWith("staging-")||requestedBucket!==configuredBucket)
+    throw new Error("STAGING_DOCUMENT_STORAGE_NOT_ISOLATED");
+}
+
 function sanitizeSegment(value: string) {
   return value.replace(/[^a-zA-Z0-9._-]/g, "-");
 }
@@ -72,6 +86,7 @@ async function safeDeleteLocalFile(filePath: string) {
 }
 
 export async function persistDocumentFile(file: Express.Multer.File, context: UploadContext) {
+  if(supabaseAdmin)assertDocumentStorageEnvironmentIsolated();
   if (!supabaseAdmin) {
     return { filePath: file.path, storageProvider: "local" as const };
   }
@@ -99,6 +114,7 @@ export async function migrateLocalDocumentToStorage(params: {
   mimeType?: string | null;
   context: UploadContext;
 }) {
+  if(supabaseAdmin)assertDocumentStorageEnvironmentIsolated();
   if (!supabaseAdmin) {
     throw new Error("Supabase Storage is not configured for this environment");
   }
@@ -135,6 +151,7 @@ export async function removeStoredDocument(filePath?: string | null) {
 
   const supabaseFile = parseSupabaseFilePath(filePath);
   if (supabaseFile) {
+    assertDocumentStorageEnvironmentIsolated(supabaseStorageBucket,supabaseFile.bucket);
     if (!supabaseAdmin) {
       throw new Error("Supabase Storage is not configured for this environment");
     }
@@ -159,6 +176,7 @@ export async function getDocumentAccessTarget(
 ): Promise<AccessTarget> {
   const supabaseFile = parseSupabaseFilePath(filePath);
   if (supabaseFile) {
+    assertDocumentStorageEnvironmentIsolated(supabaseStorageBucket,supabaseFile.bucket);
     if (!supabaseAdmin) {
       throw new Error("Supabase Storage is not configured for this environment");
     }
