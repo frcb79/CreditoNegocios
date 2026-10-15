@@ -166,6 +166,52 @@ describe("Bloque 3B1 (MemStorage): Backend de aceptación del Convenio mediante 
     delete _testEmailStore.lastFormalizationOtp;
   });
 
+  describe("PM: OTP y evidencia vinculados a persona moral + representante", () => {
+    it("bloquea OTP de empresa incompleta, deja firmar al representante correcto y guarda snapshot", async () => {
+      const signer = await createTestUser("master_broker", "Lucia Sanchez");
+      currentAuthUser = signer;
+      await storage.updateUser(signer.id, {
+        profileType: "persona_moral",
+        profileData: { business: { businessName: "Servicios Prueba, S.A. de C.V." } },
+      } as any);
+      const confirmedDocuments = [
+        { document: "convenio", version: "1.0" },
+        { document: "reglas-red", version: "1.0" },
+        { document: "reglas-master", version: "1.0" },
+      ];
+      const noRep = await request(app).post("/api/legal/formalization/request-otp").send({ confirmedDocuments });
+      expect(noRep.status).toBe(409);
+      expect(noRep.body.message).toContain("representante legal");
+
+      await storage.updateUser(signer.id, {
+        profileData: { business: {
+          businessName: "Servicios Prueba, S.A. de C.V.",
+          legalRepresentativeName: "Lucía Sánchez",
+          legalRepresentativePosition: "Apoderada Legal",
+          taxId: "SPR010101AA1",
+        }},
+      } as any);
+      const documents = await request(app).get("/api/legal/formalization/documents");
+      expect(documents.status).toBe(200);
+      const agreement = documents.body.documents.find((d: any) => d.document === "convenio");
+      expect(agreement.content).toContain("Servicios Prueba, S.A. de C.V.");
+      expect(agreement.content).toContain("Lucía Sánchez — Apoderada Legal");
+
+      const otp = await request(app).post("/api/legal/formalization/request-otp").send({ confirmedDocuments });
+      expect(otp.status).toBe(200);
+      const code = _testEmailStore.lastFormalizationOtp!.code;
+      const verified = await request(app).post("/api/legal/formalization/verify-otp")
+        .send({ code, confirmedDocuments });
+      expect(verified.status).toBe(200);
+      const acc = verified.body.acceptances.find((a: any) => a.document === "convenio");
+      const detail = await request(app).get(`/api/legal/my-acceptances/${acc.id}`);
+      expect(detail.status).toBe(200);
+      expect(detail.body.snapshot.personalizedContent).toContain("Servicios Prueba, S.A. de C.V.");
+      expect(detail.body.snapshot.personalizedContent).toContain("Lucía Sánchez — Apoderada Legal");
+      expect(detail.body.snapshot.incorporatedData.legalRepresentativeName).toBe("Lucía Sánchez");
+    });
+  });
+
   describe("1. Consulta autenticada de documentos a formalizar (/api/legal/formalization/documents)", () => {
     it("rechaza la consulta con 401 si no hay usuario autenticado", async () => {
       currentAuthUser = null;
