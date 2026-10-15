@@ -1,42 +1,40 @@
 /**
- * LEG-10 release gate: preparing a client's file is not permission to disclose
- * financial/patrimonial information to a financial institution.
- *
- * Fail closed until an approved, versioned instrument AND server-verified
- * signer/purpose/recipient evidence are durably implemented.  This function
- * deliberately has no client-controlled override, admin bypass or environment
- * bypass (including staging).  NEVER treat a Broker action, a checkbox in
- * req.body, or the Broker's own legal acceptance as the client's consent.
- *
- * A later implementation may replace the denied result only after validating
- * the evidence transactionally against approved legal instruments, signer
- * identity/representation, tenant, recipient, revocation and exact snapshot.
+ * LEG-10: no financial package or "sent" status without exact customer
+ * consent.  The commercial Broker convenio never authorizes this disclosure.
+ * CLIENT_CONSENT_RELEASE_APPROVED stays unset until LEG-10 legal approval,
+ * controlled migration and E2E. The flag alone can NEVER authorize a file.
  */
+import {hasValidClientConsent} from "./clientConsentService";
+
 export type ClientDisclosurePurpose =
   | "financial_institution_submission"
   | "financial_institution_pdf_export";
-
 export type ClientDisclosureContext = {
-  clientId: string | null | undefined;
-  tenantId: string | null | undefined;
-  recipientInstitutionId: string | null | undefined;
-  purpose: ClientDisclosurePurpose;
+  clientId:string|null|undefined;
+  tenantId:string|null|undefined;
+  targetId:string|null|undefined;
+  recipientInstitutionId:string|null|undefined;
+  purpose:ClientDisclosurePurpose;
 };
-
-export type ClientDisclosureDecision = {
-  authorized: false;
-  code: "CLIENT_CONSENT_REQUIRED";
-  message: string;
-};
-
-export function authorizeClientSensitiveDisclosure(
-  _context: ClientDisclosureContext,
-): ClientDisclosureDecision {
-  // No verified client-consent evidence repository or signer-verification
-  // workflow exists in this release. Never synthesize an approval.
-  return {
-    authorized: false,
-    code: "CLIENT_CONSENT_REQUIRED",
-    message: "Se requiere autorización verificable del cliente para compartir información con esta financiera. La formalización del Broker no sustituye esa autorización.",
+export type ClientDisclosureDecision =
+  | {authorized:false;code:"CLIENT_CONSENT_REQUIRED";message:string}
+  | {authorized:true};
+export async function authorizeClientSensitiveDisclosure(
+  ctx:ClientDisclosureContext,
+):Promise<ClientDisclosureDecision> {
+  const denied:ClientDisclosureDecision={
+    authorized:false,code:"CLIENT_CONSENT_REQUIRED",
+    message:"Se requiere autorización verificable del cliente para compartir este expediente con esta financiera.",
   };
+  // Release is deliberately a separately reviewed decision.  Not a client,
+  // broker, admin or HTTP-controlled bypass.
+  if (process.env.CLIENT_CONSENT_RELEASE_APPROVED !== "true") return denied;
+  if (!ctx.clientId || !ctx.tenantId || !ctx.targetId || !ctx.recipientInstitutionId ||
+      !["financial_institution_submission","financial_institution_pdf_export"].includes(ctx.purpose))
+    return denied;
+  const evidence=await hasValidClientConsent({
+    clientId:ctx.clientId,tenantId:ctx.tenantId,targetId:ctx.targetId,
+    institutionId:ctx.recipientInstitutionId,
+  });
+  return evidence?{authorized:true}:denied;
 }
