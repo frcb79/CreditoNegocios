@@ -12,6 +12,7 @@ import { getAppBaseUrl } from "@/lib/runtimeConfig";
 import NotFound from "@/pages/not-found";
 import Landing from "@/pages/Landing";
 import LegalDocumentPage from "@/pages/LegalDocumentPage";
+import ClientConsentPage from "@/pages/ClientConsentPage";
 import BrokersLanding from "@/pages/BrokersLanding";
 import ResetPassword from "@/pages/ResetPassword";
 import Dashboard from "@/pages/Dashboard";
@@ -67,6 +68,7 @@ function Router() {
 
   return (
     <Switch>
+      <Route path="/autorizar-expediente/:token" component={ClientConsentPage} />
       <Route path="/legal/terminos"><LegalDocumentPage document="terminos" /></Route>
       <Route path="/legal/aviso"><LegalDocumentPage document="aviso" /></Route>
       <Route path="/legal/convenio"><LegalDocumentPage document="convenio" /></Route>
