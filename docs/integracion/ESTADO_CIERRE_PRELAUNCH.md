@@ -1,5 +1,22 @@
 # Crédito Negocios — Estado operativo de cierre prelaunch
 
+## Actualización vinculante — 15 de octubre de 2026
+
+- Rama única integration/phase-1a1-base-segura, PR #10 Draft, main en 0c6b7bd18f6465c55d95f72a4f20ade339f1a553 al último cotejo.
+- **Checkpoint verde confirmado:** 40aab02f1216392026ebd168e16bf801affdd953, GitHub Actions 38823818480 SUCCESS: TypeScript, build, 28 suites y 344 pruebas unitarias, PostgreSQL aislado. CI acredita únicamente este SHA, no commits posteriores.
+- Decisión Dirección MVP: Broker/Master captura prospecto, CN hace matching y gestión comercial interna, cada financiera recaba directamente la documentación. LEG-10 queda diferido: no exigir firma ni OTP del prospecto para crear perfiles o realizar matching, no publicar instrumento LEG-10 ni activar CLIENT_CONSENT_RELEASE_APPROVED.
+- Código integrado: start-commercial-contact guarda únicamente el estado interno contact_initiated, idempotente tras aprobado, sin entregas externas; mark-sent y PDF institucional siguen protegidos. No confundir contacto comercial con transferencia financiera.
+- Railway: DB Staging Railway PostgreSQL y Producción Supabase PostgreSQL se identificaron distintas por el operador, pero falta confirmación runtime. Storage Supabase sigue compartido, con llave privilegiada común; protección Staging fail-closed en código NO reemplaza permisos restringidos.
+- Datos: Staging se conserva sintético y Producción arranca limpia sin operaciones de prueba, sin crear bases adicionales; no borrar datos, desplegar ni migrar por defecto. Staging web sigue conectado a main, por lo que no constituye E2E del PR.
+- Próximo: validar SHA exacto en Staging aislado con cuatro roles y matching/contacto/propuesta, E2E seguridad, solución Storage, revisión ASTRA independiente y luego autorización explícita y separada de merge/deploy/cutover.
+- Checklists actualizados: PRODUCTION_CUTOVER_CHECKLIST.md y PLAN_QA_FLUJO_COMPLETO_CLIENTE_FINANCIERA_COMISIONES.md sustituyen guías históricas inconsistentes. Se conserva texto previo para trazabilidad.
+
+> Este estado prevalece sobre hitos históricos incompatibles más abajo, particularmente los que exigían LEG-10 para comenzar o crear un proyecto Supabase adicional.
+
+---
+
+
+
 ## Estado vigente — corte técnico del 14 de octubre de 2026
 
 - **Rama única** `integration/phase-1a1-base-segura`; **PR #10 abierto / Draft / NO MERGE**; `main` en `0c6b7bd18f6465c55d95f72a4f20ade339f1a553`.

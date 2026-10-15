@@ -1,57 +1,40 @@
-# Production Cutover Checklist (30-60 min)
+# Crédito Negocios — Corte a Producción (MVP, octubre de 2026)
 
-## T-30 min
-1. Freeze deploys and schema changes.
-2. Verify required env vars with preflight scripts.
-3. Confirm backup/snapshot exists for database.
+**Estado: NO GO.** Este documento no autoriza despliegues, migraciones, cambios de variables ni borrado. Sustituye las instrucciones antiguas de migrar documentos históricos: los registros existentes son sintéticos y NO se copian a Producción.
 
-## T-20 min
-1. Deploy backend to production host.
-2. Validate backend health endpoint:
-- GET /api/health returns status ok.
-3. Run backend smoke:
-- BACKEND_URL=https://your-backend-domain.example.com npm run smoke:backend
+## Modelo e infraestructura
+- Rama única candidata: integration/phase-1a1-base-segura, PR #10 Draft; main congelada hasta GO.
+- Staging: Railway PostgreSQL; Producción: Supabase PostgreSQL existente. El operador identificó conexiones separadas; aún verificar instancia utilizada por cada proceso de aplicación.
+- Supabase Storage: proyecto/bucket/SERVICE_ROLE_KEY compartidos actualmente. No usar Staging para documentos reales. El guard del código bloquea operaciones de Supabase en Staging salvo configuración aislada; otro bucket con la misma SERVICE_ROLE_KEY NO garantiza segregación efectiva.
+- Producción debe arrancar sin Brokers, Masters, clientes, créditos, solicitudes, contratos, comisiones ni documentos de prueba. Conservar esquema, configuraciones seguras, catálogos/ofertas definitivos y bootstrap de Super Admin.
+- MVP: Broker/Master captura perfil; CN hace matching y gestiona contactos internamente; financiera solicita documentos al prospecto. LEG-10 diferido; no activar CLIENT_CONSENT_RELEASE_APPROVED. PDF institucional y envío de expediente siguen restringidos.
 
-## T-15 min
-1. Deploy frontend to Vercel.
-2. Verify frontend environment vars in Vercel project settings.
-3. Open app and confirm login page and static assets load.
+## Gate 1 — Antes de cualquier despliegue
+1. Confirmar GitHub Actions verde sobre SHA EXACTO de PR #10, TypeScript, build, unitarias y PostgreSQL aislado.
+2. Certificar origen y SHA desplegado: Staging web seguía conectado a main en el último inventario. La versión actual de Staging NO valida el PR #10.
+3. Confirmar auto-deploy de Producción deshabilitado antes de integrar main; verificarlo efectivamente con el operador Railway.
+4. Certificar que las aplicaciones usan DB diferentes mediante lectura del destino activo en cada entorno, sin exponer URLs con credenciales.
+5. Acordar modo de prueba de archivos: Staging sin credencial privilegiada compartida, o almacenamiento con credenciales restringidas por entorno. No cambiar el flag STAGING_DOCUMENT_STORAGE_ISOLATED a true mientras la llave de servicio sea compartida.
+6. Preparar backup restaurable, inventario de datos sintéticos y lista de restricciones FK/triggers de evidencias legales. No ejecutar TRUNCATE general ni eliminar evidencias de retención.
 
-## T-10 min
-1. Run critical user flow tests:
-- login
-- open dashboard
-- create/update client
-- create/update credit
-- upload one document
-- download same document
-2. Confirm no 5xx spikes in backend logs.
+## Gate 2 — QA Staging sobre el SHA candidato (requiere permiso separado)
+- Desplegar SOLO a Staging tras aislamiento y autorización de despliegue.
+- Usar cuatro identidades sintéticas (Super Admin, Admin, Master, Broker), credenciales por variables seguras y correos de prueba.
+- Recorrer alta de cliente, perfil, matching compatible/no compatible/información insuficiente, creación de solicitud, aprobación interna, contacto comercial y captura de propuesta.
+- Verificar que contacto interno no entrega PDF/documentos, no activa LEG-10 ni marca envío externo. Comprobar acceso ajeno, doble clic, oportunidad cerrada, competidor financiero simultáneo y lineage de ofertas.
+- Comprobar confirmación manual de desembolso y comisiones sin simular transferencias. Probar sesion, legal Broker/Master y OTP comercial existente.
+- Guardar PASS/FAIL por rol, endpoint, ID sintético, SHA desplegado y evidencia; auditoría independiente ASTRA al final.
 
-## T-5 min
-1. Migrate historical documents if pending:
-- npm run migrate:documents:supabase
-2. Optional cleanup:
-- npm run migrate:documents:supabase -- --delete-local
+## Gate 3 — Preparación Producción (autorización específica)
+1. Respaldar y ensayar en COPIA el procedimiento selectivo de limpieza de todos los datos sintéticos presentes en Producción. Revisar evidencias legales y auditorías antes de decidir qué conservar. Ningún borrado es implícito.
+2. Ensayar migraciones idempotentes sobre esquema vacío y con datos de prueba; no ejecutar db:push o seeds ficticios directamente en Producción.
+3. Configurar superadmin seguro sin credenciales predeterminadas, correo, sesiones, dominios, OTP comercial, controles de acceso y catálogos financieros aprobados.
+4. Separar tres autorizaciones: merge a main, deploy a Producción y limpieza controlada. Una aprobación no presupone las otras.
+5. No importar usuarios/clientes/documentos/operaciones de Staging. Conservar catálogos maestros definitivos cuando estén validados.
 
-## T0 (go live)
-1. Announce go-live.
-2. Keep rollback window open for at least 60 min.
+## Día de corte, observación y rollback
+- Verificar health, acceso por cuatro roles, matching, gestión comercial interna, auditorías, ausencia de fixtures y políticas de documentos.
+- Ante fallos, rollback de código/despliegue, sin DROP ciego de tablas ni eliminación de evidencias. Mantener observación operativa antes de GO final.
+- Si cualquier Gate falla o no hay respaldo/restauración confirmado, NO GO.
 
-## T+15 min
-1. Re-run smoke test.
-2. Check /api/health.
-3. Confirm active sessions and auth behavior.
-
-## T+30 to T+60 min
-1. Review errors and latency.
-2. Close incident watch if stable.
-
-## Rollback Trigger Conditions
-1. /api/health degraded for more than 5 minutes.
-2. Login failures above baseline.
-3. Document upload/download failing consistently.
-
-## Rollback Actions
-1. Switch frontend to previous backend URL if required.
-2. Roll back backend to previous release.
-3. Keep migrated data; do not run destructive cleanup during rollback window.
+Este documento reemplaza cualquier instrucción anterior de migrar documentos históricos a Producción o borrar datos como parte automática del deploy.
