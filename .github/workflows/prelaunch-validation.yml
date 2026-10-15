@@ -84,3 +84,5 @@ jobs:
         run: npm test -- --runInBand --coverage=false --forceExit tests/integration/postgres-network-rates-atomic.test.ts
       - name: Test LEG-10 customer consent evidence schema and immutability in isolated PostgreSQL
         run: npm test -- --runInBand --coverage=false --forceExit tests/integration/postgres-client-consent-migration.test.ts
+      - name: Test LEG-10 concurrent revocation vs send against real isolated PostgreSQL
+        run: npm test -- --runInBand --coverage=false --forceExit tests/integration/postgres-client-consent-concurrency.test.ts
