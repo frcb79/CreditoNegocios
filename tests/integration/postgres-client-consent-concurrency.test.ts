@@ -153,7 +153,7 @@ describeIsolated("LEG-10 real PostgreSQL concurrency: revocation vs send",()=>{
   }
   it("rolls back both status changes if the request update fails",async()=>{
     const f=await seed();
-    await db.query("CREATE OR REPLACE FUNCTION public.leg10_reject_request_update() RETURNS TRIGGER LANGUAGE plpgsql AS $ BEGIN RAISE EXCEPTION 'synthetic request write failure'; END; $");
+    await db.query("CREATE OR REPLACE FUNCTION public.leg10_reject_request_update() RETURNS TRIGGER LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'synthetic request write failure'; END; $$");
     await db.query("CREATE TRIGGER leg10_reject_request_update BEFORE UPDATE ON public.credit_submission_requests FOR EACH ROW EXECUTE FUNCTION public.leg10_reject_request_update()");
     try{
       await expect(f.send()).rejects.toThrow("synthetic request write failure");
