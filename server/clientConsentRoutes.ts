@@ -2,9 +2,10 @@ import type { Express } from "express";
 import rateLimit from "express-rate-limit";
 import {
   ClientConsentError,inspectConsentLink,prepareConsentOtp,
-  verifyConsentOtp,invalidateConsentRequest,
+  verifyConsentOtp,invalidateConsentRequest,getClientConsentReceipt,
 } from "./clientConsentService";
 import {sendClientConsentOtpEmail} from "./emailService";
+import {renderLegalVoucherPdf} from "./legalVoucherPdf";
 
 const limiter=rateLimit({windowMs:60*60*1000,limit:25,standardHeaders:"draft-7",
   legacyHeaders:false,message:{message:"Demasiadas solicitudes. Intenta más tarde."}});
@@ -16,6 +17,17 @@ function fail(res:any,error:any) {
     message:"El servicio de autorización no está disponible actualmente."});
 }
 export function registerClientConsentPublicRoutes(app:Express) {
+  app.get("/api/client-consent/:token/comprobante",limiter,async(req,res)=>{
+    try {
+      const evidence=await getClientConsentReceipt(String(req.params.token));
+      const bytes=await renderLegalVoucherPdf(evidence.text);
+      res.setHeader("Content-Type","application/pdf");
+      res.setHeader("Cache-Control","private, no-store");
+      res.setHeader("Content-Disposition",
+        "attachment; filename=\"autorizacion-cliente-"+evidence.evidenceId.replace(/[^a-z0-9-]/gi,"")+".pdf\"");
+      return res.send(bytes);
+    } catch(e){return fail(res,e);}
+  });
   // The bearer link is scoped to one specific pending challenge.
   app.get("/api/client-consent/:token",limiter,async(req,res)=>{
     try { return res.json(await inspectConsentLink(String(req.params.token))); }
