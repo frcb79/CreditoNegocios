@@ -188,7 +188,9 @@ export async function verifyConsentOtp(input: {
       return {success:false as const,code:"CLIENT_CONSENT_OTP_INCORRECT"};
     }
     const doc = await db.query("SELECT * FROM public.client_consent_document_versions " +
-      "WHERE id=$1 AND status='published' AND effective_at <= NOW()",[c.document_version_id]);
+      "WHERE id=$1 AND status='published' AND effective_at <= NOW() " +
+      "AND id=(SELECT id FROM public.client_consent_document_versions WHERE status='published' " +
+      "AND effective_at <= NOW() ORDER BY effective_at DESC LIMIT 1)",[c.document_version_id]);
     if (!doc.rows[0] || sha(doc.rows[0].content) !== doc.rows[0].content_sha256 ||
         sha(c.exact_document_content) !== c.exact_document_sha256) {
       deny(409,"CLIENT_CONSENT_DOCUMENT_INVALID","La versión del documento no pudo verificarse.");
@@ -227,7 +229,10 @@ export async function hasValidClientConsent(scope: {
       "LEFT JOIN public.client_consent_revocations r ON r.evidence_id=e.id " +
       "WHERE e.tenant_id=$1 AND e.client_id=$2 AND e.target_id=$3 AND e.institution_id=$4 " +
       "AND e.purpose='financial_institution_submission' AND d.status='published' " +
-      "AND d.effective_at <= NOW() AND r.id IS NULL ORDER BY e.accepted_at DESC LIMIT 1",
+      "AND d.effective_at <= NOW() " +
+      "AND d.id=(SELECT id FROM public.client_consent_document_versions " +
+      "WHERE status='published' AND effective_at <= NOW() ORDER BY effective_at DESC LIMIT 1) " +
+      "AND r.id IS NULL ORDER BY e.accepted_at DESC LIMIT 1",
       [scope.tenantId,scope.clientId,scope.targetId,scope.institutionId],
     );
     const e=rows.rows[0];
