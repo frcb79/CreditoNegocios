@@ -66,6 +66,7 @@ export default function ClientConsentPage() {
       {success && <div role="status" className="border rounded-md p-4 bg-green-50 text-green-900">
         <h2 className="font-semibold">Autorización registrada</h2><p className="text-sm mt-1">{success}</p>
         <p className="text-xs mt-2">El registro histórico identifica el documento y la financiera específica. Conserva este mensaje para referencia.</p>
+        <a className="inline-block underline text-sm mt-3" href={buildApiUrl("/api/client-consent/"+encodeURIComponent(token)+"/comprobante")} target="_blank" rel="noopener noreferrer">Descargar comprobante histórico PDF</a>
       </div>}
       {record && !success && <>
         <section className="space-y-2 text-sm">
