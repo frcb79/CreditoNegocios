@@ -27,6 +27,7 @@ describeIsolated("LEG-10 real PostgreSQL concurrency: revocation vs send",()=>{
     }
     await db.query("ALTER TABLE public.users ADD COLUMN IF NOT EXISTS role VARCHAR");
     await db.query("ALTER TABLE public.clients ADD COLUMN IF NOT EXISTS tenant_id VARCHAR");
+    await db.query("ALTER TABLE public.financial_institutions ADD COLUMN IF NOT EXISTS name VARCHAR");
     await db.query("CREATE TABLE IF NOT EXISTS public.credit_submission_requests (id VARCHAR PRIMARY KEY)");
     for(const field of [
       "client_id VARCHAR","tenant_id VARCHAR","status VARCHAR","broker_id VARCHAR",
@@ -60,7 +61,7 @@ describeIsolated("LEG-10 real PostgreSQL concurrency: revocation vs send",()=>{
     await db.query("INSERT INTO public.tenants(id) VALUES($1)",[tenant]);
     await db.query("INSERT INTO public.users(id,role) VALUES($1,'super_admin')",[user]);
     await db.query("INSERT INTO public.clients(id,tenant_id) VALUES($1,$2)",[client,tenant]);
-    await db.query("INSERT INTO public.financial_institutions(id) VALUES($1)",[institution]);
+    await db.query("INSERT INTO public.financial_institutions(id,name) VALUES($1,$2)",[institution,"Banco sintético LEG-10"]);
     await db.query(
       "INSERT INTO public.credit_submission_requests(id,client_id,tenant_id,broker_id,requested_amount,status,updated_at) "+
       "VALUES($1,$2,$3,$4,1000,'approved',NOW())",[request,client,tenant,user]);
