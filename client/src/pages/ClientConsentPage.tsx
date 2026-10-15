@@ -16,6 +16,7 @@ export default function ClientConsentPage() {
   const [requested,setRequested]=useState(false);
   const [success,setSuccess]=useState("");
   const [revoked,setRevoked]=useState(false);
+  const [receiptAvailable,setReceiptAvailable]=useState(true);
   const [revokeRequested,setRevokeRequested]=useState(false);
   const [revokeCode,setRevokeCode]=useState("");
   useEffect(()=>{
@@ -28,6 +29,7 @@ export default function ClientConsentPage() {
       }).then(j=>{if(!cancelled){
         setRecord(j);
         if(j.signed) {
+          setReceiptAvailable(!j.linkExpired);
           setSuccess(j.revoked
             ?"Esta autorización fue revocada. Se conserva constancia histórica."
             :"Autorización registrada anteriormente.");
@@ -91,7 +93,9 @@ export default function ClientConsentPage() {
       {success && <div role="status" className="border rounded-md p-4 bg-green-50 text-green-900">
         <h2 className="font-semibold">Autorización registrada</h2><p className="text-sm mt-1">{success}</p>
         <p className="text-xs mt-2">El registro histórico identifica el documento y la financiera específica. Conserva este mensaje para referencia.</p>
-        <a className="inline-block underline text-sm mt-3" href={buildApiUrl("/api/client-consent/"+encodeURIComponent(token)+"/comprobante")} target="_blank" rel="noopener noreferrer">Descargar comprobante histórico PDF</a>
+        {receiptAvailable
+          ? <a className="inline-block underline text-sm mt-3" href={buildApiUrl("/api/client-consent/"+encodeURIComponent(token)+"/comprobante")} target="_blank" rel="noopener noreferrer">Descargar comprobante histórico PDF</a>
+          : <p className="text-xs mt-3">El enlace de descarga ya venció. Para recibir una copia de tu comprobante, solicita su entrega a info@creditonegocios.com.mx; verificaremos tu identidad antes de proporcionarlo.</p>}
         {!revoked && !revokeRequested && <div className="mt-4">
           <button type="button" disabled={busy} onClick={startRevocation}
             className="border rounded px-3 py-2 text-sm" data-testid="button-request-revocation">
