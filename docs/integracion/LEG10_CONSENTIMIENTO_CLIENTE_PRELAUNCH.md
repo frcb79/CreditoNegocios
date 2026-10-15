@@ -1,7 +1,19 @@
 # LEG-10 — Consentimiento del cliente para datos financieros y patrimoniales
 
-**Estado:** especificación técnica prelaunch, **P0 abierto**, a validar por responsable legal/comercial. 14 de octubre de 2026.
+**Estado:** arquitectura OTP y alcance funcional **aprobados por coordinación el 14 de octubre de 2026**. Implementación técnica en curso; **P0 abierto hasta pruebas y validación del texto jurídico**. No se ha habilitado liberación de expedientes.
 **Ámbito:** clientes PF/PFAE/PM y sus representantes, Broker/Master, expediente, SAT/Buró y transferencia de información a financieras. **No equivale** a aceptación del Convenio del Broker ni a Términos/Aviso de la plataforma.
+
+## Decisión aprobada — alcance de lanzamiento
+
+1. El Convenio del **Broker/Master** ya cuenta con OTP por correo; su firma **no es** consentimiento del cliente. Son evidencias y entidades distintas.
+2. El Broker/Master prepara el expediente y elige la financiera destinataria. La plataforma manda al correo declarado del **cliente titular o del representante acreditado de persona moral** un **enlace individual de autorización**.
+3. El destinatario revisa el documento versionado con financiera identificada y finalidad limitada **a compartir ese expediente para evaluación de financiamiento**. Su aceptación es voluntaria y se verifica por un **OTP de seis dígitos enviado a ese mismo correo**.
+4. El servidor guarda evidencia inmutable con cliente, tenant, solicitud, financiera, firmante/capacidad, correo, versión, **texto exacto y SHA-256**, fecha UTC, IP y User-Agent cuando disponibles, método OTP, y comprobante histórico descargable. Revocar posteriormente no borra la evidencia: genera evento histórico separado.
+5. Una aceptación **no** autoriza otras financieras: nuevo destinatario o cambio material de finalidad/documento exige nueva autorización. El Broker o Administrador no puede aceptar en nombre del cliente ni inyectar una casilla en la solicitud. Sin evidencia vigente el envío y el PDF de financiera siguen bloqueados.
+6. **Fuera de alcance ahora:** las solicitudes/consultas directas a Buró de Crédito y SAT **no se realizan desde la Plataforma** y no se implementan en LEG-10. Requerirían proyectos, requisitos legales y consentimientos independientes futuros.
+7. La representación de personas morales debe distinguir **empresa titular** de **persona natural firmante**. El correo OTP prueba posesión del buzón, **no acredita por sí solo facultades de representación**; el método de acreditarlas deberá quedar validado antes del GO.
+
+**Entrega técnica inicial de esta decisión:** `migrations/0008_client_consent_email_otp.sql` (aditiva y NO ejecutada). Define versiones documentales publicadas, desafíos con tokens/OTP protegidos, evidencias append-only y revocaciones append-only. **No equivale a despliegue ni a aceptación firmada.**
 
 ## Decisión de arquitectura vinculante (sin texto jurídico supuesto)
 1. La evidencia identifica siempre al **cliente titular** (clientId, tenantId) y a **quién consintió**: persona física o representante acreditado de persona moral, su calidad y mecanismo de verificación. `brokerId` o `createdBy` son operadores/capturistas, **nunca** prueba de aceptación del cliente.
