@@ -111,6 +111,24 @@ CREATE TRIGGER client_consent_revocations_immutable
 BEFORE UPDATE OR DELETE ON public.client_consent_revocations
 FOR EACH ROW EXECUTE FUNCTION public.reject_client_consent_evidence_mutation();
 
+
+-- Manual verification that an entity signatory has legal authority; an email
+-- OTP verifies possession of the mailbox, NOT a power-of-attorney.
+CREATE TABLE IF NOT EXISTS public.client_consent_representation_reviews (
+  id VARCHAR PRIMARY KEY DEFAULT gen_random_uuid()::text,
+  evidence_id VARCHAR NOT NULL UNIQUE REFERENCES public.client_consent_evidences(id) ON DELETE RESTRICT,
+  supporting_document_id VARCHAR NOT NULL REFERENCES public.documents(id) ON DELETE RESTRICT,
+  reviewed_by VARCHAR NOT NULL REFERENCES public.users(id) ON DELETE RESTRICT,
+  signer_name TEXT NOT NULL,
+  capacity_notes TEXT NOT NULL,
+  result VARCHAR(20) NOT NULL CHECK (result IN ('verified','rejected')),
+  reviewed_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+DROP TRIGGER IF EXISTS client_consent_rep_reviews_immutable ON public.client_consent_representation_reviews;
+CREATE TRIGGER client_consent_rep_reviews_immutable
+BEFORE UPDATE OR DELETE ON public.client_consent_representation_reviews
+FOR EACH ROW EXECUTE FUNCTION public.reject_client_consent_evidence_mutation();
+
 -- A legal document becomes immutable after publication (not merely after signing).
 CREATE OR REPLACE FUNCTION public.reject_published_client_consent_document_change()
 RETURNS TRIGGER LANGUAGE plpgsql AS $$
