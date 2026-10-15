@@ -125,7 +125,7 @@ export function validateCompanyAgreementIdentity(data: PersonalizedAgreementData
   if (data.profileType !== "persona_moral") return null;
   if (!data.businessName?.trim()) return "Registra la razón social de la empresa en Configuración → Negocio antes de formalizar.";
   if (!data.legalRepresentativeName?.trim()) return "Registra el nombre del representante legal que firmará por la empresa.";
-  const normalize = (v: string) => v.normalize("NFD").replace(/[\\u0300-\\u036f]/g, "").replace(/\\s+/g, " ").trim().toLowerCase();
+  const normalize = (v: string) => v.normalize("NFD").replace(/\p{M}/gu, "").replace(/\s+/g, " ").trim().toLowerCase();
   if (normalize(data.legalRepresentativeName) !== normalize(data.fullName)) {
     return "El nombre del representante legal debe coincidir con el titular de la cuenta que recibirá el OTP. Usa una cuenta personal del firmante.";
   }
