@@ -281,6 +281,21 @@ export default function PendingRequests() {
     },
   });
 
+  const requestClientConsentMutation = useMutation({
+    mutationFn: async (targetId:string) => {
+      const r=await apiRequest("POST",`/api/credit-submission-targets/${targetId}/request-client-consent`,{});
+      return r.json();
+    },
+    onSuccess: (result:any) => {
+      toast({title:"Autorización solicitada",description:result.message});
+    },
+    onError: (error:any) => {
+      toast({title:"Aún no se pudo solicitar el consentimiento",
+        description:error.message||"Comprueba la información del firmante o la publicación del documento legal.",
+        variant:"destructive"});
+    },
+  });
+
   const proposalMutation = useMutation({
     mutationFn: async (data: { targetId: string; proposal: ProposalForm }) => {
       return apiRequest("POST", `/api/credit-submission-targets/${data.targetId}/institution-proposal`, data.proposal);
@@ -1044,8 +1059,20 @@ export default function PendingRequests() {
                                         <Send className="w-3.5 h-3.5 mr-1.5" />
                                         Marcar como Enviado a Financiera
                                       </Button>
+                                      <div className="mt-2">
+                                        <Button size="sm" variant="outline"
+                                          disabled={requestClientConsentMutation.isPending}
+                                          onClick={() => requestClientConsentMutation.mutate(target.id)}
+                                          className="h-8 text-xs"
+                                          data-testid={`button-request-client-consent-${target.id}`}>
+                                          <ShieldCheck className="w-3.5 h-3.5 mr-1.5" />
+                                          Solicitar autorización por correo al cliente
+                                        </Button>
+                                      </div>
                                       <p className="mt-1 text-xs text-amber-700">
-                                        El envío requiere autorización verificable del cliente. El visto bueno interno no constituye esa autorización.
+                                        Primero el cliente firma por OTP y se conserva su evidencia.
+                                        La aprobación interna no equivale a su consentimiento. No se comparte
+                                        ninguna información hasta completar la autorización.
                                       </p>
                                     </div>
                                   )}
