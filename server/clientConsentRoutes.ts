@@ -2,7 +2,7 @@ import type { Express } from "express";
 import rateLimit from "express-rate-limit";
 import {
   ClientConsentError,inspectConsentLink,prepareConsentOtp,
-  verifyConsentOtp,invalidateConsentRequest,getClientConsentReceipt,
+  verifyConsentOtp,invalidateConsentRequest,invalidateConsentOtp,getClientConsentReceipt,
   prepareConsentRevocationOtp,revokeConsentWithOtp,
 } from "./clientConsentService";
 import {sendClientConsentOtpEmail} from "./emailService";
@@ -35,7 +35,7 @@ export function registerClientConsentPublicRoutes(app:Express) {
       const result=await sendClientConsentOtpEmail({to:prepared.to,
         signerName:prepared.name,code:prepared.code});
       if(!result.success) {
-        await invalidateConsentRequest(prepared.id);
+        await invalidateConsentOtp(prepared.id);
         return res.status(502).json({message:"No fue posible entregar el código de revocación."});
       }
       return res.json({success:true,message:"Código de revocación enviado al correo del firmante."});
