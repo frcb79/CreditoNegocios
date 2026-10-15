@@ -106,8 +106,7 @@ export async function inspectConsentLink(token: string) {
     [sha(token)],
   );
   const r = rows.rows[0];
-  if (!r || new Date(r.token_expires_at).getTime() <= Date.now() ||
-      sha(r.exact_document_content) !== r.exact_document_sha256) {
+  if (!r || sha(r.exact_document_content) !== r.exact_document_sha256) {
     deny(404,"CLIENT_CONSENT_LINK_INVALID","Enlace inválido o expirado.");
   }
   if (r.status === "verified") {
@@ -116,11 +115,16 @@ export async function inspectConsentLink(token: string) {
       "LEFT JOIN public.client_consent_revocations v ON v.evidence_id=e.id " +
       "WHERE e.challenge_id=$1",[r.id],
     );
-    return {signerName:r.signer_name as string,signerCapacity:r.signer_capacity as string,
+    // An expired signer link may still start a FRESH email OTP for revocation;
+    // do not reveal the old signed document or identity after its read TTL.
+    const expired = new Date(r.token_expires_at).getTime() <= Date.now();
+    return {signerName:expired?"":r.signer_name as string,
+      signerCapacity:expired?"":r.signer_capacity as string,
       expiresAt:r.token_expires_at as Date,signed:true,
-      revoked:Boolean(v.rows[0]?.revoked)};
+      revoked:Boolean(v.rows[0]?.revoked),linkExpired:expired};
   }
-  if(r.status !== "pending") deny(404,"CLIENT_CONSENT_LINK_INVALID","Enlace no vigente.");
+  if(r.status !== "pending" || new Date(r.token_expires_at).getTime() <= Date.now())
+    deny(404,"CLIENT_CONSENT_LINK_INVALID","Enlace no vigente.");
   return { signerName:r.signer_name as string, signerCapacity:r.signer_capacity as string,
     document:r.exact_document_content as string, expiresAt:r.token_expires_at as Date,
     signed:false,revoked:false };
@@ -319,8 +323,9 @@ export async function getClientConsentReceipt(token:string){
 
 /** The signer can revoke a prior OTP authorization with a FRESH email OTP.
  * Historical acceptance remains untouched; a separate immutable row negates
- * any subsequent transfer.  The URL stays usable only within its 48h window;
- * later privacy requests are handled through the authenticated support flow.
+ * any subsequent transfer. The old link cannot sign or view the expired
+ * document, but it can trigger a new OTP to the ORIGINAL registered signer
+ * even beyond 48 hours. Possession of the link ALONE cannot revoke.
  */
 export async function prepareConsentRevocationOtp(token:string){
   if(!validToken(token)) deny(404,"CLIENT_CONSENT_LINK_INVALID","Enlace inválido.");
@@ -335,19 +340,25 @@ export async function prepareConsentRevocationOtp(token:string){
       "WHERE c.token_hash=$1 FOR UPDATE OF c",[sha(token)],
     );
     const c=r.rows[0];
-    if(!c || c.status!=="verified" ||
-        new Date(c.token_expires_at).getTime()<=Date.now())
-      deny(404,"CLIENT_CONSENT_LINK_INVALID","Enlace no válido o vencido.");
+    if(!c || c.status!=="verified")
+      deny(404,"CLIENT_CONSENT_LINK_INVALID","Autorización no disponible para revocación.");
     if(c.revocation_id) deny(409,"CLIENT_CONSENT_ALREADY_REVOKED","La autorización ya fue revocada.");
-    if(c.otp_request_count>=5) deny(429,"CLIENT_CONSENT_OTP_LIMIT","Se alcanzó el máximo de códigos.");
+    // Lifetime counters would make revocation impossible after a few days:
+    // apply a rolling hourly ceiling so a new verified OTP can be requested later.
+    const withinHour = c.otp_requested_at &&
+      (Date.now()-new Date(c.otp_requested_at).getTime()) < 60*60*1000;
+    if(withinHour && c.otp_request_count>=5)
+      deny(429,"CLIENT_CONSENT_OTP_LIMIT","Se alcanzó el máximo de códigos por hora.");
     if(c.otp_resend_after && new Date(c.otp_resend_after).getTime()>Date.now())
       deny(429,"CLIENT_CONSENT_OTP_COOLDOWN","Espera antes de solicitar un código.");
     const code=generateOtpCode();
     await db.query(
       "UPDATE public.client_consent_challenges SET otp_hash=$2,"+
       "otp_expires_at=NOW()+INTERVAL '10 minutes',otp_attempts=0,"+
-      "otp_request_count=otp_request_count+1,otp_requested_at=NOW(),"+
-      "otp_resend_after=NOW()+INTERVAL '60 seconds',updated_at=NOW() WHERE id=$1",
+      "otp_request_count=CASE WHEN otp_requested_at IS NULL OR "+
+      "otp_requested_at < NOW()-INTERVAL '1 hour' THEN 1 ELSE otp_request_count+1 END,"+
+      "otp_requested_at=NOW(),otp_resend_after=NOW()+INTERVAL '60 seconds',"+
+      "updated_at=NOW() WHERE id=$1",
       [c.id,otpHash(c.id,code)],
     );
     await db.query("COMMIT");
@@ -372,8 +383,8 @@ export async function revokeConsentWithOtp(input:{
       "WHERE c.token_hash=$1 FOR UPDATE OF c",[sha(input.token)],
     );
     const c=q.rows[0];
-    if(!c||c.status!=="verified"||new Date(c.token_expires_at).getTime()<=Date.now())
-      deny(404,"CLIENT_CONSENT_LINK_INVALID","Enlace inválido o caducado.");
+    if(!c||c.status!=="verified")
+      deny(404,"CLIENT_CONSENT_LINK_INVALID","La autorización no está disponible.");
     if(c.revocation_id) deny(409,"CLIENT_CONSENT_ALREADY_REVOKED","Autorización ya revocada.");
     if(!c.otp_hash || !c.otp_expires_at || !c.otp_requested_at ||
        new Date(c.otp_expires_at).getTime()<=Date.now() ||
