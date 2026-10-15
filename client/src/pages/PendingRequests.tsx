@@ -308,21 +308,21 @@ export default function PendingRequests() {
     },
   });
 
-  const markAsSentMutation = useMutation({
+  const startContactMutation = useMutation({
     mutationFn: async (targetId: string) => {
-      return apiRequest("PATCH", `/api/credit-submission-targets/${targetId}/mark-sent`, {});
+      return apiRequest("PATCH", `/api/credit-submission-targets/${targetId}/start-commercial-contact`, {});
     },
     onSuccess: () => {
       toast({
-        title: "Marcado como enviado",
-        description: "La solicitud ha sido marcada como enviada a la financiera",
+        title: "Gestión comercial iniciada",
+        description: "Se registró la gestión interna sin compartir documentos ni expediente.",
       });
       invalidateAllCreditQueries(queryClient);
     },
     onError: (error: any) => {
       toast({
-        title: "Expediente no enviado",
-        description: error?.message || "Se requiere autorización verificable del cliente para compartir el expediente con la financiera.",
+        title: "No se pudo iniciar la gestión",
+        description: error?.message || "Comprueba el visto bueno interno antes de continuar.",
         variant: "destructive",
       });
     },
@@ -651,7 +651,7 @@ export default function PendingRequests() {
   // Calculate counts from all targets
   const pendingCount = allTargets?.filter(t => t.status === 'pending_admin').length || 0;
   const approvedCount = allTargets?.filter(t => t.status === 'approved').length || 0;
-  const sentCount = allTargets?.filter(t => t.status === 'sent').length || 0;
+  const sentCount = allTargets?.filter(t => t.status === 'contact_initiated' || t.status === 'sent').length || 0;
   const returnedCount = allTargets?.filter(t => t.status === 'returned_to_broker').length || 0;
   const winnerCount = allTargets?.filter(t => t.status === 'selected_winner' || t.isWinner).length || 0;
 
@@ -717,7 +717,7 @@ export default function PendingRequests() {
               {/* Enviadas a Financiera */}
               <div className="bg-white border border-slate-200/80 rounded-xl p-3.5 shadow-sm hover:border-slate-300 transition-colors">
                 <div className="flex items-center justify-between gap-2 mb-2">
-                  <span className="text-xs font-medium text-slate-500 truncate">Enviadas</span>
+                  <span className="text-xs font-medium text-slate-500 truncate">Gestión iniciada</span>
                   <div className="h-7 w-7 rounded-lg bg-blue-50 text-blue-700 flex items-center justify-center shrink-0 border border-blue-200/60">
                     <Send className="w-3.5 h-3.5" />
                   </div>
@@ -839,7 +839,8 @@ export default function PendingRequests() {
                     <SelectItem value="all">Todos los Estados</SelectItem>
                     <SelectItem value="pending_admin">Pendiente Aprobación</SelectItem>
                     <SelectItem value="approved">Aprobada</SelectItem>
-                    <SelectItem value="sent">Enviada</SelectItem>
+                    <SelectItem value="contact_initiated">Gestión comercial iniciada</SelectItem>
+                    <SelectItem value="sent">Enviada (histórica)</SelectItem>
                     <SelectItem value="institution_approved">Propuesta Recibida</SelectItem>
                     <SelectItem value="selected_winner">Seleccionada</SelectItem>
                     <SelectItem value="dispersed">Dispersada</SelectItem>
@@ -1048,16 +1049,7 @@ export default function PendingRequests() {
                                     </div>
                                     <div className="flex items-center gap-2">
                                       {getStatusBadge(target.status)}
-                                      <Button
-                                        size="sm"
-                                        variant="outline"
-                                        onClick={() => handleDownloadPDF(target.id)}
-                                        className="h-8 px-2.5 text-xs border-slate-200 text-slate-700 hover:bg-slate-50"
-                                        data-testid={`button-download-pdf-${target.id}`}
-                                      >
-                                        <Download className="w-3.5 h-3.5 mr-1 text-slate-500" />
-                                        PDF
-                                      </Button>
+                                      {/* PDF institucional no disponible en MVP: requiere divulgación aprobada. */}
                                     </div>
                                   </div>
 
@@ -1095,50 +1087,23 @@ export default function PendingRequests() {
                                   )}
 
                                   {target.status === 'approved' && (
-                                    <div className="pt-1">
+                                    <div className="pt-1 space-y-2">
                                       <Button
                                         size="sm"
-                                        onClick={() => markAsSentMutation.mutate(target.id)}
-                                        disabled={markAsSentMutation.isPending}
+                                        onClick={() => startContactMutation.mutate(target.id)}
+                                        disabled={startContactMutation.isPending}
                                         className="h-8 text-xs font-medium bg-primary hover:bg-primary-dark text-white shadow-xs"
-                                        data-testid={`button-mark-sent-${target.id}`}
+                                        data-testid={`button-start-commercial-contact-${target.id}`}
                                       >
                                         <Send className="w-3.5 h-3.5 mr-1.5" />
-                                        Marcar como Enviado a Financiera
+                                        Iniciar gestión comercial
                                       </Button>
-                                      {user?.role === "super_admin" && (
-                                        <div className="mt-2">
-                                          <Button size="sm" variant="outline"
-                                            className="h-8 text-xs" onClick={()=>{
-                                              setClientConsentReviewTarget(target);
-                                              setClientConsentReviewEvidenceId("");
-                                              setClientConsentReviewDocumentId("");
-                                              setClientConsentReviewNotes("");
-                                            }} data-testid={`button-review-client-consent-${target.id}`}>
-                                            <ShieldCheck className="w-3.5 h-3.5 mr-1.5" />
-                                            Revisar firma y representación del cliente
-                                          </Button>
-                                        </div>
-                                      )}
-                                      <div className="mt-2">
-                                        <Button size="sm" variant="outline"
-                                          disabled={requestClientConsentMutation.isPending}
-                                          onClick={() => requestClientConsentMutation.mutate(target.id)}
-                                          className="h-8 text-xs"
-                                          data-testid={`button-request-client-consent-${target.id}`}>
-                                          <ShieldCheck className="w-3.5 h-3.5 mr-1.5" />
-                                          Solicitar autorización por correo al cliente
-                                        </Button>
-                                      </div>
-                                      <p className="mt-1 text-xs text-amber-700">
-                                        Primero el cliente firma por OTP y se conserva su evidencia.
-                                        La aprobación interna no equivale a su consentimiento. No se comparte
-                                        ninguna información hasta completar la autorización.
+                                      <p className="text-xs text-slate-600">
+                                        Registra el inicio de una gestión interna. No envía expedientes, datos ni documentos.
                                       </p>
                                     </div>
                                   )}
-
-                                  {target.status === 'sent' && (
+                                  {(target.status === 'contact_initiated' || target.status === 'sent') && (
                                     <div className="flex items-center gap-2 flex-wrap pt-1">
                                       <Button
                                         size="sm"
@@ -1477,7 +1442,7 @@ export default function PendingRequests() {
                         <FormItem>
                           <FormLabel>
                             {reviewAction === 'approve' 
-                              ? 'Detalles para enviar a la financiera (opcional)' 
+                              ? 'Contexto para gestión interna (opcional)' 
                               : 'Comentarios para el Broker (opcional)'}
                           </FormLabel>
                           <FormControl>
@@ -1485,7 +1450,7 @@ export default function PendingRequests() {
                               {...field} 
                               rows={3}
                               placeholder={reviewAction === 'approve'
-                                ? "Información adicional que se enviará a la financiera..."
+                                ? "Notas para análisis y gestión interna..."
                                 : "Explica qué necesita modificar o qué información falta..."
                               }
                               data-testid="textarea-details"

@@ -4792,7 +4792,7 @@ export class DbStorage implements IStorage {
       if (pending.length === 0 && !otherWinner) {
         // Do not regress an active/partially funded request during sibling review.
         await tx.update(creditSubmissionRequests).set({
-          status: "sent_to_institutions", updatedAt: new Date(),
+          status: "in_progress", updatedAt: new Date(),
         }).where(and(
           eq(creditSubmissionRequests.id, locked.requestId),
           inArray(creditSubmissionRequests.status,

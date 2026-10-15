@@ -5,6 +5,7 @@ import pg from "pg";
 import { pool as appPool } from "../../server/db";
 import { markTargetSentWithClientConsent, withAuthorizedClientPdfDisclosure, revokeConsentWithOtp } from "../../server/clientConsentService";
 import { getFormalizationOtpSecret } from "../../server/legalDocuments";
+import { startInternalCommercialContact } from "../../server/commercialContactService";
 import { assertSafeIsolatedTestDatabase } from "../testDbSafety";
 
 const url=process.env.TEST_DATABASE_URL;
@@ -151,6 +152,39 @@ describeIsolated("LEG-10 real PostgreSQL concurrency: revocation vs send",()=>{
       await unlock();
     }
   }
+  it("records internal outreach without LEG-10 or external disclosure",async()=>{
+    const f=await seed();
+    delete process.env.CLIENT_CONSENT_RELEASE_APPROVED;
+    try{
+      const out=await startInternalCommercialContact({targetId:f.target,reviewedBy:"internal-admin"});
+      expect(out).toEqual({alreadyStarted:false});
+      const status=await db.query(
+        "SELECT t.status AS target_status,s.status AS request_status FROM public.credit_submission_targets t "+
+        "JOIN public.credit_submission_requests s ON s.id=t.request_id WHERE t.id=$1",[f.target]);
+      expect(status.rows[0]).toEqual({target_status:"contact_initiated",request_status:"in_progress"});
+      await expect(f.send()).rejects.toMatchObject({code:"CLIENT_CONSENT_REQUIRED"});
+    }finally{process.env.CLIENT_CONSENT_RELEASE_APPROVED="true";}
+  });
+  it("serializes repeated internal outreach without creating a second transition",async()=>{
+    const f=await seed();
+    const attempts=await Promise.all([
+      startInternalCommercialContact({targetId:f.target,reviewedBy:"admin-A"}),
+      startInternalCommercialContact({targetId:f.target,reviewedBy:"admin-B"}),
+    ]);
+    expect(attempts.filter(x=>x.alreadyStarted)).toHaveLength(1);
+    const found=await db.query("SELECT status FROM public.credit_submission_targets WHERE id=$1",[f.target]);
+    expect(found.rows[0].status).toBe("contact_initiated");
+  });
+  it("rejects commercial outreach for selected targets and closed requests",async()=>{
+    const selected=await seed();
+    await db.query("UPDATE public.credit_submission_targets SET status='selected_winner',is_winner=true WHERE id=$1",[selected.target]);
+    await expect(startInternalCommercialContact({targetId:selected.target,reviewedBy:"admin"}))
+      .rejects.toMatchObject({code:"TARGET_ALREADY_SELECTED"});
+    const closed=await seed();
+    await db.query("UPDATE public.credit_submission_requests SET status='cancelled' WHERE id=$1",[closed.request]);
+    await expect(startInternalCommercialContact({targetId:closed.target,reviewedBy:"admin"}))
+      .rejects.toMatchObject({code:"REQUEST_CLOSED"});
+  });
   it("rolls back both status changes if the request update fails",async()=>{
     const f=await seed();
     await db.query("CREATE OR REPLACE FUNCTION public.leg10_reject_request_update() RETURNS TRIGGER LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'synthetic request write failure'; END; $$");

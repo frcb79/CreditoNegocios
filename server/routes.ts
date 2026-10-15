@@ -10,6 +10,7 @@ import { authorizeClientSensitiveDisclosure } from "./clientConsentGate";
 import { setupAuth, isAuthenticated } from "./auth";
 import { registerLegalRoutes } from "./legalRoutes";
 import { registerClientConsentPublicRoutes } from "./clientConsentRoutes";
+import { startInternalCommercialContact, CommercialContactError } from "./commercialContactService";
 import { startClientConsent, invalidateConsentRequest, hasValidClientConsent, listClientConsentEvidenceForTarget, verifyCompanySignerAuthority, markTargetSentWithClientConsent, withAuthorizedClientPdfDisclosure, ClientConsentError } from "./clientConsentService";
 import { sendClientConsentLinkEmail } from "./emailService";
 import { validateRegistrationAcceptance, getPublishedLegalDocument } from "./legalDocuments";
@@ -11327,7 +11328,7 @@ function maskCLABE(clabe?: string | null): string | null {
             userId: request.brokerId,
             type: 'submission_update',
             title: 'Solicitud aprobada por el administrador',
-            message: adminNotes || 'Tu solicitud fue aprobada y será enviada a la institución.',
+            message: adminNotes || 'Tu solicitud recibió visto bueno interno y está lista para gestión comercial.',
             relatedEntityType: 'credit_submission_target',
             relatedEntityId: rawTarget.id,
             priority: 'high',
@@ -11830,6 +11831,30 @@ function maskCLABE(clabe?: string | null): string | null {
       }
     }
   });
+
+  // MVP: record outreach coordination only; do NOT release client data/files.
+  app.patch('/api/credit-submission-targets/:id/start-commercial-contact',
+    isAuthenticated,requireModuleAndAction('aprobaciones','edit'),async(req:any,res)=>{
+      try{
+        const userId=req.user?.claims?.sub||req.user?.id;
+        const user=userId?await storage.getUser(userId):null;
+        if(!user||!['admin','super_admin'].includes(user.role))
+          return res.status(403).json({code:'CONTACT_ADMIN_ONLY',message:'Solo Administración puede iniciar esta gestión.'});
+        const result=await startInternalCommercialContact({
+          targetId:String(req.params.id),reviewedBy:userId,
+        });
+        const updated=await storage.getCreditSubmissionTarget(String(req.params.id));
+        if(!updated) return res.status(503).json({message:'No se pudo recuperar el estado de la gestión.'});
+        return res.json({target:projectSubmissionTarget(await enrichCreditSubmissionTarget(updated),user.role),
+          alreadyStarted:result.alreadyStarted,
+          message:'Gestión comercial interna iniciada. No se envió expediente ni documentación.'});
+      }catch(error){
+        if(error instanceof CommercialContactError)
+          return res.status(error.status).json({code:error.code,message:error.message});
+        console.error('[COMMERCIAL-CONTACT] Internal status update failed:',error);
+        return res.status(503).json({message:'No se pudo iniciar la gestión comercial.'});
+      }
+    });
 
   // 2. Mark submission target as sent - Admins only
   app.patch('/api/credit-submission-targets/:id/mark-sent', isAuthenticated, requireModuleAndAction('aprobaciones', 'edit'), async (req: any, res) => {
