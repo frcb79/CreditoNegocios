@@ -29,6 +29,8 @@ CREATE TABLE IF NOT EXISTS public.client_consent_challenges (
   target_id VARCHAR NOT NULL REFERENCES public.credit_submission_targets(id) ON DELETE RESTRICT,
   institution_id VARCHAR NOT NULL REFERENCES public.financial_institutions(id) ON DELETE RESTRICT,
   document_version_id VARCHAR NOT NULL REFERENCES public.client_consent_document_versions(id) ON DELETE RESTRICT,
+  exact_document_content TEXT NOT NULL,
+  exact_document_sha256 VARCHAR(64) NOT NULL,
   purpose VARCHAR(80) NOT NULL DEFAULT 'financial_institution_submission',
   signer_name TEXT NOT NULL,
   signer_email TEXT NOT NULL,
@@ -107,3 +109,22 @@ DROP TRIGGER IF EXISTS client_consent_revocations_immutable ON public.client_con
 CREATE TRIGGER client_consent_revocations_immutable
 BEFORE UPDATE OR DELETE ON public.client_consent_revocations
 FOR EACH ROW EXECUTE FUNCTION public.reject_client_consent_evidence_mutation();
+
+-- A legal document becomes immutable after publication (not merely after signing).
+CREATE OR REPLACE FUNCTION public.reject_published_client_consent_document_change()
+RETURNS TRIGGER LANGUAGE plpgsql AS $$
+BEGIN
+  IF TG_OP = 'DELETE' AND OLD.status = 'published' THEN
+    RAISE EXCEPTION 'No se puede eliminar una versión LEG-10 publicada';
+  END IF;
+  IF TG_OP = 'UPDATE' AND OLD.status = 'published' THEN
+    RAISE EXCEPTION 'No se puede editar una versión LEG-10 publicada';
+  END IF;
+  RETURN CASE WHEN TG_OP = 'DELETE' THEN OLD ELSE NEW END;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS client_consent_documents_immutable ON public.client_consent_document_versions;
+CREATE TRIGGER client_consent_documents_immutable
+BEFORE UPDATE OR DELETE ON public.client_consent_document_versions
+FOR EACH ROW EXECUTE FUNCTION public.reject_published_client_consent_document_change();
