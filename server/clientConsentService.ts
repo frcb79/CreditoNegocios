@@ -192,8 +192,9 @@ export async function hasValidClientConsent(scope: {
   try {
     const rows = await pool.query(
       "SELECT e.exact_document_content,e.exact_document_sha256,d.content,d.content_sha256," +
-      "e.signer_capacity,e.representation_review_status " +
+      "e.signer_capacity,rep.result AS representation_review_status " +
       "FROM public.client_consent_evidences e " +
+      "LEFT JOIN public.client_consent_representation_reviews rep ON rep.evidence_id=e.id " +
       "JOIN public.client_consent_document_versions d ON d.id=e.document_version_id " +
       "LEFT JOIN public.client_consent_revocations r ON r.evidence_id=e.id " +
       "WHERE e.tenant_id=$1 AND e.client_id=$2 AND e.target_id=$3 AND e.institution_id=$4 " +
@@ -207,4 +208,52 @@ export async function hasValidClientConsent(scope: {
       (e.signer_capacity==="client" ||
        (e.signer_capacity==="legal_representative" && e.representation_review_status==="verified")));
   } catch { return false; }
+}
+
+
+/** Only a reviewer with supporting evidence can make a PM OTP usable for disclosure.
+ * Caller authorization is enforced by the authenticated Super Admin endpoint. */
+export async function verifyCompanySignerAuthority(input:{
+  targetId:string;clientId:string;evidenceId:string;documentId:string;
+  reviewedBy:string;notes:string;
+}) {
+  if(!input.notes?.trim() || input.notes.trim().length < 15 ||
+     !input.documentId || !input.evidenceId) {
+    deny(400,"CLIENT_REP_REVIEW_INCOMPLETE",
+      "Identifica el documento que acredita facultades y detalla la revisión realizada.");
+  }
+  const db=await pool.connect();
+  try {
+    await db.query("BEGIN");
+    const found=await db.query(
+      "SELECT * FROM public.client_consent_evidences WHERE id=$1 AND target_id=$2 AND client_id=$3 FOR UPDATE",
+      [input.evidenceId,input.targetId,input.clientId],
+    );
+    const e=found.rows[0];
+    if(!e || e.signer_capacity!=="legal_representative")
+      deny(404,"CLIENT_REP_EVIDENCE_INVALID","No existe una firma empresarial válida para esa solicitud.");
+    const proof=await db.query(
+      "SELECT id FROM public.documents WHERE id=$1 AND client_id=$2 " +
+      "AND (tenant_id=$3 OR tenant_id IS NULL) AND is_valid IS NOT FALSE",
+      [input.documentId,input.clientId,e.tenant_id],
+    );
+    if(!proof.rows[0])
+      deny(409,"CLIENT_REP_DOCUMENT_INVALID","El comprobante de representación no pertenece a este cliente.");
+    const rev=await db.query(
+      "SELECT id FROM public.client_consent_revocations WHERE evidence_id=$1",
+      [input.evidenceId],
+    );
+    if(rev.rows.length) deny(409,"CLIENT_CONSENT_REVOKED","La autorización del cliente fue revocada.");
+    await db.query(
+      "INSERT INTO public.client_consent_representation_reviews "+
+      "(evidence_id,supporting_document_id,reviewed_by,signer_name,capacity_notes,result) "+
+      "VALUES($1,$2,$3,$4,$5,'verified')",
+      [input.evidenceId,input.documentId,input.reviewedBy,e.signer_name,input.notes.trim()],
+    );
+    await db.query("COMMIT");
+    return {success:true};
+  } catch(e) {
+    await db.query("ROLLBACK").catch(()=>{});
+    throw e;
+  } finally{db.release();}
 }
