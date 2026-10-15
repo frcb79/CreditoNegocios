@@ -64,6 +64,10 @@ jobs:
           cache: 'npm'
       - name: Install dependencies
         run: npm ci --no-audit --no-fund
+      - name: Test LEG-10 customer consent evidence schema and immutability in isolated PostgreSQL
+        run: npm test -- --runInBand --coverage=false --forceExit tests/integration/postgres-client-consent-migration.test.ts
+      - name: Test LEG-10 concurrent revocation vs send against real isolated PostgreSQL
+        run: npm test -- --runInBand --coverage=false --forceExit tests/integration/postgres-client-consent-concurrency.test.ts
       - name: Test isolated PostgreSQL migration 0005
         run: npm test -- --runInBand --coverage=false --forceExit tests/integration/postgres-versioning-migration.test.ts
       - name: Test isolated PostgreSQL canonical lineage migration 0009
@@ -82,7 +86,3 @@ jobs:
         run: npm test -- --runInBand --coverage=false --forceExit tests/integration/postgres-commercial-config-atomic.test.ts
       - name: Test Master Broker rate version atomicity and concurrency in PostgreSQL
         run: npm test -- --runInBand --coverage=false --forceExit tests/integration/postgres-network-rates-atomic.test.ts
-      - name: Test LEG-10 customer consent evidence schema and immutability in isolated PostgreSQL
-        run: npm test -- --runInBand --coverage=false --forceExit tests/integration/postgres-client-consent-migration.test.ts
-      - name: Test LEG-10 concurrent revocation vs send against real isolated PostgreSQL
-        run: npm test -- --runInBand --coverage=false --forceExit tests/integration/postgres-client-consent-concurrency.test.ts

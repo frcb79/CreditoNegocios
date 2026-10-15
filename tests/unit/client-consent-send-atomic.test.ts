@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import type { PoolClient } from "pg";
 import { pool } from "../../server/db";
-import { markTargetSentWithClientConsent } from "../../server/clientConsentService";
+import { markTargetSentWithClientConsent,withAuthorizedClientPdfDisclosure } from "../../server/clientConsentService";
 
 describe("LEG-10: atomic send vs OTP revocation",()=>{
   const prev=process.env.CLIENT_CONSENT_RELEASE_APPROVED;
@@ -84,4 +84,45 @@ describe("LEG-10: atomic send vs OTP revocation",()=>{
     await expect(markTargetSentWithClientConsent(scope)).rejects.toMatchObject({code:"CLIENT_CONSENT_SCOPE_MISMATCH"});
     expect(query.mock.calls.some(([q])=>String(q).includes("client_consent_evidences e"))).toBe(false);
   });
+  it("final PDF gate denies revoked consent without delivering any bytes",async()=>{
+    process.env.CLIENT_CONSENT_RELEASE_APPROVED="true";
+    const {query}=mock({...evidence,revocation_id:"revoked"});
+    const deliver=jest.fn(async()=>{});
+    await expect(withAuthorizedClientPdfDisclosure({
+      tenantId:scope.tenantId,clientId:scope.clientId,targetId:scope.targetId,
+      institutionId:scope.institutionId,
+    },deliver)).rejects.toMatchObject({code:"CLIENT_CONSENT_REQUIRED"});
+    expect(deliver).not.toHaveBeenCalled();
+    expect(query.mock.calls.map(([sql])=>sql)).toContain("ROLLBACK");
+  });
+  it("final PDF gate holds the target lock until delivery is completed",async()=>{
+    process.env.CLIENT_CONSENT_RELEASE_APPROVED="true";
+    const {query,release}=mock(evidence);
+    const events:string[]=[];
+    const deliver=jest.fn(async()=>{events.push("deliver");});
+    await withAuthorizedClientPdfDisclosure({
+      tenantId:scope.tenantId,clientId:scope.clientId,targetId:scope.targetId,
+      institutionId:scope.institutionId,
+    },deliver);
+    const sql=query.mock.calls.map(([q])=>String(q));
+    expect(sql[0]).toBe("BEGIN");
+    expect(sql[1]).toContain("FOR UPDATE OF t,s");
+    expect(sql.findIndex(q=>q.includes("client_consent_evidences"))).toBeGreaterThan(1);
+    expect(deliver).toHaveBeenCalledTimes(1);
+    expect(events).toEqual(["deliver"]);
+    expect(sql.at(-1)).toBe("COMMIT");
+    expect(release).toHaveBeenCalledTimes(1);
+  });
+  it("final PDF gate revalidates recipient identity under the row lock",async()=>{
+    process.env.CLIENT_CONSENT_RELEASE_APPROVED="true";
+    const {query}=mock(evidence,{financial_institution_id:"switched"});
+    const deliver=jest.fn(async()=>{});
+    await expect(withAuthorizedClientPdfDisclosure({
+      tenantId:scope.tenantId,clientId:scope.clientId,targetId:scope.targetId,
+      institutionId:scope.institutionId,
+    },deliver)).rejects.toMatchObject({code:"CLIENT_CONSENT_SCOPE_MISMATCH"});
+    expect(deliver).not.toHaveBeenCalled();
+    expect(query.mock.calls.map(([q])=>q)).toContain("ROLLBACK");
+  });
+
 });

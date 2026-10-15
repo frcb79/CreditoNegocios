@@ -3,7 +3,7 @@ import path from "node:path";
 import { createHash, createHmac, randomBytes, randomUUID } from "node:crypto";
 import pg from "pg";
 import { pool as appPool } from "../../server/db";
-import { markTargetSentWithClientConsent, revokeConsentWithOtp } from "../../server/clientConsentService";
+import { markTargetSentWithClientConsent, withAuthorizedClientPdfDisclosure, revokeConsentWithOtp } from "../../server/clientConsentService";
 import { getFormalizationOtpSecret } from "../../server/legalDocuments";
 import { assertSafeIsolatedTestDatabase } from "../testDbSafety";
 
@@ -163,6 +163,46 @@ describeIsolated("LEG-10 real PostgreSQL concurrency: revocation vs send",()=>{
       await db.query("DROP TRIGGER leg10_reject_request_update ON public.credit_submission_requests");
       await db.query("DROP FUNCTION public.leg10_reject_request_update()");
     }
+  },20000);
+
+  it("keeps the disclosure lock while an OTP revocation waits for PDF delivery",async()=>{
+    const f=await seed();
+    const row=await db.query(
+      "SELECT s.tenant_id,s.client_id,t.financial_institution_id "+
+      "FROM public.credit_submission_targets t "+
+      "JOIN public.credit_submission_requests s ON s.id=t.request_id WHERE t.id=$1",
+      [f.target]);
+    const scope={tenantId:row.rows[0].tenant_id,clientId:row.rows[0].client_id,
+      targetId:f.target,institutionId:row.rows[0].financial_institution_id};
+    let revocation:ReturnType<typeof f.revoke>|undefined;
+    let sent=false;
+    await withAuthorizedClientPdfDisclosure(scope,async()=>{
+      revocation=f.revoke();
+      await awaitLockWait("SELECT id FROM public.credit_submission_targets");
+      sent=true;
+    });
+    expect(sent).toBe(true);
+    expect(await revocation).toMatchObject({success:true});
+    const again=jest.fn(async()=>{});
+    await expect(withAuthorizedClientPdfDisclosure(scope,again))
+      .rejects.toMatchObject({code:"CLIENT_CONSENT_REQUIRED"});
+    expect(again).not.toHaveBeenCalled();
+  },20000);
+  it("rejects a PDF export after revocation without invoking the delivery callback",async()=>{
+    const f=await seed();
+    const revoked=await f.revoke();
+    expect(revoked).toMatchObject({success:true});
+    const delivered=jest.fn(async()=>{});
+    const row=await db.query(
+      "SELECT s.tenant_id,s.client_id,t.financial_institution_id "+
+      "FROM public.credit_submission_targets t "+
+      "JOIN public.credit_submission_requests s ON s.id=t.request_id WHERE t.id=$1",
+      [f.target]);
+    const scope={tenantId:row.rows[0].tenant_id,clientId:row.rows[0].client_id,
+      targetId:f.target,institutionId:row.rows[0].financial_institution_id};
+    await expect(withAuthorizedClientPdfDisclosure(scope,delivered))
+      .rejects.toMatchObject({code:"CLIENT_CONSENT_REQUIRED"});
+    expect(delivered).not.toHaveBeenCalled();
   },20000);
   it("revocation locks first: a competing send is rejected, both states stay unchanged",async()=>{
     await order("revoke");

@@ -309,6 +309,45 @@ export async function markTargetSentWithClientConsent(input:{
   }finally{conn.release();}
 }
 
+
+/** Final authorization for PDF disclosure. No bytes may leave the server
+ * before the recipient-bound evidence is rechecked under the same target lock
+ * used by OTP revocation. Keep that lock through response completion. */
+export async function withAuthorizedClientPdfDisclosure(scope:{
+  tenantId:string;clientId:string;targetId:string;institutionId:string;
+},deliver:()=>Promise<void>):Promise<void>{
+  if(process.env.CLIENT_CONSENT_RELEASE_APPROVED!=="true")
+    deny(409,"CLIENT_CONSENT_REQUIRED","La autorización del cliente aún no está habilitada.");
+  if(Object.values(scope).some(v=>typeof v!=="string"||!v.trim()))
+    deny(409,"CLIENT_CONSENT_SCOPE_INCOMPLETE","El expediente carece de identidad verificable.");
+  const conn=await pool.connect();
+  try{
+    await conn.query("BEGIN");
+    const locked=await conn.query(
+      "SELECT t.financial_institution_id,s.client_id,s.tenant_id,"+
+      "c.tenant_id AS client_tenant_id "+
+      "FROM public.credit_submission_targets t "+
+      "JOIN public.credit_submission_requests s ON s.id=t.request_id "+
+      "JOIN public.clients c ON c.id=s.client_id "+
+      "WHERE t.id=$1 FOR UPDATE OF t,s",[scope.targetId],
+    );
+    const row=locked.rows[0];
+    if(!row||row.client_id!==scope.clientId||
+       row.tenant_id!==scope.tenantId||row.client_tenant_id!==scope.tenantId||
+       row.financial_institution_id!==scope.institutionId)
+      deny(409,"CLIENT_CONSENT_SCOPE_MISMATCH","El destinatario o el titular del expediente cambió.");
+    if(!await hasValidClientConsent(scope,conn))
+      deny(409,"CLIENT_CONSENT_REQUIRED","La autorización del cliente no está vigente.");
+    // This awaits the response's 'finish' event; revocation cannot commit
+    // while the HTTP response is still being handed off.
+    await deliver();
+    await conn.query("COMMIT");
+  }catch(e){
+    await conn.query("ROLLBACK").catch(()=>{});
+    throw e;
+  }finally{conn.release();}
+}
+
 /** Read-only, minimal review metadata for authorized Super Admin only.
  * Do not return link tokens, OTP data, IP, browser fingerprints or raw document content. */
 export async function listClientConsentEvidenceForTarget(scope:{

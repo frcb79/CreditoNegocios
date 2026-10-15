@@ -10,7 +10,7 @@ import { authorizeClientSensitiveDisclosure } from "./clientConsentGate";
 import { setupAuth, isAuthenticated } from "./auth";
 import { registerLegalRoutes } from "./legalRoutes";
 import { registerClientConsentPublicRoutes } from "./clientConsentRoutes";
-import { startClientConsent, invalidateConsentRequest, hasValidClientConsent, listClientConsentEvidenceForTarget, verifyCompanySignerAuthority, markTargetSentWithClientConsent, ClientConsentError } from "./clientConsentService";
+import { startClientConsent, invalidateConsentRequest, hasValidClientConsent, listClientConsentEvidenceForTarget, verifyCompanySignerAuthority, markTargetSentWithClientConsent, withAuthorizedClientPdfDisclosure, ClientConsentError } from "./clientConsentService";
 import { sendClientConsentLinkEmail } from "./emailService";
 import { validateRegistrationAcceptance, getPublishedLegalDocument } from "./legalDocuments";
 import PDFDocument from "pdfkit";
@@ -11668,10 +11668,14 @@ function maskCLABE(clabe?: string | null): string | null {
 
       const doc = new PDFDocument({ margin: 50 });
       
-      res.setHeader('Content-Type', 'application/pdf');
-      res.setHeader('Content-Disposition', `attachment; filename=solicitud-${id}.pdf`);
-      
-      doc.pipe(res);
+      // Build fully in memory first. A revocation may occur while a complex
+      // PDF is rendering; do not stream even a header until the FINAL gate.
+      const chunks: Buffer[] = [];
+      const pdfReady = new Promise<Buffer>((resolve,reject)=>{
+        doc.on('data',(chunk:Buffer)=>chunks.push(chunk));
+        doc.once('end',()=>resolve(Buffer.concat(chunks)));
+        doc.once('error',reject);
+      });
       
       // Header con logo placeholder y título
       doc.fontSize(24).fillColor('#1e40af').text('SOLICITUD DE CRÉDITO', { align: 'center' });
@@ -11787,7 +11791,39 @@ function maskCLABE(clabe?: string | null): string | null {
         .text(`Generado el ${new Date().toLocaleString('es-MX')}`, 50, 750, { align: 'center' });
       
       doc.end();
+      const pdfBytes=await pdfReady;
+      await withAuthorizedClientPdfDisclosure({
+        tenantId:submission?.tenantId || pdfClient?.tenantId || '',
+        clientId:submission?.clientId || '',
+        targetId:rawTarget.id,
+        institutionId:rawTarget.financialInstitutionId,
+      },async()=>{
+        // Keep the target lock until the complete PDF has been handed to the
+        // response stream. A disconnect rolls back and releases the lock.
+        if(res.destroyed) throw new Error("PDF_CLIENT_DISCONNECTED");
+        res.setHeader('Content-Type','application/pdf');
+        res.setHeader('Cache-Control','private, no-store');
+        res.setHeader('Content-Disposition',`attachment; filename=solicitud-${id}.pdf`);
+        await new Promise<void>((resolve,reject)=>{
+          const cleanup=()=>{
+            res.off('finish',finished);
+            res.off('close',closed);
+            res.off('error',failed);
+          };
+          const finished=()=>{cleanup();resolve();};
+          const closed=()=>{cleanup();reject(new Error("PDF_CLIENT_DISCONNECTED"));};
+          const failed=(e:Error)=>{cleanup();reject(e);};
+          res.once('finish',finished);
+          res.once('close',closed);
+          res.once('error',failed);
+          try{res.end(pdfBytes);}catch(e){cleanup();reject(e);}
+        });
+      });
     } catch (error) {
+      if(error instanceof ClientConsentError){
+        if(!res.headersSent) return res.status(error.status).json({code:error.code,message:error.message});
+        return;
+      }
       console.error("Error generating PDF:", error);
       if (!res.headersSent) {
         res.status(500).json({ message: "Failed to generate PDF" });
