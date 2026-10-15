@@ -1,5 +1,6 @@
 import { createHmac,createHash } from "node:crypto";
 import { pool } from "../../server/db";
+import type { PoolClient } from "pg";
 import {
   inspectConsentLink,prepareConsentRevocationOtp,revokeConsentWithOtp,
 } from "../../server/clientConsentService";
@@ -36,7 +37,8 @@ describe("LEG-10: revocation remains possible after signing link expires",()=>{
       return {rows:[]};
     });
     const release=jest.fn();
-    jest.spyOn(pool,"connect").mockResolvedValue({query,release} as any);
+    const connectSpy=jest.spyOn(pool,"connect") as unknown as jest.SpyInstance<Promise<PoolClient>,[]>;
+    connectSpy.mockResolvedValue({query,release} as unknown as PoolClient);
     const result=await prepareConsentRevocationOtp(token);
     expect(result.to).toBe("customer@example.test");
     expect(result.code).toMatch(/^\d{6}$/);
@@ -60,7 +62,8 @@ describe("LEG-10: revocation remains possible after signing link expires",()=>{
       return {rows:[]};
     });
     const release=jest.fn();
-    jest.spyOn(pool,"connect").mockResolvedValue({query,release} as any);
+    const connectSpy=jest.spyOn(pool,"connect") as unknown as jest.SpyInstance<Promise<PoolClient>,[]>;
+    connectSpy.mockResolvedValue({query,release} as unknown as PoolClient);
     const r=await revokeConsentWithOtp({token,code,ip:null,userAgent:"unit-test"});
     expect(r).toMatchObject({success:true});
     const mutations=query.mock.calls.map(([sql])=>String(sql));
