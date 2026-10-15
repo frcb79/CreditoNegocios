@@ -4839,13 +4839,23 @@ export class DbStorage implements IStorage {
             inArray(creditSubmissionTargets.status, ["selected_winner", "dispersed"])
           )
         )).limit(1);
-      if (!otherWinner) {
+      // A sibling still under review or in commercial contact keeps the
+      // parent request active; returning one target must not hide another.
+      const [otherActive] = await tx.select({ id: creditSubmissionTargets.id })
+        .from(creditSubmissionTargets)
+        .where(and(
+          eq(creditSubmissionTargets.requestId, locked.requestId),
+          ne(creditSubmissionTargets.id, locked.id),
+          inArray(creditSubmissionTargets.status,
+            ["pending_admin", "approved", "contact_initiated", "sent", "institution_approved"])
+        )).limit(1);
+      if (!otherWinner && !otherActive) {
         await tx.update(creditSubmissionRequests).set({
           status: "returned_to_broker", updatedAt: new Date(),
         }).where(and(
           eq(creditSubmissionRequests.id, locked.requestId),
           inArray(creditSubmissionRequests.status,
-            ["pending_admin", "approved", "sent_to_institutions", "returned_to_broker"])
+            ["pending_admin", "approved", "sent_to_institutions", "in_progress", "returned_to_broker"])
         ));
       }
       return updated;

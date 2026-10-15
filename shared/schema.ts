@@ -771,7 +771,7 @@ export const creditSubmissionTargets = pgTable("credit_submission_targets", {
   financialInstitutionId: varchar("financial_institution_id").notNull().references(() => financialInstitutions.id),
   institutionProductId: varchar("institution_product_id"),
   versionNumber: integer("version_number"),
-  status: varchar("status").notNull().default("pending_admin"), // "pending_admin", "approved", "returned_to_broker", "sent", "institution_approved", "institution_rejected", "selected_winner", "dispersed"
+  status: varchar("status").notNull().default("pending_admin"), // "pending_admin", "approved", "contact_initiated" (internal only), "returned_to_broker", "sent" (external disclosure), "institution_approved", "institution_rejected", "selected_winner", "dispersed"
   adminNotes: text("admin_notes"), // Admin internal notes
   details: text("details"), // Details sent to broker (when returned) or to institution (when approved)
   reviewedBy: varchar("reviewed_by").references(() => users.id), // Admin who reviewed
