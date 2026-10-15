@@ -40,6 +40,13 @@ export async function startClientConsent(input: ClientConsentRequest) {
   const db = await pool.connect();
   try {
     await db.query("BEGIN");
+    await db.query("SELECT pg_advisory_xact_lock(hashtext($1))",["leg10-"+input.targetId]);
+    const recent=await db.query(
+      "SELECT COUNT(*)::integer AS total FROM public.client_consent_challenges "+
+      "WHERE target_id=$1 AND created_at >= NOW()-INTERVAL '1 hour'",[input.targetId],
+    );
+    if(Number(recent.rows[0]?.total||0)>=5)
+      deny(429,"CLIENT_CONSENT_REQUEST_LIMIT","Se alcanzó el límite de solicitudes para esta financiera.");
     const legal = await db.query(
       "SELECT id, content, content_sha256 FROM public.client_consent_document_versions " +
       "WHERE status='published' AND effective_at <= NOW() ORDER BY effective_at DESC LIMIT 1",
@@ -49,11 +56,12 @@ export async function startClientConsent(input: ClientConsentRequest) {
       deny(409, "CLIENT_CONSENT_LEGAL_PENDING",
         "Todavía no hay una autorización del cliente jurídicamente aprobada y publicada.");
     }
+    const clean=(v:string)=>v.replace(/[\r\n\t]+/g," ").trim().slice(0,250);
     const snapshot = doc.content.trim() + "\n\nDATOS ESPECÍFICOS DE ESTA AUTORIZACIÓN\n" +
-      "Titular del expediente: " + input.clientName + "\n" +
-      "Firmante: " + input.signerName + "\n" +
+      "Titular del expediente: " + clean(input.clientName) + "\n" +
+      "Firmante: " + clean(input.signerName) + "\n" +
       "Carácter: " + (input.signerCapacity === "client" ? "Cliente titular" : "Representante legal de persona moral") + "\n" +
-      "Financiera destinataria: " + input.institutionName + "\n" +
+      "Financiera destinataria: " + clean(input.institutionName) + "\n" +
       "Finalidad: compartir este expediente únicamente con la financiera indicada para evaluar el financiamiento.\n" +
       "Referencia de solicitud: " + input.targetId + "\n" +
       "Esta autorización no habilita consultas de Buró de Crédito o SAT desde Crédito Negocios.";
@@ -70,7 +78,7 @@ export async function startClientConsent(input: ClientConsentRequest) {
       " VALUES($1,$2,$3,$4,$5,$6,$7,'financial_institution_submission',$8,$9,$10,$11,$12,$13," +
       "NOW()+INTERVAL '48 hours') RETURNING id,token_expires_at",
       [input.tenantId,input.clientId,input.targetId,input.institutionId,doc.id,
-       snapshot,sha(snapshot),input.signerName,input.signerEmail.toLowerCase(),
+       snapshot,sha(snapshot),clean(input.signerName),input.signerEmail.toLowerCase(),
        input.signerCapacity,input.signerCapacity === "legal_representative" ? "pending" : "not_applicable",
        input.requestedBy,sha(rawToken)],
     );
@@ -85,6 +93,10 @@ export async function startClientConsent(input: ClientConsentRequest) {
 export async function invalidateConsentRequest(id: string) {
   await pool.query("UPDATE public.client_consent_challenges SET status='invalidated',updated_at=NOW() " +
     "WHERE id=$1 AND status='pending'", [id]);
+}
+export async function invalidateConsentOtp(id:string) {
+  await pool.query("UPDATE public.client_consent_challenges SET otp_hash=NULL,otp_expires_at=NULL " +
+    "WHERE id=$1", [id]);
 }
 export async function inspectConsentLink(token: string) {
   if (!validToken(token)) deny(404,"CLIENT_CONSENT_LINK_INVALID","Enlace inválido o expirado.");
@@ -351,7 +363,8 @@ export async function revokeConsentWithOtp(input:{
     if(!c||c.status!=="verified"||new Date(c.token_expires_at).getTime()<=Date.now())
       deny(404,"CLIENT_CONSENT_LINK_INVALID","Enlace inválido o caducado.");
     if(c.revocation_id) deny(409,"CLIENT_CONSENT_ALREADY_REVOKED","Autorización ya revocada.");
-    if(!c.otp_hash || new Date(c.otp_expires_at).getTime()<=Date.now() ||
+    if(!c.otp_hash || !c.otp_expires_at || !c.otp_requested_at ||
+       new Date(c.otp_expires_at).getTime()<=Date.now() ||
        new Date(c.otp_requested_at).getTime()<=new Date(c.accepted_at).getTime())
       deny(409,"CLIENT_CONSENT_REVOCATION_OTP_EXPIRED","Solicita un nuevo código para revocar.");
     if(c.otp_attempts>=c.otp_max_attempts)
