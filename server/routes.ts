@@ -11596,9 +11596,10 @@ function maskCLABE(clabe?: string | null): string | null {
       // It is an exportable institution-target package, not merely an
       // in-app draft. Deny before piping any PDF bytes to the response.
       const pdfClient = submission ? await storage.getClient(submission.clientId) : null;
-      const pdfConsent = authorizeClientSensitiveDisclosure({
+      const pdfConsent = await authorizeClientSensitiveDisclosure({
         clientId: submission?.clientId,
         tenantId: submission?.tenantId || pdfClient?.tenantId || null,
+        targetId: rawTarget.id,
         recipientInstitutionId: rawTarget.financialInstitutionId,
         purpose: "financial_institution_pdf_export",
       });
@@ -11765,9 +11766,10 @@ function maskCLABE(clabe?: string | null): string | null {
         return res.status(404).json({ message: "Credit submission request not found" });
       }
       const sendClient = await storage.getClient(sendRequest.clientId);
-      const disclosureConsent = authorizeClientSensitiveDisclosure({
+      const disclosureConsent = await authorizeClientSensitiveDisclosure({
         clientId: sendRequest.clientId,
         tenantId: sendRequest.tenantId || sendClient?.tenantId || null,
+        targetId: existingTarget.id,
         recipientInstitutionId: existingTarget.financialInstitutionId,
         purpose: "financial_institution_submission",
       });
