@@ -132,6 +132,15 @@ export function validateCompanyAgreementIdentity(data: PersonalizedAgreementData
   return null;
 }
 
+/** Guard against changes to a legal entity while its signature OTP is pending. */
+export function hasCompanyAgreementIdentityDrift(user: any, otpData: any): boolean {
+  const current = derivePersonalizedAgreementData(user);
+  if (current.profileType !== "persona_moral" && otpData?.profileType !== "persona_moral") return false;
+  if (validateCompanyAgreementIdentity(current)) return true;
+  return ["profileType", "businessName", "legalRepresentativeName", "legalRepresentativePosition", "rfc"]
+    .some((key) => (current as any)[key] !== otpData?.[key]);
+}
+
 export interface PersonalizedAgreementEvidence {
   acceptedAt: Date | string;
   ipAddress?: string | null;
