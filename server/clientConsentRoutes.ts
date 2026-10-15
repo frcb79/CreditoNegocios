@@ -3,6 +3,7 @@ import rateLimit from "express-rate-limit";
 import {
   ClientConsentError,inspectConsentLink,prepareConsentOtp,
   verifyConsentOtp,invalidateConsentRequest,getClientConsentReceipt,
+  prepareConsentRevocationOtp,revokeConsentWithOtp,
 } from "./clientConsentService";
 import {sendClientConsentOtpEmail} from "./emailService";
 import {renderLegalVoucherPdf} from "./legalVoucherPdf";
@@ -27,6 +28,28 @@ export function registerClientConsentPublicRoutes(app:Express) {
         "attachment; filename=\"autorizacion-cliente-"+evidence.evidenceId.replace(/[^a-z0-9-]/gi,"")+".pdf\"");
       return res.send(bytes);
     } catch(e){return fail(res,e);}
+  });
+  app.post("/api/client-consent/:token/revoke/request-otp",limiter,async(req,res)=>{
+    try{
+      const prepared=await prepareConsentRevocationOtp(String(req.params.token));
+      const result=await sendClientConsentOtpEmail({to:prepared.to,
+        signerName:prepared.name,code:prepared.code});
+      if(!result.success) {
+        await invalidateConsentRequest(prepared.id);
+        return res.status(502).json({message:"No fue posible entregar el código de revocación."});
+      }
+      return res.json({success:true,message:"Código de revocación enviado al correo del firmante."});
+    }catch(e){return fail(res,e);}
+  });
+  app.post("/api/client-consent/:token/revoke/verify-otp",limiter,async(req,res)=>{
+    try{
+      const out=await revokeConsentWithOtp({
+        token:String(req.params.token),code:String(req.body?.code||"").trim(),
+        ip:req.ip||null,userAgent:String(req.headers["user-agent"]||"unknown").slice(0,512),
+      });
+      if(!out.success) return res.status(400).json({code:out.code,message:"El código de revocación no coincide."});
+      return res.json(out);
+    }catch(e){return fail(res,e);}
   });
   // The bearer link is scoped to one specific pending challenge.
   app.get("/api/client-consent/:token",limiter,async(req,res)=>{
