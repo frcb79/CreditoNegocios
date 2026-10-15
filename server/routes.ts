@@ -1887,6 +1887,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
             sanitizedData[key] = userData[key];
           }
         }
+        if (userData.profileType !== undefined) {
+          if (!["persona_moral", "fisica_empresarial", "fisica", "sin_sat"].includes(userData.profileType)) {
+            return res.status(400).json({ message: "Tipo de perfil inválido." });
+          }
+          sanitizedData.profileType = userData.profileType;
+        }
       } else {
         // Existing Admin profile UI stays functional, but cannot edit passwords,
         // recovery credentials or structural network/role assignments.
@@ -1933,6 +1939,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
       delete sanitizedData.statusChangedBy;
       delete sanitizedData.statusChangeReason;
       delete sanitizedData.statusChangeNotes;
+
+      // Different Settings tabs modify independent profileData sections.
+      // Preserve existing contact, business and metric fields rather than
+      // silently wiping them when the user saves another tab.
+      if (sanitizedData.profileData !== undefined) {
+        if (!sanitizedData.profileData || typeof sanitizedData.profileData !== "object" ||
+            Array.isArray(sanitizedData.profileData)) {
+          return res.status(400).json({ message: "Datos del perfil inválidos." });
+        }
+        const existingUser = await storage.getUser(id);
+        const existingProfile = existingUser?.profileData && typeof existingUser.profileData === "object" &&
+          !Array.isArray(existingUser.profileData) ? existingUser.profileData : {};
+        sanitizedData.profileData = { ...existingProfile, ...sanitizedData.profileData };
+      }
 
       const user = await storage.updateUser(id, sanitizedData);
       
