@@ -222,7 +222,7 @@ export async function hasValidClientConsent(scope: {
   try {
     const rows = await pool.query(
       "SELECT e.exact_document_content,e.exact_document_sha256,d.content,d.content_sha256," +
-      "e.signer_capacity,rep.result AS representation_review_status " +
+      "e.signer_capacity,rep.result AS representation_review_status,r.id AS revocation_id " +
       "FROM public.client_consent_evidences e " +
       "LEFT JOIN public.client_consent_representation_reviews rep ON rep.evidence_id=e.id " +
       "JOIN public.client_consent_document_versions d ON d.id=e.document_version_id " +
@@ -232,11 +232,11 @@ export async function hasValidClientConsent(scope: {
       "AND d.effective_at <= NOW() " +
       "AND d.id=(SELECT id FROM public.client_consent_document_versions " +
       "WHERE status='published' AND effective_at <= NOW() ORDER BY effective_at DESC LIMIT 1) " +
-      "AND r.id IS NULL ORDER BY e.accepted_at DESC LIMIT 1",
+      "ORDER BY e.accepted_at DESC, e.id DESC LIMIT 1",
       [scope.tenantId,scope.clientId,scope.targetId,scope.institutionId],
     );
     const e=rows.rows[0];
-    return Boolean(e && sha(e.content)===e.content_sha256 &&
+    return Boolean(e && !e.revocation_id && sha(e.content)===e.content_sha256 &&
       sha(e.exact_document_content)===e.exact_document_sha256 &&
       (e.signer_capacity==="client" ||
        (e.signer_capacity==="legal_representative" && e.representation_review_status==="verified")));
