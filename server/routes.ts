@@ -10,7 +10,7 @@ import { authorizeClientSensitiveDisclosure } from "./clientConsentGate";
 import { setupAuth, isAuthenticated } from "./auth";
 import { registerLegalRoutes } from "./legalRoutes";
 import { registerClientConsentPublicRoutes } from "./clientConsentRoutes";
-import { startClientConsent, invalidateConsentRequest, hasValidClientConsent, verifyCompanySignerAuthority, ClientConsentError } from "./clientConsentService";
+import { startClientConsent, invalidateConsentRequest, hasValidClientConsent, listClientConsentEvidenceForTarget, verifyCompanySignerAuthority, ClientConsentError } from "./clientConsentService";
 import { sendClientConsentLinkEmail } from "./emailService";
 import { validateRegistrationAcceptance, getPublishedLegalDocument } from "./legalDocuments";
 import PDFDocument from "pdfkit";
@@ -11574,6 +11574,40 @@ function maskCLABE(clabe?: string | null): string | null {
         return res.json({authorized,
           message:authorized?"Cliente autorizado para esta financiera.":"Autorización del cliente pendiente o no validada."});
       } catch { return res.status(503).json({message:"No disponible."}); }
+    });
+
+  // LEG-10: give Super Admin a way to actually review the independent client
+  // signature and choose a previously uploaded client representation document.
+  // Do not return secret links, codes, request IP or full sensitive snapshot.
+  app.get('/api/credit-submission-targets/:id/client-consent-evidence',
+    isAuthenticated, requireModuleAndAction('aprobaciones','view'), async(req:any,res)=>{
+      try {
+        const reviewerId=req.user?.claims?.sub||req.user?.id;
+        const reviewer=reviewerId?await storage.getUser(reviewerId):null;
+        if(!reviewer || reviewer.role!=='super_admin')
+          return res.status(403).json({message:"Revisión reservada a Super Admin."});
+        const target=await storage.getCreditSubmissionTarget(req.params.id);
+        const submission=target?await storage.getCreditSubmissionRequest(target.requestId):null;
+        const client=submission?await storage.getClient(submission.clientId):null;
+        if(!target||!submission||!client)
+          return res.status(404).json({message:"Solicitud no encontrada."});
+        const evidence=await listClientConsentEvidenceForTarget({
+          tenantId:client.tenantId||'',clientId:client.id,targetId:target.id,
+          institutionId:target.financialInstitutionId,
+        });
+        const documents=(await storage.getDocuments({clientId:client.id})).filter((doc:any)=>
+          !doc.tenantId || doc.tenantId===client.tenantId
+        ).map((doc:any)=>({
+          id:doc.id,fileName:doc.fileName,type:doc.type,isValid:doc.isValid,
+          uploadedAt:doc.uploadedAt,
+        }));
+        return res.json({evidence,documents});
+      }catch(e:any){
+        if(e instanceof ClientConsentError)
+          return res.status(e.status).json({code:e.code,message:e.message});
+        console.error("LEG10 evidence review unavailable:",e?.message||"unknown");
+        return res.status(503).json({message:"No se pudo consultar evidencia de autorización."});
+      }
     });
 
   app.post('/api/credit-submission-targets/:id/verify-client-representative',
