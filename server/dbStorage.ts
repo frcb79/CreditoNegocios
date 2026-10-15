@@ -74,6 +74,7 @@ import {
   buildPersonalizedAgreement,
   derivePersonalizedAgreementData,
   validateCompanyAgreementIdentity,
+  hasCompanyAgreementIdentityDrift,
   type PersonalizedAgreementData,
   type PersonalizedDocumentSnapshot,
 } from "../shared/legalDocuments";
@@ -1150,6 +1151,15 @@ export class DbStorage implements IStorage {
           error: "Los datos de identidad (nombre, correo o rol) han cambiado desde que se solicitó el código. Debes reiniciar el proceso de formalización.",
           requiresRestart: true,
         };
+      }
+
+      const pendingCompanySnapshot = (activeOtp.documentsSnapshot as any[])?.find((d) => d.document === "convenio");
+      if (hasCompanyAgreementIdentityDrift(user, pendingCompanySnapshot?.incorporatedData)) {
+        await tx.update(formalizationOtpRequests)
+          .set({ invalidated: true, invalidatedAt: now })
+          .where(eq(formalizationOtpRequests.id, activeOtp.id));
+        return { success: false, statusCode: 409, requiresRestart: true,
+          error: "Los datos de la empresa o de su representante cambiaron desde la emisión del OTP. Revisa el Convenio y solicita un nuevo código." };
       }
 
       // Validate documents and active versions
