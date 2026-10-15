@@ -11,10 +11,10 @@ describeIsolated("LEG-10: aditiva, versioned consent and immutable PostgreSQL ev
   beforeAll(async()=>{
     pgPool=new pg.Pool({connectionString:url});
     await pgPool.query("CREATE EXTENSION IF NOT EXISTS pgcrypto");
-    for(const parent of ["users","tenants","clients","financial_institutions","credit_submission_targets"]){
+    for(const parent of ["users","tenants","clients","financial_institutions","credit_submission_targets","documents"]){
       await pgPool.query("CREATE TABLE IF NOT EXISTS public."+parent+"(id VARCHAR PRIMARY KEY)");
     }
-    for(const child of ["client_consent_revocations","client_consent_evidences",
+    for(const child of ["client_consent_representation_reviews","client_consent_revocations","client_consent_evidences",
       "client_consent_challenges","client_consent_document_versions"]){
       await pgPool.query("DROP TABLE IF EXISTS public."+child+" CASCADE");
     }
@@ -42,7 +42,7 @@ describeIsolated("LEG-10: aditiva, versioned consent and immutable PostgreSQL ev
       "SELECT tgname FROM pg_trigger WHERE tgname LIKE 'client_consent_%immutable'"
     );
     expect(triggers.rows.map(x=>x.tgname)).toEqual(expect.arrayContaining([
-      "client_consent_evidences_immutable","client_consent_revocations_immutable",
+      "client_consent_evidences_immutable","client_consent_revocations_immutable","client_consent_rep_reviews_immutable",
       "client_consent_documents_immutable"
     ]));
     const otp=await pgPool.query(
