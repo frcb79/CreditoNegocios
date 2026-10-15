@@ -9,6 +9,9 @@ import { readFrozenOfferLineage } from "./offerLineageService";
 import { authorizeClientSensitiveDisclosure } from "./clientConsentGate";
 import { setupAuth, isAuthenticated } from "./auth";
 import { registerLegalRoutes } from "./legalRoutes";
+import { registerClientConsentPublicRoutes } from "./clientConsentRoutes";
+import { startClientConsent, invalidateConsentRequest, hasValidClientConsent, ClientConsentError } from "./clientConsentService";
+import { sendClientConsentLinkEmail } from "./emailService";
 import { validateRegistrationAcceptance, getPublishedLegalDocument } from "./legalDocuments";
 import PDFDocument from "pdfkit";
 import bcrypt from "bcrypt";
@@ -1290,6 +1293,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Register legal routes after session/Passport initialization
   registerLegalRoutes(app);
+  registerClientConsentPublicRoutes(app);
 
   // Tenant context middleware - must be after auth setup
   app.use(tenantContextMiddleware);
@@ -11488,6 +11492,89 @@ function maskCLABE(clabe?: string | null): string | null {
       res.status(500).json({ message: "Failed to return credit submission target to broker" });
     }
   });
+
+  // LEG-10: client consent is requested only from the client's stored email,
+  // never from user-supplied request body, and only for an owned exact target.
+  app.post('/api/credit-submission-targets/:id/request-client-consent',
+    isAuthenticated, requireModuleAndAction('creditos','view'), async (req:any,res) => {
+      try {
+        const currentId=req.user?.claims?.sub||req.user?.id;
+        const caller=currentId?await storage.getUser(currentId):null;
+        const target=await storage.getCreditSubmissionTarget(req.params.id);
+        if(!caller||!target) return res.status(404).json({message:"Solicitud no encontrada."});
+        const submission=await storage.getCreditSubmissionRequest(target.requestId);
+        if(!canReadCreditSubmission(caller,submission))
+          return res.status(403).json({message:"No tienes acceso a esta solicitud."});
+        if(target.isWinner||target.creditId||
+           ['sent','selected_winner','dispersed','cancelled'].includes(target.status))
+          return res.status(409).json({message:"Esta propuesta ya no permite iniciar una autorización."});
+        const client=submission?await storage.getClient(submission.clientId):null;
+        const institution=await storage.getFinancialInstitution(target.financialInstitutionId);
+        if(!client||!institution) return res.status(409).json({message:"Cliente o financiera no disponible."});
+        if(!client.tenantId || (submission?.tenantId && client.tenantId!==submission.tenantId))
+          return res.status(409).json({message:"La relación de cliente y organización debe validarse antes de solicitar autorización."});
+        const representative=client.legalRepresentative && typeof client.legalRepresentative==='object' &&
+          !Array.isArray(client.legalRepresentative)?client.legalRepresentative as any:null;
+        const isCompany=client.type==='persona_moral';
+        const signerName=isCompany
+          ? String(representative?.name||'').trim()
+          : [client.firstName,client.lastName].filter(Boolean).join(' ').trim();
+        const signerEmail=isCompany
+          ? String(representative?.email||'').trim()
+          : String(client.email||'').trim();
+        if(!signerName||!signerEmail) return res.status(409).json({
+          code:"CLIENT_SIGNER_MISSING",
+          message:isCompany
+            ?"Registra nombre y correo del representante legal del cliente antes de solicitar su autorización."
+            :"Registra nombre y correo del cliente antes de solicitar su autorización.",
+        });
+        if(signerEmail.toLowerCase()===String(caller.email||'').toLowerCase())
+          return res.status(409).json({code:"CLIENT_SIGNER_NOT_INDEPENDENT",
+            message:"La autorización debe enviarse al cliente, no al correo del usuario solicitante."});
+        const challenge=await startClientConsent({
+          tenantId:client.tenantId,clientId:client.id,targetId:target.id,
+          institutionId:institution.id,institutionName:institution.name||"Financiera",
+          clientName:isCompany?client.businessName||"Empresa":signerName,
+          signerName,signerEmail,
+          signerCapacity:isCompany?"legal_representative":"client",requestedBy:currentId,
+        });
+        const email=await sendClientConsentLinkEmail({
+          to:signerEmail,signerName,institutionName:institution.name||"Financiera",token:challenge.token,
+        });
+        if(!email.success) {
+          await invalidateConsentRequest(challenge.id);
+          return res.status(502).json({code:"CLIENT_CONSENT_EMAIL_FAILED",
+            message:"No se pudo enviar la solicitud de autorización al correo del cliente."});
+        }
+        return res.json({success:true,challengeId:challenge.id,
+          message:"Solicitud enviada al correo registrado del cliente; todavía no se compartió ningún expediente."});
+      } catch(e:any) {
+        if(e instanceof ClientConsentError) return res.status(e.status).json({code:e.code,message:e.message});
+        console.error("LEG10 request consent failed:",e?.message||e);
+        return res.status(503).json({code:"CLIENT_CONSENT_UNAVAILABLE",
+          message:"No se pudo preparar la autorización. El expediente no fue enviado."});
+      }
+    });
+
+  app.get('/api/credit-submission-targets/:id/client-consent-status',
+    isAuthenticated,requireModuleAndAction('creditos','view'),async(req:any,res)=>{
+      try {
+        const currentId=req.user?.claims?.sub||req.user?.id;
+        const caller=currentId?await storage.getUser(currentId):null;
+        const target=await storage.getCreditSubmissionTarget(req.params.id);
+        const submission=target?await storage.getCreditSubmissionRequest(target.requestId):null;
+        if(!caller||!target||!submission) return res.status(404).json({message:"No encontrado."});
+        if(!canReadCreditSubmission(caller,submission))
+          return res.status(403).json({message:"Sin acceso."});
+        const client=await storage.getClient(submission.clientId);
+        const authorized=await hasValidClientConsent({
+          tenantId:client?.tenantId||'',clientId:submission.clientId,targetId:target.id,
+          institutionId:target.financialInstitutionId,
+        });
+        return res.json({authorized,
+          message:authorized?"Cliente autorizado para esta financiera.":"Autorización del cliente pendiente o no validada."});
+      } catch { return res.status(503).json({message:"No disponible."}); }
+    });
 
   // 1. Generate PDF for credit submission target
   app.post('/api/credit-submission-targets/:id/generate-pdf', isAuthenticated, requireModuleAndAction('creditos', 'view'), async (req: any, res) => {
