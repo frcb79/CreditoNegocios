@@ -20,6 +20,8 @@ import {
   isRoleSubjectToFormalization,
   getRequiredFormalizationDocuments,
   buildPersonalizedAgreement,
+  derivePersonalizedAgreementData,
+  validateCompanyAgreementIdentity,
   type PersonalizedAgreementData,
   type PersonalizedDocumentSnapshot,
 } from "../shared/legalDocuments";
@@ -2088,16 +2090,7 @@ export class MemStorage implements IStorage {
     const status = await this.isUserFormalized(user.id, user.role);
     const requiredDocs = getRequiredFormalizationDocuments(user.role);
 
-    const personalizedData: PersonalizedAgreementData = {
-      fullName,
-      rfc: (user as any).profileData?.rfc || (user as any).rfc || null,
-      address: (user as any).profileData?.address || (user as any).address || null,
-      email: user.email!,
-      phone: (user as any).profileData?.phone || (user as any).phone || null,
-      role: user.role,
-      bankName: (user as any).bankName || null,
-      clabe: (user as any).clabe || null,
-    };
+    const personalizedData: PersonalizedAgreementData = derivePersonalizedAgreementData(user);
 
     const documentItems: FormalizationDocumentItem[] = [];
     for (const docType of requiredDocs) {
@@ -2249,16 +2242,7 @@ export class MemStorage implements IStorage {
       const resendAvailableAt = new Date(now.getTime() + FORMALIZATION_OTP_COOLDOWN_MS);
       const fullName = [user.firstName, user.lastName].filter(Boolean).join(" ").trim() || (user as any).accountHolder || user.email!;
 
-      const personalizedData: PersonalizedAgreementData = {
-        fullName,
-        rfc: (user as any).profileData?.rfc || (user as any).rfc || null,
-        address: (user as any).profileData?.address || (user as any).address || null,
-        email: user.email!,
-        phone: (user as any).profileData?.phone || (user as any).phone || null,
-        role: user.role,
-        bankName: (user as any).bankName || null,
-        clabe: (user as any).clabe || null,
-      };
+      const personalizedData: PersonalizedAgreementData = derivePersonalizedAgreementData(user);
 
       const documentsSnapshot = validation.catalogDocs!.map((d) => {
         if (d.document === "convenio") {
