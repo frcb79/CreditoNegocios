@@ -43,6 +43,8 @@ import {
   getDocumentTitle,
   getAcceptanceTypeLabel,
   buildPersonalizedAgreement,
+  derivePersonalizedAgreementData,
+  validateCompanyAgreementIdentity,
 } from "../../shared/legalDocuments";
 import { _testEmailStore } from "../../server/emailService";
 import { pool } from "../../server/db";
@@ -88,6 +90,36 @@ describe("Bloque 3B1 (MemStorage): Backend de aceptación del Convenio mediante 
       role: "broker", address: {},
     });
     expect(withoutAddress).toContain("Pendiente de proporcionar");
+  });
+
+  it("PM: distingue razón social de firmante registrado y exige coincidencia para OTP", () => {
+    const data = derivePersonalizedAgreementData({
+      firstName: "María", lastName: "García",
+      email: "maria@example.test", role: "master_broker",
+      profileType: "persona_moral", bankName: "BBVA", clabe: "012345678901234567",
+      profileData: { business: {
+        businessName: "Grupo Comercial del Valle, S.A. de C.V.",
+        legalRepresentativeName: "Maria Garcia",
+        legalRepresentativePosition: "Administradora Única",
+        taxId: "GCV010101AA1",
+        businessAddress: "Avenida Central 10, CDMX",
+      }},
+    });
+    expect(validateCompanyAgreementIdentity(data)).toBeNull();
+    const text = buildPersonalizedAgreement(getApprovedLegalDocument("convenio", "1.0")!.content, data);
+    expect(text).toContain("Nombre o razón social: Grupo Comercial del Valle, S.A. de C.V.");
+    expect(text).toContain("Representante, cuando corresponda: Maria Garcia — Administradora Única");
+    expect(text).toContain("GCV010101AA1");
+    expect(text).toContain("☐ Broker    ☑ Master Broker");
+    expect(text).not.toContain("Representante, cuando corresponda: No aplica");
+
+    expect(validateCompanyAgreementIdentity({ ...data, legalRepresentativeName: "Otra Persona" }))
+      .toContain("debe coincidir");
+    expect(validateCompanyAgreementIdentity({ ...data, businessName: "" }))
+      .toContain("razón social");
+    expect(validateCompanyAgreementIdentity({ ...data, legalRepresentativeName: "" }))
+      .toContain("representante legal");
+    expect(validateCompanyAgreementIdentity({ ...data, profileType: "fisica" })).toBeNull();
   });
 
   let app: express.Express;
