@@ -7,6 +7,7 @@ import { createHash, createHmac, randomBytes, timingSafeEqual } from "node:crypt
 import { pool } from "./db";
 import type { PoolClient } from "pg";
 import { assertTargetReviewMutable } from "./targetReviewTransitions";
+import { readFrozenOfferLineage } from "./offerLineageService";
 import { generateOtpCode, getFormalizationOtpSecret } from "./legalDocuments";
 
 const sha = (s: string) => createHash("sha256").update(s, "utf8").digest("hex");
@@ -263,6 +264,7 @@ export async function markTargetSentWithClientConsent(input:{
     await conn.query("BEGIN");
     const locked=await conn.query(
       "SELECT t.id,t.request_id,t.financial_institution_id,t.status,t.is_winner,t.credit_id,"+
+      "t.institution_proposal,t.institution_product_id,t.version_number,"+
       "s.client_id,s.tenant_id,s.status AS request_status,c.tenant_id AS client_tenant_id "+
       "FROM public.credit_submission_targets t "+
       "JOIN public.credit_submission_requests s ON s.id=t.request_id "+
@@ -276,6 +278,15 @@ export async function markTargetSentWithClientConsent(input:{
        row.financial_institution_id!==input.institutionId||
        row.tenant_id!==input.tenantId||row.client_tenant_id!==input.tenantId)
       deny(409,"CLIENT_CONSENT_SCOPE_MISMATCH","El cliente o destinatario ya no corresponde.");
+    // Preserve DbStorage's version/lineage guard that the old status writer
+    // performed; never send a target whose snapshot contradicts saved IDs.
+    const frozen=readFrozenOfferLineage(row.institution_proposal);
+    const persisted=row.institution_product_id||row.version_number!=null
+      ?readFrozenOfferLineage({institutionProductId:row.institution_product_id,
+        versionNumber:row.version_number}):null;
+    if(persisted&&(!frozen||persisted.institutionProductId!==frozen.institutionProductId||
+      persisted.versionNumber!==frozen.versionNumber))
+      deny(409,"OFFER_VERSION_IDENTITY_MISMATCH","La versión financiera del expediente no coincide.");
     if(row.status==="sent"||["completed","cancelled"].includes(row.request_status))
       deny(409,"TARGET_STATUS_INELIGIBLE","La solicitud ya no permite un nuevo envío.");
     if(!await hasValidClientConsent({
@@ -284,8 +295,8 @@ export async function markTargetSentWithClientConsent(input:{
     },conn)) deny(409,"CLIENT_CONSENT_REQUIRED","Se requiere autorización vigente.");
     await conn.query(
       "UPDATE public.credit_submission_targets SET status='sent',reviewed_by=$2,"+
-      "reviewed_at=NOW(),updated_at=NOW() WHERE id=$1",
-      [input.targetId,input.reviewedBy],
+      "reviewed_at=NOW(),updated_at=NOW(),institution_product_id=$3,version_number=$4 WHERE id=$1",
+      [input.targetId,input.reviewedBy,frozen?.institutionProductId??null,frozen?.versionNumber??null],
     );
     await conn.query(
       "UPDATE public.credit_submission_requests SET status='sent_to_institutions',"+
