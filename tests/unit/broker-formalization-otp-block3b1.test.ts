@@ -209,6 +209,11 @@ describe("Bloque 3B1 (MemStorage): Backend de aceptación del Convenio mediante 
       expect(detail.body.snapshot.personalizedContent).toContain("Servicios Prueba, S.A. de C.V.");
       expect(detail.body.snapshot.personalizedContent).toContain("Lucía Sánchez — Apoderada Legal");
       expect(detail.body.snapshot.incorporatedData.legalRepresentativeName).toBe("Lucía Sánchez");
+      const receipt = await request(app).get(`/api/legal/my-acceptances/${acc.id}/comprobante`);
+      expect(receipt.status).toBe(200);
+      expect(receipt.body.voucherText).toContain("Nombre / Razón Social:             Servicios Prueba, S.A. de C.V.");
+      expect(receipt.body.voucherText).toContain("Representante Firmante:            Lucía Sánchez");
+      expect(receipt.body.voucherText).toContain("Carácter del Firmante:              Apoderada Legal");
     });
   });
 
