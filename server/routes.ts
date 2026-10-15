@@ -10,7 +10,7 @@ import { authorizeClientSensitiveDisclosure } from "./clientConsentGate";
 import { setupAuth, isAuthenticated } from "./auth";
 import { registerLegalRoutes } from "./legalRoutes";
 import { registerClientConsentPublicRoutes } from "./clientConsentRoutes";
-import { startClientConsent, invalidateConsentRequest, hasValidClientConsent, listClientConsentEvidenceForTarget, verifyCompanySignerAuthority, ClientConsentError } from "./clientConsentService";
+import { startClientConsent, invalidateConsentRequest, hasValidClientConsent, listClientConsentEvidenceForTarget, verifyCompanySignerAuthority, markTargetSentWithClientConsent, ClientConsentError } from "./clientConsentService";
 import { sendClientConsentLinkEmail } from "./emailService";
 import { validateRegistrationAcceptance, getPublishedLegalDocument } from "./legalDocuments";
 import PDFDocument from "pdfkit";
@@ -11834,21 +11834,16 @@ function maskCLABE(clabe?: string | null): string | null {
       });
       if (!disclosureConsent.authorized) return res.status(409).json(disclosureConsent);
 
-      const rawTarget = await storage.updateCreditSubmissionTarget(id, {
-        status: 'sent',
-        reviewedBy: userId,
-        reviewedAt: new Date(),
+      // Consent must be rechecked and both statuses changed in one transaction,
+      // serialized with revocation. The earlier check alone is not sufficient.
+      await markTargetSentWithClientConsent({
+        targetId:id,requestId:existingTarget.requestId,
+        clientId:sendRequest.clientId,
+        tenantId:sendRequest.tenantId || sendClient?.tenantId || '',
+        institutionId:existingTarget.financialInstitutionId,reviewedBy:userId,
       });
-      
-      if (!rawTarget) {
-        return res.status(404).json({ message: "Credit submission target not found" });
-      }
-
-      // Update the submission status to sent_to_institutions
-      await storage.updateCreditSubmissionRequest(existingTarget.requestId, {
-        status: 'sent_to_institutions',
-      });
-
+      const rawTarget = await storage.getCreditSubmissionTarget(id);
+      if (!rawTarget) return res.status(503).json({message:"Estado del envío temporalmente no disponible."});
       const target = await enrichCreditSubmissionTarget(rawTarget);
       res.json(projectSubmissionTarget(target, user.role));
     } catch (error) {
@@ -11858,6 +11853,8 @@ function maskCLABE(clabe?: string | null): string | null {
           message: "Esta propuesta ya fue seleccionada o tiene un crédito vinculado.",
         });
       }
+      if (error instanceof ClientConsentError)
+        return res.status(error.status).json({code:error.code,message:error.message});
       console.error("Error marking as sent:", error);
       res.status(500).json({ message: "Failed to mark as sent" });
     }

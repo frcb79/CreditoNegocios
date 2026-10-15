@@ -5,6 +5,8 @@
  */
 import { createHash, createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import { pool } from "./db";
+import type { PoolClient } from "pg";
+import { assertTargetReviewMutable } from "./targetReviewTransitions";
 import { generateOtpCode, getFormalizationOtpSecret } from "./legalDocuments";
 
 const sha = (s: string) => createHash("sha256").update(s, "utf8").digest("hex");
@@ -217,10 +219,10 @@ export async function verifyConsentOtp(input: {
 }
 export async function hasValidClientConsent(scope: {
   tenantId:string;clientId:string;targetId:string;institutionId:string;
-}):Promise<boolean> {
+}, conn?:PoolClient):Promise<boolean> {
   if (!scope.tenantId || !scope.clientId || !scope.targetId || !scope.institutionId) return false;
   try {
-    const rows = await pool.query(
+    const rows = await (conn || pool).query(
       "SELECT e.exact_document_content,e.exact_document_sha256,d.content,d.content_sha256," +
       "e.signer_capacity,rep.result AS representation_review_status,r.id AS revocation_id " +
       "FROM public.client_consent_evidences e " +
@@ -243,6 +245,58 @@ export async function hasValidClientConsent(scope: {
   } catch { return false; }
 }
 
+
+
+/** A sent transition is a single serialization point against OTP revocation.
+ * The previous route precheck is only informational; this transaction performs
+ * a new check under the target row lock before changing either status. */
+export async function markTargetSentWithClientConsent(input:{
+  targetId:string;requestId:string;clientId:string;tenantId:string;
+  institutionId:string;reviewedBy:string;
+}):Promise<void>{
+  if(process.env.CLIENT_CONSENT_RELEASE_APPROVED!=="true")
+    deny(409,"CLIENT_CONSENT_REQUIRED","La autorización del cliente aún no está habilitada.");
+  if(Object.values(input).some(v=>typeof v!=="string"||!v.trim()))
+    deny(409,"CLIENT_CONSENT_SCOPE_INCOMPLETE","El alcance del envío está incompleto.");
+  const conn=await pool.connect();
+  try{
+    await conn.query("BEGIN");
+    const locked=await conn.query(
+      "SELECT t.id,t.request_id,t.financial_institution_id,t.status,t.is_winner,t.credit_id,"+
+      "s.client_id,s.tenant_id,s.status AS request_status,c.tenant_id AS client_tenant_id "+
+      "FROM public.credit_submission_targets t "+
+      "JOIN public.credit_submission_requests s ON s.id=t.request_id "+
+      "JOIN public.clients c ON c.id=s.client_id "+
+      "WHERE t.id=$1 FOR UPDATE OF t,s",[input.targetId],
+    );
+    const row=locked.rows[0];
+    if(!row) deny(404,"TARGET_NOT_FOUND","Propuesta no encontrada.");
+    assertTargetReviewMutable({status:row.status,isWinner:row.is_winner,creditId:row.credit_id});
+    if(row.request_id!==input.requestId||row.client_id!==input.clientId||
+       row.financial_institution_id!==input.institutionId||
+       row.tenant_id!==input.tenantId||row.client_tenant_id!==input.tenantId)
+      deny(409,"CLIENT_CONSENT_SCOPE_MISMATCH","El cliente o destinatario ya no corresponde.");
+    if(row.status==="sent"||["completed","cancelled"].includes(row.request_status))
+      deny(409,"TARGET_STATUS_INELIGIBLE","La solicitud ya no permite un nuevo envío.");
+    if(!await hasValidClientConsent({
+      tenantId:input.tenantId,clientId:input.clientId,targetId:input.targetId,
+      institutionId:input.institutionId,
+    },conn)) deny(409,"CLIENT_CONSENT_REQUIRED","Se requiere autorización vigente.");
+    await conn.query(
+      "UPDATE public.credit_submission_targets SET status='sent',reviewed_by=$2,"+
+      "reviewed_at=NOW(),updated_at=NOW() WHERE id=$1",
+      [input.targetId,input.reviewedBy],
+    );
+    await conn.query(
+      "UPDATE public.credit_submission_requests SET status='sent_to_institutions',"+
+      "updated_at=NOW() WHERE id=$1",[input.requestId],
+    );
+    await conn.query("COMMIT");
+  }catch(e){
+    await conn.query("ROLLBACK").catch(()=>{});
+    throw e;
+  }finally{conn.release();}
+}
 
 /** Read-only, minimal review metadata for authorized Super Admin only.
  * Do not return link tokens, OTP data, IP, browser fingerprints or raw document content. */
@@ -427,6 +481,9 @@ export async function revokeConsentWithOtp(input:{
       await db.query("COMMIT");
       return {success:false as const,code:"CLIENT_CONSENT_OTP_INCORRECT"};
     }
+    // Serialize with the final sent transition: revocation wins if it obtains
+    // the target lock first; a later sender must see the committed revocation.
+    await db.query("SELECT id FROM public.credit_submission_targets WHERE id=$1 FOR UPDATE",[c.target_id]);
     await db.query(
       "INSERT INTO public.client_consent_revocations "+
       "(evidence_id,reason,revoked_ip,revoked_user_agent,revoked_by_email) "+
