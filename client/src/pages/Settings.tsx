@@ -1071,9 +1071,9 @@ export default function Settings() {
                         name="businessName"
                         render={({ field }) => (
                           <FormItem>
-                            <FormLabel className="text-xs font-medium">Nombre del Negocio / Marca</FormLabel>
+                            <FormLabel className="text-xs font-medium">Razón social (empresa) / Nombre del negocio</FormLabel>
                             <FormControl>
-                              <Input className="h-9 text-xs" placeholder="Mi Despacho de Brokers" {...field} data-testid="input-business-name" />
+                              <Input className="h-9 text-xs" placeholder="Razón social registrada, no sólo marca comercial" {...field} data-testid="input-business-name" />
                             </FormControl>
                             <FormMessage className="text-xs" />
                           </FormItem>
