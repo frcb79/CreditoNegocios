@@ -194,6 +194,10 @@ export interface PersonalizedDocumentSnapshot {
   personalizedContent: string;
   incorporatedData: {
     fullName: string;
+    profileType?: string | null;
+    businessName?: string | null;
+    legalRepresentativeName?: string | null;
+    legalRepresentativePosition?: string | null;
     rfc?: string;
     address?: string;
     email: string;
