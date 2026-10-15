@@ -38,6 +38,8 @@ describe("LEG-10: recipient-bound client evidence cannot be bypassed",()=>{
     expect(sql).toContain("e.target_id=$3");
     expect(sql).toContain("e.institution_id=$4");
     expect(sql).toContain("r.id IS NULL");
+    expect(sql).toContain("d.id=(SELECT id FROM public.client_consent_document_versions");
+    expect(sql).toContain("effective_at <= NOW() ORDER BY effective_at DESC LIMIT 1");
     expect(query.mock.calls[0][1]).toEqual(["tenant-A","client-A","target-A","bank-A"]);
 
     query.mockResolvedValue({rows:[{
