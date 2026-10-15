@@ -5,7 +5,8 @@ import { buildApiUrl } from "@/lib/runtimeConfig";
 export default function ClientConsentPage() {
   const token = decodeURIComponent(window.location.pathname.split("/").pop() || "");
   const [record,setRecord]=useState<{
-    signerName:string;signerCapacity:string;document:string;expiresAt:string;
+    signerName:string;signerCapacity:string;document?:string;expiresAt:string;
+    signed?:boolean;revoked?:boolean;
   }|null>(null);
   const [loading,setLoading]=useState(true);
   const [error,setError]=useState("");
@@ -14,6 +15,9 @@ export default function ClientConsentPage() {
   const [busy,setBusy]=useState(false);
   const [requested,setRequested]=useState(false);
   const [success,setSuccess]=useState("");
+  const [revoked,setRevoked]=useState(false);
+  const [revokeRequested,setRevokeRequested]=useState(false);
+  const [revokeCode,setRevokeCode]=useState("");
   useEffect(()=>{
     let cancelled=false;
     fetch(buildApiUrl("/api/client-consent/"+encodeURIComponent(token)),{cache:"no-store"})
@@ -21,7 +25,15 @@ export default function ClientConsentPage() {
         const j=await r.json();
         if(!r.ok) throw new Error(j.message||"Enlace de autorización no disponible.");
         return j;
-      }).then(j=>{if(!cancelled)setRecord(j);})
+      }).then(j=>{if(!cancelled){
+        setRecord(j);
+        if(j.signed) {
+          setSuccess(j.revoked
+            ?"Esta autorización fue revocada. Se conserva constancia histórica."
+            :"Autorización registrada anteriormente.");
+          setRevoked(Boolean(j.revoked));
+        }
+      }})
       .catch(e=>{if(!cancelled)setError(e.message);})
       .finally(()=>{if(!cancelled)setLoading(false);});
     return ()=>{cancelled=true;};
@@ -51,6 +63,19 @@ export default function ClientConsentPage() {
       setRecord(null);
     }
   }
+  async function startRevocation(){
+    const r=await submit("/revoke/request-otp");
+    if(r?.success)setRevokeRequested(true);
+  }
+  async function completeRevocation(){
+    if(revokeCode.length!==6){setError("Introduce el código de seis dígitos.");return;}
+    const r=await submit("/revoke/verify-otp",{code:revokeCode});
+    if(r?.success){
+      setRevoked(true);
+      setSuccess("Autorización revocada mediante OTP. Su evidencia original se conserva como historial.");
+      setRevokeRequested(false);
+    }
+  }
   return <main className="min-h-screen bg-slate-50 text-slate-900 p-4 sm:p-8">
     <div className="mx-auto max-w-3xl rounded-xl border bg-white shadow-sm p-5 sm:p-8 space-y-5">
       <header className="border-b pb-4">
@@ -67,6 +92,22 @@ export default function ClientConsentPage() {
         <h2 className="font-semibold">Autorización registrada</h2><p className="text-sm mt-1">{success}</p>
         <p className="text-xs mt-2">El registro histórico identifica el documento y la financiera específica. Conserva este mensaje para referencia.</p>
         <a className="inline-block underline text-sm mt-3" href={buildApiUrl("/api/client-consent/"+encodeURIComponent(token)+"/comprobante")} target="_blank" rel="noopener noreferrer">Descargar comprobante histórico PDF</a>
+        {!revoked && !revokeRequested && <div className="mt-4">
+          <button type="button" disabled={busy} onClick={startRevocation}
+            className="border rounded px-3 py-2 text-sm" data-testid="button-request-revocation">
+            Solicitar revocación mediante código al correo
+          </button>
+        </div>}
+        {!revoked && revokeRequested && <div className="mt-4 space-y-2">
+          <p className="text-sm">Introduce el nuevo código enviado a tu correo para revocar esta autorización.</p>
+          <input value={revokeCode} inputMode="numeric" maxLength={6}
+            onChange={e=>setRevokeCode(e.target.value.replace(/\D/g,"").slice(0,6))}
+            className="border rounded px-2 py-1 w-32" data-testid="input-revocation-otp" />
+          <button type="button" disabled={busy||revokeCode.length!==6} onClick={completeRevocation}
+            className="block border rounded px-3 py-2 text-sm bg-red-900 text-white disabled:opacity-50">
+            Confirmar revocación
+          </button>
+        </div>}
       </div>}
       {record && !success && <>
         <section className="space-y-2 text-sm">
