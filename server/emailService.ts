@@ -877,3 +877,63 @@ ${APP_NAME}
     return { success: false, error: error.message || "Error desconocido" };
   }
 }
+
+
+/** LEG-10: client consent is unrelated to the Broker/Master convenio.
+ * Never log one-time URLs or numeric codes. */
+export const _testClientConsentMail: {
+  lastLink?: { to:string; link:string };
+  lastOtp?: { to:string; code:string };
+  simulateFailure?:boolean;
+} = {};
+
+export async function sendClientConsentLinkEmail(input: {
+  to:string; signerName:string; institutionName:string; token:string;
+}):Promise<{success:boolean;error?:string}> {
+  if (process.env.NODE_ENV === "test") {
+    if (_testClientConsentMail.simulateFailure) return {success:false,error:"Simulated failure"};
+    _testClientConsentMail.lastLink = {to:input.to,link:"/autorizar-expediente/"+input.token};
+    return {success:true};
+  }
+  const base = process.env.FRONTEND_BASE_URL?.trim();
+  if (!base || !/^https:\/\/[^/]+/.test(base) || !resend)
+    return {success:false,error:"Enlace HTTPS o servicio de correo sin configurar"};
+  const link=base.replace(/\/$/,"")+"/autorizar-expediente/"+encodeURIComponent(input.token);
+  const esc=(v:string)=>v.replace(/&/g,"&amp;").replace(/</g,"&lt;")
+    .replace(/>/g,"&gt;").replace(/"/g,"&quot;").replace(/'/g,"&#39;");
+  try {
+    const result=await resend.emails.send({
+      from:FROM_EMAIL,to:[input.to],subject:"Autorización de expediente — Crédito Negocios",
+      html:"<h2>Crédito Negocios — autorización del cliente</h2><p>Hola "+
+        esc(input.signerName)+",</p><p>Se solicita tu autorización para compartir un expediente con "+
+        esc(input.institutionName)+". Revisa la información y confirma personalmente.</p>"+
+        "<p><a href='"+esc(link)+"'>Revisar autorización</a></p>"+
+        "<p>Enlace personal válido por 48 horas. Si no reconoces esta solicitud, no lo utilices.</p>",
+      text:"Crédito Negocios\nHola "+input.signerName+
+        "\nRevisa la autorización específica para "+input.institutionName+
+        ":\n"+link+"\nEnlace personal válido por 48 horas. Si no reconoces esta solicitud, ignóralo."
+    });
+    return result.error?{success:false,error:result.error.message}:{success:true};
+  } catch(e:any) {return {success:false,error:e?.message||"Error al enviar correo"};}
+}
+export async function sendClientConsentOtpEmail(input:{
+  to:string;signerName:string;code:string;
+}):Promise<{success:boolean;error?:string}> {
+  if (process.env.NODE_ENV === "test") {
+    if (_testClientConsentMail.simulateFailure) return {success:false,error:"Simulated failure"};
+    _testClientConsentMail.lastOtp={to:input.to,code:input.code};
+    return {success:true};
+  }
+  if (!resend) return {success:false,error:"Servicio de correo no configurado"};
+  try {
+    const result=await resend.emails.send({
+      from:FROM_EMAIL,to:[input.to],subject:"Código de autorización — Crédito Negocios",
+      html:"<h2>Confirma la autorización del expediente</h2>"+
+        "<p>Tu código personal es <strong>"+input.code+"</strong>.</p>"+
+        "<p>Caduca en 10 minutos y sólo es válido para esta autorización.</p>",
+      text:"Tu código para autorizar el expediente es: "+input.code+
+        "\nVálido por 10 minutos. No lo compartas."
+    });
+    return result.error?{success:false,error:result.error.message}:{success:true};
+  } catch(e:any) {return {success:false,error:e?.message||"Error al enviar OTP"};}
+}
