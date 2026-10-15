@@ -91,6 +91,45 @@ export interface PersonalizedAgreementData {
   role: string;
   bankName?: string | null;
   clabe?: string | null;
+  profileType?: string | null;
+  businessName?: string | null;
+  legalRepresentativeName?: string | null;
+  legalRepresentativePosition?: string | null;
+}
+
+export function derivePersonalizedAgreementData(user: any): PersonalizedAgreementData {
+  const profile = user?.profileData && typeof user.profileData === "object" ? user.profileData : {};
+  const business = profile.business && typeof profile.business === "object" ? profile.business : {};
+  const signerName = [user?.firstName, user?.lastName].filter(Boolean).join(" ").trim()
+    || user?.accountHolder || user?.email || "";
+  const isCompany = user?.profileType === "persona_moral";
+  return {
+    fullName: signerName,
+    profileType: user?.profileType || null,
+    businessName: isCompany ? (business.businessName || null) : null,
+    legalRepresentativeName: isCompany ? (business.legalRepresentativeName || null) : null,
+    legalRepresentativePosition: isCompany ? (business.legalRepresentativePosition || null) : null,
+    rfc: (isCompany ? business.taxId : null) || profile.rfc || user?.rfc || null,
+    address: (isCompany ? business.businessAddress : null) || profile.address || user?.address || null,
+    email: user?.email || "",
+    phone: (isCompany ? business.businessPhone : null) || profile.phone || user?.phone || null,
+    role: user?.role || "",
+    bankName: user?.bankName || null,
+    clabe: user?.clabe || null,
+  };
+}
+
+/** A self-declared company signer must match the authenticated account identity.
+ * This check does not substitute legal review of the signer's authority. */
+export function validateCompanyAgreementIdentity(data: PersonalizedAgreementData): string | null {
+  if (data.profileType !== "persona_moral") return null;
+  if (!data.businessName?.trim()) return "Registra la razón social de la empresa en Configuración → Negocio antes de formalizar.";
+  if (!data.legalRepresentativeName?.trim()) return "Registra el nombre del representante legal que firmará por la empresa.";
+  const normalize = (v: string) => v.normalize("NFD").replace(/[\\u0300-\\u036f]/g, "").replace(/\\s+/g, " ").trim().toLowerCase();
+  if (normalize(data.legalRepresentativeName) !== normalize(data.fullName)) {
+    return "El nombre del representante legal debe coincidir con el titular de la cuenta que recibirá el OTP. Usa una cuenta personal del firmante.";
+  }
+  return null;
 }
 
 export interface PersonalizedAgreementEvidence {
@@ -203,7 +242,12 @@ export function buildPersonalizedAgreement(
   const isMaster = data.role === "master_broker";
   const tipoText = isMaster ? "☐ Broker    ☑ Master Broker" : "☑ Broker    ☐ Master Broker";
 
-  const repText = "No aplica";
+  const company = data.profileType === "persona_moral";
+  const legalName = company ? data.businessName?.trim() || "Pendiente de proporcionar" : data.fullName;
+  const repText = company
+    ? [data.legalRepresentativeName?.trim(), data.legalRepresentativePosition?.trim()]
+        .filter(Boolean).join(" — ") || "Pendiente de proporcionar"
+    : "No aplica";
   const firmaText = evidence
     ? `Aceptado electrónicamente mediante Código de Verificación OTP (${evidence.otpMethod || "Correo Electrónico"})`
     : "Pendiente de formalización digital mediante OTP";
@@ -212,14 +256,14 @@ export function buildPersonalizedAgreement(
     : "Pendiente de formalizar";
 
   return templateContent
-    .replace("Nombre o razón social: _________________________________", `Nombre o razón social: ${data.fullName}`)
+    .replace("Nombre o razón social: _________________________________", `Nombre o razón social: ${legalName}`)
     .replace("\tRFC\n\t_________________________________", `\tRFC\n\t${rfcText}`)
     .replace("\tDomicilio\n\t_________________________________", `\tDomicilio\n\t${addressText}`)
     .replace("\tCorreo electrónico\n\t_________________________________", `\tCorreo electrónico\n\t${data.email}`)
     .replace("\tTeléfono\n\t_________________________________", `\tTeléfono\n\t${phoneText}`)
     .replace("\tTipo\n\t☐ Broker    ☐ Master Broker", `\tTipo\n\t${tipoText}`)
     .replace("\tBanco / CLABE\n\t_________________________________", `\tBanco / CLABE\n\t${bankClabeText}`)
-    .replace("Nombre / razón social: _______________________________", `Nombre / razón social: ${data.fullName}`)
+    .replace("Nombre / razón social: _______________________________", `Nombre / razón social: ${legalName}`)
     .replace("Representante, cuando corresponda: __________________", `Representante, cuando corresponda: ${repText}`)
     .replace("Firma / aceptación: _______________________________", `Firma / aceptación: ${firmaText}`)
     .replace("\tFecha\n\t_________________________________", `\tFecha\n\t${fechaText}`);
