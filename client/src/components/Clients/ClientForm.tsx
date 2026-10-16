@@ -471,8 +471,14 @@ export default function ClientForm({ client, onSuccess }: ClientFormProps) {
             <div className="space-y-2">
               <label className="text-sm font-medium text-gray-900">Tipo de Cliente</label>
               <Tabs value={clientType} onValueChange={(value) => {
-                  setClientType(value as "persona_moral" | "fisica_empresarial" | "fisica" | "sin_sat");
-                  form.setValue("type", value as any, { shouldValidate: true });
+                  const nextType = value as keyof typeof ANNUAL_INCOME_OPTIONS;
+                  const currentAnnual = form.getValues("ingresoAnual");
+                  setClientType(nextType);
+                  form.setValue("type", nextType, { shouldValidate: true });
+                  // Evitar conservar inadvertidamente un tramo exclusivo de otro perfil.
+                  if (currentAnnual && !ANNUAL_INCOME_OPTIONS[nextType].some(o => o.value === currentAnnual)) {
+                    form.setValue("ingresoAnual", "no-disponible", { shouldValidate: true });
+                  }
                 }}>
                 <TabsList className="grid w-full grid-cols-2 sm:grid-cols-4 h-auto bg-transparent gap-1">
                   <TabsTrigger 
