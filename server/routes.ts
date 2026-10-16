@@ -5,6 +5,7 @@ import { WebSocketServer, WebSocket } from "ws";
 import rateLimit from "express-rate-limit";
 import { pool } from "./db";
 import { storage, type IStorage } from "./storage";
+import { resolveSubmissionDisplayStatus } from "../shared/submissionDisplayStatus";
 import { readFrozenOfferLineage } from "./offerLineageService";
 import { authorizeClientSensitiveDisclosure } from "./clientConsentGate";
 import { setupAuth, isAuthenticated } from "./auth";
@@ -3080,15 +3081,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       for (const sub of userSubmissions.slice(0, 10)) {
-        // Only include if not already represented in credits
+        // El estado padre puede estar "in_progress" aunque la financiera
+        // solo tenga visto bueno. Resolver exactamente como Gestión de Créditos.
+        const targets = await storage.getCreditSubmissionTargets({ requestId: sub.id });
+        const primaryStatus = resolveSubmissionDisplayStatus(sub.status, targets);
         const clientName = await getClientName(sub.clientId, sub.purpose);
         recentList.push({
           id: sub.id,
           clientName,
           amount: sub.requestedAmount,
-          status: sub.status === 'submitted' ? 'en_revision' :
-                  sub.status === 'winner_selected' ? 'por_firmar' :
-                  sub.status === 'dispersed' ? 'disbursed' : sub.status,
+          status: primaryStatus === 'submitted' ? 'en_revision' :
+                  primaryStatus === 'winner_selected' ? 'por_firmar' :
+                  primaryStatus === 'dispersed' ? 'disbursed' : primaryStatus,
           updatedAt: sub.updatedAt || sub.createdAt,
           sourceType: 'submission'
         });
