@@ -1,4 +1,4 @@
-import { ALL_ANNUAL_INCOME_RANGES, getAnnualIncomeRange, getAnnualIncomeLabel } from "@shared/annualIncome";
+import { ALL_ANNUAL_INCOME_RANGES, getAnnualIncomeRange, getAnnualIncomeLabel } from "../../../../shared/annualIncome";
 
 // Core Matching & Rule Evaluation Engine for CreditoNegocios
 // Single source of truth for ALL field evaluations, Buró score matching, government sales participation,
