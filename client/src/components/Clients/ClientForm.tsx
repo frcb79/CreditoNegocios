@@ -16,6 +16,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import CurrencyInput from "@/components/ui/currency-input";
 import { User, TrendingUp, Trash2, Plus, Loader2 } from "lucide-react";
 import { CommercialDuplicateAlert, type DuplicateCheckResult } from "@/components/Commercial/CommercialDuplicateAlert";
+import { ANNUAL_INCOME_OPTIONS, getAnnualIncomeLabel } from "@shared/annualIncome";
 
 interface ClientFormProps {
   client?: any;
@@ -374,6 +375,7 @@ export default function ClientForm({ client, onSuccess }: ClientFormProps) {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/clients"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/dashboard/metrics"] });
       toast({
         title: "Cliente creado",
         description: "El cliente ha sido creado exitosamente.",
@@ -1545,6 +1547,32 @@ export default function ClientForm({ client, onSuccess }: ClientFormProps) {
                       {clientType === "fisica" && (
                         <>
                           <div className="mt-2 pt-4 border-t border-primary/20">
+                            {/* Rango anual orientativo: no sustituye ingreso mensual verificado. */}
+                            <FormField
+                              control={form.control}
+                              name="ingresoAnual"
+                              render={({ field }) => (
+                                <FormItem className="mb-5">
+                                  <FormLabel>Rango de Ingresos Anuales (MXN)</FormLabel>
+                                  <Select onValueChange={field.onChange} value={field.value || ""}>
+                                    <FormControl>
+                                      <SelectTrigger data-testid="select-pf-annual-income">
+                                        <SelectValue placeholder="Seleccionar / Por confirmar" />
+                                      </SelectTrigger>
+                                    </FormControl>
+                                    <SelectContent>
+                                                                          {ANNUAL_INCOME_OPTIONS.fisica.map(option => (
+                                                                            <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>
+                                                                          ))}
+                                                                          {field.value && !ANNUAL_INCOME_OPTIONS.fisica.some(option => option.value === field.value) && (
+                                                                            <SelectItem value={field.value}>{getAnnualIncomeLabel(field.value)} (rango anterior)</SelectItem>
+                                                                          )}
+                                                                        </SelectContent>
+                                  </Select>
+                                  <FormMessage />
+                                </FormItem>
+                              )}
+                            />
                             {/* Ingreso mensual promedio con subcampos */}
                             <div className="space-y-4 mb-6">
                               <h3 className="text-lg font-semibold text-primary">Ingreso Mensual Promedio (últimos 6 meses)</h3>
@@ -2094,6 +2122,32 @@ export default function ClientForm({ client, onSuccess }: ClientFormProps) {
                       {clientType === "sin_sat" && (
                         <>
                           <div className="mt-8 pt-6 border-t border-primary/20">
+                            {/* Rango anual orientativo: no sustituye ingreso mensual verificado. */}
+                            <FormField
+                              control={form.control}
+                              name="ingresoAnual"
+                              render={({ field }) => (
+                                <FormItem className="mb-5">
+                                  <FormLabel>Rango de Ingresos Anuales (MXN)</FormLabel>
+                                  <Select onValueChange={field.onChange} value={field.value || ""}>
+                                    <FormControl>
+                                      <SelectTrigger data-testid="select-sinsat-annual-income">
+                                        <SelectValue placeholder="Seleccionar / Por confirmar" />
+                                      </SelectTrigger>
+                                    </FormControl>
+                                    <SelectContent>
+                                                                          {ANNUAL_INCOME_OPTIONS.sin_sat.map(option => (
+                                                                            <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>
+                                                                          ))}
+                                                                          {field.value && !ANNUAL_INCOME_OPTIONS.sin_sat.some(option => option.value === field.value) && (
+                                                                            <SelectItem value={field.value}>{getAnnualIncomeLabel(field.value)} (rango anterior)</SelectItem>
+                                                                          )}
+                                                                        </SelectContent>
+                                  </Select>
+                                  <FormMessage />
+                                </FormItem>
+                              )}
+                            />
                             {/* Ingresos Mensuales Comprobables y No Comprobables */}
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
                               <FormField
@@ -2807,13 +2861,12 @@ export default function ClientForm({ client, onSuccess }: ClientFormProps) {
                                       </SelectTrigger>
                                     </FormControl>
                                     <SelectContent>
-                                      <SelectItem value="menor-100000">Menor a $100,000</SelectItem>
-                                      <SelectItem value="100000-250000">$100,000 a $250,000</SelectItem>
-                                      <SelectItem value="250000-500000">$250,000 a $500,000</SelectItem>
-                                      <SelectItem value="500000-1000000">$500,000 a $1,000,000</SelectItem>
-                                      <SelectItem value="1000000-2500000">$1,000,000 a $2,500,000</SelectItem>
-                                      <SelectItem value="2500000-5000000">$2,500,000 a $5,000,000</SelectItem>
-                                      <SelectItem value="arriba-5000000">Arriba de $5,000,000</SelectItem>
+                                      {ANNUAL_INCOME_OPTIONS.fisica_empresarial.map(option => (
+                                        <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>
+                                      ))}
+                                      {field.value && !ANNUAL_INCOME_OPTIONS.fisica_empresarial.some(option => option.value === field.value) && (
+                                        <SelectItem value={field.value}>{getAnnualIncomeLabel(field.value)} (rango anterior)</SelectItem>
+                                      )}
                                     </SelectContent>
                                   </Select>
                                   <FormMessage />
@@ -3535,13 +3588,12 @@ export default function ClientForm({ client, onSuccess }: ClientFormProps) {
                                       </SelectTrigger>
                                     </FormControl>
                                     <SelectContent>
-                                      <SelectItem value="menor-100000">Menor a $100,000</SelectItem>
-                                      <SelectItem value="100000-250000">$100,000 a $250,000</SelectItem>
-                                      <SelectItem value="250000-500000">$250,000 a $500,000</SelectItem>
-                                      <SelectItem value="500000-1000000">$500,000 a $1,000,000</SelectItem>
-                                      <SelectItem value="1000000-2500000">$1,000,000 a $2,500,000</SelectItem>
-                                      <SelectItem value="2500000-5000000">$2,500,000 a $5,000,000</SelectItem>
-                                      <SelectItem value="arriba-5000000">Arriba de $5,000,000</SelectItem>
+                                      {ANNUAL_INCOME_OPTIONS.persona_moral.map(option => (
+                                        <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>
+                                      ))}
+                                      {field.value && !ANNUAL_INCOME_OPTIONS.persona_moral.some(option => option.value === field.value) && (
+                                        <SelectItem value={field.value}>{getAnnualIncomeLabel(field.value)} (rango anterior)</SelectItem>
+                                      )}
                                     </SelectContent>
                                   </Select>
                                   <FormMessage />
