@@ -45,5 +45,5 @@ export function projectCreditForRole<T extends { finalProposal?: unknown }>(
   role?: string
 ): T | null | undefined {
   if (!credit || role === "super_admin") return credit;
-  return { ...credit, finalProposal: removeInternalEconomics(credit.finalProposal) };
+  return { ...credit, finalProposal: removeInternalEconomics(credit.finalProposal) } as T;
 }
