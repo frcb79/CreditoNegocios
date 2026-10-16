@@ -5390,14 +5390,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const userId = req.user.claims.sub;
       const user = await storage.getUser(userId);
       
-      // Admin and super_admin can see all credits, brokers only see their own
-      const isAdmin = user?.role === 'admin' || user?.role === 'super_admin';
-      
-      const credits = await storage.getCredits({ 
-        clientId,
-        brokerId: isAdmin ? undefined : userId,
-      });
-      
+      // Apply the SAME immutable attribution rule used by the global list.
+      // Historical Master may view its origin credits after Broker transfer;
+      // current Master must not inherit them by current network membership.
+      const allCredits = await storage.getCredits({ clientId });
+      const principal = { id: userId, role: user?.role };
+      const credits = allCredits.filter(credit => canViewCreditByOrigin(principal, credit));
+
       res.json(credits.map(credit => projectSubmissionCredit(credit, user?.role)));
     } catch (error) {
       console.error("Error fetching client credits:", error);
