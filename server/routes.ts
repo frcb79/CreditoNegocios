@@ -11,6 +11,7 @@ import { setupAuth, isAuthenticated } from "./auth";
 import { registerLegalRoutes } from "./legalRoutes";
 import { registerClientConsentPublicRoutes } from "./clientConsentRoutes";
 import { startInternalCommercialContact, CommercialContactError } from "./commercialContactService";
+import { filterAuthorizedClientListing } from "./clientListVisibility";
 import { startClientConsent, invalidateConsentRequest, hasValidClientConsent, listClientConsentEvidenceForTarget, verifyCompanySignerAuthority, markTargetSentWithClientConsent, withAuthorizedClientPdfDisclosure, ClientConsentError } from "./clientConsentService";
 import { sendClientConsentLinkEmail } from "./emailService";
 import { validateRegistrationAcceptance, getPublishedLegalDocument } from "./legalDocuments";
@@ -3890,6 +3891,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
         rawClients = allClients.filter(c => brokerIds.includes(c.brokerId));
       } else {
         rawClients = await storage.getClients(userId);
+      }
+
+      // The organization/tenant query is a candidate list, not authorization.
+      // Broker and Master must pass the exact commercial scope checked on the
+      // individual profile endpoint; tenant administrator membership cannot
+      // give a Broker platform-wide client listing.
+      if (!isAdmin) {
+        rawClients = await filterAuthorizedClientListing(rawClients,async(client)=>{
+          const access=await authorizeClientAccess(userId,user?.role||"",client.id,req.tenantContext);
+          const broadTenantPrivilege = ["broker","master_broker"].includes(user?.role||"") &&
+            String(access.reason||"").startsWith("Acceso administrativo");
+          return Boolean(access.authorized && access.capabilities.canViewBasicProfile && !broadTenantPrivilege);
+        });
       }
 
       const enrichedClients = await Promise.all(

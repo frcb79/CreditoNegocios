@@ -1,5 +1,6 @@
 import { pool } from "./db";
 import bcrypt from "bcrypt";
+import { repairStagingSchemaOnStartup } from "./stagingSchemaRepair";
 
 export async function runAutoMigration(): Promise<void> {
   if (process.env.USE_MEMORY_STORAGE === "true") {
@@ -701,9 +702,12 @@ export async function runAutoMigration(): Promise<void> {
       console.error("⚠️ [AutoMigrate] Error verifying commercial governance tables:", commErr);
     }
 
+    // Repair known legacy staging drift only; never run these ALTERs on Production.
+    await repairStagingSchemaOnStartup(client);
     console.log("✨ [AutoMigrate] Schema verification and user sync completed successfully!");
   } catch (error) {
     console.error("❌ [AutoMigrate] General schema verification error:", error);
+    if (process.env.RAILWAY_ENVIRONMENT_NAME?.toLowerCase() === "staging") throw error;
   } finally {
     if (client) {
       client.release();
