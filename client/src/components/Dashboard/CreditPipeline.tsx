@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { formatDistanceToNow } from "date-fns";
 import { es } from "date-fns/locale";
-import { getStatusLabel, getStatusBadgeClass } from "@/lib/statusConfig";
+import { getStatusLabel, getCreditStatusLabel, getStatusBadgeClass } from "@/lib/statusConfig";
 
 interface PipelineData {
   pipeline: {
@@ -192,7 +192,7 @@ export default function CreditPipeline() {
                         className={`text-[10px] px-2 py-0.5 font-medium border shadow-none ${getStatusBadgeClass(creditCase.status)}`}
                         data-testid={`case-status-${creditCase.id}`}
                       >
-                        {getStatusLabel(creditCase.status)}
+                        {creditCase.sourceType === "credit" ? getCreditStatusLabel(creditCase.status) : getStatusLabel(creditCase.status)}
                       </Badge>
                       <p
                         className="text-[10px] text-muted-foreground mt-0.5 font-mono"
