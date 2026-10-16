@@ -633,19 +633,22 @@ async function authorizeDocumentAccess(
   }
 
   const principal = { id: userId, role: userRole };
+  if (document.creditId) {
+    const credit = await storage.getCredit(document.creditId);
+    // The immutable origin of a credit is sufficient to read its linked
+    // document, even after its Broker left the historical Master's network.
+    // Current client ownership must never override that provenance.
+    if (!canReadDocumentByOrigin(principal, document, credit)) {
+      return { authorized: false, document, reason: "Document credit origin not accessible" };
+    }
+    return { authorized: true, document };
+  }
+
   if (document.clientId) {
     const clientScope = await authorizeClientAccess(userId, userRole, document.clientId, tenantContext);
     if (!clientScope.authorized) {
       return { authorized: false, document, reason: "Client not accessible" };
     }
-  }
-
-  if (document.creditId) {
-    const credit = await storage.getCredit(document.creditId);
-    if (!canReadDocumentByOrigin(principal, document, credit)) {
-      return { authorized: false, document, reason: "Document credit origin not accessible" };
-    }
-    return { authorized: true, document };
   }
 
   // No reliable historical Master attribution exists for unlinked files.
@@ -7777,13 +7780,11 @@ function maskCLABE(clabe?: string | null): string | null {
       const userId = req.user.claims.sub;
       const user = await storage.getUser(userId);
       
-      // First check if user can access this client
-      const authResult = await authorizeClientAccess(userId, user?.role || '', clientId, req.tenantContext);
-      if (!authResult.authorized) {
-        return res.status(authResult.reason === 'Client not found' ? 404 : 403).json({ message: authResult.reason });
-      }
-      
-      // User is authorized to access this client, fetch documents
+      const client = await storage.getClient(clientId);
+      if (!client) return res.status(404).json({ message: "Client not found" });
+      // Basic client scope is NOT the only source of access: a historical
+      // Master retains rights to documents of its immutable-origin credits.
+      const authResult = await authorizeClientAccess(userId, user?.role || "", clientId, req.tenantContext);
       const documents = await storage.getDocuments({ clientId });
 
       // A Master with oversight of the client must NOT inherit historic
@@ -7793,6 +7794,9 @@ function maskCLABE(clabe?: string | null): string | null {
         return Boolean(access.authorized);
       });
 
+      if (!authResult.authorized && filteredDocuments.length === 0) {
+        return res.status(403).json({ message: "Client documents not accessible" });
+      }
       res.json(filteredDocuments);
 
     } catch (error) {
