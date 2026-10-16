@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { getMatchingScoreTone } from "../../../../shared/matchingPresentation";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { CheckCircle, XCircle, AlertCircle, Info, HelpCircle } from "lucide-react";
@@ -141,7 +142,7 @@ export default function MatchingComparisonTable({
               <span className="font-bold text-sm">
                 {matchResult.matchStatusLabel || (matchResult.matchStatus === 'not_compatible' ? 'No Compatible' : matchResult.matchStatus === 'insufficient_data' ? 'Información Insuficiente' : 'Compatible')}
               </span>
-              <Badge variant="outline" className={"text-xs font-bold " + (matchResult.matchStatus === "insufficient_data" ? "bg-slate-100 text-slate-700" : matchResult.score >= 80 ? "bg-emerald-100 text-emerald-800" : matchResult.score >= 50 ? "bg-amber-100 text-amber-800" : "bg-rose-100 text-rose-800")}>
+              <Badge variant="outline" className={"text-xs font-bold " + (getMatchingScoreTone(matchResult.score, matchResult.matchStatus) === "neutral" ? "bg-slate-100 text-slate-700" : getMatchingScoreTone(matchResult.score, matchResult.matchStatus) === "green" ? "bg-emerald-100 text-emerald-800" : getMatchingScoreTone(matchResult.score, matchResult.matchStatus) === "yellow" ? "bg-amber-100 text-amber-800" : "bg-rose-100 text-rose-800")}>
                 Score orientativo: {matchResult.score}%
               </Badge>
             </div>
