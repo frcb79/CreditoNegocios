@@ -23,7 +23,7 @@ export function resolveSubmissionDisplayStatus(
   targets: ReadonlyArray<{ status: string }> | null | undefined
 ): string {
   if (!targets?.length) return parentStatus;
-  const statuses = [...new Set(targets.map(t => t.status).filter(Boolean))];
+  const statuses = Array.from(new Set(targets.map(t => t.status).filter(Boolean)));
   if (!statuses.length) return parentStatus;
   return statuses.sort((a, b) =>
     (submissionTargetStatusPriority[a] ?? 99) - (submissionTargetStatusPriority[b] ?? 99)
