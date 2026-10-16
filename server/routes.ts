@@ -5,6 +5,7 @@ import { WebSocketServer, WebSocket } from "ws";
 import rateLimit from "express-rate-limit";
 import { pool } from "./db";
 import { storage, type IStorage } from "./storage";
+import { canViewSubmissionByOrigin, canViewCreditByOrigin } from "./dashboardVisibility";
 import { resolveSubmissionDisplayStatus } from "../shared/submissionDisplayStatus";
 import { readFrozenOfferLineage } from "./offerLineageService";
 import { authorizeClientSensitiveDisclosure } from "./clientConsentGate";
@@ -737,14 +738,7 @@ async function resolveProductTemplate(productTemplateId?: string | null, fallbac
  * new network access to operations historically originated for the old Master.
  */
 function canReadCreditSubmission(user: any, submission: any): boolean {
-  if (!user || !submission) return false;
-  if (user.role === "super_admin" || user.role === "admin") return true;
-  if (user.role === "broker") return submission.brokerId === user.id;
-  if (user.role === "master_broker") {
-    return submission.brokerId === user.id ||
-      (submission.originMasterBrokerId != null && submission.originMasterBrokerId === user.id);
-  }
-  return false;
+  return canViewSubmissionByOrigin(user, submission);
 }
 
 /** ASTRA-02: positive projections prevent password/CLABE and internal margins escaping. */
@@ -2730,33 +2724,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
         role: user.role,
       };
       
-      // 1. Get submissions and network broker IDs
-      let networkBrokerIds: string[] = [userId];
+      // Una afiliación actual de red no da acceso a expedientes históricos.
+      // La atribución de origen es inmutable y se comparte con el resto de rutas.
       let networkBrokers: any[] = [];
       if (isMasterBroker) {
         networkBrokers = await storage.getUsersByMasterBroker(userId);
-        networkBrokerIds = [userId, ...networkBrokers.map(b => b.id)];
       }
 
-      // 2. Fetch all submissions relevant for user
       const allSubmissions = await storage.getCreditSubmissionRequests({});
-      let userSubmissions: any[] = [];
-      if (isAdmin) {
-        userSubmissions = allSubmissions;
-      } else if (req.tenantContext?.tenant) {
-        const tenant = req.tenantContext.tenant;
-        if (tenant.type === 'master_broker') {
-          const subordinates = await storage.getTenantsByParent(tenant.id);
-          const tenantIds = [tenant.id, ...subordinates.map(t => t.id)];
-          userSubmissions = allSubmissions.filter(s => (s.tenantId && tenantIds.includes(s.tenantId)) || networkBrokerIds.includes(s.brokerId));
-        } else {
-          userSubmissions = allSubmissions.filter(s => s.tenantId === tenant.id || s.brokerId === userId);
-        }
-      } else if (isMasterBroker) {
-        userSubmissions = allSubmissions.filter(s => networkBrokerIds.includes(s.brokerId));
-      } else {
-        userSubmissions = allSubmissions.filter(s => s.brokerId === userId);
-      }
+      const userSubmissions = allSubmissions.filter(submission =>
+        canReadCreditSubmission(user, submission)
+      );
 
       // Active pipeline requests (in progress)
       const activePipelineSubmissions = userSubmissions.filter(s =>
@@ -2765,25 +2743,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       );
       const pipelineCount = activePipelineSubmissions.length;
 
-      // 3. Fetch credits (dispersed / active loans)
+      // Créditos vinculados a la red: se utiliza el Master de ORIGEN del
+      // crédito, no la afiliación actual del Broker ni la pertenencia al tenant.
       const allCredits = await storage.getCredits({});
-      let userCredits: any[] = [];
-      if (isAdmin) {
-        userCredits = allCredits;
-      } else if (req.tenantContext?.tenant) {
-        const tenant = req.tenantContext.tenant;
-        if (tenant.type === 'master_broker') {
-          const subordinates = await storage.getTenantsByParent(tenant.id);
-          const tenantIds = [tenant.id, ...subordinates.map(t => t.id)];
-          userCredits = allCredits.filter(c => (c.tenantId && tenantIds.includes(c.tenantId)) || networkBrokerIds.includes(c.brokerId));
-        } else {
-          userCredits = allCredits.filter(c => c.tenantId === tenant.id || c.brokerId === userId);
-        }
-      } else if (isMasterBroker) {
-        userCredits = allCredits.filter(c => networkBrokerIds.includes(c.brokerId));
-      } else {
-        userCredits = allCredits.filter(c => c.brokerId === userId);
-      }
+      const userCredits = allCredits.filter(credit => canViewCreditByOrigin(user, credit));
 
       // REGLA 3 (FASE 2B.2A.1): Separar desembolsos reportados de confirmados.
       // Sólo la confirmación expresa de Super Admin computa como desembolso confirmado en métricas.
@@ -2986,25 +2949,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const userId = req.user.claims.sub;
       const user = await storage.getUser(userId);
-      const isAdmin = user?.role === 'admin' || user?.role === 'super_admin';
-      const isMasterBroker = user?.role === 'master_broker';
-      
-      let brokerIds = [userId];
-      if (isMasterBroker) {
-        const networkBrokers = await storage.getUsersByMasterBroker(userId);
-        brokerIds = [userId, ...networkBrokers.map(b => b.id)];
-      }
+      if (!user) return res.status(404).json({ message: "User not found" });
 
-      // Fetch both submissions and credits
       const allSubmissions = await storage.getCreditSubmissionRequests({});
-      const userSubmissions = isAdmin
-        ? allSubmissions
-        : allSubmissions.filter(s => brokerIds.includes(s.brokerId));
+      const userSubmissions = allSubmissions.filter(sub => canReadCreditSubmission(user, sub));
 
       const allCredits = await storage.getCredits({});
-      const userCredits = isAdmin
-        ? allCredits
-        : allCredits.filter(c => brokerIds.includes(c.brokerId));
+      const userCredits = allCredits.filter(credit => canViewCreditByOrigin(user, credit));
 
       // Calculate pipeline stages across both submissions in-flight and credits
       const en_revision = userSubmissions.filter(s =>
