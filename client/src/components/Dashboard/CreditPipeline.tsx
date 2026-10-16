@@ -30,6 +30,8 @@ export default function CreditPipeline() {
   const [, setLocation] = useLocation();
   const { data, isLoading } = useQuery<PipelineData>({
     queryKey: ["/api/dashboard/pipeline"],
+    staleTime: 0,
+    refetchOnWindowFocus: "always",
   });
 
   if (isLoading) {
