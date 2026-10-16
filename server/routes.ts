@@ -6,6 +6,7 @@ import rateLimit from "express-rate-limit";
 import { pool } from "./db";
 import { storage, type IStorage } from "./storage";
 import { canViewSubmissionByOrigin, canViewCreditByOrigin, canEditCreditByOrigin } from "./dashboardVisibility";
+import { projectCreditForRole } from "./creditResponseProjection";
 import { resolveSubmissionDisplayStatus } from "../shared/submissionDisplayStatus";
 import { readFrozenOfferLineage } from "./offerLineageService";
 import { authorizeClientSensitiveDisclosure } from "./clientConsentGate";
@@ -880,11 +881,10 @@ function projectSubmissionTarget(target: any, userRole?: string) {
   };
 }
 
-// ASTRA-02: Redact frozen economic allocation from ordinary winner-credit responses.
+// SEC-P0-05: One shared projection for winner credits, lists, creation and
+// updates; never serialize internal rate/margin/sobretasa data to intermediaries.
 function projectSubmissionCredit(credit: any, userRole?: string) {
-  if (!credit || userRole === "super_admin") return credit;
-  const safeProposal = projectSubmissionTarget({ institutionProposal: credit.finalProposal }, userRole).institutionProposal;
-  return { ...credit, finalProposal: safeProposal };
+  return projectCreditForRole(credit, userRole);
 }
 
 // Helper function to enrich credit submission target with related data
@@ -4719,7 +4719,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         })
       );
       
-      res.json(enrichedCredits);
+      res.json(enrichedCredits.map(credit => projectSubmissionCredit(credit, user?.role)));
     } catch (error) {
       console.error("Error fetching credits:", error);
       res.status(500).json({ message: "Failed to fetch credits" });
@@ -4891,7 +4891,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         data: { creditId: credit.id },
       });
       
-      res.status(201).json(credit);
+      res.status(201).json(projectSubmissionCredit(credit, user?.role));
     } catch (error: any) {
       const code = String(error?.message || "");
       if (code.startsWith("OFFER_") || code === "MISSING_ORIGIN_MASTER_FOR_OFFER") {
@@ -5005,7 +5005,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         );
       }
       
-      res.json(credit);
+      res.json(projectSubmissionCredit(credit, user?.role));
     } catch (error) {
       console.error("Error updating credit:", error);
       res.status(500).json({ message: "Failed to update credit" });
@@ -5415,7 +5415,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         brokerId: isAdmin ? undefined : userId,
       });
       
-      res.json(credits);
+      res.json(credits.map(credit => projectSubmissionCredit(credit, user?.role)));
     } catch (error) {
       console.error("Error fetching client credits:", error);
       res.status(500).json({ message: "Failed to fetch client credits" });
