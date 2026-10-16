@@ -7807,13 +7807,22 @@ function maskCLABE(clabe?: string | null): string | null {
       
       // Admin and super_admin can see all documents
       const isAdmin = user?.role === 'admin' || user?.role === 'super_admin';
+      const visibleDocuments = async (docs: any[]) => {
+        if (isAdmin) return res.json(docs);
+        const visible = await filterAuthorizedClientListing(docs, async doc => {
+          const auth = await authorizeDocumentAccess(userId, user?.role || '', doc.id, req.tenantContext);
+          return Boolean(auth.authorized);
+        });
+        return res.json(visible);
+      };
+
       
       if (isAdmin) {
         const documents = await storage.getDocuments({
           clientId: clientId as string,
           creditId: creditId as string,
         });
-        return res.json(documents);
+        return visibleDocuments(documents);
       } else if (req.tenantContext?.tenant) {
         const tenant = req.tenantContext.tenant;
         if (tenant.type === 'master_broker') {
@@ -7824,14 +7833,14 @@ function maskCLABE(clabe?: string | null): string | null {
             clientId: clientId as string,
             creditId: creditId as string,
           });
-          return res.json(documents);
+          return visibleDocuments(documents);
         } else {
           const documents = await storage.getDocuments({
             tenantId: tenant.id,
             clientId: clientId as string,
             creditId: creditId as string,
           });
-          return res.json(documents);
+          return visibleDocuments(documents);
         }
       } else if (user?.role === 'master_broker') {
         const networkBrokers = await storage.getUsersByMasterBroker(userId);
@@ -7841,14 +7850,14 @@ function maskCLABE(clabe?: string | null): string | null {
           creditId: creditId as string,
         });
         const filteredDocuments = allDocuments.filter(d => d.brokerId && brokerIds.includes(d.brokerId));
-        return res.json(filteredDocuments);
+        return visibleDocuments(filteredDocuments);
       } else {
         const documents = await storage.getDocuments({
           clientId: clientId as string,
           creditId: creditId as string,
           brokerId: userId,
         });
-        return res.json(documents);
+        return visibleDocuments(documents);
       }
     } catch (error) {
       console.error("Error fetching documents:", error);
