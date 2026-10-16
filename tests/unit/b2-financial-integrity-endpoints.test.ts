@@ -1181,7 +1181,12 @@ describe("Fase 2B.1B — Cierre de Integridad Financiera y Eliminación de Rutas
       expect(res.body.finalProposal.isCommercialSnapshot).toBe(true);
       expect(res.body.finalProposal.snapshotCreatedAt).toBe(timestamp);
       expect(res.body.finalProposal.originMasterBrokerId).toBe("master-safe");
-      expect(res.body.finalProposal.commissionRates.broker.apertura).toBe("1.8");
+      // SEC-P0-05: snapshots remain immutable in storage, but sensitive
+      // economics must never be serialized into an Admin/Broker response.
+      expect(res.body.finalProposal.commissionRates).toBeUndefined();
+      const persisted = await storage.getCredit(credit.id);
+      expect((persisted?.finalProposal as any).commissionRates.broker.apertura).toBe("1.8");
+      expect((persisted?.finalProposal as any).snapshotCreatedAt).toBe(timestamp);
     });
   });
 
