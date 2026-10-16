@@ -1,3 +1,4 @@
+import { resolveSubmissionDisplayStatus } from "../../../shared/submissionDisplayStatus";
 // Configuración compartida de estados para submissions y targets
 // Centraliza labels y colores para mantener consistencia en toda la aplicación
 
@@ -145,26 +146,10 @@ export function getSubmissionStatusSummary(targets: Array<{ status: string }>): 
   const uniqueStatuses = Object.keys(statusCounts);
   const hasMultipleStatuses = uniqueStatuses.length > 1;
 
-  // Determinar estado primario (prioridad: devuelto > pendiente > aprobado > enviado > propuesta > ganador > dispersado)
-  // Determinar estado primario (prioridad: dispersado > ganador > propuesta > aprobado > pendiente > devuelto)
-  const statusPriority: Record<string, number> = {
-    'dispersed': 1,
-    'selected_winner': 2,
-    'winner': 3,
-    'institution_approved': 4,
-    'proposal_received': 5,
-    'contact_initiated': 6,
-    'sent': 6,
-    'approved': 7,
-    'pending_admin': 8,
-    'returned_to_broker': 9,
-    'institution_rejected': 10,
-    'rejected': 11,
-  };
+  const primaryStatus = resolveSubmissionDisplayStatus('pending_admin', targets);
 
-  const primaryStatus = uniqueStatuses.sort((a, b) => 
-    (statusPriority[a] || 99) - (statusPriority[b] || 99)
-  )[0];
+  // Orden visual consistente con el estado primario
+  uniqueStatuses.sort((a, b) => a === primaryStatus ? -1 : b === primaryStatus ? 1 : 0);
 
   // Generar texto de resumen
   let summaryText = '';
