@@ -1,3 +1,5 @@
+import { getAnnualIncomeRange } from "../../shared/annualIncome";
+
 /**
  * Crédito Negocios — Matching M1: Auditoría y Mapa de Campos Verificados
  * 
@@ -336,10 +338,11 @@ export function extractMonthlyRevenue(client: any, credit?: any): number | null 
     (v) => v !== undefined && v !== null && v !== ""
   );
   for (const field of annualFields) {
-    const cleaned = String(field).replace(/[^0-9.]/g, "");
-    const annualVal = parseFloat(cleaned);
-    if (!isNaN(annualVal) && annualVal > 0) {
-      return Number((annualVal / 12).toFixed(2));
+    const annual = getAnnualIncomeRange(field);
+    // La banda declarada NO equivale a facturación comprobada ni a un importe exacto.
+    // No interpretar "1000000-2000000" como 1000000 / 12.
+    if (annual && annual.min === annual.max) {
+      return Number((annual.min / 12).toFixed(2));
     }
   }
 
