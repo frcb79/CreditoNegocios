@@ -717,7 +717,7 @@ export default function PendingRequests() {
               {/* Enviadas a Financiera */}
               <div className="bg-white border border-slate-200/80 rounded-xl p-3.5 shadow-sm hover:border-slate-300 transition-colors">
                 <div className="flex items-center justify-between gap-2 mb-2">
-                  <span className="text-xs font-medium text-slate-500 truncate">Gestión iniciada</span>
+                  <span className="text-xs font-medium text-slate-500 truncate">Gestión Comercial Iniciada</span>
                   <div className="h-7 w-7 rounded-lg bg-blue-50 text-blue-700 flex items-center justify-center shrink-0 border border-blue-200/60">
                     <Send className="w-3.5 h-3.5" />
                   </div>
@@ -726,14 +726,14 @@ export default function PendingRequests() {
                   <span className="text-2xl font-bold tracking-tight text-slate-900">
                     {sentCount}
                   </span>
-                  <span className="text-2xs text-slate-400 font-medium">en trámite</span>
+                  <span className="text-2xs text-slate-400 font-medium">en gestión</span>
                 </div>
               </div>
 
               {/* Aprobadas / Propuestas */}
               <div className="bg-white border border-slate-200/80 rounded-xl p-3.5 shadow-sm hover:border-slate-300 transition-colors">
                 <div className="flex items-center justify-between gap-2 mb-2">
-                  <span className="text-xs font-medium text-slate-500 truncate">Aprobadas</span>
+                  <span className="text-xs font-medium text-slate-500 truncate">Visto Bueno</span>
                   <div className="h-7 w-7 rounded-lg bg-emerald-50 text-emerald-700 flex items-center justify-center shrink-0 border border-emerald-200/60">
                     <CheckCircle className="w-3.5 h-3.5" />
                   </div>
@@ -742,7 +742,7 @@ export default function PendingRequests() {
                   <span className="text-2xl font-bold tracking-tight text-slate-900">
                     {approvedCount}
                   </span>
-                  <span className="text-2xs text-slate-400 font-medium">con propuesta</span>
+                  <span className="text-2xs text-slate-400 font-medium">por administración</span>
                 </div>
               </div>
 
@@ -839,7 +839,7 @@ export default function PendingRequests() {
                     <SelectItem value="all">Todos los Estados</SelectItem>
                     <SelectItem value="pending_admin">Pendiente Aprobación</SelectItem>
                     <SelectItem value="approved">Aprobada</SelectItem>
-                    <SelectItem value="contact_initiated">Gestión comercial iniciada</SelectItem>
+                    <SelectItem value="contact_initiated">Gestión Comercial Iniciada</SelectItem>
                     <SelectItem value="sent">Enviada (histórica)</SelectItem>
                     <SelectItem value="institution_approved">Propuesta Recibida</SelectItem>
                     <SelectItem value="selected_winner">Seleccionada</SelectItem>
