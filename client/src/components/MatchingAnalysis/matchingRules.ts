@@ -1573,14 +1573,9 @@ export function evaluateAllFieldsForClient(
   const unmetRequirements = fields.filter(f => f.status === 'fail').map(f => f.notes || `${f.label}: incumplido`);
 
   // Detect critical requirements that are missing data (e.g. tenure, bureau, financials)
-  const coreTenureBuroKeys = [
-    'antiguedadLaboral', 'tiempoActividad', 'antiguedadEmpleo', 
-    'buroEmpresa', 'buroPersonaFisica', 'buroAccionistaPrincipal', 'buroPersonaFisicaSinSat',
-    'estadosFinancieros', 'ingresoAnual'
-  ];
-
+  // Toda regla configurada y sin dato debe permanecer "información insuficiente",
+  // no únicamente Buró o antigüedad. Ingreso anual traslapado también requiere precisión.
   const configuredCoreFields = fields.filter(f =>
-    coreTenureBuroKeys.includes(f.fieldName) &&
     f.requirementValue &&
     f.requirementValue !== 'Sin límite' &&
     !f.requirementValue.toLowerCase().includes('todos')
@@ -1588,7 +1583,10 @@ export function evaluateAllFieldsForClient(
 
   const missingCoreFields = configuredCoreFields.filter(f =>
     f.status === 'warning' &&
-    (f.fieldName === 'ingresoAnual' || f.clientValue === 'No proporcionado' || f.clientValue === 'No especificado' || f.clientValue === '-')
+    (f.fieldName === 'ingresoAnual' ||
+     f.clientValue === 'No proporcionado' ||
+     f.clientValue === 'No especificado' ||
+     f.clientValue === '-')
   );
 
   const missingData = missingCoreFields.map(f => `Confirmar ${f.label} (Requisito: ${f.requirementValue})`);
@@ -1616,13 +1614,13 @@ export function evaluateAllFieldsForClient(
     matchStatus = 'insufficient_data';
     matchStatusLabel = 'Información insuficiente';
     category = 'insufficient_data';
-    // Do NOT tank the score to 0 or penalize missing fields
-    score = (passed + fails) > 0 ? Math.round((passed / (passed + fails)) * 100) : 70;
+    // Sin criterios verificables no existe score: nunca inventar 70%.
+    score = (passed + fails) > 0 ? Math.round((passed / (passed + fails)) * 100) : 0;
     warningList.push(`Información insuficiente: ${missingData.join('; ')}`);
   } else {
     matchStatus = 'compatible';
     matchStatusLabel = 'Compatible';
-    score = (passed + fails) > 0 ? Math.round((passed / (passed + fails)) * 100) : 85;
+    score = (passed + fails) > 0 ? Math.round((passed / (passed + fails)) * 100) : 0;
     category = score >= 80 ? 'recommended' : 'compatible';
   }
 
