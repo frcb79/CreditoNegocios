@@ -1,11 +1,12 @@
 import { ANNUAL_INCOME_OPTIONS, getAnnualIncomeRange } from "../../shared/annualIncome";
 import { extractMonthlyRevenue } from "../../server/matching/fieldMapping";
 import { evaluateIngresoAnual } from "../../client/src/components/MatchingAnalysis/matchingRules";
-import { getStatusLabel } from "../../client/src/lib/statusConfig";
+import { getStatusLabel, getCreditStatusLabel } from "../../client/src/lib/statusConfig";
 
 describe("rangos anuales y matching conservador", () => {
   test("autorización comercial no se confunde con aprobación bancaria", () => {
     expect(getStatusLabel("approved")).toBe("Visto Bueno");
+    expect(getCreditStatusLabel("approved")).toBe("Propuesta seleccionada");
     expect(getStatusLabel("in_progress")).toBe("Gestión Comercial Iniciada");
     expect(getStatusLabel("contact_initiated")).toBe("Gestión Comercial Iniciada");
     expect(getStatusLabel("institution_approved")).toBe("Propuesta recibida");
