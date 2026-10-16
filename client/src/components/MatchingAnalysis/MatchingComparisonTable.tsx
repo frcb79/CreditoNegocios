@@ -141,11 +141,12 @@ export default function MatchingComparisonTable({
               <span className="font-bold text-sm">
                 {matchResult.matchStatusLabel || (matchResult.matchStatus === 'not_compatible' ? 'No Compatible' : matchResult.matchStatus === 'insufficient_data' ? 'Información Insuficiente' : 'Compatible')}
               </span>
-              <Badge variant="outline" className="text-xs bg-background/80 font-bold">
-                Score: {matchResult.score}%
+              <Badge variant="outline" className={"text-xs font-bold " + (matchResult.matchStatus === "insufficient_data" ? "bg-slate-100 text-slate-700" : matchResult.score >= 80 ? "bg-emerald-100 text-emerald-800" : matchResult.score >= 50 ? "bg-amber-100 text-amber-800" : "bg-rose-100 text-rose-800")}>
+                Score orientativo: {matchResult.score}%
               </Badge>
             </div>
 
+            <p className="text-xs opacity-80">Semáforo score: verde 80–100%; amarillo 50–79%; rojo 0–49%. El dictamen es independiente: un requisito incumplido puede hacer no compatible incluso con score alto. La información insuficiente no es aprobación.</p>
             {/* Why it matches */}
             {matchResult.reasons.length > 0 && (
               <div className="text-xs">
