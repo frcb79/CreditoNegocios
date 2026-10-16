@@ -48,6 +48,13 @@ export function getStatusLabel(status: string): string {
   return ALL_STATUS_LABELS[normalized] || creditStatusConfig[normalized]?.label || submissionStatusConfig[normalized]?.label || status;
 }
 
+/** Estado de operación crediticia, no autorización administrativa de target. */
+export function getCreditStatusLabel(status: string): string {
+  if (!status) return "Desconocido";
+  const normalized = status.toLowerCase().trim();
+  return creditStatusConfig[normalized]?.label || getStatusLabel(status);
+}
+
 export function getStatusBadgeClass(status: string): string {
   if (!status) return "bg-gray-100 text-gray-700 border-gray-200";
   const normalized = status.toLowerCase().trim();
@@ -95,7 +102,7 @@ export const creditStatusConfig: Record<string, { label: string; color: string }
   pending_admin: { label: "Pendiente de revisión", color: "bg-amber-100 text-amber-800 border-amber-300 font-semibold" },
   under_review: { label: "En revisión", color: "bg-amber-100 text-amber-800 border-amber-300 font-medium" },
   in_review: { label: "En revisión", color: "bg-amber-100 text-amber-800 border-amber-300 font-medium" },
-  approved: { label: "Visto Bueno", color: "bg-emerald-100 text-emerald-800 border-emerald-300 font-medium" },
+  approved: { label: "Propuesta seleccionada", color: "bg-emerald-100 text-emerald-800 border-emerald-300 font-medium" },
   contact_initiated: { label: "Gestión Comercial Iniciada", color: "bg-blue-100 text-blue-800 border-blue-300 font-semibold" },
   sent: { label: "Enviado a financieras", color: "bg-blue-100 text-blue-800 border-blue-300 font-semibold" },
   sent_to_institutions: { label: "Enviado a financieras", color: "bg-blue-100 text-blue-800 border-blue-300 font-semibold" },
