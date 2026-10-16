@@ -86,3 +86,36 @@ jobs:
         run: npm test -- --runInBand --coverage=false --forceExit tests/integration/postgres-commercial-config-atomic.test.ts
       - name: Test Master Broker rate version atomicity and concurrency in PostgreSQL
         run: npm test -- --runInBand --coverage=false --forceExit tests/integration/postgres-network-rates-atomic.test.ts
+
+  staging-public-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Public Staging health and anonymous access checks
+        run: node scripts/smoke-staging-public.cjs
+
+  production-dependency-audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+      - name: Install locked dependencies
+        run: npm ci --no-audit --no-fund
+      - name: Audit runtime dependencies only
+        run: npm audit --omit=dev --json > audit-production.json || true
+      - name: Gate on CRITICAL production runtime advisories
+        run: node scripts/prelaunch-dependency-audit.cjs audit-production.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: production-dependency-audit
+          path: audit-production.json
+          retention-days: 14
