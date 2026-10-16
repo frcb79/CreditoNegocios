@@ -115,7 +115,7 @@ export default function MySubmissions() {
     if (statusFilter === 'all') return true;
     if (statusFilter === 'dispersed') return credit.status === 'dispersed' || credit.status === 'disbursed';
     if (statusFilter === 'approved') return credit.status === 'approved';
-    if (statusFilter === 'in_progress') return credit.status !== 'dispersed' && credit.status !== 'disbursed' && credit.status !== 'approved';
+    if (statusFilter === 'in_progress') return credit.status === 'in_progress' || credit.status === 'contact_initiated';
     return credit.status === statusFilter;
   });
 
@@ -200,7 +200,7 @@ export default function MySubmissions() {
                 { id: 'all', label: `Todos (${currentList.length})` },
                 { id: 'dispersed', label: `Dispersados (${currentList.filter(c => c.status === 'dispersed' || c.status === 'disbursed').length})` },
                 { id: 'approved', label: `Visto Bueno (${currentList.filter(c => c.status === 'approved').length})` },
-                { id: 'in_progress', label: `Gestión Comercial Iniciada (${currentList.filter(c => c.status !== 'dispersed' && c.status !== 'disbursed' && c.status !== 'approved').length})` },
+                { id: 'in_progress', label: `Gestión Comercial Iniciada (${currentList.filter(c => c.status === 'in_progress' || c.status === 'contact_initiated').length})` },
               ].map((f) => {
                 const isActive = statusFilter === f.id;
                 return (
