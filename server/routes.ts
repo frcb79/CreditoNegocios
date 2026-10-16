@@ -1,6 +1,6 @@
 import type { Express } from "express";
 import { randomUUID } from "node:crypto";
-import { createServer, type Server } from "http";
+import { createServer, ServerResponse, type Server } from "http";
 import { WebSocketServer, WebSocket } from "ws";
 import rateLimit from "express-rate-limit";
 import { pool } from "./db";
@@ -9,7 +9,7 @@ import { canViewSubmissionByOrigin, canViewCreditByOrigin, canEditCreditByOrigin
 import { resolveSubmissionDisplayStatus } from "../shared/submissionDisplayStatus";
 import { readFrozenOfferLineage } from "./offerLineageService";
 import { authorizeClientSensitiveDisclosure } from "./clientConsentGate";
-import { setupAuth, isAuthenticated } from "./auth";
+import { setupAuth, getSession, isAuthenticated } from "./auth";
 import { registerLegalRoutes } from "./legalRoutes";
 import { registerClientConsentPublicRoutes } from "./clientConsentRoutes";
 import { startInternalCommercialContact, CommercialContactError } from "./commercialContactService";
@@ -13291,28 +13291,71 @@ function maskCLABE(clabe?: string | null): string | null {
   });
 
 
-  // WebSocket setup
+  // SEC-P0-04: WebSocket users MUST be resolved from the authenticated
+  // server-side session cookie. A query parameter is never an identity proof.
   const httpServer = createServer(app);
-  
-  const wss = new WebSocketServer({ 
-    server: httpServer, 
-    path: '/ws' 
+  const wss = new WebSocketServer({ noServer: true });
+  const parseSessionForWebSocket = getSession();
+
+  httpServer.on("upgrade", (req, socket, head) => {
+    let pathname: string;
+    try {
+      pathname = new URL(req.url || "", "http://localhost").pathname;
+    } catch {
+      socket.destroy();
+      return;
+    }
+    if (pathname !== "/ws") return;
+
+    const rejectUpgrade = () => {
+      if (!socket.destroyed) {
+        socket.end("HTTP/1.1 401 Unauthorized\r\nConnection: close\r\n\r\n");
+      }
+    };
+
+    // Node's ServerResponse supplies headers/session-cookie methods expected
+    // by express-session for a read-only HTTP upgrade request.
+    const response = new ServerResponse(req);
+    try {
+      parseSessionForWebSocket(req as any, response as any, async (err?: any) => {
+        if (err) return rejectUpgrade();
+        const sessionUser = (req as any).session?.passport?.user;
+        const sessionUserId = sessionUser?.claims?.sub || sessionUser?.id;
+        if (typeof sessionUserId !== "string" || !sessionUserId) return rejectUpgrade();
+
+        try {
+          const activeUser = await storage.getUser(sessionUserId);
+          if (!activeUser || activeUser.id !== sessionUserId ||
+              activeUser.isActive === false ||
+              activeUser.status === "suspended" || activeUser.status === "inactive") {
+            return rejectUpgrade();
+          }
+          (req as any).authenticatedWsUserId = sessionUserId;
+          wss.handleUpgrade(req, socket, head, ws => wss.emit("connection", ws, req));
+        } catch (error) {
+          console.error("WebSocket session verification failed:", error);
+          rejectUpgrade();
+        }
+      });
+    } catch (error) {
+      console.error("WebSocket session parsing failed:", error);
+      rejectUpgrade();
+    }
   });
 
-  wss.on('connection', (ws, req) => {
-    const url = new URL(req.url!, `http://${req.headers.host}`);
-    const userId = url.searchParams.get('userId');
-    
-    if (userId) {
-      wsClients.set(userId, ws);
-      console.log(`WebSocket connected for user: ${userId}`);
+  wss.on("connection", (ws, req) => {
+    const userId = (req as any).authenticatedWsUserId;
+    if (typeof userId !== "string" || !userId) {
+      ws.close(1008, "Unauthorized");
+      return;
     }
-
-    ws.on('close', () => {
-      if (userId) {
-        wsClients.delete(userId);
-        console.log(`WebSocket disconnected for user: ${userId}`);
-      }
+    // One active socket per user; an obsolete socket must not remove a newer
+    // connection's registration when it eventually closes.
+    const previous = wsClients.get(userId);
+    if (previous && previous !== ws) previous.close(1000, "Reconnected");
+    wsClients.set(userId, ws);
+    ws.on("close", () => {
+      if (wsClients.get(userId) === ws) wsClients.delete(userId);
     });
   });
 
