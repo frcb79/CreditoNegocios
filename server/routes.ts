@@ -7,6 +7,7 @@ import { pool } from "./db";
 import { storage, type IStorage } from "./storage";
 import { canViewSubmissionByOrigin, canViewCreditByOrigin, canEditCreditByOrigin } from "./dashboardVisibility";
 import { projectCreditForRole } from "./creditResponseProjection";
+import { allowedOrigins } from "./runtimeConfig";
 import { canReadDocumentByOrigin } from "./documentVisibility";
 import { resolveSubmissionDisplayStatus } from "../shared/submissionDisplayStatus";
 import { readFrozenOfferLineage } from "./offerLineageService";
@@ -13247,6 +13248,18 @@ function maskCLABE(clabe?: string | null): string | null {
         socket.end("HTTP/1.1 401 Unauthorized\r\nConnection: close\r\n\r\n");
       }
     };
+
+    // A valid session cookie alone must not permit browser cross-origin
+    // WebSocket hijacking. Accept only explicit frontends or the same host.
+    let allowedWsOrigin = false;
+    try {
+      const origin = new URL(String(req.headers.origin || ""));
+      allowedWsOrigin = (origin.protocol === "https:" || origin.protocol === "http:") &&
+        (allowedOrigins.has(origin.origin) || origin.host === req.headers.host);
+    } catch {
+      allowedWsOrigin = false;
+    }
+    if (!allowedWsOrigin) return rejectUpgrade();
 
     // Node's ServerResponse supplies headers/session-cookie methods expected
     // by express-session for a read-only HTTP upgrade request.

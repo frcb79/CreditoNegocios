@@ -18,6 +18,12 @@ describe("SEC-P0-04: session-authenticated notification WebSocket", () => {
     expect(client).toContain('buildWebSocketUrl("/ws")');
     expect(client).not.toContain("?userId=");
   });
+  it("rejects cross-site WS hijacking origins, even with a session cookie", () => {
+    expect(ws).toContain("allowedOrigins.has(origin.origin)");
+    expect(ws).toContain("origin.host === req.headers.host");
+    expect(ws).toContain("if (!allowedWsOrigin) return rejectUpgrade()");
+  });
+
   it("shares one session store across HTTP and WebSocket and checks user activity", () => {
     expect(auth).toContain("if (sharedSessionMiddleware) return sharedSessionMiddleware");
     expect(ws).toContain("activeUser.isActive === false");
