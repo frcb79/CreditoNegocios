@@ -5091,9 +5091,16 @@ export class MemStorage implements IStorage {
     const existing = this.creditSubmissionTargets.get(id);
     if (!existing) return undefined;
     if (targetData.institutionProposal !== undefined ||
+        targetData.proposalDocument !== undefined ||
         ["institution_approved", "institution_rejected", "approved", "rejected",
           "returned_to_broker", "sent"].includes(targetData.status || "")) {
       assertTargetReviewMutable(existing);
+      if ((targetData.institutionProposal !== undefined ||
+           targetData.proposalDocument !== undefined ||
+           targetData.status === "institution_approved") &&
+          !["contact_initiated", "sent", "institution_approved"].includes(existing.status)) {
+        throw new Error("PROPOSAL_REQUIRES_COMMERCIAL_CONTACT");
+      }
     }
 
     const updated: CreditSubmissionTarget = {

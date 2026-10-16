@@ -4716,6 +4716,7 @@ export class DbStorage implements IStorage {
     // This path can compete with selectWinningTargetAtomic. Both lock the same
     // target row so a late financial proposal cannot replace a frozen winner.
     const isReviewTransition = targetData.institutionProposal !== undefined ||
+      targetData.proposalDocument !== undefined ||
       ["institution_approved", "institution_rejected", "approved", "rejected",
        "returned_to_broker", "sent"].includes(targetData.status || "");
     if (isReviewTransition) {
@@ -4724,6 +4725,12 @@ export class DbStorage implements IStorage {
           .where(eq(creditSubmissionTargets.id, id)).for("update");
         if (!locked) return undefined;
         assertTargetReviewMutable(locked);
+        if ((targetData.institutionProposal !== undefined ||
+             targetData.proposalDocument !== undefined ||
+             targetData.status === "institution_approved") &&
+            !["contact_initiated", "sent", "institution_approved"].includes(locked.status)) {
+          throw new Error("PROPOSAL_REQUIRES_COMMERCIAL_CONTACT");
+        }
         const frozen = readFrozenOfferLineage(targetData.institutionProposal !== undefined
           ? targetData.institutionProposal : locked.institutionProposal);
         const persisted = locked.institutionProductId || locked.versionNumber != null

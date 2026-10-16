@@ -12017,6 +12017,12 @@ function maskCLABE(clabe?: string | null): string | null {
           ["selected_winner", "dispersed"].includes(targetBefore.status)) {
         return res.status(409).json({ code: "PROPOSAL_LOCKED", message: "La propuesta ya está seleccionada o vinculada a un crédito." });
       }
+      if (!["contact_initiated", "sent", "institution_approved"].includes(targetBefore.status)) {
+        return res.status(409).json({
+          code: "PROPOSAL_REQUIRES_COMMERCIAL_CONTACT",
+          message: "Primero debe aprobarse el destino e iniciarse la gestión comercial.",
+        });
+      }
       const proposal = await validateTargetOfferVersion(targetBefore, proposalSchema.parse(req.body));
 
       const rawTarget = await storage.updateCreditSubmissionTarget(id, {
@@ -12091,6 +12097,9 @@ function maskCLABE(clabe?: string | null): string | null {
       const code = error instanceof Error ? error.message : "";
       if (code.startsWith("OFFER_VERSION_")) {
         return res.status(409).json({ code, message: "La oferta o versión no coincide con la propuesta." });
+      }
+      if (code === "PROPOSAL_REQUIRES_COMMERCIAL_CONTACT") {
+        return res.status(409).json({ code, message: "Primero debe iniciarse la gestión comercial interna." });
       }
       if (error instanceof Error && error.message === "TARGET_ALREADY_SELECTED") {
         return res.status(409).json({

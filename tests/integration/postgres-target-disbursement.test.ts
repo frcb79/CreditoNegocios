@@ -615,4 +615,29 @@ describePg("OPE-12: winning target and credit creation in one PostgreSQL transac
     expect(result.credit.originMasterBrokerId).toBe("master-original");
     expect(result.commission.masterBrokerId).toBe("master-original");
   });
+  it("MVP: proposal cannot skip internal approval/contact, including concurrent status changes",async()=>{
+    const id="target-mvp-proposal-gate";
+    const reqId="request-mvp-proposal-gate";
+    await pool.query(
+      "INSERT INTO credit_submission_requests(id,client_id,broker_id,requested_amount,status) "+
+      "VALUES($1,'test-client','test-broker',10000,'pending_admin')",[reqId]);
+    await pool.query(
+      "INSERT INTO credit_submission_targets(id,request_id,financial_institution_id,status,is_winner,institution_proposal) "+
+      "VALUES($1,$2,'test-financial','pending_admin',false,'{}'::jsonb)",[id,reqId]);
+    const update=()=>DbStorage.prototype.updateCreditSubmissionTarget(id,{
+      institutionProposal:{ approvedAmount:8000,interestRate:12,term:24 },
+      status:"institution_approved",proposalReceivedAt:new Date(),
+    } as any);
+    await expect(update()).rejects.toThrow("PROPOSAL_REQUIRES_COMMERCIAL_CONTACT");
+    await pool.query("UPDATE credit_submission_targets SET status='approved' WHERE id=$1",[id]);
+    await expect(update()).rejects.toThrow("PROPOSAL_REQUIRES_COMMERCIAL_CONTACT");
+    await pool.query("UPDATE credit_submission_targets SET status='contact_initiated' WHERE id=$1",[id]);
+    const updated=await update();
+    expect(updated?.status).toBe("institution_approved");
+    const reedited=await update();
+    expect(reedited?.status).toBe("institution_approved");
+    const frozen=await pool.query("SELECT status,institution_proposal FROM credit_submission_targets WHERE id=$1",[id]);
+    expect(frozen.rows[0].status).toBe("institution_approved");
+    expect(frozen.rows[0].institution_proposal.approvedAmount).toBe(8000);
+  });
 });
