@@ -7,6 +7,7 @@ import { pool } from "./db";
 import { storage, type IStorage } from "./storage";
 import { canViewSubmissionByOrigin, canViewCreditByOrigin, canEditCreditByOrigin } from "./dashboardVisibility";
 import { projectCreditForRole } from "./creditResponseProjection";
+import { canReadDocumentByOrigin } from "./documentVisibility";
 import { resolveSubmissionDisplayStatus } from "../shared/submissionDisplayStatus";
 import { readFrozenOfferLineage } from "./offerLineageService";
 import { authorizeClientSensitiveDisclosure } from "./clientConsentGate";
@@ -563,7 +564,7 @@ async function validateDocumentWriteDestination(params: {
   const { userId, userRole, tenantContext, clientId, creditId } = params;
   let credit: any = null;
   if (creditId) {
-    const access = await authorizeCreditAccess(userId, userRole, creditId, tenantContext);
+    const access = await authorizeCreditAccess(userId, userRole, creditId, tenantContext, "write");
     if (!access.authorized || !access.credit) {
       return { allowed: false, statusCode: access.reason === "Credit not found" ? 404 : 403,
         code: "DOCUMENT_CREDIT_NOT_AUTHORIZED", message: "No tienes acceso al crédito indicado." };
@@ -615,7 +616,10 @@ async function authorizeCreditAccess(
   };
 }
 
-// Helper to check if user can access a document
+// SEC-P0-03: A client's current network is NOT proof of document ownership.
+// For credit-attached documents enforce immutable credit origin; for unlinked
+// documents admit only their persisted creator/uploader. This helper protects
+// both direct download/file routes and list endpoints.
 async function authorizeDocumentAccess(
   userId: string,
   userRole: string,
@@ -623,58 +627,33 @@ async function authorizeDocumentAccess(
   tenantContext?: any
 ): Promise<{ authorized: boolean; document?: any; reason?: string }> {
   const document = await storage.getDocument(documentId);
-  if (!document) {
-    return { authorized: false, reason: 'Document not found' };
-  }
-
-  // Admins have full access
-  if (userRole === 'admin' || userRole === 'super_admin') {
+  if (!document) return { authorized: false, reason: "Document not found" };
+  if (userRole === "admin" || userRole === "super_admin") {
     return { authorized: true, document };
   }
 
-  // If the document is linked to a client, evaluate decoupled commercial governance access
+  const principal = { id: userId, role: userRole };
   if (document.clientId) {
-    const authResult = await authorizeClientAccess(userId, userRole, document.clientId, tenantContext);
-    if (!authResult.authorized) {
-      return { authorized: false, document, reason: authResult.reason || 'Access denied' };
+    const clientScope = await authorizeClientAccess(userId, userRole, document.clientId, tenantContext);
+    if (!clientScope.authorized) {
+      return { authorized: false, document, reason: "Client not accessible" };
     }
+  }
 
-    const userCredits = await storage.getCredits({ clientId: document.clientId, brokerId: userId });
-    const userCreditIds = userCredits.map((c) => c.id);
-
-    const canAccess = commercialAuthorizationService.canAccessDocument(
-      authResult,
-      document,
-      userId,
-      userCreditIds
-    );
-
-    if (!canAccess) {
-      return {
-        authorized: false,
-        document,
-        reason: 'Acceso denegado: este documento corresponde a operaciones de otro asesor comercial.',
-      };
+  if (document.creditId) {
+    const credit = await storage.getCredit(document.creditId);
+    if (!canReadDocumentByOrigin(principal, document, credit)) {
+      return { authorized: false, document, reason: "Document credit origin not accessible" };
     }
-
     return { authorized: true, document };
   }
-  
-  // Document has tenantId or brokerId (non-client orphan document)
-  if (document.tenantId || document.brokerId) {
-    const authResult = await authorizeTenantOrBrokerResource({
-      currentUserId: userId,
-      resourceBrokerId: document.brokerId || '',
-      resourceTenantId: document.tenantId,
-      currentUserRole: userRole,
-      tenantContext,
-    });
-    return { ...authResult, document };
-  }
-  
-  return { authorized: false, document, reason: 'Access denied' };
-}
 
+  // No reliable historical Master attribution exists for unlinked files.
+  if (canReadDocumentByOrigin(principal, document)) {
+    return { authorized: true, document };
+  }
+  return { authorized: false, document, reason: "Document owner required" };
+}
 
 // Helper function to resolve product template with cascading fallbacks (#6)
 async function resolveProductTemplate(productTemplateId?: string | null, fallbackPurpose?: string | null) {
@@ -7773,64 +7752,22 @@ function maskCLABE(clabe?: string | null): string | null {
       const { clientId, creditId } = req.query;
       const userId = req.user.claims.sub;
       const user = await storage.getUser(userId);
-      
-      // Admin and super_admin can see all documents
-      const isAdmin = user?.role === 'admin' || user?.role === 'super_admin';
-      const visibleDocuments = async (docs: any[]) => {
-        if (isAdmin) return res.json(docs);
-        const visible = await filterAuthorizedClientListing(docs, async doc => {
-          const auth = await authorizeDocumentAccess(userId, user?.role || '', doc.id, req.tenantContext);
-          return Boolean(auth.authorized);
-        });
-        return res.json(visible);
-      };
-
-      
-      if (isAdmin) {
-        const documents = await storage.getDocuments({
-          clientId: clientId as string,
-          creditId: creditId as string,
-        });
-        return visibleDocuments(documents);
-      } else if (req.tenantContext?.tenant) {
-        const tenant = req.tenantContext.tenant;
-        if (tenant.type === 'master_broker') {
-          const subordinates = await storage.getTenantsByParent(tenant.id);
-          const tenantIds = [tenant.id, ...subordinates.map(t => t.id)];
-          const documents = await storage.getDocuments({
-            tenantIds,
-            clientId: clientId as string,
-            creditId: creditId as string,
-          });
-          return visibleDocuments(documents);
-        } else {
-          const documents = await storage.getDocuments({
-            tenantId: tenant.id,
-            clientId: clientId as string,
-            creditId: creditId as string,
-          });
-          return visibleDocuments(documents);
-        }
-      } else if (user?.role === 'master_broker') {
-        const networkBrokers = await storage.getUsersByMasterBroker(userId);
-        const brokerIds = [userId, ...networkBrokers.map(b => b.id)];
-        const allDocuments = await storage.getDocuments({
-          clientId: clientId as string,
-          creditId: creditId as string,
-        });
-        const filteredDocuments = allDocuments.filter(d => d.brokerId && brokerIds.includes(d.brokerId));
-        return visibleDocuments(filteredDocuments);
-      } else {
-        const documents = await storage.getDocuments({
-          clientId: clientId as string,
-          creditId: creditId as string,
-          brokerId: userId,
-        });
-        return visibleDocuments(documents);
-      }
+      // Never prefilter by the CURRENT tenant or Master network: doing so
+      // hides the historical Master's rightful files and can leak a new
+      // Master's old-network files. Enforce origin per individual document.
+      const documents = await storage.getDocuments({
+        clientId: clientId as string,
+        creditId: creditId as string,
+      });
+      if (user?.role === "admin" || user?.role === "super_admin") return res.json(documents);
+      const visible = await filterAuthorizedClientListing(documents, async doc => {
+        const auth = await authorizeDocumentAccess(userId, user?.role || "", doc.id, req.tenantContext);
+        return Boolean(auth.authorized);
+      });
+      return res.json(visible);
     } catch (error) {
       console.error("Error fetching documents:", error);
-      res.status(500).json({ message: "Failed to fetch documents" });
+      return res.status(500).json({ message: "Failed to fetch documents" });
     }
   });
 
@@ -7849,18 +7786,12 @@ function maskCLABE(clabe?: string | null): string | null {
       // User is authorized to access this client, fetch documents
       const documents = await storage.getDocuments({ clientId });
 
-      // Filtrado granular según el scope comercial del solicitante
-      const userCredits = await storage.getCredits({ clientId, brokerId: userId });
-      const userCreditIds = userCredits.map((c) => c.id);
-
-      const filteredDocuments = documents.filter((doc) =>
-        commercialAuthorizationService.canAccessDocument(
-          authResult,
-          doc,
-          userId,
-          userCreditIds
-        )
-      );
+      // A Master with oversight of the client must NOT inherit historic
+      // documents from a Broker who moved networks. Check each file's origin.
+      const filteredDocuments = await filterAuthorizedClientListing(documents, async doc => {
+        const access = await authorizeDocumentAccess(userId, user?.role || "", doc.id, req.tenantContext);
+        return Boolean(access.authorized);
+      });
 
       res.json(filteredDocuments);
 

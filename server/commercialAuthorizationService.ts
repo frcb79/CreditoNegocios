@@ -416,7 +416,10 @@ export class CommercialAuthorizationService {
 
     if (authResult.scope === "full") return true;
 
-    if (authResult.scope === "master_broker_oversight") return true;
+    // Client-wide oversight is insufficient for a document; callers must
+    // verify the credit's immutable historical Master through the route-level
+    // canReadDocumentByOrigin check. Fail closed in this legacy scope helper.
+    if (authResult.scope === "master_broker_oversight") return false;
 
     // historical_scoped: solo documentos de SU operación o SU crédito
     if (authResult.scope === "historical_scoped") {
