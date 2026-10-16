@@ -199,8 +199,8 @@ export default function MySubmissions() {
               {[
                 { id: 'all', label: `Todos (${currentList.length})` },
                 { id: 'dispersed', label: `Dispersados (${currentList.filter(c => c.status === 'dispersed' || c.status === 'disbursed').length})` },
-                { id: 'approved', label: `Aprobados (${currentList.filter(c => c.status === 'approved').length})` },
-                { id: 'in_progress', label: `En Trámite (${currentList.filter(c => c.status !== 'dispersed' && c.status !== 'disbursed' && c.status !== 'approved').length})` },
+                { id: 'approved', label: `Visto Bueno (${currentList.filter(c => c.status === 'approved').length})` },
+                { id: 'in_progress', label: `Gestión Comercial Iniciada (${currentList.filter(c => c.status !== 'dispersed' && c.status !== 'disbursed' && c.status !== 'approved').length})` },
               ].map((f) => {
                 const isActive = statusFilter === f.id;
                 return (
