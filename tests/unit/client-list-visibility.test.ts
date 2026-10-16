@@ -22,4 +22,18 @@ describe("client list obeys individual commercial authorization (P0)",()=>{
     expect(visible.map(c=>c.id)).toEqual(["client-4","client-12"]);
     expect(checked).toHaveLength(clients.length);
   });
+  it("filters document metadata by per-document access", async () => {
+    const docs = [{id:"a",brokerId:"mine"},{id:"b",brokerId:"another"}];
+    const allowed = await filterAuthorizedClientListing(docs, async d => d.brokerId==="mine");
+    expect(allowed).toEqual([docs[0]]);
+  });
+  it("fails closed for document permission errors", async () => {
+    const docs = [{id:"a"},{id:"b"}];
+    const allowed = await filterAuthorizedClientListing(docs, async d => {
+      if(d.id==="b")throw new Error("denied");
+      return true;
+    });
+    expect(allowed).toEqual([docs[0]]);
+  });
+
 });
