@@ -130,11 +130,13 @@ export default function MatchingComparisonTable({
     <div className="space-y-4">
       {/* 3-State Matching Overview Banner */}
       <div className={`p-4 rounded-xl border ${
-        matchResult.matchStatus === 'not_compatible'
-          ? 'bg-red-50/80 border-red-200 text-red-950 dark:bg-red-950/40 dark:border-red-900 dark:text-red-200'
-          : matchResult.matchStatus === 'insufficient_data'
+        getMatchingScoreTone(matchResult.score, matchResult.matchStatus) === 'neutral'
+          ? 'bg-slate-50/80 border-slate-200 text-slate-900 dark:bg-slate-950/40 dark:border-slate-800'
+          : getMatchingScoreTone(matchResult.score, matchResult.matchStatus) === 'green'
+          ? 'bg-emerald-50/80 border-emerald-200 text-emerald-950 dark:bg-emerald-950/40 dark:border-emerald-900 dark:text-emerald-200'
+          : getMatchingScoreTone(matchResult.score, matchResult.matchStatus) === 'yellow'
           ? 'bg-amber-50/80 border-amber-200 text-amber-950 dark:bg-amber-950/40 dark:border-amber-900 dark:text-amber-200'
-          : 'bg-emerald-50/80 border-emerald-200 text-emerald-950 dark:bg-emerald-950/40 dark:border-emerald-900 dark:text-emerald-200'
+          : 'bg-red-50/80 border-red-200 text-red-950 dark:bg-red-950/40 dark:border-red-900 dark:text-red-200'
       }`}>
         <div className="flex items-start justify-between gap-3">
           <div className="space-y-1.5 flex-1">
@@ -145,6 +147,11 @@ export default function MatchingComparisonTable({
               <Badge variant="outline" className={"text-xs font-bold " + (getMatchingScoreTone(matchResult.score, matchResult.matchStatus) === "neutral" ? "bg-slate-100 text-slate-700" : getMatchingScoreTone(matchResult.score, matchResult.matchStatus) === "green" ? "bg-emerald-100 text-emerald-800" : getMatchingScoreTone(matchResult.score, matchResult.matchStatus) === "yellow" ? "bg-amber-100 text-amber-800" : "bg-rose-100 text-rose-800")}>
                 Score orientativo: {matchResult.score}%
               </Badge>
+              {matchResult.matchStatus === "not_compatible" && (
+                <Badge variant="outline" className="text-xs bg-red-100 text-red-800 border-red-300">
+                  Requisito excluyente no cumplido
+                </Badge>
+              )}
             </div>
 
             <p className="text-xs opacity-80">Semáforo score: verde 80–100%; amarillo 50–79%; rojo 0–49%. El dictamen es independiente: un requisito incumplido puede hacer no compatible incluso con score alto. La información insuficiente no es aprobación.</p>
