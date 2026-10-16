@@ -51,7 +51,7 @@ import {
   FinancialInstitution
 } from "@shared/schema";
 
-import { ANNUAL_INCOME_OPTIONS, LEGACY_ANNUAL_INCOME_OPTIONS } from "@shared/annualIncome";
+import { ANNUAL_INCOME_OPTIONS, LEGACY_ANNUAL_INCOME_OPTIONS, getAnnualIncomeLabel } from "@shared/annualIncome";
 
 // Catálogo canónico de requerimientos, incluyendo referencias históricas ya publicadas.
 const annualIncomeRuleOptions = (profile: keyof typeof ANNUAL_INCOME_OPTIONS) =>
@@ -960,7 +960,7 @@ export default function ProductConfigurationModal({
               <SelectContent>
                 {options.map(option => (
                   <SelectItem key={option} value={option}>
-                    {option}
+                    {field.id === "ingresoAnual" ? getAnnualIncomeLabel(option) : option}
                   </SelectItem>
                 ))}
               </SelectContent>
