@@ -42,7 +42,7 @@ import {
 import FinalProposalModal from "@/components/Modals/FinalProposalModal";
 import MatchingComparisonTable from "@/components/MatchingAnalysis/MatchingComparisonTable";
 import CreditMatchingSection from "@/components/Credits/CreditMatchingSection";
-import { submissionStatusConfig, creditStatusConfig, targetStatusConfig, getSubmissionStatusSummary, getStatusLabel } from "@/lib/statusConfig";
+import { submissionStatusConfig, creditStatusConfig, targetStatusConfig, getSubmissionStatusSummary, getStatusLabel, getCreditStatusLabel } from "@/lib/statusConfig";
 import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
@@ -463,7 +463,7 @@ export default function CreditList() {
       ? item.statusSummary.primaryStatus 
       : item.status;
     
-    const label = getStatusLabel(effectiveStatus);
+    const label = item.type === "credit" ? getCreditStatusLabel(effectiveStatus) : getStatusLabel(effectiveStatus);
     const norm = (effectiveStatus || '').toLowerCase();
 
     if (norm === 'dispersed' || norm === 'disbursed' || norm === 'dispersado') {
