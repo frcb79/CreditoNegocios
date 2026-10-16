@@ -610,7 +610,7 @@ export default function CreditList() {
                   <SelectItem value="draft">Borrador</SelectItem>
                   <SelectItem value="submitted">En validación</SelectItem>
                   <SelectItem value="pending_admin">Pendiente de revisión</SelectItem>
-                  <SelectItem value="approved">Aprobado</SelectItem>
+                  <SelectItem value="approved">Visto Bueno</SelectItem>
                   <SelectItem value="returned_to_broker">Devuelto</SelectItem>
                   <SelectItem value="sent_to_institutions">Enviado a Financieras</SelectItem>
                   <SelectItem value="proposals_received">Propuestas Recibidas</SelectItem>
