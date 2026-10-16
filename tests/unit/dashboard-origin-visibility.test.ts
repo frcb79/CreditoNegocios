@@ -1,4 +1,4 @@
-import { canViewSubmissionByOrigin, canViewCreditByOrigin } from "../../server/dashboardVisibility";
+import { canViewSubmissionByOrigin, canViewCreditByOrigin, canEditCreditByOrigin } from "../../server/dashboardVisibility";
 
 describe("Dashboard: ownership survives Broker transfer", () => {
   const former = { id: "master-original", role: "master_broker" };
@@ -30,5 +30,43 @@ describe("Dashboard: ownership survives Broker transfer", () => {
   });
   it("Master own originated operation remains visible", () => {
     expect(canViewCreditByOrigin(former, { brokerId: "master-original", originMasterBrokerId: null })).toBe(true);
+  });
+});
+
+describe("SEC-P0-02: Credit read and write are separate capabilities", () => {
+  const record = { brokerId: "broker-one", originMasterBrokerId: "master-original" };
+
+  it("origin Master can read but cannot edit a Broker-originated credit", () => {
+    expect(canViewCreditByOrigin({ id: "master-original", role: "master_broker" }, record)).toBe(true);
+    expect(canEditCreditByOrigin({ id: "master-original", role: "master_broker" }, record)).toBe(false);
+  });
+
+  it("new Master inherits neither credit read nor edit after transfer", () => {
+    expect(canViewCreditByOrigin({ id: "master-new", role: "master_broker" }, record)).toBe(false);
+    expect(canEditCreditByOrigin({ id: "master-new", role: "master_broker" }, record)).toBe(false);
+  });
+
+  it("originating Broker keeps read and edit; unrelated Brokers are denied", () => {
+    expect(canEditCreditByOrigin({ id: "broker-one", role: "broker" }, record)).toBe(true);
+    expect(canEditCreditByOrigin({ id: "broker-other", role: "broker" }, record)).toBe(false);
+  });
+
+  it("Master may edit only its own direct operation", () => {
+    expect(canEditCreditByOrigin({ id: "master-original", role: "master_broker" },
+      { brokerId: "master-original", originMasterBrokerId: null })).toBe(true);
+  });
+
+  it("shared tenants and missing historical attribution never grant edits", () => {
+    const legacy = { brokerId: "broker-one", originMasterBrokerId: null };
+    expect(canEditCreditByOrigin({ id: "master-original", role: "master_broker" }, legacy)).toBe(false);
+    expect(canViewCreditByOrigin({ id: "master-original", role: "master_broker" }, legacy)).toBe(false);
+    expect(canEditCreditByOrigin(null, record)).toBe(false);
+  });
+
+  it("platform admins retain their existing read and edit permissions", () => {
+    for (const role of ["admin", "super_admin"]) {
+      expect(canViewCreditByOrigin({ id: role, role }, record)).toBe(true);
+      expect(canEditCreditByOrigin({ id: role, role }, record)).toBe(true);
+    }
   });
 });

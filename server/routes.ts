@@ -5,7 +5,7 @@ import { WebSocketServer, WebSocket } from "ws";
 import rateLimit from "express-rate-limit";
 import { pool } from "./db";
 import { storage, type IStorage } from "./storage";
-import { canViewSubmissionByOrigin, canViewCreditByOrigin } from "./dashboardVisibility";
+import { canViewSubmissionByOrigin, canViewCreditByOrigin, canEditCreditByOrigin } from "./dashboardVisibility";
 import { resolveSubmissionDisplayStatus } from "../shared/submissionDisplayStatus";
 import { readFrozenOfferLineage } from "./offerLineageService";
 import { authorizeClientSensitiveDisclosure } from "./clientConsentGate";
@@ -445,8 +445,11 @@ async function ensureCommissionRecord(params: {
   return true;
 }
 
-// Authorization helper for tenant-owned and broker-owned resources (Bloque 4)
-// Validates that a user has permission to access a resource based on tenantId and/or brokerId
+// SEC-P0-02: Tenant membership, tenant slug and a Broker's current Master
+// are not evidence of ownership of a historical financial operation.
+// This legacy helper now permits only the persisted originating Broker or
+// platform administrators. Credit-level historical read access is evaluated
+// separately against immutable originMasterBrokerId.
 async function authorizeTenantOrBrokerResource(params: {
   currentUserId: string;
   resourceBrokerId: string;
@@ -454,55 +457,13 @@ async function authorizeTenantOrBrokerResource(params: {
   currentUserRole?: string;
   tenantContext?: any;
 }): Promise<{ authorized: boolean; reason?: string }> {
-  const { currentUserId, resourceBrokerId, resourceTenantId, currentUserRole, tenantContext } = params;
-  
-  // 1. Admins and super_admins have full access
-  if (currentUserRole === 'admin' || currentUserRole === 'super_admin') {
-    return { authorized: true };
-  }
-
-  // 2. Tenant-based authorization (organizational boundary)
-  if (resourceTenantId) {
-    // If active tenant matches resource tenant
-    if (tenantContext?.tenant?.id === resourceTenantId) {
-      return { authorized: true };
-    }
-    
-    // Check if user is an active member of the resource's tenant
-    const membership = await storage.getUserTenantMembership(currentUserId, resourceTenantId);
-    if (membership && membership.isActive) {
-      return { authorized: true };
-    }
-
-    // Master broker hierarchy: check if user belongs to a parent master broker tenant
-    const callerMemberships = await storage.getTenantMembersByUser(currentUserId);
-    for (const m of callerMemberships) {
-      if (m.isActive) {
-        const callerTenant = await storage.getTenant(m.tenantId);
-        if (callerTenant && callerTenant.type === 'master_broker') {
-          const subordinates = await storage.getTenantsByParent(callerTenant.id);
-          if (subordinates.some(sub => sub.id === resourceTenantId)) {
-            return { authorized: true };
-          }
-        }
-      }
-    }
-  }
-
-  // 3. Same user owns the resource directly (broker attribution)
-  if (currentUserId === resourceBrokerId) {
-    return { authorized: true };
-  }
-  
-  // 4. Master brokers can access resources owned by their network brokers (legacy)
-  if (currentUserRole === 'master_broker') {
-    const resourceBroker = await storage.getUser(resourceBrokerId);
-    if (resourceBroker && resourceBroker.masterBrokerId === currentUserId) {
-      return { authorized: true };
-    }
-  }
-  
-  return { authorized: false, reason: 'Access denied. You can only access resources within your organization.' };
+  const authorized = canEditCreditByOrigin(
+    { id: params.currentUserId, role: params.currentUserRole },
+    { brokerId: params.resourceBrokerId }
+  );
+  return authorized
+    ? { authorized: true }
+    : { authorized: false, reason: "Access denied: resource owner required." };
 }
 
 async function authorizeBrokerResource(params: {
@@ -628,21 +589,29 @@ async function validateDocumentWriteDestination(params: {
 }
 
 // Helper to check if user can access a credit
-async function authorizeCreditAccess(userId: string, userRole: string, creditId: string, tenantContext?: any): Promise<{ authorized: boolean; credit?: any; reason?: string }> {
+async function authorizeCreditAccess(
+  userId: string,
+  userRole: string,
+  creditId: string,
+  _tenantContext?: any,
+  mode: "read" | "write" = "read"
+): Promise<{ authorized: boolean; credit?: any; reason?: string }> {
   const credit = await storage.getCredit(creditId);
   if (!credit) {
-    return { authorized: false, reason: 'Credit not found' };
+    return { authorized: false, reason: "Credit not found" };
   }
-  
-  const authResult = await authorizeTenantOrBrokerResource({
-    currentUserId: userId,
-    resourceBrokerId: credit.brokerId,
-    resourceTenantId: credit.tenantId,
-    currentUserRole: userRole,
-    tenantContext,
-  });
-  
-  return { ...authResult, credit };
+  const principal = { id: userId, role: userRole };
+  // Historical Master can READ records originated under that Master but
+  // cannot EDIT an operation directly owned by its originating Broker.
+  // A later Master never acquires old access through network membership.
+  const authorized = mode === "write"
+    ? canEditCreditByOrigin(principal, credit)
+    : canViewCreditByOrigin(principal, credit);
+  return {
+    authorized,
+    credit,
+    ...(!authorized ? { reason: "Access denied: credit origin scope required." } : {}),
+  };
 }
 
 // Helper to check if user can access a document
@@ -4940,7 +4909,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const user = await storage.getUser(userId);
       
       // Authorization check - broker/tenant access
-      const authResult = await authorizeCreditAccess(userId, user?.role || '', id, req.tenantContext);
+      const authResult = await authorizeCreditAccess(userId, user?.role || '', id, req.tenantContext, 'write');
       if (!authResult.authorized) {
         return res.status(authResult.reason === 'Credit not found' ? 404 : 403).json({ message: authResult.reason });
       }

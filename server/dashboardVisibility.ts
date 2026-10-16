@@ -22,3 +22,14 @@ function canReadOriginatedRecord(user: Principal, record: OriginatedRecord): boo
 
 export const canViewSubmissionByOrigin = canReadOriginatedRecord;
 export const canViewCreditByOrigin = canReadOriginatedRecord;
+
+/**
+ * Editing an existing credit is an owner action, not a network oversight
+ * action. Platform administration retains its existing explicit authority.
+ */
+export function canEditCreditByOrigin(user: Principal, record: OriginatedRecord): boolean {
+  if (!user?.id || !record) return false;
+  if (user.role === "super_admin" || user.role === "admin") return true;
+  if (user.role !== "broker" && user.role !== "master_broker") return false;
+  return Boolean(record.brokerId) && record.brokerId === user.id;
+}
