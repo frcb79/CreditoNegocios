@@ -1,3 +1,5 @@
+import { ALL_ANNUAL_INCOME_RANGES, getAnnualIncomeRange, getAnnualIncomeLabel } from "@shared/annualIncome";
+
 // Core Matching & Rule Evaluation Engine for CreditoNegocios
 // Single source of truth for ALL field evaluations, Buró score matching, government sales participation,
 // financial thresholds, guarantees, and requirements across all 4 client profiles.
@@ -717,25 +719,10 @@ export function evaluateGarantia(
 }
 
 // ── Ingreso Anual Evaluation ────────────────────────────────────────
-export const INGRESO_ANUAL_HIERARCHY: Record<string, number> = {
-  'menor-100000': 0,
-  '100000-250000': 1,
-  '250000-500000': 2,
-  '500000-1000000': 3,
-  '1000000-2500000': 4,
-  '2500000-5000000': 5,
-  'arriba-5000000': 6
-};
-
-export const INGRESO_ANUAL_LABELS: Record<string, string> = {
-  'menor-100000': 'Menor a $100,000',
-  '100000-250000': '$100,000 - $250,000',
-  '250000-500000': '$250,000 - $500,000',
-  '500000-1000000': '$500,000 - $1,000,000',
-  '1000000-2500000': '$1,000,000 - $2,500,000',
-  '2500000-5000000': '$2,500,000 - $5,000,000',
-  'arriba-5000000': 'Arriba de $5,000,000'
-};
+export const INGRESO_ANUAL_HIERARCHY: Record<string, number> =
+  Object.fromEntries(ALL_ANNUAL_INCOME_RANGES.map((r, idx) => [r.value, idx]));
+export const INGRESO_ANUAL_LABELS: Record<string, string> =
+  Object.fromEntries(ALL_ANNUAL_INCOME_RANGES.map(r => [r.value, r.label]));
 
 export function evaluateIngresoAnual(
   clientValue: any,
@@ -743,77 +730,37 @@ export function evaluateIngresoAnual(
 ): EvaluationResult {
   const minOption = range?.min;
   const maxOption = range?.max;
-
-  let reqDisplay = '';
-  if (minOption && maxOption) {
-    reqDisplay = `Entre ${INGRESO_ANUAL_LABELS[minOption] || minOption} y ${INGRESO_ANUAL_LABELS[maxOption] || maxOption}`;
-  } else if (minOption) {
-    reqDisplay = `Mínimo ${INGRESO_ANUAL_LABELS[minOption] || minOption}`;
-  } else if (maxOption) {
-    reqDisplay = `Máximo ${INGRESO_ANUAL_LABELS[maxOption] || maxOption}`;
-  } else {
-    reqDisplay = 'Cualquiera';
-  }
-
-  if (clientValue === null || clientValue === undefined || clientValue === '' || clientValue === 'N/A') {
-    return {
-      status: 'warning',
-      clientDisplay: 'No proporcionado',
-      requirementDisplay: reqDisplay,
-      notes: 'Rango de ingreso anual no especificado'
-    };
-  }
-
-  const strVal = String(clientValue).toLowerCase().trim();
-  let clientLevel = INGRESO_ANUAL_HIERARCHY[strVal] ?? -1;
-
-  // Numeric fallback (e.g. 1200000 or "$1,200,000")
-  if (clientLevel === -1) {
-    const num = parseFloat(strVal.replace(/[^0-9.-]/g, ''));
-    if (!isNaN(num) && num >= 0) {
-      if (num < 100000) clientLevel = 0;
-      else if (num <= 250000) clientLevel = 1;
-      else if (num <= 500000) clientLevel = 2;
-      else if (num <= 1000000) clientLevel = 3;
-      else if (num <= 2500000) clientLevel = 4;
-      else if (num <= 5000000) clientLevel = 5;
-      else clientLevel = 6;
-    }
-  }
-
-  const minLevel = minOption ? (INGRESO_ANUAL_HIERARCHY[minOption] ?? -1) : -1;
-  const maxLevel = maxOption ? (INGRESO_ANUAL_HIERARCHY[maxOption] ?? 999) : 999;
-
-  let clientDisplay = INGRESO_ANUAL_LABELS[strVal];
-  if (!clientDisplay) {
-    const num = parseFloat(strVal.replace(/[^0-9.-]/g, ''));
-    if (!isNaN(num) && num >= 0) {
-      clientDisplay = `$${Math.round(num).toLocaleString('es-MX')} anual`;
-    } else {
-      clientDisplay = clientValue;
-    }
-  }
-
-  if (clientLevel === -1) {
-    return {
-      status: 'warning',
-      clientDisplay,
-      requirementDisplay: reqDisplay,
-      notes: 'Valor no catalogado'
-    };
-  }
-
-  const pass = clientLevel >= minLevel && clientLevel <= maxLevel;
+  const requirementDisplay = minOption && maxOption
+    ? "Entre " + getAnnualIncomeLabel(minOption) + " y " + getAnnualIncomeLabel(maxOption)
+    : minOption ? "Mínimo " + getAnnualIncomeLabel(minOption)
+    : maxOption ? "Máximo " + getAnnualIncomeLabel(maxOption) : "Cualquiera";
+  const clientInterval = getAnnualIncomeRange(clientValue);
+  if (!clientInterval) return {
+    status: "warning", clientDisplay: "No proporcionado", requirementDisplay,
+    notes: "Ingreso anual no disponible; confirmar con el cliente",
+  };
+  const lower = minOption ? getAnnualIncomeRange(minOption) : null;
+  const upper = maxOption ? getAnnualIncomeRange(maxOption) : null;
+  const clientDisplay = getAnnualIncomeLabel(clientValue);
+  if ((minOption && !lower) || (maxOption && !upper)) return {
+    status: "warning", clientDisplay, requirementDisplay,
+    notes: "Rango de la financiera no reconocido; revisar configuración",
+  };
+  const minRequired = lower?.min ?? 0;
+  const maxRequired = upper?.max ?? Number.MAX_SAFE_INTEGER;
+  if (clientInterval.max < minRequired || clientInterval.min > maxRequired) return {
+    status: "fail", clientDisplay, requirementDisplay,
+    notes: "Rango anual definitivamente fuera de las condiciones de la financiera",
+  };
+  if (clientInterval.min >= minRequired && clientInterval.max <= maxRequired) return {
+    status: "pass", clientDisplay, requirementDisplay,
+    notes: "Rango anual declarado dentro del requisito; no implica verificación documental",
+  };
   return {
-    status: pass ? 'pass' : 'fail',
-    clientDisplay,
-    requirementDisplay: reqDisplay,
-    notes: pass
-      ? 'Ingreso anual dentro del rango aceptado'
-      : `Ingreso anual (${clientDisplay}) fuera del rango aceptado (${reqDisplay})`
+    status: "warning", clientDisplay, requirementDisplay,
+    notes: "Rango anual parcialmente traslapado; solicitar ingreso preciso para resolver",
   };
 }
-
 // ── Ventas con Terminal Bancaria Evaluation ─────────────────────────
 export const VENTAS_TERMINAL_HIERARCHY: Record<string, number> = {
   'no': 0,
@@ -1629,7 +1576,7 @@ export function evaluateAllFieldsForClient(
   const coreTenureBuroKeys = [
     'antiguedadLaboral', 'tiempoActividad', 'antiguedadEmpleo', 
     'buroEmpresa', 'buroPersonaFisica', 'buroAccionistaPrincipal', 'buroPersonaFisicaSinSat',
-    'estadosFinancieros'
+    'estadosFinancieros', 'ingresoAnual'
   ];
 
   const configuredCoreFields = fields.filter(f =>
@@ -1641,10 +1588,10 @@ export function evaluateAllFieldsForClient(
 
   const missingCoreFields = configuredCoreFields.filter(f =>
     f.status === 'warning' &&
-    (f.clientValue === 'No proporcionado' || f.clientValue === 'No especificado' || f.clientValue === '-')
+    (f.fieldName === 'ingresoAnual' || f.clientValue === 'No proporcionado' || f.clientValue === 'No especificado' || f.clientValue === '-')
   );
 
-  const missingData = missingCoreFields.map(f => `Falta ${f.label} (Requisito: ${f.requirementValue})`);
+  const missingData = missingCoreFields.map(f => `Confirmar ${f.label} (Requisito: ${f.requirementValue})`);
 
   // Rule of 3 outcomes:
   // A. No compatible: If there is at least 1 explicit rule failure
