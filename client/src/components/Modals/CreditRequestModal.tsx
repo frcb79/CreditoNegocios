@@ -167,14 +167,16 @@ export default function CreditRequestModal({ isOpen, onClose, preselectedClientI
     },
     onSuccess: (response, variables) => {
       toast({
-        title: "Solicitud enviada",
-        description: "Tu solicitud de crédito ha sido enviada para aprobación administrativa",
+        title: "Solicitud registrada",
+        description: "Tu solicitud quedó registrada para revisión y visto bueno interno; no se enviaron documentos a financieras",
       });
       queryClient.invalidateQueries({ queryKey: ['/api/credit-submissions'] });
       queryClient.invalidateQueries({ queryKey: [`/api/credit-submissions/client/${variables.clientId}`] });
       queryClient.invalidateQueries({ queryKey: ['/api/credits'] });
       queryClient.invalidateQueries({ queryKey: ['/api/credit-submission-targets'] });
       queryClient.invalidateQueries({ queryKey: ['/api/notifications'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/dashboard/pipeline'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/dashboard/metrics'] });
       form.reset();
       setSelectedInstitutions([]);
       onClose();
@@ -556,6 +558,7 @@ export default function CreditRequestModal({ isOpen, onClose, preselectedClientI
           <TooltipContent className="max-w-sm">
             <div className="space-y-2">
               <p className="font-semibold text-sm">Criterios evaluados cumplidos: {match.score}% (no es aprobación crediticia)</p>
+              {match.warnings.length > 0 && <p className="text-xs text-amber-700">{match.warnings.join("; ")}</p>}
               {match.reasons.length > 0 && (
                 <div>
                   <p className="text-xs font-medium text-green-600">✓ Por qué hace match:</p>
@@ -769,7 +772,7 @@ export default function CreditRequestModal({ isOpen, onClose, preselectedClientI
                   <FormLabel>Financieras Disponibles *</FormLabel>
                   <div className="space-y-4">
                     <p className="text-sm text-gray-600">
-                      Selecciona las financieras a las que deseas enviar esta solicitud. 
+                      Selecciona las financieras que deseas proponer para revisión interna. 
                       El sistema las ordena según su compatibilidad con el perfil del cliente.
                     </p>
 
@@ -914,7 +917,7 @@ export default function CreditRequestModal({ isOpen, onClose, preselectedClientI
                 ) : (
                   <>
                     <Send className="w-4 h-4 mr-2" />
-                    Enviar a Financieras
+                    Registrar para Revisión Interna
                   </>
                 )}
               </Button>
