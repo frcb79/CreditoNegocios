@@ -2964,6 +2964,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           totalDisbursedVolume: disbursedVolume,
           activeBrokers: allUsers.filter(u => (u.role === 'broker' || u.role === 'master_broker') && u.isActive).length,
           totalClients: allClients.length,
+          newProspectsMonth: new Set(allClients.filter(c => c.createdAt && new Date(c.createdAt) >= currentMonthStart).map(c => c.id)).size,
           avgTicket: Math.round(avgTicket),
           commissionsPendingTotal: pendingCommissions,
           commissionsPendingCount: pendingCommissionsCount,
