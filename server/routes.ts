@@ -11366,7 +11366,7 @@ function maskCLABE(clabe?: string | null): string | null {
           const notification = await storage.createNotification({
             userId: request.brokerId,
             type: 'submission_update',
-            title: 'Solicitud aprobada por el administrador',
+            title: 'Solicitud con Visto Bueno del administrador',
             message: adminNotes || 'Tu solicitud recibió visto bueno interno y está lista para gestión comercial.',
             relatedEntityType: 'credit_submission_target',
             relatedEntityId: rawTarget.id,
@@ -11377,8 +11377,8 @@ function maskCLABE(clabe?: string | null): string | null {
             const mbNotif = await storage.createNotification({
               userId: request.originMasterBrokerId,
               type: 'submission_update',
-              title: 'Solicitud de tu red aprobada',
-              message: `La solicitud de un broker de tu red fue aprobada.`,
+              title: 'Solicitud de tu red con Visto Bueno',
+              message: `La solicitud de un broker de tu red recibió Visto Bueno interno para continuar su gestión.`,
               relatedEntityType: 'credit_submission_target',
               relatedEntityId: rawTarget.id,
               priority: 'medium',
