@@ -22,7 +22,7 @@ import {
   ChevronRight,
   TrendingUp
 } from "lucide-react";
-import { getStatusLabel, getStatusBadgeClass } from "@/lib/statusConfig";
+import { getCreditStatusLabel, getStatusBadgeClass } from "@/lib/statusConfig";
 
 interface Credit {
   id: string;
@@ -289,7 +289,7 @@ export default function MySubmissions() {
 
                         <div className="flex items-center gap-2 self-start sm:self-auto shrink-0">
                           <Badge className={`text-xs px-2.5 py-0.5 font-semibold ${getStatusBadgeClass(credit.status)}`}>
-                            {getStatusLabel(credit.status)}
+                            {getCreditStatusLabel(credit.status)}
                           </Badge>
                           {commission?.status === 'paid' && (
                             <Badge className="bg-emerald-50 text-emerald-700 border border-emerald-200 font-semibold text-xs">
