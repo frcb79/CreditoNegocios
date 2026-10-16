@@ -11,6 +11,7 @@ import { setupAuth, isAuthenticated } from "./auth";
 import { registerLegalRoutes } from "./legalRoutes";
 import { registerClientConsentPublicRoutes } from "./clientConsentRoutes";
 import { startInternalCommercialContact, CommercialContactError } from "./commercialContactService";
+import { checkPrelaunchSchemaReadiness } from "./stagingSchemaRepair";
 import { filterAuthorizedClientListing } from "./clientListVisibility";
 import { startClientConsent, invalidateConsentRequest, hasValidClientConsent, listClientConsentEvidenceForTarget, verifyCompanySignerAuthority, markTargetSentWithClientConsent, withAuthorizedClientPdfDisclosure, ClientConsentError } from "./clientConsentService";
 import { sendClientConsentLinkEmail } from "./emailService";
@@ -1266,13 +1267,32 @@ export async function registerRoutes(app: Express): Promise<Server> {
       ]);
 
       const userCount = Number(dbCheck.rows[0]?.user_count ?? 0);
-
+      let schemaReadiness;
+      try {
+        schemaReadiness=await checkPrelaunchSchemaReadiness(pool);
+      } catch (schemaError) {
+        console.error("[HEALTH] Prelaunch schema query failed:",schemaError);
+        return res.status(503).json({
+          status:"degraded",
+          services:{api:"ok",database:"ok",usersTable:"ok",schema:"error"},
+          timestamp:new Date().toISOString(),
+        });
+      }
+      if(!schemaReadiness.ready){
+        console.error("[HEALTH] Incomplete schema: missing column count",schemaReadiness.missingCount);
+        return res.status(503).json({
+          status:"degraded",
+          services:{api:"ok",database:"ok",usersTable:"ok",schema:"error"},
+          timestamp:new Date().toISOString(),
+        });
+      }
       res.json({
         status: 'ok',
         services: {
           api: 'ok',
           database: 'ok',
           usersTable: 'ok',
+          schema: 'ok',
         },
         userCount,
         timestamp: new Date().toISOString(),

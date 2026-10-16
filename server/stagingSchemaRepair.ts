@@ -57,6 +57,27 @@ const columns: Record<string, Record<string,string>> = {
   },
 };
 
+export function getMissingPrelaunchSchemaColumns(
+  presentRows: Array<{table_name:string;column_name:string}>,
+):string[]{
+  const present=new Set(presentRows.map(r=>r.table_name+"."+r.column_name));
+  return Object.entries(columns).flatMap(([table,fields])=>
+    Object.keys(fields).filter(c=>!present.has(table+"."+c)).map(c=>table+"."+c));
+}
+
+/** Read-only readiness check. A reachable DB does not imply a working schema. */
+export async function checkPrelaunchSchemaReadiness(
+  db: Pick<PoolClient,"query">,
+):Promise<{ready:boolean;missingCount:number}>{
+  const rows=await db.query(
+    "SELECT table_name,column_name FROM information_schema.columns WHERE "+
+    "table_schema='public' AND table_name=ANY($1::text[])",
+    [Object.keys(columns)],
+  );
+  const missing=getMissingPrelaunchSchemaColumns(rows.rows);
+  return {ready:missing.length===0,missingCount:missing.length};
+}
+
 export async function applyAdditivePrelaunchSchemaRepair(
   client: Pick<PoolClient,"query">, schema = "public",
 ): Promise<void> {
@@ -96,9 +117,7 @@ export async function applyAdditivePrelaunchSchemaRepair(
       "table_schema=$1 AND table_name=ANY($2::text[])",
       [schema,Object.keys(columns)],
     );
-    const present=new Set(rows.rows.map(r=>r.table_name+"."+r.column_name));
-    const missing=Object.entries(columns).flatMap(([table,fields])=>
-      Object.keys(fields).filter(c=>!present.has(table+"."+c)).map(c=>table+"."+c));
+    const missing=getMissingPrelaunchSchemaColumns(rows.rows);
     if(missing.length)throw new Error("STAGING_SCHEMA_INCOMPLETE: "+missing.join(", "));
     await client.query("COMMIT");
     console.log("[STAGING-SCHEMA] Required additive columns verified. No legacy offer publication or data deletions.");

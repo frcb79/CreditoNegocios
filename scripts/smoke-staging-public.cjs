@@ -5,7 +5,7 @@
 const base=(process.env.STAGING_PUBLIC_BASE_URL||
  "https://creditonegocios-staging.up.railway.app").replace(/\/+$/,"");
 const cases=[
- {name:"health + PostgreSQL",method:"GET",path:"/api/health",ok:[200],validate:j=>j?.status==="ok"&&j?.services?.database==="ok"},
+ {name:"health + PostgreSQL",method:"GET",path:"/api/health",ok:[200],validate:j=>j?.status==="ok"&&j?.services?.database==="ok"&&j?.services?.schema==="ok"},
  {name:"public terms",method:"GET",path:"/legal/terminos",ok:[200,301,302,307,308]},
  {name:"public privacy",method:"GET",path:"/legal/aviso",ok:[200,301,302,307,308]},
  {name:"anon user profile denied",method:"GET",path:"/api/auth/user",ok:[401,403]},
