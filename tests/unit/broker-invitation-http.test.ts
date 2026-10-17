@@ -64,7 +64,7 @@ describe("SEC-INVITES: bulk preview and explicit send routes",()=>{
     expect(response.body.ready).toBe(true);
     expect(response.body.total).toBe(1);
     expect(response.body.errors).toHaveLength(0);
-    const users=await storage.getUsers();
+    const users=await storage.getAllUsers();
     expect(users.some(u=>u.email===response.body.rows[0].email)).toBe(false);
   });
   it("requires explicit send confirmation before any account creation or mail",async()=>{
