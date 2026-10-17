@@ -146,6 +146,8 @@ import { commercialOpportunityService } from "./commercialOpportunityService";
 import { commercialHelpService } from "./commercialHelpService";
 import { registerBrokerNetworkTransitionRoutes } from "./brokerNetworkTransitionRoutes";
 import { createBrokerWithOrganization } from "./brokerNetworkTransitionService";
+import { dispatchBrokerInvitation, BrokerInvitationError, validateInvitationTransport } from "./brokerInvitationDispatch";
+import { parseBrokerInvitationExcel } from "./brokerInvitationBulk";
 
 
 import { z } from "zod";
@@ -8211,92 +8213,10 @@ function maskCLABE(clabe?: string | null): string | null {
       if (inviter.role === "admin" && data.masterBrokerId)
         return res.status(403).json({ message: "Sólo Super Admin puede afiliar Brokers a un Master." });
 
-      // An invitation must not link to a staging domain by accidental fallback.
-      const baseUrl = process.env.FRONTEND_BASE_URL;
-      if (!baseUrl || !/^https:\/\//i.test(baseUrl)) {
-        return res.status(503).json({ message: "La URL segura de invitaciones no está configurada." });
-      }
-      if (!process.env.RESEND_API_KEY && process.env.NODE_ENV !== "test") {
-        return res.status(503).json({ message: "Servicio de correo no configurado para enviar invitaciones." });
-      }
-
-      const targetMasterBrokerId = invitedRole === "master_broker"
-        ? null : inviter.role === "master_broker" ? inviter.id : (data.masterBrokerId || null);
-      const previous = await storage.getUserByEmail(normalizedEmail);
-      const crypto = await import("node:crypto");
-      const resetToken = crypto.randomBytes(32).toString("hex");
-      const resetTokenExpiry = new Date(Date.now() + 24 * 60 * 60 * 1000);
-      let targetBroker: any;
-      let invitationKind: "created" | "resent" = "created";
-
-      if (previous) {
-        // This route is not a transfer-of-network API.
-        // Only re-send a setup link to an unfinished, correctly affiliated,
-        // owned Broker identity already created through the canonical path.
-        const allTenants = await storage.getTenants();
-        const owned = allTenants.filter(t =>
-          t.type === invitedRole && (t.settings as any)?.legacyOwnerUserId === previous.id
-        );
-        const members = owned.length === 1 ? await storage.getTenantMembers(owned[0].id) : [];
-        const ownedByBroker = members.some(m =>
-          m.userId === previous.id && m.role === "owner" && m.isActive !== false
-        );
-        const isSameNetwork = (previous.masterBrokerId || null) === targetMasterBrokerId;
-        if (previous.role !== invitedRole || previous.password ||
-            !isSameNetwork || !ownedByBroker) {
-          return res.status(409).json({
-            message: "El usuario ya existe o pertenece a otra red. Los cambios de afiliación requieren autorización de Super Admin."
-          });
-        }
-        await storage.setPasswordResetToken(previous.id, resetToken, resetTokenExpiry);
-        targetBroker = previous;
-        invitationKind = "resent";
-      } else {
-        const result = await createBrokerWithOrganization({
-          email: normalizedEmail,
-          firstName: data.firstName || null,
-          lastName: data.lastName || null,
-          password: null, authMethod: "local",
-          role: invitedRole, masterBrokerId: targetMasterBrokerId,
-          resetToken, resetTokenExpiry,
-          profileData: {
-            phone: data.phone || "",
-            invitedBy: userId,
-            invitationMessage: data.message || "",
-          },
-          isActive: true,
-        });
-        targetBroker = result.user;
-      }
-
-      const recipientName = [targetBroker.firstName, targetBroker.lastName].filter(Boolean).join(" ") || undefined;
-      const sent = await sendAccountInvitationEmail(normalizedEmail, resetToken, invitedRole, recipientName);
-      if (!sent.success) {
-        console.error("[Invitation] Email delivery failed; invitation remains pending:", sent.error);
-        return res.status(202).json({
-          invitationSent: false,
-          message: "Cuenta registrada, pero no se entregó el correo. Reintenta la invitación.",
-          broker: { id: targetBroker.id, email: targetBroker.email, role: targetBroker.role },
-          invitationKind,
-        });
-      }
-
-      await storage.createNotification({
-        userId,
-        type: "broker_invitation_sent",
-        title: "Invitación de acceso enviada",
-        message: `Invitación enviada a ${normalizedEmail}`,
-        data: { email: normalizedEmail, brokerId: targetBroker.id },
-        priority: "medium",
-      }).catch(err => console.warn("[Invitation] Sender notification pending", err));
-
-      return res.status(invitationKind === "created" ? 201 : 200).json({
-        invitationSent: true,
-        invitationKind,
-        message: "Invitación enviada por correo correctamente.",
-        broker: { id: targetBroker.id, email: targetBroker.email, role: targetBroker.role },
-      });
+      const result = await dispatchBrokerInvitation(userId, inviter, data);
+      return res.status(result.status).json(result.body);
     } catch (error: any) {
+      if (error instanceof BrokerInvitationError) return res.status(error.statusCode).json({message:error.message});
       console.error("Error inviting Broker:", error);
       if (error?.code === "EMAIL_ALREADY_EXISTS" || error?.code === "23505") {
         return res.status(409).json({ message: "El usuario ya existe. Vuelve a cargar la red antes de invitar." });
@@ -8304,6 +8224,107 @@ function maskCLABE(clabe?: string | null): string | null {
       if (error?.name === "ZodError") return res.status(400).json({ message: "Datos de invitación inválidos." });
       return res.status(error?.statusCode && error.statusCode >= 400 && error.statusCode < 500 ? error.statusCode : 500)
         .json({ message: error?.statusCode ? error.message : "No fue posible crear la invitación." });
+    }
+  });
+
+
+  // Super Admin bulk launch invitation: PREVIEW is read-only; SEND is explicit.
+  // Never call the single HTTP endpoint recursively or trust submitted tenant IDs.
+  const invitationExcelUpload = multer({
+    storage: multer.memoryStorage(),
+    limits: { fileSize: 2 * 1024 * 1024, files: 1 },
+    fileFilter(_req, file, callback) {
+      if (!/\.xlsx$/i.test(file.originalname)) return callback(new Error("Sólo archivos .xlsx"));
+      callback(null, true);
+    },
+  }).single("file");
+
+  app.post("/api/broker-invitations/bulk/preview", isAuthenticated,
+    invitationExcelUpload, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub || req.user?.id;
+      const user = await storage.getUser(userId);
+      if (user?.role !== "super_admin") return res.status(403).json({message:"Sólo Super Admin puede invitar masivamente."});
+      if (!req.file?.buffer) return res.status(400).json({message:"Adjunta la plantilla XLSX."});
+      const preview = parseBrokerInvitationExcel(req.file.buffer);
+      const warnings: Array<{row:number;message:string}> = [];
+      // Master indicated in the Excel but not in this batch must exist already.
+      const masterEmails = new Set(preview.rows.filter(r=>r.role==="master_broker").map(r=>r.email));
+      for (const row of preview.rows) {
+        if (row.masterEmail && !masterEmails.has(row.masterEmail)) {
+          const candidate = await storage.getUserByEmail(row.masterEmail);
+          if (!candidate || candidate.role !== "master_broker" || candidate.isActive === false)
+            preview.errors.push({row:row.row,field:"correo_master_asignado",
+              message:"Master no existe o está inactivo. Inclúyelo en el archivo o invítalo primero."});
+        }
+        const userExists = await storage.getUserByEmail(row.email);
+        if (userExists) warnings.push({row:row.row,message:"Correo ya registrado: sólo se permitirá reenviar si sigue sin activar y conserva su red."});
+      }
+      return res.json({...preview,warnings,ready:preview.errors.length===0});
+    } catch(error:any) {
+      return res.status(400).json({message:error?.message||"No fue posible analizar el archivo."});
+    }
+  });
+
+  app.post("/api/broker-invitations/bulk/send", isAuthenticated, authMutationLimiter,
+    invitationExcelUpload, async (req:any,res) => {
+    try {
+      const userId = req.user?.claims?.sub || req.user?.id;
+      const inviter = await storage.getUser(userId);
+      if (inviter?.role !== "super_admin") return res.status(403).json({message:"Sólo Super Admin puede invitar masivamente."});
+      if (req.body?.confirmation !== "ENVIAR_INVITACIONES") return res.status(400).json({message:"Confirma expresamente el envío."});
+      if (!req.file?.buffer) return res.status(400).json({message:"Adjunta la plantilla XLSX."});
+      validateInvitationTransport();
+      const parsed = parseBrokerInvitationExcel(req.file.buffer);
+      const errors = [...parsed.errors];
+      const batchMasters = new Set(parsed.rows.filter(r=>r.role==="master_broker").map(r=>r.email));
+      for(const row of parsed.rows) {
+        if (row.masterEmail && !batchMasters.has(row.masterEmail)) {
+          const master = await storage.getUserByEmail(row.masterEmail);
+          if (!master || master.role !== "master_broker" || master.isActive === false)
+            errors.push({row:row.row,field:"correo_master_asignado",message:"Master no existe o no está activo"});
+        }
+      }
+      // ALL row/association validation before first persistent creation/email.
+      if(errors.length) return res.status(422).json({message:"Corrige la plantilla antes de enviar.",errors});
+
+      const results: Array<{row:number;email:string;role:string;status:"sent"|"pending"|"error";message:string}> = [];
+      const masters = new Map<string,string>();
+      // First Masters, then Brokers, while preserving source row number.
+      const ordered = [...parsed.rows.filter(x=>x.role==="master_broker"),
+        ...parsed.rows.filter(x=>x.role==="broker")];
+      for (const row of ordered) {
+        try {
+          let masterBrokerId: string | null = null;
+          if (row.masterEmail) {
+            masterBrokerId = masters.get(row.masterEmail) || null;
+            if (!masterBrokerId) {
+              const external = await storage.getUserByEmail(row.masterEmail);
+              if (!external || external.role !== "master_broker" || external.isActive === false)
+                throw new BrokerInvitationError(422,"No se pudo validar al Master asignado.");
+              masterBrokerId = external.id;
+            }
+          }
+          const result = await dispatchBrokerInvitation(userId, inviter, {
+            email:row.email,firstName:row.firstName,lastName:row.lastName,role:row.role,
+            phone:row.phone,message:row.message,masterBrokerId,
+          });
+          if (row.role === "master_broker") masters.set(row.email,result.body.broker.id);
+          results.push({row:row.row,email:row.email,role:row.role,
+            status:result.body.invitationSent?"sent":"pending",message:result.body.message});
+        } catch (error:any) {
+          results.push({row:row.row,email:row.email,role:row.role,status:"error",
+            message:error instanceof BrokerInvitationError?error.message:"No fue posible completar la invitación."});
+        }
+      }
+      const sent=results.filter(r=>r.status==="sent").length;
+      const pending=results.filter(r=>r.status==="pending").length;
+      const failed=results.filter(r=>r.status==="error").length;
+      return res.json({total:results.length,sent,pending,failed,
+        results:results.sort((a,b)=>a.row-b.row)});
+    } catch(error:any) {
+      if(error instanceof BrokerInvitationError) return res.status(error.statusCode).json({message:error.message});
+      return res.status(400).json({message:error?.message||"No fue posible importar invitaciones."});
     }
   });
 
