@@ -79,3 +79,24 @@ export function parseBrokerInvitationExcel(buffer: Buffer): {
     masters:rows.filter(r=>r.role==="master_broker").length,
     brokers:rows.filter(r=>r.role==="broker").length};
 }
+
+/** Generate the exact workbook accepted by the preview/send endpoints. */
+export function generateBrokerInvitationExcelTemplate(): Buffer {
+  const book = XLSX.utils.book_new();
+  const columns = [...INVITATION_EXCEL_HEADERS,"estado_envio","fecha_envio","fecha_activacion"];
+  const sheet = XLSX.utils.aoa_to_sheet([columns]);
+  sheet["!cols"] = columns.map((h)=>({wch:Math.min(Math.max(15,h.length+2),35)}));
+  XLSX.utils.book_append_sheet(book,sheet,"Invitaciones");
+  const guide = XLSX.utils.aoa_to_sheet([
+    ["PLANTILLA OFICIAL — CRÉDITO NEGOCIOS"],
+    ["Llena nombre, apellido, correo y rol. Usa Broker o Master Broker."],
+    ["Para Brokers afiliados, correo_master_asignado contiene el correo del Master; para directos, vacío."],
+    ["Puedes incluir Masters nuevos y sus Brokers juntos. Primero se invitarán los Masters."],
+    ["No modifiques los encabezados. Máximo 100 invitados por archivo."],
+    ["El envío no sucede al cargar el Excel: revisa la vista previa y confirma expresamente."],
+    ["estado_envio, fecha_envio y fecha_activacion son columnas de seguimiento; se ignoran al importar."],
+  ]);
+  guide["!cols"]=[{wch:100}];
+  XLSX.utils.book_append_sheet(book,guide,"Guia");
+  return XLSX.write(book,{type:"buffer",bookType:"xlsx"}) as Buffer;
+}

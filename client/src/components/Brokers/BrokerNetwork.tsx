@@ -15,6 +15,7 @@ import { apiRequest } from "@/lib/queryClient";
 import { formatDistanceToNow } from "date-fns";
 import { es } from "date-fns/locale";
 import InviteBrokerModal from "@/components/Modals/InviteBrokerModal";
+import BulkBrokerInvitationModal from "@/components/Modals/BulkBrokerInvitationModal";
 import MasterBrokerOversight from "@/components/Commercial/MasterBrokerOversight";
 import {
   Network,
@@ -24,6 +25,7 @@ import {
   RotateCcw,
   Loader2,
   UserPlus,
+  Upload,
   Percent,
   CheckCircle2,
   DollarSign,
@@ -338,6 +340,7 @@ export default function BrokerNetworkComponent() {
   const { user, isLoading: isAuthLoading } = useAuth();
   const isAdmin = user?.role === 'admin' || user?.role === 'super_admin';
   const [showInviteModal, setShowInviteModal] = useState(false);
+  const [showBulkInviteModal, setShowBulkInviteModal] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
   const [expandedMasterBroker, setExpandedMasterBroker] = useState<string | null>(null);
 
@@ -637,6 +640,10 @@ export default function BrokerNetworkComponent() {
             className="w-full bg-white pl-9 h-9 text-xs border-slate-200 rounded-lg"
           />
         </div>
+        {user?.role === "super_admin"&&<Button variant="outline" size="sm"
+          onClick={()=>setShowBulkInviteModal(true)} data-testid="button-invite-bulk">
+          <Upload className="w-4 h-4 mr-2"/> Invitar desde Excel
+        </Button>}
         <Button 
           className="bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold gap-1.5 h-9"
           onClick={() => setShowInviteModal(true)}
@@ -835,6 +842,10 @@ export default function BrokerNetworkComponent() {
         isOpen={showInviteModal}
         onClose={() => setShowInviteModal(false)}
       />
+      {user?.role === "super_admin"&&<BulkBrokerInvitationModal
+        isOpen={showBulkInviteModal}
+        onClose={()=>setShowBulkInviteModal(false)}
+      />}
     </div>
   );
 }

@@ -147,7 +147,7 @@ import { commercialHelpService } from "./commercialHelpService";
 import { registerBrokerNetworkTransitionRoutes } from "./brokerNetworkTransitionRoutes";
 import { createBrokerWithOrganization } from "./brokerNetworkTransitionService";
 import { dispatchBrokerInvitation, BrokerInvitationError, validateInvitationTransport } from "./brokerInvitationDispatch";
-import { parseBrokerInvitationExcel } from "./brokerInvitationBulk";
+import { parseBrokerInvitationExcel, generateBrokerInvitationExcelTemplate } from "./brokerInvitationBulk";
 
 
 import { z } from "zod";
@@ -8238,6 +8238,15 @@ function maskCLABE(clabe?: string | null): string | null {
       callback(null, true);
     },
   }).single("file");
+
+  app.get("/api/broker-invitations/bulk/template", isAuthenticated, async (req:any,res) => {
+    const user = await storage.getUser(req.user?.claims?.sub || req.user?.id);
+    if(user?.role!=="super_admin") return res.status(403).json({message:"Sólo Super Admin."});
+    const bytes=generateBrokerInvitationExcelTemplate();
+    res.setHeader("Content-Type","application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+    res.setHeader("Content-Disposition",'attachment; filename="CreditoNegocios_Invitaciones.xlsx"');
+    return res.send(bytes);
+  });
 
   app.post("/api/broker-invitations/bulk/preview", isAuthenticated,
     invitationExcelUpload, async (req: any, res) => {
