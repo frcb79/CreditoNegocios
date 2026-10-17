@@ -90,6 +90,7 @@ jobs:
             tests/unit/client-list-visibility.test.ts
             tests/unit/network-transitions-safety.test.ts
             tests/unit/client-credit-origin-list.test.ts
+            tests/unit/credit-document-http-authz.test.ts
             tests/unit/credit-response-projection.test.ts
             tests/unit/document-origin-visibility.test.ts
             tests/unit/websocket-session-gate.test.ts
