@@ -8288,6 +8288,13 @@ function maskCLABE(clabe?: string | null): string | null {
       const errors = [...parsed.errors];
       const batchMasters = new Set(parsed.rows.filter(r=>r.role==="master_broker").map(r=>r.email));
       for(const row of parsed.rows) {
+        // A completed account is not an invitation target. Fail the whole
+        // preflight BEFORE sending any emails or creating new accounts.
+        const existing = await storage.getUserByEmail(row.email);
+        if (existing?.password) {
+          errors.push({row:row.row,field:"correo",
+            message:"La cuenta ya está activada. No se enviará otra invitación."});
+        }
         if (row.masterEmail && !batchMasters.has(row.masterEmail)) {
           const master = await storage.getUserByEmail(row.masterEmail);
           if (!master || master.role !== "master_broker" || master.isActive === false)
