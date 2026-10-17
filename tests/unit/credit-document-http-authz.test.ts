@@ -28,13 +28,12 @@ describe("SEC-P0: authenticated resource-scope HTTP regressions", () => {
       next();
     });
     server = await registerRoutes(app);
-    const fullPermissions = { modules: ["*"], actions: ["*"], scope: "global" };
+    // Use authentic role defaults: '*' is NOT an RBAC wildcard.
     const createUser = async (role: string, masterBrokerId?: string) =>
       storage.createUser({
         email: `p0-origin-${randomUUID()}@ci.example`, firstName: role,
         lastName: "Test", role, isActive: true, status: "active",
         ...(masterBrokerId ? { masterBrokerId } : {}),
-        permissions: fullPermissions,
       } as any);
     oldMaster = await createUser("master_broker");
     newMaster = await createUser("master_broker");
