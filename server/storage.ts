@@ -1,6 +1,33 @@
 // @ts-nocheck
-import { randomUUID } from "crypto";
+import { randomUUID, createHash } from "crypto";
+import { assertTargetReviewMutable } from "./targetReviewTransitions";
+import { buildOfferCommissionDocument } from "./offerCommissionAcceptance";
+import catalog from "./legalDocumentCatalog.json";
 import {
+  getApprovedLegalDocument,
+  FORMALIZATION_OTP_EXPIRATION_MS,
+  FORMALIZATION_OTP_COOLDOWN_MS,
+  FORMALIZATION_OTP_MAX_ATTEMPTS,
+  FORMALIZATION_OTP_MAX_REQUESTS_PER_WINDOW,
+  FORMALIZATION_OTP_WINDOW_MS,
+  getActiveFormalizationDocument,
+  validateFormalizationConfirmation,
+  generateOtpCode,
+  hashOtpCode,
+  verifyOtpCode,
+} from "./legalDocuments";
+import {
+  isRoleSubjectToFormalization,
+  getRequiredFormalizationDocuments,
+  buildPersonalizedAgreement,
+  derivePersonalizedAgreementData,
+  validateCompanyAgreementIdentity,
+  hasCompanyAgreementIdentityDrift,
+  type PersonalizedAgreementData,
+  type PersonalizedDocumentSnapshot,
+} from "../shared/legalDocuments";
+import {
+
   users,
   clients,
   credits,
@@ -62,8 +89,30 @@ import {
   userStatusRequests,
   type UserStatusRequest,
   type UserStatusRequestStatus,
-  type UserStatusRequestAction
+  type UserStatusRequestAction,
+  legalDocumentVersions,
+  legalAcceptances,
+  formalizationOtpRequests,
+  type LegalDocumentVersionDb,
+  type InsertLegalDocumentVersionDb,
+  type LegalAcceptance,
+  type InsertLegalAcceptance,
+  type FormalizationOtpRequest,
+  type InstitutionProductVersion,
+  type InsertInstitutionProductVersion,
+  type FinancialInstitutionOffer,
+  type FinancialInstitutionOfferVersion,
+  type InsertFinancialInstitutionOffer,
+  type InsertFinancialInstitutionOfferVersion,
+  type FinancialInstitutionOfferWithVersion,
 } from "../shared/schema";
+import {
+  computeInstitutionProductVersionHash,
+  computeOfferVersionHash,
+  validateMinimumPublishConditions,
+  validateOfferVersionParameters,
+  isOfferEligibleForRequests,
+} from "./offerVersionService";
 
 
 type NotificationInput = InsertNotification & {
@@ -71,6 +120,72 @@ type NotificationInput = InsertNotification & {
   relatedEntityId?: string;
   metadata?: unknown;
 };
+
+
+export interface InvitationActivationInput {
+  userId: string;
+  token: string;
+  passwordHash: string;
+  ipAddress: string | null;
+  userAgent: string;
+  termsDoc: { id: string; document: string; version: string; contentSha256: string };
+  privacyDoc: { id: string; document: string; version: string; contentSha256: string };
+}
+
+export interface FormalizationDocumentItem {
+  id: string;
+  document: string;
+  title: string;
+  version: string;
+  content: string;
+  contentSha256: string;
+  effectiveAt?: string | Date | null;
+  isPrivate: boolean;
+  personalized?: boolean;
+  incorporatedData?: any;
+}
+
+export interface FormalizationDocumentsResult {
+  requiresFormalization: boolean;
+  isFormalized: boolean;
+  message?: string;
+  user?: {
+    id: string;
+    email: string;
+    name?: string;
+    role: string;
+  };
+  requiredDocuments?: string[];
+  documents: FormalizationDocumentItem[];
+}
+
+export interface FormalizationStatusResult {
+  requiresFormalization: boolean;
+  isFormalized: boolean;
+  formalizedAt?: Date | null;
+  requiredDocuments: string[];
+  acceptedDocuments: string[];
+}
+
+export interface CreateFormalizationOtpResult {
+  success: boolean;
+  statusCode: number;
+  error?: string;
+  resendAvailableAt?: Date;
+  otp?: FormalizationOtpRequest;
+  rawCode?: string;
+  documentsForEmail?: Array<{ title: string; version: string }>;
+}
+
+export interface VerifyFormalizationOtpResult {
+  success: boolean;
+  statusCode: number;
+  error?: string;
+  remainingAttempts?: number;
+  requiresRestart?: boolean;
+  acceptances?: LegalAcceptance[];
+  snapshots?: PersonalizedDocumentSnapshot[];
+}
 
 export interface IStorage {
   // Bank analysis report operations
@@ -86,11 +201,23 @@ export interface IStorage {
   createLocalUser(userData: { email: string; password: string; firstName: string; lastName: string; authMethod: string; role: string; masterBrokerId?: string; referralCode?: string }): Promise<User>;
   upsertUser(user: UpsertUser & { id: string }, replitId?: string): Promise<User>;
   updateUser(id: string, userData: Partial<UpsertUser>): Promise<User | undefined>;
+  /** COM-27: one PostgreSQL commit for current network rates and immutable rate version. */
+  updateNetworkRatesWithVersionAtomic?(params: {
+    masterBrokerId: string;
+    newRates: Record<string, any>;
+    changedBy: string;
+  }): Promise<{
+    changed: boolean;
+    rates: Record<string, any>;
+    version: import("./commercialTermsService").NetworkRatesVersionData | null;
+  }>;
+
   getUsersByMasterBroker(masterBrokerId: string): Promise<User[]>;
   setPasswordResetToken(userId: string, token: string, expiry: Date): Promise<void>;
   getUserByResetToken(token: string): Promise<User | undefined>;
   clearPasswordResetToken(userId: string): Promise<void>;
   updateUserPassword(userId: string, hashedPassword: string): Promise<void>;
+  completeInvitationActivation(params: InvitationActivationInput): Promise<LegalAcceptance[]>;
   updateUserOperationalStatus(params: {
     userId: string;
     targetStatus: UserOperationalStatus;
@@ -177,12 +304,71 @@ export interface IStorage {
     additionalUpdates?: Partial<Commission>
   ): Promise<Commission | null>;
   createCommissionAuditLog(logData: InsertCommissionAuditLog): Promise<CommissionAuditLog>;
+  /**
+   * OPE-06: winner selection atomically creates or reuses exactly one credit
+   * for this target. The target and immutable commercial snapshot commit together.
+   */
+  selectWinningTargetAtomic?(params: {
+    targetId: string;
+    requestId: string;
+    expectedProposal: CreditSubmissionTarget["institutionProposal"];
+    newCredit: InsertCredit & { id: string };
+  }): Promise<{
+    target: CreditSubmissionTarget;
+    credit: Credit;
+    alreadySelected: boolean;
+  }>;
+
+  /** Atomic winner-target confirmation, including creating and linking a missing credit. */
+  confirmTargetDisbursementAtomic?(params: {
+    targetId: string;
+    requestId: string;
+    expectedTargetProposal: CreditSubmissionTarget["institutionProposal"];
+    expectedBrokerId: string;
+    expectedOriginMasterBrokerId: string | null;
+    newCredit?: InsertCredit & { id: string };
+    expectedProposal: Credit["finalProposal"];
+    expectedAmount: string;
+    confirmedAmount: number;
+    dispersalIndex: number;
+    commission: InsertCommission;
+    performedBy: string;
+    actorEmail?: string | null;
+    notes?: string | null;
+    idempotencyKey?: string | null;
+  }): Promise<{
+    target: CreditSubmissionTarget;
+    credit: Credit;
+    commission: Commission;
+    alreadyConfirmed: boolean;
+  }>;
+
+  /** Atomic PostgreSQL settlement: status, bank reference and audit are committed together. */
+  /** PostgreSQL credit-confirmation unit of work: one credit lock, commission, audit, tranche. */
+  confirmCreditDisbursementAtomic?(params: {
+    creditId: string;
+    expectedProposal: Credit["finalProposal"];
+    expectedAmount: string;
+    confirmedAmount: number;
+    dispersalIndex: number;
+    commission: InsertCommission;
+    performedBy: string;
+    actorEmail?: string | null;
+    notes?: string | null;
+    idempotencyKey?: string | null;
+  }): Promise<{ credit: Credit; commission: Commission; alreadyConfirmed: boolean }>;
+  recordManualCommissionPayment?(params: {
+    commissionId: string;
+    expected: Commission;
+    updates: Partial<Commission>;
+    audit: InsertCommissionAuditLog;
+  }): Promise<{ commission: Commission; alreadyPaid: boolean }>;
   getCommissionAuditLogs(commissionId: string): Promise<CommissionAuditLog[]>;
 
   // Notification operations
   getNotifications(userId: string): Promise<Notification[]>;
   createNotification(notification: NotificationInput): Promise<Notification>;
-  markNotificationAsRead(id: string): Promise<boolean>;
+  markNotificationAsRead(id: string, userId: string): Promise<boolean>;
   getUnreadNotificationCount(userId: string): Promise<number>;
 
   // Document operations
@@ -246,13 +432,79 @@ export interface IStorage {
   updateProductTemplate(id: string, templateData: Partial<InsertProductTemplate>): Promise<ProductTemplate | undefined>;
   deleteProductTemplate(id: string): Promise<boolean>;
 
-  // Institution Products operations
+  // Institution Products (Canonical Offer Catalog) operations (Bloque A1 / Corrección A1.1)
   getInstitutionProducts(institutionId?: string): Promise<InstitutionProductWithTemplate[]>;
   getInstitutionProduct(id: string): Promise<InstitutionProduct | undefined>;
   getInstitutionProductsByTemplate(templateId: string): Promise<InstitutionProduct[]>;
-  createInstitutionProduct(productData: InsertInstitutionProduct): Promise<InstitutionProduct>;
+  createInstitutionProduct(
+    productData: InsertInstitutionProduct,
+    initialVersion?: Partial<InsertInstitutionProductVersion>
+  ): Promise<InstitutionProduct>;
   updateInstitutionProduct(id: string, productData: Partial<InsertInstitutionProduct>): Promise<InstitutionProduct | undefined>;
   deleteInstitutionProduct(id: string): Promise<boolean>;
+
+  // Canonical Versioning operations (Bloque A1.1)
+  getInstitutionProductVersions(productId: string): Promise<InstitutionProductVersion[]>;
+  getInstitutionProductVersion(id: string): Promise<InstitutionProductVersion | undefined>;
+  getActiveInstitutionProductVersion(productId: string): Promise<InstitutionProductVersion | undefined>;
+  createInstitutionProductDraftVersion(
+    productId: string,
+    versionData: Partial<InsertInstitutionProductVersion> & { changeReason?: string }
+  ): Promise<InstitutionProductVersion>;
+  publishInstitutionProductVersion(
+    productId: string,
+    versionId: string,
+    options?: { publishedBy?: string; changeReason?: string }
+  ): Promise<InstitutionProductVersion>;
+  updateInstitutionProductDraftVersion(
+    productId: string,
+    versionId: string,
+    versionData: Partial<InsertInstitutionProductVersion>
+  ): Promise<InstitutionProductVersion>;
+  updateInstitutionProductDraftAndParent(
+    productId: string,
+    versionId: string,
+    versionData: Partial<InsertInstitutionProductVersion>,
+    productData?: Partial<InsertInstitutionProduct>
+  ): Promise<{ product: InstitutionProduct; version: InstitutionProductVersion }>;
+  deleteInstitutionProductVersion(id: string): Promise<boolean>;
+
+  // Financial Institution Offers aliases (Retrocompatibilidad total con Bloque A1)
+  getOffers(options?: { institutionId?: string; productType?: string; status?: string; isActive?: boolean }): Promise<FinancialInstitutionOffer[]>;
+  getOffer(id: string): Promise<FinancialInstitutionOffer | undefined>;
+  getOffersByInstitution(institutionId: string, options?: { includeInactive?: boolean }): Promise<FinancialInstitutionOffer[]>;
+  getOffersByProductType(institutionId: string, productType: string): Promise<FinancialInstitutionOffer[]>;
+  createOffer(
+    offerData: InsertFinancialInstitutionOffer & { name?: string },
+    initialVersion?: Partial<InsertFinancialInstitutionOfferVersion>
+  ): Promise<{ offer: FinancialInstitutionOffer; version: FinancialInstitutionOfferVersion }>;
+  updateOffer(id: string, offerData: Partial<InsertFinancialInstitutionOffer>): Promise<FinancialInstitutionOffer | undefined>;
+  deleteOffer(id: string): Promise<boolean>;
+  getOfferVersions(offerId: string): Promise<FinancialInstitutionOfferVersion[]>;
+  getOfferVersion(id: string): Promise<FinancialInstitutionOfferVersion | undefined>;
+  getActiveOfferVersion(offerId: string): Promise<FinancialInstitutionOfferVersion | undefined>;
+  createOfferVersion(
+    offerId: string,
+    versionData: Partial<InsertFinancialInstitutionOfferVersion> & { changeReason?: string }
+  ): Promise<FinancialInstitutionOfferVersion>;
+  updateOfferDraftVersion(
+    offerId: string,
+    versionId: string,
+    versionData: Partial<InsertFinancialInstitutionOfferVersion>
+  ): Promise<FinancialInstitutionOfferVersion>;
+  updateOfferDraftAndParent(
+    offerId: string,
+    versionId: string,
+    versionData: Partial<InsertFinancialInstitutionOfferVersion>,
+    offerData?: Partial<InsertFinancialInstitutionOffer>
+  ): Promise<{ offer: FinancialInstitutionOffer; version: FinancialInstitutionOfferVersion }>;
+  publishOfferVersion(
+    offerId: string,
+    versionId: string,
+    options?: { publishedBy?: string; changeReason?: string }
+  ): Promise<FinancialInstitutionOfferVersion>;
+  deleteOfferVersion(id: string): Promise<boolean>;
+  supersedeOfferVersion(offerId: string, oldVersionNumber: number, supersededAt?: Date): Promise<boolean>;
 
   // Products operations (simplified - LEGACY)
   getProducts(institutionId?: string): Promise<Product[]>;
@@ -316,6 +568,61 @@ export interface IStorage {
   updateUserAccessStatus(userId: string, accessStatus: string, expiresAt?: Date | null, notes?: string | null, activePromoId?: string | null): Promise<User | undefined>;
   updateTenantAccessStatus(tenantId: string, accessStatus: string, expiresAt?: Date | null): Promise<Tenant | undefined>;
 
+  // Legal document versions & acceptances (Bloque 2)
+  getLegalDocumentVersions(): Promise<LegalDocumentVersionDb[]>;
+  getLegalDocumentVersion(id: string): Promise<LegalDocumentVersionDb | undefined>;
+  createLegalDocumentVersion(version: InsertLegalDocumentVersionDb): Promise<LegalDocumentVersionDb>;
+  getLegalAcceptancesByUser(userId: string): Promise<LegalAcceptance[]>;
+  createLegalAcceptance(acceptance: InsertLegalAcceptance): Promise<LegalAcceptance>;
+  registerUserWithLegalEvidence(params: {
+    userData: {
+      email: string;
+      password: string;
+      firstName: string;
+      lastName: string;
+      authMethod: string;
+      role: string;
+      masterBrokerId?: string;
+      referralCode?: string;
+    };
+    evidence: {
+      ipAddress: string | null;
+      userAgent: string;
+      termsDoc: {
+        id: string;
+        document: string;
+        version: string;
+        contentSha256: string;
+      };
+      privacyDoc: {
+        id: string;
+        document: string;
+        version: string;
+        contentSha256: string;
+      };
+    };
+  }): Promise<{ user: User; acceptances: LegalAcceptance[]; tenant: Tenant; member: TenantMember }>;
+  getLegalAcceptanceById(id: string): Promise<LegalAcceptance | undefined>;
+  getPersonalizedAgreementSnapshot(acceptanceId: string): Promise<PersonalizedDocumentSnapshot | undefined>;
+
+  // Formalization OTP and Legal Agreement (Bloque 3B)
+  getFormalizationDocuments(userId: string): Promise<FormalizationDocumentsResult>;
+  getFormalizationStatus(userId: string): Promise<FormalizationStatusResult>;
+  createOrResendFormalizationOtp(params: {
+    userId: string;
+    confirmedDocuments: Array<{ document: string; version: string }>;
+  }): Promise<CreateFormalizationOtpResult>;
+  invalidateFormalizationOtp(otpId: string, reason?: string): Promise<void>;
+  verifyAndFormalizeAgreementWithOtp(params: {
+    userId: string;
+    code: string;
+    confirmedDocuments: Array<{ document: string; version: string }>;
+    ipAddress: string;
+    userAgent: string;
+  }): Promise<VerifyFormalizationOtpResult>;
+  getLatestFormalizationOtpByUser(userId: string): Promise<FormalizationOtpRequest | undefined>;
+  countFormalizationOtpRequests(userId: string, since: Date): Promise<number>;
+  isUserFormalized(userId: string, role?: string): Promise<{ isFormalized: boolean; formalizedAt?: Date; acceptedDocuments: string[] }>;
 }
 
 export class MemStorage implements IStorage {
@@ -338,6 +645,8 @@ export class MemStorage implements IStorage {
   private productVariables: Map<string, ProductVariable> = new Map();
   private productTemplates: Map<string, ProductTemplate> = new Map();
   private institutionProducts: Map<string, InstitutionProduct> = new Map();
+  private institutionProductVersions: Map<string, InstitutionProductVersion> = new Map();
+  private legacyBackfilled: boolean = false;
   private products: Map<string, Product> = new Map();
   private productRequests: Map<string, ProductRequest> = new Map();
   
@@ -374,10 +683,53 @@ export class MemStorage implements IStorage {
   }
   private creditSubmissionRequests: Map<string, CreditSubmissionRequest> = new Map();
   private creditSubmissionTargets: Map<string, CreditSubmissionTarget> = new Map();
+  private legalDocumentVersions: Map<string, LegalDocumentVersionDb> = new Map();
+  private legalAcceptances: Map<string, LegalAcceptance> = new Map();
+  private formalizationOtpRequests: Map<string, FormalizationOtpRequest> = new Map();
+  private personalizedSnapshots: Map<string, PersonalizedDocumentSnapshot> = new Map();
+  private userLocks: Map<string, Promise<void>> = new Map();
+
+  private async withUserLock<T>(userId: string, fn: () => Promise<T>): Promise<T> {
+    const currentLock = this.userLocks.get(userId) || Promise.resolve();
+    let release: () => void = () => {};
+    const nextLock = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    this.userLocks.set(userId, nextLock);
+    try {
+      await currentLock;
+      return await fn();
+    } finally {
+      release();
+      if (this.userLocks.get(userId) === nextLock) {
+        this.userLocks.delete(userId);
+      }
+    }
+  }
 
   constructor() {
     this.seedData();
     this.migrateExistingData();
+    this.seedLegalDocumentVersions();
+  }
+
+  private seedLegalDocumentVersions(): void {
+    for (const entry of catalog) {
+      if (this.legalDocumentVersions.has(entry.id)) {
+        continue;
+      }
+      this.legalDocumentVersions.set(entry.id, structuredClone({
+        id: entry.id,
+        document: entry.document,
+        title: entry.title,
+        version: entry.version,
+        sourceFile: entry.sourceFile,
+        content: entry.content,
+        contentSha256: entry.contentSha256,
+        effectiveAt: entry.effectiveAt ? new Date(entry.effectiveAt) : null,
+        createdAt: new Date(),
+      }));
+    }
   }
 
   private createSeedFinancialInstitution(data: Partial<FinancialInstitution> & Pick<FinancialInstitution, "id" | "name">): FinancialInstitution {
@@ -1271,6 +1623,23 @@ export class MemStorage implements IStorage {
     };
     this.products.set(konfioPyme.id, konfioPyme);
 
+    const legacyInactiveProd: Product = {
+      id: "product-legacy-inactive",
+      institutionId: "fin-1",
+      name: "BCM Crédito Tradicional (Legacy Inactivo)",
+      description: "Producto legacy inactivo descontinuado de BCM",
+      category: "business",
+      availableVariables: {},
+      configuration: { minAmount: 50000, maxAmount: 1000000 },
+      requirements: {},
+      documents: ["rfc"],
+      isActive: false,
+      createdBy: "user-super-admin",
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
+    this.products.set(legacyInactiveProd.id, legacyInactiveProd);
+
     // Seed sample product requests
     const sampleRequest: ProductRequest = {
       id: "request-sample-1",
@@ -1318,20 +1687,7 @@ export class MemStorage implements IStorage {
   }
 
   async createUser(userData: UpsertUser): Promise<User> {
-    return this.upsertUser({ ...userData, id: userData.id || randomUUID() });
-  }
-
-  async upsertUser(userData: UpsertUser & { id: string }): Promise<User> {
-    const existing = this.users.get(userData.id) || (userData.email ? await this.getUserByEmail(userData.email) : undefined);
-    const user: User = {
-      ...(existing || {} as User),
-      ...userData,
-      id: existing?.id || userData.id,
-      updatedAt: new Date(),
-      createdAt: existing?.createdAt || new Date(),
-    } as User;
-    this.users.set(user.id, user);
-    return user;
+    return this.upsertUser(userData);
   }
 
   async createLocalUser(userData: { email: string; password: string; firstName: string; lastName: string; authMethod: string; role: string; masterBrokerId?: string; referralCode?: string }): Promise<User> {
@@ -1402,6 +1758,868 @@ export class MemStorage implements IStorage {
     this.users.set(userId, { ...user, password: hashedPassword, authMethod: user.authMethod || 'local', updatedAt: new Date() } as User);
   }
 
+
+  async completeInvitationActivation(params: InvitationActivationInput): Promise<LegalAcceptance[]> {
+    return this.withUserLock(params.userId, async () => {
+      const user = this.users.get(params.userId);
+      if (!user || user.resetToken !== params.token || user.password ||
+          !user.resetTokenExpiry || new Date(user.resetTokenExpiry).getTime() <= Date.now()) {
+        throw new Error("Token de activación inválido, consumido o expirado.");
+      }
+      for (const candidate of [params.termsDoc, params.privacyDoc]) {
+        const official = getApprovedLegalDocument(candidate.document, candidate.version);
+        const persisted = this.legalDocumentVersions.get(candidate.id);
+        if (!official || !persisted || official.id !== candidate.id ||
+            official.contentSha256 !== candidate.contentSha256 ||
+            persisted.contentSha256 !== candidate.contentSha256 ||
+            createHash("sha256").update(persisted.content, "utf8").digest("hex") !== candidate.contentSha256) {
+          throw new Error("Documento legal de activación no vigente o no verificable.");
+        }
+      }
+      const prior = Array.from(this.legalAcceptances.values()).filter(a =>
+        a.userId === user.id && (a.document === "terminos" || a.document === "aviso")
+      );
+      if (prior.length) throw new Error("La activación legal ya fue registrada. Contacta soporte.");
+      const now = new Date();
+      const fullName = [user.firstName, user.lastName].filter(Boolean).join(" ").trim() || null;
+      const makeEvidence = (doc: InvitationActivationInput["termsDoc"], acceptanceType: string): LegalAcceptance => ({
+        id: randomUUID(), userId: user.id, userEmail: user.email!,
+        userName: fullName, documentId: doc.id, document: doc.document,
+        version: doc.version, contentSha256: doc.contentSha256,
+        acceptanceType, ipAddress: params.ipAddress, userAgent: params.userAgent,
+        acceptedAt: now,
+      });
+      const terms = makeEvidence(params.termsDoc, "accept_terms");
+      const privacy = makeEvidence(params.privacyDoc, "acknowledge_privacy");
+      // The following writes are synchronous under the user lock; no partial activation.
+      this.legalAcceptances.set(terms.id, structuredClone(terms));
+      this.legalAcceptances.set(privacy.id, structuredClone(privacy));
+      this.users.set(user.id, { ...user, password: params.passwordHash,
+        resetToken: null, resetTokenExpiry: null, updatedAt: now });
+      return [structuredClone(terms), structuredClone(privacy)];
+    });
+  }
+
+  async getLegalDocumentVersions(): Promise<LegalDocumentVersionDb[]> {
+    return Array.from(this.legalDocumentVersions.values()).map((v) => structuredClone(v));
+  }
+
+  async getLegalDocumentVersion(id: string): Promise<LegalDocumentVersionDb | undefined> {
+    const doc = this.legalDocumentVersions.get(id);
+    return doc ? structuredClone(doc) : undefined;
+  }
+
+  async createLegalDocumentVersion(data: InsertLegalDocumentVersionDb): Promise<LegalDocumentVersionDb> {
+    const id = data.id || `${data.document}:${data.version}`;
+    const doc: LegalDocumentVersionDb = {
+      id,
+      document: data.document,
+      title: data.title,
+      version: data.version,
+      sourceFile: data.sourceFile || "commercial_config",
+      content: data.content,
+      contentSha256: data.contentSha256,
+      effectiveAt: data.effectiveAt ? new Date(data.effectiveAt) : new Date(),
+      createdAt: new Date(),
+    };
+    this.legalDocumentVersions.set(doc.id, structuredClone(doc));
+    return structuredClone(doc);
+  }
+
+  async getLegalAcceptancesByUser(userId: string): Promise<LegalAcceptance[]> {
+    return Array.from(this.legalAcceptances.values())
+      .filter((a) => a.userId === userId)
+      .sort((a, b) => new Date(b.acceptedAt).getTime() - new Date(a.acceptedAt).getTime())
+      .map((a) => structuredClone(a));
+  }
+
+  async createLegalAcceptance(data: InsertLegalAcceptance): Promise<LegalAcceptance> {
+    const id = (data as any).id || randomUUID();
+    const acceptance: LegalAcceptance = {
+      id,
+      userId: data.userId,
+      userEmail: data.userEmail,
+      userName: data.userName ?? null,
+      documentId: data.documentId,
+      document: data.document,
+      version: data.version,
+      contentSha256: data.contentSha256,
+      acceptanceType: data.acceptanceType,
+      ipAddress: data.ipAddress ?? null,
+      userAgent: data.userAgent,
+      acceptedAt: (data as any).acceptedAt ? new Date((data as any).acceptedAt) : new Date(),
+      templateSha256: data.templateSha256 ?? null,
+      personalizedSha256: data.personalizedSha256 ?? null,
+      personalizedSnapshot: data.personalizedSnapshot ?? null,
+    };
+    if (this.legalAcceptances.has(acceptance.id)) {
+      throw Object.assign(new Error("Duplicate legal acceptance primary key"), { code: "23505" });
+    }
+    this.legalAcceptances.set(acceptance.id, structuredClone(acceptance));
+    return structuredClone(acceptance);
+  }
+
+  async getLegalAcceptanceById(id: string): Promise<LegalAcceptance | undefined> {
+    const acc = this.legalAcceptances.get(id);
+    return acc ? structuredClone(acc) : undefined;
+  }
+
+  async getPersonalizedAgreementSnapshot(acceptanceId: string): Promise<PersonalizedDocumentSnapshot | undefined> {
+    const snap = this.personalizedSnapshots.get(acceptanceId);
+    return snap ? structuredClone(snap) : undefined;
+  }
+
+  async registerUserWithLegalEvidence(params: {
+    userData: {
+      email: string;
+      password: string;
+      firstName: string;
+      lastName: string;
+      authMethod: string;
+      role: string;
+      masterBrokerId?: string;
+      referralCode?: string;
+    };
+    evidence: {
+      ipAddress: string | null;
+      userAgent: string;
+      termsDoc: {
+        id: string;
+        document: string;
+        version: string;
+        contentSha256: string;
+      };
+      privacyDoc: {
+        id: string;
+        document: string;
+        version: string;
+        contentSha256: string;
+      };
+    };
+  }): Promise<{ user: User; acceptances: LegalAcceptance[]; tenant: Tenant; member: TenantMember }> {
+    // 1. Validate against approved catalog
+    const catalogTerms = getApprovedLegalDocument(params.evidence.termsDoc.document, params.evidence.termsDoc.version);
+    if (!catalogTerms) {
+      throw new Error(`La versión de Términos (${params.evidence.termsDoc.version}) no está aprobada en el catálogo.`);
+    }
+    if (catalogTerms.contentSha256 !== params.evidence.termsDoc.contentSha256) {
+      throw new Error("Discrepancia en el hash de los Términos y Condiciones.");
+    }
+
+    const catalogPrivacy = getApprovedLegalDocument(params.evidence.privacyDoc.document, params.evidence.privacyDoc.version);
+    if (!catalogPrivacy) {
+      throw new Error(`La versión del Aviso de Privacidad (${params.evidence.privacyDoc.version}) no está aprobada en el catálogo.`);
+    }
+    if (catalogPrivacy.contentSha256 !== params.evidence.privacyDoc.contentSha256) {
+      throw new Error("Discrepancia en el hash del Aviso de Privacidad.");
+    }
+
+    // 2. Verify persisted versions match catalog and hashes
+    const persistedTerms = this.legalDocumentVersions.get(params.evidence.termsDoc.id);
+    if (!persistedTerms) {
+      throw new Error(`La versión de Términos (${params.evidence.termsDoc.id}) no se encuentra persistida.`);
+    }
+    if (
+      persistedTerms.contentSha256 !== catalogTerms.contentSha256 ||
+      persistedTerms.document !== catalogTerms.document ||
+      persistedTerms.version !== catalogTerms.version
+    ) {
+      throw new Error("Discrepancia detectada entre Términos persistidos y catálogo aprobado.");
+    }
+    const termsHash = createHash("sha256").update(persistedTerms.content, "utf8").digest("hex");
+    if (termsHash !== catalogTerms.contentSha256) {
+      throw new Error("Discrepancia en la integridad del contenido persistido de Términos.");
+    }
+
+    const persistedPrivacy = this.legalDocumentVersions.get(params.evidence.privacyDoc.id);
+    if (!persistedPrivacy) {
+      throw new Error(`La versión del Aviso (${params.evidence.privacyDoc.id}) no se encuentra persistida.`);
+    }
+    if (
+      persistedPrivacy.contentSha256 !== catalogPrivacy.contentSha256 ||
+      persistedPrivacy.document !== catalogPrivacy.document ||
+      persistedPrivacy.version !== catalogPrivacy.version
+    ) {
+      throw new Error("Discrepancia detectada entre Aviso persistido y catálogo aprobado.");
+    }
+    const privacyHash = createHash("sha256").update(persistedPrivacy.content, "utf8").digest("hex");
+    if (privacyHash !== catalogPrivacy.contentSha256) {
+      throw new Error("Discrepancia en la integridad del contenido persistido de Aviso.");
+    }
+
+    // 3. Check duplicate email
+    const existing = await this.getUserByEmail(params.userData.email);
+    if (existing) {
+      throw new Error("Este email ya está registrado");
+    }
+
+    const id = randomUUID();
+    const now = new Date();
+    const user: User = {
+      id,
+      email: params.userData.email,
+      password: params.userData.password,
+      authMethod: params.userData.authMethod || "local",
+      firstName: params.userData.firstName,
+      lastName: params.userData.lastName,
+      role: params.userData.role || "broker",
+      profileImageUrl: null,
+      masterBrokerId: params.userData.masterBrokerId || null,
+      referralCode: params.userData.referralCode || null,
+      customLogo: null,
+      brandName: null,
+      primaryColor: null,
+      secondaryColor: null,
+      isWhiteLabel: false,
+      autoRegisterBrokers: false,
+      profileType: null,
+      profileData: {},
+      isActive: true,
+      createdAt: now,
+      updatedAt: now,
+    };
+
+    const termsAcceptance: LegalAcceptance = {
+      id: randomUUID(),
+      userId: user.id,
+      userEmail: user.email!,
+      documentId: params.evidence.termsDoc.id,
+      document: params.evidence.termsDoc.document,
+      version: params.evidence.termsDoc.version,
+      contentSha256: params.evidence.termsDoc.contentSha256,
+      acceptanceType: "accept_terms",
+      ipAddress: params.evidence.ipAddress ?? null,
+      userAgent: params.evidence.userAgent,
+      acceptedAt: now,
+    };
+
+    const privacyAcceptance: LegalAcceptance = {
+      id: randomUUID(),
+      userId: user.id,
+      userEmail: user.email!,
+      documentId: params.evidence.privacyDoc.id,
+      document: params.evidence.privacyDoc.document,
+      version: params.evidence.privacyDoc.version,
+      contentSha256: params.evidence.privacyDoc.contentSha256,
+      acceptanceType: "acknowledge_privacy",
+      ipAddress: params.evidence.ipAddress ?? null,
+      userAgent: params.evidence.userAgent,
+      acceptedAt: now,
+    };
+
+    // Recovered atomic Broker tenant and owner membership from the approved
+    // network-formalization branch. Resolve topology BEFORE any write.
+    let parentTenantId: string;
+    if (params.userData.masterBrokerId) {
+      const master = this.users.get(params.userData.masterBrokerId);
+      const status = master?.status || (master?.isActive ? "active" : "inactive");
+      if (!master || master.role !== "master_broker" || master.isActive === false || status !== "active") {
+        throw new Error("El Master Broker de afiliación no es válido o no está activo.");
+      }
+      const owned = Array.from(this.tenants.values()).filter((t) =>
+        t.type === "master_broker" &&
+        ((t.settings as any)?.legacyOwnerUserId === master.id ||
+          Array.from(this.tenantMembers.values()).some((m) =>
+            m.tenantId === t.id && m.userId === master.id && m.role === "owner" && m.isActive !== false
+          ))
+      );
+      if (owned.length !== 1) {
+        throw new Error("No se encontró de forma unívoca la organización del Master Broker.");
+      }
+      parentTenantId = owned[0].id;
+    } else {
+      const platform = Array.from(this.tenants.values()).filter((t) => t.type === "platform" || t.slug === "platform");
+      if (platform.length !== 1) {
+        throw new Error("No se encontró de forma unívoca la organización de plataforma requerida para el registro directo.");
+      }
+      parentTenantId = platform[0].id;
+    }
+
+    const tenant: Tenant = {
+      id: randomUUID(),
+      name: (`Broker ${user.firstName || ""} ${user.lastName || ""}`).trim(),
+      slug: `broker-${id.slice(0, 8).toLowerCase()}`,
+      type: "broker", parentTenantId,
+      settings: { legacyOwnerUserId: id, createdFrom: "canonical_broker_creation" },
+      isActive: true, createdAt: now, updatedAt: now,
+    };
+    const member: TenantMember = {
+      id: randomUUID(), tenantId: tenant.id, userId: id,
+      role: "owner", canOriginate: true, isActive: true,
+      joinedAt: now, updatedAt: now,
+    };
+
+    this.users.set(id, structuredClone(user));
+    this.legalAcceptances.set(termsAcceptance.id, structuredClone(termsAcceptance));
+    this.legalAcceptances.set(privacyAcceptance.id, structuredClone(privacyAcceptance));
+    this.tenants.set(tenant.id, structuredClone(tenant));
+    this.tenantMembers.set(member.id, structuredClone(member));
+
+    return {
+      user: structuredClone(user),
+      acceptances: [structuredClone(termsAcceptance), structuredClone(privacyAcceptance)],
+      tenant: structuredClone(tenant),
+      member: structuredClone(member),
+    };
+  }
+
+  async getFormalizationDocuments(userId: string): Promise<FormalizationDocumentsResult> {
+    const user = await this.getUser(userId);
+    if (!user) {
+      throw new Error("Usuario no encontrado.");
+    }
+
+    const requires = isRoleSubjectToFormalization(user.role);
+    const fullName = [user.firstName, user.lastName].filter(Boolean).join(" ").trim() || (user as any).accountHolder || user.email!;
+
+    if (!requires) {
+      return {
+        requiresFormalization: false,
+        isFormalized: true,
+        message: "El rol del usuario no requiere formalización de convenio.",
+        user: {
+          id: user.id,
+          email: user.email!,
+          name: fullName,
+          role: user.role,
+        },
+        requiredDocuments: [],
+        documents: [],
+      };
+    }
+
+    const status = await this.isUserFormalized(user.id, user.role);
+    const requiredDocs = getRequiredFormalizationDocuments(user.role);
+
+    const personalizedData: PersonalizedAgreementData = derivePersonalizedAgreementData(user);
+
+    const documentItems: FormalizationDocumentItem[] = [];
+    for (const docType of requiredDocs) {
+      const docVer = (await this.getLegalDocumentVersion(`${docType}:1.0`)) || getApprovedLegalDocument(docType, "1.0");
+      if (!docVer) continue;
+
+      if (docType === "convenio") {
+        const personalizedContent = buildPersonalizedAgreement(docVer.content, personalizedData);
+        documentItems.push({
+          id: docVer.id,
+          document: docVer.document,
+          title: docVer.title,
+          version: docVer.version,
+          content: personalizedContent,
+          contentSha256: docVer.contentSha256,
+          effectiveAt: docVer.effectiveAt,
+          isPrivate: true,
+          personalized: true,
+          incorporatedData: personalizedData,
+        });
+      } else {
+        documentItems.push({
+          id: docVer.id,
+          document: docVer.document,
+          title: docVer.title,
+          version: docVer.version,
+          content: docVer.content,
+          contentSha256: docVer.contentSha256,
+          effectiveAt: docVer.effectiveAt,
+          isPrivate: true,
+          personalized: false,
+        });
+      }
+    }
+
+    return {
+      requiresFormalization: true,
+      isFormalized: status.isFormalized,
+      user: {
+        id: user.id,
+        email: user.email!,
+        name: fullName,
+        role: user.role,
+      },
+      requiredDocuments: requiredDocs,
+      documents: documentItems,
+    };
+  }
+
+  async getFormalizationStatus(userId: string): Promise<FormalizationStatusResult> {
+    const user = await this.getUser(userId);
+    if (!user) {
+      return {
+        requiresFormalization: false,
+        isFormalized: false,
+        formalizedAt: null,
+        requiredDocuments: [],
+        acceptedDocuments: [],
+      };
+    }
+
+    const requires = isRoleSubjectToFormalization(user.role);
+    if (!requires) {
+      return {
+        requiresFormalization: false,
+        isFormalized: true,
+        formalizedAt: null,
+        requiredDocuments: [],
+        acceptedDocuments: [],
+      };
+    }
+
+    const status = await this.isUserFormalized(user.id, user.role);
+    return {
+      requiresFormalization: true,
+      isFormalized: status.isFormalized,
+      formalizedAt: status.formalizedAt || null,
+      requiredDocuments: getRequiredFormalizationDocuments(user.role),
+      acceptedDocuments: status.acceptedDocuments,
+    };
+  }
+
+  async createOrResendFormalizationOtp(params: {
+    userId: string;
+    confirmedDocuments: Array<{ document: string; version: string }>;
+  }): Promise<CreateFormalizationOtpResult> {
+    return await this.withUserLock(params.userId, async () => {
+      const user = await this.getUser(params.userId);
+      if (!user) {
+        return { success: false, statusCode: 404, error: "Usuario no encontrado." };
+      }
+
+      if (!isRoleSubjectToFormalization(user.role)) {
+        return { success: false, statusCode: 400, error: "El rol del usuario no requiere formalización." };
+      }
+
+      // Identity of a company and its signer must be complete BEFORE issuing OTP.
+      // An account holder cannot claim another person's representation by typing
+      // their name in the company field and receiving OTP at their own mailbox.
+      const companyIdentityError = validateCompanyAgreementIdentity(derivePersonalizedAgreementData(user));
+      if (companyIdentityError) {
+        return { success: false, statusCode: 409, error: companyIdentityError };
+      }
+
+      const status = await this.isUserFormalized(user.id, user.role);
+      if (status.isFormalized) {
+        return { success: false, statusCode: 400, error: "El usuario ya ha formalizado su Convenio." };
+      }
+
+      const validation = validateFormalizationConfirmation(user.role, params.confirmedDocuments);
+      if (!validation.valid) {
+        return { success: false, statusCode: 400, error: validation.error };
+      }
+
+      const oneHourAgo = new Date(Date.now() - FORMALIZATION_OTP_WINDOW_MS);
+      const recentCount = await this.countFormalizationOtpRequests(user.id, oneHourAgo);
+      if (recentCount >= FORMALIZATION_OTP_MAX_REQUESTS_PER_WINDOW) {
+        return {
+          success: false,
+          statusCode: 429,
+          error: "Has superado el límite de solicitudes de código. Por favor intenta más tarde.",
+        };
+      }
+
+      const now = new Date();
+
+      const latestOtp = Array.from(this.formalizationOtpRequests.values())
+        .filter((o) => o.userId === user.id)
+        .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())[0];
+
+      if (latestOtp) {
+        const resendAvailableAt = new Date(latestOtp.resendAvailableAt).getTime();
+        if (now.getTime() < resendAvailableAt) {
+          const remainingSeconds = Math.ceil((resendAvailableAt - now.getTime()) / 1000);
+          return {
+            success: false,
+            statusCode: 429,
+            error: `Debes esperar ${remainingSeconds} segundos antes de solicitar un nuevo código.`,
+            resendAvailableAt: latestOtp.resendAvailableAt,
+          };
+        }
+      }
+
+      const previousActiveOtp = Array.from(this.formalizationOtpRequests.values())
+        .filter((o) => o.userId === user.id && !o.consumed && !o.invalidated)
+        .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())[0];
+
+      if (previousActiveOtp) {
+        previousActiveOtp.invalidated = true;
+        previousActiveOtp.invalidatedAt = now;
+        this.formalizationOtpRequests.set(previousActiveOtp.id, structuredClone(previousActiveOtp));
+      }
+
+      const rawCode = generateOtpCode();
+      const codeHash = hashOtpCode(rawCode);
+      const expiresAt = new Date(now.getTime() + FORMALIZATION_OTP_EXPIRATION_MS);
+      const resendAvailableAt = new Date(now.getTime() + FORMALIZATION_OTP_COOLDOWN_MS);
+      const fullName = [user.firstName, user.lastName].filter(Boolean).join(" ").trim() || (user as any).accountHolder || user.email!;
+
+      const personalizedData: PersonalizedAgreementData = derivePersonalizedAgreementData(user);
+
+      const documentsSnapshot = validation.catalogDocs!.map((d) => {
+        if (d.document === "convenio") {
+          const personalizedText = buildPersonalizedAgreement(d.content, personalizedData);
+          const personalizedSha = createHash("sha256").update(personalizedText, "utf8").digest("hex");
+          return {
+            id: d.id,
+            document: d.document,
+            version: d.version,
+            title: d.title,
+            templateSha256: d.contentSha256,
+            contentSha256: d.contentSha256,
+            personalizedContent: personalizedText,
+            personalizedSha256: personalizedSha,
+            incorporatedData: personalizedData,
+          };
+        }
+        return {
+          id: d.id,
+          document: d.document,
+          version: d.version,
+          title: d.title,
+          contentSha256: d.contentSha256,
+          content: d.content,
+        };
+      });
+
+      const newOtp: FormalizationOtpRequest = {
+        id: randomUUID(),
+        userId: user.id,
+        userEmail: user.email!,
+        userName: fullName,
+        userRole: user.role,
+        documentsSnapshot,
+        codeHash,
+        attempts: 0,
+        maxAttempts: FORMALIZATION_OTP_MAX_ATTEMPTS,
+        expiresAt,
+        resendAvailableAt,
+        consumed: false,
+        consumedAt: null,
+        invalidated: false,
+        invalidatedAt: null,
+        createdAt: now,
+      };
+
+      this.formalizationOtpRequests.set(newOtp.id, structuredClone(newOtp));
+
+      return {
+        success: true,
+        statusCode: 200,
+        otp: structuredClone(newOtp),
+        rawCode,
+        documentsForEmail: validation.catalogDocs!.map((d) => ({ title: d.title, version: d.version })),
+      };
+    });
+  }
+
+  async invalidateFormalizationOtp(otpId: string, reason?: string): Promise<void> {
+    const existing = this.formalizationOtpRequests.get(otpId);
+    if (existing) {
+      existing.invalidated = true;
+      existing.invalidatedAt = new Date();
+      this.formalizationOtpRequests.set(otpId, structuredClone(existing));
+    }
+  }
+
+  async verifyAndFormalizeAgreementWithOtp(params: {
+    userId: string;
+    code: string;
+    confirmedDocuments: Array<{ document: string; version: string }>;
+    ipAddress: string;
+    userAgent: string;
+  }): Promise<VerifyFormalizationOtpResult> {
+    return await this.withUserLock(params.userId, async () => {
+      const user = await this.getUser(params.userId);
+      if (!user) {
+        return { success: false, statusCode: 404, error: "Usuario no encontrado." };
+      }
+
+      const activeOtp = Array.from(this.formalizationOtpRequests.values())
+        .filter((o) => o.userId === user.id && !o.consumed && !o.invalidated)
+        .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())[0];
+
+      if (!activeOtp) {
+        return {
+          success: false,
+          statusCode: 400,
+          error: "No se encontró una solicitud activa de formalización para este usuario.",
+        };
+      }
+
+      const now = new Date();
+
+      if (activeOtp.attempts >= activeOtp.maxAttempts) {
+        activeOtp.invalidated = true;
+        activeOtp.invalidatedAt = now;
+        this.formalizationOtpRequests.set(activeOtp.id, structuredClone(activeOtp));
+        return {
+          success: false,
+          statusCode: 400,
+          error: "Has superado el límite máximo de 5 intentos fallidos. Solicita un nuevo código.",
+          remainingAttempts: 0,
+        };
+      }
+
+      if (now.getTime() > new Date(activeOtp.expiresAt).getTime()) {
+        activeOtp.invalidated = true;
+        activeOtp.invalidatedAt = now;
+        this.formalizationOtpRequests.set(activeOtp.id, structuredClone(activeOtp));
+        return {
+          success: false,
+          statusCode: 400,
+          error: "El código de verificación ha expirado. Solicita un nuevo código.",
+        };
+      }
+
+      // Check identity drift
+      const currentUserName = [user.firstName, user.lastName].filter(Boolean).join(" ").trim() || (user as any).accountHolder || user.email!;
+      if (
+        user.email !== activeOtp.userEmail ||
+        currentUserName !== activeOtp.userName ||
+        user.role !== activeOtp.userRole
+      ) {
+        activeOtp.invalidated = true;
+        activeOtp.invalidatedAt = now;
+        this.formalizationOtpRequests.set(activeOtp.id, structuredClone(activeOtp));
+        return {
+          success: false,
+          statusCode: 400,
+          error: "Los datos de identidad (nombre, correo o rol) han cambiado desde que se solicitó el código. Debes reiniciar el proceso de formalización.",
+          requiresRestart: true,
+        };
+      }
+
+      const pendingCompanySnapshot = (activeOtp.documentsSnapshot as any[])?.find((d) => d.document === "convenio");
+      if (hasCompanyAgreementIdentityDrift(user, pendingCompanySnapshot?.incorporatedData)) {
+        activeOtp.invalidated = true;
+        activeOtp.invalidatedAt = now;
+        this.formalizationOtpRequests.set(activeOtp.id, structuredClone(activeOtp));
+        return { success: false, statusCode: 409, requiresRestart: true,
+          error: "Los datos de la empresa o de su representante cambiaron desde la emisión del OTP. Revisa el Convenio y solicita un nuevo código." };
+      }
+
+      // Validate documents and active versions
+      const validation = validateFormalizationConfirmation(activeOtp.userRole, params.confirmedDocuments);
+      if (!validation.valid) {
+        return { success: false, statusCode: 400, error: validation.error };
+      }
+
+      const validatedCatalogDocs: LegalDocumentVersionDb[] = [];
+      for (const conf of params.confirmedDocuments) {
+        const activeDoc = getActiveFormalizationDocument(conf.document);
+        if (!activeDoc || activeDoc.version !== conf.version) {
+          return {
+            success: false,
+            statusCode: 400,
+            error: `La versión '${conf.version}' para el documento '${conf.document}' no está habilitada actualmente.`,
+          };
+        }
+
+        const docId = `${conf.document}:${conf.version}`;
+        const persisted = this.legalDocumentVersions.get(docId);
+        if (!persisted) {
+          return {
+            success: false,
+            statusCode: 400,
+            error: `La versión persistida no se encuentra disponible: ${docId}`,
+          };
+        }
+
+        if (persisted.id !== docId || persisted.document !== conf.document || persisted.version !== conf.version) {
+          return {
+            success: false,
+            statusCode: 400,
+            error: `Discrepancia en la identidad del documento persistido: ${docId}`,
+          };
+        }
+
+        const recomputedSha256 = createHash("sha256").update(persisted.content || "", "utf8").digest("hex");
+        if (recomputedSha256 !== persisted.contentSha256) {
+          return {
+            success: false,
+            statusCode: 400,
+            error: `Discrepancia de integridad en el contenido persistido: ${docId}`,
+          };
+        }
+
+        if (recomputedSha256 !== activeDoc.contentSha256 || persisted.contentSha256 !== activeDoc.contentSha256) {
+          return {
+            success: false,
+            statusCode: 400,
+            error: `Discrepancia de integridad con el catálogo activo: ${docId}`,
+          };
+        }
+
+        const snapshot = (activeOtp.documentsSnapshot as any[]).find((s) => s.document === conf.document);
+        if (
+          !snapshot ||
+          snapshot.id !== docId ||
+          snapshot.version !== conf.version ||
+          snapshot.contentSha256 !== activeDoc.contentSha256 ||
+          snapshot.contentSha256 !== recomputedSha256
+        ) {
+          return {
+            success: false,
+            statusCode: 400,
+            error: "Las versiones o el contenido de los documentos cambiaron desde la solicitud del código. Solicita un nuevo código.",
+          };
+        }
+
+        validatedCatalogDocs.push(persisted);
+      }
+
+      // Constant-time HMAC code verification
+      const isMatch = verifyOtpCode(params.code, activeOtp.codeHash);
+      if (!isMatch) {
+        activeOtp.attempts += 1;
+        const limitReached = activeOtp.attempts >= activeOtp.maxAttempts;
+        if (limitReached) {
+          activeOtp.invalidated = true;
+          activeOtp.invalidatedAt = now;
+        }
+        this.formalizationOtpRequests.set(activeOtp.id, structuredClone(activeOtp));
+
+        const remaining = Math.max(0, activeOtp.maxAttempts - activeOtp.attempts);
+        return {
+          success: false,
+          statusCode: 400,
+          error: limitReached
+            ? "Has superado el límite máximo de 5 intentos fallidos. Solicita un nuevo código."
+            : `Código incorrecto. Te quedan ${remaining} ${remaining === 1 ? "intento" : "intentos"}.`,
+          remainingAttempts: remaining,
+        };
+      }
+
+      // Mark OTP as consumed
+      activeOtp.consumed = true;
+      activeOtp.consumedAt = now;
+      this.formalizationOtpRequests.set(activeOtp.id, structuredClone(activeOtp));
+
+      // Create legal acceptances and immutable snapshots
+      const createdAcceptances: LegalAcceptance[] = [];
+      const createdSnapshots: PersonalizedDocumentSnapshot[] = [];
+      for (const doc of validatedCatalogDocs) {
+        const acceptance: LegalAcceptance = {
+          id: randomUUID(),
+          userId: activeOtp.userId,
+          userEmail: activeOtp.userEmail,
+          userName: activeOtp.userName,
+          documentId: doc.id,
+          document: doc.document,
+          version: doc.version,
+          contentSha256: doc.contentSha256,
+          acceptanceType: `accept_${doc.document.replace(/-/g, "_")}`,
+          ipAddress: params.ipAddress,
+          userAgent: params.userAgent,
+          acceptedAt: now,
+        };
+        this.legalAcceptances.set(acceptance.id, structuredClone(acceptance));
+        createdAcceptances.push(structuredClone(acceptance));
+
+        // Create immutable snapshot for convenio
+        if (doc.document === "convenio") {
+          const rawSnapshot = (activeOtp.documentsSnapshot as any[]).find((s) => s.document === "convenio");
+          const finalPersonalizedText = buildPersonalizedAgreement(
+            doc.content,
+            rawSnapshot?.incorporatedData || {
+              fullName: activeOtp.userName,
+              email: activeOtp.userEmail,
+              role: activeOtp.userRole,
+            },
+            {
+              acceptedAt: now,
+              ipAddress: params.ipAddress,
+              userAgent: params.userAgent,
+              otpMethod: "Correo Electrónico (OTP)",
+              otpRequestId: activeOtp.id,
+            }
+          );
+          const finalSha256 = createHash("sha256").update(finalPersonalizedText, "utf8").digest("hex");
+
+          const snapshotObj: PersonalizedDocumentSnapshot = {
+            id: acceptance.id,
+            document: "convenio",
+            version: doc.version,
+            title: doc.title,
+            templateSha256: doc.contentSha256,
+            personalizedSha256: finalSha256,
+            personalizedContent: finalPersonalizedText,
+            incorporatedData: rawSnapshot?.incorporatedData,
+            evidence: {
+              acceptedAt: now.toISOString(),
+              ipAddress: params.ipAddress,
+              userAgent: params.userAgent,
+              otpMethod: "Correo Electrónico (OTP)",
+            },
+          };
+          this.personalizedSnapshots.set(acceptance.id, snapshotObj);
+          createdSnapshots.push(snapshotObj);
+        }
+      }
+
+      return {
+        success: true,
+        statusCode: 200,
+        acceptances: createdAcceptances,
+        snapshots: createdSnapshots,
+      };
+    });
+  }
+
+  async getLatestFormalizationOtpByUser(userId: string): Promise<FormalizationOtpRequest | undefined> {
+    const otps = Array.from(this.formalizationOtpRequests.values())
+      .filter((o) => o.userId === userId)
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    return otps[0] ? structuredClone(otps[0]) : undefined;
+  }
+
+  async countFormalizationOtpRequests(userId: string, since: Date): Promise<number> {
+    const sinceTime = since.getTime();
+    return Array.from(this.formalizationOtpRequests.values()).filter(
+      (o) => o.userId === userId && new Date(o.createdAt).getTime() >= sinceTime,
+    ).length;
+  }
+
+  async isUserFormalized(userId: string, role?: string): Promise<{ isFormalized: boolean; formalizedAt?: Date; acceptedDocuments: string[] }> {
+    let userRole = role;
+    if (!userRole) {
+      const user = await this.getUser(userId);
+      userRole = user?.role;
+    }
+    const requiredDocs = getRequiredFormalizationDocuments(userRole);
+    if (requiredDocs.length === 0) {
+      return { isFormalized: true, acceptedDocuments: [] };
+    }
+
+    const acceptances = await this.getLegalAcceptancesByUser(userId);
+    const acceptedDocsMap = new Map<string, Date>();
+    for (const acc of acceptances) {
+      if (requiredDocs.includes(acc.document) && !acceptedDocsMap.has(acc.document)) {
+        acceptedDocsMap.set(acc.document, new Date(acc.acceptedAt));
+      }
+    }
+
+    const allAccepted = requiredDocs.every((doc) => acceptedDocsMap.has(doc));
+    if (!allAccepted) {
+      return {
+        isFormalized: false,
+        acceptedDocuments: Array.from(acceptedDocsMap.keys()),
+      };
+    }
+
+    let latestDate = new Date(0);
+    for (const doc of requiredDocs) {
+      const d = acceptedDocsMap.get(doc)!;
+      if (d.getTime() > latestDate.getTime()) {
+        latestDate = d;
+      }
+    }
+
+    return {
+      isFormalized: true,
+      formalizedAt: latestDate,
+      acceptedDocuments: Array.from(acceptedDocsMap.keys()),
+    };
+  }
+
   async createCommercialAuditLog(logData: any): Promise<any> {
     const id = logData.id || randomUUID();
     const log = {
@@ -1421,7 +2639,10 @@ export class MemStorage implements IStorage {
     if (filters?.entityId) {
       logs = logs.filter(l => l.entityId === filters.entityId);
     }
-    return logs.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    return logs.sort((a, b) => {
+      const diff = new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+      return diff !== 0 ? diff : (logs.indexOf(b) - logs.indexOf(a));
+    });
   }
 
   async updateUserOperationalStatus(params: {
@@ -1585,23 +2806,25 @@ export class MemStorage implements IStorage {
   }
 
   async upsertUser(userData: UpsertUser, replitId?: string): Promise<User> {
-    // If replitId is provided, use it as the user ID (for Replit Auth)
-    if (replitId) {
-      const existingUser = this.users.get(replitId);
+    const targetId = replitId || (userData as any).id;
+    // If targetId is provided, use it as the user ID (for Replit Auth or explicit user ID)
+    if (targetId) {
+      const existingUser = this.users.get(targetId);
       
       if (existingUser) {
         const updatedUser = {
           ...existingUser,
           ...userData,
+          id: targetId,
           updatedAt: new Date(),
         };
-        this.users.set(replitId, updatedUser);
+        this.users.set(targetId, updatedUser);
         return updatedUser;
       }
 
       const user: User = {
         ...userData,
-        id: replitId,
+        id: targetId,
         email: userData.email ?? null,
         firstName: userData.firstName ?? null,
         lastName: userData.lastName ?? null,
@@ -1620,7 +2843,7 @@ export class MemStorage implements IStorage {
         createdAt: new Date(),
         updatedAt: new Date(),
       };
-      this.users.set(replitId, user);
+      this.users.set(targetId, user);
       return user;
     }
 
@@ -1909,11 +3132,52 @@ export class MemStorage implements IStorage {
   }
 
   async createCredit(creditData: InsertCredit): Promise<Credit> {
+    const explicitOfferId = (creditData as any).institutionProductId || (creditData as any).offerId;
+    if (explicitOfferId) {
+      const product = this.institutionProducts.get(explicitOfferId);
+      if (!product) {
+        throw new Error("La oferta especificada no existe.");
+      }
+      const versions = Array.from(this.institutionProductVersions.values()).filter(
+        v => v.institutionProductId === explicitOfferId
+      );
+      if (!isOfferEligibleForRequests(product, versions)) {
+        throw new Error("La oferta seleccionada se encuentra en borrador o no cuenta con una versión publicada vigente.");
+      }
+    }
+
     const id = randomUUID();
+    let originMasterBrokerId: string | null = null;
+    let inheritedFromSubmission = false;
+
+    if (creditData.linkedSubmissionId) {
+      const submission = this.creditSubmissionRequests.get(creditData.linkedSubmissionId);
+      if (submission && typeof submission.originMasterBrokerId !== "undefined") {
+        originMasterBrokerId = submission.originMasterBrokerId;
+        inheritedFromSubmission = true;
+      }
+    }
+
+    if (!inheritedFromSubmission) {
+      if ((creditData as any).originMasterBrokerId !== undefined) {
+        originMasterBrokerId = (creditData as any).originMasterBrokerId;
+      } else {
+        const brokerAtOrigination = this.users.get(creditData.brokerId);
+        if (brokerAtOrigination?.role === "master_broker") {
+          originMasterBrokerId = brokerAtOrigination.id;
+        } else if (brokerAtOrigination?.role === "broker" && brokerAtOrigination.masterBrokerId) {
+          const parentAtOrigination = this.users.get(brokerAtOrigination.masterBrokerId);
+          originMasterBrokerId =
+            parentAtOrigination?.role === "master_broker" ? parentAtOrigination.id : null;
+        }
+      }
+    }
+
     const credit: Credit = {
       ...creditData,
       id,
       tenantId: creditData.tenantId ?? null,
+      originMasterBrokerId,
       createdBy: creditData.createdBy ?? null,
       financialInstitutionId: creditData.financialInstitutionId ?? null,
       interestRate: creditData.interestRate ?? null,
@@ -1939,9 +3203,10 @@ export class MemStorage implements IStorage {
     const existing = this.credits.get(id);
     if (!existing) return undefined;
 
+    const { originMasterBrokerId: _immutableOrigin, ...safeCreditData } = creditData as any;
     const updated = {
       ...existing,
-      ...creditData,
+      ...safeCreditData,
       updatedAt: new Date(),
     };
     this.credits.set(id, updated);
@@ -2091,19 +3356,42 @@ export class MemStorage implements IStorage {
   }
 
   async deleteFinancialInstitution(id: string): Promise<boolean> {
-    // Unlink credits
-    for (const [creditId, credit] of this.credits.entries()) {
-      if (credit.financialInstitutionId === id) {
-        this.credits.set(creditId, { ...credit, financialInstitutionId: null });
+    const inst = this.financialInstitutions.get(id);
+    if (!inst) return false;
+
+    // Verificar si tiene historial transaccional o versiones publicadas
+    const hasCredits = Array.from(this.credits.values()).some(c => c.financialInstitutionId === id);
+    const hasTargets = Array.from(this.creditSubmissionTargets.values()).some(t => t.financialInstitutionId === id);
+    const hasPublishedProducts = Array.from(this.institutionProducts.values()).some(p => {
+      if (p.institutionId !== id) return false;
+      return Array.from(this.institutionProductVersions.values()).some(v =>
+        (v.institutionProductId === p.id || v.offerId === p.id) &&
+        (v.status === 'published' || v.status === 'superseded' || v.status === 'active')
+      );
+    });
+
+    if (hasCredits || hasTargets || hasPublishedProducts) {
+      // Desactivación lógica: NUNCA eliminar solicitudes, créditos ni versiones utilizadas
+      this.financialInstitutions.set(id, { ...inst, isActive: false, updatedAt: new Date() });
+      for (const [ipId, ip] of this.institutionProducts.entries()) {
+        if (ip.institutionId === id) {
+          this.institutionProducts.set(ipId, { ...ip, isActive: false, status: 'archived', updatedAt: new Date() });
+        }
       }
+      return true;
     }
-    // Delete linked institution products
+
+    // Si no tiene historial transaccional ni regulatorio, permitir eliminación física limpia
     for (const [ipId, ip] of this.institutionProducts.entries()) {
       if (ip.institutionId === id) {
+        for (const [vId, v] of this.institutionProductVersions.entries()) {
+          if (v.institutionProductId === ipId || v.offerId === ipId) {
+            this.institutionProductVersions.delete(vId);
+          }
+        }
         this.institutionProducts.delete(ipId);
       }
     }
-    // Delete linked products
     for (const [pId, p] of this.products.entries()) {
       if (p.institutionId === id) {
         this.products.delete(pId);
@@ -2285,9 +3573,9 @@ export class MemStorage implements IStorage {
     return notification;
   }
 
-  async markNotificationAsRead(id: string): Promise<boolean> {
+  async markNotificationAsRead(id: string, userId: string): Promise<boolean> {
     const notification = this.notifications.get(id);
-    if (!notification) return false;
+    if (!notification || notification.userId !== userId) return false;
 
     notification.isRead = true;
     this.notifications.set(id, notification);
@@ -2837,29 +4125,107 @@ export class MemStorage implements IStorage {
       });
   }
 
-  async createInstitutionProduct(productData: InsertInstitutionProduct): Promise<InstitutionProduct> {
-    const id = randomUUID();
+  async createInstitutionProduct(
+    productData: InsertInstitutionProduct,
+    initialVersion?: Partial<InsertInstitutionProductVersion>
+  ): Promise<InstitutionProduct> {
+    const id = (productData as any).id ?? randomUUID();
+    const now = new Date();
     const institutionProduct: InstitutionProduct = {
       ...productData,
       id,
-      customName: productData.customName ?? null,
+      name: (productData as any).name ?? productData.customName ?? null,
+      customName: productData.customName ?? (productData as any).name ?? null,
+      productType: productData.productType ?? null,
+      slug: productData.slug ?? null,
+      description: productData.description ?? null,
       configuration: productData.configuration ?? {},
+      targetProfiles: productData.targetProfiles ?? null,
       activeVariables: productData.activeVariables ?? {},
+      status: "draft", // Forzado a draft desde el servidor; solo el flujo validado de publicación puede establecer published
+      currentVersionNumber: productData.currentVersionNumber ?? 1,
       isActive: productData.isActive ?? true,
-      createdAt: new Date(),
-      updatedAt: new Date(),
+      createdBy: productData.createdBy ?? null,
+      createdAt: now,
+      updatedAt: now,
+      institutionProductId: id,
     };
-    this.institutionProducts.set(id, institutionProduct);
-    return institutionProduct;
+    try {
+      this.institutionProducts.set(id, institutionProduct);
+
+      if (initialVersion) {
+        const versionId = randomUUID();
+        const conditions = initialVersion.conditions ?? {};
+        const requirements = initialVersion.requirements ?? {};
+        const variablesConfig = initialVersion.variablesConfiguration ?? {};
+        const requiredDocuments = Array.isArray(initialVersion.requiredDocuments) ? initialVersion.requiredDocuments : [];
+        const versionHash = computeInstitutionProductVersionHash({
+          institutionProductId: id,
+          versionNumber: 1,
+          conditions,
+          requirements,
+          requiredDocuments,
+          variablesConfiguration: variablesConfig,
+        });
+
+        const newVersion: InstitutionProductVersion = {
+          id: versionId,
+          institutionProductId: id,
+          offerId: id,
+          versionNumber: 1,
+          status: "draft", // Forzado a draft desde el servidor
+          effectiveFrom: null,
+          effectiveTo: null,
+          conditions,
+          requirements,
+          requiredDocuments,
+          variablesConfiguration: variablesConfig,
+          changeReason: initialVersion.changeReason ?? "Versión inicial en borrador",
+          versionHash,
+          publishedAt: null,
+          publishedBy: null,
+          createdBy: initialVersion.createdBy ?? productData.createdBy ?? null,
+          createdAt: now,
+          updatedAt: now,
+        };
+        this.institutionProductVersions.set(versionId, newVersion);
+      }
+
+      return institutionProduct;
+    } catch (err) {
+      this.institutionProducts.delete(id);
+      throw err;
+    }
   }
 
   async updateInstitutionProduct(id: string, productData: Partial<InsertInstitutionProduct>): Promise<InstitutionProduct | undefined> {
     const existing = this.institutionProducts.get(id);
     if (!existing) return undefined;
 
+    // 1. Prohibir cambiar el estado directamente a 'published' saltándose el versionado y gate de calidad
+    if (productData.status === 'published' && existing.status !== 'published') {
+      throw new Error("No se puede cambiar el estado a 'published' directamente; utilice el flujo de publicación de versiones con validación de condiciones mínimas.");
+    }
+
+    // 2. Si la oferta ya tiene versiones publicadas o está publicada, impedir alterar directamente condiciones comerciales
+    const hasPublishedVersion = Array.from(this.institutionProductVersions.values())
+      .some(v => (v.institutionProductId === id || v.offerId === id) && (v.status === 'published' || v.status === 'superseded' || v.status === 'active'));
+
+    const isPublished = existing.status === 'published' || hasPublishedVersion;
+    if (isPublished) {
+      const touchesConditions = productData.configuration !== undefined ||
+        productData.targetProfiles !== undefined ||
+        productData.activeVariables !== undefined;
+      if (touchesConditions) {
+        throw new Error("No se pueden modificar directamente las condiciones de una oferta publicada; cree una nueva versión en borrador para modificar condiciones.");
+      }
+    }
+
     const updated: InstitutionProduct = {
       ...existing,
       ...productData,
+      name: (productData as any).name ?? existing.name,
+      customName: productData.customName ?? (productData as any).name ?? existing.customName,
       updatedAt: new Date(),
     };
     this.institutionProducts.set(id, updated);
@@ -2867,7 +4233,421 @@ export class MemStorage implements IStorage {
   }
 
   async deleteInstitutionProduct(id: string): Promise<boolean> {
+    // Protección ante eliminación destructiva: impedir eliminar si tiene versiones publicadas o superseded
+    for (const v of this.institutionProductVersions.values()) {
+      if ((v.institutionProductId === id || v.offerId === id) && (v.status === "published" || v.status === "superseded" || v.status === "active")) {
+        throw new Error("No se puede eliminar una oferta con historial de versiones publicado o utilizado en solicitudes.");
+      }
+    }
+    // Eliminar versiones en borrador asociadas
+    for (const [vId, v] of this.institutionProductVersions.entries()) {
+      if (v.institutionProductId === id || v.offerId === id) {
+        this.institutionProductVersions.delete(vId);
+      }
+    }
     return this.institutionProducts.delete(id);
+  }
+
+  // ===== CANONICAL INSTITUTION PRODUCT VERSIONS (Bloque A1.1) =====
+  async getInstitutionProductVersions(productId: string): Promise<InstitutionProductVersion[]> {
+    return Array.from(this.institutionProductVersions.values())
+      .filter(v => v.institutionProductId === productId || v.offerId === productId)
+      .sort((a, b) => b.versionNumber - a.versionNumber);
+  }
+
+  async getInstitutionProductVersion(id: string): Promise<InstitutionProductVersion | undefined> {
+    return this.institutionProductVersions.get(id);
+  }
+
+  async getActiveInstitutionProductVersion(productId: string): Promise<InstitutionProductVersion | undefined> {
+    return Array.from(this.institutionProductVersions.values())
+      .find(v => (v.institutionProductId === productId || v.offerId === productId) && (v.status === "published" || v.status === "active"));
+  }
+
+  async createInstitutionProductDraftVersion(
+    productId: string,
+    versionData: Partial<InsertInstitutionProductVersion> & { changeReason?: string }
+  ): Promise<InstitutionProductVersion> {
+    const product = this.institutionProducts.get(productId);
+    if (!product) {
+      throw new Error(`Oferta/Producto con ID ${productId} no encontrado`);
+    }
+
+    const versions = await this.getInstitutionProductVersions(productId);
+    const maxVer = versions.reduce((max, v) => Math.max(max, v.versionNumber), 0);
+    const nextVersionNumber = maxVer + 1;
+    const now = new Date();
+    const versionId = randomUUID();
+
+    const conditions = versionData.conditions ?? {};
+    const requirements = versionData.requirements ?? {};
+    const variablesConfig = versionData.variablesConfiguration ?? {};
+    const requiredDocuments = Array.isArray(versionData.requiredDocuments) ? versionData.requiredDocuments : [];
+    const versionHash = computeInstitutionProductVersionHash({
+      institutionProductId: productId,
+      versionNumber: nextVersionNumber,
+      conditions,
+      requirements,
+      requiredDocuments,
+      variablesConfiguration: variablesConfig,
+    });
+
+    const newVersion: InstitutionProductVersion = {
+      id: versionId,
+      institutionProductId: productId,
+      offerId: productId,
+      versionNumber: nextVersionNumber,
+      status: "draft",
+      effectiveFrom: null,
+      effectiveTo: null,
+      conditions,
+      requirements,
+      requiredDocuments,
+      variablesConfiguration: variablesConfig,
+      changeReason: versionData.changeReason ?? `Borrador para versión ${nextVersionNumber}`,
+      versionHash,
+      publishedAt: null,
+      publishedBy: null,
+      createdBy: versionData.createdBy ?? product.createdBy ?? null,
+      createdAt: now,
+      updatedAt: now,
+    };
+
+    this.institutionProductVersions.set(versionId, newVersion);
+    return newVersion;
+  }
+
+  async publishInstitutionProductVersion(
+    productId: string,
+    versionId: string,
+    options?: { publishedBy?: string; changeReason?: string }
+  ): Promise<InstitutionProductVersion> {
+    const product = this.institutionProducts.get(productId);
+    if (!product) {
+      throw new Error(`Oferta/Producto con ID ${productId} no encontrado`);
+    }
+
+    const version = this.institutionProductVersions.get(versionId);
+    if (!version || (version.institutionProductId !== productId && version.offerId !== productId)) {
+      throw new Error(`Versión ${versionId} no encontrada para la oferta ${productId}`);
+    }
+
+    if (version.status !== "draft") {
+      throw new Error(`Solo se pueden publicar versiones en borrador (estado actual: ${version.status})`);
+    }
+
+    // Validación de condiciones mínimas obligatorias antes de publicar
+    const validation = validateMinimumPublishConditions({
+      conditions: version.conditions,
+      requirements: version.requirements,
+      requiredDocuments: version.requiredDocuments ?? [],
+      changeReason: options?.changeReason || version.changeReason,
+      productType: product.productType,
+    });
+
+    if (!validation.isValid) {
+      throw new Error(`Condiciones mínimas de publicación no cumplidas: ${validation.errors.join("; ")}`);
+    }
+
+    const now = new Date();
+
+    const priorVersion = Array.from(this.institutionProductVersions.values())
+      .filter(v => (v.institutionProductId === productId || v.offerId === productId) &&
+        (v.status === "published" || v.status === "active"))
+      .sort((a, b) => b.versionNumber - a.versionNumber)[0] || null;
+    const economicDocument = buildOfferCommissionDocument(priorVersion, version);
+    if (economicDocument) {
+      const existing = this.legalDocumentVersions.get(economicDocument.id);
+      if (existing && (existing.contentSha256 !== economicDocument.contentSha256 ||
+          existing.content !== economicDocument.content)) {
+        throw new Error("OFFER_COMMISSION_DOCUMENT_HASH_CONFLICT");
+      }
+      if (!existing) {
+        await this.createLegalDocumentVersion({ ...economicDocument, effectiveAt: now });
+      }
+    }
+
+    // 1. Desactivar versión publicada previa marcándola como 'superseded'
+    for (const [vId, v] of this.institutionProductVersions.entries()) {
+      if ((v.institutionProductId === productId || v.offerId === productId) && (v.status === "published" || v.status === "active")) {
+        this.institutionProductVersions.set(vId, {
+          ...v,
+          status: "superseded",
+          effectiveTo: now,
+          updatedAt: now,
+        });
+      }
+    }
+
+    // 2. Publicar la nueva versión (máximo una vigente)
+    const publishedVersion: InstitutionProductVersion = {
+      ...version,
+      status: "published",
+      effectiveFrom: now,
+      effectiveTo: null,
+      publishedAt: now,
+      publishedBy: options?.publishedBy ?? null,
+      changeReason: options?.changeReason || version.changeReason,
+      updatedAt: now,
+    };
+    this.institutionProductVersions.set(versionId, publishedVersion);
+
+    // 3. Actualizar la oferta padre con metadatos de la NUEVA version, no durante el draft.
+    const futureMeta = (version.variablesConfiguration as any)?.futureMetadata;
+    this.institutionProducts.set(productId, {
+      ...product,
+      name: futureMeta?.name || product.name,
+      customName: futureMeta?.customName || product.customName,
+      description: futureMeta?.description !== undefined ? futureMeta.description : product.description,
+      productType: futureMeta?.productType || product.productType,
+      status: "published",
+      currentVersionNumber: version.versionNumber,
+      configuration: (version.conditions as Record<string, any>) || product.configuration,
+      targetProfiles: (version.requirements as any)?.targetProfiles || product.targetProfiles,
+      updatedAt: now,
+    });
+
+    return publishedVersion;
+  }
+
+  async updateInstitutionProductDraftAndParent(
+    productId: string,
+    versionId: string,
+    versionData: Partial<InsertInstitutionProductVersion>,
+    productData?: Partial<InsertInstitutionProduct>
+  ): Promise<{ product: InstitutionProduct; version: InstitutionProductVersion }> {
+    const version = this.institutionProductVersions.get(versionId);
+    if (!version || (version.institutionProductId !== productId && version.offerId !== productId)) {
+      throw new Error(`Versión ${versionId} no encontrada para la oferta ${productId}`);
+    }
+
+    if (version.status !== "draft") {
+      throw new Error(`No se puede modificar una versión con estado '${version.status}'. Solo las versiones en borrador pueden ser modificadas.`);
+    }
+
+    // Validar coherencia de parámetros capturados (si se capturaron)
+    const validation = validateOfferVersionParameters(versionData);
+    if (!validation.isValid) {
+      throw new Error(`Inconsistencia en los datos capturados: ${validation.errors.join("; ")}`);
+    }
+
+    const conditions = versionData.conditions !== undefined ? versionData.conditions : version.conditions;
+    const requirements = versionData.requirements !== undefined ? versionData.requirements : version.requirements;
+    const variablesConfig = versionData.variablesConfiguration !== undefined ? versionData.variablesConfiguration : version.variablesConfiguration;
+    const requiredDocuments = versionData.requiredDocuments !== undefined
+      ? (Array.isArray(versionData.requiredDocuments) ? versionData.requiredDocuments : [])
+      : version.requiredDocuments;
+
+    const versionHash = computeInstitutionProductVersionHash({
+      institutionProductId: productId,
+      versionNumber: version.versionNumber,
+      conditions,
+      requirements,
+      requiredDocuments,
+      variablesConfiguration: variablesConfig,
+    });
+
+    const updatedVersion: InstitutionProductVersion = {
+      ...version,
+      conditions,
+      requirements,
+      requiredDocuments,
+      variablesConfiguration: variablesConfig,
+      changeReason: versionData.changeReason !== undefined ? versionData.changeReason : version.changeReason,
+      versionHash,
+      updatedAt: new Date(),
+    };
+
+    let updatedProduct: any = this.institutionProducts.get(productId);
+    if (updatedProduct && productData) {
+      // B3.1: Aislamiento total - si el producto ya está publicado, no sobreescribir configuration comercial con la de un borrador
+      const finalProductData = updatedProduct.status === "published"
+        ? {
+            ...productData,
+            configuration: updatedProduct.configuration,
+            targetProfiles: updatedProduct.targetProfiles,
+          }
+        : productData;
+
+      updatedProduct = {
+        ...updatedProduct,
+        ...finalProductData,
+        updatedAt: new Date(),
+      };
+      this.institutionProducts.set(productId, updatedProduct);
+    }
+
+    this.institutionProductVersions.set(versionId, updatedVersion);
+    return {
+      product: updatedProduct,
+      version: updatedVersion,
+    };
+  }
+
+  async updateInstitutionProductDraftVersion(
+    productId: string,
+    versionId: string,
+    versionData: Partial<InsertInstitutionProductVersion>
+  ): Promise<InstitutionProductVersion> {
+    const res = await this.updateInstitutionProductDraftAndParent(productId, versionId, versionData);
+    return res.version;
+  }
+
+  async deleteInstitutionProductVersion(id: string): Promise<boolean> {
+    const version = this.institutionProductVersions.get(id);
+    if (!version) return false;
+
+    // Impedir eliminación destructiva de versiones publicadas o históricas
+    if (version.status === "published" || version.status === "superseded" || version.status === "active") {
+      throw new Error("No se puede eliminar una versión publicada o histórica (superseded). La integridad del historial es obligatoria.");
+    }
+
+    return this.institutionProductVersions.delete(id);
+  }
+
+  // ===== FINANCIAL INSTITUTION OFFERS ALIASES (Retrocompatibilidad total Bloque A1) =====
+  async getOffers(options?: { institutionId?: string; productType?: string; status?: string; isActive?: boolean }): Promise<FinancialInstitutionOffer[]> {
+    let offers = Array.from(this.institutionProducts.values()).map(o => ({
+      ...o,
+      name: o.name ?? o.customName ?? "",
+      institutionProductId: o.id,
+    }));
+    if (options?.institutionId) {
+      offers = offers.filter(o => o.institutionId === options.institutionId);
+    }
+    if (options?.productType) {
+      offers = offers.filter(o => o.productType === options.productType);
+    }
+    if (options?.status) {
+      offers = offers.filter(o => o.status === options.status);
+    }
+    if (options?.isActive !== undefined) {
+      offers = offers.filter(o => o.isActive === options.isActive);
+    }
+    return offers;
+  }
+
+  async getOffer(id: string): Promise<FinancialInstitutionOffer | undefined> {
+    const p = this.institutionProducts.get(id);
+    if (!p) return undefined;
+    return {
+      ...p,
+      name: p.name ?? p.customName ?? "",
+      institutionProductId: p.id,
+    };
+  }
+
+  async getOffersByInstitution(institutionId: string, options?: { includeInactive?: boolean }): Promise<FinancialInstitutionOffer[]> {
+    let offers = Array.from(this.institutionProducts.values())
+      .filter(o => o.institutionId === institutionId)
+      .map(o => ({ ...o, name: o.name ?? o.customName ?? "", institutionProductId: o.id }));
+    if (!options?.includeInactive) {
+      offers = offers.filter(o => o.isActive);
+    }
+    return offers;
+  }
+
+  async getOffersByProductType(institutionId: string, productType: string): Promise<FinancialInstitutionOffer[]> {
+    return Array.from(this.institutionProducts.values())
+      .filter(o => o.institutionId === institutionId && o.productType === productType && o.isActive)
+      .map(o => ({ ...o, name: o.name ?? o.customName ?? "", institutionProductId: o.id }));
+  }
+
+  async createOffer(
+    offerData: InsertFinancialInstitutionOffer & { name?: string },
+    initialVersion?: Partial<InsertFinancialInstitutionOfferVersion>
+  ): Promise<{ offer: FinancialInstitutionOffer; version: FinancialInstitutionOfferVersion }> {
+    const offerId = (offerData as any).id ?? randomUUID();
+    const offerName = offerData.name ?? offerData.customName ?? "Oferta Comercial";
+
+    const product = await this.createInstitutionProduct({
+      ...offerData,
+      id: offerId,
+      name: offerName,
+      customName: offerName,
+      status: "draft",
+    } as any);
+
+    // Crear versión inicial en borrador
+    const version = await this.createInstitutionProductDraftVersion(offerId, {
+      ...initialVersion,
+      status: "draft",
+      changeReason: initialVersion?.changeReason ?? "Versión inicial en borrador",
+    });
+
+    return {
+      offer: { ...product, name: offerName, institutionProductId: offerId, status: "draft" },
+      version: { ...version, offerId, status: "draft" },
+    };
+  }
+
+  async updateOffer(id: string, offerData: Partial<InsertFinancialInstitutionOffer>): Promise<FinancialInstitutionOffer | undefined> {
+    return this.updateInstitutionProduct(id, offerData);
+  }
+
+  async deleteOffer(id: string): Promise<boolean> {
+    return this.deleteInstitutionProduct(id);
+  }
+
+  async getOfferVersions(offerId: string): Promise<FinancialInstitutionOfferVersion[]> {
+    return this.getInstitutionProductVersions(offerId);
+  }
+
+  async getOfferVersion(id: string): Promise<FinancialInstitutionOfferVersion | undefined> {
+    return this.getInstitutionProductVersion(id);
+  }
+
+  async getActiveOfferVersion(offerId: string): Promise<FinancialInstitutionOfferVersion | undefined> {
+    return this.getActiveInstitutionProductVersion(offerId);
+  }
+
+  async createOfferVersion(
+    offerId: string,
+    versionData: Partial<InsertFinancialInstitutionOfferVersion> & { changeReason?: string }
+  ): Promise<FinancialInstitutionOfferVersion> {
+    return this.createInstitutionProductDraftVersion(offerId, versionData);
+  }
+
+  async updateOfferDraftVersion(
+    offerId: string,
+    versionId: string,
+    versionData: Partial<InsertFinancialInstitutionOfferVersion>
+  ): Promise<FinancialInstitutionOfferVersion> {
+    return this.updateInstitutionProductDraftVersion(offerId, versionId, versionData);
+  }
+
+  async updateOfferDraftAndParent(
+    offerId: string,
+    versionId: string,
+    versionData: Partial<InsertFinancialInstitutionOfferVersion>,
+    offerData?: Partial<InsertFinancialInstitutionOffer>
+  ): Promise<{ offer: FinancialInstitutionOffer; version: FinancialInstitutionOfferVersion }> {
+    const res = await this.updateInstitutionProductDraftAndParent(offerId, versionId, versionData, offerData);
+    return { offer: res.product, version: res.version };
+  }
+
+  async publishOfferVersion(
+    offerId: string,
+    versionId: string,
+    options?: { publishedBy?: string; changeReason?: string }
+  ): Promise<FinancialInstitutionOfferVersion> {
+    return this.publishInstitutionProductVersion(offerId, versionId, options);
+  }
+
+  async deleteOfferVersion(id: string): Promise<boolean> {
+    return this.deleteInstitutionProductVersion(id);
+  }
+
+  async supersedeOfferVersion(offerId: string, oldVersionNumber: number, supersededAt?: Date): Promise<boolean> {
+    const version = Array.from(this.institutionProductVersions.values())
+      .find(v => (v.institutionProductId === offerId || v.offerId === offerId) && v.versionNumber === oldVersionNumber);
+    if (!version) return false;
+    this.institutionProductVersions.set(version.id, {
+      ...version,
+      status: "superseded",
+      effectiveTo: supersededAt ?? new Date(),
+    });
+    return true;
   }
 
   // Products operations (simplified - LEGACY)
@@ -3048,11 +4828,13 @@ export class MemStorage implements IStorage {
    * Migrates existing legacy products to the new 3-layer architecture
    * Converts Products → ProductTemplates → InstitutionProducts
    */
-  private migrateExistingData() {
-    // Skip migration if templates already exist (avoid duplicate migration)
-    if (this.productTemplates.size > 0) {
+  public migrateExistingData() {
+    // El backfill legacy debe ejecutarse una sola vez y distinguir de forma inequívoca productos preexistentes de ofertas nuevas.
+    // Nunca convertir un borrador nuevo en publicado al reiniciar.
+    if (this.legacyBackfilled) {
       return;
     }
+    this.legacyBackfilled = true;
 
     console.log("🔄 Starting migration of legacy products to 3-layer architecture...");
 
@@ -3083,9 +4865,13 @@ export class MemStorage implements IStorage {
           id: `inst-prod-${legacyProduct.id}`,
           templateId: template.id,
           institutionId: legacyProduct.institutionId,
+          name: legacyProduct.name,
           customName: legacyProduct.name, // Use same name initially
+          productType: legacyProduct.category || "credito_simple",
           configuration: legacyProduct.configuration || {},
           activeVariables: legacyProduct.availableVariables || {},
+          status: legacyProduct.isActive ? "published" : "archived",
+          currentVersionNumber: 1,
           isActive: legacyProduct.isActive,
           createdBy: "user-super-admin", // System migration
           createdAt: new Date(),
@@ -3093,7 +4879,68 @@ export class MemStorage implements IStorage {
         };
 
         this.institutionProducts.set(institutionProduct.id, institutionProduct);
-        console.log(`✅ Created InstitutionProduct: ${institutionProduct.customName} for institution ${legacyProduct.institutionId}`);
+
+        // Generar versión inicial 1 publicada para productos legacy activos
+        if (legacyProduct.isActive) {
+          const v1: InstitutionProductVersion = {
+            id: `ipv-legacy-${legacyProduct.id}`,
+            institutionProductId: institutionProduct.id,
+            versionNumber: 1,
+            status: "published",
+            effectiveFrom: new Date(),
+            effectiveTo: null,
+            conditions: legacyProduct.configuration || {},
+            requirements: { targetProfiles: [] },
+            requiredDocuments: [],
+            variablesConfiguration: legacyProduct.availableVariables || {},
+            changeReason: "Migración de producto legacy activo a versión publicada 1",
+            versionHash: computeInstitutionProductVersionHash({
+              institutionProductId: institutionProduct.id,
+              versionNumber: 1,
+              conditions: legacyProduct.configuration || {},
+              requirements: { targetProfiles: [] },
+              requiredDocuments: [],
+              variablesConfiguration: legacyProduct.availableVariables || {},
+            }),
+            publishedAt: new Date(),
+            publishedBy: "user-super-admin",
+            createdBy: "user-super-admin",
+            createdAt: new Date(),
+            updatedAt: new Date(),
+          };
+          this.institutionProductVersions.set(v1.id, v1);
+        } else {
+          // Generar versión inicial 1 archivada para productos legacy inactivos
+          const v1: InstitutionProductVersion = {
+            id: `ipv-legacy-${legacyProduct.id}`,
+            institutionProductId: institutionProduct.id,
+            versionNumber: 1,
+            status: "archived",
+            effectiveFrom: legacyProduct.createdAt || new Date(),
+            effectiveTo: new Date(),
+            conditions: legacyProduct.configuration || {},
+            requirements: { targetProfiles: [] },
+            requiredDocuments: [],
+            variablesConfiguration: legacyProduct.availableVariables || {},
+            changeReason: "Migración de producto legacy inactivo a versión archivada 1",
+            versionHash: computeInstitutionProductVersionHash({
+              institutionProductId: institutionProduct.id,
+              versionNumber: 1,
+              conditions: legacyProduct.configuration || {},
+              requirements: { targetProfiles: [] },
+              requiredDocuments: [],
+              variablesConfiguration: legacyProduct.availableVariables || {},
+            }),
+            publishedAt: null,
+            publishedBy: null,
+            createdBy: "user-super-admin",
+            createdAt: new Date(),
+            updatedAt: new Date(),
+          };
+          this.institutionProductVersions.set(v1.id, v1);
+        }
+
+        console.log(`✅ Created InstitutionProduct: ${institutionProduct.customName} for institution ${legacyProduct.institutionId} (status: ${institutionProduct.status})`);
       }
     });
 
@@ -3136,11 +4983,36 @@ export class MemStorage implements IStorage {
   }
 
   async createCreditSubmissionRequest(requestData: InsertCreditSubmissionRequest): Promise<CreditSubmissionRequest> {
+    const explicitOfferId = (requestData as any).institutionProductId || (requestData as any).offerId;
+    if (explicitOfferId) {
+      const product = this.institutionProducts.get(explicitOfferId);
+      if (!product) {
+        throw new Error("La oferta especificada no existe.");
+      }
+      const versions = Array.from(this.institutionProductVersions.values()).filter(
+        v => v.institutionProductId === explicitOfferId
+      );
+      if (!isOfferEligibleForRequests(product, versions)) {
+        throw new Error("La oferta seleccionada se encuentra en borrador o no cuenta con una versión publicada vigente.");
+      }
+    }
+
     const id = randomUUID();
+    const brokerAtOrigination = this.users.get(requestData.brokerId);
+    let originMasterBrokerId: string | null = null;
+    if (brokerAtOrigination?.role === "master_broker") {
+      originMasterBrokerId = brokerAtOrigination.id;
+    } else if (brokerAtOrigination?.role === "broker" && brokerAtOrigination.masterBrokerId) {
+      const parentAtOrigination = this.users.get(brokerAtOrigination.masterBrokerId);
+      originMasterBrokerId =
+        parentAtOrigination?.role === "master_broker" ? parentAtOrigination.id : null;
+    }
+
     const request: CreditSubmissionRequest = {
       ...requestData,
       id,
       tenantId: requestData.tenantId ?? null,
+      originMasterBrokerId,
       createdBy: requestData.createdBy ?? null,
       purpose: requestData.purpose ?? null,
       brokerNotes: requestData.brokerNotes ?? null,
@@ -3157,9 +5029,10 @@ export class MemStorage implements IStorage {
     const existing = this.creditSubmissionRequests.get(id);
     if (!existing) return undefined;
 
+    const { originMasterBrokerId: _immutableOrigin, ...safeRequestData } = requestData as any;
     const updated: CreditSubmissionRequest = {
       ...existing,
-      ...requestData,
+      ...safeRequestData,
       updatedAt: new Date(),
     };
     this.creditSubmissionRequests.set(id, updated);
@@ -3217,6 +5090,18 @@ export class MemStorage implements IStorage {
   async updateCreditSubmissionTarget(id: string, targetData: Partial<InsertCreditSubmissionTarget>): Promise<CreditSubmissionTarget | undefined> {
     const existing = this.creditSubmissionTargets.get(id);
     if (!existing) return undefined;
+    if (targetData.institutionProposal !== undefined ||
+        targetData.proposalDocument !== undefined ||
+        ["institution_approved", "institution_rejected", "approved", "rejected",
+          "returned_to_broker", "sent"].includes(targetData.status || "")) {
+      assertTargetReviewMutable(existing);
+      if ((targetData.institutionProposal !== undefined ||
+           targetData.proposalDocument !== undefined ||
+           targetData.status === "institution_approved") &&
+          !["contact_initiated", "sent", "institution_approved"].includes(existing.status)) {
+        throw new Error("PROPOSAL_REQUIRES_COMMERCIAL_CONTACT");
+      }
+    }
 
     const updated: CreditSubmissionTarget = {
       ...existing,
@@ -3230,6 +5115,7 @@ export class MemStorage implements IStorage {
   async approveCreditSubmissionTarget(targetId: string, adminId: string, adminNotes?: string, details?: string): Promise<CreditSubmissionTarget | undefined> {
     const existing = this.creditSubmissionTargets.get(targetId);
     if (!existing) return undefined;
+    assertTargetReviewMutable(existing);
 
     const updated: CreditSubmissionTarget = {
       ...existing,
@@ -3247,6 +5133,7 @@ export class MemStorage implements IStorage {
   async rejectCreditSubmissionTarget(targetId: string, adminId: string, adminNotes?: string): Promise<CreditSubmissionTarget | undefined> {
     const existing = this.creditSubmissionTargets.get(targetId);
     if (!existing) return undefined;
+    assertTargetReviewMutable(existing);
 
     const updated: CreditSubmissionTarget = {
       ...existing,
@@ -3263,6 +5150,7 @@ export class MemStorage implements IStorage {
   async returnCreditSubmissionTargetToBroker(targetId: string, adminId: string, details?: string, adminNotes?: string): Promise<CreditSubmissionTarget | undefined> {
     const existing = this.creditSubmissionTargets.get(targetId);
     if (!existing) return undefined;
+    assertTargetReviewMutable(existing);
 
     const updated: CreditSubmissionTarget = {
       ...existing,

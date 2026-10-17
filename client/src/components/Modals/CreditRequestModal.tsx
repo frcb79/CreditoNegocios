@@ -27,6 +27,7 @@ import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 import { Building2, User, DollarSign, Send, AlertCircle, CheckCircle, AlertTriangle, Info, HelpCircle, XCircle, Loader2 } from "lucide-react";
 import { evaluateAllFieldsForClient } from "@/components/MatchingAnalysis/matchingRules";
+import { getMatchingScoreTone } from "../../../../shared/matchingPresentation";
 
 interface Client {
   id: string;
@@ -166,14 +167,16 @@ export default function CreditRequestModal({ isOpen, onClose, preselectedClientI
     },
     onSuccess: (response, variables) => {
       toast({
-        title: "Solicitud enviada",
-        description: "Tu solicitud de crédito ha sido enviada para aprobación administrativa",
+        title: "Solicitud registrada",
+        description: "Tu solicitud quedó registrada para revisión y visto bueno interno; no se enviaron documentos a financieras",
       });
       queryClient.invalidateQueries({ queryKey: ['/api/credit-submissions'] });
       queryClient.invalidateQueries({ queryKey: [`/api/credit-submissions/client/${variables.clientId}`] });
       queryClient.invalidateQueries({ queryKey: ['/api/credits'] });
       queryClient.invalidateQueries({ queryKey: ['/api/credit-submission-targets'] });
       queryClient.invalidateQueries({ queryKey: ['/api/notifications'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/dashboard/pipeline'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/dashboard/metrics'] });
       form.reset();
       setSelectedInstitutions([]);
       onClose();
@@ -392,72 +395,10 @@ export default function CreditRequestModal({ isOpen, onClose, preselectedClientI
     // Comprehensive evaluation of ALL 18 fields using the unified matching rules engine
     const fullEval = evaluateAllFieldsForClient(selectedClient, institution, requestedAmount);
 
-    // ── AI Shadow Mode ──────────────────────────────────────────────
-    // Heuristic signals not captured by the rule engine.
-    // These map qualitative client fields to a 0-100 signal.
-    const computeAiScore = (): number => {
-      let aiPoints = 0;
-      let aiChecks = 0;
-
-      // Payment history
-      const historialMap: Record<string, number> = {
-        'excelente': 100, 'bueno': 75, 'regular': 40, 'malo': 10, 'sin-historial': 50
-      };
-      const historial = selectedClient.historialPagos;
-      if (historial && historialMap[historial] !== undefined) {
-        aiPoints += historialMap[historial];
-        aiChecks++;
-      }
-
-      // Credit experience
-      const expMap: Record<string, number> = {
-        'sin-experiencia': 30, 'menos-1-anio': 45, '1-3-anios': 65,
-        '3-5-anios': 80, 'mas-5-anios': 95
-      };
-      const experiencia = selectedClient.experienciaCrediticia;
-      if (experiencia && expMap[experiencia] !== undefined) {
-        aiPoints += expMap[experiencia];
-        aiChecks++;
-      }
-
-      // Repayment capacity
-      const capMap: Record<string, number> = {
-        'baja': 25, 'media': 55, 'alta': 80, 'muy-alta': 100
-      };
-      const capacidad = selectedClient.capacidadPago;
-      if (capacidad && capMap[capacidad] !== undefined) {
-        aiPoints += capMap[capacidad];
-        aiChecks++;
-      }
-
-      // Civil status
-      const estadoMap: Record<string, number> = {
-        'casado': 60, 'soltero': 50, 'union-libre': 55, 'divorciado': 45, 'viudo': 45
-      };
-      const estado = selectedClient.estadoCivil;
-      if (estado && estadoMap[estado] !== undefined) {
-        aiPoints += estadoMap[estado];
-        aiChecks++;
-      }
-
-      // Education level
-      const eduMap: Record<string, number> = {
-        'sin-estudios': 40, 'primaria': 45, 'secundaria': 50, 'preparatoria': 58,
-        'licenciatura': 68, 'posgrado': 75
-      };
-      const edu = selectedClient.nivelEducativo;
-      if (edu && eduMap[edu] !== undefined) {
-        aiPoints += eduMap[edu];
-        aiChecks++;
-      }
-
-      return aiChecks > 0 ? Math.round(aiPoints / aiChecks) : fullEval.score;
-    };
-
+    // Porcentaje basado solo en criterios explícitos configurados y evaluados.
+    // No usar estado civil, escolaridad ni heurísticas no verificadas para valorar clientes.
     const ruleScore = fullEval.score;
-    const aiScore = computeAiScore();
-    // Weighted blend: rule engine is authoritative (70%), AI heuristic adds signal (30%)
-    const finalScore = Math.round(0.7 * ruleScore + 0.3 * aiScore);
+    const finalScore = ruleScore;
 
     // Re-categorize using 3-state engine
     let finalCategory: 'recommended' | 'compatible' | 'other' | 'insufficient_data';
@@ -471,19 +412,6 @@ export default function CreditRequestModal({ isOpen, onClose, preselectedClientI
       finalCategory = 'compatible';
     }
 
-    // Ground truth logging (shadow mode — no UI impact)
-    if (process.env.NODE_ENV !== 'production') {
-      console.debug('[AI-MATCH]', {
-        institution: institution.name,
-        clientType: selectedClient.type,
-        requestedAmount,
-        ruleScore,
-        aiScore,
-        finalScore,
-        category: finalCategory,
-      });
-    }
-
     return {
       score: finalScore,
       category: finalCategory,
@@ -495,7 +423,6 @@ export default function CreditRequestModal({ isOpen, onClose, preselectedClientI
       warnings: fullEval.warnings,
       isConfigured: true,
       ruleScore,
-      aiScore,
       finalScore
     };
   };
@@ -598,11 +525,30 @@ export default function CreditRequestModal({ isOpen, onClose, preselectedClientI
                     {productName && (
                       <p className="text-xs text-blue-600 font-medium truncate">📦 {productName}</p>
                     )}
+                    {match.matchStatus === 'not_compatible' && (match.unmetRequirements?.length ?? 0) > 0 && (
+                      <p className="text-xs text-rose-700 truncate" title={match.unmetRequirements?.join('; ')}>
+                        Regla excluyente: {match.unmetRequirements?.[0]}
+                      </p>
+                    )}
                   </div>
                 </div>
                 <div className="flex items-center space-x-2 ml-2">
-                  {match.score > 0 && (
-                    <span className="text-xs font-semibold text-gray-600">{match.score}%</span>
+                  {match.isConfigured !== false && (
+                    <span
+                      data-testid={`matching-score-${institution.id}`}
+                      className={`text-xs font-bold border rounded-md px-2 py-0.5 ${
+                        getMatchingScoreTone(match.score, match.matchStatus) === 'green'
+                          ? 'bg-emerald-50 text-emerald-800 border-emerald-300'
+                          : getMatchingScoreTone(match.score, match.matchStatus) === 'yellow'
+                          ? 'bg-amber-50 text-amber-800 border-amber-300'
+                          : getMatchingScoreTone(match.score, match.matchStatus) === 'red'
+                          ? 'bg-rose-50 text-rose-800 border-rose-300'
+                          : 'bg-slate-50 text-slate-700 border-slate-300'
+                      }`}
+                      title="Porcentaje de criterios evaluados; no es probabilidad de aprobación"
+                    >
+                      {match.score}% criterios
+                    </span>
                   )}
                   {categoryBadge}
                 </div>
@@ -611,7 +557,8 @@ export default function CreditRequestModal({ isOpen, onClose, preselectedClientI
           </TooltipTrigger>
           <TooltipContent className="max-w-sm">
             <div className="space-y-2">
-              <p className="font-semibold text-sm">Score de compatibilidad: {match.score}%</p>
+              <p className="font-semibold text-sm">Criterios evaluados cumplidos: {match.score}% (no es aprobación crediticia)</p>
+              {match.warnings.length > 0 && <p className="text-xs text-amber-700">{match.warnings.join("; ")}</p>}
               {match.reasons.length > 0 && (
                 <div>
                   <p className="text-xs font-medium text-green-600">✓ Por qué hace match:</p>
@@ -825,7 +772,7 @@ export default function CreditRequestModal({ isOpen, onClose, preselectedClientI
                   <FormLabel>Financieras Disponibles *</FormLabel>
                   <div className="space-y-4">
                     <p className="text-sm text-gray-600">
-                      Selecciona las financieras a las que deseas enviar esta solicitud. 
+                      Selecciona las financieras que deseas proponer para revisión interna. 
                       El sistema las ordena según su compatibilidad con el perfil del cliente.
                     </p>
 
@@ -970,7 +917,7 @@ export default function CreditRequestModal({ isOpen, onClose, preselectedClientI
                 ) : (
                   <>
                     <Send className="w-4 h-4 mr-2" />
-                    Enviar a Financieras
+                    Registrar para Revisión Interna
                   </>
                 )}
               </Button>

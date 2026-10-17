@@ -1119,17 +1119,17 @@ export default function Commissions() {
                   <div className="px-5 py-2.5 bg-blue-50/60 border-b border-blue-200/80 text-xs text-blue-900 flex items-center justify-between flex-wrap gap-2">
                     <div className="flex items-center gap-2">
                       <Send className="w-3.5 h-3.5 text-blue-600 shrink-0" />
-                      <span>Comisiones formalmente aprobadas. Puedes enviar a dispersión o registrar liquidación manual con bitácora inmutable.</span>
+                      <span>Comisiones aprobadas: registra únicamente el pago manual realizado y su referencia bancaria. STP automático deshabilitado.</span>
                     </div>
                     {selectedDisperseIds.length > 0 && (
                       <Button
                         size="sm"
                         className="bg-blue-600 hover:bg-blue-700 text-white font-semibold text-xs h-7 px-3"
-                        onClick={() => bulkPayMutation.mutate(selectedDisperseIds)}
-                        disabled={bulkPayMutation.isPending}
+                        disabled
+                        title="STP automático deshabilitado: registrar cada pago manualmente con referencia bancaria"
                       >
                         {bulkPayMutation.isPending ? <RefreshCw className="w-3 h-3 mr-1 animate-spin" /> : <Send className="w-3 h-3 mr-1" />}
-                        Enviar a dispersión ({selectedDisperseIds.length})
+                        Pago automático deshabilitado ({selectedDisperseIds.length})
                       </Button>
                     )}
                   </div>
@@ -1430,13 +1430,14 @@ export default function Commissions() {
                                       size="sm"
                                       className="bg-primary hover:bg-primary-dark text-white text-xs font-medium h-7 px-2.5 shadow-sm"
                                       onClick={() => {
-                                        setSelectedCommission(commission);
-                                        setAccountNumber(commission.effectiveBankAccount?.clabe || "");
+                                        setManualPaidCommission(commission);
+                                        setManualPaidNotes("");
+                                        setManualPaidReference("");
                                       }}
-                                      title="Enviar a dispersión a la red"
+                                      title="Registrar pago manual comprobado"
                                     >
                                       <Send className="w-3 h-3 mr-1 text-white" />
-                                      Enviar a dispersión
+                                      Registrar pago manual
                                     </Button>
                                   )}
 
@@ -1444,14 +1445,11 @@ export default function Commissions() {
                                     <Button
                                       size="sm"
                                       className="bg-rose-600 hover:bg-rose-700 text-white text-xs font-medium h-7 px-2.5 shadow-sm"
-                                      onClick={() => {
-                                        setSelectedCommission(commission);
-                                        setAccountNumber(commission.effectiveBankAccount?.clabe || "");
-                                      }}
-                                      title="Reintentar dispersión"
+                                      disabled
+                                      title="La comisión fallida requiere revisión administrativa antes de nuevo pago"
                                     >
                                       <RefreshCw className="w-3 h-3 mr-1" />
-                                      Reintentar
+                                      Revisión requerida
                                     </Button>
                                   )}
 
@@ -2252,12 +2250,12 @@ export default function Commissions() {
                   <Button 
                     size="sm"
                     onClick={handlePayment}
-                    disabled={!accountNumber || accountNumber.length < 18 || paymentMutation.isPending}
+                    disabled
                     className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs"
                     data-testid="button-confirm-payment"
                   >
                     {paymentMutation.isPending && <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />}
-                    Confirmar Dispersión
+                    STP deshabilitado
                   </Button>
                 </DialogFooter>
               </div>
@@ -2343,7 +2341,7 @@ export default function Commissions() {
               </div>
               <div>
                 <label className="block font-semibold text-gray-700 mb-1">
-                  Referencia Bancaria / Folio de Rastreo (Opcional)
+                  Referencia Bancaria / Folio de Rastreo (Obligatorio)
                 </label>
                 <Input
                   placeholder="Ej. REF-2026-09-012"
@@ -2359,7 +2357,7 @@ export default function Commissions() {
                 <Button
                   size="sm"
                   className="bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-semibold"
-                  disabled={!manualPaidNotes.trim() || markPaidMutation.isPending}
+                  disabled={!manualPaidNotes.trim() || !manualPaidReference.trim() || markPaidMutation.isPending}
                   onClick={() => {
                     if (manualPaidCommission) {
                       markPaidMutation.mutate({

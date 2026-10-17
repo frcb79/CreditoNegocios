@@ -1,4 +1,8 @@
 import { useEffect, useRef, useState } from "react";
+import { useSearch } from "wouter";
+import LegalProfileDocuments from "@/components/LegalProfileDocuments";
+import { FORMALIZATION_NOTICE_TEXT } from "@shared/legalDocuments";
+import LegalLinks from "@/components/LegalLinks";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -16,6 +20,7 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage, FormDes
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Separator } from "@/components/ui/separator";
 import { Badge } from "@/components/ui/badge";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import {
   Dialog,
   DialogContent,
@@ -57,6 +62,8 @@ const notificationSchema = z.object({
 
 const businessSchema = z.object({
   businessName: z.string().optional(),
+  legalRepresentativeName: z.string().optional(),
+  legalRepresentativePosition: z.string().optional(),
   taxId: z.string().optional(),
   businessAddress: z.string().optional(),
   businessPhone: z.string().optional(),
@@ -87,7 +94,29 @@ export default function Settings() {
   const { user } = useAuth();
   const { toast } = useToast();
   const queryClient = useQueryClient();
-  const [activeTab, setActiveTab] = useState("profile");
+  const search = useSearch();
+  const [activeTab, setActiveTab] = useState(() => {
+    const params = new URLSearchParams(search);
+    const tabParam = params.get("tab");
+    if (tabParam === "documents" || tabParam === "documentos") return "documents";
+    if (tabParam === "notifications") return "notifications";
+    if (tabParam === "business") return "business";
+    if (tabParam === "profiling") return "profiling";
+    if (tabParam === "security") return "security";
+    if (tabParam === "benefits") return "benefits";
+    if (tabParam === "commercial_rules" || tabParam === "commercial-rules") return "commercial_rules";
+    return "profile";
+  });
+
+  const isBrokerOrMaster = user?.role === "broker" || user?.role === "master_broker";
+
+  useEffect(() => {
+    const params = new URLSearchParams(search);
+    const tabParam = params.get("tab");
+    if (tabParam === "documents" || tabParam === "documentos") {
+      setActiveTab("documents");
+    }
+  }, [search]);
   const [profileType, setProfileType] = useState<"persona_moral" | "fisica_empresarial" | "fisica" | "sin_sat">("persona_moral");
   const [showPasswordModal, setShowPasswordModal] = useState(false);
   const [avatarPreview, setAvatarPreview] = useState<string | null>((user?.profileImageUrl as string) || null);
@@ -240,12 +269,15 @@ export default function Settings() {
   const businessForm = useForm({
     resolver: zodResolver(businessSchema),
     defaultValues: {
-      businessName: "",
-      taxId: "",
-      businessAddress: "",
-      businessPhone: "",
-      website: "",
-      specialization: "",
+      businessName: (user?.profileData as any)?.business?.businessName || "",
+      legalRepresentativeName: (user?.profileData as any)?.business?.legalRepresentativeName ||
+        [user?.firstName, user?.lastName].filter(Boolean).join(" "),
+      legalRepresentativePosition: (user?.profileData as any)?.business?.legalRepresentativePosition || "",
+      taxId: (user?.profileData as any)?.business?.taxId || "",
+      businessAddress: (user?.profileData as any)?.business?.businessAddress || "",
+      businessPhone: (user?.profileData as any)?.business?.businessPhone || "",
+      website: (user?.profileData as any)?.business?.website || "",
+      specialization: (user?.profileData as any)?.business?.specialization || "",
     },
   });
 
@@ -383,7 +415,12 @@ export default function Settings() {
   };
 
   const onBusinessSubmit = (data: any) => {
-    updateProfileMutation.mutate(data);
+    updateProfileMutation.mutate({
+      profileData: {
+        ...((user?.profileData && typeof user.profileData === "object") ? user.profileData : {}),
+        business: data,
+      },
+    });
   };
 
   const onProfilingSubmit = (data: any) => {
@@ -520,10 +557,40 @@ export default function Settings() {
       
       <main className="flex-1 p-3 sm:p-5 lg:p-6 overflow-y-auto">
         <div className="max-w-4xl mx-auto space-y-4">
+          {/* Formalization banner for Broker / Master Broker when outside documents tab */}
+          {isBrokerOrMaster && activeTab !== "documents" && (
+            <Alert
+              className="border-amber-300 bg-amber-50/90 text-amber-900 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-200 shadow-2xs"
+              data-testid="alert-formalization-banner"
+            >
+              <AlertCircle className="h-5 w-5 text-amber-600 dark:text-amber-400 mt-0.5 shrink-0" />
+              <div className="flex-1 min-w-0">
+                <AlertTitle className="font-semibold text-amber-900 dark:text-amber-100 text-sm">
+                  Aviso de Formalización
+                </AlertTitle>
+                <AlertDescription className="text-xs sm:text-sm text-amber-800 dark:text-amber-300 mt-1 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                  <span>
+                    {FORMALIZATION_NOTICE_TEXT}
+                  </span>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setActiveTab("documents")}
+                    className="h-7 text-xs border-amber-400 text-amber-900 bg-amber-100/60 hover:bg-amber-200/60 w-fit shrink-0"
+                    data-testid="button-go-to-documents"
+                  >
+                    Ver Documentos
+                  </Button>
+                </AlertDescription>
+              </div>
+            </Alert>
+          )}
+
           <Tabs value={activeTab} onValueChange={setActiveTab}>
             <div className="overflow-x-auto pb-1 -mx-1 px-1">
-              <TabsList className="inline-flex w-full min-w-[540px] sm:min-w-0 grid-cols-6 h-9 p-1 bg-muted/70 rounded-lg">
+              <TabsList className="inline-flex w-full min-w-[620px] sm:min-w-0 h-9 p-1 bg-muted/70 rounded-lg">
                 <TabsTrigger value="profile" data-testid="tab-profile" className="text-xs font-medium py-1 px-2">Perfil</TabsTrigger>
+                <TabsTrigger value="documents" data-testid="tab-documents" className="text-xs font-medium py-1 px-2">Documentos</TabsTrigger>
                 <TabsTrigger value="notifications" data-testid="tab-notifications" className="text-xs font-medium py-1 px-2">Notificaciones</TabsTrigger>
                 <TabsTrigger value="business" data-testid="tab-business" className="text-xs font-medium py-1 px-2">Negocio</TabsTrigger>
                 <TabsTrigger value="profiling" data-testid="tab-profiling" className="text-xs font-medium py-1 px-2">Perfilamiento</TabsTrigger>
@@ -539,6 +606,7 @@ export default function Settings() {
 
             {/* Profile Settings */}
             <TabsContent value="profile" className="space-y-4 mt-3">
+              <LegalProfileDocuments user={user} showFormalizationNotice={false} />
               <Card className="border border-border/80 shadow-xs">
                 <CardHeader className="py-3 px-4 sm:px-6 border-b border-border/60">
                   <CardTitle className="text-base font-semibold">Información Personal</CardTitle>
@@ -783,6 +851,11 @@ export default function Settings() {
               </Card>
             </TabsContent>
 
+            {/* Documents Settings */}
+            <TabsContent value="documents" className="space-y-4 mt-3">
+              <LegalProfileDocuments user={user} showFormalizationNotice={true} />
+            </TabsContent>
+
             {/* Notification Settings */}
             <TabsContent value="notifications" className="space-y-4 mt-3">
               <Card className="border border-border/80 shadow-xs">
@@ -998,14 +1071,49 @@ export default function Settings() {
                         name="businessName"
                         render={({ field }) => (
                           <FormItem>
-                            <FormLabel className="text-xs font-medium">Nombre del Negocio / Marca</FormLabel>
+                            <FormLabel className="text-xs font-medium">Razón social (empresa) / Nombre del negocio</FormLabel>
                             <FormControl>
-                              <Input className="h-9 text-xs" placeholder="Mi Despacho de Brokers" {...field} data-testid="input-business-name" />
+                              <Input className="h-9 text-xs" placeholder="Razón social registrada, no sólo marca comercial" {...field} data-testid="input-business-name" />
                             </FormControl>
                             <FormMessage className="text-xs" />
                           </FormItem>
                         )}
                       />
+
+                      <div className="space-y-2 rounded-md border p-3 bg-muted/20">
+                        <p className="text-xs font-semibold">Representante que firma por la empresa</p>
+                        <p className="text-[11px] text-muted-foreground">
+                          Si operas como persona moral, identifica a la empresa y al representante legal.
+                          La firma OTP se enviará al correo personal de esta cuenta; el nombre del
+                          representante debe coincidir con el titular que recibe el código.
+                        </p>
+                        <FormField
+                          control={businessForm.control}
+                          name="legalRepresentativeName"
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel className="text-xs font-medium">Nombre completo del representante legal</FormLabel>
+                              <FormControl>
+                                <Input className="h-9 text-xs" placeholder="Nombre y apellidos" {...field} data-testid="input-legal-representative-name" />
+                              </FormControl>
+                              <FormMessage className="text-xs" />
+                            </FormItem>
+                          )}
+                        />
+                        <FormField
+                          control={businessForm.control}
+                          name="legalRepresentativePosition"
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel className="text-xs font-medium">Cargo o carácter del representante (opcional)</FormLabel>
+                              <FormControl>
+                                <Input className="h-9 text-xs" placeholder="Administrador único, apoderado, representante legal..." {...field} data-testid="input-legal-representative-position" />
+                              </FormControl>
+                              <FormMessage className="text-xs" />
+                            </FormItem>
+                          )}
+                        />
+                      </div>
 
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                         <FormField

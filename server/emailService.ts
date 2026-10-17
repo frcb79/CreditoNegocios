@@ -45,7 +45,7 @@ export async function sendPasswordResetEmail(
     console.log(`[Email] Service initialized. Target: ${to}`);
     // Use FRONTEND_BASE_URL for custom domain, or get from REPLIT_DOMAINS, or fallback to localhost
     let baseUrl = process.env.FRONTEND_BASE_URL;
-    
+
     if (!baseUrl && process.env.REPLIT_DOMAINS) {
       // REPLIT_DOMAINS contains comma-separated list of domains, use the first one
       const domains = process.env.REPLIT_DOMAINS.split(',');
@@ -59,14 +59,14 @@ export async function sendPasswordResetEmail(
     if (!baseUrl && process.env.VERCEL_URL) {
       baseUrl = `https://${process.env.VERCEL_URL}`;
     }
-    
+
     if (!baseUrl) {
       baseUrl = 'https://creditonegocios-staging.up.railway.app';
       console.warn(`[Email] FRONTEND_BASE_URL not set, falling back to: ${baseUrl}`);
     }
-    
+
     const resetUrl = `${baseUrl.replace(/\/$/, '')}/reset-password?token=${resetToken}`;
-    console.log('[Email] Generated reset URL:', resetUrl);
+    // Never log invitation/password-reset links: they contain bearer tokens.
     const greeting = userName ? `Hola ${userName},` : 'Hola,';
 
     console.log(`[Email] Preparing to send reset email to ${to}...`);
@@ -88,34 +88,34 @@ export async function sendPasswordResetEmail(
               <h1 style="color: #1a365d; margin: 0; font-size: 28px;">${APP_NAME}</h1>
               <p style="color: #718096; margin-top: 5px; font-size: 14px;">Sistema de Gestión de Brokers</p>
             </div>
-            
+
             <h2 style="color: #2d3748; margin-bottom: 20px; font-size: 22px;">Restablecer Contraseña</h2>
-            
+
             <p style="margin-bottom: 15px;">${greeting}</p>
-            
+
             <p style="margin-bottom: 20px;">
-              Recibimos una solicitud para restablecer la contraseña de tu cuenta. 
+              Recibimos una solicitud para restablecer la contraseña de tu cuenta.
               Si no realizaste esta solicitud, puedes ignorar este correo de forma segura.
             </p>
-            
+
             <p style="margin-bottom: 25px;">
               Para restablecer tu contraseña, haz clic en el siguiente botón:
             </p>
-            
+
             <div style="text-align: center; margin: 30px 0;">
-              <a href="${resetUrl}" 
+              <a href="${resetUrl}"
                  style="background-color: #3182ce; color: #ffffff; padding: 14px 32px; text-decoration: none; border-radius: 6px; font-weight: 600; display: inline-block; font-size: 16px;">
                 Restablecer Contraseña
               </a>
             </div>
-            
+
             <p style="margin-bottom: 15px; color: #718096; font-size: 14px;">
               O copia y pega el siguiente enlace en tu navegador:
             </p>
             <p style="margin-bottom: 25px; word-break: break-all; background-color: #f7fafc; padding: 12px; border-radius: 4px; font-size: 13px; color: #4a5568;">
               ${resetUrl}
             </p>
-            
+
             <div style="border-top: 1px solid #e2e8f0; margin-top: 30px; padding-top: 20px;">
               <p style="color: #a0aec0; font-size: 13px; margin-bottom: 10px;">
                 <strong>Nota:</strong> Este enlace expirará en 1 hora por motivos de seguridad.
@@ -125,7 +125,7 @@ export async function sendPasswordResetEmail(
               </p>
             </div>
           </div>
-          
+
           <div style="text-align: center; margin-top: 20px; color: #a0aec0; font-size: 12px;">
             <p>&copy; ${new Date().getFullYear()} ${APP_NAME}. Todos los derechos reservados.</p>
           </div>
@@ -160,6 +160,52 @@ Sistema de Gestión de Brokers
   } catch (error: any) {
     console.error('Error sending password reset email:', error);
     return { success: false, error: error.message || 'Error desconocido' };
+  }
+}
+
+
+/** Activation mail: username + personal one-time link, never a shared password. */
+export async function sendAccountInvitationEmail(
+  to: string, token: string, role: "broker" | "master_broker", name?: string,
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    if (!resend) return { success: false, error: "Servicio de correo no configurado" };
+    const baseUrl = process.env.FRONTEND_BASE_URL?.trim();
+    if (!baseUrl?.startsWith("https://")) return { success: false, error: "URL de activación HTTPS no configurada" };
+    const link = baseUrl.replace(/\/$/, "") + "/reset-password?token=" + encodeURIComponent(token);
+    const safe = (text: string) => text.replace(/&/g, "&amp;").replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+    const displayRole = role === "master_broker" ? "Master Broker" : "Broker";
+    const greeting = name?.trim() || "colaborador";
+    const message = "Te invitamos a Crédito Negocios como " + displayRole + ".";
+    const html = [
+      "<div style='font-family:Arial,sans-serif;max-width:590px;margin:auto;padding:32px;color:#183153'>",
+      "<h1>Crédito Negocios</h1><h2>¡Bienvenido!</h2>",
+      "<p>Hola " + safe(greeting) + ",</p>",
+      "<p>" + message + "</p>",
+      "<p><strong>Tu usuario:</strong> " + safe(to) + "</p>",
+      "<p>Para activar tu cuenta, crea tu propia contraseña segura.</p>",
+      '<p><a style="display:inline-block;background:#147d52;color:white;padding:12px 24px;border-radius:5px;text-decoration:none" href="' + link + '">Activar mi cuenta</a></p>',
+      "<p>Enlace personal de un solo uso, válido por 24 horas.</p>",
+      "<p>Después completa tu perfil y revisa y formaliza los documentos legales antes de operar.</p>",
+      "<p>Si no esperabas esta invitación, puedes ignorarla y contactar a soporte.</p>",
+      "</div>",
+    ].join("");
+    const text = [
+      "Crédito Negocios — Bienvenido", "Hola " + greeting + ",", message,
+      "Tu usuario es: " + to,
+      "Activa tu cuenta creando tu propia contraseña:", link,
+      "Enlace de un solo uso, válido por 24 horas.",
+      "Después completa tu perfil y formaliza los documentos legales.",
+      "Si no esperabas esta invitación, ignórala."
+    ].join("\n");
+    const result = await resend.emails.send({
+      from: FROM_EMAIL, to: [to], subject: "Bienvenido a Crédito Negocios | Activa tu cuenta de " + displayRole,
+      html, text
+    });
+    return result.error ? { success: false, error: result.error.message } : { success: true };
+  } catch (err: any) {
+    return { success: false, error: err?.message || "Error al enviar invitación" };
   }
 }
 
@@ -397,16 +443,16 @@ export async function sendWelcomeEmail(
               <h1 style="color: #ffffff; margin: 0; font-size: 32px; font-weight: 800;">¡Bienvenido, ${userName}!</h1>
               <p style="color: #dbeafe; margin-top: 10px; font-size: 18px;">Estamos emocionados de tenerte con nosotros.</p>
             </div>
-            
+
             <div style="padding: 40px;">
               <p style="font-size: 16px; margin-bottom: 25px;">
                 Gracias por unirte a <strong>${APP_NAME}</strong>, la plataforma líder para la gestión y colocación de créditos empresariales.
               </p>
-              
+
               <p style="font-size: 16px; margin-bottom: 25px;">
                 Desde ahora, tienes acceso a un ecosistema diseñado para potenciar tu negocio:
               </p>
-              
+
               <div style="background-color: #f1f5f9; border-radius: 12px; padding: 25px; margin-bottom: 30px;">
                 <ul style="margin: 0; padding-left: 20px; color: #475569;">
                   <li style="margin-bottom: 12px;"><strong>Gestión Centralizada:</strong> Administra todos tus clientes y solicitudes en un solo lugar.</li>
@@ -415,19 +461,19 @@ export async function sendWelcomeEmail(
                   <li style="margin-bottom: 0;"><strong>Comisiones Transparentes:</strong> Visualiza y gestiona tus ganancias de forma clara.</li>
                 </ul>
               </div>
-              
+
               <div style="text-align: center; margin: 40px 0;">
-                <a href="https://app.creditonegocios.com.mx" 
+                <a href="https://app.creditonegocios.com.mx"
                    style="background-color: #05478a; color: #ffffff; padding: 16px 36px; text-decoration: none; border-radius: 8px; font-weight: 700; display: inline-block; font-size: 16px; box-shadow: 0 4px 6px rgba(5, 71, 138, 0.2);">
                   Comenzar ahora
                 </a>
               </div>
-              
+
               <p style="font-size: 14px; color: #64748b; text-align: center;">
                 Si tienes alguna duda, nuestro equipo de soporte está listo para ayudarte.
               </p>
             </div>
-            
+
             <div style="background-color: #f8fafc; padding: 20px; text-align: center; border-top: 1px solid #e2e8f0;">
               <p style="color: #94a3b8; font-size: 12px; margin: 0;">
                 &copy; ${new Date().getFullYear()} ${APP_NAME}. Todos los derechos reservados.
@@ -562,7 +608,7 @@ export async function sendSuperAdminNotificationEmail(
     }
 
     let baseUrl = process.env.FRONTEND_BASE_URL || 'https://app.creditonegocios.com.mx';
-    const targetUrl = payload.actionUrl 
+    const targetUrl = payload.actionUrl
       ? `${baseUrl.replace(/\/$/, '')}/${payload.actionUrl.replace(/^\//, '')}`
       : baseUrl;
 
@@ -648,7 +694,7 @@ export async function sendSuperAdminNotificationEmail(
 
               <!-- Botón de acción -->
               <div style="text-align: center; margin: 32px 0 16px 0;">
-                <a href="${targetUrl}" 
+                <a href="${targetUrl}"
                    style="display: inline-block; background: linear-gradient(135deg, #059669 0%, #0d9488 100%); color: #ffffff; text-decoration: none; padding: 14px 28px; border-radius: 10px; font-weight: 700; font-size: 14px; box-shadow: 0 4px 12px rgba(5, 150, 105, 0.3);">
                   Gestionar en la Plataforma &rarr;
                 </a>
@@ -690,4 +736,204 @@ Crédito Negocios - Notificación para ${SUPERADMIN_NOTIFICATION_EMAIL}
     console.error('[Email] Error sending super admin notification email:', error);
     return { success: false, error: error.message || 'Error desconocido' };
   }
+}
+
+// In-memory test store for test suites to capture simulated emails without logging plaintext secrets
+export const _testEmailStore: {
+  lastFormalizationOtp?: {
+    to: string;
+    code: string;
+    role: string;
+    documents: Array<{ title: string; version: string }>;
+  };
+  simulateFailure?: boolean;
+} = {};
+
+export async function sendFormalizationOtpEmail(payload: {
+  to: string;
+  userName?: string;
+  code: string;
+  role: string;
+  documents: Array<{ title: string; version: string }>;
+}): Promise<{ success: boolean; error?: string }> {
+  try {
+    if (process.env.NODE_ENV === "test") {
+      if (_testEmailStore.simulateFailure) {
+        return { success: false, error: "Simulated email delivery failure in test" };
+      }
+      _testEmailStore.lastFormalizationOtp = {
+        to: payload.to,
+        code: payload.code,
+        role: payload.role,
+        documents: payload.documents,
+      };
+      return { success: true };
+    }
+
+    if (!resend) {
+      console.error("[Email] Formalization OTP email failed: missing email service provider configuration (RESEND_API_KEY)");
+      return { success: false, error: "Servicio de correo electrónico no configurado" };
+    }
+
+    const roleLabel = payload.role === "master_broker" ? "Master Broker" : "Broker";
+    const greeting = payload.userName ? `Hola ${payload.userName},` : "Hola,";
+    const docsListHtml = payload.documents
+      .map((d) => `<li style="margin-bottom: 4px;"><strong>${d.title}</strong> (Versión ${d.version})</li>`)
+      .join("");
+    const docsListText = payload.documents
+      .map((d) => `- ${d.title} (Versión ${d.version})`)
+      .join("\n");
+
+    const { error } = await resend.emails.send({
+      from: FROM_EMAIL,
+      to: [payload.to],
+      subject: `Código de verificación para Convenio de Colaboración - ${APP_NAME}`,
+      html: `
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <meta charset="utf-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1.0">
+          <title>Código de verificación</title>
+        </head>
+        <body style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; line-height: 1.6; color: #1e293b; max-width: 600px; margin: 0 auto; padding: 20px; background-color: #f8fafc;">
+          <div style="background-color: #ffffff; border-radius: 12px; padding: 36px; box-shadow: 0 4px 16px rgba(0,0,0,0.06); border: 1px solid #e2e8f0;">
+            <div style="text-align: center; margin-bottom: 28px;">
+              <h1 style="color: #05478a; margin: 0; font-size: 26px; font-weight: 800;">${APP_NAME}</h1>
+              <p style="color: #64748b; margin-top: 4px; font-size: 13px; text-transform: uppercase; letter-spacing: 0.1em;">Formalización de Colaborador (${roleLabel})</p>
+            </div>
+
+            <p style="margin-bottom: 16px; font-size: 15px;">${greeting}</p>
+
+            <p style="margin-bottom: 20px; font-size: 14px; color: #334155;">
+              Recibimos tu solicitud para formalizar tu relación comercial como <strong>${roleLabel}</strong> mediante la aceptación de los siguientes documentos legales vigentes:
+            </p>
+
+            <ul style="margin-bottom: 24px; padding-left: 20px; font-size: 14px; color: #1e293b;">
+              ${docsListHtml}
+            </ul>
+
+            <p style="margin-bottom: 12px; font-size: 14px; color: #334155; text-align: center;">
+              Tu código de verificación de un solo uso es:
+            </p>
+
+            <div style="text-align: center; margin: 24px 0;">
+              <div style="display: inline-block; background-color: #f0fdf4; border: 2px dashed #16a34a; border-radius: 10px; padding: 16px 36px; font-size: 32px; font-weight: 800; letter-spacing: 8px; color: #15803d; font-family: monospace;">
+                ${payload.code}
+              </div>
+            </div>
+
+            <div style="background-color: #f8fafc; border-radius: 8px; padding: 14px; margin-bottom: 20px; border: 1px solid #e2e8f0; font-size: 13px; color: #475569;">
+              <p style="margin: 0 0 6px 0;"><strong>Seguridad y Vigencia:</strong></p>
+              <ul style="margin: 0; padding-left: 18px;">
+                <li>Este código expirará en <strong>10 minutos</strong>.</li>
+                <li>Es de uso único y está vinculado a tu cuenta y a los documentos aprobados.</li>
+                <li>Tienes un máximo de 5 intentos para ingresarlo correctamente.</li>
+              </ul>
+            </div>
+
+            <p style="font-size: 12px; color: #94a3b8; margin: 0; text-align: center;">
+              Si no realizaste esta solicitud, puedes ignorar este mensaje de forma segura o comunicarte con nuestro equipo.
+            </p>
+          </div>
+          <div style="text-align: center; margin-top: 16px; font-size: 11px; color: #94a3b8;">
+            <p>&copy; ${new Date().getFullYear()} ${APP_NAME}. Todos los derechos reservados.</p>
+          </div>
+        </body>
+        </html>
+      `.trim(),
+      text: `
+${greeting}
+
+Recibimos tu solicitud para formalizar tu relación comercial como ${roleLabel} en ${APP_NAME}.
+
+Documentos a formalizar:
+${docsListText}
+
+Tu código de verificación de un solo uso es:
+${payload.code}
+
+Seguridad:
+- Este código expirará en 10 minutos.
+- Es de uso único y está vinculado exclusivamente a tu cuenta y versiones exactas de los documentos.
+- Tienes un máximo de 5 intentos.
+
+Si no realizaste esta solicitud, ignora este mensaje.
+
+---
+${APP_NAME}
+      `.trim(),
+    });
+
+    if (error) {
+      console.error("[Email] Resend formalization OTP error:", error);
+      return { success: false, error: error.message };
+    }
+
+    console.log(`[Email] Formalization OTP email sent successfully to ${payload.to}`);
+    return { success: true };
+  } catch (error: any) {
+    console.error("[Email] Error sending formalization OTP email:", error);
+    return { success: false, error: error.message || "Error desconocido" };
+  }
+}
+
+
+/** LEG-10: client consent is unrelated to the Broker/Master convenio.
+ * Never log one-time URLs or numeric codes. */
+export const _testClientConsentMail: {
+  lastLink?: { to:string; link:string };
+  lastOtp?: { to:string; code:string };
+  simulateFailure?:boolean;
+} = {};
+
+export async function sendClientConsentLinkEmail(input: {
+  to:string; signerName:string; institutionName:string; token:string;
+}):Promise<{success:boolean;error?:string}> {
+  if (process.env.NODE_ENV === "test") {
+    if (_testClientConsentMail.simulateFailure) return {success:false,error:"Simulated failure"};
+    _testClientConsentMail.lastLink = {to:input.to,link:"/autorizar-expediente/"+input.token};
+    return {success:true};
+  }
+  const base = process.env.FRONTEND_BASE_URL?.trim();
+  if (!base || !/^https:\/\/[^/]+/.test(base) || !resend)
+    return {success:false,error:"Enlace HTTPS o servicio de correo sin configurar"};
+  const link=base.replace(/\/$/,"")+"/autorizar-expediente/"+encodeURIComponent(input.token);
+  const esc=(v:string)=>v.replace(/&/g,"&amp;").replace(/</g,"&lt;")
+    .replace(/>/g,"&gt;").replace(/"/g,"&quot;").replace(/'/g,"&#39;");
+  try {
+    const result=await resend.emails.send({
+      from:FROM_EMAIL,to:[input.to],subject:"Autorización de expediente — Crédito Negocios",
+      html:"<h2>Crédito Negocios — autorización del cliente</h2><p>Hola "+
+        esc(input.signerName)+",</p><p>Se solicita tu autorización para compartir un expediente con "+
+        esc(input.institutionName)+". Revisa la información y confirma personalmente.</p>"+
+        "<p><a href='"+esc(link)+"'>Revisar autorización</a></p>"+
+        "<p>Enlace personal válido por 48 horas. Si no reconoces esta solicitud, no lo utilices.</p>",
+      text:"Crédito Negocios\nHola "+input.signerName+
+        "\nRevisa la autorización específica para "+input.institutionName+
+        ":\n"+link+"\nEnlace personal válido por 48 horas. Si no reconoces esta solicitud, ignóralo."
+    });
+    return result.error?{success:false,error:result.error.message}:{success:true};
+  } catch(e:any) {return {success:false,error:e?.message||"Error al enviar correo"};}
+}
+export async function sendClientConsentOtpEmail(input:{
+  to:string;signerName:string;code:string;
+}):Promise<{success:boolean;error?:string}> {
+  if (process.env.NODE_ENV === "test") {
+    if (_testClientConsentMail.simulateFailure) return {success:false,error:"Simulated failure"};
+    _testClientConsentMail.lastOtp={to:input.to,code:input.code};
+    return {success:true};
+  }
+  if (!resend) return {success:false,error:"Servicio de correo no configurado"};
+  try {
+    const result=await resend.emails.send({
+      from:FROM_EMAIL,to:[input.to],subject:"Código de autorización — Crédito Negocios",
+      html:"<h2>Confirma la autorización del expediente</h2>"+
+        "<p>Tu código personal es <strong>"+input.code+"</strong>.</p>"+
+        "<p>Caduca en 10 minutos y sólo es válido para esta autorización.</p>",
+      text:"Tu código para autorizar el expediente es: "+input.code+
+        "\nVálido por 10 minutos. No lo compartas."
+    });
+    return result.error?{success:false,error:result.error.message}:{success:true};
+  } catch(e:any) {return {success:false,error:e?.message||"Error al enviar OTP"};}
 }

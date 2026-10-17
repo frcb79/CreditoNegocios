@@ -10,10 +10,15 @@ if (process.env.NODE_ENV === "production" && !process.env.SESSION_SECRET) {
   throw new Error("Environment variable SESSION_SECRET not provided");
 }
 
+let sharedSessionMiddleware: ReturnType<typeof session> | null = null;
+
 export function getSession() {
+  // HTTP and WebSocket upgrades must resolve the SAME session store, including
+  // the MemoryStore fallback. A second store silently rejects valid sessions.
+  if (sharedSessionMiddleware) return sharedSessionMiddleware;
   const sessionTtl = 7 * 24 * 60 * 60 * 1000; // 1 week
   const dbUrl = process.env.DATABASE_URL ?? "";
-  const useMemoryStorage = process.env.USE_MEMORY_STORAGE === "true";
+  const useMemoryStorage = process.env.USE_MEMORY_STORAGE === "true" || process.env.NODE_ENV === "test";
   const usesSupabaseDirectIpv6Host = dbUrl.includes("supabase.co") && dbUrl.includes(":5432");
   const forceMemoryStore = process.env.SESSION_STORE === "memory";
   const runningOnRailway = !!process.env.RAILWAY_ENVIRONMENT_NAME;
@@ -30,7 +35,7 @@ export function getSession() {
   
   const isProduction = process.env.NODE_ENV === 'production';
   
-  return session({
+  sharedSessionMiddleware = session({
     secret: sessionSecret,
     ...(sessionStore ? { store: sessionStore } : {}),
     resave: true,
@@ -44,6 +49,7 @@ export function getSession() {
       path: '/',
     },
   });
+  return sharedSessionMiddleware;
 }
 
 export async function setupAuth(app: Express) {
@@ -80,6 +86,19 @@ export async function setupAuth(app: Express) {
 }
 
 export const isAuthenticated: RequestHandler = async (req, res, next) => {
+  if (process.env.NODE_ENV === "test" && req.headers?.["x-test-user-id"]) {
+    const testUserId = req.headers["x-test-user-id"] as string;
+    const testUser = await storage.getUser(testUserId);
+    if (testUser) {
+      req.user = testUser;
+      if (!(req.user as any).claims) {
+        (req.user as any).claims = { sub: testUser.id };
+      }
+      (req as any).dbUser = testUser;
+      (req as any).isAuthenticated = (() => true) as any;
+    }
+  }
+
   const user = req.user as any;
 
   // Check if user is authenticated at all

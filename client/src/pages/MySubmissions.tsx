@@ -22,7 +22,7 @@ import {
   ChevronRight,
   TrendingUp
 } from "lucide-react";
-import { getStatusLabel, getStatusBadgeClass } from "@/lib/statusConfig";
+import { getCreditStatusLabel, getStatusBadgeClass } from "@/lib/statusConfig";
 
 interface Credit {
   id: string;
@@ -115,7 +115,7 @@ export default function MySubmissions() {
     if (statusFilter === 'all') return true;
     if (statusFilter === 'dispersed') return credit.status === 'dispersed' || credit.status === 'disbursed';
     if (statusFilter === 'approved') return credit.status === 'approved';
-    if (statusFilter === 'in_progress') return credit.status !== 'dispersed' && credit.status !== 'disbursed' && credit.status !== 'approved';
+    if (statusFilter === 'in_progress') return credit.status === 'in_progress' || credit.status === 'contact_initiated';
     return credit.status === statusFilter;
   });
 
@@ -199,8 +199,8 @@ export default function MySubmissions() {
               {[
                 { id: 'all', label: `Todos (${currentList.length})` },
                 { id: 'dispersed', label: `Dispersados (${currentList.filter(c => c.status === 'dispersed' || c.status === 'disbursed').length})` },
-                { id: 'approved', label: `Aprobados (${currentList.filter(c => c.status === 'approved').length})` },
-                { id: 'in_progress', label: `En Trámite (${currentList.filter(c => c.status !== 'dispersed' && c.status !== 'disbursed' && c.status !== 'approved').length})` },
+                { id: 'approved', label: `Visto Bueno (${currentList.filter(c => c.status === 'approved').length})` },
+                { id: 'in_progress', label: `Gestión Comercial Iniciada (${currentList.filter(c => c.status === 'in_progress' || c.status === 'contact_initiated').length})` },
               ].map((f) => {
                 const isActive = statusFilter === f.id;
                 return (
@@ -289,7 +289,7 @@ export default function MySubmissions() {
 
                         <div className="flex items-center gap-2 self-start sm:self-auto shrink-0">
                           <Badge className={`text-xs px-2.5 py-0.5 font-semibold ${getStatusBadgeClass(credit.status)}`}>
-                            {getStatusLabel(credit.status)}
+                            {getCreditStatusLabel(credit.status)}
                           </Badge>
                           {commission?.status === 'paid' && (
                             <Badge className="bg-emerald-50 text-emerald-700 border border-emerald-200 font-semibold text-xs">

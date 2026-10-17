@@ -16,6 +16,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import CurrencyInput from "@/components/ui/currency-input";
 import { User, TrendingUp, Trash2, Plus, Loader2 } from "lucide-react";
 import { CommercialDuplicateAlert, type DuplicateCheckResult } from "@/components/Commercial/CommercialDuplicateAlert";
+import { ANNUAL_INCOME_OPTIONS, getAnnualIncomeLabel } from "@shared/annualIncome";
 
 interface ClientFormProps {
   client?: any;
@@ -242,6 +243,14 @@ export default function ClientForm({ client, onSuccess }: ClientFormProps) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [clientType, setClientType] = useState<"persona_moral" | "fisica_empresarial" | "fisica" | "sin_sat">(client?.type || "fisica");
+  // The customer's own legal representative will receive LEG-10 OTP; never
+  // substitute the Broker's business contact or personal email.
+  const [clientRepresentativeName,setClientRepresentativeName]=useState<string>(
+    (client?.legalRepresentative as any)?.name || (client?.legalRepresentative as any)?.fullName || ""
+  );
+  const [clientRepresentativeEmail,setClientRepresentativeEmail]=useState<string>(
+    (client?.legalRepresentative as any)?.email || ""
+  );
   const [duplicateCheckResult, setDuplicateCheckResult] = useState<DuplicateCheckResult | null>(null);
   const [isCheckingDuplicate, setIsCheckingDuplicate] = useState(false);
 
@@ -366,6 +375,7 @@ export default function ClientForm({ client, onSuccess }: ClientFormProps) {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/clients"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/dashboard/metrics"] });
       toast({
         title: "Cliente creado",
         description: "El cliente ha sido creado exitosamente.",
@@ -430,6 +440,12 @@ export default function ClientForm({ client, onSuccess }: ClientFormProps) {
 
     const submitData = {
       ...data,
+      legalRepresentative: clientType === "persona_moral" ? {
+        ...((client?.legalRepresentative && typeof client.legalRepresentative === "object" &&
+              !Array.isArray(client.legalRepresentative)) ? client.legalRepresentative : {}),
+        name: clientRepresentativeName.trim(),
+        email: clientRepresentativeEmail.trim().toLowerCase(),
+      } : data.legalRepresentative,
       creditosVigentesDetalles: (data.creditosVigentes === "si" && cleanedCredits.length > 0) ? cleanedCredits : [],
       type: clientType,
     };
@@ -455,8 +471,14 @@ export default function ClientForm({ client, onSuccess }: ClientFormProps) {
             <div className="space-y-2">
               <label className="text-sm font-medium text-gray-900">Tipo de Cliente</label>
               <Tabs value={clientType} onValueChange={(value) => {
-                  setClientType(value as "persona_moral" | "fisica_empresarial" | "fisica" | "sin_sat");
-                  form.setValue("type", value as any, { shouldValidate: true });
+                  const nextType = value as keyof typeof ANNUAL_INCOME_OPTIONS;
+                  const currentAnnual = form.getValues("ingresoAnual");
+                  setClientType(nextType);
+                  form.setValue("type", nextType, { shouldValidate: true });
+                  // Evitar conservar inadvertidamente un tramo exclusivo de otro perfil.
+                  if (currentAnnual && !ANNUAL_INCOME_OPTIONS[nextType].some(o => o.value === currentAnnual)) {
+                    form.setValue("ingresoAnual", "no-disponible", { shouldValidate: true });
+                  }
                 }}>
                 <TabsList className="grid w-full grid-cols-2 sm:grid-cols-4 h-auto bg-transparent gap-1">
                   <TabsTrigger 
@@ -1373,6 +1395,30 @@ export default function ClientForm({ client, onSuccess }: ClientFormProps) {
                     )}
                   />
                   
+                  {clientType === "persona_moral" && (
+                    <section className="rounded-lg border border-blue-200 bg-blue-50/40 p-4 space-y-3">
+                      <h3 className="text-sm font-semibold">Representante que puede autorizar compartir el expediente</h3>
+                      <p className="text-xs text-muted-foreground">
+                        Para solicitar autorización a una financiera, registraremos al representante
+                        legal de la empresa. Recibirá su propio enlace y código OTP por correo.
+                        No se requiere hasta que se prepare el envío.
+                      </p>
+                      <label className="block text-sm font-medium" htmlFor="client-legal-rep-name">
+                        Nombre completo del representante
+                      </label>
+                      <Input id="client-legal-rep-name" value={clientRepresentativeName}
+                        onChange={e=>setClientRepresentativeName(e.target.value)}
+                        placeholder="Nombre y apellidos" data-testid="client-legal-representative-name" />
+                      <label className="block text-sm font-medium" htmlFor="client-legal-rep-email">
+                        Correo propio del representante
+                      </label>
+                      <Input id="client-legal-rep-email" type="email" value={clientRepresentativeEmail}
+                        onChange={e=>setClientRepresentativeEmail(e.target.value)}
+                        placeholder="representante@empresa.com"
+                        data-testid="client-legal-representative-email" />
+                    </section>
+                  )}
+
                   {/* Dirección separada en campos */}
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <FormField
@@ -1507,6 +1553,32 @@ export default function ClientForm({ client, onSuccess }: ClientFormProps) {
                       {clientType === "fisica" && (
                         <>
                           <div className="mt-2 pt-4 border-t border-primary/20">
+                            {/* Rango anual orientativo: no sustituye ingreso mensual verificado. */}
+                            <FormField
+                              control={form.control}
+                              name="ingresoAnual"
+                              render={({ field }) => (
+                                <FormItem className="mb-5">
+                                  <FormLabel>Rango de Ingresos Anuales (MXN)</FormLabel>
+                                  <Select onValueChange={field.onChange} value={field.value || ""}>
+                                    <FormControl>
+                                      <SelectTrigger data-testid="select-pf-annual-income">
+                                        <SelectValue placeholder="Seleccionar / Por confirmar" />
+                                      </SelectTrigger>
+                                    </FormControl>
+                                    <SelectContent>
+                                                                          {ANNUAL_INCOME_OPTIONS.fisica.map(option => (
+                                                                            <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>
+                                                                          ))}
+                                                                          {field.value && !ANNUAL_INCOME_OPTIONS.fisica.some(option => option.value === field.value) && (
+                                                                            <SelectItem value={field.value}>{getAnnualIncomeLabel(field.value)} (rango anterior)</SelectItem>
+                                                                          )}
+                                                                        </SelectContent>
+                                  </Select>
+                                  <FormMessage />
+                                </FormItem>
+                              )}
+                            />
                             {/* Ingreso mensual promedio con subcampos */}
                             <div className="space-y-4 mb-6">
                               <h3 className="text-lg font-semibold text-primary">Ingreso Mensual Promedio (últimos 6 meses)</h3>
@@ -2056,6 +2128,32 @@ export default function ClientForm({ client, onSuccess }: ClientFormProps) {
                       {clientType === "sin_sat" && (
                         <>
                           <div className="mt-8 pt-6 border-t border-primary/20">
+                            {/* Rango anual orientativo: no sustituye ingreso mensual verificado. */}
+                            <FormField
+                              control={form.control}
+                              name="ingresoAnual"
+                              render={({ field }) => (
+                                <FormItem className="mb-5">
+                                  <FormLabel>Rango de Ingresos Anuales (MXN)</FormLabel>
+                                  <Select onValueChange={field.onChange} value={field.value || ""}>
+                                    <FormControl>
+                                      <SelectTrigger data-testid="select-sinsat-annual-income">
+                                        <SelectValue placeholder="Seleccionar / Por confirmar" />
+                                      </SelectTrigger>
+                                    </FormControl>
+                                    <SelectContent>
+                                                                          {ANNUAL_INCOME_OPTIONS.sin_sat.map(option => (
+                                                                            <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>
+                                                                          ))}
+                                                                          {field.value && !ANNUAL_INCOME_OPTIONS.sin_sat.some(option => option.value === field.value) && (
+                                                                            <SelectItem value={field.value}>{getAnnualIncomeLabel(field.value)} (rango anterior)</SelectItem>
+                                                                          )}
+                                                                        </SelectContent>
+                                  </Select>
+                                  <FormMessage />
+                                </FormItem>
+                              )}
+                            />
                             {/* Ingresos Mensuales Comprobables y No Comprobables */}
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
                               <FormField
@@ -2769,13 +2867,12 @@ export default function ClientForm({ client, onSuccess }: ClientFormProps) {
                                       </SelectTrigger>
                                     </FormControl>
                                     <SelectContent>
-                                      <SelectItem value="menor-100000">Menor a $100,000</SelectItem>
-                                      <SelectItem value="100000-250000">$100,000 a $250,000</SelectItem>
-                                      <SelectItem value="250000-500000">$250,000 a $500,000</SelectItem>
-                                      <SelectItem value="500000-1000000">$500,000 a $1,000,000</SelectItem>
-                                      <SelectItem value="1000000-2500000">$1,000,000 a $2,500,000</SelectItem>
-                                      <SelectItem value="2500000-5000000">$2,500,000 a $5,000,000</SelectItem>
-                                      <SelectItem value="arriba-5000000">Arriba de $5,000,000</SelectItem>
+                                      {ANNUAL_INCOME_OPTIONS.fisica_empresarial.map(option => (
+                                        <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>
+                                      ))}
+                                      {field.value && !ANNUAL_INCOME_OPTIONS.fisica_empresarial.some(option => option.value === field.value) && (
+                                        <SelectItem value={field.value}>{getAnnualIncomeLabel(field.value)} (rango anterior)</SelectItem>
+                                      )}
                                     </SelectContent>
                                   </Select>
                                   <FormMessage />
@@ -3497,13 +3594,12 @@ export default function ClientForm({ client, onSuccess }: ClientFormProps) {
                                       </SelectTrigger>
                                     </FormControl>
                                     <SelectContent>
-                                      <SelectItem value="menor-100000">Menor a $100,000</SelectItem>
-                                      <SelectItem value="100000-250000">$100,000 a $250,000</SelectItem>
-                                      <SelectItem value="250000-500000">$250,000 a $500,000</SelectItem>
-                                      <SelectItem value="500000-1000000">$500,000 a $1,000,000</SelectItem>
-                                      <SelectItem value="1000000-2500000">$1,000,000 a $2,500,000</SelectItem>
-                                      <SelectItem value="2500000-5000000">$2,500,000 a $5,000,000</SelectItem>
-                                      <SelectItem value="arriba-5000000">Arriba de $5,000,000</SelectItem>
+                                      {ANNUAL_INCOME_OPTIONS.persona_moral.map(option => (
+                                        <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>
+                                      ))}
+                                      {field.value && !ANNUAL_INCOME_OPTIONS.persona_moral.some(option => option.value === field.value) && (
+                                        <SelectItem value={field.value}>{getAnnualIncomeLabel(field.value)} (rango anterior)</SelectItem>
+                                      )}
                                     </SelectContent>
                                   </Select>
                                   <FormMessage />

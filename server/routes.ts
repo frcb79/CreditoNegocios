@@ -1,13 +1,29 @@
 import type { Express } from "express";
-import { createServer, type Server } from "http";
+import { randomUUID } from "node:crypto";
+import { createServer, ServerResponse, type Server } from "http";
 import { WebSocketServer, WebSocket } from "ws";
 import rateLimit from "express-rate-limit";
 import { pool } from "./db";
-import { storage } from "./storage";
-import { setupAuth, isAuthenticated } from "./auth";
+import { storage, type IStorage } from "./storage";
+import { canViewSubmissionByOrigin, canViewCreditByOrigin, canEditCreditByOrigin } from "./dashboardVisibility";
+import { projectCreditForRole } from "./creditResponseProjection";
+import { allowedOrigins } from "./runtimeConfig";
+import { canReadDocumentByOrigin } from "./documentVisibility";
+import { resolveSubmissionDisplayStatus } from "../shared/submissionDisplayStatus";
+import { readFrozenOfferLineage } from "./offerLineageService";
+import { authorizeClientSensitiveDisclosure } from "./clientConsentGate";
+import { setupAuth, getSession, isAuthenticated } from "./auth";
+import { registerLegalRoutes } from "./legalRoutes";
+import { registerClientConsentPublicRoutes } from "./clientConsentRoutes";
+import { startInternalCommercialContact, CommercialContactError } from "./commercialContactService";
+import { checkPrelaunchSchemaReadiness } from "./stagingSchemaRepair";
+import { filterAuthorizedClientListing } from "./clientListVisibility";
+import { startClientConsent, invalidateConsentRequest, hasValidClientConsent, listClientConsentEvidenceForTarget, verifyCompanySignerAuthority, markTargetSentWithClientConsent, withAuthorizedClientPdfDisclosure, ClientConsentError } from "./clientConsentService";
+import { sendClientConsentLinkEmail } from "./emailService";
+import { validateRegistrationAcceptance, getPublishedLegalDocument } from "./legalDocuments";
 import PDFDocument from "pdfkit";
 import bcrypt from "bcrypt";
-import { sendBrokerDeactivationRequestEmail, sendBrokerLeadEmail, sendPasswordResetEmail, sendWebsiteLeadEmail, sendWelcomeEmail, sendSuperAdminNotificationEmail } from "./emailService";
+import { sendBrokerDeactivationRequestEmail, sendBrokerLeadEmail, sendAccountInvitationEmail, sendPasswordResetEmail, sendWebsiteLeadEmail, sendWelcomeEmail, sendSuperAdminNotificationEmail } from "./emailService";
 import { getDocumentAccessTarget, persistDocumentFile, removeStoredDocument } from "./documentStorage";
 import { 
   generateFinancierasTemplate, 
@@ -38,6 +54,7 @@ import {
   insertProductRequestSchema,
   insertProductTemplateSchema,
   insertInstitutionProductSchema,
+  insertInstitutionProductVersionSchema,
   insertCreditSubmissionRequestSchema,
   insertCreditSubmissionTargetSchema,
   insertClientCreditHistorySchema,
@@ -62,7 +79,63 @@ import {
   type UserStatusRequestStatus,
   type UserStatusRequestAction,
 } from "../shared/schema";
+import {
+  isOfferEligibleForRequests,
+  validateMinimumPublishConditions,
+  validateOfferVersionParameters,
+  compareOfferIntermediaryCommissions,
+} from "./offerVersionService";
+import { getOfferCommissionStatus, acceptOfferCommission, isQuoteHistoricallyFrozen } from "./offerCommissionAcceptance";
+import {
+  evaluateCatalogCompatibility,
+  isVersionEligibleForMatching,
+  type OfferVersionInput,
+} from "./matching/compatibilityEvaluator";
+import {
+  MissingCommissionRateError,
+  MissingOfferVersionError,
+  UnconfirmedDispersalAmountError,
+  UnauthorizedDistributionError,
+  CommissionFrozenDiscrepancyError,
+  ImmutableCommercialSnapshotError,
+  type CommissionPayoutAuditResult,
+  auditCommissionPayout,
+  getCommissionPayoutAmount,
+  resolveOfferVersionCommissionRates,
+  calculateAndPersistCascadingCommission,
+  consolidateCommercialProposalSnapshot,
+  type CascadingCommissionInput,
+} from "./commissionService";
+
+export {
+  MissingCommissionRateError,
+  MissingOfferVersionError,
+  UnconfirmedDispersalAmountError,
+  UnauthorizedDistributionError,
+  CommissionFrozenDiscrepancyError,
+  ImmutableCommercialSnapshotError,
+  type CommissionPayoutAuditResult,
+  auditCommissionPayout,
+  getCommissionPayoutAmount,
+  resolveOfferVersionCommissionRates,
+  calculateAndPersistCascadingCommission,
+  consolidateCommercialProposalSnapshot,
+};
+import {
+  validateCommissionPayoutPrerequisites,
+  validateBeneficiaryPayoutDocuments,
+  type BeneficiaryPayoutValidationResult,
+  type CommissionPayoutValidationResult,
+} from "./commissionDocumentValidationService";
+
+export {
+  validateCommissionPayoutPrerequisites,
+  validateBeneficiaryPayoutDocuments,
+  type BeneficiaryPayoutValidationResult,
+  type CommissionPayoutValidationResult,
+};
 import { commercialConfigService } from "./commercialConfigService";
+import { commercialTermsService } from "./commercialTermsService";
 
 import {
   commercialAuthorizationService,
@@ -71,6 +144,8 @@ import {
 } from "./commercialAuthorizationService";
 import { commercialOpportunityService } from "./commercialOpportunityService";
 import { commercialHelpService } from "./commercialHelpService";
+import { registerBrokerNetworkTransitionRoutes } from "./brokerNetworkTransitionRoutes";
+import { createBrokerWithOrganization } from "./brokerNetworkTransitionService";
 
 
 import { z } from "zod";
@@ -98,7 +173,9 @@ import {
 import {
   validateTenantMemberPermissions,
   checkTransactionalCreationAllowed,
-  validateCommercialOrigination
+  validateCommercialOrigination,
+  validateEffectiveBrokerFormalization,
+  validateCommercialOriginationAndFormalization
 } from "./tenantPermissions";
 
 // Ensure upload directory exists
@@ -153,252 +230,100 @@ export async function createCascadingCommissionRecord(
   amountArg?: string | number,
   commTypeArg?: string
 ): Promise<any> {
-  let params: {
-    creditId: string;
-    brokerId: string;
-    masterBrokerId?: string | null;
-    commissionType: string;
-    approvedAmount: number;
-    financieraRate: number;
-    masterBrokerRate: number;
-    brokerRate: number;
-    financialInstitutionId?: string | null;
-    isMasterDirect?: boolean;
-    performedBy?: string | null;
-  };
+  let commissionInput: CascadingCommissionInput;
 
   if (arg1 && typeof arg1 === "object" && "creditId" in arg1) {
-    params = arg1;
+    // REGLA 1 (COM-21): Eliminar fallbacks a approvedAmount o montos no verificados
+    const rawAmount = arg1.confirmedDisbursedAmount !== undefined && arg1.confirmedDisbursedAmount !== null
+      ? parseFloat(String(arg1.confirmedDisbursedAmount))
+      : (arg1.dispersedAmount !== undefined && arg1.dispersedAmount !== null
+          ? parseFloat(String(arg1.dispersedAmount))
+          : undefined);
+
+    if (rawAmount === undefined || isNaN(rawAmount) || rawAmount <= 0) {
+      throw new UnconfirmedDispersalAmountError(
+        "[COM-21] Cálculo de comisiones bloqueado: Se requiere un monto de dispersión confirmado verificable en servidor. Fallback a approvedAmount o montos no confirmados eliminado."
+      );
+    }
+
+    commissionInput = {
+      creditId: arg1.creditId,
+      brokerId: arg1.brokerId,
+      masterBrokerId: arg1.masterBrokerId,
+      commissionType: arg1.commissionType || "apertura",
+      dispersedAmount: rawAmount,
+      confirmedDisbursedAmount: rawAmount,
+      financialInstitutionId: arg1.financialInstitutionId || null,
+      institutionProductId: arg1.institutionProductId || arg1.offerId || null,
+      versionNumber: arg1.versionNumber || null,
+      financieraRate: arg1.financieraRate,
+      masterBrokerRate: arg1.masterBrokerRate,
+      brokerRate: arg1.brokerRate,
+      isMasterDirect: arg1.isMasterDirect,
+      performedBy: arg1.performedBy,
+      idempotencyKey: arg1.idempotencyKey,
+      dispersalIndex: arg1.dispersalIndex,
+      strictRateCheck: true,
+    };
   } else {
     const credit = arg1;
     const institution = institutionArg;
-    const approvedAmount = parseFloat(String(amountArg || credit?.amount || "0"));
+    const rawAmount = amountArg !== undefined && amountArg !== null
+      ? parseFloat(String(amountArg))
+      : undefined;
+
+    if (rawAmount === undefined || isNaN(rawAmount) || rawAmount <= 0) {
+      throw new UnconfirmedDispersalAmountError(
+        "[COM-21] Cálculo de comisiones bloqueado: Se requiere un monto de dispersión confirmado verificable en servidor."
+      );
+    }
+
     const commType = commTypeArg || "apertura";
 
-    const brokerUser = credit?.brokerId ? await storage.getUser(credit.brokerId) : null;
-    const isMasterDirect = brokerUser?.role === "master_broker";
-    const masterBrokerId = isMasterDirect ? brokerUser.id : brokerUser?.masterBrokerId;
-
-    const finalProposal = credit?.finalProposal;
-    const proposalCommRates = (finalProposal as any)?.commissionRates;
-
-    const commissionRates = proposalCommRates || (institution as any)?.commissionRates || {};
-    const superAdminRate = parseFloat(
-      commissionRates.financiera?.[commType] ||
-      commissionRates.financiera?.apertura ||
-      commissionRates.superAdmin?.[commType] ||
-      commissionRates.superAdmin?.apertura ||
-      (institution as any)?.openingCommissionRate ||
-      (institution as any)?.commissionRate ||
-      "0"
-    );
-    const masterRate = parseFloat(
-      commissionRates.masterBroker?.[commType] ||
-      commissionRates.masterBroker?.apertura ||
-      (institution as any)?.masterBrokerCommissionRate ||
-      "0"
-    );
-    const brokerRate = parseFloat(
-      commissionRates.broker?.[commType] ||
-      commissionRates.broker?.apertura ||
-      (institution as any)?.brokerCommissionRate ||
-      "0"
+    const masterBrokerId = credit?.originMasterBrokerId !== undefined
+      ? credit.originMasterBrokerId
+      : ((credit?.finalProposal as any)?.originMasterBrokerId ?? undefined);
+    const isMasterDirect = Boolean(
+      masterBrokerId && credit?.brokerId && String(masterBrokerId) === String(credit.brokerId)
     );
 
-    params = {
+    commissionInput = {
       creditId: credit?.id,
       brokerId: credit?.brokerId,
-      masterBrokerId: masterBrokerId || null,
+      masterBrokerId,
       commissionType: commType,
-      approvedAmount,
-      financieraRate: superAdminRate,
-      masterBrokerRate: masterRate,
-      brokerRate,
+      dispersedAmount: rawAmount,
+      confirmedDisbursedAmount: rawAmount,
       financialInstitutionId: credit?.financialInstitutionId || (institution as any)?.id || null,
+      institutionProductId: credit?.institutionProductId || (credit?.finalProposal as any)?.institutionProductId || (credit?.finalProposal as any)?.offerId || null,
+      versionNumber: (credit?.finalProposal as any)?.versionNumber || null,
+      financieraRate: undefined,
+      masterBrokerRate: undefined,
+      brokerRate: undefined,
       isMasterDirect,
+      strictRateCheck: true,
     };
   }
 
-  const { creditId, brokerId, masterBrokerId, commissionType, approvedAmount, financieraRate, masterBrokerRate, brokerRate, financialInstitutionId } = params;
+  const commission = await calculateAndPersistCascadingCommission(commissionInput);
 
-  let safeBrokerRate = Number.isFinite(brokerRate) && brokerRate > 0 ? brokerRate : 0;
-  const safeMasterRate = Number.isFinite(masterBrokerRate) && masterBrokerRate > 0 ? masterBrokerRate : 0;
-  const safeFinRate = Number.isFinite(financieraRate) && financieraRate > 0 ? financieraRate : 0;
+  const brokerAmount = parseFloat(commission.brokerShare || "0");
+  const masterBrokerAmount = parseFloat(commission.masterBrokerShare || "0");
+  const appAmount = parseFloat(commission.appShare || "0");
+  const totalGrossAmount = parseFloat(commission.amount || "0");
+  const commType = commission.commissionType || "apertura";
 
-  const isMasterDirect = params.isMasterDirect || (masterBrokerId && brokerId === masterBrokerId);
-
-  let brokerAmount = 0;
-  let masterBrokerAmount = 0;
-  let ceilingRate = 0;
-
-  if (isMasterDirect) {
-    // 1. Master Broker registered credit directly:
-    // Receives full master rate (e.g. 3%), and both brokerShare & masterBrokerShare reflect earned amount
-    masterBrokerAmount = (approvedAmount * safeMasterRate) / 100;
-    brokerAmount = masterBrokerAmount;
-    ceilingRate = safeMasterRate;
-  } else if (masterBrokerId) {
-    // 2. Broker belongs to a Master Broker network:
-    // Check if the Master Broker configured custom network rates
-    try {
-      const mbUser = await storage.getUser(masterBrokerId);
-      const networkRates = (mbUser?.networkCommissionRates as any) || {};
-
-      let finId = financialInstitutionId;
-      if (!finId && creditId) {
-        const credit = await storage.getCredit(creditId);
-        finId = credit?.financialInstitutionId;
-      }
-
-      if (finId && networkRates[finId]) {
-        const customRate = networkRates[finId][commissionType] ?? networkRates[finId].apertura;
-        if (customRate !== undefined && !isNaN(parseFloat(customRate))) {
-          safeBrokerRate = Math.min(safeMasterRate, Math.max(0, parseFloat(customRate)));
-          console.log(`[Commission] Applied Master Broker custom network rate: ${safeBrokerRate}% (Ceiling: ${safeMasterRate}%)`);
-        }
-      }
-    } catch (mbErr) {
-      console.warn('[Commission] Could not read MB network rates:', mbErr);
-    }
-
-    // Broker gets their assigned rate
-    brokerAmount = (approvedAmount * safeBrokerRate) / 100;
-
-    // Master Broker gets differential (masterRate - brokerRate)
-    const masterNetRate = Math.max(0, safeMasterRate - safeBrokerRate);
-    masterBrokerAmount = (approvedAmount * masterNetRate) / 100;
-
-    ceilingRate = (safeMasterRate > 0) ? safeMasterRate : safeBrokerRate;
-  } else {
-    // 3. Direct Broker (independent, Casa Matriz):
-    // Broker gets direct rate (e.g. 2%), master gets 0
-    brokerAmount = (approvedAmount * safeBrokerRate) / 100;
-    masterBrokerAmount = 0;
-    ceilingRate = safeBrokerRate;
-  }
-
-  // Platform / Super Admin gets differential (finRate - ceiling)
-  const platformNetRate = Math.max(0, safeFinRate - ceilingRate);
-  const appAmount = (approvedAmount * platformNetRate) / 100;
-
-  // Total gross commission granted by the financial institution
-  const totalGrossAmount = Math.max(
-    isMasterDirect ? masterBrokerAmount + appAmount : brokerAmount + masterBrokerAmount + appAmount,
-    (approvedAmount * safeFinRate) / 100
-  );
-
-  // Check if a commission record already exists for this credit and type
-  const existing = await storage.getCommissions({ creditId });
-  const duplicate = existing.find((c) => c.commissionType === commissionType);
-
-  let commission;
-  if (duplicate) {
-    // Inmutabilidad estricta: comisiones aprobadas, en dispersión o pagadas no pueden recalcularse
-    if (['approved', 'dispersing', 'paid'].includes(duplicate.status)) {
-      console.warn(`[Commission Inmutabilidad] La comisión ${duplicate.id} está en estado '${duplicate.status}'. Queda congelada contra recálculo.`);
-      if (Math.abs(parseFloat(duplicate.amount || '0') - parseFloat(totalGrossAmount.toFixed(2))) > 0.01) {
-        try {
-          await storage.createCommissionAuditLog({
-            commissionId: duplicate.id,
-            action: 'credit_modified_incident',
-            performedBy: params.performedBy || null,
-            previousStatus: duplicate.status,
-            newStatus: duplicate.status,
-            details: {
-              reason: "Intento de recálculo sobre comisión congelada por edición del crédito",
-              frozenAmount: duplicate.frozenAmount || duplicate.amount,
-              attemptedGrossAmount: totalGrossAmount.toFixed(2),
-              attemptedBrokerShare: brokerAmount.toFixed(2),
-              attemptedMasterShare: masterBrokerAmount.toFixed(2),
-            }
-          });
-        } catch (logErr) {
-          console.error('[Commission] Error registrando log de incidencia:', logErr);
-        }
-      }
-      return duplicate;
-    }
-
-    // Si está en 'generated', se permite el recálculo
-    commission = await storage.updateCommission(duplicate.id, {
-      amount: totalGrossAmount.toFixed(2),
-      brokerShare: brokerAmount.toFixed(2),
-      masterBrokerShare: masterBrokerAmount.toFixed(2),
-      appShare: appAmount.toFixed(2),
-    });
-    if (!commission) commission = duplicate;
-
-    try {
-      await storage.createCommissionAuditLog({
-        commissionId: duplicate.id,
-        action: 'recalculated',
-        performedBy: params.performedBy || null,
-        previousStatus: duplicate.status,
-        newStatus: duplicate.status,
-        details: {
-          amount: totalGrossAmount.toFixed(2),
-          brokerShare: brokerAmount.toFixed(2),
-          masterBrokerShare: masterBrokerAmount.toFixed(2),
-          appShare: appAmount.toFixed(2),
-        }
-      });
-    } catch (e) {}
-  } else {
-    const linkedCredit = await storage.getCredit(creditId);
-    let resolvedTenantId = linkedCredit?.tenantId || null;
-    if (!resolvedTenantId && brokerId) {
-      try {
-        const memberships = await storage.getTenantMembersByUser(brokerId);
-        const activeMem = memberships.find((m: any) => m.isActive);
-        if (activeMem) resolvedTenantId = activeMem.tenantId;
-      } catch (e) {}
-    }
-    commission = await storage.createCommission({
-      creditId,
-      tenantId: resolvedTenantId,
-      brokerId,
-      masterBrokerId: masterBrokerId || null,
-      amount: totalGrossAmount.toFixed(2),
-      brokerShare: brokerAmount.toFixed(2),
-      masterBrokerShare: masterBrokerAmount.toFixed(2),
-      appShare: appAmount.toFixed(2),
-      status: "generated",
-      commissionType,
-    });
-
-    try {
-      await storage.createCommissionAuditLog({
-        commissionId: commission.id,
-        action: 'created',
-        performedBy: params.performedBy || null,
-        previousStatus: null,
-        newStatus: 'generated',
-        details: {
-          creditId,
-          tenantId: linkedCredit?.tenantId || null,
-          commissionType,
-          amount: totalGrossAmount.toFixed(2),
-          brokerShare: brokerAmount.toFixed(2),
-          masterBrokerShare: masterBrokerAmount.toFixed(2),
-          appShare: appAmount.toFixed(2),
-          isMasterDirect,
-        }
-      });
-    } catch (e) {}
-  }
-
-  // Notificaciones transparentes con monto real
   if (brokerAmount > 0) {
     try {
       await storage.createNotification({
-        userId: brokerId,
+        userId: commission.brokerId,
         type: 'commission_paid',
         title: 'Nueva comisión generada (Por Aprobar)',
-        message: `Se ha generado tu comisión de ${commissionType} por $${brokerAmount.toLocaleString('es-MX', { minimumFractionDigits: 2 })} MXN en estatus 'Por Aprobar'.`,
+        message: `Se ha generado tu comisión de ${commType} por $${brokerAmount.toLocaleString('es-MX', { minimumFractionDigits: 2 })} MXN en estatus 'Por Aprobar'.`,
         relatedEntityType: 'commission',
         relatedEntityId: commission.id,
       });
-      broadcastToUser(brokerId, {
+      broadcastToUser(commission.brokerId, {
         type: 'commission_update',
         commissionId: commission.id,
         status: commission.status || 'generated',
@@ -409,17 +334,17 @@ export async function createCascadingCommissionRecord(
     }
   }
 
-  if (masterBrokerId && (masterBrokerAmount > 0 || brokerAmount > 0)) {
+  if (commission.masterBrokerId && (masterBrokerAmount > 0 || brokerAmount > 0)) {
     try {
       await storage.createNotification({
-        userId: masterBrokerId,
+        userId: commission.masterBrokerId,
         type: 'commission_paid',
         title: 'Nueva comisión de red generada',
-        message: `Se ha generado una comisión de red de ${commissionType}: $${masterBrokerAmount.toLocaleString('es-MX', { minimumFractionDigits: 2 })} MXN de ganancia neta para tu red.`,
+        message: `Se ha generado una comisión de red de ${commType}: $${masterBrokerAmount.toLocaleString('es-MX', { minimumFractionDigits: 2 })} MXN de ganancia neta para tu red.`,
         relatedEntityType: 'commission',
         relatedEntityId: commission.id,
       });
-      broadcastToUser(masterBrokerId, {
+      broadcastToUser(commission.masterBrokerId, {
         type: 'commission_update',
         commissionId: commission.id,
         status: commission.status || 'generated',
@@ -433,7 +358,7 @@ export async function createCascadingCommissionRecord(
   if (appAmount > 0 || totalGrossAmount > 0) {
     try {
       const allUsers = await storage.getAllUsers();
-      const superAdminUser = allUsers.find(u => u.role === 'super_admin' || u.role === 'admin' || u.email === 'fcb@creditonegocios.com.mx');
+      const superAdminUser = allUsers.find(u => u.role === 'super_admin');
       if (superAdminUser) {
         await storage.createNotification({
           userId: superAdminUser.id,
@@ -456,6 +381,20 @@ export async function createCascadingCommissionRecord(
   }
 
   return commission;
+}
+
+/**
+ * REGLA 3 (FASE 2B.2A.1 / OPE-09 / PAG-05): Helper canónico para verificar si un crédito
+ * cuenta con confirmación expresa de desembolso emitida exclusivamente por Super Admin.
+ */
+export function isCreditDisbursementConfirmed(credit: any): boolean {
+  if (!credit) return false;
+  const prop = (credit.finalProposal as any) || {};
+  return (
+    prop.disbursementStatus === 'confirmed' ||
+    (credit as any).disbursementStatus === 'confirmed' ||
+    prop.disbursementConfirmation?.status === 'confirmed'
+  );
 }
 
 async function ensureCommissionRecord(params: {
@@ -509,8 +448,11 @@ async function ensureCommissionRecord(params: {
   return true;
 }
 
-// Authorization helper for tenant-owned and broker-owned resources (Bloque 4)
-// Validates that a user has permission to access a resource based on tenantId and/or brokerId
+// SEC-P0-02: Tenant membership, tenant slug and a Broker's current Master
+// are not evidence of ownership of a historical financial operation.
+// This legacy helper now permits only the persisted originating Broker or
+// platform administrators. Credit-level historical read access is evaluated
+// separately against immutable originMasterBrokerId.
 async function authorizeTenantOrBrokerResource(params: {
   currentUserId: string;
   resourceBrokerId: string;
@@ -518,55 +460,13 @@ async function authorizeTenantOrBrokerResource(params: {
   currentUserRole?: string;
   tenantContext?: any;
 }): Promise<{ authorized: boolean; reason?: string }> {
-  const { currentUserId, resourceBrokerId, resourceTenantId, currentUserRole, tenantContext } = params;
-  
-  // 1. Admins and super_admins have full access
-  if (currentUserRole === 'admin' || currentUserRole === 'super_admin') {
-    return { authorized: true };
-  }
-
-  // 2. Tenant-based authorization (organizational boundary)
-  if (resourceTenantId) {
-    // If active tenant matches resource tenant
-    if (tenantContext?.tenant?.id === resourceTenantId) {
-      return { authorized: true };
-    }
-    
-    // Check if user is an active member of the resource's tenant
-    const membership = await storage.getUserTenantMembership(currentUserId, resourceTenantId);
-    if (membership && membership.isActive) {
-      return { authorized: true };
-    }
-
-    // Master broker hierarchy: check if user belongs to a parent master broker tenant
-    const callerMemberships = await storage.getTenantMembersByUser(currentUserId);
-    for (const m of callerMemberships) {
-      if (m.isActive) {
-        const callerTenant = await storage.getTenant(m.tenantId);
-        if (callerTenant && callerTenant.type === 'master_broker') {
-          const subordinates = await storage.getTenantsByParent(callerTenant.id);
-          if (subordinates.some(sub => sub.id === resourceTenantId)) {
-            return { authorized: true };
-          }
-        }
-      }
-    }
-  }
-
-  // 3. Same user owns the resource directly (broker attribution)
-  if (currentUserId === resourceBrokerId) {
-    return { authorized: true };
-  }
-  
-  // 4. Master brokers can access resources owned by their network brokers (legacy)
-  if (currentUserRole === 'master_broker') {
-    const resourceBroker = await storage.getUser(resourceBrokerId);
-    if (resourceBroker && resourceBroker.masterBrokerId === currentUserId) {
-      return { authorized: true };
-    }
-  }
-  
-  return { authorized: false, reason: 'Access denied. You can only access resources within your organization.' };
+  const authorized = canEditCreditByOrigin(
+    { id: params.currentUserId, role: params.currentUserRole },
+    { brokerId: params.resourceBrokerId }
+  );
+  return authorized
+    ? { authorized: true }
+    : { authorized: false, reason: "Access denied: resource owner required." };
 }
 
 async function authorizeBrokerResource(params: {
@@ -594,25 +494,133 @@ async function authorizeClientAccess(
   });
 }
 
-// Helper to check if user can access a credit
-async function authorizeCreditAccess(userId: string, userRole: string, creditId: string, tenantContext?: any): Promise<{ authorized: boolean; credit?: any; reason?: string }> {
-  const credit = await storage.getCredit(creditId);
-  if (!credit) {
-    return { authorized: false, reason: 'Credit not found' };
+/**
+ * PRE-P0: resolve an existing client against the caller's commercial and
+ * tenant scope BEFORE creating a new credit/submission/linked mortgage lead.
+ *
+ * Origination and Broker formalization are necessary but not sufficient:
+ * knowing another client's UUID must never be a write capability.
+ * Administrative platform operations are intentionally allowed in their
+ * own name; delegated origination also checks the effective Broker's link.
+ */
+async function validateClientOriginationAccess(params: {
+  clientId: unknown;
+  callerUser: any;
+  effectiveBrokerId: string | null | undefined;
+  tenantContext?: any;
+}): Promise<{ allowed: boolean; statusCode?: number; code?: string; message?: string }> {
+  const { clientId, callerUser, effectiveBrokerId, tenantContext } = params;
+  if (typeof clientId !== "string" || !clientId.trim()) {
+    return { allowed: false, statusCode: 400, code: "CLIENT_ID_REQUIRED", message: "Debes seleccionar un cliente válido." };
   }
-  
-  const authResult = await authorizeTenantOrBrokerResource({
-    currentUserId: userId,
-    resourceBrokerId: credit.brokerId,
-    resourceTenantId: credit.tenantId,
-    currentUserRole: userRole,
-    tenantContext,
-  });
-  
-  return { ...authResult, credit };
+  const client = await storage.getClient(clientId);
+  if (!client) {
+    return { allowed: false, statusCode: 404, code: "CLIENT_NOT_FOUND", message: "Cliente no encontrado." };
+  }
+  if (!callerUser?.id || !effectiveBrokerId) {
+    return { allowed: false, statusCode: 403, code: "CLIENT_ORIGINATION_NOT_AUTHORIZED", message: "Originador no autorizado." };
+  }
+
+  const isPlatformAdmin = callerUser.role === "super_admin" || callerUser.role === "admin";
+  if (!isPlatformAdmin) {
+    const access = await authorizeClientAccess(callerUser.id, callerUser.role, clientId, tenantContext);
+    if (!access.authorized || !access.capabilities.canViewBasicProfile) {
+      return { allowed: false, statusCode: 403, code: "CLIENT_ORIGINATION_NOT_AUTHORIZED", message: "No puedes originar operaciones para este cliente." };
+    }
+  }
+
+  // A delegated Broker must have its own legitimate link to the client; an
+  // admin's or a Master's broad visibility alone cannot invent origination.
+  if (effectiveBrokerId !== callerUser.id) {
+    const effectiveBroker = await storage.getUser(effectiveBrokerId);
+    if (!effectiveBroker) {
+      return { allowed: false, statusCode: 403, code: "CLIENT_ORIGINATION_NOT_AUTHORIZED", message: "Originador no válido." };
+    }
+    if (effectiveBroker.role === "broker" || effectiveBroker.role === "master_broker") {
+      const brokerAccess = await authorizeClientAccess(
+        effectiveBroker.id, effectiveBroker.role, clientId
+      );
+      if (!brokerAccess.authorized || !brokerAccess.capabilities.canViewBasicProfile) {
+        return { allowed: false, statusCode: 403, code: "CLIENT_ORIGINATION_NOT_AUTHORIZED", message: "El Broker originador no tiene vínculo comercial con este cliente." };
+      }
+    }
+  }
+  return { allowed: true };
 }
 
-// Helper to check if user can access a document
+/**
+ * SEC-P0: validate both a document's client and credit destination before
+ * storing or reassigning a file. A supplied UUID never grants write access.
+ * Keep a historical originating Broker's own client upload available, while
+ * Master's oversight-only and unrelated Broker access remain read-only.
+ */
+async function validateDocumentWriteDestination(params: {
+  userId: string;
+  userRole: string;
+  tenantContext?: any;
+  clientId?: string | null;
+  creditId?: string | null;
+}): Promise<{ allowed: boolean; statusCode?: number; code?: string; message?: string;
+  client?: any; credit?: any }> {
+  const { userId, userRole, tenantContext, clientId, creditId } = params;
+  let credit: any = null;
+  if (creditId) {
+    const access = await authorizeCreditAccess(userId, userRole, creditId, tenantContext, "write");
+    if (!access.authorized || !access.credit) {
+      return { allowed: false, statusCode: access.reason === "Credit not found" ? 404 : 403,
+        code: "DOCUMENT_CREDIT_NOT_AUTHORIZED", message: "No tienes acceso al crédito indicado." };
+    }
+    credit = access.credit;
+  }
+  if (clientId && credit && credit.clientId !== clientId) {
+    return { allowed: false, statusCode: 409, code: "DOCUMENT_CLIENT_CREDIT_MISMATCH",
+      message: "El crédito no pertenece al cliente seleccionado." };
+  }
+  const effectiveClientId = clientId || credit?.clientId;
+  if (!effectiveClientId) return { allowed: true, credit };
+  const auth = await authorizeClientAccess(userId, userRole, effectiveClientId, tenantContext);
+  if (!auth.authorized || !auth.client) {
+    return { allowed: false, statusCode: auth.reason === "Client not found" ? 404 : 403,
+      code: "DOCUMENT_CLIENT_NOT_AUTHORIZED", message: "No tienes acceso al expediente del cliente." };
+  }
+  const historicalOwner = auth.scope === "historical_scoped" && auth.client.brokerId === userId;
+  if (!auth.capabilities.canUploadDocuments && !historicalOwner) {
+    return { allowed: false, statusCode: 403, code: "DOCUMENT_CLIENT_NOT_AUTHORIZED",
+      message: "Este nivel de acceso no permite agregar documentos al expediente." };
+  }
+  return { allowed: true, client: auth.client, credit };
+}
+
+// Helper to check if user can access a credit
+async function authorizeCreditAccess(
+  userId: string,
+  userRole: string,
+  creditId: string,
+  _tenantContext?: any,
+  mode: "read" | "write" = "read"
+): Promise<{ authorized: boolean; credit?: any; reason?: string }> {
+  const credit = await storage.getCredit(creditId);
+  if (!credit) {
+    return { authorized: false, reason: "Credit not found" };
+  }
+  const principal = { id: userId, role: userRole };
+  // Historical Master can READ records originated under that Master but
+  // cannot EDIT an operation directly owned by its originating Broker.
+  // A later Master never acquires old access through network membership.
+  const authorized = mode === "write"
+    ? canEditCreditByOrigin(principal, credit)
+    : canViewCreditByOrigin(principal, credit);
+  return {
+    authorized,
+    credit,
+    ...(!authorized ? { reason: "Access denied: credit origin scope required." } : {}),
+  };
+}
+
+// SEC-P0-03: A client's current network is NOT proof of document ownership.
+// For credit-attached documents enforce immutable credit origin; for unlinked
+// documents admit only their persisted creator/uploader. This helper protects
+// both direct download/file routes and list endpoints.
 async function authorizeDocumentAccess(
   userId: string,
   userRole: string,
@@ -620,58 +628,36 @@ async function authorizeDocumentAccess(
   tenantContext?: any
 ): Promise<{ authorized: boolean; document?: any; reason?: string }> {
   const document = await storage.getDocument(documentId);
-  if (!document) {
-    return { authorized: false, reason: 'Document not found' };
-  }
-
-  // Admins have full access
-  if (userRole === 'admin' || userRole === 'super_admin') {
+  if (!document) return { authorized: false, reason: "Document not found" };
+  if (userRole === "admin" || userRole === "super_admin") {
     return { authorized: true, document };
   }
 
-  // If the document is linked to a client, evaluate decoupled commercial governance access
+  const principal = { id: userId, role: userRole };
+  if (document.creditId) {
+    const credit = await storage.getCredit(document.creditId);
+    // The immutable origin of a credit is sufficient to read its linked
+    // document, even after its Broker left the historical Master's network.
+    // Current client ownership must never override that provenance.
+    if (!canReadDocumentByOrigin(principal, document, credit)) {
+      return { authorized: false, document, reason: "Document credit origin not accessible" };
+    }
+    return { authorized: true, document };
+  }
+
   if (document.clientId) {
-    const authResult = await authorizeClientAccess(userId, userRole, document.clientId, tenantContext);
-    if (!authResult.authorized) {
-      return { authorized: false, document, reason: authResult.reason || 'Access denied' };
+    const clientScope = await authorizeClientAccess(userId, userRole, document.clientId, tenantContext);
+    if (!clientScope.authorized) {
+      return { authorized: false, document, reason: "Client not accessible" };
     }
+  }
 
-    const userCredits = await storage.getCredits({ clientId: document.clientId, brokerId: userId });
-    const userCreditIds = userCredits.map((c) => c.id);
-
-    const canAccess = commercialAuthorizationService.canAccessDocument(
-      authResult,
-      document,
-      userId,
-      userCreditIds
-    );
-
-    if (!canAccess) {
-      return {
-        authorized: false,
-        document,
-        reason: 'Acceso denegado: este documento corresponde a operaciones de otro asesor comercial.',
-      };
-    }
-
+  // No reliable historical Master attribution exists for unlinked files.
+  if (canReadDocumentByOrigin(principal, document)) {
     return { authorized: true, document };
   }
-  
-  // Document has tenantId or brokerId (non-client orphan document)
-  if (document.tenantId || document.brokerId) {
-    const authResult = await authorizeTenantOrBrokerResource({
-      currentUserId: userId,
-      resourceBrokerId: document.brokerId || '',
-      resourceTenantId: document.tenantId,
-      currentUserRole: userRole,
-      tenantContext,
-    });
-    return { ...authResult, document };
-  }
-  
-  return { authorized: false, document, reason: 'Access denied' };
+  return { authorized: false, document, reason: "Document owner required" };
 }
-
 
 // Helper function to resolve product template with cascading fallbacks (#6)
 async function resolveProductTemplate(productTemplateId?: string | null, fallbackPurpose?: string | null) {
@@ -699,6 +685,191 @@ async function resolveProductTemplate(productTemplateId?: string | null, fallbac
   return productTemplate;
 }
 
+/**
+ * ASTRA-01: Authorization for one concrete submission, NOT a general client or
+ * shared-tenant membership. Moving a Broker to another Master never gives the
+ * new network access to operations historically originated for the old Master.
+ */
+function canReadCreditSubmission(user: any, submission: any): boolean {
+  return canViewSubmissionByOrigin(user, submission);
+}
+
+/** ASTRA-02: positive projections prevent password/CLABE and internal margins escaping. */
+function projectSubmissionPerson(person: any) {
+  if (!person) return null;
+  return {
+    id: person.id,
+    firstName: person.firstName,
+    lastName: person.lastName,
+    email: person.email,
+    role: person.role,
+    brandName: person.brandName || null,
+    isActive: person.isActive,
+  };
+}
+
+/**
+ * COM-28 shared financial gate: newly created credits and winner/dispersal
+ * routes must not bypass the versioned economic acceptance. Superseded
+ * snapshots remain historical (no retroactive acceptance).
+ */
+async function checkOfferCommissionAcceptanceForNewOperation(args: {
+  offerId: unknown;
+  versionNumber: unknown;
+  brokerId: string | null | undefined;
+  originMasterBrokerId?: string | null;
+  snapshotRecordedAt?: string | Date | null;
+}): Promise<{ code: string; message: string; offerId?: string; versionNumber?: number; pendingFor?: string } | null> {
+  if (!args.offerId && args.versionNumber == null) return null; // legacy unversioned operation
+  if (typeof args.offerId !== "string" || !args.offerId.trim() ||
+      !Number.isSafeInteger(Number(args.versionNumber)) || Number(args.versionNumber) <= 0) {
+    return { code: "OFFER_VERSION_IDENTITY_INCOMPLETE", message: "Falta una identidad válida de oferta y versión." };
+  }
+  const offerId = args.offerId;
+  const versionNumber = Number(args.versionNumber);
+  const product = await storage.getInstitutionProduct(offerId);
+  if (!product) return { code: "OFFER_NOT_FOUND", message: "La oferta económica ya no existe." };
+  const versions = await storage.getInstitutionProductVersions(offerId);
+  const chosen = versions.find(v => v.versionNumber === versionNumber);
+  if (!chosen || !["published", "superseded"].includes(chosen.status)) {
+    return { code: "OFFER_VERSION_NOT_PUBLISHED", message: "La versión económica no está publicada." };
+  }
+  if (chosen.status === "superseded") {
+    // Only a quote/proposal evidenced BEFORE this version was superseded
+    // qualifies for grandfathering. A newly submitted direct credit must not
+    // pick old economics simply to bypass a new acceptance requirement.
+    if (isQuoteHistoricallyFrozen(chosen, args.snapshotRecordedAt)) {
+      return null;
+    }
+    return { code: "OFFER_VERSION_SUPERSEDED_NEW_OPERATION",
+      message: "Sólo se conservan las condiciones antiguas en propuestas con registro anterior verificable." };
+  }
+  if (!args.brokerId) return { code: "MISSING_ORIGIN_BROKER", message: "Sin Broker originador para aceptar condiciones." };
+  const primary = await storage.getUser(args.brokerId);
+  if (!primary) return { code: "OFFER_ACCEPTANCE_ORIGINATOR_UNAVAILABLE", message: "Originador no disponible." };
+  if (primary.role === "broker" && primary.masterBrokerId && !args.originMasterBrokerId) {
+    const parent = await storage.getUser(primary.masterBrokerId);
+    if (!parent) return {
+      code: "OFFER_MASTER_AFFILIATION_UNVERIFIED",
+      message: "La afiliación comercial no pudo verificarse.",
+    };
+    if (parent.role === "master_broker") {
+      // A missing historical Master cannot be silently replaced by the current
+      // Master or classified as a directly paid Broker.
+      return { code: "MISSING_ORIGIN_MASTER_FOR_OFFER",
+        message: "La operación requiere una atribución histórica de Master verificable." };
+    }
+  }
+  // CN pays Master for network operations; the network Broker has a separate
+  // contractual acceptance with that Master. Never require the Broker to
+  // accept wholesale network rates or approve the same money twice.
+  const ids = args.originMasterBrokerId
+    ? [args.originMasterBrokerId]
+    : [args.brokerId];
+  for (const userId of ids) {
+    const responsibleUser = userId === primary.id ? primary : await storage.getUser(userId);
+    if (!responsibleUser) {
+      return { code: "OFFER_ACCEPTANCE_ORIGINATOR_UNAVAILABLE", message: "Beneficiario histórico no disponible." };
+    }
+    const status = await getOfferCommissionStatus(storage, responsibleUser, offerId, versionNumber);
+    if (status.pending) {
+      return {
+        code: "OFFER_COMMISSION_ACCEPTANCE_REQUIRED",
+        message: "Se requiere aceptar las condiciones económicas vigentes antes de avanzar con esta operación.",
+        offerId, versionNumber,
+        pendingFor: responsibleUser.role === "master_broker" ? "master_broker" : "broker",
+      };
+    }
+  }
+  return null;
+}
+
+/**
+ * FIN-P0: Keep the exact published product/version from the institution's
+ * offer. Never guess an offer from only financialInstitutionId and never
+ * accept client-supplied commission allocation as a commercial authority.
+ */
+async function validateTargetOfferVersion(
+  target: { financialInstitutionId: string; institutionProposal: unknown },
+  proposal: Record<string, any>,
+): Promise<Record<string, any>> {
+  const incoming = readFrozenOfferLineage(proposal);
+  const previous = readFrozenOfferLineage(target.institutionProposal);
+  if (previous && (!incoming ||
+      previous.institutionProductId !== incoming.institutionProductId ||
+      previous.versionNumber !== incoming.versionNumber)) {
+    throw new Error("OFFER_VERSION_IDENTITY_MISMATCH");
+  }
+  if (!incoming) {
+    // Historical institution-only proposals remain READABLE. A NEW proposal
+    // cannot omit the exact published offer/version after the institution has
+    // an active published catalog; otherwise the commission gate is bypassed.
+    const catalog = await storage.getInstitutionProducts();
+    const hasPublished = catalog.some(p =>
+      p.institutionId === target.financialInstitutionId &&
+      p.status === "published" && p.isActive !== false);
+    if (hasPublished) throw new Error("OFFER_VERSION_REQUIRED_FOR_PUBLISHED_INSTITUTION");
+    return proposal; // Legacy institutions with no published catalog yet.
+  }
+  const product = await storage.getInstitutionProduct(incoming.institutionProductId);
+  if (!product || product.institutionId !== target.financialInstitutionId) {
+    throw new Error("OFFER_VERSION_INSTITUTION_MISMATCH");
+  }
+  const versions = await storage.getInstitutionProductVersions(incoming.institutionProductId);
+  const version = versions.find(v => v.versionNumber === incoming.versionNumber);
+  if (!version || (version.status !== "published" &&
+      !(previous && version.status === "superseded"))) {
+    throw new Error("OFFER_VERSION_NOT_PUBLISHED");
+  }
+  const conditions = (version.conditions || {}) as Record<string, unknown>;
+  return {
+    ...proposal,
+    institutionProductId: incoming.institutionProductId,
+    versionNumber: incoming.versionNumber,
+    // Server-owned, version-specific rates: never take a rate map from the request.
+    ...(conditions.commissionRates && typeof conditions.commissionRates === "object"
+      ? { commissionRates: conditions.commissionRates } : {}),
+  };
+}
+
+function projectSubmissionInstitution(institution: any) {
+  if (!institution) return null;
+  // Only contextual public information; use the official admin financial
+  // endpoints for privileged institutional/commercial details.
+  const keys = ["id", "name", "logoUrl", "category", "description", "isActive"];
+  const safe: Record<string, any> = {};
+  for (const key of keys) {
+    if (Object.prototype.hasOwnProperty.call(institution, key)) safe[key] = institution[key];
+  }
+  return safe;
+}
+
+function projectSubmissionTarget(target: any, userRole?: string) {
+  if (!target) return target;
+  const { adminNotes, details, reviewedBy, institutionProposal, institution, ...publicFields } = target;
+  const cleanProposal = institutionProposal && typeof institutionProposal === "object"
+    ? { ...institutionProposal } : institutionProposal;
+  if (cleanProposal && typeof cleanProposal === "object" && userRole !== "super_admin") {
+    for (const key of ["commissionRates", "platformNet", "platformMargin",
+       "platformGrossMargin", "internalNotes", "overRate", "sobretasa"]) {
+      delete cleanProposal[key];
+    }
+  }
+  return {
+    ...publicFields,
+    ...(userRole === "super_admin" || userRole === "admin"
+      ? { adminNotes, details, reviewedBy } : {}),
+    institutionProposal: cleanProposal,
+    institution: projectSubmissionInstitution(institution),
+  };
+}
+
+// SEC-P0-05: One shared projection for winner credits, lists, creation and
+// updates; never serialize internal rate/margin/sobretasa data to intermediaries.
+function projectSubmissionCredit(credit: any, userRole?: string) {
+  return projectCreditForRole(credit, userRole);
+}
+
 // Helper function to enrich credit submission target with related data
 async function enrichCreditSubmissionTarget(target: any) {
   const request = await storage.getCreditSubmissionRequest(target.requestId);
@@ -716,19 +887,33 @@ async function enrichCreditSubmissionTarget(target: any) {
   }
   
   const productTemplate = await resolveProductTemplate(request.productTemplateId, request.purpose);
-  
+
+  let targetCredit = target.creditId ? await storage.getCredit(target.creditId) : null;
+  const targetProp = (targetCredit?.finalProposal as any) || (target.institutionProposal as any) || {};
+  const isConfirmed = targetProp.disbursementStatus === 'confirmed' ||
+    (targetCredit as any)?.disbursementStatus === 'confirmed' ||
+    targetProp.disbursementConfirmation?.status === 'confirmed';
+  const targetDisbursementStatus = isConfirmed
+    ? 'confirmed'
+    : ((target.status === 'dispersed' || targetProp.disbursementStatus === 'reported') ? 'reported' : 'unconfirmed');
+  const targetConfirmedDisbursedAmount = targetProp.disbursementConfirmation?.confirmedAmount ??
+    (targetCredit as any)?.confirmedDisbursedAmount ?? null;
+
   return {
     ...target,
+    disbursementStatus: targetDisbursementStatus,
+    isDisbursementConfirmed: isConfirmed,
+    confirmedDisbursedAmount: targetConfirmedDisbursedAmount,
     request: {
       ...request,
-      broker,
+      broker: projectSubmissionPerson(broker),
       client,
       productTemplate
     },
-    broker,
-    masterBroker,
+    broker: projectSubmissionPerson(broker),
+    masterBroker: projectSubmissionPerson(masterBroker),
     client,
-    institution,
+    institution: projectSubmissionInstitution(institution),
     productTemplate
   };
 }
@@ -764,20 +949,238 @@ async function authorizeTenantAccess(params: {
 }
 
 async function requirePlatformRole(userId: string, allowedRoles: string[]): Promise<boolean> {
-  let user = await storage.getUser(userId);
-  
-  // Fallback: If user not found by ID, try to get super admin for development
-  if (!user) {
-    user = await storage.getUserByEmail("admin@brokerapp.mx");
-  }
-  
+  if (!userId) return false;
+  const user = await storage.getUser(userId);
   return user ? allowedRoles.includes(user.role) : false;
 }
 
+function sanitizeCommercialOffer(product: any, userRole?: string) {
+  if (!product) return product;
+  const { createdBy, ...commercialOffer } = product;
+
+  // Preservar RBAC: Sanitizar comisiones individuales y condiciones económicas internas (B2.2 / B3 / B3.1)
+  if (commercialOffer.configuration && typeof commercialOffer.configuration === "object") {
+    const config = { ...commercialOffer.configuration };
+    if (config.commissionRates && typeof config.commissionRates === "object") {
+      const rawRates = config.commissionRates as Record<string, any>;
+      if (userRole === "super_admin") {
+        // EXCLUSIVO Super Admin (B3.1): Super Admin ve las condiciones económicas completas (incluyendo sobretasas internas)
+        config.commissionRates = rawRates;
+      } else if (userRole === "admin") {
+        // Admin: ve comisiones comerciales pero NUNCA sobretasas internas
+        const sanitized: Record<string, any> = JSON.parse(JSON.stringify(rawRates));
+        if (sanitized.financiera) delete sanitized.financiera.sobretasa;
+        if (sanitized.masterBroker) delete sanitized.masterBroker.sobretasa;
+        if (sanitized.broker) delete sanitized.broker.sobretasa;
+        if (sanitized.superAdmin) delete sanitized.superAdmin.sobretasa;
+        delete sanitized.platformNet;
+        delete sanitized.platformMargin;
+        delete sanitized.channels;
+        delete sanitized.internal;
+        config.commissionRates = sanitized;
+      } else if (userRole === "master_broker") {
+        // Master Broker solo ve tiers masterBroker y broker, NUNCA financiera, superAdmin, platformNet, notas internas NI sobretasas
+        const sanitized: Record<string, any> = {};
+        if (rawRates.masterBroker) {
+          const { sobretasa, ...cleanMb } = rawRates.masterBroker;
+          sanitized.masterBroker = cleanMb;
+        }
+        if (rawRates.broker) {
+          const { sobretasa, ...cleanBrk } = rawRates.broker;
+          sanitized.broker = cleanBrk;
+        }
+        if (rawRates.type) sanitized.type = rawRates.type;
+        config.commissionRates = sanitized;
+      } else if (userRole === "broker") {
+        // Broker directo solo ve su tier broker autorizado, NUNCA masterBroker, financiera, platformNet, notas internas NI sobretasas
+        const sanitized: Record<string, any> = {};
+        if (rawRates.broker) {
+          const { sobretasa, ...cleanBrk } = rawRates.broker;
+          sanitized.broker = cleanBrk;
+        }
+        if (rawRates.type) sanitized.type = rawRates.type;
+        config.commissionRates = sanitized;
+      } else {
+        // Usuarios no comerciales o públicos: no exponer comisiones
+        delete config.commissionRates;
+      }
+    }
+
+    // Sobretasas exclusivas de Super Admin (B3.1): limpiar cualquier residuo en configuration si no es super_admin
+    if (userRole !== "super_admin") {
+      delete config.overrateCommissionRate;
+      delete config.overRate;
+      delete config.sobretasa;
+      if (config.commissionRates) {
+        if (config.commissionRates.financiera) delete config.commissionRates.financiera.sobretasa;
+        if (config.commissionRates.masterBroker) delete config.commissionRates.masterBroker.sobretasa;
+        if (config.commissionRates.broker) delete config.commissionRates.broker.sobretasa;
+        if (config.commissionRates.superAdmin) delete config.commissionRates.superAdmin.sobretasa;
+      }
+    }
+
+    commercialOffer.configuration = config;
+  }
+
+  // Sobretasas exclusivas de Super Admin (B3.1): limpiar de raíz en producto comercial
+  if (userRole !== "super_admin") {
+    delete commercialOffer.overrateCommissionRate;
+    delete commercialOffer.overRate;
+    delete commercialOffer.sobretasa;
+  }
+
+  return commercialOffer;
+}
+
+const COMMERCIAL_FINANCIAL_INSTITUTION_FIELDS = [
+  "id",
+  "name",
+  "logoUrl",
+  "category",
+  "contactPerson",
+  "email",
+  "phone",
+  "street",
+  "number",
+  "interior",
+  "city",
+  "postalCode",
+  "state",
+  "description",
+  "additionalCosts",
+  "requirements",
+  "products",
+  "acceptedProfiles",
+  "applicationProcess",
+  "estimatedTimeframes",
+  "approvalTips",
+  "requiredDocuments",
+  "isActive",
+  "createdAt",
+  "updatedAt",
+] as const;
+
+function projectFinancialInstitutionByRole(institution: any, userRole: string, masterBrokerRates?: any): any {
+  if (!institution) return institution;
+  
+  // EXCLUSIVO Super Admin (B3.1): Solo Super Admin ve sobretasas internas y configuración completa
+  if (userRole === 'super_admin') {
+    return institution;
+  }
+
+  // Admin tiene acceso administrativo pero NUNCA a sobretasas (B3.1: exclusivas de super_admin)
+  if (userRole === 'admin') {
+    const adminCopy: Record<string, any> = {};
+    for (const key of COMMERCIAL_FINANCIAL_INSTITUTION_FIELDS) {
+      if (Object.prototype.hasOwnProperty.call(institution, key)) {
+        adminCopy[key] = institution[key];
+      }
+    }
+    // Admin may inspect network-facing rates but never platform margins,
+    // internal notes, overrides or financial institution gross commission.
+    if (institution.commissionRates && typeof institution.commissionRates === "object") {
+      adminCopy.commissionRates = institution.commissionRates;
+    }
+    if (institution.brokerCommissionRate !== undefined) {
+      adminCopy.brokerCommissionRate = institution.brokerCommissionRate;
+    }
+    if (institution.masterBrokerCommissionRate !== undefined) {
+      adminCopy.masterBrokerCommissionRate = institution.masterBrokerCommissionRate;
+    }
+    // El rol Admin estándar no hereda acceso a margenes internos/sobretasas.
+    delete adminCopy.commissionRate;
+    delete adminCopy.openingCommissionRate;
+    delete adminCopy.platformMargin;
+    delete adminCopy.appShare;
+    delete adminCopy.platformCommissionRate;
+    delete adminCopy.overrateCommissionRate;
+    delete adminCopy.overRate;
+    delete adminCopy.sobretasa;
+    if (adminCopy.commissionRates && typeof adminCopy.commissionRates === 'object') {
+      const sanitized = JSON.parse(JSON.stringify(adminCopy.commissionRates));
+      if (sanitized.financiera) delete sanitized.financiera.sobretasa;
+      if (sanitized.masterBroker) delete sanitized.masterBroker.sobretasa;
+      if (sanitized.broker) delete sanitized.broker.sobretasa;
+      if (sanitized.superAdmin) delete sanitized.superAdmin.sobretasa;
+      delete sanitized.financiera;
+      delete sanitized.superAdmin;
+      delete sanitized.platform;
+      delete sanitized.app;
+      delete sanitized.internal;
+      delete sanitized.platformNet;
+      delete sanitized.platformMargin;
+      // Channel margins belong exclusively to Super Admin.
+      delete sanitized.channels;
+      adminCopy.commissionRates = sanitized;
+    }
+    return adminCopy;
+  }
+
+  // Explicit whitelist projection for non-administrative roles (no notes, createdBy, createdByAdmin)
+  const projected: Record<string, any> = {};
+  for (const field of COMMERCIAL_FINANCIAL_INSTITUTION_FIELDS) {
+    if (field in institution) {
+      projected[field] = institution[field];
+    }
+  }
+
+  const rawRates = (institution.commissionRates as any) || {};
+
+  if (userRole === 'master_broker') {
+    // Master Broker only sees masterBroker and broker tiers, never internal platform / superAdmin commissions nor sobretasas
+    const sanitizedRates: Record<string, any> = {};
+    if (rawRates.masterBroker) {
+      const { sobretasa, ...cleanMb } = rawRates.masterBroker;
+      sanitizedRates.masterBroker = cleanMb;
+    }
+    if (rawRates.broker) {
+      const { sobretasa, ...cleanBrk } = rawRates.broker;
+      sanitizedRates.broker = cleanBrk;
+    }
+    projected.commissionRates = sanitizedRates;
+
+    // Legacy fields: only expose commercial broker rates, never platform commissionRate / openingCommissionRate / overrateCommissionRate
+    if (institution.masterBrokerCommissionRate !== undefined) {
+      projected.masterBrokerCommissionRate = institution.masterBrokerCommissionRate;
+    }
+    if (institution.brokerCommissionRate !== undefined) {
+      projected.brokerCommissionRate = institution.brokerCommissionRate;
+    }
+  } else {
+    // Broker & other commercial roles: only broker commission rate, customized if assigned by Master Broker (no sobretasas)
+    let brokerRate = rawRates.broker ? { ...rawRates.broker } : {};
+    if (masterBrokerRates && masterBrokerRates[institution.id] && masterBrokerRates[institution.id].apertura !== undefined) {
+      brokerRate = {
+        ...brokerRate,
+        apertura: masterBrokerRates[institution.id].apertura,
+        renovacion: masterBrokerRates[institution.id].renovacion ?? brokerRate.renovacion,
+      };
+    }
+    const { sobretasa, ...cleanBrokerRate } = brokerRate;
+    projected.commissionRates = { broker: cleanBrokerRate };
+
+    // Legacy fields: only brokerCommissionRate, never masterBrokerCommissionRate or platform commissionRate
+    if (institution.brokerCommissionRate !== undefined) {
+      projected.brokerCommissionRate = institution.brokerCommissionRate;
+    }
+  }
+
+  // Sobretasas exclusivas de Super Admin (B3.1): limpiar de raíz cualquier sobretasa residual en institución proyectada
+  delete projected.overrateCommissionRate;
+  delete projected.overRate;
+  delete projected.sobretasa;
+
+  return projected;
+}
+
+const sanitizeFinancialInstitutionCommissions = projectFinancialInstitutionByRole;
+
 // STP Payment simulation
 async function processStpPayment(amount: string, accountNumber: string) {
-  // Simulate STP payment processing
-  await new Promise(resolve => setTimeout(resolve, 2000));
+  // Simulate STP payment processing (skip delay in tests)
+  if (process.env.NODE_ENV !== 'test') {
+    await new Promise(resolve => setTimeout(resolve, 2000));
+  }
   const failureRate = Number.parseFloat(process.env.STP_SIMULATE_FAILURE_RATE || "0");
   const normalizedFailureRate = Number.isFinite(failureRate)
     ? Math.min(Math.max(failureRate, 0), 1)
@@ -811,13 +1214,32 @@ export async function registerRoutes(app: Express): Promise<Server> {
       ]);
 
       const userCount = Number(dbCheck.rows[0]?.user_count ?? 0);
-
+      let schemaReadiness;
+      try {
+        schemaReadiness=await checkPrelaunchSchemaReadiness(pool);
+      } catch (schemaError) {
+        console.error("[HEALTH] Prelaunch schema query failed:",schemaError);
+        return res.status(503).json({
+          status:"degraded",
+          services:{api:"ok",database:"ok",usersTable:"ok",schema:"error"},
+          timestamp:new Date().toISOString(),
+        });
+      }
+      if(!schemaReadiness.ready){
+        console.error("[HEALTH] Incomplete schema: missing column count",schemaReadiness.missingCount);
+        return res.status(503).json({
+          status:"degraded",
+          services:{api:"ok",database:"ok",usersTable:"ok",schema:"error"},
+          timestamp:new Date().toISOString(),
+        });
+      }
       res.json({
         status: 'ok',
         services: {
           api: 'ok',
           database: 'ok',
           usersTable: 'ok',
+          schema: 'ok',
         },
         userCount,
         timestamp: new Date().toISOString(),
@@ -838,8 +1260,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Auth middleware
   await setupAuth(app);
 
+  // Register legal routes after session/Passport initialization
+  registerLegalRoutes(app);
+  registerClientConsentPublicRoutes(app);
+
   // Tenant context middleware - must be after auth setup
   app.use(tenantContextMiddleware);
+
+  // Super Admin-only broker network lifecycle routes.
+  registerBrokerNetworkTransitionRoutes(app);
 
   // Auth routes
   app.get('/api/auth/user', isAuthenticated, async (req: any, res) => {
@@ -855,8 +1284,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       
       const memberships = await storage.getTenantMembersByUser(userId);
+      // The authenticated account must never receive password hashes or reset bearer
+      // tokens in its profile JSON; the SPA has no legitimate need for these.
+      const safeUser: Record<string, unknown> = { ...user };
+      delete safeUser.password;
+      delete safeUser.resetToken;
+      delete safeUser.resetTokenExpiry;
       res.json({
-        ...user,
+        ...safeUser,
         memberships,
       });
     } catch (error) {
@@ -960,11 +1395,37 @@ export async function registerRoutes(app: Express): Promise<Server> {
     lastName: z.string().min(1, "Apellido requerido"),
     referralCode: z.string().optional(), // Clave de Franquicia del Master Broker
     promoCode: z.string().optional(), // Código promocional (beneficio comercial)
+    acceptTerms: z.literal(true, {
+      errorMap: () => ({ message: "Debes aceptar los Términos y Condiciones para continuar." }),
+    }),
+    termsVersion: z.string({
+      required_error: "La versión de Términos y Condiciones es requerida",
+      invalid_type_error: "La versión de Términos y Condiciones es requerida",
+    }),
+    acknowledgePrivacy: z.literal(true, {
+      errorMap: () => ({ message: "Debes confirmar que has leído el Aviso de Privacidad para continuar." }),
+    }),
+    privacyVersion: z.string({
+      required_error: "La versión del Aviso de Privacidad es requerida",
+      invalid_type_error: "La versión del Aviso de Privacidad es requerida",
+    }),
   });
 
   app.post('/api/auth/register', authMutationLimiter, async (req: any, res) => {
     try {
       const data = registerSchema.parse(req.body);
+
+      // Validate legal confirmations and active versions
+      const legalValidation = validateRegistrationAcceptance({
+        acceptTerms: data.acceptTerms,
+        termsVersion: data.termsVersion,
+        acknowledgePrivacy: data.acknowledgePrivacy,
+        privacyVersion: data.privacyVersion,
+      });
+
+      if (!legalValidation.valid || !legalValidation.termsDoc || !legalValidation.privacyDoc) {
+        return res.status(400).json({ message: legalValidation.error || "Aceptación legal inválida." });
+      }
       
       // Check if email already exists
       const existingUser = await storage.getUserByEmail(data.email);
@@ -978,7 +1439,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const cleanCode = data.referralCode.trim().toUpperCase();
         const allUsers = await storage.getAllUsers();
         const masterBroker = allUsers.find(
-          u => u.referralCode && u.referralCode.toUpperCase() === cleanCode && (u.role === 'master_broker' || u.role === 'admin' || u.role === 'super_admin')
+          u => u.referralCode && u.referralCode.toUpperCase() === cleanCode &&
+            u.role === 'master_broker' && u.isActive !== false &&
+            u.status !== 'suspended' && u.status !== 'inactive'
         );
         if (masterBroker) {
           masterBrokerId = masterBroker.id;
@@ -1027,16 +1490,40 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Hash password
       const saltRounds = 10;
       const hashedPassword = await bcrypt.hash(data.password, saltRounds);
-      
-      // Create user
-      const user = await storage.createLocalUser({
-        email: data.email,
-        password: hashedPassword,
-        firstName: data.firstName,
-        lastName: data.lastName,
-        authMethod: "local",
-        role: "broker", // Default role for new registrations
-        masterBrokerId,
+
+      // Client IP captured via Express req.ip (honoring the real trust proxy configuration).
+      // Never trust raw headers directly; allow null if no verifiable IP source is present.
+      const rawIp = req.ip || req.socket?.remoteAddress;
+      const clientIp = typeof rawIp === "string" && rawIp.trim().length > 0 ? rawIp.trim() : null;
+      const userAgent = (req.headers["user-agent"] as string) || "unknown";
+
+      // Create user and legal evidence atomically
+      const { user } = await storage.registerUserWithLegalEvidence({
+        userData: {
+          email: data.email,
+          password: hashedPassword,
+          firstName: data.firstName,
+          lastName: data.lastName,
+          authMethod: "local",
+          role: "broker", // Default role for new registrations
+          masterBrokerId,
+        },
+        evidence: {
+          ipAddress: clientIp,
+          userAgent,
+          termsDoc: {
+            id: legalValidation.termsDoc.id,
+            document: legalValidation.termsDoc.document,
+            version: legalValidation.termsDoc.version,
+            contentSha256: legalValidation.termsDoc.contentSha256,
+          },
+          privacyDoc: {
+            id: legalValidation.privacyDoc.id,
+            document: legalValidation.privacyDoc.document,
+            version: legalValidation.privacyDoc.version,
+            contentSha256: legalValidation.privacyDoc.contentSha256,
+          },
+        },
       });
 
       // Apply promotional redemption if promo was supplied
@@ -1211,12 +1698,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Save token to database
       await storage.setPasswordResetToken(user.id, resetToken, resetTokenExpiry);
       
-      // Determine reset URL and log it for reference
-      const baseUrl = process.env.FRONTEND_BASE_URL || (process.env.RAILWAY_STATIC_URL ? `https://${process.env.RAILWAY_STATIC_URL}` : 'https://creditonegocios-staging.up.railway.app');
-      const resetUrl = `${baseUrl.replace(/\/$/, '')}/reset-password?token=${resetToken}`;
-      if (process.env.NODE_ENV !== 'production') {
-        console.log(`🔑 [AUTH RESET URL] Generated reset URL for ${user.email}: ${resetUrl}`);
-      }
+      // Never log or expose reset bearer tokens in any environment.
+      // sendPasswordResetEmail constructs the reset link directly.
       
       // Send password reset email
       const userName = user.firstName || undefined;
@@ -1229,15 +1712,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
         console.error('⚠️ [AUTH WARNING] Failed to deliver password reset email:');
         console.error('   - Target Email:', user.email);
         console.error('   - Error:', emailResult.error);
-        if (process.env.NODE_ENV !== 'production') {
-          console.error(`   - Direct Reset URL available: ${resetUrl}`);
-        }
+        // Avoid revealing password-reset links to runtime logs.
 
         if (process.env.NODE_ENV !== 'production') {
           return res.json({ 
             message: `Solicitud procesada, pero el servicio de correo (Resend) reportó: ${emailResult.error || 'No entregado'}.`,
-            resetUrl: resetUrl,
-            warning: "Revisa la configuración de Resend (dominio o clave API) o utiliza el enlace directo de restablecimiento provisto.",
+            warning: "Revisa la configuración de Resend; no se puede mostrar un enlace de recuperación en la respuesta.",
           });
         }
       } else {
@@ -1256,10 +1736,36 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Reset Password - Set new password with token
+  // Invitation context: token holder sees legal versions, no account secrets.
+  app.get('/api/auth/invitation-context', authMutationLimiter, async (req, res) => {
+    const token = typeof req.query.token === "string" ? req.query.token : "";
+    if (!token || token.length > 256) return res.status(400).json({ message: "Token inválido." });
+    const user = await storage.getUserByResetToken(token);
+    if (!user || !user.resetTokenExpiry || new Date(user.resetTokenExpiry) <= new Date()) {
+      return res.status(400).json({ message: "Enlace inválido o expirado." });
+    }
+    const needsLegal = !user.password;
+    const termsDoc = needsLegal ? getPublishedLegalDocument("terminos") : null;
+    const privacyDoc = needsLegal ? getPublishedLegalDocument("aviso") : null;
+    if (needsLegal && (!termsDoc || !privacyDoc)) {
+      return res.status(503).json({ message: "Documentos legales vigentes no disponibles." });
+    }
+    return res.json({
+      requiresLegal: needsLegal,
+      role: user.role === "master_broker" ? "master_broker" : "broker",
+      termsVersion: termsDoc?.version || null,
+      privacyVersion: privacyDoc?.version || null,
+    });
+  });
+
+  // Password reset or first-time activation: strong password and separate legal evidence.
   const resetPasswordSchema = z.object({
     token: z.string().min(1, "Token requerido"),
-    password: z.string().min(6, "La contraseña debe tener al menos 6 caracteres"),
+    password: z.string().min(12, "La contraseña debe tener al menos 12 caracteres"),
+    acceptTerms: z.boolean().optional(),
+    termsVersion: z.string().optional(),
+    acknowledgePrivacy: z.boolean().optional(),
+    privacyVersion: z.string().optional(),
   });
 
   app.post('/api/auth/reset-password', async (req, res) => {
@@ -1278,14 +1784,36 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ message: "El token ha expirado. Por favor solicita uno nuevo." });
       }
       
-      // Hash new password
-      const saltRounds = 10;
-      const hashedPassword = await bcrypt.hash(data.password, saltRounds);
-      
-      // Update password and clear reset token
-      await storage.updateUserPassword(user.id, hashedPassword);
-      await storage.clearPasswordResetToken(user.id);
-      
+      const hashedPassword = await bcrypt.hash(data.password, 12);
+      if (!user.password) {
+        const legal = validateRegistrationAcceptance({
+          acceptTerms: data.acceptTerms,
+          termsVersion: data.termsVersion,
+          acknowledgePrivacy: data.acknowledgePrivacy,
+          privacyVersion: data.privacyVersion,
+        });
+        if (!legal.valid || !legal.termsDoc || !legal.privacyDoc) {
+          return res.status(400).json({ message: legal.error || "Aceptación legal requerida." });
+        }
+        const rawIp = req.ip || req.socket?.remoteAddress;
+        await storage.completeInvitationActivation({
+          userId: user.id, token: data.token, passwordHash: hashedPassword,
+          ipAddress: typeof rawIp === "string" ? rawIp : null,
+          userAgent: req.headers["user-agent"] || "unknown",
+          termsDoc: {
+            id: legal.termsDoc.id, document: legal.termsDoc.document,
+            version: legal.termsDoc.version, contentSha256: legal.termsDoc.contentSha256,
+          },
+          privacyDoc: {
+            id: legal.privacyDoc.id, document: legal.privacyDoc.document,
+            version: legal.privacyDoc.version, contentSha256: legal.privacyDoc.contentSha256,
+          },
+        });
+      } else {
+        // Existing-account password recovery remains a separate route.
+        await storage.updateUserPassword(user.id, hashedPassword);
+        await storage.clearPasswordResetToken(user.id);
+      }
       res.json({ message: "Contraseña actualizada exitosamente. Ya puedes iniciar sesión." });
     } catch (error) {
       if (error instanceof z.ZodError) {
@@ -1332,16 +1860,52 @@ export async function registerRoutes(app: Express): Promise<Server> {
             sanitizedData[key] = userData[key];
           }
         }
-      } else {
-        // Admins can update user data, with protections
-        sanitizedData = { ...userData };
-        // An admin cannot promote anyone to super_admin unless they are super_admin
-        if (currentUser.role !== 'super_admin' && sanitizedData.role === 'super_admin') {
-          return res.status(403).json({ message: "Solo un Super Administrador puede asignar el rol de Super Administrador" });
+        if (userData.profileType !== undefined) {
+          if (!["persona_moral", "fisica_empresarial", "fisica", "sin_sat"].includes(userData.profileType)) {
+            return res.status(400).json({ message: "Tipo de perfil inválido." });
+          }
+          sanitizedData.profileType = userData.profileType;
         }
+      } else {
+        // Existing Admin profile UI stays functional, but cannot edit passwords,
+        // recovery credentials or structural network/role assignments.
+        const protectedAuthFields = ["password", "resetToken", "resetTokenExpiry"];
+        if (protectedAuthFields.some((field) => Object.prototype.hasOwnProperty.call(userData || {}, field))) {
+          return res.status(403).json({ message: "Las credenciales se administran sólo mediante autenticación segura." });
+        }
+        const targetUser = await storage.getUser(id);
+        if (!targetUser) return res.status(404).json({ message: "Usuario no encontrado" });
+        // Admin may manage permitted profiles, but cannot edit Super Admins
+        // or promote anyone through the legacy profile endpoint.
+        if (currentUser.role !== "super_admin" && targetUser.role === "super_admin") {
+          return res.status(403).json({ message: "Sólo Super Admin puede editar cuentas Super Admin." });
+        }
+        if (currentUser.role !== "super_admin" &&
+            userData.role !== undefined && userData.role !== targetUser.role) {
+          return res.status(403).json({ message: "Sólo Super Admin puede cambiar roles administrativos." });
+        }
+        if (userData.masterBrokerId !== undefined && userData.masterBrokerId !== targetUser.masterBrokerId) {
+          return res.status(409).json({ message: "Reasignación de Brokers requiere la transición autorizada de Super Admin." });
+        }
+        if (userData.role !== undefined && userData.role !== targetUser.role &&
+            (["broker", "master_broker"].includes(targetUser.role) ||
+             ["broker", "master_broker"].includes(userData.role))) {
+          return res.status(409).json({ message: "Las promociones y cambios de red requieren transición autorizada." });
+        }
+        if (currentUser.role !== "super_admin" && userData.permissions !== undefined) {
+          return res.status(403).json({ message: "Sólo Super Admin puede asignar permisos." });
+        }
+        sanitizedData = { ...userData };
+        delete sanitizedData.password;
+        delete sanitizedData.resetToken;
+        delete sanitizedData.resetTokenExpiry;
+        delete sanitizedData.masterBrokerId;
+        if (["broker", "master_broker"].includes(targetUser.role)) delete sanitizedData.role;
       }
       
       // Proteger estado operativo contra modificaciones directas fuera de la lógica central
+      // Commission schedules must only change through the versioned Master flow.
+      delete sanitizedData.networkCommissionRates;
       delete sanitizedData.status;
       delete sanitizedData.isActive;
       delete sanitizedData.statusChangedAt;
@@ -1349,13 +1913,27 @@ export async function registerRoutes(app: Express): Promise<Server> {
       delete sanitizedData.statusChangeReason;
       delete sanitizedData.statusChangeNotes;
 
+      // Different Settings tabs modify independent profileData sections.
+      // Preserve existing contact, business and metric fields rather than
+      // silently wiping them when the user saves another tab.
+      if (sanitizedData.profileData !== undefined) {
+        if (!sanitizedData.profileData || typeof sanitizedData.profileData !== "object" ||
+            Array.isArray(sanitizedData.profileData)) {
+          return res.status(400).json({ message: "Datos del perfil inválidos." });
+        }
+        const existingUser = await storage.getUser(id);
+        const existingProfile = existingUser?.profileData && typeof existingUser.profileData === "object" &&
+          !Array.isArray(existingUser.profileData) ? existingUser.profileData : {};
+        sanitizedData.profileData = { ...existingProfile, ...sanitizedData.profileData };
+      }
+
       const user = await storage.updateUser(id, sanitizedData);
       
       if (!user) {
         return res.status(404).json({ message: "User not found" });
       }
       
-      res.json(user);
+      res.json(publicUserForManagement(user));
     } catch (error) {
       console.error("Error updating user profile:", error);
       res.status(500).json({ message: "Failed to update user profile" });
@@ -1860,7 +2438,25 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const parsed = updateCommercialRulesConfigSchema.parse(req.body);
       const { reason, ...updates } = parsed;
 
+      const current = await commercialConfigService.getConfig();
       const result = await commercialConfigService.updateConfig(updates, userId, reason);
+
+      if (result.publishedVersion) {
+        // PostgreSQL committed the new rule values, audit and legal version as
+        // one ACID unit. Announce only AFTER COMMIT; never double-publish.
+        await commercialTermsService.announceCommittedGlobalVersion(result.publishedVersion, storage);
+      } else if (result.modifiedParams && result.modifiedParams.length > 0) {
+        // In-memory storage is used only by deterministic unit tests.
+        await commercialTermsService.publishGlobalCommercialTermsUpdate({
+          previousConditions: current,
+          newConditions: result.updatedConfig,
+          modifiedParams: result.modifiedParams,
+          updatedBy: userId,
+          reason,
+          targetStorage: storage,
+        });
+      }
+
       res.json({
         success: true,
         message: "Configuración de gobernanza comercial actualizada correctamente.",
@@ -1893,6 +2489,92 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error: any) {
       console.error("[COMMERCIAL CONFIG AUDIT] Error:", error);
       res.status(500).json({ message: "Error al consultar bitácora de configuración comercial." });
+    }
+  });
+
+  // =========================================================================
+  // FASE 2B.2B: CAMBIOS Y ACEPTACIÓN COMERCIAL (COM-07, COM-10, COM-11)
+  // =========================================================================
+
+  // Consultar estado de condiciones comerciales pendientes para el usuario autenticado
+  app.get('/api/commercial-terms/status', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = getAuthUserId(req);
+      if (!userId) {
+        return res.status(401).json({ message: "No autenticado." });
+      }
+      const status = await commercialTermsService.getPendingCommercialTermsForUser(userId, storage);
+      return res.json(status);
+    } catch (error: any) {
+      console.error("Error al consultar estado de condiciones comerciales:", error);
+      return res.status(500).json({ message: "Error al consultar estado de condiciones comerciales." });
+    }
+  });
+
+  // Historial de aceptaciones y versiones de condiciones comerciales
+  app.get('/api/commercial-terms/history', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = getAuthUserId(req);
+      if (!userId) {
+        return res.status(401).json({ message: "No autenticado." });
+      }
+      const history = await commercialTermsService.getCommercialAcceptancesHistory(userId, storage);
+      const versions = commercialTermsService.getCommercialVersionsHistory();
+      return res.json({ versions, acceptances: history });
+    } catch (error: any) {
+      console.error("Error al consultar historial de condiciones comerciales:", error);
+      return res.status(500).json({ message: "Error al consultar historial de condiciones comerciales." });
+    }
+  });
+
+  // Aceptar expresamente una versión de condiciones comerciales o de red (Idempotente)
+  app.post('/api/commercial-terms/accept', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = getAuthUserId(req);
+      if (!userId) {
+        return res.status(401).json({ message: "No autenticado." });
+      }
+      const { version, type, document, masterBrokerId } = req.body || {};
+      if (!version || typeof version !== 'string') {
+        return res.status(400).json({ message: "Se requiere especificar la versión a aceptar." });
+      }
+
+      // Only the implemented global/network instruments can be accepted here.
+      // A per-financial-institution or per-offer/version acceptance must NEVER
+      // be recorded as if it were a global or network acceptance.
+      if ((type !== undefined && type !== 'global' && type !== 'network') ||
+          (document !== undefined && document !== 'condiciones-comerciales' && document !== 'comisiones-red') ||
+          (type === 'global' && document === 'comisiones-red') ||
+          (type === 'network' && document === 'condiciones-comerciales')) {
+        return res.status(400).json({
+          message: "El tipo de aceptación solicitado no corresponde a las condiciones globales o de red admitidas.",
+          code: "UNSUPPORTED_COMMERCIAL_ACCEPTANCE_TYPE",
+        });
+      }
+
+      // Legal evidence: let Express validate trusted proxies (req.ip); never
+      // accept an arbitrary X-Forwarded-For value as the signer IP.
+      const rawClientIp = req.ip || req.socket?.remoteAddress || null;
+      const clientIp = typeof rawClientIp === 'string' && rawClientIp.trim() ? rawClientIp.trim() : null;
+      const userAgent = (req.headers['user-agent'] as string) || 'unknown';
+      const resolvedType = type === 'network' || document === 'comisiones-red' ? 'network' : 'global';
+
+      const result = await commercialTermsService.acceptCommercialTerms(
+        {
+          userId,
+          version: version.trim(),
+          type: resolvedType,
+          masterBrokerId,
+          ipAddress: clientIp,
+          userAgent,
+        },
+        storage
+      );
+
+      return res.json(result);
+    } catch (error: any) {
+      console.error("Error al registrar aceptación de condiciones comerciales:", error);
+      return res.status(400).json({ message: error.message || "Error al aceptar condiciones comerciales." });
     }
   });
 
@@ -1994,33 +2676,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
         role: user.role,
       };
       
-      // 1. Get submissions and network broker IDs
-      let networkBrokerIds: string[] = [userId];
+      // Una afiliación actual de red no da acceso a expedientes históricos.
+      // La atribución de origen es inmutable y se comparte con el resto de rutas.
       let networkBrokers: any[] = [];
       if (isMasterBroker) {
         networkBrokers = await storage.getUsersByMasterBroker(userId);
-        networkBrokerIds = [userId, ...networkBrokers.map(b => b.id)];
       }
 
-      // 2. Fetch all submissions relevant for user
       const allSubmissions = await storage.getCreditSubmissionRequests({});
-      let userSubmissions: any[] = [];
-      if (isAdmin) {
-        userSubmissions = allSubmissions;
-      } else if (req.tenantContext?.tenant) {
-        const tenant = req.tenantContext.tenant;
-        if (tenant.type === 'master_broker') {
-          const subordinates = await storage.getTenantsByParent(tenant.id);
-          const tenantIds = [tenant.id, ...subordinates.map(t => t.id)];
-          userSubmissions = allSubmissions.filter(s => (s.tenantId && tenantIds.includes(s.tenantId)) || networkBrokerIds.includes(s.brokerId));
-        } else {
-          userSubmissions = allSubmissions.filter(s => s.tenantId === tenant.id || s.brokerId === userId);
-        }
-      } else if (isMasterBroker) {
-        userSubmissions = allSubmissions.filter(s => networkBrokerIds.includes(s.brokerId));
-      } else {
-        userSubmissions = allSubmissions.filter(s => s.brokerId === userId);
-      }
+      const userSubmissions = allSubmissions.filter(submission =>
+        canReadCreditSubmission(user, submission)
+      );
 
       // Active pipeline requests (in progress)
       const activePipelineSubmissions = userSubmissions.filter(s =>
@@ -2029,31 +2695,27 @@ export async function registerRoutes(app: Express): Promise<Server> {
       );
       const pipelineCount = activePipelineSubmissions.length;
 
-      // 3. Fetch credits (dispersed / active loans)
+      // Créditos vinculados a la red: se utiliza el Master de ORIGEN del
+      // crédito, no la afiliación actual del Broker ni la pertenencia al tenant.
       const allCredits = await storage.getCredits({});
-      let userCredits: any[] = [];
-      if (isAdmin) {
-        userCredits = allCredits;
-      } else if (req.tenantContext?.tenant) {
-        const tenant = req.tenantContext.tenant;
-        if (tenant.type === 'master_broker') {
-          const subordinates = await storage.getTenantsByParent(tenant.id);
-          const tenantIds = [tenant.id, ...subordinates.map(t => t.id)];
-          userCredits = allCredits.filter(c => (c.tenantId && tenantIds.includes(c.tenantId)) || networkBrokerIds.includes(c.brokerId));
-        } else {
-          userCredits = allCredits.filter(c => c.tenantId === tenant.id || c.brokerId === userId);
-        }
-      } else if (isMasterBroker) {
-        userCredits = allCredits.filter(c => networkBrokerIds.includes(c.brokerId));
-      } else {
-        userCredits = allCredits.filter(c => c.brokerId === userId);
-      }
+      const userCredits = allCredits.filter(credit => canViewCreditByOrigin(user, credit));
 
+      // REGLA 3 (FASE 2B.2A.1): Separar desembolsos reportados de confirmados.
+      // Sólo la confirmación expresa de Super Admin computa como desembolso confirmado en métricas.
       const disbursedCredits = userCredits.filter(c =>
-        c.status === 'disbursed' || c.status === 'dispersed' || c.status === 'dispersado' || c.status === 'active'
+        (c.status === 'disbursed' || c.status === 'dispersed' || c.status === 'dispersado' || c.status === 'active') &&
+        isCreditDisbursementConfirmed(c)
+      );
+      const reportedDisbursedCredits = userCredits.filter(c =>
+        (c.status === 'disbursed' || c.status === 'dispersed' || c.status === 'dispersado') &&
+        !isCreditDisbursementConfirmed(c)
       );
       const disbursedCount = disbursedCredits.length;
-      const disbursedVolume = disbursedCredits.reduce((sum, c) => sum + parseFloat(c.amount || '0'), 0);
+      const disbursedVolume = disbursedCredits.reduce((sum, c) => {
+        const prop = (c.finalProposal as any) || {};
+        const confirmedAmt = prop.disbursementConfirmation?.confirmedAmount ?? (c as any).confirmedDisbursedAmount;
+        return sum + (confirmedAmt != null ? parseFloat(String(confirmedAmt)) : parseFloat(c.amount || '0'));
+      }, 0);
 
       // Suggested metrics: Average Ticket & Conversion Rate (#27)
       const avgTicket = disbursedCount > 0 ? disbursedVolume / disbursedCount : 0;
@@ -2178,9 +2840,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       if (isMasterBroker) {
         const networkDisbursedCredits = userCredits.filter(c =>
-          c.brokerId !== userId && (c.status === 'disbursed' || c.status === 'dispersed' || c.status === 'active')
+          c.brokerId !== userId &&
+          (c.status === 'disbursed' || c.status === 'dispersed' || c.status === 'active') &&
+          isCreditDisbursementConfirmed(c)
         );
-        const networkDisbursedVol = networkDisbursedCredits.reduce((sum, c) => sum + parseFloat(c.amount || '0'), 0);
+        const networkDisbursedVol = networkDisbursedCredits.reduce((sum, c) => {
+          const prop = (c.finalProposal as any) || {};
+          const confirmedAmt = prop.disbursementConfirmation?.confirmedAmount ?? (c as any).confirmedDisbursedAmount;
+          return sum + (confirmedAmt != null ? parseFloat(String(confirmedAmt)) : parseFloat(c.amount || '0'));
+        }, 0);
         const networkActiveSubmissions = userSubmissions.filter(s =>
           s.brokerId !== userId && (s.status === 'submitted' || s.status === 'evaluating' || s.status === 'under_review' || s.status === 'in_progress')
         ).length;
@@ -2212,6 +2880,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           totalDisbursedVolume: disbursedVolume,
           activeBrokers: allUsers.filter(u => (u.role === 'broker' || u.role === 'master_broker') && u.isActive).length,
           totalClients: allClients.length,
+          newProspectsMonth: new Set(allClients.filter(c => c.createdAt && new Date(String(c.createdAt)).getTime() >= currentMonthStart.getTime()).map(c => c.id)).size,
           avgTicket: Math.round(avgTicket),
           commissionsPendingTotal: pendingCommissions,
           commissionsPendingCount: pendingCommissionsCount,
@@ -2232,25 +2901,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const userId = req.user.claims.sub;
       const user = await storage.getUser(userId);
-      const isAdmin = user?.role === 'admin' || user?.role === 'super_admin';
-      const isMasterBroker = user?.role === 'master_broker';
-      
-      let brokerIds = [userId];
-      if (isMasterBroker) {
-        const networkBrokers = await storage.getUsersByMasterBroker(userId);
-        brokerIds = [userId, ...networkBrokers.map(b => b.id)];
-      }
+      if (!user) return res.status(404).json({ message: "User not found" });
 
-      // Fetch both submissions and credits
       const allSubmissions = await storage.getCreditSubmissionRequests({});
-      const userSubmissions = isAdmin
-        ? allSubmissions
-        : allSubmissions.filter(s => brokerIds.includes(s.brokerId));
+      const userSubmissions = allSubmissions.filter(sub => canReadCreditSubmission(user, sub));
 
       const allCredits = await storage.getCredits({});
-      const userCredits = isAdmin
-        ? allCredits
-        : allCredits.filter(c => brokerIds.includes(c.brokerId));
+      const userCredits = allCredits.filter(credit => canViewCreditByOrigin(user, credit));
 
       // Calculate pipeline stages across both submissions in-flight and credits
       const en_revision = userSubmissions.filter(s =>
@@ -2263,8 +2920,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
         c.status === 'validacion_juridica' || c.status === 'en_mesa_control'
       ).length;
 
+      const isReportedUnconfirmed = (c: any) =>
+        !isCreditDisbursementConfirmed(c) &&
+        ((c.finalProposal as any)?.disbursementStatus === 'reported' ||
+          ['disbursed', 'dispersed', 'dispersado'].includes(c.status));
+
       const aprobacion = userCredits.filter(c =>
-        c.status === 'approved' || c.status === 'aprobado'
+        (c.status === 'approved' || c.status === 'aprobado') && !isReportedUnconfirmed(c)
       ).length;
 
       const por_firmar = userSubmissions.filter(s =>
@@ -2274,8 +2936,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
       ).length;
 
       const dispersion = userCredits.filter(c =>
-        c.status === 'disbursed' || c.status === 'dispersed' || c.status === 'dispersado' || c.status === 'active'
+        (c.status === 'disbursed' || c.status === 'dispersed' || c.status === 'dispersado' || c.status === 'active') &&
+        isCreditDisbursementConfirmed(c)
       ).length;
+
+      // A reported credit remains 'approved' until Super Admin confirmation,
+      // but is shown in the reporting stage rather than counted twice as approved.
+      const dispersion_reportada = userCredits.filter(isReportedUnconfirmed).length;
 
       const pipeline = {
         en_revision,
@@ -2283,6 +2950,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         aprobacion,
         por_firmar,
         dispersion,
+        dispersion_reportada,
       };
 
       // Helper to resolve client display name
@@ -2316,15 +2984,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       for (const sub of userSubmissions.slice(0, 10)) {
-        // Only include if not already represented in credits
+        // El estado padre puede estar "in_progress" aunque la financiera
+        // solo tenga visto bueno. Resolver exactamente como Gestión de Créditos.
+        const targets = await storage.getCreditSubmissionTargets({ requestId: sub.id });
+        const primaryStatus = resolveSubmissionDisplayStatus(sub.status, targets);
         const clientName = await getClientName(sub.clientId, sub.purpose);
         recentList.push({
           id: sub.id,
           clientName,
           amount: sub.requestedAmount,
-          status: sub.status === 'submitted' ? 'en_revision' :
-                  sub.status === 'winner_selected' ? 'por_firmar' :
-                  sub.status === 'dispersed' ? 'disbursed' : sub.status,
+          status: primaryStatus === 'submitted' ? 'en_revision' :
+                  primaryStatus === 'winner_selected' ? 'por_firmar' :
+                  primaryStatus === 'dispersed' ? 'disbursed' : primaryStatus,
           updatedAt: sub.updatedAt || sub.createdAt,
           sourceType: 'submission'
         });
@@ -2359,7 +3030,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.patch('/api/notifications/:id/read', isAuthenticated, async (req: any, res) => {
     try {
       const { id } = req.params;
-      const success = await storage.markNotificationAsRead(id);
+      const success = await storage.markNotificationAsRead(id, req.user.claims.sub);
       
       if (success) {
         res.json({ message: "Notification marked as read" });
@@ -2375,7 +3046,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.put('/api/notifications/:id/read', isAuthenticated, async (req: any, res) => {
     try {
       const { id } = req.params;
-      const success = await storage.markNotificationAsRead(id);
+      const success = await storage.markNotificationAsRead(id, req.user.claims.sub);
       
       if (success) {
         res.json({ message: "Notification marked as read" });
@@ -2387,6 +3058,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.status(500).json({ message: "Failed to mark notification as read" });
     }
   });
+
+  // User-management API must not expose credential material to Admin/Master clients.
+  const publicUserForManagement = (user: any) => {
+    if (!user) return user;
+    const safe = { ...user };
+    delete safe.password;
+    delete safe.resetToken;
+    delete safe.resetTokenExpiry;
+    return safe;
+  };
 
   // User Management (Super Admin, Admin, and Master Broker scoped to their network)
   app.get('/api/users', isAuthenticated, requireModuleAndAction('usuarios', 'manage_users'), async (req: any, res) => {
@@ -2401,11 +3082,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Master Broker only sees users in their own network
       if (currentUser.role === 'master_broker') {
         const networkUsers = await storage.getUsersByMasterBroker(currentUser.id);
-        return res.json(networkUsers);
+        return res.json(networkUsers.map(publicUserForManagement));
       }
       
       const users = await storage.getAllUsers();
-      res.json(users);
+      res.json(users.map(publicUserForManagement));
     } catch (error) {
       console.error("Error fetching users:", error);
       res.status(500).json({ message: "Failed to fetch users" });
@@ -2429,15 +3110,35 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ message: "El email es requerido" });
       }
 
-      // Master Broker security enforcement
+      // Admin/Master must not supply arbitrary modules/actions while creating
+      // identities. Only Super Admin can grant user-level privileges.
+      if (currentUser?.role !== 'super_admin' && userData.permissions !== undefined) {
+        return res.status(403).json({ message: "Sólo Super Admin puede definir permisos de nuevos usuarios." });
+      }
+
+      // Master may invite only a Broker in its own network (never grant admin/Master roles).
       if (isMasterBroker) {
+        userData.role = 'broker';
         userData.masterBrokerId = currentUser.id;
-        if (userData.role === 'admin' || userData.role === 'super_admin') {
-          userData.role = 'broker';
-        }
-        if (userData.permissions && typeof userData.permissions === 'object') {
-          (userData.permissions as any).scope = 'network';
-        }
+      }
+
+      // A platform Admin cannot create a new Admin or Super Admin.
+      if (currentUser?.role === 'admin' &&
+          (userData.role === 'super_admin' || userData.role === 'admin')) {
+        return res.status(403).json({ message: "Sólo Super Admin puede asignar privilegios administrativos." });
+      }
+
+      // A new Broker's initial affiliation is also structural governance:
+      // Admin cannot silently place a new identity inside any Master network.
+      if (currentUser?.role === "admin" && userData.role === "broker" && userData.masterBrokerId) {
+        return res.status(403).json({ message: "Sólo Super Admin puede asignar nuevos Brokers a una red Master." });
+      }
+
+      // Onboarding through Administration must never bypass first-login legal evidence.
+      // All Broker/Master accounts start with an activation link and no password.
+      const isCommercialInvite = userData.role === "broker" || userData.role === "master_broker";
+      if (userData.role === "master_broker" && currentUser?.role !== "super_admin") {
+        return res.status(403).json({ message: "Sólo Super Admin puede invitar nuevos Master Brokers." });
       }
 
       // Auto-generate unique referralCode for master_broker if not provided
@@ -2447,22 +3148,56 @@ export async function registerRoutes(app: Express): Promise<Server> {
         userData.referralCode = `${prefix}-${randomDigits}`;
       }
       
+      // Account passwords must never be stored as plaintext, including
+      // the legacy Super Admin/Admin user-creation endpoint.
+      if (!isCommercialInvite && userData.password) {
+        const supplied = String(userData.password);
+        if (supplied.length < 12) {
+          return res.status(400).json({ message: "La contraseña inicial debe tener al menos 12 caracteres." });
+        }
+        userData.password = await bcrypt.hash(supplied, 12);
+      }
+
       // Check if email already exists
       const existingUser = await storage.getUserByEmail(userData.email);
       if (existingUser) {
         return res.status(400).json({ message: "El email ya está registrado en el sistema" });
       }
       
-      const newUser = await storage.createUser(userData);
-      
-      // Send welcome email to the new broker
-      if (newUser.email && (newUser.role === 'broker' || newUser.role === 'master_broker')) {
-        const fullName = `${newUser.firstName || ''} ${newUser.lastName || ''}`.trim() || newUser.email;
-        console.log(`[EMAIL] Sending welcome email to new user: ${newUser.email}`);
-        await sendWelcomeEmail(newUser.email, fullName);
+      const activationSecret = isCommercialInvite
+        ? (await import("node:crypto")).randomBytes(32).toString("hex")
+        : null;
+      const activationExpires = activationSecret ? new Date(Date.now() + 24 * 60 * 60 * 1000) : null;
+
+      // Reuse the canonical transaction: identity + tenant + owner. Never persist
+      // an administrator-supplied password for Broker/Master; collect legal
+      // confirmations atomically at the token activation endpoint instead.
+      const newUser = isCommercialInvite
+        ? (await createBrokerWithOrganization({
+            email: userData.email, firstName: userData.firstName,
+            lastName: userData.lastName, password: null,
+            authMethod: userData.authMethod || "local",
+            role: userData.role as "broker" | "master_broker",
+            masterBrokerId: userData.role === "broker" ? userData.masterBrokerId : null,
+            resetToken: activationSecret,
+            resetTokenExpiry: activationExpires,
+            profileData: userData.profileData || {},
+            isActive: userData.isActive !== false,
+          })).user
+        : await storage.createUser(userData);
+
+      if (isCommercialInvite && newUser.email && activationSecret) {
+        const fullName = [newUser.firstName, newUser.lastName].filter(Boolean).join(" ") || undefined;
+        const delivery = await sendAccountInvitationEmail(newUser.email, activationSecret, userData.role as "broker" | "master_broker", fullName);
+        return res.status(delivery.success ? 201 : 202).json({
+          ...publicUserForManagement(newUser),
+          invitationSent: delivery.success,
+          message: delivery.success
+            ? "Invitación enviada: el usuario activará su cuenta y aceptará los documentos legales."
+            : "Cuenta pendiente de activación: el correo no se pudo enviar; reintenta la invitación.",
+        });
       }
-      
-      res.status(201).json(newUser);
+      res.status(201).json(publicUserForManagement(newUser));
     } catch (error: any) {
       console.error("Error creating user:", error);
       if (error instanceof z.ZodError) {
@@ -2471,6 +3206,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Check for duplicate key constraint
       if (error?.code === '23505' || error?.constraint?.includes('email')) {
         return res.status(400).json({ message: "El email ya está registrado en el sistema" });
+      }
+      if (error?.statusCode >= 400 && error?.statusCode < 500) {
+        return res.status(error.statusCode).json({ message: error.message });
       }
       res.status(500).json({ message: "Failed to create user" });
     }
@@ -2494,13 +3232,45 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ message: "Usuario no encontrado" });
       }
 
+      // Admin cannot mutate Super Admin identity/privileges via user-management.
+      if (currentUser.role === "admin" && targetUser.role === "super_admin") {
+        return res.status(403).json({ message: "Sólo Super Admin puede editar cuentas Super Admin." });
+      }
       // If Master Broker, verify target belongs to their network
       if (isMasterBroker && targetUser.masterBrokerId !== currentUser.id) {
         return res.status(403).json({ message: "No tienes permiso para modificar usuarios fuera de tu red." });
       }
       
+      // Credentials and password-reset tokens may only change through the dedicated
+      // authenticated password recovery / change-password flows.
+      const forbiddenAuthFields = ["password", "resetToken", "resetTokenExpiry"];
+      if (forbiddenAuthFields.some((field) => Object.prototype.hasOwnProperty.call(req.body || {}, field))) {
+        return res.status(403).json({ message: "No se permiten cambios de credenciales por edición de usuarios." });
+      }
+
       const userData = insertUserSchema.partial().parse(req.body);
-      
+      if (currentUser.role === "admin" &&
+          userData.role !== undefined && userData.role !== targetUser.role) {
+        return res.status(403).json({ message: "Sólo Super Admin puede cambiar roles administrativos." });
+      }
+      if (currentUser.role === "admin" && userData.permissions !== undefined) {
+        return res.status(403).json({ message: "Sólo Super Admin puede asignar permisos." });
+      }
+
+      // All structural network transfers / broker promotions need the audited
+      // Super Admin transition flow, not a generic user update.
+      if (userData.masterBrokerId !== undefined && userData.masterBrokerId !== targetUser.masterBrokerId) {
+        return res.status(409).json({ message: "Los cambios de red requieren transición autorizada por Super Admin." });
+      }
+      if (userData.role !== undefined && userData.role !== targetUser.role &&
+          (["broker", "master_broker"].includes(targetUser.role) ||
+            ["broker", "master_broker"].includes(userData.role))) {
+        return res.status(409).json({ message: "La promoción o cambio de rol comercial requiere transición autorizada." });
+      }
+      if (isMasterBroker && userData.permissions !== undefined) {
+        return res.status(403).json({ message: "El Master Broker no puede modificar permisos de acceso mediante esta ruta." });
+      }
+
       // Prevent Master Broker from escalating privileges
       if (isMasterBroker) {
         delete userData.role;
@@ -2511,6 +3281,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       // Proteger estado operativo contra modificaciones directas fuera de la lógica central
+      // Preserve immutable contractual rate publication: not a generic user field.
+      delete (userData as any).networkCommissionRates;
       delete (userData as any).status;
       delete (userData as any).isActive;
       delete (userData as any).statusChangedAt;
@@ -2532,7 +3304,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ message: "Usuario no encontrado" });
       }
       
-      res.json(updatedUser);
+      res.json(publicUserForManagement(updatedUser));
     } catch (error: any) {
       console.error("Error updating user:", error);
       if (error instanceof z.ZodError) {
@@ -2553,7 +3325,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       return res.status(401).json({ message: "Usuario no autenticado" });
     }
 
-    const isSuperAdmin = callerUser.role === 'admin' || callerUser.role === 'super_admin';
+    const isSuperAdmin = callerUser.role === 'super_admin';
     const isMasterBroker = callerUser.role === 'master_broker';
 
     if (!isSuperAdmin && !isMasterBroker) {
@@ -2575,10 +3347,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (targetUser.role !== 'broker' || targetUser.masterBrokerId !== callerUser.id) {
         return res.status(403).json({ message: "No tienes permiso para modificar usuarios fuera de tu red" });
       }
-      // Master Broker SOLO puede suspender directamente a brokers de su red
-      if (requestedStatus !== 'suspended') {
-        return res.status(403).json({ 
-          message: "Los Master Brokers solo pueden suspender temporalmente a brokers de su red. La baja definitiva o reactivación requiere solicitud a Super Admin." 
+      // Master Broker can suspend or deactivate brokers in its own network,
+      // but can never reactivate them. Reactivation and every network/role
+      // transition remain exclusive to Super Admin.
+      if (requestedStatus === 'active') {
+        return res.status(403).json({
+          message: "Los Master Brokers pueden suspender o dar de baja a brokers de su red, pero la reactivación requiere Super Admin."
         });
       }
     }
@@ -2597,7 +3371,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
     return res.json({
       message: `Estado operativo actualizado exitosamente a ${requestedStatus}`,
-      user: updatedUser,
+      user: publicUserForManagement(updatedUser),
     });
   }
 
@@ -2701,19 +3475,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Estado actual del broker
       const currentStatus = (targetUser.status as UserOperationalStatus) || (targetUser.isActive ? 'active' : 'inactive');
 
-      // Validar reglas según acción solicitada
-      if (requestedStatus === 'inactive') {
-        if (currentStatus !== 'active' && currentStatus !== 'suspended') {
-          return res.status(400).json({ 
-            message: "Solo se puede solicitar la baja de un broker que esté actualmente activo o suspendido" 
-          });
-        }
-      } else if (requestedStatus === 'active') {
-        if (currentStatus !== 'inactive') {
-          return res.status(400).json({ 
-            message: "Solo se puede solicitar la reactivación de un broker que esté actualmente inactivo" 
-          });
-        }
+      // Master Broker: solicitar únicamente reactivación a Super Admin.
+      // Suspensión y baja de brokers propios son acciones directas del Master.
+      if (requestedStatus !== 'active') {
+        return res.status(403).json({
+          message: "Los Master Brokers pueden suspender o dar de baja a brokers de su red directamente. Las solicitudes a Super Admin están reservadas para reactivaciones."
+        });
+      }
+      if (currentStatus !== 'inactive') {
+        return res.status(400).json({
+          message: "Solo se puede solicitar la reactivación de un broker que esté actualmente inactivo"
+        });
       }
 
       // No permitir solicitudes duplicadas pendientes para mismo requester, target y requestedStatus
@@ -2724,8 +3496,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
 
       if (hasDuplicate) {
-        return res.status(409).json({ 
-          message: `Ya existe una solicitud pendiente de ${requestedStatus === 'inactive' ? 'baja' : 'reactivación'} para este broker` 
+        return res.status(409).json({
+          message: "Ya existe una solicitud pendiente de reactivación para este broker"
         });
       }
 
@@ -2744,14 +3516,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
         entityId: newRequest.id,
         targetUserId: targetUser.id,
         performedBy: callerUser.id,
-        notes: `Solicitud de ${requestedStatus === 'inactive' ? 'baja' : 'reactivación'} creada por Master Broker ${callerUser.email} para broker ${targetUser.email}. Motivo: ${reason.trim()}`,
+        notes: `Solicitud de reactivación creada por Master Broker ${callerUser.email} para broker ${targetUser.email}. Motivo: ${reason.trim()}`,
       });
 
-      // Notificar a administradores
+      // Notificar únicamente a Super Admins, que son quienes pueden resolver la solicitud.
       try {
         const allUsers = await storage.getAllUsers();
-        const admins = allUsers.filter(u => u.role === 'admin' || u.role === 'super_admin');
-        const actionLabel = requestedStatus === 'inactive' ? 'baja' : 'reactivación';
+        const admins = allUsers.filter(u => u.role === 'super_admin');
+        const actionLabel = 'reactivación';
         await Promise.all(admins.map(admin => 
           storage.createNotification({
             userId: admin.id,
@@ -2916,7 +3688,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       return res.json({
         message: "Solicitud aprobada y estado operativo actualizado exitosamente",
         request: resolvedRequest,
-        user: updatedUser,
+        user: publicUserForManagement(updatedUser),
       });
     } catch (error: any) {
       console.error("Error approving status request:", error);
@@ -3049,6 +3821,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
         rawClients = await storage.getClients(userId);
       }
 
+      // The organization/tenant query is a candidate list, not authorization.
+      // Broker and Master must pass the exact commercial scope checked on the
+      // individual profile endpoint; tenant administrator membership cannot
+      // give a Broker platform-wide client listing.
+      if (!isAdmin) {
+        rawClients = await filterAuthorizedClientListing(rawClients,async(client)=>{
+          const access=await authorizeClientAccess(userId,user?.role||"",client.id,req.tenantContext);
+          const broadTenantPrivilege = ["broker","master_broker"].includes(user?.role||"") &&
+            String(access.reason||"").startsWith("Acceso administrativo");
+          return Boolean(access.authorized && access.capabilities.canViewBasicProfile && !broadTenantPrivilege);
+        });
+      }
+
       const enrichedClients = await Promise.all(
         rawClients.map(async (client) => {
           let broker = null;
@@ -3127,7 +3912,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const userId = req.user.claims.sub;
       const user = await storage.getUser(userId);
 
-      const originationCheck = await validateCommercialOrigination({
+      const originationCheck = await validateCommercialOriginationAndFormalization({
         callerUser: user,
         callerMembership: req.tenantContext?.membership,
         tenantId: req.tenantContext?.tenant?.id,
@@ -3135,7 +3920,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
 
       if (!originationCheck.allowed) {
-        return res.status(403).json({ message: originationCheck.message });
+        return res.status(originationCheck.statusCode || 403).json({
+          code: originationCheck.code,
+          message: originationCheck.message,
+        });
       }
 
       const clientData = updatedInsertClientSchema.parse({
@@ -3253,6 +4041,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       const isPlatformAdmin = Boolean(user?.role === 'super_admin' || req.tenantContext?.isPlatformAdmin);
       const targetBrokerId = (isPlatformAdmin && brokerId) ? brokerId : userId;
+
+      const formalizationCheck = await validateEffectiveBrokerFormalization(
+        {
+          callerUser: user,
+          effectiveBrokerId: targetBrokerId,
+        },
+        storage
+      );
+
+      if (!formalizationCheck.allowed) {
+        return res.status(formalizationCheck.statusCode || 403).json({
+          code: formalizationCheck.code,
+          message: formalizationCheck.message,
+        });
+      }
 
       const result = await commercialOpportunityService.createOpportunity({
         clientId: id,
@@ -3460,7 +4263,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const userId = req.user.claims.sub;
       const user = await storage.getUser(userId);
-      const isPlatformAdmin = Boolean(user?.role === 'super_admin' || user?.role === 'admin' || req.tenantContext?.isPlatformAdmin);
+      // The global audit feed includes cross-tenant data: enforce the verified
+      // platform ROLE, not a tenant-context flag as a substitute for RBAC.
+      const isPlatformAdmin = user?.role === 'super_admin' || user?.role === 'admin';
 
       if (!isPlatformAdmin) {
         return res.status(403).json({ message: "Acceso exclusivo para Mesa de Control o Administradores de Plataforma." });
@@ -3547,11 +4352,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ message: "Se requiere ruleVersionId o version" });
       }
 
-      const clientIp = req.headers['x-forwarded-for'] || req.socket.remoteAddress || req.ip;
+      const clientIp = req.ip || req.socket?.remoteAddress || undefined;
       const result = await commercialHelpService.recordAcknowledgment(
         userId,
         targetVersion,
-        typeof clientIp === 'string' ? clientIp : Array.isArray(clientIp) ? clientIp[0] : undefined
+        typeof clientIp === 'string' ? clientIp : undefined
       );
 
       res.json(result);
@@ -3657,7 +4462,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
       }
       
+      // PRE-P0: generic profile editing cannot transfer a client to another
+      // tenant/Broker or rewrite authorship. Network transitions have a
+      // dedicated audited workflow.
+      const clientIdentityFields = ["id", "brokerId", "tenantId", "createdBy"];
+      const clientIdentityChanged = clientIdentityFields.some(key =>
+        Object.prototype.hasOwnProperty.call(req.body || {}, key) &&
+        req.body[key] !== (authResult.client as any)[key]
+      );
+      if (clientIdentityChanged) {
+        return res.status(409).json({
+          code: "CLIENT_OWNERSHIP_IMMUTABLE",
+          message: "La identidad y atribución del cliente no se cambia mediante edición general.",
+        });
+      }
       const clientData = updatedInsertClientSchema.partial().parse(req.body);
+      for (const key of clientIdentityFields) delete (clientData as any)[key];
       const client = await storage.updateClient(id, clientData);
       
       if (!client) {
@@ -3777,22 +4597,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
           status: status as string,
         });
       } else if (user?.role === 'master_broker') {
-        const networkBrokers = await storage.getUsersByMasterBroker(userId);
-        const brokerIds = [userId, ...networkBrokers.map(b => b.id)];
-        let tenantIds: string[] = [];
-        if (req.tenantContext?.tenant) {
-          const subordinates = await storage.getTenantsByParent(req.tenantContext.tenant.id);
-          tenantIds = [req.tenantContext.tenant.id, ...subordinates.map(t => t.id)];
-        }
         const allCredits = await storage.getCredits({
           clientId: clientId as string,
           status: status as string,
         });
+        // A Master sees its direct originations and credits historically
+        // originated under its network. Current network membership alone must
+        // never transfer old credits from another Master or from Casa Matriz.
         rawCredits = allCredits.filter(c => 
           c.brokerId === userId || 
-          (c as any).masterBrokerId === userId || 
-          brokerIds.includes(c.brokerId) ||
-          (c.tenantId && tenantIds.includes(c.tenantId))
+          c.originMasterBrokerId === userId
         );
       } else if (req.tenantContext?.tenant) {
         const tenant = req.tenantContext.tenant;
@@ -3800,7 +4614,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
           clientId: clientId as string,
           status: status as string,
         });
-        rawCredits = allCredits.filter(c => c.brokerId === userId || c.tenantId === tenant.id);
+        // Shared tenant membership does not authorize every Broker to read
+        // another originator's confidential credit.
+        rawCredits = allCredits.filter(c => c.brokerId === userId);
       } else {
         rawCredits = await storage.getCredits({
           brokerId: userId,
@@ -3823,12 +4639,25 @@ export async function registerRoutes(app: Express): Promise<Server> {
             submission = await storage.getCreditSubmissionRequest(credit.linkedSubmissionId);
             if (submission) {
               const rawTargets = await storage.getCreditSubmissionTargetsByRequest(submission.id);
-              targets = await Promise.all(rawTargets.map(t => enrichCreditSubmissionTarget(t)));
+              targets = (await Promise.all(rawTargets.map(t => enrichCreditSubmissionTarget(t))))
+                .filter(t => canReadCreditSubmission(user, t.request))
+                .map(t => projectSubmissionTarget(t, user?.role));
             }
           }
 
+          const prop = (credit.finalProposal as any) || {};
+          const isConfirmed = isCreditDisbursementConfirmed(credit);
+          const disbursementStatus = isConfirmed
+            ? 'confirmed'
+            : ((credit.status === 'disbursed' || credit.status === 'dispersed' || credit.status === 'dispersado' || prop.disbursementStatus === 'reported') ? 'reported' : 'unconfirmed');
+          const confirmedDisbursedAmount = prop.disbursementConfirmation?.confirmedAmount ??
+            (credit as any)?.confirmedDisbursedAmount ?? null;
+
           return {
             ...credit,
+            disbursementStatus,
+            isDisbursementConfirmed: isConfirmed,
+            confirmedDisbursedAmount,
             client: client ? {
               id: client.id,
               firstName: client.firstName,
@@ -3873,7 +4702,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         })
       );
       
-      res.json(enrichedCredits);
+      res.json(enrichedCredits.map(credit => projectSubmissionCredit(credit, user?.role)));
     } catch (error) {
       console.error("Error fetching credits:", error);
       res.status(500).json({ message: "Failed to fetch credits" });
@@ -3885,7 +4714,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const userId = req.user.claims.sub;
       const user = await storage.getUser(userId);
 
-      const originationCheck = await validateCommercialOrigination({
+      const originationCheck = await validateCommercialOriginationAndFormalization({
         callerUser: user,
         callerMembership: req.tenantContext?.membership,
         tenantId: req.tenantContext?.tenant?.id,
@@ -3893,16 +4722,147 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
 
       if (!originationCheck.allowed) {
-        return res.status(403).json({ message: originationCheck.message });
+        return res.status(originationCheck.statusCode || 403).json({
+          code: originationCheck.code,
+          message: originationCheck.message,
+        });
+      }
+
+      // OPE-09: generic create cannot impersonate verified disbursement.
+      const claimedProposal = req.body?.finalProposal;
+      const verifiedKeys = ["disbursementStatus", "disbursementConfirmation",
+        "disbursementTranches", "confirmedDisbursedAmount", "disbursementConfirmedAt",
+        "disbursementConfirmedBy"];
+      if (["disbursed", "dispersado", "dispersed", "active", "completed", "defaulted"].includes(req.body?.status) ||
+          (claimedProposal && typeof claimedProposal === "object" &&
+            verifiedKeys.some(key => Object.prototype.hasOwnProperty.call(claimedProposal, key)))) {
+        return res.status(409).json({
+          code: "DISBURSEMENT_CONFIRMATION_REQUIRED",
+          message: "El desembolso sólo puede confirmarse mediante el flujo autorizado de Super Admin.",
+        });
+      }
+
+      // A generic credit form is NOT an authority for commission splits.
+      // Only a published, same-institution offer/version may define economics.
+      const rawProposal = (req.body?.finalProposal && typeof req.body.finalProposal === "object" &&
+        !Array.isArray(req.body.finalProposal)) ? req.body.finalProposal as Record<string, any> : {};
+      // Reject inconsistent identity claims across the credit and its frozen
+      // proposal before trusting either source or freezing monetary terms.
+      const offeredIds = [rawProposal.institutionProductId, rawProposal.offerId,
+        req.body?.institutionProductId].filter((v: unknown) => v !== undefined && v !== null && v !== "");
+      const offeredVersions = [rawProposal.versionNumber, req.body?.versionNumber]
+        .filter((v: unknown) => v !== undefined && v !== null);
+      if ((offeredIds.length > 1 && offeredIds.some((v: unknown) => v !== offeredIds[0])) ||
+          (offeredVersions.length > 1 &&
+            offeredVersions.some((v: unknown) => Number(v) !== Number(offeredVersions[0])))) {
+        return res.status(409).json({ code: "OFFER_VERSION_IDENTITY_MISMATCH" });
+      }
+      const explicitOfferId = rawProposal.institutionProductId || rawProposal.offerId ||
+        req.body?.institutionProductId || null;
+      const explicitVersion = rawProposal.versionNumber ?? req.body?.versionNumber ?? null;
+      const hasLineage = Boolean(explicitOfferId) || explicitVersion != null;
+      // A new direct credit for an institution already offering published
+      // products must identify which exact economics apply. Draft exploration
+      // without a selected financial institution remains possible.
+      if (!hasLineage && req.body?.financialInstitutionId) {
+        const catalog = await storage.getInstitutionProducts();
+        if (catalog.some(p =>
+          p.institutionId === req.body.financialInstitutionId &&
+          p.status === "published" && p.isActive !== false)) {
+          return res.status(409).json({
+            code: "OFFER_VERSION_REQUIRED_FOR_PUBLISHED_INSTITUTION",
+            message: "Selecciona un producto y versión publicada de la financiera.",
+          });
+        }
+      }
+      const clientEconomicKeys = ["commissionRates", "financiera", "broker", "masterBroker",
+        "platformNet", "platformMargin", "platformGrossMargin", "overRate", "sobretasa",
+        "networkCommissionRates", "commissionsToApply", "openingCommission",
+        "masterBrokerShare", "brokerShare", "netCommission", "totalCommission"];
+      if (!hasLineage && clientEconomicKeys.some(key =>
+        Object.prototype.hasOwnProperty.call(rawProposal, key))) {
+        return res.status(409).json({
+          code: "OFFER_VERSION_REQUIRED_FOR_COMMISSION_RATES",
+          message: "No se pueden declarar comisiones sin una oferta y versión comercial verificables.",
+        });
+      }
+      let validatedProposal = { ...rawProposal };
+      let canonicalFinancialInstitutionId: string | null = req.body?.financialInstitutionId || null;
+      if (hasLineage) {
+        if (typeof explicitOfferId !== "string" || !explicitOfferId.trim() ||
+            !Number.isSafeInteger(Number(explicitVersion)) || Number(explicitVersion) <= 0) {
+          return res.status(409).json({ code: "OFFER_VERSION_IDENTITY_INCOMPLETE" });
+        }
+        const product = await storage.getInstitutionProduct(explicitOfferId);
+        if (!product || (req.body?.financialInstitutionId &&
+            product.institutionId !== req.body.financialInstitutionId)) {
+          return res.status(409).json({ code: "OFFER_VERSION_INSTITUTION_MISMATCH" });
+        }
+        const versions = await storage.getInstitutionProductVersions(explicitOfferId);
+        const currentVersion = versions.find(v => v.versionNumber === Number(explicitVersion) &&
+          v.status === "published");
+        if (!currentVersion) {
+          return res.status(409).json({ code: "OFFER_VERSION_NOT_CURRENT" });
+        }
+        canonicalFinancialInstitutionId = product.institutionId;
+        const rates = (currentVersion.conditions as any)?.commissionRates;
+        if (!rates || typeof rates !== "object") {
+          return res.status(409).json({ code: "OFFER_COMMISSION_SCHEDULE_UNAVAILABLE" });
+        }
+        for (const key of clientEconomicKeys) delete validatedProposal[key];
+        validatedProposal = {
+          ...validatedProposal,
+          institutionProductId: explicitOfferId,
+          versionNumber: currentVersion.versionNumber,
+          financialInstitutionId: product.institutionId,
+          commissionRates: rates,
+        };
+      }
+
+      const creditClientAccess = await validateClientOriginationAccess({
+        clientId: req.body?.clientId,
+        callerUser: user,
+        effectiveBrokerId: originationCheck.brokerId,
+        tenantContext: req.tenantContext,
+      });
+      if (!creditClientAccess.allowed) {
+        return res.status(creditClientAccess.statusCode || 403).json({
+          code: creditClientAccess.code, message: creditClientAccess.message,
+        });
       }
 
       const creditData = insertCreditSchema.parse({
         ...req.body,
+        finalProposal: validatedProposal,
+        financialInstitutionId: canonicalFinancialInstitutionId,
         tenantId: req.tenantContext?.tenant?.id || null,
         brokerId: originationCheck.brokerId,
         createdBy: userId,
       });
-      
+
+      // Origin Master for a *new direct credit* must match the storage-side
+      // attribution logic. Never rely on a client-supplied Master ID.
+      // Formalization ordinarily resolves this ID; fail closed if an
+      // inconsistent allowed result reaches this route.
+      if (!originationCheck.brokerId) {
+        return res.status(409).json({ code: "CREDIT_ORIGINATOR_NOT_VERIFIED" });
+      }
+      const originator = await storage.getUser(originationCheck.brokerId);
+      let effectiveMasterBrokerId: string | null = null;
+      if (originator?.role === "master_broker") {
+        effectiveMasterBrokerId = originator.id;
+      } else if (originator?.role === "broker" && originator.masterBrokerId) {
+        const parent = await storage.getUser(originator.masterBrokerId);
+        effectiveMasterBrokerId = parent?.role === "master_broker" ? parent.id : null;
+      }
+
+      const blocked = await checkOfferCommissionAcceptanceForNewOperation({
+        offerId: explicitOfferId, versionNumber: explicitVersion,
+        brokerId: creditData.brokerId,
+        originMasterBrokerId: effectiveMasterBrokerId,
+      });
+      if (blocked) return res.status(409).json(blocked);
+
       const credit = await storage.createCredit(creditData);
       
       // Create notification
@@ -3914,8 +4874,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
         data: { creditId: credit.id },
       });
       
-      res.status(201).json(credit);
-    } catch (error) {
+      res.status(201).json(projectSubmissionCredit(credit, user?.role));
+    } catch (error: any) {
+      const code = String(error?.message || "");
+      if (code.startsWith("OFFER_") || code === "MISSING_ORIGIN_MASTER_FOR_OFFER") {
+        return res.status(409).json({ code, message: "Las condiciones de oferta o aceptación necesitan revisión." });
+      }
       console.error("Error creating credit:", error);
       res.status(500).json({ message: "Failed to create credit" });
     }
@@ -3928,13 +4892,75 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const user = await storage.getUser(userId);
       
       // Authorization check - broker/tenant access
-      const authResult = await authorizeCreditAccess(userId, user?.role || '', id, req.tenantContext);
+      const authResult = await authorizeCreditAccess(userId, user?.role || '', id, req.tenantContext, 'write');
       if (!authResult.authorized) {
         return res.status(authResult.reason === 'Credit not found' ? 404 : 403).json({ message: authResult.reason });
       }
       
-      const creditData = insertCreditSchema.partial().parse(req.body);
       const oldCredit = authResult.credit;
+      // PRE-P0: once created, a credit's client, Broker, tenant, historical
+      // origin and linked opportunity are not freely reassignable. This also
+      // prevents bypassing immutable economic/commission provenance.
+      const creditIdentityFields = [
+        "id", "clientId", "brokerId", "tenantId", "createdBy",
+        "originMasterBrokerId", "linkedSubmissionId",
+        "institutionProductId", "versionNumber",
+      ];
+      const creditIdentityChanged = creditIdentityFields.some(key =>
+        Object.prototype.hasOwnProperty.call(req.body || {}, key) &&
+        req.body[key] !== (oldCredit as any)[key]
+      );
+      if (creditIdentityChanged) {
+        return res.status(409).json({
+          code: "CREDIT_OWNERSHIP_IMMUTABLE",
+          message: "No se puede cambiar el cliente, originador o linaje de un crédito mediante edición general.",
+        });
+      }
+      const creditData = insertCreditSchema.partial().parse(req.body);
+      for (const key of creditIdentityFields) delete (creditData as any)[key];
+
+      // OPE-09/10: no generic client can forge official disbursement evidence.
+      const incomingProposal = req.body?.finalProposal;
+      const protectedFields = ["disbursementStatus", "disbursementConfirmation",
+        "disbursementTranches", "confirmedDisbursedAmount", "disbursementConfirmedAt",
+        "disbursementConfirmedBy"];
+      if (incomingProposal && typeof incomingProposal === "object" &&
+          protectedFields.some(key => Object.prototype.hasOwnProperty.call(incomingProposal, key))) {
+        return res.status(409).json({
+          code: "DISBURSEMENT_EVIDENCE_WRITE_FORBIDDEN",
+          message: "La evidencia de confirmación no puede modificarse en la edición general del crédito.",
+        });
+      }
+      if (creditData.status &&
+          ["disbursed", "dispersado", "dispersed", "active", "completed", "defaulted"].includes(creditData.status) &&
+          !isCreditDisbursementConfirmed(oldCredit)) {
+        return res.status(409).json({
+          code: "DISBURSEMENT_CONFIRMATION_REQUIRED",
+          message: "Se requiere confirmación oficial de desembolso por Super Admin antes de avanzar el estado.",
+        });
+      }
+
+      // REGLA 1 y 2 (COM-07, COM-16, COM-22): Snapshot comercial inmutable
+      if (creditData.finalProposal !== undefined) {
+        try {
+          creditData.finalProposal = consolidateCommercialProposalSnapshot({
+            credit: oldCredit,
+            proposalData: creditData.finalProposal,
+          });
+        } catch (snapErr: any) {
+          if (snapErr instanceof ImmutableCommercialSnapshotError) {
+            return res.status(409).json({
+              message: snapErr.message,
+              code: snapErr.code,
+              details: snapErr.details,
+            });
+          }
+          throw snapErr;
+        }
+      } else if (oldCredit.finalProposal && (oldCredit.finalProposal as any).isCommercialSnapshot) {
+        // Preservar el snapshot consolidado existente intacto
+        creditData.finalProposal = oldCredit.finalProposal;
+      }
       
       const credit = await storage.updateCredit(id, creditData);
       
@@ -3942,90 +4968,419 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ message: "Credit not found" });
       }
       
-      // Check if status changed to 'dispersado' or 'disbursed' - trigger commission calculation
+      // Check if status changed to 'dispersado' or 'disbursed'
       const statusChanged = oldCredit.status !== credit.status;
       const isDispersed = credit.status === 'dispersado' || credit.status === 'disbursed';
       
       if (statusChanged && isDispersed) {
-        console.log(`[Commission Trigger] Credit ${id} status changed to ${credit.status}, calculating commissions...`);
+        console.log(`[Commission Trigger] Credit ${id} status changed to ${credit.status}`);
         
-        // Check if credit comes from a winning submission target
-        // If so, skip commission calculation here — commissions are handled by the target dispersal endpoint (PATCH mark-dispersed)
-        const submissionTarget = await storage.getCreditSubmissionTargetByCreditId(id);
-        const skipCommissionCalc = submissionTarget && (!submissionTarget.isWinner || submissionTarget.status !== 'dispersed');
-        if (skipCommissionCalc) {
-          console.warn(`[Commission Trigger] Credit ${id} comes from submission target but not winner or not dispersed yet, skipping commission calculation (handled by target dispersal flow)`);
-        }
-        
-        if (!skipCommissionCalc) {
-          // Get broker and master broker
-          const broker = await storage.getUser(credit.brokerId);
-          if (broker) {
-            const isMasterDirect = broker.role === 'master_broker';
-            const masterBrokerId = isMasterDirect ? broker.id : broker.masterBrokerId;
-            const finalProposal = credit.finalProposal as any;
-            const approvedAmount = parseFloat(finalProposal?.approvedAmount || credit.amount || '0');
-            const commissionsToApply = (finalProposal?.commissionsToApply && finalProposal.commissionsToApply.length)
-              ? finalProposal.commissionsToApply
-              : ['apertura'];
-            const commissionRates = finalProposal?.commissionRates || {};
-            const institution = credit.financialInstitutionId ? await storage.getFinancialInstitution(credit.financialInstitutionId) : null;
-            const instRates = (institution?.commissionRates as any) || {};
-
-            for (const commType of commissionsToApply) {
-              const brokerRate = parseFloat(
-                commissionRates.broker?.[commType] ||
-                commissionRates.broker?.apertura ||
-                instRates.broker?.[commType] ||
-                instRates.broker?.apertura ||
-                (institution as any)?.brokerCommissionRate ||
-                (institution as any)?.commissionRate ||
-                '0'
-              );
-              const masterRate = (masterBrokerId || isMasterDirect)
-                ? parseFloat(
-                    commissionRates.masterBroker?.[commType] ||
-                    commissionRates.masterBroker?.apertura ||
-                    instRates.masterBroker?.[commType] ||
-                    instRates.masterBroker?.apertura ||
-                    (institution as any)?.masterBrokerCommissionRate ||
-                    '0'
-                  )
-                : 0;
-              const superAdminRate = parseFloat(
-                commissionRates.financiera?.[commType] ||
-                commissionRates.financiera?.apertura ||
-                commissionRates.superAdmin?.[commType] ||
-                commissionRates.superAdmin?.apertura ||
-                instRates.financiera?.[commType] ||
-                instRates.financiera?.apertura ||
-                instRates.superAdmin?.[commType] ||
-                instRates.superAdmin?.apertura ||
-                (institution as any)?.commissionRate ||
-                '0'
-              );
-
-              await createCascadingCommissionRecord({
-                creditId: credit.id,
-                brokerId: credit.brokerId,
-                masterBrokerId: masterBrokerId || null,
-                commissionType: commType,
-                approvedAmount,
-                financieraRate: superAdminRate,
-                masterBrokerRate: masterRate,
-                brokerRate,
-                financialInstitutionId: credit.financialInstitutionId || null,
-                isMasterDirect,
-              });
-            }
-          }
-        }
+        // REGLA 1 (COM-21) y REGLA 3 (COM-23): Desembolsos verificables y eliminación de rutas no canónicas.
+        // Prohibido utilizar fallbacks a approvedAmount, credit.amount o montos declarados directamente por el frontend.
+        // Exigir evidencia confiable de dispersión confirmada en backend.
+        // Al no existir integración con Core Bancario (FIN-13/FIN-14 pendiente), se bloquea el cálculo automático
+        // y se reporta la dependencia expresamente; no se simulan confirmaciones ni se calculan comisiones arbitrarias.
+        console.warn(
+          `[COM-21] Cálculo de comisiones bloqueado para crédito ${id}: ` +
+          `Se exige evidencia confiable de dispersión bancaria confirmada en servidor. ` +
+          `Montos declarados por frontend y fallbacks a approvedAmount/credit.amount están prohibidos. ` +
+          `Dependencia requerida: FIN-13 / FIN-14 (Core Bancario / Dispersión Confirmada en Servidor).`
+        );
       }
       
-      res.json(credit);
+      res.json(projectSubmissionCredit(credit, user?.role));
     } catch (error) {
       console.error("Error updating credit:", error);
       res.status(500).json({ message: "Failed to update credit" });
+    }
+  });
+
+  // REGLAS 1, 2, 3 y 4 (FASE 2B.2A.1 / COM-21 / OPE-09 / PAG-05): Confirmación manual de desembolsos por Super Admin
+  app.post('/api/credits/:id/confirm-disbursement', isAuthenticated, requireModuleAndAction('creditos', 'edit'), async (req: any, res) => {
+    try {
+      const { id } = req.params;
+      const userId = req.user.claims.sub;
+      const user = await storage.getUser(userId);
+
+      // Exclusividad estricta para Super Admin (Regla 1)
+      if (!user || user.role !== 'super_admin') {
+        return res.status(403).json({
+          message: "Acceso denegado: La validación y confirmación de desembolsos está reservada exclusivamente para Super Admin.",
+          code: "FORBIDDEN_SUPER_ADMIN_REQUIRED",
+        });
+      }
+
+      const credit = await storage.getCredit(id);
+      if (!credit) {
+        return res.status(404).json({ message: "Crédito no encontrado" });
+      }
+
+      // REGLA 1 (OPE-10/11/12): Elegibilidad operativa del crédito
+      if (['cancelled', 'rejected'].includes(credit.status)) {
+        return res.status(400).json({
+          message: `Operación no elegible para confirmación de desembolso: El crédito se encuentra en estado '${credit.status}'.`,
+          code: "CREDIT_STATUS_INELIGIBLE",
+        });
+      }
+
+      // REGLA 4: Atribución Histórica y Elegibilidad
+      if (!credit.brokerId) {
+        return res.status(400).json({
+          message: "Operación no elegible para confirmación de desembolso: Falta el Bróker originador.",
+          code: "MISSING_ORIGIN_BROKER",
+        });
+      }
+
+      const existingProposal = (credit.finalProposal as any) || {};
+      const financialInstitutionId = credit.financialInstitutionId || existingProposal.financialInstitutionId;
+      if (!financialInstitutionId) {
+        return res.status(400).json({
+          message: "Operación no elegible para confirmación de desembolso: Falta la Financiera oferente.",
+          code: "MISSING_FINANCIAL_INSTITUTION",
+        });
+      }
+
+      const { confirmedAmount, notes, dispersalIndex, idempotencyKey } = req.body;
+
+      // Validación estricta del monto efectivamente desembolsado
+      if (
+        confirmedAmount === undefined ||
+        confirmedAmount === null ||
+        isNaN(Number(confirmedAmount)) ||
+        Number(confirmedAmount) <= 0 ||
+        !Number.isFinite(Number(confirmedAmount))
+      ) {
+        return res.status(400).json({
+          message: "El monto efectivamente dispersado debe ser un número positivo mayor a cero.",
+          code: "INVALID_CONFIRMED_AMOUNT",
+        });
+      }
+
+      const validConfirmedAmount = Number(confirmedAmount);
+      const validDispersalIndex = dispersalIndex != null && !isNaN(Number(dispersalIndex)) && Number(dispersalIndex) > 0
+        ? Number(dispersalIndex)
+        : 1;
+
+      // Real PostgreSQL path (OPE-10/11): lock credit and persist tranche,
+      // commission and two audit entries in one transaction. MemStorage keeps
+      // the legacy route exclusively for in-memory tests.
+      const transactionalStorage: IStorage = storage;
+      if (transactionalStorage.confirmCreditDisbursementAtomic) {
+        try {
+          const existingProposal = (credit.finalProposal as any) || {};
+          const commType = req.body?.commissionType || existingProposal.commissionsToApply?.[0] || "apertura";
+          const institutionId = credit.financialInstitutionId || existingProposal.financialInstitutionId;
+          const preview = await calculateAndPersistCascadingCommission({
+            credit,
+            creditId: credit.id,
+            commissionType: commType,
+            confirmedDisbursedAmount: validConfirmedAmount,
+            dispersalIndex: validDispersalIndex,
+            idempotencyKey: idempotencyKey ? String(idempotencyKey).trim() : undefined,
+            financialInstitutionId: institutionId,
+            institutionProductId: existingProposal.institutionProductId || existingProposal.offerId || null,
+            versionNumber: existingProposal.versionNumber ?? null,
+            performedBy: userId,
+            previewOnly: true,
+          });
+          const result = await transactionalStorage.confirmCreditDisbursementAtomic({
+            creditId: credit.id,
+            expectedProposal: credit.finalProposal,
+            expectedAmount: credit.amount,
+            confirmedAmount: validConfirmedAmount,
+            dispersalIndex: validDispersalIndex,
+            commission: preview,
+            performedBy: userId,
+            actorEmail: user.email,
+            notes: notes ? String(notes).trim() : null,
+            idempotencyKey: idempotencyKey ? String(idempotencyKey).trim() : null,
+          });
+          // Never send notifications until PostgreSQL COMMIT has succeeded.
+          if (!result.alreadyConfirmed && credit.brokerId) {
+            try {
+              const notif = await storage.createNotification({
+                userId: credit.brokerId,
+                type: "disbursement_confirmed",
+                title: "Desembolso confirmado y comisión calculada",
+                message: `Confirmación de desembolso por $${validConfirmedAmount.toFixed(2)} MXN.`,
+                relatedEntityType: "credit",
+                relatedEntityId: credit.id,
+                priority: "high",
+              });
+              broadcastToUser(credit.brokerId, { type: "notification", notification: notif });
+            } catch (notificationErr) {
+              console.warn("[Disbursement] Committed but notification failed:", notificationErr);
+            }
+          }
+          return res.json({
+            message: result.alreadyConfirmed
+              ? "Este tramo ya había sido confirmado."
+              : "Desembolso confirmado con comisión y auditoría atómicas.",
+            ...result,
+          });
+        } catch (error: any) {
+          const code = String(error?.message || "");
+          if (error instanceof MissingCommissionRateError ||
+              error instanceof MissingOfferVersionError ||
+              error instanceof UnauthorizedDistributionError ||
+              error instanceof UnconfirmedDispersalAmountError) {
+            return res.status(400).json({
+              message: error.message, code: error.code || "CANONICAL_CALCULATION_ERROR",
+            });
+          }
+          if (code.startsWith("DISBURSEMENT_") || code.startsWith("OFFER_") ||
+              code === "MISSING_ORIGIN_MASTER_FOR_OFFER" ||
+              code === "TOTAL_DISBURSEMENT_EXCEEDS_APPROVED_AMOUNT") {
+            return res.status(409).json({
+              message: "No pudo confirmarse el tramo: conflicto de estado, monto o idempotencia.",
+              code,
+            });
+          }
+          throw error;
+        }
+      }
+
+      // REGLA 2: Idempotencia y Multidispersión
+      const existingTranches: any[] = Array.isArray(existingProposal.disbursementTranches)
+        ? existingProposal.disbursementTranches
+        : (existingProposal.disbursementConfirmation ? [existingProposal.disbursementConfirmation] : []);
+
+      // 1. Idempotency Key check
+      if (idempotencyKey) {
+        const existingComms = await storage.getCommissions({ idempotencyKey: String(idempotencyKey).trim() });
+        if (existingComms.length > 0) {
+          return res.json({
+            message: "Desembolso ya confirmado previamente con esta clave de idempotencia.",
+            credit,
+            commission: existingComms[0],
+            alreadyConfirmed: true,
+          });
+        }
+      }
+
+      // 2. Comprobar si el tramo específico ya fue confirmado previamente
+      const existingTranche = existingTranches.find((t: any) => Number(t.dispersalIndex || 1) === validDispersalIndex);
+      if (existingTranche) {
+        const prevAmount = Number(existingTranche.confirmedAmount || 0);
+        if (Math.abs(prevAmount - validConfirmedAmount) < 0.01) {
+          const commType = req.body?.commissionType || existingProposal.commissionsToApply?.[0] || 'apertura';
+          const resolvedCommType = validDispersalIndex > 1 ? `${commType}_parcial_${validDispersalIndex}` : commType;
+          const existingComms = await storage.getCommissions({ creditId: credit.id });
+          const matchComm = existingComms.find(c => c.commissionType === resolvedCommType || c.id === existingTranche.commissionId);
+          return res.json({
+            message: "Este tramo de desembolso ya se encuentra confirmado con el mismo importe.",
+            credit,
+            commission: matchComm || existingComms[0] || null,
+            alreadyConfirmed: true,
+          });
+        } else {
+          return res.status(400).json({
+            message: `Prohibido alterar el importe de un tramo confirmado: El tramo #${validDispersalIndex} ya fue confirmado previamente por $${prevAmount.toFixed(2)} MXN y es inmutable.`,
+            code: "CANNOT_ALTER_CONFIRMED_TRANCHE_AMOUNT",
+            details: {
+              dispersalIndex: validDispersalIndex,
+              previousConfirmedAmount: prevAmount,
+              attemptedAmount: validConfirmedAmount,
+            },
+          });
+        }
+      }
+
+      // 3. Impedir sobrepasar el monto máximo autorizado del crédito
+      const maxCreditAmount = Number(credit.amount || existingProposal.approvedAmount || 0);
+      const otherTranchesTotal = existingTranches
+        .filter((t: any) => Number(t.dispersalIndex || 1) !== validDispersalIndex)
+        .reduce((sum: number, t: any) => sum + Number(t.confirmedAmount || 0), 0);
+
+      if (maxCreditAmount > 0 && (otherTranchesTotal + validConfirmedAmount) > (maxCreditAmount + 0.01)) {
+        return res.status(400).json({
+          message: `El monto acumulado de desembolsos ($${(otherTranchesTotal + validConfirmedAmount).toFixed(2)}) sobrepasa el monto máximo autorizado del crédito ($${maxCreditAmount.toFixed(2)}).`,
+          code: "TOTAL_DISBURSEMENT_EXCEEDS_APPROVED_AMOUNT",
+          details: {
+            maxCreditAmount,
+            otherTranchesTotal,
+            attemptedAmount: validConfirmedAmount,
+            accumulatedTotal: otherTranchesTotal + validConfirmedAmount,
+          },
+        });
+      }
+
+      // REGLA 1: Atomicidad y Pre-validación económica antes de actualizar el estado
+      const commType = req.body?.commissionType || existingProposal.commissionsToApply?.[0] || 'apertura';
+      const offerId = existingProposal.institutionProductId || existingProposal.offerId || (credit as any).institutionProductId || null;
+      const versionNumber = existingProposal.versionNumber ?? null;
+      const proposalCommissionRates = existingProposal.commissionRates || undefined;
+      const institution = financialInstitutionId ? await storage.getFinancialInstitution(financialInstitutionId) : undefined;
+      const historicalMasterBrokerId = credit.originMasterBrokerId || existingProposal.originMasterBrokerId || null;
+
+      try {
+        await resolveOfferVersionCommissionRates({
+          offerId,
+          versionNumber,
+          commissionType: commType,
+          proposalCommissionRates,
+          institution,
+          hasMasterBroker: Boolean(historicalMasterBrokerId),
+          isMasterDirect: Boolean(historicalMasterBrokerId && credit.brokerId && String(historicalMasterBrokerId) === String(credit.brokerId)),
+        });
+      } catch (preCheckErr: any) {
+        if (
+          preCheckErr instanceof MissingCommissionRateError ||
+          preCheckErr instanceof MissingOfferVersionError ||
+          preCheckErr instanceof UnauthorizedDistributionError
+        ) {
+          return res.status(400).json({
+            message: preCheckErr.message,
+            code: preCheckErr.code || "CANONICAL_CALCULATION_ERROR",
+            details: (preCheckErr as any).details || null,
+          });
+        }
+      }
+
+      // Estructurar el nuevo tramo e historial
+      const newTranche = {
+        dispersalIndex: validDispersalIndex,
+        confirmedAmount: validConfirmedAmount,
+        confirmedAt: new Date().toISOString(),
+        confirmedBy: userId,
+        confirmedByEmail: user.email,
+        notes: notes ? String(notes).trim() : null,
+        idempotencyKey: idempotencyKey ? String(idempotencyKey).trim() : null,
+        status: 'confirmed',
+        commissionId: undefined as string | undefined,
+      };
+
+      const updatedTranches = [
+        ...existingTranches.filter((t: any) => Number(t.dispersalIndex || 1) !== validDispersalIndex),
+        newTranche,
+      ].sort((a, b) => Number(a.dispersalIndex || 1) - Number(b.dispersalIndex || 1));
+
+      const totalDisbursedSoFar = updatedTranches.reduce((sum, t) => sum + Number(t.confirmedAmount || 0), 0);
+
+      const updatedProposal = {
+        ...existingProposal,
+        disbursementConfirmation: newTranche,
+        disbursementTranches: updatedTranches,
+        disbursementStatus: 'confirmed',
+        confirmedDisbursedAmount: totalDisbursedSoFar,
+      };
+
+      // Respaldo de estado anterior para rollback atómico
+      const previousCreditState = {
+        status: credit.status,
+        finalProposal: credit.finalProposal,
+        notes: credit.notes,
+      };
+
+      let updatedCredit = await storage.updateCredit(credit.id, {
+        status: 'disbursed',
+        finalProposal: updatedProposal,
+        notes: notes ? (credit.notes ? `${credit.notes} | Confirmación: ${notes}` : `Confirmación: ${notes}`) : credit.notes,
+      });
+
+      if (updatedCredit) {
+        (updatedCredit as any).disbursementStatus = 'confirmed';
+        (updatedCredit as any).confirmedDisbursedAmount = totalDisbursedSoFar;
+        (updatedCredit as any).disbursementConfirmedAt = new Date();
+        (updatedCredit as any).disbursementConfirmedBy = userId;
+      }
+
+      // Cálculo y persistencia canónica con protección de rollback
+      let commission: any;
+      try {
+        commission = await calculateAndPersistCascadingCommission({
+          credit: updatedCredit || credit,
+          creditId: credit.id,
+          commissionType: commType,
+          confirmedDisbursedAmount: validConfirmedAmount,
+          dispersalIndex: validDispersalIndex,
+          idempotencyKey: idempotencyKey ? String(idempotencyKey).trim() : undefined,
+          performedBy: userId,
+        });
+
+        // Enlazar id de comisión al tramo
+        newTranche.commissionId = commission.id;
+        await storage.updateCredit(credit.id, {
+          finalProposal: {
+            ...updatedProposal,
+            disbursementConfirmation: newTranche,
+            disbursementTranches: updatedTranches,
+          },
+        });
+
+        await storage.createCommissionAuditLog({
+          commissionId: commission.id,
+          performedBy: userId,
+          action: 'disbursement_confirmed',
+          previousStatus: commission.status,
+          newStatus: commission.status,
+          details: {
+            actorRole: user.role,
+            confirmedAmount: validConfirmedAmount,
+            dispersalIndex: validDispersalIndex,
+            confirmedAt: newTranche.confirmedAt,
+            notes: notes ? String(notes).trim() : null,
+            creditId: credit.id,
+          },
+        });
+
+        // Notificaciones a administradores y bróker originador
+        try {
+          if (credit.brokerId) {
+            const notif = await storage.createNotification({
+              userId: credit.brokerId,
+              type: 'disbursement_confirmed',
+              title: '✅ Desembolso Confirmado y Comisión Calculada',
+              message: `El desembolso por $${validConfirmedAmount.toLocaleString('es-MX', { minimumFractionDigits: 2 })} MXN fue confirmado por Super Admin y la comisión fue calculada exitosamente.`,
+              relatedEntityType: 'credit',
+              relatedEntityId: credit.id,
+              priority: 'high',
+            });
+            broadcastToUser(credit.brokerId, { type: 'notification', notification: notif });
+          }
+        } catch (notifErr) {
+          console.warn("[Notification] Error notifying broker of confirmed disbursement:", notifErr);
+        }
+
+        res.json({
+          message: "Desembolso confirmado exitosamente y comisión calculada mediante servicio canónico.",
+          credit: updatedCredit || credit,
+          commission,
+        });
+      } catch (calcErr: any) {
+        // ROLLBACK ATÓMICO (Regla 1): Restaurar estado del crédito
+        console.error("[Atomic Rollback] Error en cálculo de comisión, revirtiendo estado del crédito:", calcErr);
+        try {
+          await storage.updateCredit(credit.id, {
+            status: previousCreditState.status,
+            finalProposal: previousCreditState.finalProposal as any,
+            notes: previousCreditState.notes,
+          });
+        } catch (rbErr) {
+          console.error("[Atomic Rollback Failure] Error revirtiendo crédito:", rbErr);
+        }
+
+        if (
+          calcErr instanceof MissingCommissionRateError ||
+          calcErr instanceof MissingOfferVersionError ||
+          calcErr instanceof UnauthorizedDistributionError ||
+          calcErr instanceof UnconfirmedDispersalAmountError
+        ) {
+          return res.status(400).json({
+            message: calcErr.message,
+            code: calcErr.code || "CANONICAL_CALCULATION_ERROR",
+            details: (calcErr as any).details || null,
+          });
+        }
+
+        return res.status(500).json({
+          message: "Fallo en la persistencia de comisión. El crédito no fue confirmado.",
+          code: "COMMISSION_PERSISTENCE_FAILED",
+        });
+      }
+    } catch (error) {
+      console.error("Error confirming credit disbursement:", error);
+      res.status(500).json({ message: "Error interno al confirmar el desembolso del crédito" });
     }
   });
 
@@ -4035,20 +5390,121 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const userId = req.user.claims.sub;
       const user = await storage.getUser(userId);
       
-      // Admin and super_admin can see all credits, brokers only see their own
-      const isAdmin = user?.role === 'admin' || user?.role === 'super_admin';
-      
-      const credits = await storage.getCredits({ 
-        clientId,
-        brokerId: isAdmin ? undefined : userId,
-      });
-      
-      res.json(credits);
+      // Apply the SAME immutable attribution rule used by the global list.
+      // Historical Master may view its origin credits after Broker transfer;
+      // current Master must not inherit them by current network membership.
+      const allCredits = await storage.getCredits({ clientId });
+      const principal = { id: userId, role: user?.role };
+      const credits = allCredits.filter(credit => canViewCreditByOrigin(principal, credit));
+
+      res.json(credits.map(credit => projectSubmissionCredit(credit, user?.role)));
     } catch (error) {
       console.error("Error fetching client credits:", error);
       res.status(500).json({ message: "Failed to fetch client credits" });
     }
   });
+
+  // Matching M2 — consultas read-only para créditos y solicitudes independientes.
+  // Se usan exclusivamente versiones PUBLICADAS y vigentes. Sin decisiones automáticas.
+  app.get(
+    ['/api/credits/:id/matching', '/api/credit-submissions/:id/matching'],
+    isAuthenticated, requireModuleAndAction('creditos', 'view'),
+    async (req: any, res) => {
+      try {
+        const userId = req.user?.claims?.sub || req.user?.id;
+        const user = await storage.getUser(userId);
+        if (!user) return res.status(403).json({ message: 'Usuario no autorizado' });
+
+        const isSubmission = req.path.startsWith('/api/credit-submissions/');
+        let applicationRecord: any;
+        if (!isSubmission) {
+          const access = await authorizeCreditAccess(userId, user.role, req.params.id, req.tenantContext);
+          if (!access.authorized || !access.credit) {
+            return res.status(access.reason === 'Credit not found' ? 404 : 403)
+              .json({ message: 'Sin acceso al crédito solicitado' });
+          }
+          applicationRecord = access.credit;
+        } else {
+          const submission = await storage.getCreditSubmissionRequest(req.params.id);
+          if (!submission) return res.status(404).json({ message: 'Solicitud no encontrada' });
+
+          // No bastan el módulo o el identificador: se necesita propiedad comercial y tenant.
+          const tenantId = req.tenantContext?.tenant?.id;
+          const owner = submission.brokerId === userId;
+          const networkMaster = user.role === 'master_broker' &&
+            submission.originMasterBrokerId === userId && tenantId &&
+            submission.tenantId === tenantId;
+          const scopedAdmin = user.role === 'admin' && tenantId &&
+            submission.tenantId === tenantId;
+          if (user.role !== 'super_admin' && !owner && !networkMaster && !scopedAdmin) {
+            return res.status(403).json({ message: 'Sin acceso a esta solicitud' });
+          }
+          applicationRecord = {
+            ...submission,
+            // Las solicitudes independientes aún no tienen todos los campos de credits:
+            // sólo normalizar lo capturado, nunca inventar plazo ni evaluación.
+            amount: submission.requestedAmount,
+            term: (submission as any).term ?? null,
+          };
+        }
+
+        const client = await storage.getClient(applicationRecord.clientId);
+        if (!client) return res.status(404).json({ message: 'Expediente no encontrado' });
+        if (applicationRecord.tenantId && client.tenantId &&
+            String(applicationRecord.tenantId) !== String(client.tenantId)) {
+          return res.status(403).json({ message: 'Expediente fuera del tenant' });
+        }
+
+        const institutions = await storage.getFinancialInstitutions();
+        const active = new Map(institutions.filter(i => i.isActive !== false).map(i => [i.id, i]));
+        const offers: (OfferVersionInput & { institution?: any })[] = [];
+
+        for (const product of await storage.getInstitutionProducts()) {
+          const institution = active.get(product.institutionId);
+          if (!institution || product.isActive === false || product.status === 'archived') continue;
+          for (const version of await storage.getInstitutionProductVersions(product.id)) {
+            if (isVersionEligibleForMatching(product, version, institution).eligible) {
+              offers.push({ product, version, institution });
+            }
+          }
+        }
+
+        const result = evaluateCatalogCompatibility(
+          { credit: applicationRecord, client }, offers, { filterNonEligible: true }
+        );
+        // Respuesta de lista blanca. No exponer comisiones, márgenes, versiones draft
+        // ni inventario interno de ofertas excluidas.
+        const sanitize = (item: any) => ({
+          offerId: item.offerId,
+          offerName: item.offerName,
+          institutionId: item.institutionId,
+          institutionName: item.institutionName,
+          versionNumber: item.versionNumber,
+          status: item.status,
+          criteria: item.criteria,
+          reasons: item.reasons,
+          summary: item.summary,
+        });
+        return res.json({
+          requestId: req.params.id,
+          requestType: isSubmission ? 'credit_submission_request' : 'credit',
+          clientId: client.id,
+          summary: {
+            totalEvaluated: result.all.length,
+            compatibleCount: result.compatible.length,
+            insufficientDataCount: result.insufficientData.length,
+            notCompatibleCount: result.notCompatible.length,
+          },
+          compatible: result.compatible.map(sanitize),
+          insufficientData: result.insufficientData.map(sanitize),
+          notCompatible: result.notCompatible.map(sanitize),
+        });
+      } catch (error) {
+        console.error('[Matching] Error de evaluación:', error);
+        return res.status(500).json({ message: 'No fue posible evaluar las ofertas' });
+      }
+    }
+  );
 
   // Re-gestion (expiring credits for renewal)
   app.get('/api/re-gestion', isAuthenticated, requireModuleAndAction('creditos', 'view'), async (req: any, res) => {
@@ -4089,33 +5545,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const user = await storage.getUser(userId);
       const institutions = await storage.getFinancialInstitutions(userId);
 
-      // If user is a broker belonging to a Master Broker, customize broker commission rates with their MB's assigned rates
+      let networkRates: any = null;
+      // If user is a broker belonging to a Master Broker, fetch assigned network rates
       if (user?.role === 'broker' && user?.masterBrokerId) {
         const masterBroker = await storage.getUser(user.masterBrokerId);
-        const networkRates = (masterBroker?.networkCommissionRates as any) || {};
-
-        const customized = institutions.map((inst: any) => {
-          const custom = networkRates[inst.id];
-          if (custom && custom.apertura !== undefined) {
-            return {
-              ...inst,
-              commissionRates: {
-                ...inst.commissionRates,
-                broker: {
-                  ...(inst.commissionRates as any)?.broker,
-                  apertura: custom.apertura,
-                  sobretasa: custom.sobretasa ?? (inst.commissionRates as any)?.broker?.sobretasa,
-                  renovacion: custom.renovacion ?? (inst.commissionRates as any)?.broker?.renovacion,
-                }
-              }
-            };
-          }
-          return inst;
-        });
-        return res.json(customized);
+        networkRates = (masterBroker?.networkCommissionRates as any) || {};
       }
 
-      res.json(institutions);
+      const role = user?.role || 'broker';
+      const sanitized = institutions.map((inst: any) =>
+        projectFinancialInstitutionByRole(inst, role, networkRates)
+      );
+
+      res.json(sanitized);
     } catch (error) {
       console.error("Error fetching financial institutions:", error);
       res.status(500).json({ message: "Failed to fetch financial institutions" });
@@ -4123,48 +5565,31 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Get single financial institution by ID
-  app.get('/api/financial-institutions/:id', isAuthenticated, async (req: any, res) => {
+  app.get('/api/financial-institutions/:id', isAuthenticated, requireModuleAndAction('financieras', 'view'), async (req: any, res) => {
     try {
       const { id } = req.params;
       const userId = req.user?.claims?.sub || req.user?.id;
       const user = await storage.getUser(userId);
+      // Este endpoint es del catálogo administrativo; los Brokers consultan productos/ofertas autorizadas.
+      if (!user || (user.role !== 'super_admin' && user.role !== 'admin')) {
+        return res.status(403).json({ message: "Catálogo financiero administrativo no autorizado." });
+      }
       const institution: any = await storage.getFinancialInstitution(id);
       
       if (!institution) {
         return res.status(404).json({ message: 'Financial institution not found' });
       }
 
-      // If user is a broker belonging to a Master Broker, customize broker rates
-      if (user?.role === 'broker' && user?.masterBrokerId) {
-        const masterBroker = await storage.getUser(user.masterBrokerId);
-        const networkRates = (masterBroker?.networkCommissionRates as any) || {};
-        const custom = networkRates[id];
-
-        if (custom && custom.apertura !== undefined) {
-          const customized = {
-            ...institution,
-            commissionRates: {
-              ...institution.commissionRates,
-              broker: {
-                ...(institution.commissionRates as any)?.broker,
-                apertura: custom.apertura,
-                sobretasa: custom.sobretasa ?? (institution.commissionRates as any)?.broker?.sobretasa,
-                renovacion: custom.renovacion ?? (institution.commissionRates as any)?.broker?.renovacion,
-              }
-            }
-          };
-          return res.json(customized);
-        }
-      }
+      const sanitized = projectFinancialInstitutionByRole(institution, user.role);
       
-      res.json(institution);
+      res.json(sanitized);
     } catch (error) {
       console.error("Error fetching financial institution:", error);
       res.status(500).json({ message: "Failed to fetch financial institution" });
     }
   });
 
-  app.post('/api/financial-institutions', isAuthenticated, async (req: any, res) => {
+  app.post('/api/financial-institutions', isAuthenticated, requireModuleAndAction('financieras', 'edit'), async (req: any, res) => {
     try {
       const userId = req.user?.claims?.sub;
       const user = await storage.getUser(userId);
@@ -4174,6 +5599,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(403).json({ message: 'Insufficient permissions' });
       }
       
+      const adminOnlyEconomicFields = [
+        "commissionRate", "commissionRates", "openingCommissionRate",
+        "brokerCommissionRate", "masterBrokerCommissionRate",
+        "overrateCommissionRate", "overRate", "sobretasa",
+        "platformMargin", "appShare", "platformCommissionRate",
+      ];
+      if (user.role !== "super_admin" &&
+          adminOnlyEconomicFields.some(key => Object.prototype.hasOwnProperty.call(req.body || {}, key))) {
+        return res.status(403).json({
+          code: "FINANCIAL_INTERNAL_RATE_SUPER_ADMIN_REQUIRED",
+          message: "Sólo Super Admin puede establecer condiciones económicas internas.",
+        });
+      }
       const institutionData = insertFinancialInstitutionSchema.parse({
         ...req.body,
         createdBy: userId,
@@ -4181,7 +5619,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
       
       const institution = await storage.createFinancialInstitution(institutionData);
-      res.status(201).json(institution);
+      res.status(201).json(projectFinancialInstitutionByRole(institution, user.role));
     } catch (error) {
       console.error("Error creating financial institution:", error);
       if (error instanceof z.ZodError) {
@@ -4193,7 +5631,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Toggle financial institution active status
-  app.patch('/api/financial-institutions/:id/toggle-status', isAuthenticated, async (req: any, res) => {
+  app.patch('/api/financial-institutions/:id/toggle-status', isAuthenticated, requireModuleAndAction('financieras', 'edit'), async (req: any, res) => {
     try {
       const { id } = req.params;
       const userId = req.user?.claims?.sub;
@@ -4223,7 +5661,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
       }
 
-      res.json(updatedInstitution);
+      res.json(projectFinancialInstitutionByRole(updatedInstitution, user.role));
     } catch (error) {
       console.error("Error toggling financial institution status:", error);
       res.status(500).json({ message: "Failed to toggle financial institution status" });
@@ -4231,7 +5669,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Update financial institution data
-  app.patch('/api/financial-institutions/:id', isAuthenticated, async (req: any, res) => {
+  app.patch('/api/financial-institutions/:id', isAuthenticated, requireModuleAndAction('financieras', 'edit'), async (req: any, res) => {
     try {
       const { id } = req.params;
       const userId = req.user?.claims?.sub;
@@ -4247,8 +5685,54 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ message: 'Financial institution not found' });
       }
 
+      // Protect internal rates and margins regardless of module visibility.
+      const superAdminRateFields = [
+        "commissionRate", "commissionRates", "openingCommissionRate",
+        "masterBrokerCommissionRate", "brokerCommissionRate",
+        "overrateCommissionRate", "overRate", "sobretasa",
+        "platformMargin", "appShare", "platformCommissionRate",
+      ];
+      if (user.role !== "super_admin" &&
+          superAdminRateFields.some(key => Object.prototype.hasOwnProperty.call(req.body || {}, key))) {
+        return res.status(403).json({
+          code: "FINANCIAL_INTERNAL_RATE_SUPER_ADMIN_REQUIRED",
+          message: "Sólo Super Admin puede cambiar comisiones o márgenes internos.",
+        });
+      }
+
       // Parse update data directly from request body
       const updateData = req.body;
+      const touchesLegacyRates = Object.prototype.hasOwnProperty.call(updateData, "commissionRates") ||
+        Object.prototype.hasOwnProperty.call(updateData, "commissionRate");
+      if (touchesLegacyRates) {
+        // COM-28: all real commercial rates belong to an institution's
+        // individually published OFFER VERSION, never a global institution rate.
+        // Prevent modifying a legacy fallback after it could affect an existing
+        // proposal, credit or network commission agreement.
+        if (user.role !== "super_admin") {
+          return res.status(403).json({
+            code: "OFFER_COMMISSION_SUPER_ADMIN_REQUIRED",
+            message: "Las comisiones financieras sólo pueden ser modificadas por Super Admin.",
+          });
+        }
+        const offers = await storage.getInstitutionProducts(id);
+        let hasPublishedOffer = false;
+        for (const offer of offers) {
+          const versions = await storage.getInstitutionProductVersions(offer.id);
+          if (versions.some(v => ["published", "superseded"].includes(v.status))) {
+            hasPublishedOffer = true;
+            break;
+          }
+        }
+        const creditsForInstitution = (await storage.getCredits({}))
+          .some(c => c.financialInstitutionId === id);
+        if (hasPublishedOffer || creditsForInstitution) {
+          return res.status(409).json({
+            code: "OFFER_SCOPED_COMMISSION_VERSION_REQUIRED",
+            message: "Esta financiera ya tiene operaciones u ofertas publicadas. Las comisiones se modifican creando una nueva versión de cada oferta afectada; no editando tasas generales.",
+          });
+        }
+      }
 
       // Validate rate hierarchies and bounds if commissionRates or commissionRate is provided
       if (updateData.commissionRates || updateData.commissionRate !== undefined) {
@@ -4292,7 +5776,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       const updatedInstitution = await storage.updateFinancialInstitution(id, updateData);
 
-      res.json(updatedInstitution);
+      // A legacy institution-only draft update has no published offers or
+      // credits to affect. Do NOT broadcast a false global contract change.
+      // Once an offer is published, its commission changes require its own
+      // versioned publication workflow (not this endpoint).
+
+      res.json(projectFinancialInstitutionByRole(updatedInstitution, user.role));
     } catch (error) {
       console.error("Error updating financial institution:", error);
       if (error instanceof z.ZodError) {
@@ -4352,8 +5841,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const creditAmount = parseFloat(amount as string);
       
       // Calculate commissions
+      const isSuperAdmin = user?.role === 'super_admin';
       const openingCommission = (creditAmount * (parseFloat(institution.openingCommissionRate || "0"))) / 100;
-      const overrateCommission = (creditAmount * (parseFloat(institution.overrateCommissionRate || "0"))) / 100;
+      const overrateCommission = isSuperAdmin
+        ? (creditAmount * (parseFloat(institution.overrateCommissionRate || "0"))) / 100
+        : 0;
       const totalCommission = openingCommission + overrateCommission;
       
       // Calculate distribution based on user role and institution configuration
@@ -4383,10 +5875,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       const finalCommission = userCommission - totalAdditionalCosts;
       
-      res.json({
+      const calculationResult: any = {
         creditAmount,
         openingCommission,
-        overrateCommission,
         totalCommission,
         userCommission,
         masterBrokerCommission,
@@ -4394,12 +5885,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
         finalCommission: Math.max(0, finalCommission),
         breakdown: {
           openingRate: institution.openingCommissionRate || 0,
-          overrateRate: institution.overrateCommissionRate || 0,
           brokerRate: institution.brokerCommissionRate || 100,
           masterBrokerRate: institution.masterBrokerCommissionRate || 0,
           costs: additionalCosts
         }
-      });
+      };
+
+      if (isSuperAdmin) {
+        calculationResult.overrateCommission = overrateCommission;
+        calculationResult.breakdown.overrateRate = institution.overrateCommissionRate || 0;
+      }
+
+      res.json(calculationResult);
     } catch (error) {
       console.error('Error calculating commission:', error);
       res.status(500).json({ message: 'Failed to calculate commission' });
@@ -4452,6 +5949,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
     }
   });
+
+function maskCLABE(clabe?: string | null): string | null {
+  if (!clabe) return null;
+  const str = String(clabe).trim();
+  if (str.length < 4) return '****';
+  return '*'.repeat(Math.max(0, str.length - 4)) + str.slice(-4);
+}
 
   // Commissions and STP payments
   app.get('/api/commissions', isAuthenticated, requireModuleAndAction('comisiones', 'view'), async (req: any, res) => {
@@ -4546,6 +6050,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
           let masterBroker = null;
           let effectiveBankAccount = null;
 
+          const historicalMasterBrokerId = comm.masterBrokerId || (credit?.originMasterBrokerId ?? null);
+          const hasHistoricalMasterPayee = Boolean(
+            historicalMasterBrokerId
+          );
+          const isMasterDirect = Boolean(
+            historicalMasterBrokerId &&
+            comm.brokerId &&
+            String(comm.brokerId) === String(historicalMasterBrokerId)
+          );
+
           if (comm.brokerId) {
             const brokerUser = await storage.getUser(comm.brokerId);
             if (brokerUser) {
@@ -4558,53 +6072,54 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 clabe: brokerUser.clabe,
                 accountHolder: brokerUser.accountHolder,
               };
+            }
+          }
 
-              if (brokerUser.masterBrokerId) {
-                const mbUser = await storage.getUser(brokerUser.masterBrokerId);
-                if (mbUser) {
-                  masterBroker = {
-                    id: mbUser.id,
-                    firstName: mbUser.firstName,
-                    lastName: mbUser.lastName,
-                    email: mbUser.email,
-                    brandName: mbUser.brandName,
-                    bankName: mbUser.bankName,
-                    clabe: mbUser.clabe,
-                    accountHolder: mbUser.accountHolder,
-                  };
-                  // If under master broker, the beneficiary account is the master broker's (Option B)
-                  effectiveBankAccount = {
-                    beneficiaryType: 'master_broker',
-                    beneficiaryName: mbUser.accountHolder || `${mbUser.firstName || ''} ${mbUser.lastName || ''}`.trim() || mbUser.brandName,
-                    bankName: mbUser.bankName,
-                    clabe: mbUser.clabe,
-                  };
-                }
-              }
+          if (historicalMasterBrokerId) {
+            const mbUser = await storage.getUser(historicalMasterBrokerId);
+            if (mbUser) {
+              masterBroker = {
+                id: mbUser.id,
+                firstName: mbUser.firstName,
+                lastName: mbUser.lastName,
+                email: mbUser.email,
+                brandName: mbUser.brandName,
+                bankName: mbUser.bankName,
+                clabe: mbUser.clabe,
+                accountHolder: mbUser.accountHolder,
+              };
 
-              if (!effectiveBankAccount) {
-                // Solo broker
+              // Si es red con margen de master o master directo, la cuenta de dispersión pertenece al Master histórico
+              if (hasHistoricalMasterPayee || isMasterDirect) {
                 effectiveBankAccount = {
-                  beneficiaryType: 'broker',
-                  beneficiaryName: brokerUser.accountHolder || `${brokerUser.firstName || ''} ${brokerUser.lastName || ''}`.trim(),
-                  bankName: brokerUser.bankName,
-                  clabe: brokerUser.clabe,
+                  beneficiaryType: 'master_broker',
+                  beneficiaryId: mbUser.id,
+                  beneficiaryName: mbUser.accountHolder || `${mbUser.firstName || ''} ${mbUser.lastName || ''}`.trim() || mbUser.brandName,
+                  bankName: mbUser.bankName,
+                  clabe: mbUser.clabe,
                 };
               }
             }
           }
 
-          const isMasterDirect = comm.masterBrokerId && comm.brokerId === comm.masterBrokerId;
-          const isMb = comm.masterBrokerId && parseFloat(comm.masterBrokerShare || '0') > 0;
-          const payoutAmount = comm.frozenAmount 
-            ? parseFloat(comm.frozenAmount)
-            : (isMasterDirect
-                ? parseFloat(comm.masterBrokerShare || comm.brokerShare || '0')
-                : (isMb
-                    ? (parseFloat(comm.brokerShare || '0') + parseFloat(comm.masterBrokerShare || '0'))
-                    : parseFloat(comm.brokerShare || comm.amount || '0')));
+          if (!effectiveBankAccount && broker) {
+            effectiveBankAccount = {
+              beneficiaryType: 'broker',
+              beneficiaryId: broker.id,
+              beneficiaryName: broker.accountHolder || `${broker.firstName || ''} ${broker.lastName || ''}`.trim(),
+              bankName: broker.bankName,
+              clabe: broker.clabe,
+            };
+          }
 
-          const effectiveBeneficiary = isMb && masterBroker
+          const isMb = Boolean(historicalMasterBrokerId && !isMasterDirect);
+          const audit = auditCommissionPayout({
+            ...comm,
+            originMasterBrokerId: historicalMasterBrokerId,
+          });
+          const payoutAmount = audit.payoutAmount;
+
+          const effectiveBeneficiary = (hasHistoricalMasterPayee || isMasterDirect) && masterBroker
             ? {
                 id: masterBroker.id,
                 name: masterBroker.accountHolder || `${masterBroker.firstName || ''} ${masterBroker.lastName || ''}`.trim() || masterBroker.brandName,
@@ -4626,10 +6141,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 isMasterBroker: false,
               } : null);
 
-          return {
+          const baseComm: any = {
             ...comm,
             payoutAmount,
-            isNetworkPayout: !!isMb,
+            hasFrozenDiscrepancy: audit.hasDiscrepancy,
+            frozenDiscrepancyReason: audit.discrepancyReason,
+            isNetworkPayout: !!(hasHistoricalMasterPayee && !isMasterDirect),
+            isMasterDirect,
             effectiveBeneficiary,
             credit: credit ? {
               id: credit.id,
@@ -4648,12 +6166,35 @@ export async function registerRoutes(app: Express): Promise<Server> {
             financialInstitution: institution ? {
               id: institution.id,
               name: institution.name,
-              overRate: (institution as any).overRate ?? (institution as any).overrateCommissionRate ?? (institution as any).commissionRates?.financiera?.sobretasa ?? 0,
+              overRate: user?.role === 'super_admin' ? ((institution as any).overRate ?? (institution as any).overrateCommissionRate ?? (institution as any).commissionRates?.financiera?.sobretasa ?? 0) : undefined,
             } : null,
             broker,
             masterBroker,
             effectiveBankAccount,
           };
+
+          // RBAC: Proteger appShare (margen interno de plataforma) y CLABE de roles no autorizados (Regla 4 y 5)
+          if (user?.role !== 'super_admin') {
+            delete baseComm.appShare;
+            delete baseComm.notes;
+            if (baseComm.broker && baseComm.broker.id !== userId) {
+              baseComm.broker.clabe = maskCLABE(baseComm.broker.clabe);
+            }
+            if (baseComm.masterBroker && baseComm.masterBroker.id !== userId) {
+              baseComm.masterBroker.clabe = maskCLABE(baseComm.masterBroker.clabe);
+            }
+            if (baseComm.effectiveBankAccount && baseComm.effectiveBankAccount.beneficiaryId !== userId) {
+              baseComm.effectiveBankAccount.clabe = maskCLABE(baseComm.effectiveBankAccount.clabe);
+            }
+            if (baseComm.effectiveBeneficiary && baseComm.effectiveBeneficiary.id !== userId) {
+              baseComm.effectiveBeneficiary.clabe = maskCLABE(baseComm.effectiveBeneficiary.clabe);
+            }
+            if (baseComm.brokerId !== userId && baseComm.masterBrokerId !== userId) {
+              baseComm.clabe = maskCLABE(baseComm.clabe);
+            }
+          }
+
+          return baseComm;
         })
       );
 
@@ -4695,34 +6236,301 @@ export async function registerRoutes(app: Express): Promise<Server> {
         rawCommissions = await storage.getCommissions(userId);
       }
 
-      res.json(rawCommissions);
+      // RBAC: Proteger appShare (margen interno de plataforma) y notas internas de roles no autorizados (Regla 5)
+      const sanitized = user?.role === 'super_admin'
+        ? rawCommissions
+        : rawCommissions.map(comm => {
+            const copy = { ...comm };
+            delete copy.appShare;
+            delete copy.notes;
+            return copy;
+          });
+
+      res.json(sanitized);
     } catch (error) {
       console.error("Error fetching my-commissions:", error);
       res.status(500).json({ message: "Failed to fetch commissions" });
     }
   });
 
-  // Get commission audit logs
+  // REGLA 4 (FASE 2B.2A / COM-21): Detalle de comisión con desglose financiero completo para revisión de Super Admin
+  app.get('/api/commissions/:id', isAuthenticated, requireModuleAndAction('comisiones', 'view'), async (req: any, res) => {
+    try {
+      const { id } = req.params;
+      const userId = req.user.claims.sub;
+      const user = await storage.getUser(userId);
+
+      const activeMembership = req.tenantContext?.membership;
+      if (activeMembership && activeMembership.canOriginate === false && activeMembership.role !== 'owner' && user?.role !== 'super_admin' && user?.role !== 'admin') {
+        return res.status(403).json({
+          message: "Operación restringida: Los colaboradores no originadores no tienen acceso al módulo de comisiones comerciales."
+        });
+      }
+
+      const commission = await storage.getCommission(id);
+      if (!commission) {
+        return res.status(404).json({ message: "Comisión no encontrada" });
+      }
+
+      const isSuperAdmin = user?.role === 'super_admin';
+      const isAdmin = user?.role === 'admin' || isSuperAdmin;
+      if (!isAdmin) {
+        if (user?.role === 'broker' && commission.brokerId !== userId) {
+          return res.status(403).json({ message: "No tienes permiso para ver esta comisión" });
+        }
+        if (user?.role === 'master_broker') {
+          const isDirect = commission.brokerId === userId;
+          const isNetwork = commission.masterBrokerId === userId;
+          if (!isDirect && !isNetwork) {
+            return res.status(403).json({ message: "No tienes permiso para ver esta comisión" });
+          }
+        }
+      }
+
+      let credit = null;
+      let client = null;
+      let institution = null;
+      if (commission.creditId) {
+        credit = await storage.getCredit(commission.creditId);
+        if (credit) {
+          if (credit.clientId) {
+            client = await storage.getClient(credit.clientId);
+          }
+          if (credit.financialInstitutionId) {
+            institution = await storage.getFinancialInstitution(credit.financialInstitutionId);
+          }
+        }
+      }
+
+      let broker = null;
+      let masterBroker = null;
+      let effectiveBankAccount = null;
+
+      const historicalMasterBrokerId = commission.masterBrokerId || (credit?.originMasterBrokerId ?? null);
+      const hasHistoricalMasterPayee = Boolean(
+        historicalMasterBrokerId
+      );
+      const isMasterDirect = Boolean(
+        historicalMasterBrokerId &&
+        commission.brokerId &&
+        String(commission.brokerId) === String(historicalMasterBrokerId)
+      );
+
+      if (commission.brokerId) {
+        const brokerUser = await storage.getUser(commission.brokerId);
+        if (brokerUser) {
+          broker = {
+            id: brokerUser.id,
+            firstName: brokerUser.firstName,
+            lastName: brokerUser.lastName,
+            email: brokerUser.email,
+            bankName: brokerUser.bankName,
+            clabe: brokerUser.clabe,
+            accountHolder: brokerUser.accountHolder,
+          };
+        }
+      }
+
+      if (historicalMasterBrokerId) {
+        const mbUser = await storage.getUser(historicalMasterBrokerId);
+        if (mbUser) {
+          masterBroker = {
+            id: mbUser.id,
+            firstName: mbUser.firstName,
+            lastName: mbUser.lastName,
+            email: mbUser.email,
+            brandName: mbUser.brandName,
+            bankName: mbUser.bankName,
+            clabe: mbUser.clabe,
+            accountHolder: mbUser.accountHolder,
+          };
+
+          if (hasHistoricalMasterPayee || isMasterDirect) {
+            effectiveBankAccount = {
+              beneficiaryType: 'master_broker',
+              beneficiaryId: mbUser.id,
+              beneficiaryName: mbUser.accountHolder || `${mbUser.firstName || ''} ${mbUser.lastName || ''}`.trim() || mbUser.brandName,
+              bankName: mbUser.bankName,
+              clabe: mbUser.clabe,
+            };
+          }
+        }
+      }
+
+      if (!effectiveBankAccount && broker) {
+        effectiveBankAccount = {
+          beneficiaryType: 'broker',
+          beneficiaryId: broker.id,
+          beneficiaryName: broker.accountHolder || `${broker.firstName || ''} ${broker.lastName || ''}`.trim(),
+          bankName: broker.bankName,
+          clabe: broker.clabe,
+        };
+      }
+
+      const audit = auditCommissionPayout({
+        ...commission,
+        originMasterBrokerId: historicalMasterBrokerId,
+      });
+      const payoutAmount = audit.payoutAmount;
+
+      const effectiveBeneficiary = (hasHistoricalMasterPayee || isMasterDirect) && masterBroker
+        ? {
+            id: masterBroker.id,
+            name: masterBroker.accountHolder || `${masterBroker.firstName || ''} ${masterBroker.lastName || ''}`.trim() || masterBroker.brandName,
+            email: masterBroker.email,
+            role: 'master_broker',
+            bankName: masterBroker.bankName,
+            clabe: masterBroker.clabe,
+            accountHolder: masterBroker.accountHolder,
+            isMasterBroker: true,
+          }
+        : (broker ? {
+            id: broker.id,
+            name: broker.accountHolder || `${broker.firstName || ''} ${broker.lastName || ''}`.trim() || broker.email,
+            email: broker.email,
+            role: 'broker',
+            bankName: broker.bankName,
+            clabe: broker.clabe,
+            accountHolder: broker.accountHolder,
+            isMasterBroker: false,
+          } : null);
+
+      const auditLogs = await storage.getCommissionAuditLogs(id);
+      const proposal = (credit?.finalProposal as any) || {};
+      const disbursementConfirmation = proposal.disbursementConfirmation || null;
+      const baseDisbursedAmount = disbursementConfirmation?.confirmedAmount
+        ?? (credit as any)?.confirmedDisbursedAmount
+        ?? null;
+
+      const detailedComm: any = {
+        ...commission,
+        payoutAmount,
+        baseDisbursedAmount,
+        hasFrozenDiscrepancy: audit.hasDiscrepancy,
+        frozenDiscrepancyReason: audit.discrepancyReason,
+        isNetworkPayout: !!(hasHistoricalMasterPayee && !isMasterDirect),
+        isMasterDirect,
+        effectiveBeneficiary,
+        effectiveBankAccount,
+        credit: credit ? {
+          id: credit.id,
+          amount: credit.amount,
+          term: credit.term,
+          interestRate: credit.interestRate,
+          status: credit.status,
+          disbursementStatus: proposal.disbursementStatus || (credit as any).disbursementStatus || 'unconfirmed',
+          disbursementConfirmation,
+        } : null,
+        client: client ? {
+          id: client.id,
+          firstName: client.firstName,
+          lastName: client.lastName,
+          businessName: client.businessName,
+          type: client.type,
+        } : null,
+        financialInstitution: institution ? {
+          id: institution.id,
+          name: institution.name,
+          overRate: isSuperAdmin ? ((institution as any).overRate ?? (institution as any).overrateCommissionRate ?? (institution as any).commissionRates?.financiera?.sobretasa ?? 0) : undefined,
+        } : null,
+        broker,
+        masterBroker,
+        rates: {
+          financiera: proposal?.commissionRates?.financiera ?? null,
+          broker: proposal?.commissionRates?.broker ?? null,
+          masterBroker: proposal?.commissionRates?.masterBroker ?? null,
+        },
+        shares: {
+          brokerShare: commission.brokerShare,
+          masterBrokerShare: commission.masterBrokerShare,
+          appShare: isSuperAdmin ? commission.appShare : undefined,
+          totalAmount: commission.amount,
+        },
+        historicalBeneficiaries: {
+          broker,
+          masterBroker,
+          originMasterBrokerId: historicalMasterBrokerId,
+        },
+        auditLogs,
+      };
+
+      if (!isSuperAdmin) {
+        delete detailedComm.appShare;
+        delete detailedComm.notes;
+        if (detailedComm.shares) {
+          delete detailedComm.shares.appShare;
+        }
+        if (detailedComm.broker && detailedComm.broker.id !== userId) {
+          detailedComm.broker.clabe = maskCLABE(detailedComm.broker.clabe);
+        }
+        if (detailedComm.masterBroker && detailedComm.masterBroker.id !== userId) {
+          detailedComm.masterBroker.clabe = maskCLABE(detailedComm.masterBroker.clabe);
+        }
+        if (detailedComm.effectiveBankAccount && detailedComm.effectiveBankAccount.beneficiaryId !== userId) {
+          detailedComm.effectiveBankAccount.clabe = maskCLABE(detailedComm.effectiveBankAccount.clabe);
+        }
+        if (detailedComm.effectiveBeneficiary && detailedComm.effectiveBeneficiary.id !== userId) {
+          detailedComm.effectiveBeneficiary.clabe = maskCLABE(detailedComm.effectiveBeneficiary.clabe);
+        }
+        if (detailedComm.historicalBeneficiaries?.broker && detailedComm.historicalBeneficiaries.broker.id !== userId) {
+          detailedComm.historicalBeneficiaries.broker.clabe = maskCLABE(detailedComm.historicalBeneficiaries.broker.clabe);
+        }
+        if (detailedComm.historicalBeneficiaries?.masterBroker && detailedComm.historicalBeneficiaries.masterBroker.id !== userId) {
+          detailedComm.historicalBeneficiaries.masterBroker.clabe = maskCLABE(detailedComm.historicalBeneficiaries.masterBroker.clabe);
+        }
+        if (detailedComm.brokerId !== userId && detailedComm.masterBrokerId !== userId) {
+          detailedComm.clabe = maskCLABE(detailedComm.clabe);
+        }
+      }
+
+      res.json(detailedComm);
+    } catch (error) {
+      console.error("Error fetching commission detail:", error);
+      res.status(500).json({ message: "Error al consultar el detalle de la comisión" });
+    }
+  });
+
+  // Auditoría sólo por comisión autorizada; detalles bancarios exclusivos de Super Admin.
   app.get('/api/commissions/:id/audit-logs', isAuthenticated, requireModuleAndAction('comisiones', 'view'), async (req: any, res) => {
     try {
       const { id } = req.params;
+      const userId = req.user.claims.sub;
+      const user = await storage.getUser(userId);
+      const commission = await storage.getCommission(id);
+      if (!commission) return res.status(404).json({ message: "Comisión no encontrada." });
+
+      const credit = commission.creditId ? await storage.getCredit(commission.creditId) : null;
+      const historicalMasterId = commission.masterBrokerId || credit?.originMasterBrokerId || null;
+      const isPlatformAdmin = user?.role === 'super_admin' || user?.role === 'admin';
+      if (!isPlatformAdmin && commission.brokerId !== userId && historicalMasterId !== userId) {
+        return res.status(403).json({ message: "No autorizado para consultar esta comisión." });
+      }
+
       const logs = await storage.getCommissionAuditLogs(id);
-      res.json(logs);
+      if (user?.role === 'super_admin') return res.json(logs);
+      return res.json(logs.map((entry: any) => ({
+        id: entry.id,
+        commissionId: entry.commissionId,
+        action: entry.action,
+        previousStatus: entry.previousStatus,
+        newStatus: entry.newStatus,
+        createdAt: entry.createdAt,
+      })));
     } catch (error) {
       console.error("Error fetching commission audit logs:", error);
       res.status(500).json({ message: "Error al consultar la bitácora de auditoría" });
     }
   });
 
-  // Approve a commission (Admins only)
+  // Approve a commission (Super Admin only - Gate de seguridad - Regla 4)
   app.post('/api/commissions/:id/approve', isAuthenticated, requireModuleAndAction('comisiones', 'approve_disperse'), async (req: any, res) => {
     try {
       const { id } = req.params;
       const userId = req.user.claims.sub;
       const user = await storage.getUser(userId);
 
-      if (!user || (user.role !== 'admin' && user.role !== 'super_admin')) {
-        return res.status(403).json({ message: "Solo los administradores pueden aprobar comisiones" });
+      if (!user || user.role !== 'super_admin') {
+        return res.status(403).json({ message: "Solo Super Admin puede aprobar comisiones" });
       }
 
       const commission = await storage.getCommission(id);
@@ -4731,7 +6539,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       if (commission.status === 'approved') {
-        return res.json({ message: "La comisión ya se encuentra aprobada", commission });
+        return res.json({ message: "La comisión ya se encuentra aprobada", commission, alreadyApproved: true });
       }
 
       if (['paid', 'dispersing', 'cancelled'].includes(commission.status)) {
@@ -4740,14 +6548,53 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
       }
 
-      // Calculate and freeze final payout amount
-      const isMasterDirect = commission.masterBrokerId && commission.brokerId === commission.masterBrokerId;
-      const isMb = commission.masterBrokerId && parseFloat(commission.masterBrokerShare || '0') > 0;
-      const payoutAmount = isMasterDirect
-        ? parseFloat(commission.masterBrokerShare || commission.brokerShare || '0')
-        : (isMb
-            ? (parseFloat(commission.brokerShare || '0') + parseFloat(commission.masterBrokerShare || '0'))
-            : parseFloat(commission.brokerShare || commission.amount || '0'));
+      const linkedCredit = commission.creditId ? await storage.getCredit(commission.creditId) : null;
+      const historicalMasterBrokerId = commission.masterBrokerId || (linkedCredit?.originMasterBrokerId ?? null);
+
+      // Anti-Reatribución y alteración (Regla 4 y 5): Prohibir modificaciones a los beneficiarios e importes históricos
+      if (req.body?.brokerId && String(req.body.brokerId) !== String(commission.brokerId)) {
+        return res.status(400).json({
+          message: "Prohibido alterar el Bróker beneficiario: la atribución de comisiones es inmutable y no permite reatribuciones.",
+          code: "COMMISSION_REATTRIBUTION_FORBIDDEN",
+        });
+      }
+
+      if (req.body?.masterBrokerId && String(req.body.masterBrokerId) !== String(historicalMasterBrokerId)) {
+        return res.status(400).json({
+          message: "Prohibido alterar el Master Bróker beneficiario: la atribución de comisiones es inmutable y no permite reatribuciones.",
+          code: "COMMISSION_REATTRIBUTION_FORBIDDEN",
+        });
+      }
+
+      if (req.body?.amount && Math.abs(parseFloat(String(req.body.amount)) - parseFloat(commission.amount)) > 0.01) {
+        return res.status(400).json({
+          message: "Prohibido alterar el importe total de la comisión durante la aprobación.",
+          code: "COMMISSION_AMOUNT_ALTERATION_FORBIDDEN",
+        });
+      }
+
+      // Calculate and verify final payout amount using canonical attribution
+      const audit = auditCommissionPayout({
+        ...commission,
+        originMasterBrokerId: historicalMasterBrokerId,
+      });
+
+      if (audit.hasDiscrepancy) {
+        return res.status(400).json({
+          message: `Bloqueo de seguridad: No se puede aprobar una comisión con discrepancia financiera. Motivo: ${audit.discrepancyReason || 'Discrepancia detectada'}`,
+          code: "COMMISSION_FROZEN_DISCREPANCY",
+          details: audit,
+        });
+      }
+
+      const payoutAmount = audit.payoutAmount;
+
+      if (req.body?.payoutAmount && Math.abs(parseFloat(String(req.body.payoutAmount)) - payoutAmount) > 0.01) {
+        return res.status(400).json({
+          message: "Prohibido alterar el monto neto a pagar durante la aprobación.",
+          code: "COMMISSION_AMOUNT_ALTERATION_FORBIDDEN",
+        });
+      }
 
       const updated = await storage.updateCommission(id, {
         status: 'approved',
@@ -4766,6 +6613,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           actorRole: user.role,
           frozenAmount: payoutAmount.toFixed(2),
           approvedBy: userId,
+          notes: req.body?.notes ? String(req.body.notes).trim() : null,
         },
       });
 
@@ -4776,75 +6624,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Bulk approve commissions (Admins only)
+  // Bulk approve commissions (Temporarily disabled for mandatory individual financial review)
   app.post('/api/commissions/bulk-approve', isAuthenticated, requireModuleAndAction('comisiones', 'approve_disperse'), async (req: any, res) => {
-    try {
-      const { ids } = req.body;
-      const userId = req.user.claims.sub;
-      const user = await storage.getUser(userId);
-
-      if (!user || (user.role !== 'admin' && user.role !== 'super_admin')) {
-        return res.status(403).json({ message: "Solo los administradores pueden aprobar comisiones" });
-      }
-
-      if (!Array.isArray(ids) || ids.length === 0) {
-        return res.status(400).json({ message: "Se requiere un arreglo de identificadores 'ids'" });
-      }
-
-      const successful: string[] = [];
-      const failed: { id: string; reason: string }[] = [];
-
-      for (const id of ids) {
-        try {
-          const comm = await storage.getCommission(id);
-          if (!comm) {
-            failed.push({ id, reason: "Comisión no encontrada" });
-            continue;
-          }
-          if (comm.status === 'approved') {
-            successful.push(id);
-            continue;
-          }
-          if (['paid', 'dispersing', 'cancelled'].includes(comm.status)) {
-            failed.push({ id, reason: `Estado '${comm.status}' no permite aprobación` });
-            continue;
-          }
-
-          const isMasterDirect = comm.masterBrokerId && comm.brokerId === comm.masterBrokerId;
-          const isMb = comm.masterBrokerId && parseFloat(comm.masterBrokerShare || '0') > 0;
-          const payoutAmount = isMasterDirect
-            ? parseFloat(comm.masterBrokerShare || comm.brokerShare || '0')
-            : (isMb
-                ? (parseFloat(comm.brokerShare || '0') + parseFloat(comm.masterBrokerShare || '0'))
-                : parseFloat(comm.brokerShare || comm.amount || '0'));
-
-          await storage.updateCommission(id, {
-            status: 'approved',
-            approvedAt: new Date(),
-            approvedBy: userId,
-            frozenAmount: payoutAmount.toFixed(2),
-          });
-
-          await storage.createCommissionAuditLog({
-            commissionId: id,
-            performedBy: userId,
-            action: 'approved',
-            previousStatus: comm.status,
-            newStatus: 'approved',
-            details: { actorRole: user.role, frozenAmount: payoutAmount.toFixed(2), bulk: true },
-          });
-
-          successful.push(id);
-        } catch (err: any) {
-          failed.push({ id, reason: err.message || "Error al procesar aprobación" });
-        }
-      }
-
-      res.json({ successful, failed, count: successful.length });
-    } catch (error) {
-      console.error("Error bulk approving commissions:", error);
-      res.status(500).json({ message: "Error al procesar aprobación masiva" });
-    }
+    return res.status(400).json({
+      message: "La aprobación masiva se encuentra temporalmente deshabilitada para asegurar la revisión financiera individual por Super Admin.",
+      code: "BULK_APPROVAL_TEMPORARILY_DISABLED",
+    });
   });
 
   // Cancel a commission (Admins only)
@@ -4895,7 +6680,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Single STP payout with concurrency lock and idempotency protection
+  // Single STP payout with concurrency lock, idempotency protection and P0 security hardening
   app.post('/api/commissions/:id/pay', isAuthenticated, requireModuleAndAction('comisiones', 'approve_disperse'), async (req: any, res) => {
     try {
       const { id } = req.params;
@@ -4905,9 +6690,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const userId = req.user.claims.sub;
       const user = await storage.getUser(userId);
 
-      // Only admins can trigger payouts
-      if (!user || (user.role !== 'admin' && user.role !== 'super_admin')) {
-        return res.status(403).json({ message: "Only admins can process commission payments" });
+      // Only Super Admin can trigger payouts
+      if (!user || user.role !== 'super_admin') {
+        return res.status(403).json({ message: "Solo Super Admin puede autorizar y procesar pagos o dispersiones de comisiones" });
       }
 
       // 1. Idempotency Key check: if an existing paid commission has this key, return it immediately
@@ -4920,7 +6705,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             transactionId: alreadyProcessed.trackingKey,
             alreadyPaid: true,
             paidAt: alreadyProcessed.paidAt,
-            payoutAmount: parseFloat(alreadyProcessed.frozenAmount || alreadyProcessed.brokerShare || alreadyProcessed.amount || '0'),
+            payoutAmount: getCommissionPayoutAmount(alreadyProcessed),
             commission: alreadyProcessed,
           });
         }
@@ -4938,7 +6723,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           transactionId: commission.trackingKey || null,
           alreadyPaid: true,
           paidAt: commission.paidAt,
-          payoutAmount: parseFloat(commission.frozenAmount || commission.brokerShare || commission.amount || '0'),
+          payoutAmount: getCommissionPayoutAmount(commission),
           commission,
         });
       }
@@ -4950,37 +6735,161 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
       }
 
-      if (!['approved', 'pending', 'failed'].includes(commission.status)) {
+      // Temporal mandatory gate: must be approved by Super Admin with approvedBy, approvedAt, and valid frozenAmount
+      const hasValidApproval = (
+        commission.status === 'approved' &&
+        Boolean(commission.approvedBy) &&
+        Boolean(commission.approvedAt) &&
+        commission.frozenAmount != null &&
+        commission.frozenAmount !== '' &&
+        !isNaN(parseFloat(commission.frozenAmount))
+      );
+
+      if (!hasValidApproval) {
+        await storage.createCommissionAuditLog({
+          commissionId: id,
+          performedBy: userId,
+          action: 'dispersion_blocked',
+          previousStatus: commission.status,
+          newStatus: commission.status,
+          details: {
+            actorRole: user.role,
+            reason: 'APPROVAL_PREREQUISITES_MISSING',
+            status: commission.status,
+            approvedBy: commission.approvedBy || null,
+            approvedAt: commission.approvedAt || null,
+            frozenAmount: commission.frozenAmount || null,
+          },
+        });
         return res.status(400).json({
-          message: `Commission cannot be paid from status '${commission.status}'. Debe estar aprobada primero.`,
+          message: "La dispersión requiere estado 'approved', approvedBy, approvedAt e importe congelado válido registrado por Super Admin.",
+          code: "APPROVAL_PREREQUISITES_MISSING",
+          commissionStatus: commission.status,
         });
       }
 
-      // 3. Resolve beneficiary and 18-digit CLABE
-      const isMbCredit = commission.masterBrokerId && parseFloat(commission.masterBrokerShare || '0') > 0;
-      let effectiveClabe: string | null = accountNumber || null;
-      let effectiveBankName: string | null = null;
-      let effectiveAccountHolder: string | null = null;
+      // 3. Resolve beneficiary and 18-digit CLABE from historical master / broker of the operation
+      const linkedCredit = commission.creditId ? await storage.getCredit(commission.creditId) : null;
+      const historicalMasterBrokerId = commission.masterBrokerId || (linkedCredit?.originMasterBrokerId ?? null);
+      const isMbCredit = Boolean(historicalMasterBrokerId);
+      const isMasterDirect = Boolean(
+        historicalMasterBrokerId &&
+        commission.brokerId &&
+        String(commission.brokerId) === String(historicalMasterBrokerId)
+      );
 
-      const targetUserId = isMbCredit ? commission.masterBrokerId! : commission.brokerId;
+      const targetUserId = (isMbCredit || isMasterDirect) ? historicalMasterBrokerId! : commission.brokerId;
       const targetUser = await storage.getUser(targetUserId);
 
-      if (!effectiveClabe && targetUser) {
-        effectiveClabe = targetUser.clabe || null;
-        effectiveBankName = targetUser.bankName || null;
-        effectiveAccountHolder = targetUser.accountHolder || `${targetUser.firstName || ''} ${targetUser.lastName || ''}`.trim() || null;
+      if (!targetUser) {
+        return res.status(404).json({
+          message: "No se encontró el beneficiario histórico registrado para esta comisión."
+        });
       }
 
-      if (!effectiveClabe || !/^\d{18}$/.test(String(effectiveClabe))) {
+      // Security enforcement: The registered CLABE in targetUser's profile/formalization is authoritative.
+      const registeredClabe = targetUser.clabe ? String(targetUser.clabe).trim() : null;
+      if (!registeredClabe || !/^\d{18}$/.test(registeredClabe)) {
+        await storage.createCommissionAuditLog({
+          commissionId: id,
+          performedBy: userId,
+          action: 'dispersion_blocked',
+          previousStatus: commission.status,
+          newStatus: commission.status,
+          details: {
+            actorRole: user.role,
+            reason: 'CLABE_INVALID_OR_MISSING',
+            beneficiaryId: targetUserId,
+          },
+        });
         return res.status(400).json({
-          message: "El beneficiario no cuenta con una CLABE interbancaria válida de 18 dígitos para dispersión STP."
+          message: `El beneficiario histórico (${isMbCredit ? 'Master Bróker' : 'Bróker'} ${targetUser.firstName || ''} ${targetUser.lastName || ''}) no cuenta con una CLABE interbancaria válida de 18 dígitos registrada en su expediente.`
+        });
+      }
+
+      // Block client-side tampering: if the frontend sent an accountNumber/clabe, verify it strictly matches the registered CLABE
+      const providedClabe = accountNumber ? String(accountNumber).trim() : null;
+      if (providedClabe && providedClabe !== registeredClabe) {
+        await storage.createCommissionAuditLog({
+          commissionId: id,
+          performedBy: userId,
+          action: 'dispersion_blocked',
+          previousStatus: commission.status,
+          newStatus: commission.status,
+          details: {
+            actorRole: user.role,
+            reason: 'CLABE_TAMPERING_ATTEMPT',
+            providedClabe,
+            registeredClabe,
+            beneficiaryId: targetUserId,
+          },
+        });
+        return res.status(400).json({
+          message: "Discrepancia de seguridad: La CLABE enviada no coincide con la cuenta bancaria oficial del beneficiario histórico registrado. No se permite alterar silenciosamente el beneficiario bancario."
+        });
+      }
+
+      const effectiveClabe = registeredClabe;
+
+      // 3.5. Audit payout amount and block liquidation if discrepancy exists
+      const audit = auditCommissionPayout({
+        ...commission,
+        originMasterBrokerId: historicalMasterBrokerId,
+      });
+
+      if (audit.hasDiscrepancy) {
+        await storage.createCommissionAuditLog({
+          commissionId: id,
+          performedBy: userId,
+          action: 'dispersion_blocked',
+          previousStatus: commission.status,
+          newStatus: commission.status,
+          details: {
+            actorRole: user.role,
+            reason: 'FROZEN_AMOUNT_DISCREPANCY',
+            audit,
+          },
+        });
+        return res.status(400).json({
+          message: audit.discrepancyReason,
+          code: "FROZEN_AMOUNT_DISCREPANCY",
+          requiresAdminReview: true,
+          audit,
+        });
+      }
+
+      const effectiveBankName = targetUser.bankName || null;
+      const effectiveAccountHolder = targetUser.accountHolder || `${targetUser.firstName || ''} ${targetUser.lastName || ''}`.trim() || null;
+
+      // 3.6 Documentary & Banking Validation Gate (FASE 2B.2C / PAG-01 a PAG-06 / COM-03/06, PAG-08/13/14)
+      // Valida exclusivamente al beneficiario que realmente recibe el pago de Crédito Negocios (Master en redes, Broker directo en directos)
+      const docValidation = await validateCommissionPayoutPrerequisites(commission, storage);
+      if (!docValidation.canPayout) {
+        await storage.createCommissionAuditLog({
+          commissionId: id,
+          performedBy: userId,
+          action: 'dispersion_blocked',
+          previousStatus: commission.status,
+          newStatus: commission.status,
+          details: {
+            actorRole: user.role,
+            reason: 'DOCUMENTATION_PREREQUISITES_MISSING',
+            missingRequirements: docValidation.missingRequirements,
+            beneficiaries: docValidation.beneficiaries,
+          },
+        });
+        return res.status(400).json({
+          message: `Dispersión bloqueada: Faltan requisitos documentales o bancarios validados por Super Admin: ${docValidation.missingRequirements.join("; ")}`,
+          code: "DOCUMENTATION_PREREQUISITES_MISSING",
+          missingRequirements: docValidation.missingRequirements,
+          beneficiaries: docValidation.beneficiaries,
         });
       }
 
       // 4. Atomic concurrency lock: transition status to 'dispersing'
       const lockedComm = await storage.transitionCommissionStatus(
         id,
-        ['approved', 'pending', 'failed'],
+        ['approved'],
         'dispersing',
         {
           idempotencyKey: idempotencyKey || null,
@@ -4997,121 +6906,110 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
       }
 
-      // 5. Calculate payout amount (use frozenAmount if set, else net Option B)
-      const payoutAmount = lockedComm.frozenAmount
-        ? parseFloat(lockedComm.frozenAmount)
-        : (isMbCredit
-            ? (parseFloat(lockedComm.brokerShare || '0') + parseFloat(lockedComm.masterBrokerShare || '0'))
-            : parseFloat(lockedComm.brokerShare || lockedComm.amount || '0'));
+      // 5. Calculate payout amount using canonical logic (safe against double counting)
+      const payoutAmount = audit.payoutAmount;
 
-      // 6. Process STP payment
-      const paymentResult = await processStpPayment(payoutAmount.toFixed(2), effectiveClabe);
+      // REGLA 3 (PAG-12/13): processStpPayment es un simulador. Ningún resultado simulado puede
+      // registrar una comisión como pagada realmente. Mantener transferencias reales deshabilitadas.
+      // Permitir registro manual únicamente por Super Admin con monto, beneficiario y referencia verificable.
+      const isSimulateOnly = Boolean(req.body.simulate || req.query.simulate === 'true');
 
-      if (paymentResult.success) {
-        const updated = await storage.updateCommission(id, {
-          status: 'paid',
-          paidAt: new Date(),
-          paidBy: userId,
-          paymentMethod: 'stp',
-          clabe: effectiveClabe,
-          bankName: effectiveBankName,
-          accountHolder: effectiveAccountHolder,
-          trackingKey: paymentResult.transactionId,
-          providerResponse: paymentResult,
-        });
+      if (!isSimulateOnly) {
+        // Liberar el bloqueo concurrente de vuelta a 'approved'
+        await storage.transitionCommissionStatus(id, ['dispersing'], 'approved');
 
         await storage.createCommissionAuditLog({
           commissionId: id,
           performedBy: userId,
-          action: 'dispersed',
+          action: 'dispersion_blocked',
           previousStatus: 'dispersing',
-          newStatus: 'paid',
+          newStatus: 'approved',
           details: {
             actorRole: user.role,
-            method: 'stp',
-            amount: payoutAmount,
-            trackingKey: paymentResult.transactionId,
-            clabe: effectiveClabe,
-            providerResponse: paymentResult,
+            reason: 'SIMULATOR_GATE_REAL_TRANSFERS_DISABLED',
+            message: 'processStpPayment es un simulador. Conforme a PAG-12/13, ningún resultado simulado puede registrar una comisión como pagada realmente. Utilice /mark-paid para liquidación manual auditada.',
           },
         });
 
-        // Notify beneficiary with real net payout amount
-        const beneficiaryId = isMbCredit ? lockedComm.masterBrokerId! : lockedComm.brokerId;
-        const paidNotification = await storage.createNotification({
-          userId: beneficiaryId,
-          type: 'commission_paid',
-          title: 'Comisión dispersada vía STP',
-          message: `Se ha procesado exitosamente la transferencia STP por $${payoutAmount.toLocaleString('es-MX', { minimumFractionDigits: 2 })} MXN (${lockedComm.commissionType || 'Apertura'}).`,
-          relatedEntityType: 'commission',
-          relatedEntityId: lockedComm.id,
-          priority: 'high',
-        });
-        broadcastToUser(beneficiaryId, { type: 'notification', notification: paidNotification });
-
-        // If network credit, also notify origin broker with their net share
-        if (isMbCredit && lockedComm.brokerId && lockedComm.brokerId !== lockedComm.masterBrokerId) {
-          const brkShare = parseFloat(lockedComm.brokerShare || '0');
-          const brkNotif = await storage.createNotification({
-            userId: lockedComm.brokerId,
-            type: 'commission_paid',
-            title: 'Comisión dispersada a Master Broker',
-            message: `La comisión correspondiente a tu originación por $${brkShare.toLocaleString('es-MX', { minimumFractionDigits: 2 })} MXN fue dispersada a tu Master Broker para liquidación.`,
-            relatedEntityType: 'commission',
-            relatedEntityId: lockedComm.id,
-            priority: 'normal',
-          });
-          broadcastToUser(lockedComm.brokerId, { type: 'notification', notification: brkNotif });
-        }
-
-        return res.json({
-          message: "Payment processed successfully",
-          transactionId: paymentResult.transactionId,
-          payoutAmount,
-          commission: updated,
-        });
-      } else {
-        // Payment failed: mark as failed and log
-        const failedUpdated = await storage.updateCommission(id, {
-          status: 'failed',
-          notes: `Fallo en dispersión STP: ${(paymentResult as any)?.message || 'Rechazo de pasarela'}`,
-          providerResponse: paymentResult,
-        });
-
-        await storage.createCommissionAuditLog({
-          commissionId: id,
-          performedBy: userId,
-          action: 'dispersion_failed',
-          previousStatus: 'dispersing',
-          newStatus: 'failed',
-          details: { actorRole: user.role, ...(paymentResult as any) },
-        });
-
         return res.status(400).json({
-          message: "Payment processing failed",
-          commission: failedUpdated,
-          details: paymentResult,
+          message: "Transferencias reales vía STP deshabilitadas: processStpPayment es un simulador. Conforme a PAG-12/13, ningún resultado simulado puede registrar una comisión como pagada financieramente. La liquidación financiera real autorizada requiere registro manual por Super Admin con referencia bancaria verificable en /api/commissions/:id/mark-paid.",
+          code: "SIMULATED_STP_CANNOT_DISBURSE",
+          simulated: true,
         });
       }
+
+      // Si se solicita simulación explícita para pruebas técnicas:
+      // Ejecutar una única prueba de pasarela al beneficiario legítimo que recibe de CN
+      const simResult = await processStpPayment(payoutAmount.toFixed(2), effectiveClabe);
+
+      // Liberar el estado de vuelta a 'approved' para NUNCA marcar como pagada financieramente
+      await storage.transitionCommissionStatus(id, ['dispersing'], 'approved');
+
+      await storage.createCommissionAuditLog({
+        commissionId: id,
+        performedBy: userId,
+        action: 'stp_simulation_tested',
+        previousStatus: 'dispersing',
+        newStatus: 'approved',
+        details: {
+          actorRole: user.role,
+          payoutAmount,
+          targetUserId,
+          simResult,
+          notice: 'Simulación STP ejecutada para validación técnica. La comisión permanece en estado approved sin liquidación real.',
+        },
+      });
+
+      const currentCommissionState = await storage.getCommission(id);
+
+      return res.json({
+        message: "Simulación de dispersión STP completada exitosamente. Conforme a PAG-12/13, ningún resultado simulado puede registrar la comisión como pagada realmente. La comisión permanece sin liquidar financieramente.",
+        simulated: true,
+        paid: false,
+        transactionId: simResult.transactionId,
+        payoutAmount,
+        payoutBeneficiary: {
+          userId: targetUserId,
+          role: (isMbCredit || isMasterDirect) ? 'master_broker' : 'broker',
+          amount: payoutAmount,
+          clabe: effectiveClabe,
+          bankName: effectiveBankName,
+          accountHolder: effectiveAccountHolder,
+        },
+        networkObligation: audit.networkObligation || null,
+        commission: currentCommissionState,
+      });
     } catch (error) {
       console.error("Error processing payment:", error);
       res.status(500).json({ message: "Failed to process payment" });
     }
   });
 
-  // Batch STP payout (Admins only)
+  // Batch STP payout (Super Admin only)
   app.post('/api/commissions/bulk-pay', isAuthenticated, requireModuleAndAction('comisiones', 'approve_disperse'), async (req: any, res) => {
     try {
       const { ids } = req.body;
       const userId = req.user.claims.sub;
       const user = await storage.getUser(userId);
 
-      if (!user || (user.role !== 'admin' && user.role !== 'super_admin')) {
-        return res.status(403).json({ message: "Solo los administradores pueden procesar dispersiones masivas" });
+      if (!user || user.role !== 'super_admin') {
+        return res.status(403).json({ message: "Solo Super Admin puede procesar dispersiones masivas" });
       }
 
       if (!Array.isArray(ids) || ids.length === 0) {
         return res.status(400).json({ message: "Se requiere un arreglo de identificadores 'ids'" });
+      }
+
+      // REGLA 3 (PAG-12/13): processStpPayment es un simulador. Ningún resultado simulado puede
+      // registrar comisiones como pagadas realmente. Mantener transferencias reales deshabilitadas.
+      const isSimulateOnly = Boolean(req.body.simulate || req.query.simulate === 'true');
+
+      if (!isSimulateOnly) {
+        return res.status(400).json({
+          message: "Dispersión masiva automatizada deshabilitada: processStpPayment es un simulador (PAG-12/13). Ningún resultado simulado puede registrar comisiones como pagadas financieramente. La liquidación financiera real autorizada requiere registro manual por Super Admin con referencia bancaria verificable.",
+          code: "SIMULATED_STP_CANNOT_DISBURSE",
+          simulated: true,
+        });
       }
 
       const successful: any[] = [];
@@ -5127,110 +7025,161 @@ export async function registerRoutes(app: Express): Promise<Server> {
           }
 
           if (commission.status === 'paid') {
-            successful.push({ id, status: 'already_paid', payoutAmount: parseFloat(commission.frozenAmount || commission.brokerShare || commission.amount || '0') });
+            successful.push({ id, status: 'already_paid', payoutAmount: getCommissionPayoutAmount(commission) });
             continue;
           }
 
-          if (!['approved', 'pending', 'failed'].includes(commission.status)) {
-            failed.push({ id, reason: `Estado '${commission.status}' no permite dispersión. Debe estar aprobada.` });
-            continue;
-          }
-
-          const isMbCredit = commission.masterBrokerId && parseFloat(commission.masterBrokerShare || '0') > 0;
-          const targetUserId = isMbCredit ? commission.masterBrokerId! : commission.brokerId;
-          const targetUser = await storage.getUser(targetUserId);
-
-          const effectiveClabe = targetUser?.clabe;
-          if (!effectiveClabe || !/^\d{18}$/.test(String(effectiveClabe))) {
-            failed.push({ id, reason: "Beneficiario sin CLABE válida de 18 dígitos" });
-            continue;
-          }
-
-          const locked = await storage.transitionCommissionStatus(
-            id,
-            ['approved', 'pending', 'failed'],
-            'dispersing',
-            {
-              clabe: effectiveClabe,
-              bankName: targetUser?.bankName || null,
-              accountHolder: targetUser?.accountHolder || `${targetUser?.firstName || ''} ${targetUser?.lastName || ''}`.trim() || null,
-            }
+          const hasValidApproval = (
+            commission.status === 'approved' &&
+            Boolean(commission.approvedBy) &&
+            Boolean(commission.approvedAt) &&
+            commission.frozenAmount != null &&
+            commission.frozenAmount !== '' &&
+            !isNaN(parseFloat(commission.frozenAmount))
           );
 
-          if (!locked) {
-            failed.push({ id, reason: "Bloqueo concurrente: la comisión ya está en proceso de dispersión" });
-            continue;
-          }
-
-          const payoutAmount = locked.frozenAmount
-            ? parseFloat(locked.frozenAmount)
-            : (isMbCredit
-                ? (parseFloat(locked.brokerShare || '0') + parseFloat(locked.masterBrokerShare || '0'))
-                : parseFloat(locked.brokerShare || locked.amount || '0'));
-
-          const paymentResult = await processStpPayment(payoutAmount.toFixed(2), effectiveClabe);
-
-          if (paymentResult.success) {
-            await storage.updateCommission(id, {
-              status: 'paid',
-              paidAt: new Date(),
-              paidBy: userId,
-              paymentMethod: 'stp',
-              clabe: effectiveClabe,
-              bankName: targetUser?.bankName || null,
-              accountHolder: targetUser?.accountHolder || `${targetUser?.firstName || ''} ${targetUser?.lastName || ''}`.trim() || null,
-              trackingKey: paymentResult.transactionId,
-              providerResponse: paymentResult,
-            });
-
+          if (!hasValidApproval) {
             await storage.createCommissionAuditLog({
               commissionId: id,
               performedBy: userId,
-              action: 'dispersed',
-              previousStatus: 'dispersing',
-              newStatus: 'paid',
+              action: 'dispersion_blocked',
+              previousStatus: commission.status,
+              newStatus: commission.status,
               details: {
                 actorRole: user.role,
-                method: 'stp',
-                amount: payoutAmount,
-                trackingKey: paymentResult.transactionId,
-                clabe: effectiveClabe,
+                reason: 'APPROVAL_PREREQUISITES_MISSING',
+                status: commission.status,
+                approvedBy: commission.approvedBy || null,
+                approvedAt: commission.approvedAt || null,
+                frozenAmount: commission.frozenAmount || null,
                 bulk: true,
               },
             });
+            failed.push({ id, reason: "La dispersión masiva requiere estado 'approved', approvedBy, approvedAt e importe congelado válido registrado por Super Admin." });
+            continue;
+          }
 
-            const beneficiaryId = isMbCredit ? locked.masterBrokerId! : locked.brokerId;
-            const notif = await storage.createNotification({
-              userId: beneficiaryId,
-              type: 'commission_paid',
-              title: 'Comisión dispersada vía STP',
-              message: `Se ha procesado exitosamente la transferencia STP por $${payoutAmount.toLocaleString('es-MX', { minimumFractionDigits: 2 })} MXN (${locked.commissionType || 'Apertura'}).`,
-              relatedEntityType: 'commission',
-              relatedEntityId: locked.id,
-              priority: 'high',
-            });
-            broadcastToUser(beneficiaryId, { type: 'notification', notification: notif });
+          const linkedCredit = commission.creditId ? await storage.getCredit(commission.creditId) : null;
+          const historicalMasterBrokerId = commission.masterBrokerId || (linkedCredit?.originMasterBrokerId ?? null);
+          const isMbCredit = Boolean(historicalMasterBrokerId);
+          const isMasterDirect = Boolean(
+            historicalMasterBrokerId &&
+            commission.brokerId &&
+            String(commission.brokerId) === String(historicalMasterBrokerId)
+          );
 
-            successful.push({ id, transactionId: paymentResult.transactionId, payoutAmount });
-            totalAmount += payoutAmount;
-          } else {
-            await storage.updateCommission(id, {
-              status: 'failed',
-              notes: `Fallo en dispersión STP masiva: ${(paymentResult as any)?.message || 'Error'}`,
-              providerResponse: paymentResult,
-            });
+          const targetUserId = (isMbCredit || isMasterDirect) ? historicalMasterBrokerId! : commission.brokerId;
+          const targetUser = await storage.getUser(targetUserId);
 
+          if (!targetUser) {
+            failed.push({ id, reason: "Beneficiario histórico no encontrado" });
+            continue;
+          }
+
+          const effectiveClabe = targetUser.clabe ? String(targetUser.clabe).trim() : null;
+          if (!effectiveClabe || !/^\d{18}$/.test(effectiveClabe)) {
             await storage.createCommissionAuditLog({
               commissionId: id,
               performedBy: userId,
-              action: 'dispersion_failed',
-              previousStatus: 'dispersing',
-              newStatus: 'failed',
-              details: { actorRole: user.role, ...(paymentResult as any) },
+              action: 'dispersion_blocked',
+              previousStatus: commission.status,
+              newStatus: commission.status,
+              details: {
+                actorRole: user.role,
+                reason: 'CLABE_INVALID_OR_MISSING_BULK',
+                beneficiaryId: targetUserId,
+              },
             });
-
-            failed.push({ id, reason: (paymentResult as any)?.message || "Fallo en pasarela STP" });
+            failed.push({ id, reason: `Beneficiario histórico (${isMbCredit ? 'Master Bróker' : 'Bróker'}) sin CLABE válida de 18 dígitos registrada en su expediente` });
+            continue;
           }
+
+          const audit = auditCommissionPayout({
+            ...commission,
+            originMasterBrokerId: historicalMasterBrokerId,
+          });
+
+          if (audit.hasDiscrepancy) {
+            await storage.createCommissionAuditLog({
+              commissionId: id,
+              performedBy: userId,
+              action: 'dispersion_blocked',
+              previousStatus: commission.status,
+              newStatus: commission.status,
+              details: {
+                actorRole: user.role,
+                reason: 'FROZEN_AMOUNT_DISCREPANCY_BULK',
+                audit,
+              },
+            });
+            failed.push({
+              id,
+              reason: audit.discrepancyReason || "Discrepancia en importe congelado. Requiere revisión administrativa auditada.",
+            });
+            continue;
+          }
+
+          // Documentary & Banking Validation Gate (FASE 2B.2C / PAG-01 a PAG-06 / COM-03/06, PAG-08/13/14)
+          // Valida exclusivamente al beneficiario que realmente recibe el pago de Crédito Negocios
+          const docValidation = await validateCommissionPayoutPrerequisites(commission, storage);
+          if (!docValidation.canPayout) {
+            await storage.createCommissionAuditLog({
+              commissionId: id,
+              performedBy: userId,
+              action: 'dispersion_blocked',
+              previousStatus: commission.status,
+              newStatus: commission.status,
+              details: {
+                actorRole: user.role,
+                reason: 'DOCUMENTATION_PREREQUISITES_MISSING',
+                missingRequirements: docValidation.missingRequirements,
+                bulk: true,
+              },
+            });
+            failed.push({
+              id,
+              reason: `Documentación incompleta o no aprobada: ${docValidation.missingRequirements.join("; ")}`,
+            });
+            continue;
+          }
+
+          const payoutAmount = audit.payoutAmount;
+
+          // Simulación STP masiva de prueba única al beneficiario legítimo
+          const simResult = await processStpPayment(payoutAmount.toFixed(2), effectiveClabe);
+
+          await storage.createCommissionAuditLog({
+            commissionId: id,
+            performedBy: userId,
+            action: 'stp_simulation_tested',
+            previousStatus: commission.status,
+            newStatus: commission.status,
+            details: {
+              actorRole: user.role,
+              payoutAmount,
+              targetUserId,
+              simResult,
+              bulk: true,
+              notice: 'Simulación STP masiva ejecutada para validación técnica. La comisión permanece en estado approved sin liquidación real.',
+            },
+          });
+
+          successful.push({
+            id,
+            status: 'simulated_only',
+            simulated: true,
+            paid: false,
+            transactionId: simResult.transactionId,
+            payoutAmount,
+            payoutBeneficiary: {
+              userId: targetUserId,
+              role: (isMbCredit || isMasterDirect) ? 'master_broker' : 'broker',
+              amount: payoutAmount,
+              clabe: effectiveClabe,
+            },
+            networkObligation: audit.networkObligation || null,
+          });
+          totalAmount += payoutAmount;
         } catch (err: any) {
           failed.push({ id, reason: err.message || "Error inesperado al dispersar" });
         }
@@ -5248,7 +7197,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Mark commission as paid manually (Admins only)
+  // Mark commission as paid manually (Super Admin only)
   app.post('/api/commissions/:id/mark-paid', isAuthenticated, requireModuleAndAction('comisiones', 'approve_disperse'), async (req: any, res) => {
     try {
       const { id } = req.params;
@@ -5256,8 +7205,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const userId = req.user.claims.sub;
       const user = await storage.getUser(userId);
 
-      if (!user || (user.role !== 'admin' && user.role !== 'super_admin')) {
-        return res.status(403).json({ message: "Solo los administradores pueden marcar comisiones como pagadas" });
+      if (!user || user.role !== 'super_admin') {
+        return res.status(403).json({ message: "Solo Super Admin puede marcar comisiones como pagadas manualmente" });
       }
 
       if (!notes || typeof notes !== 'string' || notes.trim().length === 0) {
@@ -5273,26 +7222,196 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       if (commission.status === 'paid') {
-        return res.json({ message: "La comisión ya estaba marcada como pagada", commission });
+        if (typeof reference === "string" && reference.trim() && commission.trackingKey !== reference.trim()) {
+          return res.status(409).json({ code: "MANUAL_PAYOUT_ALREADY_PAID_DIFFERENT_REFERENCE", message: "La comisión ya registra otro folio bancario." });
+        }
+        return res.json({ message: "La comisión ya estaba marcada como pagada", commission, alreadyPaid: true });
       }
 
-      const isMbCredit = commission.masterBrokerId && parseFloat(commission.masterBrokerShare || '0') > 0;
-      const payoutAmount = commission.frozenAmount
-        ? parseFloat(commission.frozenAmount)
-        : (isMbCredit
-            ? (parseFloat(commission.brokerShare || '0') + parseFloat(commission.masterBrokerShare || '0'))
-            : parseFloat(commission.brokerShare || commission.amount || '0'));
+      const hasValidApproval = (
+        commission.status === 'approved' &&
+        Boolean(commission.approvedBy) &&
+        Boolean(commission.approvedAt) &&
+        commission.frozenAmount != null &&
+        commission.frozenAmount !== '' &&
+        !isNaN(parseFloat(commission.frozenAmount))
+      );
 
-      const updated = await storage.updateCommission(id, {
-        status: 'paid',
+      if (!hasValidApproval) {
+        await storage.createCommissionAuditLog({
+          commissionId: id,
+          performedBy: userId,
+          action: 'dispersion_blocked',
+          previousStatus: commission.status,
+          newStatus: commission.status,
+          details: {
+            actorRole: user.role,
+            reason: 'APPROVAL_PREREQUISITES_MISSING',
+            status: commission.status,
+            approvedBy: commission.approvedBy || null,
+            approvedAt: commission.approvedAt || null,
+            frozenAmount: commission.frozenAmount || null,
+            manual: true,
+          },
+        });
+        return res.status(400).json({
+          message: "La liquidación manual requiere estado 'approved', approvedBy, approvedAt e importe congelado válido registrado por Super Admin.",
+          code: "APPROVAL_PREREQUISITES_MISSING",
+          commissionStatus: commission.status,
+        });
+      }
+
+      const linkedCredit = commission.creditId ? await storage.getCredit(commission.creditId) : null;
+      const historicalMasterBrokerId = commission.masterBrokerId || (linkedCredit?.originMasterBrokerId ?? null);
+      const isMasterDirect = Boolean(
+        historicalMasterBrokerId &&
+        commission.brokerId &&
+        String(commission.brokerId) === String(historicalMasterBrokerId)
+      );
+      const isMbCredit = Boolean(historicalMasterBrokerId);
+      const audit = auditCommissionPayout({
+        ...commission,
+        originMasterBrokerId: historicalMasterBrokerId,
+      });
+
+      if (audit.hasDiscrepancy) {
+        await storage.createCommissionAuditLog({
+          commissionId: id,
+          performedBy: userId,
+          action: 'dispersion_blocked',
+          previousStatus: commission.status,
+          newStatus: commission.status,
+          details: {
+            actorRole: user.role,
+            reason: 'FROZEN_AMOUNT_DISCREPANCY_MANUAL',
+            audit,
+          },
+        });
+        return res.status(400).json({
+          message: audit.discrepancyReason,
+          code: "FROZEN_AMOUNT_DISCREPANCY",
+          requiresAdminReview: true,
+          audit,
+        });
+      }
+
+      const payoutAmount = audit.payoutAmount;
+
+      // Validación opcional de monto si el cliente envía amount
+      if (req.body.amount !== undefined && req.body.amount !== null) {
+        const providedAmount = parseFloat(String(req.body.amount));
+        if (isNaN(providedAmount) || Math.abs(providedAmount - payoutAmount) > 0.01) {
+          return res.status(400).json({
+            message: `Discrepancia en el monto liquidado: Se envió $${providedAmount.toFixed(2)} pero el importe auditado reglamentario es $${payoutAmount.toFixed(2)}.`,
+            code: "PAYOUT_AMOUNT_MISMATCH",
+          });
+        }
+      }
+
+      // Resolver beneficiario reglamentario que recibe de Crédito Negocios (COM-03/06, PAG-08/13/14)
+      const targetUserId = (isMbCredit || isMasterDirect) ? historicalMasterBrokerId! : commission.brokerId;
+      const targetUser = await storage.getUser(targetUserId);
+
+      if (!targetUser) {
+        return res.status(404).json({
+          message: "No se encontró el beneficiario histórico registrado para esta comisión."
+        });
+      }
+
+      // Validación opcional de coincidencia de beneficiario si el cliente envía beneficiaryId
+      if (req.body.beneficiaryId && String(req.body.beneficiaryId) !== String(targetUserId)) {
+        return res.status(400).json({
+          message: "El beneficiario indicado no coincide con el beneficiario reglamentario que recibe el pago de Crédito Negocios.",
+          code: "BENEFICIARY_MISMATCH",
+        });
+      }
+
+      // CLABE obligatoria del beneficiario que recibe de Crédito Negocios
+      const registeredClabe = targetUser.clabe ? String(targetUser.clabe).trim() : null;
+      if (!registeredClabe || !/^\d{18}$/.test(registeredClabe)) {
+        return res.status(400).json({
+          message: `El beneficiario histórico (${isMbCredit ? 'Master Bróker' : 'Bróker'} ${targetUser.firstName || ''} ${targetUser.lastName || ''}) no cuenta con una CLABE interbancaria válida de 18 dígitos registrada en su expediente.`
+        });
+      }
+
+      // Documentary & Banking Validation Gate (FASE 2B.2C / PAG-01 a PAG-06 / COM-03/06, PAG-08/13/14)
+      // Valida exclusivamente al beneficiario que recibe el pago de Crédito Negocios
+      const docValidation = await validateCommissionPayoutPrerequisites(commission, storage);
+      if (!docValidation.canPayout) {
+        await storage.createCommissionAuditLog({
+          commissionId: id,
+          performedBy: userId,
+          action: 'dispersion_blocked',
+          previousStatus: commission.status,
+          newStatus: commission.status,
+          details: {
+            actorRole: user.role,
+            reason: 'DOCUMENTATION_PREREQUISITES_MISSING',
+            missingRequirements: docValidation.missingRequirements,
+            manual: true,
+            beneficiaries: docValidation.beneficiaries,
+          },
+        });
+        return res.status(400).json({
+          message: `Liquidación manual bloqueada: Faltan requisitos documentales o bancarios validados por Super Admin: ${docValidation.missingRequirements.join("; ")}`,
+          code: "DOCUMENTATION_PREREQUISITES_MISSING",
+          missingRequirements: docValidation.missingRequirements,
+          beneficiaries: docValidation.beneficiaries,
+        });
+      }
+
+      // REGLA 3 (PAG-12/13): La referencia bancaria verificable es obligatoria para liquidaciones reales
+      if (!reference || typeof reference !== 'string' || reference.trim().length === 0) {
+        return res.status(400).json({
+          message: "La referencia bancaria verificable (SPEI, folio o clave de rastreo) es obligatoria para el registro de pago real por Super Admin (PAG-12/PAG-13)."
+        });
+      }
+
+      // REGLA 1 (COM-03/06, PAG-08/13/14): Crédito Negocios paga exclusivamente al Master por operaciones de su red.
+      // El pago comprende la participación del Master y la de sus Brokers. El Master paga posteriormente a sus Brokers.
+      // Se conserva el desglose y se registra la obligación Master->Broker como pending_master_payout SIN marcarla pagada por CN.
+      const isSplitNetwork = Boolean(isMbCredit && !isMasterDirect && parseFloat(commission.brokerShare || '0') > 0);
+      const brokerAmount = parseFloat(commission.brokerShare || '0');
+      const masterAmount = parseFloat(commission.masterBrokerShare || '0');
+
+      const networkObligation = isSplitNetwork ? {
+        brokerId: commission.brokerId,
+        brokerShare: brokerAmount,
+        masterBrokerId: historicalMasterBrokerId!,
+        status: 'pending_master_payout',
+        registeredAt: new Date().toISOString(),
+        notes: 'Crédito Negocios liquidó monto consolidado al Master Bróker. La dispersión al Bróker de red es obligación posterior del Master.',
+      } : null;
+
+      const payoutBeneficiary = {
+        userId: targetUserId,
+        role: (isMbCredit || isMasterDirect) ? 'master_broker' : 'broker',
+        amount: payoutAmount,
+        clabe: registeredClabe,
+        bankName: targetUser.bankName || null,
+        accountHolder: targetUser.accountHolder || `${targetUser.firstName || ''} ${targetUser.lastName || ''}`.trim() || null,
+        method: 'manual',
+        reference: String(reference).trim(),
+        paidAt: new Date().toISOString(),
+      };
+
+      const manualPaymentUpdates = {
+        status: 'paid' as const,
         paidAt: new Date(),
         paidBy: userId,
         paymentMethod: 'manual',
-        trackingKey: reference ? String(reference).trim() : null,
+        clabe: registeredClabe,
+        bankName: targetUser.bankName || null,
+        accountHolder: targetUser.accountHolder || `${targetUser.firstName || ''} ${targetUser.lastName || ''}`.trim() || null,
+        trackingKey: String(reference).trim(),
         notes: notes.trim(),
-      });
-
-      await storage.createCommissionAuditLog({
+        providerResponse: {
+          ...((commission.providerResponse as any) || {}),
+          payoutBeneficiary,
+          ...(networkObligation ? { networkObligation } : {}),
+        },
+      };
+      const manualPaymentAudit = {
         commissionId: id,
         performedBy: userId,
         action: 'marked_paid_manually',
@@ -5302,33 +7421,204 @@ export async function registerRoutes(app: Express): Promise<Server> {
           actorRole: user.role,
           paidBy: userId,
           notes: notes.trim(),
-          reference: reference || null,
+          reference: String(reference).trim(),
           payoutAmount,
+          payoutBeneficiary,
+          ...(networkObligation ? { networkObligation } : {}),
         },
-      });
+      };
 
-      // Notify beneficiary with real net amount (never gross amount)
-      const beneficiaryId = isMbCredit ? commission.masterBrokerId! : commission.brokerId;
+      // Cast to the common contract: MemStorage deliberately lacks this optional PG method.
+      const payoutStorage: IStorage = storage;
+      const settled = payoutStorage.recordManualCommissionPayment
+        ? await payoutStorage.recordManualCommissionPayment({
+            commissionId: id, expected: commission,
+            updates: manualPaymentUpdates, audit: manualPaymentAudit,
+          })
+        : { commission: (await storage.updateCommission(id, manualPaymentUpdates))!, alreadyPaid: false };
 
-      const paidNotification = await storage.createNotification({
-        userId: beneficiaryId,
-        type: 'commission_paid',
-        title: 'Comisión pagada (Liquidación manual)',
-        message: `Se registró el pago manual por $${payoutAmount.toLocaleString('es-MX', { minimumFractionDigits: 2 })} MXN (${commission.commissionType || 'Apertura'}). Justificación: ${notes.trim()}`,
-        relatedEntityType: 'commission',
-        relatedEntityId: commission.id,
-        priority: 'high',
-      });
-      broadcastToUser(beneficiaryId, { type: 'notification', notification: paidNotification });
+      // MemStorage remains a test implementation; live DbStorage settles audit in the transaction.
+      if (!payoutStorage.recordManualCommissionPayment) {
+        await storage.createCommissionAuditLog(manualPaymentAudit);
+      }
+      if (settled.alreadyPaid) {
+        return res.json({ message: "La comisión ya estaba marcada como pagada", commission: settled.commission, alreadyPaid: true });
+      }
+      const updated = settled.commission;
+
+      // A notification failure after COMMIT must not present payment as failed.
+      try {
+      // Notificar exclusivamente al beneficiario que efectivamente recibió el pago de Crédito Negocios
+      if (isSplitNetwork) {
+        const masterNotif = await storage.createNotification({
+          userId: historicalMasterBrokerId!,
+          type: 'commission_paid',
+          title: 'Comisión de Red pagada (Liquidación consolidada al Master)',
+          message: `Se registró el pago de Crédito Negocios por $${payoutAmount.toLocaleString('es-MX', { minimumFractionDigits: 2 })} MXN (incluye tu margen de $${masterAmount.toLocaleString('es-MX', { minimumFractionDigits: 2 })} MXN y la cuota de red de $${brokerAmount.toLocaleString('es-MX', { minimumFractionDigits: 2 })} MXN para dispersión a tu Bróker). Referencia: ${String(reference).trim()}. Justificación: ${notes.trim()}`,
+          relatedEntityType: 'commission',
+          relatedEntityId: commission.id,
+          priority: 'high',
+        });
+        broadcastToUser(historicalMasterBrokerId!, { type: 'notification', notification: masterNotif });
+      } else {
+        const beneficiaryId = (isMbCredit || isMasterDirect) ? historicalMasterBrokerId! : commission.brokerId;
+        const paidNotification = await storage.createNotification({
+          userId: beneficiaryId,
+          type: 'commission_paid',
+          title: 'Comisión pagada (Liquidación manual)',
+          message: `Se registró el pago manual por $${payoutAmount.toLocaleString('es-MX', { minimumFractionDigits: 2 })} MXN (${commission.commissionType || 'Apertura'}). Referencia: ${String(reference).trim()}. Justificación: ${notes.trim()}`,
+          relatedEntityType: 'commission',
+          relatedEntityId: commission.id,
+          priority: 'high',
+        });
+        broadcastToUser(beneficiaryId, { type: 'notification', notification: paidNotification });
+      }
+
+      } catch (notificationError) {
+        console.error("[Manual payout] Settlement committed; notification failed:", notificationError);
+      }
 
       res.json({ message: "Comisión marcada como pagada exitosamente", commission: updated });
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error marking commission as paid:", error);
+      if (typeof error?.message === "string" && error.message.startsWith("MANUAL_PAYOUT_")) {
+        return res.status(409).json({
+          code: error.message,
+          message: "Liquidación bloqueada por datos aprobados modificados, pago previo o referencia bancaria duplicada.",
+        });
+      }
       res.status(500).json({ message: "Error al marcar la comisión como pagada" });
     }
   });
 
   // Document management with OCR
+
+  // PAG-01/02: personal INE/CSF/bank statement for Broker and Master.
+  // Never expose or mutate another beneficiary's file through this self-service API.
+  const profileDocumentTypes = new Set(["ine", "csf", "bank_statement"]);
+  const isOwnProfileDocument = (doc: any, id: string) =>
+    doc?.brokerId === id && !doc.clientId && !doc.creditId &&
+    profileDocumentTypes.has(doc.type);
+
+  const requireProfileDocumentOwner = async (req: any, res: any, next: any) => {
+    const userId = req.user?.claims?.sub || req.user?.id;
+    const user = userId ? await storage.getUser(userId) : undefined;
+    if (!user || !["broker", "master_broker"].includes(user.role) ||
+        user.isActive === false || user.status === "inactive" || user.status === "suspended") {
+      return res.status(403).json({ message: "Expediente disponible sólo para Broker o Master Broker activos." });
+    }
+    req.profileUserId = userId;
+    next();
+  };
+
+  app.get("/api/broker/profile-documents", isAuthenticated, requireProfileDocumentOwner, async (req: any, res) => {
+    try {
+      const documents = (await storage.getDocuments({ brokerId: req.profileUserId }))
+        .filter((doc) => isOwnProfileDocument(doc, req.profileUserId))
+        .map((doc) => ({
+          id: doc.id,
+          type: doc.type,
+          fileName: doc.fileName,
+          fileSize: doc.fileSize,
+          mimeType: doc.mimeType,
+          uploadedAt: doc.uploadedAt,
+        }));
+      return res.json({ documents });
+    } catch (error) {
+      console.error("Error loading broker profile documents", error);
+      return res.status(500).json({ message: "No fue posible consultar el expediente." });
+    }
+  });
+
+  app.post("/api/broker/profile-documents", isAuthenticated, requireProfileDocumentOwner, upload.single("file"), async (req: any, res) => {
+    let newPath: string | undefined;
+    try {
+      const userId = req.profileUserId as string;
+      const type = String(req.body?.type || "").trim();
+      if (!profileDocumentTypes.has(type)) {
+        if (req.file?.path) await removeStoredDocument(req.file.path);
+        return res.status(400).json({ message: "Tipo de documento no permitido." });
+      }
+      if (!req.file) return res.status(400).json({ message: "Se requiere un archivo." });
+      // Avoid trusting a supplied beneficiary, tenant, client or credit ID.
+      const file = req.file;
+      const ownDocuments = (await storage.getDocuments({ brokerId: userId }))
+        .filter(doc => isOwnProfileDocument(doc, userId));
+      const previous = ownDocuments.find(doc => doc.type === type);
+      const saved = await persistDocumentFile(file, { brokerId: userId, type });
+      newPath = saved.filePath;
+
+      const nextData = {
+        brokerId: userId, uploadedBy: userId, type,
+        fileName: file.originalname, filePath: saved.filePath,
+        fileSize: file.size, mimeType: file.mimetype,
+        isValid: false, expiresAt: null,
+        extractedData: { status: "pending", reviewedBy: null, reviewedAt: null,
+          reviewRole: null, reviewNotes: null, rejectionReason: null },
+      };
+      // Updating the existing document preserves its identity and invalidates its
+      // previous approval. No previous file is deleted until persistence succeeds.
+      const result = previous
+        ? await storage.updateDocument(previous.id, nextData)
+        : await storage.createDocument(insertDocumentSchema.parse({
+            ...nextData, clientId: null, creditId: null,
+            tenantId: req.tenantContext?.tenant?.id || null,
+          }));
+      if (!result) throw new Error("No fue posible persistir el documento.");
+      if (previous && previous.filePath !== saved.filePath) {
+        try { await removeStoredDocument(previous.filePath); }
+        catch (cleanupErr) { console.warn("Previous document cleanup pending", cleanupErr); }
+      }
+      return res.status(previous ? 200 : 201).json({
+        document: { id: result.id, type: result.type, fileName: result.fileName },
+        status: "pending", requiresReview: true,
+      });
+    } catch (error) {
+      if (newPath) {
+        try { await removeStoredDocument(newPath); } catch (_) {}
+      } else if (req.file?.path) {
+        try { await removeStoredDocument(req.file.path); } catch (_) {}
+      }
+      console.error("Error uploading broker profile document", error);
+      return res.status(500).json({ message: "No fue posible guardar el documento." });
+    }
+  });
+
+  app.delete("/api/broker/profile-documents/:id", isAuthenticated, requireProfileDocumentOwner, async (req: any, res) => {
+    try {
+      const doc = await storage.getDocument(req.params.id);
+      if (!doc) return res.status(404).json({ message: "Documento no encontrado." });
+      if (!isOwnProfileDocument(doc, req.profileUserId)) {
+        return res.status(403).json({ message: "No puedes eliminar documentos ajenos ni expedientes de clientes." });
+      }
+      const deleted = await storage.deleteDocument(doc.id);
+      if (!deleted) return res.status(500).json({ message: "No fue posible eliminar el registro." });
+      try { await removeStoredDocument(doc.filePath); }
+      catch (cleanupErr) { console.warn("Profile document file cleanup pending", cleanupErr); }
+      return res.json({ success: true });
+    } catch (error) {
+      console.error("Error deleting profile document", error);
+      return res.status(500).json({ message: "No fue posible eliminar el documento." });
+    }
+  });
+
+  app.get("/api/broker/profile-documents/:id/download", isAuthenticated, requireProfileDocumentOwner, async (req: any, res) => {
+    try {
+      const doc = await storage.getDocument(req.params.id);
+      if (!doc) return res.status(404).json({ message: "Documento no encontrado." });
+      if (!isOwnProfileDocument(doc, req.profileUserId)) {
+        return res.status(403).json({ message: "No puedes consultar documentos ajenos." });
+      }
+      const target = await getDocumentAccessTarget(doc.filePath, { download: true, fileName: doc.fileName });
+      res.setHeader("Cache-Control", "private, no-store");
+      if (target.kind === "redirect") return res.redirect(target.url);
+      return res.download(target.absolutePath, doc.fileName);
+    } catch (error) {
+      console.error("Error downloading profile document", error);
+      return res.status(500).json({ message: "No fue posible descargar el documento." });
+    }
+  });
+
   app.post('/api/documents', isAuthenticated, requireModuleAndAction('documentos', 'edit'), upload.single('file'), async (req: any, res) => {
     let storedFilePath: string | undefined;
 
@@ -5341,22 +7631,24 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ message: "No file uploaded" });
       }
 
-      // Inherit tenant from client, credit, or active tenant
-      let documentTenantId = req.tenantContext?.tenant?.id || null;
-      let documentBrokerId = userId;
-      if (clientId) {
-        const client = await storage.getClient(clientId);
-        if (client) {
-          if (client.tenantId) documentTenantId = client.tenantId;
-          if (client.brokerId) documentBrokerId = client.brokerId;
-        }
-      } else if (creditId) {
-        const credit = await storage.getCredit(creditId);
-        if (credit) {
-          if (credit.tenantId) documentTenantId = credit.tenantId;
-          if (credit.brokerId) documentBrokerId = credit.brokerId;
-        }
+      const uploadUser = await storage.getUser(userId);
+      const destination = await validateDocumentWriteDestination({
+        userId, userRole: uploadUser?.role || "", tenantContext: req.tenantContext,
+        clientId: clientId || null, creditId: creditId || null,
+      });
+      if (!destination.allowed) {
+        // Multer already wrote the temporary file; reject without leaving
+        // unowned sensitive bytes on disk or uploading them to Supabase.
+        await removeStoredDocument(file.path);
+        return res.status(destination.statusCode || 403).json({
+          code: destination.code, message: destination.message,
+        });
       }
+      // Resolve ownership from *authorized* resources only.
+      const documentTenantId = destination.client?.tenantId ||
+        destination.credit?.tenantId || req.tenantContext?.tenant?.id || null;
+      const documentBrokerId = destination.credit?.brokerId ||
+        destination.client?.brokerId || userId;
       
       const extractedData = {
         ...getDocumentExtractedData(),
@@ -5463,55 +7755,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const { clientId, creditId } = req.query;
       const userId = req.user.claims.sub;
       const user = await storage.getUser(userId);
-      
-      // Admin and super_admin can see all documents
-      const isAdmin = user?.role === 'admin' || user?.role === 'super_admin';
-      
-      if (isAdmin) {
-        const documents = await storage.getDocuments({
-          clientId: clientId as string,
-          creditId: creditId as string,
-        });
-        return res.json(documents);
-      } else if (req.tenantContext?.tenant) {
-        const tenant = req.tenantContext.tenant;
-        if (tenant.type === 'master_broker') {
-          const subordinates = await storage.getTenantsByParent(tenant.id);
-          const tenantIds = [tenant.id, ...subordinates.map(t => t.id)];
-          const documents = await storage.getDocuments({
-            tenantIds,
-            clientId: clientId as string,
-            creditId: creditId as string,
-          });
-          return res.json(documents);
-        } else {
-          const documents = await storage.getDocuments({
-            tenantId: tenant.id,
-            clientId: clientId as string,
-            creditId: creditId as string,
-          });
-          return res.json(documents);
-        }
-      } else if (user?.role === 'master_broker') {
-        const networkBrokers = await storage.getUsersByMasterBroker(userId);
-        const brokerIds = [userId, ...networkBrokers.map(b => b.id)];
-        const allDocuments = await storage.getDocuments({
-          clientId: clientId as string,
-          creditId: creditId as string,
-        });
-        const filteredDocuments = allDocuments.filter(d => d.brokerId && brokerIds.includes(d.brokerId));
-        return res.json(filteredDocuments);
-      } else {
-        const documents = await storage.getDocuments({
-          clientId: clientId as string,
-          creditId: creditId as string,
-          brokerId: userId,
-        });
-        return res.json(documents);
-      }
+      // Never prefilter by the CURRENT tenant or Master network: doing so
+      // hides the historical Master's rightful files and can leak a new
+      // Master's old-network files. Enforce origin per individual document.
+      const documents = await storage.getDocuments({
+        clientId: clientId as string,
+        creditId: creditId as string,
+      });
+      if (user?.role === "admin" || user?.role === "super_admin") return res.json(documents);
+      const visible = await filterAuthorizedClientListing(documents, async doc => {
+        const auth = await authorizeDocumentAccess(userId, user?.role || "", doc.id, req.tenantContext);
+        return Boolean(auth.authorized);
+      });
+      return res.json(visible);
     } catch (error) {
       console.error("Error fetching documents:", error);
-      res.status(500).json({ message: "Failed to fetch documents" });
+      return res.status(500).json({ message: "Failed to fetch documents" });
     }
   });
 
@@ -5521,28 +7780,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const userId = req.user.claims.sub;
       const user = await storage.getUser(userId);
       
-      // First check if user can access this client
-      const authResult = await authorizeClientAccess(userId, user?.role || '', clientId, req.tenantContext);
-      if (!authResult.authorized) {
-        return res.status(authResult.reason === 'Client not found' ? 404 : 403).json({ message: authResult.reason });
-      }
-      
-      // User is authorized to access this client, fetch documents
+      const client = await storage.getClient(clientId);
+      if (!client) return res.status(404).json({ message: "Client not found" });
+      // Basic client scope is NOT the only source of access: a historical
+      // Master retains rights to documents of its immutable-origin credits.
+      const authResult = await authorizeClientAccess(userId, user?.role || "", clientId, req.tenantContext);
       const documents = await storage.getDocuments({ clientId });
 
-      // Filtrado granular según el scope comercial del solicitante
-      const userCredits = await storage.getCredits({ clientId, brokerId: userId });
-      const userCreditIds = userCredits.map((c) => c.id);
+      // A Master with oversight of the client must NOT inherit historic
+      // documents from a Broker who moved networks. Check each file's origin.
+      const filteredDocuments = await filterAuthorizedClientListing(documents, async doc => {
+        const access = await authorizeDocumentAccess(userId, user?.role || "", doc.id, req.tenantContext);
+        return Boolean(access.authorized);
+      });
 
-      const filteredDocuments = documents.filter((doc) =>
-        commercialAuthorizationService.canAccessDocument(
-          authResult,
-          doc,
-          userId,
-          userCreditIds
-        )
-      );
-
+      if (!authResult.authorized && filteredDocuments.length === 0) {
+        return res.status(403).json({ message: "Client documents not accessible" });
+      }
       res.json(filteredDocuments);
 
     } catch (error) {
@@ -5562,16 +7816,40 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Authorization check - broker/tenant access
       const authResult = await authorizeDocumentAccess(userId, user?.role || '', id, req.tenantContext);
       if (!authResult.authorized) {
+        if (req.file?.path) await removeStoredDocument(req.file.path);
         return res.status(authResult.reason === 'Document not found' ? 404 : 403).json({ message: authResult.reason });
       }
-      
+      // Read/supervision permission must not become write permission over
+      // another Broker's or beneficiary's document.
+      const ownsDocument = authResult.document?.brokerId === userId ||
+        authResult.document?.uploadedBy === userId;
+      if (user?.role !== "super_admin" && user?.role !== "admin" && !ownsDocument) {
+        if (req.file?.path) await removeStoredDocument(req.file.path);
+        return res.status(403).json({
+          code: "DOCUMENT_WRITE_OWNER_REQUIRED",
+          message: "La supervisión de red no autoriza modificar documentos de otros Brokers.",
+        });
+      }
+
       const { clientId, creditId, type } = req.body;
       const file = req.file;
-      
+      const nextClientId = clientId !== undefined ? (clientId || null) : authResult.document.clientId;
+      const nextCreditId = creditId !== undefined ? (creditId || null) : authResult.document.creditId;
+      const destination = await validateDocumentWriteDestination({
+        userId, userRole: user?.role || "", tenantContext: req.tenantContext,
+        clientId: nextClientId, creditId: nextCreditId,
+      });
+      if (!destination.allowed) {
+        if (file?.path) await removeStoredDocument(file.path);
+        return res.status(destination.statusCode || 403).json({
+          code: destination.code, message: destination.message,
+        });
+      }
+
       let updateData: any = {
-        clientId: clientId || null,
-        creditId: creditId || null,
-        type,
+        clientId: nextClientId,
+        creditId: nextCreditId,
+        type: type ?? authResult.document.type,
       };
       
       // If new file is uploaded, update file information and process OCR
@@ -5592,6 +7870,27 @@ export async function registerRoutes(app: Express): Promise<Server> {
           fileSize: file.size,
           mimeType: file.mimetype,
           extractedData,
+        };
+      }
+
+      // REGLA 4 (PAG-07 / FIN-13/14): Invalidar aprobaciones cuando se cambie el archivo, su tipo o titular
+      const isFileUpdated = Boolean(file);
+      const isTypeChanged = Boolean(type && type !== authResult.document.type);
+      const isClientChanged = Boolean(clientId !== undefined && clientId !== authResult.document.clientId);
+
+      if (isFileUpdated || isTypeChanged || isClientChanged) {
+        updateData.isValid = false;
+        const currentExtracted = (authResult.document.extractedData as any) || {};
+        updateData.extractedData = {
+          ...(isFileUpdated ? updateData.extractedData : currentExtracted),
+          status: 'pending',
+          reviewedBy: null,
+          reviewedByName: null,
+          reviewedAt: null,
+          reviewRole: null,
+          reviewNotes: null,
+          invalidatedAt: new Date().toISOString(),
+          invalidatedReason: isFileUpdated ? 'FILE_REPLACED' : isTypeChanged ? 'TYPE_CHANGED' : 'HOLDER_CHANGED',
         };
       }
       
@@ -5638,7 +7937,25 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (!authResult.authorized) {
         return res.status(authResult.reason === 'Document not found' ? 404 : 403).json({ message: authResult.reason });
       }
-      
+      const ownsDocument = authResult.document?.brokerId === userId ||
+        authResult.document?.uploadedBy === userId;
+      if (user?.role !== "super_admin" && user?.role !== "admin" && !ownsDocument) {
+        return res.status(403).json({
+          code: "DOCUMENT_WRITE_OWNER_REQUIRED",
+          message: "La supervisión de red no autoriza eliminar documentos de otros Brokers.",
+        });
+      }
+      const deletionScope = await validateDocumentWriteDestination({
+        userId, userRole: user?.role || "", tenantContext: req.tenantContext,
+        clientId: authResult.document?.clientId,
+        creditId: authResult.document?.creditId,
+      });
+      if (!deletionScope.allowed) {
+        return res.status(deletionScope.statusCode || 403).json({
+          code: deletionScope.code, message: deletionScope.message,
+        });
+      }
+
       const success = await storage.deleteDocument(id);
       
       if (success) {
@@ -5657,6 +7974,167 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // =========================================================================
+  // FASE 2B.2C: VALIDACIÓN ADMINISTRATIVA DOCUMENTAL DE COMISIONES (PAG-01 A PAG-06)
+  // =========================================================================
+
+  // Dictamen / revisión administrativa de documentos por Super Admin
+  async function processDocumentReview(req: any, res: any, forcedStatus?: 'approved' | 'rejected') {
+    try {
+      const { id } = req.params;
+      const status = forcedStatus || req.body?.status;
+      const notes = req.body?.notes;
+      const expiresAt = req.body?.expiresAt;
+      const userId = req.user?.claims?.sub || req.user?.id;
+      const user = await storage.getUser(userId);
+
+      // Regla 2: Exclusividad Super Admin
+      if (!user || user.role !== 'super_admin') {
+        return res.status(403).json({
+          message: "Solo Super Admin puede dictaminar y validar documentos para cobro de comisiones.",
+          code: "FORBIDDEN_SUPER_ADMIN_REQUIRED",
+        });
+      }
+
+      if (!status || !['approved', 'rejected'].includes(status)) {
+        return res.status(400).json({
+          message: "El campo 'status' es obligatorio y debe ser 'approved' o 'rejected'.",
+        });
+      }
+
+      if (status === 'rejected' && (!notes || !String(notes).trim())) {
+        return res.status(400).json({
+          message: "Es obligatorio proporcionar un motivo o justificación ('notes') al rechazar un documento.",
+        });
+      }
+
+      const document = await storage.getDocument(id);
+      if (!document) {
+        return res.status(404).json({ message: "Documento no encontrado." });
+      }
+
+      // Regla 2: Prohibición estricta de auto-aprobación
+      if (document.brokerId === userId || document.uploadedBy === userId) {
+        return res.status(403).json({
+          message: "Conflicto de interés: Un usuario no puede auto-aprobar o dictaminar sus propios documentos.",
+          code: "SELF_REVIEW_FORBIDDEN",
+        });
+      }
+
+      const updatedDoc = await storage.updateDocument(id, {
+        isValid: status === 'approved',
+        expiresAt: expiresAt ? (typeof expiresAt === 'string' && expiresAt.includes('T') ? expiresAt.split('T')[0] : String(expiresAt)) : (document.expiresAt || null),
+        extractedData: {
+          ...((document.extractedData as any) || {}),
+          status,
+          reviewedBy: userId,
+          reviewedByName: `${user.firstName || ''} ${user.lastName || ''}`.trim() || user.email,
+          reviewedAt: new Date().toISOString(),
+          reviewRole: 'super_admin',
+          reviewNotes: notes ? String(notes).trim() : null,
+          rejectionReason: status === 'rejected' ? String(notes).trim() : null,
+        },
+      });
+
+      // Notificar al beneficiario del dictamen
+      const beneficiaryId = document.brokerId || document.uploadedBy;
+      if (beneficiaryId) {
+        try {
+          const notification = await storage.createNotification({
+            userId: beneficiaryId,
+            type: status === 'approved' ? 'document_approved' : 'document_rejected',
+            title: status === 'approved' ? 'Documento aprobado por Super Admin' : 'Documento rechazado por Super Admin',
+            message: status === 'approved'
+              ? `Tu documento (${document.fileName}) ha sido aprobado para cobro de comisiones.`
+              : `Tu documento (${document.fileName}) fue rechazado: ${notes ? String(notes).trim() : 'Revisión no aprobada'}.`,
+            relatedEntityType: 'document',
+            relatedEntityId: document.id,
+            priority: status === 'rejected' ? 'high' : 'normal',
+          });
+          broadcastToUser(beneficiaryId, { type: 'notification', notification });
+        } catch (notifErr) {
+          console.error("Error creating document review notification:", notifErr);
+        }
+      }
+
+      return res.json({
+        message: `Documento ${status === 'approved' ? 'aprobado' : 'rechazado'} exitosamente.`,
+        document: updatedDoc,
+      });
+    } catch (error) {
+      console.error("Error reviewing document:", error);
+      res.status(500).json({ message: "Error al dictaminar el documento." });
+    }
+  }
+
+  app.post('/api/documents/:id/review', isAuthenticated, async (req: any, res) => {
+    return processDocumentReview(req, res);
+  });
+
+  // Alias para aprobación directa
+  app.post('/api/documents/:id/approve', isAuthenticated, async (req: any, res) => {
+    return processDocumentReview(req, res, 'approved');
+  });
+
+  // Alias para rechazo directo
+  app.post('/api/documents/:id/reject', isAuthenticated, async (req: any, res) => {
+    return processDocumentReview(req, res, 'rejected');
+  });
+
+  // Consulta de estatus de validación de beneficiario
+  app.get('/api/beneficiaries/:id/payout-validation', isAuthenticated, async (req: any, res) => {
+    try {
+      const { id } = req.params;
+      const userId = req.user.claims?.sub || req.user.id;
+      const user = await storage.getUser(userId);
+
+      // Un broker/master puede ver el suyo; Super Admin y Admin pueden ver cualquiera
+      const isSelf = userId === id;
+      const isAdmin = user?.role === 'super_admin' || user?.role === 'admin';
+      if (!isSelf && !isAdmin) {
+        return res.status(403).json({ message: "No autorizado para consultar este beneficiario." });
+      }
+
+      const result = await validateBeneficiaryPayoutDocuments(id, storage);
+      return res.json(result);
+    } catch (error) {
+      console.error("Error validating beneficiary payout documents:", error);
+      res.status(500).json({ message: "Error al validar la documentación del beneficiario." });
+    }
+  });
+
+  // Validación por comisión: sólo Super Admin ve detalles bancarios y documentación sensible.
+  app.get('/api/commissions/:id/payout-validation', isAuthenticated, requireModuleAndAction('comisiones', 'view'), async (req: any, res) => {
+    try {
+      const { id } = req.params;
+      const userId = req.user.claims.sub;
+      const user = await storage.getUser(userId);
+      const commission = await storage.getCommission(id);
+      if (!commission) return res.status(404).json({ message: "Comisión no encontrada." });
+
+      const credit = commission.creditId ? await storage.getCredit(commission.creditId) : null;
+      const historicalMasterId = commission.masterBrokerId || credit?.originMasterBrokerId || null;
+      const isPlatformAdmin = user?.role === 'super_admin' || user?.role === 'admin';
+      if (!isPlatformAdmin && commission.brokerId !== userId && historicalMasterId !== userId) {
+        return res.status(403).json({ message: "No tienes permiso para consultar esta comisión." });
+      }
+
+      const result = await validateCommissionPayoutPrerequisites(commission, storage);
+      if (user?.role === 'super_admin') return res.json(result);
+      // No revelar CLABE, cuenta, nombre de titular ni revisión documental de terceros.
+      return res.json({
+        canPayout: result.canPayout,
+        documentationStatus: result.canPayout ? 'ready' : 'pending',
+        message: result.canPayout
+          ? 'El beneficiario de Crédito Negocios cumple los requisitos de liquidación.'
+          : 'La validación documental o bancaria del beneficiario está pendiente.',
+      });
+    } catch (error) {
+      console.error("Error validating commission payout prerequisites:", error);
+      res.status(500).json({ message: "Error al validar los requisitos de la comisión." });
+    }
+  });
+
   // Broker network management
   app.get('/api/broker-network', isAuthenticated, requireModule('red_brokers'), async (req: any, res) => {
     try {
@@ -5670,7 +8148,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const isAdmin = user?.role === 'admin' || user?.role === 'super_admin';
 
       if (isAdmin) {
-        const allUsers = await storage.getAllUsers();
+        // API never sends hashed passwords or reusable reset tokens to a
+        // Super Admin / Admin browser, including nested broker networks.
+        const allUsers = (await storage.getAllUsers()).map(publicUserForManagement);
         const masterBrokers = allUsers.filter(u => u.role === 'master_broker');
         const allBrokers = allUsers.filter(u => u.role === 'broker');
 
@@ -5696,88 +8176,134 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // If user is a Master Broker, return their own brokers
       const brokers = await storage.getUsersByMasterBroker(userId);
-      res.json(brokers);
+      res.json(brokers.map(publicUserForManagement));
     } catch (error) {
       console.error("Error fetching broker network:", error);
       res.status(500).json({ message: "Failed to fetch broker network" });
     }
   });
 
-  // Broker invitations
-  app.post('/api/broker-invitations', isAuthenticated, async (req: any, res) => {
+  // Approved launch onboarding: invitation must produce real mail and canonical
+  // organization ownership. Never silently reassign an existing Broker.
+  app.post('/api/broker-invitations', isAuthenticated, authMutationLimiter, async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
-      const user = await storage.getUser(userId);
-      
-      if (user?.role !== 'master_broker' && user?.role !== 'admin' && user?.role !== 'super_admin') {
-        return res.status(403).json({ message: "Access denied" });
+      const userId = req.user?.claims?.sub || req.user?.id;
+      const inviter = await storage.getUser(userId);
+      if (!inviter || !["master_broker", "admin", "super_admin"].includes(inviter.role)) {
+        return res.status(403).json({ message: "No autorizado para invitar Brokers." });
       }
 
-      const { email, firstName, lastName, phone, message } = req.body;
-      
-      if (!email) {
-        return res.status(400).json({ message: "El correo electrónico es requerido" });
+      const input = z.object({
+        email: z.string().trim().email().max(320),
+        firstName: z.string().trim().max(120).optional(),
+        lastName: z.string().trim().max(120).optional(),
+        phone: z.string().trim().max(35).optional(),
+        message: z.string().trim().max(500).optional(),
+        masterBrokerId: z.string().trim().optional(),
+        role: z.enum(["broker", "master_broker"]).default("broker"),
+      }).safeParse(req.body);
+      if (!input.success) return res.status(400).json({ message: "Datos de invitación inválidos." });
+      const data = input.data;
+      const normalizedEmail = data.email.toLowerCase();
+      const invitedRole = data.role;
+      if (invitedRole === "master_broker" && inviter.role !== "super_admin")
+        return res.status(403).json({ message: "Sólo Super Admin puede invitar nuevos Master Brokers." });
+      if (inviter.role === "admin" && data.masterBrokerId)
+        return res.status(403).json({ message: "Sólo Super Admin puede afiliar Brokers a un Master." });
+
+      // An invitation must not link to a staging domain by accidental fallback.
+      const baseUrl = process.env.FRONTEND_BASE_URL;
+      if (!baseUrl || !/^https:\/\//i.test(baseUrl)) {
+        return res.status(503).json({ message: "La URL segura de invitaciones no está configurada." });
+      }
+      if (!process.env.RESEND_API_KEY && process.env.NODE_ENV !== "test") {
+        return res.status(503).json({ message: "Servicio de correo no configurado para enviar invitaciones." });
       }
 
-      // Check if user already exists or create new broker in network
-      const existingUser = await storage.getUserByEmail(email);
-      let targetBroker: any = existingUser;
+      const targetMasterBrokerId = invitedRole === "master_broker"
+        ? null : inviter.role === "master_broker" ? inviter.id : (data.masterBrokerId || null);
+      const previous = await storage.getUserByEmail(normalizedEmail);
+      const crypto = await import("node:crypto");
+      const resetToken = crypto.randomBytes(32).toString("hex");
+      const resetTokenExpiry = new Date(Date.now() + 24 * 60 * 60 * 1000);
+      let targetBroker: any;
+      let invitationKind: "created" | "resent" = "created";
 
-      if (existingUser) {
-        // Link to master broker if this is invited by a master broker
-        if (user.role === 'master_broker' && (!existingUser.masterBrokerId || existingUser.masterBrokerId !== userId)) {
-          targetBroker = await storage.updateUser(existingUser.id, {
-            masterBrokerId: userId,
+      if (previous) {
+        // This route is not a transfer-of-network API.
+        // Only re-send a setup link to an unfinished, correctly affiliated,
+        // owned Broker identity already created through the canonical path.
+        const allTenants = await storage.getTenants();
+        const owned = allTenants.filter(t =>
+          t.type === invitedRole && (t.settings as any)?.legacyOwnerUserId === previous.id
+        );
+        const members = owned.length === 1 ? await storage.getTenantMembers(owned[0].id) : [];
+        const ownedByBroker = members.some(m =>
+          m.userId === previous.id && m.role === "owner" && m.isActive !== false
+        );
+        const isSameNetwork = (previous.masterBrokerId || null) === targetMasterBrokerId;
+        if (previous.role !== invitedRole || previous.password ||
+            !isSameNetwork || !ownedByBroker) {
+          return res.status(409).json({
+            message: "El usuario ya existe o pertenece a otra red. Los cambios de afiliación requieren autorización de Super Admin."
           });
         }
+        await storage.setPasswordResetToken(previous.id, resetToken, resetTokenExpiry);
+        targetBroker = previous;
+        invitationKind = "resent";
       } else {
-        // Create new broker user record under master broker
-        targetBroker = await storage.createUser({
-          email,
-          firstName: firstName || '',
-          lastName: lastName || '',
-          role: 'broker',
-          masterBrokerId: user.role === 'master_broker' ? userId : (req.body.masterBrokerId || null),
-          isActive: true,
+        const result = await createBrokerWithOrganization({
+          email: normalizedEmail,
+          firstName: data.firstName || null,
+          lastName: data.lastName || null,
+          password: null, authMethod: "local",
+          role: invitedRole, masterBrokerId: targetMasterBrokerId,
+          resetToken, resetTokenExpiry,
           profileData: {
-            phone: phone || '',
+            phone: data.phone || "",
             invitedBy: userId,
-            invitationMessage: message || '',
+            invitationMessage: data.message || "",
           },
+          isActive: true,
+        });
+        targetBroker = result.user;
+      }
+
+      const recipientName = [targetBroker.firstName, targetBroker.lastName].filter(Boolean).join(" ") || undefined;
+      const sent = await sendAccountInvitationEmail(normalizedEmail, resetToken, invitedRole, recipientName);
+      if (!sent.success) {
+        console.error("[Invitation] Email delivery failed; invitation remains pending:", sent.error);
+        return res.status(202).json({
+          invitationSent: false,
+          message: "Cuenta registrada, pero no se entregó el correo. Reintenta la invitación.",
+          broker: { id: targetBroker.id, email: targetBroker.email, role: targetBroker.role },
+          invitationKind,
         });
       }
 
-      // Create a notification for sender
-      const notification = await storage.createNotification({
+      await storage.createNotification({
         userId,
-        type: 'broker_invitation_sent',
-        title: 'Invitación de broker enviada',
-        message: `Invitación enviada a ${firstName} ${lastName} (${email})`,
-        data: { 
-          email, 
-          firstName, 
-          lastName, 
-          phone,
-          brokerId: targetBroker?.id,
-          invitationMessage: message 
-        },
-        priority: 'medium',
-      });
-      
-      // Broadcast real-time notification
-      broadcastToUser(userId, {
-        type: 'notification',
-        notification,
-      });
+        type: "broker_invitation_sent",
+        title: "Invitación de acceso enviada",
+        message: `Invitación enviada a ${normalizedEmail}`,
+        data: { email: normalizedEmail, brokerId: targetBroker.id },
+        priority: "medium",
+      }).catch(err => console.warn("[Invitation] Sender notification pending", err));
 
-      res.status(201).json({ 
-        message: "Invitation sent successfully",
-        broker: targetBroker,
-        invitation: { email, firstName, lastName, phone }
+      return res.status(invitationKind === "created" ? 201 : 200).json({
+        invitationSent: true,
+        invitationKind,
+        message: "Invitación enviada por correo correctamente.",
+        broker: { id: targetBroker.id, email: targetBroker.email, role: targetBroker.role },
       });
-    } catch (error) {
-      console.error("Error sending broker invitation:", error);
-      res.status(500).json({ message: "Failed to send broker invitation" });
+    } catch (error: any) {
+      console.error("Error inviting Broker:", error);
+      if (error?.code === "EMAIL_ALREADY_EXISTS" || error?.code === "23505") {
+        return res.status(409).json({ message: "El usuario ya existe. Vuelve a cargar la red antes de invitar." });
+      }
+      if (error?.name === "ZodError") return res.status(400).json({ message: "Datos de invitación inválidos." });
+      return res.status(error?.statusCode && error.statusCode >= 400 && error.statusCode < 500 ? error.statusCode : 500)
+        .json({ message: error?.statusCode ? error.message : "No fue posible crear la invitación." });
     }
   });
 
@@ -5883,11 +8409,36 @@ export async function registerRoutes(app: Express): Promise<Server> {
         };
       }
 
+      const networkStorage: IStorage = storage;
+      if (networkStorage.updateNetworkRatesWithVersionAtomic) {
+        // PostgreSQL: current rates and contractual terms must commit together.
+        const committed = await networkStorage.updateNetworkRatesWithVersionAtomic({
+          masterBrokerId: userId,
+          changedBy: userId,
+          newRates: sanitizedRates,
+        });
+        if (committed.version) {
+          await commercialTermsService.announceCommittedNetworkVersion(committed.version, storage);
+        }
+        return res.json({
+          message: committed.changed
+            ? "Comisiones de red actualizadas y nueva versión publicada."
+            : "Sin cambios materiales en las comisiones de red.",
+          rates: committed.rates,
+          version: committed.version?.version || null,
+          changed: committed.changed,
+        });
+      }
+
+      // MemStorage-only deterministic unit fallback; never used with PostgreSQL.
+      const previousRates = (user.networkCommissionRates as any) || {};
       const updatedUser = await storage.updateUser(userId, {
         networkCommissionRates: sanitizedRates,
       });
-
-      res.json({
+      await commercialTermsService.publishNetworkRatesUpdate(userId, {
+        previousRates, newRates: sanitizedRates, updatedBy: userId, targetStorage: storage,
+      });
+      return res.json({
         message: "Comisiones de red actualizadas exitosamente",
         rates: updatedUser?.networkCommissionRates || sanitizedRates,
       });
@@ -6925,9 +9476,42 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // 🔹 INSTITUTION PRODUCTS (Level 3A: Assigned to financieras)
   app.get('/api/institution-products', isAuthenticated, async (req: any, res) => {
     try {
-      const { institutionId } = req.query;
+      const userId = req.user?.claims?.sub || req.user?.id;
+      const isSuperAdmin = await requirePlatformRole(userId, ['super_admin']);
+      const { institutionId, status, eligibleOnly } = req.query;
 
-      const products = await storage.getInstitutionProducts(institutionId as string);
+      let products = await storage.getInstitutionProducts(institutionId as string);
+
+      if (!isSuperAdmin) {
+        // Brokers and Master Brokers must NEVER receive drafts, non-eligible offers, nor administrative metadata
+        const user = await storage.getUser(userId);
+        const userRole = user?.role || 'broker';
+        const eligibleCommercialOffers = [];
+        for (const p of products) {
+          if (p.status === 'draft' || p.status === 'archived' || p.isActive === false) {
+            continue;
+          }
+          const versions = await storage.getInstitutionProductVersions(p.id);
+          if (isOfferEligibleForRequests(p, versions)) {
+            eligibleCommercialOffers.push(sanitizeCommercialOffer(p, userRole));
+          }
+        }
+        return res.json(eligibleCommercialOffers);
+      }
+
+      if (status) {
+        products = products.filter(p => p.status === status);
+      }
+      if (eligibleOnly === 'true') {
+        const eligible = [];
+        for (const p of products) {
+          const versions = await storage.getInstitutionProductVersions(p.id);
+          if (isOfferEligibleForRequests(p, versions)) {
+            eligible.push(p);
+          }
+        }
+        products = eligible;
+      }
       res.json(products);
     } catch (error) {
       console.error("Error fetching institution products:", error);
@@ -6938,10 +9522,25 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get('/api/institution-products/:id', isAuthenticated, async (req: any, res) => {
     try {
       const { id } = req.params;
+      const userId = req.user?.claims?.sub || req.user?.id;
+      const isSuperAdmin = await requirePlatformRole(userId, ['super_admin']);
 
       const product = await storage.getInstitutionProduct(id);
       if (!product) {
         return res.status(404).json({ message: "Institution product not found" });
+      }
+
+      if (!isSuperAdmin) {
+        if (product.status === 'draft' || product.status === 'archived' || product.isActive === false) {
+          return res.status(404).json({ message: "Institution product not found" });
+        }
+        const versions = await storage.getInstitutionProductVersions(product.id);
+        if (!isOfferEligibleForRequests(product, versions)) {
+          return res.status(404).json({ message: "Institution product not found" });
+        }
+        const user = await storage.getUser(userId);
+        const userRole = user?.role || 'broker';
+        return res.json(sanitizeCommercialOffer(product, userRole));
       }
       
       res.json(product);
@@ -6951,11 +9550,585 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  app.get('/api/institution-products/:id/versions', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub || req.user?.id;
+      const hasPermission = await requirePlatformRole(userId, ['super_admin']);
+      if (!hasPermission) {
+        return res.status(403).json({ message: "Access denied - Super Admin privileges required" });
+      }
+
+      const { id } = req.params;
+      const versions = await storage.getInstitutionProductVersions(id);
+      res.json(versions);
+    } catch (error) {
+      console.error("Error fetching institution product versions:", error);
+      res.status(500).json({ message: "Failed to fetch institution product versions" });
+    }
+  });
+
+  // Obtener oferta y su versión en borrador editable (Solo Super Admin)
+  app.get('/api/institution-products/:id/draft', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub || req.user?.id;
+      const hasPermission = await requirePlatformRole(userId, ['super_admin']);
+      if (!hasPermission) {
+        return res.status(403).json({ message: "Access denied - Super Admin privileges required" });
+      }
+
+      const { id } = req.params;
+      const product = await storage.getInstitutionProduct(id);
+      if (!product) {
+        return res.status(404).json({ message: "Institution product not found" });
+      }
+
+      const versions = await storage.getInstitutionProductVersions(id);
+      const draftVersion = versions.find(v => v.status === "draft") || null;
+
+      res.json({
+        product,
+        draftVersion,
+      });
+    } catch (error) {
+      console.error("Error fetching draft version:", error);
+      res.status(500).json({ message: "Failed to fetch draft version" });
+    }
+  });
+
+  // Editar y guardar versión en borrador existente (Solo Super Admin - Arquitectura A1)
+  app.put('/api/institution-products/:id/draft', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub || req.user?.id;
+      const hasPermission = await requirePlatformRole(userId, ['super_admin']);
+      if (!hasPermission) {
+        return res.status(403).json({ message: "Access denied - Super Admin privileges required" });
+      }
+
+      const { id } = req.params;
+      const product = await storage.getInstitutionProduct(id);
+      if (!product) {
+        return res.status(404).json({ message: "Institution product not found" });
+      }
+
+      const versions = await storage.getInstitutionProductVersions(id);
+      const draftVersion = versions.find(v => v.status === "draft");
+      if (!draftVersion) {
+        return res.status(400).json({
+          message: "No se encontró una versión en borrador editable para esta oferta. Las versiones publicadas o históricas son inmutables.",
+        });
+      }
+
+      const {
+        name,
+        description,
+        productType,
+        targetProfiles,
+        conditions,
+        requirements,
+        requiredDocuments,
+        variablesConfiguration,
+        changeReason,
+      } = req.body;
+
+      // 1. Extraer condiciones comerciales para la versión y configuration del producto
+      const currentConditions = (draftVersion.conditions || {}) as Record<string, any>;
+      const mergedConditions: Record<string, any> = {
+        ...currentConditions,
+        ...(conditions || {}),
+      };
+
+      if (req.body.minAmount !== undefined) mergedConditions.minAmount = req.body.minAmount !== "" && req.body.minAmount !== null ? Number(req.body.minAmount) : undefined;
+      if (req.body.maxAmount !== undefined) mergedConditions.maxAmount = req.body.maxAmount !== "" && req.body.maxAmount !== null ? Number(req.body.maxAmount) : undefined;
+      if (req.body.minInterestRate !== undefined) mergedConditions.minInterestRate = req.body.minInterestRate !== "" && req.body.minInterestRate !== null ? Number(req.body.minInterestRate) : undefined;
+      if (req.body.maxInterestRate !== undefined) mergedConditions.maxInterestRate = req.body.maxInterestRate !== "" && req.body.maxInterestRate !== null ? Number(req.body.maxInterestRate) : undefined;
+      if (req.body.minTermMonths !== undefined) mergedConditions.minTermMonths = req.body.minTermMonths !== "" && req.body.minTermMonths !== null ? Number(req.body.minTermMonths) : undefined;
+      if (req.body.maxTermMonths !== undefined) mergedConditions.maxTermMonths = req.body.maxTermMonths !== "" && req.body.maxTermMonths !== null ? Number(req.body.maxTermMonths) : undefined;
+
+      // Variables de elegibilidad (B2.1 / B2.2): asociadas a campos del expediente y pendientes en Matching
+      if (req.body.minCompanyAgeMonths !== undefined) mergedConditions.minCompanyAgeMonths = req.body.minCompanyAgeMonths !== "" && req.body.minCompanyAgeMonths !== null ? Number(req.body.minCompanyAgeMonths) : undefined;
+      if (req.body.minMonthlyRevenue !== undefined) mergedConditions.minMonthlyRevenue = req.body.minMonthlyRevenue !== "" && req.body.minMonthlyRevenue !== null ? Number(req.body.minMonthlyRevenue) : undefined;
+      if (req.body.bureauRequirement !== undefined) mergedConditions.bureauRequirement = req.body.bureauRequirement;
+      if (req.body.guaranteeType !== undefined) mergedConditions.guaranteeType = req.body.guaranteeType;
+      if (req.body.avalesType !== undefined) mergedConditions.avalesType = req.body.avalesType;
+
+      // Garantía de Integridad: Variables de elegibilidad pendientes de cotejo contra expediente real (Matching inactivo)
+      mergedConditions.eligibilityEvaluation = {
+        matchingActive: false,
+        status: "pending_verification",
+        verified: false,
+        originFieldsChecked: false,
+      };
+
+      // Comisiones individuales por oferta (B2.2 — Canales independientes Broker Directo y Master Broker)
+      let commRates = req.body.commissionRates !== undefined
+        ? req.body.commissionRates
+        : (conditions?.commissionRates !== undefined ? conditions.commissionRates : currentConditions.commissionRates);
+
+      if (commRates && typeof commRates === "object") {
+        const finRate = commRates.financiera?.apertura !== undefined && commRates.financiera?.apertura !== "" && commRates.financiera?.apertura !== null
+          ? Number(commRates.financiera.apertura)
+          : null;
+        const mbRate = commRates.masterBroker?.apertura !== undefined && commRates.masterBroker?.apertura !== "" && commRates.masterBroker?.apertura !== null
+          ? Number(commRates.masterBroker.apertura)
+          : null;
+        const brkRate = commRates.broker?.apertura !== undefined && commRates.broker?.apertura !== "" && commRates.broker?.apertura !== null
+          ? Number(commRates.broker.apertura)
+          : null;
+
+        const hasFin = finRate !== null && !isNaN(finRate);
+        const hasBrk = brkRate !== null && !isNaN(brkRate);
+        const hasMb = mbRate !== null && !isNaN(mbRate);
+
+        // B3.1: Si falta la comisión de apertura de cualquier canal, su margen debe permanecer pendiente (null), tanto en guardado como en visualización
+        const platformMarginDirect = (hasFin && hasBrk)
+          ? Math.max(0, Number((finRate! - brkRate!).toFixed(4)))
+          : null;
+
+        const platformMarginMaster = (hasFin && hasMb)
+          ? Math.max(0, Number((finRate! - mbRate!).toFixed(4)))
+          : null;
+
+        mergedConditions.commissionRates = {
+          ...commRates,
+          financiera: {
+            ...commRates.financiera,
+            apertura: hasFin ? finRate : null,
+          },
+          masterBroker: {
+            ...commRates.masterBroker,
+            apertura: hasMb ? mbRate : null,
+          },
+          broker: {
+            ...commRates.broker,
+            apertura: hasBrk ? brkRate : null,
+          },
+          channels: {
+            directBroker: {
+              brokerRate: hasBrk ? brkRate : null,
+              platformGrossMargin: platformMarginDirect,
+              isMarginPending: platformMarginDirect === null,
+            },
+            masterBroker: {
+              networkCeiling: hasMb ? mbRate : null,
+              platformGrossMargin: platformMarginMaster,
+              isMarginPending: platformMarginMaster === null,
+            },
+          },
+          platformGrossMarginDirect: platformMarginDirect,
+          platformGrossMarginMaster: platformMarginMaster,
+          isMarginDirectPending: platformMarginDirect === null,
+          isMarginMasterPending: platformMarginMaster === null,
+          // Compatibilidad: la plataforma registra los márgenes de ambos canales independientes
+          platformNet: {
+            direct: platformMarginDirect,
+            master: platformMarginMaster,
+            apertura: platformMarginDirect,
+          },
+          type: commRates.type || "porcentaje",
+          notes: commRates.notes || "",
+        };
+      }
+
+      Object.keys(mergedConditions).forEach(key => mergedConditions[key] === undefined && delete mergedConditions[key]);
+
+      // 2. Validar coherencia matemática de los datos capturados y comisiones (permite incompletos)
+      const validation = validateOfferVersionParameters({ conditions: mergedConditions });
+      if (!validation.isValid) {
+        return res.status(400).json({
+          message: "Inconsistencia en los datos capturados",
+          errors: validation.errors,
+        });
+      }
+
+      // 3. Normalizar requisitos y documentos
+      const currentReqs = (draftVersion.requirements || {}) as Record<string, any>;
+      const mergedRequirements: Record<string, any> = {
+        ...currentReqs,
+        ...(requirements || {}),
+        targetProfiles: targetProfiles !== undefined ? targetProfiles : (currentReqs.targetProfiles || product.targetProfiles || []),
+        eligibilityVariablesStatus: {
+          matchingActive: false,
+          verified: false,
+        },
+      };
+
+      const docsList = requiredDocuments !== undefined
+        ? (Array.isArray(requiredDocuments) ? requiredDocuments : [])
+        : (draftVersion.requiredDocuments || []);
+
+      // 4. Guardado ATÓMICO de versión borrador y producto padre (B3.1: Aislamiento total)
+      // Si la oferta ya está publicada (status === 'published'), la v1 vigente permanece intacta:
+      // editar la futura v2 NO altera las condiciones, comisiones ni datos visibles de la v1 vigente.
+      // Solo si el producto sigue en borrador inicial (status === 'draft'), se sincronizan metadatos de borrador.
+      const shouldSyncParentToDraft = product.status === "draft";
+      const { product: updatedProduct, version: updatedVersion } = await storage.updateInstitutionProductDraftAndParent(
+        id,
+        draftVersion.id,
+        {
+          conditions: mergedConditions,
+          requirements: mergedRequirements,
+          requiredDocuments: docsList,
+          variablesConfiguration: variablesConfiguration !== undefined ? variablesConfiguration : draftVersion.variablesConfiguration,
+          changeReason: changeReason || "Edición de versión en borrador con comisiones individuales",
+        },
+        shouldSyncParentToDraft ? {
+          name: name !== undefined ? name : product.name,
+          customName: name !== undefined ? name : (product.customName || product.name),
+          description: description !== undefined ? description : product.description,
+          productType: productType !== undefined ? productType : product.productType,
+          targetProfiles: targetProfiles !== undefined ? targetProfiles : product.targetProfiles,
+          configuration: {
+            ...((product.configuration || {}) as Record<string, any>),
+            ...mergedConditions,
+          },
+        } : undefined
+      );
+
+      res.json({
+        product: updatedProduct,
+        version: updatedVersion,
+      });
+    } catch (error: any) {
+      console.error("Error updating draft version:", error);
+      res.status(400).json({ message: error.message || "Failed to update draft version" });
+    }
+  });
+
+  // Revisión previa de publicación con validación, advertencias y datos completos (B3 - Solo Super Admin)
+  app.get('/api/institution-products/:id/publish-preview', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub || req.user?.id;
+      const isSuperAdmin = await requirePlatformRole(userId, ['super_admin']);
+      if (!isSuperAdmin) {
+        return res.status(403).json({ message: "Access denied - Super Admin privileges required" });
+      }
+
+      const { id } = req.params;
+      const product = await storage.getInstitutionProduct(id);
+      if (!product) {
+        return res.status(404).json({ message: "Institution product not found" });
+      }
+
+      const versions = await storage.getInstitutionProductVersions(id);
+      const draftVersion = versions.find(v => v.status === "draft") || null;
+      if (!draftVersion) {
+        return res.status(400).json({ message: "No se encontró una versión en borrador para publicar" });
+      }
+
+      const currentVersion = versions.find(v => v.status === "published" || v.status === "active") || null;
+
+      const cond = (draftVersion.conditions || {}) as Record<string, any>;
+      const reqs = (draftVersion.requirements || {}) as Record<string, any>;
+      const docs = draftVersion.requiredDocuments || [];
+
+      const validation = validateMinimumPublishConditions({
+        conditions: cond,
+        requirements: reqs,
+        requiredDocuments: docs,
+        changeReason: draftVersion.changeReason || "Revisión previa para publicación",
+        productType: product.productType,
+      });
+
+      // Comisiones y desglose económico independiente por canal
+      const cr = (cond.commissionRates || {}) as Record<string, any>;
+      const finRate = cr.financiera?.apertura !== undefined && cr.financiera?.apertura !== null && cr.financiera?.apertura !== ""
+        ? Number(cr.financiera.apertura) : null;
+      const brkRate = cr.broker?.apertura !== undefined && cr.broker?.apertura !== null && cr.broker?.apertura !== ""
+        ? Number(cr.broker.apertura) : null;
+      const mbRate = cr.masterBroker?.apertura !== undefined && cr.masterBroker?.apertura !== null && cr.masterBroker?.apertura !== ""
+        ? Number(cr.masterBroker.apertura) : null;
+
+      // Requisito 5: Si falta comisión, margen pendiente, nunca 100% de la bolsa
+      const marginDirect = (finRate !== null && brkRate !== null) ? Number((finRate - brkRate).toFixed(4)) : null;
+      const marginMaster = (finRate !== null && mbRate !== null) ? Number((finRate - mbRate).toFixed(4)) : null;
+
+      res.json({
+        product,
+        draftVersion,
+        currentVersion,
+        validation,
+        summary: {
+          amounts: {
+            min: cond.minAmount ?? null,
+            max: cond.maxAmount ?? null,
+            isPending: cond.minAmount === undefined && cond.maxAmount === undefined,
+          },
+          rates: {
+            min: cond.minInterestRate ?? null,
+            max: cond.maxInterestRate ?? null,
+            isPending: cond.minInterestRate === undefined || cond.maxInterestRate === undefined,
+          },
+          terms: {
+            min: cond.minTermMonths ?? null,
+            max: cond.maxTermMonths ?? null,
+            isPending: cond.minTermMonths === undefined || cond.maxTermMonths === undefined,
+          },
+          targetProfiles: reqs.targetProfiles || product.targetProfiles || [],
+          requiredDocuments: docs,
+          commissions: {
+            financiera: finRate,
+            brokerDirecto: brkRate,
+            masterBroker: mbRate,
+            platformMarginDirect: marginDirect,
+            platformMarginMaster: marginMaster,
+            isMarginDirectPending: marginDirect === null,
+            isMarginMasterPending: marginMaster === null,
+            notes: cr.notes || "",
+          },
+          eligibility: {
+            minCompanyAgeMonths: cond.minCompanyAgeMonths ?? null,
+            minMonthlyRevenue: cond.minMonthlyRevenue ?? null,
+            bureauRequirement: cond.bureauRequirement ?? "sin_requisito",
+            guaranteeType: cond.guaranteeType ?? "sin_garantia",
+            avalesType: cond.avalesType ?? "no_requerido",
+            matchingActive: false,
+            status: "pending_verification",
+          },
+        },
+      });
+    } catch (error: any) {
+      console.error("Error in publish-preview:", error);
+      res.status(500).json({ message: "Failed to generate publish preview" });
+    }
+  });
+
+  // COM-28: Dedicated inbox, no master/institution financial catalog exposed.
+  app.get("/api/commercial/offer-acceptances/pending", isAuthenticated, async (req: any, res) => {
+    try {
+      const user = await storage.getUser(req.user.claims.sub);
+      if (!user || !["broker", "master_broker"].includes(user.role)) {
+        return res.status(403).json({ code: "OFFER_ACCEPTANCE_ROLE_FORBIDDEN" });
+      }
+      const products = await storage.getInstitutionProducts();
+      const pending = [];
+      for (const product of products) {
+        if (product.status !== "published" || product.isActive === false) continue;
+        const versions = await storage.getInstitutionProductVersions(product.id);
+        const current = versions.find(v => v.status === "published");
+        if (!current) continue;
+        const status = await getOfferCommissionStatus(storage, user, product.id, current.versionNumber);
+        if (status.pending) pending.push(status);
+      }
+      return res.json({ pending });
+    } catch (error: any) {
+      console.error("Error consulting pending offer commissions:", error);
+      return res.status(500).json({ code: "OFFER_ACCEPTANCES_UNAVAILABLE" });
+    }
+  });
+
+  // COM-28: Broker/Master checks the exact published economic instrument.
+  // Never expose platform or financial-institution internal commission rates.
+  app.get("/api/institution-products/:id/commission-acceptance", isAuthenticated, async (req: any, res) => {
+    try {
+      const user = await storage.getUser(req.user.claims.sub);
+      if (!user || (user.role !== "broker" && user.role !== "master_broker")) {
+        return res.status(403).json({ code: "OFFER_ACCEPTANCE_ROLE_FORBIDDEN" });
+      }
+      const product = await storage.getInstitutionProduct(req.params.id);
+      if (!product || product.status !== "published" || product.isActive === false) {
+        return res.status(404).json({ code: "OFFER_NOT_PUBLISHED" });
+      }
+      const versionNumber = Number(req.query.versionNumber ?? product.currentVersionNumber);
+      if (!Number.isSafeInteger(versionNumber) || versionNumber <= 0) {
+        return res.status(400).json({ code: "INVALID_OFFER_VERSION" });
+      }
+      return res.json(await getOfferCommissionStatus(storage, user, product.id, versionNumber));
+    } catch (error: any) {
+      return res.status(error?.message === "OFFER_VERSION_NOT_CURRENT" ? 409 : 500)
+        .json({ code: error?.message || "OFFER_ACCEPTANCE_STATUS_ERROR" });
+    }
+  });
+
+  app.post("/api/institution-products/:id/commission-acceptance", isAuthenticated, async (req: any, res) => {
+    try {
+      const user = await storage.getUser(req.user.claims.sub);
+      if (!user || (user.role !== "broker" && user.role !== "master_broker")) {
+        return res.status(403).json({ code: "OFFER_ACCEPTANCE_ROLE_FORBIDDEN" });
+      }
+      const product = await storage.getInstitutionProduct(req.params.id);
+      if (!product || product.status !== "published" || product.isActive === false) {
+        return res.status(404).json({ code: "OFFER_NOT_PUBLISHED" });
+      }
+      const versionNumber = Number(req.body?.versionNumber);
+      const expectedHash = req.body?.contentSha256;
+      if (!Number.isSafeInteger(versionNumber) || versionNumber <= 0 ||
+          typeof expectedHash !== "string" || !/^[a-f0-9]{64}$/.test(expectedHash)) {
+        return res.status(400).json({ code: "OFFER_ACCEPTANCE_VERSION_AND_HASH_REQUIRED" });
+      }
+      // A client may only accept the exact document it was shown.
+      const status = await getOfferCommissionStatus(storage, user, product.id, versionNumber);
+      if (!status.contentSha256 || status.contentSha256 !== expectedHash) {
+        return res.status(409).json({ code: "OFFER_ACCEPTANCE_STALE_DOCUMENT" });
+      }
+      const ipValue = req.ip || req.socket?.remoteAddress || null;
+      const result = await acceptOfferCommission(storage, user, product.id, versionNumber,
+        typeof ipValue === "string" ? ipValue : null,
+        String(req.headers["user-agent"] || "unknown"));
+      return res.json(result);
+    } catch (error: any) {
+      const code = error?.message || "OFFER_ACCEPTANCE_ERROR";
+      const status = code === "OFFER_VERSION_NOT_CURRENT" || code === "OFFER_COMMISSIONS_NOT_PENDING" ||
+        code === "OFFER_COMMISSION_DOCUMENT_UNAVAILABLE" ? 409 : 500;
+      return res.status(status).json({ code });
+    }
+  });
+
+  // Publicación formal de versión borrador (B3 - Solo Super Admin, Transaccional A1)
+  app.post('/api/institution-products/:id/publish', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub || req.user?.id;
+      const isSuperAdmin = await requirePlatformRole(userId, ['super_admin']);
+      if (!isSuperAdmin) {
+        return res.status(403).json({ message: "Access denied - Super Admin privileges required" });
+      }
+
+      const { id } = req.params;
+      const { changeReason, confirmPublish } = req.body;
+
+      // Requisito 1: Confirmación explícita obligatoria
+      if (!confirmPublish) {
+        return res.status(400).json({
+          message: "Debe confirmar explícitamente la publicación de la oferta comercial",
+        });
+      }
+
+      // Requisito 1 & 2: Auditoría y trazabilidad con motivo de cambio
+      if (!changeReason || typeof changeReason !== "string" || changeReason.trim().length < 3) {
+        return res.status(400).json({
+          message: "El motivo de cambio es obligatorio para publicar (mínimo 3 caracteres para trazabilidad y auditoría)",
+        });
+      }
+
+      const product = await storage.getInstitutionProduct(id);
+      if (!product) {
+        return res.status(404).json({ message: "Institution product not found" });
+      }
+
+      const versions = await storage.getInstitutionProductVersions(id);
+      const draftVersion = versions.find(v => v.status === "draft");
+      if (!draftVersion) {
+        return res.status(400).json({
+          message: "No se encontró una versión en borrador para publicar. Es posible que ya haya sido publicada.",
+        });
+      }
+
+      // Compare against the previous published economics, never a draft or
+      // arbitrary institution-level schedule. This does NOT create acceptance.
+      const previousPublishedVersion = versions
+        .filter(v => v.status === "published" && v.versionNumber < draftVersion.versionNumber)
+        .sort((a, b) => b.versionNumber - a.versionNumber)[0] || null;
+
+      // Requisito 2: Publicación transaccional A1 mediante Storage (sustitución segura e historial inmutable)
+      const publishedVersion = await storage.publishInstitutionProductVersion(id, draftVersion.id, {
+        publishedBy: userId,
+        changeReason: changeReason.trim(),
+      });
+      const commercialChange = compareOfferIntermediaryCommissions(
+        previousPublishedVersion,
+        publishedVersion,
+      );
+
+      const updatedProduct = await storage.getInstitutionProduct(id);
+      // Notify affected users after the atomic publication. Notifications carry
+      // no confidential master/platform rate details; acceptance is always
+      // verified against PostgreSQL evidence, never against notification state.
+      let notificationsAttempted = 0;
+      let notificationsFailed = 0;
+      if (commercialChange.requiresAnyAcceptance) {
+        try {
+          const allUsers = await storage.getAllUsers();
+          for (const recipient of allUsers) {
+            if (recipient.isActive === false || recipient.status === "inactive") continue;
+            const parent = recipient.role === "broker" && recipient.masterBrokerId
+              ? allUsers.find(u => u.id === recipient.masterBrokerId) ||
+                await storage.getUser(recipient.masterBrokerId) : null;
+            if (recipient.role === "broker" && recipient.masterBrokerId && !parent) {
+              notificationsFailed++;
+              continue;
+            }
+            const inMasterNetwork = parent?.role === "master_broker";
+            const directBroker = recipient.role === "broker" && !inMasterNetwork;
+            const master = recipient.role === "master_broker";
+            const affected = (directBroker && commercialChange.directBrokerChanged) ||
+              (master && commercialChange.masterBrokerChanged);
+            const networkInformation = recipient.role === "broker" && inMasterNetwork &&
+              commercialChange.masterBrokerChanged;
+            if (!affected && !networkInformation) continue;
+            notificationsAttempted++;
+            try {
+              await storage.createNotification({
+                userId: recipient.id,
+                type: "offer_commission_version_changed",
+                title: "Condiciones comerciales de oferta actualizadas",
+                message: affected
+                  ? "Se publicaron cambios en una oferta que requieren tu aceptación expresa antes de seleccionar nuevas operaciones bajo esa versión."
+                  : "Se actualizaron condiciones de una oferta de tu red. Tu Master Broker revisará las condiciones correspondientes.",
+                relatedEntityType: "institution_product",
+                relatedEntityId: id,
+                priority: "high",
+                data: { versionNumber: publishedVersion.versionNumber, scope: "offer", requiresAcceptance: affected },
+              });
+            } catch (notificationError) {
+              notificationsFailed++;
+              console.error("[COM-28] Error notificando cambio económico de oferta:", notificationError);
+            }
+          }
+        } catch (err) {
+          notificationsFailed++;
+          console.error("[COM-28] Error enumerando destinatarios:", err);
+        }
+      }
+
+      res.json({
+        message: "Oferta comercial publicada exitosamente",
+        product: updatedProduct,
+        publishedVersion,
+        commercialChange,
+        offerVersionAcceptanceEnforced: true,
+        notificationsAttempted,
+        notificationsFailed,
+      });
+    } catch (error: any) {
+      console.error("Error publishing institution product version:", error);
+      res.status(400).json({ message: error.message || "Failed to publish version" });
+    }
+  });
+
   app.get('/api/institution-products/template/:templateId', isAuthenticated, async (req: any, res) => {
     try {
       const { templateId } = req.params;
+      const userId = req.user?.claims?.sub || req.user?.id;
+      const isSuperAdmin = await requirePlatformRole(userId, ['super_admin']);
+      const { eligibleOnly } = req.query;
 
-      const products = await storage.getInstitutionProductsByTemplate(templateId);
+      let products = await storage.getInstitutionProductsByTemplate(templateId);
+
+      if (!isSuperAdmin) {
+        const user = await storage.getUser(userId);
+        const userRole = user?.role || 'broker';
+        const eligibleCommercialOffers = [];
+        for (const p of products) {
+          if (p.status === 'draft' || p.status === 'archived' || p.isActive === false) {
+            continue;
+          }
+          const versions = await storage.getInstitutionProductVersions(p.id);
+          if (isOfferEligibleForRequests(p, versions)) {
+            eligibleCommercialOffers.push(sanitizeCommercialOffer(p, userRole));
+          }
+        }
+        return res.json(eligibleCommercialOffers);
+      }
+
+      if (eligibleOnly === 'true') {
+        const eligible = [];
+        for (const p of products) {
+          const versions = await storage.getInstitutionProductVersions(p.id);
+          if (isOfferEligibleForRequests(p, versions)) {
+            eligible.push(p);
+          }
+        }
+        products = eligible;
+      }
       res.json(products);
     } catch (error) {
       console.error("Error fetching institution products by template:", error);
@@ -6965,11 +10138,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post('/api/institution-products', isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const userId = req.user?.claims?.sub || req.user?.id;
       
-      const hasPermission = await requirePlatformRole(userId, ['super_admin', 'admin']);
+      const hasPermission = await requirePlatformRole(userId, ['super_admin']);
       if (!hasPermission) {
-        return res.status(403).json({ message: "Access denied - Admin privileges required" });
+        return res.status(403).json({ message: "Access denied - Super Admin privileges required" });
       }
 
       // Parse body but add createdBy automatically for security
@@ -6977,7 +10150,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       // Auto-copy targetProfiles from template if not provided
       let targetProfiles = bodyData.targetProfiles;
-      if (!targetProfiles || targetProfiles.length === 0) {
+      if ((!targetProfiles || targetProfiles.length === 0) && bodyData.templateId) {
         const template = await storage.getProductTemplate(bodyData.templateId);
         if (template && template.targetProfiles && template.targetProfiles.length > 0) {
           targetProfiles = template.targetProfiles;
@@ -6986,10 +10159,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       const productData = {
         ...bodyData,
+        status: 'draft', // Forzado a draft desde el servidor; solo el flujo validado de publicación puede establecer published
         targetProfiles, // Use copied or provided targetProfiles
         createdBy: userId, // Set automatically from authenticated user
       };
-      const product = await storage.createInstitutionProduct(productData);
+      const initialVersionData = {
+        versionNumber: 1,
+        status: 'draft',
+        conditions: (bodyData.configuration as any) || {},
+        requirements: { targetProfiles: targetProfiles || [] },
+        changeReason: "Alta inicial de oferta comercial en borrador",
+        createdBy: userId,
+      };
+      const product = await storage.createInstitutionProduct(productData, initialVersionData);
       
       res.status(201).json(product);
     } catch (error) {
@@ -7005,13 +10187,29 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.put('/api/institution-products/:id', isAuthenticated, async (req: any, res) => {
     try {
       const { id } = req.params;
-      const userId = req.user.claims.sub;
+      const userId = req.user?.claims?.sub || req.user?.id;
       
-      const hasPermission = await requirePlatformRole(userId, ['super_admin', 'admin']);
+      const hasPermission = await requirePlatformRole(userId, ['super_admin']);
       if (!hasPermission) {
-        return res.status(403).json({ message: "Access denied - Admin privileges required" });
+        return res.status(403).json({ message: "Access denied - Super Admin privileges required" });
       }
 
+      // COM-28: the generic editor may change descriptive metadata only.
+      // Commercial economics, matching requirements and publication status
+      // MUST pass through the draft + explicit publish/version workflow.
+      const versionedOnlyFields = [
+        "configuration", "activeVariables", "targetProfiles",
+        "status", "currentVersionNumber", "institutionId",
+        "templateId", "productType",
+      ];
+      const forbiddenField = versionedOnlyFields.find(field =>
+        Object.prototype.hasOwnProperty.call(req.body || {}, field));
+      if (forbiddenField) {
+        return res.status(409).json({
+          code: "OFFER_VERSIONED_EDIT_REQUIRED",
+          message: "El campo " + forbiddenField + " requiere guardar un borrador y publicar una nueva versión de la oferta.",
+        });
+      }
       const productData = insertInstitutionProductSchema.partial().parse(req.body);
 
       // Prevent logical inconsistency: cannot activate a product if institution is inactive.
@@ -7036,12 +10234,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       
       res.json(product);
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error updating institution product:", error);
       if (error instanceof z.ZodError) {
         res.status(400).json({ message: 'Invalid data', errors: error.errors });
       } else {
-        res.status(500).json({ message: "Failed to update institution product" });
+        res.status(400).json({ message: error.message || "Failed to update institution product" });
       }
     }
   });
@@ -7049,20 +10247,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.delete('/api/institution-products/:id', isAuthenticated, async (req: any, res) => {
     try {
       const { id } = req.params;
-      const userId = req.user.claims.sub;
+      const userId = req.user?.claims?.sub || req.user?.id;
       
-      const hasPermission = await requirePlatformRole(userId, ['super_admin', 'admin']);
+      const hasPermission = await requirePlatformRole(userId, ['super_admin']);
       if (!hasPermission) {
-        return res.status(403).json({ message: "Access denied - Admin privileges required" });
+        return res.status(403).json({ message: "Access denied - Super Admin privileges required" });
       }
 
       const success = await storage.deleteInstitutionProduct(id);
       
-      if (success) {
-        res.json({ message: "Institution product deleted successfully" });
-      } else {
-        res.status(404).json({ message: "Institution product not found" });
+      if (!success) {
+        return res.status(404).json({ message: "Institution product not found" });
       }
+
+      res.json({ message: "Institution product deleted successfully" });
     } catch (error) {
       console.error("Error deleting institution product:", error);
       res.status(500).json({ message: "Failed to delete institution product" });
@@ -7238,7 +10436,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // ================================
 
   // Get credit submission requests - Admin can see all, brokers see their own
-  app.get('/api/credit-submissions', isAuthenticated, async (req: any, res) => {
+  app.get('/api/credit-submissions', isAuthenticated, requireModuleAndAction('creditos', 'view'), async (req: any, res) => {
     try {
       const userId = req.user.claims.sub;
       const user = await storage.getUser(userId);
@@ -7263,7 +10461,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         filters.status = req.query.status as string;
       }
 
-      const submissions = await storage.getCreditSubmissionRequests(filters);
+      const submissions = (await storage.getCreditSubmissionRequests(filters))
+        .filter(submission => canReadCreditSubmission(user, submission));
       
       // Enrich with related data (client, broker, masterBroker, productTemplate, targets)
       const enrichedSubmissions = await Promise.all(
@@ -7279,7 +10478,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
               const institution = await storage.getFinancialInstitution(target.financialInstitutionId);
               return {
                 ...target,
-                institution
+                institution: projectSubmissionInstitution(institution)
               };
             })
           );
@@ -7295,7 +10494,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
               email: broker.email,
               role: broker.role,
               bankName: broker.bankName,
-              clabe: broker.clabe,
+              clabe: user.role === 'super_admin' ? broker.clabe : maskCLABE(broker.clabe),
               isActive: broker.isActive,
               status: broker.status || (broker.isActive ? 'active' : 'inactive'),
             } : null,
@@ -7307,7 +10506,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
               role: masterBroker.role,
               brandName: (masterBroker as any).brandName
             } : null,
-            targets: enrichedTargets
+            targets: enrichedTargets.map(t => projectSubmissionTarget(t, user.role))
           };
         })
       );
@@ -7320,7 +10519,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Get specific credit submission request
-  app.get('/api/credit-submissions/:id', isAuthenticated, async (req: any, res) => {
+  app.get('/api/credit-submissions/:id', isAuthenticated, requireModuleAndAction('creditos', 'view'), async (req: any, res) => {
     try {
       const { id } = req.params;
       const userId = req.user.claims.sub;
@@ -7331,8 +10530,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ message: "Credit submission not found" });
       }
 
-      // Authorization check - brokers can only see their own submissions
-      if ((user?.role === 'broker' || user?.role === 'master_broker') && submission.brokerId !== userId) {
+      if (!canReadCreditSubmission(user, submission)) {
         return res.status(403).json({ message: "Access denied" });
       }
 
@@ -7347,7 +10545,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           const institution = await storage.getFinancialInstitution(target.financialInstitutionId);
           return {
             ...target,
-            institution
+            institution: projectSubmissionInstitution(institution)
           };
         })
       );
@@ -7371,7 +10569,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           lastName: masterBroker.lastName,
           brandName: (masterBroker as any).brandName
         } : null,
-        targets: enrichedTargets
+        targets: enrichedTargets.map(t => projectSubmissionTarget(t, user?.role))
       });
     } catch (error) {
       console.error("Error fetching credit submission:", error);
@@ -7380,7 +10578,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Get broker's own submissions with targets - ENRICHED with related data
-  app.get('/api/credit-submission-requests/my-submissions', isAuthenticated, async (req: any, res) => {
+  app.get('/api/credit-submission-requests/my-submissions', isAuthenticated, requireModuleAndAction('creditos', 'view'), async (req: any, res) => {
     try {
       const userId = req.user.claims.sub;
       const user = await storage.getUser(userId);
@@ -7403,6 +10601,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         submissions = await storage.getCreditSubmissionRequests({ brokerId: userId });
       }
       
+      // A tenant membership alone never confers permission to see a
+      // different Broker's confidential submission within that tenant.
+      submissions = submissions.filter(submission => canReadCreditSubmission(user, submission));
       const submissionsWithEnrichedData = await Promise.all(
         submissions.map(async (submission) => {
           // Get related data
@@ -7417,7 +10618,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
               const institution = await storage.getFinancialInstitution(target.financialInstitutionId);
               return {
                 ...target,
-                institution
+                institution: projectSubmissionInstitution(institution)
               };
             })
           );
@@ -7426,8 +10627,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
             ...submission,
             client,
             productTemplate,
-            broker,
-            targets: enrichedTargets
+            broker: projectSubmissionPerson(broker),
+            targets: enrichedTargets.map(t => projectSubmissionTarget(t, user.role))
           };
         })
       );
@@ -7440,7 +10641,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Get specific submission request
-  app.get('/api/credit-submission-requests/:id', isAuthenticated, async (req: any, res) => {
+  app.get('/api/credit-submission-requests/:id', isAuthenticated, requireModuleAndAction('creditos', 'view'), async (req: any, res) => {
     try {
       const { id } = req.params;
       const userId = req.user.claims.sub;
@@ -7457,14 +10658,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       // Authorization check - tenant/broker access
-      const authResult = await authorizeTenantOrBrokerResource({
-        currentUserId: userId,
-        resourceBrokerId: submission.brokerId,
-        resourceTenantId: submission.tenantId,
-        currentUserRole: user.role,
-        tenantContext: req.tenantContext,
-      });
-      if (!authResult.authorized) {
+      if (!canReadCreditSubmission(user, submission)) {
         return res.status(403).json({ message: "Access denied" });
       }
 
@@ -7476,7 +10670,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Get credit submissions for a specific client - ENRICHED with related data
-  app.get('/api/credit-submissions/client/:clientId', isAuthenticated, async (req: any, res) => {
+  app.get('/api/credit-submissions/client/:clientId', isAuthenticated, requireModuleAndAction('creditos', 'view'), async (req: any, res) => {
     try {
       const { clientId } = req.params;
       const userId = req.user.claims.sub;
@@ -7486,8 +10680,27 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ message: "User not found" });
       }
 
-      // Get all submissions for this client
-      const allSubmissions = await storage.getCreditSubmissionRequests({ clientId });
+      // The client is a real ownership boundary; do not grant visibility
+      // to every historical opportunity just because the client is shared.
+      const client = await storage.getClient(clientId);
+      if (!client) return res.status(404).json({ message: "Client not found" });
+      const auth = await authorizeClientAccess(userId, user.role, clientId, req.tenantContext);
+      const allSubmissions = (await storage.getCreditSubmissionRequests({ clientId }))
+        .filter(submission => canReadCreditSubmission(user, submission));
+      // Historical Master can still consult a submission from its former
+      // network after a Broker transfer, but not submissions of other originators.
+      const isHistoricMaster = user.role === "master_broker" &&
+        allSubmissions.some(sub => sub.originMasterBrokerId === user.id);
+      // A Broker may consult their OWN submitted opportunity even when the
+      // separate relationship-reservation lease has expired or is absent.
+      const hasOwnedSubmission = user.role === "broker" &&
+        allSubmissions.some(sub => sub.brokerId === user.id);
+      const hasNoCrossTenantConflict = !client.tenantId ||
+        auth.authorized || isHistoricMaster;
+      if ((!auth.authorized && !isHistoricMaster && !hasOwnedSubmission) ||
+          !hasNoCrossTenantConflict) {
+        return res.status(403).json({ message: "Access denied" });
+      }
       
       // Enrich with related data
       const submissionsWithEnrichedData = await Promise.all(
@@ -7504,7 +10717,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
               const institution = await storage.getFinancialInstitution(target.financialInstitutionId);
               return {
                 ...target,
-                institution
+                institution: projectSubmissionInstitution(institution)
               };
             })
           );
@@ -7513,8 +10726,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
             ...submission,
             client,
             productTemplate,
-            broker,
-            targets: enrichedTargets
+            broker: projectSubmissionPerson(broker),
+            targets: enrichedTargets.map(t => projectSubmissionTarget(t, user.role))
           };
         })
       );
@@ -7538,7 +10751,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(403).json({ message: "You don't have permission to create credit submissions" });
       }
 
-      const originationCheck = await validateCommercialOrigination({
+      const originationCheck = await validateCommercialOriginationAndFormalization({
         callerUser: user,
         callerMembership: req.tenantContext?.membership,
         tenantId: req.tenantContext?.tenant?.id,
@@ -7546,7 +10759,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
 
       if (!originationCheck.allowed) {
-        return res.status(403).json({ message: originationCheck.message });
+        return res.status(originationCheck.statusCode || 403).json({
+          code: originationCheck.code,
+          message: originationCheck.message,
+        });
+      }
+
+      const submissionClientAccess = await validateClientOriginationAccess({
+        clientId: req.body?.clientId,
+        callerUser: user,
+        effectiveBrokerId: originationCheck.brokerId,
+        tenantContext: req.tenantContext,
+      });
+      if (!submissionClientAccess.allowed) {
+        return res.status(submissionClientAccess.statusCode || 403).json({
+          code: submissionClientAccess.code, message: submissionClientAccess.message,
+        });
       }
 
       const submissionData = insertCreditSubmissionRequestSchema.parse({
@@ -7702,7 +10930,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(403).json({ message: "No tienes permiso para registrar operaciones hipotecarias" });
       }
 
-      const originationCheck = await validateCommercialOrigination({
+      const originationCheck = await validateCommercialOriginationAndFormalization({
         callerUser: user,
         callerMembership: req.tenantContext?.membership,
         tenantId: req.tenantContext?.tenant?.id,
@@ -7710,7 +10938,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
 
       if (!originationCheck.allowed) {
-        return res.status(403).json({ message: originationCheck.message });
+        return res.status(originationCheck.statusCode || 403).json({
+          code: originationCheck.code,
+          message: originationCheck.message,
+        });
       }
 
       const tenantId = req.tenantContext?.tenant?.id || null;
@@ -7741,9 +10972,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ message: "El monto solicitado es requerido y debe ser mayor a cero" });
       }
 
-      // Ensure Hipotecario Vivienda template exists
-      const hipoTemplate = await ensureHipotecarioViviendaTemplate();
-
       let finalClientId = clientId;
       let clientData: any = undefined;
 
@@ -7771,12 +10999,24 @@ export async function registerRoutes(app: Express): Promise<Server> {
           street: propertyLocation || null,
         });
       } else {
-        // Camino B: Validar cliente existente
-        const existingClient = await storage.getClient(finalClientId);
-        if (!existingClient) {
-          return res.status(404).json({ message: "Cliente no encontrado" });
+        // Camino B: an existing client must belong to this originating
+        // commercial scope; never link a mortgage lead by guessing an ID.
+        const mortgageClientAccess = await validateClientOriginationAccess({
+          clientId: finalClientId,
+          callerUser: user,
+          effectiveBrokerId: brokerId,
+          tenantContext: req.tenantContext,
+        });
+        if (!mortgageClientAccess.allowed) {
+          return res.status(mortgageClientAccess.statusCode || 403).json({
+            code: mortgageClientAccess.code, message: mortgageClientAccess.message,
+          });
         }
       }
+
+      // Only mutate reference catalogs after validating the selected client.
+      // A forged existing-client ID must not even create a template.
+      const hipoTemplate = await ensureHipotecarioViviendaTemplate();
 
       const mortgageData = {
         propertyValue: propertyValue || null,
@@ -7858,7 +11098,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         submission,
         targets,
         message: targets.length > 0
-          ? "Oportunidad hipotecaria registrada y canalizada exitosamente"
+          ? "Oportunidad hipotecaria registrada; financieras seleccionadas pendientes de revisión interna (sin envío externo)"
           : "Oportunidad hipotecaria registrada exitosamente para revisión y canalización"
       });
     } catch (error: any) {
@@ -7867,19 +11107,45 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // POST /api/credit-submissions/:id/targets - Channel submission to institutions (EVENT 2)
+  // POST /api/credit-submissions/:id/targets - Select institution targets internally (NOT external disclosure)
   app.post('/api/credit-submissions/:id/targets', isAuthenticated, requireModuleAndAction('creditos', 'submit_proposals'), async (req: any, res) => {
     try {
       const { id } = req.params;
       const { financialInstitutionIds } = req.body;
 
       if (!Array.isArray(financialInstitutionIds) || financialInstitutionIds.length === 0) {
-        return res.status(400).json({ message: "Debes seleccionar al menos una institución financiera para canalizar" });
+        return res.status(400).json({ message: "Debes seleccionar al menos una institución financiera para preparar la solicitud" });
       }
 
       const submission = await storage.getCreditSubmissionRequest(id);
       if (!submission) {
         return res.status(404).json({ message: "Solicitud de crédito no encontrada" });
+      }
+
+      const callerUser = (req as any).dbUser || (await storage.getUser(req.user?.claims?.sub || req.user?.id));
+      // This modifies a specific historical opportunity, not a generic tenant
+      // resource. Changing a broker's network cannot grant the new master
+      // rights to channel prior submissions; non-owners are rejected BEFORE
+      // querying commercial/formalization details of the originator.
+      if (!canReadCreditSubmission(callerUser, submission)) {
+        return res.status(403).json({
+          code: "SUBMISSION_NOT_AUTHORIZED",
+          message: "No tienes permiso para modificar las financieras seleccionadas en esta solicitud.",
+        });
+      }
+      const formalizationCheck = await validateEffectiveBrokerFormalization(
+        {
+          callerUser,
+          effectiveBrokerId: submission.brokerId,
+        },
+        storage
+      );
+
+      if (!formalizationCheck.allowed) {
+        return res.status(formalizationCheck.statusCode || 403).json({
+          code: formalizationCheck.code,
+          message: formalizationCheck.message,
+        });
       }
 
       const existingTargets = await storage.getCreditSubmissionTargets({ requestId: id });
@@ -7898,17 +11164,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       res.status(201).json({
-        message: `Solicitud canalizada a ${newTargets.length} financiera(s)`,
+        message: `${newTargets.length} financiera(s) agregadas para revisión interna; no se compartió el expediente`,
         targets: newTargets,
       });
     } catch (error: any) {
       console.error("Error channeling submission:", error);
-      res.status(500).json({ message: "Error al canalizar la solicitud" });
+      res.status(500).json({ message: "Error al registrar financieras para revisión" });
     }
   });
 
   // Get credit submission targets
-  app.get('/api/credit-submission-targets', isAuthenticated, requireAnyModule('aprobaciones', 'creditos'), async (req: any, res) => {
+  app.get('/api/credit-submission-targets', isAuthenticated, requireAnyModule('aprobaciones', 'creditos'), requireAction('view'), async (req: any, res) => {
     try {
       const userId = req.user.claims.sub;
       const user = await storage.getUser(userId);
@@ -7928,19 +11194,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Enrich targets with request, broker, master broker, and client information
       const enrichedTargets = await Promise.all(targets.map(enrichCreditSubmissionTarget));
 
-      // Ownership/role filter — prevent exposing other brokers' data
-      let filteredTargets = enrichedTargets;
-      if (user.role === 'broker') {
-        // Broker: only see their own submissions
-        filteredTargets = enrichedTargets.filter((t: any) => t.request?.brokerId === userId);
-      } else if (user.role === 'master_broker') {
-        // Master broker: see own + their network's submissions
-        filteredTargets = enrichedTargets.filter((t: any) =>
-          t.request?.brokerId === userId || t.broker?.masterBrokerId === userId
-        );
-      }
-      // admin / super_admin: see all (no filter)
-      
+      const filteredTargets = enrichedTargets
+        .filter((t: any) => canReadCreditSubmission(user, t.request))
+        .map((t: any) => projectSubmissionTarget(t, user.role));
       res.json(filteredTargets);
     } catch (error) {
       console.error("Error fetching credit submission targets:", error);
@@ -7949,7 +11205,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Approve credit submission target - Admins only
-  app.patch('/api/credit-submission-targets/:id/approve', isAuthenticated, requireModule('aprobaciones'), async (req: any, res) => {
+  app.patch('/api/credit-submission-targets/:id/approve', isAuthenticated, requireModuleAndAction('aprobaciones', 'edit'), async (req: any, res) => {
     try {
       const { id } = req.params;
       const { adminNotes, details } = req.body;
@@ -7974,25 +11230,24 @@ export async function registerRoutes(app: Express): Promise<Server> {
           const notification = await storage.createNotification({
             userId: request.brokerId,
             type: 'submission_update',
-            title: 'Solicitud aprobada por el administrador',
-            message: adminNotes || 'Tu solicitud fue aprobada y será enviada a la institución.',
+            title: 'Solicitud con Visto Bueno del administrador',
+            message: adminNotes || 'Tu solicitud recibió visto bueno interno y está lista para gestión comercial.',
             relatedEntityType: 'credit_submission_target',
             relatedEntityId: rawTarget.id,
             priority: 'high',
           });
           broadcastToUser(request.brokerId, { type: 'notification', notification });
-          const broker = await storage.getUser(request.brokerId);
-          if (broker?.masterBrokerId) {
+          if (request.originMasterBrokerId) {
             const mbNotif = await storage.createNotification({
-              userId: broker.masterBrokerId,
+              userId: request.originMasterBrokerId,
               type: 'submission_update',
-              title: 'Solicitud de tu red aprobada',
-              message: `La solicitud de un broker de tu red fue aprobada.`,
+              title: 'Solicitud de tu red con Visto Bueno',
+              message: `La solicitud de un broker de tu red recibió Visto Bueno interno para continuar su gestión.`,
               relatedEntityType: 'credit_submission_target',
               relatedEntityId: rawTarget.id,
               priority: 'medium',
             });
-            broadcastToUser(broker.masterBrokerId, { type: 'notification', notification: mbNotif });
+            broadcastToUser(request.originMasterBrokerId, { type: 'notification', notification: mbNotif });
           }
         }
       } catch (notifError) {
@@ -8000,15 +11255,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       const target = await enrichCreditSubmissionTarget(rawTarget);
-      res.json(target);
+      res.json(projectSubmissionTarget(target, user.role));
     } catch (error) {
+      if (error instanceof Error && error.message === "TARGET_ALREADY_SELECTED") {
+        return res.status(409).json({
+          code: "TARGET_ALREADY_SELECTED",
+          message: "Esta propuesta ya fue seleccionada o tiene un crédito vinculado.",
+        });
+      }
       console.error("Error approving credit submission target:", error);
       res.status(500).json({ message: "Failed to approve credit submission target" });
     }
   });
 
   // Reject credit submission target - Admins only (for institution rejections)
-  app.patch('/api/credit-submission-targets/:id/reject', isAuthenticated, requireModule('aprobaciones'), async (req: any, res) => {
+  app.patch('/api/credit-submission-targets/:id/reject', isAuthenticated, requireModuleAndAction('aprobaciones', 'edit'), async (req: any, res) => {
     try {
       const { id } = req.params;
       const { adminNotes } = req.body;
@@ -8040,10 +11301,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
             priority: 'high',
           });
           broadcastToUser(request.brokerId, { type: 'notification', notification });
-          const broker = await storage.getUser(request.brokerId);
-          if (broker?.masterBrokerId) {
+          if (request.originMasterBrokerId) {
             const mbNotif = await storage.createNotification({
-              userId: broker.masterBrokerId,
+              userId: request.originMasterBrokerId,
               type: 'submission_update',
               title: 'Solicitud de tu red rechazada',
               message: `La solicitud de un broker de tu red fue rechazada.`,
@@ -8051,7 +11311,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
               relatedEntityId: rawTarget.id,
               priority: 'medium',
             });
-            broadcastToUser(broker.masterBrokerId, { type: 'notification', notification: mbNotif });
+            broadcastToUser(request.originMasterBrokerId, { type: 'notification', notification: mbNotif });
           }
         }
       } catch (notifError) {
@@ -8059,15 +11319,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       const target = await enrichCreditSubmissionTarget(rawTarget);
-      res.json(target);
+      res.json(projectSubmissionTarget(target, user.role));
     } catch (error) {
+      if (error instanceof Error && error.message === "TARGET_ALREADY_SELECTED") {
+        return res.status(409).json({
+          code: "TARGET_ALREADY_SELECTED",
+          message: "Esta propuesta ya fue seleccionada o tiene un crédito vinculado.",
+        });
+      }
       console.error("Error rejecting credit submission target:", error);
       res.status(500).json({ message: "Failed to reject credit submission target" });
     }
   });
 
   // Return credit submission target to broker - Admins only
-  app.patch('/api/credit-submission-targets/:id/return-to-broker', isAuthenticated, requireModule('aprobaciones'), async (req: any, res) => {
+  app.patch('/api/credit-submission-targets/:id/return-to-broker', isAuthenticated, requireModuleAndAction('aprobaciones', 'edit'), async (req: any, res) => {
     try {
       const { id } = req.params;
       const { adminNotes, details } = req.body;
@@ -8100,10 +11366,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
             priority: 'high',
           });
           broadcastToUser(request.brokerId, { type: 'notification', notification });
-          const broker = await storage.getUser(request.brokerId);
-          if (broker?.masterBrokerId) {
+          if (request.originMasterBrokerId) {
             const mbNotif = await storage.createNotification({
-              userId: broker.masterBrokerId,
+              userId: request.originMasterBrokerId,
               type: 'submission_update',
               title: 'Solicitud de tu red devuelta al broker',
               message: `Una solicitud de tu red fue devuelta al broker para correcciones.`,
@@ -8111,7 +11376,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
               relatedEntityId: rawTarget.id,
               priority: 'medium',
             });
-            broadcastToUser(broker.masterBrokerId, { type: 'notification', notification: mbNotif });
+            broadcastToUser(request.originMasterBrokerId, { type: 'notification', notification: mbNotif });
           }
         }
       } catch (notifError) {
@@ -8119,15 +11384,163 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       const target = await enrichCreditSubmissionTarget(rawTarget);
-      res.json(target);
+      res.json(projectSubmissionTarget(target, user.role));
     } catch (error) {
+      if (error instanceof Error && error.message === "TARGET_ALREADY_SELECTED") {
+        return res.status(409).json({
+          code: "TARGET_ALREADY_SELECTED",
+          message: "Esta propuesta ya fue seleccionada o tiene un crédito vinculado.",
+        });
+      }
       console.error("Error returning credit submission target to broker:", error);
       res.status(500).json({ message: "Failed to return credit submission target to broker" });
     }
   });
 
+  // LEG-10: client consent is requested only from the client's stored email,
+  // never from user-supplied request body, and only for an owned exact target.
+  app.post('/api/credit-submission-targets/:id/request-client-consent',
+    isAuthenticated, requireModuleAndAction('creditos','view'), async (req:any,res) => {
+      try {
+        const currentId=req.user?.claims?.sub||req.user?.id;
+        const caller=currentId?await storage.getUser(currentId):null;
+        const target=await storage.getCreditSubmissionTarget(req.params.id);
+        if(!caller||!target) return res.status(404).json({message:"Solicitud no encontrada."});
+        const submission=await storage.getCreditSubmissionRequest(target.requestId);
+        if(!canReadCreditSubmission(caller,submission))
+          return res.status(403).json({message:"No tienes acceso a esta solicitud."});
+        if(target.isWinner||target.creditId||
+           ['sent','selected_winner','dispersed','cancelled'].includes(target.status))
+          return res.status(409).json({message:"Esta propuesta ya no permite iniciar una autorización."});
+        const client=submission?await storage.getClient(submission.clientId):null;
+        const institution=await storage.getFinancialInstitution(target.financialInstitutionId);
+        if(!client||!institution) return res.status(409).json({message:"Cliente o financiera no disponible."});
+        if(!client.tenantId || (submission?.tenantId && client.tenantId!==submission.tenantId))
+          return res.status(409).json({message:"La relación de cliente y organización debe validarse antes de solicitar autorización."});
+        const representative=client.legalRepresentative && typeof client.legalRepresentative==='object' &&
+          !Array.isArray(client.legalRepresentative)?client.legalRepresentative as any:null;
+        const isCompany=client.type==='persona_moral';
+        const signerName=isCompany
+          ? String(representative?.name||'').trim()
+          : [client.firstName,client.lastName].filter(Boolean).join(' ').trim();
+        const signerEmail=isCompany
+          ? String(representative?.email||'').trim()
+          : String(client.email||'').trim();
+        if(!signerName||!signerEmail) return res.status(409).json({
+          code:"CLIENT_SIGNER_MISSING",
+          message:isCompany
+            ?"Registra nombre y correo del representante legal del cliente antes de solicitar su autorización."
+            :"Registra nombre y correo del cliente antes de solicitar su autorización.",
+        });
+        if(signerEmail.toLowerCase()===String(caller.email||'').toLowerCase())
+          return res.status(409).json({code:"CLIENT_SIGNER_NOT_INDEPENDENT",
+            message:"La autorización debe enviarse al cliente, no al correo del usuario solicitante."});
+        const challenge=await startClientConsent({
+          tenantId:client.tenantId,clientId:client.id,targetId:target.id,
+          institutionId:institution.id,institutionName:institution.name||"Financiera",
+          clientName:isCompany?client.businessName||"Empresa":signerName,
+          signerName,signerEmail,
+          signerCapacity:isCompany?"legal_representative":"client",requestedBy:currentId,
+        });
+        const email=await sendClientConsentLinkEmail({
+          to:signerEmail,signerName,institutionName:institution.name||"Financiera",token:challenge.token,
+        });
+        if(!email.success) {
+          await invalidateConsentRequest(challenge.id);
+          return res.status(502).json({code:"CLIENT_CONSENT_EMAIL_FAILED",
+            message:"No se pudo enviar la solicitud de autorización al correo del cliente."});
+        }
+        return res.json({success:true,challengeId:challenge.id,
+          message:"Solicitud enviada al correo registrado del cliente; todavía no se compartió ningún expediente."});
+      } catch(e:any) {
+        if(e instanceof ClientConsentError) return res.status(e.status).json({code:e.code,message:e.message});
+        console.error("LEG10 request consent failed:",e?.message||e);
+        return res.status(503).json({code:"CLIENT_CONSENT_UNAVAILABLE",
+          message:"No se pudo preparar la autorización. El expediente no fue enviado."});
+      }
+    });
+
+  app.get('/api/credit-submission-targets/:id/client-consent-status',
+    isAuthenticated,requireModuleAndAction('creditos','view'),async(req:any,res)=>{
+      try {
+        const currentId=req.user?.claims?.sub||req.user?.id;
+        const caller=currentId?await storage.getUser(currentId):null;
+        const target=await storage.getCreditSubmissionTarget(req.params.id);
+        const submission=target?await storage.getCreditSubmissionRequest(target.requestId):null;
+        if(!caller||!target||!submission) return res.status(404).json({message:"No encontrado."});
+        if(!canReadCreditSubmission(caller,submission))
+          return res.status(403).json({message:"Sin acceso."});
+        const client=await storage.getClient(submission.clientId);
+        const authorized=await hasValidClientConsent({
+          tenantId:client?.tenantId||'',clientId:submission.clientId,targetId:target.id,
+          institutionId:target.financialInstitutionId,
+        });
+        return res.json({authorized,
+          message:authorized?"Cliente autorizado para esta financiera.":"Autorización del cliente pendiente o no validada."});
+      } catch { return res.status(503).json({message:"No disponible."}); }
+    });
+
+  // LEG-10: give Super Admin a way to actually review the independent client
+  // signature and choose a previously uploaded client representation document.
+  // Do not return secret links, codes, request IP or full sensitive snapshot.
+  app.get('/api/credit-submission-targets/:id/client-consent-evidence',
+    isAuthenticated, requireModuleAndAction('aprobaciones','view'), async(req:any,res)=>{
+      try {
+        const reviewerId=req.user?.claims?.sub||req.user?.id;
+        const reviewer=reviewerId?await storage.getUser(reviewerId):null;
+        if(!reviewer || reviewer.role!=='super_admin')
+          return res.status(403).json({message:"Revisión reservada a Super Admin."});
+        const target=await storage.getCreditSubmissionTarget(req.params.id);
+        const submission=target?await storage.getCreditSubmissionRequest(target.requestId):null;
+        const client=submission?await storage.getClient(submission.clientId):null;
+        if(!target||!submission||!client)
+          return res.status(404).json({message:"Solicitud no encontrada."});
+        const evidence=await listClientConsentEvidenceForTarget({
+          tenantId:client.tenantId||'',clientId:client.id,targetId:target.id,
+          institutionId:target.financialInstitutionId,
+        });
+        const documents=(await storage.getDocuments({clientId:client.id})).filter((doc:any)=>
+          !doc.tenantId || doc.tenantId===client.tenantId
+        ).map((doc:any)=>({
+          id:doc.id,fileName:doc.fileName,type:doc.type,isValid:doc.isValid,
+          uploadedAt:doc.uploadedAt,
+        }));
+        return res.json({evidence,documents});
+      }catch(e:any){
+        if(e instanceof ClientConsentError)
+          return res.status(e.status).json({code:e.code,message:e.message});
+        console.error("LEG10 evidence review unavailable:",e?.message||"unknown");
+        return res.status(503).json({message:"No se pudo consultar evidencia de autorización."});
+      }
+    });
+
+  app.post('/api/credit-submission-targets/:id/verify-client-representative',
+    isAuthenticated,requireModuleAndAction('aprobaciones','edit'),async(req:any,res)=>{
+      try {
+        const reviewerId=req.user?.claims?.sub||req.user?.id;
+        const reviewer=reviewerId?await storage.getUser(reviewerId):null;
+        if(!reviewer||reviewer.role!=='super_admin')
+          return res.status(403).json({message:"La revisión de facultades corresponde a Super Admin."});
+        const target=await storage.getCreditSubmissionTarget(req.params.id);
+        const submission=target?await storage.getCreditSubmissionRequest(target.requestId):null;
+        if(!target||!submission) return res.status(404).json({message:"Solicitud no encontrada."});
+        const output=await verifyCompanySignerAuthority({
+          targetId:target.id,clientId:submission.clientId,
+          evidenceId:String(req.body?.evidenceId||""),
+          documentId:String(req.body?.documentId||""),
+          notes:String(req.body?.notes||""),reviewedBy:reviewerId,
+        });
+        return res.json(output);
+      }catch(e:any){
+        if(e instanceof ClientConsentError) return res.status(e.status).json({code:e.code,message:e.message});
+        if(e?.code==='23505') return res.status(409).json({message:"Esta evidencia ya tiene una revisión registrada."});
+        console.error("LEG10 review failed:",e?.message||e);
+        return res.status(503).json({message:"No se pudo registrar la revisión del representante."});
+      }
+    });
+
   // 1. Generate PDF for credit submission target
-  app.post('/api/credit-submission-targets/:id/generate-pdf', isAuthenticated, async (req: any, res) => {
+  app.post('/api/credit-submission-targets/:id/generate-pdf', isAuthenticated, requireModuleAndAction('creditos', 'view'), async (req: any, res) => {
     try {
       const { id } = req.params;
       const rawTarget = await storage.getCreditSubmissionTarget(id);
@@ -8136,14 +11549,37 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ message: "Credit submission target not found" });
       }
 
-      const target = await enrichCreditSubmissionTarget(rawTarget);
+      const userId = req.user?.claims?.sub || req.user?.id;
+      const user = userId ? await storage.getUser(userId) : null;
+      const submission = await storage.getCreditSubmissionRequest(rawTarget.requestId);
+      if (!canReadCreditSubmission(user, submission)) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      // LEG-10: This PDF contains client identifiers and financial purpose.
+      // It is an exportable institution-target package, not merely an
+      // in-app draft. Deny before piping any PDF bytes to the response.
+      const pdfClient = submission ? await storage.getClient(submission.clientId) : null;
+      const pdfConsent = await authorizeClientSensitiveDisclosure({
+        clientId: submission?.clientId,
+        tenantId: submission?.tenantId || pdfClient?.tenantId || null,
+        targetId: rawTarget.id,
+        recipientInstitutionId: rawTarget.financialInstitutionId,
+        purpose: "financial_institution_pdf_export",
+      });
+      if (!pdfConsent.authorized) return res.status(409).json(pdfConsent);
+      // Limit broker-facing PDFs to contextual information; never render admin-only notes.
+      const target = projectSubmissionTarget(await enrichCreditSubmissionTarget(rawTarget), user?.role);
 
       const doc = new PDFDocument({ margin: 50 });
       
-      res.setHeader('Content-Type', 'application/pdf');
-      res.setHeader('Content-Disposition', `attachment; filename=solicitud-${id}.pdf`);
-      
-      doc.pipe(res);
+      // Build fully in memory first. A revocation may occur while a complex
+      // PDF is rendering; do not stream even a header until the FINAL gate.
+      const chunks: Buffer[] = [];
+      const pdfReady = new Promise<Buffer>((resolve,reject)=>{
+        doc.on('data',(chunk:Buffer)=>chunks.push(chunk));
+        doc.once('end',()=>resolve(Buffer.concat(chunks)));
+        doc.once('error',reject);
+      });
       
       // Header con logo placeholder y título
       doc.fontSize(24).fillColor('#1e40af').text('SOLICITUD DE CRÉDITO', { align: 'center' });
@@ -8259,7 +11695,39 @@ export async function registerRoutes(app: Express): Promise<Server> {
         .text(`Generado el ${new Date().toLocaleString('es-MX')}`, 50, 750, { align: 'center' });
       
       doc.end();
+      const pdfBytes=await pdfReady;
+      await withAuthorizedClientPdfDisclosure({
+        tenantId:submission?.tenantId || pdfClient?.tenantId || '',
+        clientId:submission?.clientId || '',
+        targetId:rawTarget.id,
+        institutionId:rawTarget.financialInstitutionId,
+      },async()=>{
+        // Keep the target lock until the complete PDF has been handed to the
+        // response stream. A disconnect rolls back and releases the lock.
+        if(res.destroyed) throw new Error("PDF_CLIENT_DISCONNECTED");
+        res.setHeader('Content-Type','application/pdf');
+        res.setHeader('Cache-Control','private, no-store');
+        res.setHeader('Content-Disposition',`attachment; filename=solicitud-${id}.pdf`);
+        await new Promise<void>((resolve,reject)=>{
+          const cleanup=()=>{
+            res.off('finish',finished);
+            res.off('close',closed);
+            res.off('error',failed);
+          };
+          const finished=()=>{cleanup();resolve();};
+          const closed=()=>{cleanup();reject(new Error("PDF_CLIENT_DISCONNECTED"));};
+          const failed=(e:Error)=>{cleanup();reject(e);};
+          res.once('finish',finished);
+          res.once('close',closed);
+          res.once('error',failed);
+          try{res.end(pdfBytes);}catch(e){cleanup();reject(e);}
+        });
+      });
     } catch (error) {
+      if(error instanceof ClientConsentError){
+        if(!res.headersSent) return res.status(error.status).json({code:error.code,message:error.message});
+        return;
+      }
       console.error("Error generating PDF:", error);
       if (!res.headersSent) {
         res.status(500).json({ message: "Failed to generate PDF" });
@@ -8267,8 +11735,32 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // MVP: record outreach coordination only; do NOT release client data/files.
+  app.patch('/api/credit-submission-targets/:id/start-commercial-contact',
+    isAuthenticated,requireModuleAndAction('aprobaciones','edit'),async(req:any,res)=>{
+      try{
+        const userId=req.user?.claims?.sub||req.user?.id;
+        const user=userId?await storage.getUser(userId):null;
+        if(!user||!['admin','super_admin'].includes(user.role))
+          return res.status(403).json({code:'CONTACT_ADMIN_ONLY',message:'Solo Administración puede iniciar esta gestión.'});
+        const result=await startInternalCommercialContact({
+          targetId:String(req.params.id),reviewedBy:userId,
+        });
+        const updated=await storage.getCreditSubmissionTarget(String(req.params.id));
+        if(!updated) return res.status(503).json({message:'No se pudo recuperar el estado de la gestión.'});
+        return res.json({target:projectSubmissionTarget(await enrichCreditSubmissionTarget(updated),user.role),
+          alreadyStarted:result.alreadyStarted,
+          message:'Gestión comercial interna iniciada. No se envió expediente ni documentación.'});
+      }catch(error){
+        if(error instanceof CommercialContactError)
+          return res.status(error.status).json({code:error.code,message:error.message});
+        console.error('[COMMERCIAL-CONTACT] Internal status update failed:',error);
+        return res.status(503).json({message:'No se pudo iniciar la gestión comercial.'});
+      }
+    });
+
   // 2. Mark submission target as sent - Admins only
-  app.patch('/api/credit-submission-targets/:id/mark-sent', isAuthenticated, async (req: any, res) => {
+  app.patch('/api/credit-submission-targets/:id/mark-sent', isAuthenticated, requireModuleAndAction('aprobaciones', 'edit'), async (req: any, res) => {
     try {
       const { id } = req.params;
       const userId = req.user.claims.sub;
@@ -8283,32 +11775,57 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (!existingTarget) {
         return res.status(404).json({ message: "Credit submission target not found" });
       }
-
-      const rawTarget = await storage.updateCreditSubmissionTarget(id, {
-        status: 'sent',
-        reviewedBy: userId,
-        reviewedAt: new Date(),
-      });
-      
-      if (!rawTarget) {
-        return res.status(404).json({ message: "Credit submission target not found" });
+      // Preserve the historical TARGET_ALREADY_SELECTED refusal before the
+      // consent gate; a final/winning target cannot be reopened either way.
+      if (existingTarget.isWinner || existingTarget.creditId ||
+          ["selected_winner", "dispersed"].includes(existingTarget.status)) {
+        return res.status(409).json({
+          code: "TARGET_ALREADY_SELECTED",
+          message: "Esta propuesta ya fue seleccionada o tiene un crédito vinculado.",
+        });
       }
-
-      // Update the submission status to sent_to_institutions
-      await storage.updateCreditSubmissionRequest(existingTarget.requestId, {
-        status: 'sent_to_institutions',
+      const sendRequest = await storage.getCreditSubmissionRequest(existingTarget.requestId);
+      if (!sendRequest) {
+        return res.status(404).json({ message: "Credit submission request not found" });
+      }
+      const sendClient = await storage.getClient(sendRequest.clientId);
+      const disclosureConsent = await authorizeClientSensitiveDisclosure({
+        clientId: sendRequest.clientId,
+        tenantId: sendRequest.tenantId || sendClient?.tenantId || null,
+        targetId: existingTarget.id,
+        recipientInstitutionId: existingTarget.financialInstitutionId,
+        purpose: "financial_institution_submission",
       });
+      if (!disclosureConsent.authorized) return res.status(409).json(disclosureConsent);
 
+      // Consent must be rechecked and both statuses changed in one transaction,
+      // serialized with revocation. The earlier check alone is not sufficient.
+      await markTargetSentWithClientConsent({
+        targetId:id,requestId:existingTarget.requestId,
+        clientId:sendRequest.clientId,
+        tenantId:sendRequest.tenantId || sendClient?.tenantId || '',
+        institutionId:existingTarget.financialInstitutionId,reviewedBy:userId,
+      });
+      const rawTarget = await storage.getCreditSubmissionTarget(id);
+      if (!rawTarget) return res.status(503).json({message:"Estado del envío temporalmente no disponible."});
       const target = await enrichCreditSubmissionTarget(rawTarget);
-      res.json(target);
+      res.json(projectSubmissionTarget(target, user.role));
     } catch (error) {
+      if (error instanceof Error && error.message === "TARGET_ALREADY_SELECTED") {
+        return res.status(409).json({
+          code: "TARGET_ALREADY_SELECTED",
+          message: "Esta propuesta ya fue seleccionada o tiene un crédito vinculado.",
+        });
+      }
+      if (error instanceof ClientConsentError)
+        return res.status(error.status).json({code:error.code,message:error.message});
       console.error("Error marking as sent:", error);
       res.status(500).json({ message: "Failed to mark as sent" });
     }
   });
 
   // 3. Upload proposal document
-  app.post('/api/credit-submission-targets/:id/upload-proposal', isAuthenticated, upload.single('proposalDocument'), async (req: any, res) => {
+  app.post('/api/credit-submission-targets/:id/upload-proposal', isAuthenticated, requireModuleAndAction('aprobaciones', 'edit'), upload.single('proposalDocument'), async (req: any, res) => {
     try {
       const { id } = req.params;
       const userId = req.user.claims.sub;
@@ -8331,7 +11848,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       const target = await enrichCreditSubmissionTarget(rawTarget);
-      res.json(target);
+      res.json(projectSubmissionTarget(target, user.role));
     } catch (error) {
       console.error("Error uploading proposal:", error);
       res.status(500).json({ message: "Failed to upload proposal" });
@@ -8339,12 +11856,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // 3b. Serve proposal document safely
-  app.get('/api/credit-submission-targets/:id/proposal-document', isAuthenticated, async (req: any, res) => {
+  app.get('/api/credit-submission-targets/:id/proposal-document', isAuthenticated, requireModuleAndAction('creditos', 'view'), async (req: any, res) => {
     try {
       const { id } = req.params;
       const target = await storage.getCreditSubmissionTarget(id);
       if (!target || !target.proposalDocument) {
         return res.status(404).json({ message: "No se encontró el documento de propuesta" });
+      }
+      const userId = req.user?.claims?.sub;
+      const user = userId ? await storage.getUser(userId) : null;
+      const parent = await storage.getCreditSubmissionRequest(target.requestId);
+      if (!canReadCreditSubmission(user, parent)) {
+        return res.status(403).json({ message: "Access denied" });
       }
 
       const filePath = path.resolve(target.proposalDocument);
@@ -8371,7 +11894,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // 4. Save institution proposal - Admins only
-  app.post('/api/credit-submission-targets/:id/institution-proposal', isAuthenticated, async (req: any, res) => {
+  app.post('/api/credit-submission-targets/:id/institution-proposal', isAuthenticated, requireModuleAndAction('aprobaciones', 'edit'), async (req: any, res) => {
     try {
       const { id } = req.params;
       const userId = req.user.claims.sub;
@@ -8386,9 +11909,24 @@ export async function registerRoutes(app: Express): Promise<Server> {
         interestRate: z.number(),
         term: z.number(),
         openingCommission: z.number().optional(),
+        institutionProductId: z.string().trim().min(1).optional(),
+        offerId: z.string().trim().min(1).optional(),
+        versionNumber: z.number().int().positive().optional(),
       });
 
-      const proposal = proposalSchema.parse(req.body);
+      const targetBefore = await storage.getCreditSubmissionTarget(id);
+      if (!targetBefore) return res.status(404).json({ message: "Credit submission target not found" });
+      if (targetBefore.isWinner || targetBefore.creditId ||
+          ["selected_winner", "dispersed"].includes(targetBefore.status)) {
+        return res.status(409).json({ code: "PROPOSAL_LOCKED", message: "La propuesta ya está seleccionada o vinculada a un crédito." });
+      }
+      if (!["contact_initiated", "sent", "institution_approved"].includes(targetBefore.status)) {
+        return res.status(409).json({
+          code: "PROPOSAL_REQUIRES_COMMERCIAL_CONTACT",
+          message: "Primero debe aprobarse el destino e iniciarse la gestión comercial.",
+        });
+      }
+      const proposal = await validateTargetOfferVersion(targetBefore, proposalSchema.parse(req.body));
 
       const rawTarget = await storage.updateCreditSubmissionTarget(id, {
         institutionProposal: proposal,
@@ -8414,10 +11952,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
             priority: 'high',
           });
           broadcastToUser(request.brokerId, { type: 'notification', notification });
-          const broker = await storage.getUser(request.brokerId);
-          if (broker?.masterBrokerId) {
+          if (request.originMasterBrokerId) {
             const mbNotif = await storage.createNotification({
-              userId: broker.masterBrokerId,
+              userId: request.originMasterBrokerId,
               type: 'submission_update',
               title: 'Propuesta recibida para solicitud de tu red',
               message: `Una institución aprobó la solicitud de un broker de tu red.`,
@@ -8425,7 +11962,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
               relatedEntityId: rawTarget.id,
               priority: 'medium',
             });
-            broadcastToUser(broker.masterBrokerId, { type: 'notification', notification: mbNotif });
+            broadcastToUser(request.originMasterBrokerId, { type: 'notification', notification: mbNotif });
           }
         }
       } catch (notifError) {
@@ -8458,15 +11995,28 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       const target = await enrichCreditSubmissionTarget(rawTarget);
-      res.json(target);
+      res.json(projectSubmissionTarget(target, user.role));
     } catch (error) {
+      const code = error instanceof Error ? error.message : "";
+      if (code.startsWith("OFFER_VERSION_")) {
+        return res.status(409).json({ code, message: "La oferta o versión no coincide con la propuesta." });
+      }
+      if (code === "PROPOSAL_REQUIRES_COMMERCIAL_CONTACT") {
+        return res.status(409).json({ code, message: "Primero debe iniciarse la gestión comercial interna." });
+      }
+      if (error instanceof Error && error.message === "TARGET_ALREADY_SELECTED") {
+        return res.status(409).json({
+          code: "TARGET_ALREADY_SELECTED",
+          message: "Esta propuesta ya fue seleccionada o tiene un crédito vinculado.",
+        });
+      }
       console.error("Error saving institution proposal:", error);
       res.status(500).json({ message: "Failed to save institution proposal" });
     }
   });
 
   // Institution response (approve or reject from institution side) - Admins only
-  app.patch('/api/credit-submission-targets/:id/mark-institution-response', isAuthenticated, async (req: any, res) => {
+  app.patch('/api/credit-submission-targets/:id/mark-institution-response', isAuthenticated, requireModuleAndAction('aprobaciones', 'edit'), async (req: any, res) => {
     try {
       const { id } = req.params;
       const userId = req.user.claims.sub;
@@ -8484,15 +12034,33 @@ export async function registerRoutes(app: Express): Promise<Server> {
           interestRate: z.number(),
           term: z.number(),
           openingCommission: z.number().optional(),
+          institutionProductId: z.string().trim().min(1).optional(),
+          offerId: z.string().trim().min(1).optional(),
+          versionNumber: z.number().int().positive().optional(),
         }).optional(),
       });
 
       const { approved, adminNotes, proposal } = bodySchema.parse(req.body);
+      const targetBefore = await storage.getCreditSubmissionTarget(id);
+      if (!targetBefore) return res.status(404).json({ message: "Credit submission target not found" });
+      if (targetBefore.isWinner || targetBefore.creditId ||
+          ["selected_winner", "dispersed"].includes(targetBefore.status)) {
+        return res.status(409).json({ code: "PROPOSAL_LOCKED", message: "No se permite reabrir una propuesta seleccionada." });
+      }
+
+      // Cannot fabricate a financial approval with no actual proposal on
+      // the target. Existing historical proposals remain readable/approvable.
+      if (approved && !proposal && !targetBefore.institutionProposal) {
+        return res.status(409).json({
+          code: "INSTITUTION_PROPOSAL_REQUIRED",
+          message: "Se requiere una propuesta financiera registrada antes de aprobar.",
+        });
+      }
 
       const newStatus = approved ? 'institution_approved' : 'institution_rejected';
       const updatePayload: any = { status: newStatus };
       if (approved && proposal) {
-        updatePayload.institutionProposal = proposal;
+        updatePayload.institutionProposal = await validateTargetOfferVersion(targetBefore, proposal);
         updatePayload.proposalReceivedAt = new Date();
       }
       if (adminNotes) updatePayload.adminNotes = adminNotes;
@@ -8521,10 +12089,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
             priority: 'high',
           });
           broadcastToUser(request.brokerId, { type: 'notification', notification });
-          const broker = await storage.getUser(request.brokerId);
-          if (broker?.masterBrokerId) {
+          if (request.originMasterBrokerId) {
             const mbNotif = await storage.createNotification({
-              userId: broker.masterBrokerId,
+              userId: request.originMasterBrokerId,
               type: 'submission_update',
               title: approved ? 'Institución aprobó solicitud de tu red' : 'Institución rechazó solicitud de tu red',
               message: `Una institución ${approved ? 'aprobó' : 'rechazó'} la solicitud de un broker de tu red.`,
@@ -8532,7 +12099,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
               relatedEntityId: rawTarget.id,
               priority: 'medium',
             });
-            broadcastToUser(broker.masterBrokerId, { type: 'notification', notification: mbNotif });
+            broadcastToUser(request.originMasterBrokerId, { type: 'notification', notification: mbNotif });
           }
         }
       } catch (notifError) {
@@ -8540,15 +12107,25 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       const target = await enrichCreditSubmissionTarget(rawTarget);
-      res.json(target);
+      res.json(projectSubmissionTarget(target, user.role));
     } catch (error) {
+      const code = error instanceof Error ? error.message : "";
+      if (code.startsWith("OFFER_VERSION_")) {
+        return res.status(409).json({ code, message: "La oferta o versión no coincide con la respuesta." });
+      }
+      if (error instanceof Error && error.message === "TARGET_ALREADY_SELECTED") {
+        return res.status(409).json({
+          code: "TARGET_ALREADY_SELECTED",
+          message: "Esta propuesta ya fue seleccionada o tiene un crédito vinculado.",
+        });
+      }
       console.error("Error recording institution response:", error);
       res.status(500).json({ message: "Failed to record institution response" });
     }
   });
 
   // 5. Select winner - Brokers and admins can select
-  app.patch('/api/credit-submission-targets/:id/select-winner', isAuthenticated, async (req: any, res) => {
+  app.patch('/api/credit-submission-targets/:id/select-winner', isAuthenticated, requireModuleAndAction('creditos', 'edit'), async (req: any, res) => {
     try {
       const { id } = req.params;
       const userId = req.user.claims.sub;
@@ -8578,36 +12155,91 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(403).json({ message: "Only the broker who created the submission or admins can select the winner" });
       }
 
-      // Update selected target to winner / selected_winner without overriding other approved/dispersed targets
-      await storage.updateCreditSubmissionTarget(id, {
-        isWinner: true,
-        status: 'selected_winner',
-      });
+      // The winning TARGET (not the entire request) owns its credit.
+      // PostgreSQL locks this row and changes winner + credit together.
 
       const client = await storage.getClient(request.clientId);
       const resolvedTenantId = request.tenantId || client?.tenantId || null;
       const proposal = target.institutionProposal as any;
-      const credit = await storage.createCredit({
+
+      // REGLA 2 (COM-22): Congelamiento comercial formal validado desde servidor
+      const masterBrokerId = request.originMasterBrokerId ?? null;
+
+      const resolvedOfferId = (proposal as any)?.institutionProductId || (proposal as any)?.offerId || (request as any)?.institutionProductId || (request as any)?.offerId || null;
+      const resolvedVersionNumber = (proposal as any)?.versionNumber ?? (request as any)?.versionNumber ?? null;
+
+      if (!target.creditId && !target.isWinner) {
+        const blocked = await checkOfferCommissionAcceptanceForNewOperation({
+          offerId: resolvedOfferId, versionNumber: resolvedVersionNumber,
+          brokerId: request.brokerId, originMasterBrokerId: masterBrokerId,
+          snapshotRecordedAt: target.proposalReceivedAt,
+        });
+        if (blocked) return res.status(409).json(blocked);
+      }
+
+      const commercialSnapshot = consolidateCommercialProposalSnapshot({
+        proposalData: {
+          approvedAmount: proposal?.approvedAmount ? parseFloat(String(proposal.approvedAmount)) : undefined,
+          interestRate: proposal?.interestRate ? parseFloat(String(proposal.interestRate)) : undefined,
+          term: proposal?.term ? parseInt(String(proposal.term), 10) : undefined,
+          openingCommission: proposal?.openingCommission ? parseFloat(String(proposal.openingCommission)) : undefined,
+          institutionProductId: resolvedOfferId,
+          versionNumber: resolvedVersionNumber,
+          originBrokerId: request.brokerId,
+          originMasterBrokerId: masterBrokerId,
+          commissionRates: proposal?.commissionRates || undefined,
+          financialInstitutionId: target.financialInstitutionId,
+        },
+      });
+
+      const creditData = {
         tenantId: resolvedTenantId,
         clientId: request.clientId,
         brokerId: request.brokerId,
+        originMasterBrokerId: masterBrokerId,
         financialInstitutionId: target.financialInstitutionId,
         productTemplateId: request.productTemplateId,
         linkedSubmissionId: request.id,
-        amount: proposal.approvedAmount?.toString() || request.requestedAmount.toString(),
-        interestRate: proposal.interestRate?.toString(),
-        term: proposal.term,
+        amount: proposal?.approvedAmount?.toString() || request.requestedAmount.toString(),
+        interestRate: proposal?.interestRate?.toString(),
+        term: proposal?.term,
         purpose: request.purpose,
         mortgageData: request.mortgageData || {},
         status: 'approved',
-      });
+        finalProposal: commercialSnapshot,
+      } as any;
+      const transactionStorage: IStorage = storage;
+      let credit: any;
+      let selectedTarget: any = target;
+      let alreadySelected = false;
+      if (transactionStorage.selectWinningTargetAtomic) {
+        const settled = await transactionStorage.selectWinningTargetAtomic({
+          targetId: id,
+          requestId: request.id,
+          expectedProposal: target.institutionProposal,
+          newCredit: { ...creditData, id: randomUUID() },
+        });
+        credit = settled.credit;
+        selectedTarget = settled.target;
+        alreadySelected = settled.alreadySelected;
+      } else {
+        // Only MemStorage fixtures use this legacy fallback. PostgreSQL always
+        // uses the locked transaction to prevent orphan and duplicate credits.
+        if (target.creditId) {
+          const existing = await storage.getCredit(target.creditId);
+          if (!existing) throw new Error("WINNER_EXISTING_CREDIT_NOT_FOUND");
+          credit = existing;
+          alreadySelected = true;
+        } else {
+          credit = await storage.createCredit(creditData);
+          selectedTarget = await storage.updateCreditSubmissionTarget(id, {
+            isWinner: true, status: 'selected_winner', creditId: credit.id,
+          });
+        }
+      }
 
-      await storage.updateCreditSubmissionTarget(id, {
-        creditId: credit.id,
-      });
-
-      // Notify Super Admins & Admins that a winning proposal was selected and is ready for dispersal
-      try {
+      // Notifications are best-effort only AFTER the transactional commit.
+      if (!alreadySelected) try {
         const institution = target.financialInstitutionId 
           ? await storage.getFinancialInstitution(target.financialInstitutionId) 
           : null;
@@ -8652,9 +12284,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
         console.error("Error creating notifications for admins on winner selection:", notifErr);
       }
 
-      const enrichedTarget = await enrichCreditSubmissionTarget(target);
-      res.json({ target: enrichedTarget, credit });
-    } catch (error) {
+      const enrichedTarget = await enrichCreditSubmissionTarget(selectedTarget);
+      res.json({ target: projectSubmissionTarget(enrichedTarget, user.role), credit: projectSubmissionCredit(credit, user.role), alreadySelected });
+    } catch (error: any) {
+      const code = String(error?.message || "");
+      if (code.startsWith("WINNER_") || code.startsWith("OFFER_") ||
+          code === "MISSING_ORIGIN_MASTER_FOR_OFFER") {
+        return res.status(409).json({ code, message: "No puede seleccionarse esta propuesta sin validación adicional." });
+      }
       console.error("Error selecting winner:", error);
       res.status(500).json({ message: "Failed to select winner" });
     }
@@ -8699,17 +12336,39 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const resolvedTenantId = request.tenantId || client?.tenantId || null;
       
       // Check if credit already exists (from select-winner flow)
+      const currentProposal = (target.institutionProposal as any) || {};
       if (target.creditId) {
         // Reuse existing credit, update status AND backfill linked fields
+        const existingCredit = await storage.getCredit(target.creditId);
+        const existingProposal = (existingCredit?.finalProposal as any) || currentProposal || {};
         credit = await storage.updateCredit(target.creditId, {
-          status: 'disbursed',
+          // OPE-09: report is not Super Admin confirmation or proof of disbursement.
+          status: existingCredit && isCreditDisbursementConfirmed(existingCredit)
+            ? existingCredit.status : 'approved',
           ...(resolvedTenantId ? { tenantId: resolvedTenantId } : {}),
           linkedSubmissionId: request.id, // Backfill link to original submission
           productTemplateId: request.productTemplateId, // Backfill product template
           mortgageData: request.mortgageData || {},
+          finalProposal: {
+            ...existingProposal,
+            disbursementStatus: existingProposal.disbursementStatus === 'confirmed' ? 'confirmed' : 'reported',
+            disbursementReportedAt: new Date().toISOString(),
+            disbursementReportedBy: userId,
+          },
         });
       } else {
-        // Create new credit in credits table with linked submission
+        // The legacy dispersed route cannot bypass acceptance if it must create
+        // a new credit for a published, materially modified offer.
+        const offerLineage = (proposal || {}) as any;
+        const blocked = await checkOfferCommissionAcceptanceForNewOperation({
+          offerId: offerLineage.institutionProductId || offerLineage.offerId ||
+            (request as any).institutionProductId || (request as any).offerId || null,
+          versionNumber: offerLineage.versionNumber ?? (request as any).versionNumber ?? null,
+          brokerId: request.brokerId,
+          originMasterBrokerId: request.originMasterBrokerId ?? null,
+          snapshotRecordedAt: target.proposalReceivedAt,
+        });
+        if (blocked) return res.status(409).json(blocked);
         credit = await storage.createCredit({
           tenantId: resolvedTenantId,
           clientId: request.clientId,
@@ -8722,7 +12381,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
           term: proposal.term,
           purpose: request.purpose,
           mortgageData: request.mortgageData || {},
-          status: 'disbursed', // Start as disbursed since we're dispersing it
+          status: 'approved', // Reporting alone must not create a disbursed credit
+          finalProposal: {
+            ...(proposal || {}),
+            disbursementStatus: 'reported',
+            disbursementReportedAt: new Date().toISOString(),
+            disbursementReportedBy: userId,
+          },
         });
       }
 
@@ -8740,94 +12405,38 @@ export async function registerRoutes(app: Express): Promise<Server> {
         status: anyPendingOrEvaluating ? 'in_progress' : 'dispersed',
       });
 
-      // CREATE COMMISSIONS (Cascading waterfall breakdown)
+      // REGLA 1 (COM-21) y REGLA 3 (COM-23): Desembolsos verificables y eliminación de simulaciones.
+      // Prohibido calcular comisiones sobre approvedAmount, credit.amount o montos no verificados en servidor.
+      // Exigir evidencia confiable de dispersión bancaria confirmada en backend.
+      // Al no existir integración bancaria activa (FIN-13 / FIN-14 pendiente), se bloquea la generación automática
+      // de comisiones y se reporta la dependencia expresamente; no se simulan confirmaciones.
+      console.warn(
+        `[COM-21] Generación de comisiones bloqueada en mark-dispersed para target '${id}': ` +
+        `No existe integración con core bancario ni evidencia de dispersión confirmada en backend (FIN-13/FIN-14 pendiente). ` +
+        `Prohibido calcular comisiones sobre approvedAmount o importes simulados.`
+      );
+
       try {
         const broker = await storage.getUser(request.brokerId);
-        if (broker) {
-          const isMasterDirect = broker.role === 'master_broker';
-          const masterBrokerId = isMasterDirect ? broker.id : broker.masterBrokerId;
-          const approvedAmount = parseFloat(proposal?.approvedAmount || credit?.amount || request.requestedAmount?.toString() || '0');
-          
-          // Get institution for commission rates
-          const institution = await storage.getFinancialInstitution(target.financialInstitutionId);
-          const commissionRates = (institution?.commissionRates as any) || {};
-          
-          // Calculate opening commission for broker (even if 0%)
-          // IMPORTANT: proposal.openingCommission is the opening fee charged by the bank to the BORROWER.
-          // It MUST NEVER be used as the commission rate paid to brokers. Internal rates only.
-          const brokerOpeningRate = parseFloat(
-            commissionRates.broker?.apertura ||
-            (institution as any)?.brokerCommissionRate ||
-            (institution as any)?.commissionRate ||
-            (institution as any)?.openingCommissionRate ||
-            '0'
-          );
+        const institution = await storage.getFinancialInstitution(target.financialInstitutionId);
+        const client = await storage.getClient(request.clientId);
+        const clientName: string = (client ? (client.type === 'persona_moral' ? client.businessName : `${client.firstName} ${client.lastName || ''}`.trim()) : null) || 'Cliente';
+        const formattedAmount = proposal?.approvedAmount
+          ? `$${parseFloat(proposal.approvedAmount.toString()).toLocaleString('es-MX')} MXN`
+          : `$${parseFloat(request.requestedAmount.toString()).toLocaleString('es-MX')} MXN`;
 
-          // Calculate opening commission for master broker if exists (even if 0%)
-          let masterOpeningRate = 0;
-          if (masterBrokerId || isMasterDirect) {
-            masterOpeningRate = parseFloat(
-              commissionRates.masterBroker?.apertura ||
-              (institution as any)?.masterBrokerCommissionRate ||
-              '0'
-            );
-          }
-
-          // Calculate opening commission for Super Admin / Financiera
-          const superAdminOpeningRate = parseFloat(
-            commissionRates.financiera?.apertura ||
-            commissionRates.superAdmin?.apertura ||
-            (institution as any)?.commissionRate ||
-            '0'
-          );
-
-          const createdComm = await createCascadingCommissionRecord({
-            creditId: credit!.id,
-            brokerId: request.brokerId,
-            masterBrokerId: masterBrokerId || null,
-            commissionType: 'apertura',
-            approvedAmount,
-            financieraRate: superAdminOpeningRate,
-            masterBrokerRate: masterOpeningRate,
-            brokerRate: brokerOpeningRate,
-            financialInstitutionId: (request as any).financialInstitutionId || (target as any)?.institutionId || (institution as any)?.id || null,
-            isMasterDirect,
-          });
-
-          // Send email alert to Super Admin for dispersed credit with cascading breakdown
-          const client = await storage.getClient(request.clientId);
-          const clientName: string = (client ? (client.type === 'persona_moral' ? client.businessName : `${client.firstName} ${client.lastName || ''}`.trim()) : null) || 'Cliente';
-          
-          const commBrkAmount = parseFloat(createdComm?.brokerShare || '0');
-          const commMbAmount = parseFloat(createdComm?.masterBrokerShare || '0');
-          const commAppAmount = parseFloat(createdComm?.appShare || '0');
-          const commTotalGross = parseFloat(createdComm?.amount || '0');
-          const mbGrossPayout = commMbAmount + commBrkAmount;
-
-          sendSuperAdminNotificationEmail({
-            title: `Crédito Dispersado: ${clientName}`,
-            message: `El crédito para ${clientName} por $${approvedAmount.toLocaleString('es-MX', { minimumFractionDigits: 2 })} MXN con ${institution?.name || 'Financiera'} ha sido marcado como DISPERSADO. Se han generado las comisiones en cascada correspondientes.`,
-            type: 'credit_dispersed',
-            clientName,
-            brokerName: `${broker.firstName} ${broker.lastName || ''}`.trim(),
-            financialInstitutionName: institution?.name,
-            amount: approvedAmount,
-            actionUrl: `/comisiones?creditId=${credit!.id}`,
-            details: {
-              'Total Otorgado por Financiera': `$${commTotalGross.toLocaleString('es-MX', { minimumFractionDigits: 2 })} MXN (${superAdminOpeningRate}%)`,
-              'Ganancia Neta Plataforma': `$${commAppAmount.toLocaleString('es-MX', { minimumFractionDigits: 2 })} MXN`,
-              ...(masterBrokerId ? {
-                'Monto a Dispersar a Master Bróker (STP)': `$${mbGrossPayout.toLocaleString('es-MX', { minimumFractionDigits: 2 })} MXN`,
-                'Margen Neto Master Bróker': `$${commMbAmount.toLocaleString('es-MX', { minimumFractionDigits: 2 })} MXN`,
-                'Comisión a Pagar al Bróker': `$${commBrkAmount.toLocaleString('es-MX', { minimumFractionDigits: 2 })} MXN`,
-              } : {
-                'Monto a Dispersar a Bróker Directo (STP)': `$${commBrkAmount.toLocaleString('es-MX', { minimumFractionDigits: 2 })} MXN`,
-              }),
-            }
-          }).catch(e => console.error('[Email] Failed to send super admin dispersion email:', e));
-        }
-      } catch (commErr) {
-        console.error("[Commission] Error generating commissions on mark-dispersed:", commErr);
+        sendSuperAdminNotificationEmail({
+          title: `Crédito Marcado Dispersado: ${clientName}`,
+          message: `El crédito para ${clientName} por ${formattedAmount} con ${institution?.name || 'Financiera'} ha sido marcado como DISPERSADO. La generación de comisiones se encuentra retenida en espera de evidencia verificable de dispersión en backend (FIN-13/FIN-14 pendiente).`,
+          type: 'credit_dispersed',
+          clientName,
+          brokerName: broker ? `${broker.firstName} ${broker.lastName || ''}`.trim() : 'Bróker',
+          financialInstitutionName: institution?.name,
+          amount: formattedAmount,
+          actionUrl: `/solicitudes-pendientes`,
+        }).catch(e => console.error('[Email] Failed to send super admin dispersion email:', e));
+      } catch (emailErr) {
+        console.error("[Email] Error sending super admin notification on mark-dispersed:", emailErr);
       }
 
       // Auto-record in client credit history (#25)
@@ -8888,6 +12497,524 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Error marking as dispersed:", error);
       res.status(500).json({ message: "Failed to mark as dispersed" });
+    }
+  });
+
+  // REGLAS 1, 2, 3 y 4 (FASE 2B.2A.1 / COM-21 / OPE-09 / PAG-05): Confirmación de desembolso sobre target por Super Admin
+  app.post('/api/credit-submission-targets/:id/confirm-disbursement', isAuthenticated, async (req: any, res) => {
+    try {
+      const { id } = req.params;
+      const userId = req.user.claims.sub;
+      const user = await storage.getUser(userId);
+
+      if (!user || user.role !== 'super_admin') {
+        return res.status(403).json({
+          message: "Acceso denegado: La validación y confirmación de desembolsos está reservada exclusivamente para Super Admin.",
+          code: "FORBIDDEN_SUPER_ADMIN_REQUIRED",
+        });
+      }
+
+      const target = await storage.getCreditSubmissionTarget(id);
+      if (!target) {
+        return res.status(404).json({ message: "Credit submission target not found" });
+      }
+
+      // REGLA 1 (OPE-10/11/12): Elegibilidad de propuestas ganadoras
+      if (!target.isWinner) {
+        return res.status(400).json({
+          message: "Operación no elegible para confirmación de desembolso: Solo propuestas ganadoras pueden confirmarse.",
+          code: "NOT_WINNER_TARGET",
+        });
+      }
+
+      if (['cancelled', 'rejected'].includes(target.status)) {
+        return res.status(400).json({
+          message: `Operación no elegible para confirmación de desembolso: La propuesta se encuentra en estado '${target.status}'.`,
+          code: "TARGET_STATUS_INELIGIBLE",
+        });
+      }
+
+      const request = await storage.getCreditSubmissionRequest(target.requestId);
+      if (!request) {
+        return res.status(404).json({ message: "Credit submission request not found" });
+      }
+
+      // REGLA 4: Atribución Histórica y Elegibilidad
+      if (!request.brokerId) {
+        return res.status(400).json({
+          message: "Operación no elegible para confirmación de desembolso: Falta el Bróker originador.",
+          code: "MISSING_ORIGIN_BROKER",
+        });
+      }
+
+      const financialInstitutionId = target.financialInstitutionId;
+      if (!financialInstitutionId) {
+        return res.status(400).json({
+          message: "Operación no elegible para confirmación de desembolso: Falta la Financiera oferente.",
+          code: "MISSING_FINANCIAL_INSTITUTION",
+        });
+      }
+
+      // A newly created target-linked credit needs accepted current economics.
+      // Previously linked credits preserve their immutable historical rates.
+      if (!target.creditId) {
+        const proposal = (target.institutionProposal || {}) as any;
+        const blocked = await checkOfferCommissionAcceptanceForNewOperation({
+          offerId: proposal.institutionProductId || proposal.offerId ||
+            (request as any).institutionProductId || (request as any).offerId || null,
+          versionNumber: proposal.versionNumber ?? (request as any).versionNumber ?? null,
+          brokerId: request.brokerId,
+          originMasterBrokerId: request.originMasterBrokerId ?? null,
+          snapshotRecordedAt: target.proposalReceivedAt,
+        });
+        if (blocked) return res.status(409).json(blocked);
+      }
+
+      const { confirmedAmount, notes, dispersalIndex, idempotencyKey } = req.body;
+
+      if (
+        confirmedAmount === undefined ||
+        confirmedAmount === null ||
+        isNaN(Number(confirmedAmount)) ||
+        Number(confirmedAmount) <= 0 ||
+        !Number.isFinite(Number(confirmedAmount))
+      ) {
+        return res.status(400).json({
+          message: "El monto efectivamente dispersado debe ser un número positivo mayor a cero.",
+          code: "INVALID_CONFIRMED_AMOUNT",
+        });
+      }
+
+      const validConfirmedAmount = Number(confirmedAmount);
+      const validDispersalIndex = dispersalIndex != null && !isNaN(Number(dispersalIndex)) && Number(dispersalIndex) > 0
+        ? Number(dispersalIndex)
+        : 1;
+
+      // PostgreSQL transactional path: lock the winning target, preserve the
+      // immutable historical Master, and settle target + credit + commission + audit
+      // in one commit. Existing MemStorage behavior remains for unit fixtures.
+      const transactionalStorage: IStorage = storage;
+      if (transactionalStorage.confirmTargetDisbursementAtomic) {
+        try {
+          const linked = target.creditId ? await storage.getCredit(target.creditId) : null;
+          const proposal = (target.institutionProposal as any) || {};
+          let newCredit: any = undefined;
+
+          if (!linked) {
+            const client = await storage.getClient(request.clientId);
+            const originationMasterId = request.originMasterBrokerId ?? null;
+            const offerId = proposal.institutionProductId || proposal.offerId ||
+              (request as any).institutionProductId || (request as any).offerId || null;
+            const versionNumber = proposal.versionNumber ?? (request as any).versionNumber ?? null;
+            const frozenProposal = consolidateCommercialProposalSnapshot({
+              proposalData: {
+                approvedAmount: proposal.approvedAmount ? Number(proposal.approvedAmount) : undefined,
+                interestRate: proposal.interestRate ? Number(proposal.interestRate) : undefined,
+                term: proposal.term ? Number(proposal.term) : undefined,
+                openingCommission: proposal.openingCommission ? Number(proposal.openingCommission) : undefined,
+                institutionProductId: offerId,
+                versionNumber,
+                originBrokerId: request.brokerId,
+                originMasterBrokerId: originationMasterId,
+                commissionRates: proposal.commissionRates || undefined,
+                financialInstitutionId: target.financialInstitutionId,
+              },
+            });
+            newCredit = {
+              id: randomUUID(),
+              tenantId: request.tenantId || client?.tenantId || null,
+              clientId: request.clientId,
+              brokerId: request.brokerId,
+              originMasterBrokerId: originationMasterId,
+              financialInstitutionId: target.financialInstitutionId,
+              productTemplateId: request.productTemplateId,
+              linkedSubmissionId: request.id,
+              amount: Number(proposal.approvedAmount || request.requestedAmount).toFixed(2),
+              interestRate: proposal.interestRate ? String(proposal.interestRate) : null,
+              term: proposal.term || null,
+              purpose: request.purpose,
+              mortgageData: request.mortgageData || {},
+              status: "approved",
+              finalProposal: frozenProposal,
+            };
+          }
+          const previewCredit = linked || newCredit;
+          if (!previewCredit) {
+            throw new Error("DISBURSEMENT_TARGET_CREDIT_INVALID");
+          }
+          const frozen = (previewCredit.finalProposal as any) || {};
+          const commType = req.body?.commissionType || frozen.commissionsToApply?.[0] || "apertura";
+          const idKey = idempotencyKey ? String(idempotencyKey).trim() : null;
+          const preview = await calculateAndPersistCascadingCommission({
+            credit: previewCredit,
+            creditId: previewCredit.id,
+            commissionType: commType,
+            confirmedDisbursedAmount: validConfirmedAmount,
+            dispersalIndex: validDispersalIndex,
+            idempotencyKey: idKey || undefined,
+            financialInstitutionId: target.financialInstitutionId,
+            institutionProductId: frozen.institutionProductId || frozen.offerId || null,
+            versionNumber: frozen.versionNumber ?? null,
+            performedBy: userId,
+            previewOnly: true,
+          });
+          const result = await transactionalStorage.confirmTargetDisbursementAtomic({
+            targetId: id,
+            requestId: request.id,
+            expectedTargetProposal: target.institutionProposal,
+            expectedBrokerId: request.brokerId,
+            expectedOriginMasterBrokerId: request.originMasterBrokerId ?? null,
+            newCredit,
+            expectedProposal: previewCredit.finalProposal,
+            expectedAmount: previewCredit.amount,
+            confirmedAmount: validConfirmedAmount,
+            dispersalIndex: validDispersalIndex,
+            commission: preview,
+            performedBy: userId,
+            actorEmail: user.email,
+            notes: notes ? String(notes).trim() : null,
+            idempotencyKey: idKey,
+          });
+          if (!result.alreadyConfirmed) {
+            try {
+              const notification = await storage.createNotification({
+                userId: request.brokerId,
+                type: "disbursement_confirmed",
+                title: "Desembolso confirmado y comisión calculada",
+                message: `Confirmación de desembolso por $${validConfirmedAmount.toFixed(2)} MXN.`,
+                relatedEntityType: "credit",
+                relatedEntityId: result.credit.id,
+                priority: "high",
+              });
+              broadcastToUser(request.brokerId, { type: "notification", notification });
+            } catch (notifyErr) {
+              console.warn("[Target disbursement] Committed but notification failed:", notifyErr);
+            }
+          }
+          return res.json({
+            message: result.alreadyConfirmed
+              ? "Este tramo ya había sido confirmado."
+              : "Desembolso confirmado en una transacción con comisión y auditoría.",
+            ...result,
+          });
+        } catch (error: any) {
+          const code = String(error?.message || "");
+          if (error instanceof MissingCommissionRateError ||
+              error instanceof MissingOfferVersionError ||
+              error instanceof UnauthorizedDistributionError ||
+              error instanceof UnconfirmedDispersalAmountError) {
+            return res.status(400).json({
+              message: error.message, code: error.code || "CANONICAL_CALCULATION_ERROR",
+            });
+          }
+          if (code.startsWith("DISBURSEMENT_") || code.startsWith("OFFER_") ||
+              code === "MISSING_ORIGIN_MASTER_FOR_OFFER" ||
+              code === "TOTAL_DISBURSEMENT_EXCEEDS_APPROVED_AMOUNT") {
+            return res.status(409).json({
+              message: "No se pudo confirmar: revisar propuesta, afiliación histórica, monto o idempotencia.",
+              code,
+            });
+          }
+          throw error;
+        }
+      }
+
+      // REGLA 4: Si el crédito no existe, crearlo con estricta preservación de atribución histórica
+      let credit = target.creditId ? await storage.getCredit(target.creditId) : null;
+      if (!credit) {
+        const client = await storage.getClient(request.clientId);
+        const resolvedTenantId = request.tenantId || client?.tenantId || null;
+        const proposal = (target.institutionProposal as any) || {};
+
+        const brokerUser = await storage.getUser(request.brokerId);
+        const masterBrokerId = (request as any).originMasterBrokerId !== undefined
+          ? (request as any).originMasterBrokerId
+          : (brokerUser?.role === 'master_broker' ? brokerUser.id : brokerUser?.masterBrokerId || null);
+
+        const resolvedOfferId = proposal?.institutionProductId || proposal?.offerId || (request as any)?.institutionProductId || (request as any)?.offerId || null;
+        const resolvedVersionNumber = proposal?.versionNumber ?? (request as any)?.versionNumber ?? null;
+
+        const commercialSnapshot = consolidateCommercialProposalSnapshot({
+          proposalData: {
+            approvedAmount: proposal?.approvedAmount ? parseFloat(String(proposal.approvedAmount)) : undefined,
+            interestRate: proposal?.interestRate ? parseFloat(String(proposal.interestRate)) : undefined,
+            term: proposal?.term ? parseInt(String(proposal.term), 10) : undefined,
+            openingCommission: proposal?.openingCommission ? parseFloat(String(proposal.openingCommission)) : undefined,
+            institutionProductId: resolvedOfferId,
+            versionNumber: resolvedVersionNumber,
+            originBrokerId: request.brokerId,
+            originMasterBrokerId: masterBrokerId,
+            commissionRates: proposal?.commissionRates || undefined,
+            financialInstitutionId: target.financialInstitutionId,
+          },
+        });
+
+        credit = await storage.createCredit({
+          tenantId: resolvedTenantId,
+          clientId: request.clientId,
+          brokerId: request.brokerId,
+          originMasterBrokerId: masterBrokerId,
+          financialInstitutionId: target.financialInstitutionId,
+          productTemplateId: request.productTemplateId,
+          linkedSubmissionId: request.id,
+          amount: proposal?.approvedAmount?.toString() || request.requestedAmount.toString(),
+          interestRate: proposal?.interestRate?.toString(),
+          term: proposal?.term,
+          purpose: request.purpose,
+          mortgageData: request.mortgageData || {},
+          status: 'disbursed',
+          finalProposal: commercialSnapshot,
+        });
+        await storage.updateCreditSubmissionTarget(id, { creditId: credit.id });
+      }
+
+      // REGLA 2: Idempotencia y Multidispersión
+      const existingProposal = (credit.finalProposal as any) || {};
+      const existingTranches: any[] = Array.isArray(existingProposal.disbursementTranches)
+        ? existingProposal.disbursementTranches
+        : (existingProposal.disbursementConfirmation ? [existingProposal.disbursementConfirmation] : []);
+
+      if (idempotencyKey) {
+        const existingComms = await storage.getCommissions({ idempotencyKey: String(idempotencyKey).trim() });
+        if (existingComms.length > 0) {
+          const enrichedTarget = await enrichCreditSubmissionTarget(target);
+          return res.json({
+            message: "Desembolso ya confirmado previamente con esta clave de idempotencia.",
+            target: enrichedTarget,
+            credit,
+            commission: existingComms[0],
+            alreadyConfirmed: true,
+          });
+        }
+      }
+
+      const existingTranche = existingTranches.find((t: any) => Number(t.dispersalIndex || 1) === validDispersalIndex);
+      if (existingTranche) {
+        const prevAmount = Number(existingTranche.confirmedAmount || 0);
+        if (Math.abs(prevAmount - validConfirmedAmount) < 0.01) {
+          const commType = req.body?.commissionType || existingProposal.commissionsToApply?.[0] || 'apertura';
+          const resolvedCommType = validDispersalIndex > 1 ? `${commType}_parcial_${validDispersalIndex}` : commType;
+          const existingComms = await storage.getCommissions({ creditId: credit.id });
+          const matchComm = existingComms.find(c => c.commissionType === resolvedCommType || c.id === existingTranche.commissionId);
+          const enrichedTarget = await enrichCreditSubmissionTarget(target);
+          return res.json({
+            message: "Este tramo de desembolso ya se encuentra confirmado con el mismo importe.",
+            target: enrichedTarget,
+            credit,
+            commission: matchComm || existingComms[0] || null,
+            alreadyConfirmed: true,
+          });
+        } else {
+          return res.status(400).json({
+            message: `Prohibido alterar el importe de un tramo confirmado: El tramo #${validDispersalIndex} ya fue confirmado previamente por $${prevAmount.toFixed(2)} MXN y es inmutable.`,
+            code: "CANNOT_ALTER_CONFIRMED_TRANCHE_AMOUNT",
+            details: {
+              dispersalIndex: validDispersalIndex,
+              previousConfirmedAmount: prevAmount,
+              attemptedAmount: validConfirmedAmount,
+            },
+          });
+        }
+      }
+
+      // Impedir sobrepasar el monto máximo autorizado del crédito
+      const maxCreditAmount = Number(credit.amount || existingProposal.approvedAmount || 0);
+      const otherTranchesTotal = existingTranches
+        .filter((t: any) => Number(t.dispersalIndex || 1) !== validDispersalIndex)
+        .reduce((sum: number, t: any) => sum + Number(t.confirmedAmount || 0), 0);
+
+      if (maxCreditAmount > 0 && (otherTranchesTotal + validConfirmedAmount) > (maxCreditAmount + 0.01)) {
+        return res.status(400).json({
+          message: `El monto acumulado de desembolsos ($${(otherTranchesTotal + validConfirmedAmount).toFixed(2)}) sobrepasa el monto máximo autorizado del crédito ($${maxCreditAmount.toFixed(2)}).`,
+          code: "TOTAL_DISBURSEMENT_EXCEEDS_APPROVED_AMOUNT",
+          details: {
+            maxCreditAmount,
+            otherTranchesTotal,
+            attemptedAmount: validConfirmedAmount,
+            accumulatedTotal: otherTranchesTotal + validConfirmedAmount,
+          },
+        });
+      }
+
+      // REGLA 1: Atomicidad y Pre-validación económica antes de actualizar el estado
+      const commType = req.body?.commissionType || existingProposal.commissionsToApply?.[0] || 'apertura';
+      const offerId = existingProposal.institutionProductId || existingProposal.offerId || (credit as any).institutionProductId || null;
+      const versionNumber = existingProposal.versionNumber ?? null;
+      const proposalCommissionRates = existingProposal.commissionRates || undefined;
+      const institution = target.financialInstitutionId ? await storage.getFinancialInstitution(target.financialInstitutionId) : undefined;
+      const historicalMasterBrokerId = credit.originMasterBrokerId || existingProposal.originMasterBrokerId || null;
+
+      try {
+        await resolveOfferVersionCommissionRates({
+          offerId,
+          versionNumber,
+          commissionType: commType,
+          proposalCommissionRates,
+          institution,
+          hasMasterBroker: Boolean(historicalMasterBrokerId),
+          isMasterDirect: Boolean(historicalMasterBrokerId && credit.brokerId && String(historicalMasterBrokerId) === String(credit.brokerId)),
+        });
+      } catch (preCheckErr: any) {
+        if (
+          preCheckErr instanceof MissingCommissionRateError ||
+          preCheckErr instanceof MissingOfferVersionError ||
+          preCheckErr instanceof UnauthorizedDistributionError
+        ) {
+          return res.status(400).json({
+            message: preCheckErr.message,
+            code: preCheckErr.code || "CANONICAL_CALCULATION_ERROR",
+            details: (preCheckErr as any).details || null,
+          });
+        }
+      }
+
+      const newTranche = {
+        dispersalIndex: validDispersalIndex,
+        confirmedAmount: validConfirmedAmount,
+        confirmedAt: new Date().toISOString(),
+        confirmedBy: userId,
+        confirmedByEmail: user.email,
+        notes: notes ? String(notes).trim() : null,
+        idempotencyKey: idempotencyKey ? String(idempotencyKey).trim() : null,
+        status: 'confirmed',
+        commissionId: undefined as string | undefined,
+      };
+
+      const updatedTranches = [
+        ...existingTranches.filter((t: any) => Number(t.dispersalIndex || 1) !== validDispersalIndex),
+        newTranche,
+      ].sort((a, b) => Number(a.dispersalIndex || 1) - Number(b.dispersalIndex || 1));
+
+      const totalDisbursedSoFar = updatedTranches.reduce((sum, t) => sum + Number(t.confirmedAmount || 0), 0);
+
+      const updatedProposal = {
+        ...existingProposal,
+        disbursementConfirmation: newTranche,
+        disbursementTranches: updatedTranches,
+        disbursementStatus: 'confirmed',
+        confirmedDisbursedAmount: totalDisbursedSoFar,
+      };
+
+      const previousCreditState = {
+        status: credit.status,
+        finalProposal: credit.finalProposal,
+        notes: credit.notes,
+      };
+
+      const updatedCredit = await storage.updateCredit(credit.id, {
+        status: 'disbursed',
+        finalProposal: updatedProposal,
+        notes: notes ? (credit.notes ? `${credit.notes} | Confirmación: ${notes}` : `Confirmación: ${notes}`) : credit.notes,
+      });
+
+      if (updatedCredit) {
+        (updatedCredit as any).disbursementStatus = 'confirmed';
+        (updatedCredit as any).confirmedDisbursedAmount = totalDisbursedSoFar;
+        (updatedCredit as any).disbursementConfirmedAt = new Date();
+        (updatedCredit as any).disbursementConfirmedBy = userId;
+      }
+
+      await storage.updateCreditSubmissionTarget(id, {
+        status: 'dispersed',
+        dispersedAt: target.dispersedAt || new Date(),
+        creditId: credit.id,
+      });
+
+      let commission: any;
+      try {
+        commission = await calculateAndPersistCascadingCommission({
+          credit: updatedCredit || credit,
+          creditId: credit.id,
+          commissionType: commType,
+          confirmedDisbursedAmount: validConfirmedAmount,
+          dispersalIndex: validDispersalIndex,
+          idempotencyKey: idempotencyKey ? String(idempotencyKey).trim() : undefined,
+          performedBy: userId,
+        });
+
+        newTranche.commissionId = commission.id;
+        await storage.updateCredit(credit.id, {
+          finalProposal: {
+            ...updatedProposal,
+            disbursementConfirmation: newTranche,
+            disbursementTranches: updatedTranches,
+          },
+        });
+
+        await storage.createCommissionAuditLog({
+          commissionId: commission.id,
+          performedBy: userId,
+          action: 'disbursement_confirmed',
+          previousStatus: commission.status,
+          newStatus: commission.status,
+          details: {
+            actorRole: user.role,
+            confirmedAmount: validConfirmedAmount,
+            dispersalIndex: validDispersalIndex,
+            confirmedAt: newTranche.confirmedAt,
+            notes: notes ? String(notes).trim() : null,
+            creditId: credit.id,
+            targetId: id,
+          },
+        });
+
+        try {
+          if (credit.brokerId) {
+            const notif = await storage.createNotification({
+              userId: credit.brokerId,
+              type: 'disbursement_confirmed',
+              title: '✅ Desembolso Confirmado y Comisión Calculada',
+              message: `El desembolso por $${validConfirmedAmount.toLocaleString('es-MX', { minimumFractionDigits: 2 })} MXN fue confirmado por Super Admin y la comisión fue calculada exitosamente.`,
+              relatedEntityType: 'credit',
+              relatedEntityId: credit.id,
+              priority: 'high',
+            });
+            broadcastToUser(credit.brokerId, { type: 'notification', notification: notif });
+          }
+        } catch (notifErr) {
+          console.warn("[Notification] Error notifying broker of confirmed target disbursement:", notifErr);
+        }
+
+        const enrichedTarget = await enrichCreditSubmissionTarget(target);
+        res.json({
+          message: "Desembolso confirmado exitosamente y comisión calculada mediante servicio canónico.",
+          target: enrichedTarget,
+          credit: updatedCredit || credit,
+          commission,
+        });
+      } catch (calcErr: any) {
+        console.error("[Atomic Rollback] Error en cálculo de comisión sobre target, revirtiendo crédito:", calcErr);
+        try {
+          await storage.updateCredit(credit.id, {
+            status: previousCreditState.status,
+            finalProposal: previousCreditState.finalProposal as any,
+            notes: previousCreditState.notes,
+          });
+        } catch (rbErr) {
+          console.error("[Atomic Rollback Failure] Error revirtiendo crédito sobre target:", rbErr);
+        }
+
+        if (
+          calcErr instanceof MissingCommissionRateError ||
+          calcErr instanceof MissingOfferVersionError ||
+          calcErr instanceof UnauthorizedDistributionError ||
+          calcErr instanceof UnconfirmedDispersalAmountError
+        ) {
+          return res.status(400).json({
+            message: calcErr.message,
+            code: calcErr.code || "CANONICAL_CALCULATION_ERROR",
+            details: (calcErr as any).details || null,
+          });
+        }
+
+        return res.status(500).json({
+          message: "Fallo en la persistencia de comisión. El crédito no fue confirmado.",
+          code: "COMMISSION_PERSISTENCE_FAILED",
+        });
+      }
+    } catch (error) {
+      console.error("Error confirming target disbursement:", error);
+      res.status(500).json({ message: "Error interno al confirmar el desembolso del target" });
     }
   });
 
@@ -9099,28 +13226,83 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
 
-  // WebSocket setup
+  // SEC-P0-04: WebSocket users MUST be resolved from the authenticated
+  // server-side session cookie. A query parameter is never an identity proof.
   const httpServer = createServer(app);
-  
-  const wss = new WebSocketServer({ 
-    server: httpServer, 
-    path: '/ws' 
+  const wss = new WebSocketServer({ noServer: true });
+  const parseSessionForWebSocket = getSession();
+
+  httpServer.on("upgrade", (req, socket, head) => {
+    let pathname: string;
+    try {
+      pathname = new URL(req.url || "", "http://localhost").pathname;
+    } catch {
+      socket.destroy();
+      return;
+    }
+    if (pathname !== "/ws") return;
+
+    const rejectUpgrade = () => {
+      if (!socket.destroyed) {
+        socket.end("HTTP/1.1 401 Unauthorized\r\nConnection: close\r\n\r\n");
+      }
+    };
+
+    // A valid session cookie alone must not permit browser cross-origin
+    // WebSocket hijacking. Accept only explicit frontends or the same host.
+    let allowedWsOrigin = false;
+    try {
+      const origin = new URL(String(req.headers.origin || ""));
+      allowedWsOrigin = (origin.protocol === "https:" || origin.protocol === "http:") &&
+        (allowedOrigins.has(origin.origin) || origin.host === req.headers.host);
+    } catch {
+      allowedWsOrigin = false;
+    }
+    if (!allowedWsOrigin) return rejectUpgrade();
+
+    // Node's ServerResponse supplies headers/session-cookie methods expected
+    // by express-session for a read-only HTTP upgrade request.
+    const response = new ServerResponse(req);
+    try {
+      parseSessionForWebSocket(req as any, response as any, async (err?: any) => {
+        if (err) return rejectUpgrade();
+        const sessionUser = (req as any).session?.passport?.user;
+        const sessionUserId = sessionUser?.claims?.sub || sessionUser?.id;
+        if (typeof sessionUserId !== "string" || !sessionUserId) return rejectUpgrade();
+
+        try {
+          const activeUser = await storage.getUser(sessionUserId);
+          if (!activeUser || activeUser.id !== sessionUserId ||
+              activeUser.isActive === false ||
+              activeUser.status === "suspended" || activeUser.status === "inactive") {
+            return rejectUpgrade();
+          }
+          (req as any).authenticatedWsUserId = sessionUserId;
+          wss.handleUpgrade(req, socket, head, ws => wss.emit("connection", ws, req));
+        } catch (error) {
+          console.error("WebSocket session verification failed:", error);
+          rejectUpgrade();
+        }
+      });
+    } catch (error) {
+      console.error("WebSocket session parsing failed:", error);
+      rejectUpgrade();
+    }
   });
 
-  wss.on('connection', (ws, req) => {
-    const url = new URL(req.url!, `http://${req.headers.host}`);
-    const userId = url.searchParams.get('userId');
-    
-    if (userId) {
-      wsClients.set(userId, ws);
-      console.log(`WebSocket connected for user: ${userId}`);
+  wss.on("connection", (ws, req) => {
+    const userId = (req as any).authenticatedWsUserId;
+    if (typeof userId !== "string" || !userId) {
+      ws.close(1008, "Unauthorized");
+      return;
     }
-
-    ws.on('close', () => {
-      if (userId) {
-        wsClients.delete(userId);
-        console.log(`WebSocket disconnected for user: ${userId}`);
-      }
+    // One active socket per user; an obsolete socket must not remove a newer
+    // connection's registration when it eventually closes.
+    const previous = wsClients.get(userId);
+    if (previous && previous !== ws) previous.close(1000, "Reconnected");
+    wsClients.set(userId, ws);
+    ws.on("close", () => {
+      if (wsClients.get(userId) === ws) wsClients.delete(userId);
     });
   });
 

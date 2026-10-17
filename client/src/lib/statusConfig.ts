@@ -1,3 +1,4 @@
+import { resolveSubmissionDisplayStatus } from "../../../shared/submissionDisplayStatus";
 // Configuración compartida de estados para submissions y targets
 // Centraliza labels y colores para mantener consistencia en toda la aplicación
 
@@ -10,12 +11,13 @@ export const ALL_STATUS_LABELS: Record<string, string> = {
   submitted: "En validación",
   offers_received: "Propuestas listas",
   proposals_received: "Propuestas recibidas",
-  in_progress: "En trámite",
+  in_progress: "Gestión Comercial Iniciada",
   validacion_juridica: "En validación",
   en_mesa_control: "En mesa de control",
-  approved: "Aprobado",
-  aprobado: "Aprobado",
+  approved: "Visto Bueno",
+  aprobado: "Visto Bueno",
   sent_to_institutions: "Enviado a financieras",
+  contact_initiated: "Gestión Comercial Iniciada",
   sent: "Enviado a financieras",
   winner_selected: "Ganador seleccionado",
   selected_winner: "Ganador seleccionado",
@@ -47,6 +49,13 @@ export function getStatusLabel(status: string): string {
   return ALL_STATUS_LABELS[normalized] || creditStatusConfig[normalized]?.label || submissionStatusConfig[normalized]?.label || status;
 }
 
+/** Estado de operación crediticia, no autorización administrativa de target. */
+export function getCreditStatusLabel(status: string): string {
+  if (!status) return "Desconocido";
+  const normalized = status.toLowerCase().trim();
+  return creditStatusConfig[normalized]?.label || getStatusLabel(status);
+}
+
 export function getStatusBadgeClass(status: string): string {
   if (!status) return "bg-gray-100 text-gray-700 border-gray-200";
   const normalized = status.toLowerCase().trim();
@@ -61,6 +70,7 @@ export const submissionStatusConfig: Record<string, { label: string; color: stri
   in_review: { label: "En revisión", color: "bg-amber-100 text-amber-800 border-amber-300 font-medium" },
   returned_to_broker: { label: "Devuelto al broker", color: "bg-orange-100 text-orange-800 border-orange-300 font-medium" },
   sent_to_institutions: { label: "Enviado a financieras", color: "bg-blue-100 text-blue-800 border-blue-300 font-semibold" },
+  contact_initiated: { label: "Gestión Comercial Iniciada", color: "bg-blue-100 text-blue-800 border-blue-300 font-semibold" },
   sent: { label: "Enviado a financieras", color: "bg-blue-100 text-blue-800 border-blue-300 font-semibold" },
   proposals_received: { label: "Propuestas recibidas", color: "bg-indigo-100 text-indigo-800 border-indigo-200 font-medium" },
   winner_selected: { label: "Ganador seleccionado", color: "bg-purple-100 text-purple-800 border-purple-300 font-semibold" },
@@ -74,8 +84,9 @@ export const targetStatusConfig: Record<string, { label: string; color: string }
   pending_admin: { label: "Pendiente de revisión", color: "bg-amber-100 text-amber-800 border-amber-300 font-semibold" },
   under_review: { label: "En revisión", color: "bg-amber-100 text-amber-800 border-amber-300 font-medium" },
   in_review: { label: "En revisión", color: "bg-amber-100 text-amber-800 border-amber-300 font-medium" },
-  approved: { label: "Aprobado", color: "bg-emerald-50 text-emerald-700 border-emerald-300 font-medium" },
+  approved: { label: "Visto Bueno", color: "bg-emerald-50 text-emerald-700 border-emerald-300 font-medium" },
   returned_to_broker: { label: "Devuelto al broker", color: "bg-orange-100 text-orange-800 border-orange-300 font-medium" },
+  contact_initiated: { label: "Gestión Comercial Iniciada", color: "bg-blue-100 text-blue-800 border-blue-300 font-semibold" },
   sent: { label: "Enviado a financieras", color: "bg-blue-100 text-blue-800 border-blue-300 font-semibold" },
   sent_to_institutions: { label: "Enviado a financieras", color: "bg-blue-100 text-blue-800 border-blue-300 font-semibold" },
   institution_approved: { label: "Propuesta recibida", color: "bg-emerald-100 text-emerald-800 border-emerald-300 font-medium" },
@@ -92,7 +103,8 @@ export const creditStatusConfig: Record<string, { label: string; color: string }
   pending_admin: { label: "Pendiente de revisión", color: "bg-amber-100 text-amber-800 border-amber-300 font-semibold" },
   under_review: { label: "En revisión", color: "bg-amber-100 text-amber-800 border-amber-300 font-medium" },
   in_review: { label: "En revisión", color: "bg-amber-100 text-amber-800 border-amber-300 font-medium" },
-  approved: { label: "Aprobado", color: "bg-emerald-100 text-emerald-800 border-emerald-300 font-medium" },
+  approved: { label: "Propuesta seleccionada", color: "bg-emerald-100 text-emerald-800 border-emerald-300 font-medium" },
+  contact_initiated: { label: "Gestión Comercial Iniciada", color: "bg-blue-100 text-blue-800 border-blue-300 font-semibold" },
   sent: { label: "Enviado a financieras", color: "bg-blue-100 text-blue-800 border-blue-300 font-semibold" },
   sent_to_institutions: { label: "Enviado a financieras", color: "bg-blue-100 text-blue-800 border-blue-300 font-semibold" },
   winner_selected: { label: "Ganador seleccionado", color: "bg-purple-100 text-purple-800 border-purple-300 font-semibold" },
@@ -134,25 +146,10 @@ export function getSubmissionStatusSummary(targets: Array<{ status: string }>): 
   const uniqueStatuses = Object.keys(statusCounts);
   const hasMultipleStatuses = uniqueStatuses.length > 1;
 
-  // Determinar estado primario (prioridad: devuelto > pendiente > aprobado > enviado > propuesta > ganador > dispersado)
-  // Determinar estado primario (prioridad: dispersado > ganador > propuesta > aprobado > pendiente > devuelto)
-  const statusPriority: Record<string, number> = {
-    'dispersed': 1,
-    'selected_winner': 2,
-    'winner': 3,
-    'institution_approved': 4,
-    'proposal_received': 5,
-    'sent': 6,
-    'approved': 7,
-    'pending_admin': 8,
-    'returned_to_broker': 9,
-    'institution_rejected': 10,
-    'rejected': 11,
-  };
+  const primaryStatus = resolveSubmissionDisplayStatus('pending_admin', targets);
 
-  const primaryStatus = uniqueStatuses.sort((a, b) => 
-    (statusPriority[a] || 99) - (statusPriority[b] || 99)
-  )[0];
+  // Orden visual consistente con el estado primario
+  uniqueStatuses.sort((a, b) => a === primaryStatus ? -1 : b === primaryStatus ? 1 : 0);
 
   // Generar texto de resumen
   let summaryText = '';

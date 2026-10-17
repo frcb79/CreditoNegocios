@@ -170,6 +170,28 @@ describe("P0 Hotfix - Production Security & Zero-Destructive Startup", () => {
       const userAfterSuccess = await storage.getUser(externalUser.id);
       expect(userAfterSuccess?.authMethod).toBe("local");
     });
+
+    it("Rechaza login y preserva authMethod si el usuario externo no tiene contraseña configurada", async () => {
+      const externalNoPassUser = await storage.createUser({
+        email: `external-nopass-${randomUUID()}@network.test`,
+        password: null,
+        firstName: "ExternalNoPass",
+        lastName: "AuthUser",
+        role: "broker",
+        isActive: true,
+        status: "active",
+        authMethod: "replit",
+      } as any);
+
+      const res = await request(app)
+        .post("/api/auth/login")
+        .send({ email: externalNoPassUser.email, password: "AnyAttemptedPassword123!" });
+      expect(res.status).toBe(401);
+      expect(res.body.message).toMatch(/Email o contraseña incorrectos/i);
+
+      const userAfter = await storage.getUser(externalNoPassUser.id);
+      expect(userAfter?.authMethod).toBe("replit");
+    });
   });
 
   // =========================================================================
@@ -213,6 +235,7 @@ describe("P0 Hotfix - Production Security & Zero-Destructive Startup", () => {
             role: "broker",
             is_active: false,
             status: "suspended",
+            master_broker_id: "master-network-001",
           },
         ],
         institutions: [
@@ -244,6 +267,12 @@ describe("P0 Hotfix - Production Security & Zero-Destructive Startup", () => {
               }
               if (/is_active\s*=\s*TRUE/i.test(normalizedSql)) {
                 throw new Error("VIOLATION: Attempted to force reactivate users on startup!");
+              }
+              if (/role\s*=/i.test(normalizedSql)) {
+                throw new Error("VIOLATION: Attempted to overwrite user roles on startup!");
+              }
+              if (/master_broker_id\s*=/i.test(normalizedSql)) {
+                throw new Error("VIOLATION: Attempted to force change master_broker_id on startup!");
               }
               return { rows: [], rowCount: 0 };
             }
@@ -292,6 +321,10 @@ describe("P0 Hotfix - Production Security & Zero-Destructive Startup", () => {
       const suspended = dbState.users.find((u) => u.email === "suspended@broker.test");
       expect(suspended.status).toBe("suspended");
       expect(suspended.is_active).toBe(false);
+      expect(suspended.role).toBe("broker");
+      expect(suspended.master_broker_id).toBe("master-network-001");
+
+      expect(superUser.role).toBe("super_admin");
 
       // Verify institutions and commissions were not touched
       expect(dbState.institutions.find((i) => i.id === "inst-inactive")?.is_active).toBe(false);
@@ -319,7 +352,7 @@ describe("P0 Hotfix - Production Security & Zero-Destructive Startup", () => {
           if (/SELECT\s+count\(\*\)\s+as\s+count\s+FROM\s+public\.users/i.test(normalizedSql)) {
             return { rows: [{ count: "0" }] }; // DB vacía
           }
-          if (/INSERT INTO public\.users/i.test(normalizedSql) && /francocb79@gmail\.com/i.test(normalizedSql)) {
+          if (/INSERT INTO public\.users/i.test(normalizedSql) && /'Administrador', 'Inicial'/i.test(normalizedSql)) {
             insertedUsers.push(params);
             return { rows: [], rowCount: 1 };
           }
@@ -339,13 +372,82 @@ describe("P0 Hotfix - Production Security & Zero-Destructive Startup", () => {
       await runAutoMigration();
       expect(insertedUsers.length).toBe(0);
 
+      // Con default / insegura 'Franco2026!*'
+      process.env.ADMIN_INITIAL_PASSWORD = "Franco2026!*";
+      await runAutoMigration();
+      expect(insertedUsers.length).toBe(0);
+
+      // Con contraseña corta (< 12 caracteres)
+      process.env.ADMIN_INITIAL_PASSWORD = "Short1!Pass";
+      await runAutoMigration();
+      expect(insertedUsers.length).toBe(0);
+
+      // Sin dígitos numéricos
+      process.env.ADMIN_INITIAL_PASSWORD = "PasswordWithoutNumbers!";
+      await runAutoMigration();
+      expect(insertedUsers.length).toBe(0);
+
+      // Sin letras mayúsculas
+      process.env.ADMIN_INITIAL_PASSWORD = "passwordwithlowercase1!";
+      await runAutoMigration();
+      expect(insertedUsers.length).toBe(0);
+
+      // Sin letras minúsculas
+      process.env.ADMIN_INITIAL_PASSWORD = "PASSWORDWITHUPPERCASE1!";
+      await runAutoMigration();
+      expect(insertedUsers.length).toBe(0);
+
       // Con contraseña explícita y segura (>= 12 chars, mayúscula, minúscula, número)
       process.env.ADMIN_INITIAL_PASSWORD = "SuperSecureAdminPassword2026!";
+      delete process.env.ADMIN_INITIAL_EMAIL;
+      await runAutoMigration();
+      expect(insertedUsers.length).toBe(0); // Password alone never creates a fixed-email Super Admin.
+
+      process.env.ADMIN_INITIAL_EMAIL = "admin@launch.example";
       await runAutoMigration();
       expect(insertedUsers.length).toBe(1);
       expect(await bcrypt.compare("SuperSecureAdminPassword2026!", insertedUsers[0][0])).toBe(true);
+      expect(insertedUsers[0][1]).toBe("admin@launch.example");
 
+      delete process.env.ADMIN_INITIAL_EMAIL;
       delete process.env.ADMIN_INITIAL_PASSWORD;
+    });
+
+    it("Asegura existencia idempotente de user-super-admin con secreto aleatorio de 32 bytes sin sobreescribir usuarios existentes", async () => {
+      let sysUserQueried = false;
+      let sysUserInserted = false;
+      let insertedPasswordHash = "";
+
+      const mockClient = {
+        query: jest.fn().mockImplementation(async (sql: string, params?: any[]) => {
+          const normalizedSql = sql.replace(/\s+/g, " ").trim();
+          if (/SELECT\s+count\(\*\)\s+as\s+count\s+FROM\s+public\.users/i.test(normalizedSql)) {
+            return { rows: [{ count: "1" }] }; // Existing users
+          }
+          if (/SELECT\s+id\s+FROM\s+public\.users\s+WHERE\s+id\s*=\s*'user-super-admin'/i.test(normalizedSql)) {
+            sysUserQueried = true;
+            return { rows: [] }; // Not found yet
+          }
+          if (/INSERT INTO public\.users/i.test(normalizedSql) && /user-super-admin/i.test(normalizedSql)) {
+            sysUserInserted = true;
+            expect(normalizedSql).toMatch(/'system', false, 'inactive', '\{\}'/i);
+            insertedPasswordHash = params?.[0] || "";
+            return { rows: [], rowCount: 1 };
+          }
+          return { rows: [], rowCount: 0 };
+        }),
+        release: jest.fn(),
+      };
+      (pool as any).connect = jest.fn().mockResolvedValue(mockClient);
+
+      delete process.env.USE_MEMORY_STORAGE;
+      await runAutoMigration();
+
+      expect(sysUserQueried).toBe(true);
+      expect(sysUserInserted).toBe(true);
+      // Technical FK actor must never be usable as a login-enabled Super Admin.
+      expect(insertedPasswordHash.length).toBeGreaterThan(55);
+      expect(insertedPasswordHash.startsWith("$2b$")).toBe(true); // Valid bcrypt hash
     });
 
     it("No ejecuta UPDATE residuales sobre users o tenant_members can_originate durante el arranque", async () => {

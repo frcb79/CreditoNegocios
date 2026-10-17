@@ -1,5 +1,6 @@
 import { pool } from "./db";
 import bcrypt from "bcrypt";
+import { repairStagingSchemaOnStartup } from "./stagingSchemaRepair";
 
 export async function runAutoMigration(): Promise<void> {
   if (process.env.USE_MEMORY_STORAGE === "true") {
@@ -190,6 +191,29 @@ export async function runAutoMigration(): Promise<void> {
       console.error("⚠️ [AutoMigrate] Error verifying tenant_members table/indexes:", err);
     }
 
+
+    // Core organization bootstrap: not sample data. Required by the canonical
+    // Broker registration and invitation transaction on a NEW empty Production DB.
+    try {
+      const existingPlatform = await client.query(
+        `SELECT id FROM public.tenants WHERE type = 'platform' OR slug = 'platform' LIMIT 2`
+      );
+      if (existingPlatform.rows.length === 0) {
+        await client.query(`
+          INSERT INTO public.tenants
+            (id, type, name, slug, parent_tenant_id, settings, is_active, created_at, updated_at)
+          VALUES ('tenant-platform', 'platform', 'Credito Negocios', 'platform',
+            NULL, '{}'::jsonb, TRUE, NOW(), NOW())
+          ON CONFLICT DO NOTHING
+        `);
+        console.log("[AutoMigrate] Canonical platform organization initialized.");
+      } else if (existingPlatform.rows.length > 1) {
+        console.error("[AutoMigrate] Multiple platform tenants detected: resolve before onboarding Brokers.");
+      }
+    } catch (err) {
+      console.error("[AutoMigrate] Platform organization bootstrap failed:", err);
+    }
+
     // 3. Ensure clients table columns exist
     try {
       await client.query(`
@@ -358,14 +382,17 @@ export async function runAutoMigration(): Promise<void> {
 
     // 6. User catalog verification (Zero-destructive startup: never reset passwords, change roles, or overwrite users on existing DB)
     try {
-      const userCountRes = await client.query(`SELECT count(*) as count FROM public.users`);
+      const userCountRes = await client.query(`SELECT count(*) as count FROM public.users WHERE id <> 'user-super-admin'`);
       const totalUsers = parseInt(userCountRes.rows[0]?.count || "0", 10);
 
       if (totalUsers === 0) {
         // Only on a completely blank database, initialize a root super admin if ADMIN_INITIAL_PASSWORD is explicitly set and secure
+        // Explicit bootstrap only: no fixed personal email on clean Production.
         const initialPassword = process.env.ADMIN_INITIAL_PASSWORD?.trim();
+        const initialEmail = process.env.ADMIN_INITIAL_EMAIL?.trim().toLowerCase();
+        const isExplicitEmail = Boolean(initialEmail && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(initialEmail));
         const isSecurePassword = Boolean(
-          initialPassword && 
+          initialPassword && isExplicitEmail &&
           initialPassword.length >= 12 && 
           initialPassword !== 'Prueba1$' &&
           initialPassword !== 'Franco2026!*' &&
@@ -375,16 +402,16 @@ export async function runAutoMigration(): Promise<void> {
         );
 
         if (!isSecurePassword) {
-          console.warn("⚠️ [AutoMigrate] Blank database detected, but ADMIN_INITIAL_PASSWORD is empty, insecure, or default. Super admin account was NOT created. Provide a secure ADMIN_INITIAL_PASSWORD (min 12 chars, upper, lower, number) to bootstrap.");
+          console.warn("⚠️ [AutoMigrate] Blank database: no Super Admin bootstrapped. Both ADMIN_INITIAL_EMAIL and a secure ADMIN_INITIAL_PASSWORD must be explicitly set for initial access.");
         } else {
           const hashedPassword = await bcrypt.hash(initialPassword!, 10);
           await client.query(`
             INSERT INTO public.users (
               id, email, password, auth_method, first_name, last_name, role, is_active, permissions, created_at, updated_at
             ) VALUES (
-              gen_random_uuid(), 'francocb79@gmail.com', $1, 'local', 'Franco', 'Admin', 'super_admin', true, '{"modules": ["*"], "actions": ["*"]}', NOW(), NOW()
+              gen_random_uuid(), $2, $1, 'local', 'Administrador', 'Inicial', 'super_admin', true, '{"modules": ["*"], "actions": ["*"]}', NOW(), NOW()
             ) ON CONFLICT (email) DO NOTHING
-          `, [hashedPassword]);
+          `, [hashedPassword, initialEmail]);
           console.log("🌱 [AutoMigrate] Blank database detected: seeded initial super_admin account with secure ADMIN_INITIAL_PASSWORD.");
         }
       } else {
@@ -394,7 +421,8 @@ export async function runAutoMigration(): Promise<void> {
       console.error("⚠️ [AutoMigrate] Error verifying user catalog:", userErr);
     }
 
-    // 7. Ensure system user 'user-super-admin' exists for FK integrity in legacy scripts & migrations (idempotent, never overwrite existing)
+    // 7. FK-only technical actor for legacy records. Inactive, not a login-enabled Super Admin.
+    // Existing accounts are never changed automatically (idempotent).
     try {
       const sysUser = await client.query(`SELECT id FROM public.users WHERE id = 'user-super-admin'`);
       if (sysUser.rows.length === 0) {
@@ -403,9 +431,9 @@ export async function runAutoMigration(): Promise<void> {
         const dummyPassword = await bcrypt.hash(internalSecret, 10);
         await client.query(`
           INSERT INTO public.users (
-            id, email, password, auth_method, first_name, last_name, role, is_active, permissions, created_at, updated_at
+            id, email, password, auth_method, first_name, last_name, role, is_active, status, permissions, created_at, updated_at
           ) VALUES (
-            'user-super-admin', 'system-admin@creditonegocios.com.mx', $1, 'local', 'Sistema', 'SuperAdmin', 'super_admin', true, '{"modules": ["*"], "actions": ["*"]}', NOW(), NOW()
+            'user-super-admin', 'system-admin@creditonegocios.com.mx', $1, 'local', 'Sistema', 'Automatizado', 'system', false, 'inactive', '{}', NOW(), NOW()
           ) ON CONFLICT (id) DO NOTHING
         `, [dummyPassword]);
         console.log("✅ [AutoMigrate] Created system user: user-super-admin (idempotent)");
@@ -674,9 +702,12 @@ export async function runAutoMigration(): Promise<void> {
       console.error("⚠️ [AutoMigrate] Error verifying commercial governance tables:", commErr);
     }
 
+    // Repair known legacy staging drift only; never run these ALTERs on Production.
+    await repairStagingSchemaOnStartup(client);
     console.log("✨ [AutoMigrate] Schema verification and user sync completed successfully!");
   } catch (error) {
     console.error("❌ [AutoMigrate] General schema verification error:", error);
+    if (process.env.RAILWAY_ENVIRONMENT_NAME?.toLowerCase() === "staging") throw error;
   } finally {
     if (client) {
       client.release();

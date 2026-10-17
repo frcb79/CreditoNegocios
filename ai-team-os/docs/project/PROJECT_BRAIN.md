@@ -55,17 +55,24 @@ Completado:
 	- Alta e importación exitosa (100% - 9 perfiles/productos, 0 errores) en Railway Staging para 5 nuevas financieras: Altum, Cualli, Jeeves (con plantilla de producto "Credito Revolvente"), Aspiria, Kapital, y actualización de Pretmex con nuevas reglas y esquemas de comisión.
 	- Purga y depuración permanente de 5 entidades de pruebas pasadas (E2E Flujo Completo, Financiera Demo, Financiera Prueba Franco) para dejar el catálogo oficial limpio en exactamente 18 financieras sin duplicados ni faltantes.
 	- Implementación del endpoint y método `DELETE /api/financial-institutions/:id` con soporte de eliminación en cascada referencial y confirmación en UI (`Financieras.tsx`).
+- **Sprint 2026-10-12 (Cierre Correctivo Fase 2B — Modelo de Pagos e Integridad):**
+	- Checkpoint alcanzado en `integration/phase-1a1-base-segura`: `964762c`.
+	- Regla obligatoria de cadena de pagos (COM-03/06, PAG-08/13/14): Crédito Negocios liquida exclusivamente al Master Broker por operaciones de su red (`masterBrokerShare + brokerShare`); se eliminaron las transferencias directas duales que dispersaban indebidamente al Broker subordinado desde CN.
+	- Registro de obligación diferida Master → Broker como `networkObligation` con estado `'pending_master_payout'` y monto `brokerShare`, sin marcarla como pagada por CN.
+	- Candado de simulador STP (PAG-12/13): `processStpPayment` es exclusivamente un simulador técnico; transferencias reales deshabilitadas; llamadas a `/pay` y `/bulk-pay` sin `simulate: true` son bloqueadas con HTTP 400 (`SIMULATED_STP_CANNOT_DISBURSE`); pruebas simuladas nunca marcan como `paid` y preservan estado `approved`.
+	- Liquidación real autorizada exclusivamente manual por Super Admin vía `/mark-paid`: requiere referencia bancaria verificable obligatoria (SPEI, folio, clave de rastreo) y notas explicativas justificadas con auditoría e idempotencia.
+	- Validación documental y bancaria enfocada (PAG-01/07/09/10/11, FIN-13/14): INE, CSF y estado de cuenta validados exigidos estrictamente al beneficiario que recibe de CN (Master en red, Broker en directo). Se eliminó el bloqueo indebido por documentos del Broker subordinado para dispersar al Master.
+	- Aprobación 100% de suites automatizadas: `b2-commission-document-validation` (14/14), `b2-financial-qa-consolidation` (12/12), `commission-gate-security` (13/13), `commission-historical-beneficiary` (3/3), `npm run check` (0 errores) y `npm run build` exitoso.
 
 En progreso:
-- Estabilización y validación visual de los flujos de dispersión y red en entorno de producción Vercel y Railway.
+- Preparación para la siguiente etapa del Plan Maestro v1.1: Financieras, Productos y Matching.
 
 Pendiente:
-- Revisión de items de `Pendientes.md` (logo/fondo transparente en sidebar, mensaje de devolución admin en modal de broker, tracking de pagos de sobretasa de financiera a super admin).
-- Medir impacto del sistema en tiempo de arranque, calidad y velocidad de entrega.
-- Establecer ritual de sync periódico de aprendizajes al repositorio maestro.
+- Pendientes del Registro Maestro v1.1 (`2199dd8`): PAG-15 (regla de canal con Master pero cuota Master cero) y PAG-16 (enmascaramiento RBAC de CLABE de Master ante Broker en consultas de payout; verificación granular en `/audit-logs`).
+- Validación en PostgreSQL aislado (MIG-01 a MIG-05 y concurrencia de locks) pre-Staging.
 
 Bloqueadores:
-- Ninguno. Todos los builds, accesos, base de datos y despliegues en Railway están en verde (200 OK).
+- Ninguno en código de aplicación o suites Jest locales.
 
 ## HISTORIAL
 2026-04-17 — Sesion inicial: creacion de estructura base del sistema.
@@ -76,3 +83,4 @@ Bloqueadores:
 2026-09-04 — Implementación de Filtros de Clientes, Multi-Dispersión de Créditos con Comisiones Individuales, Red de Brokers 3-en-1 para Super Admin, y corrección de build Vercel (IIFE en JSX).
 2026-09-11 — Corrección de build en Railway, reparación de esquema PostgreSQL (`referral_code`), implementación de fallback nativo SQL en autenticación, restauración y blindaje de matriz RBAC (3 cuentas con `Prueba1$`) y validación live en producción.
 2026-09-17 — Procesamiento de `Plantilla_Comisiones_Financieras Luis.xlsx`, alta de 5 nuevas financieras (Altum, Cualli, Jeeves, Aspiria, Kapital) y actualización de Pretmex. Purga de 5 entidades de prueba e incorporación de eliminación permanente segura (`DELETE /api/financial-institutions/:id`). Catálogo consolidado en 18 financieras reales.
+2026-10-12 — Cierre Correctivo Fase 2B (`964762c`): Reestructuración de cadena de pagos (pago consolidado exclusivo al Master en redes, registro de obligación pendiente Master→Broker), candado estricto contra desembolsos reales simulados STP (PAG-12/13), liquidación manual auditada por Super Admin con referencia bancaria obligatoria y validación documental focalizada al receptor legítimo. Compilación y 42 pruebas Jest aprobadas.

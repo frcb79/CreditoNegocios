@@ -28,6 +28,7 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import CommercialDisputesView from "@/components/Commercial/CommercialDisputesView";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/hooks/useAuth";
 import { apiRequest, invalidateAllCreditQueries } from "@/lib/queryClient";
 import { buildApiUrl } from "@/lib/runtimeConfig";
 import { 
@@ -102,6 +103,8 @@ interface CreditSubmissionTarget {
     interestRate: number;
     term: number;
     openingCommission?: number;
+    institutionProductId?: string;
+    versionNumber?: number;
   };
   proposalDocument?: string;
   proposalReceivedAt?: string;
@@ -153,6 +156,8 @@ const proposalSchema = z.object({
   interestRate: z.number().min(0, "Tasa debe ser positiva"),
   term: z.number().min(1, "Plazo requerido"),
   openingCommission: z.number().min(0).optional(),
+  institutionProductId: z.string().optional(),
+  versionNumber: z.number().int().positive().optional(),
 });
 
 type ReviewForm = z.infer<typeof reviewSchema>;
@@ -169,6 +174,14 @@ export default function PendingRequests() {
   const [expandedSubmissions, setExpandedSubmissions] = useState<Set<string>>(new Set());
   const [expandedInstitutionsPerSubmission, setExpandedInstitutionsPerSubmission] = useState<Record<string, Set<string>>>({});
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const { user } = useAuth();
+  const [confirmingTarget, setConfirmingTarget] = useState<CreditSubmissionTarget | null>(null);
+  const [clientConsentReviewTarget, setClientConsentReviewTarget] = useState<CreditSubmissionTarget | null>(null);
+  const [clientConsentReviewEvidenceId,setClientConsentReviewEvidenceId] = useState("");
+  const [clientConsentReviewDocumentId,setClientConsentReviewDocumentId] = useState("");
+  const [clientConsentReviewNotes,setClientConsentReviewNotes] = useState("");
+  const [confirmedAmountInput, setConfirmedAmountInput] = useState<string>("");
+  const [confirmationNotes, setConfirmationNotes] = useState<string>("");
   
   // Filter states
   const [searchTerm, setSearchTerm] = useState("");
@@ -194,12 +207,76 @@ export default function PendingRequests() {
     },
   });
 
+  // Each approved proposal must link the exact offer/version, not only its lender.
+  const { data: institutionOffers = [], isLoading: institutionOffersLoading } = useQuery<Array<{
+    id: string; name?: string | null; customName?: string | null;
+    currentVersionNumber?: number | null; status?: string | null;
+  }>>({
+    queryKey: ["/api/institution-products", selectedTarget?.financialInstitutionId],
+    enabled: showProposalModal && Boolean(selectedTarget?.financialInstitutionId),
+    queryFn: async () => {
+      if (!selectedTarget?.financialInstitutionId) return [];
+      const institutionId = encodeURIComponent(selectedTarget.financialInstitutionId);
+      const response = await fetch(buildApiUrl(`/api/institution-products?institutionId=${institutionId}&eligibleOnly=true`), {
+        credentials: "include",
+      });
+      if (!response.ok) throw new Error("No fue posible consultar las ofertas vigentes");
+      return response.json();
+    },
+  });
+  const publishedOffers = institutionOffers.filter(o =>
+    o.status === "published" && Number.isSafeInteger(Number(o.currentVersionNumber)) &&
+    Number(o.currentVersionNumber) > 0);
+
   const { data: allTargets, isLoading: targetsLoading } = useQuery<CreditSubmissionTarget[]>({
     queryKey: ['/api/credit-submission-targets'],
   });
 
   const { data: commissions } = useQuery<any[]>({
     queryKey: ['/api/commissions'],
+  });
+
+  const clientConsentEvidenceQueryKey = [
+    "/api/credit-submission-targets",clientConsentReviewTarget?.id || "", "client-consent-evidence",
+  ];
+  const {data:clientConsentReviewData,isLoading:clientConsentEvidenceLoading,
+    error:clientConsentEvidenceError}=useQuery<{
+      evidence:Array<{id:string;signerName:string;signerCapacity:string;acceptedAt:string;
+        legalVersion:string;representationReview:string|null;revoked:boolean}>;
+      documents:Array<{id:string;fileName:string;type:string;isValid:boolean|null}>;
+    }>({
+    queryKey:clientConsentEvidenceQueryKey,
+    enabled:Boolean(clientConsentReviewTarget?.id && user?.role==="super_admin"),
+    queryFn:async()=>{
+      const targetId=clientConsentReviewTarget?.id;
+      if(!targetId) return {evidence:[],documents:[]};
+      const r=await fetch(buildApiUrl(`/api/credit-submission-targets/${targetId}/client-consent-evidence`),
+        {credentials:"include"});
+      if(!r.ok){
+        const error=await r.json().catch(()=>({}));
+        throw new Error(error.message||"No se pudo consultar la evidencia");
+      }
+      return r.json();
+    },
+  });
+  const verifyClientRepresentativeMutation=useMutation({
+    mutationFn:async(input:{targetId:string;evidenceId:string;documentId:string;notes:string})=>{
+      const response=await apiRequest("POST",
+        `/api/credit-submission-targets/${input.targetId}/verify-client-representative`,
+        {evidenceId:input.evidenceId,documentId:input.documentId,notes:input.notes});
+      return response.json();
+    },
+    onSuccess:()=>{
+      toast({title:"Representación verificada",
+        description:"Se registró evidencia histórica de la revisión del representante legal."});
+      queryClient.invalidateQueries({queryKey:clientConsentEvidenceQueryKey});
+      setClientConsentReviewTarget(null);
+      setClientConsentReviewEvidenceId("");
+      setClientConsentReviewDocumentId("");
+      setClientConsentReviewNotes("");
+    },
+    onError:(e:any)=>toast({title:"Verificación pendiente",
+      description:e?.message||"No se pudo confirmar el documento.",variant:"destructive"}),
   });
 
   const reviewMutation = useMutation({
@@ -231,16 +308,38 @@ export default function PendingRequests() {
     },
   });
 
-  const markAsSentMutation = useMutation({
+  const startContactMutation = useMutation({
     mutationFn: async (targetId: string) => {
-      return apiRequest("PATCH", `/api/credit-submission-targets/${targetId}/mark-sent`, {});
+      return apiRequest("PATCH", `/api/credit-submission-targets/${targetId}/start-commercial-contact`, {});
     },
     onSuccess: () => {
       toast({
-        title: "Marcado como enviado",
-        description: "La solicitud ha sido marcada como enviada a la financiera",
+        title: "Gestión comercial iniciada",
+        description: "Se registró la gestión interna sin compartir documentos ni expediente.",
       });
       invalidateAllCreditQueries(queryClient);
+    },
+    onError: (error: any) => {
+      toast({
+        title: "No se pudo iniciar la gestión",
+        description: error?.message || "Comprueba el visto bueno interno antes de continuar.",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const requestClientConsentMutation = useMutation({
+    mutationFn: async (targetId:string) => {
+      const r=await apiRequest("POST",`/api/credit-submission-targets/${targetId}/request-client-consent`,{});
+      return r.json();
+    },
+    onSuccess: (result:any) => {
+      toast({title:"Autorización solicitada",description:result.message});
+    },
+    onError: (error:any) => {
+      toast({title:"Aún no se pudo solicitar el consentimiento",
+        description:error.message||"Comprueba la información del firmante o la publicación del documento legal.",
+        variant:"destructive"});
     },
   });
 
@@ -304,6 +403,33 @@ export default function PendingRequests() {
     },
   });
 
+  const confirmDisbursementMutation = useMutation({
+    mutationFn: async ({ targetId, confirmedAmount, notes }: { targetId: string; confirmedAmount: number; notes?: string }) => {
+      const res = await apiRequest("POST", `/api/credit-submission-targets/${targetId}/confirm-disbursement`, {
+        confirmedAmount,
+        notes,
+      });
+      return res.json();
+    },
+    onSuccess: (data) => {
+      toast({
+        title: "Desembolso confirmado",
+        description: data.message || "El desembolso fue confirmado exitosamente por Super Admin.",
+      });
+      invalidateAllCreditQueries(queryClient);
+      setConfirmingTarget(null);
+      setConfirmedAmountInput("");
+      setConfirmationNotes("");
+    },
+    onError: (err: any) => {
+      toast({
+        title: "Error al confirmar desembolso",
+        description: err.message || "No se pudo confirmar el desembolso",
+        variant: "destructive",
+      });
+    },
+  });
+
   const handleDownloadPDF = async (targetId: string) => {
     try {
       const response = await fetch(buildApiUrl(`/api/credit-submission-targets/${targetId}/generate-pdf`), {
@@ -349,6 +475,14 @@ export default function PendingRequests() {
 
   const handleProposalSubmit = (data: ProposalForm) => {
     if (!selectedTarget) return;
+    if (institutionOffersLoading) {
+      toast({ title: "Consultando ofertas vigentes", description: "Verifica primero la oferta correspondiente.", variant: "destructive" });
+      return;
+    }
+    if (publishedOffers.length > 0 && (!data.institutionProductId || !data.versionNumber)) {
+      toast({ title: "Selecciona la oferta exacta", description: "La propuesta debe vincularse al producto y versión publicados.", variant: "destructive" });
+      return;
+    }
     proposalMutation.mutate({
       targetId: selectedTarget.id,
       proposal: data,
@@ -517,7 +651,7 @@ export default function PendingRequests() {
   // Calculate counts from all targets
   const pendingCount = allTargets?.filter(t => t.status === 'pending_admin').length || 0;
   const approvedCount = allTargets?.filter(t => t.status === 'approved').length || 0;
-  const sentCount = allTargets?.filter(t => t.status === 'sent').length || 0;
+  const sentCount = allTargets?.filter(t => t.status === 'contact_initiated' || t.status === 'sent').length || 0;
   const returnedCount = allTargets?.filter(t => t.status === 'returned_to_broker').length || 0;
   const winnerCount = allTargets?.filter(t => t.status === 'selected_winner' || t.isWinner).length || 0;
 
@@ -583,7 +717,7 @@ export default function PendingRequests() {
               {/* Enviadas a Financiera */}
               <div className="bg-white border border-slate-200/80 rounded-xl p-3.5 shadow-sm hover:border-slate-300 transition-colors">
                 <div className="flex items-center justify-between gap-2 mb-2">
-                  <span className="text-xs font-medium text-slate-500 truncate">Enviadas</span>
+                  <span className="text-xs font-medium text-slate-500 truncate">Gestión Comercial Iniciada</span>
                   <div className="h-7 w-7 rounded-lg bg-blue-50 text-blue-700 flex items-center justify-center shrink-0 border border-blue-200/60">
                     <Send className="w-3.5 h-3.5" />
                   </div>
@@ -592,14 +726,14 @@ export default function PendingRequests() {
                   <span className="text-2xl font-bold tracking-tight text-slate-900">
                     {sentCount}
                   </span>
-                  <span className="text-2xs text-slate-400 font-medium">en trámite</span>
+                  <span className="text-2xs text-slate-400 font-medium">en gestión</span>
                 </div>
               </div>
 
               {/* Aprobadas / Propuestas */}
               <div className="bg-white border border-slate-200/80 rounded-xl p-3.5 shadow-sm hover:border-slate-300 transition-colors">
                 <div className="flex items-center justify-between gap-2 mb-2">
-                  <span className="text-xs font-medium text-slate-500 truncate">Aprobadas</span>
+                  <span className="text-xs font-medium text-slate-500 truncate">Visto Bueno</span>
                   <div className="h-7 w-7 rounded-lg bg-emerald-50 text-emerald-700 flex items-center justify-center shrink-0 border border-emerald-200/60">
                     <CheckCircle className="w-3.5 h-3.5" />
                   </div>
@@ -608,7 +742,7 @@ export default function PendingRequests() {
                   <span className="text-2xl font-bold tracking-tight text-slate-900">
                     {approvedCount}
                   </span>
-                  <span className="text-2xs text-slate-400 font-medium">con propuesta</span>
+                  <span className="text-2xs text-slate-400 font-medium">por administración</span>
                 </div>
               </div>
 
@@ -705,7 +839,8 @@ export default function PendingRequests() {
                     <SelectItem value="all">Todos los Estados</SelectItem>
                     <SelectItem value="pending_admin">Pendiente Aprobación</SelectItem>
                     <SelectItem value="approved">Aprobada</SelectItem>
-                    <SelectItem value="sent">Enviada</SelectItem>
+                    <SelectItem value="contact_initiated">Gestión Comercial Iniciada</SelectItem>
+                    <SelectItem value="sent">Enviada (histórica)</SelectItem>
                     <SelectItem value="institution_approved">Propuesta Recibida</SelectItem>
                     <SelectItem value="selected_winner">Seleccionada</SelectItem>
                     <SelectItem value="dispersed">Dispersada</SelectItem>
@@ -914,16 +1049,7 @@ export default function PendingRequests() {
                                     </div>
                                     <div className="flex items-center gap-2">
                                       {getStatusBadge(target.status)}
-                                      <Button
-                                        size="sm"
-                                        variant="outline"
-                                        onClick={() => handleDownloadPDF(target.id)}
-                                        className="h-8 px-2.5 text-xs border-slate-200 text-slate-700 hover:bg-slate-50"
-                                        data-testid={`button-download-pdf-${target.id}`}
-                                      >
-                                        <Download className="w-3.5 h-3.5 mr-1 text-slate-500" />
-                                        PDF
-                                      </Button>
+                                      {/* PDF institucional no disponible en MVP: requiere divulgación aprobada. */}
                                     </div>
                                   </div>
 
@@ -961,21 +1087,23 @@ export default function PendingRequests() {
                                   )}
 
                                   {target.status === 'approved' && (
-                                    <div className="pt-1">
+                                    <div className="pt-1 space-y-2">
                                       <Button
                                         size="sm"
-                                        onClick={() => markAsSentMutation.mutate(target.id)}
-                                        disabled={markAsSentMutation.isPending}
+                                        onClick={() => startContactMutation.mutate(target.id)}
+                                        disabled={startContactMutation.isPending}
                                         className="h-8 text-xs font-medium bg-primary hover:bg-primary-dark text-white shadow-xs"
-                                        data-testid={`button-mark-sent-${target.id}`}
+                                        data-testid={`button-start-commercial-contact-${target.id}`}
                                       >
                                         <Send className="w-3.5 h-3.5 mr-1.5" />
-                                        Marcar como Enviado a Financiera
+                                        Iniciar gestión comercial
                                       </Button>
+                                      <p className="text-xs text-slate-600">
+                                        Registra el inicio de una gestión interna. No envía expedientes, datos ni documentos.
+                                      </p>
                                     </div>
                                   )}
-
-                                  {target.status === 'sent' && (
+                                  {(target.status === 'contact_initiated' || target.status === 'sent') && (
                                     <div className="flex items-center gap-2 flex-wrap pt-1">
                                       <Button
                                         size="sm"
@@ -1082,6 +1210,8 @@ export default function PendingRequests() {
                                                 interestRate: Number(target.institutionProposal.interestRate || 0),
                                                 term: Number(target.institutionProposal.term || 12),
                                                 openingCommission: Number(target.institutionProposal.openingCommission || 0),
+                                                institutionProductId: target.institutionProposal.institutionProductId,
+                                                versionNumber: target.institutionProposal.versionNumber,
                                               });
                                             }
                                             setShowProposalModal(true);
@@ -1171,9 +1301,25 @@ export default function PendingRequests() {
                                                 Comisión Pendiente (${parseFloat(targetComm.amount).toLocaleString('es-MX')} MXN)
                                               </Badge>
                                             ) : (
-                                              <Badge variant="outline" className="text-emerald-700 border-emerald-300 text-2xs">
+                                              <div className="flex items-center gap-2 flex-wrap">
+                                                <Badge variant="outline" className="text-emerald-700 border-emerald-300 text-2xs">
                                                 Dispersión Registrada
                                               </Badge>
+                                                {user?.role === 'super_admin' && (
+                                                  <Button
+                                                    size="sm"
+                                                    className="h-6 text-2xs font-semibold bg-emerald-700 hover:bg-emerald-800 text-white shadow-xs px-2"
+                                                    onClick={() => {
+                                                      setConfirmingTarget(target);
+                                                      setConfirmedAmountInput(String(target.institutionProposal?.approvedAmount || ""));
+                                                    }}
+                                                    data-testid={`button-confirm-disbursement-${target.id}`}
+                                                  >
+                                                    <CheckCircle className="w-3 h-3 mr-1" />
+                                                    Confirmar Desembolso
+                                                  </Button>
+                                                )}
+                                              </div>
                                             )}
                                           </div>
 
@@ -1296,7 +1442,7 @@ export default function PendingRequests() {
                         <FormItem>
                           <FormLabel>
                             {reviewAction === 'approve' 
-                              ? 'Detalles para enviar a la financiera (opcional)' 
+                              ? 'Contexto para gestión interna (opcional)' 
                               : 'Comentarios para el Broker (opcional)'}
                           </FormLabel>
                           <FormControl>
@@ -1304,7 +1450,7 @@ export default function PendingRequests() {
                               {...field} 
                               rows={3}
                               placeholder={reviewAction === 'approve'
-                                ? "Información adicional que se enviará a la financiera..."
+                                ? "Notas para análisis y gestión interna..."
                                 : "Explica qué necesita modificar o qué información falta..."
                               }
                               data-testid="textarea-details"
@@ -1373,6 +1519,45 @@ export default function PendingRequests() {
 
                 <Form {...proposalForm}>
                   <form onSubmit={proposalForm.handleSubmit(handleProposalSubmit)} className="space-y-4">
+                    {publishedOffers.length > 0 ? (
+                      <FormField
+                        control={proposalForm.control}
+                        name="institutionProductId"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Oferta financiera publicada *</FormLabel>
+                            <Select
+                              value={field.value || undefined}
+                              onValueChange={(id) => {
+                                field.onChange(id);
+                                const offer = publishedOffers.find(o => o.id === id);
+                                proposalForm.setValue("versionNumber", offer?.currentVersionNumber
+                                  ? Number(offer.currentVersionNumber) : undefined);
+                              }}
+                            >
+                              <FormControl>
+                                <SelectTrigger><SelectValue placeholder="Selecciona producto y versión" /></SelectTrigger>
+                              </FormControl>
+                              <SelectContent>
+                                {publishedOffers.map(offer => (
+                                  <SelectItem key={offer.id} value={offer.id}>
+                                    {offer.name || offer.customName || "Oferta"} — v{offer.currentVersionNumber}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                    ) : (
+                      <p className="text-xs text-muted-foreground">
+                        {institutionOffersLoading
+                          ? "Consultando ofertas publicadas..."
+                          : "No hay una oferta versionada publicada para esta financiera. Se conservará el flujo histórico sin inferir una oferta."}
+                      </p>
+                    )}
+
                     <FormField
                       control={proposalForm.control}
                       name="approvedAmount"
@@ -1473,6 +1658,174 @@ export default function PendingRequests() {
                     </DialogFooter>
                   </form>
                 </Form>
+              </DialogContent>
+            </Dialog>
+
+            {/* LEG-10: manual, evidence-linked company signer authority review.
+                OTP alone must never be treated as proof of powers of attorney. */}
+            <Dialog open={!!clientConsentReviewTarget}
+              onOpenChange={(open)=>{if(!open)setClientConsentReviewTarget(null);}}>
+              <DialogContent className="max-w-xl">
+                <DialogHeader>
+                  <DialogTitle>Autorización del cliente y facultades del firmante</DialogTitle>
+                  <DialogDescription>
+                    Revisión exclusiva de Super Admin. Confirma la firma OTP y
+                    verifica las facultades empresariales contra un documento ya archivado.
+                  </DialogDescription>
+                </DialogHeader>
+                {clientConsentEvidenceLoading && <p className="text-sm">Consultando evidencias...</p>}
+                {clientConsentEvidenceError &&
+                  <p role="alert" className="text-sm text-destructive">
+                    {clientConsentEvidenceError.message}
+                  </p>}
+                {clientConsentReviewData && <div className="space-y-4 max-h-[65vh] overflow-y-auto">
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium">Firma del representante a revisar</label>
+                    {clientConsentReviewData.evidence.length === 0 &&
+                      <p className="text-xs text-amber-700">El cliente aún no ha firmado la autorización.</p>}
+                    {clientConsentReviewData.evidence.map(e=>(
+                      <label key={e.id} className="flex items-start gap-2 border rounded p-2 text-xs">
+                        <input type="radio" name="clientConsentReviewEvidence"
+                          disabled={e.revoked || e.signerCapacity!=="legal_representative" ||
+                            Boolean(e.representationReview)}
+                          checked={clientConsentReviewEvidenceId===e.id}
+                          onChange={()=>setClientConsentReviewEvidenceId(e.id)}/>
+                        <span>{e.signerName} · {new Date(e.acceptedAt).toLocaleString("es-MX")} ·
+                          Versión {e.legalVersion}
+                          {e.revoked ? " · Revocada" : e.representationReview
+                            ? " · Revisión: "+e.representationReview
+                            : e.signerCapacity==="legal_representative"
+                              ? " · Pendiente de acreditar facultades"
+                              : " · Firma del cliente titular"}
+                        </span>
+                      </label>
+                    ))}
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium">Documento de facultades archivado</label>
+                    <Select value={clientConsentReviewDocumentId}
+                      onValueChange={setClientConsentReviewDocumentId}>
+                      <SelectTrigger data-testid="select-client-representative-proof">
+                        <SelectValue placeholder="Selecciona un poder, acta u otro documento pertinente"/>
+                      </SelectTrigger>
+                      <SelectContent>
+                        {clientConsentReviewData.documents.filter(d=>d.isValid!==false).map(d=>(
+                          <SelectItem key={d.id} value={d.id}>{d.fileName} · {d.type}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <p className="text-xs text-slate-500">
+                      Revisa el documento original del expediente antes de confirmar.
+                      No basta con elegir cualquier archivo.
+                    </p>
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium" htmlFor="client-rep-review-notes">
+                      Detalles de la verificación (obligatorios)
+                    </label>
+                    <Textarea id="client-rep-review-notes"
+                      value={clientConsentReviewNotes}
+                      onChange={e=>setClientConsentReviewNotes(e.target.value)}
+                      placeholder="Documento, facultades verificadas, vigencia y nombre del firmante..."
+                      data-testid="textarea-client-representative-review"/>
+                  </div>
+                  <DialogFooter>
+                    <Button variant="outline" onClick={()=>setClientConsentReviewTarget(null)}>
+                      Cancelar
+                    </Button>
+                    <Button
+                      disabled={!clientConsentReviewTarget||!clientConsentReviewEvidenceId||
+                        !clientConsentReviewDocumentId||
+                        clientConsentReviewNotes.trim().length<15||
+                        verifyClientRepresentativeMutation.isPending}
+                      onClick={()=>clientConsentReviewTarget && verifyClientRepresentativeMutation.mutate({
+                        targetId:clientConsentReviewTarget.id,evidenceId:clientConsentReviewEvidenceId,
+                        documentId:clientConsentReviewDocumentId,notes:clientConsentReviewNotes,
+                      })}
+                      data-testid="button-verify-client-representative">
+                      {verifyClientRepresentativeMutation.isPending?"Registrando...":"Confirmar facultades"}
+                    </Button>
+                  </DialogFooter>
+                </div>}
+              </DialogContent>
+            </Dialog>
+
+            {/* Modal Confirmación de Desembolso Expresa (Super Admin) */}
+            <Dialog open={!!confirmingTarget} onOpenChange={(open) => !open && setConfirmingTarget(null)}>
+              <DialogContent className="max-w-md">
+                <DialogHeader>
+                  <DialogTitle className="text-base font-bold flex items-center gap-2">
+                    <CheckCircle className="w-5 h-5 text-emerald-600" />
+                    Confirmación Manual de Desembolso Real
+                  </DialogTitle>
+                  <DialogDescription className="text-xs text-slate-500">
+                    Confirmación expresa del monto efectivamente dispersado por la financiera. Como Super Admin, este importe servirá de base canónica para el cálculo inmutable de comisiones.
+                  </DialogDescription>
+                </DialogHeader>
+
+                {confirmingTarget && (
+                  <div className="space-y-4 py-2">
+                    <div>
+                      <label className="text-xs font-semibold text-slate-700 block mb-1">
+                        Monto Efectivamente Dispersado (MXN)*
+                      </label>
+                      <Input
+                        type="number"
+                        step="0.01"
+                        min="1"
+                        value={confirmedAmountInput}
+                        onChange={(e) => setConfirmedAmountInput(e.target.value)}
+                        placeholder="Ej. 1000000"
+                        className="h-9 text-sm font-semibold"
+                        data-testid="input-confirmed-disbursement-amount"
+                      />
+                      <span className="text-2xs text-slate-400 mt-1 block">
+                        Propuesta autorizada: ${parseFloat(String(confirmingTarget.institutionProposal?.approvedAmount || 0)).toLocaleString('es-MX')} MXN
+                      </span>
+                    </div>
+
+                    <div>
+                      <label className="text-xs font-semibold text-slate-700 block mb-1">
+                        Notas de Auditoría (Opcional)
+                      </label>
+                      <Textarea
+                        value={confirmationNotes}
+                        onChange={(e) => setConfirmationNotes(e.target.value)}
+                        placeholder="Referencia bancaria, fecha efectiva o folio de confirmación..."
+                        className="text-xs resize-none h-18"
+                        data-testid="input-confirmed-disbursement-notes"
+                      />
+                    </div>
+                  </div>
+                )}
+
+                <DialogFooter className="gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setConfirmingTarget(null)}
+                    disabled={confirmDisbursementMutation.isPending}
+                  >
+                    Cancelar
+                  </Button>
+                  <Button
+                    size="sm"
+                    className="bg-emerald-600 hover:bg-emerald-700 text-white font-medium"
+                    disabled={confirmDisbursementMutation.isPending || !confirmedAmountInput || parseFloat(confirmedAmountInput) <= 0}
+                    onClick={() => {
+                      if (confirmingTarget && confirmedAmountInput) {
+                        confirmDisbursementMutation.mutate({
+                          targetId: confirmingTarget.id,
+                          confirmedAmount: parseFloat(confirmedAmountInput),
+                          notes: confirmationNotes || undefined,
+                        });
+                      }
+                    }}
+                    data-testid="button-submit-confirm-disbursement"
+                  >
+                    {confirmDisbursementMutation.isPending ? "Confirmando..." : "Confirmar y Calcular Comisiones"}
+                  </Button>
+                </DialogFooter>
               </DialogContent>
             </Dialog>
           </>

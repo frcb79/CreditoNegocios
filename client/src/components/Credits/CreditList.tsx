@@ -41,7 +41,8 @@ import {
 } from "lucide-react";
 import FinalProposalModal from "@/components/Modals/FinalProposalModal";
 import MatchingComparisonTable from "@/components/MatchingAnalysis/MatchingComparisonTable";
-import { submissionStatusConfig, creditStatusConfig, targetStatusConfig, getSubmissionStatusSummary, getStatusLabel } from "@/lib/statusConfig";
+import CreditMatchingSection from "@/components/Credits/CreditMatchingSection";
+import { submissionStatusConfig, creditStatusConfig, targetStatusConfig, getSubmissionStatusSummary, getStatusLabel, getCreditStatusLabel } from "@/lib/statusConfig";
 import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
@@ -462,7 +463,7 @@ export default function CreditList() {
       ? item.statusSummary.primaryStatus 
       : item.status;
     
-    const label = getStatusLabel(effectiveStatus);
+    const label = item.type === "credit" ? getCreditStatusLabel(effectiveStatus) : getStatusLabel(effectiveStatus);
     const norm = (effectiveStatus || '').toLowerCase();
 
     if (norm === 'dispersed' || norm === 'disbursed' || norm === 'dispersado') {
@@ -609,7 +610,7 @@ export default function CreditList() {
                   <SelectItem value="draft">Borrador</SelectItem>
                   <SelectItem value="submitted">En validación</SelectItem>
                   <SelectItem value="pending_admin">Pendiente de revisión</SelectItem>
-                  <SelectItem value="approved">Aprobado</SelectItem>
+                  <SelectItem value="approved">Visto Bueno</SelectItem>
                   <SelectItem value="returned_to_broker">Devuelto</SelectItem>
                   <SelectItem value="sent_to_institutions">Enviado a Financieras</SelectItem>
                   <SelectItem value="proposals_received">Propuestas Recibidas</SelectItem>
@@ -1489,6 +1490,20 @@ export default function CreditList() {
               <Skeleton className="h-64 w-full" />
             </div>
           )}
+
+          {/* M3: compatibilidad preliminar explicable; no constituye aprobación crediticia. */}
+          {selectedSubmissionId && selectedSubmission ? (
+            <CreditMatchingSection
+              creditId={selectedSubmission.id}
+              requestType="submission"
+              clientName={selectedClient ? getClientName(selectedClient.id) : undefined}
+            />
+          ) : selectedCreditItem?.type === 'credit' && selectedCreditItem?.id ? (
+            <CreditMatchingSection
+              creditId={selectedCreditItem.id}
+              requestType="credit"
+            />
+          ) : null}
 
           <DialogFooter className="flex flex-col-reverse sm:flex-row sm:justify-between items-center gap-2 pt-4 border-t">
             <Button

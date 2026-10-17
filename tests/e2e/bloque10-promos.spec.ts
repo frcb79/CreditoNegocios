@@ -10,8 +10,8 @@ if (!fs.existsSync(SCREENSHOT_DIR)) {
 // Staging or local URL
 const BASE_URL = process.env.STAGING_URL || process.env.BACKEND_URL || process.env.BASE_URL || process.env.E2E_BASE_URL || 'https://creditonegocios-staging.up.railway.app';
 
-const SA_EMAIL = process.env.STAGING_ADMIN_EMAIL || 'francocb79@gmail.com';
-const SA_PASSWORD = process.env.STAGING_ADMIN_PASSWORD || 'Prueba1$';
+const SA_EMAIL = process.env.STAGING_ADMIN_EMAIL || '';
+const SA_PASSWORD = process.env.STAGING_ADMIN_PASSWORD || '';
 
 // Helper to disable driver.js onboarding tour across page contexts
 async function setupPage(context: any) {
@@ -28,6 +28,8 @@ async function setupPage(context: any) {
 }
 
 async function performLogin(page: any, email: string, pass: string) {
+  if (!email || !pass) throw new Error("E2E staging credentials are required via STAGING_ADMIN_*, STAGING_MB_* and STAGING_BRK_* environment variables; no repository defaults.");
+
   await page.goto(`${BASE_URL}/`, { waitUntil: 'networkidle' });
   await page.waitForSelector('#login-email', { timeout: 20000 });
   await page.fill('#login-email', email);
