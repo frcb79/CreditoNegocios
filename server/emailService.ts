@@ -176,6 +176,7 @@ export function buildAccountInvitationEmail(
   name?: string,
   personalMessage?: string,
   baseUrl = process.env.FRONTEND_BASE_URL,
+  courtesy?: { code: string; name: string; durationMonths: 12 },
 ): { subject: string; html: string; text: string } {
   const url = baseUrl?.trim();
   if (!url || !/^https:\/\/[^\s]+$/i.test(url)) {
@@ -228,6 +229,14 @@ export function buildAccountInvitationEmail(
     "<p style='line-height:1.65;margin:0 0 16px'>Las mejores oportunidades de negocio comienzan cuando tienes las herramientas y las conexiones adecuadas.</p>",
     "<h2 style='font-size:23px;color:#142e4a;margin:0 0 14px'>¡Bienvenido a Crédito Negocios!</h2>",
     "<p style='line-height:1.65;margin:0 0 24px'>Estamos construyendo una plataforma que busca acercarte opciones de financiamiento de <strong>decenas de financieras</strong>, para ayudarte a convertir las necesidades de tus clientes en nuevas oportunidades de negocio.</p>",
+    ...(courtesy ? [
+      "<div style='background:#e9f8ef;border:1px solid #90ccab;border-radius:8px;padding:17px 20px;margin:14px 0 22px'>",
+      "<h2 style='font-size:18px;color:#146b48;margin:0 0 8px'>Tu invitación incluye 12 meses sin costo</h2>",
+      "<p style='font-size:14px;line-height:1.5;margin:0 0 8px'>Beneficio especial de cortesía <strong>" + safe(courtesy.name) + "</strong> otorgado mediante el código:</p>",
+      "<p style='font-size:22px;font-weight:800;letter-spacing:.5px;margin:8px 0;color:#142e4a'>" + safe(courtesy.code) + "</p>",
+      "<p style='font-size:13px;line-height:1.55;margin:8px 0 0'>Los 12 meses comienzan cuando actives tu cuenta. El beneficio quedará registrado en Configuración → Beneficios y acceso. No se realizará ningún cobro automático al finalizar: cualquier esquema de pago futuro deberá informarse por separado.</p>",
+      "</div>",
+    ] : []),
     "<h2 style='font-size:19px;color:#142e4a;margin:0 0 12px'>¿Qué puedes hacer con Crédito Negocios?</h2>",
     ...benefits.map(b =>
       "<div style='padding:15px 0;border-bottom:1px solid #e6ebef'>" +
@@ -259,6 +268,12 @@ export function buildAccountInvitationEmail(
     "Las mejores oportunidades de negocio comienzan cuando tienes las herramientas y las conexiones adecuadas.",
     "¡Bienvenido a Crédito Negocios!",
     "Estamos construyendo una plataforma que busca acercarte opciones de financiamiento de decenas de financieras, para ayudarte a convertir las necesidades de tus clientes en nuevas oportunidades de negocio.",
+    ...(courtesy ? ["", "TU CORTESÍA DE LANZAMIENTO: 12 MESES SIN COSTO",
+      "Código: " + courtesy.code,
+      "Promoción: " + courtesy.name,
+      "Comienza al activar tu cuenta y se reflejará en Configuración > Beneficios y acceso.",
+      "No se hará ningún cobro automático al finalizar el periodo de cortesía.",
+    ] : []),
     "",
     "¿Qué puedes hacer con Crédito Negocios?",
     ...benefits.flatMap(b => ["", b.title, b.body]),
@@ -281,10 +296,12 @@ export function buildAccountInvitationEmail(
 export async function sendAccountInvitationEmail(
   to: string, token: string, role: "broker" | "master_broker",
   name?: string, personalMessage?: string,
+  courtesy?: { code: string; name: string; durationMonths: 12 },
 ): Promise<{success:boolean;error?:string}> {
   try {
     if (!resend) return { success: false, error: "Servicio de correo no configurado" };
-    const invitation = buildAccountInvitationEmail(to, token, role, name, personalMessage);
+    const invitation = buildAccountInvitationEmail(to, token, role, name, personalMessage,
+      process.env.FRONTEND_BASE_URL, courtesy);
     const result = await resend.emails.send({
       from: FROM_EMAIL, to: [to],
       subject: invitation.subject, html: invitation.html, text: invitation.text,
