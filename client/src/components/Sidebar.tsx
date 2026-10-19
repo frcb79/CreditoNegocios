@@ -113,10 +113,16 @@ export default function Sidebar() {
     return true;
   });
   
-  const adminItems: NavItemDef[] = isFullAdmin 
-    ? adminNavigation 
-    : (hasTenantOrg 
-        ? [{ name: 'Mi Organización', href: '/admin/usuarios', icon: Users2, section: "admin" }] 
+  const adminItems: NavItemDef[] = isFullAdmin
+    ? [
+        ...adminNavigation,
+        // Exclusive platform governance — not a personal Broker configuration tab.
+        ...(user?.role === 'super_admin'
+          ? [{ name: 'Reglas comerciales', href: '/configuracion?tab=commercial_rules', icon: Settings, section: "admin" as const, superAdminOnly: true }]
+          : []),
+      ]
+    : (hasTenantOrg
+        ? [{ name: 'Mi Organización', href: '/admin/usuarios', icon: Users2, section: "admin" }]
         : []);
 
   const baseItems = [...filteredNavigation, ...adminItems];
