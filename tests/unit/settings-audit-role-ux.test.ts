@@ -42,10 +42,12 @@ describe("UX — Configuration and Super Admin audit preserve role functionality
       expect(settings).toContain(tab);
     }
     expect(settings).not.toContain('<TabsTrigger value="profiling"');
-    expect(settings).not.toContain('<TabsTrigger value="commercial_rules"');
+    expect(settings).toContain('<TabsTrigger value="commercial_rules"');
     expect(settings).toContain('<CommercialRulesSettings />');
-    expect(sidebar).toContain("name: 'Reglas comerciales'");
-    expect(sidebar).toContain("user?.role === 'super_admin'");
+    expect(settings).toContain('<TabsTrigger value="operational_rules"');
+    expect(settings).toContain('<OperationalRulesContent />');
+    expect(sidebar).toContain("name: 'Beneficios y promociones'");
+    expect(sidebar).toContain("name: 'Ayuda'");
   });
   it("retains own-account security settings and notification channels", () => {
     expect(settings).toContain("Cambiar Contraseña");
