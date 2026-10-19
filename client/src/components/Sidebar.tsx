@@ -25,6 +25,7 @@ import {
   Users2,
   Settings,
   HelpCircle,
+  Tag,
   LogOut,
   type LucideIcon,
 } from "lucide-react";
@@ -65,7 +66,7 @@ const adminNavigation: NavItemDef[] = [
 ];
 
 const bottomNavigation = [
-  { name: 'Ayuda y Reglas', href: '/ayuda', icon: HelpCircle },
+  { name: 'Ayuda', href: '/ayuda', icon: HelpCircle },
   { name: 'Configuración', href: '/configuracion', icon: Settings },
 ];
 
@@ -116,10 +117,8 @@ export default function Sidebar() {
   const adminItems: NavItemDef[] = isFullAdmin
     ? [
         ...adminNavigation,
-        // Exclusive platform governance — not a personal Broker configuration tab.
-        ...(user?.role === 'super_admin'
-          ? [{ name: 'Reglas comerciales', href: '/configuracion?tab=commercial_rules', icon: Settings, section: "admin" as const, superAdminOnly: true }]
-          : []),
+        // Administrative promo catalogue remains in UserManagement, reachable directly.
+        { name: 'Beneficios y promociones', href: '/admin/usuarios?tab=promos', icon: Tag, section: "admin" as const },
       ]
     : (hasTenantOrg
         ? [{ name: 'Mi Organización', href: '/admin/usuarios', icon: Users2, section: "admin" }]
@@ -255,7 +254,9 @@ export default function Sidebar() {
             ) : null}
 
             {grp.items.map((item) => {
-              const isActive = location === item.href;
+              const isActive = location === item.href && (
+                !item.href.includes("?") || window.location.search === item.href.slice(item.href.indexOf("?"))
+              );
               const IconComp = item.icon;
               
               return (
