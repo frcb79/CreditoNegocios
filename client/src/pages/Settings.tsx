@@ -101,7 +101,7 @@ export default function Settings() {
     if (tabParam === "documents" || tabParam === "documentos") return "documents";
     if (tabParam === "notifications") return "notifications";
     if (tabParam === "business") return "business";
-    if (tabParam === "profiling") return "profiling";
+    if (tabParam === "profiling") return "business"; // Legacy deep links remain valid
     if (tabParam === "security") return "security";
     if (tabParam === "benefits") return "benefits";
     if (tabParam === "commercial_rules" || tabParam === "commercial-rules") return "commercial_rules";
@@ -109,14 +109,28 @@ export default function Settings() {
   });
 
   const isBrokerOrMaster = user?.role === "broker" || user?.role === "master_broker";
+  const [showLegalHistory, setShowLegalHistory] = useState(false);
 
+  // Restrict tab navigation by account ROLE, not by deleting any stored profile data.
+  // Deep links from previous releases (especially ?tab=profiling) remain supported.
   useEffect(() => {
-    const params = new URLSearchParams(search);
-    const tabParam = params.get("tab");
-    if (tabParam === "documents" || tabParam === "documentos") {
-      setActiveTab("documents");
+    const tabParam = new URLSearchParams(search).get("tab");
+    const alias = tabParam === "profiling" ? "business" :
+      tabParam === "documentos" ? "documents" :
+      tabParam === "commercial-rules" ? "commercial_rules" : tabParam;
+    if (alias && ["profile", "business", "documents", "benefits", "security", "notifications", "commercial_rules"].includes(alias)) {
+      setActiveTab(alias);
     }
   }, [search]);
+
+  useEffect(() => {
+    if (!user?.role) return;
+    if (!isBrokerOrMaster && ["business", "documents", "benefits"].includes(activeTab)) {
+      setActiveTab("profile");
+    } else if (user.role !== "super_admin" && activeTab === "commercial_rules") {
+      setActiveTab("profile");
+    }
+  }, [user?.role, isBrokerOrMaster, activeTab]);
   const [profileType, setProfileType] = useState<"persona_moral" | "fisica_empresarial" | "fisica" | "sin_sat">("persona_moral");
   const [showPasswordModal, setShowPasswordModal] = useState(false);
   const [avatarPreview, setAvatarPreview] = useState<string | null>((user?.profileImageUrl as string) || null);
@@ -587,26 +601,23 @@ export default function Settings() {
           )}
 
           <Tabs value={activeTab} onValueChange={setActiveTab}>
-            <div className="overflow-x-auto pb-1 -mx-1 px-1">
-              <TabsList className="inline-flex w-full min-w-[620px] sm:min-w-0 h-9 p-1 bg-muted/70 rounded-lg">
-                <TabsTrigger value="profile" data-testid="tab-profile" className="text-xs font-medium py-1 px-2">Perfil</TabsTrigger>
-                <TabsTrigger value="documents" data-testid="tab-documents" className="text-xs font-medium py-1 px-2">Documentos</TabsTrigger>
-                <TabsTrigger value="notifications" data-testid="tab-notifications" className="text-xs font-medium py-1 px-2">Notificaciones</TabsTrigger>
-                <TabsTrigger value="business" data-testid="tab-business" className="text-xs font-medium py-1 px-2">Negocio</TabsTrigger>
-                <TabsTrigger value="profiling" data-testid="tab-profiling" className="text-xs font-medium py-1 px-2">Perfilamiento</TabsTrigger>
-                <TabsTrigger value="security" data-testid="tab-security" className="text-xs font-medium py-1 px-2">Seguridad</TabsTrigger>
-                <TabsTrigger value="benefits" data-testid="tab-benefits" className="text-xs font-medium py-1 px-2">Beneficios</TabsTrigger>
-                {user?.role === "super_admin" && (
-                  <TabsTrigger value="commercial_rules" data-testid="tab-commercial-rules" className="text-xs font-medium py-1 px-2">
-                    Reglas Comerciales
-                  </TabsTrigger>
+            <div className="pb-1">
+              <TabsList className="flex flex-wrap h-auto gap-1 p-1 bg-muted/70 rounded-lg">
+                <TabsTrigger value="profile" data-testid="tab-profile" className="text-xs font-medium px-3 py-2">Mi cuenta</TabsTrigger>
+                {isBrokerOrMaster && (
+                  <>
+                    <TabsTrigger value="business" data-testid="tab-business" className="text-xs font-medium px-3 py-2">Mi negocio</TabsTrigger>
+                    <TabsTrigger value="documents" data-testid="tab-documents" className="text-xs font-medium px-3 py-2">Documentos y convenios</TabsTrigger>
+                    <TabsTrigger value="benefits" data-testid="tab-benefits" className="text-xs font-medium px-3 py-2">Beneficios y acceso</TabsTrigger>
+                  </>
                 )}
+                <TabsTrigger value="security" data-testid="tab-security" className="text-xs font-medium px-3 py-2">Seguridad</TabsTrigger>
+                <TabsTrigger value="notifications" data-testid="tab-notifications" className="text-xs font-medium px-3 py-2">Notificaciones</TabsTrigger>
               </TabsList>
             </div>
 
             {/* Profile Settings */}
             <TabsContent value="profile" className="space-y-4 mt-3">
-              <LegalProfileDocuments user={user} showFormalizationNotice={false} />
               <Card className="border border-border/80 shadow-xs">
                 <CardHeader className="py-3 px-4 sm:px-6 border-b border-border/60">
                   <CardTitle className="text-base font-semibold">Información Personal</CardTitle>
@@ -851,10 +862,12 @@ export default function Settings() {
               </Card>
             </TabsContent>
 
-            {/* Documents Settings */}
-            <TabsContent value="documents" className="space-y-4 mt-3">
-              <LegalProfileDocuments user={user} showFormalizationNotice={true} />
-            </TabsContent>
+            {/* Documentos contractuales y de dispersión: sólo Broker y Master. */}
+            {isBrokerOrMaster && (
+              <TabsContent value="documents" className="space-y-4 mt-3">
+                <LegalProfileDocuments user={user} showFormalizationNotice={true} />
+              </TabsContent>
+            )}
 
             {/* Notification Settings */}
             <TabsContent value="notifications" className="space-y-4 mt-3">
@@ -1054,8 +1067,9 @@ export default function Settings() {
               </Card>
             </TabsContent>
 
-            {/* Business Settings */}
-            <TabsContent value="business" className="space-y-4 mt-3">
+            {/* Sección comercial 1/2: entidad, fiscalidad y representación. */}
+            {isBrokerOrMaster && (
+              <TabsContent value="business" className="space-y-4 mt-3">
               <Card className="border border-border/80 shadow-xs">
                 <CardHeader className="py-3 px-4 sm:px-6 border-b border-border/60">
                   <CardTitle className="text-base font-semibold">Información del Negocio</CardTitle>
@@ -1223,10 +1237,13 @@ export default function Settings() {
                   </Form>
                 </CardContent>
               </Card>
-            </TabsContent>
+              </TabsContent>
+            )}
 
-            {/* Profiling Settings */}
-            <TabsContent value="profiling" className="space-y-4 mt-3">
+            {/* Sección comercial 2/2: experiencia, referencias, banco y CLABE.
+                Sigue usando su propio formulario, validación y guardado original. */}
+            {isBrokerOrMaster && (
+              <TabsContent value="business" className="space-y-4 mt-3">
               <Card className="border border-border/80 shadow-xs">
                 <CardHeader className="py-3 px-4 sm:px-6 border-b border-border/60">
                   <CardTitle className="text-base font-semibold">Perfilamiento Operativo y Bancario</CardTitle>
@@ -1547,7 +1564,8 @@ export default function Settings() {
                   </Form>
                 </CardContent>
               </Card>
-            </TabsContent>
+              </TabsContent>
+            )}
 
             {/* Security Settings */}
             <TabsContent value="security" className="space-y-4 mt-3">
@@ -1704,10 +1722,28 @@ export default function Settings() {
                   </div>
                 </CardContent>
               </Card>
+              {!isBrokerOrMaster && (
+                <Card className="border border-border/80 shadow-xs">
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-sm">Historial legal de mi cuenta</CardTitle>
+                    <CardDescription className="text-xs">
+                      Consulta opcional de aceptaciones y comprobantes históricos; no es un expediente de Broker.
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-3">
+                    <Button type="button" variant="outline" size="sm" data-testid="button-toggle-legal-history"
+                      onClick={() => setShowLegalHistory(value => !value)}>
+                      {showLegalHistory ? "Ocultar historial legal" : "Consultar mis aceptaciones legales"}
+                    </Button>
+                    {showLegalHistory && <LegalProfileDocuments user={user} showFormalizationNotice={false} />}
+                  </CardContent>
+                </Card>
+              )}
             </TabsContent>
 
-            {/* Beneficios y Acceso Comercial (Bloque 10) */}
-            <TabsContent value="benefits" className="space-y-4 mt-3">
+            {/* Acceso/promociones conservados para usuarios comerciales. */}
+            {isBrokerOrMaster && (
+              <TabsContent value="benefits" className="space-y-4 mt-3">
               {/* Status & Active Benefit Card */}
               <Card className="border border-border/80 shadow-xs">
                 <CardHeader className="py-3 px-4 sm:px-6 border-b border-border/60">
@@ -1877,8 +1913,11 @@ export default function Settings() {
                   </p>
                 </CardContent>
               </Card>
-            </TabsContent>
+              </TabsContent>
+            )}
 
+            {/* Reglas Comerciales ahora son accesibles desde la navegación administrativa,
+                manteniendo el deep link previo /configuracion?tab=commercial_rules. */}
             {user?.role === "super_admin" && (
               <TabsContent value="commercial_rules" className="space-y-4 mt-3">
                 <CommercialRulesSettings />
