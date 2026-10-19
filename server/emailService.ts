@@ -165,66 +165,133 @@ Sistema de Gestión de Brokers
 
 
 /** Personal welcome + one-time activation link; shared between single and bulk sends. */
+/**
+ * Shared approved launch invitation for individual and Excel onboarding.
+ * Keep copy/layout identical across both flows; never interpolate user HTML.
+ */
+export function buildAccountInvitationEmail(
+  to: string,
+  token: string,
+  role: "broker" | "master_broker",
+  name?: string,
+  personalMessage?: string,
+  baseUrl = process.env.FRONTEND_BASE_URL,
+): { subject: string; html: string; text: string } {
+  const url = baseUrl?.trim();
+  if (!url || !/^https:\/\/[^\s]+$/i.test(url)) {
+    throw new Error("La URL segura de invitaciones no está configurada.");
+  }
+  const link = url.replace(/\/$/, "") + "/reset-password?token=" + encodeURIComponent(token);
+  const safe = (value: string) => value.replace(/&/g, "&amp;").replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+  const greeting = name?.trim() || "colaborador";
+  const message = personalMessage?.trim().slice(0, 500) || "";
+  const subject = "Más oportunidades para tus clientes. Más negocios para ti. 🚀";
+  // Role is retained for personalization rules at the calling layer. The approved
+  // email sells the opportunity without distinguishing Brokers vs Master Brokers.
+  void role;
+  const benefits = [
+    {
+      icon: "🚀", title: "1. Más soluciones para tus clientes",
+      body: "Explora alternativas de financiamiento para empresas y personas: Crédito Simple, Crédito Revolvente, Factoraje, Arrendamiento, Crédito Hipotecario, Anticipo de Ventas y otras soluciones para negocios.",
+    },
+    {
+      icon: "📊", title: "2. Todo tu negocio organizado en un solo lugar",
+      body: "Registra y administra tus prospectos y clientes, identifica alternativas compatibles, gestiona solicitudes y da seguimiento a tus operaciones desde una sola plataforma.",
+    },
+    {
+      icon: "💰", title: "3. Convierte oportunidades en comisiones",
+      body: "Aprovecha tus relaciones comerciales, desarrolla nuevas oportunidades y consulta el avance de tus operaciones y las comisiones que te correspondan.",
+    },
+    {
+      icon: "🤝", title: "4. Amplía tu red. Multiplica tus oportunidades.",
+      body: "Invita a más personas, fortalece tus relaciones comerciales y desarrolla una red que siga creciendo contigo. Entre más oportunidades generes, mayor será tu potencial de comisiones.",
+    },
+  ];
+  const html = [
+    "<!doctype html><html lang='es'><head><meta charset='utf-8'>",
+    "<meta name='viewport' content='width=device-width,initial-scale=1'></head>",
+    "<body style='margin:0;padding:24px 12px;background:#f2f5f8;color:#22334d;font-family:Arial,Helvetica,sans-serif'>",
+    "<table role='presentation' cellpadding='0' cellspacing='0' border='0' style='width:100%;max-width:620px;margin:0 auto;background:#ffffff;border-radius:12px;overflow:hidden'>",
+    "<tr><td style='background:#142e4a;padding:34px 34px 38px;color:#ffffff'>",
+    "<div style='font-size:16px;font-weight:700;letter-spacing:.5px;color:#c8e1d5'>CRÉDITO NEGOCIOS</div>",
+    "<h1 style='font-size:28px;line-height:1.28;margin:22px 0 0;color:#ffffff'>",
+    "Tus relaciones tienen valor. Tus oportunidades tienen potencial. ",
+    "<span style='color:#a9e0c1'>Nosotros queremos ayudarte a convertirlas en negocios.</span></h1>",
+    "</td></tr><tr><td style='padding:32px 34px'>",
+    "<p style='margin:0 0 18px;font-size:16px'>Hola, <strong>" + safe(greeting) + "</strong>:</p>",
+    ...(message ? [
+      "<div style='background:#f0f8f3;border-left:4px solid #147d52;padding:16px 18px;margin:4px 0 24px'>",
+      "<div style='font-weight:700;font-size:13px;color:#147d52;margin-bottom:8px'>UN MENSAJE PERSONAL PARA TI</div>",
+      "<div style='font-size:15px;line-height:1.65'>" + safe(message).replace(/\r?\n/g, "<br>") + "</div></div>",
+    ] : []),
+    "<p style='line-height:1.65;margin:0 0 16px'>Las mejores oportunidades de negocio comienzan cuando tienes las herramientas y las conexiones adecuadas.</p>",
+    "<h2 style='font-size:23px;color:#142e4a;margin:0 0 14px'>¡Bienvenido a Crédito Negocios!</h2>",
+    "<p style='line-height:1.65;margin:0 0 24px'>Estamos construyendo una plataforma que busca acercarte opciones de financiamiento de <strong>decenas de financieras</strong>, para ayudarte a convertir las necesidades de tus clientes en nuevas oportunidades de negocio.</p>",
+    "<h2 style='font-size:19px;color:#142e4a;margin:0 0 12px'>¿Qué puedes hacer con Crédito Negocios?</h2>",
+    ...benefits.map(b =>
+      "<div style='padding:15px 0;border-bottom:1px solid #e6ebef'>" +
+      "<div style='font-size:16px;font-weight:bold;color:#142e4a;margin-bottom:7px'>" + b.icon + " " + safe(b.title) + "</div>" +
+      "<div style='font-size:15px;line-height:1.65'>" + safe(b.body) + "</div></div>"
+    ),
+    "<h2 style='font-size:22px;color:#142e4a;margin:26px 0 12px'>¡Es momento de comenzar!</h2>",
+    "<p style='line-height:1.65'>Tu acceso a Crédito Negocios está preparado.</p>",
+    "<p style='margin:14px 0'><strong>Tu usuario:</strong> " + safe(to) + "</p>",
+    "<div style='text-align:center;margin:26px 0'>",
+    "<a href='" + safe(link) + "' style='display:inline-block;background:#147d52;color:#ffffff;font-weight:bold;text-decoration:none;border-radius:7px;padding:16px 31px;font-size:16px'>ACTIVAR MI CUENTA</a>",
+    "</div>",
+    "<p style='line-height:1.65'>Activa tu cuenta, crea tu contraseña y descubre todo lo que podemos construir juntos.</p>",
+    "<p style='font-size:13px;line-height:1.55;color:#63738a'>Tu enlace de activación es personal, de un solo uso y tiene una vigencia de <strong>24 horas</strong>.</p>",
+    "<p style='line-height:1.65;margin-top:28px'>¡Nos entusiasma que formes parte de esta nueva etapa!</p>",
+    "<p style='margin:22px 0 5px'><strong>Equipo Crédito Negocios</strong></p>",
+    "<p style='margin:0;color:#147d52;font-style:italic'>Conectamos oportunidades. Impulsamos negocios.</p>",
+    "</td></tr><tr><td style='padding:18px 34px;background:#f5f7fa;color:#738194;font-size:12px;line-height:1.5'>",
+    "Si no esperabas esta invitación, puedes ignorarla. Este correo no solicita tu contraseña.</td></tr>",
+    "</table></body></html>",
+  ].join("");
+  const text = [
+    "Crédito Negocios",
+    "Tus relaciones tienen valor. Tus oportunidades tienen potencial. Nosotros queremos ayudarte a convertirlas en negocios.",
+    "",
+    "Hola, " + greeting + ":",
+    ...(message ? ["", "UN MENSAJE PERSONAL PARA TI", message] : []),
+    "",
+    "Las mejores oportunidades de negocio comienzan cuando tienes las herramientas y las conexiones adecuadas.",
+    "¡Bienvenido a Crédito Negocios!",
+    "Estamos construyendo una plataforma que busca acercarte opciones de financiamiento de decenas de financieras, para ayudarte a convertir las necesidades de tus clientes en nuevas oportunidades de negocio.",
+    "",
+    "¿Qué puedes hacer con Crédito Negocios?",
+    ...benefits.flatMap(b => ["", b.title, b.body]),
+    "",
+    "¡Es momento de comenzar!",
+    "Tu acceso a Crédito Negocios está preparado.",
+    "Tu usuario: " + to,
+    "ACTIVAR MI CUENTA: " + link,
+    "Activa tu cuenta, crea tu contraseña y descubre todo lo que podemos construir juntos.",
+    "Tu enlace de activación es personal, de un solo uso y tiene una vigencia de 24 horas.",
+    "",
+    "¡Nos entusiasma que formes parte de esta nueva etapa!",
+    "Equipo Crédito Negocios",
+    "Conectamos oportunidades. Impulsamos negocios.",
+    "Si no esperabas esta invitación, puedes ignorarla.",
+  ].join("\n");
+  return { subject, html, text };
+}
+
 export async function sendAccountInvitationEmail(
   to: string, token: string, role: "broker" | "master_broker",
   name?: string, personalMessage?: string,
 ): Promise<{success:boolean;error?:string}> {
   try {
-    if(!resend) return {success:false,error:"Servicio de correo no configurado"};
-    const baseUrl=process.env.FRONTEND_BASE_URL?.trim();
-    if(!baseUrl?.startsWith("https://")) return {success:false,error:"URL segura no configurada"};
-    const link=baseUrl.replace(/\/$/,"")+"/reset-password?token="+encodeURIComponent(token);
-    const safe=(value:string)=>value.replace(/&/g,"&amp;").replace(/</g,"&lt;")
-      .replace(/>/g,"&gt;").replace(/"/g,"&quot;").replace(/'/g,"&#39;");
-    const displayRole=role==="master_broker"?"Master Broker":"Broker";
-    const greeting=name?.trim()||"colaborador";
-    const benefits=[
-      "Registrar y administrar tus prospectos y clientes.",
-      "Consultar opciones de financiamiento disponibles.",
-      "Presentar solicitudes y dar seguimiento a sus avances.",
-      "Consultar tus operaciones y comisiones, de acuerdo con tu perfil.",
-    ];
-    const message=personalMessage?.trim().slice(0,500)||"";
-    const html=[
-      "<div style='font-family:Arial,sans-serif;max-width:600px;margin:auto;padding:30px;color:#183153'>",
-      "<h1>Crédito Negocios</h1>",
-      "<h2>¡Bienvenido a Crédito Negocios!</h2>",
-      "<p>Hola "+safe(greeting)+",</p>",
-      "<p>Nos da mucho gusto invitarte a formar parte de nuestra plataforma como <strong>"+displayRole+"</strong>.</p>",
-      "<p>Crédito Negocios conecta Brokers, Master Brokers y financieras para facilitar oportunidades de financiamiento a empresas y personas con actividad empresarial.</p>",
-      "<p>A través de tu cuenta podrás:</p><ul>",
-      benefits.map(b=>"<li>"+safe(b)+"</li>").join(""),"</ul>",
-      ...(message?["<p><strong>Mensaje personal:</strong> "+safe(message)+"</p>"]:[]),
-      "<p><strong>Tu usuario:</strong> "+safe(to)+"</p>",
-      "<p>Para comenzar, crea tu propia contraseña segura:</p>",
-      '<p><a href="'+safe(link)+'" style="display:inline-block;background:#147d52;color:#fff;padding:12px 24px;border-radius:5px;text-decoration:none">Activar mi cuenta</a></p>',
-      "<p>Por seguridad, el enlace es personal, de un solo uso y válido por <strong>24 horas</strong>.</p>",
-      "<p>Después completa tu perfil y revisa los documentos para formalizar tu participación.</p>",
-      "<p>Si no esperabas esta invitación, ignórala o comunícate con soporte.</p>",
-      "<p>Estamos muy entusiasmados de iniciar esta etapa contigo.</p>",
-      "<p><strong>Equipo Crédito Negocios</strong></p><p><em>Conectamos oportunidades de financiamiento.</em></p>",
-      "</div>",
-    ].join("");
-    const plaintext=[
-      "Crédito Negocios — Bienvenido",
-      "Hola "+greeting+",",
-      "Nos da mucho gusto invitarte como "+displayRole+".",
-      "Crédito Negocios conecta Brokers, Masters y financieras.",
-      ...benefits.map(x=>"- "+x),
-      ...(message?["Mensaje personal: "+message]:[]),
-      "Tu usuario: "+to,
-      "Crea tu contraseña: "+link,
-      "Enlace personal de un solo uso, válido por 24 horas.",
-      "Completa tu perfil y formaliza los documentos antes de operar.",
-      "Equipo Crédito Negocios",
-      "Conectamos oportunidades de financiamiento.",
-    ].join("\n");
-    const result=await resend.emails.send({from:FROM_EMAIL,to:[to],
-      subject:"Bienvenido a Crédito Negocios | Activa tu cuenta",
-      html,text:plaintext});
-    return result.error?{success:false,error:result.error.message}:{success:true};
-  } catch(error:any) {
-    return {success:false,error:error?.message||"Error al enviar la invitación"};
+    if (!resend) return { success: false, error: "Servicio de correo no configurado" };
+    const invitation = buildAccountInvitationEmail(to, token, role, name, personalMessage);
+    const result = await resend.emails.send({
+      from: FROM_EMAIL, to: [to],
+      subject: invitation.subject, html: invitation.html, text: invitation.text,
+    });
+    return result.error ? { success: false, error: result.error.message } : { success: true };
+  } catch (error: any) {
+    return { success: false, error: error?.message || "Error al enviar la invitación" };
   }
 }
 
