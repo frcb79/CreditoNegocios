@@ -64,6 +64,8 @@ export default function HelpCenterPage() {
   const initialTab = "manual";
 
   const [activeTab, setActiveTab] = useState<string>(initialTab);
+  // Legacy rules UI is retained for compatibility but never surfaced in Help.
+  const [showLegacyRulesInHelp] = useState(false);
   const [searchQuery, setSearchQuery] = useState<string>("");
   const [selectedCategory, setSelectedCategory] = useState<string>("all");
   const [selectedArticleSlug, setSelectedArticleSlug] = useState<string>(initialArticleSlug);
@@ -353,7 +355,7 @@ export default function HelpCenterPage() {
         </div>
 
         {/* Banner de Estado de Aceptación de Reglas Vigentes */}
-        {false && currentRulesData && (
+        {showLegacyRulesInHelp && currentRulesData && (
           <div
             className={cn(
               "p-4 rounded-xl border transition-all flex flex-col md:flex-row items-start md:items-center justify-between gap-4",
