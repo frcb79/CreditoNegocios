@@ -34,7 +34,7 @@ export function calendarMonths(date: Date, months: number): Date {
   return d;
 }
 export function effectiveRedemptionStatus(row: { status: string; expires_at: Date | null }, now = new Date()) {
-  return row.status === 'active' && row.expires_at && new Date(row.expires_at) <= now ? 'expired' : row.status;
+  return row.status === 'active' && row.expires_at && new Date(row.expires_at).getTime() <= now.getTime() ? 'expired' : row.status;
 }
 const validCode = (code: string) => /^[A-Z0-9_-]{3,80}$/.test(code);
 const limited = (n: any) => n === null || n === undefined ? null : Number(n);
@@ -111,8 +111,8 @@ export async function changeUserBenefit(
       }
       const code = input.code!.trim().toUpperCase();
       const promo = (await client.query('SELECT * FROM promo_codes WHERE code=$1 FOR UPDATE', [code])).rows[0];
-      if (!promo || !promo.is_active || new Date(promo.starts_at) > now ||
-          (promo.expires_at && new Date(promo.expires_at) <= now)) {
+      if (!promo || !promo.is_active || new Date(promo.starts_at).getTime() > now.getTime() ||
+          (promo.expires_at && new Date(promo.expires_at).getTime() <= now.getTime())) {
         throw new BenefitError(409, 'El código no está activo o no está vigente.');
       }
       if (!['global','alliance','campaign',user.role].includes(promo.target_scope) ||
@@ -184,7 +184,7 @@ export async function userBenefitHistory(userId: string, database: Pool = pool) 
       'SELECT r.*, p.code, p.name, p.benefit_type, p.benefit_value, p.duration_months FROM promo_redemptions r JOIN promo_codes p ON p.id=r.promo_code_id WHERE r.user_id=$1 ORDER BY r.applied_at DESC',
       [userId]),
     database.query(
-      "SELECT id, action, previous_state, new_state, metadata, performed_by, created_at FROM commercial_audit_logs WHERE entity_type='user_benefit' AND entity_id=$1 ORDER BY created_at DESC",
+      "SELECT a.id,a.action,a.previous_state,a.new_state,a.metadata,a.performed_by,a.created_at, NULLIF(TRIM(CONCAT_WS(' ',u.first_name,u.last_name)),'') AS actor_name FROM commercial_audit_logs a LEFT JOIN users u ON u.id=a.performed_by WHERE a.entity_type='user_benefit' AND a.entity_id=$1 ORDER BY a.created_at DESC",
       [userId]),
   ]);
   return {
