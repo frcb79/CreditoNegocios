@@ -262,7 +262,12 @@ const legacyUserSchema = z.object({
 type LegacyUserFormData = z.infer<typeof legacyUserSchema>;
 
 export default function UserManagement() {
-  const [activeTab, setActiveTab] = useState<string>("organization");
+  // Preserve direct links from Auditoría and administrative notices.
+  const [activeTab, setActiveTab] = useState<string>(() => {
+    const requested = typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("tab") : null;
+    return requested && ["organization", "global", "promos", "status-requests"].includes(requested)
+      ? requested : "organization";
+  });
   const [selectedTenantId, setSelectedTenantId] = useState<string>("");
   const [searchTerm, setSearchTerm] = useState("");
   const [filterMemberRole, setFilterMemberRole] = useState<string>("all");
