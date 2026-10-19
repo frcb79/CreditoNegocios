@@ -2,6 +2,7 @@ import { randomBytes } from "node:crypto";
 import { storage } from "./storage";
 import { createBrokerWithOrganization } from "./brokerNetworkTransitionService";
 import { sendAccountInvitationEmail } from "./emailService";
+import { resolveAnnualInvitationPromo } from "./invitationWelcomePromo";
 
 export type BrokerInviteInput = {
   email: string;
@@ -11,6 +12,7 @@ export type BrokerInviteInput = {
   message?: string;
   role: "broker" | "master_broker";
   masterBrokerId?: string | null;
+  promoCode?: string | null;
 };
 
 export class BrokerInvitationError extends Error {
@@ -38,6 +40,7 @@ export async function dispatchBrokerInvitation(
 ): Promise<{ status: number; body: {
   invitationSent: boolean; invitationKind: "created" | "resent"; message: string;
   broker: { id: string; email: string; role: string };
+  courtesy: { code: string; durationMonths: 12 };
 } }> {
   validateInvitationTransport();
   const normalizedEmail = data.email.toLowerCase().trim();
@@ -60,6 +63,12 @@ export async function dispatchBrokerInvitation(
   }
 
   const previous = await storage.getUserByEmail(normalizedEmail);
+  const oldProfile = (previous?.profileData && typeof previous.profileData === "object")
+    ? previous.profileData as Record<string, unknown> : {};
+  const courtesy = await resolveAnnualInvitationPromo(
+    data.promoCode || (typeof oldProfile.invitationPromoCode === "string" ? oldProfile.invitationPromoCode : null),
+    role,
+  );
   const resetToken = randomBytes(32).toString("hex");
   const resetTokenExpiry = new Date(Date.now() + 24 * 60 * 60 * 1000);
   let targetBroker: any;
@@ -81,7 +90,11 @@ export async function dispatchBrokerInvitation(
         "La cuenta ya existe o pertenece a otra red. Revisa su asignación antes de reenviar.");
     }
     await storage.setPasswordResetToken(previous.id, resetToken, resetTokenExpiry);
-    targetBroker = previous;
+    // Preserve existing business answers on resends and assign only this pending courtesy.
+    await storage.updateUser(previous.id, {
+      profileData: { ...oldProfile, invitationPromoCode: courtesy.code }
+    } as any);
+    targetBroker = { ...previous, profileData: { ...oldProfile, invitationPromoCode: courtesy.code } };
     invitationKind = "resent";
   } else {
     const newBroker = await createBrokerWithOrganization({
@@ -95,6 +108,7 @@ export async function dispatchBrokerInvitation(
         phone: data.phone || "",
         invitedBy: userId,
         invitationMessage: data.message || "",
+        invitationPromoCode: courtesy.code,
       },
       isActive: true,
     });
@@ -102,7 +116,7 @@ export async function dispatchBrokerInvitation(
   }
 
   const name = [targetBroker.firstName, targetBroker.lastName].filter(Boolean).join(" ") || undefined;
-  const delivered = await sendAccountInvitationEmail(normalizedEmail, resetToken, role, name, data.message);
+  const delivered = await sendAccountInvitationEmail(normalizedEmail, resetToken, role, name, data.message, courtesy);
   if (delivered.success) {
     await storage.createNotification({
       userId, type: "broker_invitation_sent", title: "Invitación de acceso enviada",
@@ -121,6 +135,7 @@ export async function dispatchBrokerInvitation(
       message: delivered.success ? "Invitación enviada por correo correctamente." :
         "Cuenta registrada, pero no se entregó el correo. Reintenta la invitación.",
       broker: { id: targetBroker.id, email: targetBroker.email, role: targetBroker.role },
+      courtesy: { code: courtesy.code, durationMonths: 12 },
     },
   };
 }
