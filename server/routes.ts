@@ -2226,12 +2226,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       const active = await storage.getUserActiveRedemption(userId);
+      const courtesyExpired = Boolean(active?.redemption.expiresAt &&
+        new Date(active.redemption.expiresAt).getTime() <= Date.now());
 
       res.json({
-        accessStatus: user.accessStatus || "free",
+        accessStatus: courtesyExpired ? "expired" : (user.accessStatus || "free"),
         accessStatusExpiresAt: user.accessStatusExpiresAt,
         accessStatusNotes: user.accessStatusNotes,
         activePromo: active ? {
+          isExpired: courtesyExpired,
           id: active.promoCode.id,
           code: active.promoCode.code,
           name: active.promoCode.name,
