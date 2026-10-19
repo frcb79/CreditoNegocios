@@ -55,6 +55,7 @@ import { assertOfferCommissionAcceptanceInTransaction, assertLegacyProposalPreda
 import { assertTargetReviewMutable } from "./targetReviewTransitions";
 import { getPlatformTenant, getOwnedTenant } from "./brokerNetworkTransitionService";
 import { randomUUID, createHash } from "crypto";
+import { annualCourtesyExpiry } from "./invitationWelcomePromo";
 import {
   getApprovedLegalDocument,
   FORMALIZATION_OTP_EXPIRATION_MS,
@@ -1598,9 +1599,41 @@ export class DbStorage implements IStorage {
         acceptanceType: "acknowledge_privacy", ipAddress: params.ipAddress,
         userAgent: params.userAgent, acceptedAt: now,
       }).returning();
+      // Courtesy is linked to the invitation, not manually redeemed by the invitee.
+      // Apply coupon, increment redemption count, legal evidence, and password in one ACID transaction.
+      // Legacy invitations without a coupon retain their preexisting activation behavior.
+      const invitationCode = (user.profileData as any)?.invitationPromoCode;
+      const courtesyUpdate: Record<string, unknown> = {};
+      if (typeof invitationCode === "string" && invitationCode.trim()) {
+        const [promo] = await tx.select().from(promoCodes)
+          .where(eq(promoCodes.code, invitationCode.trim().toUpperCase())).for("update");
+        if (!promo || !promo.isActive || promo.benefitType !== "free_months" || promo.durationMonths !== 12 ||
+            promo.startsAt > now || (promo.expiresAt && promo.expiresAt <= now) ||
+            (promo.maxUses != null && (promo.currentUses || 0) >= promo.maxUses) ||
+            !["global", "alliance", "campaign", user.role].includes(promo.targetScope)) {
+          throw new Error("La cortesía de la invitación ya no está disponible; solicita un nuevo código.");
+        }
+        const endsAt = annualCourtesyExpiry(now);
+        await tx.insert(promoRedemptions).values({
+          id: randomUUID(), promoCodeId: promo.id, userId: user.id,
+          startsAt: now, appliedAt: now, expiresAt: endsAt,
+          status: "active", metadata: {
+            source: "broker_invitation_activation", code: promo.code, durationMonths: 12,
+          }, createdAt: now,
+        });
+        await tx.update(promoCodes).set({
+          currentUses: sql`${promoCodes.currentUses} + 1`, updatedAt: now,
+        }).where(eq(promoCodes.id, promo.id));
+        Object.assign(courtesyUpdate, {
+          accessStatus: "promotional",
+          accessStatusExpiresAt: endsAt,
+          accessStatusNotes: `12 meses sin costo por invitación: ${promo.code}`,
+          activePromoId: promo.id,
+        });
+      }
       await tx.update(users).set({
         password: params.passwordHash, resetToken: null,
-        resetTokenExpiry: null, updatedAt: now,
+        resetTokenExpiry: null, updatedAt: now, ...courtesyUpdate,
       }).where(eq(users.id, user.id));
       return [terms, privacy];
     });
