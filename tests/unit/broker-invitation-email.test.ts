@@ -45,6 +45,17 @@ describe("SEC-INVITES: approved commercial invitation template", () => {
     expect(master.html).not.toContain("Si eres Master Broker");
   });
 
+  it("includes the complete 12-month courtesy and a safely escaped code without auto-billing", () => {
+    const rendered = buildAccountInvitationEmail("broker@example.test", "test-token", "broker",
+      "Ana", undefined, url, { code: "PROMO12", name: "<Regalo>", durationMonths: 12 });
+    expect(rendered.html).toContain("12 meses sin costo");
+    expect(rendered.html).toContain("PROMO12");
+    expect(rendered.html).toContain("&lt;Regalo&gt;");
+    expect(rendered.html).not.toContain("<Regalo>");
+    expect(rendered.text).toContain("TU CORTESÍA DE LANZAMIENTO");
+    expect(rendered.text).toContain("No se hará ningún cobro automático");
+  });
+
   it("rejects insecure links and keeps the token URL encoded", () => {
     expect(() => buildAccountInvitationEmail("a@example.test", "secret", "broker", "A B", "", "http://example.test")).toThrow(/URL segura/);
     const rendered = buildAccountInvitationEmail("a@example.test", "abc&def", "broker", "A B", "", url);
