@@ -99,6 +99,22 @@ describePg('PostgreSQL aislado: administración atómica, roles e historial', ()
     await expect(changeUserBenefit({actorId:broker,userId:master,action:'redeem',code:'ANUAL12'},database)).rejects.toMatchObject({status:403});
     await expect(changeUserBenefit({actorId:master,userId:master,action:'redeem',code:'ANUAL12',months:24},database)).rejects.toMatchObject({status:403});
   });
+  it('respeta destinatarios de códigos ligados a un Broker o Master específico', async () => {
+    await database.query(
+      "INSERT INTO promo_codes(id,code,name,benefit_type,benefit_value,duration_months,target_scope,target_entity_id) VALUES ('targeted-broker','DIRECTBROKER','Beneficio individual','free_months',0,6,'broker',$1),('targeted-master','DIRECTMASTER','Beneficio Master','free_months',0,6,'master_broker',$2),('targeted-global','DIRECTGLOBAL','Beneficio restringido','free_months',0,6,'global',$1)",
+      [broker,master]
+    );
+    // Mismo rol no basta: destinatario incorrecto se rechaza incluso en autocanje.
+    await expect(changeUserBenefit({actorId:master,userId:master,action:'redeem',code:'DIRECTBROKER'},database)).rejects.toMatchObject({status:403});
+    await expect(change(broker,'assign',{code:'DIRECTMASTER'})).rejects.toMatchObject({status:403});
+    await expect(change(master,'assign',{code:'DIRECTGLOBAL'})).rejects.toMatchObject({status:403});
+    expect((await database.query('SELECT count(*)::int AS n FROM promo_redemptions')).rows[0].n).toBe(0);
+    expect((await database.query("SELECT current_uses FROM promo_codes WHERE id='targeted-broker'")).rows[0].current_uses).toBe(0);
+    // Sí se concede al destinatario previsto; nunca se rechaza por su propia restricción.
+    await change(broker,'assign',{code:'DIRECTBROKER'});
+    await change(master,'assign',{code:'DIRECTMASTER'});
+    expect((await database.query('SELECT count(*)::int AS n FROM promo_redemptions')).rows[0].n).toBe(2);
+  });
   it('bloquea canje doble en concurrencia y no sobrevende cupos', async () => {
     const results=await Promise.allSettled([
       change(broker,'assign',{code:'COURTESY3'}),
