@@ -115,8 +115,13 @@ export async function changeUserBenefit(
           (promo.expires_at && new Date(promo.expires_at).getTime() <= now.getTime())) {
         throw new BenefitError(409, 'El código no está activo o no está vigente.');
       }
+      // A code restricted to one broker/master or user ID cannot be claimed
+      // merely by matching the role. Campaign/alliance IDs are tags rather
+      // than user IDs and are governed by their separate distribution flow.
       if (!['global','alliance','campaign',user.role].includes(promo.target_scope) ||
-          (promo.target_entity_id && !['broker','master_broker'].includes(promo.target_scope) && promo.target_entity_id !== user.id)) {
+          (promo.target_entity_id &&
+           ['global','broker','master_broker'].includes(promo.target_scope) &&
+           promo.target_entity_id !== user.id)) {
         throw new BenefitError(403, 'El cupón no corresponde al usuario.');
       }
       if (promo.max_uses != null && Number(promo.current_uses) >= Number(promo.max_uses)) {
