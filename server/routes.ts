@@ -147,6 +147,7 @@ import { commercialHelpService } from "./commercialHelpService";
 import { registerBrokerNetworkTransitionRoutes } from "./brokerNetworkTransitionRoutes";
 import { createBrokerWithOrganization } from "./brokerNetworkTransitionService";
 import { dispatchBrokerInvitation, BrokerInvitationError, validateInvitationTransport } from "./brokerInvitationDispatch";
+import { resolveAnnualInvitationPromo } from "./invitationWelcomePromo";
 import { parseBrokerInvitationExcel, generateBrokerInvitationExcelTemplate } from "./brokerInvitationBulk";
 
 
@@ -3166,6 +3167,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ message: "El email ya está registrado en el sistema" });
       }
       
+      // The legacy administrative creation path must follow the same 12-month
+      // invitation-courtesy contract as the single and Excel invitation flows.
+      // Do not send a real Broker/Master invitation without a valid coupon.
+      const annualCourtesy = isCommercialInvite
+        ? await resolveAnnualInvitationPromo(
+            typeof req.body?.promoCode === "string" ? req.body.promoCode : null,
+            userData.role as "broker" | "master_broker",
+          )
+        : null;
       const activationSecret = isCommercialInvite
         ? (await import("node:crypto")).randomBytes(32).toString("hex")
         : null;
@@ -3183,14 +3193,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
             masterBrokerId: userData.role === "broker" ? userData.masterBrokerId : null,
             resetToken: activationSecret,
             resetTokenExpiry: activationExpires,
-            profileData: userData.profileData || {},
+            profileData: {
+              ...((userData.profileData && typeof userData.profileData === "object") ? userData.profileData as object : {}),
+              invitationPromoCode: annualCourtesy!.code,
+            },
             isActive: userData.isActive !== false,
           })).user
         : await storage.createUser(userData);
 
       if (isCommercialInvite && newUser.email && activationSecret) {
         const fullName = [newUser.firstName, newUser.lastName].filter(Boolean).join(" ") || undefined;
-        const delivery = await sendAccountInvitationEmail(newUser.email, activationSecret, userData.role as "broker" | "master_broker", fullName);
+        const delivery = await sendAccountInvitationEmail(newUser.email, activationSecret,
+          userData.role as "broker" | "master_broker", fullName, undefined, annualCourtesy!);
         return res.status(delivery.success ? 201 : 202).json({
           ...publicUserForManagement(newUser),
           invitationSent: delivery.success,
