@@ -99,6 +99,7 @@ jobs:
             tests/unit/broker-invitation-email.test.ts
             tests/unit/broker-invitation-http.test.ts
             tests/unit/rbac.test.ts
+            tests/unit/settings-audit-role-ux.test.ts
           )
           selected=()
           for i in "${!tests[@]}"; do
