@@ -619,7 +619,7 @@ export default function Settings() {
                 <TabsTrigger value="operational_rules" data-testid="tab-operational-rules" className="text-xs font-medium px-3 py-2">Reglas de operación</TabsTrigger>
                 {user?.role === "super_admin" && (
                   <TabsTrigger value="commercial_rules" data-testid="tab-commercial-rules" className="text-xs font-medium px-3 py-2">Reglas comerciales</TabsTrigger>
-                )
+                )}
               </TabsList>
             </div>
 
