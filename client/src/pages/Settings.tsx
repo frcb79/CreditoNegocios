@@ -1807,7 +1807,9 @@ export default function Settings() {
                         <div>
                           <span className="text-muted-foreground text-[11px]">Tipo de Beneficio:</span>
                           <p className="font-semibold text-foreground capitalize mt-0.5">
-                            {myBenefits.activePromo.benefitType.replace('_', ' ')}
+                            {myBenefits.activePromo.benefitType === "free_months"
+                              ? `${myBenefits.activePromo.durationMonths || 1} meses sin costo`
+                              : myBenefits.activePromo.benefitType.replaceAll("_", " ")}
                           </p>
                         </div>
                         {myBenefits.activePromo.expiresAt && (
