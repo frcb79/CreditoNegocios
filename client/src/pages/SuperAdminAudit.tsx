@@ -102,12 +102,14 @@ function actionLabel(entry: AuditEntry, request?: StatusRequest) {
     relationship_reactivated: "Reactivó una relación comercial",
     activity_logged_unqualified: "Registró una actividad comercial",
   };
-  return labels[entry.action] || "Registró un cambio de " + ({
+  if (labels[entry.action]) return labels[entry.action];
+  const subject = ({
     user: "usuario", commercial_opportunity: "oportunidad comercial",
     client_commercial_relationship: "relación comercial",
     commercial_activity: "actividad comercial", user_status_request: "solicitud de estado",
     commercial_configuration: "configuración comercial",
-  } as Record<string, string>)[entry.entityType || ""] || labels[entry.action] || "Registró una actividad administrativa";
+  } as Record<string, string>)[entry.entityType || ""];
+  return subject ? "Registró un cambio de " + subject : "Registró una actividad administrativa";
 }
 function reasonFor(entry: AuditEntry, request?: StatusRequest) {
   if (request?.reason) return request.reason;
