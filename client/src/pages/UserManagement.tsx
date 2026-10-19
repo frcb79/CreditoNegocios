@@ -4,6 +4,7 @@ import MainLayout from "@/components/MainLayout";
 import Header from "@/components/Header";
 import BrokerNetworkTransitionDialog from "@/components/Users/BrokerNetworkTransitionDialog";
 import SuperAdminBrokerOverview from "@/components/Users/SuperAdminBrokerOverview";
+import ManualBenefitsManager from "@/components/Users/ManualBenefitsManager";
 import SuperAdminLegalEvidenceDialog, { formalizationStatusLabel } from "@/components/Users/SuperAdminLegalEvidenceDialog";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -292,6 +293,7 @@ export default function UserManagement() {
   const [showCreatePromoModal, setShowCreatePromoModal] = useState(false);
   const [selectedPromoForRedemptions, setSelectedPromoForRedemptions] = useState<any>(null);
   const [userToEditAccess, setUserToEditAccess] = useState<User | null>(null);
+  const [focusBenefitUser, setFocusBenefitUser] = useState("");
   const [accessStatusSelection, setAccessStatusSelection] = useState<string>("free");
   const [accessExpiresAtSelection, setAccessExpiresAtSelection] = useState<string>("");
   const [accessNotesInput, setAccessNotesInput] = useState<string>("");
@@ -1968,17 +1970,22 @@ export default function UserManagement() {
                               variant="ghost"
                               size="sm"
                               onClick={() => {
+                                if (["broker", "master_broker"].includes(u.role)) {
+                                  setFocusBenefitUser(u.id);
+                                  setActiveTab("promos");
+                                  return;
+                                }
                                 setUserToEditAccess(u);
                                 setAccessStatusSelection(u.accessStatus || "free");
                                 setAccessExpiresAtSelection(u.accessStatusExpiresAt ? format(new Date(u.accessStatusExpiresAt), "yyyy-MM-dd") : "");
                                 setAccessNotesInput(u.accessStatusNotes || "");
                               }}
                               className="h-8 text-xs text-primary hover:text-primary hover:bg-primary/10"
-                              title="Modificar acceso comercial"
+                              title={["broker","master_broker"].includes(u.role) ? "Administrar beneficios" : "Modificar acceso comercial"}
                               data-testid={`button-edit-access-${u.id}`}
                             >
                               <Tag className="h-3.5 w-3.5 mr-1" />
-                              Acceso
+                              {["broker","master_broker"].includes(u.role) ? "Beneficios" : "Acceso"}
                             </Button>
                           </div>
                         </td>
@@ -1994,6 +2001,7 @@ export default function UserManagement() {
         {/* Tab 3: Promotional Codes Management (Bloque 10) */}
         {activeTab === "promos" && isPlatformAdmin && (
           <div className="space-y-6">
+            {isSuperAdmin && <ManualBenefitsManager key={focusBenefitUser} initialUserId={focusBenefitUser} users={legacyUsers || []} promos={adminPromos || []} />}
             <Card className="border border-border/60 shadow-sm">
               <CardHeader className="py-4 px-6 border-b flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
                 <div>
