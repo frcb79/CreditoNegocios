@@ -142,6 +142,8 @@ jobs:
           cache: 'npm'
       - name: Install dependencies
         run: npm ci --no-audit --no-fund
+      - name: Test atomic manual benefits, discounts, roles and historical audit in isolated PostgreSQL
+        run: npm test -- --runInBand --coverage=false --forceExit tests/integration/postgres-manual-benefits.test.ts
       - name: Test LEG-10 customer consent evidence schema and immutability in isolated PostgreSQL
         run: npm test -- --runInBand --coverage=false --forceExit tests/integration/postgres-client-consent-migration.test.ts
       - name: Test LEG-10 concurrent revocation vs send against real isolated PostgreSQL
