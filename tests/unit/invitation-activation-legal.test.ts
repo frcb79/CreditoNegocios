@@ -24,6 +24,56 @@ describe("P0 - Invitación con activación y evidencia legal atómica", () => {
     await expect(s.completeInvitationActivation(params(user,token))).rejects.toThrow();
     expect((await s.getLegalAcceptancesByUser(user.id))).toHaveLength(2);
   });
+  it("activa una cortesía anual con código registrado y un solo canje, sin perder evidencias legales", async () => {
+    const s = new MemStorage();
+    const coupon = await s.createPromoCode({
+      code:"CORTESIA12TEST",name:"Primer año sin costo",
+      benefitType:"free_months",benefitValue:"0",durationMonths:12,
+      targetScope:"global",isActive:true,maxUses:10,
+    } as any);
+    const user = await s.createUser({
+      email:"courtesy-"+Date.now()+"@test.example",firstName:"Cortesía",lastName:"Prueba",
+      role:"broker",password:null,authMethod:"local",profileData:{ invitationPromoCode: coupon.code },
+    } as any);
+    const token = "promo-activation-"+Date.now();
+    await s.setPasswordResetToken(user.id,token,new Date(Date.now()+86400000));
+    const acceptance = await s.completeInvitationActivation(params(user,token));
+    expect(acceptance).toHaveLength(2);
+    const updated = await s.getUser(user.id);
+    expect(updated?.accessStatus).toBe("promotional");
+    expect(updated?.activePromoId).toBe(coupon.id);
+    expect(updated?.accessStatusNotes).toContain(coupon.code);
+    const expiry = updated?.accessStatusExpiresAt;
+    expect(expiry).toBeTruthy();
+    const now = new Date();
+    expect(new Date(expiry!).getUTCFullYear()).toBe(now.getUTCFullYear()+1);
+    const records = await s.getPromoRedemptions({userId:user.id});
+    expect(records).toHaveLength(1);
+    expect(records[0].promoCodeId).toBe(coupon.id);
+    expect((await s.getPromoCode(coupon.id))?.currentUses).toBe(1);
+    await expect(s.completeInvitationActivation(params(user,token))).rejects.toThrow();
+    expect((await s.getPromoRedemptions({userId:user.id}))).toHaveLength(1);
+  });
+
+  it("rechaza cortesía anual revocada sin activar cuenta ni firmar documentos", async () => {
+    const s = new MemStorage();
+    const coupon = await s.createPromoCode({
+      code:"CORTESIA12REV",name:"Prueba revocación",
+      benefitType:"free_months",benefitValue:"0",durationMonths:12,
+      targetScope:"global",isActive:false,
+    } as any);
+    const user = await s.createUser({
+      email:"revoked-"+Date.now()+"@test.example",firstName:"Sin",lastName:"Cortesía",
+      role:"master_broker",password:null,profileData:{invitationPromoCode:coupon.code},
+    } as any);
+    const token="promo-invalid-"+Date.now();
+    await s.setPasswordResetToken(user.id,token,new Date(Date.now()+86400000));
+    await expect(s.completeInvitationActivation(params(user,token))).rejects.toThrow(/cortesía/);
+    expect((await s.getUser(user.id))?.password).toBeNull();
+    expect((await s.getLegalAcceptancesByUser(user.id))).toHaveLength(0);
+    expect((await s.getPromoRedemptions({userId:user.id}))).toHaveLength(0);
+  });
+
   it("hash o versión legal alterados no crean contraseña ni aceptaciones", async () => {
     const s = new MemStorage();
     const user = await s.createUser({email:"invalid-"+Date.now()+"@test.example",firstName:"Juan",lastName:"Prueba",role:"broker",password:null,authMethod:"local"} as any);
