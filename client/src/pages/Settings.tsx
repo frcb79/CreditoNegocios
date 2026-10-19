@@ -150,6 +150,7 @@ export default function Settings() {
     accessStatusExpiresAt: string | null;
     accessStatusNotes: string | null;
     activePromo: {
+      isExpired?: boolean;
       id: string;
       code: string;
       name: string;
@@ -1790,12 +1791,15 @@ export default function Settings() {
                     <div className="p-3.5 bg-primary/5 border border-primary/20 rounded-lg">
                       <div className="flex items-start justify-between">
                         <div>
-                          <span className="text-[10px] font-bold text-primary uppercase tracking-wider">Promoción Vigente</span>
+                          <span className="text-[10px] font-bold text-primary uppercase tracking-wider">{myBenefits.activePromo.isExpired ? "Cortesía finalizada" : "Promoción vigente"}</span>
                           <h4 className="text-sm font-bold text-foreground mt-0.5">
                             {myBenefits.activePromo.name}
                           </h4>
                           <p className="text-xs text-muted-foreground mt-0.5">
-                            {myBenefits.activePromo.description || "Beneficio comercial activo en tu cuenta."}
+                            {myBenefits.activePromo.description ||
+                              (myBenefits.activePromo.isExpired
+                                ? "Finalizó la cortesía, pero tu acceso actual sigue sin cobros automáticos."
+                                : "Beneficio comercial activo en tu cuenta.")}
                           </p>
                         </div>
                         <Badge variant="outline" className="font-mono text-xs border-primary/30 bg-background text-primary">
