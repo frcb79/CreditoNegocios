@@ -34,6 +34,7 @@ import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
 import { Tag, Gift, CheckCircle, ShieldCheck, Clock, AlertCircle, Sparkles, Check, Info, ArrowRight, Loader2, KeyRound } from "lucide-react";
 import { CommercialRulesSettings } from "@/components/Commercial/CommercialRulesSettings";
+import { OperationalRulesContent } from "@/components/OperationalRulesContent";
 
 const profileSchema = z.object({
   firstName: z.string().min(1, "Nombre requerido"),
@@ -104,6 +105,7 @@ export default function Settings() {
     if (tabParam === "profiling") return "business"; // Legacy deep links remain valid
     if (tabParam === "security") return "security";
     if (tabParam === "benefits") return "benefits";
+    if (tabParam === "operational_rules" || tabParam === "reglas") return "operational_rules";
     if (tabParam === "commercial_rules" || tabParam === "commercial-rules") return "commercial_rules";
     return "profile";
   });
@@ -117,8 +119,9 @@ export default function Settings() {
     const tabParam = new URLSearchParams(search).get("tab");
     const alias = tabParam === "profiling" ? "business" :
       tabParam === "documentos" ? "documents" :
-      tabParam === "commercial-rules" ? "commercial_rules" : tabParam;
-    if (alias && ["profile", "business", "documents", "benefits", "security", "notifications", "commercial_rules"].includes(alias)) {
+      tabParam === "commercial-rules" ? "commercial_rules" :
+      tabParam === "reglas" ? "operational_rules" : tabParam;
+    if (alias && ["profile", "business", "documents", "benefits", "security", "notifications", "operational_rules", "commercial_rules"].includes(alias)) {
       setActiveTab(alias);
     }
   }, [search]);
@@ -613,6 +616,10 @@ export default function Settings() {
                 )}
                 <TabsTrigger value="security" data-testid="tab-security" className="text-xs font-medium px-3 py-2">Seguridad</TabsTrigger>
                 <TabsTrigger value="notifications" data-testid="tab-notifications" className="text-xs font-medium px-3 py-2">Notificaciones</TabsTrigger>
+                <TabsTrigger value="operational_rules" data-testid="tab-operational-rules" className="text-xs font-medium px-3 py-2">Reglas de operación</TabsTrigger>
+                {user?.role === "super_admin" && (
+                  <TabsTrigger value="commercial_rules" data-testid="tab-commercial-rules" className="text-xs font-medium px-3 py-2">Reglas comerciales</TabsTrigger>
+                )
               </TabsList>
             </div>
 
@@ -1911,8 +1918,11 @@ export default function Settings() {
               </TabsContent>
             )}
 
-            {/* Reglas Comerciales ahora son accesibles desde la navegación administrativa,
-                manteniendo el deep link previo /configuracion?tab=commercial_rules. */}
+            <TabsContent value="operational_rules" className="space-y-4 mt-3">
+              <OperationalRulesContent />
+            </TabsContent>
+
+            {/* Commercial settings for Super Admin retain their original data and API. */}
             {user?.role === "super_admin" && (
               <TabsContent value="commercial_rules" className="space-y-4 mt-3">
                 <CommercialRulesSettings />
