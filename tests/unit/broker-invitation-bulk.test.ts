@@ -1,7 +1,7 @@
 import * as XLSX from "xlsx";
 import { generateBrokerInvitationExcelTemplate, parseBrokerInvitationExcel } from "../../server/brokerInvitationBulk";
 
-const columns=["nombre","apellido","correo","rol","correo_master_asignado","telefono","mensaje_personal","estado_envio","fecha_envio","fecha_activacion"];
+const columns=["nombre","apellido","correo","rol","correo_master_asignado","telefono","mensaje_personal","codigo_promocional","estado_envio","fecha_envio","fecha_activacion"];
 function file(rows:unknown[][]):Buffer{
   const wb=XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet([columns,...rows]),"Invitaciones");
