@@ -1,9 +1,10 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import MainLayout from "@/components/MainLayout";
 import Header from "@/components/Header";
 import BrokerNetworkTransitionDialog from "@/components/Users/BrokerNetworkTransitionDialog";
 import SuperAdminBrokerOverview from "@/components/Users/SuperAdminBrokerOverview";
+import SuperAdminLegalEvidenceDialog, { formalizationStatusLabel } from "@/components/Users/SuperAdminLegalEvidenceDialog";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -297,6 +298,8 @@ export default function UserManagement() {
   const [operationalStatusNotes, setOperationalStatusNotes] = useState<string>("");
   const [networkTransitionUser, setNetworkTransitionUser] = useState<User | null>(null);
   const [networkHistoryUser, setNetworkHistoryUser] = useState<User | null>(null);
+  const [legalEvidenceUser, setLegalEvidenceUser] = useState<User | null>(null);
+  const [legalStatusFilter, setLegalStatusFilter] = useState("all");
 
   const isSuperAdmin = currentUser?.role === 'super_admin';
   const isPlatformAdmin = currentUser?.role === 'admin' || isSuperAdmin;
@@ -626,6 +629,27 @@ export default function UserManagement() {
     queryKey: ["/api/users"],
     enabled: isPlatformAdmin,
   });
+  type LegalOverviewRow = {
+    userId: string;
+    status: "formalized" | "pending" | "requires_new_acceptance";
+    requiredDocuments: string[];
+    acceptedDocuments: string[];
+  };
+  const { data: legalOverview, isLoading: isLoadingLegalOverview, isError: legalOverviewError } = useQuery<{ users: LegalOverviewRow[] }>({
+    queryKey: ["/api/admin/legal/users/overview"],
+    enabled: isSuperAdmin && activeTab === "global",
+    queryFn: async () => {
+      const response = await apiRequest("GET", "/api/admin/legal/users/overview");
+      if (!response.ok) throw new Error("No se pudo consultar el estado contractual.");
+      return response.json();
+    },
+  });
+  const legalStatusByUser = useMemo(() => new Map((legalOverview?.users || []).map(x => [x.userId, x])), [legalOverview]);
+  const displayedGlobalUsers = useMemo(() => (legacyUsers || []).filter(u => {
+    if (!isSuperAdmin || legalStatusFilter === "all") return true;
+    if (u.role !== "broker" && u.role !== "master_broker") return false;
+    return legalStatusByUser.get(u.id)?.status === legalStatusFilter;
+  }), [legacyUsers, isSuperAdmin, legalStatusFilter, legalStatusByUser]);
 
   // Forms
   const createMemberForm = useForm<MemberCreateFormData>({
@@ -1790,11 +1814,26 @@ export default function UserManagement() {
               <div>
                 <CardTitle className="text-base font-semibold">Directorio Global de Usuarios</CardTitle>
                 <p className="text-xs text-muted-foreground mt-0.5">
-                  Visualización técnica completa de registros en tabla users
+                  Usuarios, permisos, estado contractual y evidencias legales según el rol.
                 </p>
               </div>
-              <Badge variant="secondary" className="font-mono text-xs">{legacyUsers?.length || 0}</Badge>
+              <Badge variant="secondary" className="text-xs">{displayedGlobalUsers.length} de {legacyUsers?.length || 0}</Badge>
             </CardHeader>
+            {isSuperAdmin && (
+              <div className="px-6 py-3 border-b flex flex-wrap items-center gap-3 text-xs">
+                <label htmlFor="legal-status-filter" className="font-medium">Filtrar por convenio</label>
+                <select id="legal-status-filter" value={legalStatusFilter}
+                  onChange={event => setLegalStatusFilter(event.target.value)}
+                  className="rounded border bg-background p-2 text-xs" data-testid="select-legal-status-filter">
+                  <option value="all">Todos los usuarios</option>
+                  <option value="formalized">Formalizados</option>
+                  <option value="pending">Pendientes</option>
+                  <option value="requires_new_acceptance">Nueva aceptación requerida</option>
+                </select>
+                {isLoadingLegalOverview && <span className="text-muted-foreground">Consultando convenios...</span>}
+                {legalOverviewError && <span className="text-destructive">No fue posible verificar los convenios; reintenta la consulta.</span>}
+              </div>
+            )}
             <CardContent className="p-0">
               <div className="overflow-x-auto">
                 <table className="w-full min-w-[800px] text-sm">
@@ -1807,11 +1846,12 @@ export default function UserManagement() {
                       <th className="py-3 px-4 text-left font-semibold">Estado Cuenta</th>
                       <th className="py-3 px-4 text-left font-semibold">Acceso Comercial</th>
                       <th className="py-3 px-4 text-left font-semibold">Creado</th>
+                      {isSuperAdmin && <th className="py-3 px-4 text-left font-semibold">Convenio</th>}
                       <th className="py-3 px-6 text-right font-semibold">Acciones</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-border/60">
-                    {legacyUsers?.map((u) => (
+                    {displayedGlobalUsers.map((u) => (
                       <tr key={u.id} className="hover:bg-muted/30">
                         <td className="py-3 px-6 font-medium">
                           {u.firstName} {u.lastName}
@@ -1855,8 +1895,27 @@ export default function UserManagement() {
                         <td className="py-3 px-4 text-xs text-muted-foreground">
                           {u.createdAt ? format(new Date(u.createdAt), "dd/MM/yyyy") : "-"}
                         </td>
+                        {isSuperAdmin && <td className="py-3 px-4">
+                          {u.role === "broker" || u.role === "master_broker" ? (
+                            isLoadingLegalOverview ? <span className="text-xs text-muted-foreground">Consultando...</span> :
+                            legalOverviewError ? <span className="text-xs text-destructive">No verificado</span> :
+                            legalStatusByUser.has(u.id) ?
+                              <Badge variant={legalStatusByUser.get(u.id)?.status === "formalized" ? "default" : "outline"}
+                                className="text-xs" data-testid={`badge-legal-status-${u.id}`}>
+                                {formalizationStatusLabel(legalStatusByUser.get(u.id)!.status)}
+                              </Badge> :
+                              <span className="text-xs text-muted-foreground">Sin registro</span>
+                          ) : <span className="text-xs text-muted-foreground">No aplica</span>}
+                        </td>}
                         <td className="py-3 px-6 text-right">
                           <div className="flex items-center justify-end gap-1">
+                            {isSuperAdmin && (u.role === "broker" || u.role === "master_broker") && (
+                              <Button variant="ghost" size="sm" onClick={() => setLegalEvidenceUser(u)}
+                                className="h-8 text-xs" title="Consultar convenio, firma OTP, versiones y comprobante"
+                                data-testid={`button-admin-legal-${u.id}`}>
+                                <ShieldCheck className="h-3.5 w-3.5 mr-1" /> Convenios
+                              </Button>
+                            )}
                             {isSuperAdmin && (u.role === 'broker' || u.role === 'master_broker') && (
                               <Button
                                 variant="ghost" size="sm"
@@ -3815,6 +3874,8 @@ export default function UserManagement() {
         </Dialog>
       )}
 
+      {isSuperAdmin && <SuperAdminLegalEvidenceDialog key={legalEvidenceUser?.id || "closed"}
+        user={legalEvidenceUser} onClose={() => setLegalEvidenceUser(null)} />}
       <Dialog open={Boolean(networkHistoryUser)} onOpenChange={(open) => { if (!open) setNetworkHistoryUser(null); }}>
         <DialogContent className="max-w-3xl w-[95vw] max-h-[85vh] overflow-y-auto">
           <DialogHeader>
