@@ -61,13 +61,14 @@ export default function HelpCenterPage() {
   // Parsear query params de la URL (?articulo=slug o ?tab=reglas)
   const searchParams = new URLSearchParams(window.location.search);
   const initialArticleSlug = searchParams.get("articulo") || "";
-  const initialTab = searchParams.get("tab") || (initialArticleSlug ? "manual" : "manual");
+  const initialTab = "manual";
 
   const [activeTab, setActiveTab] = useState<string>(initialTab);
   const [searchQuery, setSearchQuery] = useState<string>("");
   const [selectedCategory, setSelectedCategory] = useState<string>("all");
   const [selectedArticleSlug, setSelectedArticleSlug] = useState<string>(initialArticleSlug);
 
+  // Existing rules handlers retained for backward compatibility; publishing moved to Configuración.
   // Modal para nueva versión (Super Admin)
   const [isNewVersionDialogOpen, setIsNewVersionDialogOpen] = useState(false);
   const [newVersionForm, setNewVersionForm] = useState({
@@ -185,6 +186,10 @@ export default function HelpCenterPage() {
 
   // Sincronizar slug seleccionado cuando cambia la URL
   useEffect(() => {
+    if (searchParams.get("tab") === "reglas") {
+      setLocation("/configuracion?tab=operational_rules");
+      return;
+    }
     const slug = searchParams.get("articulo");
     if (slug) {
       setSelectedArticleSlug(slug);
@@ -222,18 +227,18 @@ export default function HelpCenterPage() {
           <div>
             <div className="flex items-center gap-2 text-xs font-semibold text-primary uppercase tracking-wider mb-1">
               <Sparkles className="h-4 w-4" />
-              <span>Ayuda y Gobernanza Comercial</span>
+              <span>Centro de ayuda</span>
             </div>
             <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-foreground">
-              Reglas de Operación y Manual de Ayuda
+              Manual de uso y preguntas frecuentes
             </h1>
             <p className="text-sm text-muted-foreground mt-1 max-w-3xl">
-              Consulta las normas de asignación de cartera, vigencia de oportunidades y guías
-              paso a paso para resolver trámites dentro de la plataforma.
+              Encuentra guías y respuestas sobre clientes, oportunidades, créditos,
+              documentos y uso cotidiano de la plataforma.
             </p>
           </div>
 
-          {isSuperAdmin && (
+          {false && isSuperAdmin && (
             <Dialog open={isNewVersionDialogOpen} onOpenChange={setIsNewVersionDialogOpen}>
               <DialogTrigger asChild>
                 <Button className="gap-2 shrink-0" data-testid="button-create-rules-version">
@@ -348,7 +353,7 @@ export default function HelpCenterPage() {
         </div>
 
         {/* Banner de Estado de Aceptación de Reglas Vigentes */}
-        {currentRulesData && (
+        {false && currentRulesData && (
           <div
             className={cn(
               "p-4 rounded-xl border transition-all flex flex-col md:flex-row items-start md:items-center justify-between gap-4",
@@ -438,15 +443,12 @@ export default function HelpCenterPage() {
 
         {/* Pestañas de Navegación del Centro de Ayuda */}
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-          <TabsList className="grid grid-cols-2 max-w-md w-full">
+          <TabsList className="grid grid-cols-1 max-w-md w-full">
             <TabsTrigger value="manual" className="gap-2 text-xs" data-testid="tab-manual-uso">
               <BookOpen className="h-4 w-4" />
               <span>Manual de Uso y FAQ</span>
             </TabsTrigger>
-            <TabsTrigger value="reglas" className="gap-2 text-xs" data-testid="tab-reglas-operacion">
-              <Scale className="h-4 w-4" />
-              <span>Reglas de Operación</span>
-            </TabsTrigger>
+            {/* Las reglas operativas ya están en Configuración, no en Ayuda. */}
           </TabsList>
 
           {/* TAB 1: MANUAL DE USO Y FAQ */}
