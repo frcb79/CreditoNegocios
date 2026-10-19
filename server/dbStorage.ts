@@ -523,9 +523,14 @@ export class DbStorage implements IStorage {
     return existing!;
   }
 
-  async getLegalAcceptancesForUsers(userIds: string[]): Promise<LegalAcceptance[]> {
+  async getLegalAcceptancesForUsers(userIds: string[]): Promise<Pick<LegalAcceptance, "userId" | "document" | "version" | "acceptedAt">[]> {
     if (!userIds.length) return [];
-    return db.select().from(legalAcceptances)
+    return db.select({
+      userId: legalAcceptances.userId,
+      document: legalAcceptances.document,
+      version: legalAcceptances.version,
+      acceptedAt: legalAcceptances.acceptedAt,
+    }).from(legalAcceptances)
       .where(inArray(legalAcceptances.userId, userIds))
       .orderBy(desc(legalAcceptances.acceptedAt));
   }
