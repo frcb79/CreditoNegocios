@@ -8296,7 +8296,7 @@ function maskCLABE(clabe?: string | null): string | null {
         const userExists = await storage.getUserByEmail(row.email);
         if (userExists) warnings.push({row:row.row,message:"Correo ya registrado: sólo se permitirá reenviar si sigue sin activar y conserva su red."});
       }
-      for (const [id, demand] of couponDemand) {
+      for (const [id, demand] of Array.from(couponDemand.entries())) {
         const coupon = await storage.getPromoCode(id);
         if (coupon?.maxUses != null && coupon.maxUses - (coupon.currentUses || 0) < demand.count) {
           preview.errors.push({row:demand.row,field:"codigo_promocional",
@@ -8344,7 +8344,7 @@ function maskCLABE(clabe?: string | null): string | null {
             errors.push({row:row.row,field:"correo_master_asignado",message:"Master no existe o no está activo"});
         }
       }
-      for (const [id, demand] of couponDemand) {
+      for (const [id, demand] of Array.from(couponDemand.entries())) {
         const coupon = await storage.getPromoCode(id);
         if (coupon?.maxUses != null && coupon.maxUses - (coupon.currentUses || 0) < demand.count) {
           errors.push({row:demand.row,field:"codigo_promocional",
