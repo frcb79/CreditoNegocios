@@ -1,0 +1,42 @@
+name: TEMP - Drizzle security patch compatibility
+on:
+  push:
+    branches:
+      - integration/phase-1a1-base-segura
+    paths:
+      - .github/workflows/prelaunch-drizzle-candidate.yml
+permissions:
+  contents: read
+jobs:
+  isolated-drizzle-candidate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Generate patched Drizzle lock candidate
+        run: |
+          npm install --package-lock-only --ignore-scripts --save-exact --no-audit --no-fund 'drizzle-orm@0.45.4'
+          node -e "const p=require('./package.json'); const l=require('./package-lock.json'); if(p.dependencies['drizzle-orm']!=='0.45.4' || l.packages['node_modules/drizzle-orm'].version!=='0.45.4') process.exit(1); console.log('DRIZZLE_PATCH_CANDIDATE=0.45.4')"
+          npm ci --no-audit --no-fund
+      - name: TypeScript/build plus focused ORM unit regression
+        env:
+          NODE_ENV: test
+          USE_MEMORY_STORAGE: 'true'
+          DATABASE_URL: postgresql://local:local@localhost:5432/creditonegocios_test
+          SESSION_SECRET: prelaunch-ci-only-not-production-secret
+        run: |
+          npm run check
+          npm run build
+          npm test -- --runInBand --coverage=false --forceExit tests/unit/m1-matching-engine.test.ts tests/unit/m2-m3-matching-regression.test.ts tests/unit/prod-hotfix-security.test.ts
+      - name: Export pin and deterministic lockfile
+        run: |
+          echo __CN_DR_PACKAGE_BEGIN__
+          base64 -w96 package.json
+          echo __CN_DR_PACKAGE_END__
+          echo __CN_DR_LOCK_BEGIN__
+          base64 -w96 package-lock.json
+          echo __CN_DR_LOCK_END__
