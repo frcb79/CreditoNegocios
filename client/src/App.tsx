@@ -1,4 +1,4 @@
-import { Switch, Route } from "wouter";
+import { Switch, Route, Redirect } from "wouter";
 import { queryClient } from "./lib/queryClient";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
@@ -106,7 +106,7 @@ function Router() {
           <ProtectedRoute path="/notificaciones" component={Notifications} />
           <ProtectedRoute path="/importacion-masiva" component={BulkImport} allowedRoles={['admin', 'super_admin']} requiredModule="importacion" />
           <ProtectedRoute path="/ayuda" component={HelpCenterPage} />
-          <ProtectedRoute path="/reglas-operacion" component={HelpCenterPage} />
+          <Route path="/reglas-operacion"><Redirect to="/configuracion?tab=operational_rules" /></Route>
         </>
       )}
       <Route component={NotFound} />
