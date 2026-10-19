@@ -33,6 +33,7 @@ const inviteBrokerSchema = z.object({
   lastName: z.string().min(1, "El apellido es requerido"),
   phone: z.string().optional(),
   message: z.string().optional(),
+  promoCode: z.string().optional(),
   role: z.enum(["broker", "master_broker"]).default("broker"),
 });
 
@@ -57,6 +58,7 @@ export default function InviteBrokerModal({ isOpen, onClose }: InviteBrokerModal
       lastName: "",
       phone: "",
       message: "",
+      promoCode: "",
       role: "broker",
     },
   });
@@ -219,12 +221,27 @@ export default function InviteBrokerModal({ isOpen, onClose }: InviteBrokerModal
               )}
             />
 
+            <FormField control={form.control} name="promoCode" render={({ field }) => (
+              <FormItem>
+                <FormLabel>Cupón de cortesía anual</FormLabel>
+                <FormControl>
+                  <Input placeholder="Código de 12 meses gratis" {...field}
+                    value={field.value || ""} data-testid="input-invitation-promo-code" />
+                </FormControl>
+                <p className="text-xs text-muted-foreground">
+                  Puedes asignar un cupón particular por invitación. Si lo dejas vacío se usará
+                  el código anual predeterminado configurado en el servidor; sin un cupón válido no se enviará la invitación.
+                </p>
+                <FormMessage />
+              </FormItem>
+            )} />
+
             <div className="p-3 bg-primary/5 border border-primary/20 rounded-lg">
               <div className="flex items-center space-x-2.5">
                 <Info className="w-4 h-4 text-primary shrink-0" />
                 <div className="text-sm">
                   <p className="font-semibold text-foreground text-xs">¿Cómo funciona?</p>
-                  <p className="text-xs text-muted-foreground">La persona recibirá su usuario y un enlace privado de 24 horas para crear su contraseña. Nunca enviamos contraseñas por correo.</p>
+                  <p className="text-xs text-muted-foreground">La persona recibirá un enlace de activación privado de 24 horas y el cupón que le otorga 12 meses sin costo, registrados desde su activación. Nunca enviamos contraseñas por correo.</p>
                 </div>
               </div>
             </div>
