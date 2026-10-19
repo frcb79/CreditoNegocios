@@ -1237,13 +1237,8 @@ export default function Settings() {
                   </Form>
                 </CardContent>
               </Card>
-              </TabsContent>
-            )}
-
-            {/* Sección comercial 2/2: experiencia, referencias, banco y CLABE.
-                Sigue usando su propio formulario, validación y guardado original. */}
-            {isBrokerOrMaster && (
-              <TabsContent value="business" className="space-y-4 mt-3">
+              {/* Sección comercial 2/2: experiencia, referencias, banco y CLABE.
+                  Sigue usando su propio formulario, validación y guardado original. */}
               <Card className="border border-border/80 shadow-xs">
                 <CardHeader className="py-3 px-4 sm:px-6 border-b border-border/60">
                   <CardTitle className="text-base font-semibold">Perfilamiento Operativo y Bancario</CardTitle>
