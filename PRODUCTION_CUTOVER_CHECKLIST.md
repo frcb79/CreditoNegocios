@@ -1,40 +1,78 @@
-# Crédito Negocios — Corte a Producción (MVP, octubre de 2026)
+# Crédito Negocios — Checklist de corte a Producción (MVP)
 
-**Estado: NO GO.** Este documento no autoriza despliegues, migraciones, cambios de variables ni borrado. Sustituye las instrucciones antiguas de migrar documentos históricos: los registros existentes son sintéticos y NO se copian a Producción.
+**Corte verificado: 19 de octubre de 2026. Estado: NO-GO Producción.** Este documento es un plan de verificación; **NO autoriza** modificación de bases de datos, secretos, permisos, envíos, merge, despliegue ni limpieza. Los datos actuales son de prueba, pero deben respaldarse y revisarse antes de eliminarlos.
 
-## Modelo e infraestructura
-- Rama única candidata: integration/phase-1a1-base-segura, PR #10 Draft; main congelada hasta GO.
-- Staging: Railway PostgreSQL; Producción: Supabase PostgreSQL existente. El operador identificó conexiones separadas; aún verificar instancia utilizada por cada proceso de aplicación.
-- Supabase Storage: proyecto/bucket/SERVICE_ROLE_KEY compartidos actualmente. No usar Staging para documentos reales. El guard del código bloquea operaciones de Supabase en Staging salvo configuración aislada; otro bucket con la misma SERVICE_ROLE_KEY NO garantiza segregación efectiva.
-- Producción debe arrancar sin Brokers, Masters, clientes, créditos, solicitudes, contratos, comisiones ni documentos de prueba. Conservar esquema, configuraciones seguras, catálogos/ofertas definitivos y bootstrap de Super Admin.
-- MVP: Broker/Master captura perfil; CN hace matching y gestiona contactos internamente; financiera solicita documentos al prospecto. LEG-10 diferido; no activar CLIENT_CONSENT_RELEASE_APPROVED. PDF institucional y envío de expediente siguen restringidos.
+## 0. Evidencia comprobada y decisiones
 
-## Gate 1 — Antes de cualquier despliegue
-1. Confirmar GitHub Actions verde sobre SHA EXACTO de PR #10, TypeScript, build, unitarias y PostgreSQL aislado.
-2. Certificar origen y SHA desplegado: Staging web seguía conectado a main en el último inventario. La versión actual de Staging NO valida el PR #10.
-3. Confirmar auto-deploy de Producción deshabilitado antes de integrar main; verificarlo efectivamente con el operador Railway.
-4. Certificar que las aplicaciones usan DB diferentes mediante lectura del destino activo en cada entorno, sin exponer URLs con credenciales.
-5. Acordar modo de prueba de archivos: Staging sin credencial privilegiada compartida, o almacenamiento con credenciales restringidas por entorno. No cambiar el flag STAGING_DOCUMENT_STORAGE_ISOLATED a true mientras la llave de servicio sea compartida.
-6. Preparar backup restaurable, inventario de datos sintéticos y lista de restricciones FK/triggers de evidencias legales. No ejecutar TRUNCATE general ni eliminar evidencias de retención.
+- **Única rama:** `integration/phase-1a1-base-segura`. PR [#10](https://github.com/frcb79/CreditoNegocios/pull/10) sigue **Draft**, dirigido a `main`, que permanecía en `0c6b7bd18f6465c55d95f72a4f20ade339f1a553`.
+- **Candidato desplegado en Staging:** `b8864a5f2082c38dcc4b98fdffbacd8bc679f857`. GitHub Actions [39335292150](https://github.com/frcb79/CreditoNegocios/actions/runs/39335292150): **SUCCESS 8/8** (TypeScript, build, regresiones, PostgreSQL aislado, auditoría y smoke público). Railway deployment Staging `cae9a1ca-d871-46a0-86eb-f1900009b7b5`: **SUCCESS**, healthcheck `/api/health` HTTP 200 y aplicación online.
+- **Beneficios/cupones:** gestión manual Super Admin (asignar/extender/sustituir/revocar) + historial auditado y controles de destinatario corregidos. Dirección reportó pruebas funcionales satisfactorias; pruebas automatizadas PostgreSQL aprobadas. **Sin cobros** en el MVP.
+- **Entornos:** Staging usa PostgreSQL de Railway; Producción apunta a PostgreSQL de Supabase según el diseño actual. Credenciales y `DATABASE_URL` efectivos siguen enmascarados por la conexión OAuth de Railway: confirmar origen **en runtime**, sin mostrar valores ni asumir que el nombre de variable acredita aislamiento.
+- **Storage Supabase:** proyectos diferentes, Staging `hmzpaoapwjkxpfkndbik` (bucket privado `staging-documents`) y Producción `lyoatuvvasnvneikvgvt` (bucket privado `documents`). Staging contiene 1 objeto y Producción 13 objetos al inventario. El código impide I/O en Staging si no valida proyecto, bucket y secreto de servicio, pero falta comprobación autenticada con credenciales **efectivas**; no usar documentos reales hasta entonces.
+- **Railway Producción:** último deployment observado `8d6b6194-482f-447d-8427-deca2f1a60c0`, **sin cambios** durante este cierre. Confirmar que auto-deploy no se disparará al fusionar el PR.
+- **Modelo MVP:** Broker/Master captura prospecto, CN hace matching y contacto interno, la financiera solicita directamente sus documentos. **LEG-10 diferido:** no exigir firma/OTP del prospecto para perfil y matching; el envío externo de documentos sigue protegido y no debe habilitarse mediante `CLIENT_CONSENT_RELEASE_APPROVED`.
+- **Seguridad de dependencias:** último análisis `npm audit --omit=dev` informó 0 critical, 23 high y 11 moderate; la CI **solo bloquea critical**. Riesgo verificado: `xlsx@0.18.5` procesa archivos Excel de invitaciones, clientes, financieras y comisiones y presenta vulnerabilidades en parsers de archivos no confiables. Requiere actualización validada o contención probada antes del GO. No usar `npm audit fix --force` sin evaluar cambios de API y regresión.
+- **Supabase Producción:** 37 tablas `public` con RLS habilitado y sin políticas (por defecto niega acceso a clientes no privilegiados, no equivale a exposición). Tres avisos `function_search_path_mutable` corresponden a funciones `SECURITY INVOKER` sin permisos EXECUTE para `anon/authenticated`; ajustar search_path con control de cambios, sin declararlo incidente externo. **Pendiente P1:** `supabase_admin` tiene ACL por defecto amplias para tablas/secuencias/funciones futuras; restringirlas antes de crear nuevas tablas expuestas al Data API.
+- **Railway Postgres Staging:** dos alertas históricas de plataforma todavía visibles; sin nuevos errores de arranque el 19-oct y sin fallas 5xx en la ventana comprobada.
 
-## Gate 2 — QA Staging sobre el SHA candidato (requiere permiso separado)
-- Desplegar SOLO a Staging tras aislamiento y autorización de despliegue.
-- Usar cuatro identidades sintéticas (Super Admin, Admin, Master, Broker), credenciales por variables seguras y correos de prueba.
-- Recorrer alta de cliente, perfil, matching compatible/no compatible/información insuficiente, creación de solicitud, aprobación interna, contacto comercial y captura de propuesta.
-- Verificar que contacto interno no entrega PDF/documentos, no activa LEG-10 ni marca envío externo. Comprobar acceso ajeno, doble clic, oportunidad cerrada, competidor financiero simultáneo y lineage de ofertas.
-- Comprobar confirmación manual de desembolso y comisiones sin simular transferencias. Probar sesion, legal Broker/Master y OTP comercial existente.
-- Guardar PASS/FAIL por rol, endpoint, ID sintético, SHA desplegado y evidencia; auditoría independiente ASTRA al final.
+## 1. Puertas de seguridad antes de declarar GO
 
-## Gate 3 — Preparación Producción (autorización específica)
-1. Respaldar y ensayar en COPIA el procedimiento selectivo de limpieza de todos los datos sintéticos presentes en Producción. Revisar evidencias legales y auditorías antes de decidir qué conservar. Ningún borrado es implícito.
-2. Ensayar migraciones idempotentes sobre esquema vacío y con datos de prueba; no ejecutar db:push o seeds ficticios directamente en Producción.
-3. Configurar superadmin seguro sin credenciales predeterminadas, correo, sesiones, dominios, OTP comercial, controles de acceso y catálogos financieros aprobados.
-4. Separar tres autorizaciones: merge a main, deploy a Producción y limpieza controlada. Una aprobación no presupone las otras.
-5. No importar usuarios/clientes/documentos/operaciones de Staging. Conservar catálogos maestros definitivos cuando estén validados.
+| Gate | Evidencia requerida | Estado |
+| --- | --- | --- |
+| SHA y CI completos | 8/8 sobre candidato exacto | **PASS — b8864a5f** |
+| Despliegue técnico Staging | Commit, health, logs, sin 5xx | **PASS — b8864a5f** |
+| Prueba visual cupones | Super Admin, Broker y Master de prueba; fechas e historial | **Reportada OK por Dirección** |
+| Dependencias expuestas | Eliminar/corregir la exposición de xlsx y triage de directas high (p.ej. multer/express/ws) | **PENDIENTE** |
+| DB real Staging ≠ Producción | Verificación runtime sin revelar conexiones | **PENDIENTE** |
+| Storage real Staging ≠ Producción | Prueba autenticada con archivo sintético, endpoint/bucket/clave segregados; denegación cruzada | **PENDIENTE** |
+| E2E MVP comercial/roles | Super Admin/Admin/Master/Broker, clientes, matching, ofertas, contactos, comisiones, auditar permisos ajenos | **PARCIAL: regresiones verdes; falta evidencia completa** |
+| Secretos y correo OTP | Destinatarios, remitente, URLs, origen de secretos, límites; nunca mostrarlos | **PENDIENTE** |
+| Supabase permisos por defecto | Política explícita para ACL futuros; no abrir Data API inadvertidamente | **PENDIENTE** |
+| Backups/limpieza/rollback | Respaldo restaurado en copia + inventario autorizado | **PENDIENTE** |
+| Auditoría independiente ASTRA | Hallazgos clasificados y evidencia por SHA | **PENDIENTE** |
 
-## Día de corte, observación y rollback
-- Verificar health, acceso por cuatro roles, matching, gestión comercial interna, auditorías, ausencia de fixtures y políticas de documentos.
-- Ante fallos, rollback de código/despliegue, sin DROP ciego de tablas ni eliminación de evidencias. Mantener observación operativa antes de GO final.
-- Si cualquier Gate falla o no hay respaldo/restauración confirmado, NO GO.
+**Regla:** un resultado PASS de CI demuestra código y pruebas aisladas, no reemplaza prueba runtime ni análisis de vulnerabilidades. Ningún gate pendiente queda implícitamente aprobado por este documento.
 
-Este documento reemplaza cualquier instrucción anterior de migrar documentos históricos a Producción o borrar datos como parte automática del deploy.
+## 2. Inventario previo a limpieza: Producción (solo lectura, 19-oct)
+
+| Recurso | Registros/objetos observados | Tratamiento propuesto (requiere validación) |
+| --- | ---: | --- |
+| users | 1 | Conservar/certificar Super Admin legítimo; no borrar sin verificar bootstrap |
+| tenants | 4 | Clasificar y eliminar solo tenants de prueba por relaciones y autorizaciones |
+| sessions | 2 | Invalidación controlada al corte, tras respaldo y aviso de cierre de sesiones |
+| clients / credits / commissions / documents | 0 / 0 / 0 / 0 | No hay registros en estas tablas al corte; no inventar limpieza |
+| promo_codes / promo_redemptions | 0 / 0 | Preparar catálogo real posterior a aprobación |
+| product_templates / product_variables | 12 / 3 | Clasificar prueba vs catálogo final; conservar sólo lo aprobado |
+| legal_document_versions / legal_acceptances | 5 / 0 | **Preservar** documentos versionados y evidencias; no truncar |
+| commercial_configurations | 1 | Validar configuración vigente y mantener trazabilidad |
+| Storage `documents` | 13 objetos | Inventariar rutas, validar referencias, respaldar contenido antes de retirar cualquiera |
+
+Estos recuentos son una fotografía, no autorización para depurar. Otras tablas/auditorías/llaves foráneas y datos de bootstrap deben inspeccionarse antes de la secuencia definitiva.
+
+## 3. Procedimiento de preparación, aún NO ejecutado
+
+1. **Respaldar** base PostgreSQL de Producción (`pg_dump` en formato restaurable y metadatos del esquema), objetos del bucket privado, configuración y catálogos. No exportar contraseñas a archivos compartidos; comprobar permisos y ubicación cifrada del respaldo.
+2. **Ensayar restauración en copia aislada** con conteos y checksums de muestra; registrar hora, operador, consistencia y rollback ensayado. No usar la BD Staging actualmente utilizada para sustituir una copia.
+3. **Inventariar dependencias FK y triggers** para ordenar cualquier eliminación selectiva; proteger documentos legales, aceptaciones históricas y auditoría. Nunca ejecutar `TRUNCATE ... CASCADE` general o `db:push` indiscriminado sobre Producción.
+4. **Aprobar un plan de limpieza por tabla y objeto**, incluyendo cuentas, 4 tenants, 2 sesiones y 13 objetos Storage solo tras confirmar su naturaleza sintética y el respaldo. Ejecutarlo únicamente después de una autorización independiente de limpieza.
+5. **Controlar configuración efectiva** de ambas apps sin revelar `DATABASE_URL`, token de servicio, secretos OTP, sesiones ni llaves. Probar una carga/descarga/borrado reversible de **documento sintético** en Staging, jamás en bucket de Producción.
+6. **Confirmar auto-deploy y rollback de Railway**, incluyendo el SHA actual, rollback a deployment previo, migraciones compatibles y plan de congelación de cambios.
+7. **Resolver alta y aceptación comercial** usando identidad sintética por cada rol; comprobar matching compatible/no compatible/info insuficiente, selección de producto, versión, propuesta, comisión y bitácora, sin transmisión externa de información del prospecto.
+8. **ASTRA independiente** sobre SHA final, corregir P0/P1 que impidan lanzamiento, obtener CI y health verdes en el nuevo SHA.
+
+## 4. Tres autorizaciones separadas para el corte
+
+**A. Merge PR #10 a `main`**: solo tras GO técnico, permiso expreso y confirmación de que no dispara auto-deploy no deseado.
+
+**B. Limpieza de Producción**: permiso expreso para procedimiento y alcance preciso después del respaldo restaurable. No se infiere del permiso de merge.
+
+**C. Deploy a Producción**: permiso expreso para el SHA, entorno y momento de corte, independientemente de merge y limpieza. Activar invitaciones reales **después** de validar producción limpia y el flujo de alta.
+
+## 5. Reversión y validación poscorte
+
+- Si falla arranque, permisos, matching, historial económico, OTP, Storage o auditoría: detener incorporación de usuarios, conservar evidencia, hacer rollback del **código** a deployment conocido y revisar compatibilidad de migraciones antes de volver atrás datos.
+- No borrar tablas ni evidencias para intentar reparar una versión. Los archivos de Producción no se mezclan con Staging.
+- Confirmar endpoints `/api/health`, acceso correcto por roles, ausencia de datos sintéticos en el dominio público, catálogos finales, bitácoras y políticas de documentos.
+- Ejecutar envíos a los 44 invitados (4 Master/40 Broker) solo cuando cupones de bienvenida, URLs, vigencia y transporte de correo hayan sido validados y autorizados.
+
+**Estado final al 19-oct-2026: NO-GO Producción.** Está autorizado únicamente el trabajo técnico en rama de integración y Staging previamente acordado. El checklist por sí mismo no confiere más permisos.
