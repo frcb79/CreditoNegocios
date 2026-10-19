@@ -1722,19 +1722,6 @@ export class MemStorage implements IStorage {
     return user;
   }
 
-  async updateUser(id: string, userData: Partial<UpsertUser>): Promise<User | undefined> {
-    const existing = this.users.get(id);
-    if (!existing) return undefined;
-
-    const updated = {
-      ...existing,
-      ...userData,
-      updatedAt: new Date(),
-    } as User;
-    this.users.set(id, updated);
-    return updated;
-  }
-
   async getUsersByMasterBroker(masterBrokerId: string): Promise<User[]> {
     return Array.from(this.users.values()).filter(user => user.masterBrokerId === masterBrokerId);
   }
