@@ -11,7 +11,7 @@ type Issue = { row: number; field: string; message: string };
 type Preview = {
   total:number;masters:number;brokers:number;ready:boolean;
   errors: Issue[];warnings:{row:number;message:string}[];
-  rows: Array<{row:number;email:string;firstName:string;lastName:string;role:string;masterEmail:string}>;
+  rows: Array<{row:number;email:string;firstName:string;lastName:string;role:string;masterEmail:string;promoCode?:string}>;
 };
 type SendOutcome = {
   total:number;sent:number;pending:number;failed:number;
@@ -27,9 +27,11 @@ export default function BulkBrokerInvitationModal(props:{isOpen:boolean;onClose:
   const [loading,setLoading]=useState(false);
   const [confirmed,setConfirmed]=useState(false);
   const [error,setError]=useState("");
+  const [batchPromoCode,setBatchPromoCode]=useState("");
 
   const clear=()=>{
     setFile(null);setPreview(null);setResult(null);setConfirmed(false);setError("");
+    setBatchPromoCode("");
   };
   const request=async (mode:"preview"|"send")=>{
     if(!file)return;
@@ -37,6 +39,7 @@ export default function BulkBrokerInvitationModal(props:{isOpen:boolean;onClose:
     try{
       const form=new FormData();
       form.append("file",file);
+      if(batchPromoCode.trim()) form.append("promoCode",batchPromoCode.trim().toUpperCase());
       if(mode==="send")form.append("confirmation","ENVIAR_INVITACIONES");
       const response=await fetch("/api/broker-invitations/bulk/"+mode,{
         method:"POST",body:form,credentials:"include",
@@ -78,6 +81,19 @@ export default function BulkBrokerInvitationModal(props:{isOpen:boolean;onClose:
           <Button type="button" variant="outline" onClick={downloadTemplate}>
             <Download className="w-4 h-4 mr-2"/> Descargar plantilla oficial
           </Button>
+          <div className="space-y-1">
+            <label htmlFor="bulk-annual-courtesy" className="text-xs font-medium">
+              Cupón anual para todo el lote (12 meses sin costo)
+            </label>
+            <Input id="bulk-annual-courtesy" value={batchPromoCode}
+              onChange={event => {setBatchPromoCode(event.target.value.toUpperCase());setPreview(null);setResult(null);setConfirmed(false);}}
+              placeholder="Ej. LANZAMIENTO12" data-testid="input-bulk-annual-promo"/>
+            <p className="text-xs text-muted-foreground">
+              Se aplicará a todas las invitaciones, salvo que una fila del Excel tenga
+              un codigo_promocional diferente. Puedes usar códigos individuales por fila.
+              No se enviará nada si falta un código anual válido.
+            </p>
+          </div>
           <Input type="file" accept=".xlsx" aria-label="Archivo de invitaciones" data-testid="input-bulk-invites"
             onChange={event=>{setFile(event.target.files?.[0]||null);setPreview(null);setResult(null);setConfirmed(false);}}/>
           <Button disabled={!file||loading} onClick={()=>request("preview")} data-testid="button-preview-bulk-invites">
@@ -101,6 +117,7 @@ export default function BulkBrokerInvitationModal(props:{isOpen:boolean;onClose:
               {preview.rows.map(row=><div key={row.row} className="p-2 text-xs border-b">
                 Fila {row.row}: {row.firstName} {row.lastName} · {row.email} · {row.role==="master_broker"?"Master Broker":"Broker"}
                 {row.masterEmail&&<> · Master: {row.masterEmail}</>}
+                <span> · Cupón: {row.promoCode || batchPromoCode || "Predeterminado configurado"}</span>
               </div>)}
             </div>
             {preview.ready&&<label className="flex items-start gap-2 text-sm">
