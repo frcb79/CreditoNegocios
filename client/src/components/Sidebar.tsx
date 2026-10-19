@@ -254,9 +254,9 @@ export default function Sidebar() {
             ) : null}
 
             {grp.items.map((item) => {
-              const isActive = location === item.href && (
-                !item.href.includes("?") || window.location.search === item.href.slice(item.href.indexOf("?"))
-              );
+              const [itemPath, itemQuery] = item.href.split("?");
+              const isActive = location === itemPath &&
+                (!itemQuery || window.location.search === `?${itemQuery}`);
               const IconComp = item.icon;
               
               return (
