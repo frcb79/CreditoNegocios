@@ -104,8 +104,10 @@ describePg('PostgreSQL aislado: administración atómica, roles e historial', ()
       "INSERT INTO promo_codes(id,code,name,benefit_type,benefit_value,duration_months,target_scope,target_entity_id) VALUES ('targeted-broker','DIRECTBROKER','Beneficio individual','free_months',0,6,'broker',$1),('targeted-master','DIRECTMASTER','Beneficio Master','free_months',0,6,'master_broker',$2),('targeted-global','DIRECTGLOBAL','Beneficio restringido','free_months',0,6,'global',$1)",
       [broker,master]
     );
-    // Mismo rol no basta: destinatario incorrecto se rechaza incluso en autocanje.
-    await expect(changeUserBenefit({actorId:master,userId:master,action:'redeem',code:'DIRECTBROKER'},database)).rejects.toMatchObject({status:403});
+    // Mismo rol no basta: un Broker ajeno no puede canjear el código dirigido a otro Broker.
+    const otherBroker = 'other-' + broker;
+    await database.query("INSERT INTO users(id,role) VALUES ($1,'broker')", [otherBroker]);
+    await expect(changeUserBenefit({actorId:otherBroker,userId:otherBroker,action:'redeem',code:'DIRECTBROKER'},database)).rejects.toMatchObject({status:403});
     await expect(change(broker,'assign',{code:'DIRECTMASTER'})).rejects.toMatchObject({status:403});
     await expect(change(master,'assign',{code:'DIRECTGLOBAL'})).rejects.toMatchObject({status:403});
     expect((await database.query('SELECT count(*)::int AS n FROM promo_redemptions')).rows[0].n).toBe(0);
