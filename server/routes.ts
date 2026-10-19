@@ -8216,6 +8216,7 @@ function maskCLABE(clabe?: string | null): string | null {
         phone: z.string().trim().max(35).optional(),
         message: z.string().trim().max(500).optional(),
         masterBrokerId: z.string().trim().optional(),
+        promoCode: z.string().trim().max(80).optional(),
         role: z.enum(["broker", "master_broker"]).default("broker"),
       }).safeParse(req.body);
       if (!input.success) return res.status(400).json({ message: "Datos de invitación inválidos." });
@@ -8274,6 +8275,13 @@ function maskCLABE(clabe?: string | null): string | null {
       // Master indicated in the Excel but not in this batch must exist already.
       const masterEmails = new Set(preview.rows.filter(r=>r.role==="master_broker").map(r=>r.email));
       for (const row of preview.rows) {
+        try {
+          const courtesy = await resolveAnnualInvitationPromo(
+            row.promoCode || (typeof req.body?.promoCode === "string" ? req.body.promoCode : null), row.role);
+          if (!courtesy) throw new Error("Sin cortesía");
+        } catch (e: any) {
+          preview.errors.push({ row: row.row, field: "codigo_promocional", message: e.message || "Cupón inválido" });
+        }
         if (row.masterEmail && !masterEmails.has(row.masterEmail)) {
           const candidate = await storage.getUserByEmail(row.masterEmail);
           if (!candidate || candidate.role !== "master_broker" || candidate.isActive === false)
@@ -8302,6 +8310,12 @@ function maskCLABE(clabe?: string | null): string | null {
       const errors = [...parsed.errors];
       const batchMasters = new Set(parsed.rows.filter(r=>r.role==="master_broker").map(r=>r.email));
       for(const row of parsed.rows) {
+        try {
+          await resolveAnnualInvitationPromo(
+            row.promoCode || (typeof req.body?.promoCode === "string" ? req.body.promoCode : null), row.role);
+        } catch (error: any) {
+          errors.push({row:row.row,field:"codigo_promocional",message:error.message || "Cupón inválido"});
+        }
         // A completed account is not an invitation target. Fail the whole
         // preflight BEFORE sending any emails or creating new accounts.
         const existing = await storage.getUserByEmail(row.email);
@@ -8338,6 +8352,7 @@ function maskCLABE(clabe?: string | null): string | null {
           const result = await dispatchBrokerInvitation(userId, inviter, {
             email:row.email,firstName:row.firstName,lastName:row.lastName,role:row.role,
             phone:row.phone,message:row.message,masterBrokerId,
+            promoCode: row.promoCode || (typeof req.body?.promoCode === "string" ? req.body.promoCode : undefined),
           });
           if (row.role === "master_broker") masters.set(row.email,result.body.broker.id);
           results.push({row:row.row,email:row.email,role:row.role,
