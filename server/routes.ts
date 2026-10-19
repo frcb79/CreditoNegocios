@@ -148,6 +148,7 @@ import { registerBrokerNetworkTransitionRoutes } from "./brokerNetworkTransition
 import { createBrokerWithOrganization } from "./brokerNetworkTransitionService";
 import { dispatchBrokerInvitation, BrokerInvitationError, validateInvitationTransport } from "./brokerInvitationDispatch";
 import { resolveAnnualInvitationPromo } from "./invitationWelcomePromo";
+import { changeUserBenefit, userBenefitHistory, BenefitError } from "./promoBenefitManagement";
 import { parseBrokerInvitationExcel, generateBrokerInvitationExcelTemplate } from "./brokerInvitationBulk";
 
 
@@ -2113,102 +2114,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // 2. Redeem promo code for authenticated user
+  // 2. Self-service redemption uses the same locked, audited PostgreSQL transition.
   app.post('/api/promos/redeem', isAuthenticated, async (req: any, res) => {
     try {
       const userId = getAuthUserId(req);
-      if (!userId) {
-        return res.status(401).json({ message: "No autenticado." });
-      }
-
-      const user = await storage.getUser(userId);
-      if (!user) {
-        return res.status(404).json({ message: "Usuario no encontrado." });
-      }
-
+      if (!userId) return res.status(401).json({ message: 'No autenticado.' });
       const { code } = redeemPromoCodeSchema.parse(req.body);
-      const cleanCode = code.trim().toUpperCase();
-
-      const promo = await storage.getPromoCodeByCode(cleanCode);
-      if (!promo || !promo.isActive) {
-        return res.status(400).json({ message: "El código promocional no es válido o está inactivo." });
-      }
-
-      const now = new Date();
-      if (new Date(promo.startsAt) > now) {
-        return res.status(400).json({ message: "Este código promocional aún no está vigente." });
-      }
-
-      if (promo.expiresAt && new Date(promo.expiresAt) < now) {
-        return res.status(400).json({ message: "Este código promocional ha expirado." });
-      }
-
-      if (promo.maxUses !== null && promo.maxUses !== undefined && (promo.currentUses || 0) >= promo.maxUses) {
-        return res.status(400).json({ message: "Este código promocional ha alcanzado el límite de usos permitidos." });
-      }
-
-      // Check if user has already redeemed this specific promo code
-      const existingRedemptions = await storage.getPromoRedemptions({ promoCodeId: promo.id, userId });
-      if (existingRedemptions.length > 0) {
-        return res.status(400).json({ message: "Ya has canjeado este código promocional anteriormente." });
-      }
-
-      // Determine target accessStatus and expiration
-      let targetAccessStatus: string = "promotional";
-      let targetExpiresAt: Date | null = null;
-
-      if (promo.benefitType === "permanent_free") {
-        targetAccessStatus = "complimentary";
-        targetExpiresAt = null;
-      } else if (promo.benefitType === "free_months") {
-        targetAccessStatus = "promotional";
-        targetExpiresAt = new Date(Date.now() + (promo.durationMonths || 1) * 30 * 24 * 60 * 60 * 1000);
-      } else if (promo.benefitType === "free") {
-        targetAccessStatus = "free";
-        targetExpiresAt = null;
-      } else {
-        // percentage_discount or fixed_discount
-        targetAccessStatus = "promotional";
-        targetExpiresAt = promo.durationMonths ? new Date(Date.now() + promo.durationMonths * 30 * 24 * 60 * 60 * 1000) : null;
-      }
-
-      const redemption = await storage.createPromoRedemption({
-        promoCodeId: promo.id,
-        userId,
-        tenantId: (req.tenantContext?.tenant?.id as string) || null,
-        startsAt: now,
-        expiresAt: targetExpiresAt,
-        status: "active",
-        metadata: { code: promo.code, benefitType: promo.benefitType, source: "user_settings" }
-      });
-
-      const updatedUser = await storage.updateUserAccessStatus(
-        userId,
-        targetAccessStatus,
-        targetExpiresAt,
-        `Canjeado código promocional: ${promo.code}`,
-        promo.id
-      );
-
-      res.json({
-        message: "¡Código promocional aplicado exitosamente!",
-        redemption,
-        accessStatus: updatedUser?.accessStatus || targetAccessStatus,
-        accessStatusExpiresAt: updatedUser?.accessStatusExpiresAt || targetExpiresAt,
-        promo: {
-          code: promo.code,
-          name: promo.name,
-          benefitType: promo.benefitType,
-          benefitValue: promo.benefitValue,
-          durationMonths: promo.durationMonths
-        }
-      });
+      const result = await changeUserBenefit({ action: 'redeem', actorId: userId, userId, code });
+      res.json({ message: 'Código aplicado correctamente.', ...result });
     } catch (error) {
-      if (error instanceof z.ZodError) {
-        return res.status(400).json({ message: error.errors[0].message });
-      }
-      console.error("[PROMO REDEEM] Error:", error);
-      res.status(500).json({ message: "Error al aplicar el código promocional." });
+      if (error instanceof z.ZodError) return res.status(400).json({ message: error.errors[0].message });
+      if (error instanceof BenefitError) return res.status(error.status).json({ message: error.message });
+      console.error('[PROMO REDEEM] Error:', error);
+      res.status(500).json({ message: 'No se pudo aplicar el beneficio.' });
     }
   });
 
@@ -2243,6 +2161,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           benefitValue: active.promoCode.benefitValue,
           durationMonths: active.promoCode.durationMonths,
           appliedAt: active.redemption.appliedAt,
+          startsAt: active.redemption.startsAt,
           expiresAt: active.redemption.expiresAt,
         } : null,
         nonBlocking: true,
@@ -2302,25 +2221,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // 6. Admin: Update / toggle promo code
+  // 6. Allow toggling a catalog code; never retroactively rewrite financial terms.
   app.patch('/api/admin/promos/:id', isAuthenticated, async (req: any, res) => {
     try {
-      const userId = getAuthUserId(req);
-      if (!(await isPlatformAdmin(userId))) {
-        return res.status(403).json({ message: "Acceso denegado. Privilegios de administrador requeridos." });
-      }
-
-      const { id } = req.params;
-      const existing = await storage.getPromoCode(id);
-      if (!existing) {
-        return res.status(404).json({ message: "Código promocional no encontrado." });
-      }
-
-      const updated = await storage.updatePromoCode(id, req.body);
+      if (!(await isPlatformAdmin(getAuthUserId(req)))) return res.status(403).json({ message: 'No autorizado.' });
+      const { isActive } = z.object({ isActive: z.boolean() }).strict().parse(req.body);
+      const existing = await storage.getPromoCode(req.params.id);
+      if (!existing) return res.status(404).json({ message: 'Cupón no encontrado.' });
+      const updated = await storage.updatePromoCode(existing.id, { isActive });
       res.json(updated);
     } catch (error) {
-      console.error("[ADMIN PROMOS PATCH] Error:", error);
-      res.status(500).json({ message: "Error al actualizar código promocional." });
+      if (error instanceof z.ZodError) return res.status(400).json({ message: 'Solo se permite activar o desactivar el código.' });
+      console.error('[ADMIN PROMOS PATCH]', error);
+      res.status(500).json({ message: 'No se pudo actualizar el catálogo.' });
     }
   });
 
@@ -2360,6 +2273,42 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Manual individual administration is Super Admin only; no alternative billing engine.
+  app.get('/api/admin/users/:id/benefits', isAuthenticated, async (req: any, res) => {
+    try {
+      const actorId = getAuthUserId(req);
+      const actor = actorId ? await storage.getUser(actorId) : null;
+      if (actor?.role !== 'super_admin') return res.status(403).json({ message: 'Solo Super Admin.' });
+      const beneficiary = await storage.getUser(req.params.id);
+      if (!beneficiary || !['broker','master_broker'].includes(beneficiary.role)) {
+        return res.status(404).json({ message: 'Broker/Master no encontrado.' });
+      }
+      res.json(await userBenefitHistory(beneficiary.id));
+    } catch (error) {
+      console.error('[ADMIN BENEFIT HISTORY]', error);
+      res.status(500).json({ message: 'No se pudo consultar historial.' });
+    }
+  });
+  app.post('/api/admin/users/:id/benefits', isAuthenticated, async (req: any, res) => {
+    try {
+      const actorId = getAuthUserId(req);
+      if (!actorId) return res.status(401).json({ message: 'No autenticado.' });
+      const data = z.object({
+        action: z.enum(['assign','replace','extend','revoke']),
+        code: z.string().optional(),
+        months: z.number().int().min(1).max(60).optional(),
+        reason: z.string().trim().min(5).max(500),
+      }).strict().parse(req.body);
+      const result = await changeUserBenefit({ ...data, actorId, userId: req.params.id });
+      res.json({ message: 'Beneficio actualizado y auditado.', ...result });
+    } catch (error) {
+      if (error instanceof z.ZodError) return res.status(400).json({ message: error.errors[0].message });
+      if (error instanceof BenefitError) return res.status(error.status).json({ message: error.message });
+      console.error('[ADMIN BENEFIT CHANGE]', error);
+      res.status(500).json({ message: 'No se pudo modificar el beneficio.' });
+    }
+  });
+
   // 8. Admin: Manually update user access status
   app.patch('/api/admin/users/:id/access-status', isAuthenticated, async (req: any, res) => {
     try {
@@ -2376,6 +2325,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ message: "Usuario no encontrado." });
       }
 
+      if (['broker', 'master_broker'].includes(targetUser.role) &&
+          (targetUser.activePromoId || ['promotional','complimentary'].includes(data.accessStatus))) {
+        return res.status(409).json({ message: 'Administra la promoción desde Beneficios; no cambies el estado de acceso por separado.' });
+      }
       const updated = await storage.updateUserAccessStatus(
         targetUserId,
         data.accessStatus,
