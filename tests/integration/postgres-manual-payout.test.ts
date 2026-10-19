@@ -86,7 +86,21 @@ describePg("Manual payout: PostgreSQL ACID and concurrency", () => {
       BEFORE INSERT ON commission_audit_logs
       FOR EACH ROW EXECUTE FUNCTION pg_fail_manual_audit()`);
     try {
-      await expect(settle(input(original, "PG-REF-TEST-2"))).rejects.toThrow(/injected audit failure/);
+      // Newer Drizzle wraps PostgreSQL errors in DrizzleQueryError with
+      // `cause`. Verify the original trigger error through that chain, then
+      // independently assert ACID rollback of the payment and bank reference.
+      const failure = await settle(input(original, "PG-REF-TEST-2")).then(
+        () => null,
+        (error: unknown) => error,
+      );
+      expect(failure).toBeInstanceOf(Error);
+      const messages: string[] = [];
+      let current: unknown = failure;
+      for (let depth = 0; current instanceof Error && depth < 6; depth++) {
+        messages.push(current.message);
+        current = (current as Error & { cause?: unknown }).cause;
+      }
+      expect(messages.join(" | caused by: ")).toMatch(/injected audit failure/);
       const [stored] = await db.select().from(commissions).where(eq(commissions.id, original.id));
       expect(stored.status).toBe("approved");
       expect(stored.trackingKey).toBeNull();
