@@ -64,6 +64,20 @@ describe("SEC-P0-STORAGE: Staging requires a separate Supabase PROJECT", () => {
       })).toThrow("STAGING_DOCUMENT_STORAGE_NOT_ISOLATED");
     }
   });
+  it("accepts well-formed modern service secrets only for the configured staging URL and bucket", () => {
+    const modernKey = "sb_secret_" + "A".repeat(32);
+    const modernConfig = { ...validConfig, serviceRoleKey: modernKey };
+    expect(() => assertDocumentStorageEnvironmentIsolated("staging-cn", "staging-cn", modernConfig))
+      .not.toThrow();
+    expect(() => assertDocumentStorageEnvironmentIsolated("staging-cn", "staging-cn", {
+      ...modernConfig, supabaseUrl: `https://${productionRef}.supabase.co`,
+    })).toThrow("STAGING_DOCUMENT_STORAGE_NOT_ISOLATED");
+    expect(() => assertDocumentStorageEnvironmentIsolated("documents", "documents", modernConfig))
+      .toThrow("STAGING_DOCUMENT_STORAGE_NOT_ISOLATED");
+    // Opaque keys require a successful remote private-bucket authorization check
+    // in the async upload/delete/read paths; local format checks alone are not proof.
+  });
+
   it("permits the separate project and matching Staging bucket after verification", () => {
     expect(() => assertDocumentStorageEnvironmentIsolated("staging-cn","staging-cn",validConfig))
       .not.toThrow();
