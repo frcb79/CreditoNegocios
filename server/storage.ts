@@ -1828,12 +1828,12 @@ export class MemStorage implements IStorage {
     return structuredClone(doc);
   }
 
-  async getLegalAcceptancesForUsers(userIds: string[]): Promise<LegalAcceptance[]> {
+  async getLegalAcceptancesForUsers(userIds: string[]): Promise<Pick<LegalAcceptance, "userId" | "document" | "version" | "acceptedAt">[]> {
     const allowed = new Set(userIds);
     if (!allowed.size) return [];
     return Array.from(this.legalAcceptances.values())
       .filter(a => allowed.has(a.userId))
-      .map(a => structuredClone(a));
+      .map(a => ({ userId: a.userId, document: a.document, version: a.version, acceptedAt: a.acceptedAt }));
   }
 
   async getLegalAcceptancesByUser(userId: string): Promise<LegalAcceptance[]> {
