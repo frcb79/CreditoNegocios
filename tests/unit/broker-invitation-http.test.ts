@@ -21,6 +21,8 @@ function template(role="Broker",masterEmail=""):Buffer{
 describe("SEC-INVITES: bulk preview and explicit send routes",()=>{
   let app:express.Express,server:Server;
   let user:any=null,superAdmin:any,broker:any;
+  const courtesyCode = "COURTESY12-" + randomUUID().slice(0,8).toUpperCase();
+  const previousDefaultPromo = process.env.INVITATION_WELCOME_PROMO_CODE;
   beforeAll(async()=>{
     process.env.NODE_ENV="test";
     app=express();app.use(express.json());
@@ -39,9 +41,17 @@ describe("SEC-INVITES: bulk preview and explicit send routes",()=>{
       email:`broker-invite-${randomUUID()}@example.test`,
       firstName:"B",lastName:"Test",role:"broker",isActive:true,status:"active",
     } as any);
+    await storage.createPromoCode({
+      code: courtesyCode, name: "Cortesía de lanzamiento",
+      benefitType: "free_months", benefitValue: "0", durationMonths: 12,
+      targetScope: "global", isActive: true, maxUses: 100,
+    } as any);
+    process.env.INVITATION_WELCOME_PROMO_CODE = courtesyCode;
   });
   afterAll(async()=>{
     user=null;
+    if (previousDefaultPromo === undefined) delete process.env.INVITATION_WELCOME_PROMO_CODE;
+    else process.env.INVITATION_WELCOME_PROMO_CODE = previousDefaultPromo;
     cron.getTasks().forEach((task:any)=>task.stop());
     if(server?.listening)await new Promise<void>(resolve=>server.close(()=>resolve()));
     try{await pool.end();}catch{}
@@ -54,6 +64,16 @@ describe("SEC-INVITES: bulk preview and explicit send routes",()=>{
     user=broker;
     r=await request(app).post("/api/broker-invitations/bulk/preview").attach("file",file,"carga.xlsx");
     expect(r.status).toBe(403);
+  });
+  it("refuses a batch with no configured coupon before sending",async()=>{
+    user=superAdmin;
+    delete process.env.INVITATION_WELCOME_PROMO_CODE;
+    const r=await request(app).post("/api/broker-invitations/bulk/preview")
+      .attach("file",template(),"carga.xlsx");
+    expect(r.status).toBe(200);
+    expect(r.body.ready).toBe(false);
+    expect(r.body.errors.some((x:any)=>x.field==="codigo_promocional")).toBe(true);
+    process.env.INVITATION_WELCOME_PROMO_CODE = courtesyCode;
   });
   it("previews valid invites without creating accounts",async()=>{
     user=superAdmin;
