@@ -9,6 +9,7 @@ export type BulkBrokerInvite = {
   message: string;
   role: "broker" | "master_broker";
   masterEmail: string;
+  promoCode: string;
 };
 export type BulkInviteIssue = { row: number; field: string; message: string };
 export const MAX_INVITATIONS_PER_FILE = 100;
@@ -49,6 +50,8 @@ export function parseBrokerInvitationExcel(buffer: Buffer): {
     const phone = cell("telefono");
     const message = cell("mensaje_personal");
     const masterEmail = cell("correo_master_asignado").toLowerCase();
+    // Optional to preserve previously generated Excel invitation lists.
+    const promoCode = headers.includes("codigo_promocional") ? cell("codigo_promocional").toUpperCase() : "";
     const originalRole = cell("rol").toLowerCase().replace(/\s+/g," ").trim();
     const role = originalRole === "broker" ? "broker" :
       originalRole === "master broker" || originalRole === "master_broker" ? "master_broker" : null;
@@ -63,7 +66,8 @@ export function parseBrokerInvitationExcel(buffer: Buffer): {
     if (role === "master_broker" && masterEmail) issue("correo_master_asignado","Un Master no puede depender de otro Master");
     if (used.has(email)) issue("correo","Correo duplicado en el archivo");
     used.add(email);
-    if (role) rows.push({row:excelRow,email,firstName,lastName,phone,message,role,masterEmail});
+    if (promoCode && !/^[A-Z0-9_-]{3,80}$/.test(promoCode)) issue("codigo_promocional", "Código promocional inválido");
+    if (role) rows.push({row:excelRow,email,firstName,lastName,phone,message,role,masterEmail,promoCode});
   }
   const mastersInFile = new Set(rows.filter(r=>r.role==="master_broker").map(r=>r.email));
   for(const row of rows) {
@@ -83,7 +87,7 @@ export function parseBrokerInvitationExcel(buffer: Buffer): {
 /** Generate the exact workbook accepted by the preview/send endpoints. */
 export function generateBrokerInvitationExcelTemplate(): Buffer {
   const book = XLSX.utils.book_new();
-  const columns = [...INVITATION_EXCEL_HEADERS,"estado_envio","fecha_envio","fecha_activacion"];
+  const columns = [...INVITATION_EXCEL_HEADERS,"codigo_promocional","estado_envio","fecha_envio","fecha_activacion"];
   const sheet = XLSX.utils.aoa_to_sheet([columns]);
   sheet["!cols"] = columns.map((h)=>({wch:Math.min(Math.max(15,h.length+2),35)}));
   XLSX.utils.book_append_sheet(book,sheet,"Invitaciones");
@@ -92,6 +96,9 @@ export function generateBrokerInvitationExcelTemplate(): Buffer {
     ["Llena nombre, apellido, correo y rol. Usa Broker o Master Broker."],
     ["Para Brokers afiliados, correo_master_asignado contiene el correo del Master; para directos, vacío."],
     ["Puedes incluir Masters nuevos y sus Brokers juntos. Primero se invitarán los Masters."],
+    ["codigo_promocional es opcional por fila: permite una cortesía anual distinta por persona."],
+    ["Si todas las invitaciones comparten un código, indícalo en el formulario del lote."],
+    ["La cortesía anual dura 12 meses a partir de la activación de la cuenta."],
     ["No modifiques los encabezados. Máximo 100 invitados por archivo."],
     ["El envío no sucede al cargar el Excel: revisa la vista previa y confirma expresamente."],
     ["estado_envio, fecha_envio y fecha_activacion son columnas de seguimiento; se ignoran al importar."],
