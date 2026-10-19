@@ -96,6 +96,7 @@ jobs:
             tests/unit/websocket-session-gate.test.ts
             tests/unit/websocket-session-http.test.ts
             tests/unit/broker-invitation-bulk.test.ts
+            tests/unit/broker-invitation-email.test.ts
             tests/unit/broker-invitation-http.test.ts
             tests/unit/rbac.test.ts
           )
