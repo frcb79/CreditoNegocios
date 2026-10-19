@@ -1,5 +1,6 @@
 // @ts-nocheck
 import { randomUUID, createHash } from "crypto";
+import { annualCourtesyExpiry } from "./invitationWelcomePromo";
 import { assertTargetReviewMutable } from "./targetReviewTransitions";
 import { buildOfferCommissionDocument } from "./offerCommissionAcceptance";
 import catalog from "./legalDocumentCatalog.json";
@@ -1793,11 +1794,38 @@ export class MemStorage implements IStorage {
       });
       const terms = makeEvidence(params.termsDoc, "accept_terms");
       const privacy = makeEvidence(params.privacyDoc, "acknowledge_privacy");
-      // The following writes are synchronous under the user lock; no partial activation.
+      // Match PostgreSQL behavior in the deterministic in-memory adapter.
+      const invitedCode = (user.profileData as any)?.invitationPromoCode;
+      const promo = typeof invitedCode === "string" && invitedCode.trim() ?
+        Array.from(this.promoCodes.values()).find(p => p.code === invitedCode.trim().toUpperCase()) : null;
+      if (invitedCode && (!promo || !promo.isActive || promo.benefitType !== "free_months" ||
+          promo.durationMonths !== 12 || new Date(promo.startsAt) > now ||
+          (promo.expiresAt && new Date(promo.expiresAt) <= now) ||
+          (promo.maxUses != null && (promo.currentUses || 0) >= promo.maxUses) ||
+          !["global", "alliance", "campaign", user.role].includes(promo.targetScope))) {
+        throw new Error("La cortesía de la invitación ya no está disponible; solicita un nuevo código.");
+      }
+      const endsAt = promo ? annualCourtesyExpiry(now) : null;
+      // All validations happen before any of the memory writes.
       this.legalAcceptances.set(terms.id, structuredClone(terms));
       this.legalAcceptances.set(privacy.id, structuredClone(privacy));
+      if (promo && endsAt) {
+        const redemptionId = randomUUID();
+        this.promoRedemptions.set(redemptionId, {
+          id: redemptionId, promoCodeId: promo.id, userId: user.id, tenantId: null,
+          appliedAt: now, startsAt: now, expiresAt: endsAt, status: "active",
+          metadata: { source: "broker_invitation_activation", code: promo.code, durationMonths: 12 },
+          createdAt: now,
+        } as any);
+        this.promoCodes.set(promo.id, { ...promo, currentUses: (promo.currentUses || 0) + 1 });
+      }
       this.users.set(user.id, { ...user, password: params.passwordHash,
-        resetToken: null, resetTokenExpiry: null, updatedAt: now });
+        resetToken: null, resetTokenExpiry: null, updatedAt: now,
+        ...(promo && endsAt ? {
+          accessStatus: "promotional", accessStatusExpiresAt: endsAt,
+          accessStatusNotes: `12 meses sin costo por invitación: ${promo.code}`, activePromoId: promo.id,
+        } : {}),
+      });
       return [structuredClone(terms), structuredClone(privacy)];
     });
   }
