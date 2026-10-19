@@ -9,7 +9,7 @@ function file(rows:unknown[][]):Buffer{
 }
 describe("SEC-INVITES: Excel onboarding preview is strict and side-effect free",()=>{
   it("generates the official compatible workbook",()=>{
-    const parsed=parseBrokerInvitationExcel(file([["Nombre","Apellido","broker@test.example","Broker","","","","Pendiente"]]));
+    const parsed=parseBrokerInvitationExcel(file([["Nombre","Apellido","broker@test.example","Broker","","","","","Pendiente"]]));
     expect(parsed.total).toBe(1);
     const wb=XLSX.read(generateBrokerInvitationExcelTemplate(),{type:"buffer"});
     expect(wb.SheetNames).toContain("Invitaciones");
@@ -49,7 +49,7 @@ describe("SEC-INVITES: Excel onboarding preview is strict and side-effect free",
   });
   it("ignores only blank template rows with status Pendiente",()=>{
     const parsed=parseBrokerInvitationExcel(file([
-      ["","","","","","","","Pendiente"],
+      ["","","","","","","","","Pendiente"],
       ["B","C","broker@demo.example","Broker"],
     ]));
     expect(parsed.total).toBe(1);
@@ -61,7 +61,7 @@ describe("SEC-INVITES: Excel onboarding preview is strict and side-effect free",
   });
   it("never interprets formula status columns as instructions",()=>{
     const parsed=parseBrokerInvitationExcel(file([
-      ["A","B","safe@demo.example","Broker","","","","=SUM(1,2)"],
+      ["A","B","safe@demo.example","Broker","","","","","=SUM(1,2)"],
     ]));
     expect(parsed.rows[0].email).toBe("safe@demo.example");
     expect(parsed.errors).toHaveLength(0);
