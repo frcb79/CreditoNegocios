@@ -574,7 +574,7 @@ export interface IStorage {
   createLegalDocumentVersion(version: InsertLegalDocumentVersionDb): Promise<LegalDocumentVersionDb>;
   getLegalAcceptancesByUser(userId: string): Promise<LegalAcceptance[]>;
   /** Batch read for Super Admin legal overview; no user-specific evidence is exposed here. */
-  getLegalAcceptancesForUsers(userIds: string[]): Promise<LegalAcceptance[]>;
+  getLegalAcceptancesForUsers(userIds: string[]): Promise<Pick<LegalAcceptance, "userId" | "document" | "version" | "acceptedAt">[]>;
   createLegalAcceptance(acceptance: InsertLegalAcceptance): Promise<LegalAcceptance>;
   registerUserWithLegalEvidence(params: {
     userData: {
