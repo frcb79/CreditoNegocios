@@ -8275,13 +8275,15 @@ function maskCLABE(clabe?: string | null): string | null {
       if (!req.file?.buffer) return res.status(400).json({message:"Adjunta la plantilla XLSX."});
       const preview = parseBrokerInvitationExcel(req.file.buffer);
       const warnings: Array<{row:number;message:string}> = [];
+      const couponDemand = new Map<string, { count: number; row: number }>();
       // Master indicated in the Excel but not in this batch must exist already.
       const masterEmails = new Set(preview.rows.filter(r=>r.role==="master_broker").map(r=>r.email));
       for (const row of preview.rows) {
         try {
           const courtesy = await resolveAnnualInvitationPromo(
             row.promoCode || (typeof req.body?.promoCode === "string" ? req.body.promoCode : null), row.role);
-          if (!courtesy) throw new Error("Sin cortesía");
+          const demand = couponDemand.get(courtesy.id) || { count: 0, row: row.row };
+          couponDemand.set(courtesy.id, { ...demand, count: demand.count + 1 });
         } catch (e: any) {
           preview.errors.push({ row: row.row, field: "codigo_promocional", message: e.message || "Cupón inválido" });
         }
@@ -8293,6 +8295,13 @@ function maskCLABE(clabe?: string | null): string | null {
         }
         const userExists = await storage.getUserByEmail(row.email);
         if (userExists) warnings.push({row:row.row,message:"Correo ya registrado: sólo se permitirá reenviar si sigue sin activar y conserva su red."});
+      }
+      for (const [id, demand] of couponDemand) {
+        const coupon = await storage.getPromoCode(id);
+        if (coupon?.maxUses != null && coupon.maxUses - (coupon.currentUses || 0) < demand.count) {
+          preview.errors.push({row:demand.row,field:"codigo_promocional",
+            message:`El cupón ${coupon.code} sólo tiene ${coupon.maxUses - (coupon.currentUses || 0)} usos disponibles para ${demand.count} invitados.`});
+        }
       }
       return res.json({...preview,warnings,ready:preview.errors.length===0});
     } catch(error:any) {
@@ -8311,11 +8320,14 @@ function maskCLABE(clabe?: string | null): string | null {
       validateInvitationTransport();
       const parsed = parseBrokerInvitationExcel(req.file.buffer);
       const errors = [...parsed.errors];
+      const couponDemand = new Map<string, { count: number; row: number }>();
       const batchMasters = new Set(parsed.rows.filter(r=>r.role==="master_broker").map(r=>r.email));
       for(const row of parsed.rows) {
         try {
-          await resolveAnnualInvitationPromo(
+          const coupon = await resolveAnnualInvitationPromo(
             row.promoCode || (typeof req.body?.promoCode === "string" ? req.body.promoCode : null), row.role);
+          const demand = couponDemand.get(coupon.id) || { count: 0, row: row.row };
+          couponDemand.set(coupon.id, { ...demand, count: demand.count + 1 });
         } catch (error: any) {
           errors.push({row:row.row,field:"codigo_promocional",message:error.message || "Cupón inválido"});
         }
@@ -8330,6 +8342,13 @@ function maskCLABE(clabe?: string | null): string | null {
           const master = await storage.getUserByEmail(row.masterEmail);
           if (!master || master.role !== "master_broker" || master.isActive === false)
             errors.push({row:row.row,field:"correo_master_asignado",message:"Master no existe o no está activo"});
+        }
+      }
+      for (const [id, demand] of couponDemand) {
+        const coupon = await storage.getPromoCode(id);
+        if (coupon?.maxUses != null && coupon.maxUses - (coupon.currentUses || 0) < demand.count) {
+          errors.push({row:demand.row,field:"codigo_promocional",
+            message:`El cupón ${coupon.code} no alcanza para los ${demand.count} invitados.`});
         }
       }
       // ALL row/association validation before first persistent creation/email.
