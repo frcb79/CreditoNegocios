@@ -7,10 +7,12 @@ import {
 import {
   maskEmail,
   getDocumentTitle,
+  getRequiredFormalizationDocuments,
 } from "../shared/legalDocuments";
 import { sendFormalizationOtpEmail } from "./emailService";
 import { storage } from "./storage";
 import { renderLegalVoucherPdf } from "./legalVoucherPdf";
+import { ACTIVE_FORMALIZATION_VERSIONS } from "./legalDocuments";
 
 /**
  * Formatea el texto plano oficial del comprobante de aceptación legal e histórico.
@@ -93,6 +95,142 @@ function generateOfficialVoucherText(
 }
 
 export function registerLegalRoutes(app: Express) {
+  // Administrators inspect immutable evidence through dedicated read-only routes.
+  // Never widen /api/legal/my-acceptances: those routes remain strictly owner-only.
+  const requireActualSuperAdmin = async (req: any, res: any, next: any) => {
+    try {
+      const actorId = req.user?.claims?.sub || req.user?.id;
+      if (!actorId) return res.status(401).json({ message: "No autenticado." });
+      const actor = await storage.getUser(actorId);
+      if (!actor || actor.role !== "super_admin") {
+        return res.status(403).json({ message: "Consulta exclusiva de Super Admin." });
+      }
+      return next();
+    } catch (error) {
+      console.error("Super Admin legal authorization failed:", error);
+      return res.status(500).json({ message: "No fue posible validar los permisos." });
+    }
+  };
+  const safeAcceptance = (a: any) => ({
+    id: a.id, userId: a.userId, userName: a.userName,
+    document: a.document, version: a.version, contentSha256: a.contentSha256,
+    acceptanceType: a.acceptanceType, acceptedAt: a.acceptedAt,
+  });
+  const legalSummary = (user: any, userAcceptances: any[]) => {
+    const requiredDocuments = getRequiredFormalizationDocuments(user.role);
+    const acceptedDocuments = requiredDocuments.filter(doc =>
+      userAcceptances.some(a => a.document === doc && a.version === ACTIVE_FORMALIZATION_VERSIONS[doc])
+    );
+    const hasPriorAcceptance = requiredDocuments.some(doc =>
+      userAcceptances.some(a => a.document === doc));
+    const currentVersionComplete = requiredDocuments.every(doc => acceptedDocuments.includes(doc));
+    const status = currentVersionComplete ? "formalized" :
+      hasPriorAcceptance && requiredDocuments.some(doc =>
+        userAcceptances.some(a => a.document === doc && a.version !== ACTIVE_FORMALIZATION_VERSIONS[doc])) ?
+          "requires_new_acceptance" : "pending";
+    const latestAcceptance = userAcceptances.reduce((latest: Date | null, a: any) => {
+      const when = new Date(a.acceptedAt);
+      return !Number.isNaN(when.getTime()) && (!latest || when > latest) ? when : latest;
+    }, null);
+    return {
+      userId: user.id, role: user.role, status, isFormalized: currentVersionComplete,
+      requiredDocuments, acceptedDocuments,
+      latestAcceptedAt: latestAcceptance?.toISOString() || null,
+    };
+  };
+  const getAdminTarget = async (res: any, userId: string) => {
+    const target = await storage.getUser(userId);
+    if (!target) {
+      res.status(404).json({ message: "Usuario no encontrado." });
+      return null;
+    }
+    if (target.role !== "broker" && target.role !== "master_broker") {
+      res.status(400).json({ message: "La consulta contractual es para Brokers y Master Brokers." });
+      return null;
+    }
+    return target;
+  };
+  // Batch avoids one database query per Broker/Master in the global directory.
+  app.get("/api/admin/legal/users/overview", isAuthenticated, requireActualSuperAdmin, async (_req: any, res) => {
+    try {
+      const commercialUsers = (await storage.getAllUsers()).filter(u =>
+        u.role === "broker" || u.role === "master_broker");
+      const all = await storage.getLegalAcceptancesForUsers(commercialUsers.map(u => u.id));
+      const byUser = new Map<string, any[]>();
+      for (const acc of all) byUser.set(acc.userId, [...(byUser.get(acc.userId) || []), acc]);
+      res.set("Cache-Control", "private, no-store");
+      return res.json({ users: commercialUsers.map(u => legalSummary(u, byUser.get(u.id) || [])) });
+    } catch (error) {
+      console.error("Admin formalization overview error:", error);
+      return res.status(500).json({ message: "No se pudo consultar el estado de los convenios." });
+    }
+  });
+  app.get("/api/admin/legal/users/:userId/acceptances", isAuthenticated, requireActualSuperAdmin, async (req: any, res) => {
+    try {
+      const target = await getAdminTarget(res, req.params.userId);
+      if (!target) return;
+      const acceptances = await storage.getLegalAcceptancesByUser(target.id);
+      res.set("Cache-Control", "private, no-store");
+      return res.json({
+        user: { id: target.id, firstName: target.firstName, lastName: target.lastName,
+          email: target.email, role: target.role },
+        formalization: legalSummary(target, acceptances),
+        acceptances: acceptances.map(safeAcceptance),
+      });
+    } catch (error) {
+      console.error("Admin legal history error:", error);
+      return res.status(500).json({ message: "No se pudo consultar el historial legal." });
+    }
+  });
+  app.get("/api/admin/legal/users/:userId/acceptances/:acceptanceId", isAuthenticated, requireActualSuperAdmin, async (req: any, res) => {
+    try {
+      const target = await getAdminTarget(res, req.params.userId);
+      if (!target) return;
+      const acc = await storage.getLegalAcceptanceById(req.params.acceptanceId);
+      if (!acc || acc.userId !== target.id) {
+        return res.status(404).json({ message: "Evidencia no encontrada para este usuario." });
+      }
+      const document = (await storage.getLegalDocumentVersion(acc.documentId)) ||
+        getApprovedLegalDocument(acc.document, acc.version);
+      const snapshot = await storage.getPersonalizedAgreementSnapshot(acc.id);
+      res.set("Cache-Control", "private, no-store");
+      return res.json({
+        acceptance: { ...safeAcceptance(acc), userEmail: acc.userEmail,
+          ipAddress: acc.ipAddress, userAgent: acc.userAgent },
+        document: document ? { title: document.title, document: document.document,
+          version: document.version, content: document.content,
+          contentSha256: document.contentSha256 } : null,
+        snapshot: snapshot || null, isPersonalized: Boolean(snapshot),
+      });
+    } catch (error) {
+      console.error("Admin legal evidence detail error:", error);
+      return res.status(500).json({ message: "No se pudo consultar la evidencia legal." });
+    }
+  });
+  app.get("/api/admin/legal/users/:userId/acceptances/:acceptanceId/comprobante", isAuthenticated, requireActualSuperAdmin, async (req: any, res) => {
+    try {
+      const target = await getAdminTarget(res, req.params.userId);
+      if (!target) return;
+      const acc = await storage.getLegalAcceptanceById(req.params.acceptanceId);
+      if (!acc || acc.userId !== target.id) {
+        return res.status(404).json({ message: "Evidencia no encontrada para este usuario." });
+      }
+      const snapshot = await storage.getPersonalizedAgreementSnapshot(acc.id);
+      const docVersion = (await storage.getLegalDocumentVersion(acc.documentId)) ||
+        getApprovedLegalDocument(acc.document, acc.version);
+      const voucherText = generateOfficialVoucherText(acc, snapshot, docVersion);
+      const pdf = await renderLegalVoucherPdf(voucherText);
+      const filename = `comprobante-${String(acc.document).replace(/[^a-z0-9_-]/gi, "-")}-${String(acc.id).replace(/[^a-z0-9_-]/gi, "-")}.pdf`;
+      res.set("Cache-Control", "private, no-store");
+      res.set("Content-Type", "application/pdf");
+      res.set("Content-Disposition", `attachment; filename="${filename}"`);
+      return res.send(pdf);
+    } catch (error) {
+      console.error("Admin legal voucher download error:", error);
+      return res.status(500).json({ message: "No se pudo descargar el comprobante." });
+    }
+  });
+
   // Acceptance evidence for current user (must be declared before :document to prevent route collision)
   app.get("/api/legal/my-acceptances", isAuthenticated, async (req: any, res) => {
     try {
