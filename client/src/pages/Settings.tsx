@@ -159,6 +159,7 @@ export default function Settings() {
       benefitValue: string;
       durationMonths?: number | null;
       appliedAt: string;
+      startsAt?: string | null;
       expiresAt?: string | null;
     } | null;
     nonBlocking: boolean;
@@ -1813,10 +1814,16 @@ export default function Settings() {
                           <p className="font-semibold text-foreground capitalize mt-0.5">
                             {myBenefits.activePromo.benefitType === "free_months"
                               ? `${myBenefits.activePromo.durationMonths || 1} meses sin costo`
-                              : myBenefits.activePromo.benefitType.replaceAll("_", " ")}
+                              : myBenefits.activePromo.benefitType === "percentage_discount"
+                                ? `${myBenefits.activePromo.benefitValue}% de descuento (sin cobro automático)`
+                                : myBenefits.activePromo.benefitType.replaceAll("_", " ")}
                           </p>
                         </div>
-                        {myBenefits.activePromo.expiresAt && (
+                        <div>
+                            <span className="text-muted-foreground text-[11px]">Inicio del beneficio:</span>
+                            <p className="font-semibold text-foreground mt-0.5">{new Date(myBenefits.activePromo.startsAt || myBenefits.activePromo.appliedAt).toLocaleDateString('es-MX', { year: 'numeric', month: 'long', day: 'numeric' })}</p>
+                          </div>
+                          {myBenefits.activePromo.expiresAt && (
                           <div>
                             <span className="text-muted-foreground text-[11px]">Vigencia hasta:</span>
                             <p className="font-semibold text-foreground mt-0.5">
