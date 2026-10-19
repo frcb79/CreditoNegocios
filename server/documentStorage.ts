@@ -34,13 +34,14 @@ const supabaseAdmin = supabaseUrl && supabaseServiceRoleKey
  *  - operator explicitly enabled the guard AFTER provisioning separation;
  *  - both project references exist and are different;
  *  - the endpoint belongs to the expected staging project;
- *  - the server-side legacy JWT is for service_role in that staging project;
+ *  - legacy JWTs embed the staging project ref, or modern sb_secret keys are
+ *    verified against the private staging bucket via the staging-only URL;
  *  - the requested bucket matches the configured staging-prefixed bucket.
  *
  * Token payload decoding is not signature verification; the Supabase service
- * verifies the JWT when called. We only use its embedded ref to detect
- * accidental cross-project credentials. Modern opaque secret keys are rejected
- * until independently verified, rather than assumed safe.
+ * verifies JWTs on use. Opaque sb_secret keys cannot reveal their project ref;
+ * check their format here and authorize them server-side against the private
+ * staging bucket before any upload, delete or signed URL.
  */
 export function assertDocumentStorageEnvironmentIsolated(
   configuredBucket: string = supabaseStorageBucket,
@@ -72,12 +73,41 @@ export function assertDocumentStorageEnvironmentIsolated(
         endpoint.hostname !== stagingRef + ".supabase.co" ||
         (endpoint.pathname !== "/" && endpoint.pathname !== "")) deny();
 
-    const parts = key!.split(".");
-    if (parts.length !== 3) deny();
-    const claims = JSON.parse(Buffer.from(parts[1], "base64url").toString("utf8"));
-    if (claims?.role !== "service_role" || claims?.ref !== stagingRef) deny();
+    if (key!.startsWith("sb_secret_")) {
+      // Modern Supabase secrets are opaque: authorization is verified by
+      // assertDocumentStorageEnvironmentIsolatedAndAuthorized before I/O.
+      if (!/^sb_secret_[A-Za-z0-9_-]{20,}$/.test(key!)) deny();
+    } else {
+      const parts = key!.split(".");
+      if (parts.length !== 3) deny();
+      const claims = JSON.parse(Buffer.from(parts[1], "base64url").toString("utf8"));
+      if (claims?.role !== "service_role" || claims?.ref !== stagingRef) deny();
+    }
   } catch {
     deny();
+  }
+}
+
+/**
+ * Verify a modern secret against the actual private staging bucket before any
+ * file I/O. An accidentally reused Production secret cannot authorize requests
+ * at the pinned Staging project hostname, even though its value is opaque.
+ */
+export async function assertDocumentStorageEnvironmentIsolatedAndAuthorized(
+  configuredBucket: string = supabaseStorageBucket,
+  requestedBucket: string = configuredBucket,
+): Promise<void> {
+  assertDocumentStorageEnvironmentIsolated(configuredBucket, requestedBucket);
+  if ((process.env.RAILWAY_ENVIRONMENT_NAME || "").toLowerCase() !== "staging" ||
+      !supabaseServiceRoleKey?.startsWith("sb_secret_")) return;
+  if (!supabaseAdmin) throw new Error("STAGING_DOCUMENT_STORAGE_NOT_ISOLATED");
+  try {
+    const { data, error } = await supabaseAdmin.storage.getBucket(configuredBucket);
+    if (error || !data || data.id !== configuredBucket || data.public !== false) {
+      throw new Error("STAGING_DOCUMENT_STORAGE_NOT_ISOLATED");
+    }
+  } catch {
+    throw new Error("STAGING_DOCUMENT_STORAGE_NOT_ISOLATED");
   }
 }
 
@@ -130,7 +160,7 @@ async function safeDeleteLocalFile(filePath: string) {
 
 export async function persistDocumentFile(file: Express.Multer.File, context: UploadContext) {
   // Do not silently fall back to ephemeral local uploads in Staging.
-  assertDocumentStorageEnvironmentIsolated();
+  await assertDocumentStorageEnvironmentIsolatedAndAuthorized();
   if (!supabaseAdmin) {
     return { filePath: file.path, storageProvider: "local" as const };
   }
@@ -158,7 +188,7 @@ export async function migrateLocalDocumentToStorage(params: {
   mimeType?: string | null;
   context: UploadContext;
 }) {
-  assertDocumentStorageEnvironmentIsolated();
+  await assertDocumentStorageEnvironmentIsolatedAndAuthorized();
   if (!supabaseAdmin) {
     throw new Error("Supabase Storage is not configured for this environment");
   }
@@ -195,7 +225,7 @@ export async function removeStoredDocument(filePath?: string | null) {
 
   const supabaseFile = parseSupabaseFilePath(filePath);
   if (supabaseFile) {
-    assertDocumentStorageEnvironmentIsolated(supabaseStorageBucket,supabaseFile.bucket);
+    await assertDocumentStorageEnvironmentIsolatedAndAuthorized(supabaseStorageBucket, supabaseFile.bucket);
     if (!supabaseAdmin) {
       throw new Error("Supabase Storage is not configured for this environment");
     }
@@ -220,7 +250,7 @@ export async function getDocumentAccessTarget(
 ): Promise<AccessTarget> {
   const supabaseFile = parseSupabaseFilePath(filePath);
   if (supabaseFile) {
-    assertDocumentStorageEnvironmentIsolated(supabaseStorageBucket,supabaseFile.bucket);
+    await assertDocumentStorageEnvironmentIsolatedAndAuthorized(supabaseStorageBucket, supabaseFile.bucket);
     if (!supabaseAdmin) {
       throw new Error("Supabase Storage is not configured for this environment");
     }
