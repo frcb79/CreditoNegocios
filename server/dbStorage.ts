@@ -107,7 +107,11 @@ function stableJsonSnapshot(value: any): string {
 export class DbStorage implements IStorage {
   
   constructor() {
-    this.initializeDefaultData();
+    // Never seed synthetic lenders, rates or product variables in deployed environments.
+    // Real catalogs are maintained only by platform administrators.
+    if (process.env.NODE_ENV !== "production") {
+      this.initializeDefaultData();
+    }
   }
 
   private async initializeDefaultData() {
