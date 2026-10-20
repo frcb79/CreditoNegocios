@@ -1,6 +1,6 @@
 # Crédito Negocios — Checklist de corte a Producción (MVP)
 
-**Corte verificado: 19 de octubre de 2026. Estado: NO-GO Producción.** Este documento es un plan de verificación; **NO autoriza** modificación de bases de datos, secretos, permisos, envíos, merge, despliegue ni limpieza. Los datos actuales son de prueba, pero deben respaldarse y revisarse antes de eliminarlos.
+**Corte verificado: 19 de octubre de 2026. Estado: NO-GO Producción hasta cerrar P1 y cutover.** Este documento es un plan de verificación; **NO autoriza** modificación de bases de datos, secretos, permisos, envíos, merge, despliegue ni limpieza. Los datos actuales son de prueba, pero deben respaldarse y revisarse antes de eliminarlos.
 
 ## 0. Evidencia comprobada y decisiones
 
@@ -15,21 +15,33 @@
 - **Supabase Producción:** 37 tablas `public` con RLS habilitado y sin políticas (por defecto niega acceso a clientes no privilegiados, no equivale a exposición). Tres avisos `function_search_path_mutable` corresponden a funciones `SECURITY INVOKER` sin permisos EXECUTE para `anon/authenticated`; ajustar search_path con control de cambios, sin declararlo incidente externo. **Pendiente P1:** `supabase_admin` tiene ACL por defecto amplias para tablas/secuencias/funciones futuras; restringirlas antes de crear nuevas tablas expuestas al Data API.
 - **Railway Postgres Staging:** dos alertas históricas de plataforma todavía visibles; sin nuevos errores de arranque el 19-oct y sin fallas 5xx en la ventana comprobada.
 
+## Auditoría ASTRA del 19-oct-2026 — cierre de tres P1
+
+**Dictamen sobre SHA `38b69d6a`: NO-GO con exactamente tres P1 demostrados y ningún P0 adicional.** No confundir CI/health verdes con cierre de los P1. Cambios correctivos SOLO en `integration/phase-1a1-base-segura`, posteriores a ese SHA:
+
+1. **P1 importaciones económicas — mitigación MVP en código, requiere CI + E2E.** Las rutas `POST /api/import/commissions`, `POST /api/import/financieras` y `POST /api/import/financieras-soc` se bloquean con HTTP 409/código `OFFER_VERSIONED_IMPORT_REQUIRED` ANTES de recibir/parsing de Excel. Igual bloqueo en `GET /api/import/template/:type` y `POST /api/import/preview/:type` para `financieras`, `commissions` y `comisiones`. No abrirlas temporalmente ni siquiera a Super Admin: usar editor de borrador→publicación de ofertas con versión y permisos canónicos. El import de **clientes** se conserva. Rehabilitación futura requiere validaciones, transacción, permisos, versionado, pruebas y nueva decisión aprobada.
+2. **P1 CSRF — mitigación en código, requiere CI + E2E.** CORS ahora acepta sólo orígenes exactos configurados, sin coincidencias por substring, comodines `*.vercel.app` ni dominios similares. Middleware instalado ANTES de CORS/body parser/rutas rechaza mutaciones `POST/PUT/PATCH/DELETE` (HTML form, JSON y multipart) con `Origin` desconocido, y rechaza sesión `connect.sid` sin `Origin`. Preflight `OPTIONS` con origen ajeno también falla. Frontends oficiales y API de máquina **sin cookies** siguen funcionando. La cookie SameSite=None se conserva para frontends cross-site aprobados; comprobar en navegador real registro, login, OTP, convenios, upload y ofertas, además de rechazos 403 sin cambiar datos.
+3. **P1 migración de Producción — PREPARADA, NO EJECUTADA, sigue bloqueando corte.** Verificado vía SQL de solo lectura (19-oct): `credits` = **0**, `credit_submission_requests` = **0**, NO existen `credits.origin_master_broker_id`, `credit_submission_requests.origin_master_broker_id` ni `origin_attribution_reviews`; sí existe `app_migrations` y la tabla `commercial_opportunities`. `0004_origin_attribution_reviewed_v1` no aparece en `app_migrations`. La migración existente `migrations/0004_broker_network_transitions.sql` incluye las dos columnas, FKs, índices, triggers de inmutabilidad y revisión histórica; su guardia de conciliación debe permanecer activa. **Secuencia obligatoria bajo autorización separada:** tomar respaldo `pg_dump` restaurable y objetos privados; restaurar en copia aislada; inspeccionar dependencias, verificar conteos actuales 0/0 y preflight; ejecutar transacción completa `0004` sobre Producción autorizada antes de desplegar; verificar columnas, índices, constraints, triggers y registro `0004_origin_attribution_reviewed_v1`, y health/schema del candidato sin errores 503. Si surge cualquier registro legado no revisado, ABORTAR: no inferir Master por afiliación actual.
+   
+**Seguridad residual:** ASTRA clasificó las seis alertas altas de `braces/chokidar/micromatch/fast-glob/tailwindcss/vite` como herramientas de build/development sin entrada Broker demostrada; documentar/aceptar alcance antes de GO, no forzar actualizaciones mayores. La prueba real de Storage con credenciales efectivas, backup/rollback y control de auto-deploy siguen como puertas de corte.
+
+**Condición de lanzamiento:** obtener CI completo sobre el nuevo SHA + Staging autorizado y E2E focal; completar respaldos y migración/limpieza de Producción con permisos independientes; no ejecutar invitaciones ni merge por inferencia.
+
 ## 1. Puertas de seguridad antes de declarar GO
 
 | Gate | Evidencia requerida | Estado |
 | --- | --- | --- |
-| SHA y CI completos | 8/8 sobre candidato exacto | **PASS — b8864a5f**; **pendiente** CI integral del candidato actualizado |
-| Despliegue técnico Staging | Commit, health, logs, sin 5xx | **PASS — b8864a5f** |
+| SHA y CI completos | 8/8 sobre candidato exacto | **PASS — 38b69d6a (anteriores)**; nuevo SHA con mitigaciones ASTRA **CI pendiente** |
+| Despliegue técnico Staging | Commit, health, logs, sin 5xx | **PASS — 38b69d6a**; SHA de mitigaciones ASTRA **aún no desplegado** |
 | Prueba visual cupones | Super Admin, Broker y Master de prueba; fechas e historial | **Reportada OK por Dirección** |
-| Dependencias expuestas | SheetJS y Multer corregidos; triage de siete high residuales, incluido Express/WS y dependencias de build | **PARCIAL: mejora 23→6 high y 11→5 moderate; falta CI integral del SHA final y análisis de alcance build/runtime** |
+| Dependencias expuestas | SheetJS/Multer/Drizzle corregidos; ASTRA clasificó seis HIGH residuales de build; registrar aceptación | **PARCIAL: 0 críticas, 6 HIGH sin explotabilidad Broker demostrada** |
 | DB real Staging ≠ Producción | DNS del proceso Railway Staging `postgres.railway.internal` y Railway Producción `aws-1-us-east-2.pooler.supabase.com` | **PASS: destinos efectivos separados por servicio y entorno; valores secretos redacted** |
 | Storage real Staging ≠ Producción | Prueba autenticada con archivo sintético, endpoint/bucket/clave segregados; denegación cruzada | **PENDIENTE** |
 | E2E MVP comercial/roles | Super Admin/Admin/Master/Broker, clientes, matching, ofertas, contactos, comisiones, auditar permisos ajenos | **PARCIAL: regresiones verdes; falta evidencia completa** |
 | Secretos y correo OTP | Destinatarios, remitente, URLs, origen de secretos, límites; nunca mostrarlos | **PENDIENTE** |
 | Supabase permisos por defecto | Política explícita para ACL futuros; no abrir Data API inadvertidamente | **PENDIENTE** |
 | Backups/limpieza/rollback | Respaldo restaurado en copia + inventario autorizado | **PENDIENTE** |
-| Auditoría independiente ASTRA | Hallazgos clasificados y evidencia por SHA | **PENDIENTE** |
+| Auditoría independiente ASTRA | P1 import, CSRF y migración 0004 corregidos/ejecutados y revalidados | **NO-GO inicial ASTRA recibido; mitigaciones código pendientes CI; migración Prod no ejecutada** |
 
 **Regla:** un resultado PASS de CI demuestra código y pruebas aisladas, no reemplaza prueba runtime ni análisis de vulnerabilidades. Ningún gate pendiente queda implícitamente aprobado por este documento.
 
