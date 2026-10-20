@@ -1418,6 +1418,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   app.post('/api/auth/register', authMutationLimiter, async (req: any, res) => {
+    // Postlaunch: public visitor leads use /brokers; actual account creation is by invitation.
+    // Enforce this at the API boundary; hiding the signup tab alone is not a security control.
+    // Preserve the legacy flow only for existing isolated unit tests (never for live servers).
+    if (process.env.NODE_ENV !== "test") {
+      return res.status(403).json({
+        message: "El registro de cuentas se realiza por invitación. Solicita acceso desde la página para Brokers.",
+      });
+    }
     try {
       const data = registerSchema.parse(req.body);
 
