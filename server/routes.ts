@@ -10190,11 +10190,19 @@ function maskCLABE(clabe?: string | null): string | null {
       // Parse body but add createdBy automatically for security
       const bodyData = insertInstitutionProductSchema.omit({ createdBy: true }).parse(req.body);
       
-      // Auto-copy targetProfiles from template if not provided
+      // Archived variants remain for historical traceability but must never
+      // be assigned to a new financial offer. This check is server-side.
       let targetProfiles = bodyData.targetProfiles;
-      if ((!targetProfiles || targetProfiles.length === 0) && bodyData.templateId) {
+      if (bodyData.templateId) {
         const template = await storage.getProductTemplate(bodyData.templateId);
-        if (template && template.targetProfiles && template.targetProfiles.length > 0) {
+        if (!template || template.isActive !== true) {
+          return res.status(409).json({
+            code: "ACTIVE_PRODUCT_FAMILY_REQUIRED",
+            message: "Selecciona una de las familias activas del catálogo de productos.",
+          });
+        }
+        if ((!targetProfiles || targetProfiles.length === 0) &&
+            template.targetProfiles && template.targetProfiles.length > 0) {
           targetProfiles = template.targetProfiles;
         }
       }

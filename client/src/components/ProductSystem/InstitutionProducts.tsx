@@ -50,6 +50,7 @@ interface ProductTemplate {
   category: string;
   targetProfiles: string[];
   baseVariables: any[];
+  isActive?: boolean;
 }
 
 interface FinancialInstitution {
@@ -737,6 +738,7 @@ export default function InstitutionProducts() {
                 <TableBody>
                   {(() => {
                     const filtered = templates?.filter(template => {
+                      if (template.isActive === false) return false;
                       return template.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
                         (template.description || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
                         (template.category || '').toLowerCase().includes(searchQuery.toLowerCase());

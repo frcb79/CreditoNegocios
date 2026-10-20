@@ -2742,7 +2742,7 @@ export default function ProductConfigurationModal({
                           <SelectValue placeholder={templatesLoading ? 'Cargando plantillas...' : 'Selecciona una plantilla'} />
                         </SelectTrigger>
                         <SelectContent>
-                          {productTemplates.map((template) => (
+                          {productTemplates.filter((template) => template.isActive !== false).map((template) => (
                             <SelectItem key={template.id} value={template.id}>
                               {template.name}
                             </SelectItem>
