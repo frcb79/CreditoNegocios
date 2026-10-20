@@ -27,6 +27,15 @@
 
 **Condición de lanzamiento:** obtener CI completo sobre el nuevo SHA + Staging autorizado y E2E focal; completar respaldos y migración/limpieza de Producción con permisos independientes; no ejecutar invitaciones ni merge por inferencia.
 
+## Consolidación de catálogo aprobada — 20-oct-2026
+
+- **Migración ejecutada en Supabase Producción**: `product_families_consolidation_mvp_20261020`, procedente de `migrations/0007_product_families_consolidation_mvp.sql` de esta rama. Supabase devolvió éxito y los checks posteriores confirmaron **6 plantillas activas**, **6 variantes inactivas conservadas**, **10 definiciones de variables** (3 anteriores + 7 nuevas), 0 ofertas y 0 créditos. Es independiente de la migración 0004, también ejecutada y verificada previamente.
+- **Familias activas**: Crédito Simple, Crédito Revolvente, Arrendamiento, Hipotecario, Factoraje y Anticipo de Ventas (TPV). TPV como producto de anticipo se mantiene **distinto** de un crédito simple respaldado por flujos TPV.
+- **Conservación**: IDs y nombres originales de seis variantes históricas permanecen en registros `is_active=false`, con referencia a su familia; no hay DELETE, cambios de relaciones ni documentos. La API de asignación de oferta debe rechazar plantillas inactivas; los selectores las filtran y el catálogo administrativo ofrece opción de visualizar histórico.
+- **Diferenciadores opcionales**: requiere_garantia, tipo_garantia, destino_financiamiento, modalidad_arrendamiento, tipo_activo_arrendado, segmento_hipotecario y usa_flujos_tpv. Los perfiles PM/PFAE/física se representan en `target_profiles`; **ningún campo extra se exige antes de presentar oferta**.
+- **Importante**: registrar una dimensión en `product_variables`/metadata de plantilla **NO significa que el motor de matching ya la evalúe**. Cada financiera y cada versión publicada de su oferta deben definir condiciones, y sólo cotejarse con datos realmente capturados del cliente; sin datos, mantener información insuficiente. El segmento hipotecario vivienda no se equipara al empresarial.
+- **Storage**: Dirección confirmó que los 13 PDF legados son de prueba; sus nombres y tipos (aval, estados de cuenta, ingresos, otros) acreditan que **NO** son plantillas de productos. No se eliminaron al consolidar el catálogo. Separar la depuración de archivos de la administración de plantillas.
+
 ## 1. Puertas de seguridad antes de declarar GO
 
 | Gate | Evidencia requerida | Estado |

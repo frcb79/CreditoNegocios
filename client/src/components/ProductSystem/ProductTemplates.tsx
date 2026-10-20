@@ -78,7 +78,9 @@ export default function ProductTemplates() {
   const [editingTemplate, setEditingTemplate] = useState<ProductTemplate | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
   const [filterCategory, setFilterCategory] = useState<string>("all");
-  const [filterStatus, setFilterStatus] = useState<string>("all");
+  // New offers use only the six active product families by default.
+  // Archived variants remain available through the Inactive/All filters.
+  const [filterStatus, setFilterStatus] = useState<string>("active");
   const { toast } = useToast();
 
   // Fetch product templates
