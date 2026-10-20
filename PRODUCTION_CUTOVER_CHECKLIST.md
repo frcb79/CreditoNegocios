@@ -1,5 +1,15 @@
 # Crédito Negocios — Checklist de corte a Producción (MVP)
 
+## Puerta de release — evidencia cerrada 20-oct-2026
+
+- **CI verificada SUCCESS 8/8**: run [39465269988](https://github.com/frcb79/CreditoNegocios/actions/runs/39465269988), commit de código `96bc1c3362b6071fd4ed4ef29ae7afb178f19994`. Incluyó TypeScript, build, unidades por cuatro shards, PostgreSQL aislado, auditoría de dependencias de producción y smoke público previo.
+- **Staging: deployment del nuevo SHA aún pendiente de verificación.** Railway tenía source pin `8977919c`; se actualizó source al SHA aprobado y se configuró `/api/health`, pero el deployment activo observado sigue `3cdb793e` / `8977919c`. No declarar deploy concluido sólo por configuración. Staging vuelve a seguir exclusivamente `integration/phase-1a1-base-segura` sin pin para permitir un build nuevo en un push. Revalidar SHA, health y logs.
+- **Producción / main intactos:** deployment `8d6b6194` / `0c6b7bd`, PR #10 Draft. La existencia de una configuración repo sin rama explícita en Producción exige tratar el merge como posible autodeploy, salvo aislamiento comprobado. No fusionar/desplegar sin permiso expreso.
+- **Scope comercial:** Luis puede completar después las ofertas/financieras/comisiones; no rellenar datos faltantes ni permitir matching positivo sin oferta publicada verificable. Broker y Master pueden incorporarse una vez haya GO técnico+productivo y flujos funcionales mínimos comprobados.
+- **Corte y limpieza separados:** mantener Super Admin, configuración legal y 6 familias; tres tenants no fundacionales sin miembros ni operaciones, dos sesiones a invalidar y 13 PDFs sintéticos en Storage a borrar por API sólo con permiso de alcance; no ejecutar borrados preventivos.
+- **Puertas finales sin reauditoría:** (1) deployment del SHA exacto en Staging; (2) smoke runtime/roles/Storage focalizado; (3) confirmar rollback y efecto merge en Railway; (4) autorizaciones separadas para merge PR #10, limpieza selectiva y despliegue productivo; (5) smoke productivo; (6) autorización para 4 Masters + 40 Brokers.
+
+
 
 ## Punto de control actualizado — 20 de octubre de 2026 (prelanzamiento)
 
