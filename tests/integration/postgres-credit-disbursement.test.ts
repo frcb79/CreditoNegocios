@@ -135,7 +135,22 @@ describePg("OPE-10/11: atomic and idempotent credit disbursements in PostgreSQL"
     await pool.query(`CREATE TRIGGER pg_credit_audit_trigger BEFORE INSERT ON commission_audit_logs
       FOR EACH ROW EXECUTE FUNCTION pg_credit_audit_fail()`);
     try {
-      await expect(settle(requestFor(credit,2000,1))).rejects.toThrow(/injected disbursement audit failure/);
+      // Patched Drizzle ORM wraps the original PostgreSQL exception in
+      // DrizzleQueryError.cause. Assert the real injected trigger failure
+      // without depending on the outer ORM error's text.
+      const failure = await settle(requestFor(credit,2000,1)).then(
+        () => null,
+        (error: unknown) => error,
+      );
+      expect(failure).toBeInstanceOf(Error);
+      const messages: string[] = [];
+      let current: unknown = failure;
+      for (let depth = 0; current instanceof Error && depth < 6; depth++) {
+        messages.push(current.message);
+        current = (current as Error & { cause?: unknown }).cause;
+      }
+      expect(messages.join(" | caused by: ")).toMatch(/injected disbursement audit failure/);
+      // Verify the credit status, tranche and commission rollback separately.
       const stored = await creditState(credit.id);
       expect(stored.status).toBe("approved");
       expect((stored.finalProposal as any).disbursementTranches).toBeUndefined();
