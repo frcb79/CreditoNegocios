@@ -343,8 +343,8 @@ export default function LegalProfileDocuments({
 
           {/* Tabla de aceptaciones existentes */}
           {!isLoading && !isError && acceptances.length > 0 && (
-            <div className="rounded-lg border border-border/70 overflow-hidden shadow-2xs">
-              <Table data-testid="table-legal-acceptances">
+            <div className="rounded-lg border border-border/70 overflow-x-auto shadow-2xs">
+              <Table className="min-w-[560px] md:min-w-full" data-testid="table-legal-acceptances">
                 <TableHeader className="bg-muted/50">
                   <TableRow>
                     <TableHead className="text-xs font-semibold">Documento</TableHead>
@@ -361,7 +361,7 @@ export default function LegalProfileDocuments({
 
                     return (
                       <TableRow key={acc.id} data-testid={`row-acceptance-${acc.document}-${acc.version}`}>
-                        <TableCell className="py-3">
+                        <TableCell className="px-2 sm:px-3 py-2.5">
                           <div className="flex flex-col">
                             <span className="font-semibold text-xs sm:text-sm text-foreground">
                               {getDocumentTitle(acc.document)}
@@ -375,25 +375,30 @@ export default function LegalProfileDocuments({
                           </div>
                         </TableCell>
 
-                        <TableCell className="py-3">
+                        <TableCell className="px-2 sm:px-3 py-2.5">
                           <Badge variant="outline" className="font-mono text-xs px-2 py-0.5">
                             v{acc.version}
                           </Badge>
                         </TableCell>
 
                         <TableCell className="py-3 hidden md:table-cell">
-                          <Badge variant="secondary" className="text-[11px] font-normal">
-                            <CheckCircle2 className="h-3 w-3 mr-1 text-emerald-600 inline" />
-                            {getAcceptanceTypeLabel(acc.acceptanceType)}
+                          <Badge
+                            variant="secondary"
+                            className="inline-flex items-center whitespace-nowrap px-2 py-0.5 text-[11px] font-medium"
+                            title={getAcceptanceTypeLabel(acc.acceptanceType)}
+                            aria-label={getAcceptanceTypeLabel(acc.acceptanceType)}
+                          >
+                            <CheckCircle2 className="h-3 w-3 mr-1 text-emerald-600 shrink-0" />
+                            Aceptado
                           </Badge>
                         </TableCell>
 
-                        <TableCell className="py-3">
+                        <TableCell className="px-2 sm:px-3 py-2.5">
                           <div className="flex flex-col">
                             <span className="text-xs text-foreground font-medium" title={dateInfo.iso}>
                               {dateInfo.formatted}
                             </span>
-                            <span className="text-[10px] text-muted-foreground font-mono" title={dateInfo.iso}>
+                            <span className="hidden sm:block text-[10px] text-muted-foreground font-mono" title={dateInfo.iso}>
                               UTC: {dateInfo.iso.replace("T", " ").replace("Z", " UTC").slice(0, 20)}
                             </span>
                           </div>
@@ -405,7 +410,7 @@ export default function LegalProfileDocuments({
                               variant="ghost"
                               size="sm"
                               onClick={() => setSelectedAcceptance(acc)}
-                              className="h-7 px-2 text-xs font-medium text-primary hover:text-primary-dark underline underline-offset-2"
+                              className="h-7 px-1.5 sm:px-2 text-xs font-medium text-primary hover:text-primary-dark underline underline-offset-2"
                               data-testid={`button-view-detail-${acc.document}-${acc.version}`}
                             >
                               <span>Consultar versión</span>
