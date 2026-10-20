@@ -100,6 +100,7 @@ jobs:
             tests/unit/broker-invitation-http.test.ts
             tests/unit/rbac.test.ts
             tests/unit/settings-audit-role-ux.test.ts
+            tests/unit/broker-legal-ux-postlaunch.test.ts
             tests/unit/admin-legal-evidence-http.test.ts
             tests/unit/mortgage-family-consolidation.test.ts
           )

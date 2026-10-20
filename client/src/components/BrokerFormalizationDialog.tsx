@@ -25,6 +25,7 @@ import {
   Clock,
   ArrowRight,
   RotateCcw,
+  ChevronDown,
 } from "lucide-react";
 import type { FormalizationDocumentsResult, FormalizationDocumentItem } from "@shared/legalDocuments";
 
@@ -48,6 +49,7 @@ export default function BrokerFormalizationDialog({
 
   // Document checkboxes - strictly unchecked by default
   const [checkedDocs, setCheckedDocs] = useState<Record<string, boolean>>({});
+  const [openDocs, setOpenDocs] = useState<Record<string, boolean>>({});
 
   // OTP state
   const [otpCode, setOtpCode] = useState("");
@@ -97,6 +99,7 @@ export default function BrokerFormalizationDialog({
   const handleRestart = () => {
     setStep("review");
     setCheckedDocs({});
+    setOpenDocs({});
     setOtpCode("");
     setMaskedEmail("");
     setExpiresAt(null);
@@ -366,6 +369,8 @@ export default function BrokerFormalizationDialog({
                 <div className="space-y-4">
                   {documents.map((doc: FormalizationDocumentItem) => {
                     const isChecked = Boolean(checkedDocs[doc.document]);
+                    const isExpanded = Boolean(openDocs[doc.document]);
+                    const contentId = `formalization-content-${doc.document}`;
 
                     return (
                       <div
@@ -373,58 +378,64 @@ export default function BrokerFormalizationDialog({
                         className="rounded-lg border border-border/80 bg-card overflow-hidden shadow-2xs"
                         data-testid={`container-doc-${doc.document}`}
                       >
-                        <div className="px-4 py-3 bg-muted/40 border-b flex flex-wrap items-center justify-between gap-2">
-                          <div className="flex items-center gap-2">
+                        <div className="px-3 sm:px-4 py-2.5 bg-muted/40 border-b flex flex-wrap items-center justify-between gap-2">
+                          <button
+                            type="button"
+                            aria-expanded={isExpanded}
+                            aria-controls={contentId}
+                            onClick={() => setOpenDocs(prev => ({ ...prev, [doc.document]: !prev[doc.document] }))}
+                            className="min-w-0 flex-1 inline-flex items-center gap-2 text-left hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary rounded-sm"
+                            data-testid={`button-expand-doc-${doc.document}`}
+                          >
                             <FileText className="h-4 w-4 text-primary shrink-0" />
-                            <span className="text-sm font-semibold text-foreground">
-                              {doc.title}
-                            </span>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <Badge variant="outline" className="font-mono text-xs">
-                              v{doc.version}
+                            <span className="text-sm font-semibold text-foreground">{doc.title}</span>
+                            <ChevronDown className={`ml-auto h-4 w-4 shrink-0 transition-transform ${isExpanded ? "rotate-180" : ""}`} />
+                          </button>
+                          <div className="flex items-center gap-1.5 sm:gap-2">
+                            <Badge variant="outline" className="font-mono text-xs px-2 py-0.5">v{doc.version}</Badge>
+                            <Badge variant="secondary" className="text-[10px] px-2 py-0.5 whitespace-nowrap">
+                              {isChecked ? "Revisado" : "Pendiente"}
                             </Badge>
                             {doc.contentSha256 && (
-                              <span
-                                className="text-[10px] font-mono text-muted-foreground hidden sm:inline"
-                                title={`SHA-256: ${doc.contentSha256}`}
-                              >
+                              <span className="text-[10px] font-mono text-muted-foreground hidden sm:inline" title={`SHA-256: ${doc.contentSha256}`}>
                                 SHA-256: {doc.contentSha256.slice(0, 8)}...
                               </span>
                             )}
                           </div>
                         </div>
 
-                        {/* Full scrollable content container */}
-                        <div
-                          className="max-h-52 overflow-y-auto p-4 bg-muted/10 font-sans text-xs text-foreground/90 leading-relaxed whitespace-pre-wrap border-b"
-                          tabIndex={0}
-                          aria-label={`Contenido completo de ${doc.title}`}
-                          data-testid={`content-doc-${doc.document}`}
-                        >
-                          {doc.content}
-                        </div>
+                        {isExpanded && (
+                          <div
+                            id={contentId}
+                            className="max-h-52 overflow-y-auto p-3 sm:p-4 bg-muted/10 font-sans text-xs text-foreground/90 leading-relaxed whitespace-pre-wrap border-b"
+                            tabIndex={0}
+                            aria-label={`Contenido completo de ${doc.title}`}
+                            data-testid={`content-doc-${doc.document}`}
+                          >
+                            {doc.content}
+                          </div>
+                        )}
 
-                        {/* Checkbox (initially unchecked) */}
                         <div className="p-3 sm:px-4 bg-card flex items-start gap-3">
                           <Checkbox
                             id={`checkbox-${doc.document}`}
                             checked={isChecked}
+                            disabled={!isExpanded && !isChecked}
                             onCheckedChange={(checked) => {
-                              setCheckedDocs((prev) => ({
-                                ...prev,
-                                [doc.document]: checked === true,
-                              }));
+                              if (!isExpanded) return;
+                              setCheckedDocs(prev => ({ ...prev, [doc.document]: checked === true }));
                             }}
                             data-testid={`checkbox-accept-${doc.document}`}
                             className="mt-0.5"
                           />
-                          <label
-                            htmlFor={`checkbox-${doc.document}`}
-                            className="text-xs font-medium text-foreground leading-normal cursor-pointer select-none"
-                          >
+                          <label htmlFor={`checkbox-${doc.document}`} className="text-xs font-medium text-foreground leading-normal cursor-pointer select-none">
                             He leído, entiendo y acepto en su totalidad los términos de{" "}
                             <span className="font-semibold">{doc.title}</span> (versión {doc.version}).
+                            {!isExpanded && !isChecked && (
+                              <span className="block text-muted-foreground font-normal mt-1">
+                                Despliega el documento y revisa su contenido completo para habilitar la aceptación.
+                              </span>
+                            )}
                           </label>
                         </div>
                       </div>

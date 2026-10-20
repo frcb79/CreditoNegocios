@@ -54,6 +54,16 @@ describe("SEC-INVITES: approved commercial invitation template", () => {
     expect(rendered.html).not.toContain("<Regalo>");
     expect(rendered.text).toContain("TU CORTESÍA DE LANZAMIENTO");
     expect(rendered.text).toContain("No se hará ningún cobro automático");
+    // The invitation must sell the platform before mentioning the complimentary period.
+    expect(rendered.html.indexOf("¿Qué puedes hacer con Crédito Negocios?")).toBeLessThan(
+      rendered.html.indexOf("ACTIVAR MI CUENTA</a>")
+    );
+    expect(rendered.html.indexOf("ACTIVAR MI CUENTA</a>")).toBeLessThan(
+      rendered.html.indexOf("Tu invitación incluye 12 meses sin costo")
+    );
+    expect(rendered.text.indexOf("ACTIVAR MI CUENTA:")).toBeLessThan(
+      rendered.text.indexOf("TU CORTESÍA DE LANZAMIENTO")
+    );
   });
 
   it("rejects insecure links and keeps the token URL encoded", () => {

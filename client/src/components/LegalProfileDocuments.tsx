@@ -73,18 +73,14 @@ export default function LegalProfileDocuments({
   }, [currentUser?.id]);
 
   const isBrokerOrMaster = shouldShowFormalizationNotice(currentUser?.role);
-  const shouldRenderNotice = showFormalizationNotice && isBrokerOrMaster;
 
   const userRole = currentUser?.role;
-  const isMasterOrAdmin =
-    userRole === "master_broker" || userRole === "admin" || userRole === "super_admin";
-  const isBrokerOrAbove =
-    isBrokerOrMaster || userRole === "admin" || userRole === "super_admin";
 
   // Consulta de estado de formalización para el usuario actual
   const {
     data: formalizationStatus,
     isLoading: isLoadingStatus,
+    isError: isErrorStatus,
     refetch: refetchStatus,
   } = useQuery<FormalizationStatusResult>({
     queryKey: ["/api/legal/formalization/status", currentUser?.id],
@@ -260,52 +256,82 @@ export default function LegalProfileDocuments({
         </Alert>
       )}
 
-      {/* 1. Aviso de formalización o estatus completado para Broker / Master Broker */}
-      {shouldRenderNotice && (
-        <>
-          {formalizationStatus?.isFormalized ? (
-            <Alert
-              className="border-emerald-300 bg-emerald-50/90 text-emerald-900 dark:border-emerald-800 dark:bg-emerald-950/30 dark:text-emerald-200 shadow-2xs"
-              data-testid="alert-formalization-completed"
-            >
-              <CheckCircle2 className="h-5 w-5 text-emerald-600 dark:text-emerald-400 mt-0.5 shrink-0" />
-              <div>
-                <AlertTitle className="font-semibold text-emerald-900 dark:text-emerald-100 text-sm">
-                  Convenio Formalizado
-                </AlertTitle>
-                <AlertDescription className="text-xs sm:text-sm text-emerald-800 dark:text-emerald-300 mt-1 leading-relaxed">
-                  Has formalizado tu Convenio de Colaboración y Reglas de Operación vigentes, completando el requisito contractual con evidencia histórica inmutable.
+      {/* Los convenios aplicables siempre se muestran, aun cuando el usuario ya firmó. */}
+      {isBrokerOrMaster && (
+        <Card className="border border-border/80 shadow-xs" data-testid="card-broker-required-agreements">
+          <CardHeader className="py-3 px-4 sm:px-6 border-b border-border/60">
+            <CardTitle className="text-base font-semibold flex items-center gap-2">
+              <FileText className="h-4 w-4 text-primary" />
+              Mis convenios y reglas
+            </CardTitle>
+            <CardDescription className="text-xs sm:text-sm">
+              Documentos contractuales aplicables a tu rol. Las Reglas de la Red son un documento legal,
+              no el módulo de administración de Brokers.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="px-4 py-3 sm:px-6 space-y-3">
+            {isLoadingStatus && (
+              <p className="text-xs text-muted-foreground" role="status">Consultando convenios y aceptaciones vigentes...</p>
+            )}
+            {isErrorStatus && (
+              <Alert variant="destructive" data-testid="error-required-agreements">
+                <AlertCircle className="h-4 w-4" />
+                <AlertTitle>No fue posible verificar tus convenios</AlertTitle>
+                <AlertDescription className="flex flex-wrap items-center justify-between gap-2">
+                  <span>Reintenta la consulta antes de formalizar.</span>
+                  <Button type="button" variant="outline" size="sm" onClick={() => refetchStatus()}>
+                    <RefreshCw className="h-3 w-3 mr-1" /> Reintentar
+                  </Button>
                 </AlertDescription>
-              </div>
-            </Alert>
-          ) : (
-            <Alert
-              className="border-amber-300 bg-amber-50/90 text-amber-900 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-200 shadow-2xs"
-              data-testid="alert-formalization-notice"
-            >
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 w-full">
-                <div className="flex items-start gap-2">
-                  <AlertCircle className="h-5 w-5 text-amber-600 dark:text-amber-400 mt-0.5 shrink-0" />
-                  <div>
-                    <AlertTitle className="font-semibold text-amber-900 dark:text-amber-100 text-sm">
-                      Aviso de Formalización
-                    </AlertTitle>
-                    <AlertDescription className="text-xs sm:text-sm text-amber-800 dark:text-amber-300 mt-1 leading-relaxed">
-                      {FORMALIZATION_NOTICE_TEXT}
-                    </AlertDescription>
-                  </div>
+              </Alert>
+            )}
+            {formalizationStatus && !isErrorStatus && (
+              <>
+                <div className="divide-y divide-border/60 rounded-lg border border-border/70">
+                  {formalizationStatus.requiredDocuments.map((document) => {
+                    const accepted = formalizationStatus.acceptedDocuments.includes(document);
+                    return (
+                      <div key={document} className="flex flex-wrap items-center justify-between gap-2 px-3 py-2.5" data-testid={`required-agreement-${document}`}>
+                        <span className="text-sm font-medium min-w-0">{getDocumentTitle(document)}</span>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <Badge variant={accepted ? "secondary" : "outline"} className="text-[11px] px-2 py-0.5 whitespace-nowrap">
+                            {accepted ? <CheckCircle2 className="h-3 w-3 mr-1 text-emerald-600" /> : null}
+                            {accepted ? "Aceptado" : "Pendiente"}
+                          </Badge>
+                          <Link
+                            href={`/legal/${document}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center gap-1 text-xs font-semibold text-primary hover:underline"
+                            data-testid={`link-review-agreement-${document}`}
+                          >
+                            Consultar <ExternalLink className="h-3 w-3" />
+                          </Link>
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
-                <Button
-                  onClick={() => setIsFormalizationOpen(true)}
-                  className="bg-amber-600 hover:bg-amber-700 text-white shrink-0 self-start sm:self-center text-xs h-8"
-                  data-testid="button-open-formalization"
-                >
-                  Formalizar Convenio
-                </Button>
-              </div>
-            </Alert>
-          )}
-        </>
+                {!formalizationStatus.isFormalized && showFormalizationNotice && (
+                  <Button
+                    type="button"
+                    onClick={() => setIsFormalizationOpen(true)}
+                    size="sm"
+                    className="h-auto min-h-9 whitespace-normal text-left"
+                    data-testid="button-open-formalization"
+                  >
+                    Revisar y aceptar documentos pendientes
+                  </Button>
+                )}
+                {formalizationStatus.isFormalized && (
+                  <p className="text-xs text-muted-foreground" data-testid="message-formalization-completed">
+                    Convenios vigentes formalizados. Puedes consultar los comprobantes y versiones exactas en el historial inferior.
+                  </p>
+                )}
+              </>
+            )}
+          </CardContent>
+        </Card>
       )}
 
       {/* 2. Historial de Aceptaciones Legales */}
@@ -383,8 +409,8 @@ export default function LegalProfileDocuments({
 
           {/* Tabla de aceptaciones existentes */}
           {!isLoading && !isError && acceptances.length > 0 && (
-            <div className="rounded-lg border border-border/70 overflow-hidden shadow-2xs">
-              <Table data-testid="table-legal-acceptances">
+            <div className="rounded-lg border border-border/70 overflow-x-auto shadow-2xs">
+              <Table className="min-w-[560px] md:min-w-full" data-testid="table-legal-acceptances">
                 <TableHeader className="bg-muted/50">
                   <TableRow>
                     <TableHead className="text-xs font-semibold">Documento</TableHead>
@@ -401,7 +427,7 @@ export default function LegalProfileDocuments({
 
                     return (
                       <TableRow key={acc.id} data-testid={`row-acceptance-${acc.document}-${acc.version}`}>
-                        <TableCell className="py-3">
+                        <TableCell className="px-2 sm:px-3 py-2.5">
                           <div className="flex flex-col">
                             <span className="font-semibold text-xs sm:text-sm text-foreground">
                               {getDocumentTitle(acc.document)}
@@ -415,25 +441,30 @@ export default function LegalProfileDocuments({
                           </div>
                         </TableCell>
 
-                        <TableCell className="py-3">
+                        <TableCell className="px-2 sm:px-3 py-2.5">
                           <Badge variant="outline" className="font-mono text-xs px-2 py-0.5">
                             v{acc.version}
                           </Badge>
                         </TableCell>
 
                         <TableCell className="py-3 hidden md:table-cell">
-                          <Badge variant="secondary" className="text-[11px] font-normal">
-                            <CheckCircle2 className="h-3 w-3 mr-1 text-emerald-600 inline" />
-                            {getAcceptanceTypeLabel(acc.acceptanceType)}
+                          <Badge
+                            variant="secondary"
+                            className="inline-flex items-center whitespace-nowrap px-2 py-0.5 text-[11px] font-medium"
+                            title={getAcceptanceTypeLabel(acc.acceptanceType)}
+                            aria-label={getAcceptanceTypeLabel(acc.acceptanceType)}
+                          >
+                            <CheckCircle2 className="h-3 w-3 mr-1 text-emerald-600 shrink-0" />
+                            Aceptado
                           </Badge>
                         </TableCell>
 
-                        <TableCell className="py-3">
+                        <TableCell className="px-2 sm:px-3 py-2.5">
                           <div className="flex flex-col">
                             <span className="text-xs text-foreground font-medium" title={dateInfo.iso}>
                               {dateInfo.formatted}
                             </span>
-                            <span className="text-[10px] text-muted-foreground font-mono" title={dateInfo.iso}>
+                            <span className="hidden sm:block text-[10px] text-muted-foreground font-mono" title={dateInfo.iso}>
                               UTC: {dateInfo.iso.replace("T", " ").replace("Z", " UTC").slice(0, 20)}
                             </span>
                           </div>
@@ -445,7 +476,7 @@ export default function LegalProfileDocuments({
                               variant="ghost"
                               size="sm"
                               onClick={() => setSelectedAcceptance(acc)}
-                              className="h-7 px-2 text-xs font-medium text-primary hover:text-primary-dark underline underline-offset-2"
+                              className="h-7 px-1.5 sm:px-2 text-xs font-medium text-primary hover:text-primary-dark underline underline-offset-2"
                               data-testid={`button-view-detail-${acc.document}-${acc.version}`}
                             >
                               <span>Consultar versión</span>
@@ -497,7 +528,7 @@ export default function LegalProfileDocuments({
                 Aviso de Privacidad
                 <ExternalLink className="h-3 w-3" />
               </Link>
-              {isBrokerOrAbove && (
+              {(userRole === "admin" || userRole === "super_admin") && (
                 <>
                   <Link
                     href="/legal/convenio"
@@ -521,7 +552,7 @@ export default function LegalProfileDocuments({
                   </Link>
                 </>
               )}
-              {isMasterOrAdmin && (
+              {(userRole === "admin" || userRole === "super_admin") && (
                 <Link
                   href="/legal/reglas-master"
                   target="_blank"

@@ -139,6 +139,26 @@ describe("P0 - HTTP Registration, Legal Acceptance & Network Affiliation", () =>
   // 1. POST /api/auth/register (Registration Atomicity, Affiliation & Rollback)
   // -------------------------------------------------------------------------
   describe("1. POST /api/auth/register - Atomicity & Network Affiliation", () => {
+    it("Postlaunch: POST directo es 403 fuera de pruebas y no crea usuarios ni evidencias", async () => {
+      currentAuthUser = null;
+      const previousEnv = process.env.NODE_ENV;
+      const blockedEmail = `blocked-public-${randomUUID()}@network.test`;
+      try {
+        process.env.NODE_ENV = "production";
+        const res = await request(app).post("/api/auth/register").send({
+          email: blockedEmail, password: "SecurePassword123!",
+          firstName: "Acceso", lastName: "Directo",
+          acceptTerms: true, termsVersion: termsDoc.version,
+          acknowledgePrivacy: true, privacyVersion: privacyDoc.version,
+        });
+        expect(res.status).toBe(403);
+        expect(res.body.message).toMatch(/invitación/i);
+        expect(await storage.getUserByEmail(blockedEmail)).toBeUndefined();
+      } finally {
+        process.env.NODE_ENV = previousEnv;
+      }
+    });
+
     it("Direct Broker Registration: atomically creates broker, terms evidence, platform parent tenant, and owner member with canOriginate=true", async () => {
       currentAuthUser = null;
       const testEmail = `broker-direct-${randomUUID()}@network.test`;

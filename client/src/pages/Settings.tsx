@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useSearch } from "wouter";
 import LegalProfileDocuments from "@/components/LegalProfileDocuments";
-import { FORMALIZATION_NOTICE_TEXT } from "@shared/legalDocuments";
+import FormalizationPendingBanner from "@/components/FormalizationPendingBanner";
 import LegalLinks from "@/components/LegalLinks";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -576,33 +576,15 @@ export default function Settings() {
       
       <main className="flex-1 p-3 sm:p-5 lg:p-6 overflow-y-auto">
         <div className="max-w-4xl mx-auto space-y-4">
-          {/* Formalization banner for Broker / Master Broker when outside documents tab */}
+          {/* Pendientes vigentes: el aviso desaparece automáticamente si ya formalizó. */}
           {isBrokerOrMaster && activeTab !== "documents" && (
-            <Alert
-              className="border-amber-300 bg-amber-50/90 text-amber-900 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-200 shadow-2xs"
-              data-testid="alert-formalization-banner"
-            >
-              <AlertCircle className="h-5 w-5 text-amber-600 dark:text-amber-400 mt-0.5 shrink-0" />
-              <div className="flex-1 min-w-0">
-                <AlertTitle className="font-semibold text-amber-900 dark:text-amber-100 text-sm">
-                  Aviso de Formalización
-                </AlertTitle>
-                <AlertDescription className="text-xs sm:text-sm text-amber-800 dark:text-amber-300 mt-1 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
-                  <span>
-                    {FORMALIZATION_NOTICE_TEXT}
-                  </span>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setActiveTab("documents")}
-                    className="h-7 text-xs border-amber-400 text-amber-900 bg-amber-100/60 hover:bg-amber-200/60 w-fit shrink-0"
-                    data-testid="button-go-to-documents"
-                  >
-                    Ver Documentos
-                  </Button>
-                </AlertDescription>
-              </div>
-            </Alert>
+            <FormalizationPendingBanner
+              role={user?.role}
+              userId={user?.id}
+              onAction={() => setActiveTab("documents")}
+              testId="alert-formalization-banner"
+              buttonTestId="button-go-to-documents"
+            />
           )}
 
           <Tabs value={activeTab} onValueChange={setActiveTab}>
