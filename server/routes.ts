@@ -1,3 +1,4 @@
+import { selectHousingMortgageTemplate } from "./mortgageHousingTemplate";
 import type { Express } from "express";
 import { randomUUID } from "node:crypto";
 import { createServer, ServerResponse, type Server } from "http";
@@ -10932,37 +10933,14 @@ function maskCLABE(clabe?: string | null): string | null {
     }
   });
 
-  // Helper function to find or create the official Hipotecario Vivienda product template
+  // Reuse the approved active catalog; never create a seventh mortgage template during lead submission.
   async function ensureHipotecarioViviendaTemplate(): Promise<any> {
     const templates = await storage.getProductTemplates();
-    const existing = templates.find(t => 
-      t.name?.toLowerCase().trim() === 'hipotecario vivienda' ||
-      (t.category === 'hipotecario' && !t.name?.toLowerCase().includes('garantía inmobiliaria') && !t.name?.toLowerCase().includes('garantia inmobiliaria'))
-    );
-    if (existing) return existing;
-
-    const allUsers = await storage.getAllUsers();
-    const admin = allUsers.find(u => u.role === 'super_admin' || u.role === 'admin');
-    const createdBy = admin?.id || 'user-super-admin';
-
-    return await storage.createProductTemplate({
-      name: 'Hipotecario Vivienda',
-      description: 'Crédito hipotecario para adquisición de vivienda residencial (casa o departamento).',
-      category: 'hipotecario',
-      targetProfiles: ['fisica', 'fisica_empresarial'],
-      availableVariables: {
-        valor_inmueble: { type: 'number', label: 'Valor del Inmueble' },
-        enganche: { type: 'number', label: 'Enganche' },
-        plazo_meses: { type: 'number', label: 'Plazo en Meses' },
-      },
-      baseConfiguration: {
-        maxLTV: 90,
-        minTermMonths: 60,
-        maxTermMonths: 360,
-      },
-      isActive: true,
-      createdBy,
-    });
+    const template = selectHousingMortgageTemplate(templates);
+    if (!template) {
+      throw new Error('No existe una plantilla hipotecaria activa configurada para vivienda');
+    }
+    return template;
   }
 
   // POST /api/mortgage-leads - Atomic registration of Hipotecario Vivienda opportunity
@@ -11069,6 +11047,7 @@ function maskCLABE(clabe?: string | null): string | null {
       const hipoTemplate = await ensureHipotecarioViviendaTemplate();
 
       const mortgageData = {
+        segmento_hipotecario: 'vivienda', // Independent housing segment within the consolidated Hipotecario family
         propertyValue: propertyValue || null,
         requestedAmount: requestedAmount || null,
         downPayment: downPayment || null,
