@@ -43,7 +43,7 @@ export const rejectCrossSiteMutations: RequestHandler = (req, res, next) => {
   // Browsers cannot fabricate the Sec-Fetch-Site header from JavaScript.
   // Absence of Origin must NOT enable an authenticated form mutation.
   if (req.get("sec-fetch-site") === "cross-site" ||
-      (WRITE_METHODS.has(method) && /(?:^|;\\s*)connect\\.sid=/.test(req.get("cookie") || ""))) {
+      (WRITE_METHODS.has(method) && /(?:^|;\s*)connect\.sid=/.test(req.get("cookie") || ""))) {
     return res.status(403).json({ code: "CSRF_ORIGIN_REQUIRED", message: "Origen de sesión requerido." });
   }
   next();
