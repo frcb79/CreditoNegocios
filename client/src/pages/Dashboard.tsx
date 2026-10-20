@@ -7,10 +7,13 @@ import ReGestionSection from "@/components/Dashboard/ReGestionSection";
 import QuickActionsGrid from "@/components/Dashboard/QuickActionsGrid";
 import { useUserTour } from "@/hooks/useUserTour";
 import { useAuth } from "@/hooks/useAuth";
+import { useLocation } from "wouter";
+import FormalizationPendingBanner from "@/components/FormalizationPendingBanner";
 
 export default function Dashboard() {
   useUserTour();
   const { user } = useAuth();
+  const [, setLocation] = useLocation();
 
   const role = user?.role || 'broker';
   const isAdmin = role === 'admin' || role === 'super_admin';
@@ -59,6 +62,14 @@ export default function Dashboard() {
       />
 
       <main className="flex-1 p-4 sm:p-6 lg:p-8 overflow-y-auto space-y-6">
+        <FormalizationPendingBanner
+          role={user?.role}
+          userId={user?.id}
+          onAction={() => setLocation("/configuracion?tab=documents")}
+          testId="alert-dashboard-formalization"
+          buttonTestId="button-dashboard-formalization"
+        />
+
         {/* 1. ¿Cómo va mi operación y qué resultados genero? (Métricas y KPIs por rol) */}
         <section aria-label="Métricas de Operación">
           <MetricsGrid />
