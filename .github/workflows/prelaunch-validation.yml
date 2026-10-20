@@ -101,6 +101,7 @@ jobs:
             tests/unit/rbac.test.ts
             tests/unit/settings-audit-role-ux.test.ts
             tests/unit/admin-legal-evidence-http.test.ts
+            tests/unit/mortgage-family-consolidation.test.ts
           )
           selected=()
           for i in "${!tests[@]}"; do
