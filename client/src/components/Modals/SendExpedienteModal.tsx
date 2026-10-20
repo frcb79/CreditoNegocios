@@ -83,13 +83,13 @@ export default function SendExpedienteModal({
 
   const sendExpedienteMutation = useMutation({
     mutationFn: async (data: ExpedienteFormData) => {
-      // Crear un nuevo crédito en estado "enviado"
+      // LEG-10: this screen prepares an internal draft; it does NOT transfer client data.
       const creditData = {
         clientId: data.clientId,
         financialInstitutionId: financiera.id,
-        requestedAmount: data.requestedAmount,
+        amount: data.requestedAmount.toFixed(2),
         purpose: data.purpose,
-        status: "enviado",
+        status: "draft",
         notes: data.notes,
       };
 
@@ -98,8 +98,8 @@ export default function SendExpedienteModal({
     },
     onSuccess: () => {
       toast({
-        title: "Expediente enviado",
-        description: `El expediente se ha enviado exitosamente a ${financiera.name}`,
+        title: "Borrador registrado",
+        description: `El expediente quedó registrado internamente. NO se envió a ${financiera.name}; compartirlo requiere autorización verificable del cliente.`,
       });
       queryClient.invalidateQueries({ queryKey: ["/api/credits"] });
       queryClient.invalidateQueries({ queryKey: ["/api/dashboard/pipeline"] });
@@ -123,7 +123,10 @@ export default function SendExpedienteModal({
     <Dialog open={isOpen} onOpenChange={onClose}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>Enviar Expediente a {financiera.name}</DialogTitle>
+          <DialogTitle>Preparar expediente para {financiera.name}</DialogTitle>
+          <p className="text-xs text-muted-foreground">
+            Este paso sólo guarda un borrador interno; no envía datos a la financiera. La divulgación requiere autorización verificable del cliente.
+          </p>
         </DialogHeader>
 
         <Form {...form}>
@@ -257,10 +260,10 @@ export default function SendExpedienteModal({
                 {sendExpedienteMutation.isPending ? (
                   <>
                     <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                    Enviando...
+                    Guardando...
                   </>
                 ) : (
-                  "Enviar Expediente"
+                  "Guardar borrador"
                 )}
               </Button>
             </DialogFooter>

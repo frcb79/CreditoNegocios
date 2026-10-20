@@ -1,7 +1,11 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import MainLayout from "@/components/MainLayout";
 import Header from "@/components/Header";
+import BrokerNetworkTransitionDialog from "@/components/Users/BrokerNetworkTransitionDialog";
+import SuperAdminBrokerOverview from "@/components/Users/SuperAdminBrokerOverview";
+import ManualBenefitsManager from "@/components/Users/ManualBenefitsManager";
+import SuperAdminLegalEvidenceDialog, { formalizationStatusLabel } from "@/components/Users/SuperAdminLegalEvidenceDialog";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -120,7 +124,8 @@ import {
   Check,
   X,
   FileText,
-  AlertCircle
+  AlertCircle,
+  ArrowRightLeft
 } from "lucide-react";
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
@@ -258,7 +263,12 @@ const legacyUserSchema = z.object({
 type LegacyUserFormData = z.infer<typeof legacyUserSchema>;
 
 export default function UserManagement() {
-  const [activeTab, setActiveTab] = useState<string>("organization");
+  // Preserve direct links from Auditoría and administrative notices.
+  const [activeTab, setActiveTab] = useState<string>(() => {
+    const requested = typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("tab") : null;
+    return requested && ["organization", "global", "promos", "status-requests"].includes(requested)
+      ? requested : "organization";
+  });
   const [selectedTenantId, setSelectedTenantId] = useState<string>("");
   const [searchTerm, setSearchTerm] = useState("");
   const [filterMemberRole, setFilterMemberRole] = useState<string>("all");
@@ -283,6 +293,7 @@ export default function UserManagement() {
   const [showCreatePromoModal, setShowCreatePromoModal] = useState(false);
   const [selectedPromoForRedemptions, setSelectedPromoForRedemptions] = useState<any>(null);
   const [userToEditAccess, setUserToEditAccess] = useState<User | null>(null);
+  const [focusBenefitUser, setFocusBenefitUser] = useState("");
   const [accessStatusSelection, setAccessStatusSelection] = useState<string>("free");
   const [accessExpiresAtSelection, setAccessExpiresAtSelection] = useState<string>("");
   const [accessNotesInput, setAccessNotesInput] = useState<string>("");
@@ -292,6 +303,10 @@ export default function UserManagement() {
   const [targetOperationalStatus, setTargetOperationalStatus] = useState<UserOperationalStatus>("suspended");
   const [operationalStatusReason, setOperationalStatusReason] = useState<string>("");
   const [operationalStatusNotes, setOperationalStatusNotes] = useState<string>("");
+  const [networkTransitionUser, setNetworkTransitionUser] = useState<User | null>(null);
+  const [networkHistoryUser, setNetworkHistoryUser] = useState<User | null>(null);
+  const [legalEvidenceUser, setLegalEvidenceUser] = useState<User | null>(null);
+  const [legalStatusFilter, setLegalStatusFilter] = useState("all");
 
   const isSuperAdmin = currentUser?.role === 'super_admin';
   const isPlatformAdmin = currentUser?.role === 'admin' || isSuperAdmin;
@@ -334,12 +349,12 @@ export default function UserManagement() {
   const [statusRequestModal, setStatusRequestModal] = useState<{
     open: boolean;
     targetUser?: User;
-    requestedStatus: 'inactive' | 'active';
+    requestedStatus: 'active';
     reason: string;
     notes: string;
   }>({
     open: false,
-    requestedStatus: 'inactive',
+    requestedStatus: 'active',
     reason: '',
     notes: '',
   });
@@ -387,18 +402,18 @@ export default function UserManagement() {
 
   // Mutation: Master Broker create status request
   const createStatusRequestMutation = useMutation({
-    mutationFn: async (payload: { targetUserId: string; requestedStatus: 'inactive' | 'active'; reason: string; notes?: string }) => {
+    mutationFn: async (payload: { targetUserId: string; requestedStatus: 'active'; reason: string; notes?: string }) => {
       const res = await apiRequest('POST', '/api/master-broker/status-requests', payload);
       return res.json();
     },
     onSuccess: (data: any) => {
       toast({
         title: "Solicitud enviada a Super Admin",
-        description: `Se envió la solicitud de ${statusRequestModal.requestedStatus === 'inactive' ? 'baja' : 'reactivación'} para revisión.`,
+        description: "Se envió la solicitud de reactivación para revisión.",
       });
       refetchMasterStatusRequests();
       queryClient.invalidateQueries({ queryKey: ["/api/master-broker/status-requests"] });
-      setStatusRequestModal({ open: false, requestedStatus: 'inactive', reason: '', notes: '' });
+      setStatusRequestModal({ open: false, requestedStatus: 'active', reason: '', notes: '' });
     },
     onError: (err: any) => {
       toast({
@@ -621,6 +636,27 @@ export default function UserManagement() {
     queryKey: ["/api/users"],
     enabled: isPlatformAdmin,
   });
+  type LegalOverviewRow = {
+    userId: string;
+    status: "formalized" | "pending" | "requires_new_acceptance";
+    requiredDocuments: string[];
+    acceptedDocuments: string[];
+  };
+  const { data: legalOverview, isLoading: isLoadingLegalOverview, isError: legalOverviewError } = useQuery<{ users: LegalOverviewRow[] }>({
+    queryKey: ["/api/admin/legal/users/overview"],
+    enabled: isSuperAdmin && activeTab === "global",
+    queryFn: async () => {
+      const response = await apiRequest("GET", "/api/admin/legal/users/overview");
+      if (!response.ok) throw new Error("No se pudo consultar el estado contractual.");
+      return response.json();
+    },
+  });
+  const legalStatusByUser = useMemo(() => new Map((legalOverview?.users || []).map(x => [x.userId, x])), [legalOverview]);
+  const displayedGlobalUsers = useMemo(() => (legacyUsers || []).filter(u => {
+    if (!isSuperAdmin || legalStatusFilter === "all") return true;
+    if (u.role !== "broker" && u.role !== "master_broker") return false;
+    return legalStatusByUser.get(u.id)?.status === legalStatusFilter;
+  }), [legacyUsers, isSuperAdmin, legalStatusFilter, legalStatusByUser]);
 
   // Forms
   const createMemberForm = useForm<MemberCreateFormData>({
@@ -1437,29 +1473,25 @@ export default function UserManagement() {
                                             </Button>
                                           )}
 
-                                          {/* Solicitar Baja: si broker está active o suspended */}
+                                          {/* Baja: acción directa del Master sobre su propia red */}
                                           {(currentStatus === 'active' || currentStatus === 'suspended') && (
                                             <Button
                                               variant="ghost"
                                               size="sm"
-                                              disabled={Boolean(pendingReq && pendingReq.requestedStatus === 'inactive')}
                                               onClick={() => {
                                                 if (m.user) {
-                                                  setStatusRequestModal({
-                                                    open: true,
-                                                    targetUser: m.user as User,
-                                                    requestedStatus: 'inactive',
-                                                    reason: '',
-                                                    notes: '',
-                                                  });
+                                                  setOperationalStatusUser(m.user as User);
+                                                  setTargetOperationalStatus('inactive');
+                                                  setOperationalStatusReason("");
+                                                  setOperationalStatusNotes("");
                                                 }
                                               }}
                                               className="h-7 px-1.5 text-xs text-rose-700 hover:text-rose-800 hover:bg-rose-50"
-                                              title={pendingReq && pendingReq.requestedStatus === 'inactive' ? "Ya existe solicitud de baja pendiente" : "Solicitar baja definitiva a Super Admin"}
-                                              data-testid={`button-request-baja-broker-${m.id}`}
+                                              title="Dar de baja al broker de tu red"
+                                              data-testid={`button-direct-baja-broker-${m.id}`}
                                             >
                                               <Power className="h-3.5 w-3.5 mr-1" />
-                                              Solicitar baja
+                                              Dar de baja
                                             </Button>
                                           )}
 
@@ -1688,22 +1720,18 @@ export default function UserManagement() {
                                         <Button
                                           variant="outline"
                                           size="sm"
-                                          disabled={Boolean(pendingReq && pendingReq.requestedStatus === 'inactive')}
                                           onClick={() => {
                                             if (m.user) {
-                                              setStatusRequestModal({
-                                                open: true,
-                                                targetUser: m.user as User,
-                                                requestedStatus: 'inactive',
-                                                reason: '',
-                                                notes: '',
-                                              });
+                                              setOperationalStatusUser(m.user as User);
+                                              setTargetOperationalStatus('inactive');
+                                              setOperationalStatusReason("");
+                                              setOperationalStatusNotes("");
                                             }
                                           }}
                                           className="h-7 text-xs px-2 text-rose-700"
-                                          data-testid={`button-request-baja-broker-${m.id}-mobile`}
+                                          data-testid={`button-direct-baja-broker-${m.id}-mobile`}
                                         >
-                                          Solicitar baja
+                                          Dar de baja
                                         </Button>
                                       )}
                                       {currentStatus === 'inactive' && (
@@ -1793,11 +1821,26 @@ export default function UserManagement() {
               <div>
                 <CardTitle className="text-base font-semibold">Directorio Global de Usuarios</CardTitle>
                 <p className="text-xs text-muted-foreground mt-0.5">
-                  Visualización técnica completa de registros en tabla users
+                  Usuarios, permisos, estado contractual y evidencias legales según el rol.
                 </p>
               </div>
-              <Badge variant="secondary" className="font-mono text-xs">{legacyUsers?.length || 0}</Badge>
+              <Badge variant="secondary" className="text-xs">{displayedGlobalUsers.length} de {legacyUsers?.length || 0}</Badge>
             </CardHeader>
+            {isSuperAdmin && (
+              <div className="px-6 py-3 border-b flex flex-wrap items-center gap-3 text-xs">
+                <label htmlFor="legal-status-filter" className="font-medium">Filtrar por convenio</label>
+                <select id="legal-status-filter" value={legalStatusFilter}
+                  onChange={event => setLegalStatusFilter(event.target.value)}
+                  className="rounded border bg-background p-2 text-xs" data-testid="select-legal-status-filter">
+                  <option value="all">Todos los usuarios</option>
+                  <option value="formalized">Formalizados</option>
+                  <option value="pending">Pendientes</option>
+                  <option value="requires_new_acceptance">Nueva aceptación requerida</option>
+                </select>
+                {isLoadingLegalOverview && <span className="text-muted-foreground">Consultando convenios...</span>}
+                {legalOverviewError && <span className="text-destructive">No fue posible verificar los convenios; reintenta la consulta.</span>}
+              </div>
+            )}
             <CardContent className="p-0">
               <div className="overflow-x-auto">
                 <table className="w-full min-w-[800px] text-sm">
@@ -1810,11 +1853,12 @@ export default function UserManagement() {
                       <th className="py-3 px-4 text-left font-semibold">Estado Cuenta</th>
                       <th className="py-3 px-4 text-left font-semibold">Acceso Comercial</th>
                       <th className="py-3 px-4 text-left font-semibold">Creado</th>
+                      {isSuperAdmin && <th className="py-3 px-4 text-left font-semibold">Convenio</th>}
                       <th className="py-3 px-6 text-right font-semibold">Acciones</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-border/60">
-                    {legacyUsers?.map((u) => (
+                    {displayedGlobalUsers.map((u) => (
                       <tr key={u.id} className="hover:bg-muted/30">
                         <td className="py-3 px-6 font-medium">
                           {u.firstName} {u.lastName}
@@ -1858,8 +1902,51 @@ export default function UserManagement() {
                         <td className="py-3 px-4 text-xs text-muted-foreground">
                           {u.createdAt ? format(new Date(u.createdAt), "dd/MM/yyyy") : "-"}
                         </td>
+                        {isSuperAdmin && <td className="py-3 px-4">
+                          {u.role === "broker" || u.role === "master_broker" ? (
+                            isLoadingLegalOverview ? <span className="text-xs text-muted-foreground">Consultando...</span> :
+                            legalOverviewError ? <span className="text-xs text-destructive">No verificado</span> :
+                            legalStatusByUser.has(u.id) ?
+                              <Badge variant={legalStatusByUser.get(u.id)?.status === "formalized" ? "default" : "outline"}
+                                className="text-xs" data-testid={`badge-legal-status-${u.id}`}>
+                                {formalizationStatusLabel(legalStatusByUser.get(u.id)!.status)}
+                              </Badge> :
+                              <span className="text-xs text-muted-foreground">Sin registro</span>
+                          ) : <span className="text-xs text-muted-foreground">No aplica</span>}
+                        </td>}
                         <td className="py-3 px-6 text-right">
                           <div className="flex items-center justify-end gap-1">
+                            {isSuperAdmin && (u.role === "broker" || u.role === "master_broker") && (
+                              <Button variant="ghost" size="sm" onClick={() => setLegalEvidenceUser(u)}
+                                className="h-8 text-xs" title="Consultar convenio, firma OTP, versiones y comprobante"
+                                data-testid={`button-admin-legal-${u.id}`}>
+                                <ShieldCheck className="h-3.5 w-3.5 mr-1" /> Convenios
+                              </Button>
+                            )}
+                            {isSuperAdmin && (u.role === 'broker' || u.role === 'master_broker') && (
+                              <Button
+                                variant="ghost" size="sm"
+                                onClick={() => setNetworkHistoryUser(u)}
+                                className="h-8 text-xs"
+                                title="Consultar afiliación y movimientos históricos de red"
+                                data-testid={`button-network-history-${u.id}`}
+                              >
+                                <Eye className="h-3.5 w-3.5 mr-1" /> Historial
+                              </Button>
+                            )}
+                            {isSuperAdmin && u.role === 'broker' && (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => setNetworkTransitionUser(u)}
+                                className="h-8 text-xs text-blue-700 hover:text-blue-800 hover:bg-blue-50"
+                                title="Mover de red o convertir en Master Broker"
+                                data-testid={`button-network-transition-${u.id}`}
+                              >
+                                <ArrowRightLeft className="h-3.5 w-3.5 mr-1" />
+                                Red
+                              </Button>
+                            )}
                             {isSuperAdmin && (
                               <Button
                                 variant="ghost"
@@ -1883,17 +1970,22 @@ export default function UserManagement() {
                               variant="ghost"
                               size="sm"
                               onClick={() => {
+                                if (["broker", "master_broker"].includes(u.role)) {
+                                  setFocusBenefitUser(u.id);
+                                  setActiveTab("promos");
+                                  return;
+                                }
                                 setUserToEditAccess(u);
                                 setAccessStatusSelection(u.accessStatus || "free");
                                 setAccessExpiresAtSelection(u.accessStatusExpiresAt ? format(new Date(u.accessStatusExpiresAt), "yyyy-MM-dd") : "");
                                 setAccessNotesInput(u.accessStatusNotes || "");
                               }}
                               className="h-8 text-xs text-primary hover:text-primary hover:bg-primary/10"
-                              title="Modificar acceso comercial"
+                              title={["broker","master_broker"].includes(u.role) ? "Administrar beneficios" : "Modificar acceso comercial"}
                               data-testid={`button-edit-access-${u.id}`}
                             >
                               <Tag className="h-3.5 w-3.5 mr-1" />
-                              Acceso
+                              {["broker","master_broker"].includes(u.role) ? "Beneficios" : "Acceso"}
                             </Button>
                           </div>
                         </td>
@@ -1909,6 +2001,7 @@ export default function UserManagement() {
         {/* Tab 3: Promotional Codes Management (Bloque 10) */}
         {activeTab === "promos" && isPlatformAdmin && (
           <div className="space-y-6">
+            {isSuperAdmin && <ManualBenefitsManager key={focusBenefitUser} initialUserId={focusBenefitUser} users={legacyUsers || []} promos={adminPromos || []} />}
             <Card className="border border-border/60 shadow-sm">
               <CardHeader className="py-4 px-6 border-b flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
                 <div>
@@ -2314,7 +2407,7 @@ export default function UserManagement() {
                     Historial de Solicitudes Enviadas a Super Admin
                   </CardTitle>
                   <p className="text-xs text-slate-500 mt-0.5">
-                    Trazabilidad de solicitudes de baja y reactivación para brokers de tu red.
+                    Trazabilidad de solicitudes de reactivación enviadas a Super Admin.
                   </p>
                 </div>
                 <Badge variant="secondary" className="font-mono text-xs">{masterStatusRequests.length}</Badge>
@@ -2346,7 +2439,7 @@ export default function UserManagement() {
                             <Inbox className="w-8 h-8 mx-auto text-slate-300 dark:text-slate-600 mb-2" />
                             <p className="font-medium text-sm text-foreground">Aún no has enviado solicitudes de estado</p>
                             <p className="text-xs text-muted-foreground mt-0.5">
-                              Puedes solicitar la baja o reactivación de brokers de tu red desde la pestaña "Mi Red de Brokers".
+                              Puedes solicitar la reactivación de brokers inactivos de tu red desde la pestaña "Mi Red de Brokers".
                             </p>
                           </td>
                         </tr>
@@ -3701,7 +3794,7 @@ export default function UserManagement() {
 
                 {currentUser?.role === 'master_broker' && (
                   <p className="text-[11px] text-muted-foreground italic">
-                    Como Master Broker, únicamente puedes suspender temporalmente a brokers de tu red. Para baja definitiva o reactivación se requiere solicitud de aprobación a Super Admin.
+                    Como Master Broker, puedes suspender o dar de baja a brokers de tu propia red. La reactivación requiere intervención de Super Admin.
                   </p>
                 )}
               </div>
@@ -3794,25 +3887,53 @@ export default function UserManagement() {
         </Dialog>
       )}
 
+      {isSuperAdmin && <SuperAdminLegalEvidenceDialog key={legalEvidenceUser?.id || "closed"}
+        user={legalEvidenceUser} onClose={() => setLegalEvidenceUser(null)} />}
+      <Dialog open={Boolean(networkHistoryUser)} onOpenChange={(open) => { if (!open) setNetworkHistoryUser(null); }}>
+        <DialogContent className="max-w-3xl w-[95vw] max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Historial comercial y afiliación</DialogTitle>
+            <DialogDescription>Consulta de solo lectura; conserva los movimientos y la atribución histórica.</DialogDescription>
+          </DialogHeader>
+          {networkHistoryUser && <SuperAdminBrokerOverview
+            key={networkHistoryUser.id}
+            user={networkHistoryUser}
+            allUsers={legacyUsers || []}
+          />}
+        </DialogContent>
+      </Dialog>
+
+      <BrokerNetworkTransitionDialog
+        broker={networkTransitionUser}
+        open={Boolean(networkTransitionUser)}
+        onOpenChange={(open) => {
+          if (!open) setNetworkTransitionUser(null);
+        }}
+        onSuccess={() => {
+          refetchLegacyUsers();
+          queryClient.invalidateQueries({ queryKey: ["/api/broker-network"] });
+          queryClient.invalidateQueries({ queryKey: ["/api/tenants"] });
+          if (selectedTenantId) {
+            queryClient.invalidateQueries({ queryKey: ["/api/tenants", selectedTenantId, "members"] });
+          }
+        }}
+      />
+
       {/* MASTER BROKER: CREATE STATUS REQUEST DIALOG */}
       {statusRequestModal.open && statusRequestModal.targetUser && (
         <Dialog 
           open={statusRequestModal.open} 
           onOpenChange={(open) => {
             if (!open) {
-              setStatusRequestModal({ open: false, requestedStatus: 'inactive', reason: '', notes: '' });
+              setStatusRequestModal({ open: false, requestedStatus: 'active', reason: '', notes: '' });
             }
           }}
         >
           <DialogContent className="max-w-md w-[95vw]">
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2 text-base">
-                {statusRequestModal.requestedStatus === 'inactive' ? (
-                  <Power className="w-5 h-5 text-rose-600" />
-                ) : (
-                  <CheckCircle2 className="w-5 h-5 text-emerald-600" />
-                )}
-                Solicitar {statusRequestModal.requestedStatus === 'inactive' ? "Baja Definitiva" : "Reactivación"} de Broker
+                <CheckCircle2 className="w-5 h-5 text-emerald-600" />
+                Solicitar Reactivación de Broker
               </DialogTitle>
               <DialogDescription className="text-xs text-muted-foreground">
                 Esta solicitud será enviada al Super Admin para su evaluación y dictamen.
@@ -3834,13 +3955,10 @@ export default function UserManagement() {
 
               <div className="bg-slate-50 dark:bg-slate-900/40 p-2.5 rounded text-xs text-muted-foreground space-y-1">
                 <div className="font-semibold text-slate-800 dark:text-slate-200">
-                  {statusRequestModal.requestedStatus === 'inactive' ? "Alcance de la baja:" : "Alcance de la reactivación:"}
+                  Alcance de la reactivación:
                 </div>
                 <p className="text-[11px]">
-                  {statusRequestModal.requestedStatus === 'inactive'
-                    ? "Al aprobarse, el broker no podrá iniciar sesión ni originar créditos nuevos. Todo su historial comercial, comisiones y clientes continuarán asignados intactos a él."
-                    : "Al aprobarse, el broker recuperará el acceso a la plataforma manteniendo su historial comercial intacto."
-                  }
+                  Al aprobarse, el broker recuperará el acceso a la plataforma manteniendo intactos su historial y atribuciones comerciales.
                 </p>
               </div>
 
@@ -3852,9 +3970,7 @@ export default function UserManagement() {
                 <Input
                   value={statusRequestModal.reason}
                   onChange={(e) => setStatusRequestModal(prev => ({ ...prev, reason: e.target.value }))}
-                  placeholder={statusRequestModal.requestedStatus === 'inactive' 
-                    ? "Ej: Cierre de actividades comerciales, baja voluntaria de la red..."
-                    : "Ej: Regularización de contrato y retorno a operaciones comerciales..."}
+                  placeholder="Ej: Regularización de contrato y retorno a operaciones comerciales..."
                   className="text-xs h-9"
                   data-testid="input-status-request-reason"
                 />
@@ -3880,7 +3996,7 @@ export default function UserManagement() {
               <Button
                 variant="outline"
                 size="sm"
-                onClick={() => setStatusRequestModal({ open: false, requestedStatus: 'inactive', reason: '', notes: '' })}
+                onClick={() => setStatusRequestModal({ open: false, requestedStatus: 'active', reason: '', notes: '' })}
                 disabled={createStatusRequestMutation.isPending}
               >
                 Cancelar
@@ -3900,11 +4016,7 @@ export default function UserManagement() {
                     notes: statusRequestModal.notes.trim() || undefined,
                   });
                 }}
-                className={
-                  statusRequestModal.requestedStatus === 'inactive'
-                    ? "bg-rose-600 hover:bg-rose-700 text-white"
-                    : "bg-emerald-600 hover:bg-emerald-700 text-white"
-                }
+                className="bg-emerald-600 hover:bg-emerald-700 text-white"
                 data-testid="button-submit-status-request"
               >
                 {createStatusRequestMutation.isPending ? (
@@ -3913,7 +4025,7 @@ export default function UserManagement() {
                     Enviando...
                   </>
                 ) : (
-                  `Enviar Solicitud de ${statusRequestModal.requestedStatus === 'inactive' ? 'Baja' : 'Reactivación'}`
+                  "Enviar Solicitud de Reactivación"
                 )}
               </Button>
             </DialogFooter>

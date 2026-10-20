@@ -6,6 +6,7 @@ import { registerRoutes } from "./routes";
 import { setupVite, serveStatic, log } from "./vite";
 import { allowedOrigins, isAllowedOrigin } from "./runtimeConfig";
 import { runAutoMigration } from "./autoMigrate";
+import { rejectCrossSiteMutations } from "./csrfProtection";
 
 const isProd = process.env.NODE_ENV === "production";
 
@@ -18,6 +19,23 @@ const app = express();
 
 // Security headers — disable CSP here; configure at CDN/Vercel edge level
 app.use(helmet({ contentSecurityPolicy: false, crossOriginEmbedderPolicy: false }));
+
+// LEG-10 bearer tokens are secrets, not telemetry.  Neither access logs nor
+// structured production request serializers may receive the raw token URL.
+const isSensitiveConsentPath = (path: string) =>
+  path.startsWith("/api/client-consent/") || path.startsWith("/autorizar-expediente/");
+app.use((req, res, next) => {
+  if (isSensitiveConsentPath(req.path)) {
+    res.setHeader("Cache-Control", "private, no-store");
+    res.setHeader("Referrer-Policy", "no-referrer");
+    res.setHeader("X-Robots-Tag", "noindex, nofollow, noarchive");
+  }
+  next();
+});
+
+// Runs BEFORE CORS, parsers, sessions and routes: rejects cross-site writes
+// regardless of content type (HTML forms and multipart included).
+app.use(rejectCrossSiteMutations);
 
 app.use((req, res, next) => {
   const origin = req.headers.origin;
@@ -48,7 +66,7 @@ app.use(express.urlencoded({ extended: false }));
 
 // Structured JSON logging in production; dev keeps the verbose inline logger below
 if (isProd) {
-  app.use(pinoHttp({ logger, autoLogging: { ignore: (req) => req.url === "/api/health" } }));
+  app.use(pinoHttp({ logger, autoLogging: { ignore: (req) => req.url === "/api/health" || isSensitiveConsentPath(req.url || "") } }));
 }
 
 app.use((req, res, next) => {
@@ -64,7 +82,7 @@ app.use((req, res, next) => {
 
   res.on("finish", () => {
     const duration = Date.now() - start;
-    if (path.startsWith("/api")) {
+    if (path.startsWith("/api") && !isSensitiveConsentPath(path)) {
       let logLine = `${req.method} ${path} ${res.statusCode} in ${duration}ms`;
       if (capturedJsonResponse) {
         logLine += ` :: ${JSON.stringify(capturedJsonResponse)}`;

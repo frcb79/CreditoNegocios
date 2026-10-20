@@ -39,6 +39,7 @@ interface DashboardMetrics {
     totalDisbursedVolume?: number;
     activeBrokers: number;
     totalClients: number;
+    newProspectsMonth?: number;
     avgTicket?: number;
     commissionsPendingTotal?: number;
     commissionsPendingCount?: number;
@@ -54,6 +55,8 @@ export default function MetricsGrid() {
   const [, setLocation] = useLocation();
   const { data: metrics, isLoading } = useQuery<DashboardMetrics>({
     queryKey: ["/api/dashboard/metrics"],
+    refetchOnWindowFocus: "always",
+    staleTime: 0,
   });
 
   if (isLoading) {
@@ -203,6 +206,15 @@ export default function MetricsGrid() {
   // Admin metrics (Operación global)
   const adminCards = metrics.admin ? [
     {
+      title: "Prospectos Nuevos",
+      value: metrics.admin.newProspectsMonth ?? 0,
+      subtitle: "Altas de clientes este mes, todos los canales",
+      icon: "fas fa-user-plus",
+      color: "indigo",
+      testId: "metric-new-prospects",
+      onClick: () => setLocation("/clientes"),
+    },
+    {
       title: "Pipeline Global",
       value: `${metrics.admin.totalPipeline} solicitudes`,
       trend: metrics.trend?.pipeline,
@@ -268,7 +280,7 @@ export default function MetricsGrid() {
 
   return (
     <div
-      className={`grid grid-cols-1 sm:grid-cols-2 ${isAdmin ? 'lg:grid-cols-5' : 'lg:grid-cols-4'} gap-4 mb-6`}
+      className={`grid grid-cols-1 sm:grid-cols-2 ${isAdmin ? 'lg:grid-cols-6' : 'lg:grid-cols-4'} gap-4 mb-6`}
       data-testid="metrics-grid"
     >
       {displayCards.map((card, index) => {

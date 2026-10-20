@@ -1,0 +1,109 @@
+import * as XLSX from "xlsx";
+
+export type BulkBrokerInvite = {
+  row: number;
+  email: string;
+  firstName: string;
+  lastName: string;
+  phone: string;
+  message: string;
+  role: "broker" | "master_broker";
+  masterEmail: string;
+  promoCode: string;
+};
+export type BulkInviteIssue = { row: number; field: string; message: string };
+export const MAX_INVITATIONS_PER_FILE = 100;
+export const INVITATION_EXCEL_HEADERS = [
+  "nombre","apellido","correo","rol","correo_master_asignado","telefono","mensaje_personal",
+] as const;
+
+/** Read only the input columns; status and send-history columns are informational. */
+export function parseBrokerInvitationExcel(buffer: Buffer): {
+  rows: BulkBrokerInvite[]; errors: BulkInviteIssue[];
+  total: number; masters: number; brokers: number;
+} {
+  const workbook = XLSX.read(buffer, { type: "buffer" });
+  const sheet = workbook.Sheets["Invitaciones"];
+  if (!sheet) throw new Error('La plantilla debe incluir la hoja "Invitaciones".');
+  const values = XLSX.utils.sheet_to_json<unknown[]>(sheet, { header: 1, defval: "" });
+  const headers = ((values[0] || []) as unknown[]).map(v => String(v || "").trim().toLowerCase());
+  if (INVITATION_EXCEL_HEADERS.some(h => !headers.includes(h))) {
+    throw new Error("La plantilla no contiene todas las columnas requeridas.");
+  }
+  const data = values.slice(1)
+    .map((cells, idx) => ({ cells: cells as unknown[], excelRow: idx + 2 }))
+    .filter(({ cells }) => INVITATION_EXCEL_HEADERS.some(h => String(cells[headers.indexOf(h)] ?? "").trim()));
+  if (data.length === 0) throw new Error("La hoja de invitaciones está vacía.");
+  if (data.length > MAX_INVITATIONS_PER_FILE) {
+    throw new Error(`Máximo ${MAX_INVITATIONS_PER_FILE} invitaciones por envío. Divide el archivo en lotes.`);
+  }
+
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  const errors: BulkInviteIssue[] = [];
+  const rows: BulkBrokerInvite[] = [];
+  const used = new Set<string>();
+  for (const { cells, excelRow } of data) {
+    const cell = (h: string) => String(cells[headers.indexOf(h)] ?? "").trim();
+    const email = cell("correo").toLowerCase();
+    const firstName = cell("nombre");
+    const lastName = cell("apellido");
+    const phone = cell("telefono");
+    const message = cell("mensaje_personal");
+    const masterEmail = cell("correo_master_asignado").toLowerCase();
+    // Optional to preserve previously generated Excel invitation lists.
+    const promoCode = headers.includes("codigo_promocional") ? cell("codigo_promocional").toUpperCase() : "";
+    const originalRole = cell("rol").toLowerCase().replace(/\s+/g," ").trim();
+    const role = originalRole === "broker" ? "broker" :
+      originalRole === "master broker" || originalRole === "master_broker" ? "master_broker" : null;
+    const issue = (field:string,message:string) => errors.push({row:excelRow,field,message});
+    if (!emailRegex.test(email) || email.length>320) issue("correo","Correo inválido");
+    if (!firstName || firstName.length>120) issue("nombre","Nombre requerido (máximo 120 caracteres)");
+    if (!lastName || lastName.length>120) issue("apellido","Apellido requerido (máximo 120 caracteres)");
+    if (!role) issue("rol","Rol debe ser Broker o Master Broker");
+    if (phone.length>35) issue("telefono","Teléfono de más de 35 caracteres");
+    if (message.length>500) issue("mensaje_personal","Mensaje de más de 500 caracteres");
+    if (masterEmail && !emailRegex.test(masterEmail)) issue("correo_master_asignado","Correo Master inválido");
+    if (role === "master_broker" && masterEmail) issue("correo_master_asignado","Un Master no puede depender de otro Master");
+    if (used.has(email)) issue("correo","Correo duplicado en el archivo");
+    used.add(email);
+    if (promoCode && !/^[A-Z0-9_-]{3,80}$/.test(promoCode)) issue("codigo_promocional", "Código promocional inválido");
+    if (role) rows.push({row:excelRow,email,firstName,lastName,phone,message,role,masterEmail,promoCode});
+  }
+  const mastersInFile = new Set(rows.filter(r=>r.role==="master_broker").map(r=>r.email));
+  for(const row of rows) {
+    if(row.masterEmail === row.email) errors.push({
+      row:row.row,field:"correo_master_asignado",message:"No puedes asignar un broker a sí mismo",
+    });
+    // External existing Master can be resolved from DB when sending.
+    if(row.role==="broker" && row.masterEmail && !mastersInFile.has(row.masterEmail)) {
+      // Preview leaves this explicit: server must verify external Master exists.
+    }
+  }
+  return {rows,errors,total:rows.length,
+    masters:rows.filter(r=>r.role==="master_broker").length,
+    brokers:rows.filter(r=>r.role==="broker").length};
+}
+
+/** Generate the exact workbook accepted by the preview/send endpoints. */
+export function generateBrokerInvitationExcelTemplate(): Buffer {
+  const book = XLSX.utils.book_new();
+  const columns = [...INVITATION_EXCEL_HEADERS,"codigo_promocional","estado_envio","fecha_envio","fecha_activacion"];
+  const sheet = XLSX.utils.aoa_to_sheet([columns]);
+  sheet["!cols"] = columns.map((h)=>({wch:Math.min(Math.max(15,h.length+2),35)}));
+  XLSX.utils.book_append_sheet(book,sheet,"Invitaciones");
+  const guide = XLSX.utils.aoa_to_sheet([
+    ["PLANTILLA OFICIAL — CRÉDITO NEGOCIOS"],
+    ["Llena nombre, apellido, correo y rol. Usa Broker o Master Broker."],
+    ["Para Brokers afiliados, correo_master_asignado contiene el correo del Master; para directos, vacío."],
+    ["Puedes incluir Masters nuevos y sus Brokers juntos. Primero se invitarán los Masters."],
+    ["codigo_promocional es opcional por fila: permite una cortesía anual distinta por persona."],
+    ["Si todas las invitaciones comparten un código, indícalo en el formulario del lote."],
+    ["La cortesía anual dura 12 meses a partir de la activación de la cuenta."],
+    ["No modifiques los encabezados. Máximo 100 invitados por archivo."],
+    ["El envío no sucede al cargar el Excel: revisa la vista previa y confirma expresamente."],
+    ["estado_envio, fecha_envio y fecha_activacion son columnas de seguimiento; se ignoran al importar."],
+  ]);
+  guide["!cols"]=[{wch:100}];
+  XLSX.utils.book_append_sheet(book,guide,"Guia");
+  return XLSX.write(book,{type:"buffer",bookType:"xlsx"}) as Buffer;
+}

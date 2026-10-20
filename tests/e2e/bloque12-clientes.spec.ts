@@ -8,14 +8,14 @@ if (!fs.existsSync(SCREENSHOT_DIR)) {
 }
 
 // Credentials
-const SA_EMAIL = process.env.STAGING_ADMIN_EMAIL || process.env.STAGING_EMAIL || 'francocb79@gmail.com';
-const SA_PASSWORD = process.env.STAGING_ADMIN_PASSWORD || process.env.STAGING_PASSWORD || 'Prueba1$';
+const SA_EMAIL = process.env.STAGING_ADMIN_EMAIL || process.env.STAGING_EMAIL || '';
+const SA_PASSWORD = process.env.STAGING_ADMIN_PASSWORD || process.env.STAGING_PASSWORD || '';
 
-const MB_EMAIL = process.env.STAGING_MB_EMAIL || 'fcb@creditonegocios.com.mx';
-const MB_PASSWORD = process.env.STAGING_MB_PASSWORD || 'Prueba1$';
+const MB_EMAIL = process.env.STAGING_MB_EMAIL || '';
+const MB_PASSWORD = process.env.STAGING_MB_PASSWORD || '';
 
-const BRK_EMAIL = process.env.STAGING_BRK_EMAIL || 'francocb79@yahoo.com';
-const BRK_PASSWORD = process.env.STAGING_BRK_PASSWORD || 'Prueba1$';
+const BRK_EMAIL = process.env.STAGING_BRK_EMAIL || '';
+const BRK_PASSWORD = process.env.STAGING_BRK_PASSWORD || '';
 
 async function setupPage(context: any) {
   await context.addInitScript(() => {
@@ -32,6 +32,8 @@ async function setupPage(context: any) {
 }
 
 async function performLogin(page: any, email: string, pass: string) {
+  if (!email || !pass) throw new Error("E2E staging credentials are required via STAGING_ADMIN_*, STAGING_MB_* and STAGING_BRK_* environment variables; no repository defaults.");
+
   await page.goto('/', { waitUntil: 'networkidle' });
   await page.waitForSelector('#login-email', { timeout: 20000 });
   await page.fill('#login-email', email);

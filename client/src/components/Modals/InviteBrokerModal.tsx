@@ -22,6 +22,8 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/hooks/useAuth";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { apiRequest } from "@/lib/queryClient";
 import { Loader2, Info } from "lucide-react";
 
@@ -31,6 +33,8 @@ const inviteBrokerSchema = z.object({
   lastName: z.string().min(1, "El apellido es requerido"),
   phone: z.string().optional(),
   message: z.string().optional(),
+  promoCode: z.string().optional(),
+  role: z.enum(["broker", "master_broker"]).default("broker"),
 });
 
 type InviteBrokerFormData = z.infer<typeof inviteBrokerSchema>;
@@ -42,6 +46,8 @@ interface InviteBrokerModalProps {
 
 export default function InviteBrokerModal({ isOpen, onClose }: InviteBrokerModalProps) {
   const { toast } = useToast();
+  const { user } = useAuth();
+  const isSuperAdmin = user?.role === "super_admin";
   const queryClient = useQueryClient();
 
   const form = useForm<InviteBrokerFormData>({
@@ -52,6 +58,8 @@ export default function InviteBrokerModal({ isOpen, onClose }: InviteBrokerModal
       lastName: "",
       phone: "",
       message: "",
+      promoCode: "",
+      role: "broker",
     },
   });
 
@@ -60,10 +68,20 @@ export default function InviteBrokerModal({ isOpen, onClose }: InviteBrokerModal
       const response = await apiRequest("POST", "/api/broker-invitations", data);
       return await response.json();
     },
-    onSuccess: () => {
+    onSuccess: (data: { invitationSent?: boolean; message?: string; broker?: { role?: string } }) => {
+      if (!data.invitationSent) {
+        toast({
+          title: "Invitación pendiente de envío",
+          description: data.message || "El correo no salió. Intenta reenviar la invitación.",
+          variant: "destructive",
+        });
+        return;
+      }
       toast({
         title: "Invitación enviada",
-        description: "Se ha enviado la invitación al broker exitosamente",
+        description: data.broker?.role === "master_broker"
+          ? "El correo de activación se envió al Master Broker."
+          : "El correo de activación se envió al Broker.",
       });
       queryClient.invalidateQueries({ queryKey: ["/api/broker-network"] });
       form.reset();
@@ -86,11 +104,30 @@ export default function InviteBrokerModal({ isOpen, onClose }: InviteBrokerModal
     <Dialog open={isOpen} onOpenChange={onClose}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>Invitar Broker a mi Red</DialogTitle>
+          <DialogTitle>{isSuperAdmin ? "Invitar Broker o Master Broker" : "Invitar Broker a mi Red"}</DialogTitle>
         </DialogHeader>
 
         <Form {...form}>
           <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+            {isSuperAdmin && (
+              <FormField
+                control={form.control}
+                name="role"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Rol del invitado</FormLabel>
+                    <Select onValueChange={field.onChange} defaultValue={field.value}>
+                      <FormControl><SelectTrigger><SelectValue placeholder="Seleccionar rol" /></SelectTrigger></FormControl>
+                      <SelectContent>
+                        <SelectItem value="broker">Broker</SelectItem>
+                        <SelectItem value="master_broker">Master Broker</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            )}
             <FormField
               control={form.control}
               name="email"
@@ -184,12 +221,27 @@ export default function InviteBrokerModal({ isOpen, onClose }: InviteBrokerModal
               )}
             />
 
+            <FormField control={form.control} name="promoCode" render={({ field }) => (
+              <FormItem>
+                <FormLabel>Cupón de cortesía anual</FormLabel>
+                <FormControl>
+                  <Input placeholder="Código de 12 meses gratis" {...field}
+                    value={field.value || ""} data-testid="input-invitation-promo-code" />
+                </FormControl>
+                <p className="text-xs text-muted-foreground">
+                  Puedes asignar un cupón particular por invitación. Si lo dejas vacío se usará
+                  el código anual predeterminado configurado en el servidor; sin un cupón válido no se enviará la invitación.
+                </p>
+                <FormMessage />
+              </FormItem>
+            )} />
+
             <div className="p-3 bg-primary/5 border border-primary/20 rounded-lg">
               <div className="flex items-center space-x-2.5">
                 <Info className="w-4 h-4 text-primary shrink-0" />
                 <div className="text-sm">
                   <p className="font-semibold text-foreground text-xs">¿Cómo funciona?</p>
-                  <p className="text-xs text-muted-foreground">El broker recibirá un email con instrucciones para unirse a tu red y podrá registrarse automáticamente.</p>
+                  <p className="text-xs text-muted-foreground">La persona recibirá un enlace de activación privado de 24 horas y el cupón que le otorga 12 meses sin costo, registrados desde su activación. Nunca enviamos contraseñas por correo.</p>
                 </div>
               </div>
             </div>

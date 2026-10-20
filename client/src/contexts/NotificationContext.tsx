@@ -57,7 +57,7 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
   useEffect(() => {
     if (!user?.id) return;
 
-    const wsUrl = buildWebSocketUrl(`/ws?userId=${user.id}`);
+    const wsUrl = buildWebSocketUrl("/ws");
     const socket = new WebSocket(wsUrl);
 
     socket.onmessage = (event) => {
@@ -78,9 +78,13 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
     };
   }, [user?.id]);
 
-  // Fetch notifications on mount
+  // Fetch notifications on mount, then poll as a resilient fallback if a
+  // session expires or WebSocket transport is unavailable.
   useEffect(() => {
+    if (!isAuthenticated) return;
     fetchNotifications();
+    const interval = setInterval(fetchNotifications, 30_000);
+    return () => clearInterval(interval);
   }, [isAuthenticated]);
 
   return (

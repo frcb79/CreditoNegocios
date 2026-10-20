@@ -1,4 +1,4 @@
-import { Switch, Route } from "wouter";
+import { Switch, Route, Redirect } from "wouter";
 import { queryClient } from "./lib/queryClient";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
@@ -11,6 +11,8 @@ import { isUnauthorizedError } from "@/lib/authUtils";
 import { getAppBaseUrl } from "@/lib/runtimeConfig";
 import NotFound from "@/pages/not-found";
 import Landing from "@/pages/Landing";
+import LegalDocumentPage from "@/pages/LegalDocumentPage";
+import ClientConsentPage from "@/pages/ClientConsentPage";
 import BrokersLanding from "@/pages/BrokersLanding";
 import ResetPassword from "@/pages/ResetPassword";
 import Dashboard from "@/pages/Dashboard";
@@ -30,6 +32,7 @@ import PendingRequests from "@/pages/PendingRequests";
 import MySubmissions from "@/pages/MySubmissions";
 import ProposalComparison from "@/pages/ProposalComparison";
 import UserManagement from "@/pages/UserManagement";
+import SuperAdminAudit from "@/pages/SuperAdminAudit";
 import DesignPreview from "@/pages/DesignPreview";
 import BulkImport from "@/pages/BulkImport";
 import Notifications from "@/pages/Notifications";
@@ -45,7 +48,7 @@ function Router() {
     // Only redirect if we're on a protected route and definitely not authenticated
     if (!isLoading && !isAuthenticated) {
       const currentPath = window.location.pathname;
-      const protectedRoutes = ['/clientes', '/creditos', '/re-gestion', '/red-brokers', '/comisiones', '/financieras', '/documentos', '/reportes', '/configuracion', '/sistema-productos', '/solicitudes-pendientes', '/mis-solicitudes', '/admin/usuarios', '/importacion-masiva', '/notificaciones'];
+      const protectedRoutes = ['/clientes', '/creditos', '/re-gestion', '/red-brokers', '/comisiones', '/financieras', '/documentos', '/reportes', '/configuracion', '/sistema-productos', '/solicitudes-pendientes', '/mis-solicitudes', '/admin/usuarios', '/admin/auditoria', '/importacion-masiva', '/notificaciones'];
       
       // Check if current path starts with any protected route
       const isProtected = protectedRoutes.some(route => currentPath.startsWith(route));
@@ -65,6 +68,12 @@ function Router() {
 
   return (
     <Switch>
+      <Route path="/autorizar-expediente/:token" component={ClientConsentPage} />
+      <Route path="/legal/terminos"><LegalDocumentPage document="terminos" /></Route>
+      <Route path="/legal/aviso"><LegalDocumentPage document="aviso" /></Route>
+      <Route path="/legal/convenio"><LegalDocumentPage document="convenio" /></Route>
+      <Route path="/legal/reglas-red"><LegalDocumentPage document="reglas-red" /></Route>
+      <Route path="/legal/reglas-master"><LegalDocumentPage document="reglas-master" /></Route>
       {/* Reset password route - accessible without auth */}
       <Route path="/reset-password" component={ResetPassword} />
       {/* Design preview - accessible only in development for testing */}
@@ -93,10 +102,11 @@ function Router() {
           <ProtectedRoute path="/mis-solicitudes" component={MySubmissions} requiredModule="creditos" />
           <ProtectedRoute path="/comparar-propuestas/:requestId" component={ProposalComparison} requiredModule="creditos" />
           <ProtectedRoute path="/admin/usuarios" component={UserManagement} />
+          <ProtectedRoute path="/admin/auditoria" component={SuperAdminAudit} allowedRoles={['super_admin']} />
           <ProtectedRoute path="/notificaciones" component={Notifications} />
           <ProtectedRoute path="/importacion-masiva" component={BulkImport} allowedRoles={['admin', 'super_admin']} requiredModule="importacion" />
           <ProtectedRoute path="/ayuda" component={HelpCenterPage} />
-          <ProtectedRoute path="/reglas-operacion" component={HelpCenterPage} />
+          <Route path="/reglas-operacion"><Redirect to="/configuracion?tab=operational_rules" /></Route>
         </>
       )}
       <Route component={NotFound} />

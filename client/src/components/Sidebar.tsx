@@ -21,9 +21,11 @@ import {
   FileText,
   BarChart3,
   FileSpreadsheet,
+  ClipboardList,
   Users2,
   Settings,
   HelpCircle,
+  Tag,
   LogOut,
   type LucideIcon,
 } from "lucide-react";
@@ -36,6 +38,7 @@ interface NavItemDef {
   section: "operacion" | "catalogos" | "supervision" | "admin";
   adminOnly?: boolean;
   platformAdminOnly?: boolean;
+  superAdminOnly?: boolean;
   brokerOnly?: boolean;
 }
 
@@ -53,6 +56,7 @@ const navigation: NavItemDef[] = [
   // Supervisión y Red
   { name: 'Aprobaciones', href: '/solicitudes-pendientes', icon: Clock, platformAdminOnly: true, section: "supervision" },
   { name: 'Red de Brokers', href: '/red-brokers', icon: Network, adminOnly: true, section: "supervision" },
+  { name: 'Auditoría Administrativa', href: '/admin/auditoria', icon: ClipboardList, superAdminOnly: true, section: "supervision" },
   { name: 'Reportes', href: '/reportes', icon: BarChart3, adminOnly: true, section: "supervision" },
 ];
 
@@ -62,7 +66,7 @@ const adminNavigation: NavItemDef[] = [
 ];
 
 const bottomNavigation = [
-  { name: 'Ayuda y Reglas', href: '/ayuda', icon: HelpCircle },
+  { name: 'Ayuda', href: '/ayuda', icon: HelpCircle },
   { name: 'Configuración', href: '/configuracion', icon: Settings },
 ];
 
@@ -104,15 +108,20 @@ export default function Sidebar() {
 
   const filteredNavigation = navigation.filter(item => {
     if (item.platformAdminOnly && !isFullAdmin) return false;
+    if (item.superAdminOnly && user?.role !== "super_admin") return false;
     if (item.adminOnly && !isAdmin) return false;
     if (item.brokerOnly && isFullAdmin) return false;
     return true;
   });
   
-  const adminItems: NavItemDef[] = isFullAdmin 
-    ? adminNavigation 
-    : (hasTenantOrg 
-        ? [{ name: 'Mi Organización', href: '/admin/usuarios', icon: Users2, section: "admin" }] 
+  const adminItems: NavItemDef[] = isFullAdmin
+    ? [
+        ...adminNavigation,
+        // Administrative promo catalogue remains in UserManagement, reachable directly.
+        { name: 'Beneficios y promociones', href: '/admin/usuarios?tab=promos', icon: Tag, section: "admin" as const },
+      ]
+    : (hasTenantOrg
+        ? [{ name: 'Mi Organización', href: '/admin/usuarios', icon: Users2, section: "admin" }]
         : []);
 
   const baseItems = [...filteredNavigation, ...adminItems];
@@ -245,7 +254,9 @@ export default function Sidebar() {
             ) : null}
 
             {grp.items.map((item) => {
-              const isActive = location === item.href;
+              const [itemPath, itemQuery] = item.href.split("?");
+              const isActive = location === itemPath &&
+                (!itemQuery || window.location.search === `?${itemQuery}`);
               const IconComp = item.icon;
               
               return (

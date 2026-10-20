@@ -232,7 +232,7 @@ export const clients = pgTable("clients", {
   legalRepresentative: jsonb("legal_representative"), // For moral persons
   guarantors: jsonb("guarantors").default('[]'),
   guarantees: jsonb("guarantees").default('[]'),
-  
+
   // Client profiling data from Excel questions
   profilingData: jsonb("profiling_data").default('{}'), // Contains all profiling responses
   ingresoMensualPromedio: varchar("ingreso_mensual_promedio"),
@@ -256,7 +256,7 @@ export const clients = pgTable("clients", {
   garantias: varchar("garantias"),
   historialPagos: varchar("historial_pagos"),
   referenciasComerciales: varchar("referencias_comerciales"),
-  
+
   // Campos específicos para Persona Moral
   egresoMensualPromedio: varchar("egreso_mensual_promedio"),
   ingresoAnual: varchar("ingreso_anual"),
@@ -275,7 +275,7 @@ export const clients = pgTable("clients", {
   opinionDetalles: text("opinion_detalles"),
   creditosVigentes: varchar("creditos_vigentes"),
   creditosVigentesDetalles: jsonb("creditos_vigentes_detalles").default('[]'),
-  
+
   // Nuevos campos específicos para Persona Física
   puesto: varchar("puesto"),
   antiguedadLaboral: varchar("antiguedad_laboral"),
@@ -289,7 +289,7 @@ export const clients = pgTable("clients", {
   garantiaFisicaDetalles: jsonb("garantia_fisica_detalles").default('{}'),
   tieneAvalObligadoSolidarioFisica: varchar("tiene_aval_obligado_solidario_fisica"),
   observacionesAdicionalesFisica: text("observaciones_adicionales_fisica"),
-  
+
   // Nuevos campos específicos para Sin SAT
   nombreComercial: varchar("nombre_comercial"),
   ocupacion: varchar("ocupacion"), // Reubicado al lado de CURP
@@ -300,7 +300,7 @@ export const clients = pgTable("clients", {
   interiorNegocio: varchar("interior_negocio"),
   codigoPostalNegocio: varchar("codigo_postal_negocio"),
   estadoNegocio: varchar("estado_negocio"),
-  
+
   // Perfilamiento específico para Sin SAT
   ingresoMensualPromedioComprobablesSinSat: varchar("ingreso_mensual_promedio_comprobables_sin_sat"),
   ingresoMensualPromedioNoComprobablesSinSat: varchar("ingreso_mensual_promedio_no_comprobables_sin_sat"),
@@ -312,7 +312,7 @@ export const clients = pgTable("clients", {
   garantiaSinSatDetalles: jsonb("garantia_sin_sat_detalles").default('{}'),
   tieneAvalObligadoSolidarioSinSat: varchar("tiene_aval_obligado_solidario_sin_sat"),
   observacionesAdicionalesSinSat: text("observaciones_adicionales_sin_sat"),
-  
+
   originOpportunity: varchar("origin_opportunity"), // "hipotecario_vivienda" | "credito_empresarial" | null (legacy sin default)
   notes: text("notes"),
   isActive: boolean("is_active").default(true),
@@ -329,7 +329,7 @@ export const clientCreditHistories = pgTable("client_credit_histories", {
   clientId: varchar("client_id").notNull().references(() => clients.id),
   source: varchar("source").notNull().default("manual"), // "manual" | "system"
   linkedCreditId: varchar("linked_credit_id").references(() => credits.id), // Solo para créditos del sistema
-  
+
   // Campos del historial crediticio
   creditType: varchar("credit_type").notNull(), // Tipo de crédito
   amountGranted: varchar("amount_granted").notNull(), // Monto otorgado
@@ -337,7 +337,7 @@ export const clientCreditHistories = pgTable("client_credit_histories", {
   interestRate: varchar("interest_rate").notNull(), // Tasa de interés
   financialInstitution: varchar("financial_institution"), // Nombre de la financiera (opcional)
   notes: text("notes"), // Notas adicionales
-  
+
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
@@ -357,33 +357,33 @@ export const financialInstitutions = pgTable("financial_institutions", {
   postalCode: varchar("postal_code"),
   state: varchar("state"),
   description: text("description"),
-  
+
   // Commission rates - expanded from single commissionRate
   commissionRate: decimal("commission_rate", { precision: 5, scale: 2 }), // Legacy field maintained for compatibility
   openingCommissionRate: varchar("opening_commission_rate"), // Comisión de apertura
   overrateCommissionRate: varchar("overrate_commission_rate"), // Comisión de sobretasa
   brokerCommissionRate: varchar("broker_commission_rate"), // Comisión del broker
   masterBrokerCommissionRate: varchar("master_broker_commission_rate"), // Comisión del master broker
-  
+
   // Commission rates structure (JSONB) - New flexible structure
   commissionRates: jsonb("commission_rates").default('{}'), // { masterBroker: { total, apertura, sobretasa, renovacion }, broker: { total, apertura, sobretasa, renovacion } }
-  
+
   // Business structure
   additionalCosts: jsonb("additional_costs").default('[]'), // Costos adicionales
   requirements: jsonb("requirements").default('{}'), // Requisitos por tipo de cliente: { persona_moral: {...}, fisica_empresarial: {...}, fisica: {...}, sin_sat: {...} }
   products: jsonb("products").default('[]'), // Productos disponibles
   acceptedProfiles: text("accepted_profiles").array().default(sql`ARRAY[]::text[]`), // Perfiles de cliente aceptados globalmente: ['persona_moral', 'fisica_empresarial', 'fisica', 'sin_sat']
-  
+
   // Broker-facing information
   applicationProcess: jsonb("application_process").default('[]'), // Array de pasos del proceso de solicitud: [{ step: 1, title: "...", description: "...", estimatedTime: "..." }]
   estimatedTimeframes: jsonb("estimated_timeframes").default('{}'), // Tiempos estimados: { analysis: "24-48hrs", approval: "5 días", dispersion: "48hrs" }
   approvalTips: text("approval_tips").array().default(sql`ARRAY[]::text[]`), // Tips para mejorar probabilidad de aprobación
   requiredDocuments: text("required_documents").array().default(sql`ARRAY[]::text[]`), // Lista de documentos requeridos
-  
+
   // Administrative fields
   createdBy: varchar("created_by").references(() => users.id), // Usuario que la creó
   createdByAdmin: boolean("created_by_admin").default(false), // Si fue creada por un admin
-  
+
   // Status and metadata
   isActive: boolean("is_active").default(true),
   notes: text("notes"),
@@ -399,6 +399,8 @@ export const credits = pgTable("credits", {
   brokerId: varchar("broker_id").notNull().references(() => users.id),
   createdBy: varchar("created_by").references(() => users.id),
   financialInstitutionId: varchar("financial_institution_id").references(() => financialInstitutions.id),
+  institutionProductId: varchar("institution_product_id"),
+  versionNumber: integer("version_number"),
   productTemplateId: varchar("product_template_id").references(() => productTemplates.id), // Tipo de crédito
   linkedSubmissionId: varchar("linked_submission_id").references(() => creditSubmissionRequests.id), // Link to original submission request
   amount: decimal("amount", { precision: 15, scale: 2 }).notNull(),
@@ -414,11 +416,13 @@ export const credits = pgTable("credits", {
   paymentHistory: jsonb("payment_history").default('[]'),
   amortizationTable: jsonb("amortization_table").default('[]'),
   documents: jsonb("documents").default('[]'),
-  
+
   // Final proposal data (set by admin when credit is approved)
   finalProposal: jsonb("final_proposal").default('{}'), // { approvedAmount, term, commissionRates: { masterBroker: {...}, broker: {...} }, commissionsToApply: ['apertura', 'sobretasa'] }
   mortgageData: jsonb("mortgage_data").default('{}'), // Datos de operación para hipotecario vivienda
-  
+  // Immutable Master Broker affiliation at credit creation / origination time.
+  originMasterBrokerId: varchar("origin_master_broker_id").references(() => users.id),
+
   notes: text("notes"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
@@ -426,6 +430,7 @@ export const credits = pgTable("credits", {
   index("credits_tenant_idx").on(table.tenantId),
   index("credits_client_idx").on(table.clientId),
   index("credits_broker_idx").on(table.brokerId),
+  index("credits_origin_master_broker_idx").on(table.originMasterBrokerId),
 ]);
 
 
@@ -444,6 +449,8 @@ export const commissions = pgTable("commissions", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   tenantId: varchar("tenant_id").references(() => tenants.id),
   creditId: varchar("credit_id").notNull().references(() => credits.id),
+  institutionProductId: varchar("institution_product_id"),
+  versionNumber: integer("version_number"),
   brokerId: varchar("broker_id").notNull().references(() => users.id),
   masterBrokerId: varchar("master_broker_id").references(() => users.id),
   commissionType: varchar("commission_type"), // "total", "apertura", "sobretasa", "renovacion"
@@ -531,16 +538,16 @@ export const productTemplates = pgTable("product_templates", {
   name: varchar("name").notNull(), // e.g., "Crédito PYME", "Crédito Simple", "Crédito Automotriz"
   description: text("description"),
   category: varchar("category"), // "business", "personal", "automotive", etc.
-  
+
   // Perfiles de cliente a los que va dirigido
   targetProfiles: text("target_profiles").array().default(sql`'{}'`), // ["persona_moral", "fisica_empresarial", "fisica", "sin_sat"]
-  
+
   // Variables disponibles para este template
   availableVariables: jsonb("available_variables").default('{}'), // Variables y configuración base
-  
+
   // Configuración base del template
   baseConfiguration: jsonb("base_configuration").default('{}'), // Config predeterminada
-  
+
   // Estado y metadata
   isActive: boolean("is_active").default(true),
   createdBy: varchar("created_by").notNull().references(() => users.id),
@@ -548,28 +555,79 @@ export const productTemplates = pgTable("product_templates", {
   updatedAt: timestamp("updated_at").defaultNow(),
 });
 
-// Institution Products - Templates personalizados por cada financiera
+// Institution Products - Catálogo canónico de ofertas por financiera (Bloque A1 / Corrección A1.1)
+// Permite múltiples ofertas del mismo tipo por financiera con versionado aditivo histórico
 export const institutionProducts = pgTable("institution_products", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  templateId: varchar("template_id").notNull().references(() => productTemplates.id),
-  institutionId: varchar("institution_id").notNull().references(() => financialInstitutions.id),
-  
-  // Personalización por financiera
-  customName: varchar("custom_name"), // Nombre personalizado (opcional)
+  templateId: varchar("template_id").references(() => productTemplates.id),
+  institutionId: varchar("institution_id").notNull().references(() => financialInstitutions.id, { onDelete: 'cascade' }),
+
+  // Identificación comercial y personalización
+  name: varchar("name"), // Nombre comercial de la oferta
+  customName: varchar("custom_name"), // Nombre personalizado / legacy
+  productType: varchar("product_type"), // Permite múltiples ofertas del mismo tipo por financiera
+  slug: varchar("slug"),
+  description: text("description"),
   configuration: jsonb("configuration").default('{}'), // Configuración específica de la financiera
-  
+
   // Perfiles de cliente que esta financiera acepta para este producto (puede restringir del template padre)
   targetProfiles: text("target_profiles").array(), // Hereda del template, puede restringir más
-  
+
   // Variables activas para esta financiera
   activeVariables: jsonb("active_variables").default('{}'), // Qué variables usa y cómo
-  
+
+  // Ciclo de vida de la oferta y versionado canónico
+  status: varchar("status").notNull().default("draft"), // "draft", "published", "archived"
+  currentVersionNumber: integer("current_version_number").notNull().default(1),
+
   // Estado y metadata
   isActive: boolean("is_active").default(true),
-  createdBy: varchar("created_by").notNull().references(() => users.id),
+  createdBy: varchar("created_by").references(() => users.id),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
-});
+}, (table) => [
+  index("inst_prod_institution_idx").on(table.institutionId),
+  index("inst_prod_template_idx").on(table.templateId),
+  index("inst_prod_type_idx").on(table.productType),
+  index("inst_prod_status_idx").on(table.status),
+  index("inst_prod_active_idx").on(table.isActive),
+]);
+
+// Institution Product Versions - Historial inmutable y aditivo por versión de oferta (Bloque A1.1)
+export const institutionProductVersions = pgTable("institution_product_versions", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  institutionProductId: varchar("institution_product_id").notNull().references(() => institutionProducts.id, { onDelete: 'cascade' }),
+  versionNumber: integer("version_number").notNull().default(1),
+  status: varchar("status").notNull().default("draft"), // "draft", "published", "superseded", "archived"
+
+  // Vigencia
+  effectiveFrom: timestamp("effective_from"),
+  effectiveTo: timestamp("effective_to"),
+
+  // Parámetros y condiciones comerciales
+  conditions: jsonb("conditions").default('{}'), // Tasas min/max/default, plazos, montos min/max, amortización, comisiones cliente
+  requirements: jsonb("requirements").default('{}'), // Perfiles aceptados, facturación min, antigüedad min, buró
+  requiredDocuments: text("required_documents").array().default(sql`ARRAY[]::text[]`),
+  variablesConfiguration: jsonb("variables_configuration").default('{}'),
+
+  // Auditoría e integridad legal
+  changeReason: text("change_reason"),
+  versionHash: varchar("version_hash"),
+  publishedAt: timestamp("published_at"),
+  publishedBy: varchar("published_by").references(() => users.id),
+  createdBy: varchar("created_by").references(() => users.id),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => [
+  index("ipv_product_id_idx").on(table.institutionProductId),
+  uniqueIndex("ipv_product_version_unique").on(table.institutionProductId, table.versionNumber),
+  index("ipv_status_idx").on(table.status),
+]);
+
+// Aliases para compatibilidad retrocompatible
+export const financialInstitutionOffers = institutionProducts;
+export const financialInstitutionOfferVersions = institutionProductVersions;
+
 
 // Products - Productos simples creados por super admin (LEGACY - mantener por compatibilidad)
 export const products = pgTable("products", {
@@ -578,17 +636,17 @@ export const products = pgTable("products", {
   name: varchar("name").notNull(), // e.g., "BCM Crédito Simple", "Pretmex PYME"
   description: text("description"),
   category: varchar("category"), // Para organizar productos
-  
+
   // Variables disponibles para este producto
   availableVariables: jsonb("available_variables").default('{}'), // Variables y su configuración
-  
+
   // Configuración del producto
   configuration: jsonb("configuration").default('{}'), // Valores específicos (tasas, montos, etc.)
-  
+
   // Requisitos y documentos
   requirements: jsonb("requirements").default('{}'), // Requisitos específicos
   documents: text("documents").array().default(sql`'{}'`), // Documentos requeridos
-  
+
   // Estado y metadata
   isActive: boolean("is_active").default(true),
   createdBy: varchar("created_by").notNull().references(() => users.id),
@@ -600,30 +658,30 @@ export const products = pgTable("products", {
 export const productRequests = pgTable("product_requests", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   requestedBy: varchar("requested_by").notNull().references(() => users.id),
-  
+
   // Información del producto solicitado
   institutionName: varchar("institution_name"), // Si es financiera nueva
   existingInstitutionId: varchar("existing_institution_id").references(() => financialInstitutions.id),
   productName: varchar("product_name").notNull(),
   productDescription: text("product_description"),
-  
+
   // Justificación y detalles
   businessJustification: text("business_justification"), // Por qué necesita este producto
   estimatedVolume: varchar("estimated_volume"), // Volumen estimado de créditos
   targetMarket: varchar("target_market"), // Mercado objetivo
-  
+
   // Configuración deseada
   desiredConfiguration: jsonb("desired_configuration").default('{}'), // Configuración solicitada
-  
+
   // Estado de la solicitud
   status: varchar("status").notNull().default("pending"), // "pending", "under_review", "approved", "rejected", "implemented"
   reviewedBy: varchar("reviewed_by").references(() => users.id),
   reviewNotes: text("review_notes"),
   reviewedAt: timestamp("reviewed_at"),
-  
+
   // Referencias al producto creado (si fue aprobado)
   createdProductId: varchar("created_product_id").references(() => products.id),
-  
+
   // Metadata
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
@@ -636,7 +694,7 @@ export const productVariables = pgTable("product_variables", {
   displayName: varchar("display_name").notNull(), // e.g., "Monto", "Plazo", "Tasa de Interés"
   description: text("description"),
   category: varchar("category").notNull().default("basic"), // "basic", "financial", "requirements"
-  
+
   // Tipo de variable y configuración
   dataType: varchar("data_type").notNull(), // "range", "select", "boolean", "text", "number"
   options: jsonb("options"), // Opciones para select/multiple_select
@@ -645,7 +703,7 @@ export const productVariables = pgTable("product_variables", {
   unit: varchar("unit"), // Unidad para números
   defaultValue: text("default_value"), // Valor por defecto
   isRequired: boolean("is_required").default(false), // Si es requerido
-  
+
   // Estado
   isActive: boolean("is_active").default(true),
   createdBy: varchar("created_by").references(() => users.id),
@@ -691,6 +749,8 @@ export const creditSubmissionRequests = pgTable("credit_submission_requests", {
   tenantId: varchar("tenant_id").references(() => tenants.id),
   clientId: varchar("client_id").notNull().references(() => clients.id),
   brokerId: varchar("broker_id").notNull().references(() => users.id),
+  // Immutable Master Broker affiliation at submission/origination time.
+  originMasterBrokerId: varchar("origin_master_broker_id").references(() => users.id),
   createdBy: varchar("created_by").references(() => users.id),
   productTemplateId: varchar("product_template_id").references(() => productTemplates.id), // Plantilla de producto solicitada
   requestedAmount: decimal("requested_amount", { precision: 15, scale: 2 }).notNull(),
@@ -702,31 +762,38 @@ export const creditSubmissionRequests = pgTable("credit_submission_requests", {
   updatedAt: timestamp("updated_at").defaultNow(),
 }, (table) => [
   index("credit_submissions_tenant_idx").on(table.tenantId),
+  index("credit_submissions_origin_master_idx").on(table.originMasterBrokerId),
 ]);
 
 export const creditSubmissionTargets = pgTable("credit_submission_targets", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   requestId: varchar("request_id").notNull().references(() => creditSubmissionRequests.id, { onDelete: 'cascade' }),
   financialInstitutionId: varchar("financial_institution_id").notNull().references(() => financialInstitutions.id),
-  status: varchar("status").notNull().default("pending_admin"), // "pending_admin", "approved", "returned_to_broker", "sent", "institution_approved", "institution_rejected", "selected_winner", "dispersed"
+  institutionProductId: varchar("institution_product_id"),
+  versionNumber: integer("version_number"),
+  status: varchar("status").notNull().default("pending_admin"), // "pending_admin", "approved", "contact_initiated" (internal only), "returned_to_broker", "sent" (external disclosure), "institution_approved", "institution_rejected", "selected_winner", "dispersed"
   adminNotes: text("admin_notes"), // Admin internal notes
   details: text("details"), // Details sent to broker (when returned) or to institution (when approved)
   reviewedBy: varchar("reviewed_by").references(() => users.id), // Admin who reviewed
   reviewedAt: timestamp("reviewed_at"),
-  
+
   // Institution proposal data
   institutionProposal: jsonb("institution_proposal").default('{}'), // { approvedAmount, interestRate, term, openingCommission, etc }
   proposalReceivedAt: timestamp("proposal_received_at"),
   proposalDocument: varchar("proposal_document"), // Path to uploaded proposal document
-  
+
   // Winner selection
   isWinner: boolean("is_winner").default(false), // Broker selected this as final choice
   dispersedAt: timestamp("dispersed_at"), // When the credit was actually disbursed
-  
+
   creditId: varchar("credit_id").references(() => credits.id), // Created credit after selection as winner
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
-});
+}, (table) => [
+  // Multiple targets of one request may each finance independently, but
+  // the same credit must never belong to two different proposals.
+  uniqueIndex("cst_credit_link_unique").on(table.creditId),
+]);
 
 export const insertCreditSubmissionRequestSchema = createInsertSchema(creditSubmissionRequests).omit({
   id: true,
@@ -997,6 +1064,16 @@ export const insertInstitutionProductSchema = createInsertSchema(institutionProd
   updatedAt: true,
 });
 
+export const insertInstitutionProductVersionSchema = createInsertSchema(institutionProductVersions).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+// Aliases retrocompatibles para ofertas
+export const insertFinancialInstitutionOfferSchema = insertInstitutionProductSchema;
+export const insertFinancialInstitutionOfferVersionSchema = insertInstitutionProductVersionSchema;
+
 export const insertProductSchema = createInsertSchema(products).omit({
   id: true,
   createdAt: true,
@@ -1054,7 +1131,14 @@ export type InsertProductTemplate = z.infer<typeof insertProductTemplateSchema>;
 export type ProductTemplate = typeof productTemplates.$inferSelect;
 
 export type InsertInstitutionProduct = z.infer<typeof insertInstitutionProductSchema>;
-export type InstitutionProduct = typeof institutionProducts.$inferSelect;
+export type InstitutionProduct = typeof institutionProducts.$inferSelect & {
+  institutionProductId?: string;
+};
+
+export type InsertInstitutionProductVersion = z.infer<typeof insertInstitutionProductVersionSchema>;
+export type InstitutionProductVersion = typeof institutionProductVersions.$inferSelect & {
+  offerId?: string;
+};
 
 // Institution Product with template data from JOIN
 export type InstitutionProductWithTemplate = InstitutionProduct & {
@@ -1069,6 +1153,19 @@ export type InstitutionProductWithTemplate = InstitutionProduct & {
     isActive: boolean;
   } | null;
 };
+
+// Aliases canónicos y de oferta (Bloque A1 / Corrección A1.1)
+export type FinancialInstitutionOffer = InstitutionProduct;
+export type InsertFinancialInstitutionOffer = InsertInstitutionProduct;
+export type FinancialInstitutionOfferVersion = InstitutionProductVersion;
+export type InsertFinancialInstitutionOfferVersion = InsertInstitutionProductVersion;
+
+export type InstitutionProductWithVersion = InstitutionProduct & {
+  currentVersion?: InstitutionProductVersion;
+  versions?: InstitutionProductVersion[];
+};
+
+export type FinancialInstitutionOfferWithVersion = InstitutionProductWithVersion;
 
 export type InsertProduct = z.infer<typeof insertProductSchema>;
 export type Product = typeof products.$inferSelect;
@@ -1244,6 +1341,7 @@ export const commercialOpportunities = pgTable("commercial_opportunities", {
 }, (table) => [
   index("opp_client_idx").on(table.clientId),
   index("opp_broker_idx").on(table.brokerId),
+  index("opp_master_broker_idx").on(table.masterBrokerId),
   index("opp_status_idx").on(table.status),
   index("opp_need_idx").on(table.clientId, table.financingNeedType),
 ]);
@@ -1482,5 +1580,95 @@ export type CommercialConfigAuditLog = typeof commercialConfigAuditLogs.$inferSe
 export type InsertCommercialConfigAuditLog = z.infer<typeof insertCommercialConfigAuditLogSchema>;
 export type UpdateCommercialRulesConfig = z.infer<typeof updateCommercialRulesConfigSchema>;
 
+// ==========================================
+// LEGAL VERSIONS & ACCEPTANCES (BLOQUE 2)
+// ==========================================
 
+export const legalDocumentVersions = pgTable("legal_document_versions", {
+  id: varchar("id").primaryKey(), // e.g. "terminos:1.0", "aviso:1.0"
+  document: varchar("document", { length: 64 }).notNull(),
+  title: varchar("title", { length: 255 }).notNull(),
+  version: varchar("version", { length: 32 }).notNull(),
+  sourceFile: varchar("source_file", { length: 255 }).notNull(),
+  content: text("content").notNull(),
+  contentSha256: varchar("content_sha256", { length: 64 }).notNull(),
+  effectiveAt: timestamp("effective_at"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
 
+export const legalAcceptances = pgTable(
+  "legal_acceptances",
+  {
+    id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+    userId: varchar("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "restrict" }),
+    userEmail: varchar("user_email").notNull(),
+    userName: varchar("user_name"),
+    documentId: varchar("document_id")
+      .notNull()
+      .references(() => legalDocumentVersions.id),
+    document: varchar("document", { length: 64 }).notNull(),
+    version: varchar("version", { length: 32 }).notNull(),
+    contentSha256: varchar("content_sha256", { length: 64 }).notNull(),
+    acceptanceType: varchar("acceptance_type", { length: 64 }).notNull(), // "accept_terms" | "acknowledge_privacy"
+    ipAddress: varchar("ip_address", { length: 128 }),
+    userAgent: text("user_agent").notNull(),
+    acceptedAt: timestamp("accepted_at").defaultNow().notNull(),
+    templateSha256: varchar("template_sha256", { length: 64 }),
+    personalizedSha256: varchar("personalized_sha256", { length: 64 }),
+    personalizedSnapshot: jsonb("personalized_snapshot"),
+  },
+  (table) => [
+    index("idx_legal_acceptances_user_id").on(table.userId),
+    index("idx_legal_acceptances_document_id").on(table.documentId),
+    index("idx_legal_acceptances_personalized_sha256").on(table.personalizedSha256),
+    index("idx_legal_acceptances_template_sha256").on(table.templateSha256),
+  ],
+);
+
+export const insertLegalDocumentVersionSchema = createInsertSchema(legalDocumentVersions);
+export const insertLegalAcceptanceSchema = createInsertSchema(legalAcceptances).omit({
+  id: true,
+  acceptedAt: true,
+});
+
+export const formalizationOtpRequests = pgTable(
+  "formalization_otp_requests",
+  {
+    id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+    userId: varchar("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    userEmail: varchar("user_email").notNull(),
+    userName: varchar("user_name"),
+    userRole: varchar("user_role", { length: 64 }).notNull(),
+    documentsSnapshot: jsonb("documents_snapshot").notNull(),
+    codeHash: varchar("code_hash", { length: 64 }).notNull(),
+    attempts: integer("attempts").notNull().default(0),
+    maxAttempts: integer("max_attempts").notNull().default(5),
+    expiresAt: timestamp("expires_at").notNull(),
+    resendAvailableAt: timestamp("resend_available_at").notNull(),
+    consumed: boolean("consumed").notNull().default(false),
+    consumedAt: timestamp("consumed_at"),
+    invalidated: boolean("invalidated").notNull().default(false),
+    invalidatedAt: timestamp("invalidated_at"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (table) => [
+    index("idx_formalization_otp_user_id").on(table.userId),
+    index("idx_formalization_otp_created_at").on(table.createdAt),
+  ],
+);
+
+export const insertFormalizationOtpRequestSchema = createInsertSchema(formalizationOtpRequests).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type LegalDocumentVersionDb = typeof legalDocumentVersions.$inferSelect;
+export type InsertLegalDocumentVersionDb = typeof legalDocumentVersions.$inferInsert;
+export type LegalAcceptance = typeof legalAcceptances.$inferSelect;
+export type InsertLegalAcceptance = typeof legalAcceptances.$inferInsert;
+export type FormalizationOtpRequest = typeof formalizationOtpRequests.$inferSelect;
+export type InsertFormalizationOtpRequest = typeof formalizationOtpRequests.$inferInsert;

@@ -51,12 +51,21 @@ import {
   FinancialInstitution
 } from "@shared/schema";
 
+import { ANNUAL_INCOME_OPTIONS, LEGACY_ANNUAL_INCOME_OPTIONS, getAnnualIncomeLabel } from "@shared/annualIncome";
+
+// Catálogo canónico de requerimientos, incluyendo referencias históricas ya publicadas.
+const annualIncomeRuleOptions = (profile: keyof typeof ANNUAL_INCOME_OPTIONS) =>
+  Array.from(new Set([
+    ...ANNUAL_INCOME_OPTIONS[profile].filter(option => option.value !== "no-disponible").map(option => option.value),
+    ...LEGACY_ANNUAL_INCOME_OPTIONS.map(option => option.value),
+  ]));
+
 // Profiling fields by client type - EXACT names from ClientForm database
 const PROFILING_FIELDS_BY_TYPE: Record<string, any[]> = {
   persona_moral: [
     { id: 'ingresoMensualPromedio', label: 'Ingreso Mensual Promedio (últimos 6 meses)', type: 'currency', hasRange: true, rangeType: 'currency', rangeOnlyMin: true },
     { id: 'egresoMensualPromedio', label: 'Egreso Mensual Promedio (últimos 6 meses)', type: 'currency', hasRange: true, rangeType: 'currency', rangeOnlyMin: false },
-    { id: 'ingresoAnual', label: 'Ingreso Anual', type: 'select', options: ['menor-100000', '100000-250000', '250000-500000', '500000-1000000', '1000000-2500000', '2500000-5000000', 'arriba-5000000'] },
+    { id: 'ingresoAnual', label: 'Ingreso Anual', type: 'select', hasRange: true, rangeType: "select", rangeOnlyMin: false, options: annualIncomeRuleOptions("persona_moral") },
     { id: 'participacionVentasGobierno', label: 'Participación de Ventas con Gobierno', type: 'select', options: ['0', 'menor-10', '11-20', '21-40', 'arriba-40'], hasMaxThreshold: true, thresholdOptions: ['0', 'menor-20', 'menor-40', 'menor-50', 'menor-60'] },
     { id: 'ventasTerminalBancaria', label: 'Ventas con Terminal Bancaria (mensuales)', type: 'select', options: ['no', 'hasta-50000', '50000-150000', 'mayores-150000'] },
     { id: 'buroAccionistaPrincipal', label: 'Buró de Crédito Accionista Principal', type: 'select', hasRange: true, rangeType: 'score', rangeOnlyMin: true, options: ['alto-694-760', 'bueno-592-693', 'medio-524-591', 'bajo-490-523', 'malo-456-489'] },
@@ -76,7 +85,7 @@ const PROFILING_FIELDS_BY_TYPE: Record<string, any[]> = {
     { id: 'ingresoMensualPromedioComprobables', label: 'Ingreso Mensual Promedio Comprobables (últimos 6 meses)', type: 'currency', hasRange: true, rangeType: 'currency', rangeOnlyMin: true },
     { id: 'ingresoMensualPromedioNoComprobables', label: 'Ingreso Mensual Promedio No Comprobables (últimos 6 meses)', type: 'currency', hasRange: true, rangeType: 'currency', rangeOnlyMin: true },
     { id: 'gastosFijosMensualesPromedio', label: 'Gastos Fijos Mensuales Promedio', type: 'currency', hasRange: true, rangeType: 'currency', rangeOnlyMin: false },
-    { id: 'ingresoAnual', label: 'Ingreso Anual', type: 'select', hasRange: true, rangeType: 'select', rangeOnlyMin: false, options: ['menor-100000', '100000-250000', '250000-500000', '500000-1000000', '1000000-2500000', '2500000-5000000', 'arriba-5000000'] },
+    { id: 'ingresoAnual', label: 'Ingreso Anual', type: 'select', hasRange: true, rangeType: 'select', rangeOnlyMin: false, options: annualIncomeRuleOptions("fisica_empresarial") },
     { id: 'participacionVentasGobierno', label: 'Participación de Ventas con Gobierno', type: 'select', options: ['0', '0-10', '11-20', '21-40', 'arriba-40'], hasMaxThreshold: true, thresholdOptions: ['0', 'menor-20', 'menor-40', 'menor-50', 'menor-60'] },
     { id: 'ventasTerminalBancaria', label: 'Ventas con Terminal Bancaria (mensuales)', type: 'select', options: ['no', 'hasta-15000', '15000-30000', '30000-50000', '50000-100000', 'mayores-100000'] },
     { id: 'buroPersonaFisica', label: 'Buró de Crédito Persona Física', type: 'select', hasRange: true, rangeType: 'score', rangeOnlyMin: true, options: ['alto-694-760', 'bueno-592-693', 'medio-524-591', 'bajo-490-523', 'malo-456-489'] },
@@ -89,12 +98,12 @@ const PROFILING_FIELDS_BY_TYPE: Record<string, any[]> = {
     { id: 'creditosVigentes', label: 'Créditos Vigentes', type: 'select', options: ['si', 'no'] },
   ],
   fisica: [
-    { id: 'estadoCivil', label: 'Estado Civil', type: 'select', options: ['soltero', 'casado', 'divorciado', 'viudo', 'union-libre'] },
     { id: 'nivelEducativo', label: 'Nivel Educativo', type: 'select', options: ['primaria', 'secundaria', 'preparatoria', 'licenciatura', 'maestria', 'doctorado'] },
     { id: 'tipoVivienda', label: 'Tipo de Vivienda', type: 'select', options: ['propia', 'rentada', 'familiar', 'hipotecada'] },
     { id: 'dependientesEconomicos', label: 'Dependientes Económicos', type: 'number' },
     { id: 'puesto', label: 'Puesto', type: 'text' },
     { id: 'antiguedadLaboral', label: 'Antigüedad Laboral', type: 'select', options: ['menos-1', '1-2', '2-5', '5-10', 'mas-10'] },
+    { id: "ingresoAnual", label: "Ingreso Anual (Declarado)", type: "select", hasRange: true, rangeType: "select", rangeOnlyMin: false, options: annualIncomeRuleOptions("fisica") },
     { id: 'ingresoMensualPromedioComprobables', label: 'Ingreso Mensual Promedio Comprobables (últimos 6 meses)', type: 'currency', hasRange: true, rangeType: 'currency', rangeOnlyMin: true },
     { id: 'ingresoMensualPromedioNoComprobables', label: 'Ingreso Mensual Promedio No Comprobables (últimos 6 meses)', type: 'currency', hasRange: true, rangeType: 'currency', rangeOnlyMin: true },
     { id: 'gastosFijosMensualesPromedio', label: 'Gastos Fijos Mensuales Promedio (últimos 6 meses)', type: 'currency', hasRange: true, rangeType: 'currency', rangeOnlyMin: false },
@@ -108,11 +117,11 @@ const PROFILING_FIELDS_BY_TYPE: Record<string, any[]> = {
     { id: 'nombreComercial', label: 'Nombre Comercial del Negocio', type: 'text' },
     { id: 'industry', label: 'Sector/Industria del Negocio', type: 'text' },
     { id: 'ocupacion', label: 'Ocupación', type: 'select', options: ['empleado', 'profesionista-independiente', 'comerciante', 'prestador-servicios', 'otro'] },
-    { id: 'estadoCivil', label: 'Estado Civil', type: 'select', options: ['soltero', 'casado', 'divorciado', 'viudo', 'union-libre'] },
     { id: 'nivelEducativo', label: 'Nivel Educativo', type: 'select', options: ['primaria', 'secundaria', 'preparatoria', 'licenciatura', 'maestria', 'doctorado'] },
     { id: 'tipoVivienda', label: 'Tipo de Vivienda', type: 'select', options: ['propia', 'rentada', 'familiar', 'hipotecada'] },
     { id: 'dependientesEconomicos', label: 'Dependientes Económicos', type: 'number' },
     { id: 'puesto', label: 'Puesto', type: 'text' },
+    { id: "ingresoAnual", label: "Ingreso Anual (Declarado)", type: "select", hasRange: true, rangeType: "select", rangeOnlyMin: false, options: annualIncomeRuleOptions("sin_sat") },
     { id: 'ingresoMensualPromedioComprobablesSinSat', label: 'Ingreso Mensual Promedio Comprobables (últimos 6 meses)', type: 'currency', hasRange: true, rangeType: 'currency', rangeOnlyMin: true },
     { id: 'ingresoMensualPromedioNoComprobablesSinSat', label: 'Ingreso Mensual Promedio No Comprobables (últimos 6 meses)', type: 'currency', hasRange: true, rangeType: 'currency', rangeOnlyMin: true },
     { id: 'gastosFijosMensualesPromedioSinSat', label: 'Gastos Fijos Mensuales Promedio (últimos 6 meses)', type: 'currency', hasRange: true, rangeType: 'currency', rangeOnlyMin: false },
@@ -951,7 +960,7 @@ export default function ProductConfigurationModal({
               <SelectContent>
                 {options.map(option => (
                   <SelectItem key={option} value={option}>
-                    {option}
+                    {field.id === "ingresoAnual" ? getAnnualIncomeLabel(option) : option}
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -2733,7 +2742,7 @@ export default function ProductConfigurationModal({
                           <SelectValue placeholder={templatesLoading ? 'Cargando plantillas...' : 'Selecciona una plantilla'} />
                         </SelectTrigger>
                         <SelectContent>
-                          {productTemplates.map((template) => (
+                          {productTemplates.filter((template) => template.isActive !== false).map((template) => (
                             <SelectItem key={template.id} value={template.id}>
                               {template.name}
                             </SelectItem>

@@ -17,6 +17,12 @@ export default function ResetPassword() {
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [token, setToken] = useState("");
   const [resetComplete, setResetComplete] = useState(false);
+  const [activationContext, setActivationContext] = useState<{
+    requiresLegal: boolean; termsVersion: string | null; privacyVersion: string | null;
+  } | null>(null);
+  const [contextLoading, setContextLoading] = useState(true);
+  const [acceptTerms, setAcceptTerms] = useState(false);
+  const [acknowledgePrivacy, setAcknowledgePrivacy] = useState(false);
   const [error, setError] = useState("");
 
   useEffect(() => {
@@ -24,6 +30,14 @@ export default function ResetPassword() {
     const tokenParam = urlParams.get('token');
     if (tokenParam) {
       setToken(tokenParam);
+      fetch("/api/auth/invitation-context?token=" + encodeURIComponent(tokenParam))
+        .then(async (r) => {
+          const body = await r.json();
+          if (!r.ok) throw new Error(body.message || "Enlace inválido.");
+          setActivationContext(body);
+        })
+        .catch((e) => setError(e.message))
+        .finally(() => setContextLoading(false));
     } else {
       setError("No se encontró el token de seguridad o activación. Por favor solicita un nuevo enlace.");
     }
@@ -41,22 +55,33 @@ export default function ResetPassword() {
       return;
     }
 
-    if (password.length < 6) {
+    if (password.length < 12) {
       toast({
         title: "Error",
-        description: "La contraseña debe tener al menos 6 caracteres",
+        description: "La contraseña debe tener al menos 12 caracteres",
         variant: "destructive",
       });
       return;
     }
 
+    if (activationContext?.requiresLegal && (!acceptTerms || !acknowledgePrivacy)) {
+      toast({ title: "Confirmaciones legales requeridas", description: "Acepta los Términos y reconoce el Aviso de Privacidad.", variant: "destructive" });
+      return;
+    }
+    if (contextLoading || !activationContext) return;
     setIsLoading(true);
     
     try {
       const response = await fetch("/api/auth/reset-password", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ token, password }),
+        body: JSON.stringify({
+          token, password,
+          ...(activationContext?.requiresLegal ? {
+            acceptTerms, termsVersion: activationContext.termsVersion,
+            acknowledgePrivacy, privacyVersion: activationContext.privacyVersion,
+          } : {}),
+        }),
       });
       
       const data = await response.json();
@@ -213,11 +238,11 @@ export default function ResetPassword() {
                   <Input
                     id="new-password"
                     type={showPassword ? "text" : "password"}
-                    placeholder="Mínimo 6 caracteres"
+                    placeholder="Mínimo 12 caracteres"
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     className="pl-10 pr-10 border-slate-200 bg-slate-50 focus:bg-white"
-                    minLength={6}
+                    minLength={12}
                     required
                     disabled={isLoading}
                     data-testid="input-new-password"
@@ -246,7 +271,7 @@ export default function ResetPassword() {
                     value={confirmPassword}
                     onChange={(e) => setConfirmPassword(e.target.value)}
                     className="pl-10 pr-10 border-slate-200 bg-slate-50 focus:bg-white"
-                    minLength={6}
+                    minLength={12}
                     required
                     disabled={isLoading}
                     data-testid="input-confirm-password"
@@ -262,6 +287,21 @@ export default function ResetPassword() {
                 </div>
               </div>
 
+              {activationContext?.requiresLegal && (
+                <div className="space-y-3 border-t pt-3">
+                  <label className="flex gap-2 items-start text-sm">
+                    <input type="checkbox" checked={acceptTerms}
+                      onChange={(e) => setAcceptTerms(e.target.checked)} required />
+                    <span>Acepto los <a href="/legal/terminos" target="_blank" rel="noreferrer" className="underline">Términos y Condiciones</a> (v{activationContext.termsVersion}).</span>
+                  </label>
+                  <label className="flex gap-2 items-start text-sm">
+                    <input type="checkbox" checked={acknowledgePrivacy}
+                      onChange={(e) => setAcknowledgePrivacy(e.target.checked)} required />
+                    <span>Confirmo haber leído el <a href="/legal/aviso" target="_blank" rel="noreferrer" className="underline">Aviso de Privacidad</a> (v{activationContext.privacyVersion}).</span>
+                  </label>
+                </div>
+              )}
+
               {password && confirmPassword && password !== confirmPassword && (
                 <p className="text-xs text-red-600 font-medium">Las contraseñas no coinciden.</p>
               )}
@@ -269,7 +309,9 @@ export default function ResetPassword() {
               <Button 
                 type="submit" 
                 className="w-full bg-primary hover:bg-primary/90 text-white font-semibold shadow-md" 
-                disabled={isLoading || (Boolean(password && confirmPassword && password !== confirmPassword))}
+                disabled={isLoading || contextLoading || !activationContext ||
+                  (activationContext.requiresLegal && (!acceptTerms || !acknowledgePrivacy)) ||
+                  (Boolean(password && confirmPassword && password !== confirmPassword))}
                 data-testid="button-reset-submit"
               >
                 {isLoading ? (
