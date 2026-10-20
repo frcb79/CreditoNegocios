@@ -75,10 +75,6 @@ export default function LegalProfileDocuments({
   const isBrokerOrMaster = shouldShowFormalizationNotice(currentUser?.role);
 
   const userRole = currentUser?.role;
-  const isMasterOrAdmin =
-    userRole === "master_broker" || userRole === "admin" || userRole === "super_admin";
-  const isBrokerOrAbove =
-    isBrokerOrMaster || userRole === "admin" || userRole === "super_admin";
 
   // Consulta de estado de formalización para el usuario actual
   const {
@@ -303,7 +299,7 @@ export default function LegalProfileDocuments({
                             {accepted ? "Aceptado" : "Pendiente"}
                           </Badge>
                           <Link
-                            href={getExactDocumentUrl(document, "1.0")}
+                            href={`/legal/${document}`}
                             target="_blank"
                             rel="noopener noreferrer"
                             className="inline-flex items-center gap-1 text-xs font-semibold text-primary hover:underline"
