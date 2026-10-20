@@ -310,6 +310,19 @@ describe("Cierre P0: Formalización Obligatoria y Cierre de Bypasses en Originac
         });
       expect(creditRes.status).toBe(201);
 
+      // Fixture del catálogo consolidado: la ruta ya no debe crear una séptima plantilla
+      // cuando no existe una familia Hipotecario activa y configurada para vivienda.
+      const mortgageTemplate = await storage.createProductTemplate({
+        name: "Hipotecario",
+        description: "Familia hipotecaria de prueba (vivienda/empresarial)",
+        category: "hipotecario",
+        targetProfiles: ["fisica", "fisica_empresarial", "persona_moral"],
+        availableVariables: { segmento_hipotecario: { type: "select", required: false } },
+        baseConfiguration: { catalog_family: "hipotecario", variants: ["vivienda", "empresarial"] },
+        isActive: true,
+        createdBy: broker.id,
+      });
+
       // 3. Alta de prospecto hipotecario
       const leadRes = await request(app)
         .post("/api/mortgage-leads")
@@ -327,6 +340,9 @@ describe("Cierre P0: Formalización Obligatoria y Cierre de Bypasses en Originac
           incomeType: "asalariado",
         });
       expect(leadRes.status).toBe(201);
+      expect(leadRes.body.submission.productTemplateId).toBe(mortgageTemplate.id);
+      expect(leadRes.body.submission.mortgageData.segmento_hipotecario).toBe("vivienda");
+      expect((await storage.getProductTemplates()).filter(t => t.id === mortgageTemplate.id)).toHaveLength(1);
     });
   });
 
