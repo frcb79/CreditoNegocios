@@ -1,5 +1,24 @@
 # Crédito Negocios — Checklist de corte a Producción (MVP)
 
+
+## Punto de control actualizado — 20 de octubre de 2026 (prelanzamiento)
+
+**NO-GO comercial hasta pasar CI final y E2E autenticado de Staging.** Este apartado prevalece sobre estados históricos del 19-oct descritos más abajo. **Nada de lo siguiente autoriza cambios en Producción.**
+
+- **Branch única / PR:** `integration/phase-1a1-base-segura`; PR #10 sigue **Draft**; `main` en `0c6b7bd18f6465c55d95f72a4f20ade339f1a553`. Candidato posterior a `a73ec6cf` incorpora reparación hipotecaria y pruebas de regresión a CI.
+- **CI:** run [39459370880](https://github.com/frcb79/CreditoNegocios/actions/runs/39459370880) 7/8 y PostgreSQL CANCELLED. Se reintentó únicamente el job `118754966529`, pero un push posterior volvió a cancelar el workflow por `concurrency.cancel-in-progress: true`. **No fue evidencia de fallo SQL**. Exigir SUCCESS 8/8 del SHA **final** tras la última actualización documental.
+- **Hipotecario Vivienda:** helper anterior elegía erróneamente una plantilla genérica `category=hipotecario` como vivienda y podía crear una séptima plantilla. Corregido: selector determina explícitamente familia activa configurada para vivienda o plantilla legado `Hipotecario Vivienda`; no autogenera variantes, y guarda `mortgageData.segmento_hipotecario='vivienda'`. Test unitario dedicado (4 casos) añadido al gate de CI. El motor de matching todavía debe respetar criterios concretos de versiones publicadas; nunca inferir vivienda=empresarial sólo por familia.
+- **Migraciones productivas: RESUELTAS.** `0004_broker_network_transitions.sql` aplicada y verificada en Producción (dos atribuciones, FKs, índices, inmutabilidad). `0007_product_families_consolidation_mvp.sql` ya aplicada en Producción: 6 familias activas (Simple, Revolvente, Arrendamiento, Hipotecario, Factoraje, Anticipo TPV), 6 históricas inactivas y 10 variables definidas. **NO ejecutar de nuevo** 0004 ni 0007 en Producción.
+- **DB Producción (reconsulta solo lectura 20-oct):** `credits=0, credit_submission_requests=0, clients=0, users=1, tenants=4, sessions=2, product_templates=6 activas + 6 archivadas`. Preservar usuario Super Admin, catálogos, ofertas legales versionadas, financieras y configuración.
+- **Tres P1 de ASTRA:** importaciones económicas legacy bloqueadas, protección CSRF implementada; 0004 Prod ejecutada. Cambios de código de import/CSRF desplegados en Staging para `8977919c`; la consolidación de UI y fix hipotecario nuevo **NO están desplegados**.
+- **Staging Railway:** service `CreditoNegocios` toma rama `integration/phase-1a1-base-segura` pero está **fijado** en `commitSha=8977919c...` (último deployment `3cdb793e-ed80-4da2-a663-4ffaa08a2786`, SUCCESS). Requiere GO de CI y autorización específica para desplegar el SHA final a Staging.
+- **Producción Railway:** service `CreditoNegocios` apunta a repo sin `branch` explícita y sin `commitSha` fijado; última versión `8d6b6194-482f-447d-8427-deca2f1a60c0` SUCCESS. **Tratar merge a main como posible autodeploy** hasta confirmar configuración de integración GitHub/Railway; autorizar merge, limpieza y deploy por separado.
+- **Pruebas todavía obligatorias (no sustituibles por CI):** E2E autenticado en navegador frontend autorizado para CSRF, rol/tenant, solicitud/matching/oferta/versiones/comisiones, cupones/OTP, import clientes y rechazo import económico; PDF sintético upload/download en bucket aislado Staging y negación cross-user; revisar logs 5xx y salud del SHA final.
+- **Storage Prod:** 13 PDF identificados por Dirección como archivos **de prueba**, no son plantillas. Únicamente después de autorización para la limpieza: borrar objetos mediante API de Storage, nunca `DELETE FROM storage.objects`. Verificar referencias y reconciliar inventario; no eliminar financieras ni productos. Evaluar 3 tenants de prueba, invalidar 2 sesiones en corte; preservar Super Admin y configuración.
+- **Rollback:** documentar deployment previo utilizable, versiones de BD compatibles, y congelación temporal. No revertir `0004`/`0007` ni eliminar registros históricos para regresar la aplicación a un commit anterior.
+- **Salida comercial:** tras GO técnico y permisos de corte, validación productiva postdeploy y posterior autorización expresa, enviar invitaciones a **4 Master Brokers + 40 Brokers**. Sin invitaciones anticipadas.
+
+
 **Corte verificado: 19 de octubre de 2026. Estado: NO-GO Producción hasta cerrar P1 y cutover.** Este documento es un plan de verificación; **NO autoriza** modificación de bases de datos, secretos, permisos, envíos, merge, despliegue ni limpieza. Los datos actuales son de prueba, pero deben respaldarse y revisarse antes de eliminarlos.
 
 ## 0. Evidencia comprobada y decisiones
