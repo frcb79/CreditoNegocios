@@ -41,3 +41,17 @@ Este documento destila las 20 lecciones clave del experto Sabri Suby para ser ap
 - Reorder Business (¿Vuelven a comprar?)
 - Demand Curve Equilibrium (Precio máximo que el mercado tolera con la oferta actual)
 - Consumption Rate (¿Están consumiendo el mensaje de marketing?)
+
+---
+
+## Crédito Negocios — Biblioteca de materiales para Brokers y Master Brokers (hallazgo 2026-10-20; NO IMPLEMENTAR AHORA)
+
+**Oportunidad para análisis posterior:** Proporcionar imágenes, videos, anuncios y copys listos para publicar en redes sociales de cada Broker y Master Broker. Evaluar piezas con marca Crédito Negocios, piezas sin marca y personalizables, y formatos de co-branding.
+
+**Distribución y medición:** Explorar enlaces únicos de referencia por usuario, identificadores de origen y parámetros UTM; asociar los leads y conversiones al Broker o Master correspondiente sin alterar las reglas de atribución comercial ni la protección vigente de oportunidades (Cliente + Necesidad/Producto + Canal + Fecha) o el esquema de comisiones.
+
+**Separación conceptual obligatoria:** Un identificador/código de referido sirve para atribuir prospectos o red comercial; un cupón promocional sirve para beneficios de acceso y facturación. Nunca confundir ni reutilizar sus significados.
+
+**Pendientes de investigación:** Herramientas para producción de contenido y automatización, flujos de aprobación de materiales, derechos de marca y uso, medición de visitas/leads/conversiones, acceso por rol y atribución cuando participan Broker y Master.
+
+**Estado:** Hallazgo estratégico documentado. Sin desarrollo, sin nuevos endpoints, sin cambios en matching, oportunidades o comisiones en este bloque de UX postlanzamiento.
