@@ -417,9 +417,9 @@ export default function Landing() {
                 <TabsTrigger value="login" data-testid="tab-login" className="rounded-lg data-[state=active]:bg-white data-[state=active]:shadow-xs">
                   Iniciar Sesión
                 </TabsTrigger>
-                <TabsTrigger value="register" data-testid="tab-register" className="rounded-lg data-[state=active]:bg-white data-[state=active]:shadow-xs">
+                <a href="/brokers" data-testid="tab-register" className="inline-flex items-center justify-center rounded-lg px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-white hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">
                   Registrarse
-                </TabsTrigger>
+                </a>
               </TabsList>
               
               {/* Login Tab */}
