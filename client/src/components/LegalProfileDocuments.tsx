@@ -35,6 +35,7 @@ import {
   formatAcceptedDate,
 } from "@shared/legalDocuments";
 import BrokerFormalizationDialog from "./BrokerFormalizationDialog";
+import FormalizationPendingBanner from "./FormalizationPendingBanner";
 import AcceptedDocumentDetailDialog from "./AcceptedDocumentDetailDialog";
 import BrokerExpedienteDocuments from "./BrokerExpedienteDocuments";
 
@@ -83,8 +84,6 @@ export default function LegalProfileDocuments({
 
   // Consulta de estado de formalización para el usuario actual
   const {
-    data: formalizationStatus,
-    isLoading: isLoadingStatus,
     refetch: refetchStatus,
   } = useQuery<FormalizationStatusResult>({
     queryKey: ["/api/legal/formalization/status", currentUser?.id],
@@ -260,52 +259,13 @@ export default function LegalProfileDocuments({
         </Alert>
       )}
 
-      {/* 1. Aviso de formalización o estatus completado para Broker / Master Broker */}
+      {/* 1. Mostrar solo formalización pendiente; el historial inmutable permanece abajo. */}
       {shouldRenderNotice && (
-        <>
-          {formalizationStatus?.isFormalized ? (
-            <Alert
-              className="border-emerald-300 bg-emerald-50/90 text-emerald-900 dark:border-emerald-800 dark:bg-emerald-950/30 dark:text-emerald-200 shadow-2xs"
-              data-testid="alert-formalization-completed"
-            >
-              <CheckCircle2 className="h-5 w-5 text-emerald-600 dark:text-emerald-400 mt-0.5 shrink-0" />
-              <div>
-                <AlertTitle className="font-semibold text-emerald-900 dark:text-emerald-100 text-sm">
-                  Convenio Formalizado
-                </AlertTitle>
-                <AlertDescription className="text-xs sm:text-sm text-emerald-800 dark:text-emerald-300 mt-1 leading-relaxed">
-                  Has formalizado tu Convenio de Colaboración y Reglas de Operación vigentes, completando el requisito contractual con evidencia histórica inmutable.
-                </AlertDescription>
-              </div>
-            </Alert>
-          ) : (
-            <Alert
-              className="border-amber-300 bg-amber-50/90 text-amber-900 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-200 shadow-2xs"
-              data-testid="alert-formalization-notice"
-            >
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 w-full">
-                <div className="flex items-start gap-2">
-                  <AlertCircle className="h-5 w-5 text-amber-600 dark:text-amber-400 mt-0.5 shrink-0" />
-                  <div>
-                    <AlertTitle className="font-semibold text-amber-900 dark:text-amber-100 text-sm">
-                      Aviso de Formalización
-                    </AlertTitle>
-                    <AlertDescription className="text-xs sm:text-sm text-amber-800 dark:text-amber-300 mt-1 leading-relaxed">
-                      {FORMALIZATION_NOTICE_TEXT}
-                    </AlertDescription>
-                  </div>
-                </div>
-                <Button
-                  onClick={() => setIsFormalizationOpen(true)}
-                  className="bg-amber-600 hover:bg-amber-700 text-white shrink-0 self-start sm:self-center text-xs h-8"
-                  data-testid="button-open-formalization"
-                >
-                  Formalizar Convenio
-                </Button>
-              </div>
-            </Alert>
-          )}
-        </>
+        <FormalizationPendingBanner
+          role={currentUser?.role}
+          userId={currentUser?.id}
+          onAction={() => setIsFormalizationOpen(true)}
+        />
       )}
 
       {/* 2. Historial de Aceptaciones Legales */}
