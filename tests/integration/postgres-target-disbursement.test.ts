@@ -1,4 +1,5 @@
 import pg from "pg";
+import { expectOriginalDatabaseError } from "../pgErrorAssertions";
 import { db } from "../../server/db";
 import {
   credits, commissions, commissionAuditLogs,
@@ -534,7 +535,7 @@ describePg("OPE-12: winning target and credit creation in one PostgreSQL transac
     await pool.query(`CREATE TRIGGER pg_winner_fail_credit_trigger BEFORE INSERT ON credits
       FOR EACH ROW EXECUTE FUNCTION pg_winner_fail_credit()`);
     try {
-      await expect(select(draft)).rejects.toThrow("injected winner credit insert failure");
+      await expectOriginalDatabaseError(select(draft), /injected winner credit insert failure/);
       const [target] = await db.select().from(creditSubmissionTargets)
         .where(eq(creditSubmissionTargets.id,fixture.target.id));
       expect(target.creditId).toBeNull();
@@ -597,7 +598,7 @@ describePg("OPE-12: winning target and credit creation in one PostgreSQL transac
     await pool.query(`CREATE TRIGGER pg_target_fail_audit_trigger BEFORE INSERT ON commission_audit_logs
       FOR EACH ROW EXECUTE FUNCTION pg_target_fail_audit()`);
     try {
-      await expect(settle(data)).rejects.toThrow(/injected target audit failure/);
+      await expectOriginalDatabaseError(settle(data), /injected target audit failure/);
       const rows = await db.select().from(credits).where(eq(credits.id,data.newCredit!.id));
       expect(rows).toHaveLength(0);
       const [target] = await db.select().from(creditSubmissionTargets).where(eq(creditSubmissionTargets.id,fixture.target.id));

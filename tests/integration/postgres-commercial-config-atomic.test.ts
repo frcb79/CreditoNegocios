@@ -1,4 +1,5 @@
 import pg from "pg";
+import { expectOriginalDatabaseError } from "../pgErrorAssertions";
 import { db } from "../../server/db";
 import { desc, eq } from "drizzle-orm";
 import {
@@ -84,9 +85,9 @@ describePg("COM-27: commercial config and immutable version atomic PostgreSQL pu
     await pool.query(`CREATE TRIGGER fail_commercial_document_trigger
       BEFORE INSERT ON legal_document_versions FOR EACH ROW EXECUTE FUNCTION fail_commercial_document()`);
     try {
-      await expect(store.updateConfigWithVersionAtomic({
+      await expectOriginalDatabaseError(store.updateConfigWithVersionAtomic({
         activeRelationshipValidityDays: 112,
-      })).rejects.toThrow(/forced document publication error/);
+      }), /forced document publication error/);
       const stored = await state();
       expect(stored.config).toHaveLength(0);
       expect(stored.versions).toHaveLength(0);
@@ -103,9 +104,9 @@ describePg("COM-27: commercial config and immutable version atomic PostgreSQL pu
     await pool.query(`CREATE TRIGGER fail_commercial_audit_trigger
       BEFORE INSERT ON commercial_config_audit_logs FOR EACH ROW EXECUTE FUNCTION fail_commercial_audit()`);
     try {
-      await expect(store.updateConfigWithVersionAtomic({
+      await expectOriginalDatabaseError(store.updateConfigWithVersionAtomic({
         initialOpportunityHoldDays: 9,
-      })).rejects.toThrow(/forced commercial audit error/);
+      }), /forced commercial audit error/);
       const stored = await state();
       expect(stored.config).toHaveLength(0);
       expect(stored.versions).toHaveLength(0);

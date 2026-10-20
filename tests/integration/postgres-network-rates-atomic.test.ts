@@ -1,4 +1,5 @@
 import pg from "pg";
+import { expectOriginalDatabaseError } from "../pgErrorAssertions";
 import { DbStorage } from "../../server/dbStorage";
 import { assertSafeIsolatedTestDatabase } from "../testDbSafety";
 
@@ -64,8 +65,10 @@ describePg("COM-27 Master Broker network rates: atomic contractual publication",
     await pgPool.query(`CREATE TRIGGER fail_network_doc_trigger BEFORE INSERT ON legal_document_versions
       FOR EACH ROW EXECUTE FUNCTION fail_network_doc()`);
     try {
-      await expect(update("master-one",{ instA:{apertura:1.5} }))
-        .rejects.toThrow(/injected network publication failure/);
+      await expectOriginalDatabaseError(
+        update("master-one",{ instA:{apertura:1.5} }),
+        /injected network publication failure/,
+      );
       expect((await state()).rates).toEqual({});
       expect((await state()).versions).toHaveLength(0);
     } finally {
