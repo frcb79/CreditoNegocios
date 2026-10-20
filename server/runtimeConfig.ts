@@ -43,8 +43,8 @@ export function isAllowedOrigin(origin?: string): boolean {
   if (!origin) return true;
   const norm = normalizeOrigin(origin);
   if (allowedOrigins.has(norm)) return true;
-  if (norm.endsWith(".vercel.app")) return true;
-  if (norm.includes("creditonegocios")) return true;
+  // SEC-P1-CSRF: substring/suffix matches accepted attacker-controlled origins.
+  // Only explicit configured origins may receive credentialed CORS privileges.
   return false;
 }
 

@@ -6,6 +6,7 @@ import { registerRoutes } from "./routes";
 import { setupVite, serveStatic, log } from "./vite";
 import { allowedOrigins, isAllowedOrigin } from "./runtimeConfig";
 import { runAutoMigration } from "./autoMigrate";
+import { rejectCrossSiteMutations } from "./csrfProtection";
 
 const isProd = process.env.NODE_ENV === "production";
 
@@ -31,6 +32,10 @@ app.use((req, res, next) => {
   }
   next();
 });
+
+// Runs BEFORE CORS, parsers, sessions and routes: rejects cross-site writes
+// regardless of content type (HTML forms and multipart included).
+app.use(rejectCrossSiteMutations);
 
 app.use((req, res, next) => {
   const origin = req.headers.origin;

@@ -37,6 +37,7 @@ import {
   previewCommissionsFile,
   importCommissionsFile
 } from "./commissionImport";
+import { blockLegacyEconomicExcelImport, blockLegacyEconomicExcelType } from "./prelaunchEconomicImportGuard";
 import {
   parseSocExcel,
   syncSocFinancierasToDatabase
@@ -13076,7 +13077,7 @@ function maskCLABE(clabe?: string | null): string | null {
     }
   });
 
-  app.get('/api/import/template/:type', isAuthenticated, async (req: any, res) => {
+  app.get('/api/import/template/:type', isAuthenticated, blockLegacyEconomicExcelType, async (req: any, res) => {
     try {
       const { type } = req.params;
       const userId = req.user?.claims?.sub || req.user?.id;
@@ -13115,7 +13116,7 @@ function maskCLABE(clabe?: string | null): string | null {
     }
   });
 
-  app.post('/api/import/preview/:type', isAuthenticated, requireModule('importacion'), excelUpload.single('file'), async (req: any, res) => {
+  app.post('/api/import/preview/:type', isAuthenticated, blockLegacyEconomicExcelType, requireModule('importacion'), excelUpload.single('file'), async (req: any, res) => {
     try {
       const { type } = req.params;
       const userId = req.user?.claims?.sub || req.user?.id;
@@ -13150,7 +13151,7 @@ function maskCLABE(clabe?: string | null): string | null {
     }
   });
 
-  app.post('/api/import/commissions', isAuthenticated, requireModule('importacion'), excelUpload.single('file'), async (req: any, res) => {
+  app.post('/api/import/commissions', isAuthenticated, blockLegacyEconomicExcelImport, requireModule('importacion'), excelUpload.single('file'), async (req: any, res) => {
     try {
       const userId = req.user?.claims?.sub || req.user?.id;
       
@@ -13175,7 +13176,7 @@ function maskCLABE(clabe?: string | null): string | null {
     }
   });
 
-  app.post('/api/import/financieras', isAuthenticated, requireModule('importacion'), excelUpload.single('file'), async (req: any, res) => {
+  app.post('/api/import/financieras', isAuthenticated, blockLegacyEconomicExcelImport, requireModule('importacion'), excelUpload.single('file'), async (req: any, res) => {
     try {
       const userId = req.user?.claims?.sub || req.user?.id;
       
@@ -13200,7 +13201,7 @@ function maskCLABE(clabe?: string | null): string | null {
     }
   });
 
-  app.post('/api/import/financieras-soc', isAuthenticated, requireModule('importacion'), excelUpload.single('file'), async (req: any, res) => {
+  app.post('/api/import/financieras-soc', isAuthenticated, blockLegacyEconomicExcelImport, requireModule('importacion'), excelUpload.single('file'), async (req: any, res) => {
     try {
       const userId = req.user?.claims?.sub || req.user?.id;
       if (!userId) {
