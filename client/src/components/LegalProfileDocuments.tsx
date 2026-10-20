@@ -35,7 +35,6 @@ import {
   formatAcceptedDate,
 } from "@shared/legalDocuments";
 import BrokerFormalizationDialog from "./BrokerFormalizationDialog";
-import FormalizationPendingBanner from "./FormalizationPendingBanner";
 import AcceptedDocumentDetailDialog from "./AcceptedDocumentDetailDialog";
 import BrokerExpedienteDocuments from "./BrokerExpedienteDocuments";
 
@@ -74,7 +73,6 @@ export default function LegalProfileDocuments({
   }, [currentUser?.id]);
 
   const isBrokerOrMaster = shouldShowFormalizationNotice(currentUser?.role);
-  const shouldRenderNotice = showFormalizationNotice && isBrokerOrMaster;
 
   const userRole = currentUser?.role;
   const isMasterOrAdmin =
@@ -84,6 +82,9 @@ export default function LegalProfileDocuments({
 
   // Consulta de estado de formalización para el usuario actual
   const {
+    data: formalizationStatus,
+    isLoading: isLoadingStatus,
+    isError: isErrorStatus,
     refetch: refetchStatus,
   } = useQuery<FormalizationStatusResult>({
     queryKey: ["/api/legal/formalization/status", currentUser?.id],
@@ -259,13 +260,82 @@ export default function LegalProfileDocuments({
         </Alert>
       )}
 
-      {/* 1. Mostrar solo formalización pendiente; el historial inmutable permanece abajo. */}
-      {shouldRenderNotice && (
-        <FormalizationPendingBanner
-          role={currentUser?.role}
-          userId={currentUser?.id}
-          onAction={() => setIsFormalizationOpen(true)}
-        />
+      {/* Los convenios aplicables siempre se muestran, aun cuando el usuario ya firmó. */}
+      {isBrokerOrMaster && (
+        <Card className="border border-border/80 shadow-xs" data-testid="card-broker-required-agreements">
+          <CardHeader className="py-3 px-4 sm:px-6 border-b border-border/60">
+            <CardTitle className="text-base font-semibold flex items-center gap-2">
+              <FileText className="h-4 w-4 text-primary" />
+              Mis convenios y reglas
+            </CardTitle>
+            <CardDescription className="text-xs sm:text-sm">
+              Documentos contractuales aplicables a tu rol. Las Reglas de la Red son un documento legal,
+              no el módulo de administración de Brokers.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="px-4 py-3 sm:px-6 space-y-3">
+            {isLoadingStatus && (
+              <p className="text-xs text-muted-foreground" role="status">Consultando convenios y aceptaciones vigentes...</p>
+            )}
+            {isErrorStatus && (
+              <Alert variant="destructive" data-testid="error-required-agreements">
+                <AlertCircle className="h-4 w-4" />
+                <AlertTitle>No fue posible verificar tus convenios</AlertTitle>
+                <AlertDescription className="flex flex-wrap items-center justify-between gap-2">
+                  <span>Reintenta la consulta antes de formalizar.</span>
+                  <Button type="button" variant="outline" size="sm" onClick={() => refetchStatus()}>
+                    <RefreshCw className="h-3 w-3 mr-1" /> Reintentar
+                  </Button>
+                </AlertDescription>
+              </Alert>
+            )}
+            {formalizationStatus && !isErrorStatus && (
+              <>
+                <div className="divide-y divide-border/60 rounded-lg border border-border/70">
+                  {formalizationStatus.requiredDocuments.map((document) => {
+                    const accepted = formalizationStatus.acceptedDocuments.includes(document);
+                    return (
+                      <div key={document} className="flex flex-wrap items-center justify-between gap-2 px-3 py-2.5" data-testid={`required-agreement-${document}`}>
+                        <span className="text-sm font-medium min-w-0">{getDocumentTitle(document)}</span>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <Badge variant={accepted ? "secondary" : "outline"} className="text-[11px] px-2 py-0.5 whitespace-nowrap">
+                            {accepted ? <CheckCircle2 className="h-3 w-3 mr-1 text-emerald-600" /> : null}
+                            {accepted ? "Aceptado" : "Pendiente"}
+                          </Badge>
+                          <Link
+                            href={getExactDocumentUrl(document, "1.0")}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center gap-1 text-xs font-semibold text-primary hover:underline"
+                            data-testid={`link-review-agreement-${document}`}
+                          >
+                            Consultar <ExternalLink className="h-3 w-3" />
+                          </Link>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+                {!formalizationStatus.isFormalized && showFormalizationNotice && (
+                  <Button
+                    type="button"
+                    onClick={() => setIsFormalizationOpen(true)}
+                    size="sm"
+                    className="h-auto min-h-9 whitespace-normal text-left"
+                    data-testid="button-open-formalization"
+                  >
+                    Revisar y aceptar documentos pendientes
+                  </Button>
+                )}
+                {formalizationStatus.isFormalized && (
+                  <p className="text-xs text-muted-foreground" data-testid="message-formalization-completed">
+                    Convenios vigentes formalizados. Puedes consultar los comprobantes y versiones exactas en el historial inferior.
+                  </p>
+                )}
+              </>
+            )}
+          </CardContent>
+        </Card>
       )}
 
       {/* 2. Historial de Aceptaciones Legales */}
@@ -462,7 +532,7 @@ export default function LegalProfileDocuments({
                 Aviso de Privacidad
                 <ExternalLink className="h-3 w-3" />
               </Link>
-              {isBrokerOrAbove && (
+              {(userRole === "admin" || userRole === "super_admin") && (
                 <>
                   <Link
                     href="/legal/convenio"
@@ -486,7 +556,7 @@ export default function LegalProfileDocuments({
                   </Link>
                 </>
               )}
-              {isMasterOrAdmin && (
+              {(userRole === "admin" || userRole === "super_admin") && (
                 <Link
                   href="/legal/reglas-master"
                   target="_blank"
