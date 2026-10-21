@@ -349,11 +349,12 @@ export default function ClientForm({ client, onSuccess }: ClientFormProps) {
   const isLoading = createMutation.isPending || updateMutation.isPending;
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>{client ? "Editar Cliente" : "Nuevo Cliente"}</CardTitle>
+    <Card className="border-border/80 shadow-sm max-w-5xl mx-auto" data-testid="client-advanced-profile-form">
+      <CardHeader className="p-4 sm:p-6 border-b bg-muted/20">
+        <CardTitle className="text-xl">{client ? "Completar o editar perfil" : "Nuevo Cliente"}</CardTitle>
+        <p className="text-sm text-muted-foreground">Completa los datos que conozcas. No necesitas un expediente completo para conservar al prospecto.</p>
       </CardHeader>
-      <CardContent>
+      <CardContent className="p-4 sm:p-6">
         <Form {...form}>
           <form onSubmit={form.handleSubmit(onSubmit, () => {
             setOpenSections(["datos-basicos", "perfilamiento"]);
@@ -372,12 +373,12 @@ export default function ClientForm({ client, onSuccess }: ClientFormProps) {
                     form.setValue("ingresoAnual", "no-disponible", { shouldValidate: true });
                   }
                 }}>
-                <TabsList className="grid w-full grid-cols-2 sm:grid-cols-4 h-auto bg-transparent gap-1">
+                <TabsList className="grid w-full grid-cols-2 sm:grid-cols-4 h-auto bg-muted/30 gap-1 p-1 rounded-lg">
                   <TabsTrigger 
                     value="persona_moral" 
                     data-testid="tab-persona-moral" 
                     disabled={!!client} 
-                    className="text-xs sm:text-sm py-2 data-[state=active]:bg-blue-600 data-[state=active]:text-white data-[state=inactive]:bg-blue-100 data-[state=inactive]:text-blue-700 data-[state=inactive]:hover:bg-blue-200 border border-blue-300 rounded-md transition-colors"
+                    className="text-xs sm:text-sm py-2 data-[state=active]:border-blue-500 data-[state=active]:bg-blue-50 data-[state=active]:text-blue-800 border-blue-200 bg-background hover:bg-blue-50 rounded-md transition-colors"
                   >
                     Persona Moral
                   </TabsTrigger>
@@ -385,7 +386,7 @@ export default function ClientForm({ client, onSuccess }: ClientFormProps) {
                     value="fisica_empresarial" 
                     data-testid="tab-pfae" 
                     disabled={!!client} 
-                    className="text-xs sm:text-sm py-2 data-[state=active]:bg-green-600 data-[state=active]:text-white data-[state=inactive]:bg-green-100 data-[state=inactive]:text-green-700 data-[state=inactive]:hover:bg-green-200 border border-green-300 rounded-md transition-colors"
+                    className="text-xs sm:text-sm py-2 data-[state=active]:border-violet-500 data-[state=active]:bg-violet-50 data-[state=active]:text-violet-800 border-violet-200 bg-background hover:bg-violet-50 rounded-md transition-colors"
                   >
                     PFAE
                   </TabsTrigger>
@@ -393,7 +394,7 @@ export default function ClientForm({ client, onSuccess }: ClientFormProps) {
                     value="fisica" 
                     data-testid="tab-fisica" 
                     disabled={!!client} 
-                    className="text-xs sm:text-sm py-2 data-[state=active]:bg-purple-600 data-[state=active]:text-white data-[state=inactive]:bg-purple-100 data-[state=inactive]:text-purple-700 data-[state=inactive]:hover:bg-purple-200 border border-purple-300 rounded-md transition-colors"
+                    className="text-xs sm:text-sm py-2 data-[state=active]:border-emerald-500 data-[state=active]:bg-emerald-50 data-[state=active]:text-emerald-800 border-emerald-200 bg-background hover:bg-emerald-50 rounded-md transition-colors"
                   >
                     Persona Física
                   </TabsTrigger>
@@ -401,7 +402,7 @@ export default function ClientForm({ client, onSuccess }: ClientFormProps) {
                     value="sin_sat" 
                     data-testid="tab-sin-sat" 
                     disabled={!!client} 
-                    className="text-xs sm:text-sm py-2 data-[state=active]:bg-gray-600 data-[state=active]:text-white data-[state=inactive]:bg-gray-100 data-[state=inactive]:text-gray-700 data-[state=inactive]:hover:bg-gray-200 border border-gray-300 rounded-md transition-colors"
+                    className="text-xs sm:text-sm py-2 data-[state=active]:border-slate-500 data-[state=active]:bg-slate-100 data-[state=active]:text-slate-800 border-slate-200 bg-background hover:bg-slate-50 rounded-md transition-colors"
                   >
                     Sin SAT
                   </TabsTrigger>
