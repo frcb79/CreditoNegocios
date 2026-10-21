@@ -11273,7 +11273,30 @@ function maskCLABE(clabe?: string | null): string | null {
             type: 'credit_submission_created',
             title: 'Nueva solicitud de cotización de arrendamiento',
             message: 'Arrendamiento de ' + (lead.assetDescription || [lead.brand, lead.model].filter(Boolean).join(' ')) +
-              ' registrado para revisión interna. Valor estimado: 
+              ' registrado para revisión interna. Valor estimado en MXN: ' + totalAssetValue.toLocaleString('es-MX') + '.',
+            relatedEntityType: 'credit_submission',
+            relatedEntityId: submission.id,
+            priority: 'normal',
+          });
+          broadcastToUser(admin.id, { type: 'notification', notification });
+        }
+      } catch (notifyErr) {
+        console.error('Leasing lead notification error:', notifyErr);
+      }
+      return res.status(201).json({
+        client, submission, targets: [],
+        message: "Solicitud de cotización de arrendamiento registrada para revisión interna, sin envío a financieras.",
+      });
+    } catch (error: any) {
+      console.error('Error creating leasing lead:', error);
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Datos del prospecto inválidos", errors: error.flatten() });
+      }
+      return res.status(500).json({ message: "No fue posible guardar la solicitud de arrendamiento." });
+    }
+  });
+
+  // POST /api/credit-submissions/:id/targets - Select institution targets internally (NOT external disclosure)
   app.post('/api/credit-submissions/:id/targets', isAuthenticated, requireModuleAndAction('creditos', 'submit_proposals'), async (req: any, res) => {
     try {
       const { id } = req.params;
