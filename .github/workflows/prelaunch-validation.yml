@@ -88,6 +88,7 @@ jobs:
             tests/unit/submission-status-display.test.ts
             tests/unit/dashboard-origin-visibility.test.ts
             tests/unit/client-list-visibility.test.ts
+            tests/unit/client-onboarding-ux-postlaunch.test.ts
             tests/unit/network-transitions-safety.test.ts
             tests/unit/client-credit-origin-list.test.ts
             tests/unit/credit-document-http-authz.test.ts
