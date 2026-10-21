@@ -11242,6 +11242,8 @@ function maskCLABE(clabe?: string | null): string | null {
         plazo_deseado_meses: lead.preferredTermMonths ?? null,
         aportacion_inicial_mxn: lead.initialContribution ?? null,
         estado_operacion: lead.state || null,
+        ingresos_mensuales_estimados_mxn: lead.monthlyRevenue ?? null,
+        antiguedad_negocio_anios: lead.yearsInBusiness ?? null,
       };
       const submissionData = insertCreditSubmissionRequestSchema.omit({ clientId: true }).parse({
         tenantId,
