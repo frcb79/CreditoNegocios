@@ -40,6 +40,7 @@ import {
   Info
 } from "lucide-react";
 import { InstitutionProductWithTemplate, FinancialInstitution } from "@shared/schema";
+import { declaredLeasingAssets, leasingFilterGroup, isDeclaredLeasingOffer } from "@shared/leasing";
 
 interface CategoryDefinition {
   id: string;
@@ -135,10 +136,10 @@ const COMMERCIAL_CATEGORIES: CategoryDefinition[] = [
   },
   {
     id: "maquinaria_agropecuario",
-    name: "Crédito para Maquinaria / Equipo / Agro",
-    shortName: "Maquinaria y Agro",
+    name: "Crédito para Activos Productivos",
+    shortName: "Activos Productivos",
     tagline: "Equipamiento y sector primario",
-    description: "Financiamiento especializado para activos productivos, vehículos comerciales y proyectos agropecuarios.",
+    description: "Crédito para comprar maquinaria, equipo, vehículos de trabajo y activos agropecuarios. No es arrendamiento.",
     icon: Tractor,
     colorClass: {
       bg: "bg-teal-600",
@@ -153,7 +154,7 @@ const COMMERCIAL_CATEGORIES: CategoryDefinition[] = [
     name: "Arrendamiento (Leasing)",
     shortName: "Arrendamiento",
     tagline: "Uso y goce con ventaja fiscal",
-    description: "Arrendamiento puro o financiero para flotillas, maquinaria pesada y tecnología con deducción al 100%.",
+    description: "Arrendamiento de autos ejecutivos y flotillas, transporte pesado, maquinaria, equipo industrial, agrícola y tecnología.",
     icon: FileSpreadsheet,
     colorClass: {
       bg: "bg-slate-700",
@@ -208,6 +209,10 @@ function getProductCategory(p: InstitutionProductWithTemplate): string {
   if (tName.includes("flujos") || tName.includes("tpv") || cName.includes("tpv")) {
     return "flujos_tpv";
   }
+  // Primero la familia canónica: un arrendamiento de maquinaria nunca es crédito para maquinaria.
+  if (isDeclaredLeasingOffer(p) || tName.includes("arrendamiento") || cName.includes("arrendamiento")) {
+    return "arrendamiento";
+  }
   if (tName.includes("agropecuario") || cName.includes("agropecuario") || tName.includes("maquinaria")) {
     return "maquinaria_agropecuario";
   }
@@ -219,9 +224,6 @@ function getProductCategory(p: InstitutionProductWithTemplate): string {
     cName.includes("hipotecario")
   ) {
     return "garantia_inmobiliaria";
-  }
-  if (tName.includes("arrendamiento") || cName.includes("arrendamiento")) {
-    return "arrendamiento";
   }
   if (tName.includes("factoraje") || cName.includes("factoraje")) {
     return "factoraje";
@@ -485,6 +487,7 @@ export default function BrokerProducts() {
   const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(null);
   const [globalSearch, setGlobalSearch] = useState("");
   const [selectedProfileFilter, setSelectedProfileFilter] = useState<string>("all");
+  const [leasingAssetFilter, setLeasingAssetFilter] = useState<string>("all");
   const [selectedProduct, setSelectedProduct] = useState<InstitutionProductWithTemplate | null>(null);
 
   // Queries
@@ -533,6 +536,15 @@ export default function BrokerProducts() {
     if (!selectedCategoryId) return [];
     let list = productsByCategory[selectedCategoryId] || [];
 
+    if (selectedCategoryId === "arrendamiento" && leasingAssetFilter !== "all") {
+      list = list.filter((offer) => {
+        const assets = declaredLeasingAssets(offer);
+        // Sin declaración no asegurar que financia este tipo de activo.
+        if (leasingAssetFilter === "sin_especificar") return assets.length === 0;
+        return assets.some(asset => leasingFilterGroup(asset) === leasingAssetFilter);
+      });
+    }
+
     if (selectedProfileFilter !== "all") {
       list = list.filter((p) => (p.targetProfiles || []).includes(selectedProfileFilter));
     }
@@ -551,7 +563,7 @@ export default function BrokerProducts() {
     }
 
     return list;
-  }, [selectedCategoryId, productsByCategory, selectedProfileFilter, globalSearch, institutionsMap]);
+  }, [selectedCategoryId, productsByCategory, selectedProfileFilter, leasingAssetFilter, globalSearch, institutionsMap]);
 
   // Group category products by institution so that 1 institution = 1 main card
   const groupedInstitutions = useMemo(() => {
@@ -753,6 +765,7 @@ export default function BrokerProducts() {
               setSelectedCategoryId(null);
               setGlobalSearch("");
               setSelectedProfileFilter("all");
+              setLeasingAssetFilter("all");
             }}
             className="h-8 gap-1.5 text-xs font-semibold text-slate-700 border-slate-200 hover:bg-slate-50"
           >
@@ -787,6 +800,30 @@ export default function BrokerProducts() {
           <strong className="text-slate-900 font-semibold">Enfoque Comercial:</strong> {currentCategory?.description}
         </div>
       </div>
+
+      {selectedCategoryId === "arrendamiento" && (
+        <div className="space-y-2 rounded-xl border border-teal-100 bg-teal-50/40 p-3" data-testid="leasing-specialty-filters">
+          <p className="text-xs font-semibold text-slate-700">Especialidad del activo a arrendar</p>
+          <div className="flex flex-wrap gap-2">
+            {[
+              { id: "all", label: "Todas las arrendadoras" },
+              { id: "vehiculo", label: "Autos y flotillas" },
+              { id: "maquinaria_equipo", label: "Maquinaria y equipo" },
+              { id: "transporte_pesado", label: "Transporte pesado" },
+              { id: "agro", label: "Agrícola" },
+              { id: "sin_especificar", label: "Sin especialidad declarada" },
+            ].map(option => (
+              <Button key={option.id} type="button" size="sm"
+                variant={leasingAssetFilter === option.id ? "default" : "outline"}
+                className="h-auto min-h-8 whitespace-normal text-left text-xs"
+                onClick={() => setLeasingAssetFilter(option.id)}
+                data-testid={`filter-leasing-${option.id}`}
+              >{option.label}</Button>
+            ))}
+          </div>
+          <p className="text-[11px] text-slate-500">Solo se filtran especialidades declaradas en las ofertas. Las arrendadoras sin detalle aparecen en «Todas» y «Sin especialidad declarada»; no se presupone elegibilidad.</p>
+        </div>
+      )}
 
       {/* Filters Bar */}
       <div className="flex flex-col sm:flex-row gap-3 items-center justify-between">
