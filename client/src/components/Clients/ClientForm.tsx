@@ -355,7 +355,10 @@ export default function ClientForm({ client, onSuccess }: ClientFormProps) {
       </CardHeader>
       <CardContent>
         <Form {...form}>
-          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
+          <form onSubmit={form.handleSubmit(onSubmit, () => {
+            setOpenSections(["datos-basicos", "perfilamiento"]);
+            toast({ title: "Revisa los campos señalados", description: "Completa solo los detalles condicionados por tus respuestas.", variant: "destructive" });
+          })} className="space-y-6">
             {/* Client Type Selection */}
             <div className="space-y-2">
               <label className="text-sm font-medium text-gray-900">Tipo de Cliente</label>
@@ -1187,25 +1190,15 @@ export default function ClientForm({ client, onSuccess }: ClientFormProps) {
             
             {/* Perfilamiento Tab */}
             <div className="space-y-6">
-              <Tabs defaultValue="datos-basicos" className="w-full">
-                <TabsList className="grid w-full grid-cols-2 bg-transparent gap-2 p-1">
-                  <TabsTrigger 
-                    value="datos-basicos"
-                    className="data-[state=active]:bg-primary data-[state=active]:text-white data-[state=inactive]:bg-sky-100 data-[state=inactive]:text-sky-700 data-[state=inactive]:hover:bg-sky-200 border border-sky-300 rounded-md transition-colors font-medium"
-                  >
-                    <User className="w-4 h-4 mr-2" aria-hidden="true" />
-                    Datos Básicos
-                  </TabsTrigger>
-                  <TabsTrigger 
-                    value="perfilamiento"
-                    className="data-[state=active]:bg-primary data-[state=active]:text-white data-[state=inactive]:bg-teal-100 data-[state=inactive]:text-teal-700 data-[state=inactive]:hover:bg-teal-200 border border-teal-300 rounded-md transition-colors font-medium"
-                  >
-                    <TrendingUp className="w-4 h-4 mr-2" aria-hidden="true" />
-                    Perfilamiento
-                  </TabsTrigger>
-                </TabsList>
-                
-                <TabsContent value="datos-basicos" className="space-y-4">
+              <Accordion type="multiple" value={openSections} onValueChange={setOpenSections} className="space-y-3">
+                <AccordionItem value="datos-basicos" className="rounded-lg border border-border bg-card px-4 sm:px-5" data-testid="profile-section-basics">
+                  <AccordionTrigger className="text-left hover:no-underline gap-3">
+                    <span className="space-y-1">
+                      <span className="flex items-center gap-2 font-semibold"><User className="h-4 w-4 text-primary" /> Datos del cliente y contacto</span>
+                      <span className="block text-xs font-normal text-muted-foreground">Domicilio, RFC y datos de contacto</span>
+                    </span>
+                  </AccordionTrigger>
+                  <AccordionContent className="space-y-4">
                   {/* Alerta Inteligente de Check-Duplicates y Gobernanza Comercial */}
                   <CommercialDuplicateAlert result={duplicateCheckResult} className="mb-2" />
 
@@ -1427,9 +1420,16 @@ export default function ClientForm({ client, onSuccess }: ClientFormProps) {
                       </FormItem>
                     )}
                   />
-                </TabsContent>
-                
-                <TabsContent value="perfilamiento" className="space-y-6">
+                  </AccordionContent>
+                </AccordionItem>
+                <AccordionItem value="perfilamiento" className="rounded-lg border border-border bg-card px-4 sm:px-5" data-testid="profile-section-financial">
+                  <AccordionTrigger className="text-left hover:no-underline gap-3">
+                    <span className="space-y-1">
+                      <span className="flex items-center gap-2 font-semibold"><TrendingUp className="h-4 w-4 text-primary" /> Información financiera y perfilamiento</span>
+                      <span className="block text-xs font-normal text-muted-foreground">Ingresos, créditos, buró, garantías y otros datos que pueden mejorar el matching</span>
+                    </span>
+                  </AccordionTrigger>
+                  <AccordionContent className="space-y-6">
                   <Card className="border-primary/20">
                     <CardHeader className="pb-2">
                       <CardTitle className="text-lg flex items-center gap-2">
@@ -4042,11 +4042,15 @@ export default function ClientForm({ client, onSuccess }: ClientFormProps) {
                       )}
                     </CardContent>
                   </Card>
-                </TabsContent>
-              </Tabs>
+                  </AccordionContent>
+                </AccordionItem>
+              </Accordion>
+              <p className="flex items-start gap-2 text-xs text-muted-foreground mt-3"><Info className="h-4 w-4 shrink-0" />
+                El matching depende de condiciones publicadas por cada financiera. Si falta información, se indicará como insuficiente; no se inventarán coincidencias.
+              </p>
             </div>
 
-            <div className="flex justify-end space-x-4">
+            <div className="sticky bottom-0 z-10 flex flex-wrap justify-end gap-3 border-t bg-background/95 backdrop-blur py-3 px-1 shadow-sm">
               <Button 
                 type="button" 
                 variant="outline" 
