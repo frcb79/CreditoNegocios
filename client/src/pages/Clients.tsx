@@ -5,6 +5,7 @@ import MainLayout from "@/components/MainLayout";
 import Header from "@/components/Header";
 import ClientList from "@/components/Clients/ClientList";
 import ClientForm from "@/components/Clients/ClientForm";
+import QuickClientForm from "@/components/Clients/QuickClientForm";
 import NewOpportunityTypeModal from "@/components/Modals/NewOpportunityTypeModal";
 import MortgageLeadModal from "@/components/Modals/MortgageLeadModal";
 import { Client } from "@shared/schema";
@@ -69,10 +70,24 @@ export default function Clients() {
         )}
 
         {viewMode === "form" && (
-          <ClientForm 
-            client={editingClient}
-            onSuccess={handleFormSuccess}
-          />
+          editingClient ? (
+            <ClientForm
+              client={editingClient}
+              onSuccess={handleFormSuccess}
+            />
+          ) : (
+            <QuickClientForm
+              onSaved={(savedClient) => {
+                setViewMode("list");
+                setLocation(`/clientes/${savedClient.id}`);
+              }}
+              onExisting={(existingClientId) => {
+                setViewMode("list");
+                setLocation(`/clientes/${existingClientId}`);
+              }}
+              onCancel={() => setViewMode("list")}
+            />
+          )
         )}
       </main>
 
