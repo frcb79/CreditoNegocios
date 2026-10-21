@@ -71,7 +71,7 @@ describe("Arrendamiento ágil y especialidades declaradas", () => {
       "operationType: 'arrendamiento'",
     ]) expect(block).toContain(requirement);
     const ui = readFileSync(resolve(process.cwd(), "client/src/components/Modals/LeasingLeadModal.tsx"), "utf8");
-    expect(ui).toContain('data-testid="input-lease-unitValue"');
+    expect(ui).toContain('field("unitValue", "Valor aproximado por unidad (MXN)"');
     expect(ui).toContain('data-testid="select-lease-existing-client"');
   });
 });
