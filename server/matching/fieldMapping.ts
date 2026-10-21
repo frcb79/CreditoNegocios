@@ -185,6 +185,11 @@ export function extractRequestedAmount(credit: any, client?: any): number | null
 }
 
 export function extractRequestedTermMonths(credit: any, client?: any): number | null {
+  const lease = credit?.mortgageData?.operationType === "arrendamiento" ? credit.mortgageData.lease : null;
+  if (lease?.plazo_deseado_meses != null) {
+    const months = Number(lease.plazo_deseado_meses);
+    if (Number.isInteger(months) && months > 0) return months;
+  }
   if (credit?.term !== undefined && credit?.term !== null && credit?.term !== "") {
     const val = typeof credit.term === "number" ? credit.term : parseInt(String(credit.term), 10);
     if (!isNaN(val) && val > 0) return val;
@@ -221,9 +226,10 @@ export function extractClientProfileType(client: any, credit?: any): ClientProfi
 export function extractCompanyAgeMonths(client: any, credit?: any): number | null {
   const c = client || {};
   const cr = credit || {};
+  const lease = cr.mortgageData?.operationType === "arrendamiento" ? cr.mortgageData.lease : null;
 
   // 1. Campo explícito en años de la empresa (Persona Moral / PFA)
-  const yearsVal = c.yearsInBusiness ?? cr.yearsInBusiness ?? c.antiguedadAnios ?? cr.antiguedadAnios;
+  const yearsVal = c.yearsInBusiness ?? cr.yearsInBusiness ?? lease?.antiguedad_negocio_anios ?? c.antiguedadAnios ?? cr.antiguedadAnios;
   if (yearsVal !== undefined && yearsVal !== null && yearsVal !== "") {
     const years = typeof yearsVal === "number" ? yearsVal : parseFloat(String(yearsVal));
     if (!isNaN(years) && years >= 0) {
@@ -300,11 +306,13 @@ export function extractEmploymentAgeMonths(client: any, credit?: any): number | 
 export function extractMonthlyRevenue(client: any, credit?: any): number | null {
   const c = client || {};
   const cr = credit || {};
+  const lease = cr.mortgageData?.operationType === "arrendamiento" ? cr.mortgageData.lease : null;
 
   // 1. Ingreso mensual promedio general / facturación mensual
   const directFields = [
     c.ingresoMensualPromedio,
     cr.ingresoMensualPromedio,
+    lease?.ingresos_mensuales_estimados_mxn,
     c.monthlyRevenue,
     cr.monthlyRevenue,
     c.facturacionMensual,

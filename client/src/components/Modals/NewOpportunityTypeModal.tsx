@@ -8,13 +8,14 @@ import {
 } from "@/components/ui/dialog";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Building2, Home, ArrowRight, ShieldCheck } from "lucide-react";
+import { Building2, Home, Truck, ArrowRight, ShieldCheck } from "lucide-react";
 
 interface NewOpportunityTypeModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSelectEmpresarial: () => void;
   onSelectHipotecario: () => void;
+  onSelectArrendamiento: () => void;
 }
 
 export default function NewOpportunityTypeModal({
@@ -22,10 +23,11 @@ export default function NewOpportunityTypeModal({
   onClose,
   onSelectEmpresarial,
   onSelectHipotecario,
+  onSelectArrendamiento,
 }: NewOpportunityTypeModalProps) {
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="sm:max-w-xl p-6">
+      <DialogContent className="sm:max-w-3xl p-6">
         <DialogHeader className="text-center sm:text-left">
           <div className="flex items-center space-x-2">
             <div className="p-2 bg-blue-100 rounded-lg text-primary">
@@ -42,7 +44,7 @@ export default function NewOpportunityTypeModal({
           </div>
         </DialogHeader>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-4">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-4">
           {/* Opción A: Crédito Empresarial */}
           <Card
             onClick={() => {
@@ -62,7 +64,7 @@ export default function NewOpportunityTypeModal({
                     Crédito Empresarial
                   </h3>
                   <p className="text-xs text-gray-500 mt-1.5 leading-relaxed">
-                    Personas Morales, PFAE y negocios. Capital de trabajo, liquidez comercial, maquinaria o arrendamiento.
+                    Personas Morales, PFAE y negocios. Capital de trabajo, liquidez y crédito para activos productivos.
                   </p>
                 </div>
               </div>
@@ -105,6 +107,33 @@ export default function NewOpportunityTypeModal({
 
               <div className="mt-4 pt-3 border-t border-amber-100 flex items-center justify-between text-xs font-medium text-amber-700">
                 <span>Alta hipotecaria</span>
+                <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
+              </div>
+            </CardContent>
+          </Card>
+          {/* Opción C: Arrendamiento - cotización inicial con datos mínimos */}
+          <Card
+            onClick={() => { onClose(); onSelectArrendamiento(); }}
+            data-testid="option-select-arrendamiento"
+            className="group cursor-pointer border-2 border-teal-200 hover:border-teal-500 hover:shadow-md transition-all duration-200 bg-white hover:bg-teal-50/20"
+          >
+            <CardContent className="p-5 flex flex-col justify-between h-full">
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="w-12 h-12 rounded-xl bg-teal-100 text-teal-700 flex items-center justify-center group-hover:scale-105 transition-transform">
+                    <Truck className="w-6 h-6" />
+                  </div>
+                  <Badge variant="outline" className="bg-teal-50 text-teal-800 border-teal-200 text-xs font-semibold">Ágil</Badge>
+                </div>
+                <div>
+                  <h3 className="font-semibold text-gray-900 group-hover:text-teal-800 text-base">Arrendamiento</h3>
+                  <p className="text-xs text-gray-500 mt-1.5 leading-relaxed">
+                    Automóviles, flotillas, transporte pesado, maquinaria y equipo. Registra el activo y solicita cotización sin llenar un expediente extenso.
+                  </p>
+                </div>
+              </div>
+              <div className="mt-4 pt-3 border-t border-teal-100 flex items-center justify-between text-xs font-medium text-teal-700">
+                <span>Solicitar cotización</span>
                 <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
               </div>
             </CardContent>

@@ -1,4 +1,5 @@
 import { selectHousingMortgageTemplate } from "./mortgageHousingTemplate";
+import { leaseLeadSchema } from "../shared/leasing";
 import type { Express } from "express";
 import { randomUUID } from "node:crypto";
 import { createServer, ServerResponse, type Server } from "http";
@@ -11141,6 +11142,159 @@ function maskCLABE(clabe?: string | null): string | null {
     } catch (error: any) {
       console.error("Error creating mortgage lead:", error);
       res.status(500).json({ message: error.message || "Error al registrar la oportunidad hipotecaria" });
+    }
+  });
+
+
+  // Arrendamiento ágil: nuevo cliente o cliente existente + solicitud en una transacción.
+  // El JSONB histórico mortgageData se usa como contenedor técnico de datos de operación
+  // (operationType identifica explícitamente Arrendamiento). No se crea familia ni tabla nueva.
+  // Registro para cotizar: NUNCA transmite datos a financieras ni crea targets automáticamente.
+  app.post('/api/leasing-leads', isAuthenticated, requireModuleAndAction('creditos', 'submit_proposals'), async (req: any, res) => {
+    const parsed = leaseLeadSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ message: "Revisa los datos de contacto y del activo", errors: parsed.error.flatten() });
+    }
+    try {
+      const lead = parsed.data;
+      const userId = req.user.claims.sub;
+      const user = await storage.getUser(userId);
+      if (!user || !['broker', 'master_broker', 'admin', 'super_admin'].includes(user.role)) {
+        return res.status(403).json({ message: "Sin permiso para registrar arrendamientos" });
+      }
+      const scope = await validateCommercialOriginationAndFormalization({
+        callerUser: user,
+        callerMembership: req.tenantContext?.membership,
+        tenantId: req.tenantContext?.tenant?.id,
+        requestedBrokerId: req.body?.brokerId,
+      });
+      if (!scope.allowed) {
+        return res.status(scope.statusCode || 403).json({ code: scope.code, message: scope.message });
+      }
+      const tenantId = req.tenantContext?.tenant?.id || null;
+      const brokerId = scope.brokerId;
+      let clientData: any;
+      if (lead.clientId) {
+        const access = await validateClientOriginationAccess({
+          clientId: lead.clientId,
+          callerUser: user,
+          effectiveBrokerId: brokerId,
+          tenantContext: req.tenantContext,
+        });
+        if (!access.allowed) {
+          return res.status(access.statusCode || 403).json({ code: access.code, message: access.message });
+        }
+      } else {
+        const duplicate = await commercialOpportunityService.checkDuplicatesEnriched({
+          rfc: lead.rfc || undefined,
+          phone: lead.phone,
+          email: lead.email,
+          financingNeedType: 'arrendamiento',
+          currentUserId: userId,
+          currentUserRole: user.role,
+          userTenantId: tenantId,
+          tenantContext: req.tenantContext,
+        });
+        if (duplicate.clientExists) {
+          return res.status(409).json({
+            code: 'EXISTING_CLIENT',
+            message: "Ya existe un prospecto con estos datos. Busca el cliente existente y registra una nueva oportunidad; si pertenece a otra red, solicita revisión comercial.",
+          });
+        }
+        clientData = updatedInsertClientSchema.parse({
+          tenantId,
+          brokerId,
+          createdBy: userId,
+          type: lead.clientType,
+          businessName: lead.clientType === 'persona_moral' ? lead.businessName : null,
+          firstName: lead.firstName || '',
+          lastName: lead.lastName || '',
+          phone: lead.phone,
+          email: lead.email,
+          rfc: lead.rfc ? lead.rfc.toUpperCase() : null,
+          state: lead.state || null,
+          originOpportunity: 'arrendamiento',
+          // Información financiera voluntaria; no se requiere para solicitar cotización.
+          ingresoMensualPromedio: lead.monthlyRevenue != null ? String(lead.monthlyRevenue) : null,
+          yearsInBusiness: lead.yearsInBusiness ?? null,
+        });
+      }
+
+      const templates = await storage.getProductTemplates();
+      const template = templates.find((t: any) =>
+        t.isActive !== false && (t.category === 'arrendamiento' || t.baseConfiguration?.catalog_family === 'arrendamiento'));
+      if (!template) {
+        return res.status(409).json({ code: 'LEASING_TEMPLATE_UNAVAILABLE', message: "La familia Arrendamiento no está disponible en el catálogo activo." });
+      }
+
+      const totalAssetValue = lead.unitValue * lead.quantity;
+      const leaseData = {
+        tipo_activo_arrendado: lead.assetType,
+        tipo_activo_descripcion: lead.assetDescription || null,
+        marca: lead.brand || null,
+        modelo: lead.model || null,
+        version_vehiculo: lead.version || null,
+        anio: lead.year ?? null,
+        cantidad: lead.quantity,
+        valor_unitario_mxn: lead.unitValue,
+        valor_total_estimado_mxn: totalAssetValue,
+        modalidad_arrendamiento: lead.leaseModality === 'por_definir' ? null : lead.leaseModality,
+        plazo_deseado_meses: lead.preferredTermMonths ?? null,
+        aportacion_inicial_mxn: lead.initialContribution ?? null,
+        estado_operacion: lead.state || null,
+        ingresos_mensuales_estimados_mxn: lead.monthlyRevenue ?? null,
+        antiguedad_negocio_anios: lead.yearsInBusiness ?? null,
+      };
+      const submissionData = insertCreditSubmissionRequestSchema.omit({ clientId: true }).parse({
+        tenantId,
+        brokerId,
+        createdBy: userId,
+        productTemplateId: template.id,
+        // Required legacy numeric column is the total estimated asset value, not a loan approval.
+        requestedAmount: String(totalAssetValue),
+        purpose: 'Cotización de Arrendamiento: ' + (lead.assetType === 'vehiculo'
+          ? [lead.brand, lead.model, lead.version, lead.year].filter(Boolean).join(' ')
+          : lead.assetDescription),
+        brokerNotes: lead.brokerNotes || null,
+        mortgageData: { operationType: 'arrendamiento', lease: leaseData },
+        status: 'pending_admin',
+      });
+      const { client, submission } = await storage.createMortgageLeadTransactional({
+        clientData,
+        clientId: lead.clientId,
+        submissionData,
+        financialInstitutionIds: [],
+      });
+
+      // La oportunidad no implica aprobación crediticia, cotización en firme o envío a financiera.
+      try {
+        const admins = (await storage.getAllUsers()).filter(u => u.role === 'admin' || u.role === 'super_admin');
+        for (const admin of admins) {
+          const notification = await storage.createNotification({
+            userId: admin.id,
+            type: 'credit_submission_created',
+            title: 'Nueva solicitud de cotización de arrendamiento',
+            message: 'Arrendamiento de ' + (lead.assetDescription || [lead.brand, lead.model].filter(Boolean).join(' ')) +
+              ' registrado para revisión interna. Valor estimado en MXN: ' + totalAssetValue.toLocaleString('es-MX') + '.',
+            relatedEntityType: 'credit_submission',
+            relatedEntityId: submission.id,
+            priority: 'normal',
+          });
+          broadcastToUser(admin.id, { type: 'notification', notification });
+        }
+      } catch (notifyErr) {
+        console.error('Leasing lead notification error:', notifyErr);
+      }
+      return res.status(201).json({
+        client, submission, targets: [],
+        message: "Solicitud de cotización de arrendamiento registrada para revisión interna, sin envío a financieras.",
+      });
+    } catch (error: any) {
+      console.error('Error creating leasing lead:', error);
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Datos del prospecto inválidos", errors: error.flatten() });
+      }
+      return res.status(500).json({ message: "No fue posible guardar la solicitud de arrendamiento." });
     }
   });
 

@@ -37,6 +37,7 @@ import { useToast } from "@/hooks/use-toast";
 import CreditRequestModal from "@/components/Modals/CreditRequestModal";
 import NewOpportunityTypeModal from "@/components/Modals/NewOpportunityTypeModal";
 import MortgageLeadModal from "@/components/Modals/MortgageLeadModal";
+import LeasingLeadModal from "@/components/Modals/LeasingLeadModal";
 
 interface ClientDetailProps {
   clientId: string;
@@ -49,6 +50,7 @@ export default function ClientDetail({ clientId, onEdit, onClose }: ClientDetail
   const [showCreditRequestModal, setShowCreditRequestModal] = useState(false);
   const [showOpportunityTypeModal, setShowOpportunityTypeModal] = useState(false);
   const [showMortgageLeadModal, setShowMortgageLeadModal] = useState(false);
+  const [showLeasingLeadModal, setShowLeasingLeadModal] = useState(false);
   const { toast } = useToast();
 
   const formatCurrency = (value: string | number | null | undefined): string => {
@@ -608,6 +610,16 @@ export default function ClientDetail({ clientId, onEdit, onClose }: ClientDetail
         onClose={() => setShowOpportunityTypeModal(false)}
         onSelectEmpresarial={() => setShowCreditRequestModal(true)}
         onSelectHipotecario={() => setShowMortgageLeadModal(true)}
+        onSelectArrendamiento={() => setShowLeasingLeadModal(true)}
+      />
+
+      <LeasingLeadModal
+        isOpen={showLeasingLeadModal}
+        onClose={() => setShowLeasingLeadModal(false)}
+        existingClient={client}
+        onSuccess={() => {
+          queryClient.invalidateQueries({ queryKey: [`/api/credit-submissions/client/${clientId}`] });
+        }}
       />
 
       {/* Mortgage Lead Modal (Camino B con existingClient) */}

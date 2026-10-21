@@ -11,6 +11,7 @@
  * 4. Explicabilidad total: razones claras de cumplimiento, rechazo o datos faltantes.
  */
 
+import { declaredLeasingAssets, isDeclaredLeasingOffer, normalizeLeasingAssetType } from "../../shared/leasing";
 import {
   extractRequestedAmount,
   extractRequestedTermMonths,
@@ -170,7 +171,14 @@ export function isCriterionOriginVerified(
   // Requisito de prueba positiva: cada criterio debe tener un campo fuente real
   // capturado y extraíble en la solicitud. La ausencia de flags negativos NO basta.
   const actual = extractApplicationVariables(credit, client);
+  const leaseDetails = credit?.mortgageData?.operationType === "arrendamiento" ? credit.mortgageData.lease : null;
+  const family = product?.template?.category || product?.productType;
   const verifiedByCapturedSource: Record<string, boolean> = {
+    leaseProductFamily: Boolean(leaseDetails && family),
+    tipo_activo_arrendado: Boolean(
+      leaseDetails && normalizeLeasingAssetType(leaseDetails.tipo_activo_arrendado) &&
+      declaredLeasingAssets(product, version).length > 0
+    ),
     targetProfiles: actual.clientProfileType !== null,
     creditAmount: actual.requestedAmount !== null,
     creditTerm: actual.requestedTermMonths !== null,
@@ -225,6 +233,62 @@ export function evaluateOfferCompatibility(
       actualValue: eligibilityEval.status || "pending_verification",
       reason: "Las variables y criterios de elegibilidad de esta oferta se encuentran pendientes de verificación de origen.",
     });
+  }
+
+  // Arrendamiento: comparar primero la familia, luego activos declarados por la
+  // oferta vigente. Nunca decidir compatibilidad por el nombre de la financiera.
+  const lease = credit?.mortgageData?.operationType === "arrendamiento"
+    ? credit.mortgageData.lease : null;
+  if (lease) {
+    const family = product?.template?.category || product?.productType || null;
+    const explicitOtherFamily = ["credito_simple", "simple", "revolvente", "credito_revolvente",
+      "hipotecario", "factoraje", "tpv", "anticipo_ventas"].includes(family);
+    const leasingOffer = isDeclaredLeasingOffer(product);
+    evaluations.push({
+      code: "leaseProductFamily",
+      name: "Familia Arrendamiento",
+      status: leasingOffer ? "PASSED" : explicitOtherFamily ? "FAILED" : "MISSING_DATA",
+      requiredValue: "arrendamiento",
+      actualValue: family,
+      reason: leasingOffer ? "Oferta identificada expresamente como arrendamiento." :
+        explicitOtherFamily ? "La oferta publicada pertenece a otra familia y no es un arrendamiento." :
+        "No se ha identificado de forma estructurada la familia de la oferta; requiere verificación.",
+    });
+    if (leasingOffer) {
+      const requestedAsset = normalizeLeasingAssetType(lease.tipo_activo_arrendado);
+      const supportedAssets = declaredLeasingAssets(product, version);
+      const matchedAsset = requestedAsset && supportedAssets.includes(requestedAsset);
+      evaluations.push({
+        code: "tipo_activo_arrendado",
+        name: "Activo admitido por la arrendadora",
+        status: supportedAssets.length === 0 || !requestedAsset ? "MISSING_DATA" :
+          matchedAsset ? "PASSED" : "FAILED",
+        requiredValue: supportedAssets.length ? supportedAssets : "Por configurar en la oferta",
+        actualValue: requestedAsset,
+        reason: supportedAssets.length === 0
+          ? "La oferta no declara activos admitidos; no se presupone que financia este equipo."
+          : !requestedAsset ? "Falta identificar el activo específico solicitado."
+          : matchedAsset ? "El activo solicitado está declarado como admitido por la arrendadora."
+          : "El tipo de activo solicitado no figura entre los admitidos por esta oferta.",
+      });
+    }
+    // Compatibilidad de activo no equivale a elegibilidad financiera ni a cotización en firme.
+    // La ausencia de reglas materiales publicadas no puede declarar una oferta compatible.
+    const commercialConditionsConfigured = [
+      cond.minAmount, cond.maxAmount, cond.minTermMonths, cond.maxTermMonths,
+      cond.minCompanyAgeMonths, cond.minMonthlyRevenue, cond.bureauRequirement,
+      cond.guaranteeType, cond.avalesType,
+    ].some(value => value !== undefined && value !== null && value !== "sin_requisito" && value !== "sin_garantia" && value !== "no_requerido");
+    if (!commercialConditionsConfigured) {
+      evaluations.push({
+        code: "leaseFinancialPolicies",
+        name: "Condiciones financieras de la oferta",
+        status: "MISSING_DATA",
+        requiredValue: "Criterios comerciales publicados",
+        actualValue: null,
+        reason: "La oferta no contiene requisitos financieros suficientes para confirmar compatibilidad. La coincidencia de activo solo habilita revisión o cotización preliminar.",
+      });
+    }
   }
 
   // =========================================================================
