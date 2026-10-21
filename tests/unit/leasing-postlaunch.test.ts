@@ -8,9 +8,9 @@ const baseline = {
   assetType: "vehiculo", brand: "Toyota", model: "Corolla", year: 2026,
   unitValue: 450000, quantity: 2,
 };
-const evaluate = (asset: string, allowed: unknown, productType = "arrendamiento") => {
+const evaluate = (asset: string, allowed: unknown, productType = "arrendamiento", conditions: Record<string, unknown> = {}) => {
   const product = { id: "oferta", institutionId: "fi", productType, template: { category: productType }, targetProfiles: [] };
-  const version = { versionNumber: 1, status: "published", conditions: {}, requirements: {},
+  const version = { versionNumber: 1, status: "published", conditions, requirements: {},
     variablesConfiguration: allowed ? { tipo_activo_arrendado: allowed } : {} };
   return evaluateOfferCompatibility({
     credit: { requestedAmount: "900000", mortgageData: { operationType: "arrendamiento", lease: { tipo_activo_arrendado: asset } } },
@@ -49,7 +49,8 @@ describe("Arrendamiento ágil y especialidades declaradas", () => {
 
   it("matching: oferta de autos excluye maquinaria, sin activos declarados queda información insuficiente", () => {
     const offered = { allowedValues: ["vehiculo"] };
-    expect(evaluate("vehiculo", offered).status).toBe("COMPATIBLE");
+    expect(evaluate("vehiculo", offered).status).toBe("INSUFFICIENT_DATA");
+    expect(evaluate("vehiculo", offered, "arrendamiento", { minAmount: 100000 }).status).toBe("COMPATIBLE");
     expect(evaluate("maquinaria", offered).status).toBe("NOT_COMPATIBLE");
     expect(evaluate("vehiculo", undefined).status).toBe("INSUFFICIENT_DATA");
     expect(evaluate("vehiculo", offered, "credito_simple").status).toBe("NOT_COMPATIBLE");
