@@ -1,5 +1,6 @@
 import { leaseLeadSchema, declaredLeasingAssets, isDeclaredLeasingOffer, leasingFilterGroup } from "../../shared/leasing";
 import { evaluateOfferCompatibility } from "../../server/matching/compatibilityEvaluator";
+import { extractCompanyAgeMonths, extractMonthlyRevenue, extractRequestedTermMonths } from "../../server/matching/fieldMapping";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
@@ -36,6 +37,18 @@ describe("Arrendamiento ágil y especialidades declaradas", () => {
     const { clientType, businessName, email, phone, ...operation } = baseline;
     expect(leaseLeadSchema.safeParse({ ...operation, clientId: "cliente-id" }).success).toBe(true);
     expect(leaseLeadSchema.safeParse({ ...operation }).success).toBe(false);
+  });
+
+  it("los datos complementarios se conservan para matching incluso si el cliente ya existía", () => {
+    const credit = { mortgageData: { operationType: "arrendamiento", lease: {
+      plazo_deseado_meses: 48,
+      ingresos_mensuales_estimados_mxn: 210000,
+      antiguedad_negocio_anios: 4,
+    } } };
+    const existingClient = { type: "persona_moral" };
+    expect(extractRequestedTermMonths(credit, existingClient)).toBe(48);
+    expect(extractMonthlyRevenue(existingClient, credit)).toBe(210000);
+    expect(extractCompanyAgeMonths(existingClient, credit)).toBe(48);
   });
 
   it("solo clasifica arrendadoras por activos declarados en la oferta", () => {
