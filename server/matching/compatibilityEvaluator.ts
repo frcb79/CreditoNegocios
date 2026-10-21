@@ -272,6 +272,23 @@ export function evaluateOfferCompatibility(
           : "El tipo de activo solicitado no figura entre los admitidos por esta oferta.",
       });
     }
+    // Compatibilidad de activo no equivale a elegibilidad financiera ni a cotización en firme.
+    // La ausencia de reglas materiales publicadas no puede declarar una oferta compatible.
+    const commercialConditionsConfigured = [
+      cond.minAmount, cond.maxAmount, cond.minTermMonths, cond.maxTermMonths,
+      cond.minCompanyAgeMonths, cond.minMonthlyRevenue, cond.bureauRequirement,
+      cond.guaranteeType, cond.avalesType,
+    ].some(value => value !== undefined && value !== null && value !== "sin_requisito" && value !== "sin_garantia" && value !== "no_requerido");
+    if (!commercialConditionsConfigured) {
+      evaluations.push({
+        code: "leaseFinancialPolicies",
+        name: "Condiciones financieras de la oferta",
+        status: "MISSING_DATA",
+        requiredValue: "Criterios comerciales publicados",
+        actualValue: null,
+        reason: "La oferta no contiene requisitos financieros suficientes para confirmar compatibilidad. La coincidencia de activo solo habilita revisión o cotización preliminar.",
+      });
+    }
   }
 
   // =========================================================================
