@@ -13,8 +13,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import CurrencyInput from "@/components/ui/currency-input";
-import { User, TrendingUp, Trash2, Plus, Loader2 } from "lucide-react";
+import { User, TrendingUp, Trash2, Plus, Loader2, Info } from "lucide-react";
 import { CommercialDuplicateAlert, type DuplicateCheckResult } from "@/components/Commercial/CommercialDuplicateAlert";
 import { ANNUAL_INCOME_OPTIONS, getAnnualIncomeLabel } from "@shared/annualIncome";
 
@@ -113,128 +114,15 @@ const formSchema = updatedInsertClientSchema.extend({
   }
   
 
-  // Validaciones específicas para Persona Física
+  // Perfilamiento incremental: solo exigir detalles cuando se declara una condición.
+  // No bloquear la actualización por datos demográficos o financieros aún desconocidos.
   if (data.type === "fisica") {
-    if (!data.estadoCivil) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: "Estado civil es requerido para Persona Física",
-        path: ["estadoCivil"],
-      });
-    }
-    if (!data.nivelEducativo) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: "Nivel de educación es requerido para Persona Física",
-        path: ["nivelEducativo"],
-      });
-    }
-    if (!data.tipoVivienda) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: "Tipo de vivienda es requerido para Persona Física",
-        path: ["tipoVivienda"],
-      });
-    }
-    if (!data.antiguedadLaboral) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: "Antigüedad laboral es requerida para Persona Física",
-        path: ["antiguedadLaboral"],
-      });
-    }
-    if (!data.puesto) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: "Puesto es requerido para Persona Física",
-        path: ["puesto"],
-      });
-    }
-    if (data.dependientesEconomicos === undefined || data.dependientesEconomicos === null || data.dependientesEconomicos === '') {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: "Número de dependientes económicos es requerido para Persona Física",
-        path: ["dependientesEconomicos"],
-      });
-    }
-    // Validaciones de perfilamiento para Persona Física
-    if (!data.ingresoMensualPromedioComprobables) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: "Ingreso mensual comprobable es requerido",
-        path: ["ingresoMensualPromedioComprobables"],
-      });
-    }
-    if (!data.ingresoMensualPromedioNoComprobables) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: "Ingreso mensual no comprobable es requerido",
-        path: ["ingresoMensualPromedioNoComprobables"],
-      });
-    }
-    if (!data.gastosFijosMensualesPromedio) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: "Gastos fijos mensuales es requerido",
-        path: ["gastosFijosMensualesPromedio"],
-      });
-    }
-    if (!data.buroPersonaFisica) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: "Información del buró de crédito persona física es requerida",
-        path: ["buroPersonaFisica"],
-      });
-    }
-    if (!data.atrasosDeudasBuro) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: "Información sobre atrasos/deudas en buró es requerida",
-        path: ["atrasosDeudasBuro"],
-      });
-    }
     if (data.atrasosDeudasBuro === "si" && !data.atrasosDeudasBuroDetalles) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: "Detalles de atrasos/deudas son requeridos cuando se selecciona 'SI'",
-        path: ["atrasosDeudasBuroDetalles"],
-      });
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["atrasosDeudasBuroDetalles"], message: "Describe los atrasos señalados" });
     }
-    if (!data.cuentaConGarantiaFisica) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: "Información sobre garantía es requerida",
-        path: ["cuentaConGarantiaFisica"],
-      });
-    }
-    if (!data.tieneAvalObligadoSolidarioFisica) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: "Información sobre aval/obligado solidario es requerida",
-        path: ["tieneAvalObligadoSolidarioFisica"],
-      });
-    }
-    if (!data.creditosVigentes) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: "Información sobre créditos vigentes es requerida",
-        path: ["creditosVigentes"],
-      });
-    }
-    // Validaciones condicionales para garantía prendaria - Persona Física
-    if (data.cuentaConGarantiaFisica === "prendaria" && (!data.garantiaFisicaDetalles || Object.keys(data.garantiaFisicaDetalles).length === 0)) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: "Detalles de garantía prendaria son requeridos",
-        path: ["garantiaFisicaDetalles"],
-      });
-    }
-    if (data.cuentaConGarantiaFisica === "hipotecaria" && (!data.garantiaFisicaDetalles || Object.keys(data.garantiaFisicaDetalles).length === 0)) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: "Detalles de garantía hipotecaria son requeridos",
-        path: ["garantiaFisicaDetalles"],
-      });
+    if ((data.cuentaConGarantiaFisica === "prendaria" || data.cuentaConGarantiaFisica === "hipotecaria") &&
+        (!data.garantiaFisicaDetalles || Object.keys(data.garantiaFisicaDetalles).length === 0)) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["garantiaFisicaDetalles"], message: "Describe la garantía seleccionada" });
     }
   }
 });
@@ -243,6 +131,7 @@ export default function ClientForm({ client, onSuccess }: ClientFormProps) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [clientType, setClientType] = useState<"persona_moral" | "fisica_empresarial" | "fisica" | "sin_sat">(client?.type || "fisica");
+  const [openSections, setOpenSections] = useState<string[]>(["datos-basicos"]);
   // The customer's own legal representative will receive LEG-10 OTP; never
   // substitute the Broker's business contact or personal email.
   const [clientRepresentativeName,setClientRepresentativeName]=useState<string>(
@@ -460,13 +349,17 @@ export default function ClientForm({ client, onSuccess }: ClientFormProps) {
   const isLoading = createMutation.isPending || updateMutation.isPending;
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>{client ? "Editar Cliente" : "Nuevo Cliente"}</CardTitle>
+    <Card className="border-border/80 shadow-sm max-w-5xl mx-auto" data-testid="client-advanced-profile-form">
+      <CardHeader className="p-4 sm:p-6 border-b bg-muted/20">
+        <CardTitle className="text-xl">{client ? "Completar o editar perfil" : "Nuevo Cliente"}</CardTitle>
+        <p className="text-sm text-muted-foreground">Completa los datos que conozcas. No necesitas un expediente completo para conservar al prospecto.</p>
       </CardHeader>
-      <CardContent>
+      <CardContent className="p-4 sm:p-6">
         <Form {...form}>
-          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
+          <form onSubmit={form.handleSubmit(onSubmit, () => {
+            setOpenSections(["datos-basicos", "perfilamiento"]);
+            toast({ title: "Revisa los campos señalados", description: "Completa solo los detalles condicionados por tus respuestas.", variant: "destructive" });
+          })} className="space-y-6">
             {/* Client Type Selection */}
             <div className="space-y-2">
               <label className="text-sm font-medium text-gray-900">Tipo de Cliente</label>
@@ -480,12 +373,12 @@ export default function ClientForm({ client, onSuccess }: ClientFormProps) {
                     form.setValue("ingresoAnual", "no-disponible", { shouldValidate: true });
                   }
                 }}>
-                <TabsList className="grid w-full grid-cols-2 sm:grid-cols-4 h-auto bg-transparent gap-1">
+                <TabsList className="grid w-full grid-cols-2 sm:grid-cols-4 h-auto bg-muted/30 gap-1 p-1 rounded-lg">
                   <TabsTrigger 
                     value="persona_moral" 
                     data-testid="tab-persona-moral" 
                     disabled={!!client} 
-                    className="text-xs sm:text-sm py-2 data-[state=active]:bg-blue-600 data-[state=active]:text-white data-[state=inactive]:bg-blue-100 data-[state=inactive]:text-blue-700 data-[state=inactive]:hover:bg-blue-200 border border-blue-300 rounded-md transition-colors"
+                    className="text-xs sm:text-sm py-2 data-[state=active]:border-blue-500 data-[state=active]:bg-blue-50 data-[state=active]:text-blue-800 border-blue-200 bg-background hover:bg-blue-50 rounded-md transition-colors"
                   >
                     Persona Moral
                   </TabsTrigger>
@@ -493,7 +386,7 @@ export default function ClientForm({ client, onSuccess }: ClientFormProps) {
                     value="fisica_empresarial" 
                     data-testid="tab-pfae" 
                     disabled={!!client} 
-                    className="text-xs sm:text-sm py-2 data-[state=active]:bg-green-600 data-[state=active]:text-white data-[state=inactive]:bg-green-100 data-[state=inactive]:text-green-700 data-[state=inactive]:hover:bg-green-200 border border-green-300 rounded-md transition-colors"
+                    className="text-xs sm:text-sm py-2 data-[state=active]:border-violet-500 data-[state=active]:bg-violet-50 data-[state=active]:text-violet-800 border-violet-200 bg-background hover:bg-violet-50 rounded-md transition-colors"
                   >
                     PFAE
                   </TabsTrigger>
@@ -501,7 +394,7 @@ export default function ClientForm({ client, onSuccess }: ClientFormProps) {
                     value="fisica" 
                     data-testid="tab-fisica" 
                     disabled={!!client} 
-                    className="text-xs sm:text-sm py-2 data-[state=active]:bg-purple-600 data-[state=active]:text-white data-[state=inactive]:bg-purple-100 data-[state=inactive]:text-purple-700 data-[state=inactive]:hover:bg-purple-200 border border-purple-300 rounded-md transition-colors"
+                    className="text-xs sm:text-sm py-2 data-[state=active]:border-emerald-500 data-[state=active]:bg-emerald-50 data-[state=active]:text-emerald-800 border-emerald-200 bg-background hover:bg-emerald-50 rounded-md transition-colors"
                   >
                     Persona Física
                   </TabsTrigger>
@@ -509,7 +402,7 @@ export default function ClientForm({ client, onSuccess }: ClientFormProps) {
                     value="sin_sat" 
                     data-testid="tab-sin-sat" 
                     disabled={!!client} 
-                    className="text-xs sm:text-sm py-2 data-[state=active]:bg-gray-600 data-[state=active]:text-white data-[state=inactive]:bg-gray-100 data-[state=inactive]:text-gray-700 data-[state=inactive]:hover:bg-gray-200 border border-gray-300 rounded-md transition-colors"
+                    className="text-xs sm:text-sm py-2 data-[state=active]:border-slate-500 data-[state=active]:bg-slate-100 data-[state=active]:text-slate-800 border-slate-200 bg-background hover:bg-slate-50 rounded-md transition-colors"
                   >
                     Sin SAT
                   </TabsTrigger>
@@ -1298,25 +1191,15 @@ export default function ClientForm({ client, onSuccess }: ClientFormProps) {
             
             {/* Perfilamiento Tab */}
             <div className="space-y-6">
-              <Tabs defaultValue="datos-basicos" className="w-full">
-                <TabsList className="grid w-full grid-cols-2 bg-transparent gap-2 p-1">
-                  <TabsTrigger 
-                    value="datos-basicos"
-                    className="data-[state=active]:bg-primary data-[state=active]:text-white data-[state=inactive]:bg-sky-100 data-[state=inactive]:text-sky-700 data-[state=inactive]:hover:bg-sky-200 border border-sky-300 rounded-md transition-colors font-medium"
-                  >
-                    <User className="w-4 h-4 mr-2" aria-hidden="true" />
-                    Datos Básicos
-                  </TabsTrigger>
-                  <TabsTrigger 
-                    value="perfilamiento"
-                    className="data-[state=active]:bg-primary data-[state=active]:text-white data-[state=inactive]:bg-teal-100 data-[state=inactive]:text-teal-700 data-[state=inactive]:hover:bg-teal-200 border border-teal-300 rounded-md transition-colors font-medium"
-                  >
-                    <TrendingUp className="w-4 h-4 mr-2" aria-hidden="true" />
-                    Perfilamiento
-                  </TabsTrigger>
-                </TabsList>
-                
-                <TabsContent value="datos-basicos" className="space-y-4">
+              <Accordion type="multiple" value={openSections} onValueChange={setOpenSections} className="space-y-3">
+                <AccordionItem value="datos-basicos" className="rounded-lg border border-border bg-card px-4 sm:px-5" data-testid="profile-section-basics">
+                  <AccordionTrigger className="text-left hover:no-underline gap-3">
+                    <span className="space-y-1">
+                      <span className="flex items-center gap-2 font-semibold"><User className="h-4 w-4 text-primary" /> Datos del cliente y contacto</span>
+                      <span className="block text-xs font-normal text-muted-foreground">Domicilio, RFC y datos de contacto</span>
+                    </span>
+                  </AccordionTrigger>
+                  <AccordionContent className="space-y-4">
                   {/* Alerta Inteligente de Check-Duplicates y Gobernanza Comercial */}
                   <CommercialDuplicateAlert result={duplicateCheckResult} className="mb-2" />
 
@@ -1538,9 +1421,16 @@ export default function ClientForm({ client, onSuccess }: ClientFormProps) {
                       </FormItem>
                     )}
                   />
-                </TabsContent>
-                
-                <TabsContent value="perfilamiento" className="space-y-6">
+                  </AccordionContent>
+                </AccordionItem>
+                <AccordionItem value="perfilamiento" className="rounded-lg border border-border bg-card px-4 sm:px-5" data-testid="profile-section-financial">
+                  <AccordionTrigger className="text-left hover:no-underline gap-3">
+                    <span className="space-y-1">
+                      <span className="flex items-center gap-2 font-semibold"><TrendingUp className="h-4 w-4 text-primary" /> Información financiera y perfilamiento</span>
+                      <span className="block text-xs font-normal text-muted-foreground">Ingresos, créditos, buró, garantías y otros datos que pueden mejorar el matching</span>
+                    </span>
+                  </AccordionTrigger>
+                  <AccordionContent className="space-y-6">
                   <Card className="border-primary/20">
                     <CardHeader className="pb-2">
                       <CardTitle className="text-lg flex items-center gap-2">
@@ -4153,11 +4043,15 @@ export default function ClientForm({ client, onSuccess }: ClientFormProps) {
                       )}
                     </CardContent>
                   </Card>
-                </TabsContent>
-              </Tabs>
+                  </AccordionContent>
+                </AccordionItem>
+              </Accordion>
+              <p className="flex items-start gap-2 text-xs text-muted-foreground mt-3"><Info className="h-4 w-4 shrink-0" />
+                El matching depende de condiciones publicadas por cada financiera. Si falta información, se indicará como insuficiente; no se inventarán coincidencias.
+              </p>
             </div>
 
-            <div className="flex justify-end space-x-4">
+            <div className="sticky bottom-0 z-10 flex flex-wrap justify-end gap-3 border-t bg-background/95 backdrop-blur py-3 px-1 shadow-sm">
               <Button 
                 type="button" 
                 variant="outline" 

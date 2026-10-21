@@ -329,3 +329,13 @@ Sin cambiar la decisión histórica COM-28/LEG-17: se añadió instrumento de co
 - Para **Broker** corresponde **Convenio de Colaboración** y **Reglas de la Red**, que es un documento legal y **no** el módulo de administración de la red. **Reglas Master Broker** solo corresponde al Master. El módulo `/red-brokers` se mantiene inaccesible para Broker individual con el RBAC vigente.
 - Los enlaces contractuales para Broker quedan concentrados en esa tarjeta y se separan de los enlaces públicos a Términos y Aviso en el historial, evitando confusión. No se cambian aceptaciones, versiones, hashes ni permisos.
 - Cambios pendientes de verificación puntual en Staging para PR #12; ningún merge o cambio en Producción autorizado.
+
+
+### Decisión postlanzamiento — UX de Alta y Perfil del Cliente (21-oct-2026, PR independiente)
+- **Alta rápida** en `Clientes > Nuevo cliente > Crédito Empresarial`: guardar prospecto con tipo, nombre/razón social y teléfono **o** correo (RFC opcional; Sin SAT no exige registro fiscal). No pedir buró, garantías, estado civil, educación ni documentos antes de existir una operación concreta.
+- **Colores normalizados en toda la experiencia de clientes:** PM azul, PFAE violeta, PF verde y Sin SAT gris. Colores denotan solo tipo de cliente, nunca calificación crediticia.
+- **Duplicados:** consulta previa de `/api/clients/check-duplicates` obligatoria al guardar; no crear ficha adicional cuando la consulta identifica un cliente existente. Solo ofrecer acceso al expediente cuando está en el mismo tenant. Backend conserva autorización, asociación al broker, aislamiento y formalización previas. No mutar vínculos comerciales en el formulario.
+- **Después de guardar:** navegar al expediente del cliente, donde puede completarse el perfil según surja una operación.
+- **Perfilamiento incremental:** conservar el editor existente y el histórico, pero usar acordeones independientes de Datos básicos / Información financiera; errores abren ambas secciones y acciones de guardado permanecen accesibles al bajar. Eliminar bloqueos de validación global de PF por datos demográficos/financieros desconocidos, **manteniendo** validaciones condicionadas por respuestas afirmativas y verificaciones existentes del backend.
+- **Ayuda de datos complementarios:** mostrar categorías ausentes dentro del expediente para facilitar el enriquecimiento voluntario; no declarar requisitos de una financiera concreta, probabilidades de aprobación ni porcentajes ficticios antes de contar con condiciones publicadas.
+- Cambios limitados a UX y validación de formulario; sin alteraciones a datos, tablas, comisiones, financieras, ofertas, matching o protecciones comerciales. **No fusionar ni publicar a Producción sin autorización expresa.**

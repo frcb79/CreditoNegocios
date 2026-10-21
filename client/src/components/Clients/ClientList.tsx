@@ -28,6 +28,7 @@ import {
   Briefcase
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { CLIENT_TYPE_PRESENTATION, isClientProfileType } from "@/lib/clientTypePresentation";
 
 interface ClientListProps {
   onSelectClient: (client: Client) => void;
@@ -180,36 +181,15 @@ export default function ClientList({ onSelectClient, onNewClient }: ClientListPr
   };
 
   const getTypeBadge = (client: Client) => {
-    switch (client.type) {
-      case 'persona_moral':
-        return {
-          label: 'PM',
-          title: 'Persona Moral',
-          badgeClass: 'bg-blue-50 text-blue-700 border-blue-200/80',
-          dotClass: 'bg-blue-500'
-        };
-      case 'fisica_empresarial':
-        return {
-          label: 'PFAE',
-          title: 'Persona Física con Actividad Empresarial',
-          badgeClass: 'bg-purple-50 text-purple-700 border-purple-200/80',
-          dotClass: 'bg-purple-500'
-        };
-      case 'fisica':
-        return {
-          label: 'PF',
-          title: 'Persona Física',
-          badgeClass: 'bg-emerald-50 text-emerald-700 border-emerald-200/80',
-          dotClass: 'bg-emerald-500'
-        };
-      default:
-        return {
-          label: 'Sin SAT',
-          title: 'Sin registro SAT',
-          badgeClass: 'bg-slate-50 text-slate-700 border-slate-200/80',
-          dotClass: 'bg-slate-400'
-        };
-    }
+    const meta = isClientProfileType(client.type)
+      ? CLIENT_TYPE_PRESENTATION[client.type]
+      : CLIENT_TYPE_PRESENTATION.sin_sat;
+    return {
+      label: meta.short,
+      title: meta.description,
+      badgeClass: meta.badgeClass,
+      dotClass: meta.dotClass,
+    };
   };
 
   if (clientsLoading) {
