@@ -13,8 +13,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import CurrencyInput from "@/components/ui/currency-input";
-import { User, TrendingUp, Trash2, Plus, Loader2 } from "lucide-react";
+import { User, TrendingUp, Trash2, Plus, Loader2, Info } from "lucide-react";
 import { CommercialDuplicateAlert, type DuplicateCheckResult } from "@/components/Commercial/CommercialDuplicateAlert";
 import { ANNUAL_INCOME_OPTIONS, getAnnualIncomeLabel } from "@shared/annualIncome";
 
@@ -113,128 +114,15 @@ const formSchema = updatedInsertClientSchema.extend({
   }
   
 
-  // Validaciones específicas para Persona Física
+  // Perfilamiento incremental: solo exigir detalles cuando se declara una condición.
+  // No bloquear la actualización por datos demográficos o financieros aún desconocidos.
   if (data.type === "fisica") {
-    if (!data.estadoCivil) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: "Estado civil es requerido para Persona Física",
-        path: ["estadoCivil"],
-      });
-    }
-    if (!data.nivelEducativo) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: "Nivel de educación es requerido para Persona Física",
-        path: ["nivelEducativo"],
-      });
-    }
-    if (!data.tipoVivienda) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: "Tipo de vivienda es requerido para Persona Física",
-        path: ["tipoVivienda"],
-      });
-    }
-    if (!data.antiguedadLaboral) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: "Antigüedad laboral es requerida para Persona Física",
-        path: ["antiguedadLaboral"],
-      });
-    }
-    if (!data.puesto) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: "Puesto es requerido para Persona Física",
-        path: ["puesto"],
-      });
-    }
-    if (data.dependientesEconomicos === undefined || data.dependientesEconomicos === null || data.dependientesEconomicos === '') {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: "Número de dependientes económicos es requerido para Persona Física",
-        path: ["dependientesEconomicos"],
-      });
-    }
-    // Validaciones de perfilamiento para Persona Física
-    if (!data.ingresoMensualPromedioComprobables) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: "Ingreso mensual comprobable es requerido",
-        path: ["ingresoMensualPromedioComprobables"],
-      });
-    }
-    if (!data.ingresoMensualPromedioNoComprobables) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: "Ingreso mensual no comprobable es requerido",
-        path: ["ingresoMensualPromedioNoComprobables"],
-      });
-    }
-    if (!data.gastosFijosMensualesPromedio) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: "Gastos fijos mensuales es requerido",
-        path: ["gastosFijosMensualesPromedio"],
-      });
-    }
-    if (!data.buroPersonaFisica) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: "Información del buró de crédito persona física es requerida",
-        path: ["buroPersonaFisica"],
-      });
-    }
-    if (!data.atrasosDeudasBuro) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: "Información sobre atrasos/deudas en buró es requerida",
-        path: ["atrasosDeudasBuro"],
-      });
-    }
     if (data.atrasosDeudasBuro === "si" && !data.atrasosDeudasBuroDetalles) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: "Detalles de atrasos/deudas son requeridos cuando se selecciona 'SI'",
-        path: ["atrasosDeudasBuroDetalles"],
-      });
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["atrasosDeudasBuroDetalles"], message: "Describe los atrasos señalados" });
     }
-    if (!data.cuentaConGarantiaFisica) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: "Información sobre garantía es requerida",
-        path: ["cuentaConGarantiaFisica"],
-      });
-    }
-    if (!data.tieneAvalObligadoSolidarioFisica) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: "Información sobre aval/obligado solidario es requerida",
-        path: ["tieneAvalObligadoSolidarioFisica"],
-      });
-    }
-    if (!data.creditosVigentes) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: "Información sobre créditos vigentes es requerida",
-        path: ["creditosVigentes"],
-      });
-    }
-    // Validaciones condicionales para garantía prendaria - Persona Física
-    if (data.cuentaConGarantiaFisica === "prendaria" && (!data.garantiaFisicaDetalles || Object.keys(data.garantiaFisicaDetalles).length === 0)) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: "Detalles de garantía prendaria son requeridos",
-        path: ["garantiaFisicaDetalles"],
-      });
-    }
-    if (data.cuentaConGarantiaFisica === "hipotecaria" && (!data.garantiaFisicaDetalles || Object.keys(data.garantiaFisicaDetalles).length === 0)) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: "Detalles de garantía hipotecaria son requeridos",
-        path: ["garantiaFisicaDetalles"],
-      });
+    if ((data.cuentaConGarantiaFisica === "prendaria" || data.cuentaConGarantiaFisica === "hipotecaria") &&
+        (!data.garantiaFisicaDetalles || Object.keys(data.garantiaFisicaDetalles).length === 0)) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["garantiaFisicaDetalles"], message: "Describe la garantía seleccionada" });
     }
   }
 });
@@ -243,6 +131,7 @@ export default function ClientForm({ client, onSuccess }: ClientFormProps) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [clientType, setClientType] = useState<"persona_moral" | "fisica_empresarial" | "fisica" | "sin_sat">(client?.type || "fisica");
+  const [openSections, setOpenSections] = useState<string[]>(["datos-basicos"]);
   // The customer's own legal representative will receive LEG-10 OTP; never
   // substitute the Broker's business contact or personal email.
   const [clientRepresentativeName,setClientRepresentativeName]=useState<string>(
