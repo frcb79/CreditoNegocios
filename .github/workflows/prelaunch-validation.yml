@@ -103,6 +103,7 @@ jobs:
             tests/unit/broker-legal-ux-postlaunch.test.ts
             tests/unit/admin-legal-evidence-http.test.ts
             tests/unit/mortgage-family-consolidation.test.ts
+            tests/unit/leasing-postlaunch.test.ts
           )
           selected=()
           for i in "${!tests[@]}"; do
