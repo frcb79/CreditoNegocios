@@ -29,10 +29,11 @@ const nameOf = (client: Client) => client.type === "persona_moral"
 interface LeasingLeadModalProps {
   isOpen: boolean;
   onClose: () => void;
+  existingClient?: Client | null;
   onSuccess?: () => void;
 }
 
-export default function LeasingLeadModal({ isOpen, onClose, onSuccess }: LeasingLeadModalProps) {
+export default function LeasingLeadModal({ isOpen, onClose, existingClient, onSuccess }: LeasingLeadModalProps) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [fields, setFields] = useState<Fields>(empty);
@@ -40,8 +41,12 @@ export default function LeasingLeadModal({ isOpen, onClose, onSuccess }: Leasing
   const [formError, setFormError] = useState("");
   const { data: clients = [] } = useQuery<Client[]>({ queryKey: ["/api/clients"], enabled: isOpen });
   useEffect(() => {
-    if (isOpen) { setFields({ ...empty }); setUseExisting(false); setFormError(""); }
-  }, [isOpen]);
+    if (isOpen) {
+      setFields({ ...empty, clientId: existingClient?.id || "" });
+      setUseExisting(Boolean(existingClient?.id));
+      setFormError("");
+    }
+  }, [isOpen, existingClient?.id]);
 
   const put = (key: string, value: string) => { setFields(prev => ({ ...prev, [key]: value })); setFormError(""); };
   const submit = useMutation({
@@ -93,7 +98,9 @@ export default function LeasingLeadModal({ isOpen, onClose, onSuccess }: Leasing
     setFormError("");
     submit.mutate(valid.data);
   };
-  const selectedClient = clients.find(c => c.id === fields.clientId);
+  const selectedClient = existingClient?.id === fields.clientId
+    ? existingClient
+    : clients.find(c => c.id === fields.clientId);
   const total = Number(fields.unitValue) * Number(fields.quantity);
   const vehicle = fields.assetType === "vehiculo";
   const field = (key: string, title: string, placeholder?: string, type: string = "text", required = false) => (
