@@ -4,6 +4,7 @@ on:
     branches:
       - 'fix/prelaunch-p0-gpt6-*'
       - 'integration/phase-1a1-base-segura'
+      - 'feat/client-onboarding-ux-postlaunch'
   workflow_dispatch:
 concurrency:
   group: prelaunch-${{ github.ref }}
