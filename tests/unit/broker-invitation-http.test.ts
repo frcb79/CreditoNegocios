@@ -65,15 +65,24 @@ describe("SEC-INVITES: bulk preview and explicit send routes",()=>{
     r=await request(app).post("/api/broker-invitations/bulk/preview").attach("file",file,"carga.xlsx");
     expect(r.status).toBe(403);
   });
-  it("refuses a batch with no configured coupon before sending",async()=>{
+  it("accepts a batch without coupons, even when no default coupon is configured",async()=>{
     user=superAdmin;
     delete process.env.INVITATION_WELCOME_PROMO_CODE;
     const r=await request(app).post("/api/broker-invitations/bulk/preview")
       .attach("file",template(),"carga.xlsx");
     expect(r.status).toBe(200);
+    expect(r.body.ready).toBe(true);
+    expect(r.body.errors).toHaveLength(0);
+    process.env.INVITATION_WELCOME_PROMO_CODE = courtesyCode;
+  });
+  it("rejects an invalid explicitly provided coupon before any invitation",async()=>{
+    user=superAdmin;
+    const r=await request(app).post("/api/broker-invitations/bulk/preview")
+      .field("promoCode","NOEXISTE12")
+      .attach("file",template(),"carga.xlsx");
+    expect(r.status).toBe(200);
     expect(r.body.ready).toBe(false);
     expect(r.body.errors.some((x:any)=>x.field==="codigo_promocional")).toBe(true);
-    process.env.INVITATION_WELCOME_PROMO_CODE = courtesyCode;
   });
   it("previews valid invites without creating accounts",async()=>{
     user=superAdmin;

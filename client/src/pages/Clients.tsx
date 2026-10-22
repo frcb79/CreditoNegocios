@@ -5,8 +5,10 @@ import MainLayout from "@/components/MainLayout";
 import Header from "@/components/Header";
 import ClientList from "@/components/Clients/ClientList";
 import ClientForm from "@/components/Clients/ClientForm";
+import QuickClientForm from "@/components/Clients/QuickClientForm";
 import NewOpportunityTypeModal from "@/components/Modals/NewOpportunityTypeModal";
 import MortgageLeadModal from "@/components/Modals/MortgageLeadModal";
+import LeasingLeadModal from "@/components/Modals/LeasingLeadModal";
 import { Client } from "@shared/schema";
 
 type ViewMode = "list" | "form";
@@ -16,6 +18,7 @@ export default function Clients() {
   const [editingClient, setEditingClient] = useState<Client | null>(null);
   const [isTypeModalOpen, setIsTypeModalOpen] = useState(false);
   const [isMortgageModalOpen, setIsMortgageModalOpen] = useState(false);
+  const [isLeasingModalOpen, setIsLeasingModalOpen] = useState(false);
   const [, setLocation] = useLocation();
   
   // Check URL for edit query param
@@ -69,14 +72,28 @@ export default function Clients() {
         )}
 
         {viewMode === "form" && (
-          <ClientForm 
-            client={editingClient}
-            onSuccess={handleFormSuccess}
-          />
+          editingClient ? (
+            <ClientForm
+              client={editingClient}
+              onSuccess={handleFormSuccess}
+            />
+          ) : (
+            <QuickClientForm
+              onSaved={(savedClient) => {
+                setViewMode("list");
+                setLocation(`/clientes/${savedClient.id}`);
+              }}
+              onExisting={(existingClientId) => {
+                setViewMode("list");
+                setLocation(`/clientes/${existingClientId}`);
+              }}
+              onCancel={() => setViewMode("list")}
+            />
+          )
         )}
       </main>
 
-      {/* Modal para bifurcación: Crédito Empresarial vs Hipotecario Vivienda */}
+      {/* Opciones de alta: Crédito Empresarial / Hipotecario Vivienda / Arrendamiento */}
       <NewOpportunityTypeModal
         isOpen={isTypeModalOpen}
         onClose={() => setIsTypeModalOpen(false)}
@@ -87,6 +104,15 @@ export default function Clients() {
         onSelectHipotecario={() => {
           setIsMortgageModalOpen(true);
         }}
+        onSelectArrendamiento={() => {
+          setIsLeasingModalOpen(true);
+        }}
+      />
+
+      <LeasingLeadModal
+        isOpen={isLeasingModalOpen}
+        onClose={() => setIsLeasingModalOpen(false)}
+        onSuccess={() => setViewMode("list")}
       />
 
       {/* Modal unificado para Alta Ágil de Hipotecario Vivienda (Camino A) */}

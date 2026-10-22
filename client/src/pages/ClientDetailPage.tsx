@@ -54,12 +54,15 @@ import { useToast } from "@/hooks/use-toast";
 import CreditRequestModal from "@/components/Modals/CreditRequestModal";
 import NewOpportunityTypeModal from "@/components/Modals/NewOpportunityTypeModal";
 import MortgageLeadModal from "@/components/Modals/MortgageLeadModal";
+import LeasingLeadModal from "@/components/Modals/LeasingLeadModal";
 import DocumentUpload from "@/components/Documents/DocumentUpload";
 import { targetStatusConfig, getSubmissionStatusSummary } from "@/lib/statusConfig";
 import { cn } from "@/lib/utils";
 import { CommercialOpportunityList } from "@/components/Commercial/CommercialOpportunityList";
 import { getRelationshipStatusBadge } from "@/components/Commercial/CommercialLabels";
 import { ContextualHelpLink } from "@/components/Help/ContextualHelpLink";
+import ClientProfileGuidance from "@/components/Clients/ClientProfileGuidance";
+import { CLIENT_TYPE_PRESENTATION, isClientProfileType } from "@/lib/clientTypePresentation";
 
 const vigenteFormSchema = z.object({
   tipo: z.string().min(1, "El tipo de crédito es requerido"),
@@ -146,6 +149,7 @@ export default function ClientDetailPage() {
   const [showCreditRequestModal, setShowCreditRequestModal] = useState(false);
   const [showOpportunityTypeModal, setShowOpportunityTypeModal] = useState(false);
   const [showMortgageLeadModal, setShowMortgageLeadModal] = useState(false);
+  const [showLeasingLeadModal, setShowLeasingLeadModal] = useState(false);
   const [showDocumentUploadModal, setShowDocumentUploadModal] = useState(false);
   const [previewDocument, setPreviewDocument] = useState<Document | null>(null);
   const { toast } = useToast();
@@ -297,38 +301,11 @@ export default function ClientDetailPage() {
     : `${client.firstName?.[0]}${client.lastName?.[0]}`;
 
   const getClientTypeBadge = (type: string) => {
-    switch (type) {
-      case 'persona_moral':
-        return {
-          label: 'PM',
-          title: 'Persona Moral',
-          badgeClass: 'bg-blue-50 text-blue-700 border-blue-200/80',
-          dotClass: 'bg-blue-500'
-        };
-      case 'fisica_empresarial':
-        return {
-          label: 'PFAE',
-          title: 'Persona Física con Actividad Empresarial',
-          badgeClass: 'bg-purple-50 text-purple-700 border-purple-200/80',
-          dotClass: 'bg-purple-500'
-        };
-      case 'fisica':
-        return {
-          label: 'PF',
-          title: 'Persona Física',
-          badgeClass: 'bg-emerald-50 text-emerald-700 border-emerald-200/80',
-          dotClass: 'bg-emerald-500'
-        };
-      default:
-        return {
-          label: 'Sin SAT',
-          title: 'Sin registro SAT',
-          badgeClass: 'bg-slate-50 text-slate-700 border-slate-200/80',
-          dotClass: 'bg-slate-400'
-        };
-    }
+    const meta = isClientProfileType(type)
+      ? CLIENT_TYPE_PRESENTATION[type]
+      : CLIENT_TYPE_PRESENTATION.sin_sat;
+    return { label: meta.short, title: meta.description, badgeClass: meta.badgeClass, dotClass: meta.dotClass };
   };
-
   const typeBadgeInfo = getClientTypeBadge(client.type);
 
   return (
@@ -371,6 +348,8 @@ export default function ClientDetailPage() {
       </Header>
         
       <main className="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8 space-y-6">
+        <ClientProfileGuidance client={client} onEdit={() => handleEditClient(client)} />
+
         {/* Institutional Profile Header Card */}
         <div className="bg-white border border-slate-200/80 rounded-xl p-5 shadow-xs">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -2534,6 +2513,16 @@ export default function ClientDetailPage() {
         onClose={() => setShowOpportunityTypeModal(false)}
         onSelectEmpresarial={() => setShowCreditRequestModal(true)}
         onSelectHipotecario={() => setShowMortgageLeadModal(true)}
+        onSelectArrendamiento={() => setShowLeasingLeadModal(true)}
+      />
+
+      <LeasingLeadModal
+        isOpen={showLeasingLeadModal}
+        onClose={() => setShowLeasingLeadModal(false)}
+        existingClient={client}
+        onSuccess={() => {
+          queryClient.invalidateQueries({ queryKey: [`/api/credit-submissions/client/${clientId}`] });
+        }}
       />
 
       {/* Mortgage Lead Modal (Hipotecario Vivienda - Camino B con existingClient) */}

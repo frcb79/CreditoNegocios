@@ -1,7 +1,7 @@
 import { storage } from "./storage";
 import type { PromoCode } from "../shared/schema";
 
-/** Paid-platform readiness: invitees receive a visible, auditable 12-month courtesy. */
+/** Optional annual courtesy for commercial invitations. The basic access tier remains free. */
 export type AnnualInvitationPromo = {
   code: string;
   name: string;
@@ -27,8 +27,7 @@ export function annualCourtesyExpiry(start: Date): Date {
   return copy;
 }
 
-/** Must be configured in Administration > Benefits or explicitly supplied for an invite.
-    A missing/invalid code blocks dispatch BEFORE creating/sending the invited identity. */
+/** An explicitly requested annual courtesy must be valid before account creation. */
 export async function resolveAnnualInvitationPromo(
   requestedCode: string | null | undefined,
   role: "broker" | "master_broker",
@@ -54,4 +53,22 @@ export async function resolveAnnualInvitationPromo(
     throw new InvitationPromoError(422, "El cupón no es compatible con el rol invitado.");
   }
   return { id: promo.id, code: promo.code, name: promo.name, durationMonths: 12 };
+}
+
+/** A coupon is never silently assigned from the environment; invitation mode is explicit. */
+export async function resolveOptionalInvitationPromo(
+  requestedCode: string | null | undefined,
+  role: "broker" | "master_broker",
+  promoMode?: "none" | "annual_courtesy",
+): Promise<AnnualInvitationPromo | null> {
+  const code = (requestedCode || "").trim();
+  if (promoMode === "none") {
+    if (code) throw new InvitationPromoError(422, "Seleccionaste Sin cupón, pero incluiste un código.");
+    return null;
+  }
+  if (promoMode === "annual_courtesy") {
+    return resolveAnnualInvitationPromo(code, role);
+  }
+  // Older callers may still submit a code without a mode.
+  return code ? resolveAnnualInvitationPromo(code, role) : null;
 }

@@ -4,6 +4,7 @@ on:
     branches:
       - 'fix/prelaunch-p0-gpt6-*'
       - 'integration/phase-1a1-base-segura'
+      - 'release/brokers-leasing-clients-20261022'
   workflow_dispatch:
 concurrency:
   group: prelaunch-${{ github.ref }}
@@ -88,6 +89,7 @@ jobs:
             tests/unit/submission-status-display.test.ts
             tests/unit/dashboard-origin-visibility.test.ts
             tests/unit/client-list-visibility.test.ts
+            tests/unit/client-onboarding-ux-postlaunch.test.ts
             tests/unit/network-transitions-safety.test.ts
             tests/unit/client-credit-origin-list.test.ts
             tests/unit/credit-document-http-authz.test.ts
@@ -103,6 +105,7 @@ jobs:
             tests/unit/broker-legal-ux-postlaunch.test.ts
             tests/unit/admin-legal-evidence-http.test.ts
             tests/unit/mortgage-family-consolidation.test.ts
+            tests/unit/leasing-postlaunch.test.ts
           )
           selected=()
           for i in "${!tests[@]}"; do

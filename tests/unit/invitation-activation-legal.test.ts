@@ -23,6 +23,8 @@ describe("P0 - Invitación con activación y evidencia legal atómica", () => {
     expect(await s.getUserByResetToken(token)).toBeUndefined();
     await expect(s.completeInvitationActivation(params(user,token))).rejects.toThrow();
     expect((await s.getLegalAcceptancesByUser(user.id))).toHaveLength(2);
+    expect((await s.getUser(user.id))?.accessStatus).toBe("free");
+    expect(await s.getPromoRedemptions({userId:user.id})).toHaveLength(0);
   });
   it("activa una cortesía anual con código registrado y un solo canje, sin perder evidencias legales", async () => {
     const s = new MemStorage();
