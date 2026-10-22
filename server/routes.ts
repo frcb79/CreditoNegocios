@@ -150,7 +150,7 @@ import { commercialHelpService } from "./commercialHelpService";
 import { registerBrokerNetworkTransitionRoutes } from "./brokerNetworkTransitionRoutes";
 import { createBrokerWithOrganization } from "./brokerNetworkTransitionService";
 import { dispatchBrokerInvitation, BrokerInvitationError, validateInvitationTransport } from "./brokerInvitationDispatch";
-import { resolveAnnualInvitationPromo } from "./invitationWelcomePromo";
+import { resolveOptionalInvitationPromo } from "./invitationWelcomePromo";
 import { changeUserBenefit, userBenefitHistory, BenefitError } from "./promoBenefitManagement";
 import { parseBrokerInvitationExcel, generateBrokerInvitationExcelTemplate } from "./brokerInvitationBulk";
 
@@ -3134,13 +3134,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ message: "El email ya está registrado en el sistema" });
       }
       
-      // The legacy administrative creation path must follow the same 12-month
-      // invitation-courtesy contract as the single and Excel invitation flows.
-      // Do not send a real Broker/Master invitation without a valid coupon.
+      // Invitations without a coupon keep the standard free-access status.
+      // A requested courtesy is checked before creating the account.
       const annualCourtesy = isCommercialInvite
-        ? await resolveAnnualInvitationPromo(
+        ? await resolveOptionalInvitationPromo(
             typeof req.body?.promoCode === "string" ? req.body.promoCode : null,
             userData.role as "broker" | "master_broker",
+            req.body?.promoMode === "annual_courtesy" ? "annual_courtesy" : undefined,
           )
         : null;
       const activationSecret = isCommercialInvite
@@ -3162,7 +3162,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             resetTokenExpiry: activationExpires,
             profileData: {
               ...((userData.profileData && typeof userData.profileData === "object") ? userData.profileData as object : {}),
-              invitationPromoCode: annualCourtesy!.code,
+              invitationPromoCode: annualCourtesy?.code ?? null,
             },
             isActive: userData.isActive !== false,
           })).user
@@ -3171,7 +3171,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (isCommercialInvite && newUser.email && activationSecret) {
         const fullName = [newUser.firstName, newUser.lastName].filter(Boolean).join(" ") || undefined;
         const delivery = await sendAccountInvitationEmail(newUser.email, activationSecret,
-          userData.role as "broker" | "master_broker", fullName, undefined, annualCourtesy!);
+          userData.role as "broker" | "master_broker", fullName, undefined, annualCourtesy ?? undefined);
         return res.status(delivery.success ? 201 : 202).json({
           ...publicUserForManagement(newUser),
           invitationSent: delivery.success,
@@ -8184,6 +8184,7 @@ function maskCLABE(clabe?: string | null): string | null {
         message: z.string().trim().max(500).optional(),
         masterBrokerId: z.string().trim().optional(),
         promoCode: z.string().trim().max(80).optional(),
+        promoMode: z.enum(["none", "annual_courtesy"]).optional(),
         role: z.enum(["broker", "master_broker"]).default("broker"),
       }).safeParse(req.body);
       if (!input.success) return res.status(400).json({ message: "Datos de invitación inválidos." });
@@ -8244,10 +8245,12 @@ function maskCLABE(clabe?: string | null): string | null {
       const masterEmails = new Set(preview.rows.filter(r=>r.role==="master_broker").map(r=>r.email));
       for (const row of preview.rows) {
         try {
-          const courtesy = await resolveAnnualInvitationPromo(
+          const courtesy = await resolveOptionalInvitationPromo(
             row.promoCode || (typeof req.body?.promoCode === "string" ? req.body.promoCode : null), row.role);
-          const demand = couponDemand.get(courtesy.id) || { count: 0, row: row.row };
-          couponDemand.set(courtesy.id, { ...demand, count: demand.count + 1 });
+          if (courtesy) {
+            const demand = couponDemand.get(courtesy.id) || { count: 0, row: row.row };
+            couponDemand.set(courtesy.id, { ...demand, count: demand.count + 1 });
+          }
         } catch (e: any) {
           preview.errors.push({ row: row.row, field: "codigo_promocional", message: e.message || "Cupón inválido" });
         }
@@ -8288,10 +8291,12 @@ function maskCLABE(clabe?: string | null): string | null {
       const batchMasters = new Set(parsed.rows.filter(r=>r.role==="master_broker").map(r=>r.email));
       for(const row of parsed.rows) {
         try {
-          const coupon = await resolveAnnualInvitationPromo(
+          const coupon = await resolveOptionalInvitationPromo(
             row.promoCode || (typeof req.body?.promoCode === "string" ? req.body.promoCode : null), row.role);
-          const demand = couponDemand.get(coupon.id) || { count: 0, row: row.row };
-          couponDemand.set(coupon.id, { ...demand, count: demand.count + 1 });
+          if (coupon) {
+            const demand = couponDemand.get(coupon.id) || { count: 0, row: row.row };
+            couponDemand.set(coupon.id, { ...demand, count: demand.count + 1 });
+          }
         } catch (error: any) {
           errors.push({row:row.row,field:"codigo_promocional",message:error.message || "Cupón inválido"});
         }

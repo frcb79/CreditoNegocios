@@ -83,7 +83,7 @@ export default function BulkBrokerInvitationModal(props:{isOpen:boolean;onClose:
           </Button>
           <div className="space-y-1">
             <label htmlFor="bulk-annual-courtesy" className="text-xs font-medium">
-              Cupón anual para todo el lote (12 meses sin costo)
+              Cupón anual para todo el lote (opcional)
             </label>
             <Input id="bulk-annual-courtesy" value={batchPromoCode}
               onChange={event => {setBatchPromoCode(event.target.value.toUpperCase());setPreview(null);setResult(null);setConfirmed(false);}}
@@ -91,7 +91,7 @@ export default function BulkBrokerInvitationModal(props:{isOpen:boolean;onClose:
             <p className="text-xs text-muted-foreground">
               Se aplicará a todas las invitaciones, salvo que una fila del Excel tenga
               un codigo_promocional diferente. Puedes usar códigos individuales por fila.
-              No se enviará nada si falta un código anual válido.
+              Si no indicas ningún cupón, se enviarán invitaciones sin promoción. Los códigos indicados deben estar activos y vigentes.
             </p>
           </div>
           <Input type="file" accept=".xlsx" aria-label="Archivo de invitaciones" data-testid="input-bulk-invites"
@@ -117,7 +117,7 @@ export default function BulkBrokerInvitationModal(props:{isOpen:boolean;onClose:
               {preview.rows.map(row=><div key={row.row} className="p-2 text-xs border-b">
                 Fila {row.row}: {row.firstName} {row.lastName} · {row.email} · {row.role==="master_broker"?"Master Broker":"Broker"}
                 {row.masterEmail&&<> · Master: {row.masterEmail}</>}
-                <span> · Cupón: {row.promoCode || batchPromoCode || "Predeterminado configurado"}</span>
+                <span> · Cupón: {row.promoCode || batchPromoCode || "Sin cupón"}</span>
               </div>)}
             </div>
             {preview.ready&&<label className="flex items-start gap-2 text-sm">

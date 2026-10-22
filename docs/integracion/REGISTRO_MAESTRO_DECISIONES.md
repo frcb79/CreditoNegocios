@@ -349,3 +349,12 @@ Sin cambiar la decisión histórica COM-28/LEG-17: se añadió instrumento de co
 - **Perfilamiento incremental:** conservar el editor existente y el histórico, pero usar acordeones independientes de Datos básicos / Información financiera; errores abren ambas secciones y acciones de guardado permanecen accesibles al bajar. Eliminar bloqueos de validación global de PF por datos demográficos/financieros desconocidos, **manteniendo** validaciones condicionadas por respuestas afirmativas y verificaciones existentes del backend.
 - **Ayuda de datos complementarios:** mostrar categorías ausentes dentro del expediente para facilitar el enriquecimiento voluntario; no declarar requisitos de una financiera concreta, probabilidades de aprobación ni porcentajes ficticios antes de contar con condiciones publicadas.
 - Cambios limitados a UX y validación de formulario; sin alteraciones a datos, tablas, comisiones, financieras, ofertas, matching o protecciones comerciales. **No fusionar ni publicar a Producción sin autorización expresa.**
+
+### Decisión operativa 2026-10-22 — Invitaciones sin cupón y modal accesible
+
+- Sustituye únicamente la obligatoriedad de cupón anual de 2026-10-19; la promoción de 12 meses **sigue disponible como opción explícita** para Broker y Master.
+- Invitaciones individuales y masivas sin código promocional se crean y envían sin canje, sin redenciones ni plazo ficticio. Mantienen el estatus de acceso `free` vigente; **no equivale a activar cobros**.
+- Elegir «Cortesía de 12 meses» exige código activo válido (explícito o valor predeterminado configurado). Los errores deben impedir crear/enviar la invitación; jamás aceptar silenciosamente un código inválido.
+- Reenvíos sin cupón no heredan automáticamente cortesías pendientes anteriores; el administrador elige expresamente el beneficio. Evidencia legal y firma OTP mantienen la misma operación.
+- El modal de invitación individual limita su altura al viewport, permite desplazamiento interior y conserva acciones visibles.
+- El correo explica promociones únicamente si hay una cortesía efectivamente asignada. No se modifica el contenido legal ni las comisiones.

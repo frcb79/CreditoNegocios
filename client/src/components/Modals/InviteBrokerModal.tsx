@@ -34,6 +34,7 @@ const inviteBrokerSchema = z.object({
   phone: z.string().optional(),
   message: z.string().optional(),
   promoCode: z.string().optional(),
+  promoMode: z.enum(["none", "annual_courtesy"]).default("none"),
   role: z.enum(["broker", "master_broker"]).default("broker"),
 });
 
@@ -59,6 +60,7 @@ export default function InviteBrokerModal({ isOpen, onClose }: InviteBrokerModal
       phone: "",
       message: "",
       promoCode: "",
+      promoMode: "none",
       role: "broker",
     },
   });
@@ -102,13 +104,14 @@ export default function InviteBrokerModal({ isOpen, onClose }: InviteBrokerModal
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="sm:max-w-md">
-        <DialogHeader>
+      <DialogContent className="sm:max-w-md max-h-[90dvh] flex flex-col overflow-hidden">
+        <DialogHeader className="shrink-0">
           <DialogTitle>{isSuperAdmin ? "Invitar Broker o Master Broker" : "Invitar Broker a mi Red"}</DialogTitle>
         </DialogHeader>
 
         <Form {...form}>
-          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+          <form onSubmit={form.handleSubmit(onSubmit)} className="flex flex-col flex-1 min-h-0">
+            <div className="space-y-4 min-h-0 flex-1 overflow-y-auto pr-2">
             {isSuperAdmin && (
               <FormField
                 control={form.control}
@@ -210,7 +213,7 @@ export default function InviteBrokerModal({ isOpen, onClose }: InviteBrokerModal
                 <FormItem>
                   <FormLabel>Mensaje Personal (Opcional)</FormLabel>
                   <FormControl>
-                    <Textarea 
+                    <Textarea rows={2} 
                       placeholder="Te invito a formar parte de mi red de brokers. Podremos colaborar en solicitudes de crédito..."
                       {...field}
                       data-testid="textarea-message"
@@ -221,32 +224,55 @@ export default function InviteBrokerModal({ isOpen, onClose }: InviteBrokerModal
               )}
             />
 
-            <FormField control={form.control} name="promoCode" render={({ field }) => (
+            <FormField control={form.control} name="promoMode" render={({ field }) => (
               <FormItem>
-                <FormLabel>Cupón de cortesía anual</FormLabel>
-                <FormControl>
-                  <Input placeholder="Código de 12 meses gratis" {...field}
-                    value={field.value || ""} data-testid="input-invitation-promo-code" />
-                </FormControl>
-                <p className="text-xs text-muted-foreground">
-                  Puedes asignar un cupón particular por invitación. Si lo dejas vacío se usará
-                  el código anual predeterminado configurado en el servidor; sin un cupón válido no se enviará la invitación.
-                </p>
+                <FormLabel>Beneficio de bienvenida</FormLabel>
+                <Select value={field.value} onValueChange={value => {
+                  field.onChange(value);
+                  if (value === "none") form.setValue("promoCode", "");
+                }}>
+                  <FormControl>
+                    <SelectTrigger data-testid="select-invitation-promo-mode">
+                      <SelectValue placeholder="Seleccionar beneficio" />
+                    </SelectTrigger>
+                  </FormControl>
+                  <SelectContent>
+                    <SelectItem value="none">Sin cupón (acceso gratuito actual)</SelectItem>
+                    <SelectItem value="annual_courtesy">Cortesía de 12 meses con cupón</SelectItem>
+                  </SelectContent>
+                </Select>
                 <FormMessage />
               </FormItem>
             )} />
+            {form.watch("promoMode") === "annual_courtesy" && (
+              <FormField control={form.control} name="promoCode" render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Código de cortesía (12 meses)</FormLabel>
+                  <FormControl>
+                    <Input placeholder="Código activo de 12 meses (o predeterminado)" {...field}
+                      value={field.value || ""} data-testid="input-invitation-promo-code" />
+                  </FormControl>
+                  <p className="text-xs text-muted-foreground">
+                    Si lo dejas vacío se intentará utilizar el cupón anual predeterminado.
+                    Si eliges esta opción, el cupón debe estar activo y vigente.
+                  </p>
+                  <FormMessage />
+                </FormItem>
+              )} />
+            )}
 
             <div className="p-3 bg-primary/5 border border-primary/20 rounded-lg">
               <div className="flex items-center space-x-2.5">
                 <Info className="w-4 h-4 text-primary shrink-0" />
                 <div className="text-sm">
                   <p className="font-semibold text-foreground text-xs">¿Cómo funciona?</p>
-                  <p className="text-xs text-muted-foreground">La persona recibirá un enlace de activación privado de 24 horas y el cupón que le otorga 12 meses sin costo, registrados desde su activación. Nunca enviamos contraseñas por correo.</p>
+                  <p className="text-xs text-muted-foreground">La persona recibirá un enlace privado de activación válido por 24 horas. Solo recibirá una cortesía si seleccionas y validas un cupón. Nunca enviamos contraseñas por correo.</p>
                 </div>
               </div>
             </div>
 
-            <DialogFooter className="gap-2 pt-4 border-t">
+            </div>
+            <DialogFooter className="shrink-0 gap-2 pt-3 mt-3 border-t">
               <Button
                 type="button"
                 variant="outline"
