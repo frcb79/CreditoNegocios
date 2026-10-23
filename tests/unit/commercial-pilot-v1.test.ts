@@ -67,11 +67,11 @@ describe("COM-PILOT-01 — isolated approved-artwork map adaptation", () => {
     expect(pilotIdentityFromProfile(master, { image, approved: true }).logo).toEqual({ image, approved: true });
     expect(pilotIdentityFromProfile(master).displayName).toBe("Grupo Financiero Horizonte Capital");
   });
-  it("mounts pilot in Super Admin ONLY, does not publish nor alter legacy SVG render", () => {
+  it("keeps obsolete pilot isolated from launch UI and retains its non-public behavior", () => {
     const admin = read("client/src/components/Commercial/CommercialResourcesAdmin.tsx");
     const pilot = read("client/src/components/Commercial/CommercialPilotPreview.tsx");
     const adapt = read("client/src/lib/commercialPilotV1.ts");
-    expect(admin).toContain("<CommercialPilotPreview />");
+    expect(admin).not.toContain("<CommercialPilotPreview />");
     expect(pilot).not.toContain("/api/admin/commercial-resources/templates");
     expect(pilot).toContain("checkPilotBackground(file)");
     expect(pilot).toContain("simulateLogoApproval");
