@@ -2,15 +2,17 @@ import { useEffect, useState } from "react";
 import { AlertTriangle, Download } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
-  checkPilotBackground, loadPilotImage, parsePilotGraphicMap, renderPilotGraphic,
+  checkPilotBackground, loadPilotImage, parsePilotGraphicMap, renderPilotGraphic, pilotIdentityFromProfile,
   type PilotGraphicMap, type PilotIdentity
 } from "@/lib/commercialPilotV1";
 
-const DEMO_BROKER: PilotIdentity = {
-  role: "broker", displayName: "María Fernanda López", whatsapp: "55 1234 5678"
+const DEMO_BROKER_PROFILE = {
+  role: "broker" as const, firstName: "María Fernanda", lastName: "López",
+  profileData: { business: { businessPhone: "55 1234 5678" } }
 };
-const DEMO_MASTER: PilotIdentity = {
-  role: "master_broker", displayName: "Grupo Financiero Horizonte Capital", whatsapp: "55 9876 4321"
+const DEMO_MASTER_PROFILE = {
+  role: "master_broker" as const, brandName: "Grupo Financiero Horizonte Capital",
+  profileData: { business: { businessPhone: "55 9876 4321" } }
 };
 
 /**
@@ -34,11 +36,12 @@ export default function CommercialPilotPreview() {
       if (!map || !background) { setPreview(""); return; }
       setWorking(true); setError("");
       try {
-        const base = role === "broker" ? DEMO_BROKER : DEMO_MASTER;
-        const identity: PilotIdentity = {
-          ...base,
-          ...(role === "master_broker" && testLogo ? { logo: { image: testLogo, approved: simulateLogoApproval } } : {})
-        };
+        const base = role === "broker" ? DEMO_BROKER_PROFILE : DEMO_MASTER_PROFILE;
+        const identity: PilotIdentity = pilotIdentityFromProfile(
+          base, role === "master_broker" && testLogo
+            ? { image: testLogo, approved: simulateLogoApproval }
+            : undefined
+        );
         const canvas = await renderPilotGraphic(map, background, identity);
         if (active) setPreview(canvas.toDataURL("image/png"));
       } catch (err: any) {
