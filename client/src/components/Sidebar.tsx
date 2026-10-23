@@ -162,6 +162,10 @@ export default function Sidebar() {
     : baseItems.filter(item => {
         if (item.href === '/comisiones' && isNonOriginatorOnly) return false;
         if (item.href === '/admin/usuarios' && hasTenantOrg) return true;
+        // Biblioteca educativa/comercial: visible para cualquier cuenta con rol
+        // válido; no existe un módulo RBAC legado "recursos_comerciales".
+        // El acceso real también se verifica en ProtectedRoute.
+        if (item.href === '/recursos-comerciales') return true;
         const modKey = hrefToModule[item.href];
         return !modKey || allowedModules.includes(modKey);
       });
