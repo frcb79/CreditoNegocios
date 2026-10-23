@@ -68,3 +68,18 @@ Reservar áreas para logo obligatorio, nombre, WhatsApp, CTA, URL/QR y disclaime
 **Esfuerzo técnico:** moderado porque ya existen autenticación, gestión de clientes y duplicados, pero requiere backend de enlaces, formulario público seguro, persistencia separada, bandeja RBAC y pruebas de atribución. No confundir implementación con algo ya desplegado.
 
 **Entrega desde Canva/Figma:** el archivo gráfico plano (PNG/JPG) por sí solo NO define campos dinámicos. El equipo de diseño deberá exportar fondo/hero sin textos variables, recursos gráficos autorizados y especificación por formato con rectángulos x/y/ancho/alto para nombre, WhatsApp, logo, CTA/QR y leyenda; tipografía, tamaños, alineación, límites y variantes. Esa especificación se convierte a la definición JSON que carga Super Admin. Nunca permitir que Broker/Master suba imágenes/textos publicitarios.
+
+
+## Implementación técnica B2/B3 — PR #18 (23-oct-2026)
+
+**Código implementado en rama, no validado en el último commit ni publicado en main.**
+
+- Esquema aditivo comercial_campaign_links: un enlace reutilizable por Broker/Master y un enlace por plantilla; token opaco aleatorio y atribución en el servidor. No reutilizar UTMs ni cupones como fuente de titularidad.
+- POST /api/commercial-resources/links obtiene la URL estable; la web utiliza su propio dominio con ruta /c/TOKEN. Por ahora no admite destino externo ni WhatsApp directo.
+- GET /api/public/campaign/:token registra apertura y carga formulario. POST /api/public/campaign/:token/submit recibe datos básicos, valida consentimiento y versión del Aviso de Privacidad y registra en comercial_marketing_leads sin crear Clientes ni Oportunidades. Incluye límites de envío y supresión básica de repeticiones del mismo teléfono.
+- UI pública /c/:token, con producto precargado por campaña o selector en enlace general.
+- GET /api/commercial-resources/received muestra solo leads del Broker/Master autenticado; pestaña Clientes → Prospectos recibidos. Contactar o revisar para alta manual precargada, conservando verificación de duplicados.
+- POST /api/commercial-resources/received/:id/link-client permite vincular después de la revisión solo un Cliente ya autorizado y perteneciente al dueño de la captación; mismo tenant si ambos registros lo especifican.
+- GET /api/commercial-resources/overview: aperturas y formularios para usuario y totales Super Admin.
+- La Biblioteca entrega enlaces personales y por campaña automáticamente y los incorpora al texto copiado para compartir. Una imagen PNG no es enteramente clicable en todas las redes sociales. QR y zonas visuales se integrarán con diseños finales.
+- Pendiente: medios finales y QR, enlaces WhatsApp/externos, métricas avanzadas, mejora antispam/anti-bots, comunicación de leads, automatización de oportunidades, revisión jurídica de captación e integración con políticas comerciales. Enlaces y formulario no deben considerarse listos hasta aprobar QA y Staging.
