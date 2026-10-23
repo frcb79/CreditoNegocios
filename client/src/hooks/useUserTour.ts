@@ -11,15 +11,29 @@ import {
 } from "@/lib/userTour";
 import type { DriveStep } from "driver.js";
 
-function isVisible(selector: string): boolean {
-  const element = document.querySelector<HTMLElement>(selector);
-  if (!element) return false;
-  const rect = element.getBoundingClientRect();
-  const styles = window.getComputedStyle(element);
-  return rect.width > 0 && rect.height > 0 &&
-    rect.bottom > 0 && rect.right > 0 &&
-    rect.top < window.innerHeight && rect.left < window.innerWidth &&
-    styles.display !== "none" && styles.visibility !== "hidden";
+/**
+ * En escritorio existen simultáneamente versiones móvil y escritorio del
+ * Sidebar. querySelector tomaría el elemento móvil (oculto) y truncaría el tour.
+ * Usar un elemento renderizado sin exigir que esté ya dentro del viewport:
+ * driver.js desplazará el scroll hasta el control resaltado.
+ */
+function findRenderableTarget(selector: string): HTMLElement | null {
+  const elements = document.querySelectorAll<HTMLElement>(selector);
+  for (const element of Array.from(elements)) {
+    if (element.getClientRects().length === 0) continue;
+    let candidate: HTMLElement | null = element;
+    let hidden = false;
+    while (candidate) {
+      const styles = window.getComputedStyle(candidate);
+      if (styles.display === "none" || styles.visibility === "hidden") {
+        hidden = true;
+        break;
+      }
+      candidate = candidate.parentElement;
+    }
+    if (!hidden) return element;
+  }
+  return null;
 }
 
 /**
@@ -60,16 +74,20 @@ export function useUserTour() {
     const timer = window.setTimeout(() => {
       const mobile = window.innerWidth < 1024;
       const steps: DriveStep[] = getUserTourSteps(role, mobile)
-        .filter((step) => !step.selector || isVisible(step.selector))
-        .map((step) => ({
-          ...(step.selector ? { element: step.selector } : {}),
-          popover: {
-            title: step.title,
-            description: step.description,
-            side: step.selector ? "bottom" : undefined,
-            align: "start" as const
-          }
-        }));
+        .map((step) => {
+          // Nunca eliminar un mensaje: si falta un ancla, mostrar el paso
+          // como explicación centrada en lugar de reducir la guía a 2 pasos.
+          const target = step.selector ? findRenderableTarget(step.selector) : null;
+          return {
+            ...(target ? { element: target } : {}),
+            popover: {
+              title: step.title,
+              description: step.description,
+              side: target ? (step.selector?.includes("nav-") ? "right" as const : "bottom" as const) : undefined,
+              align: "start" as const
+            }
+          };
+        });
 
       if (steps.length === 0) return;
 
