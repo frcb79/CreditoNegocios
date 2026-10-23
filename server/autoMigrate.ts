@@ -754,7 +754,7 @@ export async function runAutoMigration(): Promise<void> {
           disabled_at TIMESTAMP,
           click_count INTEGER NOT NULL DEFAULT 0 CHECK (click_count >= 0)
         );
-        CREATE UNIQUE INDEX IF NOT EXISTS commercial_campaign_owner_template_unique ON public.commercial_campaign_links(owner_user_id, COALESCE(template_id, '__general__'));
+        CREATE UNIQUE INDEX IF NOT EXISTS commercial_campaign_owner_template_unique ON public.commercial_campaign_links(owner_user_id, (COALESCE(template_id, '__general__')));
         CREATE INDEX IF NOT EXISTS commercial_campaign_owner_idx ON public.commercial_campaign_links(owner_user_id,created_at DESC);
         CREATE TABLE IF NOT EXISTS public.commercial_marketing_leads (
           id VARCHAR PRIMARY KEY DEFAULT gen_random_uuid(),
