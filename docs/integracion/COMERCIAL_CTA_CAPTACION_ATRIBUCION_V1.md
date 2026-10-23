@@ -49,3 +49,22 @@ click (enlace), landing_view, form_submitted, lead_validated, client_linked, opp
 Reservar áreas para logo obligatorio, nombre, WhatsApp, CTA, URL/QR y disclaimer en cada plantilla y formato. Estos espacios no deben quedar visualmente vacíos. Los videos MP4 y su hosting/CDN se definirán después.
 
 **Nota:** Nada de B2-B4 se considera implementado por la sola existencia de este contrato. No fusionar PR #18 antes de validación integral.
+
+
+## MVP simplificado recomendado — 23-oct-2026
+
+**Prioridad:** un único destino inicial, una landing pública GENERAL de Crédito Negocios para clientes finales y un registro entrante visible para el Broker/Master de origen. Posponer WhatsApp como destino directo y dominios propios hasta terminar esta conversión end-to-end. No es necesario que cada pieza tenga una landing distinta.
+
+**Enlace único al exportar o compartir:** el servidor genera y registra URL corta opaca asociada a usuario originador, tenant, plantilla/version, producto y canal. Nunca confiar en parámetros UTM editados por visitantes para determinar titularidad. UTM source/medium/campaign/content son metadata analítica, pero el token firmado/aleatorio resuelto en base de datos es la fuente de atribución.
+
+**Imágenes no contienen enlaces clicables:** añadir URL corta y QR dentro de los lugares reservados del diseño; ofrecer enlace copiable para descripción, Story o perfil según permita cada red. Para video se utiliza el mismo QR cuando sea adecuado más un enlace en su lugar compatible.
+
+**Formulario compartido:** nombre, teléfono o WhatsApp, correo opcional cuando no sea obligatorio para contactar, producto/financiamiento solicitado y consentimiento de tratamiento de datos con Aviso de Privacidad actual. Mostrar información sobre quién atenderá la solicitud, sin asumir que el clic confirma consentimiento. Al enviar: persistir un lead de marketing con sourceToken, ownerUserId, tenantId, templateVersion, canal y timestamp.
+
+**Primer resultado visible dentro de la cuenta:** nueva sección «Prospectos recibidos» para Broker/Master, con información mínima del formulario, fecha, campaña de origen y acción «Revisar/Contactar». Puede mostrarse contador en el Dashboard. No se ingresa silenciosamente en la cartera de Clientes ni se crea Oportunidad comercial protegida; al convertir, ejecutar controles actuales de duplicidad, consentimiento, autorización, tenant y protección de oportunidad. Para Master, lead queda a su cuenta hasta una asignación posterior autorizada.
+
+**Métricas del MVP:** clics asociados al enlace, formularios recibidos, prospectos convertidos después de validación. Medir fuentes de canal con metadata, sin equiparar un clic a un formulario o a una venta.
+
+**Esfuerzo técnico:** moderado porque ya existen autenticación, gestión de clientes y duplicados, pero requiere backend de enlaces, formulario público seguro, persistencia separada, bandeja RBAC y pruebas de atribución. No confundir implementación con algo ya desplegado.
+
+**Entrega desde Canva/Figma:** el archivo gráfico plano (PNG/JPG) por sí solo NO define campos dinámicos. El equipo de diseño deberá exportar fondo/hero sin textos variables, recursos gráficos autorizados y especificación por formato con rectángulos x/y/ancho/alto para nombre, WhatsApp, logo, CTA/QR y leyenda; tipografía, tamaños, alineación, límites y variantes. Esa especificación se convierte a la definición JSON que carga Super Admin. Nunca permitir que Broker/Master suba imágenes/textos publicitarios.
