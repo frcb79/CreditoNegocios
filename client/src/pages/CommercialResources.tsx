@@ -58,9 +58,6 @@ export default function CommercialResources() {
     whatsapp,
     showPhone: true
   }), [displayName, whatsapp]);
-  const identityReady = Boolean(selection?.definition.graphic)
-    ? graphicName.trim().length >= 2 && Boolean(normalizedWhatsApp(graphicPhone))
-    : safeBrandLabel(displayName).length >= 2 && Boolean(normalizedWhatsApp(whatsapp));
   const svg = useMemo(() => selection ? templateSvg(selection, branding) : "", [selection, branding]);
   const preview = useMemo(() => svg ? "data:image/svg+xml;charset=utf-8," + encodeURIComponent(svg) : "", [svg]);
   const profile = (user?.profileData || {}) as Record<string, any>;
@@ -70,6 +67,9 @@ export default function CommercialResources() {
   // Approval must be explicit; customLogo/avatar alone does not authorize a marketing logo.
   const authorizedLogo = profile.commercialBranding?.logoApproved === true &&
     typeof (user as any)?.customLogo === "string" ? (user as any).customLogo as string : null;
+  const identityReady = Boolean(selection?.definition.graphic)
+    ? graphicName.trim().length >= 2 && Boolean(normalizedWhatsApp(graphicPhone))
+    : safeBrandLabel(displayName).length >= 2 && Boolean(normalizedWhatsApp(whatsapp));
   const caption = useMemo(() => selection ? templateCaption(selection,
     selection.definition.graphic ? {
       displayName:graphicName,whatsapp:graphicPhone,showPhone:true
