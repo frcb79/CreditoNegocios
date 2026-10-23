@@ -73,12 +73,12 @@ export default function CommercialResources() {
   const caption = useMemo(() => {
     if(!selection)return "";
     if(selection.definition.graphic) {
-      const name=graphicName.trim().replace(/\\s+/g," ");
+      const name=graphicName.trim().replace(/\s+/g," ");
       const phone=normalizedWhatsApp(graphicPhone);
       return [selection.definition.hook,selection.definition.description,selection.definition.cta,"",
         name ? "Contacto: "+name : "",
         phone ? "WhatsApp: +"+phone : "",
-        COMMERCIAL_DISCLAIMER].filter(Boolean).join("\\n");
+        COMMERCIAL_DISCLAIMER].filter(Boolean).join("\n");
     }
     return templateCaption(selection,branding);
   },[selection,branding,graphicName,graphicPhone]);
