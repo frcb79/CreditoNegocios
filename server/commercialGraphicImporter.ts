@@ -36,7 +36,7 @@ function validPath(s:string) {
 function sha256(b:Buffer) { return createHash("sha256").update(b).digest("hex"); }
 function fail(message:string):never { throw new Error(message); }
 export function readV4Zip(buf:Buffer):Map<string,Buffer> {
-  if (buf.length>22_000_000 || buf.length<22) fail("El ZIP supera 22 MB o está vacío.");
+  if (buf.length>50 * 1024 * 1024 || buf.length<22) fail("El ZIP supera 50 MB o está vacío.");
   const entries=new Map<string,Buffer>();
   let end=-1;
   for(let i=buf.length-22;i>=Math.max(0,buf.length-65557);i--) {
@@ -72,7 +72,7 @@ export function readV4Zip(buf:Buffer):Map<string,Buffer> {
     catch {fail("No se pudo descomprimir un archivo del ZIP.");}
     if(data.length!==uncompressed)fail("Tamaño descomprimido inconsistente.");
     total+=data.length;
-    if(total>48_000_000)fail("ZIP descomprimido excede 48 MB.");
+    if(total>200_000_000)fail("ZIP descomprimido excede el máximo seguro de 200 MB.");
     entries.set(path,data);
   }
   return entries;
