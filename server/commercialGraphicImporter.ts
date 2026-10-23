@@ -152,7 +152,7 @@ export function normalizeV4Map(raw:Buffer,png:Buffer,group:string):GraphicImport
  const typographyReviewRequired=[f.BROKER_NAME,f.BROKER_WHATSAPP,f.CTA].some(x=>x.fontSize===undefined&&x.sizePx===undefined);
  return {
   slug:candidate,
-  name:caption(m.name||category,95)+(tail===" - "?"":tail?" · "+(tail==="-historia"?"Historia":"Cuadrada"):""),
+  name:caption(m.name||category,95)+(tail?" · "+(tail==="-historia"?"Historia":"Cuadrada"):""),
   product:productId(category),
   channel:canvas.height===1080?"facebook":canvas.height===1920?"whatsapp":"instagram",
   copy:{headline,supportingLine:supporting.length>=8?supporting:desc,description:desc,
@@ -165,7 +165,7 @@ export function normalizeV4Map(raw:Buffer,png:Buffer,group:string):GraphicImport
 }
 export function parseV4Archive(zip:Buffer):GraphicImport[] {
  const entries=readV4Zip(zip);
- const maps=[...entries.keys()].filter(x=>x.endsWith("/mapa_campos.json")).sort();
+ const maps=Array.from(entries.keys()).filter(x=>x.endsWith("/mapa_campos.json")).sort();
  if(!maps.length||maps.length>65)fail("Se esperaban entre 1 y 65 mapas.");
  const result:GraphicImport[]=[];
  const seen=new Set<string>();
