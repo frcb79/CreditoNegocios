@@ -67,6 +67,10 @@ export default function CommercialResources() {
       toast({ title: "Completa tu nombre y WhatsApp antes de usar la plantilla", variant: "destructive" });
       return;
     }
+    if (canSuggest && (!campaignLink || campaignLink.templateId !== selection.id)) {
+      toast({ title: "El enlace de esta campaña todavía no está disponible", description: "Obténlo desde Tus enlaces de captación antes de compartir el texto.", variant: "destructive" });
+      return;
+    }
     try {
       await navigator.clipboard.writeText(caption + (campaignLink?.templateId === selection?.id ? "\n\nMás información: " + campaignLink.url : ""));
       toast({ title: "Texto copiado" });
@@ -233,7 +237,7 @@ export default function CommercialResources() {
                   <div className="border-t pt-3 space-y-3">
                     <div className="flex justify-between items-center gap-2">
                       <p className="text-sm font-semibold">{selection.channel === "tiktok" ? "Guion vertical aprobado" : "Texto aprobado para publicar"}</p>
-                      <Button size="sm" variant="outline" onClick={copyCaption} disabled={!identityReady} className="gap-1" data-testid="resource-copy-caption">
+                      <Button size="sm" variant="outline" onClick={copyCaption} disabled={!identityReady || (canSuggest && campaignLink?.templateId !== selection.id)} className="gap-1" data-testid="resource-copy-caption">
                         <Copy className="w-4 h-4" /> Copiar
                       </Button>
                     </div>
