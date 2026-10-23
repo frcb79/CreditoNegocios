@@ -741,13 +741,26 @@ export async function runAutoMigration(): Promise<void> {
       if (process.env.RAILWAY_ENVIRONMENT_NAME?.toLowerCase() === 'staging') throw error;
     }
 
-    // COM-RES-GRAPHIC-V4: artwork data is per immutable template revision.
+    // COM-RES-GRAPHIC-V4: immutable PNGs by version, created only when absent.
     try {
       await client.query(`
         CREATE TABLE IF NOT EXISTS public.commercial_resource_artworks (
           template_id VARCHAR PRIMARY KEY REFERENCES public.commercial_resource_templates(id) ON DELETE RESTRICT,
           image_data BYTEA NOT NULL,
-          sha256 CHAR(64) NOT NULL CHECK (sha256 ~ '^[a-f0-9]{64}
+          sha256 CHAR(64) NOT NULL,
+          width INTEGER NOT NULL CHECK (width = 1080),
+          height INTEGER NOT NULL CHECK (height IN (1080,1350,1920)),
+          created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+          CONSTRAINT commercial_resource_artwork_nonempty CHECK (octet_length(image_data) BETWEEN 40 AND 3000000)
+        );
+      `);
+      console.log("[AutoMigrate] Commercial PNG artwork table verified");
+    } catch (error) {
+      console.error("[AutoMigrate] Commercial artwork storage unavailable:", error);
+      if (process.env.RAILWAY_ENVIRONMENT_NAME?.toLowerCase() === "staging") throw error;
+    }
+
+    // COM-CTA-002: short links and leads remain separate from clients.
     try {
       await client.query(`
         CREATE TABLE IF NOT EXISTS public.commercial_campaign_links (
