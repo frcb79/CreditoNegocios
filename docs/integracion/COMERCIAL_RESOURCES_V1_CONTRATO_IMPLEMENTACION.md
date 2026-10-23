@@ -5,7 +5,7 @@
 ## Decisiones aprobadas (23-oct-2026)
 
 1. **Super Admin** es el único que importa, versiona, aprueba/publica o retira plantillas y contenido. No puede publicar un Broker ni un Master Broker.
-2. **Broker / Master** ve exclusivamente campañas publicadas; el contenido no es editable. Solo puede mostrar nombre personal/comercial, teléfono/WhatsApp opcional validado y logo institucional si está permitido en la plantilla.
+2. **Broker / Master** ve exclusivamente campañas publicadas; el contenido no es editable. Debe mostrar nombre personal/comercial y teléfono/WhatsApp validado, además de logo institucional; no se exporta contenido incompleto.
 3. **Sugerencias**: formulario breve. Se registran en la bandeja de Super Admin sin estado, asignación, seguimiento ni respuesta obligatoria. No existe transición o herramienta de gestión adicional.
 4. **Videos**: no se generan todavía; TikTok tiene portada y guion que deberán sustituirse por material MP4/CDN aprobado. Se reutilizarán los formatos 9:16 para reels/shorts.
 5. **Ayuda**: contiene artículos de productos en español para capacitación comercial básica.
@@ -20,7 +20,7 @@
 - \`definition.hero\`: geometric / rings / none (marcadores iniciales de composición).
 - \`definition.colors\`: fondo, acento y frente (hex estricto).
 - \`definition.headline\`, \`supportingLine\`, \`description\`, \`hook\`, \`cta\`, \`highlights\`: copy **bloqueado** aprobado por Super Admin.
-- \`definition.allowedIdentityFields\`: opciones autorizadas para nombre (obligatorio), WhatsApp, logo institucional.
+- \`definition.allowedIdentityFields\`: opciones autorizadas para nombre, WhatsApp válido y logo institucional (obligatorios para los diseños actuales).
 - El aviso legal obligatorio lo añade el renderizador; no es un campo libre.
 - Archivos JSON máximo 32 KB y campos limitados por longitud; no se admite JavaScript ni HTML ni subida de media binaria.
 
@@ -53,3 +53,12 @@
 - Aprobar formatos visuales y contenido inicial; comprobar permisos y advertencias financieras.
 - Definir migración/rollback y confirmar que Producción tenga esquema aditivo.
 - **No mergear PR #18 antes de completar estos puntos.**
+
+
+## Actualización 23-oct-2026 — identidad obligatoria y CTA medible
+
+- La publicidad personalizada exige llenar los espacios diseñados: nombre, contacto y logotipo. En V0 el logotipo es Crédito Negocios; logos propios necesitan aprobación. No se permite exportar/copiar materiales con nombre o teléfono inválido o vacío.
+- Se ajustó el contrato de plantillas JSON para exigir los tres campos de identidad.
+- **CTA público, links individuales, medición y lead intake aún no implementados.** La arquitectura y fases están en el archivo docs/integracion/COMERCIAL_CTA_CAPTACION_ATRIBUCION_V1.md.
+- Destinos futuros: landing propia para clientes finales (preferido), WhatsApp del asesor, sitio propio verificado. No aceptar URLs externas sin comprobación.
+- Futuro: formulario con consentimiento, bandeja de captación, duplicados, validación comercial y asignación correcta a broker/master. Un clic por sí solo no crea exclusividad.
