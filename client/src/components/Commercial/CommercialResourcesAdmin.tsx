@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { renderCommercialGraphic } from "@/lib/commercialGraphicRenderer";
 import CommercialPilotPreview from "./CommercialPilotPreview";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
@@ -38,6 +39,33 @@ async function postJson(url: string, body: unknown = {}): Promise<any> {
   const data = await response.json().catch(() => ({}));
   if (!response.ok) throw new Error(data.message || "No fue posible guardar los cambios");
   return data;
+}
+
+function GraphicDraftPreview({template}:{template:PublishedCommercialTemplate}) {
+  const [role,setRole]=useState<"broker"|"master_broker">("broker");
+  const [image,setImage]=useState("");
+  const [error,setError]=useState("");
+  useEffect(()=>{
+    let active=true;
+    setImage("");setError("");
+    renderCommercialGraphic(template,role==="broker"?
+      {displayName:"María Fernanda López",whatsapp:"5512345678"}:
+      {displayName:"Grupo Horizonte Capital",whatsapp:"5598764321"}
+    ).then(canvas=>{if(active)setImage(canvas.toDataURL("image/png"));})
+    .catch(e=>{if(active)setError(e.message);});
+    return()=>{active=false;};
+  },[template.id,role]);
+  return <div className="space-y-2" data-testid="resource-admin-graphic-preview">
+    <div className="flex flex-wrap gap-2">
+      <Button type="button" size="sm" variant={role==="broker"?"default":"outline"} onClick={()=>setRole("broker")}>Simular Broker</Button>
+      <Button type="button" size="sm" variant={role==="master_broker"?"default":"outline"} onClick={()=>setRole("master_broker")}>Simular Master</Button>
+    </div>
+    {image?<img className="max-w-xs w-full rounded-md" alt={"Vista previa técnica "+role} src={image} />:
+      <p className="text-xs">{error||"Generando vista previa..."}</p>}
+    <p className="text-xs text-muted-foreground">
+      Solo vista previa para Super Admin con identidades ficticias. No publica ni atribuye leads.
+    </p>
+  </div>;
 }
 
 export default function CommercialResourcesAdmin() {
@@ -255,11 +283,7 @@ export default function CommercialResourcesAdmin() {
           <div className="rounded-lg border bg-muted/30 p-3 space-y-3">
             <p className="text-sm font-semibold">Vista previa de {previewTemplate.name} — solo Super Admin</p>
             {previewTemplate.definition.graphic ? (
-              <div className="space-y-1">
-                <img className="max-w-xs w-full rounded-md" alt="Fondo maestro original sin identidad"
-                  src={"/api/commercial-resources/templates/"+encodeURIComponent(previewTemplate.id)+"/art"} />
-                <p className="text-xs text-muted-foreground">Fondo maestro bloqueado. Broker/Master verán identidad personalizada desde su perfil cuando se publique.</p>
-              </div>
+              <GraphicDraftPreview template={previewTemplate} />
             ) : <img className="max-w-xs w-full rounded-md" alt="Vista previa privada de plantilla"
               src={"data:image/svg+xml;charset=utf-8," + encodeURIComponent(templateSvg(previewTemplate, { displayName: "Broker Ejemplo", whatsapp: "", showPhone: false }))} />}
             <Button size="sm" variant="ghost" onClick={() => setPreviewTemplate(null)}>Cerrar vista previa</Button>
