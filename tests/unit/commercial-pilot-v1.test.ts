@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { PILOT_BACKGROUND_SHA256, parsePilotGraphicMap, pilotDisplayName, pilotWhatsApp } from "../../client/src/lib/commercialPilotV1";
+import { PILOT_BACKGROUND_SHA256, parsePilotGraphicMap, pilotDisplayName, pilotWhatsApp, pilotIdentityFromProfile } from "../../client/src/lib/commercialPilotV1";
 
 const read = (p: string) => readFileSync(resolve(process.cwd(), p), "utf8");
 const MAP = {
@@ -50,6 +50,22 @@ describe("COM-PILOT-01 — isolated approved-artwork map adaptation", () => {
     expect(() => pilotWhatsApp("")).toThrow(/WhatsApp/);
     expect(() => pilotWhatsApp("123")).toThrow(/WhatsApp/);
     expect(pilotDisplayName(" Grupo  Horizonte  Capital ")).toBe("Grupo Horizonte Capital");
+  });
+  it("uses immutable authenticated-profile-like identity for both roles and rejects unapproved logos", () => {
+    const broker = pilotIdentityFromProfile({
+      role: "broker", firstName: "María Fernanda", lastName: "López",
+      profileData: { business: { businessPhone: "55 1234 5678" } }
+    });
+    expect(broker).toMatchObject({ role: "broker", displayName: "María Fernanda López", whatsapp: "55 1234 5678" });
+    expect(broker.logo).toBeUndefined();
+    const image = {} as HTMLImageElement;
+    const master = {
+      role: "master_broker" as const, brandName: "Grupo Financiero Horizonte Capital",
+      profileData: { business: { businessPhone: "55 9876 4321" } }
+    };
+    expect(pilotIdentityFromProfile(master, { image, approved: false }).logo).toBeUndefined();
+    expect(pilotIdentityFromProfile(master, { image, approved: true }).logo).toEqual({ image, approved: true });
+    expect(pilotIdentityFromProfile(master).displayName).toBe("Grupo Financiero Horizonte Capital");
   });
   it("mounts pilot in Super Admin ONLY, does not publish nor alter legacy SVG render", () => {
     const admin = read("client/src/components/Commercial/CommercialResourcesAdmin.tsx");
