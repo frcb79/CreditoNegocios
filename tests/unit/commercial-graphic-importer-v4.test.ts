@@ -52,6 +52,16 @@ describe("COM-RES-GRAPHICS-V4: generic artwork import",()=>{
    allowedIdentityFields:{displayName:true,whatsapp:true,institutionalLogo:true},graphic:result.graphic}};
   expect(commercialResourceUploadSchema.safeParse(upload).success).toBe(true);
  });
+ it("accepts the final photographic asset SHA when old V1 backgroundSHA is stale",()=>{
+  const png=fakePng();
+  const json={...map(png),backgroundSha256:"0".repeat(64)};
+  const result=normalizeV4Map(Buffer.from(JSON.stringify(json)),png,
+    "ARTES_Y_MAPAS/01_Impactantes_Explicativas_NUEVAS/");
+  expect(result.graphic.sha256).toBe(checksum(png));
+  const modified={...json,assets:{backgroundSHA256:"f".repeat(64)}};
+  expect(()=>normalizeV4Map(Buffer.from(JSON.stringify(modified)),png,
+    "ARTES_Y_MAPAS/01_Impactantes_Explicativas_NUEVAS/")).toThrow(/SHA-256/);
+ });
  it("refuses checksum mismatch, QR, missing WhatsApp and geometry outside the canvas",()=>{
   const png=fakePng();const good=map(png);
   expect(()=>normalizeV4Map(Buffer.from(JSON.stringify(good)),fakePng(1080,1920),
