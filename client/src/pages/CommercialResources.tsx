@@ -61,8 +61,10 @@ export default function CommercialResources() {
   const svg = useMemo(() => selection && !selection.definition.graphic ? templateSvg(selection, branding) : "", [selection, branding]);
   const preview = useMemo(() => svg ? "data:image/svg+xml;charset=utf-8," + encodeURIComponent(svg) : "", [svg]);
   const profile = (user?.profileData || {}) as Record<string, any>;
-  const graphicName = (user?.role === "master_broker" && user.brandName) ||
-    profile.business?.businessName || [user?.firstName,user?.lastName].filter(Boolean).join(" ");
+  const personalName = [user?.firstName,user?.lastName].filter(Boolean).join(" ");
+  const graphicName = user?.role === "master_broker"
+    ? (user.brandName || profile.business?.businessName || personalName)
+    : (personalName || profile.business?.businessName || "");
   const graphicPhone = String(profile.business?.businessPhone || profile.phone || (user as any)?.phone || "");
   // Approval must be explicit; customLogo/avatar alone does not authorize a marketing logo.
   const authorizedLogo = profile.commercialBranding?.logoApproved === true &&
