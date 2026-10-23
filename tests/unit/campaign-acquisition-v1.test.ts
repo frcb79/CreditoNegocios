@@ -78,4 +78,19 @@ describe("COM-CTA-002: incoming prospects and reusable attribution links", () =>
     expect(list).toContain("Todavía no son Clientes ni oportunidades protegidas.");
     expect(list).toContain("onReview(lead)");
   });
+  it("rejects suspended owners, cross-tenant client linking and concurrent duplicate submissions", () => {
+    const api = file("server/campaignAcquisitionRoutes.ts");
+    expect(api).toContain('user.status !== "active"');
+    expect(api).toContain("u.status = 'active'");
+    expect(api).toContain("tm.is_active = TRUE");
+    expect(api).toContain("tn.is_active IS DISTINCT FROM FALSE");
+    expect(api).toContain("lead.rows[0].tenant_id !== (client.tenantId ?? null)");
+    expect(api).toContain("pg_advisory_xact_lock(hashtext($1))");
+    expect(api).toContain('await client.query("BEGIN")');
+    expect(api).toContain('await client.query("COMMIT")');
+    expect(api).toContain('await client.query("ROLLBACK")');
+    expect(api).toContain("RETURNING linked_client_id");
+    expect(api).toContain("updated.rowCount !== 1");
+  });
+
 });
