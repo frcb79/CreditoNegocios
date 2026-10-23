@@ -115,6 +115,10 @@ export default function CommercialResourcesAdmin() {
   const importGraphics = async () => {
     const bulk=Boolean(archive);
     if(!bulk && (!graphicMap||!graphicBackground))return;
+    if (archive && archive.size > 50 * 1024 * 1024) {
+      toast({ title:"ZIP demasiado grande", description:"El límite de carga es 50 MB.", variant:"destructive" });
+      return;
+    }
     setWorking(true);setImportReport(null);
     try {
       const payload=new FormData();
@@ -185,7 +189,7 @@ export default function CommercialResourcesAdmin() {
           Importar artes PNG + mapas JSON · solo borradores
         </h3>
         <p className="text-xs text-muted-foreground">
-          Carga el ZIP V4 completo (65 diseños) o una pareja de PNG maestro + mapa JSON.
+          Carga el ZIP definitivo completo (hasta 50 MB) o una pareja de PNG maestro + mapa JSON.
           Las ocho referencias fotográficas no se importan. Ninguna pieza queda publicada automáticamente.
           Los diseños cuadrados e historias que no especifican tipografía quedan pendientes de revisión.
         </p>
