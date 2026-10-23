@@ -1,6 +1,7 @@
 import { useState } from "react";
 import MainLayout from "@/components/MainLayout";
 import Header from "@/components/Header";
+import { ContextualHelpLink } from "@/components/Help/ContextualHelpLink";
 import CreditList from "@/components/Credits/CreditList";
 import CreditRequestModal from "@/components/Modals/CreditRequestModal";
 import { Button } from "@/components/ui/button";
@@ -19,6 +20,7 @@ export default function Credits() {
         title="Gestión de Créditos"
         subtitle="Supervisión de operaciones, solicitudes y dispersiones activas"
       >
+        <ContextualHelpLink slug="donde-reviso-mis-oportunidades" variant="quick" label="Ayuda rápida: Gestión de Créditos" />
         {/* Action button for brokers and admins */}
         {canRequestCredit && (
           <div className="flex space-x-2 ml-3">
