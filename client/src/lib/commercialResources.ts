@@ -33,7 +33,7 @@ export function imageSize(channel: SocialChannel): { width: number; height: numb
 }
 
 export function safeBrandLabel(input: string | null | undefined): string {
-  return (input || "").replace(/[^\p{L}\p{N}\s.&'-]/gu, "").replace(/\s+/g, " ").trim().slice(0, 42);
+  return (input || "").replace(/[^\p{L}\p{N}\s.&'-]/gu, "").replace(/\s+/g, " ").trim().slice(0, 32);
 }
 
 export function normalizedWhatsApp(value: string): string {
