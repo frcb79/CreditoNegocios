@@ -45,6 +45,10 @@ export default function CommercialResourcesAdmin() {
   const { toast } = useToast();
   const [json, setJson] = useState(JSON.stringify(COM_RES_EXAMPLE, null, 2));
   const [working, setWorking] = useState(false);
+  const [archive, setArchive] = useState<File | null>(null);
+  const [graphicMap, setGraphicMap] = useState<File | null>(null);
+  const [graphicBackground, setGraphicBackground] = useState<File | null>(null);
+  const [importReport, setImportReport] = useState<{ scanned:number;created:number;existing:number;requiresTypographyReview:number } | null>(null);
   const [previewTemplate, setPreviewTemplate] = useState<PublishedCommercialTemplate | null>(null);
 
   const { data: campaignOverview } = useQuery<{ clicks: number; links: number; received: number; linked: number }>({
@@ -80,13 +84,46 @@ export default function CommercialResourcesAdmin() {
     } catch (error: any) { toast({ title: "No se pudo guardar", description: error.message, variant: "destructive" }); }
     finally { setWorking(false); }
   };
+  const importGraphics = async () => {
+    const bulk=Boolean(archive);
+    if(!bulk && (!graphicMap||!graphicBackground))return;
+    setWorking(true);setImportReport(null);
+    try {
+      const payload=new FormData();
+      if(archive)payload.append("archive",archive);
+      else{
+        payload.append("map",graphicMap!);
+        payload.append("background",graphicBackground!);
+      }
+      const response=await fetch("/api/admin/commercial-resources/graphic-import",{
+        method:"POST",credentials:"include",body:payload
+      });
+      const result=await response.json().catch(()=>({}));
+      if(!response.ok)throw new Error(result.detail||result.message||"Error en importación");
+      setImportReport(result);
+      setArchive(null);setGraphicMap(null);setGraphicBackground(null);
+      await queryClient.invalidateQueries({queryKey:["/api/admin/commercial-resources/templates"]});
+      toast({title:"Borradores importados",description:`${result.created} nuevos, ${result.existing} existentes. Nada publicado.`});
+    }catch(err:any){toast({title:"No fue posible importar",description:err.message,variant:"destructive"});}
+    finally{setWorking(false);}
+  };
+
   const changePublication = async (template: PublishedCommercialTemplate, action: "publish" | "retire") => {
     if (!window.confirm(action === "publish"
       ? "¿Publicar esta versión para Brokers y Masters? La versión anterior del mismo identificador se retirará."
       : "¿Retirar este material de la biblioteca de los brokers?")) return;
     setWorking(true);
     try {
-      await postJson("/api/admin/commercial-resources/templates/" + encodeURIComponent(template.id) + "/" + action);
+      if(action==="publish" && template.definition.graphic){
+        if(template.definition.graphic.typographyReviewRequired){
+          throw new Error("Esta versión necesita confirmar tamaños y tipografías del mapa antes de publicarse.");
+        }
+        if(!window.confirm("Confirmación FINAL: ¿están aprobados comercial y legalmente fotografía, claims, tipografía y arte original?")){
+          return;
+        }
+      }
+      await postJson("/api/admin/commercial-resources/templates/" + encodeURIComponent(template.id) + "/" + action,
+        action==="publish" && template.definition.graphic ? {editorialLegalApproved:true} : {});
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["/api/admin/commercial-resources/templates"] }),
         queryClient.invalidateQueries({ queryKey: ["/api/commercial-resources/templates"] })
@@ -114,6 +151,45 @@ export default function CommercialResourcesAdmin() {
             <p className="text-xs text-muted-foreground">{label}</p>
           </div>
         ))}
+      </div>
+      <div className="rounded-xl border bg-card p-4 space-y-4" data-testid="resource-admin-graphic-import">
+        <h3 className="font-semibold flex gap-2 items-center"><Upload className="w-4 h-4" />
+          Importar artes PNG + mapas JSON · solo borradores
+        </h3>
+        <p className="text-xs text-muted-foreground">
+          Carga el ZIP V4 completo (65 diseños) o una pareja de PNG maestro + mapa JSON.
+          Las ocho referencias fotográficas no se importan. Ninguna pieza queda publicada automáticamente.
+          Los diseños cuadrados e historias que no especifican tipografía quedan pendientes de revisión.
+        </p>
+        <label className="block text-xs font-medium">
+          ZIP de lote
+          <input className="block mt-1 w-full text-sm" type="file" accept=".zip,application/zip"
+            data-testid="resource-graphic-zip" onChange={e=>{setArchive(e.target.files?.[0]||null);setGraphicMap(null);setGraphicBackground(null);}} />
+        </label>
+        <p className="text-xs font-medium">O importar una plantilla individual:</p>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <label className="text-xs">
+            Mapa JSON
+            <input className="block mt-1 w-full text-sm" type="file" accept=".json,application/json"
+              disabled={Boolean(archive)} data-testid="resource-graphic-map"
+              onChange={e=>setGraphicMap(e.target.files?.[0]||null)} />
+          </label>
+          <label className="text-xs">
+            PNG maestro
+            <input className="block mt-1 w-full text-sm" type="file" accept="image/png"
+              disabled={Boolean(archive)} data-testid="resource-graphic-background"
+              onChange={e=>setGraphicBackground(e.target.files?.[0]||null)} />
+          </label>
+        </div>
+        <Button type="button" disabled={working||(!archive&&!(graphicMap&&graphicBackground))}
+          data-testid="resource-graphic-import-submit" onClick={importGraphics}>
+          {working?"Importando…":"Validar e importar como borradores"}
+        </Button>
+        {importReport&&<p className="text-sm" data-testid="resource-graphic-import-report">
+          Revisados: {importReport.scanned} · Borradores nuevos: {importReport.created} ·
+          Ya existentes: {importReport.existing} · Tipografía pendiente: {importReport.requiresTypographyReview}.
+          Ninguna plantilla se publicó.
+        </p>}
       </div>
       <CommercialPilotPreview />
       <div className="rounded-xl border bg-card p-4 space-y-3">
@@ -178,8 +254,14 @@ export default function CommercialResourcesAdmin() {
         {previewTemplate && (
           <div className="rounded-lg border bg-muted/30 p-3 space-y-3">
             <p className="text-sm font-semibold">Vista previa de {previewTemplate.name} — solo Super Admin</p>
-            <img className="max-w-xs w-full rounded-md" alt="Vista previa privada de plantilla"
-              src={"data:image/svg+xml;charset=utf-8," + encodeURIComponent(templateSvg(previewTemplate, { displayName: "Broker Ejemplo", whatsapp: "", showPhone: false }))} />
+            {previewTemplate.definition.graphic ? (
+              <div className="space-y-1">
+                <img className="max-w-xs w-full rounded-md" alt="Fondo maestro original sin identidad"
+                  src={"/api/commercial-resources/templates/"+encodeURIComponent(previewTemplate.id)+"/art"} />
+                <p className="text-xs text-muted-foreground">Fondo maestro bloqueado. Broker/Master verán identidad personalizada desde su perfil cuando se publique.</p>
+              </div>
+            ) : <img className="max-w-xs w-full rounded-md" alt="Vista previa privada de plantilla"
+              src={"data:image/svg+xml;charset=utf-8," + encodeURIComponent(templateSvg(previewTemplate, { displayName: "Broker Ejemplo", whatsapp: "", showPhone: false }))} />}
             <Button size="sm" variant="ghost" onClick={() => setPreviewTemplate(null)}>Cerrar vista previa</Button>
           </div>
         )}
