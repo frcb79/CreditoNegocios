@@ -67,3 +67,16 @@ Este documento destila las 20 lecciones clave del experto Sabri Suby para ser ap
 4. Ampliar a videos y automatización tras validar qué campañas generan contactos de calidad.
 
 **Estado (2026-10-22):** prioritario y aprobado para diseño e implementación en bloque separado. No se incluyen endpoints, UI de biblioteca ni lógica de atribución en la Fase A de onboarding.
+
+
+### Actualización de ejecución — biblioteca comercial V0 (22-oct-2026)
+
+**Decisión:** se incluye **TikTok** como quinto canal desde el principio. Basar la versión audiovisual en vertical 9:16; crear portadas y guiones de 15 segundos, reservar zonas de seguridad para UI y producir el video real únicamente después de la aprobación editorial. TikTok no debe recibir un PNG estático disfrazado de video.
+
+**Personalización prevista:** usar el nombre comercial del Broker/Master si existe, o su nombre personal; su teléfono/WhatsApp visible solo por elección; opcionalmente una identidad co-brandeada y logotipo de su cuenta previa autorización. Solo cambiar campos de identidad, nunca tasas, promesas o requisitos.
+
+**Implementación exploratoria V0 (PR en borrador):** catálogo estático con cinco campañas por producto y cinco canales, vista previa vectorial SVG, descarga PNG generada en el navegador, copia de textos; sin endpoint de subida, motor audiovisual, enlaces de leads, código de referidos ni almacenamiento adicional. Ninguna pieza debe usarse públicamente sin aprobación comercial/legal.
+
+**Pendientes antes de liberar a Brokers reales:** revisión de mensajes y estética por dirección comercial, definición de logotipos/colores autorizados, diseños finales por producto/canal, permiso explícito para mostrar WhatsApp, mecanismo para bloquear piezas no aprobadas, y atribución de leads con enlaces individuales distintos de los cupones comerciales. TikTok: portada más guion ahora; video MP4 ligero luego, alojado en CDN externo.
+
+**Regla operativa:** la personalización del material no altera el perfil del usuario, los permisos, el matching, el estado de oportunidades, la titularidad comercial, ni los cálculos de comisión.
