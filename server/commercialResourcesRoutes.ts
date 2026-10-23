@@ -1,5 +1,7 @@
 import type { Express, Response } from "express";
 import rateLimit from "express-rate-limit";
+import multer from "multer";
+import { normalizeV4Map, parseV4Archive, type GraphicImport } from "./commercialGraphicImporter";
 import { pool } from "./db";
 import { storage } from "./storage";
 import { isAuthenticated } from "./auth";
@@ -17,12 +19,36 @@ async function identify(req: any): Promise<Identity | null> {
   const id = req.user?.claims?.sub || req.user?.id || req.dbUser?.id;
   if (typeof id !== "string" || !id) return null;
   const user = await storage.getUser(id);
-  if (!user || user.isActive === false || !READ_ROLES.has(user.role)) return null;
+  if (!user || user.isActive === false || (user.status && user.status !== "active") || !READ_ROLES.has(user.role)) return null;
   return { id: user.id, role: user.role };
 }
 
 function forbid(res: Response) {
   return res.status(403).json({ message: "Acceso no autorizado" });
+}
+
+const artworkUpload = multer({storage:multer.memoryStorage(), limits:{
+  files:2, fileSize:22_000_000, fields:1, fieldSize:2000
+}});
+const artworkUploadLimit = rateLimit({
+  windowMs:15*60*1000, limit:12, standardHeaders:"draft-7", legacyHeaders:false
+});
+function graphicJson(input:GraphicImport) {
+ return {
+  slug:input.slug, name:input.name, product:input.product, channel:input.channel,
+  definition:{
+    layout:"minimal", hero:"none",
+    colors:{background:"#0B2F4B",accent:"#A8E4E8",foreground:"#FFFFFF"},
+    headline:input.copy.headline,
+    supportingLine:input.copy.supportingLine,
+    description:input.copy.description,
+    hook:input.copy.hook,
+    cta:input.copy.cta,
+    highlights:input.copy.highlights,
+    allowedIdentityFields:{displayName:true,whatsapp:true,institutionalLogo:true},
+    graphic:input.graphic
+  }
+ };
 }
 
 const suggestionsRateLimit = rateLimit({
@@ -70,6 +96,121 @@ export function registerCommercialResourceRoutes(app: Express) {
     }
   });
 
+  // Artworks are never public while the corresponding version remains a draft.
+  // Browser image loading uses the authenticated same-origin session.
+  app.get("/api/commercial-resources/templates/:id/art", isAuthenticated, async (req: any, res) => {
+    const user=await identify(req);
+    if(!user)return forbid(res);
+    try {
+      const row=await pool.query(
+        `SELECT a.image_data,a.sha256 FROM public.commercial_resource_artworks a
+         JOIN public.commercial_resource_templates t ON t.id=a.template_id
+         WHERE t.id=$1 AND (t.status='published' OR $2='super_admin')`,
+        [req.params.id,user.role]
+      );
+      if(row.rowCount!==1)return res.status(404).json({message:"Arte no disponible"});
+      res.setHeader("Content-Type","image/png");
+      res.setHeader("Cache-Control","private, no-store");
+      res.setHeader("X-Content-Type-Options","nosniff");
+      return res.end(row.rows[0].image_data);
+    } catch(error) {
+      console.error("[COM_RES] Artwork read failed",error);
+      return res.status(503).json({message:"Arte no disponible"});
+    }
+  });
+
+  // No public endpoint accepts artwork. All versions are imported as drafts.
+  // Bundle import is transactional: all valid artworks or none.
+  app.post("/api/admin/commercial-resources/graphic-import",isAuthenticated,artworkUploadLimit,async(req:any,res,next)=>{
+    const user=await identify(req);
+    if(user?.role!=="super_admin")return forbid(res);
+    artworkUpload.any()(req,res,(err:any)=>{
+      if(err)return res.status(400).json({message:"Archivo rechazado: "+(err.message||"límite excedido")});
+      next();
+    });
+  },async(req:any,res)=>{
+    const user=await identify(req);
+    if(user?.role!=="super_admin")return forbid(res);
+    const files=(req.files||[]) as Express.Multer.File[];
+    let entries:GraphicImport[];
+    try {
+      if(files.length===1 && files[0].fieldname==="archive" &&
+        (files[0].mimetype==="application/zip"||files[0].originalname.toLowerCase().endsWith(".zip"))) {
+        entries=parseV4Archive(files[0].buffer);
+      } else if(files.length===2 && files.some(f=>f.fieldname==="map") &&
+                files.some(f=>f.fieldname==="background")) {
+        const map=files.find(f=>f.fieldname==="map")!;
+        const image=files.find(f=>f.fieldname==="background")!;
+        if(map.size>32_000 || image.size>3_000_000)throw new Error("Mapa o PNG demasiado grande.");
+        // The single-import folder is inferred from the map contract and
+        // checked again inside normalizeV4Map.
+        const parsed=JSON.parse(map.buffer.toString("utf8").replace(/^\uFEFF/,""));
+        const group=parsed.schemaVersion==="cn-graphic-overlay/v1"
+          ?"03_Impactantes_y_Sobrias_Anteriores/26_Variantes_Anteriores/"
+          :parsed.canvas?.height===1080?"04_Formato_Cuadrado_1x1/"
+          :parsed.canvas?.height===1920?"05_Formato_Vertical_9x16/"
+          :"01_Impactantes_Explicativas_NUEVAS/";
+        entries=[normalizeV4Map(map.buffer,image.buffer,group)];
+      } else return res.status(400).json({message:"Carga un ZIP V4 o un par mapa JSON + PNG maestro."});
+      if(entries.length>65)throw new Error("Demasiadas plantillas.");
+      const slugs=new Set<string>();
+      for(const item of entries) {
+        if(slugs.has(item.slug))throw new Error("Identificador duplicado.");
+        slugs.add(item.slug);
+        const valid=commercialResourceUploadSchema.safeParse(graphicJson(item));
+        if(!valid.success)throw new Error(item.slug+": "+valid.error.issues[0]?.message);
+      }
+    }catch(error:any){
+      return res.status(400).json({message:"Paquete rechazado sin guardar borradores",detail:error.message});
+    }
+    const client=await pool.connect();
+    const imported:any[]=[];
+    try {
+      await client.query("BEGIN");
+      for(const item of entries) {
+        const input=commercialResourceUploadSchema.parse(graphicJson(item));
+        await client.query("SELECT pg_advisory_xact_lock(hashtext($1))",["resources:"+input.slug]);
+        const existing=await client.query(
+          `SELECT t.id,t.version FROM public.commercial_resource_templates t
+           JOIN public.commercial_resource_artworks a ON a.template_id=t.id
+           WHERE t.slug=$1 AND a.sha256=$2 AND t.definition->'graphic'->>'mode'='png-overlay'
+           ORDER BY t.version DESC LIMIT 1`,[input.slug,item.graphic.sha256]
+        );
+        if(existing.rows.length){
+          imported.push({slug:input.slug,id:existing.rows[0].id,version:existing.rows[0].version,result:"already_exists"});
+          continue;
+        }
+        const v=await client.query(
+          "SELECT COALESCE(MAX(version),0)+1 AS version FROM public.commercial_resource_templates WHERE slug=$1",
+          [input.slug]
+        );
+        const row=await client.query(
+          `INSERT INTO public.commercial_resource_templates
+          (slug,version,name,product,channel,definition,status,created_by)
+          VALUES ($1,$2,$3,$4,$5,$6::jsonb,'draft',$7) RETURNING id,version`,
+          [input.slug,Number(v.rows[0].version),input.name,input.product,input.channel,JSON.stringify(input.definition),user.id]
+        );
+        await client.query(
+          `INSERT INTO public.commercial_resource_artworks(template_id,image_data,sha256,width,height)
+           VALUES ($1,$2,$3,$4,$5)`,
+          [row.rows[0].id,item.png,item.graphic.sha256,item.graphic.canvas.width,item.graphic.canvas.height]
+        );
+        imported.push({slug:input.slug,id:row.rows[0].id,version:row.rows[0].version,
+          result:"draft",typographyReviewRequired:item.graphic.typographyReviewRequired});
+      }
+      await client.query("COMMIT");
+      return res.status(201).json({message:"Importación privada finalizada. Ningún material fue publicado.",
+        scanned:entries.length,created:imported.filter(x=>x.result==="draft").length,
+        existing:imported.filter(x=>x.result==="already_exists").length,
+        requiresTypographyReview:imported.filter(x=>x.typographyReviewRequired).length,
+        items:imported});
+    }catch(error){
+      await client.query("ROLLBACK");
+      console.error("[COM_RES] Atomic artwork import failed",error);
+      return res.status(503).json({message:"Falló importación: todos los cambios se revirtieron"});
+    }finally{client.release();}
+  });
+
   app.post("/api/admin/commercial-resources/templates", isAuthenticated, async (req: any, res) => {
     const user = await identify(req);
     if (user?.role !== "super_admin") return forbid(res);
@@ -79,6 +220,7 @@ export function registerCommercialResourceRoutes(app: Express) {
     const parsed = commercialResourceUploadSchema.safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ message: "Plantilla inválida", detail: parsed.error.issues[0]?.message });
     const input: CommercialResourceUpload = parsed.data;
+    if (input.definition.graphic) return res.status(400).json({ message: "Para archivos gráficos utiliza el importador PNG + mapa autorizado." });
     const client = await pool.connect();
     try {
       await client.query("BEGIN");
@@ -114,6 +256,19 @@ export function registerCommercialResourceRoutes(app: Express) {
       if (found.rowCount !== 1 || found.rows[0].status !== "draft") {
         await client.query("ROLLBACK");
         return res.status(409).json({ message: "Solo puede publicarse una versión en borrador" });
+      }
+      const artwork = await client.query(
+        `SELECT t.definition,a.template_id FROM public.commercial_resource_templates t
+         LEFT JOIN public.commercial_resource_artworks a ON a.template_id=t.id WHERE t.id=$1`,
+        [req.params.id]
+      );
+      const graphic=artwork.rows[0]?.definition?.graphic;
+      if (graphic) {
+        if (!artwork.rows[0]?.template_id || graphic.typographyReviewRequired ||
+            req.body?.editorialLegalApproved !== true) {
+          await client.query("ROLLBACK");
+          return res.status(409).json({ message: "Arte aún en revisión: requiere PNG íntegro, tipografía confirmada y aprobación comercial/legal explícita." });
+        }
       }
       const slug: string = found.rows[0].slug;
       await client.query("SELECT pg_advisory_xact_lock(hashtext($1))", ["resources:" + slug]);
