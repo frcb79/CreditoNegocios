@@ -23,7 +23,7 @@ export function getLegacyUserTourStorageKey(userId: string): string {
 const welcome: UserTourStep = {
   selector: '[data-testid="header-title"]',
   title: "¡Bienvenido a Crédito Negocios!",
-  description: "Conoce cómo promover tus servicios con materiales comerciales aprobados, registrar prospectos y dar seguimiento a sus solicitudes. Puedes cerrar y repetir el recorrido desde Ayuda."
+  description: "En este recorrido conocerás cómo empezar a trabajar: registrar prospectos, preparar solicitudes y darles seguimiento. Puedes cerrarlo y repetirlo desde Ayuda."
 };
 
 const help: UserTourStep = {
