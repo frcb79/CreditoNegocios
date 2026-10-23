@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -31,6 +31,34 @@ export default function CampaignLinkPanel({
   });
 
   const currentCampaignUrl = selectedForUrl === selectedTemplateId ? campaignUrl : "";
+  // Issuance is idempotent: the server returns the same existing personal or
+  // campaign URL, so visiting the library never generates duplicate links.
+  useEffect(() => {
+    let cancelled = false;
+    async function provision(templateId?: string) {
+      try {
+        const response = await fetch("/api/commercial-resources/links", {
+          method: "POST", credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(templateId ? { templateId } : {})
+        });
+        if (!response.ok) return;
+        const payload = await response.json();
+        const url = new URL(payload.path, window.location.origin).toString();
+        if (cancelled) return;
+        if (templateId) {
+          setCampaignUrl(url);
+          setSelectedForUrl(templateId);
+          onCampaignLink?.(url);
+        } else setGenericUrl(url);
+      } catch {
+        // The manual retry button below remains available.
+      }
+    }
+    void provision();
+    if (selectedTemplateId) void provision(selectedTemplateId);
+    return () => { cancelled = true; };
+  }, [selectedTemplateId]);
   async function makeLink(templateId?: string) {
     setBusy(true);
     try {
@@ -65,6 +93,7 @@ export default function CampaignLinkPanel({
     <section className="rounded-xl border bg-card p-4 sm:p-5 space-y-4" data-testid="campaign-link-panel">
       <h2 className="font-bold flex gap-2 items-center"><Link2 className="w-5 h-5 text-primary" /> Tus enlaces de captación</h2>
       <p className="text-sm text-muted-foreground">Estos enlaces llevan a un formulario de Crédito Negocios. Los prospectos que se registren aparecerán en Clientes → Prospectos recibidos, asociados a tu cuenta.</p>
+      <a className="text-sm font-semibold underline text-primary" href="/clientes?tab=recibidos">Ver mis prospectos recibidos →</a>
       <div className="grid grid-cols-2 gap-3">
         <div className="rounded-lg border p-3 space-y-1">
           <MousePointerClick className="h-4 w-4 text-primary" />
