@@ -21,6 +21,7 @@ export default function CommercialResources() {
   const [displayName, setDisplayName] = useState("");
   const [whatsapp, setWhatsapp] = useState("");
   const [showPhone, setShowPhone] = useState(false);
+  const [showInstitutionalLogo, setShowInstitutionalLogo] = useState(true);
   const [hasProfile, setHasProfile] = useState(false);
 
   useEffect(() => {
@@ -63,7 +64,7 @@ export default function CommercialResources() {
         const ctx = canvas.getContext("2d");
         if (!ctx) throw new Error("No se pudo preparar la imagen");
         ctx.drawImage(image, 0, 0, dimensions.width, dimensions.height);
-        canvas.toBlob((png) => {
+        const finishExport = () => canvas.toBlob((png) => {
           if (!png) {
             toast({ title: "Error al exportar la imagen", variant: "destructive" });
             return;
@@ -76,6 +77,22 @@ export default function CommercialResources() {
           window.setTimeout(() => URL.revokeObjectURL(pngUrl), 5000);
           toast({ title: "Imagen generada", description: "Borrador para validación, aún no aprobado para publicación." });
         }, "image/png");
+        if (showInstitutionalLogo) {
+          const logoImage = new Image();
+          logoImage.onload = () => {
+            ctx.fillStyle = "#fff";
+            ctx.fillRect(72, 20, 515, 132);
+            const scale = Math.min(483 / logoImage.naturalWidth, 104 / logoImage.naturalHeight);
+            const w = logoImage.naturalWidth * scale;
+            const h = logoImage.naturalHeight * scale;
+            ctx.drawImage(logoImage, 86, 34 + (104 - h) / 2, w, h);
+            finishExport();
+          };
+          logoImage.onerror = () => finishExport();
+          logoImage.src = "/credito-negocios-full-logo.jpg";
+        } else {
+          finishExport();
+        }
       } catch {
         toast({ title: "No se pudo generar la imagen", variant: "destructive" });
       } finally {
@@ -167,9 +184,16 @@ export default function CommercialResources() {
                   <Checkbox checked={showPhone} onCheckedChange={value => setShowPhone(value === true)} data-testid="resource-show-phone" />
                   Mostrar WhatsApp en la imagen
                 </label>
+                <label className="flex items-center gap-2 text-sm cursor-pointer">
+                  <Checkbox checked={showInstitutionalLogo} onCheckedChange={value => setShowInstitutionalLogo(value === true)} data-testid="resource-institutional-logo" />
+                  Incluir el logotipo de Crédito Negocios
+                </label>
+                <p className="text-xs text-muted-foreground">
+                  Si no tienes marca propia, tu nombre y el logotipo institucional son suficientes. El uso del logotipo está sujeto a aprobación de la pieza final.
+                </p>
                 <p className="text-xs text-muted-foreground">
                   No utilizamos cuentas de otros brokers, datos de clientes, CLABEs ni códigos promocionales para personalizar.
-                  El logotipo editable y los enlaces de captación medibles quedan para el siguiente bloque.
+                  Los logotipos propios de Masters y los enlaces de captación medibles quedan para el siguiente bloque.
                 </p>
               </div>
             </section>
@@ -182,9 +206,16 @@ export default function CommercialResources() {
                 <span className="text-xs rounded-full bg-amber-100 text-amber-900 px-3 py-1">Borrador</span>
               </div>
               <div className="flex justify-center rounded-xl bg-muted/50 p-3" data-testid="marketing-preview">
-                <img src={preview} alt={"Borrador de " + campaign.product + " para " + channel}
-                  className="h-auto w-full max-w-[390px] rounded-lg shadow-lg"
-                  style={{ maxHeight: 520, objectFit: "contain" }} />
+                <div className="relative w-full max-w-[390px]">
+                  <img src={preview} alt={"Borrador de " + campaign.product + " para " + channel}
+                    className="h-auto w-full rounded-lg shadow-lg"
+                    style={{ maxHeight: 520, objectFit: "contain" }} />
+                  {showInstitutionalLogo && (
+                    <div className="absolute top-[2%] left-[7%] w-[48%] bg-white rounded-md p-1 shadow-sm" data-testid="resource-logo-preview">
+                      <img src="/credito-negocios-full-logo.jpg" alt="Logotipo Crédito Negocios" className="w-full h-auto max-h-12 object-contain" />
+                    </div>
+                  )}
+                </div>
               </div>
               <Button className="w-full gap-2" onClick={downloadPng} data-testid="resource-download-png" variant="outline">
                 <Download className="h-4 w-4" /> Descargar vista previa PNG
