@@ -46,6 +46,11 @@ export default function CommercialResourcesAdmin() {
   const [working, setWorking] = useState(false);
   const [previewTemplate, setPreviewTemplate] = useState<PublishedCommercialTemplate | null>(null);
 
+  const { data: campaignOverview } = useQuery<{ clicks: number; links: number; received: number; linked: number }>({
+    queryKey: ["/api/commercial-resources/overview"],
+    queryFn: () => getJson("/api/commercial-resources/overview")
+  });
+
   const { data: templates = [], isLoading: loadingTemplates, error: templateError } = useQuery<PublishedCommercialTemplate[]>({
     queryKey: ["/api/admin/commercial-resources/templates"],
     queryFn: () => getJson("/api/admin/commercial-resources/templates")
@@ -95,6 +100,19 @@ export default function CommercialResourcesAdmin() {
       <div className="flex items-center gap-2">
         <ShieldCheck className="h-5 w-5 text-primary" />
         <h2 className="text-lg font-bold">Super Admin · Administración de plantillas</h2>
+      </div>
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-2" data-testid="admin-campaign-overview">
+        {[
+          ["Enlaces emitidos", campaignOverview?.links],
+          ["Aperturas de formulario", campaignOverview?.clicks],
+          ["Formularios recibidos", campaignOverview?.received],
+          ["Vinculados a Clientes", campaignOverview?.linked]
+        ].map(([label, count]) => (
+          <div className="rounded-lg border p-3" key={String(label)}>
+            <p className="text-2xl font-bold">{count ?? "—"}</p>
+            <p className="text-xs text-muted-foreground">{label}</p>
+          </div>
+        ))}
       </div>
       <div className="rounded-xl border bg-card p-4 space-y-3">
         <h3 className="font-semibold flex items-center gap-2"><Upload className="w-4 h-4" /> Subir plantilla estructurada (.json)</h3>
