@@ -512,6 +512,35 @@ export default function HelpCenterPage() {
               </Card>
             ) : (
               <>
+                {!searchQuery && selectedCategory === "all" && (
+                  <section className="rounded-xl border border-primary/20 bg-primary/5 p-4 sm:p-5 space-y-3" aria-label="Conoce los productos de financiamiento" data-testid="help-product-guides">
+                    <div className="space-y-1">
+                      <h2 className="font-bold text-base text-foreground">Conoce los productos de financiamiento</h2>
+                      <p className="text-sm text-muted-foreground">Aprende qué ofrece cada producto, cuándo puede ser útil y qué debes preguntar antes de presentar una alternativa.</p>
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+                      {[
+                        { slug: "guia-credito-simple", title: "Crédito Simple", desc: "Un monto definido para financiar proyectos" },
+                        { slug: "guia-credito-revolvente", title: "Crédito Revolvente", desc: "Liquidez con disposiciones y reutilización" },
+                        { slug: "guia-factoraje", title: "Factoraje", desc: "Liquidez respaldada en cuentas por cobrar" },
+                        { slug: "guia-arrendamiento", title: "Arrendamiento", desc: "Uso de vehículos o equipo mediante rentas" },
+                        { slug: "guia-hipotecario-vivienda", title: "Hipotecario Vivienda", desc: "Financiamiento para adquirir vivienda" },
+                      ].map(item => (
+                        <button
+                          key={item.slug}
+                          type="button"
+                          data-testid={`help-product-${item.slug}`}
+                          onClick={() => handleSelectArticle(item.slug)}
+                          className="rounded-lg border bg-card hover:bg-muted/50 p-3 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                        >
+                          <span className="text-sm font-semibold text-foreground block">{item.title}</span>
+                          <span className="text-xs text-muted-foreground block mt-1">{item.desc}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </section>
+                )}
+
                 {/* Buscador inteligente en tiempo real */}
                 <div className="relative">
                   <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
