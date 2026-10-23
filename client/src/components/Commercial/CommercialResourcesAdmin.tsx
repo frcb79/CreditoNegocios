@@ -79,39 +79,6 @@ export default function CommercialResourcesAdmin() {
   const [importReport, setImportReport] = useState<{ scanned:number;created:number;existing:number;requiresTypographyReview:number } | null>(null);
   const [previewTemplate, setPreviewTemplate] = useState<PublishedCommercialTemplate | null>(null);
 
-  const [logoUserId,setLogoUserId]=useState("");
-  const [approvedLogoFile,setApprovedLogoFile]=useState<File|null>(null);
-  const {data:logoCandidates=[]}=useQuery<Array<{
-    id:string;email:string;first_name:string;last_name:string;brand_name:string|null;
-    role:string;logo_approved:boolean
-  }>>({
-    queryKey:["/api/admin/commercial-resources/logo-candidates"],
-    queryFn:()=>getJson("/api/admin/commercial-resources/logo-candidates")
-  });
-  const updateApprovedLogo=async(action:"approve"|"revoke")=>{
-    if(!logoUserId || (action==="approve"&&!approvedLogoFile))return;
-    if(!window.confirm(action==="approve"
-      ?"¿Aprobar formalmente este PNG como logo comercial para este Broker/Master?"
-      :"¿Retirar el logotipo comercial aprobado de este usuario?"))return;
-    setWorking(true);
-    try {
-      const url="/api/admin/commercial-resources/approve-logo/"+encodeURIComponent(logoUserId);
-      let response:Response;
-      if(action==="approve"){
-        const form=new FormData();form.append("logo",approvedLogoFile!);
-        response=await fetch(url,{method:"POST",credentials:"include",body:form});
-      }else{
-        response=await fetch(url,{method:"DELETE",credentials:"include"});
-      }
-      const result=await response.json().catch(()=>({}));
-      if(!response.ok)throw new Error(result.message||"No se pudo confirmar la aprobación.");
-      await queryClient.invalidateQueries({queryKey:["/api/admin/commercial-resources/logo-candidates"]});
-      setApprovedLogoFile(null);
-      toast({title:action==="approve"?"Logo aprobado y registrado":"Logo retirado"});
-    }catch(err:any){toast({title:"Error en aprobación de logotipo",description:err.message,variant:"destructive"});}
-    finally{setWorking(false);}
-  };
-
   const { data: campaignOverview } = useQuery<{ clicks: number; links: number; received: number; linked: number }>({
     queryKey: ["/api/commercial-resources/overview"],
     queryFn: () => getJson("/api/commercial-resources/overview")
@@ -251,38 +218,6 @@ export default function CommercialResourcesAdmin() {
           Ya existentes: {importReport.existing} · Tipografía pendiente: {importReport.requiresTypographyReview}.
           Ninguna plantilla se publicó.
         </p>}
-      </div>
-      <div className="rounded-xl border bg-card p-4 space-y-3" data-testid="admin-commercial-logo-approval">
-        <h3 className="font-semibold">Logos propios · aprobación exclusiva de Super Admin</h3>
-        <p className="text-xs text-muted-foreground">
-          Solo los PNG aprobados aquí se incorporan automáticamente a las publicaciones personalizadas.
-          Ningún Broker/Master puede aprobar su propio logo desde Perfil.
-        </p>
-        <label className="block text-sm">
-          Broker o Master Broker
-          <select className="mt-1 w-full rounded-md border bg-background p-2 text-sm" value={logoUserId}
-            onChange={e=>setLogoUserId(e.target.value)} data-testid="resource-logo-user-select">
-            <option value="">Seleccionar usuario</option>
-            {logoCandidates.map(person=>(
-              <option key={person.id} value={person.id}>
-                {[person.first_name,person.last_name].filter(Boolean).join(" ")} — {person.email} ({person.role})
-                {person.logo_approved?" · Logo autorizado":""}
-              </option>
-            ))}
-          </select>
-        </label>
-        <input type="file" accept="image/png" data-testid="resource-logo-file"
-          onChange={e=>setApprovedLogoFile(e.target.files?.[0]||null)} />
-        <div className="flex gap-2 flex-wrap">
-          <Button size="sm" disabled={working||!logoUserId||!approvedLogoFile}
-            data-testid="resource-logo-approve" onClick={()=>updateApprovedLogo("approve")}>
-            Aprobar logo PNG
-          </Button>
-          <Button size="sm" variant="outline" disabled={working||!logoUserId}
-            data-testid="resource-logo-revoke" onClick={()=>updateApprovedLogo("revoke")}>
-            Retirar aprobación
-          </Button>
-        </div>
       </div>
       <CommercialPilotPreview />
       <div className="rounded-xl border bg-card p-4 space-y-3">
