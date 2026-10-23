@@ -50,6 +50,45 @@ describe("Onboarding Fase A — recorrido por rol y ayuda", () => {
     }
   });
 
+  it("mantiene un recorrido práctico de 7 a 8 pasos y no elimina mensajes ocultos", () => {
+    for (const role of ["broker", "master_broker", "admin", "super_admin"]) {
+      const desktop = getUserTourSteps(role, false);
+      const mobile = getUserTourSteps(role, true);
+      expect(desktop.length).toBeGreaterThanOrEqual(7);
+      expect(desktop.length).toBeLessThanOrEqual(8);
+      expect(mobile).toHaveLength(desktop.length);
+    }
+    const brokerText = getUserTourSteps("broker", false).map(step => step.description).join(" ");
+    expect(brokerText).toContain("prospecto");
+    expect(brokerText).toContain("necesidad");
+    expect(brokerText).toContain("propuestas");
+    expect(brokerText).toContain("Ayuda rápida");
+    const hook = read("client/src/hooks/useUserTour.ts");
+    expect(hook).toContain("findRenderableTarget");
+    expect(hook).not.toContain(".filter((step) => !step.selector");
+    expect(hook).toContain("const target = step.selector ? findRenderableTarget(step.selector) : null");
+  });
+
+  it("ofrece ayuda rápida contextual sin salir de la sección", () => {
+    const quick = read("client/src/components/Help/ContextualHelpLink.tsx");
+    expect(quick).toContain('variant === "quick"');
+    expect(quick).toContain("setShowFullGuide(true)");
+    for (const [path, slug] of [
+      ["client/src/pages/Clients.tsx", "como-registro-un-cliente"],
+      ["client/src/pages/Credits.tsx", "donde-reviso-mis-oportunidades"],
+      ["client/src/pages/ProductSystem.tsx", "como-consulto-productos"],
+      ["client/src/pages/Financieras.tsx", "como-consulto-financieras"],
+      ["client/src/pages/BrokerNetwork.tsx", "que-puede-ver-un-master-broker"],
+      ["client/src/pages/Commissions.tsx", "donde-consulto-mis-comisiones"],
+    ]) {
+      expect(read(path)).toContain('slug="' + slug + '" variant="quick"');
+    }
+    const brokerPanel = read("client/src/components/Dashboard/BrokerQuickStart.tsx");
+    expect(brokerPanel).toContain("data-testid=\"broker-quick-start\"");
+    expect(brokerPanel).toContain("data-testid=\"button-start-first-prospect\"");
+    expect(read("client/src/pages/Dashboard.tsx")).toContain("<BrokerQuickStart");
+  });
+
   it("ofrece una versión móvil centrada en el menú en lugar de elementos ocultos", () => {
     for (const role of ["broker", "master_broker", "admin", "super_admin"]) {
       const list = selectors(role, true).join(" ");
@@ -60,7 +99,7 @@ describe("Onboarding Fase A — recorrido por rol y ayuda", () => {
   });
 
   it("guarda un estado versionado por usuario y rol, separado de la marca legacy", () => {
-    expect(USER_TOUR_VERSION).toBe("2");
+    expect(USER_TOUR_VERSION).toBe("3");
     expect(getUserTourStorageKey("u1", "broker")).not.toEqual(getUserTourStorageKey("u1", "master_broker"));
     expect(getLegacyUserTourStorageKey("u1")).toBe("hasSeenTour_u1");
     const hook = read("client/src/hooks/useUserTour.ts");
