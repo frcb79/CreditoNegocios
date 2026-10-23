@@ -1,4 +1,5 @@
 import { useState } from "react";
+import CommercialPilotPreview from "./CommercialPilotPreview";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -114,6 +115,7 @@ export default function CommercialResourcesAdmin() {
           </div>
         ))}
       </div>
+      <CommercialPilotPreview />
       <div className="rounded-xl border bg-card p-4 space-y-3">
         <h3 className="font-semibold flex items-center gap-2"><Upload className="w-4 h-4" /> Subir plantilla estructurada (.json)</h3>
         <p className="text-xs text-muted-foreground">
