@@ -5,7 +5,6 @@ import Header from "@/components/Header";
 import CommercialResourcesAdmin from "@/components/Commercial/CommercialResourcesAdmin";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Checkbox } from "@/components/ui/checkbox";
 import { Textarea } from "@/components/ui/textarea";
 import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
@@ -33,8 +32,6 @@ export default function CommercialResources() {
   const [selectedId, setSelectedId] = useState("");
   const [displayName, setDisplayName] = useState("");
   const [whatsapp, setWhatsapp] = useState("");
-  const [showPhone, setShowPhone] = useState(false);
-  const [showInstitutionalLogo, setShowInstitutionalLogo] = useState(true);
   const [loadedUser, setLoadedUser] = useState("");
   const [suggestion, setSuggestion] = useState("");
   const [suggesting, setSuggesting] = useState(false);
@@ -53,8 +50,9 @@ export default function CommercialResources() {
   const branding = useMemo(() => ({
     displayName: safeBrandLabel(displayName),
     whatsapp,
-    showPhone: showPhone && Boolean(selection?.definition.allowedIdentityFields.whatsapp)
-  }), [displayName, whatsapp, showPhone, selection]);
+    showPhone: true
+  }), [displayName, whatsapp]);
+  const identityReady = safeBrandLabel(displayName).length >= 2 && Boolean(normalizedWhatsApp(whatsapp));
   const svg = useMemo(() => selection ? templateSvg(selection, branding) : "", [selection, branding]);
   const preview = useMemo(() => svg ? "data:image/svg+xml;charset=utf-8," + encodeURIComponent(svg) : "", [svg]);
   const caption = useMemo(() => selection ? templateCaption(selection, branding) : "", [selection, branding]);
@@ -63,6 +61,10 @@ export default function CommercialResources() {
   const canSuggest = user?.role === "broker" || user?.role === "master_broker";
 
   const copyCaption = async () => {
+    if (!identityReady || !selection) {
+      toast({ title: "Completa tu nombre y WhatsApp antes de usar la plantilla", variant: "destructive" });
+      return;
+    }
     try {
       await navigator.clipboard.writeText(caption);
       toast({ title: "Texto copiado" });
@@ -72,7 +74,10 @@ export default function CommercialResources() {
   };
 
   const downloadPng = () => {
-    if (!selection || !svg) return;
+    if (!selection || !svg || !identityReady) {
+      toast({ title: "Completa tu nombre y WhatsApp antes de descargar", variant: "destructive" });
+      return;
+    }
     const size = imageSize(selection.channel);
     const blob = new Blob([svg], { type: "image/svg+xml;charset=utf-8" });
     const source = URL.createObjectURL(blob);
@@ -97,7 +102,7 @@ export default function CommercialResources() {
         window.setTimeout(() => URL.revokeObjectURL(file), 5000);
         toast({ title: "Material descargado" });
       }, "image/png");
-      if (showInstitutionalLogo && selection.definition.allowedIdentityFields.institutionalLogo) {
+      if (selection.definition.allowedIdentityFields.institutionalLogo) {
         const logo = new Image();
         logo.onload = () => {
           ctx.fillStyle = "#FFFFFF";
@@ -152,7 +157,7 @@ export default function CommercialResources() {
             <ShieldCheck className="w-5 h-5 text-primary shrink-0" />
             <p className="text-sm text-muted-foreground">
               Solo podrás utilizar materiales autorizados por Crédito Negocios. Los textos, beneficios y condiciones financieras no son editables.
-              Personaliza únicamente tu nombre y datos de contacto permitidos. {COMMERCIAL_DISCLAIMER}
+              Debes incluir tu nombre, contacto válido y logotipo autorizado. {COMMERCIAL_DISCLAIMER}
             </p>
           </div>
           <div className="grid grid-cols-1 xl:grid-cols-2 gap-6 items-start">
@@ -189,20 +194,16 @@ export default function CommercialResources() {
                       <label className="block text-sm font-medium" htmlFor="resource-whatsapp">Teléfono o WhatsApp</label>
                       <Input id="resource-whatsapp" inputMode="tel" maxLength={25} value={whatsapp}
                         onChange={e => setWhatsapp(e.target.value)} data-testid="resource-whatsapp" />
-                      <label className="flex items-center gap-2 text-sm">
-                        <Checkbox checked={showPhone} onCheckedChange={v => setShowPhone(v === true)} data-testid="resource-show-phone" />
-                        Mostrar mi WhatsApp en el material
-                      </label>
-                      {showPhone && whatsapp.trim() && !normalizedWhatsApp(whatsapp) && <p className="text-xs text-destructive">El número no es válido; no se imprimirá.</p>}
+                      {(!normalizedWhatsApp(whatsapp)) && <p className="text-xs text-destructive">Ingresa un WhatsApp válido. Es obligatorio para generar la pieza.</p>}
                     </>
                   )}
                   {selection.definition.allowedIdentityFields.institutionalLogo && (
-                    <label className="flex items-center gap-2 text-sm">
-                      <Checkbox checked={showInstitutionalLogo} onCheckedChange={v => setShowInstitutionalLogo(v === true)} data-testid="resource-institutional-logo" />
-                      Utilizar el logotipo de Crédito Negocios
-                    </label>
+                    <p className="text-xs text-muted-foreground" data-testid="resource-institutional-logo">
+                      El logotipo institucional de Crédito Negocios se incluirá automáticamente.
+                    </p>
                   )}
-                  <p className="text-xs text-muted-foreground">Estos datos solo personalizan la pieza y no cambian tu perfil.</p>
+                  {safeBrandLabel(displayName).length < 2 && <p className="text-xs text-destructive">Indica tu nombre o nombre comercial; es obligatorio.</p>}
+                  <p className="text-xs text-muted-foreground">Nombre y contacto son obligatorios para mantener completo el diseño. Solo personalizan la pieza, no cambian tu perfil.</p>
                 </div>
               )}
             </section>
@@ -214,7 +215,7 @@ export default function CommercialResources() {
                     <div className="relative w-full max-w-[360px]">
                       <img src={preview} alt={"Plantilla aprobada " + selection.name}
                         className="max-h-[520px] w-full object-contain rounded-md" />
-                      {showInstitutionalLogo && selection.definition.allowedIdentityFields.institutionalLogo && (
+                      {selection.definition.allowedIdentityFields.institutionalLogo && (
                         <div className="absolute top-[2%] left-[7%] w-[46%] bg-white p-1 rounded-md" data-testid="resource-logo-preview">
                           <img src="/credito-negocios-full-logo.jpg" alt="Crédito Negocios" className="max-h-12 w-full object-contain" />
                         </div>
@@ -222,13 +223,13 @@ export default function CommercialResources() {
                     </div>
                   </div>
                   <p className="text-xs text-muted-foreground">{dimensions.width} × {dimensions.height} px · Contenido autorizado, v{selection.version}</p>
-                  <Button className="w-full gap-2" onClick={downloadPng} data-testid="resource-download-png">
+                  <Button className="w-full gap-2" onClick={downloadPng} disabled={!identityReady} data-testid="resource-download-png">
                     <Download className="w-4 h-4" /> Descargar PNG personalizado
                   </Button>
                   <div className="border-t pt-3 space-y-3">
                     <div className="flex justify-between items-center gap-2">
                       <p className="text-sm font-semibold">{selection.channel === "tiktok" ? "Guion vertical aprobado" : "Texto aprobado para publicar"}</p>
-                      <Button size="sm" variant="outline" onClick={copyCaption} className="gap-1" data-testid="resource-copy-caption">
+                      <Button size="sm" variant="outline" onClick={copyCaption} disabled={!identityReady} className="gap-1" data-testid="resource-copy-caption">
                         <Copy className="w-4 h-4" /> Copiar
                       </Button>
                     </div>
