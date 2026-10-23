@@ -8,7 +8,7 @@ on:
       - 'feat/onboarding-ayuda-v2-*'
   workflow_dispatch:
 concurrency:
-  group: prelaunch-${{ github.ref }}
+  group: prelaunch-${{ github.ref }}-${{ github.sha }}
   cancel-in-progress: true
 permissions:
   contents: read
