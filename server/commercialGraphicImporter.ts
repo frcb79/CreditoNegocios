@@ -24,10 +24,10 @@ export type GraphicImport = {
 };
 
 const allowedGroups = [
-  "01_Impactantes_Explicativas_NUEVAS/",
-  "03_Impactantes_y_Sobrias_Anteriores/26_Variantes_Anteriores/",
-  "04_Formato_Cuadrado_1x1/",
-  "05_Formato_Vertical_9x16/"
+  "ARTES_Y_MAPAS/01_Impactantes_Explicativas_NUEVAS/",
+  "ARTES_Y_MAPAS/03_Impactantes_y_Sobrias_Anteriores/26_Variantes_Anteriores/",
+  "ARTES_Y_MAPAS/04_Formato_Cuadrado_1x1/",
+  "ARTES_Y_MAPAS/05_Formato_Vertical_9x16/"
 ];
 function validPath(s:string) {
   return !s.startsWith("/") && !s.includes("\\") && !s.includes("..") &&
@@ -111,7 +111,7 @@ export function normalizeV4Map(raw:Buffer,png:Buffer,group:string):GraphicImport
  try {m=JSON.parse(raw.toString("utf8").replace(/^\uFEFF/,""));}catch {fail("JSON de mapa inválido.");}
  if(!allowedGroups.some(prefix=>group.startsWith(prefix)))fail("Grupo no permitido.");
  if(!["cn-commercial-graphic-v2","cn-graphic-overlay/v1"].includes(m.schemaVersion))fail("Contrato gráfico no reconocido.");
- if(!["CREATIVE_REVIEW_NOT_PUBLISHED","DRAFT_GRAPHIC_NOT_APPROVED"].includes(m.status))
+ if(m.status!=="FINAL_CREATIVE_READY_FOR_IMPORT")
    fail("Solo se permiten materiales marcados para revisión.");
  if(!Array.isArray(m.roles)||m.roles.length!==2||!m.roles.includes("broker")||!m.roles.includes("master_broker"))
    fail("Plantilla no habilitada para ambos roles.");
@@ -134,7 +134,7 @@ export function normalizeV4Map(raw:Buffer,png:Buffer,group:string):GraphicImport
    fail("Campos de identidad inseguros.");
  const category=caption(m.campaignId||m.campaignCategory||m.id,90).replace(/-(?:impactante|sobrio|cuadrada|historia)(?:-v\d+)?$/,"");
  if(!/^[a-z_]+$/.test(category))fail("Categoría comercial inválida.");
- const tail=group.startsWith("04_")?"-cuadrada":group.startsWith("05_")?"-historia":"";
+ const tail=group.includes("/04_Formato_Cuadrado_1x1/")?"-cuadrada":group.includes("/05_Formato_Vertical_9x16/")?"-historia":"";
  const candidate=caption(m.slug||m.id,90).replace(/-v\d+$/,"").replace(/_/g,"-")+tail;
  if(!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(candidate)||candidate.length>80)fail("Slug inválido.");
  const base= {size:32,min:19,weight:700 as const,color:"#0F2D3E"};
@@ -148,8 +148,10 @@ export function normalizeV4Map(raw:Buffer,png:Buffer,group:string):GraphicImport
  const supporting=caption(c?.supportingQuestion||c?.B||c?.subheadline||desc,110);
  const highlights=Array.isArray(c?.tags)?c.tags.map((x:any)=>caption(x,85)).filter(Boolean).slice(0,3):[];
  if(headline.length<5||desc.length<8)fail("Contenido aprobado ausente.");
- // The square/story maps omit font sizes/weights: must remain draft pending verification.
- const typographyReviewRequired=[f.BROKER_NAME,f.BROKER_WHATSAPP,f.CTA].some(x=>x.fontSize===undefined&&x.sizePx===undefined);
+ // Final 65-map package includes complete typography for all formats.
+ const typographyReviewRequired=[f.BROKER_NAME,f.BROKER_WHATSAPP,f.CTA].some((x:any)=>
+   (!Number.isInteger(x.fontSize)&&!Number.isInteger(x.sizePx)) ||
+   (!Number.isInteger(x.minFontSize)&&!Number.isInteger(x.minPx)));
  return {
   slug:candidate,
   name:caption(m.name||category,95)+(tail?" · "+(tail==="-historia"?"Historia":"Cuadrada"):""),
@@ -178,5 +180,6 @@ export function parseV4Archive(zip:Buffer):GraphicImport[] {
   seen.add(item.slug);result.push(item);
  }
  if(result.length!==entries.size/2)fail("Faltan mapas o PNG correspondientes.");
+ if(result.length===65 && result.some(r=>r.graphic.typographyReviewRequired))fail("El lote final aún contiene tipografías incompletas.");
  return result;
 }
