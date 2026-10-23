@@ -27,6 +27,23 @@ describe("Biblioteca comercial - contratos, permisos y formatos", () => {
     expect(commercialResourceUploadSchema.safeParse({ ...COM_RES_EXAMPLE, slug: "../admin" }).success).toBe(false);
   });
 
+  it("rejects templates that would let a broker omit required identity placeholders", () => {
+    expect(commercialResourceUploadSchema.safeParse({
+      ...COM_RES_EXAMPLE,
+      definition: {
+        ...COM_RES_EXAMPLE.definition,
+        allowedIdentityFields: { displayName: true, whatsapp: false, institutionalLogo: true }
+      }
+    }).success).toBe(false);
+    expect(commercialResourceUploadSchema.safeParse({
+      ...COM_RES_EXAMPLE,
+      definition: {
+        ...COM_RES_EXAMPLE.definition,
+        allowedIdentityFields: { displayName: true, whatsapp: true, institutionalLogo: false }
+      }
+    }).success).toBe(false);
+  });
+
   it("rejects empty, extremely long or arbitrary suggestion fields", () => {
     expect(commercialSuggestionSchema.safeParse({ suggestion: "Queremos una campaña para negocios turísticos" }).success).toBe(true);
     expect(commercialSuggestionSchema.safeParse({ suggestion: "hola" }).success).toBe(false);
@@ -114,7 +131,10 @@ describe("Biblioteca comercial - contratos, permisos y formatos", () => {
     expect(svg).not.toContain("onerror");
     expect(svg).not.toContain("<img");
     const page = source("client/src/pages/CommercialResources.tsx");
-    expect(page).toContain('const [showPhone, setShowPhone] = useState(false)');
+    expect(page).toContain('const identityReady = safeBrandLabel(displayName).length >= 2');
+    expect(page).toContain('disabled={!identityReady}');
+    expect(page).toContain('showPhone: true');
+    expect(page).not.toContain("setShowPhone(");
     expect(page).not.toContain("referralCode");
     expect(page).not.toContain("localStorage");
   });
