@@ -778,71 +778,18 @@ export async function runAutoMigration(): Promise<void> {
       if (process.env.RAILWAY_ENVIRONMENT_NAME?.toLowerCase() === "staging") throw error;
     }
 
-    // COM-RES-LOGO-SELF: users own optional marketing logos, not avatars.
+    // COM-RES-LOGO-SELF: optional marketing logos are owned by the Broker/Master.
     try {
       await client.query(`
         CREATE TABLE IF NOT EXISTS public.commercial_profile_logos (
           user_id VARCHAR PRIMARY KEY REFERENCES public.users(id) ON DELETE RESTRICT,
           image_data BYTEA NOT NULL,
-          image_sha256 CHAR(64) NOT NULL CHECK (image_sha256 ~ '^[a-f0-9]{64}
-    try {
-      await client.query(`
-        CREATE TABLE IF NOT EXISTS public.commercial_campaign_links (
-          id VARCHAR PRIMARY KEY DEFAULT gen_random_uuid(),
-          token VARCHAR(64) NOT NULL UNIQUE,
-          owner_user_id VARCHAR NOT NULL REFERENCES public.users(id) ON DELETE RESTRICT,
-          tenant_id VARCHAR REFERENCES public.tenants(id) ON DELETE SET NULL,
-          template_id VARCHAR REFERENCES public.commercial_resource_templates(id) ON DELETE RESTRICT,
-          created_at TIMESTAMP NOT NULL DEFAULT NOW(),
-          disabled_at TIMESTAMP,
-          click_count INTEGER NOT NULL DEFAULT 0 CHECK (click_count >= 0)
-        );
-        CREATE UNIQUE INDEX IF NOT EXISTS commercial_campaign_owner_template_unique ON public.commercial_campaign_links(owner_user_id, (COALESCE(template_id, '__general__')));
-        CREATE INDEX IF NOT EXISTS commercial_campaign_owner_idx ON public.commercial_campaign_links(owner_user_id,created_at DESC);
-        CREATE TABLE IF NOT EXISTS public.commercial_marketing_leads (
-          id VARCHAR PRIMARY KEY DEFAULT gen_random_uuid(),
-          link_id VARCHAR NOT NULL REFERENCES public.commercial_campaign_links(id) ON DELETE RESTRICT,
-          owner_user_id VARCHAR NOT NULL REFERENCES public.users(id) ON DELETE RESTRICT,
-          tenant_id VARCHAR REFERENCES public.tenants(id) ON DELETE SET NULL,
-          template_id VARCHAR REFERENCES public.commercial_resource_templates(id) ON DELETE RESTRICT,
-          source_channel VARCHAR(25),
-          full_name VARCHAR(120) NOT NULL,
-          phone VARCHAR(20) NOT NULL,
-          email VARCHAR(160),
-          product VARCHAR(40),
-          amount_range VARCHAR(80),
-          message VARCHAR(600),
-          privacy_version VARCHAR(40) NOT NULL,
-          consent_at TIMESTAMP NOT NULL DEFAULT NOW(),
-          created_at TIMESTAMP NOT NULL DEFAULT NOW(),
-          linked_client_id VARCHAR REFERENCES public.clients(id) ON DELETE SET NULL
-        );
-        CREATE INDEX IF NOT EXISTS commercial_marketing_leads_owner ON public.commercial_marketing_leads(owner_user_id,created_at DESC);
-        CREATE INDEX IF NOT EXISTS commercial_marketing_leads_contact ON public.commercial_marketing_leads(link_id,phone,created_at DESC);
-      `);
-      console.log('[AutoMigrate] Campaign links and intake verified');
-    } catch (error) {
-      console.error('[AutoMigrate] Campaign attribution schema unavailable:', error);
-      if (process.env.RAILWAY_ENVIRONMENT_NAME?.toLowerCase() === 'staging') throw error;
-    }
-
-    // Repair known legacy staging drift only; never run these ALTERs on Production.
-    await repairStagingSchemaOnStartup(client);
-    console.log("✨ [AutoMigrate] Schema verification and user sync completed successfully!");
-  } catch (error) {
-    console.error("❌ [AutoMigrate] General schema verification error:", error);
-    if (process.env.RAILWAY_ENVIRONMENT_NAME?.toLowerCase() === "staging") throw error;
-  } finally {
-    if (client) {
-      client.release();
-    }
-  }
-}
-),
+          image_sha256 CHAR(64) NOT NULL,
           updated_at TIMESTAMP NOT NULL DEFAULT NOW(),
           CONSTRAINT commercial_profile_logo_size CHECK (octet_length(image_data) BETWEEN 60 AND 1000000)
         );
       `);
+      console.log("[AutoMigrate] Self-managed commercial logos table verified");
     } catch (error) {
       console.error("[AutoMigrate] Commercial profile logo schema unavailable:", error);
       if (process.env.RAILWAY_ENVIRONMENT_NAME?.toLowerCase() === "staging") throw error;
