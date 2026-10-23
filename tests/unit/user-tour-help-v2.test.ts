@@ -50,12 +50,12 @@ describe("Onboarding Fase A — recorrido por rol y ayuda", () => {
     }
   });
 
-  it("mantiene un recorrido práctico de 7 a 8 pasos y no elimina mensajes ocultos", () => {
+  it("mantiene un recorrido práctico de 7 a 9 pasos y no elimina mensajes ocultos", () => {
     for (const role of ["broker", "master_broker", "admin", "super_admin"]) {
       const desktop = getUserTourSteps(role, false);
       const mobile = getUserTourSteps(role, true);
       expect(desktop.length).toBeGreaterThanOrEqual(7);
-      expect(desktop.length).toBeLessThanOrEqual(8);
+      expect(desktop.length).toBeLessThanOrEqual(9);
       expect(mobile).toHaveLength(desktop.length);
     }
     const brokerText = getUserTourSteps("broker", false).map(step => step.description).join(" ");
@@ -67,6 +67,33 @@ describe("Onboarding Fase A — recorrido por rol y ayuda", () => {
     expect(hook).toContain("findRenderableTarget");
     expect(hook).not.toContain(".filter((step) => !step.selector");
     expect(hook).toContain("const target = step.selector ? findRenderableTarget(step.selector) : null");
+  });
+
+  it("promueve Recursos Comerciales al inicio para Broker y Master sin mostrarlo como función administrativa", () => {
+    for (const role of ["broker", "master_broker"]) {
+      const steps = getUserTourSteps(role, false);
+      const resourceIndex = steps.findIndex(step => step.selector === '[data-testid="nav-recursos-comerciales"]');
+      const clientIndex = steps.findIndex(step => step.selector === '[data-testid="nav-clientes"]');
+      expect(resourceIndex).toBeGreaterThan(0);
+      expect(resourceIndex).toBeLessThan(clientIndex);
+      const commercial = steps[resourceIndex];
+      expect(commercial.title).toContain("plantillas");
+      expect(commercial.description).toContain("nombre y WhatsApp");
+      expect(commercial.description).toContain("enlace personal de captación");
+      expect(commercial.description).toContain("visibilidad a Crédito Negocios");
+      expect(commercial.description).toContain("conforme sean aprobadas");
+    }
+    for (const role of ["admin", "super_admin"]) {
+      expect(selectors(role).join(" ")).not.toContain("nav-recursos-comerciales");
+    }
+    const quick = read("client/src/components/Dashboard/BrokerQuickStart.tsx");
+    expect(quick).toContain('label: "1. Promueve tus servicios"');
+    expect(quick).toContain("plantillas comerciales aprobadas");
+    expect(quick).toContain('onClick={() => setLocation("/recursos-comerciales")}');
+    expect(quick).toContain('data-testid="button-open-commercial-resources"');
+    expect(quick).toContain('data-testid="button-start-first-prospect"');
+    const dashboard = read("client/src/pages/Dashboard.tsx");
+    expect(dashboard).toContain('(role === "broker" || isMasterBroker)');
   });
 
   it("ofrece ayuda rápida contextual sin salir de la sección", () => {
