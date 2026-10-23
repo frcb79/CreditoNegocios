@@ -20,7 +20,7 @@ export default function CommercialResources() {
   const [channel, setChannel] = useState<SocialChannel>("instagram");
   const [displayName, setDisplayName] = useState("");
   const [whatsapp, setWhatsapp] = useState("");
-  const [showPhone, setShowPhone] = useState(true);
+  const [showPhone, setShowPhone] = useState(false);
   const [hasProfile, setHasProfile] = useState(false);
 
   useEffect(() => {
