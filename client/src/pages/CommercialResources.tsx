@@ -58,7 +58,7 @@ export default function CommercialResources() {
     whatsapp,
     showPhone: true
   }), [displayName, whatsapp]);
-  const svg = useMemo(() => selection ? templateSvg(selection, branding) : "", [selection, branding]);
+  const svg = useMemo(() => selection && !selection.definition.graphic ? templateSvg(selection, branding) : "", [selection, branding]);
   const preview = useMemo(() => svg ? "data:image/svg+xml;charset=utf-8," + encodeURIComponent(svg) : "", [svg]);
   const profile = (user?.profileData || {}) as Record<string, any>;
   const graphicName = (user?.role === "master_broker" && user.brandName) ||
@@ -112,7 +112,7 @@ export default function CommercialResources() {
   };
 
   const downloadPng = () => {
-    if (!selection || !svg || !identityReady) {
+    if (!selection || (!svg && !selection.definition.graphic) || !identityReady) {
       toast({ title: "Completa tu nombre y WhatsApp antes de descargar", variant: "destructive" });
       return;
     }
