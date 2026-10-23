@@ -5,9 +5,31 @@ import { z } from "zod";
  * Only Super Admin imports it. Brokers select approved items and provide
  * their own permitted identity fields; these strings are never writable by brokers.
  */
-export const resourceProductSchema = z.enum(["simple", "revolvente", "factoraje", "arrendamiento", "hipotecario"]);
+export const resourceProductSchema = z.enum(["simple", "revolvente", "factoraje", "arrendamiento", "hipotecario", "tpv_anticipo", "institucional"]);
 export const resourceChannelSchema = z.enum(["instagram", "facebook", "whatsapp", "linkedin", "tiktok"]);
 const color = z.string().regex(/^#[0-9a-fA-F]{6}$/, "Color hexadecimal #RRGGBB");
+
+const graphicBoxSchema = z.object({
+  x: z.number().int().nonnegative(), y: z.number().int().nonnegative(),
+  width: z.number().int().positive(), height: z.number().int().positive()
+}).strict();
+const graphicTextSchema = graphicBoxSchema.extend({
+  size: z.number().int().min(12).max(70), minSize: z.number().int().min(12).max(70),
+  weight: z.union([z.literal(600),z.literal(700)]), color
+}).strict();
+export const commercialGraphicDefinitionSchema = z.object({
+  mode: z.literal("png-overlay"),
+  canvas: z.object({width:z.literal(1080),height:z.union([z.literal(1080),z.literal(1350),z.literal(1920)])}).strict(),
+  sha256: z.string().regex(/^[a-f0-9]{64}$/),
+  originalMapSchema: z.enum(["cn-commercial-graphic-v2","cn-graphic-overlay/v1"]),
+  roles: z.tuple([z.literal("broker"),z.literal("master_broker")]),
+  typographyReviewRequired: z.boolean(),
+  fields: z.object({
+    name: graphicTextSchema, whatsapp: graphicTextSchema,
+    cta: graphicTextSchema.extend({text:z.string().min(3).max(95)}).strict(),
+    logo: graphicBoxSchema
+  }).strict()
+}).strict();
 
 export const commercialResourceDefinitionSchema = z.object({
   layout: z.enum(["editorial", "minimal", "split"]),
@@ -19,6 +41,7 @@ export const commercialResourceDefinitionSchema = z.object({
   hook: z.string().trim().min(8).max(150),
   cta: z.string().trim().min(5).max(95),
   highlights: z.array(z.string().trim().min(3).max(85)).max(3).default([]),
+  graphic: commercialGraphicDefinitionSchema.optional(),
   allowedIdentityFields: z.object({
     displayName: z.literal(true),
     // Mandatory identity: current public designs must never be left empty.
