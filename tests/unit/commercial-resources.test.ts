@@ -121,8 +121,11 @@ describe("Biblioteca comercial - contratos, permisos y formatos", () => {
 
   it("keeps financing product guides integrated in Help", () => {
     const help = source("server/commercialHelpService.ts");
-    for (const id of ["simple", "revolvente", "factoraje", "arrendamiento", "hipotecario-vivienda"]) {
-      expect(help).toContain("guia-" + (id.startsWith("credito-") ? id : id));
+    for (const slug of [
+      "guia-credito-simple", "guia-credito-revolvente",
+      "guia-factoraje", "guia-arrendamiento", "guia-hipotecario-vivienda"
+    ]) {
+      expect(help).toContain(slug);
     }
     expect(help).toContain("productos_crediticios");
     expect(source("client/src/pages/HelpCenterPage.tsx")).toContain('data-testid="help-product-guides"');
