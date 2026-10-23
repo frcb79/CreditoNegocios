@@ -229,7 +229,7 @@ export default function CommercialResources() {
             <ShieldCheck className="w-5 h-5 text-primary shrink-0" />
             <p className="text-sm text-muted-foreground">
               Solo podrás utilizar materiales autorizados por Crédito Negocios. Los textos, beneficios y condiciones financieras no son editables.
-              Debes incluir tu nombre, contacto válido y logotipo autorizado. {COMMERCIAL_DISCLAIMER}
+              Tu nombre y WhatsApp son obligatorios; tu logo propio es opcional y se toma de Perfil. {COMMERCIAL_DISCLAIMER}
             </p>
           </div>
           <div className="grid grid-cols-1 xl:grid-cols-2 gap-6 items-start">
@@ -275,7 +275,7 @@ export default function CommercialResources() {
                     </p>
                   )}
                   {(selection.definition.graphic ? graphicName.trim().length < 2 : safeBrandLabel(displayName).length < 2) && <p className="text-xs text-destructive">Indica tu nombre o nombre comercial en el perfil.</p>}
-                  <p className="text-xs text-muted-foreground">{selection.definition.graphic ? "Los datos de identidad se toman del perfil; no puedes alterar textos ni fotografías. El logo propio aparece únicamente si fue autorizado." : "Nombre y contacto son obligatorios para mantener completo el diseño. Solo personalizan la pieza, no cambian tu perfil."}</p>
+                  <p className="text-xs text-muted-foreground">{selection.definition.graphic ? "Nombre y WhatsApp se toman de tu perfil. Tu logo es opcional: si no lo subes en Perfil, la plantilla se genera sin logo propio. Los textos y fotografías no se modifican." : "Nombre y contacto son obligatorios para mantener completo el diseño. Solo personalizan la pieza, no cambian tu perfil."}</p>
                 </div>
               )}
             </section>
