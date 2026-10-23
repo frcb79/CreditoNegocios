@@ -131,8 +131,10 @@ describe("Biblioteca comercial - contratos, permisos y formatos", () => {
     expect(svg).not.toContain("onerror");
     expect(svg).not.toContain("<img");
     const page = source("client/src/pages/CommercialResources.tsx");
-    expect(page).toContain('const identityReady = safeBrandLabel(displayName).length >= 2');
-    expect(page).toContain('disabled={!identityReady}');
+    expect(page).toContain("const identityReady = Boolean(selection?.definition.graphic)");
+    expect(page).toContain("safeBrandLabel(displayName).length >= 2");
+    expect(page).toContain("graphicName.trim().length >= 2");
+    expect(page).toContain('disabled={!identityReady || (Boolean(selection.definition.graphic)');
     expect(page).toContain('showPhone: true');
     expect(page).not.toContain("setShowPhone(");
     expect(page).not.toContain("referralCode");
