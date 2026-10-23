@@ -173,8 +173,8 @@ export function registerCommercialResourceRoutes(app: Express) {
         const existing=await client.query(
           `SELECT t.id,t.version FROM public.commercial_resource_templates t
            JOIN public.commercial_resource_artworks a ON a.template_id=t.id
-           WHERE t.slug=$1 AND a.sha256=$2 AND t.definition->'graphic'->>'mode'='png-overlay'
-           ORDER BY t.version DESC LIMIT 1`,[input.slug,item.graphic.sha256]
+           WHERE t.slug=$1 AND a.sha256=$2 AND t.definition=$3::jsonb
+           ORDER BY t.version DESC LIMIT 1`,[input.slug,item.graphic.sha256,JSON.stringify(input.definition)]
         );
         if(existing.rows.length){
           imported.push({slug:input.slug,id:existing.rows[0].id,version:existing.rows[0].version,result:"already_exists"});
