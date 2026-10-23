@@ -80,7 +80,10 @@ describe("COM-RES-GRAPHICS-V4: generic artwork import",()=>{
   expect(api).toContain("editorialLegalApproved");
   expect(migration).toContain("public.commercial_resource_artworks");
   expect(api).toContain("typographyReviewRequired");
-  expect(api).toContain("commercial_approved_logos");
+  expect(api).toContain("commercial_profile_logos");
+  expect(api).toContain('"/api/commercial-resources/my-logo"');
+  expect(api).toContain('user.id,valid.png,valid.sha256');
+  expect(api).not.toContain('"/api/admin/commercial-resources/approve-logo/:id"');
   expect(api).toContain("user?.role!==\"super_admin\"");
   expect(api).not.toContain("PUBLICAR REFERENCIAS FOTOGRAFICAS");
  });
@@ -93,6 +96,12 @@ describe("COM-RES-GRAPHICS-V4: generic artwork import",()=>{
   expect(renderer).toContain('if(!phone)throw new Error');
   expect(renderer).not.toContain("Asesor Financiero");
   expect(page).toContain("/api/commercial-resources/my-approved-identity");
+  const settings=load("client/src/pages/Settings.tsx");
+  const profileLogo=load("client/src/components/Commercial/CommercialProfileLogo.tsx");
+  expect(settings).toContain("{isBrokerOrMaster && <CommercialProfileLogo />}");
+  expect(profileLogo).toContain('data-testid="commercial-profile-logo-input"');
+  expect(profileLogo).toContain('data-testid="commercial-profile-logo-remove"');
+  expect(admin).not.toContain('data-testid="admin-commercial-logo-approval"');
   expect(page).toContain('renderCommercialGraphic(selection');
   expect(admin).toContain('data-testid="resource-graphic-zip"');
   expect(admin).toContain('data-testid="resource-graphic-import-report"');
