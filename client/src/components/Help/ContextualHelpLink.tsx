@@ -15,7 +15,7 @@ import { cn } from "@/lib/utils";
 interface ContextualHelpLinkProps {
   slug: string;
   label?: string;
-  variant?: "link" | "button" | "badge" | "inline";
+  variant?: "link" | "button" | "badge" | "inline" | "quick";
   className?: string;
   showIcon?: boolean;
 }
@@ -28,6 +28,7 @@ export function ContextualHelpLink({
   showIcon = true,
 }: ContextualHelpLinkProps) {
   const [isOpen, setIsOpen] = useState(false);
+  const [showFullGuide, setShowFullGuide] = useState(false);
   const [, setLocation] = useLocation();
 
   const { data: articles, isLoading } = useQuery<any[]>({
@@ -41,6 +42,7 @@ export function ContextualHelpLink({
   const handleOpenHelp = (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
+    setShowFullGuide(false);
     setIsOpen(true);
   };
 
@@ -66,6 +68,22 @@ export function ContextualHelpLink({
         </button>
       )}
 
+      {variant === "quick" && (
+        <button
+          type="button"
+          onClick={handleOpenHelp}
+          className={cn(
+            "inline-flex items-center justify-center h-8 w-8 rounded-full border border-border text-primary bg-card",
+            "hover:bg-primary/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+            className
+          )}
+          title={label || "Ayuda rápida"}
+          aria-label={label || "Ayuda rápida"}
+          data-testid={`quick-help-${slug}`}
+        >
+          <HelpCircle className="h-[17px] w-[17px]" />
+        </button>
+      )}
       {variant === "inline" && (
         <button
           type="button"
@@ -117,7 +135,7 @@ export function ContextualHelpLink({
           <SheetHeader className="pb-4 border-b">
             <div className="flex items-center gap-2 text-xs font-semibold text-primary uppercase tracking-wider">
               <Sparkles className="h-3.5 w-3.5" />
-              <span>Centro de Ayuda y Reglas</span>
+              <span>Centro de Ayuda</span>
             </div>
             <SheetTitle className="text-lg font-bold text-foreground">
               {article?.title || label || "Ayuda Operativa"}
@@ -143,9 +161,22 @@ export function ContextualHelpLink({
                   </div>
                 )}
 
-                <div className="text-sm text-foreground/90 space-y-3 leading-relaxed whitespace-pre-line prose prose-sm max-w-none">
-                  {article.contentMarkdown}
-                </div>
+                {variant === "quick" && !showFullGuide && article.contentMarkdown && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="w-full"
+                    onClick={() => setShowFullGuide(true)}
+                    data-testid={`quick-help-expand-${slug}`}
+                  >
+                    Ver explicación paso a paso
+                  </Button>
+                )}
+                {(variant !== "quick" || showFullGuide) && (
+                  <div className="text-sm text-foreground/90 space-y-3 leading-relaxed whitespace-pre-line prose prose-sm max-w-none">
+                    {article.contentMarkdown}
+                  </div>
+                )}
               </div>
             ) : (
               <div className="text-center py-8 text-muted-foreground text-sm">

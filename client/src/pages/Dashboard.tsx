@@ -5,6 +5,7 @@ import CreditPipeline from "@/components/Dashboard/CreditPipeline";
 import NotificationsPanel from "@/components/Dashboard/NotificationsPanel";
 import ReGestionSection from "@/components/Dashboard/ReGestionSection";
 import QuickActionsGrid from "@/components/Dashboard/QuickActionsGrid";
+import BrokerQuickStart from "@/components/Dashboard/BrokerQuickStart";
 import { useUserTour } from "@/hooks/useUserTour";
 import { useAuth } from "@/hooks/useAuth";
 import { useLocation } from "wouter";
@@ -69,6 +70,10 @@ export default function Dashboard() {
           testId="alert-dashboard-formalization"
           buttonTestId="button-dashboard-formalization"
         />
+
+        {(role === "broker" || isMasterBroker) && user?.id && (
+          <BrokerQuickStart userId={user.id} />
+        )}
 
         {/* 1. ¿Cómo va mi operación y qué resultados genero? (Métricas y KPIs por rol) */}
         <section aria-label="Métricas de Operación">

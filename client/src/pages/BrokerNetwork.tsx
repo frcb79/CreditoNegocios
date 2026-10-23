@@ -1,5 +1,6 @@
 import MainLayout from "@/components/MainLayout";
 import Header from "@/components/Header";
+import { ContextualHelpLink } from "@/components/Help/ContextualHelpLink";
 import BrokerNetworkComponent from "@/components/Brokers/BrokerNetwork";
 import { useAuth } from "@/hooks/useAuth";
 import { ShieldAlert, Users } from "lucide-react";
@@ -61,7 +62,9 @@ export default function BrokerNetwork() {
       <Header 
         title="Red de Brokers"
         subtitle="Gestiona y monitorea tu equipo de brokers y comisiones"
-      />
+      >
+        <ContextualHelpLink slug="que-puede-ver-un-master-broker" variant="quick" label="Ayuda rápida: Red de Brokers" />
+      </Header>
       
       <main className="flex-1 p-4 sm:p-6 lg:p-8 overflow-y-auto">
         <div className="max-w-7xl mx-auto">

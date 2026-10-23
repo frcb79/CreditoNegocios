@@ -631,7 +631,9 @@ export default function Commissions() {
       <Header 
         title="Comisiones"
         subtitle="Gestiona el control de comisiones y dispersiones a la red"
-      />
+      >
+        <ContextualHelpLink slug="donde-consulto-mis-comisiones" variant="quick" label="Ayuda rápida: Comisiones" />
+      </Header>
         
         <main className="flex-1 p-4 sm:p-6 lg:p-8 overflow-y-auto">
           {/* Barra de Ayuda y Atribución */}

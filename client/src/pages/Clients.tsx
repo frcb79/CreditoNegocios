@@ -3,6 +3,7 @@ import { useLocation } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import MainLayout from "@/components/MainLayout";
 import Header from "@/components/Header";
+import { ContextualHelpLink } from "@/components/Help/ContextualHelpLink";
 import ClientList from "@/components/Clients/ClientList";
 import ClientForm from "@/components/Clients/ClientForm";
 import QuickClientForm from "@/components/Clients/QuickClientForm";
@@ -61,7 +62,9 @@ export default function Clients() {
       <Header 
         title="Gestión de Clientes"
         subtitle="Administra tu cartera completa de clientes"
-      />
+      >
+        <ContextualHelpLink slug="como-registro-un-cliente" variant="quick" label="Ayuda rápida: Clientes" />
+      </Header>
       
       <main className="flex-1 p-4 sm:p-6 lg:p-8 overflow-y-auto">
         {viewMode === "list" && (

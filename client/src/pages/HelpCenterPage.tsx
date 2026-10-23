@@ -41,6 +41,7 @@ import {
   ShieldCheck,
   History,
   Sparkles,
+  PlayCircle,
   Users,
   Target,
   DollarSign,
@@ -49,6 +50,7 @@ import {
   Plus,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { USER_TOUR_QUERY_PARAM, USER_TOUR_QUERY_VALUE } from "@/lib/userTour";
 
 export default function HelpCenterPage() {
   const [location, setLocation] = useLocation();
@@ -239,6 +241,17 @@ export default function HelpCenterPage() {
               documentos y uso cotidiano de la plataforma.
             </p>
           </div>
+
+          <Button
+            variant="outline"
+            size="sm"
+            className="gap-2 shrink-0"
+            data-testid="button-restart-welcome-tour"
+            onClick={() => setLocation("/?" + USER_TOUR_QUERY_PARAM + "=" + USER_TOUR_QUERY_VALUE)}
+          >
+            <PlayCircle className="h-4 w-4" />
+            Repetir recorrido inicial
+          </Button>
 
           {false && isSuperAdmin && (
             <Dialog open={isNewVersionDialogOpen} onOpenChange={setIsNewVersionDialogOpen}>

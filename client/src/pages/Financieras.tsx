@@ -6,6 +6,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { Link } from "wouter";
 import MainLayout from "@/components/MainLayout";
 import Header from "@/components/Header";
+import { ContextualHelpLink } from "@/components/Help/ContextualHelpLink";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -238,7 +239,9 @@ export default function Financieras() {
       <Header 
         title="Instituciones Financieras"
         subtitle="Administra tu red de financieras aliadas y condiciones operativas"
-      />
+      >
+        <ContextualHelpLink slug="como-consulto-financieras" variant="quick" label="Ayuda rápida: Financieras" />
+      </Header>
         
       <main className="flex-1 p-4 sm:p-6 lg:p-8 overflow-y-auto">
         {/* Admin Navigation View Switcher (Super Admin Only - Diseño B1) */}

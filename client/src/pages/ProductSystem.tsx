@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import MainLayout from "@/components/MainLayout";
 import Header from "@/components/Header";
+import { ContextualHelpLink } from "@/components/Help/ContextualHelpLink";
 import { useAuth } from "@/hooks/useAuth";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -67,7 +68,9 @@ export default function ProductSystem() {
         subtitle={isAdmin 
           ? "Administra el catálogo de productos crediticios y su asignación a financieras"
           : "Explora las opciones de financiamiento por categoría y consulta las condiciones de las financieras"}
-      />
+      >
+        <ContextualHelpLink slug="como-consulto-productos" variant="quick" label="Ayuda rápida: Productos" />
+      </Header>
         
       <main className="flex-1 p-4 sm:p-6 lg:p-8 overflow-y-auto">
         <div className="max-w-7xl mx-auto space-y-6">
