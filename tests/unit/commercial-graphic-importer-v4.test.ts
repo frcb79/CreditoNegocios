@@ -97,6 +97,18 @@ describe("COM-RES-GRAPHICS-V4: generic artwork import",()=>{
   expect(api).toContain("user?.role!==\"super_admin\"");
   expect(api).not.toContain("PUBLICAR REFERENCIAS FOTOGRAFICAS");
  });
+ it("previews each imported version in a right-side panel without scrolling past 65 entries",()=>{
+  const admin=load("client/src/components/Commercial/CommercialResourcesAdmin.tsx");
+  expect(admin).toContain('data-testid="resource-admin-template-list"');
+  expect(admin).toContain('data-testid="resource-admin-scrollable-templates"');
+  expect(admin).toContain('data-testid="resource-admin-preview-panel"');
+  expect(admin).toContain('xl:grid-cols-[minmax(0,0.95fr)_minmax(0,1.05fr)]');
+  expect(admin).toContain('xl:sticky xl:top-4');
+  expect(admin).toContain('max-h-[68vh] overflow-y-auto');
+  expect(admin).toContain('onClick={() => setPreviewTemplateId(item.id)}');
+  expect(admin).toContain('<GraphicDraftPreview key={previewTemplate.id} template={previewTemplate} />');
+  expect(admin).not.toContain('<CommercialPilotPreview />');
+ });
  it("renders only original graphic and approved owner identity; no QR or generic advisor overlay",()=>{
   const renderer=load("client/src/lib/commercialGraphicRenderer.ts");
   const page=load("client/src/pages/CommercialResources.tsx");
