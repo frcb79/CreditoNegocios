@@ -117,7 +117,7 @@ export function ContextualHelpLink({
           <SheetHeader className="pb-4 border-b">
             <div className="flex items-center gap-2 text-xs font-semibold text-primary uppercase tracking-wider">
               <Sparkles className="h-3.5 w-3.5" />
-              <span>Centro de Ayuda y Reglas</span>
+              <span>Centro de Ayuda</span>
             </div>
             <SheetTitle className="text-lg font-bold text-foreground">
               {article?.title || label || "Ayuda Operativa"}
