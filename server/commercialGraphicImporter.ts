@@ -121,7 +121,10 @@ export function normalizeV4Map(raw:Buffer,png:Buffer,group:string):GraphicImport
     png.toString("ascii",12,16)!=="IHDR"||
     png.readUInt32BE(16)!==canvas.width||png.readUInt32BE(20)!==canvas.height)fail("PNG maestro o tamaño inválido.");
  const hash=sha256(png);
- const wanted=m.backgroundSha256??m.assets?.backgroundSHA256??m.assets?.backgroundSha256;
+ // The final photographic ZIP refreshes assets.backgroundSHA256. Old V1
+ // maps retain backgroundSha256 from their earlier concept version.
+ // Validate against the current asset manifest, never the stale alias.
+ const wanted=m.assets?.backgroundSHA256??m.assets?.backgroundSha256??m.backgroundSha256;
  if(typeof wanted!=="string"||hash!==wanted.toLowerCase())fail("SHA-256 del PNG no coincide con el mapa.");
  const v1=m.schemaVersion==="cn-graphic-overlay/v1";
  const f=v1?m.dynamicFields:m.fields;
