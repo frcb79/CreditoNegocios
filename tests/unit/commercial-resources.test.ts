@@ -67,6 +67,32 @@ describe("Biblioteca comercial V0 — contenido seguro, ligero y personalizable"
     expect(svg).toContain('height="1920"');
   });
 
+  it("muestra el módulo con listas RBAC antiguas y permite imagen con logotipo institucional", () => {
+    const sidebar = source("client/src/components/Sidebar.tsx");
+    expect(sidebar).toContain("if (item.href === '/recursos-comerciales') return true");
+    const page = source("client/src/pages/CommercialResources.tsx");
+    expect(page).toContain('const [showInstitutionalLogo, setShowInstitutionalLogo] = useState(true)');
+    expect(page).toContain('data-testid="resource-institutional-logo"');
+    expect(page).toContain("credito-negocios-full-logo.jpg");
+    expect(page).toContain('const [showPhone, setShowPhone] = useState(false)');
+  });
+
+  it("incluye cinco guías formativas en la categoría educativa de Ayuda", () => {
+    const sourceText = source("server/commercialHelpService.ts");
+    const ui = source("client/src/pages/HelpCenterPage.tsx");
+    for (const topic of [
+      "guia-credito-simple", "guia-credito-revolvente",
+      "guia-factoraje", "guia-arrendamiento", "guia-hipotecario-vivienda"
+    ]) {
+      expect(sourceText).toContain('slug": "' + topic + '"');
+      expect(ui).toContain('slug: "' + topic + '"');
+    }
+    expect(sourceText).toContain("productos_crediticios");
+    expect(sourceText).toContain("Conoce los productos");
+    expect(sourceText).toContain("beneficios");
+    expect(ui).toContain('data-testid="help-product-guides"');
+  });
+
   it("restringe la pantalla a roles autenticados y no altera comisiones ni códigos de referidos", () => {
     const app = source("client/src/App.tsx");
     const sidebar = source("client/src/components/Sidebar.tsx");
