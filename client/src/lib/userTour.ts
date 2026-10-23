@@ -23,7 +23,7 @@ export function getLegacyUserTourStorageKey(userId: string): string {
 const welcome: UserTourStep = {
   selector: '[data-testid="header-title"]',
   title: "¡Bienvenido a Crédito Negocios!",
-  description: "En este recorrido conocerás cómo empezar a trabajar: registrar prospectos, preparar solicitudes y darles seguimiento. Puedes cerrarlo y repetirlo desde Ayuda."
+  description: "Conoce cómo promover tus servicios con materiales comerciales aprobados, registrar prospectos y dar seguimiento a sus solicitudes. Puedes cerrar y repetir el recorrido desde Ayuda."
 };
 
 const help: UserTourStep = {
@@ -32,49 +32,57 @@ const help: UserTourStep = {
   description: "En Ayuda puedes repetir esta bienvenida. Encontrarás también pequeñas opciones de Ayuda rápida (?) dentro de las secciones, sin salir de ellas."
 };
 
+const commercialResources: UserTourStep = {
+  selector: '[data-testid="nav-recursos-comerciales"]',
+  title: "1. Promueve tus servicios con plantillas",
+  description: "En Recursos comerciales encontrarás publicaciones autorizadas para compartir en tus redes. Descarga el PNG con tu nombre y WhatsApp, y copia el texto con tu enlace personal de captación. Cada difusión también da visibilidad a Crédito Negocios. Las plantillas aparecerán conforme sean aprobadas."
+};
+
 const broker: UserTourStep[] = [
   {
     selector: '[data-testid="broker-quick-start"]',
     title: "Tu ruta para comenzar",
-    description: "En el panel encontrarás tres acciones: registrar un prospecto, agregar la necesidad de financiamiento y dar seguimiento al trámite. Puedes comenzar con el botón Registrar prospecto."
+    description: "Primero difunde tus servicios con plantillas aprobadas; después registra prospectos, captura su necesidad de financiamiento y da seguimiento al trámite. Puedes usar los accesos rápidos de este panel."
   },
+  commercialResources,
   {
     selector: '[data-testid="nav-clientes"]',
-    title: "1. Registra un prospecto",
+    title: "2. Registra un prospecto",
     description: "En Clientes presiona Nuevo Cliente. Elige Crédito Empresarial, Hipotecario Vivienda o Arrendamiento; cada ruta permite iniciar con información esencial."
   },
   {
-    title: "2. Registra lo que necesita",
+    title: "3. Registra lo que necesita",
     description: "Al guardar el prospecto, abre su ficha. Para crédito empresarial, registra la necesidad, el monto solicitado y los datos disponibles. Puedes completar el perfil más adelante."
   },
   {
     selector: '[data-testid="nav-productos"]',
-    title: "3. Revisa alternativas",
+    title: "4. Revisa alternativas",
     description: "Consulta Productos y Financieras. La compatibilidad depende del perfil: si falta información, se mostrará como insuficiente y podrás completarla sin inventar datos."
   },
   {
     selector: '[data-testid="nav-gestión-de-créditos"]',
-    title: "4. Da seguimiento al financiamiento",
+    title: "5. Da seguimiento al financiamiento",
     description: "En Gestión de Créditos consulta solicitudes, propuestas y avances. La plataforma facilita la gestión: no significa que la financiera haya aprobado el crédito."
   },
   {
     selector: '[data-testid="nav-comisiones"]',
-    title: "5. Consulta tus comisiones",
+    title: "6. Consulta tus comisiones",
     description: "Cuando existan operaciones elegibles, aquí podrás revisar comisiones y estados de pago según tu rol."
   }
 ];
 
 const master: UserTourStep[] = [
   broker[0],
-  broker[1],
+  commercialResources,
   broker[2],
+  broker[3],
   {
     selector: '[data-testid="nav-red-de-brokers"]',
     title: "Coordina a tu red",
     description: "En Red de Brokers consulta a los integrantes de tu estructura y da seguimiento a su actividad sin alterar la titularidad de sus operaciones."
   },
-  broker[3],
-  broker[4]
+  broker[4],
+  broker[5]
 ];
 
 const admin: UserTourStep[] = [
