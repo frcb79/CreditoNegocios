@@ -150,4 +150,11 @@ describe("Biblioteca comercial - contratos, permisos y formatos", () => {
     expect(help).toContain("productos_crediticios");
     expect(source("client/src/pages/HelpCenterPage.tsx")).toContain('data-testid="help-product-guides"');
   });
+  it("blocks PNG export if the mandatory institutional logo cannot load", () => {
+    const page = source("client/src/pages/CommercialResources.tsx");
+    expect(page).toContain("logo.onerror = () =>");
+    expect(page).toContain("No se pudo cargar el logotipo obligatorio.");
+    expect(page).not.toContain("logo.onerror = finish");
+  });
+
 });
