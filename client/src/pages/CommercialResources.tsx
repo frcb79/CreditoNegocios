@@ -114,7 +114,9 @@ export default function CommercialResources() {
           ctx.drawImage(logo, 86, 34 + (104 - h) / 2, w, h);
           finish();
         };
-        logo.onerror = finish;
+        logo.onerror = () => {
+          toast({ title: "No se pudo cargar el logotipo obligatorio. No se descargó la plantilla.", variant: "destructive" });
+        };
         logo.src = "/credito-negocios-full-logo.jpg";
       } else finish();
       URL.revokeObjectURL(source);
