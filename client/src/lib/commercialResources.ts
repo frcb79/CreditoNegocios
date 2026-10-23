@@ -2,6 +2,8 @@
  * Borradores comerciales para revisión y aprobación.
  * No se incluyen tasas, plazos ni afirmaciones de aprobación.
  */
+import type { CommercialResourceDefinition } from "@shared/commercialResourceDefinition";
+
 export type SocialChannel = "instagram" | "facebook" | "whatsapp" | "linkedin" | "tiktok";
 export type BrokerBranding = { displayName: string; whatsapp: string; showPhone: boolean };
 export type Campaign = {
@@ -75,32 +77,37 @@ export function campaignMessage(campaign: Campaign, channel: SocialChannel, bran
   return [campaign.hook, campaign.description, campaign.cta, "", ...footer].join("\n");
 }
 
-export function campaignSvg(campaign: Campaign, channel: SocialChannel, branding: BrokerBranding): string {
+export function campaignSvg(campaign: Campaign, channel: SocialChannel, branding: BrokerBranding, visual?: CommercialResourceDefinition): string {
   const size = imageSize(channel), width = size.width, height = size.height;
   const tall = height > width * 1.35;
   const lines = wrap(campaign.headline, tall ? 17 : 22);
-  const top = tall ? 620 : 365, fontSize = tall ? 72 : 60;
+  const top = visual?.layout === 'minimal' ? (tall ? 670 : 420) : visual?.layout === 'split' ? (tall ? 760 : 415) : (tall ? 620 : 365);
+  const fontSize = tall ? 72 : 60;
   const safeName = escapeXml(safeBrandLabel(branding.displayName) || "Asesor de financiamiento");
   const phone = branding.showPhone ? normalizedWhatsApp(branding.whatsapp) : "";
   const label = escapeXml(campaign.product.toUpperCase());
   const suffix = escapeXml(campaign.supportingLine);
   const bottom = height - (tall ? 395 : 315);
   const initials = escapeXml((safeBrandLabel(branding.displayName).charAt(0) || "C").toUpperCase());
-  const headings = lines.map((line, i) => '<text x="85" y="' + (top + i * (fontSize + 21)) + '" font-family="Arial, sans-serif" font-size="' + fontSize + '" font-weight="800" fill="#fff">' + escapeXml(line) + '</text>').join("");
+  const background = visual?.colors.background || '#092a44';
+  const accent = visual?.colors.accent || '#bce8ea';
+  const foreground = visual?.colors.foreground || '#ffffff';
+  const headings = lines.map((line, i) => '<text x="85" y="' + (top + i * (fontSize + 21)) + '" font-family="Arial, sans-serif" font-size="' + fontSize + '" font-weight="800" fill="' + foreground + '">' + escapeXml(line) + '</text>').join("");
   const text = function (x: number, y: number, size: number, value: string, color: string, weight = 400) {
     return '<text x="' + x + '" y="' + y + '" font-family="Arial, sans-serif" font-size="' + size + '" font-weight="' + weight + '" fill="' + color + '">' + value + '</text>';
   };
   const pieces = [
     '<svg xmlns="http://www.w3.org/2000/svg" width="' + width + '" height="' + height + '" viewBox="0 0 ' + width + ' ' + height + '">',
-    '<defs><linearGradient id="blue" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#092a44"/><stop offset=".65" stop-color="#195d81"/><stop offset="1" stop-color="#063354"/></linearGradient></defs>',
+    '<defs><linearGradient id="blue" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="' + background + '"/><stop offset=".65" stop-color="#195d81"/><stop offset="1" stop-color="' + background + '"/></linearGradient></defs>',
     '<rect width="' + width + '" height="' + height + '" fill="url(#blue)"/>',
-    '<circle cx="' + width + '" cy="290" r="460" fill="#eefaff" opacity=".055"/>',
-    '<circle cx="' + (width - 90) + '" cy="360" r="260" stroke="#e8f7ff" fill="none" opacity=".17"/>',
-    text(85, 118, 39, 'CRÉDITO NEGOCIOS', '#ffffff', 800),
-    '<rect x="85" y="' + (tall ? 303 : 194) + '" rx="16" width="' + (width - 170) + '" height="74" fill="#bce8ea"/>',
+    ...(visual?.hero === 'none' ? [] : ['<circle cx="' + width + '" cy="290" r="460" fill="' + accent + '" opacity=".08"/>']),
+    ...(visual?.hero === 'none' || visual?.hero === 'geometric' ? [] : ['<circle cx="' + (width - 90) + '" cy="360" r="260" stroke="' + accent + '" fill="none" opacity=".3"/>']),
+    text(85, 118, 39, 'CRÉDITO NEGOCIOS', foreground, 800),
+    '<rect x="85" y="' + (tall ? 303 : 194) + '" rx="16" width="' + (width - 170) + '" height="74" fill="' + accent + '"/>',
     text(115, tall ? 354 : 245, 32, label, '#123d54', 800),
     headings,
-    text(85, top + lines.length * (fontSize + 21) + 24, tall ? 42 : 33, suffix, '#e5faff', 400),
+    text(85, top + lines.length * (fontSize + 21) + 24, tall ? 42 : 33, suffix, foreground, 400),
+    ...(visual?.highlights?.length ? [text(85, bottom - (tall ? 170 : 85), tall ? 31 : 25, escapeXml(visual.highlights.slice(0,2).join("  •  ")), accent, 700)] : []),
     '<rect x="0" y="' + bottom + '" width="' + width + '" height="' + (height-bottom) + '" fill="#0b2e4a" opacity=".96"/>',
     '<rect x="85" y="' + (bottom + 48) + '" width="94" height="94" rx="23" fill="#bce8ea"/>',
     text(115, bottom + 111, 55, initials, '#0c3c5a', 800),
@@ -111,4 +118,45 @@ export function campaignSvg(campaign: Campaign, channel: SocialChannel, branding
     '</svg>'
   ];
   return pieces.join("");
+}
+
+
+export interface PublishedCommercialTemplate {
+  id: string;
+  slug: string;
+  version: number;
+  name: string;
+  product: string;
+  channel: SocialChannel;
+  definition: CommercialResourceDefinition;
+  status?: "draft" | "published" | "retired";
+  created_at?: string;
+  published_at?: string;
+}
+
+const PRODUCT_LABELS: Record<string, string> = {
+  simple: "Crédito Simple", revolvente: "Crédito Revolvente",
+  factoraje: "Factoraje", arrendamiento: "Arrendamiento",
+  hipotecario: "Hipotecario Vivienda"
+};
+
+/** Renders only Super Admin-approved definition slots plus broker identity. */
+export function campaignFromTemplate(template: PublishedCommercialTemplate): Campaign {
+  return {
+    id: template.slug,
+    product: PRODUCT_LABELS[template.product] || template.product,
+    headline: template.definition.headline,
+    supportingLine: template.definition.supportingLine,
+    description: template.definition.description,
+    hook: template.definition.hook,
+    cta: template.definition.cta,
+  };
+}
+
+export function templateSvg(template: PublishedCommercialTemplate, branding: BrokerBranding): string {
+  return campaignSvg(campaignFromTemplate(template), template.channel, branding, template.definition);
+}
+
+export function templateCaption(template: PublishedCommercialTemplate, branding: BrokerBranding): string {
+  return campaignMessage(campaignFromTemplate(template), template.channel, branding);
 }
