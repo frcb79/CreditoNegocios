@@ -1,6 +1,7 @@
 import type { Express, Response } from "express";
 import rateLimit from "express-rate-limit";
 import multer from "multer";
+import { createHash } from "node:crypto";
 import { normalizeV4Map, parseV4Archive, type GraphicImport } from "./commercialGraphicImporter";
 import { pool } from "./db";
 import { storage } from "./storage";
@@ -94,6 +95,106 @@ export function registerCommercialResourceRoutes(app: Express) {
       console.error("[COM_RES] Admin templates list failed", error);
       return res.status(503).json({ message: "No fue posible cargar las plantillas" });
     }
+  });
+
+  const logoUpload=multer({ storage:multer.memoryStorage(),limits:{files:1,fileSize:1000000} });
+
+  // These values are read only from authenticated database records, not editable
+  // profileData approval flags or arbitrary client-provided URLs.
+  app.get("/api/commercial-resources/my-approved-identity",isAuthenticated,async(req:any,res)=>{
+    const user=await identify(req);
+    if(!user||!SUGGEST_ROLES.has(user.role))return forbid(res);
+    try {
+      const result=await pool.query(`
+        SELECT u.first_name,u.last_name,u.brand_name,u.profile_data,
+          EXISTS(SELECT 1 FROM public.commercial_approved_logos al WHERE al.user_id=u.id) AS has_logo
+        FROM public.users u WHERE u.id=$1 AND u.status='active'`,[user.id]);
+      if(!result.rows.length)return forbid(res);
+      const profile=result.rows[0].profile_data||{};
+      const full=[result.rows[0].first_name,result.rows[0].last_name].filter(Boolean).join(" ");
+      const displayName=user.role==="master_broker"
+        ? (result.rows[0].brand_name||profile.business?.businessName||full)
+        : (full||profile.business?.businessName||"");
+      const whatsapp=String(profile.business?.businessPhone||profile.phone||"");
+      return res.json({displayName,whatsapp,approvedLogoUrl:result.rows[0].has_logo?
+        "/api/commercial-resources/my-approved-logo":null});
+    } catch(error) {
+      console.error("[COM_RES] Approved identity read failed",error);
+      return res.status(503).json({message:"Identidad comercial no disponible"});
+    }
+  });
+  app.get("/api/commercial-resources/my-approved-logo",isAuthenticated,async(req:any,res)=>{
+    const user=await identify(req);
+    if(!user||!SUGGEST_ROLES.has(user.role))return forbid(res);
+    try {
+      const row=await pool.query("SELECT image_data FROM public.commercial_approved_logos WHERE user_id=$1",[user.id]);
+      if(row.rowCount!==1)return res.status(404).end();
+      res.setHeader("Content-Type","image/png");
+      res.setHeader("Cache-Control","private, no-store");
+      res.setHeader("X-Content-Type-Options","nosniff");
+      return res.end(row.rows[0].image_data);
+    } catch(error){
+      console.error("[COM_RES] Approved logo read failed",error);
+      return res.status(503).end();
+    }
+  });
+  app.get("/api/admin/commercial-resources/logo-candidates",isAuthenticated,async(req:any,res)=>{
+    const user=await identify(req);
+    if(user?.role!=="super_admin")return forbid(res);
+    try {
+      const row=await pool.query(`
+        SELECT u.id,u.email,u.first_name,u.last_name,u.brand_name,u.role,
+          a.approved_at IS NOT NULL AS logo_approved
+        FROM public.users u LEFT JOIN public.commercial_approved_logos a ON a.user_id=u.id
+        WHERE u.role IN ('broker','master_broker') AND u.status='active'
+        ORDER BY u.first_name,u.last_name LIMIT 400`);
+      return res.json(row.rows);
+    }catch(error){console.error("[COM_RES] logo candidate list failed",error);return res.status(503).json({message:"No disponibles"});}
+  });
+  app.post("/api/admin/commercial-resources/approve-logo/:id",isAuthenticated,async(req:any,res,next)=>{
+    const user=await identify(req);
+    if(user?.role!=="super_admin")return forbid(res);
+    logoUpload.single("logo")(req,res,(err:any)=>{
+      if(err)return res.status(400).json({message:"PNG inválido o superior a 1 MB."});
+      next();
+    });
+  },async(req:any,res)=>{
+    const user=await identify(req);
+    if(user?.role!=="super_admin")return forbid(res);
+    const file=req.file as Express.Multer.File|undefined;
+    const b=file?.buffer;
+    if(!b||!file||b.length<50||b.length>1000000||
+       b.subarray(0,8).toString("hex")!=="89504e470d0a1a0a"||
+       b.toString("ascii",12,16)!=="IHDR"||
+       b.toString("ascii",b.length-8,b.length-4)!=="IEND"){
+      return res.status(400).json({message:"Se requiere un PNG íntegro para aprobación."});
+    }
+    const width=b.readUInt32BE(16),height=b.readUInt32BE(20);
+    if(width<32||height<32||width>2048||height>2048){
+      return res.status(400).json({message:"Logo fuera de dimensiones permitidas."});
+    }
+    try {
+      const candidate=await pool.query(
+        "SELECT id FROM public.users WHERE id=$1 AND role IN ('broker','master_broker') AND status='active'",
+        [req.params.id]);
+      if(candidate.rowCount!==1)return res.status(404).json({message:"Broker/Master no encontrado"});
+      const hash=createHash("sha256").update(b).digest("hex");
+      await pool.query(`
+        INSERT INTO public.commercial_approved_logos (user_id,image_data,image_sha256,approved_by,approved_at)
+        VALUES ($1,$2,$3,$4,NOW())
+        ON CONFLICT(user_id) DO UPDATE SET image_data=EXCLUDED.image_data,
+          image_sha256=EXCLUDED.image_sha256,approved_by=EXCLUDED.approved_by,approved_at=NOW()`,
+        [req.params.id,b,hash,user.id]);
+      return res.json({approved:true,sha256:hash});
+    }catch(error){console.error("[COM_RES] logo approval failed",error);return res.status(503).json({message:"No se pudo aprobar logo"});}
+  });
+  app.delete("/api/admin/commercial-resources/approve-logo/:id",isAuthenticated,async(req:any,res)=>{
+    const user=await identify(req);
+    if(user?.role!=="super_admin")return forbid(res);
+    try {
+      await pool.query("DELETE FROM public.commercial_approved_logos WHERE user_id=$1",[req.params.id]);
+      return res.json({approved:false});
+    }catch(error){console.error("[COM_RES] logo revocation failed",error);return res.status(503).json({message:"No se pudo retirar logo"});}
   });
 
   // Artworks are never public while the corresponding version remains a draft.
