@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { renderCommercialGraphic } from "@/lib/commercialGraphicRenderer";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { Upload, ShieldCheck, Library, Inbox, Eye } from "lucide-react";
@@ -59,7 +60,7 @@ function GraphicDraftPreview({template}:{template:PublishedCommercialTemplate}) 
       <Button type="button" size="sm" variant={role==="broker"?"default":"outline"} onClick={()=>setRole("broker")}>Simular Broker</Button>
       <Button type="button" size="sm" variant={role==="master_broker"?"default":"outline"} onClick={()=>setRole("master_broker")}>Simular Master</Button>
     </div>
-    {image?<img className="max-w-xs w-full rounded-md" alt={"Vista previa técnica "+role} src={image} />:
+    {image?<img className="max-h-[68vh] w-full object-contain rounded-md" alt={"Vista previa técnica "+role} src={image} />:
       <p className="text-xs">{error||"Generando vista previa..."}</p>}
     <p className="text-xs text-muted-foreground">
       Solo vista previa para Super Admin con identidades ficticias. No publica ni atribuye leads.
@@ -76,7 +77,8 @@ export default function CommercialResourcesAdmin() {
   const [graphicMap, setGraphicMap] = useState<File | null>(null);
   const [graphicBackground, setGraphicBackground] = useState<File | null>(null);
   const [importReport, setImportReport] = useState<{ scanned:number;created:number;existing:number;requiresTypographyReview:number } | null>(null);
-  const [previewTemplate, setPreviewTemplate] = useState<PublishedCommercialTemplate | null>(null);
+  const [previewTemplateId, setPreviewTemplateId] = useState<string | null>(null);
+  const [templateFilter, setTemplateFilter] = useState("");
 
   const { data: campaignOverview } = useQuery<{ clicks: number; links: number; received: number; linked: number }>({
     queryKey: ["/api/commercial-resources/overview"],
@@ -91,6 +93,13 @@ export default function CommercialResourcesAdmin() {
     queryKey: ["/api/admin/commercial-resources/suggestions"],
     queryFn: () => getJson("/api/admin/commercial-resources/suggestions")
   });
+  // Preserve the selected revision when the list refreshes after imports or publication.
+  const previewTemplate = templates.find(item => item.id === previewTemplateId) ?? null;
+  const normalizedFilter = templateFilter.trim().toLocaleLowerCase("es-MX");
+  const visibleTemplates = templates.filter(item =>
+    [item.name, item.slug, item.product, item.channel, item.status]
+      .join(" ").toLocaleLowerCase("es-MX").includes(normalizedFilter)
+  );
 
   const validateDraft = () => {
     let parsed: unknown;
@@ -213,36 +222,101 @@ export default function CommercialResourcesAdmin() {
           Ninguna plantilla se publicó.
         </p>}
       </div>
-      <div className="rounded-xl border bg-card p-4 space-y-3">
-        <h3 className="font-semibold flex items-center gap-2"><Library className="w-4 h-4" /> Plantillas importadas · revisión y publicación</h3>
+      <div className="rounded-xl border bg-card p-4 space-y-4" data-testid="resource-admin-catalog">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h3 className="font-semibold flex gap-2 items-center">
+            <Library className="h-4 w-4" /> Plantillas importadas · revisión y publicación
+          </h3>
+          <span className="text-xs text-muted-foreground" data-testid="resource-admin-template-count">
+            {templates.length} {templates.length === 1 ? "versión" : "versiones"}
+          </span>
+        </div>
         {templateError && <p className="text-sm text-destructive">No se pudo consultar el catálogo administrativo.</p>}
-        {loadingTemplates ? <p className="text-sm">Cargando plantillas...</p> : templates.length === 0 ? <p className="text-sm text-muted-foreground">Todavía no se han subido plantillas.</p> : (
-          <div className="space-y-2">
-            {templates.map(item => (
-              <div key={item.id} className="rounded-lg border p-3 flex flex-wrap gap-3 items-center justify-between">
-                <div className="min-w-0">
-                  <p className="font-medium text-sm">{item.name} · v{item.version}</p>
-                  <p className="text-xs text-muted-foreground">{item.slug} · {item.product} · {item.channel} · {item.status === "published" ? "Publicada" : item.status === "retired" ? "Retirada" : "Borrador"}</p>
+        <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,0.95fr)_minmax(0,1.05fr)] items-start gap-4">
+          <div className="min-w-0 space-y-3" data-testid="resource-admin-template-list">
+            <label htmlFor="commercial-template-search" className="block text-sm font-medium">
+              Buscar plantilla
+            </label>
+            <Input
+              id="commercial-template-search"
+              placeholder="Nombre, producto o formato…"
+              value={templateFilter}
+              onChange={event => setTemplateFilter(event.target.value)}
+              data-testid="resource-admin-template-search"
+            />
+            <p className="text-xs text-muted-foreground">
+              Selecciona «Vista previa» para examinar cada diseño a la derecha, sin recorrer toda la lista.
+              {normalizedFilter && ` Coincidencias: ${visibleTemplates.length}.`}
+            </p>
+            {loadingTemplates ? <p className="text-sm">Cargando plantillas…</p>
+              : templates.length === 0 ? <p className="text-sm text-muted-foreground">Todavía no se han subido plantillas.</p>
+              : visibleTemplates.length === 0 ? <p className="text-sm text-muted-foreground">No hay plantillas que coincidan con la búsqueda.</p>
+              : (
+                <div className="max-h-[68vh] overflow-y-auto overscroll-contain space-y-2 pr-2" data-testid="resource-admin-scrollable-templates">
+                  {visibleTemplates.map(item => (
+                    <div key={item.id}
+                      className={"rounded-lg border p-3 space-y-2 " + (previewTemplateId === item.id ? "border-primary bg-primary/5" : "")}>
+                      <div className="min-w-0">
+                        <p className="font-medium text-sm break-words">{item.name} · v{item.version}</p>
+                        <p className="text-xs text-muted-foreground break-words">{item.product} · {item.channel} ·
+                          {" "}{item.status === "published" ? "Publicada" : item.status === "retired" ? "Retirada" : "Borrador"}
+                        </p>
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        <Button
+                          type="button" size="sm"
+                          variant={previewTemplateId === item.id ? "default" : "outline"}
+                          aria-pressed={previewTemplateId === item.id}
+                          onClick={() => setPreviewTemplateId(item.id)}
+                          data-testid={"resource-preview-" + item.id}
+                        >
+                          <Eye className="w-3.5 h-3.5 mr-1" /> Vista previa
+                        </Button>
+                        {item.status === "draft" && (
+                          <Button size="sm" disabled={working} onClick={() => changePublication(item, "publish")}
+                            data-testid={"publish-resource-" + item.id}>Publicar</Button>
+                        )}
+                        {item.status === "published" && (
+                          <Button size="sm" variant="outline" disabled={working}
+                            onClick={() => changePublication(item, "retire")}>Retirar</Button>
+                        )}
+                      </div>
+                    </div>
+                  ))}
                 </div>
-                <div className="flex gap-2 flex-wrap">
-                  <Button size="sm" variant="outline" onClick={() => setPreviewTemplate(item)}><Eye className="w-3.5 h-3.5 mr-1" /> Vista previa</Button>
-                  {item.status === "draft" && <Button size="sm" disabled={working} onClick={() => changePublication(item, "publish")} data-testid={"publish-resource-" + item.id}>Publicar</Button>}
-                  {item.status === "published" && <Button size="sm" variant="outline" disabled={working} onClick={() => changePublication(item, "retire")}>Retirar</Button>}
+              )}
+          </div>
+          <div className="min-w-0 xl:sticky xl:top-4 rounded-lg border bg-muted/20 p-3 sm:p-4 space-y-3"
+            data-testid="resource-admin-preview-panel" aria-live="polite">
+            {previewTemplate ? (
+              <>
+                <div className="flex flex-wrap justify-between gap-2 items-start">
+                  <div className="min-w-0">
+                    <p className="font-semibold text-sm">Vista previa · {previewTemplate.name}</p>
+                    <p className="text-xs text-muted-foreground">
+                      Versión {previewTemplate.version} · {previewTemplate.status === "published" ? "Publicada" : previewTemplate.status === "retired" ? "Retirada" : "Borrador"}
+                    </p>
+                  </div>
+                  <Button type="button" size="sm" variant="ghost"
+                    onClick={() => setPreviewTemplateId(null)}>Cerrar</Button>
                 </div>
+                {previewTemplate.definition.graphic ? (
+                  <GraphicDraftPreview key={previewTemplate.id} template={previewTemplate} />
+                ) : (
+                  <img className="max-h-[68vh] w-full object-contain rounded-md"
+                    alt="Vista previa privada de plantilla"
+                    src={"data:image/svg+xml;charset=utf-8," + encodeURIComponent(templateSvg(
+                      previewTemplate, { displayName: "Broker Ejemplo", whatsapp: "", showPhone: false }
+                    ))} />
+                )}
+              </>
+            ) : (
+              <div className="min-h-48 flex items-center justify-center text-center text-sm text-muted-foreground px-4">
+                Haz clic en «Vista previa» en cualquier plantilla de la izquierda para verla aquí.
               </div>
-            ))}
+            )}
           </div>
-        )}
-        {previewTemplate && (
-          <div className="rounded-lg border bg-muted/30 p-3 space-y-3">
-            <p className="text-sm font-semibold">Vista previa de {previewTemplate.name} — solo Super Admin</p>
-            {previewTemplate.definition.graphic ? (
-              <GraphicDraftPreview template={previewTemplate} />
-            ) : <img className="max-w-xs w-full rounded-md" alt="Vista previa privada de plantilla"
-              src={"data:image/svg+xml;charset=utf-8," + encodeURIComponent(templateSvg(previewTemplate, { displayName: "Broker Ejemplo", whatsapp: "", showPhone: false }))} />}
-            <Button size="sm" variant="ghost" onClick={() => setPreviewTemplate(null)}>Cerrar vista previa</Button>
-          </div>
-        )}
+        </div>
       </div>
       <details className="rounded-xl border bg-card p-4" >
         <summary className="cursor-pointer font-medium text-sm">Sugerencias recibidas (opcional)</summary>
