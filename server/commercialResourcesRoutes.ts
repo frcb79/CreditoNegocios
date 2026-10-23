@@ -29,7 +29,7 @@ function forbid(res: Response) {
 }
 
 const artworkUpload = multer({storage:multer.memoryStorage(), limits:{
-  files:2, fileSize:22_000_000, fields:1, fieldSize:2000
+  files:2, fileSize:50 * 1024 * 1024, fields:1, fieldSize:2000
 }});
 const artworkUploadLimit = rateLimit({
   windowMs:15*60*1000, limit:12, standardHeaders:"draft-7", legacyHeaders:false
