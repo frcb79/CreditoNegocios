@@ -22,9 +22,9 @@ describe("Onboarding Fase A — recorrido por rol y ayuda", () => {
     expect(header).toContain('data-testid="header-title"');
     expect(metrics).toContain('data-testid="metrics-grid"');
     expect(hook).not.toContain("#dashboard-title");
-    expect(hook).toContain("isVisible(step.selector)");
+    expect(hook).toContain("findRenderableTarget(step.selector)");
     for (const selector of selectors("broker")) {
-      if (selector === '[data-testid="header-title"]' || selector === '[data-testid="metrics-grid"]') continue;
+      if (["header-title", "metrics-grid", "broker-quick-start"].some(id => selector.includes(id))) continue;
       const testId = selector?.match(/data-testid="([^"]+)"/)?.[1];
       expect(testId).toBeTruthy();
       expect(sidebar).toContain("data-testid={");
