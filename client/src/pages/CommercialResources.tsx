@@ -222,9 +222,10 @@ export default function CommercialResources() {
 
   return (
     <MainLayout>
-      <Header title="Recursos Comerciales" subtitle="Plantillas aprobadas para comunicar alternativas de financiamiento" />
+      <Header title="Recursos Comerciales" subtitle={isSuperAdmin ? "Importar, revisar y aprobar plantillas comerciales" : "Plantillas aprobadas para comunicar alternativas de financiamiento"} />
       <main className="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8">
         <div className="mx-auto max-w-7xl space-y-6 pb-12">
+          {!isSuperAdmin && (<>
           <div className="rounded-lg border bg-card p-4 flex gap-2 items-start">
             <ShieldCheck className="w-5 h-5 text-primary shrink-0" />
             <p className="text-sm text-muted-foreground">
@@ -259,7 +260,7 @@ export default function CommercialResources() {
                 <div className="space-y-3 border-t pt-4">
                   <h3 className="font-semibold text-sm">Tu información en la publicación</h3>
                   <label className="block text-sm font-medium" htmlFor="resource-display-name">Nombre del broker o negocio</label>
-                  <Input id="resource-display-name" maxLength={42} value={displayName} onChange={e => setDisplayName(e.target.value)}
+                  <Input id="resource-display-name" maxLength={42} disabled={Boolean(selection.definition.graphic)} value={selection.definition.graphic ? graphicName : displayName} onChange={e => setDisplayName(e.target.value)}
                     placeholder="Nombre o nombre comercial" data-testid="resource-brand" />
                   {selection.definition.allowedIdentityFields.whatsapp && (
                     <>
@@ -316,6 +317,7 @@ export default function CommercialResources() {
               ) : <p className="text-sm text-muted-foreground">Selecciona una plantilla cuando Super Admin publique las primeras campañas.</p>}
             </section>
           </div>
+          </>)}
           {canSuggest && <CampaignLinkPanel key={selection?.id || "general"}
             selectedTemplateId={selection?.id}
             onCampaignLink={url => { if (selection) setCampaignLink({ templateId: selection.id, url }); }} />}
