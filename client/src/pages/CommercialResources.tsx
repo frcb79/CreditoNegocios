@@ -70,10 +70,18 @@ export default function CommercialResources() {
   const identityReady = Boolean(selection?.definition.graphic)
     ? graphicName.trim().length >= 2 && Boolean(normalizedWhatsApp(graphicPhone))
     : safeBrandLabel(displayName).length >= 2 && Boolean(normalizedWhatsApp(whatsapp));
-  const caption = useMemo(() => selection ? templateCaption(selection,
-    selection.definition.graphic ? {
-      displayName:graphicName,whatsapp:graphicPhone,showPhone:true
-    } : branding) : "", [selection, branding, graphicName, graphicPhone]);
+  const caption = useMemo(() => {
+    if(!selection)return "";
+    if(selection.definition.graphic) {
+      const name=graphicName.trim().replace(/\\s+/g," ");
+      const phone=normalizedWhatsApp(graphicPhone);
+      return [selection.definition.hook,selection.definition.description,selection.definition.cta,"",
+        name ? "Contacto: "+name : "",
+        phone ? "WhatsApp: +"+phone : "",
+        COMMERCIAL_DISCLAIMER].filter(Boolean).join("\\n");
+    }
+    return templateCaption(selection,branding);
+  },[selection,branding,graphicName,graphicPhone]);
   const dimensions = selection?.definition.graphic?.canvas || (selection ? imageSize(selection.channel) : { width: 1080, height: 1350 });
   const isSuperAdmin = user?.role === "super_admin";
   const canSuggest = user?.role === "broker" || user?.role === "master_broker";
