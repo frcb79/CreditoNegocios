@@ -1,237 +1,261 @@
 import { useEffect, useMemo, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import MainLayout from "@/components/MainLayout";
 import Header from "@/components/Header";
+import CommercialResourcesAdmin from "@/components/Commercial/CommercialResourcesAdmin";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Textarea } from "@/components/ui/textarea";
 import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
-import { Check, Copy, Download, Megaphone, Video, ShieldAlert } from "lucide-react";
+import { Copy, Download, Megaphone, Send, ShieldCheck } from "lucide-react";
 import {
-  CHANNELS, COMMERCIAL_CAMPAIGNS, campaignMessage, campaignSvg, imageSize,
-  normalizedWhatsApp, safeBrandLabel
+  imageSize, templateSvg, templateCaption, safeBrandLabel, normalizedWhatsApp,
+  type PublishedCommercialTemplate
 } from "@/lib/commercialResources";
-import type { SocialChannel } from "@/lib/commercialResources";
+import { COMMERCIAL_DISCLAIMER } from "@shared/commercialResourceDefinition";
+
+async function getPublished(): Promise<PublishedCommercialTemplate[]> {
+  const res = await fetch("/api/commercial-resources/templates", { credentials: "include" });
+  if (!res.ok) throw new Error("No fue posible consultar las plantillas aprobadas");
+  return res.json();
+}
 
 export default function CommercialResources() {
   const { user } = useAuth();
   const { toast } = useToast();
-  const [campaignId, setCampaignId] = useState("simple");
-  const [channel, setChannel] = useState<SocialChannel>("instagram");
+  const { data: templates = [], isLoading, error } = useQuery<PublishedCommercialTemplate[]>({
+    queryKey: ["/api/commercial-resources/templates"],
+    queryFn: getPublished,
+    enabled: Boolean(user)
+  });
+  const [selectedId, setSelectedId] = useState("");
   const [displayName, setDisplayName] = useState("");
   const [whatsapp, setWhatsapp] = useState("");
   const [showPhone, setShowPhone] = useState(false);
   const [showInstitutionalLogo, setShowInstitutionalLogo] = useState(true);
-  const [hasProfile, setHasProfile] = useState(false);
+  const [loadedUser, setLoadedUser] = useState("");
+  const [suggestion, setSuggestion] = useState("");
+  const [suggesting, setSuggesting] = useState(false);
 
   useEffect(() => {
-    if (!user?.id || hasProfile) return;
+    if (!user?.id || loadedUser === user.id) return;
     const profile = (user.profileData || {}) as Record<string, any>;
-    const legalName = [user.firstName, user.lastName].filter(Boolean).join(" ");
-    const companyName = profile.business?.businessName;
-    const nickname = user.role === "master_broker" ? user.brandName : null;
-    setDisplayName(safeBrandLabel(nickname || companyName || legalName));
+    const fullName = [user.firstName, user.lastName].filter(Boolean).join(" ");
+    const businessName = profile.business?.businessName;
+    setDisplayName(safeBrandLabel((user.role === "master_broker" && user.brandName) || businessName || fullName));
     setWhatsapp(String(profile.business?.businessPhone || profile.phone || (user as any).phone || ""));
-    setHasProfile(true);
-  }, [user, hasProfile]);
+    setLoadedUser(user.id);
+  }, [user, loadedUser]);
 
-  const campaign = COMMERCIAL_CAMPAIGNS.find(item => item.id === campaignId) || COMMERCIAL_CAMPAIGNS[0];
-  const branding = useMemo(() => ({ displayName, whatsapp, showPhone }), [displayName, whatsapp, showPhone]);
-  const renderedSvg = useMemo(() => campaignSvg(campaign, channel, branding), [campaign, channel, branding]);
-  const caption = useMemo(() => campaignMessage(campaign, channel, branding), [campaign, channel, branding]);
-  const preview = useMemo(() => "data:image/svg+xml;charset=utf-8," + encodeURIComponent(renderedSvg), [renderedSvg]);
-  const dimensions = imageSize(channel);
-  const contactValid = !!normalizedWhatsApp(whatsapp);
+  const selection = templates.find(t => t.id === selectedId) || templates[0];
+  const branding = useMemo(() => ({
+    displayName: safeBrandLabel(displayName),
+    whatsapp,
+    showPhone: showPhone && Boolean(selection?.definition.allowedIdentityFields.whatsapp)
+  }), [displayName, whatsapp, showPhone, selection]);
+  const svg = useMemo(() => selection ? templateSvg(selection, branding) : "", [selection, branding]);
+  const preview = useMemo(() => svg ? "data:image/svg+xml;charset=utf-8," + encodeURIComponent(svg) : "", [svg]);
+  const caption = useMemo(() => selection ? templateCaption(selection, branding) : "", [selection, branding]);
+  const dimensions = selection ? imageSize(selection.channel) : { width: 1080, height: 1350 };
+  const isSuperAdmin = user?.role === "super_admin";
+  const canSuggest = user?.role === "broker" || user?.role === "master_broker";
 
   const copyCaption = async () => {
     try {
       await navigator.clipboard.writeText(caption);
-      toast({ title: "Texto copiado", description: "Pégalo en la red social que elijas." });
+      toast({ title: "Texto copiado" });
     } catch {
-      toast({ title: "No se pudo copiar", description: "Selecciona el texto del recuadro y cópialo manualmente.", variant: "destructive" });
+      toast({ title: "No se pudo copiar", description: "Selecciona el texto y cópialo manualmente.", variant: "destructive" });
     }
   };
 
   const downloadPng = () => {
-    const file = new Blob([renderedSvg], { type: "image/svg+xml;charset=utf-8" });
-    const svgUrl = URL.createObjectURL(file);
+    if (!selection || !svg) return;
+    const size = imageSize(selection.channel);
+    const blob = new Blob([svg], { type: "image/svg+xml;charset=utf-8" });
+    const source = URL.createObjectURL(blob);
     const image = new Image();
     image.onload = () => {
-      try {
-        const canvas = document.createElement("canvas");
-        canvas.width = dimensions.width;
-        canvas.height = dimensions.height;
-        const ctx = canvas.getContext("2d");
-        if (!ctx) throw new Error("No se pudo preparar la imagen");
-        ctx.drawImage(image, 0, 0, dimensions.width, dimensions.height);
-        const finishExport = () => canvas.toBlob((png) => {
-          if (!png) {
-            toast({ title: "Error al exportar la imagen", variant: "destructive" });
-            return;
-          }
-          const link = document.createElement("a");
-          const pngUrl = URL.createObjectURL(png);
-          link.href = pngUrl;
-          link.download = "credito-negocios-" + campaign.id + "-" + channel + ".png";
-          link.click();
-          window.setTimeout(() => URL.revokeObjectURL(pngUrl), 5000);
-          toast({ title: "Imagen generada", description: "Borrador para validación, aún no aprobado para publicación." });
-        }, "image/png");
-        if (showInstitutionalLogo) {
-          const logoImage = new Image();
-          logoImage.onload = () => {
-            ctx.fillStyle = "#fff";
-            ctx.fillRect(72, 20, 515, 132);
-            const scale = Math.min(483 / logoImage.naturalWidth, 104 / logoImage.naturalHeight);
-            const w = logoImage.naturalWidth * scale;
-            const h = logoImage.naturalHeight * scale;
-            ctx.drawImage(logoImage, 86, 34 + (104 - h) / 2, w, h);
-            finishExport();
-          };
-          logoImage.onerror = () => finishExport();
-          logoImage.src = "/credito-negocios-full-logo.jpg";
-        } else {
-          finishExport();
-        }
-      } catch {
-        toast({ title: "No se pudo generar la imagen", variant: "destructive" });
-      } finally {
-        URL.revokeObjectURL(svgUrl);
+      const canvas = document.createElement("canvas");
+      canvas.width = size.width; canvas.height = size.height;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) {
+        URL.revokeObjectURL(source);
+        toast({ title: "No se pudo preparar la imagen", variant: "destructive" });
+        return;
       }
+      ctx.drawImage(image, 0, 0, size.width, size.height);
+      const finish = () => canvas.toBlob(png => {
+        if (!png) return toast({ title: "Error al exportar PNG", variant: "destructive" });
+        const file = URL.createObjectURL(png);
+        const link = document.createElement("a");
+        link.href = file;
+        link.download = "credito-negocios-" + selection.slug + "-v" + selection.version + ".png";
+        link.click();
+        window.setTimeout(() => URL.revokeObjectURL(file), 5000);
+        toast({ title: "Material descargado" });
+      }, "image/png");
+      if (showInstitutionalLogo && selection.definition.allowedIdentityFields.institutionalLogo) {
+        const logo = new Image();
+        logo.onload = () => {
+          ctx.fillStyle = "#FFFFFF";
+          ctx.fillRect(70, 20, 505, 132);
+          const ratio = Math.min(473 / logo.naturalWidth, 104 / logo.naturalHeight);
+          const w = logo.naturalWidth * ratio, h = logo.naturalHeight * ratio;
+          ctx.drawImage(logo, 86, 34 + (104 - h) / 2, w, h);
+          finish();
+        };
+        logo.onerror = finish;
+        logo.src = "/credito-negocios-full-logo.jpg";
+      } else finish();
+      URL.revokeObjectURL(source);
     };
     image.onerror = () => {
-      URL.revokeObjectURL(svgUrl);
-      toast({ title: "Error al preparar la imagen", variant: "destructive" });
+      URL.revokeObjectURL(source);
+      toast({ title: "No se pudo generar la imagen", variant: "destructive" });
     };
-    image.src = svgUrl;
+    image.src = source;
   };
 
-  const canAccess = user?.role === "broker" || user?.role === "master_broker" || user?.role === "admin" || user?.role === "super_admin";
-  if (!canAccess) return null;
+  const sendSuggestion = async () => {
+    if (suggestion.trim().length < 10 || suggestion.trim().length > 1000) return;
+    setSuggesting(true);
+    try {
+      const response = await fetch("/api/commercial-resources/suggestions", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          suggestion: suggestion.trim(),
+          ...(selection ? { product: selection.product, channel: selection.channel } : {})
+        })
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(result.message || "No se pudo recibir la sugerencia");
+      setSuggestion("");
+      toast({ title: "Sugerencia enviada", description: "Gracias por compartir tu idea." });
+    } catch (err: any) {
+      toast({ title: "No se pudo enviar la sugerencia", description: err.message, variant: "destructive" });
+    } finally { setSuggesting(false); }
+  };
+
+  if (!user) return null;
 
   return (
     <MainLayout>
-      <Header title="Recursos Comerciales" subtitle="Material para ayudar a presentar soluciones de financiamiento" />
+      <Header title="Recursos Comerciales" subtitle="Plantillas aprobadas para comunicar alternativas de financiamiento" />
       <main className="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8">
-        <div className="mx-auto max-w-7xl space-y-6 pb-10">
-          <div role="note" className="flex items-start gap-3 rounded-xl border border-amber-300 bg-amber-50 p-4 text-amber-950" data-testid="commercial-drafts-warning">
-            <ShieldAlert className="h-5 w-5 shrink-0 mt-0.5" />
-            <p className="text-sm leading-relaxed">
-              <strong>Materiales en revisión.</strong> Esta biblioteca es una vista de diseño y personalización.
-              No publiques los borradores ni compartas sus textos con clientes hasta la aprobación comercial.
-              Las tasas, plazos y autorizaciones dependen de cada financiera.
+        <div className="mx-auto max-w-7xl space-y-6 pb-12">
+          <div className="rounded-lg border bg-card p-4 flex gap-2 items-start">
+            <ShieldCheck className="w-5 h-5 text-primary shrink-0" />
+            <p className="text-sm text-muted-foreground">
+              Solo podrás utilizar materiales autorizados por Crédito Negocios. Los textos, beneficios y condiciones financieras no son editables.
+              Personaliza únicamente tu nombre y datos de contacto permitidos. {COMMERCIAL_DISCLAIMER}
             </p>
           </div>
-          <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,0.92fr)_minmax(0,1.08fr)] gap-6 items-start">
-            <section className="space-y-5">
-              <div className="rounded-xl border bg-card p-4 sm:p-5 space-y-4">
-                <div className="flex items-center gap-2">
-                  <Megaphone className="h-5 w-5 text-primary" />
-                  <h2 className="font-bold text-foreground">Elige el producto</h2>
-                </div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2" role="group" aria-label="Campañas por producto">
-                  {COMMERCIAL_CAMPAIGNS.map(item => (
-                    <button key={item.id} type="button" onClick={() => setCampaignId(item.id)}
-                      aria-pressed={campaignId === item.id}
-                      data-testid={"campaign-" + item.id}
-                      className={"min-h-12 rounded-lg border px-3 py-3 text-left text-sm font-medium transition-colors " +
-                        (campaignId === item.id ? "border-primary bg-primary/10 text-primary" : "hover:bg-muted text-foreground")}>
-                      {campaignId === item.id && <Check className="mr-1.5 inline h-4 w-4" />}
-                      {item.product}
-                    </button>
-                  ))}
-                </div>
-              </div>
-              <div className="rounded-xl border bg-card p-4 sm:p-5 space-y-4">
-                <h2 className="font-bold text-foreground">¿Dónde quieres compartir?</h2>
-                <div className="flex flex-wrap gap-2" role="group" aria-label="Canal social">
-                  {CHANNELS.map(item => (
-                    <button type="button" key={item.id} aria-pressed={channel === item.id}
-                      onClick={() => setChannel(item.id)}
-                      data-testid={"channel-" + item.id}
-                      className={"rounded-full border px-3 py-2 text-xs font-semibold transition-colors " +
-                        (channel === item.id ? "bg-primary text-primary-foreground border-primary" : "bg-background hover:bg-muted")}>
-                      {item.label}
-                    </button>
-                  ))}
-                </div>
-                <p className="text-xs text-muted-foreground">{CHANNELS.find(item => item.id === channel)?.format} · {CHANNELS.find(item => item.id === channel)?.size}</p>
-                {channel === "tiktok" && (
-                  <p className="flex gap-2 rounded-lg bg-muted p-3 text-xs text-muted-foreground">
-                    <Video className="h-4 w-4 shrink-0" />
-                    Por ahora se genera la portada y un guion de 15 segundos. El video final se producirá después de aprobar la línea gráfica.
+          <div className="grid grid-cols-1 xl:grid-cols-2 gap-6 items-start">
+            <section className="rounded-xl border bg-card p-4 sm:p-5 space-y-4">
+              <h2 className="font-bold flex items-center gap-2"><Megaphone className="w-5 h-5 text-primary" /> Campañas disponibles</h2>
+              {isLoading ? <p className="text-sm text-muted-foreground">Cargando plantillas aprobadas...</p> :
+                error ? <p className="text-sm text-destructive">No se pudo cargar el catálogo.</p> :
+                templates.length === 0 ? (
+                  <p className="text-sm text-muted-foreground" data-testid="resources-empty">
+                    Aún no hay materiales publicados. Super Admin está preparando las primeras plantillas.
                   </p>
+                ) : (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2" data-testid="resources-published-list">
+                    {templates.map(item => (
+                      <button type="button" key={item.id} onClick={() => setSelectedId(item.id)}
+                        aria-pressed={selection?.id === item.id}
+                        className={"rounded-lg border p-3 text-left text-sm " + (selection?.id === item.id ? "border-primary bg-primary/10" : "hover:bg-muted")}
+                        data-testid={"approved-resource-" + item.id}
+                      >
+                        <span className="block font-semibold">{item.name}</span>
+                        <span className="text-xs text-muted-foreground block mt-1">{item.channel} · v{item.version}</span>
+                      </button>
+                    ))}
+                  </div>
                 )}
-              </div>
-              <div className="rounded-xl border bg-card p-4 sm:p-5 space-y-4">
-                <h2 className="font-bold text-foreground">Personaliza con tus datos</h2>
-                <p className="text-xs text-muted-foreground">Tomamos la información de Configuración. Puedes modificarla solo para este archivo; no cambia tu perfil.</p>
-                <div className="space-y-2">
-                  <label htmlFor="resource-brand" className="block text-sm font-medium">Nombre que aparecerá</label>
-                  <Input id="resource-brand" data-testid="resource-brand" maxLength={42} value={displayName}
-                    onChange={event => setDisplayName(event.target.value)}
-                    placeholder="Tu nombre o nombre comercial" />
-                </div>
-                <div className="space-y-2">
-                  <label htmlFor="resource-whatsapp" className="block text-sm font-medium">WhatsApp de contacto</label>
-                  <Input id="resource-whatsapp" data-testid="resource-whatsapp" value={whatsapp}
-                    onChange={event => setWhatsapp(event.target.value)} inputMode="tel"
-                    maxLength={25} placeholder="55 1234 5678" />
-                  {showPhone && whatsapp.trim() && !contactValid &&
-                    <p className="text-xs text-amber-700">Verifica el número. No se imprimirá si no es válido.</p>}
-                </div>
-                <label className="flex items-center gap-2 text-sm cursor-pointer">
-                  <Checkbox checked={showPhone} onCheckedChange={value => setShowPhone(value === true)} data-testid="resource-show-phone" />
-                  Mostrar WhatsApp en la imagen
-                </label>
-                <label className="flex items-center gap-2 text-sm cursor-pointer">
-                  <Checkbox checked={showInstitutionalLogo} onCheckedChange={value => setShowInstitutionalLogo(value === true)} data-testid="resource-institutional-logo" />
-                  Incluir el logotipo de Crédito Negocios
-                </label>
-                <p className="text-xs text-muted-foreground">
-                  Si no tienes marca propia, tu nombre y el logotipo institucional son suficientes. El uso del logotipo está sujeto a aprobación de la pieza final.
-                </p>
-                <p className="text-xs text-muted-foreground">
-                  No utilizamos cuentas de otros brokers, datos de clientes, CLABEs ni códigos promocionales para personalizar.
-                  Los logotipos propios de Masters y los enlaces de captación medibles quedan para el siguiente bloque.
-                </p>
-              </div>
-            </section>
-            <section className="rounded-xl border bg-card p-4 sm:p-6 space-y-4">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <div>
-                  <h2 className="font-bold text-foreground">Vista previa personalizada</h2>
-                  <p className="text-xs text-muted-foreground mt-1">Imagen vectorial liviana, exportable a PNG de alta resolución</p>
-                </div>
-                <span className="text-xs rounded-full bg-amber-100 text-amber-900 px-3 py-1">Borrador</span>
-              </div>
-              <div className="flex justify-center rounded-xl bg-muted/50 p-3" data-testid="marketing-preview">
-                <div className="relative w-full max-w-[390px]">
-                  <img src={preview} alt={"Borrador de " + campaign.product + " para " + channel}
-                    className="h-auto w-full rounded-lg shadow-lg"
-                    style={{ maxHeight: 520, objectFit: "contain" }} />
-                  {showInstitutionalLogo && (
-                    <div className="absolute top-[2%] left-[7%] w-[48%] bg-white rounded-md p-1 shadow-sm" data-testid="resource-logo-preview">
-                      <img src="/credito-negocios-full-logo.jpg" alt="Logotipo Crédito Negocios" className="w-full h-auto max-h-12 object-contain" />
-                    </div>
+              {selection && (
+                <div className="space-y-3 border-t pt-4">
+                  <h3 className="font-semibold text-sm">Tu información en la publicación</h3>
+                  <label className="block text-sm font-medium" htmlFor="resource-display-name">Nombre del broker o negocio</label>
+                  <Input id="resource-display-name" maxLength={42} value={displayName} onChange={e => setDisplayName(e.target.value)}
+                    placeholder="Nombre o nombre comercial" data-testid="resource-brand" />
+                  {selection.definition.allowedIdentityFields.whatsapp && (
+                    <>
+                      <label className="block text-sm font-medium" htmlFor="resource-whatsapp">Teléfono o WhatsApp</label>
+                      <Input id="resource-whatsapp" inputMode="tel" maxLength={25} value={whatsapp}
+                        onChange={e => setWhatsapp(e.target.value)} data-testid="resource-whatsapp" />
+                      <label className="flex items-center gap-2 text-sm">
+                        <Checkbox checked={showPhone} onCheckedChange={v => setShowPhone(v === true)} data-testid="resource-show-phone" />
+                        Mostrar mi WhatsApp en el material
+                      </label>
+                      {showPhone && whatsapp.trim() && !normalizedWhatsApp(whatsapp) && <p className="text-xs text-destructive">El número no es válido; no se imprimirá.</p>}
+                    </>
                   )}
+                  {selection.definition.allowedIdentityFields.institutionalLogo && (
+                    <label className="flex items-center gap-2 text-sm">
+                      <Checkbox checked={showInstitutionalLogo} onCheckedChange={v => setShowInstitutionalLogo(v === true)} data-testid="resource-institutional-logo" />
+                      Utilizar el logotipo de Crédito Negocios
+                    </label>
+                  )}
+                  <p className="text-xs text-muted-foreground">Estos datos solo personalizan la pieza y no cambian tu perfil.</p>
                 </div>
-              </div>
-              <Button className="w-full gap-2" onClick={downloadPng} data-testid="resource-download-png" variant="outline">
-                <Download className="h-4 w-4" /> Descargar vista previa PNG
-              </Button>
-              <div className="border-t pt-4 space-y-3">
-                <div className="flex flex-wrap gap-2 items-center justify-between">
-                  <h3 className="font-semibold text-sm">{channel === "tiktok" ? "Guion de video breve" : "Texto sugerido para acompañar la publicación"}</h3>
-                  <Button type="button" size="sm" variant="secondary" onClick={copyCaption}
-                    className="gap-2" data-testid="resource-copy-caption">
-                    <Copy className="h-3.5 w-3.5" /> Copiar texto
+              )}
+            </section>
+            <section className="rounded-xl border bg-card p-4 sm:p-5 space-y-4">
+              <h2 className="font-bold">Vista previa de la plantilla aprobada</h2>
+              {selection ? (
+                <>
+                  <div className="bg-muted/30 rounded-lg p-3 flex justify-center" data-testid="marketing-preview">
+                    <div className="relative w-full max-w-[360px]">
+                      <img src={preview} alt={"Plantilla aprobada " + selection.name}
+                        className="max-h-[520px] w-full object-contain rounded-md" />
+                      {showInstitutionalLogo && selection.definition.allowedIdentityFields.institutionalLogo && (
+                        <div className="absolute top-[2%] left-[7%] w-[46%] bg-white p-1 rounded-md" data-testid="resource-logo-preview">
+                          <img src="/credito-negocios-full-logo.jpg" alt="Crédito Negocios" className="max-h-12 w-full object-contain" />
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                  <p className="text-xs text-muted-foreground">{dimensions.width} × {dimensions.height} px · Contenido autorizado, v{selection.version}</p>
+                  <Button className="w-full gap-2" onClick={downloadPng} data-testid="resource-download-png">
+                    <Download className="w-4 h-4" /> Descargar PNG personalizado
                   </Button>
-                </div>
-                <pre className="text-xs sm:text-sm whitespace-pre-wrap break-words font-sans leading-relaxed rounded-lg border bg-muted/30 p-4" data-testid="resource-caption">{caption}</pre>
-              </div>
+                  <div className="border-t pt-3 space-y-3">
+                    <div className="flex justify-between items-center gap-2">
+                      <p className="text-sm font-semibold">{selection.channel === "tiktok" ? "Guion vertical aprobado" : "Texto aprobado para publicar"}</p>
+                      <Button size="sm" variant="outline" onClick={copyCaption} className="gap-1" data-testid="resource-copy-caption">
+                        <Copy className="w-4 h-4" /> Copiar
+                      </Button>
+                    </div>
+                    <pre className="whitespace-pre-wrap break-words text-sm font-sans bg-muted/30 p-3 rounded-md" data-testid="resource-caption">{caption}</pre>
+                    {selection.channel === "tiktok" && <p className="text-xs text-muted-foreground">La plantilla contiene portada y guion. El MP4 de video llegará en una fase posterior.</p>}
+                  </div>
+                </>
+              ) : <p className="text-sm text-muted-foreground">Selecciona una plantilla cuando Super Admin publique las primeras campañas.</p>}
             </section>
           </div>
+          {canSuggest && (
+            <section className="border rounded-xl bg-card p-4 sm:p-5 space-y-3 max-w-3xl" data-testid="commercial-suggestion-form">
+              <h2 className="font-semibold">¿Qué material te gustaría encontrar aquí?</h2>
+              <p className="text-sm text-muted-foreground">
+                Puedes sugerir una campaña, formato o tema. La propuesta se envía a Super Admin para que la considere; no se publica directamente.
+              </p>
+              <label className="block text-sm" htmlFor="commercial-suggestion">Tu sugerencia</label>
+              <Textarea id="commercial-suggestion" rows={3} maxLength={1000} value={suggestion}
+                onChange={e => setSuggestion(e.target.value)} placeholder="Por ejemplo: una campaña de factoraje para proveedores de empresas grandes"
+                data-testid="commercial-suggestion-input" />
+              <Button disabled={suggesting || suggestion.trim().length < 10} onClick={sendSuggestion}
+                className="gap-2" data-testid="commercial-suggestion-send">
+                <Send className="w-4 h-4" /> Enviar sugerencia
+              </Button>
+            </section>
+          )}
+          {isSuperAdmin && <CommercialResourcesAdmin />}
         </div>
       </main>
     </MainLayout>
