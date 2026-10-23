@@ -15,7 +15,7 @@ function fakePng(w=1080,h=1350) {
 }
 function map(png:Buffer) {
  return {
-  schemaVersion:"cn-commercial-graphic-v2",status:"CREATIVE_REVIEW_NOT_PUBLISHED",
+  schemaVersion:"cn-commercial-graphic-v2",status:"FINAL_CREATIVE_READY_FOR_IMPORT",
   slug:"simple-impactante-explicativa-v1",name:"Crédito Simple | Impactante explicativa",
   roles:["broker","master_broker"],campaignId:"simple",
   canvas:{width:1080,height:1350,unit:"px"},
@@ -38,7 +38,7 @@ describe("COM-RES-GRAPHICS-V4: generic artwork import",()=>{
  it("normalizes a creative map without changing the source image or copy",()=>{
   const png=fakePng();
   const result=normalizeV4Map(Buffer.from(JSON.stringify(map(png))),png,
-    "01_Impactantes_Explicativas_NUEVAS/");
+    "ARTES_Y_MAPAS/01_Impactantes_Explicativas_NUEVAS/");
   expect(result.slug).toBe("simple-impactante-explicativa");
   expect(result.png).toEqual(png);
   expect(result.graphic.sha256).toBe(checksum(png));
@@ -80,6 +80,8 @@ describe("COM-RES-GRAPHICS-V4: generic artwork import",()=>{
   expect(api).toContain("editorialLegalApproved");
   expect(migration).toContain("public.commercial_resource_artworks");
   expect(api).toContain("typographyReviewRequired");
+  expect(api).toContain("commercial_approved_logos");
+  expect(api).toContain("user?.role!==\"super_admin\"");
   expect(api).not.toContain("PUBLICAR REFERENCIAS FOTOGRAFICAS");
  });
  it("renders only original graphic and approved owner identity; no QR or generic advisor overlay",()=>{
@@ -90,7 +92,7 @@ describe("COM-RES-GRAPHICS-V4: generic artwork import",()=>{
   expect(renderer).toContain('if(identity.approvedLogoUrl)');
   expect(renderer).toContain('if(!phone)throw new Error');
   expect(renderer).not.toContain("Asesor Financiero");
-  expect(page).toContain("profile.commercialBranding?.logoApproved === true");
+  expect(page).toContain("/api/commercial-resources/my-approved-identity");
   expect(page).toContain('renderCommercialGraphic(selection');
   expect(admin).toContain('data-testid="resource-graphic-zip"');
   expect(admin).toContain('data-testid="resource-graphic-import-report"');
