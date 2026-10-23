@@ -60,15 +60,20 @@ export default function CommercialResources() {
   }), [displayName, whatsapp]);
   const svg = useMemo(() => selection && !selection.definition.graphic ? templateSvg(selection, branding) : "", [selection, branding]);
   const preview = useMemo(() => svg ? "data:image/svg+xml;charset=utf-8," + encodeURIComponent(svg) : "", [svg]);
-  const profile = (user?.profileData || {}) as Record<string, any>;
-  const personalName = [user?.firstName,user?.lastName].filter(Boolean).join(" ");
-  const graphicName = user?.role === "master_broker"
-    ? (user.brandName || profile.business?.businessName || personalName)
-    : (personalName || profile.business?.businessName || "");
-  const graphicPhone = String(profile.business?.businessPhone || profile.phone || (user as any)?.phone || "");
-  // Approval must be explicit; customLogo/avatar alone does not authorize a marketing logo.
-  const authorizedLogo = profile.commercialBranding?.logoApproved === true &&
-    typeof (user as any)?.customLogo === "string" ? (user as any).customLogo as string : null;
+  const { data: approvedIdentity } = useQuery<{
+    displayName:string;whatsapp:string;approvedLogoUrl:string|null
+  }>({
+    queryKey:["/api/commercial-resources/my-approved-identity",user?.id],
+    queryFn: async()=>{
+      const result=await fetch("/api/commercial-resources/my-approved-identity",{credentials:"include"});
+      if(!result.ok)throw new Error("No fue posible consultar la identidad comercial autorizada.");
+      return result.json();
+    },
+    enabled:Boolean(user?.id && ["broker","master_broker"].includes(user.role))
+  });
+  const graphicName = approvedIdentity?.displayName || "";
+  const graphicPhone = approvedIdentity?.whatsapp || "";
+  const authorizedLogo = approvedIdentity?.approvedLogoUrl || null;
   const identityReady = Boolean(selection?.definition.graphic)
     ? graphicName.trim().length >= 2 && Boolean(normalizedWhatsApp(graphicPhone))
     : safeBrandLabel(displayName).length >= 2 && Boolean(normalizedWhatsApp(whatsapp));
