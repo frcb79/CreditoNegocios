@@ -24,7 +24,7 @@ describe("COM-CTA-002: incoming prospects and reusable attribution links", () =>
     expect(api).toContain("user!.id");
     expect(api).toContain('user.role !== "super_admin"');
     expect(api).toContain("client.brokerId !== user!.id");
-    expect(api).toContain("lead.rows[0].tenant_id !== client.tenantId");
+    expect(api).toContain("lead.rows[0].tenant_id !== (client.tenantId ?? null)");
   });
 
   it("separates marketing intake from client and opportunity claims", () => {
