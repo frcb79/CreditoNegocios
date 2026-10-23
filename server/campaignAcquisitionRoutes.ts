@@ -33,7 +33,7 @@ async function identify(req: any): Promise<AuthUser | null> {
   const id = req.user?.claims?.sub || req.user?.id || req.dbUser?.id;
   if (typeof id !== "string" || !id) return null;
   const user = await storage.getUser(id);
-  if (!user || user.isActive === false) return null;
+  if (!user || user.isActive === false || (user.status && user.status !== "active")) return null;
   if (!["broker", "master_broker", "admin", "super_admin"].includes(user.role)) return null;
   return { id: user.id, role: user.role };
 }
@@ -50,7 +50,18 @@ const linkLookup = [
   "LEFT JOIN public.commercial_resource_templates t ON t.id = l.template_id"
 ].join(" ");
 
-const activeLinkCondition = "l.disabled_at IS NULL AND u.is_active IS DISTINCT FROM FALSE AND u.role IN ('broker','master_broker') AND (l.template_id IS NULL OR t.status = 'published')";
+const activeLinkCondition = [
+  "l.disabled_at IS NULL",
+  "AND u.is_active IS DISTINCT FROM FALSE AND u.status = 'active'",
+  "AND u.role IN ('broker','master_broker')",
+  "AND (l.template_id IS NULL OR t.status = 'published')",
+  "AND (l.tenant_id IS NULL OR EXISTS (",
+  "SELECT 1 FROM public.tenant_members tm",
+  "JOIN public.tenants tn ON tn.id = tm.tenant_id",
+  "WHERE tm.user_id = l.owner_user_id AND tm.tenant_id = l.tenant_id",
+  "AND tm.is_active = TRUE AND tn.is_active IS DISTINCT FROM FALSE",
+  "))"
+].join(" ");
 
 export function registerCampaignAcquisitionRoutes(app: Express) {
   app.post("/api/commercial-resources/links", isAuthenticated, async (req: any, res) => {
@@ -145,16 +156,17 @@ export function registerCampaignAcquisitionRoutes(app: Express) {
         [req.params.id,user!.id]
       );
       if (!lead.rows[0]) return res.status(404).json({ message: "Prospecto no encontrado" });
-      if (lead.rows[0].tenant_id && client.tenantId && lead.rows[0].tenant_id !== client.tenantId) {
+      if (lead.rows[0].tenant_id !== (client.tenantId ?? null)) {
         return noAccess(res);
       }
       if (lead.rows[0].linked_client_id && lead.rows[0].linked_client_id !== client.id) {
         return res.status(409).json({ message: "El prospecto ya está vinculado a otro cliente" });
       }
-      await pool.query(
-        "UPDATE public.commercial_marketing_leads SET linked_client_id=$1 WHERE id=$2 AND owner_user_id=$3 AND (linked_client_id IS NULL OR linked_client_id=$1)",
+      const updated = await pool.query(
+        "UPDATE public.commercial_marketing_leads SET linked_client_id=$1 WHERE id=$2 AND owner_user_id=$3 AND (linked_client_id IS NULL OR linked_client_id=$1) RETURNING linked_client_id",
         [client.id,req.params.id,user!.id]
       );
+      if (updated.rowCount !== 1) return res.status(409).json({ message: "El prospecto ya fue vinculado" });
       return res.json({ linkedClientId: client.id });
     } catch (error) {
       console.error("[CampaignLinks] Link to reviewed client failed", error);
@@ -195,21 +207,34 @@ export function registerCampaignAcquisitionRoutes(app: Express) {
       const link = await pool.query(linkLookup + " WHERE l.token=$1 AND " + activeLinkCondition, [req.params.token]);
       if (!link.rows[0]) return res.status(404).json({ message: "Enlace no disponible" });
       const row = link.rows[0], product = row.product || data.product || null;
-      const existing = await pool.query(
-        ["SELECT id FROM public.commercial_marketing_leads",
-         "WHERE link_id=$1 AND phone=$2 AND created_at > NOW() - INTERVAL '7 days' LIMIT 1"].join(" "),
-        [row.id,digits]
-      );
-      if (!existing.rows[0]) {
-        await pool.query(
-          ["INSERT INTO public.commercial_marketing_leads",
-           "(link_id,owner_user_id,tenant_id,template_id,source_channel,",
-           "full_name,phone,email,product,amount_range,message,privacy_version)",
-           "VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)"].join(" "),
-          [row.id,row.owner_user_id,row.tenant_id,row.template_id,row.channel || null,
-           data.fullName,digits,data.email || null,product,data.amountRange || null,
-           data.message || null,notice.version]
+      // Serialize submissions for the same link and normalized phone so that
+      // simultaneous retries cannot create duplicate marketing leads.
+      const client = await pool.connect();
+      try {
+        await client.query("BEGIN");
+        await client.query("SELECT pg_advisory_xact_lock(hashtext($1))", ["marketing-lead:" + row.id + ":" + digits]);
+        const existing = await client.query(
+          ["SELECT id FROM public.commercial_marketing_leads",
+           "WHERE link_id=$1 AND phone=$2 AND created_at > NOW() - INTERVAL '7 days' LIMIT 1"].join(" "),
+          [row.id,digits]
         );
+        if (!existing.rows[0]) {
+          await client.query(
+            ["INSERT INTO public.commercial_marketing_leads",
+             "(link_id,owner_user_id,tenant_id,template_id,source_channel,",
+             "full_name,phone,email,product,amount_range,message,privacy_version)",
+             "VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)"].join(" "),
+            [row.id,row.owner_user_id,row.tenant_id,row.template_id,row.channel || null,
+             data.fullName,digits,data.email || null,product,data.amountRange || null,
+             data.message || null,notice.version]
+          );
+        }
+        await client.query("COMMIT");
+      } catch (error) {
+        await client.query("ROLLBACK");
+        throw error;
+      } finally {
+        client.release();
       }
       return res.status(201).json({ message: "Solicitud recibida. Tu asesor podrá contactarte." });
     } catch (error) {
