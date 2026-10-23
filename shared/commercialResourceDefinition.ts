@@ -21,8 +21,9 @@ export const commercialResourceDefinitionSchema = z.object({
   highlights: z.array(z.string().trim().min(3).max(85)).max(3).default([]),
   allowedIdentityFields: z.object({
     displayName: z.literal(true),
-    whatsapp: z.boolean(),
-    institutionalLogo: z.boolean(),
+    // Mandatory identity: current public designs must never be left empty.
+    whatsapp: z.literal(true),
+    institutionalLogo: z.literal(true),
   }).strict(),
 }).strict();
 
