@@ -63,6 +63,9 @@ describe("COM-CTA-002: incoming prospects and reusable attribution links", () =>
     expect(panel).toContain('data-testid="copy-campaign-link"');
     expect(panel).toContain('data-testid="campaign-clicks"');
     expect(panel).toContain('data-testid="campaign-submissions"');
+    const library = file("client/src/pages/CommercialResources.tsx");
+    expect(library).toContain("canSuggest && campaignLink?.templateId !== selection.id");
+    expect(library).toContain("El enlace de esta campaña todavía no está disponible");
   });
 
   it("shows received prospects in Clientes and reuses the existing duplicate-checked form", () => {
