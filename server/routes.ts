@@ -148,6 +148,7 @@ import {
 import { commercialOpportunityService } from "./commercialOpportunityService";
 import { commercialHelpService } from "./commercialHelpService";
 import { registerBrokerNetworkTransitionRoutes } from "./brokerNetworkTransitionRoutes";
+import { registerCommercialResourceRoutes } from "./commercialResourcesRoutes";
 import { createBrokerWithOrganization } from "./brokerNetworkTransitionService";
 import { dispatchBrokerInvitation, BrokerInvitationError, validateInvitationTransport } from "./brokerInvitationDispatch";
 import { resolveOptionalInvitationPromo } from "./invitationWelcomePromo";
@@ -1276,6 +1277,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Super Admin-only broker network lifecycle routes.
   registerBrokerNetworkTransitionRoutes(app);
+
+  // Platform-owned public-facing marketing catalogue and minimal suggestion intake.
+  registerCommercialResourceRoutes(app);
 
   // Auth routes
   app.get('/api/auth/user', isAuthenticated, async (req: any, res) => {
