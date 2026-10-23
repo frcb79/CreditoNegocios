@@ -44,14 +44,26 @@ Este documento destila las 20 lecciones clave del experto Sabri Suby para ser ap
 
 ---
 
-## Crédito Negocios — Biblioteca de materiales para Brokers y Master Brokers (hallazgo 2026-10-20; NO IMPLEMENTAR AHORA)
+## Crédito Negocios — Biblioteca comercial para Brokers y Master Brokers (prioridad alta, decisión 2026-10-22)
 
-**Oportunidad para análisis posterior:** Proporcionar imágenes, videos, anuncios y copys listos para publicar en redes sociales de cada Broker y Master Broker. Evaluar piezas con marca Crédito Negocios, piezas sin marca y personalizables, y formatos de co-branding.
+**Prioridad aprobada:** crear una **Biblioteca de Recursos Comerciales** para que Brokers y Master Brokers promuevan sus servicios y capten clientes. Es estratégica para activar y hacer crecer la red. **No confundir esta biblioteca publicitaria con el Centro de Ayuda:** capacitación enseña a utilizar la plataforma; recursos comerciales ayudan a vender y referir. El trabajo de programación de esta biblioteca queda **en el siguiente bloque**, después del recorrido de onboarding, y requiere validar piezas, canales y atribución.
 
-**Distribución y medición:** Explorar enlaces únicos de referencia por usuario, identificadores de origen y parámetros UTM; asociar los leads y conversiones al Broker o Master correspondiente sin alterar las reglas de atribución comercial ni la protección vigente de oportunidades (Cliente + Necesidad/Producto + Canal + Fecha) o el esquema de comisiones.
+**Primera biblioteca comercial a preparar:**
+- Piezas descargables listas para compartir por **WhatsApp, Instagram, Facebook y LinkedIn**; formatos cuadrado, vertical e historia, además de copys que puedan copiarse.
+- Campañas por necesidad: **Crédito Simple, Revolvente, Factoraje, Arrendamiento e Hipotecario Vivienda**; variantes solo si están respaldadas por productos reales y criterios vigentes.
+- Material institucional Crédito Negocios, materiales **co-brandeados** con datos aprobados del Broker/Master y versiones sin marca cuando estén autorizadas.
+- Plantillas de mensajes de prospección, seguimiento y recomendación para empresas/despachos aliados; videos comerciales ligeros como fase posterior.
 
-**Separación conceptual obligatoria:** Un identificador/código de referido sirve para atribuir prospectos o red comercial; un cupón promocional sirve para beneficios de acceso y facturación. Nunca confundir ni reutilizar sus significados.
+**Requisitos de producto:** biblioteca filtrada por rol, buscador por producto y canal, vista previa, descarga, copiar texto, versión/fecha de aprobación y posibilidad de retirar piezas obsoletas sin borrar el historial interno. Preferir un catálogo sencillo sobre un editor gráfico completo.
 
-**Pendientes de investigación:** Herramientas para producción de contenido y automatización, flujos de aprobación de materiales, derechos de marca y uso, medición de visitas/leads/conversiones, acceso por rol y atribución cuando participan Broker y Master.
+**Distribución y medición:** evaluar links únicos por usuario y UTMs para atribuir el origen comercial de los leads; identificar cuándo un Master recomienda a su red. **No alterar** reglas existentes de protección de oportunidades ni liquidación de comisiones; el código de referido jamás se confunde con un cupón de acceso.
 
-**Estado:** Hallazgo estratégico documentado. Sin desarrollo, sin nuevos endpoints, sin cambios en matching, oportunidades o comisiones en este bloque de UX postlanzamiento.
+**Cumplimiento:** sin promesas de aprobación, tasas o plazos que las financieras no hayan autorizado; no utilizar datos de clientes reales, garantías de colocación ni logotipos de aliados sin permiso. Piezas con control de versiones y aprobación comercial previa.
+
+**Secuencia prevista:**
+1. Entrevistar a 3–5 Brokers/Masters reales para identificar formatos y guiones con mayor utilidad.
+2. Diseñar y aprobar un lote inicial de materiales reutilizables por producto y canal.
+3. Implementar biblioteca simple, permisos, versiones, enlaces medibles y métricas de descarga/uso donde aporte valor.
+4. Ampliar a videos y automatización tras validar qué campañas generan contactos de calidad.
+
+**Estado (2026-10-22):** prioritario y aprobado para diseño e implementación en bloque separado. No se incluyen endpoints, UI de biblioteca ni lógica de atribución en la Fase A de onboarding.
