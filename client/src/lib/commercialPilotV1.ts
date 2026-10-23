@@ -83,6 +83,20 @@ export type PilotIdentity = {
   role: "broker" | "master_broker"; displayName: string; whatsapp: string;
   logo?: { image: HTMLImageElement; approved: boolean };
 };
+export type PilotProfile = {
+  role: "broker" | "master_broker";
+  firstName?: string | null; lastName?: string | null; brandName?: string | null;
+  profileData?: { phone?: string | null; business?: { businessName?: string | null; businessPhone?: string | null } } | null;
+};
+/** Identity is read from an authenticated-profile-shaped record, never from campaign copy. */
+export function pilotIdentityFromProfile(profile: PilotProfile, authorizedLogo?: PilotIdentity["logo"]): PilotIdentity {
+  const fullName = [profile.firstName, profile.lastName].filter(Boolean).join(" ").trim();
+  const business = profile.profileData?.business;
+  const displayName = (profile.role === "master_broker" ? profile.brandName : null) ||
+    business?.businessName || fullName;
+  const whatsapp = business?.businessPhone || profile.profileData?.phone || "";
+  return { role: profile.role, displayName, whatsapp, ...(authorizedLogo?.approved ? { logo: authorizedLogo } : {}) };
+}
 
 function drawFittedText(ctx: CanvasRenderingContext2D, value: string, field: TextField, weight: number): number {
   if (!value.trim()) throw new Error("Falta un campo obligatorio del piloto.");
