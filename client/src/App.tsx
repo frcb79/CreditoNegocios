@@ -38,6 +38,7 @@ import BulkImport from "@/pages/BulkImport";
 import Notifications from "@/pages/Notifications";
 import HelpCenterPage from "@/pages/HelpCenterPage";
 import CommercialResources from "@/pages/CommercialResources";
+import PublicCampaignLanding from "@/pages/PublicCampaignLanding";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
 
 function Router() {
@@ -81,6 +82,7 @@ function Router() {
       {import.meta.env.DEV && <Route path="/design-preview" component={DesignPreview} />}
       {/* Broker acquisition page - accessible without auth */}
       <Route path="/brokers" component={BrokersLanding} />
+      <Route path="/c/:token" component={PublicCampaignLanding} />
       
       {isLoading || !isAuthenticated ? (
         <Route path="/" component={Landing} />
