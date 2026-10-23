@@ -4,6 +4,7 @@ import { ImageUp, Trash2 } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/hooks/useAuth";
 
 type Identity = {
   displayName: string;
@@ -15,12 +16,13 @@ type Identity = {
 export default function CommercialProfileLogo() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
+  const { user } = useAuth();
   const [pendingFile, setPendingFile] = useState<File | null>(null);
   const [localPreview, setLocalPreview] = useState<string | null>(null);
   const [working, setWorking] = useState(false);
 
   const { data, isLoading, isError } = useQuery<Identity>({
-    queryKey: ["/api/commercial-resources/my-approved-identity"],
+    queryKey: ["/api/commercial-resources/my-approved-identity", user?.id],
     queryFn: async () => {
       const response = await fetch("/api/commercial-resources/my-approved-identity", {
         credentials: "include", cache: "no-store"
@@ -28,6 +30,7 @@ export default function CommercialProfileLogo() {
       if (!response.ok) throw new Error("No se pudo consultar tu logo comercial.");
       return response.json();
     },
+    enabled: Boolean(user?.id && ["broker","master_broker"].includes(user.role)),
     staleTime: 0
   });
 
