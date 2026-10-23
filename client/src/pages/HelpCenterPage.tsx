@@ -51,6 +51,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { USER_TOUR_QUERY_PARAM, USER_TOUR_QUERY_VALUE } from "@/lib/userTour";
+import { ProductGuideContent } from "@/components/Help/ProductGuideContent";
 
 export default function HelpCenterPage() {
   const [location, setLocation] = useLocation();
@@ -497,9 +498,13 @@ export default function HelpCenterPage() {
                   )}
                 </CardHeader>
                 <CardContent className="pt-6">
-                  <div className="prose prose-sm max-w-none text-foreground leading-relaxed whitespace-pre-line">
-                    {currentArticle.contentMarkdown}
-                  </div>
+                  {currentArticle.category === "productos_crediticios" ? (
+                    <ProductGuideContent content={currentArticle.contentMarkdown} />
+                  ) : (
+                    <div className="prose prose-sm max-w-none text-foreground leading-relaxed whitespace-pre-line">
+                      {currentArticle.contentMarkdown}
+                    </div>
+                  )}
                 </CardContent>
                 <CardFooter className="border-t pt-4 flex justify-between items-center bg-muted/20">
                   <div className="text-xs text-muted-foreground">
