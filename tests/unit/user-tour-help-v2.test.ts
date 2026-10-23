@@ -11,7 +11,7 @@ import {
 
 const read = (path: string) => readFileSync(resolve(process.cwd(), path), "utf8");
 const selectors = (role: string, mobile = false) =>
-  getUserTourSteps(role, mobile).map(step => step.selector).filter(Boolean);
+  getUserTourSteps(role, mobile).map(step => step.selector).filter((selector): selector is string => Boolean(selector));
 
 describe("Onboarding Fase A — recorrido por rol y ayuda", () => {
   it("usa referencias existentes del dashboard y sidebar, sin selectores antiguos", () => {
