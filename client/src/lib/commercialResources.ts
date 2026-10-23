@@ -138,7 +138,7 @@ export interface PublishedCommercialTemplate {
 const PRODUCT_LABELS: Record<string, string> = {
   simple: "Crédito Simple", revolvente: "Crédito Revolvente",
   factoraje: "Factoraje", arrendamiento: "Arrendamiento",
-  hipotecario: "Hipotecario Vivienda"
+  hipotecario: "Hipotecario Vivienda", tpv_anticipo: "Anticipo de ventas TPV", institucional: "Soluciones financieras"
 };
 
 /** Renders only Super Admin-approved definition slots plus broker identity. */
