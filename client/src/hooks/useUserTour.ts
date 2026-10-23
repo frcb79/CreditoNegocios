@@ -1,97 +1,109 @@
-import { useEffect } from 'react';
+import { useEffect } from "react";
 import { driver } from "driver.js";
 import "driver.js/dist/driver.css";
-import { useAuth } from './useAuth';
-import type { DriveStep } from 'driver.js';
+import { useAuth } from "./useAuth";
+import {
+  USER_TOUR_QUERY_PARAM,
+  USER_TOUR_QUERY_VALUE,
+  getLegacyUserTourStorageKey,
+  getUserTourSteps,
+  getUserTourStorageKey
+} from "@/lib/userTour";
+import type { DriveStep } from "driver.js";
 
+function isVisible(selector: string): boolean {
+  const element = document.querySelector<HTMLElement>(selector);
+  if (!element) return false;
+  const rect = element.getBoundingClientRect();
+  const styles = window.getComputedStyle(element);
+  return rect.width > 0 && rect.height > 0 &&
+    rect.bottom > 0 && rect.right > 0 &&
+    rect.top < window.innerHeight && rect.left < window.innerWidth &&
+    styles.display !== "none" && styles.visibility !== "hidden";
+}
+
+/**
+ * Solo se activa automáticamente para cuentas nuevas.
+ * Los usuarios que cerraron el recorrido antiguo no reciben una nueva
+ * interrupción; desde Ayuda pueden iniciarlo tantas veces como quieran.
+ */
 export function useUserTour() {
   const { user } = useAuth();
 
   useEffect(() => {
-    if (!user) return;
+    if (!user?.id) return;
 
-    const hasSeenTour = localStorage.getItem(`hasSeenTour_${user.id}`);
-    if (hasSeenTour) return;
+    const role = user.role || "broker";
+    const storageKey = getUserTourStorageKey(user.id, role);
+    const currentUrl = new URL(window.location.href);
+    const replay = currentUrl.searchParams.get(USER_TOUR_QUERY_PARAM) === USER_TOUR_QUERY_VALUE;
 
-    const tourSteps: DriveStep[] = [
-      {
-        element: '#dashboard-title',
-        popover: {
-          title: '¡Bienvenido a Crédito Negocios!',
-          description: 'Hola ' + user.firstName + ', estamos felices de tenerte aquí. Vamos a darte un recorrido rápido por la plataforma.',
-          side: 'bottom',
-          align: 'start',
-        },
-      },
-      {
-        element: '[data-testid="metrics-grid"]',
-        popover: {
-          title: 'Tus Métricas',
-          description: 'Aquí puedes ver un resumen de tu actividad, volumen colocado y comisiones.',
-          side: 'bottom',
-          align: 'start',
-        },
-      },
-      {
-        element: '[data-testid="nav-clientes"]',
-        popover: {
-          title: 'Gestión de Clientes',
-          description: 'Registra y administra a tus clientes aquí. Es el primer paso para solicitar un crédito.',
-          side: 'right',
-          align: 'start',
-        },
-      },
-      {
-        element: '[data-testid="nav-gestión-de-créditos"]',
-        popover: {
-          title: 'Tus Solicitudes',
-          description: 'Sigue el estado de todas tus solicitudes de crédito en tiempo real.',
-          side: 'right',
-          align: 'start',
-        },
-      },
-      {
-        element: '[data-testid="nav-financieras"]',
-        popover: {
-          title: 'Financieras Aliadas',
-          description: 'Consulta las instituciones financieras disponibles y sus productos.',
-          side: 'right',
-          align: 'start',
-        },
-      },
-      {
-        element: '[data-testid="nav-configuración"]',
-        popover: {
-          title: 'Tu Perfil',
-          description: 'Configura tu información personal, contraseña y preferencias.',
-          side: 'right',
-          align: 'start',
-        },
-      },
-      {
-        popover: {
-          title: '¡Todo listo!',
-          description: 'Ya puedes empezar a usar la plataforma. Si tienes dudas, contacta a soporte.',
-        },
-      },
-    ];
+    // Consumir el enlace para que refrescar Dashboard no reinicie la guía.
+    if (replay) {
+      currentUrl.searchParams.delete(USER_TOUR_QUERY_PARAM);
+      window.history.replaceState(
+        window.history.state,
+        "",
+        currentUrl.pathname + currentUrl.search + currentUrl.hash
+      );
+    }
 
-    const driverObj = driver({
-      showProgress: true,
-      nextBtnText: 'Siguiente',
-      prevBtnText: 'Anterior',
-      doneBtnText: 'Finalizar',
-      steps: tourSteps,
-      onDestroyed: () => {
-        localStorage.setItem(`hasSeenTour_${user.id}`, 'true');
-      }
-    });
+    if (!replay && (
+      localStorage.getItem(storageKey) ||
+      localStorage.getItem(getLegacyUserTourStorageKey(user.id))
+    )) return;
 
-    // Short delay to ensure components are mounted
-    const timer = setTimeout(() => {
-      driverObj.drive();
-    }, 1000);
+    let instance: ReturnType<typeof driver> | null = null;
+    let finished = false;
+    let started = false;
 
-    return () => clearTimeout(timer);
-  }, [user]);
+    const timer = window.setTimeout(() => {
+      const mobile = window.innerWidth < 1024;
+      const steps: DriveStep[] = getUserTourSteps(role, mobile)
+        .filter((step) => !step.selector || isVisible(step.selector))
+        .map((step) => ({
+          ...(step.selector ? { element: step.selector } : {}),
+          popover: {
+            title: step.title,
+            description: step.description,
+            side: step.selector ? "bottom" : undefined,
+            align: "start" as const
+          }
+        }));
+
+      if (steps.length === 0) return;
+
+      instance = driver({
+        showProgress: true,
+        allowClose: true,
+        nextBtnText: "Siguiente",
+        prevBtnText: "Anterior",
+        doneBtnText: "Finalizar",
+        steps,
+        onNextClick: (_element, _step, { driver: current }) => {
+          if (current.hasNextStep()) {
+            current.moveNext();
+          } else {
+            finished = true;
+            current.destroy();
+          }
+        },
+        onCloseClick: (_element, _step, { driver: current }) => {
+          current.destroy();
+        },
+        onDestroyed: () => {
+          if (started) {
+            localStorage.setItem(storageKey, finished ? "completed" : "skipped");
+          }
+        }
+      });
+      started = true;
+      instance.drive();
+    }, 800);
+
+    return () => {
+      window.clearTimeout(timer);
+      instance?.destroy();
+    };
+  }, [user?.id, user?.role]);
 }
