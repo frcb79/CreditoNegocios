@@ -12,7 +12,7 @@ CREATE TABLE IF NOT EXISTS public.commercial_campaign_links (
 );
 -- A reusable general URL per person, plus one URL per published campaign.
 CREATE UNIQUE INDEX IF NOT EXISTS commercial_campaign_owner_template_unique
-  ON public.commercial_campaign_links(owner_user_id, COALESCE(template_id, '__general__'));
+  ON public.commercial_campaign_links(owner_user_id, (COALESCE(template_id, '__general__')));
 CREATE INDEX IF NOT EXISTS commercial_campaign_owner_idx
   ON public.commercial_campaign_links(owner_user_id, created_at DESC);
 
