@@ -130,6 +130,38 @@ export function registerCampaignAcquisitionRoutes(app: Express) {
     }
   });
 
+  // Only the originating broker/master may link a received lead to their
+  // legitimately created Client after manual review and duplicate checking.
+  app.post("/api/commercial-resources/received/:id/link-client", isAuthenticated, async (req: any, res) => {
+    const user = await identify(req);
+    if (!allowedOwner(user)) return noAccess(res);
+    const parsed = z.object({ clientId: z.string().min(3).max(100) }).strict().safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ message: "Cliente inválido" });
+    try {
+      const client = await storage.getClient(parsed.data.clientId);
+      if (!client || client.brokerId !== user!.id) return noAccess(res);
+      const lead = await pool.query(
+        "SELECT id,tenant_id,linked_client_id FROM public.commercial_marketing_leads WHERE id=$1 AND owner_user_id=$2",
+        [req.params.id,user!.id]
+      );
+      if (!lead.rows[0]) return res.status(404).json({ message: "Prospecto no encontrado" });
+      if (lead.rows[0].tenant_id && client.tenantId && lead.rows[0].tenant_id !== client.tenantId) {
+        return noAccess(res);
+      }
+      if (lead.rows[0].linked_client_id && lead.rows[0].linked_client_id !== client.id) {
+        return res.status(409).json({ message: "El prospecto ya está vinculado a otro cliente" });
+      }
+      await pool.query(
+        "UPDATE public.commercial_marketing_leads SET linked_client_id=$1 WHERE id=$2 AND owner_user_id=$3 AND (linked_client_id IS NULL OR linked_client_id=$1)",
+        [client.id,req.params.id,user!.id]
+      );
+      return res.json({ linkedClientId: client.id });
+    } catch (error) {
+      console.error("[CampaignLinks] Link to reviewed client failed", error);
+      return res.status(503).json({ message: "No fue posible vincular el prospecto a tu cliente" });
+    }
+  });
+
   app.get("/api/public/campaign/:token", publicLimiter, async (req: any, res) => {
     if (!tokenSchema.safeParse(req.params.token).success) return res.status(404).json({ message: "Enlace no disponible" });
     try {
