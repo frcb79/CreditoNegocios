@@ -244,12 +244,12 @@ export function registerCommercialResourceRoutes(app: Express) {
         // checked again inside normalizeV4Map.
         const parsed=JSON.parse(map.buffer.toString("utf8").replace(/^\uFEFF/,""));
         const group=parsed.schemaVersion==="cn-graphic-overlay/v1"
-          ?"03_Impactantes_y_Sobrias_Anteriores/26_Variantes_Anteriores/"
-          :parsed.canvas?.height===1080?"04_Formato_Cuadrado_1x1/"
-          :parsed.canvas?.height===1920?"05_Formato_Vertical_9x16/"
-          :"01_Impactantes_Explicativas_NUEVAS/";
+          ?"ARTES_Y_MAPAS/03_Impactantes_y_Sobrias_Anteriores/26_Variantes_Anteriores/"
+          :parsed.canvas?.height===1080?"ARTES_Y_MAPAS/04_Formato_Cuadrado_1x1/"
+          :parsed.canvas?.height===1920?"ARTES_Y_MAPAS/05_Formato_Vertical_9x16/"
+          :"ARTES_Y_MAPAS/01_Impactantes_Explicativas_NUEVAS/";
         entries=[normalizeV4Map(map.buffer,image.buffer,group)];
-      } else return res.status(400).json({message:"Carga un ZIP V4 o un par mapa JSON + PNG maestro."});
+      } else return res.status(400).json({message:"Carga un ZIP del lote o un par mapa JSON + PNG maestro."});
       if(entries.length>65)throw new Error("Demasiadas plantillas.");
       const slugs=new Set<string>();
       for(const item of entries) {
