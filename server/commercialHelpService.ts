@@ -848,6 +848,37 @@ Si encuentras un botón deshabilitado o un mensaje que impide realizar una acci�
 3. **Plazo de reserva inicial vencido:** Si pasaron los **${initialOpportunityHoldDays} días naturales** sin adjuntar documentación, la oportunidad se cerró automáticamente por inactividad. Puedes crear una nueva si el cliente sigue disponible.
 4. **Permisos de usuario o rol:** Ciertas acciones (como aprobar dictámenes o autorizar cambios de asesor) son de competencia exclusiva de Mesa de Control o Administradores de la plataforma.`,
     },
+    {
+      id: "art-como-consulto-productos",
+      slug: "como-consulto-productos",
+      title: "¿Cómo reviso productos y alternativas?",
+      category: "manual_operativo",
+      categoryLabel: "Manual Práctico",
+      summary: "En Productos consulta las opciones de financiamiento disponibles. Para evaluar compatibilidad se utiliza el perfil real del cliente y puede faltar información.",
+      keywords: ["productos", "ofertas", "matching", "compatibilidad", "financiamiento", "información insuficiente"],
+      order: 23,
+      contentMarkdown: `### Consulta de productos
+1. Abre **Productos** en el menú lateral.
+2. Revisa las opciones disponibles y las condiciones que muestre cada producto para tu rol.
+3. Completa el perfil del prospecto cuando un criterio necesario para la evaluación esté pendiente.
+4. Si el resultado es **información insuficiente**, no significa rechazo: faltan datos para determinar compatibilidad.
+5. La elección de la financiera y de las condiciones a tramitar se decide con el cliente; la disponibilidad no es una aprobación automática.`
+    },
+    {
+      id: "art-como-consulto-financieras",
+      slug: "como-consulto-financieras",
+      title: "¿Dónde reviso las financieras aliadas?",
+      category: "manual_operativo",
+      categoryLabel: "Manual Práctico",
+      summary: "Desde Financieras puedes revisar las instituciones vinculadas y su información disponible. No implica que una solicitud esté aprobada.",
+      keywords: ["financieras", "instituciones", "aliadas", "oferta", "condiciones"],
+      order: 24,
+      contentMarkdown: `### Consulta de financieras
+1. Abre **Financieras** desde el menú lateral.
+2. Consulta la información de las instituciones aliadas que tu usuario puede ver.
+3. Para comparar productos, entra a **Productos** y revisa condiciones y criterios vigentes.
+4. Si una financiera necesita información adicional del cliente, complétala durante el trámite. Las financieras evalúan y solicitan documentación de acuerdo con sus políticas.`
+    },
   ];
 }
 
