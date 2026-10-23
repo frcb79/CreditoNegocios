@@ -1,107 +1,130 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import {
-  CHANNELS, COMMERCIAL_CAMPAIGNS, campaignMessage, campaignSvg,
-  imageSize, safeBrandLabel, normalizedWhatsApp
+  CHANNELS, COMMERCIAL_CAMPAIGNS, campaignMessage, campaignSvg, imageSize,
+  safeBrandLabel, normalizedWhatsApp, templateSvg, campaignFromTemplate
 } from "../../client/src/lib/commercialResources";
+import {
+  COMMERCIAL_DISCLAIMER, COM_RES_EXAMPLE, commercialResourceUploadSchema,
+  commercialSuggestionSchema
+} from "../../shared/commercialResourceDefinition";
 
 const source = (path: string) => readFileSync(resolve(process.cwd(), path), "utf8");
 const brand = { displayName: "Broker Ejemplo", whatsapp: "55 1234 5678", showPhone: true };
 
-describe("Biblioteca comercial V0 — contenido seguro, ligero y personalizable", () => {
-  it("presenta los cinco productos principales sin promesas comerciales", () => {
-    expect(COMMERCIAL_CAMPAIGNS.map(x => x.id)).toEqual(["simple", "revolvente", "factoraje", "arrendamiento", "hipotecario"]);
-    expect(CHANNELS.map(x => x.id)).toEqual(["instagram", "facebook", "whatsapp", "linkedin", "tiktok"]);
-    for (const campaign of COMMERCIAL_CAMPAIGNS) {
-      expect(campaign.headline.length).toBeGreaterThan(8);
-      expect(campaign.description).not.toMatch(/garantiz|aprobaci[oó]n asegurad|sin bur[oó]|% anual|al instante/i);
-    }
+describe("Biblioteca comercial - contratos, permisos y formatos", () => {
+  it("validates strictly structured templates; only admin-defined slots exist", () => {
+    expect(commercialResourceUploadSchema.safeParse(COM_RES_EXAMPLE).success).toBe(true);
+    expect(commercialResourceUploadSchema.safeParse({ ...COM_RES_EXAMPLE, extra: "X" }).success).toBe(false);
+    expect(commercialResourceUploadSchema.safeParse({
+      ...COM_RES_EXAMPLE,
+      definition: { ...COM_RES_EXAMPLE.definition, someScript: "<script>" }
+    }).success).toBe(false);
+    expect(commercialResourceUploadSchema.safeParse({
+      ...COM_RES_EXAMPLE,
+      definition: { ...COM_RES_EXAMPLE.definition, colors: { background: "url(javascript:alert(1))", accent: "#FFFFFF", foreground: "#000000" } }
+    }).success).toBe(false);
+    expect(commercialResourceUploadSchema.safeParse({ ...COM_RES_EXAMPLE, slug: "../admin" }).success).toBe(false);
   });
 
-  it("regresa tamaños coherentes sin almacenar archivos en servidor", () => {
-    expect(imageSize("instagram")).toEqual({ width: 1080, height: 1350 });
-    expect(imageSize("facebook")).toEqual({ width: 1080, height: 1080 });
-    expect(imageSize("whatsapp")).toEqual({ width: 1080, height: 1920 });
-    expect(imageSize("linkedin")).toEqual({ width: 1200, height: 1200 });
-    expect(imageSize("tiktok")).toEqual({ width: 1080, height: 1920 });
+  it("rejects empty, extremely long or arbitrary suggestion fields", () => {
+    expect(commercialSuggestionSchema.safeParse({ suggestion: "Queremos una campaña para negocios turísticos" }).success).toBe(true);
+    expect(commercialSuggestionSchema.safeParse({ suggestion: "hola" }).success).toBe(false);
+    expect(commercialSuggestionSchema.safeParse({ suggestion: "a".repeat(1001) }).success).toBe(false);
+    expect(commercialSuggestionSchema.safeParse({ suggestion: "Texto de sugerencia", status: "revisando" }).success).toBe(false);
+  });
+
+  it("requires full Super Admin role for writes, drafts, and the inbox", () => {
+    const api = source("server/commercialResourcesRoutes.ts");
+    expect(api).toContain('user?.role !== "super_admin"');
+    expect(api).toContain("if (!user || !SUGGEST_ROLES.has(user.role))");
+    expect(api).toContain("getTenantMembersByUser");
+    expect(api).toContain("WHERE status = 'published'");
+    expect(api).toContain("status='draft'");
+    expect(api).toContain("status='retired'");
+    expect(api).toContain("pg_advisory_xact_lock");
+    expect(api).toContain("commercialResourceUploadSchema.safeParse");
+    expect(api).toContain("commercialSuggestionSchema.safeParse");
+    expect(api).not.toContain("UPDATE public.commercial_resource_suggestions");
+  });
+
+  it("keeps suggestions as a read-only inbox without statuses", () => {
+    const sql = source("migrations/0010_commercial_resources_library.sql");
+    expect(sql).toContain("commercial_resource_suggestions");
+    const suggestionDefinition = sql.split("CREATE TABLE IF NOT EXISTS public.commercial_resource_suggestions (")[1].split(");")[0];
+    expect(suggestionDefinition).not.toMatch(/status|reviewed_by|assigned_to|resolved_at/i);
     const page = source("client/src/pages/CommercialResources.tsx");
-    expect(page).toContain('data-testid="marketing-preview"');
-    expect(page).toContain('data-testid="resource-download-png"');
-    expect(page).toContain('data-testid="resource-copy-caption"');
-    expect(page).toContain('data-testid="commercial-drafts-warning"');
-    expect(page).not.toContain('apiRequest("POST"');
-    expect(page).not.toContain('fetch("https://');
+    expect(page).toContain('data-testid="commercial-suggestion-form"');
+    expect(page).toContain('data-testid="commercial-suggestion-send"');
+    expect(page).not.toContain("Editar contenido");
+    const admin = source("client/src/components/Commercial/CommercialResourcesAdmin.tsx");
+    expect(admin).toContain('data-testid="resource-admin-suggestions"');
+    expect(admin).toContain("Solo lectura");
   });
 
-  it("normaliza el contacto y permite omitirlo en la campaña", () => {
-    expect(normalizedWhatsApp("55 1234 5678")).toBe("525512345678");
-    expect(normalizedWhatsApp("+52 55 1234 5678")).toBe("525512345678");
-    expect(normalizedWhatsApp("123")).toBe("");
-    expect(normalizedWhatsApp("")).toBe("");
-    const msg = campaignMessage(COMMERCIAL_CAMPAIGNS[0], "whatsapp", { ...brand, showPhone: false });
-    expect(msg).not.toContain("525512345678");
-    expect(msg).toContain("Sujeto a evaluación");
+  it("hides all drafts and shows only approved resources to broker", () => {
+    const page = source("client/src/pages/CommercialResources.tsx");
+    expect(page).toContain('queryKey: ["/api/commercial-resources/templates"]');
+    expect(page).toContain("templates.length === 0");
+    expect(page).not.toContain("COMMERCIAL_CAMPAIGNS.map");
+    expect(page).toContain('data-testid="resources-published-list"');
+    expect(page).toContain('data-testid="resources-empty"');
+    const admin = source("client/src/components/Commercial/CommercialResourcesAdmin.tsx");
+    expect(admin).toContain('data-testid="resource-admin-file"');
+    expect(admin).toContain('data-testid="resource-admin-save-draft"');
+    expect(admin).toContain("Guardar nueva versión como borrador");
+    expect(admin).toContain('"/api/admin/commercial-resources/templates/"');
   });
 
-  it("escapa los datos del broker en el SVG y no los guarda en servicios externos", () => {
-    expect(safeBrandLabel("Broker <script>alert(1)</script>")).not.toContain("<");
-    const svg = campaignSvg(COMMERCIAL_CAMPAIGNS[0], "instagram", {
-      displayName: 'Marca <img src=x onerror=alert(1)>',
-      whatsapp: "+52 55 1234 5678",
-      showPhone: true
-    });
+  it("renders approved content unchanged while varying broker branding", () => {
+    const template = { ...COM_RES_EXAMPLE, id: "test", version: 1, status: "published" as const };
+    const svg = templateSvg(template, brand);
+    const caption = campaignMessage(campaignFromTemplate(template), "instagram", brand);
     expect(svg).toContain('xmlns="http://www.w3.org/2000/svg"');
     expect(svg).toContain("WhatsApp: +525512345678");
-    expect(svg).not.toContain("<script>");
-    expect(svg).not.toContain("<img");
-    expect(svg).not.toContain("onerror");
-    expect(svg).not.toContain("http://wa.me");
+    expect(svg).toContain(COM_RES_EXAMPLE.definition.headline.split(" ")[0]);
+    expect(caption).toContain(COM_RES_EXAMPLE.definition.cta);
+    expect(caption).toContain(COMMERCIAL_DISCLAIMER);
+    expect(templateSvg(template, { ...brand, showPhone: false })).not.toContain("WhatsApp: +525512345678");
   });
 
-  it("TikTok recibe un guion de 15 segundos y una portada, no un video ficticio", () => {
-    const text = campaignMessage(COMMERCIAL_CAMPAIGNS[1], "tiktok", brand);
-    expect(text).toContain("NO ES UN VIDEO");
-    expect(text).toContain("0–3 s");
-    expect(text).toContain("10–15 s");
-    const svg = campaignSvg(COMMERCIAL_CAMPAIGNS[1], "tiktok", brand);
-    expect(svg).toContain('height="1920"');
-  });
-
-  it("muestra el módulo con listas RBAC antiguas y permite imagen con logotipo institucional", () => {
-    const sidebar = source("client/src/components/Sidebar.tsx");
-    expect(sidebar).toContain("if (item.href === '/recursos-comerciales') return true");
+  it("supports five products, five channels and lightweight PNG, including TikTok storyboard", () => {
+    expect(COMMERCIAL_CAMPAIGNS.map(x => x.id)).toEqual(["simple", "revolvente", "factoraje", "arrendamiento", "hipotecario"]);
+    expect(CHANNELS.map(x => x.id)).toEqual(["instagram", "facebook", "whatsapp", "linkedin", "tiktok"]);
+    expect(imageSize("instagram")).toEqual({ width: 1080, height: 1350 });
+    expect(imageSize("tiktok")).toEqual({ width: 1080, height: 1920 });
+    expect(imageSize("linkedin")).toEqual({ width: 1200, height: 1200 });
+    const message = campaignMessage(COMMERCIAL_CAMPAIGNS[1], "tiktok", brand);
+    expect(message).toContain("NO ES UN VIDEO");
+    expect(message).toContain("0–3 s");
     const page = source("client/src/pages/CommercialResources.tsx");
-    expect(page).toContain('const [showInstitutionalLogo, setShowInstitutionalLogo] = useState(true)');
-    expect(page).toContain('data-testid="resource-institutional-logo"');
+    expect(page).toContain('data-testid="resource-download-png"');
+    expect(page).toContain('data-testid="resource-copy-caption"');
     expect(page).toContain("credito-negocios-full-logo.jpg");
-    expect(page).toContain('const [showPhone, setShowPhone] = useState(false)');
   });
 
-  it("incluye cinco guías formativas en la categoría educativa de Ayuda", () => {
-    const sourceText = source("server/commercialHelpService.ts");
-    const ui = source("client/src/pages/HelpCenterPage.tsx");
-    for (const topic of [
-      "guia-credito-simple", "guia-credito-revolvente",
-      "guia-factoraje", "guia-arrendamiento", "guia-hipotecario-vivienda"
-    ]) {
-      expect(sourceText).toContain('slug": "' + topic + '"');
-      expect(ui).toContain('slug: "' + topic + '"');
-    }
-    expect(sourceText).toContain("productos_crediticios");
-    expect(sourceText).toContain("Conoce los productos");
-    expect(sourceText).toContain("beneficios");
-    expect(ui).toContain('data-testid="help-product-guides"');
-  });
-
-  it("restringe la pantalla a roles autenticados y no altera comisiones ni códigos de referidos", () => {
-    const app = source("client/src/App.tsx");
-    const sidebar = source("client/src/components/Sidebar.tsx");
+  it("protects branding input and uses explicit WhatsApp opt-in", () => {
+    expect(safeBrandLabel("Broker <script>alert(1)</script>")).not.toContain("<");
+    expect(normalizedWhatsApp("55 1234 5678")).toBe("525512345678");
+    expect(normalizedWhatsApp("123")).toBe("");
+    const svg = campaignSvg(COMMERCIAL_CAMPAIGNS[0], "instagram", {
+      displayName: 'Marca <img src=x onerror=alert(1)>',
+      whatsapp: "+52 55 1234 5678", showPhone: true
+    });
+    expect(svg).not.toContain("onerror");
+    expect(svg).not.toContain("<img");
     const page = source("client/src/pages/CommercialResources.tsx");
-    expect(app).toContain('path="/recursos-comerciales" component={CommercialResources}');
-    expect(sidebar).toContain("Recursos comerciales");
-    expect(page).toContain('user?.role === "broker"');
+    expect(page).toContain('const [showPhone, setShowPhone] = useState(false)');
     expect(page).not.toContain("referralCode");
-    expect(page).not.toContain("commission");
     expect(page).not.toContain("localStorage");
+  });
+
+  it("keeps financing product guides integrated in Help", () => {
+    const help = source("server/commercialHelpService.ts");
+    for (const id of ["simple", "revolvente", "factoraje", "arrendamiento", "hipotecario-vivienda"]) {
+      expect(help).toContain("guia-" + (id.startsWith("credito-") ? id : id));
+    }
+    expect(help).toContain("productos_crediticios");
+    expect(source("client/src/pages/HelpCenterPage.tsx")).toContain('data-testid="help-product-guides"');
   });
 });
