@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { useLocation } from "wouter";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/hooks/useAuth";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import MainLayout from "@/components/MainLayout";
 import Header from "@/components/Header";
@@ -22,6 +23,8 @@ export default function Clients() {
   const [activeTab, setActiveTab] = useState(() => new URLSearchParams(window.location.search).get("tab") === "recibidos" ? "recibidos" : "cartera");
   const [incomingLead, setIncomingLead] = useState<ReceivedMarketingLead | null>(null);
   const { toast } = useToast();
+  const { user } = useAuth();
+  const canReceive = user?.role === "broker" || user?.role === "master_broker";
   const cache = useQueryClient();
   const [editingClient, setEditingClient] = useState<Client | null>(null);
   const [isTypeModalOpen, setIsTypeModalOpen] = useState(false);
@@ -103,17 +106,17 @@ export default function Clients() {
       
       <main className="flex-1 p-4 sm:p-6 lg:p-8 overflow-y-auto">
         {viewMode === "list" && (
-          <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
+          <Tabs value={canReceive ? activeTab : "cartera"} onValueChange={setActiveTab} className="space-y-4">
             <TabsList className="flex flex-wrap w-fit">
               <TabsTrigger value="cartera" data-testid="tab-clients-list">Clientes</TabsTrigger>
-              <TabsTrigger value="recibidos" data-testid="tab-received-prospects">Prospectos recibidos</TabsTrigger>
+              {canReceive && <TabsTrigger value="recibidos" data-testid="tab-received-prospects">Prospectos recibidos</TabsTrigger>}
             </TabsList>
             <TabsContent value="cartera">
               <ClientList onSelectClient={handleSelectClient} onNewClient={handleNewClient} />
             </TabsContent>
-            <TabsContent value="recibidos">
+            {canReceive && <TabsContent value="recibidos">
               <ReceivedProspects onReview={reviewIncoming} onOpenClient={id => setLocation("/clientes/" + id)} />
-            </TabsContent>
+            </TabsContent>}
           </Tabs>
         )}
 
