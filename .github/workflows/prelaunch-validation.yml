@@ -121,7 +121,11 @@ jobs:
 
   postgres-migrations:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [0, 1, 2, 3]
     services:
       postgres:
         image: postgres:16
@@ -149,32 +153,33 @@ jobs:
           cache: 'npm'
       - name: Install dependencies
         run: npm ci --no-audit --no-fund
-      - name: Test atomic manual benefits, discounts, roles and historical audit in isolated PostgreSQL
-        run: npm test -- --runInBand --coverage=false --forceExit tests/integration/postgres-manual-benefits.test.ts
-      - name: Test LEG-10 customer consent evidence schema and immutability in isolated PostgreSQL
-        run: npm test -- --runInBand --coverage=false --forceExit tests/integration/postgres-client-consent-migration.test.ts
-      - name: Test LEG-10 concurrent revocation vs send against real isolated PostgreSQL
-        run: npm test -- --runInBand --coverage=false --forceExit tests/integration/postgres-client-consent-concurrency.test.ts
-      - name: Test isolated PostgreSQL migration 0005
-        run: npm test -- --runInBand --coverage=false --forceExit tests/integration/postgres-versioning-migration.test.ts
-      - name: Test isolated PostgreSQL canonical lineage migration 0009
-        run: npm test -- --runInBand --coverage=false --forceExit tests/integration/postgres-offer-lineage-migration.test.ts
-      - name: Test historical Master attribution migration 0004
-        run: npm test -- --runInBand --coverage=false --forceExit tests/integration/postgres-network-attribution-migration.test.ts
-      - name: Test atomic manual commission settlement in isolated PostgreSQL
-        run: npm test -- --runInBand --coverage=false --forceExit tests/integration/postgres-manual-payout.test.ts
-      - name: Test atomic credit disbursements and concurrent partialities in isolated PostgreSQL
-        run: npm test -- --runInBand --coverage=false --forceExit tests/integration/postgres-credit-disbursement.test.ts
-      - name: Test winner-target atomic creation, linkage, rollback and lineage in PostgreSQL
-        run: npm test -- --runInBand --coverage=false --forceExit tests/integration/postgres-target-disbursement.test.ts
-      - name: Test concurrent offer draft edits versus immutable PostgreSQL publication
-        run: npm test -- --runInBand --coverage=false --forceExit tests/integration/postgres-offer-publication-race.test.ts
-      - name: Test commercial configuration, legal publication and audits as one PostgreSQL transaction
-        run: npm test -- --runInBand --coverage=false --forceExit tests/integration/postgres-commercial-config-atomic.test.ts
-      - name: Test Master Broker rate version atomicity and concurrency in PostgreSQL
-        run: npm test -- --runInBand --coverage=false --forceExit tests/integration/postgres-network-rates-atomic.test.ts
-      - name: Test additive staging legacy schema repair on disposable PostgreSQL schema
-        run: npm test -- --runInBand --coverage=false --forceExit tests/integration/postgres-staging-schema-repair.test.ts
+      - name: Isolated PostgreSQL integration suites (sharded)
+        env:
+          SHARD: ${{ matrix.shard }}
+        run: |
+          tests=(
+            tests/integration/postgres-manual-benefits.test.ts
+            tests/integration/postgres-client-consent-migration.test.ts
+            tests/integration/postgres-client-consent-concurrency.test.ts
+            tests/integration/postgres-versioning-migration.test.ts
+            tests/integration/postgres-offer-lineage-migration.test.ts
+            tests/integration/postgres-network-attribution-migration.test.ts
+            tests/integration/postgres-manual-payout.test.ts
+            tests/integration/postgres-credit-disbursement.test.ts
+            tests/integration/postgres-target-disbursement.test.ts
+            tests/integration/postgres-offer-publication-race.test.ts
+            tests/integration/postgres-commercial-config-atomic.test.ts
+            tests/integration/postgres-network-rates-atomic.test.ts
+            tests/integration/postgres-staging-schema-repair.test.ts
+          )
+          selected=()
+          for i in "${!tests[@]}"; do
+            if (( i % 4 == SHARD )); then
+              selected+=("${tests[$i]}")
+            fi
+          done
+          echo "Isolated PostgreSQL shard ${SHARD}/3: ${#selected[@]} test suites"
+          npm test -- --runInBand --coverage=false --forceExit "${selected[@]}"
 
   staging-public-smoke:
     runs-on: ubuntu-latest
