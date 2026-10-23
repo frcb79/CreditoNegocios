@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import MainLayout from "@/components/MainLayout";
 import Header from "@/components/Header";
 import CommercialResourcesAdmin from "@/components/Commercial/CommercialResourcesAdmin";
+import CampaignLinkPanel from "@/components/Commercial/CampaignLinkPanel";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -33,6 +34,7 @@ export default function CommercialResources() {
   const [displayName, setDisplayName] = useState("");
   const [whatsapp, setWhatsapp] = useState("");
   const [loadedUser, setLoadedUser] = useState("");
+  const [campaignLink, setCampaignLink] = useState<{ templateId: string; url: string } | null>(null);
   const [suggestion, setSuggestion] = useState("");
   const [suggesting, setSuggesting] = useState(false);
 
@@ -66,7 +68,7 @@ export default function CommercialResources() {
       return;
     }
     try {
-      await navigator.clipboard.writeText(caption);
+      await navigator.clipboard.writeText(caption + (campaignLink?.templateId === selection?.id ? "\n\nMás información: " + campaignLink.url : ""));
       toast({ title: "Texto copiado" });
     } catch {
       toast({ title: "No se pudo copiar", description: "Selecciona el texto y cópialo manualmente.", variant: "destructive" });
@@ -240,6 +242,9 @@ export default function CommercialResources() {
               ) : <p className="text-sm text-muted-foreground">Selecciona una plantilla cuando Super Admin publique las primeras campañas.</p>}
             </section>
           </div>
+          {canSuggest && <CampaignLinkPanel key={selection?.id || "general"}
+            selectedTemplateId={selection?.id}
+            onCampaignLink={url => { if (selection) setCampaignLink({ templateId: selection.id, url }); }} />}
           {canSuggest && (
             <section className="border rounded-xl bg-card p-4 sm:p-5 space-y-3 max-w-3xl" data-testid="commercial-suggestion-form">
               <h2 className="font-semibold">¿Qué material te gustaría encontrar aquí?</h2>
