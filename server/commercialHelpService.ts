@@ -624,15 +624,16 @@ En Crédito Negocios las controversias se resuelven con base en hechos y bitáco
       summary: "Paso a paso para dar de alta una empresa o persona física con actividad empresarial en la plataforma.",
       keywords: ["como registro cliente", "nuevo cliente", "alta cliente", "rfc", "formulario"],
       order: 11,
-      contentMarkdown: `### Paso a paso: Registro de un cliente nuevo
+      contentMarkdown: `### Paso a paso: registra a tu primer prospecto
 
-1. Ve al menú lateral y haz clic en **Clientes**.
-2. Haz clic en el botón superior derecho **+ Nuevo Cliente**.
-3. Selecciona el tipo de persona (Persona Moral o Persona Física con Actividad Empresarial).
-4. Ingresa el **RFC**, la Razón Social o Nombre Completo, teléfono de contacto y correo electrónico.
-5. El sistema verificará automáticamente que los datos no coincidan con una oportunidad protegida activa.
-6. Completa los datos generales y haz clic en **Guardar Cliente**.
-7. ¡Listo! Tu cliente quedará registrado en tu cartera y podrás crearle inmediatamente su primera oportunidad de financiamiento.`,
+1. En el menú lateral abre **Clientes** y haz clic en **Nuevo Cliente**.
+2. Elige la operación: **Crédito Empresarial**, **Hipotecario Vivienda** o **Arrendamiento**. Hipotecario y Arrendamiento tienen rutas ágiles específicas.
+3. Para Crédito Empresarial se abre **Nuevo prospecto**. Selecciona el tipo de cliente: empresa, persona física con actividad empresarial, persona física o prospecto sin información fiscal disponible.
+4. Captura los datos esenciales y un medio de contacto (**teléfono o correo**). El RFC se puede agregar si lo conoces; no necesitas estados financieros para este registro inicial.
+5. Revisa **Verificar si ya existe**. Si aparece un prospecto de tu cartera, abre el expediente existente en lugar de duplicarlo.
+6. Haz clic en **Guardar prospecto**. Se abrirá su ficha para completar el perfil y registrar una necesidad de financiamiento cuando corresponda.
+
+**Importante:** Registrar un prospecto no significa aprobación de crédito. Si faltan datos para evaluar una oferta, el matching puede indicar información insuficiente.`,
     },
     {
       id: "art-como-creo-una-nueva-oportunidad",
@@ -643,17 +644,16 @@ En Crédito Negocios las controversias se resuelven con base en hechos y bitáco
       summary: `Aprende a registrar una necesidad de financiamiento con monto, tipo de producto y plazo (con reserva inicial vigente de ${initialOpportunityHoldDays} días).`,
       keywords: ["crear oportunidad", "nueva oportunidad", "necesidad financiamiento", "monto", "producto"],
       order: 12,
-      contentMarkdown: `### Paso a paso: Creación de una oportunidad
+      contentMarkdown: `### Paso a paso: crea una nueva oportunidad comercial
 
-1. Abre la ficha de tu cliente desde la lista de **Clientes**.
-2. En la pestaña u opción de **Oportunidades**, haz clic en **+ Nueva Oportunidad**.
-3. Ingresa:
-   - **Título descriptivo:** Ejemplo: *"Crédito simple para compra de maquinaria"*.
-   - **Tipo de necesidad:** Capital de trabajo, arrendamiento, crédito simple, etc.
-   - **Monto solicitado:** El importe estimado en pesos mexicanos.
-   - **Plazo estimado y financiera preferente:** (opcional en esta etapa).
-4. Haz clic en **Crear Oportunidad**.
-5. Tu oportunidad iniciará en estado de **Reserva Inicial** por **${initialOpportunityHoldDays} días naturales** para que subas la documentación correspondiente.`,
+1. Abre la ficha del cliente desde **Clientes**.
+2. En su sección de **Oportunidades**, selecciona **Nueva Oportunidad**.
+3. Escribe un **título**, selecciona la **necesidad de financiamiento** e ingresa el **monto solicitado**.
+4. Si te resulta útil, añade notas iniciales sobre el destino del financiamiento. No es necesario seleccionar una financiera en este formulario.
+5. Haz clic en **Registrar Oportunidad**.
+6. Consulta la reserva inicial y el seguimiento en la ficha del cliente o en **Gestión de Créditos**. Registra actividades comerciales válidas para mantener la protección según las reglas vigentes.
+
+**Recuerda:** La oportunidad es una necesidad de financiamiento; el cliente puede tener más de una necesidad distinta. No dupliques una gestión protegida de otro broker.`,
     },
     {
       id: "art-que-significa-reserva-inicial",
