@@ -15,6 +15,7 @@ import {
   type PublishedCommercialTemplate
 } from "@/lib/commercialResources";
 import { COMMERCIAL_DISCLAIMER } from "@shared/commercialResourceDefinition";
+import { renderCommercialGraphic } from "@/lib/commercialGraphicRenderer";
 
 async function getPublished(): Promise<PublishedCommercialTemplate[]> {
   const res = await fetch("/api/commercial-resources/templates", { credentials: "include" });
@@ -35,6 +36,9 @@ export default function CommercialResources() {
   const [whatsapp, setWhatsapp] = useState("");
   const [loadedUser, setLoadedUser] = useState("");
   const [campaignLink, setCampaignLink] = useState<{ templateId: string; url: string } | null>(null);
+  const [graphicPreview, setGraphicPreview] = useState("");
+  const [graphicError, setGraphicError] = useState("");
+  const [graphicLoading, setGraphicLoading] = useState(false);
   const [suggestion, setSuggestion] = useState("");
   const [suggesting, setSuggesting] = useState(false);
 
@@ -54,13 +58,41 @@ export default function CommercialResources() {
     whatsapp,
     showPhone: true
   }), [displayName, whatsapp]);
-  const identityReady = safeBrandLabel(displayName).length >= 2 && Boolean(normalizedWhatsApp(whatsapp));
+  const identityReady = Boolean(selection?.definition.graphic)
+    ? graphicName.trim().length >= 2 && Boolean(normalizedWhatsApp(graphicPhone))
+    : safeBrandLabel(displayName).length >= 2 && Boolean(normalizedWhatsApp(whatsapp));
   const svg = useMemo(() => selection ? templateSvg(selection, branding) : "", [selection, branding]);
   const preview = useMemo(() => svg ? "data:image/svg+xml;charset=utf-8," + encodeURIComponent(svg) : "", [svg]);
-  const caption = useMemo(() => selection ? templateCaption(selection, branding) : "", [selection, branding]);
-  const dimensions = selection ? imageSize(selection.channel) : { width: 1080, height: 1350 };
+  const profile = (user?.profileData || {}) as Record<string, any>;
+  const graphicName = (user?.role === "master_broker" && user.brandName) ||
+    profile.business?.businessName || [user?.firstName,user?.lastName].filter(Boolean).join(" ");
+  const graphicPhone = String(profile.business?.businessPhone || profile.phone || (user as any)?.phone || "");
+  // Approval must be explicit; customLogo/avatar alone does not authorize a marketing logo.
+  const authorizedLogo = profile.commercialBranding?.logoApproved === true &&
+    typeof (user as any)?.customLogo === "string" ? (user as any).customLogo as string : null;
+  const caption = useMemo(() => selection ? templateCaption(selection,
+    selection.definition.graphic ? {
+      displayName:graphicName,whatsapp:graphicPhone,showPhone:true
+    } : branding) : "", [selection, branding, graphicName, graphicPhone]);
+  const dimensions = selection?.definition.graphic?.canvas || (selection ? imageSize(selection.channel) : { width: 1080, height: 1350 });
   const isSuperAdmin = user?.role === "super_admin";
   const canSuggest = user?.role === "broker" || user?.role === "master_broker";
+
+  useEffect(() => {
+    let live=true;
+    setGraphicPreview("");
+    setGraphicError("");
+    if (!selection?.definition.graphic || !identityReady) return;
+    setGraphicLoading(true);
+    renderCommercialGraphic(selection,{
+      displayName:graphicName,whatsapp:graphicPhone,approvedLogoUrl:authorizedLogo
+    }).then(canvas=>{
+      if(live)setGraphicPreview(canvas.toDataURL("image/png"));
+    }).catch(err=>{
+      if(live)setGraphicError(err.message||"No se pudo mostrar el arte.");
+    }).finally(()=>{if(live)setGraphicLoading(false);});
+    return ()=>{live=false;};
+  }, [selection?.id, selection?.definition.graphic, identityReady, graphicName, graphicPhone, authorizedLogo]);
 
   const copyCaption = async () => {
     if (!identityReady || !selection) {
@@ -82,6 +114,23 @@ export default function CommercialResources() {
   const downloadPng = () => {
     if (!selection || !svg || !identityReady) {
       toast({ title: "Completa tu nombre y WhatsApp antes de descargar", variant: "destructive" });
+      return;
+    }
+    if (selection.definition.graphic) {
+      renderCommercialGraphic(selection,{
+        displayName:graphicName,whatsapp:graphicPhone,approvedLogoUrl:authorizedLogo
+      }).then(canvas=>canvas.toBlob(png=>{
+        if(!png)return toast({title:"No se pudo exportar PNG",variant:"destructive"});
+        const file=URL.createObjectURL(png);
+        const link=document.createElement("a");
+        link.href=file;
+        link.download="credito-negocios-"+selection.slug+"-v"+selection.version+".png";
+        link.click();
+        window.setTimeout(()=>URL.revokeObjectURL(file),5000);
+        toast({title:"Material personalizado descargado"});
+      },"image/png")).catch(err=>{
+        toast({title:"No se pudo exportar",description:err.message,variant:"destructive"});
+      });
       return;
     }
     const size = imageSize(selection.channel);
@@ -200,9 +249,9 @@ export default function CommercialResources() {
                   {selection.definition.allowedIdentityFields.whatsapp && (
                     <>
                       <label className="block text-sm font-medium" htmlFor="resource-whatsapp">Teléfono o WhatsApp</label>
-                      <Input id="resource-whatsapp" inputMode="tel" maxLength={25} value={whatsapp}
+                      <Input id="resource-whatsapp" inputMode="tel" maxLength={25} disabled={Boolean(selection.definition.graphic)} value={selection.definition.graphic ? graphicPhone : whatsapp}
                         onChange={e => setWhatsapp(e.target.value)} data-testid="resource-whatsapp" />
-                      {(!normalizedWhatsApp(whatsapp)) && <p className="text-xs text-destructive">Ingresa un WhatsApp válido. Es obligatorio para generar la pieza.</p>}
+                      {(!normalizedWhatsApp(selection.definition.graphic ? graphicPhone : whatsapp)) && <p className="text-xs text-destructive">Actualiza un WhatsApp válido en tu perfil; es obligatorio para generar la pieza.</p>}
                     </>
                   )}
                   {selection.definition.allowedIdentityFields.institutionalLogo && (
@@ -210,8 +259,8 @@ export default function CommercialResources() {
                       El logotipo institucional de Crédito Negocios se incluirá automáticamente.
                     </p>
                   )}
-                  {safeBrandLabel(displayName).length < 2 && <p className="text-xs text-destructive">Indica tu nombre o nombre comercial; es obligatorio.</p>}
-                  <p className="text-xs text-muted-foreground">Nombre y contacto son obligatorios para mantener completo el diseño. Solo personalizan la pieza, no cambian tu perfil.</p>
+                  {(selection.definition.graphic ? graphicName.trim().length < 2 : safeBrandLabel(displayName).length < 2) && <p className="text-xs text-destructive">Indica tu nombre o nombre comercial en el perfil.</p>}
+                  <p className="text-xs text-muted-foreground">{selection.definition.graphic ? "Los datos de identidad se toman del perfil; no puedes alterar textos ni fotografías. El logo propio aparece únicamente si fue autorizado." : "Nombre y contacto son obligatorios para mantener completo el diseño. Solo personalizan la pieza, no cambian tu perfil."}</p>
                 </div>
               )}
             </section>
@@ -221,9 +270,13 @@ export default function CommercialResources() {
                 <>
                   <div className="bg-muted/30 rounded-lg p-3 flex justify-center" data-testid="marketing-preview">
                     <div className="relative w-full max-w-[360px]">
-                      <img src={preview} alt={"Plantilla aprobada " + selection.name}
-                        className="max-h-[520px] w-full object-contain rounded-md" />
-                      {selection.definition.allowedIdentityFields.institutionalLogo && (
+                      {selection.definition.graphic ? (
+                        graphicPreview
+                          ? <img src={graphicPreview} alt={"Plantilla gráfica aprobada " + selection.name} className="max-h-[520px] w-full object-contain rounded-md" data-testid="resource-graphic-preview" />
+                          : <p className="text-xs text-muted-foreground">{graphicLoading ? "Preparando diseño personalizado…" : (graphicError || "Completa tus datos de perfil para ver la plantilla.")}</p>
+                      ) : <img src={preview} alt={"Plantilla aprobada " + selection.name}
+                        className="max-h-[520px] w-full object-contain rounded-md" />}
+                      {!selection.definition.graphic && selection.definition.allowedIdentityFields.institutionalLogo && (
                         <div className="absolute top-[2%] left-[7%] w-[46%] bg-white p-1 rounded-md" data-testid="resource-logo-preview">
                           <img src="/credito-negocios-full-logo.jpg" alt="Crédito Negocios" className="max-h-12 w-full object-contain" />
                         </div>
@@ -231,7 +284,7 @@ export default function CommercialResources() {
                     </div>
                   </div>
                   <p className="text-xs text-muted-foreground">{dimensions.width} × {dimensions.height} px · Contenido autorizado, v{selection.version}</p>
-                  <Button className="w-full gap-2" onClick={downloadPng} disabled={!identityReady} data-testid="resource-download-png">
+                  <Button className="w-full gap-2" onClick={downloadPng} disabled={!identityReady || (Boolean(selection.definition.graphic) && (graphicLoading || Boolean(graphicError)))} data-testid="resource-download-png">
                     <Download className="w-4 h-4" /> Descargar PNG personalizado
                   </Button>
                   <div className="border-t pt-3 space-y-3">
