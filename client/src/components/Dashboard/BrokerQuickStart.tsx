@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useLocation } from "wouter";
-import { ArrowRight, CheckCircle2, CircleHelp, X } from "lucide-react";
+import { ArrowRight, CheckCircle2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ContextualHelpLink } from "@/components/Help/ContextualHelpLink";
 
