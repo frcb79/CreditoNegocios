@@ -1,5 +1,8 @@
 import { useEffect, useState } from "react";
 import { renderCommercialGraphic } from "@/lib/commercialGraphicRenderer";
+import CommercialLibraryToolbar, { INITIAL_LIBRARY_FILTERS } from "./CommercialLibraryToolbar";
+import CommercialTemplateCard from "./CommercialTemplateCard";
+import { COMMERCIAL_STYLES, filterCommercialTemplates } from "@/lib/commercialLibrary";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -78,7 +81,7 @@ export default function CommercialResourcesAdmin() {
   const [graphicBackground, setGraphicBackground] = useState<File | null>(null);
   const [importReport, setImportReport] = useState<{ scanned:number;created:number;existing:number;requiresTypographyReview:number } | null>(null);
   const [previewTemplateId, setPreviewTemplateId] = useState<string | null>(null);
-  const [templateFilter, setTemplateFilter] = useState("");
+  const [libraryFilters, setLibraryFilters] = useState({...INITIAL_LIBRARY_FILTERS});
 
   const { data: campaignOverview } = useQuery<{ clicks: number; links: number; received: number; linked: number }>({
     queryKey: ["/api/commercial-resources/overview"],
@@ -95,11 +98,7 @@ export default function CommercialResourcesAdmin() {
   });
   // Preserve the selected revision when the list refreshes after imports or publication.
   const previewTemplate = templates.find(item => item.id === previewTemplateId) ?? null;
-  const normalizedFilter = templateFilter.trim().toLocaleLowerCase("es-MX");
-  const visibleTemplates = templates.filter(item =>
-    [item.name, item.slug, item.product, item.channel, item.status]
-      .join(" ").toLocaleLowerCase("es-MX").includes(normalizedFilter)
-  );
+  const visibleTemplates = filterCommercialTemplates(templates, libraryFilters);
 
   const validateDraft = () => {
     let parsed: unknown;
@@ -146,6 +145,28 @@ export default function CommercialResourcesAdmin() {
       toast({title:"Borradores importados",description:`${result.created} nuevos, ${result.existing} existentes. Nada publicado.`});
     }catch(err:any){toast({title:"No fue posible importar",description:err.message,variant:"destructive"});}
     finally{setWorking(false);}
+  };
+
+  const changeStyle = async (template:PublishedCommercialTemplate, style:string) => {
+    if(working)return;
+    setWorking(true);
+    try {
+      const result=await fetch("/api/admin/commercial-resources/templates/"+
+        encodeURIComponent(template.id)+"/style",{
+        method:"POST",credentials:"include",
+        headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({style:style==="unclassified"?null:style})
+      });
+      const payload=await result.json().catch(()=>({}));
+      if(!result.ok)throw new Error(payload.message||"No se pudo guardar la categoría");
+      await Promise.all([
+        queryClient.invalidateQueries({queryKey:["/api/admin/commercial-resources/templates"]}),
+        queryClient.invalidateQueries({queryKey:["/api/commercial-resources/templates"]})
+      ]);
+      toast({title:"Categoría actualizada",description:"El diseño original no se modificó."});
+    }catch(error:any){
+      toast({title:"Error al clasificar",description:error.message,variant:"destructive"});
+    }finally{setWorking(false);}
   };
 
   const changePublication = async (template: PublishedCommercialTemplate, action: "publish" | "retire") => {
@@ -232,56 +253,35 @@ export default function CommercialResourcesAdmin() {
           </span>
         </div>
         {templateError && <p className="text-sm text-destructive">No se pudo consultar el catálogo administrativo.</p>}
+        <CommercialLibraryToolbar templates={templates} filters={libraryFilters}
+          onChange={setLibraryFilters} includeStatus />
         <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,0.95fr)_minmax(0,1.05fr)] items-start gap-4">
           <div className="min-w-0 space-y-3" data-testid="resource-admin-template-list">
-            <label htmlFor="commercial-template-search" className="block text-sm font-medium">
-              Buscar plantilla
-            </label>
-            <Input
-              id="commercial-template-search"
-              placeholder="Nombre, producto o formato…"
-              value={templateFilter}
-              onChange={event => setTemplateFilter(event.target.value)}
-              data-testid="resource-admin-template-search"
-            />
-            <p className="text-xs text-muted-foreground">
-              Selecciona «Vista previa» para examinar cada diseño a la derecha, sin recorrer toda la lista.
-              {normalizedFilter && ` Coincidencias: ${visibleTemplates.length}.`}
-            </p>
             {loadingTemplates ? <p className="text-sm">Cargando plantillas…</p>
               : templates.length === 0 ? <p className="text-sm text-muted-foreground">Todavía no se han subido plantillas.</p>
-              : visibleTemplates.length === 0 ? <p className="text-sm text-muted-foreground">No hay plantillas que coincidan con la búsqueda.</p>
+              : visibleTemplates.length === 0 ? <p className="text-sm text-muted-foreground">No hay plantillas que coincidan con los filtros.</p>
               : (
-                <div className="max-h-[68vh] overflow-y-auto overscroll-contain space-y-2 pr-2" data-testid="resource-admin-scrollable-templates">
+                <div className="max-h-[68vh] overflow-y-auto overscroll-contain space-y-2 pr-2"
+                  data-testid="resource-admin-scrollable-templates">
                   {visibleTemplates.map(item => (
-                    <div key={item.id}
-                      className={"rounded-lg border p-3 space-y-2 " + (previewTemplateId === item.id ? "border-primary bg-primary/5" : "")}>
-                      <div className="min-w-0">
-                        <p className="font-medium text-sm break-words">{item.name} · v{item.version}</p>
-                        <p className="text-xs text-muted-foreground break-words">{item.product} · {item.channel} ·
-                          {" "}{item.status === "published" ? "Publicada" : item.status === "retired" ? "Retirada" : "Borrador"}
-                        </p>
-                      </div>
-                      <div className="flex flex-wrap gap-2">
-                        <Button
-                          type="button" size="sm"
-                          variant={previewTemplateId === item.id ? "default" : "outline"}
-                          aria-pressed={previewTemplateId === item.id}
-                          onClick={() => setPreviewTemplateId(item.id)}
-                          data-testid={"resource-preview-" + item.id}
-                        >
-                          <Eye className="w-3.5 h-3.5 mr-1" /> Vista previa
-                        </Button>
-                        {item.status === "draft" && (
-                          <Button size="sm" disabled={working} onClick={() => changePublication(item, "publish")}
-                            data-testid={"publish-resource-" + item.id}>Publicar</Button>
-                        )}
-                        {item.status === "published" && (
-                          <Button size="sm" variant="outline" disabled={working}
-                            onClick={() => changePublication(item, "retire")}>Retirar</Button>
-                        )}
-                      </div>
-                    </div>
+                    <CommercialTemplateCard key={item.id} template={item}
+                      compact selected={previewTemplateId===item.id}
+                      onClick={()=>setPreviewTemplateId(item.id)}>
+                      <Button type="button" size="sm"
+                        variant={previewTemplateId===item.id?"default":"outline"}
+                        onClick={()=>setPreviewTemplateId(item.id)}
+                        data-testid={"resource-preview-"+item.id}>
+                        <Eye className="w-3.5 h-3.5 mr-1"/> Vista previa
+                      </Button>
+                      {item.status === "draft" && (
+                        <Button size="sm" disabled={working} onClick={()=>changePublication(item,"publish")}
+                          data-testid={"publish-resource-"+item.id}>Publicar</Button>
+                      )}
+                      {item.status === "published" && (
+                        <Button size="sm" variant="outline" disabled={working}
+                          onClick={()=>changePublication(item,"retire")}>Retirar</Button>
+                      )}
+                    </CommercialTemplateCard>
                   ))}
                 </div>
               )}
@@ -300,6 +300,18 @@ export default function CommercialResourcesAdmin() {
                   <Button type="button" size="sm" variant="ghost"
                     onClick={() => setPreviewTemplateId(null)}>Cerrar</Button>
                 </div>
+                <label className="block text-xs font-medium space-y-1">
+                  <span>Estilo de esta plantilla · solo Super Admin</span>
+                  <select className="block h-9 w-full border rounded-md bg-background px-2 text-sm"
+                    aria-label="Clasificar estilo de plantilla"
+                    value={previewTemplate.style || "unclassified"}
+                    disabled={working}
+                    onChange={event=>changeStyle(previewTemplate,event.target.value)}
+                    data-testid="resource-admin-style-picker">
+                    <option value="unclassified">Sin clasificar</option>
+                    {COMMERCIAL_STYLES.map(style=><option key={style.value} value={style.value}>{style.label}</option>)}
+                  </select>
+                </label>
                 {previewTemplate.definition.graphic ? (
                   <GraphicDraftPreview key={previewTemplate.id} template={previewTemplate} />
                 ) : (
