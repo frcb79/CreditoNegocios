@@ -47,14 +47,16 @@ export default function QuickClientForm({
   onSaved,
   onCancel,
   onExisting,
+  initialValues,
 }: {
   onSaved: (client: Client) => void;
   onCancel: () => void;
   onExisting: (clientId: string) => void;
+  initialValues?: Partial<QuickFormFields>;
 }) {
   const { toast } = useToast();
   const cache = useQueryClient();
-  const [fields, setFields] = useState<QuickFormFields>(initial);
+  const [fields, setFields] = useState<QuickFormFields>(() => ({ ...initial, ...initialValues }));
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [duplicate, setDuplicate] = useState<DuplicateCheckResult | null>(null);
   const [checkedSignature, setCheckedSignature] = useState("");

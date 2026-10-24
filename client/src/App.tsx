@@ -37,6 +37,8 @@ import DesignPreview from "@/pages/DesignPreview";
 import BulkImport from "@/pages/BulkImport";
 import Notifications from "@/pages/Notifications";
 import HelpCenterPage from "@/pages/HelpCenterPage";
+import CommercialResources from "@/pages/CommercialResources";
+import PublicCampaignLanding from "@/pages/PublicCampaignLanding";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
 
 function Router() {
@@ -48,7 +50,7 @@ function Router() {
     // Only redirect if we're on a protected route and definitely not authenticated
     if (!isLoading && !isAuthenticated) {
       const currentPath = window.location.pathname;
-      const protectedRoutes = ['/clientes', '/creditos', '/re-gestion', '/red-brokers', '/comisiones', '/financieras', '/documentos', '/reportes', '/configuracion', '/sistema-productos', '/solicitudes-pendientes', '/mis-solicitudes', '/admin/usuarios', '/admin/auditoria', '/importacion-masiva', '/notificaciones'];
+      const protectedRoutes = ['/clientes', '/creditos', '/re-gestion', '/red-brokers', '/comisiones', '/financieras', '/documentos', '/reportes', '/configuracion', '/sistema-productos', '/solicitudes-pendientes', '/mis-solicitudes', '/admin/usuarios', '/admin/auditoria', '/importacion-masiva', '/notificaciones', '/recursos-comerciales'];
       
       // Check if current path starts with any protected route
       const isProtected = protectedRoutes.some(route => currentPath.startsWith(route));
@@ -80,6 +82,7 @@ function Router() {
       {import.meta.env.DEV && <Route path="/design-preview" component={DesignPreview} />}
       {/* Broker acquisition page - accessible without auth */}
       <Route path="/brokers" component={BrokersLanding} />
+      <Route path="/c/:token" component={PublicCampaignLanding} />
       
       {isLoading || !isAuthenticated ? (
         <Route path="/" component={Landing} />
@@ -106,6 +109,7 @@ function Router() {
           <ProtectedRoute path="/notificaciones" component={Notifications} />
           <ProtectedRoute path="/importacion-masiva" component={BulkImport} allowedRoles={['admin', 'super_admin']} requiredModule="importacion" />
           <ProtectedRoute path="/ayuda" component={HelpCenterPage} />
+          <ProtectedRoute path="/recursos-comerciales" component={CommercialResources} allowedRoles={['broker', 'master_broker', 'admin', 'super_admin']} />
           <Route path="/reglas-operacion"><Redirect to="/configuracion?tab=operational_rules" /></Route>
         </>
       )}

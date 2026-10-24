@@ -25,6 +25,7 @@ import {
   Users2,
   Settings,
   HelpCircle,
+  Megaphone,
   Tag,
   LogOut,
   type LucideIcon,
@@ -52,6 +53,7 @@ const navigation: NavItemDef[] = [
   { name: 'Financieras', href: '/financieras', icon: Building2, section: "catalogos" },
   { name: 'Productos', href: '/sistema-productos', icon: Layers, section: "catalogos" },
   { name: 'Comisiones', href: '/comisiones', icon: DollarSign, section: "catalogos" },
+  { name: 'Recursos comerciales', href: '/recursos-comerciales', icon: Megaphone, section: "catalogos" },
   { name: 'Documentos', href: '/documentos', icon: FileText, section: "catalogos" },
   // Supervisión y Red
   { name: 'Aprobaciones', href: '/solicitudes-pendientes', icon: Clock, platformAdminOnly: true, section: "supervision" },
@@ -146,6 +148,7 @@ export default function Sidebar() {
     '/importacion-masiva': 'importacion',
     '/admin/usuarios': 'usuarios',
     '/configuracion': 'configuracion',
+    '/recursos-comerciales': 'recursos_comerciales',
   };
 
   // Non-originator check: Collaborators with canOriginate: false do not see Comisiones
@@ -159,6 +162,10 @@ export default function Sidebar() {
     : baseItems.filter(item => {
         if (item.href === '/comisiones' && isNonOriginatorOnly) return false;
         if (item.href === '/admin/usuarios' && hasTenantOrg) return true;
+        // Biblioteca educativa/comercial: visible para cualquier cuenta con rol
+        // válido; no existe un módulo RBAC legado "recursos_comerciales".
+        // El acceso real también se verifica en ProtectedRoute.
+        if (item.href === '/recursos-comerciales') return true;
         const modKey = hrefToModule[item.href];
         return !modKey || allowedModules.includes(modKey);
       });

@@ -19,7 +19,7 @@ export interface HelpArticle {
   id: string;
   slug: string;
   title: string;
-  category: "clientes" | "oportunidades" | "creditos_historicos" | "renovaciones" | "cambio_broker" | "conflictos" | "comisiones" | "manual_operativo" | "master_broker";
+  category: "clientes" | "oportunidades" | "creditos_historicos" | "renovaciones" | "cambio_broker" | "conflictos" | "comisiones" | "manual_operativo" | "master_broker" | "productos_crediticios";
   categoryLabel: string;
   summary: string;
   contentMarkdown: string;
@@ -879,6 +879,109 @@ Si encuentras un botón deshabilitado o un mensaje que impide realizar una acci�
 3. Para comparar productos, entra a **Productos** y revisa condiciones y criterios vigentes.
 4. Si una financiera necesita información adicional del cliente, complétala durante el trámite. Las financieras evalúan y solicitan documentación de acuerdo con sus políticas.`
     },
+    {
+      "id": "art-guia-credito-simple",
+      "slug": "guia-credito-simple",
+      "title": "Crédito Simple: qué es, cómo funciona y cuándo conviene",
+      "category": "productos_crediticios",
+      "categoryLabel": "Conoce los productos",
+      "summary": "Financiamiento de monto y plazo definidos; útil para inversiones o necesidades específicas.",
+      "keywords": [
+        "crédito simple",
+        "financiamiento",
+        "inversión",
+        "capital de trabajo",
+        "plazo",
+        "mensualidad",
+        "beneficios"
+      ],
+      "order": 25,
+      "contentMarkdown": "### ¿Qué es?\nEs un crédito por un monto pactado que se recibe conforme al contrato y se paga en un plazo definido mediante el calendario acordado. Una vez utilizado y amortizado, el capital pagado no vuelve a estar disponible automáticamente.\n\n### ¿Cuándo suele ser útil?\n- Comprar maquinaria o equipo, ampliar operaciones, realizar una inversión o financiar necesidades específicas de capital de trabajo.\n- Cuando el cliente tiene una necesidad identificada y desea conocer de antemano un calendario de pagos.\n\n### Ventajas potenciales\n- Estructura de plazo y pagos conocida al contratar.\n- Permite alinear el financiamiento con un proyecto definido.\n\n### Aspectos que debe preguntar el broker\n1. ¿Cuánto necesita y para qué se utilizará?\n2. ¿Qué flujo tendrá para cubrir los pagos?\n3. ¿Necesita garantía? Depende del producto y de la institución.\n4. ¿Cuál es el costo total, la tasa aplicable, las comisiones y las condiciones de prepago?\n\n**Ejemplo:** Una empresa necesita una cantidad definida para comprar maquinaria. El broker registra destino, monto y capacidad de pago y consulta opciones.\n\n**Importante:** No se promete aprobación ni se asigna una tasa antes de la evaluación de la financiera."
+    },
+    {
+      "id": "art-guia-credito-revolvente",
+      "slug": "guia-credito-revolvente",
+      "title": "Crédito Revolvente: liquidez que puede reutilizarse",
+      "category": "productos_crediticios",
+      "categoryLabel": "Conoce los productos",
+      "summary": "Línea de financiamiento con disposición y reutilización conforme al contrato.",
+      "keywords": [
+        "crédito revolvente",
+        "linea de credito",
+        "liquidez",
+        "disposiciones",
+        "flujo",
+        "reutilizar",
+        "capital trabajo"
+      ],
+      "order": 26,
+      "contentMarkdown": "### ¿Qué es?\nEs una línea de crédito con un límite autorizado. El cliente puede disponer, pagar y volver a utilizar capacidad disponible durante la vigencia, sujeto a las condiciones de cada financiera. No equivale a dinero ilimitado ni a renovaciones automáticas.\n\n### ¿Cuándo puede convenir?\n- Necesidades recurrentes de capital de trabajo o gastos operativos con entradas y salidas de efectivo.\n- Negocios con ciclos estacionales o cobros que llegan después de sus pagos.\n\n### Ventajas potenciales\n- Flexibilidad para disponer según la necesidad, dentro de los límites autorizados.\n- Posibilidad de recuperar disponibilidad al amortizar capital, si así está pactado.\n\n### ¿Qué revisar?\n1. Límite y plazo de la línea; vencimiento de disposiciones individuales.\n2. Intereses, comisiones, uso mínimo, renovación y garantías que pudieran aplicar.\n3. Flujos del negocio y capacidad para cubrir pagos; el acceso puede suspenderse bajo condiciones contractuales.\n\n**Diferencia con Crédito Simple:** el simple financia un monto y calendario definido; el revolvente puede permitir múltiples disposiciones durante su vigencia.\n\n**Importante:** La disponibilidad y la reutilización dependen de la aprobación y el contrato."
+    },
+    {
+      "id": "art-guia-factoraje",
+      "slug": "guia-factoraje",
+      "title": "Factoraje: obtener liquidez de cuentas por cobrar",
+      "category": "productos_crediticios",
+      "categoryLabel": "Conoce los productos",
+      "summary": "Cómo funciona el financiamiento sobre facturas o derechos de cobro, con y sin recurso.",
+      "keywords": [
+        "factoraje",
+        "facturas",
+        "cuentas por cobrar",
+        "ceder",
+        "anticipo",
+        "descuento",
+        "clientes corporativos",
+        "con recurso",
+        "sin recurso"
+      ],
+      "order": 27,
+      "contentMarkdown": "### ¿Qué es?\nEs una operación mediante la cual una empresa puede ceder o financiar derechos de cobro de facturas o cuentas por cobrar elegibles, recibiendo liquidez antes del vencimiento. La financiera analiza tanto la operación como la calidad de los pagadores.\n\n### ¿Para quién puede ser útil?\n- Empresas que venden a crédito a compradores y deben esperar 30, 60 o más días para cobrar.\n- Negocios con facturas verificables que necesitan recursos para operar mientras cobran.\n\n### Beneficios potenciales\n- Mejorar liquidez sin esperar la fecha habitual de pago de ciertas facturas.\n- Alinear el financiamiento con operaciones comerciales existentes.\n\n### Preguntas esenciales\n1. ¿Las facturas están emitidas, aceptadas y libres de disputas?\n2. ¿Quién debe pagar, cuál es su historial y cuándo vence el cobro?\n3. ¿La operación es con recurso o sin recurso y quién asume el riesgo de impago?\n4. ¿Qué porcentaje se anticipa, cuál es el descuento/costo y qué retenciones aplican?\n\n**Ejemplo:** Un proveedor entrega mercancía y tiene una factura pagadera dentro de 60 días. Consulta si esa cuenta por cobrar puede convertirse antes en liquidez.\n\n**Importante:** No toda factura es elegible; los requisitos dependen de la financiera y del deudor."
+    },
+    {
+      "id": "art-guia-arrendamiento",
+      "slug": "guia-arrendamiento",
+      "title": "Arrendamiento: usar vehículos o equipo mediante rentas",
+      "category": "productos_crediticios",
+      "categoryLabel": "Conoce los productos",
+      "summary": "Arrendamiento empresarial, posibles ventajas operativas y diferencias respecto a comprar con crédito.",
+      "keywords": [
+        "arrendamiento",
+        "leasing",
+        "rentas",
+        "activos",
+        "vehiculos",
+        "maquinaria",
+        "equipo",
+        "beneficios",
+        "residual",
+        "deduccion",
+        "fiscal"
+      ],
+      "order": 28,
+      "contentMarkdown": "### ¿Qué es?\nEs una modalidad contractual para utilizar un activo —por ejemplo, un vehículo, maquinaria o equipo— mediante pagos periódicos. El activo, los servicios incluidos y las opciones al finalizar dependen del tipo de arrendamiento y del contrato.\n\n### ¿En qué casos puede servir?\n- Una empresa necesita vehículos o equipo productivo para operar, pero desea comparar rentas frente a una compra financiada.\n- Un negocio prevé renovar activos periódicamente y quiere revisar el costo total y los servicios asociados.\n\n### Beneficios potenciales\n- Permite usar determinados activos sin comprarlos inicialmente, según estructura y anticipo.\n- Puede facilitar planeación de pagos y renovación de equipo, si las condiciones lo permiten.\n- En algunos casos puede tener tratamiento fiscal distinto al crédito: **nunca prometas deducibilidad ni ahorros de impuestos sin revisar la legislación, el contrato y el caso con su contador**.\n\n### ¿Qué debe revisar el broker?\n1. ¿Qué activo necesita, su precio, proveedor y uso empresarial?\n2. ¿Qué anticipo, rentas, seguros, mantenimiento o valor residual existen?\n3. ¿Qué ocurre al término: devolución, renovación o posible opción de compra según contrato?\n4. ¿Cuáles son las responsabilidades por daños, kilometraje, cancelación y mantenimiento?\n\n**Diferencia con comprar a crédito:** con el crédito se financia una adquisición; con el arrendamiento se contrata el uso del activo bajo una estructura distinta. La propiedad final no debe suponerse.\n\n**Importante:** Los beneficios fiscales, contables y financieros dependen del caso particular."
+    },
+    {
+      "id": "art-guia-hipotecario-vivienda",
+      "slug": "guia-hipotecario-vivienda",
+      "title": "Hipotecario Vivienda: financiamiento para adquirir vivienda",
+      "category": "productos_crediticios",
+      "categoryLabel": "Conoce los productos",
+      "summary": "Conceptos principales de un crédito hipotecario de vivienda y sus pasos generales.",
+      "keywords": [
+        "hipotecario",
+        "vivienda",
+        "casa",
+        "departamento",
+        "inmueble",
+        "enganche",
+        "avaluo",
+        "escritura",
+        "beneficios"
+      ],
+      "order": 29,
+      "contentMarkdown": "### ¿Qué es?\nEs un financiamiento para la adquisición de una vivienda que normalmente se garantiza con una hipoteca sobre un inmueble, sujeto a valuación y evaluación crediticia. La propiedad, formalización y garantías se determinan en la operación.\n\n### ¿Cuándo puede ser útil?\n- Para personas que buscan comprar casa o departamento y quieren comparar alternativas de crédito.\n\n### Beneficios potenciales\n- Permite distribuir el pago de una compra de vivienda en un plazo acordado, sujeto a aprobación.\n- Hace posible comparar opciones de enganche, pago y costo total.\n\n### ¿Qué información conviene tener?\n1. Valor aproximado y ubicación de la vivienda.\n2. Ingresos documentables del solicitante y otras obligaciones.\n3. Ahorro disponible para enganche, avalúo, gastos notariales y otros conceptos aplicables.\n4. Situación legal y características del inmueble.\n\n**Distinción importante:** Hipotecario Vivienda es diferente de un financiamiento empresarial garantizado con un inmueble. No son el mismo producto y deben registrarse por separado.\n\n**Importante:** La evaluación final, plazo, tasa, seguros y garantías dependen de la institución."
+    },
   ];
 }
 
@@ -1088,6 +1191,7 @@ export class CommercialHelpService {
       conflictos: "Controversias",
       comisiones: "Comisiones",
       manual_operativo: "Manual Práctico",
+      productos_crediticios: "Conoce los productos",
       master_broker: "Supervisión y Red",
     };
 
