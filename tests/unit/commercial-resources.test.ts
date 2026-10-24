@@ -56,7 +56,7 @@ describe("Biblioteca comercial - contratos, permisos y formatos", () => {
     expect(api).toContain('user?.role !== "super_admin"');
     expect(api).toContain("if (!user || !SUGGEST_ROLES.has(user.role))");
     expect(api).toContain("getTenantMembersByUser");
-    expect(api).toContain("WHERE status = 'published'");
+    expect(api).toContain("WHERE t.status='published'");
     expect(api).toContain("status='draft'");
     expect(api).toContain("status='retired'");
     expect(api).toContain("pg_advisory_xact_lock");
