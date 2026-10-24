@@ -79,7 +79,7 @@ export function registerCommercialResourceRoutes(app: Express) {
          FROM public.commercial_resource_templates t
          LEFT JOIN public.commercial_resource_styles e ON e.template_id=t.id
          WHERE t.status='published'
-         ORDER BY t.published_at DESC, t.name ASC LIMIT 200`
+         ORDER BY t.published_at DESC, t.name ASC LIMIT 1000`
       );
       return res.json(result.rows);
     } catch (error) {
@@ -97,7 +97,7 @@ export function registerCommercialResourceRoutes(app: Express) {
                 t.status,t.created_at,t.published_at,t.retired_at,e.style
          FROM public.commercial_resource_templates t
          LEFT JOIN public.commercial_resource_styles e ON e.template_id=t.id
-         ORDER BY t.created_at DESC LIMIT 300`
+         ORDER BY t.created_at DESC LIMIT 2000`
       );
       return res.json(result.rows);
     } catch (error) {
