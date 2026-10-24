@@ -35,7 +35,7 @@ describe("COM-RES-LIBRARY-FILTERS: product, style, format and thumbnail discover
     expect(filterCommercialTemplates(templates,{...all,product:"factoraje",format:"9:16",style:"explicativo"})
       .map(t=>t.id)).toEqual(["factoraje-story"]);
     expect(filterCommercialTemplates(templates,{...all,search:"LIQUIDEZ"})).toHaveLength(1);
-    expect(filterCommercialTemplates(templates,{...all,search:"ARRÉNDAMIENTO"})).toHaveLength(0);
+    expect(filterCommercialTemplates(templates,{...all,search:"ARRÉNDAMIENTO"})).toHaveLength(1);
     expect(filterCommercialTemplates(templates,{...all,format:"1:1",style:"unclassified"})
       .map(t=>t.id)).toEqual(["arrendamiento-square"]);
     expect(filterCommercialTemplates(templates,{...all,style:"promocional"})).toHaveLength(0);
