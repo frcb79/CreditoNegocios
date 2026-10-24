@@ -131,6 +131,7 @@ export interface PublishedCommercialTemplate {
   channel: SocialChannel;
   definition: CommercialResourceDefinition;
   status?: "draft" | "published" | "retired";
+  style?: "llamativo" | "explicativo" | "institucional" | "promocional" | "informativo" | null;
   created_at?: string;
   published_at?: string;
 }

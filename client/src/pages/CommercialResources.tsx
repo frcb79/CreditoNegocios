@@ -3,6 +3,9 @@ import { useQuery } from "@tanstack/react-query";
 import MainLayout from "@/components/MainLayout";
 import Header from "@/components/Header";
 import CommercialResourcesAdmin from "@/components/Commercial/CommercialResourcesAdmin";
+import CommercialLibraryToolbar, { INITIAL_LIBRARY_FILTERS } from "@/components/Commercial/CommercialLibraryToolbar";
+import CommercialTemplateCard from "@/components/Commercial/CommercialTemplateCard";
+import { filterCommercialTemplates } from "@/lib/commercialLibrary";
 import CampaignLinkPanel from "@/components/Commercial/CampaignLinkPanel";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -32,6 +35,7 @@ export default function CommercialResources() {
     enabled: Boolean(user)
   });
   const [selectedId, setSelectedId] = useState("");
+  const [libraryFilters, setLibraryFilters] = useState({...INITIAL_LIBRARY_FILTERS});
   const [displayName, setDisplayName] = useState("");
   const [whatsapp, setWhatsapp] = useState("");
   const [loadedUser, setLoadedUser] = useState("");
@@ -52,7 +56,8 @@ export default function CommercialResources() {
     setLoadedUser(user.id);
   }, [user, loadedUser]);
 
-  const selection = templates.find(t => t.id === selectedId) || templates[0];
+  const visibleTemplates = useMemo(() => filterCommercialTemplates(templates, libraryFilters), [templates, libraryFilters]);
+  const selection = visibleTemplates.find(t => t.id === selectedId) || visibleTemplates[0];
   const branding = useMemo(() => ({
     displayName: safeBrandLabel(displayName),
     whatsapp,
@@ -236,23 +241,34 @@ export default function CommercialResources() {
           <div className="grid grid-cols-1 xl:grid-cols-2 gap-6 items-start">
             <section className="rounded-xl border bg-card p-4 sm:p-5 space-y-4">
               <h2 className="font-bold flex items-center gap-2"><Megaphone className="w-5 h-5 text-primary" /> Campañas disponibles</h2>
+              {!isLoading && !error && templates.length > 0 && (
+                <CommercialLibraryToolbar templates={templates} filters={libraryFilters}
+                  onChange={setLibraryFilters} />
+              )}
               {isLoading ? <p className="text-sm text-muted-foreground">Cargando plantillas aprobadas...</p> :
                 error ? <p className="text-sm text-destructive">No se pudo cargar el catálogo.</p> :
                 templates.length === 0 ? (
                   <p className="text-sm text-muted-foreground" data-testid="resources-empty">
                     Aún no hay materiales publicados. Super Admin está preparando las primeras plantillas.
                   </p>
+                ) : visibleTemplates.length === 0 ? (
+                  <p className="text-sm text-muted-foreground" data-testid="resources-no-matches">
+                    No hay plantillas con estos filtros. Prueba otra categoría o limpia los filtros.
+                  </p>
                 ) : (
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2" data-testid="resources-published-list">
-                    {templates.map(item => (
-                      <button type="button" key={item.id} onClick={() => setSelectedId(item.id)}
-                        aria-pressed={selection?.id === item.id}
-                        className={"rounded-lg border p-3 text-left text-sm " + (selection?.id === item.id ? "border-primary bg-primary/10" : "hover:bg-muted")}
-                        data-testid={"approved-resource-" + item.id}
-                      >
-                        <span className="block font-semibold">{item.name}</span>
-                        <span className="text-xs text-muted-foreground block mt-1">{item.channel} · v{item.version}</span>
-                      </button>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-h-[68vh] overflow-y-auto pr-2"
+                    data-testid="resources-published-list">
+                    {visibleTemplates.map(item => (
+                      <CommercialTemplateCard key={item.id} template={item}
+                        selected={selection?.id===item.id}
+                        onClick={()=>setSelectedId(item.id)}>
+                        <Button size="sm" type="button"
+                          variant={selection?.id===item.id?"default":"outline"}
+                          onClick={()=>setSelectedId(item.id)}
+                          data-testid={"approved-resource-"+item.id}>
+                          Vista previa
+                        </Button>
+                      </CommercialTemplateCard>
                     ))}
                   </div>
                 )}

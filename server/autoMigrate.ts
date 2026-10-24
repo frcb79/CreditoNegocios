@@ -741,6 +741,24 @@ export async function runAutoMigration(): Promise<void> {
       if (process.env.RAILWAY_ENVIRONMENT_NAME?.toLowerCase() === 'staging') throw error;
     }
 
+    // COM-RES-LIBRARY-FILTERS: editorial classification, separate from immutable creatives.
+    try {
+      await client.query(`
+        CREATE TABLE IF NOT EXISTS public.commercial_resource_styles (
+          template_id VARCHAR PRIMARY KEY REFERENCES public.commercial_resource_templates(id) ON DELETE RESTRICT,
+          style VARCHAR(20) NOT NULL CHECK (style IN ('llamativo','explicativo','institucional','promocional','informativo')),
+          set_by VARCHAR REFERENCES public.users(id) ON DELETE SET NULL,
+          updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+        );
+        CREATE INDEX IF NOT EXISTS commercial_resource_styles_filter_idx
+          ON public.commercial_resource_styles(style);
+      `);
+      console.log("[AutoMigrate] Commercial resource editorial styles verified");
+    } catch (error) {
+      console.error("[AutoMigrate] Commercial styles schema unavailable:", error);
+      if (process.env.RAILWAY_ENVIRONMENT_NAME?.toLowerCase() === "staging") throw error;
+    }
+
     // COM-RES-GRAPHIC-V4: immutable PNGs by version, created only when absent.
     try {
       await client.query(`

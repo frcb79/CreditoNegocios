@@ -74,7 +74,12 @@ export function registerCommercialResourceRoutes(app: Express) {
     if (!user) return forbid(res);
     try {
       const result = await pool.query(
-        "SELECT id, slug, version, name, product, channel, definition, published_at FROM public.commercial_resource_templates WHERE status = 'published' ORDER BY published_at DESC, name ASC LIMIT 200"
+        `SELECT t.id, t.slug, t.version, t.name, t.product, t.channel, t.definition,
+                t.published_at, e.style
+         FROM public.commercial_resource_templates t
+         LEFT JOIN public.commercial_resource_styles e ON e.template_id=t.id
+         WHERE t.status='published'
+         ORDER BY t.published_at DESC, t.name ASC LIMIT 1000`
       );
       return res.json(result.rows);
     } catch (error) {
@@ -88,12 +93,45 @@ export function registerCommercialResourceRoutes(app: Express) {
     if (user?.role !== "super_admin") return forbid(res);
     try {
       const result = await pool.query(
-        "SELECT id, slug, version, name, product, channel, definition, status, created_at, published_at, retired_at FROM public.commercial_resource_templates ORDER BY created_at DESC LIMIT 300"
+        `SELECT t.id,t.slug,t.version,t.name,t.product,t.channel,t.definition,
+                t.status,t.created_at,t.published_at,t.retired_at,e.style
+         FROM public.commercial_resource_templates t
+         LEFT JOIN public.commercial_resource_styles e ON e.template_id=t.id
+         ORDER BY t.created_at DESC LIMIT 2000`
       );
       return res.json(result.rows);
     } catch (error) {
       console.error("[COM_RES] Admin templates list failed", error);
       return res.status(503).json({ message: "No fue posible cargar las plantillas" });
+    }
+  });
+
+  // Editorial style is metadata only. The artwork and published copy are immutable.
+  app.post("/api/admin/commercial-resources/templates/:id/style",isAuthenticated,async(req:any,res)=>{
+    const user=await identify(req);
+    if(user?.role!=="super_admin")return forbid(res);
+    const id=String(req.params.id||"");
+    const style=req.body?.style;
+    const allowed=["llamativo","explicativo","institucional","promocional","informativo",null];
+    if(!id || !req.body || Object.keys(req.body).length!==1 ||
+      !allowed.includes(style))return res.status(400).json({message:"Categoría inválida"});
+    try {
+      const exists=await pool.query(
+        "SELECT id FROM public.commercial_resource_templates WHERE id=$1",[id]);
+      if(exists.rowCount!==1)return res.status(404).json({message:"Plantilla no encontrada"});
+      if(style===null){
+        await pool.query("DELETE FROM public.commercial_resource_styles WHERE template_id=$1",[id]);
+      } else {
+        await pool.query(`
+          INSERT INTO public.commercial_resource_styles(template_id,style,set_by,updated_at)
+          VALUES($1,$2,$3,NOW()) ON CONFLICT(template_id)
+          DO UPDATE SET style=EXCLUDED.style,set_by=EXCLUDED.set_by,updated_at=NOW()`,
+          [id,style,user.id]);
+      }
+      return res.json({id,style});
+    }catch(error){
+      console.error("[COM_RES] Editorial style write failed",error);
+      return res.status(503).json({message:"No se pudo guardar la categoría"});
     }
   });
 
