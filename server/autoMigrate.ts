@@ -702,6 +702,141 @@ export async function runAutoMigration(): Promise<void> {
       console.error("⚠️ [AutoMigrate] Error verifying commercial governance tables:", commErr);
     }
 
+    // COM-RES-001: additive schema. Never auto-publish advertising content.
+    try {
+      await client.query(`
+        CREATE TABLE IF NOT EXISTS public.commercial_resource_templates (
+          id VARCHAR PRIMARY KEY DEFAULT gen_random_uuid(),
+          slug VARCHAR(80) NOT NULL,
+          version INTEGER NOT NULL CHECK (version > 0),
+          name VARCHAR(100) NOT NULL,
+          product VARCHAR(40) NOT NULL,
+          channel VARCHAR(25) NOT NULL,
+          definition JSONB NOT NULL,
+          status VARCHAR(16) NOT NULL DEFAULT 'draft' CHECK (status IN ('draft','published','retired')),
+          created_by VARCHAR REFERENCES public.users(id) ON DELETE SET NULL,
+          published_by VARCHAR REFERENCES public.users(id) ON DELETE SET NULL,
+          created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+          published_at TIMESTAMP,
+          retired_at TIMESTAMP,
+          CONSTRAINT commercial_resource_slug_version_unique UNIQUE(slug,version)
+        );
+        CREATE UNIQUE INDEX IF NOT EXISTS commercial_resource_one_published_slug ON public.commercial_resource_templates(slug) WHERE status = 'published';
+        CREATE INDEX IF NOT EXISTS commercial_resource_published_lookup ON public.commercial_resource_templates(status,product,channel,created_at DESC);
+        CREATE TABLE IF NOT EXISTS public.commercial_resource_suggestions (
+          id VARCHAR PRIMARY KEY DEFAULT gen_random_uuid(),
+          user_id VARCHAR NOT NULL REFERENCES public.users(id) ON DELETE RESTRICT,
+          tenant_id VARCHAR REFERENCES public.tenants(id) ON DELETE SET NULL,
+          product VARCHAR(40),
+          channel VARCHAR(25),
+          suggestion TEXT NOT NULL CHECK (char_length(suggestion) BETWEEN 10 AND 1000),
+          created_at TIMESTAMP NOT NULL DEFAULT NOW()
+        );
+        CREATE INDEX IF NOT EXISTS commercial_resource_suggestions_inbox ON public.commercial_resource_suggestions(created_at DESC);
+        CREATE INDEX IF NOT EXISTS commercial_resource_suggestions_submitter ON public.commercial_resource_suggestions(user_id,created_at DESC);
+      `);
+      console.log('✅ [AutoMigrate] Commercial resource library verified');
+    } catch (error) {
+      console.error('[AutoMigrate] Commercial resource schema unavailable:', error);
+      if (process.env.RAILWAY_ENVIRONMENT_NAME?.toLowerCase() === 'staging') throw error;
+    }
+
+    // COM-RES-GRAPHIC-V4: immutable PNGs by version, created only when absent.
+    try {
+      await client.query(`
+        CREATE TABLE IF NOT EXISTS public.commercial_resource_artworks (
+          template_id VARCHAR PRIMARY KEY REFERENCES public.commercial_resource_templates(id) ON DELETE RESTRICT,
+          image_data BYTEA NOT NULL,
+          sha256 CHAR(64) NOT NULL,
+          width INTEGER NOT NULL CHECK (width = 1080),
+          height INTEGER NOT NULL CHECK (height IN (1080,1350,1920)),
+          created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+          CONSTRAINT commercial_resource_artwork_nonempty CHECK (octet_length(image_data) BETWEEN 40 AND 3000000)
+        );
+      `);
+      console.log("[AutoMigrate] Commercial PNG artwork table verified");
+    } catch (error) {
+      console.error("[AutoMigrate] Commercial artwork storage unavailable:", error);
+      if (process.env.RAILWAY_ENVIRONMENT_NAME?.toLowerCase() === "staging") throw error;
+    }
+
+    // COM-RES-LOGO-V1: approved logo evidence belongs to Super Admin, not profileData.
+    try {
+      await client.query(`
+        CREATE TABLE IF NOT EXISTS public.commercial_approved_logos (
+          user_id VARCHAR PRIMARY KEY REFERENCES public.users(id) ON DELETE RESTRICT,
+          image_data BYTEA NOT NULL,
+          image_sha256 CHAR(64) NOT NULL,
+          approved_by VARCHAR NOT NULL REFERENCES public.users(id) ON DELETE RESTRICT,
+          approved_at TIMESTAMP NOT NULL DEFAULT NOW(),
+          CONSTRAINT commercial_approved_logo_size CHECK (octet_length(image_data) BETWEEN 50 AND 1000000)
+        );
+      `);
+      console.log("[AutoMigrate] Approved commercial logos table verified");
+    } catch (error) {
+      console.error("[AutoMigrate] Commercial logo approvals unavailable:", error);
+      if (process.env.RAILWAY_ENVIRONMENT_NAME?.toLowerCase() === "staging") throw error;
+    }
+
+    // COM-RES-LOGO-SELF: optional marketing logos are owned by the Broker/Master.
+    try {
+      await client.query(`
+        CREATE TABLE IF NOT EXISTS public.commercial_profile_logos (
+          user_id VARCHAR PRIMARY KEY REFERENCES public.users(id) ON DELETE RESTRICT,
+          image_data BYTEA NOT NULL,
+          image_sha256 CHAR(64) NOT NULL,
+          updated_at TIMESTAMP NOT NULL DEFAULT NOW(),
+          CONSTRAINT commercial_profile_logo_size CHECK (octet_length(image_data) BETWEEN 60 AND 1000000)
+        );
+      `);
+      console.log("[AutoMigrate] Self-managed commercial logos table verified");
+    } catch (error) {
+      console.error("[AutoMigrate] Commercial profile logo schema unavailable:", error);
+      if (process.env.RAILWAY_ENVIRONMENT_NAME?.toLowerCase() === "staging") throw error;
+    }
+
+    // COM-CTA-002: short links and leads remain separate from clients.
+    try {
+      await client.query(`
+        CREATE TABLE IF NOT EXISTS public.commercial_campaign_links (
+          id VARCHAR PRIMARY KEY DEFAULT gen_random_uuid(),
+          token VARCHAR(64) NOT NULL UNIQUE,
+          owner_user_id VARCHAR NOT NULL REFERENCES public.users(id) ON DELETE RESTRICT,
+          tenant_id VARCHAR REFERENCES public.tenants(id) ON DELETE SET NULL,
+          template_id VARCHAR REFERENCES public.commercial_resource_templates(id) ON DELETE RESTRICT,
+          created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+          disabled_at TIMESTAMP,
+          click_count INTEGER NOT NULL DEFAULT 0 CHECK (click_count >= 0)
+        );
+        CREATE UNIQUE INDEX IF NOT EXISTS commercial_campaign_owner_template_unique ON public.commercial_campaign_links(owner_user_id, (COALESCE(template_id, '__general__')));
+        CREATE INDEX IF NOT EXISTS commercial_campaign_owner_idx ON public.commercial_campaign_links(owner_user_id,created_at DESC);
+        CREATE TABLE IF NOT EXISTS public.commercial_marketing_leads (
+          id VARCHAR PRIMARY KEY DEFAULT gen_random_uuid(),
+          link_id VARCHAR NOT NULL REFERENCES public.commercial_campaign_links(id) ON DELETE RESTRICT,
+          owner_user_id VARCHAR NOT NULL REFERENCES public.users(id) ON DELETE RESTRICT,
+          tenant_id VARCHAR REFERENCES public.tenants(id) ON DELETE SET NULL,
+          template_id VARCHAR REFERENCES public.commercial_resource_templates(id) ON DELETE RESTRICT,
+          source_channel VARCHAR(25),
+          full_name VARCHAR(120) NOT NULL,
+          phone VARCHAR(20) NOT NULL,
+          email VARCHAR(160),
+          product VARCHAR(40),
+          amount_range VARCHAR(80),
+          message VARCHAR(600),
+          privacy_version VARCHAR(40) NOT NULL,
+          consent_at TIMESTAMP NOT NULL DEFAULT NOW(),
+          created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+          linked_client_id VARCHAR REFERENCES public.clients(id) ON DELETE SET NULL
+        );
+        CREATE INDEX IF NOT EXISTS commercial_marketing_leads_owner ON public.commercial_marketing_leads(owner_user_id,created_at DESC);
+        CREATE INDEX IF NOT EXISTS commercial_marketing_leads_contact ON public.commercial_marketing_leads(link_id,phone,created_at DESC);
+      `);
+      console.log('[AutoMigrate] Campaign links and intake verified');
+    } catch (error) {
+      console.error('[AutoMigrate] Campaign attribution schema unavailable:', error);
+      if (process.env.RAILWAY_ENVIRONMENT_NAME?.toLowerCase() === 'staging') throw error;
+    }
+
     // Repair known legacy staging drift only; never run these ALTERs on Production.
     await repairStagingSchemaOnStartup(client);
     console.log("✨ [AutoMigrate] Schema verification and user sync completed successfully!");

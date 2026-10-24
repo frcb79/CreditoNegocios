@@ -88,7 +88,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { cn } from "@/lib/utils";
-import { Link } from "wouter";
+import { Link, useLocation, useSearch } from "wouter";
 import { 
   ArrowLeft,
   UserPlus, 
@@ -262,13 +262,29 @@ const legacyUserSchema = z.object({
 
 type LegacyUserFormData = z.infer<typeof legacyUserSchema>;
 
+const USER_MANAGEMENT_TABS = new Set(["organization", "global", "promos", "status-requests", "my-requests"]);
+
+function getUserManagementTab(search: string): string {
+  const requested = new URLSearchParams(search).get("tab");
+  return requested && USER_MANAGEMENT_TABS.has(requested) ? requested : "organization";
+}
+
 export default function UserManagement() {
-  // Preserve direct links from Auditoría and administrative notices.
-  const [activeTab, setActiveTab] = useState<string>(() => {
-    const requested = typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("tab") : null;
-    return requested && ["organization", "global", "promos", "status-requests"].includes(requested)
-      ? requested : "organization";
-  });
+  const search = useSearch();
+  const [, navigate] = useLocation();
+  // Keep the visible tab aligned with direct links and sidebar query navigation.
+  const [activeTab, setActiveTab] = useState<string>(() => getUserManagementTab(
+    typeof window !== "undefined" ? window.location.search : ""
+  ));
+  useEffect(() => {
+    setActiveTab(getUserManagementTab(search));
+  }, [search]);
+
+  const changeMainTab = (tab: string) => {
+    if (!USER_MANAGEMENT_TABS.has(tab)) return;
+    setActiveTab(tab);
+    navigate(tab === "organization" ? "/admin/usuarios" : `/admin/usuarios?tab=${encodeURIComponent(tab)}`);
+  };
   const [selectedTenantId, setSelectedTenantId] = useState<string>("");
   const [searchTerm, setSearchTerm] = useState("");
   const [filterMemberRole, setFilterMemberRole] = useState<string>("all");
@@ -1075,7 +1091,7 @@ export default function UserManagement() {
         
         {/* Navigation Tabs for Platform Admins */}
         {isPlatformAdmin && (
-          <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+          <Tabs value={activeTab} onValueChange={changeMainTab} className="w-full">
             <TabsList className={`grid ${isSuperAdmin ? 'grid-cols-4 max-w-3xl' : 'grid-cols-3 max-w-2xl'} bg-slate-100 dark:bg-slate-800 p-1 border border-slate-200 dark:border-slate-700`}>
               <TabsTrigger value="organization" data-testid="tab-organization" className="text-xs font-semibold flex items-center gap-2">
                 <Building2 className="w-3.5 h-3.5 text-primary" />
@@ -1106,7 +1122,7 @@ export default function UserManagement() {
 
         {/* Navigation Tabs for Master Broker */}
         {currentUser?.role === 'master_broker' && (
-          <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+          <Tabs value={activeTab} onValueChange={changeMainTab} className="w-full">
             <TabsList className="grid grid-cols-2 max-w-md bg-slate-100 dark:bg-slate-800 p-1 border border-slate-200 dark:border-slate-700">
               <TabsTrigger value="organization" data-testid="tab-mb-organization" className="text-xs font-semibold flex items-center gap-2">
                 <Building2 className="w-3.5 h-3.5 text-primary" />
