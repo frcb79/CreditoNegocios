@@ -5,7 +5,6 @@ import CommercialTemplateCard from "./CommercialTemplateCard";
 import { COMMERCIAL_STYLES, filterCommercialTemplates } from "@/lib/commercialLibrary";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { Upload, ShieldCheck, Library, Inbox, Eye } from "lucide-react";
@@ -97,8 +96,8 @@ export default function CommercialResourcesAdmin() {
     queryFn: () => getJson("/api/admin/commercial-resources/suggestions")
   });
   // Preserve the selected revision when the list refreshes after imports or publication.
-  const previewTemplate = templates.find(item => item.id === previewTemplateId) ?? null;
   const visibleTemplates = filterCommercialTemplates(templates, libraryFilters);
+  const previewTemplate = visibleTemplates.find(item => item.id === previewTemplateId) ?? null;
 
   const validateDraft = () => {
     let parsed: unknown;
@@ -266,7 +265,7 @@ export default function CommercialResourcesAdmin() {
                   {visibleTemplates.map(item => (
                     <CommercialTemplateCard key={item.id} template={item}
                       compact selected={previewTemplateId===item.id}
-                      onClick={()=>setPreviewTemplateId(item.id)}>
+                      onClick={() => setPreviewTemplateId(item.id)}>
                       <Button type="button" size="sm"
                         variant={previewTemplateId===item.id?"default":"outline"}
                         onClick={()=>setPreviewTemplateId(item.id)}
