@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { Link, useLocation } from "wouter";
 import { cn } from "@/lib/utils";
+import { isSidebarItemActive } from "@/lib/sidebarNavigation";
 import { useAuth } from "@/hooks/useAuth";
 import { useNotifications } from "@/contexts/NotificationContext";
 import { buildApiUrl } from "@/lib/runtimeConfig";
@@ -261,9 +262,7 @@ export default function Sidebar() {
             ) : null}
 
             {grp.items.map((item) => {
-              const [itemPath, itemQuery] = item.href.split("?");
-              const isActive = location === itemPath &&
-                (!itemQuery || window.location.search === `?${itemQuery}`);
+              const isActive = isSidebarItemActive(location, window.location.search, item.href);
               const IconComp = item.icon;
               
               return (
