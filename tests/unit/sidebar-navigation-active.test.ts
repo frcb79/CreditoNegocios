@@ -25,6 +25,6 @@ describe("Super Admin sidebar route and tab active state", () => {
     expect(page).toContain("useSearch()");
     expect(page).toContain("setActiveTab(getUserManagementTab(search))");
     expect(page).toContain("onValueChange={changeMainTab}");
-    expect(page).toContain('"/admin/usuarios?tab="');
+    expect(page).toContain('/admin/usuarios?tab=${encodeURIComponent(tab)}');
   });
 });
