@@ -61,7 +61,7 @@ export function filterCommercialTemplates(
       item.name,item.slug,commercialProductName(item.product),item.product,
       item.channel,commercialFormatLabel(commercialFormat(item)),commercialStyleLabel(item.style),
       item.definition.headline,item.definition.supportingLine,item.definition.description,
-      item.definition.hook,item.definition.cta,...item.definition.highlights
+      item.definition.hook,item.definition.cta,...(item.definition.highlights || [])
     ].join(" ").normalize("NFD").replace(/[\u0300-\u036f]/g,"")
       .toLocaleLowerCase("es-MX").includes(search);
   });
