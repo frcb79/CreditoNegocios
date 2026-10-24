@@ -11,8 +11,8 @@ const PNG_MAGIC = Buffer.from("89504e470d0a1a0a", "hex");
 
 function crc32(buf: Buffer): number {
   let crc = 0xffffffff;
-  for (const byte of buf) {
-    crc ^= byte;
+  for (let j = 0; j < buf.length; j++) {
+    crc ^= buf[j];
     for (let i = 0; i < 8; i++) crc = (crc >>> 1) ^ ((crc & 1) ? 0xedb88320 : 0);
   }
   return (crc ^ 0xffffffff) >>> 0;
