@@ -50,7 +50,7 @@ export function filterCommercialTemplates(
   templates:PublishedCommercialTemplate[], filters:CommercialLibraryFilters
 ):PublishedCommercialTemplate[] {
   const normalizeSearch=(value:string)=>value.normalize("NFD")
-    .replace(/[\\u0300-\\u036f]/g,"").toLocaleLowerCase("es-MX");
+    .replace(/[\u0300-\u036f]/g,"").toLocaleLowerCase("es-MX");
   const search=normalizeSearch(filters.search.trim());
   return templates.filter(item=>{
     if(filters.product!=="all" && item.product!==filters.product)return false;
@@ -62,7 +62,7 @@ export function filterCommercialTemplates(
       item.channel,commercialFormatLabel(commercialFormat(item)),commercialStyleLabel(item.style),
       item.definition.headline,item.definition.supportingLine,item.definition.description,
       item.definition.hook,item.definition.cta,...item.definition.highlights
-    ].join(" ").normalize("NFD").replace(/[\\u0300-\\u036f]/g,"")
+    ].join(" ").normalize("NFD").replace(/[\u0300-\u036f]/g,"")
       .toLocaleLowerCase("es-MX").includes(search);
   });
 }
