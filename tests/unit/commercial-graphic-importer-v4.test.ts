@@ -85,8 +85,8 @@ describe("COM-RES-GRAPHICS-V4: generic artwork import",()=>{
   expect(api).toContain('"/api/admin/commercial-resources/graphic-import"');
   expect(api).toContain('user?.role!=="super_admin"');
   expect(api).toContain('t.status=\'published\' OR $2=\'super_admin\'');
-  expect(api).toContain('status,created_by)');
-  expect(api).toContain("VALUES ($1,$2,$3,$4,$5,$6::jsonb,'draft',$7)");
+  expect(api).toContain('status,created_by,import_batch_id)');
+  expect(api).toContain("VALUES ($1,$2,$3,$4,$5,$6::jsonb,'draft',$7,$8)");
   expect(api).toContain("editorialLegalApproved");
   expect(migration).toContain("public.commercial_resource_artworks");
   expect(api).toContain("typographyReviewRequired");
