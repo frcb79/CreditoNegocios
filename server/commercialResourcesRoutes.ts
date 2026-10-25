@@ -258,6 +258,54 @@ export function registerCommercialResourceRoutes(app: Express) {
     }
   });
 
+  // COM-RES private PNG transport: JSON POST deliberately bypasses third-party
+  // image URL fetchers that strip SameSite session cookies (HTTP 401 observed).
+  // NEVER expose drafts anonymously or place binary artwork in catalog lists.
+  app.post("/api/commercial-resources/private-artwork-data",isAuthenticated,async(req:any,res)=>{
+    const user=await identify(req);
+    if(!user)return forbid(res);
+    const payload=req.body;
+    const isLogo=payload?.myLogo===true && Object.keys(payload).length===1;
+    const id=payload?.templateId;
+    const isTemplate=typeof id==="string" &&
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id) &&
+      Object.keys(payload).length===1;
+    if(!payload||typeof payload!=="object"||Array.isArray(payload)||(!isLogo&&!isTemplate)){
+      return res.status(400).json({message:"Solicitud de imagen inválida"});
+    }
+    try {
+      let png:Buffer;
+      if(isLogo){
+        if(user.role!=="broker"&&user.role!=="master_broker")return forbid(res);
+        const found=await pool.query(
+          "SELECT image_data FROM public.commercial_profile_logos WHERE user_id=$1",[user.id]);
+        if(found.rowCount!==1)return res.status(404).json({message:"Logotipo no disponible"});
+        png=found.rows[0].image_data;
+      }else{
+        const found=await pool.query(`
+          SELECT a.image_data FROM public.commercial_resource_artworks a
+          JOIN public.commercial_resource_templates t ON t.id=a.template_id
+          WHERE t.id=$1 AND (t.status='published' OR $2='super_admin')`,
+          [id,user.role]);
+        if(found.rowCount!==1)return res.status(404).json({message:"Arte no disponible"});
+        png=found.rows[0].image_data;
+      }
+      if(!Buffer.isBuffer(png)||png.length<40||png.length>3_000_000){
+        return res.status(503).json({message:"Imagen guardada no válida"});
+      }
+      res.setHeader("Content-Type","application/json; charset=utf-8");
+      res.setHeader("Cache-Control","private, no-store, max-age=0");
+      res.setHeader("Pragma","no-cache");
+      res.setHeader("Vary","Cookie");
+      res.setHeader("X-Content-Type-Options","nosniff");
+      // Bypass the generic res.json audit serializer: never log raw image bytes.
+      return res.status(200).end(JSON.stringify({mimeType:"image/png",pngBase64:png.toString("base64")}));
+    }catch(error){
+      console.error("[COM_RES] Private artwork JSON delivery failed",error);
+      return res.status(503).json({message:"No se pudo entregar la imagen privada"});
+    }
+  });
+
   // No public endpoint accepts artwork. All versions are imported as drafts.
   // Bundle import is transactional: all valid artworks or none.
   app.post("/api/admin/commercial-resources/graphic-import",isAuthenticated,artworkUploadLimit,async(req:any,res,next)=>{
