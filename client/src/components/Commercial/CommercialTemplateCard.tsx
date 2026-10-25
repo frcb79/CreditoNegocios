@@ -38,6 +38,7 @@ export default function CommercialTemplateCard({template,selected,onClick,childr
           <span>{commercialProductName(template.product)}</span>
           <span>· {commercialFormatLabel(commercialFormat(template))}</span>
           {template.style && <span>· {commercialStyleLabel(template.style)}</span>}
+          {template.topic && <span className="block w-full">Tema: {template.topic}</span>}
           {template.status&&<span>· {template.status==="published"?"Publicada":template.status==="retired"?"Retirada":"Borrador"}</span>}
         </div>
         {children&&<div className="flex flex-wrap gap-2">{children}</div>}

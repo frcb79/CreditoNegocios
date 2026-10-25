@@ -241,7 +241,7 @@ export default function CommercialResources() {
           <div className="grid grid-cols-1 xl:grid-cols-2 gap-6 items-start">
             <section className="rounded-xl border bg-card p-4 sm:p-5 space-y-4">
               <h2 className="font-bold flex items-center gap-2"><Megaphone className="w-5 h-5 text-primary" /> Campañas disponibles</h2>
-              {!isLoading && !error && templates.length > 0 && (
+              {!isLoading && !error && (
                 <CommercialLibraryToolbar templates={templates} filters={libraryFilters}
                   onChange={setLibraryFilters} />
               )}

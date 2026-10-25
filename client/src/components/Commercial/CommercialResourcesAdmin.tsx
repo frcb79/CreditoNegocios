@@ -7,7 +7,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
-import { Upload, ShieldCheck, Library, Inbox, Eye } from "lucide-react";
+import { Upload, ShieldCheck, Library, Inbox, Eye, Trash2 } from "lucide-react";
 import {
   commercialResourceUploadSchema, COM_RES_EXAMPLE
 } from "@shared/commercialResourceDefinition";
@@ -78,8 +78,9 @@ export default function CommercialResourcesAdmin() {
   const [archive, setArchive] = useState<File | null>(null);
   const [graphicMap, setGraphicMap] = useState<File | null>(null);
   const [graphicBackground, setGraphicBackground] = useState<File | null>(null);
-  const [importReport, setImportReport] = useState<{ scanned:number;created:number;existing:number;requiresTypographyReview:number } | null>(null);
+  const [importReport, setImportReport] = useState<{ scanned:number;created:number;existing:number;requiresTypographyReview:number;batchId?:string } | null>(null);
   const [previewTemplateId, setPreviewTemplateId] = useState<string | null>(null);
+  const [selectedDraftIds,setSelectedDraftIds]=useState<string[]>([]);
   const [libraryFilters, setLibraryFilters] = useState({...INITIAL_LIBRARY_FILTERS});
 
   const { data: campaignOverview } = useQuery<{ clicks: number; links: number; received: number; linked: number }>({
@@ -98,6 +99,38 @@ export default function CommercialResourcesAdmin() {
   // Preserve the selected revision when the list refreshes after imports or publication.
   const visibleTemplates = filterCommercialTemplates(templates, libraryFilters);
   const previewTemplate = visibleTemplates.find(item => item.id === previewTemplateId) ?? null;
+
+  const visibleDrafts=visibleTemplates.filter(item=>item.status==="draft");
+  const selectedDrafts=templates.filter(item=>selectedDraftIds.includes(item.id)&&item.status==="draft");
+  const toggleDraft=(id:string,checked:boolean)=>{
+    setSelectedDraftIds(previous=>checked
+      ? Array.from(new Set([...previous,id])):previous.filter(value=>value!==id));
+  };
+  const selectBatch=(batch:string)=>{
+    setSelectedDraftIds(templates.filter(item=>item.status==="draft"&&
+      item.import_batch_id===batch).map(item=>item.id));
+  };
+  const deleteDrafts=async(ids:string[])=>{
+    if(working || ids.length<1)return;
+    const unique=Array.from(new Set(ids)).filter(id=>templates.some(t=>t.id===id&&t.status==="draft"));
+    if(unique.length!==ids.length)return;
+    const message="Vas a eliminar definitivamente "+ids.length+
+      " borrador(es), sus imágenes y sus metadatos. NO afectará plantillas publicadas. ¿Continuar?";
+    if(!window.confirm(message))return;
+    if(ids.length>1 && window.prompt("Para confirmar la eliminación del lote escribe BORRAR:")!=="BORRAR")return;
+    setWorking(true);
+    try{
+      const result=await postJson("/api/admin/commercial-resources/drafts/delete",{ids});
+      await Promise.all([
+        queryClient.invalidateQueries({queryKey:["/api/admin/commercial-resources/templates"]}),
+        queryClient.invalidateQueries({queryKey:["/api/commercial-resources/templates"]})
+      ]);
+      setSelectedDraftIds(previous=>previous.filter(id=>!ids.includes(id)));
+      if(previewTemplateId&&ids.includes(previewTemplateId))setPreviewTemplateId(null);
+      toast({title:"Borradores eliminados",description:result.deleted+" eliminado(s). Ninguna publicación fue afectada."});
+    }catch(error:any){toast({title:"No se pudieron eliminar",description:error.message,variant:"destructive"});}
+    finally{setWorking(false);}
+  };
 
   const validateDraft = () => {
     let parsed: unknown;
@@ -236,6 +269,12 @@ export default function CommercialResourcesAdmin() {
           data-testid="resource-graphic-import-submit" onClick={importGraphics}>
           {working?"Importando…":"Importar como borradores"}
         </Button>
+        {importReport?.batchId && importReport.created>0 && (
+          <Button size="sm" type="button" variant="outline"
+            onClick={()=>selectBatch(importReport.batchId!)}>
+            Seleccionar borradores de este ZIP
+          </Button>
+        )}
         {importReport&&<p className="text-sm" data-testid="resource-graphic-import-report">
           Revisados: {importReport.scanned} · Borradores nuevos: {importReport.created} ·
           Ya existentes: {importReport.existing} · Tipografía pendiente: {importReport.requiresTypographyReview}.
@@ -254,6 +293,26 @@ export default function CommercialResourcesAdmin() {
         {templateError && <p className="text-sm text-destructive">No se pudo consultar el catálogo administrativo.</p>}
         <CommercialLibraryToolbar templates={templates} filters={libraryFilters}
           onChange={setLibraryFilters} includeStatus />
+        <div className="rounded-lg border p-3 space-y-2" data-testid="resource-admin-draft-deletion">
+          <p className="text-xs text-muted-foreground">
+            Limpieza segura: solo borradores no vinculados a campañas. Puedes seleccionar los borradores de esta búsqueda, un lote completo o una sola plantilla.
+          </p>
+          <div className="flex flex-wrap gap-2">
+            <Button type="button" size="sm" variant="outline" disabled={working||visibleDrafts.length===0}
+              onClick={()=>setSelectedDraftIds(previous=>Array.from(new Set([...previous,...visibleDrafts.map(t=>t.id)])))}
+              data-testid="select-filtered-drafts">
+              Seleccionar borradores filtrados ({visibleDrafts.length})
+            </Button>
+            <Button type="button" size="sm" variant="outline" disabled={working||selectedDraftIds.length===0}
+              onClick={()=>setSelectedDraftIds([])}>Limpiar selección</Button>
+            <Button type="button" size="sm" variant="destructive"
+              disabled={working||selectedDrafts.length===0}
+              onClick={()=>deleteDrafts(selectedDrafts.map(t=>t.id))}
+              data-testid="delete-selected-drafts">
+              <Trash2 className="w-3.5 h-3.5 mr-1"/> Eliminar seleccionadas ({selectedDrafts.length})
+            </Button>
+          </div>
+        </div>
         <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,0.95fr)_minmax(0,1.05fr)] items-start gap-4">
           <div className="min-w-0 space-y-3" data-testid="resource-admin-template-list">
             {loadingTemplates ? <p className="text-sm">Cargando plantillas…</p>
@@ -272,6 +331,20 @@ export default function CommercialResourcesAdmin() {
                         data-testid={"resource-preview-"+item.id}>
                         <Eye className="w-3.5 h-3.5 mr-1"/> Vista previa
                       </Button>
+                      {item.status === "draft" && (
+                        <label className="flex gap-1 items-center text-xs cursor-pointer">
+                          <input type="checkbox" checked={selectedDraftIds.includes(item.id)}
+                            disabled={working} onChange={event=>toggleDraft(item.id,event.target.checked)}
+                            aria-label={"Seleccionar borrador "+item.name}
+                            data-testid={"select-resource-"+item.id}/>
+                          Seleccionar
+                        </label>
+                      )}
+                      {item.status === "draft" && (
+                        <Button type="button" size="sm" variant="outline" disabled={working}
+                          onClick={()=>deleteDrafts([item.id])}
+                          data-testid={"delete-resource-"+item.id}>Eliminar</Button>
+                      )}
                       {item.status === "draft" && (
                         <Button size="sm" disabled={working} onClick={()=>changePublication(item,"publish")}
                           data-testid={"publish-resource-"+item.id}>Publicar</Button>
@@ -299,6 +372,13 @@ export default function CommercialResourcesAdmin() {
                   <Button type="button" size="sm" variant="ghost"
                     onClick={() => setPreviewTemplateId(null)}>Cerrar</Button>
                 </div>
+                {previewTemplate.topic && <p className="text-xs text-muted-foreground">Tema: {previewTemplate.topic}</p>}
+                {previewTemplate.status==="draft"&&previewTemplate.import_batch_id && (
+                  <Button type="button" variant="outline" size="sm"
+                    onClick={()=>selectBatch(previewTemplate.import_batch_id!)}>
+                    Seleccionar lote de esta plantilla
+                  </Button>
+                )}
                 <label className="block text-xs font-medium space-y-1">
                   <span>Estilo de esta plantilla · solo Super Admin</span>
                   <select className="block h-9 w-full border rounded-md bg-background px-2 text-sm"
