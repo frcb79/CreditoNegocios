@@ -101,6 +101,8 @@ describe("COM-RES-V7 classification: existing map untouched, editorial metadata 
  it("keeps V7 metadata separate from approved artwork and persists on import",()=>{
    const routes=src("server/commercialResourcesRoutes.ts");
    expect(routes).toContain("item.catalog.leasingSubtype||null");
+   expect(routes).toContain("UPDATE public.commercial_resource_templates SET product=$2 WHERE id=$1 AND status='draft'");
+   expect(routes).toContain('if(draft.rows[0]?.status==="draft")');
    expect(routes).toContain("leasing_subtype=EXCLUDED.leasing_subtype");
    expect(routes).not.toContain("UPDATE public.commercial_resource_templates SET definition");
    expect(src("migrations/0017_commercial_resources_v7_leasing_subtype.sql"))
