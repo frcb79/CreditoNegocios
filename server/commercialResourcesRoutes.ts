@@ -372,6 +372,12 @@ export function registerCommercialResourceRoutes(app: Express) {
               "SELECT status FROM public.commercial_resource_templates WHERE id=$1 FOR UPDATE",
               [existing.rows[0].id]);
             if(draft.rows[0]?.status==="draft") {
+              // Editable draft catalog category may be corrected on an identical
+              // PNG/definition reimport. Published and retired remain immutable.
+              await client.query(
+                "UPDATE public.commercial_resource_templates SET product=$2 WHERE id=$1 AND status='draft'",
+                [existing.rows[0].id,item.catalog.product]
+              );
               await client.query(`INSERT INTO public.commercial_resource_styles(template_id,style,set_by)
                 VALUES($1,$2,$3) ON CONFLICT(template_id) DO UPDATE SET
                 style=EXCLUDED.style,set_by=EXCLUDED.set_by,updated_at=NOW()`,
