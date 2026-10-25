@@ -21,7 +21,7 @@ export type GraphicImport = {
   slug:string;name:string;product:string;channel:"instagram"|"facebook"|"whatsapp";
   copy:{headline:string;supportingLine:string;description:string;hook:string;cta:string;highlights:string[]};
   graphic:GraphicDefinition;png:Buffer;
-  catalog:{product:string;format:"4:5"|"1:1"|"9:16";style:string;topic:string}|null;
+  catalog:{product:string;format:"4:5"|"1:1"|"9:16";style:string;topic:string;leasingSubtype?:"vehicular"|"maquinaria_equipo"}|null;
 };
 
 const allowedGroups = [
@@ -118,6 +118,46 @@ function parseCatalog(raw:any,canvas:{width:number;height:number}) {
    style:raw.style as string,topic:raw.topic.trim() as string};
 }
 
+/**
+ * Creative V7 metadata is editorial only: do not mutate campaignId, map slots,
+ * copy, artwork hash, normalized slug, typography, or output pixel content.
+ * For maps carrying both versions, reject inconsistencies rather than guessing.
+ */
+function parseClassification(raw:any,canvas:{width:number;height:number}) {
+ if(raw===undefined)return null;
+ if(!raw || typeof raw!=="object" || Array.isArray(raw))fail("classification V7 inválida.");
+ const keys=Object.keys(raw);
+ if(keys.some(key=>!["name","product","productId","slug","format","style","theme","leasingSubtype"].includes(key)) ||
+    ["name","product","productId","slug","format","style","theme"].some(key=>!keys.includes(key)))
+   fail("classification V7 incompleta o contiene campos desconocidos.");
+ const value=(key:string,max:number)=>{
+   if(typeof raw[key]!=="string"||raw[key].trim().length<1||
+      raw[key].trim().length>max||/[<>\\r\\n]/.test(raw[key]))
+     fail("classification."+key+" inválido.");
+   return raw[key].trim() as string;
+ };
+ const name=value("name",95), product=value("product",95),
+   productId=value("productId",40),slug=value("slug",95),
+   style=value("style",30),theme=value("theme",160);
+ if(theme.length<3)fail("classification.theme demasiado corto.");
+ if(!allowedProducts.includes(productId))fail("classification.productId no autorizado.");
+ if(!allowedStyles.includes(style))fail("classification.style no autorizado.");
+ if(!/^[a-z0-9]+(?:[-_][a-z0-9]+)*$/.test(slug))fail("classification.slug inválido.");
+ const format=value("format",4);
+ const expected=canvas.height===1920?"9:16":canvas.height===1080?"1:1":"4:5";
+ if(format!==expected)fail("classification.format no coincide con canvas.");
+ let leasingSubtype:"vehicular"|"maquinaria_equipo"|undefined;
+ if(raw.leasingSubtype!==undefined){
+   if(productId!=="arrendamiento"||
+      !["vehicular","maquinaria_equipo"].includes(raw.leasingSubtype))
+     fail("classification.leasingSubtype inválido.");
+   leasingSubtype=raw.leasingSubtype;
+ }
+ void name;void product; // Controlled display name remains m.name.
+ return {product:productId,format:format as "4:5"|"1:1"|"9:16",
+   style,topic:theme,...(leasingSubtype?{leasingSubtype}:{})};
+}
+
 function parseText(src:any,canvas:{width:number;height:number},fallback:{size:number;min:number;weight:600|700;color:string}):GraphicText {
  const rect=box(src,canvas);
  const size=src?.fontSize??src?.sizePx??fallback.size;
@@ -160,10 +200,19 @@ export function normalizeV4Map(raw:Buffer,png:Buffer,group:string):GraphicImport
    fail("Campos de identidad inseguros.");
  const category=caption(m.campaignId||m.campaignCategory||m.id,90).replace(/-(?:impactante|sobrio|cuadrada|historia)(?:-v\d+)?$/,"");
  if(!/^[a-z0-9_-]+$/.test(category))fail("Categoría comercial inválida.");
- const catalog=parseCatalog(m.catalog,canvas);
+ const legacyCatalog=parseCatalog(m.catalog,canvas);
+ const v7=parseClassification(m.classification,canvas);
+ if(legacyCatalog&&v7&&
+    ["product","format","style","topic"].some(key=>
+      legacyCatalog[key as keyof typeof legacyCatalog]!==v7[key as keyof typeof v7]))
+   fail("catalog y classification contienen clasificaciones contradictorias.");
+ const catalog=v7||legacyCatalog;
  const legacyProduct=productId(category);
  if(!catalog && !legacyProduct)fail("Producto no reconocido: usa campaignId autorizado o catalog.product.");
- if(catalog && legacyProduct && legacyProduct!==catalog.product)
+ // V7 productId is authoritative editorial metadata. Legacy campaignId
+ // still identifies the unmodified original campaign, even if its historical
+ // product grouping differed; strict V2 catalog keeps its original contract.
+ if(legacyCatalog && !v7 && legacyProduct && legacyProduct!==catalog?.product)
    fail("catalog.product contradice campaignId; corrige la clasificación.");
  const tail=group.includes("/04_Formato_Cuadrado_1x1/")?"-cuadrada":group.includes("/05_Formato_Vertical_9x16/")?"-historia":"";
  const candidate=caption(m.slug||m.id,90).replace(/-v\d+$/,"").replace(/_/g,"-")+tail;
