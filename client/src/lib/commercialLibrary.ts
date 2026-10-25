@@ -17,7 +17,7 @@ export const COMMERCIAL_PRODUCTS: Readonly<Record<string,string>> = {
   factoraje: "Factoraje",
   arrendamiento: "Arrendamiento",
   hipotecario: "Hipotecario",
-  tpv_anticipo: "Anticipo TPV",
+  tpv_anticipo: "Anticipo de ventas TPV",
   institucional: "Campañas generales"
 };
 
@@ -58,7 +58,7 @@ export function filterCommercialTemplates(
     if(filters.style!=="all" && (item.style || "unclassified")!==filters.style)return false;
     if(filters.status && filters.status!=="all" && item.status!==filters.status)return false;
     return !search || [
-      item.name,item.slug,commercialProductName(item.product),item.product,
+      item.name,item.slug,commercialProductName(item.product),item.product,item.topic||"",
       item.channel,commercialFormatLabel(commercialFormat(item)),commercialStyleLabel(item.style),
       item.definition.headline,item.definition.supportingLine,item.definition.description,
       item.definition.hook,item.definition.cta,...(item.definition.highlights || [])
