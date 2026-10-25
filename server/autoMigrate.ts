@@ -759,6 +759,28 @@ export async function runAutoMigration(): Promise<void> {
       if (process.env.RAILWAY_ENVIRONMENT_NAME?.toLowerCase() === "staging") throw error;
     }
 
+    // COM-RES-CATALOG-V2: additive metadata; no published material is changed.
+    try {
+      await client.query(`
+        ALTER TABLE public.commercial_resource_templates
+          ADD COLUMN IF NOT EXISTS import_batch_id VARCHAR(36);
+        CREATE INDEX IF NOT EXISTS commercial_resource_import_batch_idx
+          ON public.commercial_resource_templates(import_batch_id)
+          WHERE import_batch_id IS NOT NULL;
+        CREATE TABLE IF NOT EXISTS public.commercial_resource_topics (
+          template_id VARCHAR PRIMARY KEY REFERENCES public.commercial_resource_templates(id) ON DELETE RESTRICT,
+          topic VARCHAR(160) NOT NULL CHECK (char_length(topic) BETWEEN 3 AND 160),
+          set_by VARCHAR REFERENCES public.users(id) ON DELETE SET NULL,
+          updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+        );
+      `);
+      console.log("[AutoMigrate] Commercial catalog metadata and batch indexes verified");
+    } catch (error) {
+      console.error("[AutoMigrate] Commercial catalog metadata unavailable", error);
+      // Catalog reads depend on these fields. Fail closed in every environment.
+      throw error;
+    }
+
     // COM-RES-GRAPHIC-V4: immutable PNGs by version, created only when absent.
     try {
       await client.query(`
