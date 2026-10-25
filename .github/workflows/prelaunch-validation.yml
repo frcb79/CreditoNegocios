@@ -8,6 +8,7 @@ on:
       - 'feat/onboarding-ayuda-v2-*'
       - 'feat/biblioteca-comercial-brokers-*'
       - 'feat/biblioteca-comercial-filtros-*'
+      - 'fix/recursos-comerciales-catalogo-borradores-*'
   workflow_dispatch:
 concurrency:
   group: prelaunch-${{ github.ref }}-${{ github.sha }}
@@ -96,6 +97,7 @@ jobs:
             tests/unit/user-tour-help-v2.test.ts
             tests/unit/commercial-resources.test.ts
             tests/unit/commercial-library-filters.test.ts
+            tests/unit/commercial-catalog-v2.test.ts
             tests/unit/campaign-acquisition-v1.test.ts
             tests/unit/network-transitions-safety.test.ts
             tests/unit/client-credit-origin-list.test.ts
