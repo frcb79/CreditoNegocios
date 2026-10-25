@@ -1,6 +1,6 @@
 import type { PublishedCommercialTemplate } from "@/lib/commercialResources";
 import {
-  COMMERCIAL_STYLES, commercialProductName, commercialFormat,
+  COMMERCIAL_STYLES, COMMERCIAL_PRODUCTS, commercialProductName, commercialFormat,
   filterCommercialTemplates, type CommercialLibraryFilters
 } from "@/lib/commercialLibrary";
 import { Input } from "@/components/ui/input";
@@ -19,7 +19,8 @@ type Props={
 };
 
 export default function CommercialLibraryToolbar({templates,filters,onChange,includeStatus=false}:Props){
-  const products=Array.from(new Set(templates.map(t=>t.product)));
+  const products=Object.keys(COMMERCIAL_PRODUCTS);
+  const productCounts=new Map(products.map(p=>[p,templates.filter(t=>t.product===p).length]));
   const results=filterCommercialTemplates(templates,filters);
   const set=(part:Partial<CommercialLibraryFilters>)=>onChange({...filters,...part});
   const chooseStyle=[
@@ -40,7 +41,7 @@ export default function CommercialLibraryToolbar({templates,filters,onChange,inc
       {products.map(product=><Button key={product} size="sm" type="button"
         variant={filters.product===product?"default":"outline"}
         aria-pressed={filters.product===product} onClick={()=>set({product})}>
-        {commercialProductName(product)}
+        {commercialProductName(product)} ({productCounts.get(product)||0})
       </Button>)}
     </div>
     <div className={"grid gap-2 grid-cols-2 "+(includeStatus?"lg:grid-cols-3":"")}>
