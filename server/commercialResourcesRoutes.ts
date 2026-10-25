@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import type { Express, Response } from "express";
 import rateLimit from "express-rate-limit";
 import multer from "multer";
@@ -75,9 +76,10 @@ export function registerCommercialResourceRoutes(app: Express) {
     try {
       const result = await pool.query(
         `SELECT t.id, t.slug, t.version, t.name, t.product, t.channel, t.definition,
-                t.published_at, e.style
+                t.published_at, e.style, c.topic
          FROM public.commercial_resource_templates t
          LEFT JOIN public.commercial_resource_styles e ON e.template_id=t.id
+         LEFT JOIN public.commercial_resource_topics c ON c.template_id=t.id
          WHERE t.status='published'
          ORDER BY t.published_at DESC, t.name ASC LIMIT 1000`
       );
@@ -94,9 +96,10 @@ export function registerCommercialResourceRoutes(app: Express) {
     try {
       const result = await pool.query(
         `SELECT t.id,t.slug,t.version,t.name,t.product,t.channel,t.definition,
-                t.status,t.created_at,t.published_at,t.retired_at,e.style
+                t.status,t.created_at,t.published_at,t.retired_at,t.import_batch_id,e.style,c.topic
          FROM public.commercial_resource_templates t
          LEFT JOIN public.commercial_resource_styles e ON e.template_id=t.id
+         LEFT JOIN public.commercial_resource_topics c ON c.template_id=t.id
          ORDER BY t.created_at DESC LIMIT 2000`
       );
       return res.json(result.rows);
@@ -300,6 +303,7 @@ export function registerCommercialResourceRoutes(app: Express) {
       return res.status(400).json({message:"Paquete rechazado sin guardar borradores",detail:error.message});
     }
     const client=await pool.connect();
+    const batchId=randomUUID();
     const imported:any[]=[];
     try {
       await client.query("BEGIN");
@@ -313,6 +317,23 @@ export function registerCommercialResourceRoutes(app: Express) {
            ORDER BY t.version DESC LIMIT 1`,[input.slug,item.graphic.sha256,JSON.stringify(input.definition)]
         );
         if(existing.rows.length){
+          // A reimport does not reclassify already approved or retired content.
+          // An identical draft may receive its newly supplied metadata.
+          if(item.catalog) {
+            const draft=await client.query(
+              "SELECT status FROM public.commercial_resource_templates WHERE id=$1 FOR UPDATE",
+              [existing.rows[0].id]);
+            if(draft.rows[0]?.status==="draft") {
+              await client.query(`INSERT INTO public.commercial_resource_styles(template_id,style,set_by)
+                VALUES($1,$2,$3) ON CONFLICT(template_id) DO UPDATE SET
+                style=EXCLUDED.style,set_by=EXCLUDED.set_by,updated_at=NOW()`,
+                [existing.rows[0].id,item.catalog.style,user.id]);
+              await client.query(`INSERT INTO public.commercial_resource_topics(template_id,topic,set_by)
+                VALUES($1,$2,$3) ON CONFLICT(template_id) DO UPDATE SET
+                topic=EXCLUDED.topic,set_by=EXCLUDED.set_by,updated_at=NOW()`,
+                [existing.rows[0].id,item.catalog.topic,user.id]);
+            }
+          }
           imported.push({slug:input.slug,id:existing.rows[0].id,version:existing.rows[0].version,result:"already_exists"});
           continue;
         }
@@ -322,21 +343,31 @@ export function registerCommercialResourceRoutes(app: Express) {
         );
         const row=await client.query(
           `INSERT INTO public.commercial_resource_templates
-          (slug,version,name,product,channel,definition,status,created_by)
-          VALUES ($1,$2,$3,$4,$5,$6::jsonb,'draft',$7) RETURNING id,version`,
-          [input.slug,Number(v.rows[0].version),input.name,input.product,input.channel,JSON.stringify(input.definition),user.id]
+          (slug,version,name,product,channel,definition,status,created_by,import_batch_id)
+          VALUES ($1,$2,$3,$4,$5,$6::jsonb,'draft',$7,$8) RETURNING id,version`,
+          [input.slug,Number(v.rows[0].version),input.name,input.product,input.channel,JSON.stringify(input.definition),user.id,batchId]
         );
         await client.query(
           `INSERT INTO public.commercial_resource_artworks(template_id,image_data,sha256,width,height)
            VALUES ($1,$2,$3,$4,$5)`,
           [row.rows[0].id,item.png,item.graphic.sha256,item.graphic.canvas.width,item.graphic.canvas.height]
         );
+        if(item.catalog) {
+          await client.query(`INSERT INTO public.commercial_resource_styles(template_id,style,set_by)
+             VALUES($1,$2,$3) ON CONFLICT(template_id) DO UPDATE SET
+             style=EXCLUDED.style,set_by=EXCLUDED.set_by,updated_at=NOW()`,
+             [row.rows[0].id,item.catalog.style,user.id]);
+          await client.query(`INSERT INTO public.commercial_resource_topics(template_id,topic,set_by)
+             VALUES($1,$2,$3) ON CONFLICT(template_id) DO UPDATE SET
+             topic=EXCLUDED.topic,set_by=EXCLUDED.set_by,updated_at=NOW()`,
+             [row.rows[0].id,item.catalog.topic,user.id]);
+        }
         imported.push({slug:input.slug,id:row.rows[0].id,version:row.rows[0].version,
           result:"draft",typographyReviewRequired:item.graphic.typographyReviewRequired});
       }
       await client.query("COMMIT");
       return res.status(201).json({message:"Importación privada finalizada. Ningún material fue publicado.",
-        scanned:entries.length,created:imported.filter(x=>x.result==="draft").length,
+        batchId,scanned:entries.length,created:imported.filter(x=>x.result==="draft").length,
         existing:imported.filter(x=>x.result==="already_exists").length,
         requiresTypographyReview:imported.filter(x=>x.typographyReviewRequired).length,
         items:imported});
