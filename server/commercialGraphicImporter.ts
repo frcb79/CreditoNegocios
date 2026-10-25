@@ -21,6 +21,7 @@ export type GraphicImport = {
   slug:string;name:string;product:string;channel:"instagram"|"facebook"|"whatsapp";
   copy:{headline:string;supportingLine:string;description:string;hook:string;cta:string;highlights:string[]};
   graphic:GraphicDefinition;png:Buffer;
+  catalog:{product:string;format:"4:5"|"1:1"|"9:16";style:string;topic:string}|null;
 };
 
 const allowedGroups = [
@@ -86,15 +87,37 @@ const box=(source:any,canvas:{width:number;height:number}):GraphicBox=>{
  return {x:b.x,y:b.y,width:b.width,height:b.height};
 };
 const caption=(v:any,max=200)=>typeof v==="string"?v.trim().slice(0,max):"";
-function productId(campaign:string) {
- if(campaign==="revolvente")return "revolvente";
- if(campaign==="factoraje")return "factoraje";
- if(campaign==="hipotecario")return "hipotecario";
- if(campaign.startsWith("arrenda_"))return "arrendamiento";
- if(campaign.startsWith("institucional_"))return "institucional";
- if(campaign==="tpv_anticipo")return "tpv_anticipo";
- return "simple";
+const allowedProducts=["simple","revolvente","factoraje","arrendamiento",
+  "hipotecario","tpv_anticipo","institucional"];
+const allowedStyles=["llamativo","explicativo","institucional","promocional","informativo"];
+/** Legacy campaign IDs must be recognized, never silently classified as Simple. */
+function productId(campaign:string):string|null {
+ const value=campaign.trim().toLowerCase().replace(/-/g,"_");
+ if(/^(simple|credito_simple)(_|$)/.test(value))return "simple";
+ if(/^(revolvente|credito_revolvente)(_|$)/.test(value))return "revolvente";
+ if(/^factoraje(_|$)/.test(value))return "factoraje";
+ if(/^hipotecario(_|$)/.test(value))return "hipotecario";
+ if(/^(arrenda|arrendamiento)(_|$)/.test(value))return "arrendamiento";
+ if(/^(institucional|general)(_|$)/.test(value))return "institucional";
+ if(/^(tpv_anticipo|anticipo_tpv)(_|$)/.test(value))return "tpv_anticipo";
+ return null;
 }
+function parseCatalog(raw:any,canvas:{width:number;height:number}) {
+ if(raw===undefined)return null; // Legacy valid ZIPs remain compatible.
+ if(!raw||typeof raw!=="object"||Array.isArray(raw)||
+    Object.keys(raw).sort().join(",")!=="format,product,style,topic")
+    fail("catalog debe incluir exactamente product, format, style y topic.");
+ const expected=canvas.height===1920?"9:16":canvas.height===1080?"1:1":"4:5";
+ if(!allowedProducts.includes(raw.product))fail("catalog.product no está autorizado.");
+ if(raw.format!==expected)fail("catalog.format no coincide con canvas.");
+ if(!allowedStyles.includes(raw.style))fail("catalog.style no está autorizado.");
+ if(typeof raw.topic!=="string"||raw.topic.trim().length<3||
+    raw.topic.trim().length>160||/[<>\\r\\n]/.test(raw.topic))
+    fail("catalog.topic debe tener entre 3 y 160 caracteres sin etiquetas ni saltos de línea.");
+ return {product:raw.product as string,format:raw.format as "4:5"|"1:1"|"9:16",
+   style:raw.style as string,topic:raw.topic.trim() as string};
+}
+
 function parseText(src:any,canvas:{width:number;height:number},fallback:{size:number;min:number;weight:600|700;color:string}):GraphicText {
  const rect=box(src,canvas);
  const size=src?.fontSize??src?.sizePx??fallback.size;
@@ -137,6 +160,11 @@ export function normalizeV4Map(raw:Buffer,png:Buffer,group:string):GraphicImport
    fail("Campos de identidad inseguros.");
  const category=caption(m.campaignId||m.campaignCategory||m.id,90).replace(/-(?:impactante|sobrio|cuadrada|historia)(?:-v\d+)?$/,"");
  if(!/^[a-z_]+$/.test(category))fail("Categoría comercial inválida.");
+ const catalog=parseCatalog(m.catalog,canvas);
+ const legacyProduct=productId(category);
+ if(!catalog && !legacyProduct)fail("Producto no reconocido: usa campaignId autorizado o catalog.product.");
+ if(catalog && legacyProduct && legacyProduct!==catalog.product)
+   fail("catalog.product contradice campaignId; corrige la clasificación.");
  const tail=group.includes("/04_Formato_Cuadrado_1x1/")?"-cuadrada":group.includes("/05_Formato_Vertical_9x16/")?"-historia":"";
  const candidate=caption(m.slug||m.id,90).replace(/-v\d+$/,"").replace(/_/g,"-")+tail;
  if(!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(candidate)||candidate.length>80)fail("Slug inválido.");
@@ -158,14 +186,14 @@ export function normalizeV4Map(raw:Buffer,png:Buffer,group:string):GraphicImport
  return {
   slug:candidate,
   name:caption(m.name||category,95)+(tail?" · "+(tail==="-historia"?"Historia":"Cuadrada"):""),
-  product:productId(category),
+  product:catalog?.product || legacyProduct!,
   channel:canvas.height===1080?"facebook":canvas.height===1920?"whatsapp":"instagram",
   copy:{headline,supportingLine:supporting.length>=8?supporting:desc,description:desc,
     hook:caption(c?.B||c?.supportingQuestion||headline,140),cta:ctaText,highlights},
   graphic:{mode:"png-overlay",canvas,sha256:hash,originalMapSchema:m.schemaVersion,
     roles:["broker","master_broker"],typographyReviewRequired,
     fields:{name,whatsapp:phone,cta:{...cta,text:ctaText},logo}},
-  png
+  png, catalog
  };
 }
 export function parseV4Archive(zip:Buffer):GraphicImport[] {
