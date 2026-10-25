@@ -11,7 +11,7 @@ on:
       - 'fix/recursos-comerciales-catalogo-borradores-*'
   workflow_dispatch:
 concurrency:
-  group: prelaunch-${{ github.ref }}-${{ github.sha }}
+  group: prelaunch-${{ github.ref }}
   cancel-in-progress: true
 permissions:
   contents: read
