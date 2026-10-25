@@ -9,6 +9,7 @@ on:
       - 'feat/biblioteca-comercial-brokers-*'
       - 'feat/biblioteca-comercial-filtros-*'
       - 'fix/recursos-comerciales-catalogo-borradores-*'
+      - 'fix/commercial-artwork-authenticated-blob-*'
   workflow_dispatch:
 concurrency:
   group: prelaunch-${{ github.ref }}
@@ -98,6 +99,7 @@ jobs:
             tests/unit/commercial-resources.test.ts
             tests/unit/commercial-library-filters.test.ts
             tests/unit/commercial-catalog-v2.test.ts
+            tests/unit/commercial-artwork-auth-delivery.test.ts
             tests/unit/campaign-acquisition-v1.test.ts
             tests/unit/network-transitions-safety.test.ts
             tests/unit/client-credit-origin-list.test.ts
