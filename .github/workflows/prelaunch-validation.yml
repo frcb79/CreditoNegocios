@@ -11,6 +11,7 @@ on:
       - 'fix/recursos-comerciales-catalogo-borradores-*'
       - 'fix/commercial-artwork-authenticated-blob-*'
       - 'fix/commercial-artwork-json-delivery-*'
+      - 'feat/commercial-v7-classification-*'
   workflow_dispatch:
 concurrency:
   group: prelaunch-${{ github.ref }}
@@ -100,6 +101,7 @@ jobs:
             tests/unit/commercial-resources.test.ts
             tests/unit/commercial-library-filters.test.ts
             tests/unit/commercial-catalog-v2.test.ts
+            tests/unit/commercial-classification-v7.test.ts
             tests/unit/commercial-artwork-auth-delivery.test.ts
             tests/unit/campaign-acquisition-v1.test.ts
             tests/unit/network-transitions-safety.test.ts
