@@ -12,6 +12,7 @@ on:
       - 'fix/commercial-artwork-authenticated-blob-*'
       - 'fix/commercial-artwork-json-delivery-*'
       - 'feat/commercial-v7-classification-*'
+      - 'fix/commercial-v7-draft-reimport-classification-*'
   workflow_dispatch:
 concurrency:
   group: prelaunch-${{ github.ref }}
