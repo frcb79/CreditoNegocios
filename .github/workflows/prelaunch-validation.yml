@@ -10,6 +10,7 @@ on:
       - 'feat/biblioteca-comercial-filtros-*'
       - 'fix/recursos-comerciales-catalogo-borradores-*'
       - 'fix/commercial-artwork-authenticated-blob-*'
+      - 'fix/commercial-artwork-json-delivery-*'
   workflow_dispatch:
 concurrency:
   group: prelaunch-${{ github.ref }}
