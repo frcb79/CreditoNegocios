@@ -1,6 +1,7 @@
 import type { CommercialResourceDefinition } from "@shared/commercialResourceDefinition";
 import { normalizedWhatsApp } from "./commercialResources";
 import type { PublishedCommercialTemplate } from "./commercialResources";
+import { commercialArtworkEndpoint, loadAuthenticatedImage } from "./commercialArtworkClient";
 
 export type GraphicIdentity = {
  displayName:string; whatsapp:string;
@@ -45,7 +46,7 @@ export async function renderCommercialGraphic(
  if(name.length<2||name.length>120)throw new Error("Falta un nombre válido en el perfil.");
  if(!phone)throw new Error("WhatsApp válido obligatorio en el perfil.");
  const [background] = await Promise.all([
-  loading("/api/commercial-resources/templates/"+encodeURIComponent(template.id)+"/art"),
+  loadAuthenticatedImage(commercialArtworkEndpoint(template.id)),
   document.fonts.load('700 32px Inter'),
   document.fonts.load('600 25px Inter')
  ]);
@@ -64,7 +65,9 @@ export async function renderCommercialGraphic(
  // Only a previously authorized profile logo may be composited. Never use
  // avatars, letter tiles, empty placeholders or a second institutional logo.
  if(identity.approvedLogoUrl){
-  const logo=await loading(identity.approvedLogoUrl);
+  const logo=identity.approvedLogoUrl.startsWith("/api/commercial-resources/")
+    ? await loadAuthenticatedImage(identity.approvedLogoUrl.split("?")[0])
+    : await loading(identity.approvedLogoUrl);
   drawLogo(ctx,logo,graphic.fields.logo);
  }
  return canvas;
