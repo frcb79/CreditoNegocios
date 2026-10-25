@@ -174,6 +174,13 @@ export default function CommercialResourcesAdmin() {
       setImportReport(result);
       setArchive(null);setGraphicMap(null);setGraphicBackground(null);
       await queryClient.invalidateQueries({queryKey:["/api/admin/commercial-resources/templates"]});
+      // Immediately show the newly imported artwork in the approval preview.
+      const firstImportedId=result.items?.find((item:any)=>item.result==="draft")?.id ||
+        result.items?.[0]?.id;
+      if(typeof firstImportedId==="string"){
+        setLibraryFilters({...INITIAL_LIBRARY_FILTERS});
+        setPreviewTemplateId(firstImportedId);
+      }
       toast({title:"Borradores importados",description:`${result.created} nuevos, ${result.existing} existentes. Nada publicado.`});
     }catch(err:any){toast({title:"No fue posible importar",description:err.message,variant:"destructive"});}
     finally{setWorking(false);}

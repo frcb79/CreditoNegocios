@@ -1,10 +1,11 @@
-import type { ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import type { PublishedCommercialTemplate } from "@/lib/commercialResources";
 import { templateSvg } from "@/lib/commercialResources";
 import {
   commercialFormat, commercialFormatLabel, commercialProductName,
-  commercialStyleLabel, commercialThumbSrc
+  commercialStyleLabel
 } from "@/lib/commercialLibrary";
+import { commercialArtworkEndpoint, fetchPrivateCommercialPng } from "@/lib/commercialArtworkClient";
 
 type Props={
   template:PublishedCommercialTemplate;
@@ -15,10 +16,56 @@ type Props={
 };
 
 export default function CommercialTemplateCard({template,selected,onClick,children,compact=false}:Props){
-  const src=commercialThumbSrc(template) ||
-    "data:image/svg+xml;charset=utf-8,"+
-    encodeURIComponent(templateSvg(template,{displayName:"Vista previa",whatsapp:"",showPhone:false}));
-  return <article
+  const article=useRef<HTMLElement|null>(null);
+  const [loaded,setLoaded]=useState<{id:string;url:string}|null>(null);
+  const [error,setError]=useState("");
+  const isGraphic=Boolean(template.definition.graphic);
+
+  useEffect(()=>{
+    if(!isGraphic)return;
+    let active=true;
+    let objectUrl:string|null=null;
+    let requested=false;
+    const controller=new AbortController();
+    const start=()=>{
+      if(requested)return;
+      requested=true;
+      fetchPrivateCommercialPng(commercialArtworkEndpoint(template.id),controller.signal)
+        .then(blob=>{
+          if(!active)return;
+          objectUrl=URL.createObjectURL(blob);
+          setLoaded({id:template.id,url:objectUrl});
+          setError("");
+        })
+        .catch((cause:unknown)=>{
+          if(!active||controller.signal.aborted)return;
+          setError(cause instanceof Error?cause.message:"No se pudo cargar la miniatura.");
+        });
+    };
+    let observer:IntersectionObserver|null=null;
+    if(typeof IntersectionObserver!=="undefined" && article.current){
+      observer=new IntersectionObserver(entries=>{
+        if(entries.some(e=>e.isIntersecting)){
+          observer?.disconnect();
+          start();
+        }
+      },{rootMargin:"250px"});
+      observer.observe(article.current);
+    }else start();
+    return()=>{
+      active=false;
+      controller.abort();
+      observer?.disconnect();
+      if(objectUrl)URL.revokeObjectURL(objectUrl);
+    };
+  },[template.id,template.definition.graphic?.sha256,isGraphic]);
+
+  const src=!isGraphic
+    ? "data:image/svg+xml;charset=utf-8,"+
+      encodeURIComponent(templateSvg(template,{displayName:"Vista previa",whatsapp:"",showPhone:false}))
+    : loaded?.id===template.id?loaded.url:"";
+
+  return <article ref={article}
     data-testid={"commercial-template-card-"+template.id}
     className={"overflow-hidden rounded-xl border bg-card transition-colors "+
       (selected?"border-primary ring-1 ring-primary":"hover:border-primary/40")}>
@@ -26,8 +73,12 @@ export default function CommercialTemplateCard({template,selected,onClick,childr
       <button type="button" onClick={onClick} aria-pressed={selected}
         className={compact?"w-20 sm:w-24 shrink-0":"block w-full"}
         aria-label={"Vista previa de "+template.name}>
-        <img loading="lazy" decoding="async" src={src} alt={"Miniatura de "+template.name}
-          className={(compact?"w-full max-h-32":"w-full max-h-52")+" rounded-md object-contain bg-muted/30"} />
+        {src ? <img loading="lazy" decoding="async" src={src} alt={"Miniatura de "+template.name}
+          className={(compact?"w-full max-h-32":"w-full max-h-52")+" rounded-md object-contain bg-muted/30"}/> :
+          <div className="min-h-24 rounded-md bg-muted/40 flex items-center justify-center p-2 text-center text-xs text-muted-foreground"
+            role="status">
+            {error || "Cargando miniatura…"}
+          </div>}
       </button>
       <div className={compact?"min-w-0 flex-1 space-y-2":"min-w-0 space-y-2"}>
         <button type="button" onClick={onClick}
