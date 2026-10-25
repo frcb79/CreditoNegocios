@@ -132,7 +132,7 @@ function parseClassification(raw:any,canvas:{width:number;height:number}) {
    fail("classification V7 incompleta o contiene campos desconocidos.");
  const value=(key:string,max:number)=>{
    if(typeof raw[key]!=="string"||raw[key].trim().length<1||
-      raw[key].trim().length>max||/[<>\\r\\n]/.test(raw[key]))
+      raw[key].trim().length>max||/[<>\r\n]/.test(raw[key]))
      fail("classification."+key+" inválido.");
    return raw[key].trim() as string;
  };
