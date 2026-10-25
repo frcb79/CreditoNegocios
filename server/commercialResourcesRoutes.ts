@@ -412,6 +412,63 @@ export function registerCommercialResourceRoutes(app: Express) {
     }
   });
 
+  // Atomic deletion of unpublished mistakes only. A referenced, published or
+  // retired version is never deletable; there is no cascading historical loss.
+  app.post("/api/admin/commercial-resources/drafts/delete",isAuthenticated,async(req:any,res)=>{
+    const user=await identify(req);
+    if(user?.role!=="super_admin")return forbid(res);
+    const ids=req.body?.ids;
+    if(!req.body||Object.keys(req.body).length!==1||!Array.isArray(ids)||
+      ids.length<1||ids.length>200||new Set(ids).size!==ids.length||
+      !ids.every((id:unknown)=>typeof id==="string"&&/^[a-f0-9-]{36}$/i.test(id))) {
+      return res.status(400).json({message:"Selecciona de 1 a 200 borradores válidos sin duplicados."});
+    }
+    const client=await pool.connect();
+    try{
+      await client.query("BEGIN");
+      // Lock in stable order, identical to publish/import advisory lock order.
+      const slugs=await client.query(
+        "SELECT DISTINCT slug FROM public.commercial_resource_templates WHERE id=ANY($1::varchar[]) ORDER BY slug",
+        [ids]);
+      if(slugs.rowCount===0){
+        await client.query("ROLLBACK");
+        return res.status(404).json({message:"No se encontraron los borradores."});
+      }
+      for(const row of slugs.rows){
+        await client.query("SELECT pg_advisory_xact_lock(hashtext($1))",["resources:"+row.slug]);
+      }
+      const selected=await client.query(
+        "SELECT id,status FROM public.commercial_resource_templates WHERE id=ANY($1::varchar[]) ORDER BY id FOR UPDATE",
+        [ids]);
+      if(selected.rowCount!==ids.length||selected.rows.some(row=>row.status!=="draft")){
+        await client.query("ROLLBACK");
+        return res.status(409).json({message:"Solo se pueden eliminar borradores existentes. Las publicaciones e históricos están protegidos."});
+      }
+      // Explicit guard before RESTRICT FKs (which remain a second defense).
+      const links=await client.query(
+        "SELECT COUNT(*)::int AS count FROM public.commercial_campaign_links WHERE template_id=ANY($1::varchar[])",[ids]);
+      const leads=await client.query(
+        "SELECT COUNT(*)::int AS count FROM public.commercial_marketing_leads WHERE template_id=ANY($1::varchar[])",[ids]);
+      if(links.rows[0].count>0||leads.rows[0].count>0){
+        await client.query("ROLLBACK");
+        return res.status(409).json({message:"Hay plantillas vinculadas a campañas o prospectos. No se pueden borrar."});
+      }
+      await client.query("DELETE FROM public.commercial_resource_topics WHERE template_id=ANY($1::varchar[])",[ids]);
+      await client.query("DELETE FROM public.commercial_resource_styles WHERE template_id=ANY($1::varchar[])",[ids]);
+      await client.query("DELETE FROM public.commercial_resource_artworks WHERE template_id=ANY($1::varchar[])",[ids]);
+      const deleted=await client.query(
+        "DELETE FROM public.commercial_resource_templates WHERE id=ANY($1::varchar[]) AND status='draft' RETURNING id",
+        [ids]);
+      if(deleted.rowCount!==ids.length)throw new Error("Eliminación incompleta");
+      await client.query("COMMIT");
+      return res.json({deleted:deleted.rowCount,ids:deleted.rows.map(row=>row.id)});
+    }catch(error){
+      await client.query("ROLLBACK");
+      console.error("[COM_RES] Atomic draft deletion failed",error);
+      return res.status(503).json({message:"No se pudieron eliminar los borradores. No se modificó el lote."});
+    }finally{client.release();}
+  });
+
   app.post("/api/admin/commercial-resources/templates/:id/publish", isAuthenticated, async (req: any, res) => {
     const user = await identify(req);
     if (user?.role !== "super_admin") return forbid(res);
