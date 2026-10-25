@@ -104,7 +104,7 @@ export default function CommercialResourcesAdmin() {
   const selectedDrafts=templates.filter(item=>selectedDraftIds.includes(item.id)&&item.status==="draft");
   const toggleDraft=(id:string,checked:boolean)=>{
     setSelectedDraftIds(previous=>checked
-      ? [...new Set([...previous,id])]:previous.filter(value=>value!==id));
+      ? Array.from(new Set([...previous,id])):previous.filter(value=>value!==id));
   };
   const selectBatch=(batch:string)=>{
     setSelectedDraftIds(templates.filter(item=>item.status==="draft"&&
@@ -112,7 +112,7 @@ export default function CommercialResourcesAdmin() {
   };
   const deleteDrafts=async(ids:string[])=>{
     if(working || ids.length<1)return;
-    const unique=[...new Set(ids)].filter(id=>templates.some(t=>t.id===id&&t.status==="draft"));
+    const unique=Array.from(new Set(ids)).filter(id=>templates.some(t=>t.id===id&&t.status==="draft"));
     if(unique.length!==ids.length)return;
     const message="Vas a eliminar definitivamente "+ids.length+
       " borrador(es), sus imágenes y sus metadatos. NO afectará plantillas publicadas. ¿Continuar?";
@@ -299,7 +299,7 @@ export default function CommercialResourcesAdmin() {
           </p>
           <div className="flex flex-wrap gap-2">
             <Button type="button" size="sm" variant="outline" disabled={working||visibleDrafts.length===0}
-              onClick={()=>setSelectedDraftIds(previous=>[...new Set([...previous,...visibleDrafts.map(t=>t.id)])])}
+              onClick={()=>setSelectedDraftIds(previous=>Array.from(new Set([...previous,...visibleDrafts.map(t=>t.id)])))}
               data-testid="select-filtered-drafts">
               Seleccionar borradores filtrados ({visibleDrafts.length})
             </Button>
