@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Search, X } from "lucide-react";
 
 export const INITIAL_LIBRARY_FILTERS:CommercialLibraryFilters = {
-  search:"", product:"all", format:"all", style:"all", status:"all"
+  search:"", product:"all", format:"all", style:"all", status:"all", leasingSubtype:"all"
 };
 
 type Props={
@@ -40,7 +40,7 @@ export default function CommercialLibraryToolbar({templates,filters,onChange,inc
         aria-pressed={filters.product==="all"} onClick={()=>set({product:"all"})}>Todos</Button>
       {products.map(product=><Button key={product} size="sm" type="button"
         variant={filters.product===product?"default":"outline"}
-        aria-pressed={filters.product===product} onClick={()=>set({product})}>
+        aria-pressed={filters.product===product} onClick={()=>set({product,leasingSubtype:"all"})}>
         {commercialProductName(product)} ({productCounts.get(product)||0})
       </Button>)}
     </div>
@@ -74,12 +74,26 @@ export default function CommercialLibraryToolbar({templates,filters,onChange,inc
         </select>
       </label>}
     </div>
+    {(filters.product==="arrendamiento" || (filters.product==="all" && templates.some(t=>t.product==="arrendamiento"))) && (
+      <label className="block text-xs font-medium space-y-1">
+        <span>Variante de Arrendamiento</span>
+        <select aria-label="Subtipo de Arrendamiento"
+          className="w-full h-9 rounded-md border bg-background px-2 text-xs"
+          value={filters.leasingSubtype||"all"}
+          onChange={e=>set({leasingSubtype:e.target.value})}
+          data-testid="commercial-library-leasing-subtype">
+          <option value="all">Todas las variantes</option>
+          <option value="vehicular">Vehicular</option>
+          <option value="maquinaria_equipo">Maquinaria y Equipo</option>
+        </select>
+      </label>
+    )}
     <div className="flex flex-wrap items-center justify-between gap-2">
       <p className="text-xs text-muted-foreground" data-testid="commercial-library-result-count">
         {results.length} de {templates.length} {templates.length===1?"plantilla":"plantillas"}
       </p>
       {(filters.search || filters.product!=="all" || filters.format!=="all" ||
-        filters.style!=="all" || (filters.status && filters.status!=="all")) && (
+        filters.style!=="all" || (filters.leasingSubtype && filters.leasingSubtype!=="all") || (filters.status && filters.status!=="all")) && (
         <Button size="sm" variant="ghost" type="button" onClick={()=>onChange({...INITIAL_LIBRARY_FILTERS})}>
           <X className="h-3.5 w-3.5 mr-1" /> Limpiar filtros
         </Button>

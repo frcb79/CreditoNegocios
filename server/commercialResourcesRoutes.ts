@@ -76,7 +76,7 @@ export function registerCommercialResourceRoutes(app: Express) {
     try {
       const result = await pool.query(
         `SELECT t.id, t.slug, t.version, t.name, t.product, t.channel, t.definition,
-                t.published_at, e.style, c.topic
+                t.published_at, e.style, c.topic, c.leasing_subtype
          FROM public.commercial_resource_templates t
          LEFT JOIN public.commercial_resource_styles e ON e.template_id=t.id
          LEFT JOIN public.commercial_resource_topics c ON c.template_id=t.id
@@ -96,7 +96,7 @@ export function registerCommercialResourceRoutes(app: Express) {
     try {
       const result = await pool.query(
         `SELECT t.id,t.slug,t.version,t.name,t.product,t.channel,t.definition,
-                t.status,t.created_at,t.published_at,t.retired_at,t.import_batch_id,e.style,c.topic
+                t.status,t.created_at,t.published_at,t.retired_at,t.import_batch_id,e.style,c.topic,c.leasing_subtype
          FROM public.commercial_resource_templates t
          LEFT JOIN public.commercial_resource_styles e ON e.template_id=t.id
          LEFT JOIN public.commercial_resource_topics c ON c.template_id=t.id
@@ -376,10 +376,11 @@ export function registerCommercialResourceRoutes(app: Express) {
                 VALUES($1,$2,$3) ON CONFLICT(template_id) DO UPDATE SET
                 style=EXCLUDED.style,set_by=EXCLUDED.set_by,updated_at=NOW()`,
                 [existing.rows[0].id,item.catalog.style,user.id]);
-              await client.query(`INSERT INTO public.commercial_resource_topics(template_id,topic,set_by)
-                VALUES($1,$2,$3) ON CONFLICT(template_id) DO UPDATE SET
-                topic=EXCLUDED.topic,set_by=EXCLUDED.set_by,updated_at=NOW()`,
-                [existing.rows[0].id,item.catalog.topic,user.id]);
+              await client.query(`INSERT INTO public.commercial_resource_topics(template_id,topic,leasing_subtype,set_by)
+                VALUES($1,$2,$3,$4) ON CONFLICT(template_id) DO UPDATE SET
+                topic=EXCLUDED.topic,leasing_subtype=EXCLUDED.leasing_subtype,
+                set_by=EXCLUDED.set_by,updated_at=NOW()`,
+                [existing.rows[0].id,item.catalog.topic,item.catalog.leasingSubtype||null,user.id]);
             }
           }
           imported.push({slug:input.slug,id:existing.rows[0].id,version:existing.rows[0].version,result:"already_exists"});
@@ -405,10 +406,11 @@ export function registerCommercialResourceRoutes(app: Express) {
              VALUES($1,$2,$3) ON CONFLICT(template_id) DO UPDATE SET
              style=EXCLUDED.style,set_by=EXCLUDED.set_by,updated_at=NOW()`,
              [row.rows[0].id,item.catalog.style,user.id]);
-          await client.query(`INSERT INTO public.commercial_resource_topics(template_id,topic,set_by)
-             VALUES($1,$2,$3) ON CONFLICT(template_id) DO UPDATE SET
-             topic=EXCLUDED.topic,set_by=EXCLUDED.set_by,updated_at=NOW()`,
-             [row.rows[0].id,item.catalog.topic,user.id]);
+          await client.query(`INSERT INTO public.commercial_resource_topics(template_id,topic,leasing_subtype,set_by)
+             VALUES($1,$2,$3,$4) ON CONFLICT(template_id) DO UPDATE SET
+             topic=EXCLUDED.topic,leasing_subtype=EXCLUDED.leasing_subtype,
+             set_by=EXCLUDED.set_by,updated_at=NOW()`,
+             [row.rows[0].id,item.catalog.topic,item.catalog.leasingSubtype||null,user.id]);
         }
         imported.push({slug:input.slug,id:row.rows[0].id,version:row.rows[0].version,
           result:"draft",typographyReviewRequired:item.graphic.typographyReviewRequired});

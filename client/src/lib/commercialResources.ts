@@ -132,6 +132,7 @@ export interface PublishedCommercialTemplate {
   definition: CommercialResourceDefinition;
   status?: "draft" | "published" | "retired";
   topic?: string | null;
+  leasing_subtype?: "vehicular" | "maquinaria_equipo" | null;
   import_batch_id?: string | null;
   style?: "llamativo" | "explicativo" | "institucional" | "promocional" | "informativo" | null;
   created_at?: string;
