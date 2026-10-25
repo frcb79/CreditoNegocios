@@ -44,7 +44,7 @@ export function commercialThumbSrc(template:PublishedCommercialTemplate):string 
     : "";
 }
 export type CommercialLibraryFilters = {
-  search:string; product:string; format:string; style:string; status?:string
+  search:string; product:string; format:string; style:string; status?:string; leasingSubtype?:string
 };
 export function filterCommercialTemplates(
   templates:PublishedCommercialTemplate[], filters:CommercialLibraryFilters
@@ -56,9 +56,10 @@ export function filterCommercialTemplates(
     if(filters.product!=="all" && item.product!==filters.product)return false;
     if(filters.format!=="all" && commercialFormat(item)!==filters.format)return false;
     if(filters.style!=="all" && (item.style || "unclassified")!==filters.style)return false;
+    if(filters.leasingSubtype && filters.leasingSubtype!=="all" && item.leasing_subtype!==filters.leasingSubtype)return false;
     if(filters.status && filters.status!=="all" && item.status!==filters.status)return false;
     return !search || [
-      item.name,item.slug,commercialProductName(item.product),item.product,item.topic||"",
+      item.name,item.slug,commercialProductName(item.product),item.product,item.topic||"",item.leasing_subtype||"",
       item.channel,commercialFormatLabel(commercialFormat(item)),commercialStyleLabel(item.style),
       item.definition.headline,item.definition.supportingLine,item.definition.description,
       item.definition.hook,item.definition.cta,...(item.definition.highlights || [])
