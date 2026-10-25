@@ -112,7 +112,7 @@ function parseCatalog(raw:any,canvas:{width:number;height:number}) {
  if(raw.format!==expected)fail("catalog.format no coincide con canvas.");
  if(!allowedStyles.includes(raw.style))fail("catalog.style no está autorizado.");
  if(typeof raw.topic!=="string"||raw.topic.trim().length<3||
-    raw.topic.trim().length>160||/[<>\\r\\n]/.test(raw.topic))
+    raw.topic.trim().length>160||/[<>\r\n]/.test(raw.topic))
     fail("catalog.topic debe tener entre 3 y 160 caracteres sin etiquetas ni saltos de línea.");
  return {product:raw.product as string,format:raw.format as "4:5"|"1:1"|"9:16",
    style:raw.style as string,topic:raw.topic.trim() as string};
@@ -159,7 +159,7 @@ export function normalizeV4Map(raw:Buffer,png:Buffer,group:string):GraphicImport
  if(!f?.BROKER_NAME?.required || !f?.BROKER_WHATSAPP?.required || f?.BROKER_LOGO?.required!==false)
    fail("Campos de identidad inseguros.");
  const category=caption(m.campaignId||m.campaignCategory||m.id,90).replace(/-(?:impactante|sobrio|cuadrada|historia)(?:-v\d+)?$/,"");
- if(!/^[a-z_]+$/.test(category))fail("Categoría comercial inválida.");
+ if(!/^[a-z0-9_-]+$/.test(category))fail("Categoría comercial inválida.");
  const catalog=parseCatalog(m.catalog,canvas);
  const legacyProduct=productId(category);
  if(!catalog && !legacyProduct)fail("Producto no reconocido: usa campaignId autorizado o catalog.product.");
