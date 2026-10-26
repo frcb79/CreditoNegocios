@@ -8,7 +8,7 @@ export interface UserTourStep {
   description: string;
 }
 
-export const USER_TOUR_VERSION = "3";
+export const USER_TOUR_VERSION = "4";
 export const USER_TOUR_QUERY_PARAM = "recorrido";
 export const USER_TOUR_QUERY_VALUE = "inicio";
 
@@ -51,8 +51,9 @@ const broker: UserTourStep[] = [
     description: "En Clientes presiona Nuevo Cliente. Elige Crédito Empresarial, Hipotecario Vivienda o Arrendamiento; cada ruta permite iniciar con información esencial."
   },
   {
+    selector: '[data-testid="button-start-first-prospect"]',
     title: "3. Registra lo que necesita",
-    description: "Al guardar el prospecto, abre su ficha. Para crédito empresarial, registra la necesidad, el monto solicitado y los datos disponibles. Puedes completar el perfil más adelante."
+    description: "Desde Nuevo prospecto inicia el alta y después abre su ficha. Para crédito empresarial, registra la necesidad y el monto solicitado; puedes completar el perfil más adelante."
   },
   {
     selector: '[data-testid="nav-productos"]',
@@ -130,17 +131,13 @@ export function getUserTourSteps(role: string, mobile: boolean): UserTourStep[] 
 
   if (!mobile) return result;
 
-  // El menú lateral móvil está cerrado durante el recorrido: no apuntar a
-  // opciones fuera de pantalla. Mantener sus explicaciones y su numeración.
-  let menuHighlighted = false;
-  return result.map(step => {
-    if (step.selector?.startsWith('[data-testid="nav-')) {
-      if (!menuHighlighted) {
-        menuHighlighted = true;
-        return { ...step, selector: '[data-testid="button-open-sidebar"]' };
-      }
-      return { ...step, selector: undefined };
-    }
-    return step;
-  });
+  // El Sidebar renderiza dos menús con data-testid diferentes.
+  // Los elementos móviles terminan en "-mobile"; el hook abre el drawer
+  // antes de resaltarlos y lo cierra al volver al contenido.
+  return result.map(step => ({
+    ...step,
+    selector: step.selector?.startsWith('[data-testid="nav-')
+      ? step.selector.replace('"]', '-mobile"]')
+      : step.selector
+  }));
 }
