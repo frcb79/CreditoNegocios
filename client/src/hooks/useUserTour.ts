@@ -84,7 +84,9 @@ export function useUserTour() {
         const isMobileNav = mobile && step.selector?.includes('-mobile"]');
         const desktopNav = !mobile && step.selector?.startsWith('[data-testid="nav-');
         return [{
-          element: target,
+          // Resolve the latest node at each step; opening the mobile drawer
+          // can re-render Sidebar and replace its original DOM nodes.
+          element: step.selector!,
           popover: {
             title: step.title,
             description: step.description,
@@ -102,9 +104,9 @@ export function useUserTour() {
       const mobileDrawer = () => document.querySelector<HTMLElement>('[data-testid="mobile-sidebar"]');
       const prepareMobileDrawer = (next: DriveStep) => {
         if (!mobile) return false;
-        const nav = next.element instanceof HTMLElement &&
-          next.element.dataset.testid?.startsWith("nav-") &&
-          next.element.dataset.testid?.endsWith("-mobile");
+        const nav = typeof next.element === "string" &&
+          next.element.startsWith('[data-testid="nav-') &&
+          next.element.endsWith('-mobile"]');
         const open = mobileDrawer()?.dataset.open === "true";
         if (nav && !open) {
           document.querySelector<HTMLButtonElement>('[data-testid="button-open-sidebar"]')?.click();
