@@ -8,7 +8,7 @@ export interface UserTourStep {
   description: string;
 }
 
-export const USER_TOUR_VERSION = "4";
+export const USER_TOUR_VERSION = "3";
 export const USER_TOUR_QUERY_PARAM = "recorrido";
 export const USER_TOUR_QUERY_VALUE = "inicio";
 
