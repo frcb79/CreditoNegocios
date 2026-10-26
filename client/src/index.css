@@ -144,3 +144,19 @@
 .bg-neutral\/10 {
   background-color: color-mix(in srgb, var(--neutral) 10%, transparent);
 }
+
+/* The initial product tour follows its highlighted control and stays within
+   the viewport on small screens, without changing regular app dialogs. */
+.driver-popover.cn-user-tour-popover {
+  max-width: min(360px, calc(100vw - 24px));
+  box-sizing: border-box;
+}
+.driver-popover.cn-user-tour-popover .driver-popover-description {
+  overflow-wrap: anywhere;
+  line-height: 1.45;
+}
+@media (max-width: 640px) {
+  .driver-popover.cn-user-tour-popover {
+    max-width: calc(100vw - 24px);
+  }
+}

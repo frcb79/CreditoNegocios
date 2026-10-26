@@ -189,6 +189,20 @@ export default function Sidebar() {
     setIsMobileOpen(false);
   }, [location]);
 
+  // The onboarding tour opens/closes the real mobile drawer before targeting
+  // a specific link. Normal navigation and users' manual menu controls remain
+  // unchanged; listeners are removed whenever Sidebar unmounts.
+  useEffect(() => {
+    const onTourSidebar = (event: Event) => {
+      const desired = (event as CustomEvent<{ open: boolean }>).detail?.open;
+      if (typeof desired === "boolean" && window.innerWidth < 1024) {
+        setIsMobileOpen(desired);
+      }
+    };
+    window.addEventListener("creditonegocios:tour-sidebar", onTourSidebar);
+    return () => window.removeEventListener("creditonegocios:tour-sidebar", onTourSidebar);
+  }, []);
+
   useEffect(() => {
     const handleResize = () => {
       if (window.innerWidth >= 1024) {
