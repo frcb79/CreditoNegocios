@@ -22,7 +22,7 @@ describe("Onboarding Fase A — recorrido por rol y ayuda", () => {
     expect(header).toContain('data-testid="header-title"');
     expect(metrics).toContain('data-testid="metrics-grid"');
     expect(hook).not.toContain("#dashboard-title");
-    expect(hook).toContain("findRenderableTarget(step.selector)");
+    expect(hook).toContain("findRenderableTarget(step.selector!)");
     for (const selector of selectors("broker")) {
       if (["header-title", "metrics-grid", "broker-quick-start"].some(id => selector.includes(id))) continue;
       const testId = selector?.match(/data-testid="([^"]+)"/)?.[1];
@@ -50,7 +50,7 @@ describe("Onboarding Fase A — recorrido por rol y ayuda", () => {
     }
   });
 
-  it("mantiene un recorrido práctico de 7 a 9 pasos y no elimina mensajes ocultos", () => {
+  it("mantiene un recorrido práctico, pero nunca muestra mensajes sin ancla", () => {
     for (const role of ["broker", "master_broker", "admin", "super_admin"]) {
       const desktop = getUserTourSteps(role, false);
       const mobile = getUserTourSteps(role, true);
@@ -65,8 +65,9 @@ describe("Onboarding Fase A — recorrido por rol y ayuda", () => {
     expect(brokerText).toContain("Ayuda rápida");
     const hook = read("client/src/hooks/useUserTour.ts");
     expect(hook).toContain("findRenderableTarget");
-    expect(hook).not.toContain(".filter((step) => !step.selector");
-    expect(hook).toContain("const target = step.selector ? findRenderableTarget(step.selector) : null");
+    expect(hook).toContain("if (!step.selector || !findRenderableTarget(step.selector))");
+    expect(hook).toContain("navigateTo(index + direction, direction, current)");
+    expect(hook).toContain("element: () => findRenderableTarget(step.selector!) as Element");
   });
 
   it("promueve Recursos Comerciales al inicio para Broker y Master sin mostrarlo como función administrativa", () => {
@@ -116,13 +117,38 @@ describe("Onboarding Fase A — recorrido por rol y ayuda", () => {
     expect(read("client/src/pages/Dashboard.tsx")).toContain("<BrokerQuickStart");
   });
 
-  it("ofrece una versión móvil centrada en el menú en lugar de elementos ocultos", () => {
+  it("en móvil abre el menú y ancla los mensajes a cada sección concreta", () => {
     for (const role of ["broker", "master_broker", "admin", "super_admin"]) {
-      const list = selectors(role, true).join(" ");
-      expect(list).toContain("button-open-sidebar");
-      expect(list).not.toContain("nav-usuarios");
-      expect(list).not.toContain("nav-clientes");
+      const mobile = getUserTourSteps(role, true);
+      const desktop = getUserTourSteps(role, false);
+      expect(mobile).toHaveLength(desktop.length);
+      expect(mobile.every(step => Boolean(step.selector))).toBe(true);
+      for (const step of mobile) {
+        if (step.selector?.includes("nav-")) {
+          expect(step.selector).toContain("-mobile");
+        }
+      }
     }
+    expect(selectors("broker", true).join(" ")).toContain("nav-clientes-mobile");
+    expect(selectors("admin", true).join(" ")).toContain("nav-usuarios-mobile");
+    const hook = read("client/src/hooks/useUserTour.ts");
+    const sidebar = read("client/src/components/Sidebar.tsx");
+    expect(hook).toContain("setMobileTourSidebar(Boolean(step.selector?.includes('nav-')))");
+    expect(sidebar).toContain('window.addEventListener("creditonegocios:tour-sidebar", onTourSidebar)');
+  });
+
+  it("el tour comprueba visibilidad, resuelve el ancla en cada paso y coloca los mensajes junto al control", () => {
+    const hook = read("client/src/hooks/useUserTour.ts");
+    const tour = getUserTourSteps("broker",false);
+    expect(tour.every(step=>Boolean(step.selector))).toBe(true);
+    expect(tour.some(step=>step.selector==='[data-testid="button-start-first-prospect"]')).toBe(true);
+    expect(hook).toContain("element.isConnected");
+    expect(hook).toContain("rect.right <= 0 || rect.left >= window.innerWidth");
+    expect(hook).toContain("current.moveTo(index)");
+    expect(hook).toContain("current.refresh()");
+    expect(hook).toContain('popoverClass: "cn-user-tour-popover"');
+    expect(hook).not.toContain("target ? { element: target } : {}");
+    expect(read("client/src/index.css")).toContain(".driver-popover.cn-user-tour-popover");
   });
 
   it("guarda un estado versionado por usuario y rol, separado de la marca legacy", () => {
