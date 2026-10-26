@@ -116,13 +116,37 @@ describe("Onboarding Fase A — recorrido por rol y ayuda", () => {
     expect(read("client/src/pages/Dashboard.tsx")).toContain("<BrokerQuickStart");
   });
 
-  it("ofrece una versión móvil centrada en el menú en lugar de elementos ocultos", () => {
+  it("el recorrido móvil identifica botones reales del drawer, no mensajes flotantes", () => {
+    const sidebar = read("client/src/components/Sidebar.tsx");
+    expect(sidebar).toContain('data-testid="mobile-sidebar"');
+    expect(sidebar).toContain('data-open={isMobileOpen ? "true" : "false"}');
+    expect(sidebar).toContain('testIdSuffix="-mobile"');
     for (const role of ["broker", "master_broker", "admin", "super_admin"]) {
       const list = selectors(role, true).join(" ");
-      expect(list).toContain("button-open-sidebar");
-      expect(list).not.toContain("nav-usuarios");
-      expect(list).not.toContain("nav-clientes");
+      expect(list).toContain("nav-ayuda-mobile");
+      expect(list).toContain("nav-productos-mobile");
+      expect(list).not.toContain('selector: undefined');
+      expect(getUserTourSteps(role, true).every(step => Boolean(step.selector))).toBe(true);
     }
+    expect(selectors("broker", true).join(" ")).toContain("nav-clientes-mobile");
+    expect(selectors("admin", true).join(" ")).toContain("nav-usuarios-mobile");
+  });
+
+  it("ancla todos los mensajes, omite módulos no renderizados y navega con apertura/cierre del drawer", () => {
+    const hook = read("client/src/hooks/useUserTour.ts");
+    const steps = getUserTourSteps("broker", false);
+    expect(steps.every(step => Boolean(step.selector))).toBe(true);
+    expect(steps.find(step => step.title.includes("Registra lo que necesita"))?.selector)
+      .toBe('[data-testid="button-start-first-prospect"]');
+    expect(hook).toContain("if (!target) return [];");
+    expect(hook).toContain("const transition = prepareMobileDrawer(steps[to]);");
+    expect(hook).toContain('data-testid="button-open-sidebar"');
+    expect(hook).toContain('data-testid="button-close-sidebar"');
+    expect(hook).toContain("window.setTimeout(advance, 360)");
+    expect(hook).toContain("onPrevClick:");
+    expect(hook).not.toContain("popover: { title: step.title, description: step.description }");
+    // Existing users retain their tour state; playback remains opt-in via Help.
+    expect(USER_TOUR_VERSION).toBe("3");
   });
 
   it("guarda un estado versionado por usuario y rol, separado de la marca legacy", () => {
