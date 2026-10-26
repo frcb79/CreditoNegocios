@@ -51,8 +51,9 @@ const broker: UserTourStep[] = [
     description: "En Clientes presiona Nuevo Cliente. Elige Crédito Empresarial, Hipotecario Vivienda o Arrendamiento; cada ruta permite iniciar con información esencial."
   },
   {
+    selector: '[data-testid="button-start-first-prospect"]',
     title: "3. Registra lo que necesita",
-    description: "Al guardar el prospecto, abre su ficha. Para crédito empresarial, registra la necesidad, el monto solicitado y los datos disponibles. Puedes completar el perfil más adelante."
+    description: "Desde el acceso para registrar un prospecto iniciarás su ficha. Al guardarlo, registra su necesidad, el monto solicitado y los datos disponibles. Puedes completar el perfil más adelante."
   },
   {
     selector: '[data-testid="nav-productos"]',
@@ -130,17 +131,11 @@ export function getUserTourSteps(role: string, mobile: boolean): UserTourStep[] 
 
   if (!mobile) return result;
 
-  // El menú lateral móvil está cerrado durante el recorrido: no apuntar a
-  // opciones fuera de pantalla. Mantener sus explicaciones y su numeración.
-  let menuHighlighted = false;
+  // La guía abre el menú móvil antes de cada paso de navegación.
+  // Anclar directamente a la opción real, no al botón de abrir menú
+  // ni a un popover centrado sin destino.
   return result.map(step => {
-    if (step.selector?.startsWith('[data-testid="nav-')) {
-      if (!menuHighlighted) {
-        menuHighlighted = true;
-        return { ...step, selector: '[data-testid="button-open-sidebar"]' };
-      }
-      return { ...step, selector: undefined };
-    }
-    return step;
+    if (!step.selector?.startsWith('[data-testid="nav-')) return step;
+    return { ...step, selector: step.selector.replace('"]', '-mobile"]') };
   });
 }
