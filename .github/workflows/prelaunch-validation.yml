@@ -6,6 +6,7 @@ on:
       - 'integration/phase-1a1-base-segura'
       - 'release/brokers-leasing-clients-20261022'
       - 'feat/onboarding-ayuda-v2-*'
+      - 'fix/onboarding-tour-anchor-position-*'
       - 'feat/biblioteca-comercial-brokers-*'
       - 'feat/biblioteca-comercial-filtros-*'
       - 'fix/recursos-comerciales-catalogo-borradores-*'
