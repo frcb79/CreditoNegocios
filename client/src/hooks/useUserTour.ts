@@ -70,46 +70,91 @@ export function useUserTour() {
     let instance: ReturnType<typeof driver> | null = null;
     let finished = false;
     let started = false;
+    let navigationTimer: number | undefined;
 
     const timer = window.setTimeout(() => {
       const mobile = window.innerWidth < 1024;
-      const steps: DriveStep[] = getUserTourSteps(role, mobile)
-        .map((step) => {
-          // Nunca eliminar un mensaje: si falta un ancla, mostrar el paso
-          // como explicación centrada en lugar de reducir la guía a 2 pasos.
-          const target = step.selector ? findRenderableTarget(step.selector) : null;
-          return {
-            ...(target ? { element: target } : {}),
-            popover: {
-              title: step.title,
-              description: step.description,
-              side: target ? (step.selector?.includes("nav-") ? "right" as const : "bottom" as const) : undefined,
-              align: "start" as const
-            }
-          };
-        });
+      const configured = getUserTourSteps(role, mobile);
+
+      // Only highlight actual, rendered controls. Missing RBAC modules are
+      // skipped, never presented as a floating popover in the corner/center.
+      const steps: DriveStep[] = configured.flatMap((step) => {
+        const target = step.selector ? findRenderableTarget(step.selector) : null;
+        if (!target) return [];
+        const isMobileNav = mobile && step.selector?.includes('-mobile"]');
+        const desktopNav = !mobile && step.selector?.startsWith('[data-testid="nav-');
+        return [{
+          element: target,
+          popover: {
+            title: step.title,
+            description: step.description,
+            side: desktopNav ? "right" as const : "bottom" as const,
+            align: isMobileNav ? "center" as const : "start" as const
+          }
+        }];
+      });
 
       if (steps.length === 0) return;
+
+      // A mobile nav target lives inside a drawer that starts offscreen.
+      // Open it BEFORE driver.js measures that target, and wait for its CSS
+      // slide transition. Close it before returning to a Dashboard control.
+      const mobileDrawer = () => document.querySelector<HTMLElement>('[data-testid="mobile-sidebar"]');
+      const prepareMobileDrawer = (next: DriveStep) => {
+        if (!mobile) return false;
+        const nav = next.element instanceof HTMLElement &&
+          next.element.dataset.testid?.startsWith("nav-") &&
+          next.element.dataset.testid?.endsWith("-mobile");
+        const open = mobileDrawer()?.dataset.open === "true";
+        if (nav && !open) {
+          document.querySelector<HTMLButtonElement>('[data-testid="button-open-sidebar"]')?.click();
+          return true;
+        }
+        if (!nav && open) {
+          document.querySelector<HTMLButtonElement>('[data-testid="button-close-sidebar"]')?.click();
+          return true;
+        }
+        return false;
+      };
+
+      const move = (to: number) => {
+        if (!instance || to < 0 || to >= steps.length) return;
+        if (navigationTimer !== undefined) window.clearTimeout(navigationTimer);
+        const transition = prepareMobileDrawer(steps[to]);
+        const advance = () => instance?.moveTo(to);
+        if (transition) navigationTimer = window.setTimeout(advance, 360);
+        else advance();
+      };
 
       instance = driver({
         showProgress: true,
         allowClose: true,
+        stagePadding: 7,
+        popoverOffset: 12,
         nextBtnText: "Siguiente",
         prevBtnText: "Anterior",
         doneBtnText: "Finalizar",
         steps,
         onNextClick: (_element, _step, { driver: current }) => {
-          if (current.hasNextStep()) {
-            current.moveNext();
-          } else {
+          const index = current.getActiveIndex() ?? 0;
+          if (index < steps.length - 1) move(index + 1);
+          else {
             finished = true;
             current.destroy();
           }
+        },
+        onPrevClick: (_element, _step, { driver: current }) => {
+          const index = current.getActiveIndex() ?? 0;
+          if (index > 0) move(index - 1);
         },
         onCloseClick: (_element, _step, { driver: current }) => {
           current.destroy();
         },
         onDestroyed: () => {
+          if (navigationTimer !== undefined) window.clearTimeout(navigationTimer);
+          if (mobile && mobileDrawer()?.dataset.open === "true") {
+            document.querySelector<HTMLButtonElement>('[data-testid="button-close-sidebar"]')?.click();
+          }
           if (started) {
             localStorage.setItem(storageKey, finished ? "completed" : "skipped");
           }
@@ -121,6 +166,7 @@ export function useUserTour() {
 
     return () => {
       window.clearTimeout(timer);
+      if (navigationTimer !== undefined) window.clearTimeout(navigationTimer);
       instance?.destroy();
     };
   }, [user?.id, user?.role]);
