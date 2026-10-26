@@ -1,6 +1,6 @@
 /**
  * Recorridos breves de incorporación: describen el flujo comercial real.
- * Los puntos no disponibles se explican sin resaltado, nunca se eliminan.
+ * Cada explicación apunta a una sección real; los puntos no disponibles no generan popovers flotantes.
  */
 export interface UserTourStep {
   selector?: string;
@@ -51,6 +51,7 @@ const broker: UserTourStep[] = [
     description: "En Clientes presiona Nuevo Cliente. Elige Crédito Empresarial, Hipotecario Vivienda o Arrendamiento; cada ruta permite iniciar con información esencial."
   },
   {
+    selector: '[data-testid="broker-quick-start"]',
     title: "3. Registra lo que necesita",
     description: "Al guardar el prospecto, abre su ficha. Para crédito empresarial, registra la necesidad, el monto solicitado y los datos disponibles. Puedes completar el perfil más adelante."
   },
@@ -130,16 +131,11 @@ export function getUserTourSteps(role: string, mobile: boolean): UserTourStep[] 
 
   if (!mobile) return result;
 
-  // El menú lateral móvil está cerrado durante el recorrido: no apuntar a
-  // opciones fuera de pantalla. Mantener sus explicaciones y su numeración.
-  let menuHighlighted = false;
+  // En móvil abrimos el Sidebar durante cada paso de navegación y apuntamos
+  // a la opción REAL (-mobile), no al menú hamburguesa ni a un modal centrado.
   return result.map(step => {
     if (step.selector?.startsWith('[data-testid="nav-')) {
-      if (!menuHighlighted) {
-        menuHighlighted = true;
-        return { ...step, selector: '[data-testid="button-open-sidebar"]' };
-      }
-      return { ...step, selector: undefined };
+      return { ...step, selector: step.selector.replace('"]', '-mobile"]') };
     }
     return step;
   });
