@@ -116,13 +116,27 @@ describe("Onboarding Fase A — recorrido por rol y ayuda", () => {
     expect(read("client/src/pages/Dashboard.tsx")).toContain("<BrokerQuickStart");
   });
 
-  it("ofrece una versión móvil centrada en el menú en lugar de elementos ocultos", () => {
+  it("ancla cada paso a un elemento real sin mensajes centrados ni sidebar oculto", () => {
+    const sidebar = read("client/src/components/Sidebar.tsx");
+    const hook = read("client/src/hooks/useUserTour.ts");
     for (const role of ["broker", "master_broker", "admin", "super_admin"]) {
-      const list = selectors(role, true).join(" ");
-      expect(list).toContain("button-open-sidebar");
-      expect(list).not.toContain("nav-usuarios");
-      expect(list).not.toContain("nav-clientes");
+      const desktop = getUserTourSteps(role, false);
+      const mobile = getUserTourSteps(role, true);
+      expect(desktop.every(step => Boolean(step.selector))).toBe(true);
+      expect(mobile.every(step => Boolean(step.selector))).toBe(true);
+      expect(mobile.filter(step => step.selector?.includes("nav-")).every(step =>
+        step.selector?.includes("-mobile")
+      )).toBe(true);
     }
+    expect(selectors("broker", true).join(" ")).toContain("nav-clientes-mobile");
+    expect(selectors("admin", true).join(" ")).toContain("nav-usuarios-mobile");
+    expect(sidebar).toContain('testIdSuffix="-mobile"');
+    expect(hook).toContain("prepareMobileSidebar");
+    expect(hook).toContain("findRenderableTarget(step.selector)");
+    expect(hook).toContain('target.scrollIntoView({ behavior: "auto"');
+    expect(hook).toContain("onPrevClick");
+    expect(hook).toContain("instance?.refresh()");
+    expect(hook).not.toContain("side: target ?");
   });
 
   it("guarda un estado versionado por usuario y rol, separado de la marca legacy", () => {
