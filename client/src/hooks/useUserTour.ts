@@ -10,6 +10,7 @@ import {
   getUserTourStorageKey
 } from "@/lib/userTour";
 import type { DriveStep } from "driver.js";
+import type { UserTourStep } from "@/lib/userTour";
 
 /**
  * El Sidebar renderiza dos menús (móvil y escritorio). Un nodo puede existir en
@@ -108,7 +109,7 @@ export function useUserTour() {
 
     const timer = window.setTimeout(() => {
       const availableSteps = getUserTourSteps(role, mobile).filter(
-        (step): step is typeof step & { selector: string } =>
+        (step): step is UserTourStep & { selector: string } =>
           Boolean(step.selector && document.querySelector(step.selector))
       );
       if (availableSteps.length === 0) return;
@@ -144,7 +145,8 @@ export function useUserTour() {
             target.scrollIntoView({ behavior: "auto", block: "nearest", inline: "nearest" });
             await wait(60);
             if (stopped || !findRenderableTarget(step.selector)) continue;
-            instance?.moveTo(index);
+            if (instance?.isActive()) instance.moveTo(index);
+            else instance?.drive(index);
             return;
           }
 
