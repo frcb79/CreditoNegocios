@@ -415,7 +415,9 @@ export default function Sidebar() {
       )}
 
       {/* Mobile sidebar */}
-      <div 
+      <div
+        data-testid="mobile-sidebar"
+        data-open={isMobileOpen ? "true" : "false"}
         className={cn(
           "fixed inset-y-0 left-0 z-50 w-64 shadow-lg flex flex-col transform transition-transform duration-300 ease-in-out lg:hidden",
           isMobileOpen ? "translate-x-0" : "-translate-x-full"
