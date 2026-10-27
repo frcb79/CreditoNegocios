@@ -38,6 +38,12 @@ describe("CN V5 — parser de previsualización sin escrituras", () => {
     expect(req.businessAgeSource).toBe("PM 3 años/PFAE 5 años");
     expect(req.bureauPolicySource).toBe("Buen historial últimos 24 meses");
     expect(req.guarantorSource).toBe("RL / Aval");
+    const source = preview.rows[0].condiciones.sourceTechnicalFields as Record<string, string>;
+    expect(source["Antigüedad empresa (fuente)"]).toBe("PM 3 años/PFAE 5 años");
+    expect(source["Buró (fuente)"]).toBe("Buen historial últimos 24 meses");
+    expect(source["Aval"]).toBe("RL / Aval");
+    expect(source).not.toHaveProperty("Financiera total %");
+    expect(source).not.toHaveProperty("Broker apertura %");
   });
 
   it("monto máximo por TPV no se inventa como pesos", () => {
