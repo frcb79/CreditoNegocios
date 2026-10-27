@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { and, eq, sql } from "drizzle-orm";
 import { db } from "./db";
-import { financialInstitutions, institutionProducts, institutionProductVersions } from "../shared/schema";
+import { financialInstitutions, institutionProducts, institutionProductVersions, productTemplates } from "../shared/schema";
 import { computeInstitutionProductVersionHash, validateOfferVersionParameters } from "./offerVersionService";
 import type { MasterV5Preview, MasterV5Row } from "./masterV5Preview";
 
@@ -51,6 +51,15 @@ export async function importMasterV5FinancialDrafts(preview: MasterV5Preview, us
     await tx.execute(sql.raw("SELECT pg_advisory_xact_lock(hashtext('cn-master-v5-import'))"));
     const insts = await tx.select().from(financialInstitutions);
     const offers = await tx.select().from(institutionProducts);
+    const templates = await tx.select().from(productTemplates);
+    const familyNames: Record<string, string[]> = {
+      credito_simple: ["credito simple"],
+      revolvente: ["credito revolvente", "revolvente"],
+      arrendamiento: ["arrendamiento"],
+      factoraje: ["factoraje"],
+      hipotecario: ["hipotecario", "credito hipotecario", "hipotecario vivienda"],
+      garantia_inmobiliaria_empresarial: ["garantia inmobiliaria empresarial", "hipotecario empresarial", "credito hipotecario empresarial"],
+    };
     let institutionsCreated = 0, offersCreated = 0, alreadyPresent = 0;
     const results: { row: number; status: string }[] = [];
     for (const row of preview.rows) {
@@ -67,12 +76,18 @@ export async function importMasterV5FinancialDrafts(preview: MasterV5Preview, us
         key(o.name || o.customName) === key(row.nombreOferta));
       if (found.length > 1) throw Error("Ofertas existentes duplicadas: " + row.financiera + " / " + row.nombreOferta);
       if (found.length === 1) { alreadyPresent++; results.push({ row: row.row, status: "existing_untouched" }); continue; }
+      const candidateNames = familyNames[row.familia] || [];
+      const compatibleTemplates = templates.filter(t => t.isActive !== false &&
+        candidateNames.includes(key(t.name)));
+      if (compatibleTemplates.length !== 1)
+        throw Error("Plantilla activa no encontrada o ambigua para " + row.familia + " / " + row.nombreOferta);
       const id = randomUUID(), c = conditions(row), r = requirements(row);
       const sourceDocs = row.condiciones.requiredDocumentationSource;
       const docs = typeof sourceDocs === "string" && sourceDocs.trim() ? [sourceDocs.trim()] : [];
       const vars = {};
       const [created] = await tx.insert(institutionProducts).values({
-        id, institutionId: inst.id, name: row.nombreOferta, customName: row.nombreOferta,
+        id, institutionId: inst.id, templateId: compatibleTemplates[0].id,
+        name: row.nombreOferta, customName: row.nombreOferta,
         productType: row.familia, description: String(row.condiciones.sourceNotes || "") || null,
         targetProfiles: row.perfiles, configuration: {}, activeVariables: {},
         status: "draft", currentVersionNumber: 1, isActive: inst.isActive !== false, createdBy: userId,
