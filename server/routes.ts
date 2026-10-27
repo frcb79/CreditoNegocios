@@ -9585,6 +9585,37 @@ function maskCLABE(clabe?: string | null): string | null {
     }
   });
 
+  // Super Admin only. Aggregate read-only financial summaries from versioned offers.
+  // A legacy institution/global configuration is NOT authoritative for a versioned offer.
+  app.get('/api/institution-products/financial-summaries', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub || req.user?.id;
+      if (!(await requirePlatformRole(userId, ['super_admin']))) {
+        return res.status(403).json({ code: 'SUPER_ADMIN_REQUIRED' });
+      }
+      const { rows } = await pool.query(`
+        SELECT DISTINCT ON (institution_product_id)
+          institution_product_id AS "offerId",
+          conditions ->> 'minAmount' AS "minAmount",
+          conditions ->> 'maxAmount' AS "maxAmount",
+          conditions ->> 'minInterestRate' AS "minInterestRate",
+          conditions ->> 'maxInterestRate' AS "maxInterestRate",
+          conditions ->> 'rateSource' AS "rateSource",
+          conditions ->> 'minTermMonths' AS "minTermMonths",
+          conditions ->> 'maxTermMonths' AS "maxTermMonths"
+        FROM public.institution_product_versions
+        WHERE status IN ('draft', 'published', 'active')
+        ORDER BY institution_product_id,
+          CASE status WHEN 'draft' THEN 0 WHEN 'published' THEN 1 ELSE 2 END,
+          version_number DESC
+      `);
+      res.json(rows);
+    } catch (error) {
+      console.error('Error consulting versioned offer financial summaries:', error);
+      res.status(500).json({ message: 'No se pudieron consultar las condiciones de las ofertas' });
+    }
+  });
+
   app.get('/api/institution-products/:id', isAuthenticated, async (req: any, res) => {
     try {
       const { id } = req.params;
