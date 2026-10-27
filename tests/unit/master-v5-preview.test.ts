@@ -38,16 +38,19 @@ describe("CN V5 — parser de previsualización sin escrituras", () => {
     const result = previewMasterV5(book([row]), "financieras");
     expect(result.rows[0].montoMaximo).toBeNull();
     expect(result.rows[0].montoMaximoVariable).toContain("TPV");
-    expect(result.warnings.some(w => w.field === "Monto máximo")).toBe(true);
+    expect(result.warnings.some(w => w.field === "Monto máximo")).toBe(false);
+    expect(result.rows[0].matching).not.toHaveProperty("amountFormula");
+    expect(result.rows[0].condiciones.informationalMaximumLoan).toContain("TPV");
   });
 
-  it("no asume 4% cuando la unidad está pendiente en PDN", () => {
+  it("normaliza 4% confirmado de apertura cliente para PDN Revolvente", () => {
     const row = [...base];
     row[0] = "PDN"; row[3] = "PDN Revolvente";
     row[9] = "0.04 (unidad pendiente)";
     const result = previewMasterV5(book([row]), "financieras");
-    expect(result.warnings.some(w => w.field === "Apertura AL CLIENTE (fuente)")).toBe(true);
-    expect(result.rows[0].aperturaClienteFuente).toContain("unidad pendiente");
+    expect(result.warnings.some(w => w.field === "Apertura AL CLIENTE (fuente)")).toBe(false);
+    expect(result.rows[0].aperturaClienteFuente).toBe("4%");
+    expect(result.rows[0].condiciones.clientOpeningRatePct).toBe(4);
   });
 
   it("interpreta porcentajes V5 sin perder orden de magnitud", () => {
