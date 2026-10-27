@@ -56,6 +56,7 @@ export default function BulkImport() {
   const [applyingFinancieras, setApplyingFinancieras] = useState(false);
   const [appliedFinancieras, setAppliedFinancieras] = useState<string | null>(null);
   const [financierasV5Match, setFinancierasV5Match] = useState<{row:number; action:string}[]>([]);
+  const [plannedV5Families, setPlannedV5Families] = useState<string[]>([]);
   const [isPreviewingClients, setIsPreviewingClients] = useState(false);
 
   const handleDownloadTemplate = async (type: 'financieras' | 'clients') => {
@@ -107,6 +108,7 @@ export default function BulkImport() {
       setFinancierasPreview(null);
       setFinancierasV5Issues([]);
       setFinancierasV5Match([]);
+      setPlannedV5Families([]);
       setCanApplyFinancieras(false);
       setAppliedFinancieras(null);
       setFinancierasResult(null);
@@ -145,6 +147,7 @@ export default function BulkImport() {
       if (type === 'financieras') {
         setFinancierasV5Issues([...(data.errors || []), ...(data.warnings || [])]);
         setFinancierasV5Match(data.matches || []);
+        setPlannedV5Families(data.plannedCanonicalFamilies || []);
         setCanApplyFinancieras(Boolean(data.writable) && (data.errors || []).length === 0);
         setAppliedFinancieras(null);
         const columns = ['Financiera', 'Oferta', 'Familia', 'Perfiles', 'Monto mínimo', 'Monto máximo', 'Estatus'];
@@ -190,7 +193,8 @@ export default function BulkImport() {
       setAppliedFinancieras(
         "Financieras creadas: " + body.result.institutionsCreated +
         "; ofertas en borrador: " + body.result.offersCreated +
-        "; ofertas existentes sin cambio: " + body.result.alreadyPresent);
+        "; ofertas existentes sin cambio: " + body.result.alreadyPresent +
+        "; familias preparadas: " + (body.result.canonicalTemplatesCreated || []).length);
       setCanApplyFinancieras(false);
       queryClient.invalidateQueries({ queryKey: ["/api/financial-institutions"] });
       queryClient.invalidateQueries({ queryKey: ["/api/institution-products"] });
@@ -501,35 +505,38 @@ export default function BulkImport() {
                     <PreviewTable preview={financierasPreview} />
                     <div className="rounded-md border border-border p-3 text-xs space-y-1">
                       <p className="font-semibold">Coincidencias: {financierasV5Match.filter(m => m.action === 'existing_offer').length} ofertas existentes; {financierasV5Match.filter(m => m.action === 'new_offer' || m.action === 'new_institution_and_offer').length} por crear.</p>
-                      <p>Observaciones por validar: {financierasV5Issues.length}</p>
+                      <p>Observaciones: {financierasV5Issues.length} (las advertencias informativas no bloquean).</p>
+                      {plannedV5Families.length > 0 && (
+                        <p className="font-medium text-foreground">
+                          Al confirmar se prepararán las familias aprobadas que faltan en Staging:
+                          {' '}{plannedV5Families.join(', ')}. No se crearán productos duplicados.
+                        </p>
+                      )}
                       {financierasV5Issues.slice(0, 16).map((issue, i) =>
                         <p key={i} className={issue.level === 'error' ? 'text-destructive' : 'text-muted-foreground'}>
                           Fila {issue.row} · {issue.field}: {issue.message}
                         </p>
                       )}
                     </div>
-                    <div className="flex gap-2 pt-1">
-                      <Button
-                        onClick={() => {
-                          setFinancierasFile(null);
-                          setFinancierasPreview(null);
-                        }}
-                        variant="outline"
-                        size="sm"
-                        className="flex-1 h-9 text-xs"
-                      >
+                    <div className="space-y-3 border-t border-border pt-4">
+                      {canApplyFinancieras ? (
+                        <Button size="lg" className="w-full text-sm font-semibold" disabled={applyingFinancieras}
+                          onClick={applyFinancierasV5}>
+                          {applyingFinancieras ? "Importando borradores..." : "Confirmar importación de ofertas en Staging"}
+                        </Button>
+                      ) : (
+                        <p role="status" className="text-sm text-destructive">
+                          No se puede confirmar todavía. Revisa los errores del catálogo y vuelve a previsualizar.
+                        </p>
+                      )}
+                      <p className="text-xs text-muted-foreground">
+                        Solo Staging: las ofertas quedan en borrador. Las comisiones y la publicación se realizan por separado.
+                      </p>
+                      <Button onClick={() => { setFinancierasFile(null); setFinancierasPreview(null);
+                        setFinancierasV5Issues([]); setFinancierasV5Match([]); setPlannedV5Families([]);
+                        setCanApplyFinancieras(false); }} variant="outline" size="sm">
                         Cancelar
                       </Button>
-                      <div className="flex-1 rounded-md border border-amber-300/50 bg-amber-500/10 p-2 text-xs text-foreground">
-                        Solo los borradores pueden importarse en Staging; publicación y comisiones quedan separadas.
-                      </div>
- 
-                      {canApplyFinancieras && (
-                        <Button size="sm" className="flex-1" disabled={applyingFinancieras}
-                          onClick={applyFinancierasV5}>
-                          {applyingFinancieras ? "Importando borradores..." : "Confirmar carga en Staging"}
-                        </Button>
-                      )}
                     </div>
                   </>
                 )}
