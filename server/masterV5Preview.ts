@@ -114,7 +114,7 @@ export function normalizeV5Profiles(raw: unknown): string[] {
     else if (["pf", "persona fisica"].includes(token)) out.add("fisica");
     else if (["sin sat"].includes(token)) out.add("sin_sat");
   }
-  return [...out];
+  return Array.from(out);
 }
 
 export function normalizeV5Family(value: unknown): string {
