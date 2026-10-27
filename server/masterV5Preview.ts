@@ -120,6 +120,8 @@ export function normalizeV5Profiles(raw: unknown): string[] {
 export function normalizeV5Family(value: unknown): string {
   const v = norm(value);
   if (/factoraje/.test(v)) return "factoraje";
+  if (/anticipo de ventas|tpv/.test(v)) return "credito_simple";
+  if (/hipotecario empresarial/.test(v)) return "garantia_inmobiliaria_empresarial";
   if (/arrendamiento|leasing/.test(v)) return "arrendamiento";
   if (/revolvente|linea de credito/.test(v)) return "revolvente";
   if (/hipotecario|hipoteca vivienda/.test(v)) return "hipotecario";
@@ -226,6 +228,9 @@ export function previewMasterV5(buffer: Buffer, kind: MasterV5Kind): MasterV5Pre
       if (comisiones[C.masterApertura] > comisiones[C.finApertura] ||
           comisiones[C.brokerApertura] > comisiones[C.finApertura])
         err("Apertura", "La comisión asignada al canal supera lo recibido de la financiera");
+      if (comisiones[C.masterRenovacion] > comisiones[C.finRenovacion] ||
+          comisiones[C.brokerRenovacion] > comisiones[C.finRenovacion])
+        err("Renovación", "La comisión de renovación del canal supera lo recibido de la financiera");
     }
     for (const issue of issues) (issue.level === "error" ? errors : warnings).push(issue);
     rows.push({
