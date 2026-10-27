@@ -141,6 +141,24 @@ describe("Biblioteca comercial - contratos, permisos y formatos", () => {
     expect(page).not.toContain("localStorage");
   });
 
+  it("centers CTA text inside approved graphic buttons", () => {
+    const renderer = source("client/src/lib/commercialGraphicRenderer.ts");
+    expect(renderer).toContain('align:"left"|"center"="left"');
+    expect(renderer).toContain('const x=align==="center" ? field.x+field.width/2 : field.x');
+    expect(renderer).toContain('fit(ctx,graphic.fields.cta.text,graphic.fields.cta,"center")');
+  });
+
+  it("limits graphic personalization to broker/master name and WhatsApp only", () => {
+    const renderer = source("client/src/lib/commercialGraphicRenderer.ts");
+    const page = source("client/src/pages/CommercialResources.tsx");
+    expect(renderer).not.toContain("approvedLogoUrl");
+    expect(renderer).not.toContain("drawLogo(");
+    expect(renderer).toContain("Never draw profile logos, avatars, photos or letter tiles");
+    expect(page).not.toContain("authorizedLogo");
+    expect(page).toContain("no muestran foto, avatar ni logo propio del Broker/Master");
+    expect(page).toContain("No se usa foto, avatar ni logo propio del Broker/Master");
+  });
+
   it("keeps financing product guides integrated in Help", () => {
     const help = source("server/commercialHelpService.ts");
     for (const slug of [
