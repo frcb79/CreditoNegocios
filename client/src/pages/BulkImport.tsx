@@ -440,7 +440,7 @@ export default function BulkImport() {
     <MainLayout>
       <Header 
         title="Importación Masiva"
-        subtitle="Carga y sincroniza financieras, comisiones de red y cartera de clientes desde Excel"
+        subtitle="Importa financieras y ofertas, comisiones por oferta y clientes desde Excel"
       />
       <main className="flex-1 p-3 sm:p-5 lg:p-6 overflow-y-auto space-y-4">
 
@@ -454,7 +454,7 @@ export default function BulkImport() {
             </TabsTrigger>
             <TabsTrigger value="comisiones" className="flex-1 text-xs font-medium py-1 px-2 gap-1.5">
               <FileSpreadsheet className="w-3.5 h-3.5" />
-              <span>Comisiones Red</span>
+              <span>Comisiones por Oferta</span>
             </TabsTrigger>
             <TabsTrigger value="clients" className="flex-1 text-xs font-medium py-1 px-2 gap-1.5">
               <Users className="w-3.5 h-3.5" />
