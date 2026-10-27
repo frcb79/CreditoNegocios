@@ -4,6 +4,7 @@ import { db } from "./db";
 import { financialInstitutions, institutionProducts, institutionProductVersions, productTemplates } from "../shared/schema";
 import { computeInstitutionProductVersionHash, validateOfferVersionParameters } from "./offerVersionService";
 import type { MasterV5Preview, MasterV5Row } from "./masterV5Preview";
+import { resolveMasterV5Template } from "./masterV5TemplateResolver";
 
 /** Transactional, idempotent, staging-only service. Never modifies published versions. */
 const key = (v: unknown) => String(v ?? "").trim().normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/\s+/g, " ");
@@ -52,14 +53,16 @@ export async function importMasterV5FinancialDrafts(preview: MasterV5Preview, us
     const insts = await tx.select().from(financialInstitutions);
     const offers = await tx.select().from(institutionProducts);
     const templates = await tx.select().from(productTemplates);
-    const familyNames: Record<string, string[]> = {
-      credito_simple: ["credito simple"],
-      revolvente: ["credito revolvente", "revolvente"],
-      arrendamiento: ["arrendamiento"],
-      factoraje: ["factoraje"],
-      hipotecario: ["hipotecario", "credito hipotecario", "hipotecario vivienda"],
-      garantia_inmobiliaria_empresarial: ["garantia inmobiliaria empresarial", "hipotecario empresarial", "credito hipotecario empresarial"],
-    };
+    // Validar TODAS las familias del archivo ANTES de crear una sola financiera.
+    // Sin crear plantillas ni reactivar variantes antiguas.
+    const assignments = new Map<number, ReturnType<typeof resolveMasterV5Template>>();
+    for (const row of preview.rows) {
+      const resolved = resolveMasterV5Template(templates, row.familia);
+      if (!resolved.template) throw Error(
+        (resolved.error || "Plantilla no disponible") +
+        " (fila " + row.row + ": " + row.nombreOferta + ")");
+      assignments.set(row.row, resolved);
+    }
     let institutionsCreated = 0, offersCreated = 0, alreadyPresent = 0;
     const results: { row: number; status: string }[] = [];
     for (const row of preview.rows) {
@@ -76,19 +79,23 @@ export async function importMasterV5FinancialDrafts(preview: MasterV5Preview, us
         key(o.name || o.customName) === key(row.nombreOferta));
       if (found.length > 1) throw Error("Ofertas existentes duplicadas: " + row.financiera + " / " + row.nombreOferta);
       if (found.length === 1) { alreadyPresent++; results.push({ row: row.row, status: "existing_untouched" }); continue; }
-      const candidateNames = familyNames[row.familia] || [];
-      const compatibleTemplates = templates.filter(t => t.isActive !== false &&
-        candidateNames.includes(key(t.name)));
-      if (compatibleTemplates.length !== 1)
-        throw Error("Plantilla activa no encontrada o ambigua para " + row.familia + " / " + row.nombreOferta);
+      const matched = assignments.get(row.row);
+      if (!matched?.template || !matched.productType) throw Error(
+        "Plantilla no encontrada para " + row.nombreOferta);
       const id = randomUUID(), c = conditions(row), r = requirements(row);
+      // Hipotecario empresarial utiliza la familia Hipotecario con segmento propio;
+      // nunca se confunde con ofertas de vivienda.
+      if (matched.segment) {
+        c.segmento_hipotecario = matched.segment;
+        r.segmento_hipotecario = matched.segment;
+      }
       const sourceDocs = row.condiciones.requiredDocumentationSource;
       const docs = typeof sourceDocs === "string" && sourceDocs.trim() ? [sourceDocs.trim()] : [];
       const vars = {};
       const [created] = await tx.insert(institutionProducts).values({
-        id, institutionId: inst.id, templateId: compatibleTemplates[0].id,
+        id, institutionId: inst.id, templateId: matched.template.id,
         name: row.nombreOferta, customName: row.nombreOferta,
-        productType: row.familia, description: String(row.condiciones.sourceNotes || "") || null,
+        productType: matched.productType, description: String(row.condiciones.sourceNotes || "") || null,
         targetProfiles: row.perfiles, configuration: {}, activeVariables: {},
         status: "draft", currentVersionNumber: 1, isActive: inst.isActive !== false, createdBy: userId,
       }).returning();
