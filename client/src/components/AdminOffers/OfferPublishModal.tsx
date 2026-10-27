@@ -116,6 +116,11 @@ export default function OfferPublishModal({
     });
   };
 
+  const formatRate = (value: unknown): string =>
+    value !== null && value !== undefined && value !== "" && Number.isFinite(Number(value))
+      ? Number(value).toLocaleString("es-MX", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + "%"
+      : "Pendiente";
+
   const formatCurrency = (val: any) => {
     if (val === undefined || val === null || val === "") return "Pendiente";
     const num = Number(val);
@@ -285,7 +290,7 @@ export default function OfferPublishModal({
                       <span>Esquema de Comisiones por Canal (Apertura)</span>
                     </span>
                     <span className="text-[11px] font-semibold text-blue-900">
-                      Bolsa Financiera: {summary?.commissions?.financiera !== null ? `${summary?.commissions?.financiera}%` : "Pendiente"}
+                      Bolsa Financiera: {summary?.commissions?.financiera != null ? formatRate(summary.commissions.financiera) : "Pendiente"}
                     </span>
                   </div>
 
@@ -301,13 +306,13 @@ export default function OfferPublishModal({
                       <div className="flex items-center justify-between text-[11px] text-slate-600">
                         <span>Comisión Broker:</span>
                         <strong className="text-emerald-800">
-                          {summary?.commissions?.brokerDirecto !== null ? `${summary.commissions.brokerDirecto}%` : "Pendiente"}
+                          {summary?.commissions?.brokerDirecto != null ? formatRate(summary.commissions.brokerDirecto) : "Pendiente"}
                         </strong>
                       </div>
                       <div className="flex items-center justify-between text-[11px] text-slate-600">
                         <span>Margen Plataforma:</span>
                         <strong className="text-slate-900">
-                          {summary?.commissions?.isMarginDirectPending ? "Pendiente" : `${summary.commissions.platformMarginDirect}%`}
+                          {summary?.commissions?.isMarginDirectPending ? "Pendiente" : formatRate(summary?.commissions?.platformMarginDirect)}
                         </strong>
                       </div>
                     </div>
@@ -323,13 +328,13 @@ export default function OfferPublishModal({
                       <div className="flex items-center justify-between text-[11px] text-slate-600">
                         <span>Techo Red Master:</span>
                         <strong className="text-purple-800">
-                          {summary?.commissions?.masterBroker !== null ? `${summary.commissions.masterBroker}%` : "Pendiente"}
+                          {summary?.commissions?.masterBroker != null ? formatRate(summary.commissions.masterBroker) : "Pendiente"}
                         </strong>
                       </div>
                       <div className="flex items-center justify-between text-[11px] text-slate-600">
                         <span>Margen Plataforma:</span>
                         <strong className="text-slate-900">
-                          {summary?.commissions?.isMarginMasterPending ? "Pendiente" : `${summary.commissions.platformMarginMaster}%`}
+                          {summary?.commissions?.isMarginMasterPending ? "Pendiente" : formatRate(summary?.commissions?.platformMarginMaster)}
                         </strong>
                       </div>
                     </div>
