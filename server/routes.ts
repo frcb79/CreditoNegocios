@@ -41,6 +41,7 @@ import {
 } from "./commissionImport";
 import { blockLegacyEconomicExcelImport, blockLegacyEconomicExcelType } from "./prelaunchEconomicImportGuard";
 import { previewMasterV5, type MasterV5Kind } from "./masterV5Preview";
+import { importMasterV5FinancialDrafts, importMasterV5CommissionDrafts } from "./masterV5StagingImport";
 import {
   parseSocExcel,
   syncSocFinancierasToDatabase
@@ -13269,10 +13270,43 @@ function maskCLABE(clabe?: string | null): string | null {
             institution ? 'new_offer' : 'new_institution_and_offer',
         };
       });
-      res.json({ ...preview, matches, writable: false,
-        message: 'Vista previa: no se cambió ningún registro. La carga por Excel permanece bloqueada hasta completar el importador versionado.' });
+      res.json({ ...preview, matches, writable: process.env.RAILWAY_ENVIRONMENT_NAME === 'staging',
+        message: 'Vista previa sin escrituras. Solo Staging permite aplicar borradores mediante el importador V5 protegido.' });
     } catch (error: any) {
       res.status(400).json({ message: error?.message || 'No se pudo analizar el maestro V5' });
+    }
+  });
+
+  // CN-V5: Protected STAGING-ONLY import into versioned drafts, never published or institution-global rates.
+  // Keep the legacy SEC-P1 import guard in place for /api/import/financieras, /commissions and /financieras-soc.
+  app.post('/api/import/v5/apply/:kind', isAuthenticated, requireModule('importacion'), excelUpload.single('file'), async (req: any, res) => {
+    try {
+      if (process.env.RAILWAY_ENVIRONMENT_NAME !== 'staging') {
+        return res.status(409).json({ code: 'V5_STAGING_ONLY', message: 'La carga V5 solo está habilitada en Staging' });
+      }
+      const userId = req.user?.claims?.sub || req.user?.id;
+      if (!(await requirePlatformRole(userId, ['super_admin']))) {
+        return res.status(403).json({ code: 'SUPER_ADMIN_REQUIRED', message: 'Solo Super Admin puede importar el maestro V5' });
+      }
+      const kind = String(req.params.kind || '');
+      if (kind !== 'financieras' && kind !== 'comisiones') {
+        return res.status(400).json({ message: 'Tipo de carga inválido' });
+      }
+      if (!req.file?.buffer) return res.status(400).json({ message: 'Adjunta el archivo Excel' });
+      const preview = previewMasterV5(req.file.buffer, kind as MasterV5Kind);
+      if (preview.errors.length > 0) return res.status(422).json({
+        code: 'V5_VALIDATION_FAILED',
+        message: 'Hay errores de validación. No se modificó ninguna oferta.',
+        errors: preview.errors,
+      });
+      const result = kind === 'financieras'
+        ? await importMasterV5FinancialDrafts(preview, userId)
+        : await importMasterV5CommissionDrafts(preview);
+      return res.json({ success: true, result, warnings: preview.warnings,
+        message: 'Importación transaccional en Staging: borradores únicamente, 0 publicaciones automáticas' });
+    } catch (error: any) {
+      console.error('V5 staging import failed:', error?.message || error);
+      return res.status(409).json({ code: 'V5_IMPORT_REJECTED', message: error?.message || 'No se pudo importar V5' });
     }
   });
 
