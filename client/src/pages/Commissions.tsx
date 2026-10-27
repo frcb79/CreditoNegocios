@@ -23,7 +23,6 @@ import { useAuth } from "@/hooks/useAuth";
 import { getStatusLabel, getStatusBadgeClass } from "@/lib/statusConfig";
 import { formatDistanceToNow, format } from "date-fns";
 import { es } from "date-fns/locale";
-import CommissionBulkUploader from "@/components/Commissions/CommissionBulkUploader";
 import { cn } from "@/lib/utils";
 import { ContextualHelpLink } from "@/components/Help/ContextualHelpLink";
 import { 
@@ -106,7 +105,7 @@ export default function Commissions() {
   const [showRatesModal, setShowRatesModal] = useState(false);
   const [ratesSearchTerm, setRatesSearchTerm] = useState("");
   const [, setLocation] = useLocation();
-  const [activeTab, setActiveTab] = useState<'commissions' | 'sobretasa' | 'importar-comisiones'>('commissions');
+  const [activeTab, setActiveTab] = useState<'commissions' | 'sobretasa'>('commissions');
   
   // Bloque 6: Subpestañas operativas de Super Admin
   const [adminSubTab, setAdminSubTab] = useState<'por_aprobar' | 'dispersion' | 'historial'>('por_aprobar');
@@ -692,15 +691,13 @@ export default function Commissions() {
                 <Percent className="w-4 h-4 mr-2" />
                 Control de Sobretasa (Financieras)
               </Button>
-              <Button
-                variant={activeTab === 'importar-comisiones' ? 'default' : 'outline'}
-                size="sm"
-                onClick={() => setActiveTab('importar-comisiones')}
-                className={activeTab === 'importar-comisiones' ? 'bg-blue-700 text-white hover:bg-blue-800' : 'text-blue-800 border-blue-300'}
-              >
-                <FileSpreadsheet className="w-4 h-4 mr-2" />
-                Carga Masiva de Comisiones (Excel)
-              </Button>
+              {user?.role === 'super_admin' && (
+                <Button variant="outline" size="sm" onClick={() => setLocation('/importacion-masiva?tab=comisiones')}
+                  className="text-blue-800 border-blue-300">
+                  <FileSpreadsheet className="w-4 h-4 mr-2" />
+                  Importar comisiones por oferta
+                </Button>
+              )}
             </div>
           )}
 
@@ -1822,10 +1819,6 @@ export default function Commissions() {
             </div>
           ) : null}
 
-          {/* Vista de Carga Masiva de Comisiones para Super Admin */}
-          {activeTab === 'importar-comisiones' && (user?.role === 'admin' || user?.role === 'super_admin') && (
-            <CommissionBulkUploader />
-          )}
         </main>
 
         {/* Modal de Esquema de Comisiones por Financiera */}
