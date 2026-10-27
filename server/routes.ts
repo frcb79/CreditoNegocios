@@ -40,6 +40,7 @@ import {
   importCommissionsFile
 } from "./commissionImport";
 import { blockLegacyEconomicExcelImport, blockLegacyEconomicExcelType } from "./prelaunchEconomicImportGuard";
+import { previewMasterV5, type MasterV5Kind } from "./masterV5Preview";
 import {
   parseSocExcel,
   syncSocFinancierasToDatabase
@@ -13234,6 +13235,44 @@ function maskCLABE(clabe?: string | null): string | null {
       } else {
         cb(new Error('Solo se permiten archivos Excel (.xlsx, .xls)'));
       }
+    }
+  });
+
+  // CN-V5: read-only master preview. Does not bypass the P1 economic import guard.
+  // Requires Super Admin because the workbook contains confidential commission data.
+  app.post('/api/import/v5/preview/:kind', isAuthenticated, requireModule('importacion'), excelUpload.single('file'), async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub || req.user?.id;
+      if (!(await requirePlatformRole(userId, ['super_admin']))) {
+        return res.status(403).json({ code: 'SUPER_ADMIN_REQUIRED', message: 'Solo Super Admin puede previsualizar el maestro V5' });
+      }
+      const kind = String(req.params.kind || '');
+      if (kind !== 'financieras' && kind !== 'comisiones') {
+        return res.status(400).json({ message: 'Tipo de carga inválido' });
+      }
+      if (!req.file?.buffer) {
+        return res.status(400).json({ message: 'Adjunta el archivo Excel' });
+      }
+      const preview = previewMasterV5(req.file.buffer, kind as MasterV5Kind);
+      const norm = (v: unknown) => String(v ?? '').trim().normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/\s+/g, ' ');
+      const institutions = await storage.getFinancialInstitutions();
+      const offers = await storage.getInstitutionProducts();
+      const matches = preview.rows.map(row => {
+        const institution = institutions.find(inst => norm(inst.name) === norm(row.financiera));
+        const matchingOffers = institution ? offers.filter(offer =>
+          offer.institutionId === institution.id && norm(offer.name || offer.customName) === norm(row.nombreOferta)) : [];
+        return {
+          row: row.row,
+          institutionId: institution?.id || null,
+          existingOfferIds: matchingOffers.map(offer => offer.id),
+          action: matchingOffers.length > 1 ? 'collision' : matchingOffers.length ? 'existing_offer' :
+            institution ? 'new_offer' : 'new_institution_and_offer',
+        };
+      });
+      res.json({ ...preview, matches, writable: false,
+        message: 'Vista previa: no se cambió ningún registro. La carga por Excel permanece bloqueada hasta completar el importador versionado.' });
+    } catch (error: any) {
+      res.status(400).json({ message: error?.message || 'No se pudo analizar el maestro V5' });
     }
   });
 
