@@ -460,52 +460,7 @@ export default function BulkImport() {
         </div>
 
         <TabsContent value="financieras" className="mt-4 space-y-4">
-          <div className="grid gap-4 lg:grid-cols-2">
-            <Card className="border border-border/80 shadow-xs flex flex-col justify-between">
-              <CardHeader className="py-3 px-4 sm:px-5 border-b border-border/60">
-                <CardTitle className="text-sm font-semibold flex items-center gap-2">
-                  <Download className="w-4 h-4 text-primary" />
-                  Formato de referencia de financieras
-                </CardTitle>
-                <CardDescription className="text-xs">
-                  Puedes previsualizar directamente el maestro V5; esta plantilla es solo referencia.
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="p-4 sm:p-5 space-y-3.5 flex-1 flex flex-col justify-between">
-                <div className="bg-primary/5 border border-primary/15 rounded-lg p-3 text-xs space-y-2">
-                  <p className="font-semibold text-foreground flex items-center gap-1.5">
-                    <Sparkles className="w-3.5 h-3.5 text-primary" />
-                    Reglas de Matching y Comisiones Incluidas:
-                  </p>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px]">
-                    <div className="bg-background/80 p-2 rounded border border-border/60">
-                      <p className="font-semibold text-foreground mb-0.5">🎯 Criterios de Matching (18 campos):</p>
-                      <p className="text-muted-foreground leading-relaxed">
-                        Buró PF, PM y Accionista, ingresos, facturación TPV, tolerancia, aval, CIEC y estados fin.
-                      </p>
-                    </div>
-                    <div className="bg-background/80 p-2 rounded border border-border/60">
-                      <p className="font-semibold text-foreground mb-0.5">⚙️ Producto y Comisiones:</p>
-                      <p className="text-muted-foreground leading-relaxed">
-                        Montos, plazos, tasas y comisiones para Super Admin, Broker y Master.
-                      </p>
-                    </div>
-                  </div>
-                  <p className="text-[10.5px] text-muted-foreground italic">
-                    La vista previa detecta registros existentes; no se actualiza ni crea información automáticamente.
-                  </p>
-                </div>
-                <Button 
-                  onClick={() => handleDownloadTemplate('financieras')}
-                  className="w-full h-9 text-xs font-medium"
-                  variant="outline"
-                >
-                  <Download className="w-3.5 h-3.5 mr-1.5" />
-                  Descargar formato de referencia
-                </Button>
-              </CardContent>
-            </Card>
-
+          <div className="max-w-5xl">
             <Card className="border border-border/80 shadow-xs flex flex-col justify-between">
               <CardHeader className="py-3 px-4 sm:px-5 border-b border-border/60">
                 <CardTitle className="text-sm font-semibold flex items-center gap-2">
@@ -574,7 +529,8 @@ export default function BulkImport() {
                           onClick={applyFinancierasV5}>
                           {applyingFinancieras ? "Importando borradores..." : "Confirmar carga en Staging"}
                         </Button>
-                      )}                   </div>
+                      )}
+                    </div>
                   </>
                 )}
                 
