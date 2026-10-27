@@ -39,7 +39,10 @@ interface ImportResult {
 export default function BulkImport() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
-  const [activeTab, setActiveTab] = useState("financieras");
+  const [activeTab, setActiveTab] = useState(() =>
+    typeof window !== "undefined" && new URLSearchParams(window.location.search).get("tab") === "comisiones"
+      ? "comisiones" : "financieras"
+  );
   
   const [financierasFile, setFinancierasFile] = useState<File | null>(null);
   const [clientsFile, setClientsFile] = useState<File | null>(null);
