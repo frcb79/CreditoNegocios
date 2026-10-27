@@ -15,6 +15,7 @@ type Preview = {
   warnings: Issue[];
   matches: Match[];
   writable: boolean;
+  prerequisite?: string;
   rows: { row: number; financiera: string; nombreOferta: string; comisiones: Record<string, number> }[];
 };
 
@@ -25,6 +26,10 @@ export default function CommissionMasterV5Preview() {
   const [loading, setLoading] = useState(false);
   const [applying, setApplying] = useState(false);
   const [result, setResult] = useState<string | null>(null);
+  const formatPct = (value?: number): string =>
+    typeof value === "number" && Number.isFinite(value)
+      ? value.toLocaleString("es-MX", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + "%"
+      : "—";
 
   async function previsualizar() {
     if (!file) return;
@@ -104,9 +109,12 @@ export default function CommissionMasterV5Preview() {
               <div className="rounded border p-2"><strong>{preview.warnings.length}</strong><div className="text-xs">Advertencias</div></div>
             </div>
             <p className="text-xs text-muted-foreground">
-              {preview.matches?.filter(m => m.action === "existing_offer").length || 0} ofertas coinciden con el catálogo actual.
+              {preview.matches?.filter(m => m.action === "existing_offer").length || 0} de {preview.totalRows} ofertas coinciden con el catálogo.
               No se modifica ninguna comisión al previsualizar.
             </p>
+            {preview.prerequisite && (
+              <Alert><AlertDescription>{preview.prerequisite}</AlertDescription></Alert>
+            )}
             <div className="border rounded-md max-h-60 overflow-y-auto">
               <table className="w-full text-xs">
                 <thead><tr className="border-b text-left">
@@ -118,9 +126,9 @@ export default function CommissionMasterV5Preview() {
                   <tr key={r.row} className="border-b">
                     <td className="p-2">{r.row}</td><td className="p-2">{r.financiera}</td>
                     <td className="p-2">{r.nombreOferta}</td>
-                    <td className="p-2">{r.comisiones["Financiera apertura %"] ?? ""}</td>
-                    <td className="p-2">{r.comisiones["Master apertura %"] ?? ""}</td>
-                    <td className="p-2">{r.comisiones["Broker apertura %"] ?? ""}</td>
+                    <td className="p-2">{formatPct(r.comisiones["Financiera apertura %"])}</td>
+                    <td className="p-2">{formatPct(r.comisiones["Master apertura %"])}</td>
+                    <td className="p-2">{formatPct(r.comisiones["Broker apertura %"])}</td>
                   </tr>
                 ))}</tbody>
               </table>
