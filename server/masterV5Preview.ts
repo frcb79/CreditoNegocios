@@ -181,16 +181,25 @@ export function previewMasterV5(buffer: Buffer, kind: MasterV5Kind): MasterV5Pre
     const aperturaCliente = asText(get(C.aperturaCliente));
     if (/unidad pendiente/i.test(aperturaCliente)) warn(C.aperturaCliente,
       "Unidad pendiente: no convertir automáticamente 0.04 a 4%");
+    for (const field of [C.antiguedad, C.ingresoMensual, C.ingresoAnual, C.buroAccionista, C.buroEmpresa, C.buroPF, C.plazo]) {
+      const raw = asText(get(field));
+      if (raw && !["n/a", "na", "no aplica"].includes(norm(raw)) && numberOrNull(get(field)) === null)
+        warn(field, "Condición variable o no numérica: conservar el texto fuente y validar antes de aplicar matching automático");
+    }
     const matching: Record<string, unknown> = {
       minAmount: montoMinimo,
       maxAmount: montoMaximo,
       amountFormula: montoVariable,
       minMonthsInBusiness: numberOrNull(get(C.antiguedad)),
+      minMonthsInBusinessSource: asText(get(C.antiguedad)),
       minMonthlyIncome: numberOrNull(get(C.ingresoMensual)),
+      minMonthlyIncomeSource: asText(get(C.ingresoMensual)),
       minAnnualIncome: numberOrNull(get(C.ingresoAnual)),
+      minAnnualIncomeSource: asText(get(C.ingresoAnual)),
       minShareholderBureau: numberOrNull(get(C.buroAccionista)),
       minBusinessBureau: numberOrNull(get(C.buroEmpresa)),
       minPersonalBureau: numberOrNull(get(C.buroPF)),
+      minPersonalBureauSource: asText(get(C.buroPF)),
       allowsArrears: bool(get(C.atrasos)),
       arrearsPolicy: asText(get(C.atrasosMax)),
       guarantee: asText(get(C.garantia)),
