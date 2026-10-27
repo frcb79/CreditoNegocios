@@ -229,7 +229,7 @@ export default function OfferVersionsModal({
                           {getStatusBadge(version.status)}
                           {version.versionNumber === offer.currentVersionNumber && (
                             <span className="text-[10px] font-semibold uppercase tracking-wider text-[#2463D6] bg-blue-50 px-2 py-0.5 rounded-full border border-blue-200/70">
-                              Activa
+                              Versión registrada
                             </span>
                           )}
                         </div>
