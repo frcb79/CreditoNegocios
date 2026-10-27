@@ -13287,9 +13287,17 @@ function maskCLABE(clabe?: string | null): string | null {
         });
       }
       const allErrors = [...preview.errors, ...templateErrors];
+      const missingCommissionOffers = kind === 'comisiones'
+        ? matches.filter(match => match.action !== 'existing_offer').length
+        : 0;
       res.json({ ...preview, errors: allErrors, matches,
         plannedCanonicalFamilies: catalogPlan.create.map(x => x.name),
-        writable: process.env.RAILWAY_ENVIRONMENT_NAME === 'staging' && allErrors.length === 0,
+        prerequisite: kind === 'comisiones' && missingCommissionOffers > 0
+          ? 'Antes debes importar Financieras y Productos. Faltan ' + missingCommissionOffers +
+            ' ofertas en el catálogo; no puedes aplicar comisiones todavía.'
+          : null,
+        writable: process.env.RAILWAY_ENVIRONMENT_NAME === 'staging' &&
+          allErrors.length === 0 && missingCommissionOffers === 0,
         message: allErrors.length
           ? 'Corrige las observaciones críticas del catálogo antes de confirmar la carga. Sin escrituras.'
           : 'Vista previa sin escrituras. Al confirmar, Staging crea las familias canónicas faltantes y guarda las ofertas en borrador.' });
