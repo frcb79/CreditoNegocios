@@ -52,6 +52,9 @@ export default function BulkImport() {
   
   const [isPreviewingFinancieras, setIsPreviewingFinancieras] = useState(false);
   const [financierasV5Issues, setFinancierasV5Issues] = useState<{ row: number; field: string; level: string; message: string }[]>([]);
+  const [canApplyFinancieras, setCanApplyFinancieras] = useState(false);
+  const [applyingFinancieras, setApplyingFinancieras] = useState(false);
+  const [appliedFinancieras, setAppliedFinancieras] = useState<string | null>(null);
   const [financierasV5Match, setFinancierasV5Match] = useState<{row:number; action:string}[]>([]);
   const [isPreviewingClients, setIsPreviewingClients] = useState(false);
 
@@ -104,6 +107,8 @@ export default function BulkImport() {
       setFinancierasPreview(null);
       setFinancierasV5Issues([]);
       setFinancierasV5Match([]);
+      setCanApplyFinancieras(false);
+      setAppliedFinancieras(null);
       setFinancierasResult(null);
     } else {
       setClientsFile(file);
@@ -140,6 +145,8 @@ export default function BulkImport() {
       if (type === 'financieras') {
         setFinancierasV5Issues([...(data.errors || []), ...(data.warnings || [])]);
         setFinancierasV5Match(data.matches || []);
+        setCanApplyFinancieras(Boolean(data.writable) && (data.errors || []).length === 0);
+        setAppliedFinancieras(null);
         const columns = ['Financiera', 'Oferta', 'Familia', 'Perfiles', 'Monto mínimo', 'Monto máximo', 'Estatus'];
         setPreview({
           headers: columns, totalRows: data.totalRows,
@@ -165,6 +172,34 @@ export default function BulkImport() {
       });
     } finally {
       setLoading(false);
+    }
+  };
+
+  const applyFinancierasV5 = async () => {
+    if (!financierasFile || !canApplyFinancieras || applyingFinancieras) return;
+    if (!window.confirm("¿Importar las ofertas V5 como BORRADORES en Staging? No se publicará ningún producto.")) return;
+    setApplyingFinancieras(true);
+    try {
+      const formData = new FormData();
+      formData.append("file", financierasFile);
+      const res = await fetch("/api/import/v5/apply/financieras", {
+        method: "POST", body: formData, credentials: "include",
+      });
+      const body = await res.json();
+      if (!res.ok) throw Error(body.message || "No se pudo importar el maestro");
+      setAppliedFinancieras(
+        "Financieras creadas: " + body.result.institutionsCreated +
+        "; ofertas en borrador: " + body.result.offersCreated +
+        "; ofertas existentes sin cambio: " + body.result.alreadyPresent);
+      setCanApplyFinancieras(false);
+      queryClient.invalidateQueries({ queryKey: ["/api/financial-institutions"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/institution-products"] });
+      toast({ title: "Importación de borradores confirmada en Staging",
+        description: "No se publicaron ofertas ni se actualizaron comisiones globales." });
+    } catch (e: any) {
+      toast({ title: "Importación rechazada", description: e.message, variant: "destructive" });
+    } finally {
+      setApplyingFinancieras(false);
     }
   };
 
@@ -297,7 +332,7 @@ export default function BulkImport() {
       <div className="mt-3 space-y-2">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <p className="text-[11px] text-muted-foreground">
-            Mostrando {Math.min(5, preview.rows.length)} de {preview.totalRows} filas detectadas
+            Mostrando {Math.min(200, preview.rows.length)} de {preview.totalRows} filas detectadas
           </p>
           {hasMatchingFields && (
             <Badge variant="outline" className="bg-emerald-500/10 text-emerald-800 dark:text-emerald-300 border-emerald-500/30 text-[10px] py-0.5">
@@ -319,7 +354,7 @@ export default function BulkImport() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {preview.rows.slice(0, 5).map((row, rowIndex) => (
+                {preview.rows.slice(0, 200).map((row, rowIndex) => (
                   <TableRow key={rowIndex} className="hover:bg-muted/30">
                     <TableCell className="font-mono text-[11px] text-muted-foreground">{rowIndex + 1}</TableCell>
                     {preview.headers.map((header, colIndex) => (
@@ -531,12 +566,21 @@ export default function BulkImport() {
                         Cancelar
                       </Button>
                       <div className="flex-1 rounded-md border border-amber-300/50 bg-amber-500/10 p-2 text-xs text-foreground">
-                        Vista previa únicamente. La importación protegida y versionada todavía está en preparación.
+                        Solo los borradores pueden importarse en Staging; publicación y comisiones quedan separadas.
                       </div>
-                    </div>
+ 
+                      {canApplyFinancieras && (
+                        <Button size="sm" className="flex-1" disabled={applyingFinancieras}
+                          onClick={applyFinancierasV5}>
+                          {applyingFinancieras ? "Importando borradores..." : "Confirmar carga en Staging"}
+                        </Button>
+                      )}                   </div>
                   </>
                 )}
                 
+                {appliedFinancieras && (
+                  <Alert><CheckCircle2 className="h-4 w-4" /><AlertDescription>{appliedFinancieras}</AlertDescription></Alert>
+                )}
                 {financierasResult && (
                   <>
                     <ErrorList result={financierasResult} />
