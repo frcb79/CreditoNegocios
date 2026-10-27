@@ -141,6 +141,13 @@ describe("Biblioteca comercial - contratos, permisos y formatos", () => {
     expect(page).not.toContain("localStorage");
   });
 
+  it("centers CTA text inside approved graphic buttons", () => {
+    const renderer = source("client/src/lib/commercialGraphicRenderer.ts");
+    expect(renderer).toContain('align:"left"|"center"="left"');
+    expect(renderer).toContain('const x=align==="center" ? field.x+field.width/2 : field.x');
+    expect(renderer).toContain('fit(ctx,graphic.fields.cta.text,graphic.fields.cta,"center")');
+  });
+
   it("limits graphic personalization to broker/master name and WhatsApp only", () => {
     const renderer = source("client/src/lib/commercialGraphicRenderer.ts");
     const page = source("client/src/pages/CommercialResources.tsx");
