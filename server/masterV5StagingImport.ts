@@ -4,7 +4,7 @@ import { db } from "./db";
 import { financialInstitutions, institutionProducts, institutionProductVersions, productTemplates } from "../shared/schema";
 import { computeInstitutionProductVersionHash, validateOfferVersionParameters } from "./offerVersionService";
 import type { MasterV5Preview, MasterV5Row } from "./masterV5Preview";
-import { resolveMasterV5Template } from "./masterV5TemplateResolver";
+import { resolveMasterV5Template, planMasterV5Catalog } from "./masterV5TemplateResolver";
 
 /** Transactional, idempotent, staging-only service. Never modifies published versions. */
 const key = (v: unknown) => String(v ?? "").trim().normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/\s+/g, " ");
@@ -53,8 +53,22 @@ export async function importMasterV5FinancialDrafts(preview: MasterV5Preview, us
     const insts = await tx.select().from(financialInstitutions);
     const offers = await tx.select().from(institutionProducts);
     const templates = await tx.select().from(productTemplates);
-    // Validar TODAS las familias del archivo ANTES de crear una sola financiera.
-    // Sin crear plantillas ni reactivar variantes antiguas.
+    // Todas las plantillas faltantes corresponden a familias APROBADAS.
+    // Planificar primero y crear únicamente dentro de la misma transacción
+    // (rollback si falla una oferta). No crear plantillas por cada financiera.
+    const catalogPlan = planMasterV5Catalog(templates, preview.rows.map(row => row.familia));
+    if (catalogPlan.errors.length) throw Error(catalogPlan.errors.join("; "));
+    for (const blueprint of catalogPlan.create) {
+      const [created] = await tx.insert(productTemplates).values({
+        id: randomUUID(), name: blueprint.name, category: blueprint.category,
+        description: blueprint.description, targetProfiles: blueprint.profiles,
+        availableVariables: blueprint.variables,
+        baseConfiguration: { catalog_family: blueprint.family, variants: blueprint.variants,
+          policy: "Matching basado en oferta publicada y datos efectivamente capturados." },
+        isActive: true, createdBy: userId,
+      }).returning();
+      templates.push(created);
+    }
     const assignments = new Map<number, ReturnType<typeof resolveMasterV5Template>>();
     for (const row of preview.rows) {
       const resolved = resolveMasterV5Template(templates, row.familia);
@@ -108,7 +122,7 @@ export async function importMasterV5FinancialDrafts(preview: MasterV5Preview, us
       });
       offersCreated++; results.push({ row: row.row, status: "created_draft" });
     }
-    return { institutionsCreated, offersCreated, alreadyPresent, published: 0, results };
+    return { institutionsCreated, offersCreated, alreadyPresent, canonicalTemplatesCreated: catalogPlan.create.map(x => x.name), published: 0, results };
   });
 }
 
