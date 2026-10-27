@@ -8,7 +8,8 @@ export type GraphicIdentity = {
 };
 
 function fit(ctx:CanvasRenderingContext2D, value:string,
- field:{x:number;y:number;width:number;height:number;size:number;minSize:number;weight:600|700;color:string}):void {
+ field:{x:number;y:number;width:number;height:number;size:number;minSize:number;weight:600|700;color:string},
+ align:"left"|"center"="left"):void {
  const text=value.trim();
  if(!text)throw new Error("Falta un campo obligatorio.");
  let size=field.size;
@@ -18,9 +19,10 @@ function fit(ctx:CanvasRenderingContext2D, value:string,
  }
  if(size<field.minSize)throw new Error("El nombre o CTA excede el espacio aprobado; solicita corrección antes de exportar.");
  ctx.textBaseline="middle";
- ctx.textAlign="left";
+ ctx.textAlign=align;
  ctx.fillStyle=field.color;
- ctx.fillText(text,field.x,field.y+field.height/2);
+ const x=align==="center" ? field.x+field.width/2 : field.x;
+ ctx.fillText(text,x,field.y+field.height/2);
 }
 /** Independent canvas path; previous SVG templates remain untouched. */
 export async function renderCommercialGraphic(
@@ -48,7 +50,7 @@ export async function renderCommercialGraphic(
  ctx.drawImage(background,0,0);
  fit(ctx,name,graphic.fields.name);
  fit(ctx,"+"+phone,graphic.fields.whatsapp);
- fit(ctx,graphic.fields.cta.text,graphic.fields.cta);
+ fit(ctx,graphic.fields.cta.text,graphic.fields.cta,"center");
  // Broker/Master identity is intentionally limited to name + WhatsApp.
  // Never draw profile logos, avatars, photos or letter tiles on approved artwork.
  return canvas;
