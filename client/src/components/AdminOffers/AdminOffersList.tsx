@@ -585,7 +585,7 @@ export default function AdminOffersList({
                       data-testid={`button-versions-${offer.id}`}
                     >
                       <GitBranch className="w-3 h-3 text-[#2463D6]" />
-                      <span>Versiones (v{offer.currentVersionNumber || 1})</span>
+                      <span>Ficha y versiones (v{offer.currentVersionNumber || 1})</span>
                     </Button>
 
                     {!institutionId && (
