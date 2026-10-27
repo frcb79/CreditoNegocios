@@ -42,7 +42,7 @@ import {
 import { blockLegacyEconomicExcelImport, blockLegacyEconomicExcelType } from "./prelaunchEconomicImportGuard";
 import { previewMasterV5, type MasterV5Kind } from "./masterV5Preview";
 import { importMasterV5FinancialDrafts, importMasterV5CommissionDrafts } from "./masterV5StagingImport";
-import { resolveMasterV5Template } from "./masterV5TemplateResolver";
+import { planMasterV5Catalog } from "./masterV5TemplateResolver";
 import {
   parseSocExcel,
   syncSocFinancierasToDatabase
