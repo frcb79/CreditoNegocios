@@ -77,7 +77,7 @@ export async function importMasterV5FinancialDrafts(preview: MasterV5Preview, us
         " (fila " + row.row + ": " + row.nombreOferta + ")");
       assignments.set(row.row, resolved);
     }
-    let institutionsCreated = 0, offersCreated = 0, alreadyPresent = 0;
+    let institutionsCreated = 0, offersCreated = 0, alreadyPresent = 0, enrichedDrafts = 0;
     const results: { row: number; status: string }[] = [];
     for (const row of preview.rows) {
       let inst = insts.find(i => key(i.name) === key(row.financiera));
@@ -92,7 +92,47 @@ export async function importMasterV5FinancialDrafts(preview: MasterV5Preview, us
       const found = offers.filter(o => o.institutionId === inst!.id &&
         key(o.name || o.customName) === key(row.nombreOferta));
       if (found.length > 1) throw Error("Ofertas existentes duplicadas: " + row.financiera + " / " + row.nombreOferta);
-      if (found.length === 1) { alreadyPresent++; results.push({ row: row.row, status: "existing_untouched" }); continue; }
+      if (found.length === 1) {
+        // Controlled V5 reconciliation: fill ONLY the three source descriptors that
+        // were accidentally omitted from the first import. No commission/condition
+        // change, no new versions, never mutate published versions or replace nonblank data.
+        const existingOffer = found[0];
+        const existingDrafts = await tx.select().from(institutionProductVersions).where(and(
+          eq(institutionProductVersions.institutionProductId, existingOffer.id),
+          eq(institutionProductVersions.status, "draft"),
+        ));
+        if (existingDrafts.length > 1) throw Error("Borradores duplicados: " + row.nombreOferta);
+        if (existingDrafts.length === 1) {
+          const draft = existingDrafts[0];
+          const req = { ...((draft.requirements || {}) as Record<string, unknown>) };
+          let enriched = false;
+          for (const k of ["businessAgeSource", "bureauPolicySource", "guarantorSource"]) {
+            const source = row.matching[k];
+            if (typeof source === "string" && source.trim() &&
+                (req[k] === undefined || req[k] === null || req[k] === "")) {
+              req[k] = source.trim();
+              enriched = true;
+            }
+          }
+          if (enriched) {
+            await tx.update(institutionProductVersions).set({
+              requirements: req,
+              versionHash: hash(draft.institutionProductId, draft.versionNumber,
+                draft.conditions || {}, req, draft.requiredDocuments || [],
+                draft.variablesConfiguration || {}),
+              updatedAt: new Date(),
+              changeReason: "V5: completar antigüedad de empresa, buró descriptivo y aval; comisiones intactas",
+            }).where(and(eq(institutionProductVersions.id, draft.id),
+              eq(institutionProductVersions.status, "draft")));
+            enrichedDrafts++;
+            results.push({ row: row.row, status: "existing_draft_source_enriched" });
+            continue;
+          }
+        }
+        alreadyPresent++;
+        results.push({ row: row.row, status: "existing_untouched" });
+        continue;
+      }
       const matched = assignments.get(row.row);
       if (!matched?.template || !matched.productType) throw Error(
         "Plantilla no encontrada para " + row.nombreOferta);
@@ -122,7 +162,7 @@ export async function importMasterV5FinancialDrafts(preview: MasterV5Preview, us
       });
       offersCreated++; results.push({ row: row.row, status: "created_draft" });
     }
-    return { institutionsCreated, offersCreated, alreadyPresent, canonicalTemplatesCreated: catalogPlan.create.map(x => x.name), published: 0, results };
+    return { institutionsCreated, offersCreated, alreadyPresent, enrichedDrafts, canonicalTemplatesCreated: catalogPlan.create.map(x => x.name), published: 0, results };
   });
 }
 
