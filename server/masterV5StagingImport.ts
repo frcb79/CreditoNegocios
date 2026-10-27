@@ -105,7 +105,14 @@ export async function importMasterV5FinancialDrafts(preview: MasterV5Preview, us
         if (existingDrafts.length === 1) {
           const draft = existingDrafts[0];
           const req = { ...((draft.requirements || {}) as Record<string, unknown>) };
+          const cond = { ...((draft.conditions || {}) as Record<string, unknown>) };
           let enriched = false;
+          // Keep original technical columns in an audit-only field. Do not touch
+          // commissionRates or any existing published/manual conditions.
+          if (!cond.sourceTechnicalFields && row.condiciones.sourceTechnicalFields) {
+            cond.sourceTechnicalFields = row.condiciones.sourceTechnicalFields;
+            enriched = true;
+          }
           for (const k of ["businessAgeSource", "bureauPolicySource", "guarantorSource"]) {
             const source = row.matching[k];
             if (typeof source === "string" && source.trim() &&
@@ -117,11 +124,11 @@ export async function importMasterV5FinancialDrafts(preview: MasterV5Preview, us
           if (enriched) {
             await tx.update(institutionProductVersions).set({
               requirements: req,
+              conditions: cond,
               versionHash: hash(draft.institutionProductId, draft.versionNumber,
-                draft.conditions || {}, req, draft.requiredDocuments || [],
-                draft.variablesConfiguration || {}),
+                cond, req, draft.requiredDocuments || [], draft.variablesConfiguration || {}),
               updatedAt: new Date(),
-              changeReason: "V5: completar antigüedad de empresa, buró descriptivo y aval; comisiones intactas",
+              changeReason: "V5: completar descriptores y ficha técnica fuente, sin modificar comisiones",
             }).where(and(eq(institutionProductVersions.id, draft.id),
               eq(institutionProductVersions.status, "draft")));
             enrichedDrafts++;
