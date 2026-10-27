@@ -1,0 +1,1 @@
+const fs=require('node:fs'),path=require('node:path');process.chdir(__dirname);fs.mkdirSync('public',{recursive:true});for(const file of ['index.html','brand.css','credito-negocios-07.jpg'])fs.copyFileSync(file,path.join('public',file));fs.copyFileSync('index.html','public/landing.html');fs.cpSync('fonts','public/fonts',{recursive:true});

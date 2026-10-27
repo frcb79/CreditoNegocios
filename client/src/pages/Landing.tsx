@@ -263,7 +263,7 @@ export default function Landing() {
   // Forgot Password View
   if (showForgotPassword) {
     return (
-      <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
+      <div className="cn-public cn-auth min-h-screen bg-slate-50 flex items-center justify-center p-4">
         <div className="w-full max-w-md">
           <div className="text-center mb-6">
             <img 
@@ -388,7 +388,7 @@ export default function Landing() {
 
   // Main Login/Register View
   return (
-    <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
+    <div className="cn-public cn-auth min-h-screen bg-slate-50 flex items-center justify-center p-4">
       <div className="w-full max-w-md">
         <div className="text-center mb-6">
           <img 

@@ -1,835 +1,1006 @@
-import { FormEvent, useState } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import { apiRequest } from "@/lib/queryClient";
-import { getAppBaseUrl } from "@/lib/runtimeConfig";
-import { useToast } from "@/hooks/use-toast";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import { Badge } from "@/components/ui/badge";
-import {
-  ArrowRight,
-  Banknote,
-  BriefcaseBusiness,
-  Building2,
-  CheckCircle2,
-  CircleDollarSign,
-  Landmark,
-  LayoutDashboard,
-  Loader2,
-  LogIn,
-  Mail,
-  MessageSquare,
-  Phone,
-  ShieldCheck,
-  Sparkles,
-  Users,
-  Wallet,
-} from "lucide-react";
-
-const whatsappUrl = "https://wa.me/525623300270";
-
-const statHighlights = [
-  {
-    value: "+ Comisiones",
-    label: "Mayores ganancias y recurrencia",
-    description: "Tasas competitivas y pagos al instante.",
-  },
-  {
-    value: "Un solo lugar",
-    label: "Visibilidad y seguimiento comercial",
-    description: "Expedientes, avances, ofertas, comisiones y más.",
-  },
-  {
-    value: "Cero costo",
-    label: "Acceso y uso gratuito a la plataforma",
-    description: "Alta inmediata para aliados y brokers. Sin cuotas.",
-  },
-  {
-    value: "+ Opciones",
-    label: "Múltiples productos y alternativas para tus clientes",
-    description: "Acceso a red de financieras y bancos para todos los perfiles.",
-  },
-];
-
-const valueCards = [
-  {
-    icon: LayoutDashboard,
-    title: "Control total del pipeline",
-    description:
-      "Centraliza prospectos, expedientes y seguimiento en una experiencia ordenada y profesional.",
-  },
-  {
-    icon: Landmark,
-    title: "Mejor salida financiera",
-    description:
-      "Evalúa mejor cada caso y accede a más caminos de colocación según el perfil del cliente.",
-  },
-  {
-    icon: CircleDollarSign,
-    title: "Comisión con visibilidad",
-    description:
-      "Opera con mayor claridad comercial para proteger tu relación y tu ingreso por cierre.",
-  },
-];
-
-const operatingModes = [
-  {
-    key: "pro",
-    badge: "Broker profesional",
-    title: "Para despachos y colocadores que quieren escalar",
-    description:
-      "Ideal si manejas cartera, expedientes y seguimiento comercial de forma constante.",
-    points: [
-      "Mayor visibilidad de tus casos en tiempo real.",
-      "Una plataforma estructurada para vender más.",
-      "Menos carga operativa y más tiempo para vender.",
-    ],
-  },
-  {
-    key: "referidor",
-    badge: "Aliado y Referido",
-    title: "Para quienes quieren canalizar oportunidades y ganar al hacerlo",
-    description:
-      "Ideal para quienes desean detectar prospectos, referirlos y participar comercialmente sin complicarse.",
-    points: [
-      "Proceso simple y rápido para enviar contactos.",
-      "Acompañamiento del equipo comercial en el cierre.",
-      "Modelo claro para colaborar sin complicaciones.",
-    ],
-  },
-] as const;
-
-const networkSegments = [
-  {
-    title: "PyME y capital de trabajo",
-    description:
-      "Casos que requieren velocidad, estructura comercial y mejor presentación ante instituciones.",
-  },
-  {
-    title: "PFAE y perfil patrimonial",
-    description:
-      "Alineación más precisa según historial, flujo y capacidad del cliente.",
-  },
-  {
-    title: "Hipotecario y soluciones mixtas",
-    description:
-      "Comparativos más claros y acompañamiento para mover operaciones complejas.",
-  },
-];
-
-const workflow = [
-  {
-    step: "1",
-    title: "Captura el caso en minutos",
-    description:
-      "Sube el prospecto o envía la oportunidad sin depender de mensajes dispersos o hojas de cálculo.",
-  },
-  {
-    step: "2",
-    title: "Perfila mejor la salida",
-    description:
-      "La operación se acomoda con mayor criterio según producto, perfil y capacidad real de aprobación.",
-  },
-  {
-    step: "3",
-    title: "Da seguimiento con autoridad",
-    description:
-      "Tu cliente recibe una experiencia más clara, más ordenada y con mejor percepción profesional.",
-  },
-  {
-    step: "4",
-    title: "Cierra y cobra con visibilidad",
-    description:
-      "Mantén control del avance comercial y acompaña la operación hasta su mejor desenlace.",
-  },
-];
-
-const testimonials = [
-  {
-    name: "María Fernanda R.",
-    role: "Broker PyME",
-    company: "Despacho financiero aliado",
-    quote:
-      "La conversación con el cliente cambió por completo. Ahora todo se siente más serio, más claro y más fácil de mover.",
-    result: "Duplicó su capacidad de seguimiento en un trimestre.",
-  },
-  {
-    name: "Jorge A. Téllez",
-    role: "Broker hipotecario",
-    company: "Consultoría patrimonial",
-    quote:
-      "Lo que más ayuda es la visibilidad. Ya no se trabaja a ciegas y eso mejora mucho la confianza del cliente final.",
-    result: "Redujo tiempos de respuesta comercial de días a horas.",
-  },
-  {
-    name: "Ana Lucía G.",
-    role: "Aliada comercial",
-    company: "Red de referidos empresariales",
-    quote:
-      "Incluso cuando solo referimos contactos, el proceso se ve mucho más profesional y ordenado.",
-    result: "Mejoró la calidad de sus prospectos enviados.",
-  },
-];
-
-const faqs = [
-  {
-    question: "¿Tiene costo usar la plataforma?",
-    answer:
-      "No. El acceso para brokers y aliados es sin costo; el objetivo es ayudarte a operar con más orden y más capacidad de colocación.",
-  },
-  {
-    question: "¿Sirve si solo quiero referir clientes?",
-    answer:
-      "Sí. Puedes participar como aliado referidor y enviar oportunidades sin llevar todo el expediente por tu cuenta.",
-  },
-  {
-    question: "¿Qué tipo de operaciones pueden entrar?",
-    answer:
-      "PyME, PFAE, hipotecario y esquemas mixtos, dependiendo del perfil del cliente y de la necesidad de fondeo.",
-  },
-  {
-    question: "¿Cómo se da seguimiento a mi comisión?",
-    answer:
-      "La operación se trabaja con trazabilidad comercial clara para que sepas en qué etapa está y puedas dar seguimiento con mayor certeza.",
-  },
-  {
-    question: "¿Cuánto tardan en contactarme?",
-    answer:
-      "Normalmente el equipo responde dentro de las siguientes 24 horas hábiles para activar el acceso o agendar una demo.",
-  },
-];
+import { PlatformGallery } from "@/components/Public/PlatformGallery";
 
 export default function BrokersLanding() {
-  const { toast } = useToast();
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [preferredTrack, setPreferredTrack] = useState<"pro" | "referidor">("pro");
-  const [brokerType, setBrokerType] = useState("");
-  const [form, setForm] = useState({
-    name: "",
-    email: "",
-    phone: "",
-    company: "",
-    message: "",
-  });
-
-  const loginHref = `${getAppBaseUrl()}/`;
-
-  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuButton = useRef<HTMLButtonElement>(null);
+  const [profile, setProfile] = useState<"pro" | "referidor">("pro");
+  const [busy, setBusy] = useState(false);
+  const sending = useRef(false);
+  const [status, setStatus] = useState<{
+    error: boolean;
+    message: string;
+  } | null>(null);
+  useEffect(() => {
+    const old = document.title;
+    document.title = "Brokers y referidores | Crédito Negocios";
+    return () => {
+      document.title = old;
+    };
+  }, []);
+  async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-
-    if (!brokerType) {
-      toast({
-        title: "Selecciona tu especialidad",
-        description: "Elige el tipo de operación que más se parece a tu mercado.",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    setIsSubmitting(true);
-
+    const form = event.currentTarget;
+    if (sending.current || !form.reportValidity()) return;
+    sending.current = true;
+    setBusy(true);
+    setStatus(null);
+    const data = Object.fromEntries(new FormData(form));
     try {
       await apiRequest("POST", "/api/public/broker-leads", {
-        ...form,
-        brokerProfile: preferredTrack,
-        brokerType,
+        ...data,
+        brokerProfile: profile,
+        brokerType: profile === "referidor" ? "mixto" : data.brokerType,
+        company: profile === "referidor" ? "" : data.company,
       });
-
-      toast({
-        title: "Solicitud enviada",
-        description: "El equipo comercial te contactará muy pronto.",
+      form.reset();
+      setStatus({
+        error: false,
+        message:
+          "Recibimos tu solicitud. Te contactaremos para explicarte los siguientes pasos. Tu cuenta todavía no está activada.",
       });
-
-      setForm({
-        name: "",
-        email: "",
-        phone: "",
-        company: "",
-        message: "",
-      });
-      setBrokerType("");
-      setPreferredTrack("pro");
-    } catch (error: any) {
-      toast({
-        title: "No se pudo enviar",
-        description: error.message || "Intenta nuevamente en unos minutos.",
-        variant: "destructive",
+    } catch {
+      setStatus({
+        error: true,
+        message:
+          "No pudimos enviar tu solicitud. Conservamos tus datos para que puedas intentar de nuevo.",
       });
     } finally {
-      setIsSubmitting(false);
+      sending.current = false;
+      setBusy(false);
     }
   }
-
   return (
-    <div className="min-h-screen bg-[linear-gradient(180deg,#f5fbff_0%,#edf5fb_40%,#ffffff_100%)] text-slate-900 overflow-x-clip w-full">
-      <nav className="sticky top-0 z-50 border-b border-[#173653] bg-[#1F476B] backdrop-blur-xl">
-        <div className="mx-auto flex items-center justify-between gap-1.5 min-[360px]:gap-2 sm:gap-4 px-2 min-[360px]:px-2.5 sm:px-6 lg:px-8 py-2.5 min-[360px]:py-3 sm:py-3.5 max-w-[90rem]">
-          <div className="flex items-center flex-shrink-0">
+    <div
+      className="cn-public"
+      onKeyDown={(event) => {
+        if (event.key === "Escape" && menuOpen) {
+          setMenuOpen(false);
+          menuButton.current?.focus();
+        }
+      }}
+    >
+      <a className="cn-skip" href="#contenido">
+        {"Ir al contenido"}
+      </a>
+      <header className="cn-header">
+        <nav aria-label="Navegación principal" className="cn-container cn-nav">
+          <a
+            aria-label="Crédito Negocios — inicio"
+            className="cn-logo"
+            href="https://www.creditonegocios.com.mx/"
+          >
             <img
+              alt="Crédito Negocios"
+              height="52"
               src="/credito-negocios-07.jpg"
-              alt="Credito Negocios"
-              className="h-7 min-[360px]:h-9 sm:h-12 lg:h-14 w-auto max-w-[95px] min-[360px]:max-w-[140px] sm:max-w-none rounded-sm object-contain"
+              width="205"
             />
+          </a>
+          <button
+            aria-controls="broker-menu"
+            className="cn-menu-button"
+            type="button"
+            ref={menuButton}
+            aria-expanded={menuOpen}
+            onClick={() => setMenuOpen((open) => !open)}
+          >
+            {"Menú"}
+          </button>
+          <div
+            className="cn-links"
+            id="broker-menu"
+            data-open={String(menuOpen)}
+            onClick={(event) => {
+              if ((event.target as Element).closest("a")) setMenuOpen(false);
+            }}
+          >
+            <a href="#plataforma">{"La plataforma"}</a>
+            <a href="#colaboracion">{"Cómo colaborar"}</a>
+            <a href="#preguntas">{"Preguntas"}</a>
+            <a href="https://app.creditonegocios.com.mx/">{"Iniciar sesión"}</a>
+            <a className="cn-button cn-button--outline" href="#form-brokers">
+              {"Solicitar incorporación"}
+            </a>
           </div>
-
-          <div className="px-2 text-center hidden md:block flex-1">
-            <p className="text-sm font-black uppercase tracking-[0.2em] text-white sm:text-base lg:text-xl">
-              Programa para Brokers y Referidos
-            </p>
-          </div>
-
-          <div className="flex items-center justify-end gap-1 min-[360px]:gap-1.5 sm:gap-3 flex-shrink-0">
-            <Button asChild size="sm" className="bg-emerald-500 text-white font-semibold shadow-md hover:bg-emerald-600 px-2 min-[360px]:px-2.5 sm:px-3 text-[11px] min-[360px]:text-xs sm:text-sm h-7 min-[360px]:h-8 sm:h-9">
-              <a href={whatsappUrl} target="_blank" rel="noreferrer">
-                <MessageSquare className="mr-1 min-[360px]:mr-1.5 sm:mr-2 h-3 w-3 min-[360px]:h-3.5 min-[360px]:w-3.5 sm:h-4 sm:w-4" />
-                WhatsApp
-              </a>
-            </Button>
-            <Button variant="outline" size="sm" asChild className="border-white/40 bg-white/10 text-white font-semibold shadow-sm hover:bg-white hover:text-[#1F476B] transition-colors px-2 min-[360px]:px-2.5 sm:px-3 text-[11px] min-[360px]:text-xs sm:text-sm h-7 min-[360px]:h-8 sm:h-9">
-              <a href={loginHref}>
-                <LogIn className="mr-1 min-[360px]:mr-1.5 sm:mr-2 h-3 w-3 min-[360px]:h-3.5 min-[360px]:w-3.5 sm:h-4 sm:w-4" />
-                Login
-              </a>
-            </Button>
-          </div>
-        </div>
-      </nav>
-
-      <section className="relative overflow-hidden bg-[linear-gradient(180deg,#f7f9fb_0%,#eef2f6_100%)] text-slate-900">
-        <div className="absolute inset-0 overflow-hidden pointer-events-none">
-          <div className="absolute -right-16 -top-24 h-72 w-72 rounded-full bg-slate-300/30 blur-3xl" />
-          <div className="absolute -left-12 bottom-0 h-80 w-80 rounded-full bg-slate-200/45 blur-3xl" />
-        </div>
-
-        <div className="relative mx-auto grid max-w-[90rem] gap-10 px-4 pb-12 pt-10 sm:px-6 lg:grid-cols-[1.08fr_0.92fr] lg:px-8 lg:pb-16 lg:pt-12">
-          <div className="flex flex-col justify-start">
-            <h1 className="max-w-3xl text-2xl font-extrabold leading-[1.15] text-slate-900 sm:text-3xl lg:text-4xl">
-              ¡La plataforma que te permite ganar comisiones sin límites!
-            </h1>
-
-            <h2 className="mt-4 max-w-3xl text-xl font-semibold text-slate-700 sm:text-2xl">
-              Tú traes el cliente, nosotros el capital.
-            </h2>
-
-            <p className="mt-5 text-[10px] font-black uppercase tracking-[0.2em] text-emerald-700 sm:text-xs">
-              Para brokers, despachos y referidos
-            </p>
-
-            <p className="mt-6 max-w-3xl text-sm leading-7 text-slate-600 sm:text-base">
-              Refiere un contacto o administra expedientes completos desde un solo lugar. Nosotros te ayudamos a perfilar, presentar y dar seguimiento para que cierres más&nbsp;y cobres mejor.
-            </p>
-
-            <div className="mt-8 grid max-w-2xl gap-3 sm:grid-cols-2">
-              {["Sin costo", "Más visibilidad", "Más opciones", "Más cierres"].map((item) => (
-                <div
-                  key={item}
-                  className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700 shadow-sm"
+        </nav>
+      </header>
+      <main id="contenido">
+        <section className="cn-hero" id="plataforma">
+          <div className="cn-container cn-hero-grid cn-broker-hero-grid">
+            <div>
+              <span className="cn-eyebrow">
+                {"Brokers, despachos y referidores"}
+              </span>
+              <h1>
+                {"Convierte tus contactos en comisiones."}
+                <br />
+                <em>{"Tú traes el cliente, nosotros el capital."}</em>
+              </h1>
+              <p className="cn-lead">
+                {"Explora opciones de financiamiento entre "}
+                <strong>{"múltiples instituciones financieras"}</strong>
+                {
+                  " y centraliza clientes, expedientes, seguimiento y comisiones en una misma plataforma."
+                }
+              </p>
+              <div className="cn-actions">
+                <a className="cn-button" href="#form-brokers">
+                  {"Solicitar incorporación "}
+                  <svg
+                    aria-hidden="true"
+                    className="lucide lucide-arrow-right"
+                    fill="none"
+                    height="18"
+                    stroke="currentColor"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth="2"
+                    viewBox="0 0 24 24"
+                    width="18"
+                    xmlns="http://www.w3.org/2000/svg"
+                  >
+                    <path d="M5 12h14"></path>
+                    <path d="m12 5 7 7-7 7"></path>
+                  </svg>
+                </a>
+                <a
+                  className="cn-button cn-button--outline"
+                  href="https://wa.me/525623300270"
+                  rel="noopener noreferrer"
+                  target="_blank"
                 >
-                  <CheckCircle2 className="h-5 w-5 text-emerald-500" />
-                  {item}
-                </div>
-              ))}
+                  {"Hablar con un asesor"}
+                </a>
+              </div>
+              <p className="cn-note cn-hero-note">
+                {
+                  "Tú aportas la oportunidad. Te ayudamos a perfilarla y presentarla. Las instituciones financieras evalúan y otorgan el financiamiento."
+                }
+              </p>
             </div>
-
-            <div className="mt-8 flex flex-col gap-3 sm:flex-row">
-              <Button asChild size="lg" className="bg-[#1F476B] hover:bg-[#173653] text-white text-base font-semibold shadow-md transition-all duration-200">
-                <a href="#form-brokers">
-                  Solicitar demo
-                  <ArrowRight className="ml-2 h-5 w-5" />
-                </a>
-              </Button>
-              <Button
-                asChild
-                size="lg"
-                className="bg-emerald-600 text-base font-semibold text-white shadow-md hover:bg-emerald-700 transition-all duration-200"
-              >
-                <a href={whatsappUrl} target="_blank" rel="noreferrer">
-                  <MessageSquare className="mr-2 h-5 w-5" />
-                  Hablar con un asesor
-                </a>
-              </Button>
+            <PlatformGallery />
+          </div>
+        </section>
+        <section
+          aria-label="Herramientas para generar oportunidades"
+          className="cn-value-strip"
+        >
+          <div className="cn-container cn-value-grid">
+            <article className="cn-value-tile">
+              <div className="cn-value-top">
+                <strong className="cn-value-number">{"5"}</strong>
+                <span className="cn-value-icon">
+                  <svg
+                    aria-hidden="true"
+                    fill="none"
+                    height="24"
+                    stroke="currentColor"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth="1.7"
+                    viewBox="0 0 24 24"
+                    width="24"
+                  >
+                    <rect height="7" rx="1.5" width="7" x="3" y="3"></rect>
+                    <rect height="7" rx="1.5" width="7" x="14" y="3"></rect>
+                    <rect height="7" rx="1.5" width="7" x="3" y="14"></rect>
+                    <rect height="7" rx="1.5" width="7" x="14" y="14"></rect>
+                  </svg>
+                </span>
+              </div>
+              <h2>{"productos para abrir puertas"}</h2>
+              <p>{"Más formas de atender las necesidades de tus clientes."}</p>
+            </article>
+            <article className="cn-value-tile">
+              <div className="cn-value-top">
+                <strong className="cn-value-number">{"1"}</strong>
+                <span className="cn-value-icon">
+                  <svg
+                    aria-hidden="true"
+                    fill="none"
+                    height="24"
+                    stroke="currentColor"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth="1.7"
+                    viewBox="0 0 24 24"
+                    width="24"
+                  >
+                    <rect height="13" rx="2" width="18" x="3" y="3"></rect>
+                    <path d="M8 21h8M12 16v5"></path>
+                  </svg>
+                </span>
+              </div>
+              <h2>{"plataforma para tu operación"}</h2>
+              <p>
+                {"Clientes, documentos, solicitudes y comisiones conectados."}
+              </p>
+            </article>
+            <article className="cn-value-tile">
+              <div className="cn-value-top">
+                <strong className="cn-value-number">{"2"}</strong>
+                <span className="cn-value-icon">
+                  <svg
+                    aria-hidden="true"
+                    fill="none"
+                    height="24"
+                    stroke="currentColor"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth="1.7"
+                    viewBox="0 0 24 24"
+                    width="24"
+                  >
+                    <circle cx="9" cy="8" r="3"></circle>
+                    <path d="M3 21v-3a6 6 0 0 1 12 0v3M16 5a3 3 0 0 1 0 6M18 15a5 5 0 0 1 3 4v2"></path>
+                  </svg>
+                </span>
+              </div>
+              <h2>{"formas de generar oportunidades"}</h2>
+              <p>{"Participa como broker profesional o aliado referidor."}</p>
+            </article>
+          </div>
+        </section>
+        <section className="cn-section">
+          <div className="cn-container">
+            <div className="cn-section-heading">
+              <div>
+                <span className="cn-eyebrow">
+                  {"Herramientas para tu operación"}
+                </span>
+                <h2>
+                  {"Menos información dispersa."}
+                  <br />
+                  {"Más claridad para avanzar."}
+                </h2>
+              </div>
+            </div>
+            <div className="cn-grid cn-grid--three">
+              <article className="cn-card">
+                <span className="cn-icon">
+                  <svg
+                    aria-hidden="true"
+                    className="lucide lucide-landmark"
+                    fill="none"
+                    height="22"
+                    stroke="currentColor"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth="2"
+                    viewBox="0 0 24 24"
+                    width="22"
+                    xmlns="http://www.w3.org/2000/svg"
+                  >
+                    <line x1="3" x2="21" y1="22" y2="22"></line>
+                    <line x1="6" x2="6" y1="18" y2="11"></line>
+                    <line x1="10" x2="10" y1="18" y2="11"></line>
+                    <line x1="14" x2="14" y1="18" y2="11"></line>
+                    <line x1="18" x2="18" y1="18" y2="11"></line>
+                    <polygon points="12 2 20 7 4 7"></polygon>
+                  </svg>
+                </span>
+                <h3>{"Alternativas según el perfil"}</h3>
+                <p>
+                  {
+                    "Consulta productos e instituciones y revisa la compatibilidad de cada oportunidad. Identifica también qué información falta para evaluarla."
+                  }
+                </p>
+              </article>
+              <article className="cn-card">
+                <span className="cn-icon">
+                  <svg
+                    aria-hidden="true"
+                    className="lucide lucide-folder-open"
+                    fill="none"
+                    height="22"
+                    stroke="currentColor"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth="2"
+                    viewBox="0 0 24 24"
+                    width="22"
+                    xmlns="http://www.w3.org/2000/svg"
+                  >
+                    <path d="m6 14 1.5-2.9A2 2 0 0 1 9.24 10H20a2 2 0 0 1 1.94 2.5l-1.54 6a2 2 0 0 1-1.95 1.5H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h3.9a2 2 0 0 1 1.69.9l.81 1.2a2 2 0 0 0 1.67.9H18a2 2 0 0 1 2 2v2"></path>
+                  </svg>
+                </span>
+                <h3>{"Expedientes con seguimiento"}</h3>
+                <p>
+                  {
+                    "Organiza documentos, solicitudes y avances de tus clientes. Consulta en qué etapa está cada caso y qué necesita para continuar."
+                  }
+                </p>
+              </article>
+              <article className="cn-card">
+                <span className="cn-icon">
+                  <svg
+                    aria-hidden="true"
+                    className="lucide lucide-circle-dollar-sign"
+                    fill="none"
+                    height="22"
+                    stroke="currentColor"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth="2"
+                    viewBox="0 0 24 24"
+                    width="22"
+                    xmlns="http://www.w3.org/2000/svg"
+                  >
+                    <circle cx="12" cy="12" r="10"></circle>
+                    <path d="M16 8h-6a2 2 0 1 0 0 4h4a2 2 0 1 1 0 4H8"></path>
+                    <path d="M12 18V6"></path>
+                  </svg>
+                </span>
+                <h3>{"Comisiones con trazabilidad"}</h3>
+                <p>
+                  {
+                    "Revisa la información de tus comisiones según tu rol. El cálculo, la validación y el pago siguen las condiciones de cada operación y de tu red."
+                  }
+                </p>
+              </article>
             </div>
           </div>
-
-          <div className="relative">
-            <Card id="form-brokers" className="overflow-hidden border-none bg-white/95 shadow-[0_30px_90px_-35px_rgba(5,71,138,0.45)]">
-              <div className="border-b border-slate-100 bg-white px-6 py-5 sm:px-8">
-                <p className="text-xs font-bold uppercase tracking-[0.2em] text-primary">Acceso inmediato</p>
-                <h2 className="mt-2 text-3xl font-bold tracking-tight text-slate-900">Solicita acceso gratuito</h2>
-                <p className="mt-2 text-sm text-slate-600">
-                  Déjanos tus datos y te ayudamos a activar el mejor camino para tu operación.
+        </section>
+        <section
+          aria-labelledby="earning-title"
+          className="cn-section cn-earning"
+        >
+          <div className="cn-container cn-earning-inner">
+            <div>
+              <span className="cn-eyebrow">
+                {"Convierte tus contactos en oportunidades"}
+              </span>
+              <h2 id="earning-title">
+                {"Tú conectas al cliente."}
+                <br />
+                <em>{"Hagamos crecer tus oportunidades de comisión."}</em>
+              </h2>
+              <p>
+                {
+                  "Una empresa que necesita liquidez. Un conocido que busca equipo. Una familia que quiere una vivienda. Tu siguiente oportunidad puede estar en una conversación."
+                }
+              </p>
+              <p className="cn-note">
+                {
+                  "Te ayudamos a explorar opciones con distintas instituciones. La comisión depende de cada operación y de tu esquema de colaboración."
+                }
+              </p>
+            </div>
+            <a className="cn-button" href="#form-brokers">
+              {"Quiero empezar "}
+              <span aria-hidden="true">{"→"}</span>
+            </a>
+          </div>
+        </section>
+        <section className="cn-section cn-section--wash" id="colaboracion">
+          <div className="cn-container">
+            <div className="cn-section-heading">
+              <div>
+                <span className="cn-eyebrow">{"Dos formas de colaborar"}</span>
+                <h2>{"Participa de acuerdo con tu operación."}</h2>
+                <p>
+                  {
+                    "Te explicamos el alcance, las responsabilidades y las condiciones antes de comenzar."
+                  }
                 </p>
               </div>
-
-              <CardContent className="p-6 sm:p-8">
-                <div className="mb-5 grid gap-3 sm:grid-cols-2">
-                  <button
-                    type="button"
-                    aria-pressed={preferredTrack === "pro"}
-                    onClick={() => setPreferredTrack("pro")}
-                    className={`rounded-2xl border-2 p-4 text-left transition-all duration-200 ${
-                      preferredTrack === "pro"
-                        ? "border-primary bg-gradient-to-br from-primary/10 to-cyan-50 shadow-lg ring-4 ring-primary/10"
-                        : "border-primary/40 bg-slate-50 hover:border-primary/60 hover:bg-white"
-                    }`}
-                  >
-                    <div className="flex items-start justify-between gap-3">
-                      <div>
-                        <p className="text-sm font-bold text-slate-900">Broker profesional</p>
-                        <p className="mt-1 text-xs leading-5 text-slate-600">Administro cartera, clientes y seguimiento.</p>
-                      </div>
-                      {preferredTrack === "pro" && <CheckCircle2 className="h-5 w-5 shrink-0 text-primary" />}
-                    </div>
-                    <span className={`mt-3 inline-flex rounded-full px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.16em] ${
-                      preferredTrack === "pro" ? "bg-primary text-white" : "bg-slate-200 text-slate-600"
-                    }`}>
-                      {preferredTrack === "pro" ? "Seleccionado" : "Disponible"}
-                    </span>
-                  </button>
-
-                  <button
-                    type="button"
-                    aria-pressed={preferredTrack === "referidor"}
-                    onClick={() => setPreferredTrack("referidor")}
-                    className={`rounded-2xl border-2 p-4 text-left transition-all duration-200 ${
-                      preferredTrack === "referidor"
-                        ? "border-secondary bg-gradient-to-br from-secondary/10 to-emerald-50 shadow-lg ring-4 ring-secondary/10"
-                        : "border-secondary/40 bg-slate-50 hover:border-secondary/60 hover:bg-white"
-                    }`}
-                  >
-                    <div className="flex items-start justify-between gap-3">
-                      <div>
-                        <p className="text-sm font-bold text-slate-900">Aliado referidor</p>
-                        <p className="mt-1 text-xs leading-5 text-slate-600">Solo quiero detectar y canalizar oportunidades.</p>
-                      </div>
-                      {preferredTrack === "referidor" && <CheckCircle2 className="h-5 w-5 shrink-0 text-secondary" />}
-                    </div>
-                    <span className={`mt-3 inline-flex rounded-full px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.16em] ${
-                      preferredTrack === "referidor" ? "bg-secondary text-white" : "bg-slate-200 text-slate-600"
-                    }`}>
-                      {preferredTrack === "referidor" ? "Seleccionado" : "Disponible"}
-                    </span>
-                  </button>
-                </div>
-
-                <form onSubmit={handleSubmit} className="space-y-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="broker-name" className="text-xs font-bold uppercase tracking-wider text-slate-500">
-                      Nombre
-                    </Label>
-                    <Input
-                      id="broker-name"
-                      value={form.name}
-                      onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))}
-                      placeholder="Nombre completo"
-                      className="border-slate-200 bg-slate-50 focus:bg-white"
-                      required
-                    />
-                  </div>
-
-                  <div className="grid gap-4 sm:grid-cols-2">
-                    <div className="space-y-2">
-                      <Label htmlFor="broker-phone" className="text-xs font-bold uppercase tracking-wider text-slate-500">
-                        WhatsApp
-                      </Label>
-                      <Input
-                        id="broker-phone"
-                        value={form.phone}
-                        onChange={(event) => setForm((current) => ({ ...current, phone: event.target.value }))}
-                        placeholder="55 0000 0000"
-                        className="border-slate-200 bg-slate-50 focus:bg-white"
-                        required
-                      />
-                    </div>
-
-                    <div className="space-y-2">
-                      <Label htmlFor="broker-email" className="text-xs font-bold uppercase tracking-wider text-slate-500">
-                        Correo
-                      </Label>
-                      <Input
-                        id="broker-email"
-                        type="email"
-                        value={form.email}
-                        onChange={(event) => setForm((current) => ({ ...current, email: event.target.value }))}
-                        placeholder="nombre@empresa.com"
-                        className="border-slate-200 bg-slate-50 focus:bg-white"
-                        required
-                      />
-                    </div>
-                  </div>
-
-                  <div className="grid gap-4 sm:grid-cols-2">
-                    <div className="space-y-2">
-                      <Label htmlFor="broker-company" className="text-xs font-bold uppercase tracking-wider text-slate-500">
-                        Empresa o despacho
-                      </Label>
-                      <Input
-                        id="broker-company"
-                        value={form.company}
-                        onChange={(event) => setForm((current) => ({ ...current, company: event.target.value }))}
-                        placeholder="Nombre comercial"
-                        className="border-slate-200 bg-slate-50 focus:bg-white"
-                      />
-                    </div>
-
-                    <div className="space-y-2">
-                      <Label className="text-xs font-bold uppercase tracking-wider text-slate-500">
-                        Especialidad principal
-                      </Label>
-                      <Select value={brokerType} onValueChange={setBrokerType}>
-                        <SelectTrigger className="border-slate-200 bg-slate-50 focus:bg-white">
-                          <SelectValue placeholder="Selecciona una opción" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="pyme">Crédito PyME</SelectItem>
-                          <SelectItem value="pfae">PFAE</SelectItem>
-                          <SelectItem value="hipotecario">Hipotecario</SelectItem>
-                          <SelectItem value="mixto">Mixto o varios productos</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="broker-message" className="text-xs font-bold uppercase tracking-wider text-slate-500">
-                      Mensaje
-                    </Label>
-                    <Textarea
-                      id="broker-message"
-                      value={form.message}
-                      onChange={(event) => setForm((current) => ({ ...current, message: event.target.value }))}
-                      placeholder={
-                        preferredTrack === "pro"
-                          ? "Cuéntanos qué tipo de clientes atiendes o qué te gustaría mejorar en tu operación."
-                          : "Cuéntanos cómo generas oportunidades o a qué tipo de clientes sueles referir."
-                      }
-                      className="min-h-[96px] border-slate-200 bg-slate-50 focus:bg-white"
-                    />
-                  </div>
-
-                  <Button
-                    type="submit"
-                    size="lg"
-                    className="w-full bg-[#1F476B] hover:bg-[#173653] text-white text-base font-semibold shadow-md transition-all duration-200"
-                    disabled={isSubmitting}
-                  >
-                    {isSubmitting ? (
-                      <>
-                        <Loader2 className="mr-2 h-5 w-5 animate-spin" />
-                        Enviando...
-                      </>
-                    ) : (
-                      <>
-                        Solicitar acceso y demo
-                        <ArrowRight className="ml-2 h-5 w-5" />
-                      </>
-                    )}
-                  </Button>
-
-                  <p className="text-center text-xs leading-5 text-slate-500">
-                    Respuesta comercial normalmente dentro de las siguientes 24 horas hábiles.
-                  </p>
-                </form>
-              </CardContent>
-            </Card>
-          </div>
-        </div>
-      </section>
-
-      <section className="mx-auto max-w-[90rem] px-4 pt-10 sm:px-6 lg:px-8 lg:pt-12">
-        <div className="grid items-stretch gap-5 rounded-[2rem] border border-slate-200 bg-white p-5 shadow-xl sm:grid-cols-2 lg:grid-cols-4 lg:p-6">
-          {statHighlights.map((item) => (
-            <div
-              key={item.label}
-              className="flex h-full flex-col rounded-[1.5rem] border border-slate-100 bg-[linear-gradient(180deg,#ffffff_0%,#f8fbff_100%)] p-6 text-left shadow-sm lg:min-h-[240px]"
-            >
-              <div>
-                <p className="min-h-[48px] text-2xl font-extrabold leading-tight text-primary">{item.value}</p>
-                <p className="mt-2 min-h-[44px] text-sm font-bold leading-5 text-slate-900">{item.label}</p>
-              </div>
-              <p className="mt-4 text-sm leading-7 text-slate-600">{item.description}</p>
             </div>
-          ))}
-        </div>
-      </section>
-
-      <section className="mx-auto max-w-[90rem] px-4 py-12 sm:px-6 lg:px-8 lg:py-14">
-        <div className="mb-8">
-          <h2 className="text-2xl font-black tracking-tight text-slate-900 sm:text-3xl">
-            Elige la forma que mejor se adapta a tu operación.
-          </h2>
-        </div>
-
-        <div className="grid gap-6 lg:grid-cols-2">
-          {operatingModes.map((mode) => (
-            <Card
-              key={mode.key}
-              className={`overflow-hidden rounded-[2rem] border-2 bg-white shadow-sm transition-all ${
-                preferredTrack === mode.key
-                  ? mode.key === "referidor"
-                    ? "border-secondary ring-2 ring-secondary/15 shadow-xl"
-                    : "border-primary ring-2 ring-primary/20 shadow-xl"
-                  : mode.key === "referidor"
-                    ? "border-secondary/40 hover:shadow-lg"
-                    : "border-primary/40 hover:shadow-lg"
-              }`}
-            >
-              <CardContent className="p-8 lg:p-10">
-                <div className={`mb-4 inline-flex rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-[0.2em] ${
-                  mode.key === "pro" ? "bg-primary/10 text-primary" : "bg-secondary/10 text-secondary"
-                }`}>
-                  {mode.badge}
-                </div>
-                <h3 className="text-2xl font-bold leading-tight text-slate-950">{mode.title}</h3>
-                <p className="mt-3 text-sm leading-7 text-slate-600">{mode.description}</p>
-                <ul className="mt-5 space-y-3 text-sm text-slate-700">
-                  {mode.points.map((point) => (
-                    <li key={point} className="flex gap-2">
-                      <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-emerald-600" />
-                      <span>{point}</span>
-                    </li>
-                  ))}
+            <div className="cn-grid cn-grid--two">
+              <article className="cn-card">
+                <span className="cn-product-tag">{"Broker profesional"}</span>
+                <h3>{"Gestiona tus clientes y oportunidades."}</h3>
+                <p>
+                  {
+                    "Para brokers y despachos que integran expedientes y participan en el seguimiento comercial."
+                  }
+                </p>
+                <ul className="cn-contact-points">
+                  <li>
+                    <svg
+                      aria-hidden="true"
+                      className="lucide lucide-check cn-check"
+                      fill="none"
+                      height="18"
+                      stroke="currentColor"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth="2"
+                      viewBox="0 0 24 24"
+                      width="18"
+                      xmlns="http://www.w3.org/2000/svg"
+                    >
+                      <path d="M20 6 9 17l-5-5"></path>
+                    </svg>
+                    {"Consulta alternativas para distintos productos."}
+                  </li>
+                  <li>
+                    <svg
+                      aria-hidden="true"
+                      className="lucide lucide-check cn-check"
+                      fill="none"
+                      height="18"
+                      stroke="currentColor"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth="2"
+                      viewBox="0 0 24 24"
+                      width="18"
+                      xmlns="http://www.w3.org/2000/svg"
+                    >
+                      <path d="M20 6 9 17l-5-5"></path>
+                    </svg>
+                    {"Organiza solicitudes y documentos."}
+                  </li>
+                  <li>
+                    <svg
+                      aria-hidden="true"
+                      className="lucide lucide-check cn-check"
+                      fill="none"
+                      height="18"
+                      stroke="currentColor"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth="2"
+                      viewBox="0 0 24 24"
+                      width="18"
+                      xmlns="http://www.w3.org/2000/svg"
+                    >
+                      <path d="M20 6 9 17l-5-5"></path>
+                    </svg>
+                    {"Da seguimiento al caso y a tu comisión."}
+                  </li>
                 </ul>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-      </section>
-
-      <section className="mx-auto max-w-[90rem] px-4 py-10 sm:px-6 lg:px-8">
-        <div className="mb-8 max-w-[88rem]">
-          <h2 className="max-w-none text-3xl font-bold tracking-tight text-slate-900 sm:text-4xl lg:text-[2.5rem] lg:leading-[1.15]">
-            Diseñada para aquellos que buscan velocidad, orden <br className="hidden lg:block" /> y más opciones para su colocación.
-          </h2>
-          <p className="mt-3 text-sm leading-7 text-slate-600 sm:text-base">
-            El valor real está en tener más probabilidades de colocación, ofrecer más productos, tener una mejor estructura y control de expedientes y llevar todo el proceso en un mismo lugar.
-          </p>
-        </div>
-
-        <div className="grid gap-6 lg:grid-cols-2">
-          <Card className="overflow-hidden border-none bg-white shadow-xl">
-            <CardContent className="h-full p-0">
-              <div className="h-full bg-rose-50 p-8 lg:p-10">
-                <Sparkles className="h-8 w-8 text-rose-600" />
-                <h3 className="mt-5 text-2xl font-bold text-rose-950">Lo que usualmente frena al broker</h3>
-                <div className="mt-6 space-y-5">
-                  <div className="flex gap-4">
-                    <Users className="mt-0.5 h-6 w-6 shrink-0 text-rose-600" />
-                    <div>
-                      <p className="text-base font-bold text-rose-950">Seguimiento disperso</p>
-                      <p className="mt-1 text-sm leading-6 text-rose-900/80">WhatsApp, correos, notas y hojas de cálculo hacen más lenta la operación.</p>
-                    </div>
-                  </div>
-                  <div className="flex gap-4">
-                    <BriefcaseBusiness className="mt-0.5 h-6 w-6 shrink-0 text-rose-600" />
-                    <div>
-                      <p className="text-base font-bold text-rose-950">Menos control del expediente</p>
-                      <p className="mt-1 text-sm leading-6 text-rose-900/80">Cuesta saber qué falta, qué avance lleva cada caso y qué sigue en el proceso.</p>
-                    </div>
-                  </div>
-                  <div className="flex gap-4">
-                    <Banknote className="mt-0.5 h-6 w-6 shrink-0 text-rose-600" />
-                    <div>
-                      <p className="text-base font-bold text-rose-950">Pocas alternativas de salida</p>
-                      <p className="mt-1 text-sm leading-6 text-rose-900/80">Se limita la colocación cuando no hay visibilidad de más productos e instituciones.</p>
-                    </div>
-                  </div>
-                </div>
+                <a
+                  className="cn-text-link"
+                  href="#form-brokers"
+                  onClick={() => setProfile("pro")}
+                >
+                  {"Quiero operar como broker →"}
+                </a>
+              </article>
+              <article className="cn-card">
+                <span className="cn-product-tag">{"Aliado referidor"}</span>
+                <h3>{"Conecta a quien necesita financiamiento."}</h3>
+                <p>
+                  {
+                    "Para contadores, consultores y personas que detectan oportunidades y quieren canalizarlas."
+                  }
+                </p>
+                <ul className="cn-contact-points">
+                  <li>
+                    <svg
+                      aria-hidden="true"
+                      className="lucide lucide-check cn-check"
+                      fill="none"
+                      height="18"
+                      stroke="currentColor"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth="2"
+                      viewBox="0 0 24 24"
+                      width="18"
+                      xmlns="http://www.w3.org/2000/svg"
+                    >
+                      <path d="M20 6 9 17l-5-5"></path>
+                    </svg>
+                    {"Comparte la oportunidad por el canal acordado."}
+                  </li>
+                  <li>
+                    <svg
+                      aria-hidden="true"
+                      className="lucide lucide-check cn-check"
+                      fill="none"
+                      height="18"
+                      stroke="currentColor"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth="2"
+                      viewBox="0 0 24 24"
+                      width="18"
+                      xmlns="http://www.w3.org/2000/svg"
+                    >
+                      <path d="M20 6 9 17l-5-5"></path>
+                    </svg>
+                    {"Recibe acompañamiento del equipo comercial."}
+                  </li>
+                  <li>
+                    <svg
+                      aria-hidden="true"
+                      className="lucide lucide-check cn-check"
+                      fill="none"
+                      height="18"
+                      stroke="currentColor"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth="2"
+                      viewBox="0 0 24 24"
+                      width="18"
+                      xmlns="http://www.w3.org/2000/svg"
+                    >
+                      <path d="M20 6 9 17l-5-5"></path>
+                    </svg>
+                    {"Conoce las condiciones de tu participación."}
+                  </li>
+                </ul>
+                <a
+                  className="cn-text-link"
+                  href="#form-brokers"
+                  onClick={() => setProfile("referidor")}
+                >
+                  {"Quiero referir oportunidades →"}
+                </a>
+              </article>
+            </div>
+          </div>
+        </section>
+        <section className="cn-section">
+          <div className="cn-container">
+            <div className="cn-section-heading">
+              <div>
+                <span className="cn-eyebrow">
+                  {"Un catálogo para distintas necesidades"}
+                </span>
+                <h2>{"Amplía las conversaciones con tus clientes."}</h2>
+                <p>
+                  {
+                    "Crédito simple · Línea revolvente · Factoraje · Arrendamiento vehicular y de equipo · Hipotecario de vivienda."
+                  }
+                </p>
               </div>
-            </CardContent>
-          </Card>
-
-          <Card className="overflow-hidden border-none bg-white shadow-xl">
-            <CardContent className="h-full p-0">
-              <div className="h-full bg-emerald-50 p-8 lg:p-10">
-                <ShieldCheck className="h-8 w-8 text-emerald-600" />
-                <h3 className="mt-5 text-2xl font-bold text-emerald-950">Lo que ganas con Crédito Negocios</h3>
-                <div className="mt-6 space-y-5">
-                  <div className="flex gap-4">
-                    <Users className="mt-0.5 h-6 w-6 shrink-0 text-emerald-600" />
-                    <div>
-                      <p className="text-base font-bold text-emerald-950">Más probabilidades de colocación</p>
-                      <p className="mt-1 text-sm leading-6 text-emerald-900/80">Acceso a más rutas y productos para presentar mejor cada oportunidad.</p>
-                    </div>
-                  </div>
-                  <div className="flex gap-4">
-                    <BriefcaseBusiness className="mt-0.5 h-6 w-6 shrink-0 text-emerald-600" />
-                    <div>
-                      <p className="text-base font-bold text-emerald-950">Mayor estructura y control</p>
-                      <p className="mt-1 text-sm leading-6 text-emerald-900/80">Todo el expediente, seguimiento y avance comercial en un mismo lugar.</p>
-                    </div>
-                  </div>
-                  <div className="flex gap-4">
-                    <Banknote className="mt-0.5 h-6 w-6 shrink-0 text-emerald-600" />
-                    <div>
-                      <p className="text-base font-bold text-emerald-950">Más productos para ofrecer</p>
-                      <p className="mt-1 text-sm leading-6 text-emerald-900/80">Mayor capacidad para vender con mejor orden, visibilidad y confianza frente al cliente.</p>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-      </section>
-
-      <section className="mx-auto max-w-[90rem] px-4 py-12 sm:px-6 lg:px-8">
-        <div className="grid gap-4 lg:grid-cols-3">
-          <div className="rounded-[1.75rem] border border-[#173653] bg-[#1F476B] p-6 text-white shadow-xl">
-            <Building2 className="h-6 w-6 text-cyan-300" />
-            <p className="mt-3 text-lg font-bold">Instituciones más alineadas</p>
-            <p className="mt-2 text-sm leading-6 text-blue-100">Cada oportunidad puede perfilarse con una lógica mucho más comercial y menos improvisada.</p>
-          </div>
-
-          <div className="rounded-[1.75rem] border border-[#173653] bg-[#1F476B] p-6 text-white shadow-xl">
-            <Wallet className="h-6 w-6 text-cyan-300" />
-            <p className="mt-3 text-lg font-bold">Mayor percepción de valor</p>
-            <p className="mt-2 text-sm leading-6 text-blue-100">Tu despacho se ve más sólido cuando el proceso es claro y estructurado.</p>
-          </div>
-
-          <div className="rounded-[1.75rem] border border-[#173653] bg-[#1F476B] p-6 text-white shadow-xl">
-            <ShieldCheck className="h-6 w-6 text-cyan-300" />
-            <p className="mt-3 text-lg font-bold">Seguimiento con mejor trazabilidad</p>
-            <p className="mt-2 text-sm leading-6 text-blue-100">Menos incertidumbre, más orden y una experiencia mucho más digna de mostrar frente a tu nicho de mercado.</p>
-          </div>
-        </div>
-      </section>
-
-      <section className="mx-auto max-w-[90rem] px-4 py-16 sm:px-6 lg:px-8">
-        <div className="mb-8 max-w-4xl">
-          <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-primary">Cómo funciona</p>
-          <h2 className="mt-2 text-3xl font-bold tracking-tight text-slate-900">Paso a paso para operar mejor.</h2>
-        </div>
-
-        <div className="grid items-stretch gap-5 lg:grid-cols-4">
-          {workflow.map((item) => (
-            <Card key={item.step} className="h-full rounded-[1.75rem] border-slate-200 bg-white shadow-sm">
-              <CardContent className="flex h-full flex-col items-start p-6 text-left lg:p-7">
-                <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-2xl bg-primary text-lg font-bold text-white">
-                  {item.step}
-                </div>
-                <h3 className="min-h-[56px] text-xl font-bold leading-tight text-slate-900">{item.title}</h3>
-                <p className="mt-3 text-sm leading-7 text-slate-600">{item.description}</p>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-      </section>
-
-      <section className="mx-auto max-w-[90rem] px-4 py-4 sm:px-6 lg:px-8">
-        <div className="mb-8 text-center">
-          <h2 className="text-3xl font-bold tracking-tight text-slate-900">Lo que valoran quienes ya operan con más estructura.</h2>
-        </div>
-
-        <div className="grid items-stretch gap-6 lg:grid-cols-3">
-          {testimonials.map((testimonial) => (
-            <Card key={testimonial.name} className="flex h-full border-slate-200 bg-white shadow-sm transition-all hover:shadow-lg">
-              <CardContent className="flex h-full flex-col p-7">
-                <div className="mb-5 flex items-center gap-4">
-                  <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-primary/10 text-lg font-bold text-primary">
-                    {testimonial.name
-                      .split(" ")
-                      .slice(0, 2)
-                      .map((value) => value[0])
-                      .join("")}
-                  </div>
-                  <div>
-                    <p className="font-semibold text-slate-900">{testimonial.name}</p>
-                    <p className="text-sm text-slate-500">{testimonial.role}</p>
-                    <p className="text-xs text-slate-400">{testimonial.company}</p>
-                  </div>
-                </div>
-                <p className="text-sm leading-7 text-slate-600">“{testimonial.quote}”</p>
-                <div className="mt-auto pt-6">
-                  <div className="rounded-2xl bg-emerald-50 p-4">
-                    <p className="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-700">Resultado</p>
-                    <p className="mt-2 text-sm font-medium text-slate-800">{testimonial.result}</p>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-      </section>
-
-      <section className="mx-auto max-w-[82rem] px-4 py-16 sm:px-6 lg:px-8">
-        <div className="rounded-[2rem] border border-slate-200 bg-white p-6 shadow-sm lg:p-8">
-          <div className="max-w-3xl">
-            <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-primary">Preguntas frecuentes</p>
-            <h2 className="mt-2 text-3xl font-bold tracking-tight text-slate-900">Respuestas claras para decidir rápido.</h2>
-          </div>
-
-          <div className="mt-8 space-y-4">
-            {faqs.map((item) => (
-              <details key={item.question} className="group rounded-2xl border border-slate-200 bg-slate-50 px-6 py-5">
-                <summary className="cursor-pointer list-none text-base font-semibold text-slate-900">
-                  {item.question}
-                </summary>
-                <p className="mt-3 text-sm leading-7 text-slate-600">{item.answer}</p>
-              </details>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      <section className="px-4 pb-12 sm:px-6 lg:px-8">
-        <div className="mx-auto flex max-w-[90rem] flex-col gap-6 rounded-[2rem] bg-[linear-gradient(135deg,#2B5B85_0%,#1F476B_58%,#173653_100%)] p-6 text-white lg:flex-row lg:items-center lg:justify-between lg:p-8">
-          <div className="max-w-3xl">
-            <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-cyan-100">Siguiente paso</p>
-            <h2 className="mt-2 text-2xl font-black">Si tu mercado exige confianza, tu experiencia también debe verla.</h2>
-            <p className="mt-2 text-sm leading-7 text-blue-100">
-              Solicita acceso, conoce el flujo y decide si esta es la forma correcta de elevar tu operación comercial.
-            </p>
-          </div>
-
-          <div className="flex flex-col gap-3 sm:flex-row">
-            <Button size="lg" asChild className="bg-white hover:bg-slate-100 text-[#1F476B] text-base font-semibold shadow-md px-7 transition-all duration-200">
-              <a href="#form-brokers">
-                Solicitar acceso
-                <ArrowRight className="ml-2 h-5 w-5" />
+              <a
+                className="cn-text-link"
+                href="https://www.creditonegocios.com.mx/#creditos"
+              >
+                {"Conocer los productos ↗"}
               </a>
-            </Button>
-            <Button
-              size="lg"
-              variant="outline"
-              asChild
-              className="border-white/40 bg-white/10 px-7 text-white text-base font-semibold shadow-sm hover:bg-white/20 hover:text-white transition-all duration-200"
+            </div>
+            <div className="cn-grid cn-grid--four">
+              <article className="cn-step">
+                <span className="cn-step-number">{"01"}</span>
+                <h3>{"Solicita tu incorporación"}</h3>
+                <p>
+                  {"Nos compartes tus datos y eliges cómo quieres colaborar."}
+                </p>
+              </article>
+              <article className="cn-step">
+                <span className="cn-step-number">{"02"}</span>
+                <h3>{"Conoce las condiciones"}</h3>
+                <p>
+                  {
+                    "El equipo revisa tu perfil, explica el esquema y te orienta en la activación."
+                  }
+                </p>
+              </article>
+              <article className="cn-step">
+                <span className="cn-step-number">{"03"}</span>
+                <h3>{"Presenta oportunidades"}</h3>
+                <p>
+                  {
+                    "Registra tus casos o canaliza tus referidos conforme al esquema acordado."
+                  }
+                </p>
+              </article>
+              <article className="cn-step">
+                <span className="cn-step-number">{"04"}</span>
+                <h3>{"Acompaña cada avance"}</h3>
+                <p>
+                  {
+                    "Da seguimiento a la operación y a los requisitos para el pago de tu comisión."
+                  }
+                </p>
+              </article>
+            </div>
+          </div>
+        </section>
+        <section
+          aria-labelledby="testimonials-title"
+          className="cn-section cn-testimonials"
+        >
+          <div className="cn-container">
+            <div className="cn-section-heading">
+              <div>
+                <span className="cn-eyebrow">
+                  {"La experiencia de nuestra red"}
+                </span>
+                <h2 id="testimonials-title">
+                  {"Lo que dicen nuestros brokers y aliados."}
+                </h2>
+                <p>
+                  {
+                    "Lo que valoran brokers y aliados al acompañar a sus clientes."
+                  }
+                </p>
+              </div>
+            </div>
+            <div className="cn-grid cn-grid--three">
+              <figure className="cn-testimonial">
+                <h3>{"Una atención más profesional"}</h3>
+                <blockquote>
+                  {
+                    "La conversación con el cliente cambió por completo. Ahora todo se siente más serio, más claro y más fácil de mover."
+                  }
+                </blockquote>
+                <figcaption>
+                  <span>
+                    <strong>{"María Fernanda R."}</strong>
+                    <small>{"Broker PyME"}</small>
+                  </span>
+                </figcaption>
+              </figure>
+              <figure className="cn-testimonial">
+                <h3>{"Visibilidad para dar seguimiento"}</h3>
+                <blockquote>
+                  {
+                    "Lo que más ayuda es la visibilidad. Ya no se trabaja a ciegas y eso mejora mucho la confianza del cliente final."
+                  }
+                </blockquote>
+                <figcaption>
+                  <span>
+                    <strong>{"Jorge A. Téllez"}</strong>
+                    <small>{"Broker hipotecario"}</small>
+                  </span>
+                </figcaption>
+              </figure>
+              <figure className="cn-testimonial">
+                <h3>{"Orden al canalizar referidos"}</h3>
+                <blockquote>
+                  {
+                    "Incluso cuando solo referimos contactos, el proceso se ve mucho más profesional y ordenado."
+                  }
+                </blockquote>
+                <figcaption>
+                  <span>
+                    <strong>{"Ana Lucía G."}</strong>
+                    <small>{"Aliada comercial"}</small>
+                  </span>
+                </figcaption>
+              </figure>
+            </div>
+          </div>
+        </section>
+        <section className="cn-section cn-section--wash" id="form-brokers">
+          <div className="cn-container cn-contact-grid">
+            <div className="cn-contact-copy">
+              <span className="cn-eyebrow">{"Comencemos a colaborar"}</span>
+              <h2>{"Cuéntanos cómo quieres participar."}</h2>
+              <p>
+                {
+                  "El equipo te contactará para conocer tu operación, resolver dudas y explicarte los pasos para incorporarte."
+                }
+              </p>
+              <ul className="cn-contact-points">
+                <li>
+                  <svg
+                    aria-hidden="true"
+                    className="lucide lucide-check cn-check"
+                    fill="none"
+                    height="18"
+                    stroke="currentColor"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth="2"
+                    viewBox="0 0 24 24"
+                    width="18"
+                    xmlns="http://www.w3.org/2000/svg"
+                  >
+                    <path d="M20 6 9 17l-5-5"></path>
+                  </svg>
+                  {"Recibe orientación sobre el esquema de colaboración."}
+                </li>
+                <li>
+                  <svg
+                    aria-hidden="true"
+                    className="lucide lucide-check cn-check"
+                    fill="none"
+                    height="18"
+                    stroke="currentColor"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth="2"
+                    viewBox="0 0 24 24"
+                    width="18"
+                    xmlns="http://www.w3.org/2000/svg"
+                  >
+                    <path d="M20 6 9 17l-5-5"></path>
+                  </svg>
+                  {
+                    "Conoce las condiciones de acceso antes de activar tu cuenta."
+                  }
+                </li>
+                <li>
+                  <svg
+                    aria-hidden="true"
+                    className="lucide lucide-check cn-check"
+                    fill="none"
+                    height="18"
+                    stroke="currentColor"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth="2"
+                    viewBox="0 0 24 24"
+                    width="18"
+                    xmlns="http://www.w3.org/2000/svg"
+                  >
+                    <path d="M20 6 9 17l-5-5"></path>
+                  </svg>
+                  {"Solicita una demo si quieres ver el funcionamiento."}
+                </li>
+              </ul>
+              <p className="cn-note">
+                {"¿Ya tienes cuenta? "}
+                <a
+                  className="cn-text-link"
+                  href="https://app.creditonegocios.com.mx/"
+                >
+                  {"Inicia sesión"}
+                </a>
+                {"."}
+              </p>
+            </div>
+            <form
+              aria-label="Solicitar incorporación al programa"
+              className="cn-form"
+              onSubmit={submit}
             >
-              <a href={loginHref}>
-                <LogIn className="mr-2 h-4 w-4" />
-                Ya tengo cuenta
+              <fieldset className="cn-mode-options">
+                <legend>{"¿Cómo quieres colaborar?"}</legend>
+                <label className="cn-mode">
+                  <input
+                    name="brokerProfile"
+                    type="radio"
+                    value="pro"
+                    checked={profile === "pro"}
+                    onChange={() => setProfile("pro")}
+                  />
+                  <span>
+                    <strong>{"Broker profesional"}</strong>
+                    <small>{"Gestiono clientes y expedientes."}</small>
+                  </span>
+                </label>
+                <label className="cn-mode">
+                  <input
+                    name="brokerProfile"
+                    type="radio"
+                    value="referidor"
+                    checked={profile === "referidor"}
+                    onChange={() => setProfile("referidor")}
+                  />
+                  <span>
+                    <strong>{"Aliado referidor"}</strong>
+                    <small>{"Quiero canalizar oportunidades."}</small>
+                  </span>
+                </label>
+              </fieldset>
+              <div className="cn-fields">
+                <div className="cn-field cn-field--full">
+                  <label htmlFor="broker-name">{"Nombre completo"}</label>
+                  <input
+                    autoComplete="name"
+                    id="broker-name"
+                    maxLength={120}
+                    minLength={2}
+                    name="name"
+                    placeholder="¿Cómo te llamas?"
+                    required={true}
+                  />
+                </div>
+                <div className="cn-field">
+                  <label htmlFor="broker-phone">{"Teléfono / WhatsApp"}</label>
+                  <input
+                    autoComplete="tel"
+                    id="broker-phone"
+                    maxLength={25}
+                    minLength={8}
+                    name="phone"
+                    placeholder="55 0000 0000"
+                    required={true}
+                    type="tel"
+                  />
+                </div>
+                <div className="cn-field">
+                  <label htmlFor="broker-email">{"Correo electrónico"}</label>
+                  <input
+                    autoComplete="email"
+                    id="broker-email"
+                    maxLength={254}
+                    name="email"
+                    placeholder="nombre@empresa.com"
+                    required={true}
+                    type="email"
+                  />
+                </div>
+                {profile === "pro" && (
+                  <div className="cn-field">
+                    <label htmlFor="broker-company">
+                      {"Empresa o despacho "}
+                      <span>{"(opcional)"}</span>
+                    </label>
+                    <input
+                      autoComplete="organization"
+                      id="broker-company"
+                      maxLength={180}
+                      name="company"
+                    />
+                  </div>
+                )}
+                {profile === "pro" && (
+                  <div className="cn-field">
+                    <label htmlFor="broker-type">
+                      {"Especialidad principal"}
+                    </label>
+                    <select id="broker-type" name="brokerType" required={true}>
+                      <option value="">{"Selecciona una opción"}</option>
+                      <option value="pyme">
+                        {"Crédito empresarial / PyME"}
+                      </option>
+                      <option value="pfae">
+                        {"Personas físicas con actividad empresarial"}
+                      </option>
+                      <option value="hipotecario">{"Hipotecario"}</option>
+                      <option value="mixto">
+                        {"Varios productos / otra especialidad"}
+                      </option>
+                    </select>
+                  </div>
+                )}
+                <div className="cn-field cn-field--full">
+                  <label htmlFor="broker-message">
+                    {"Mensaje "}
+                    <span>{"(opcional)"}</span>
+                  </label>
+                  <textarea
+                    id="broker-message"
+                    maxLength={1200}
+                    name="message"
+                    placeholder="¿Qué tipo de clientes atiendes? También puedes pedir una demo."
+                  ></textarea>
+                </div>
+              </div>
+              <p className="cn-note">
+                {
+                  "Usaremos tus datos para atender tu solicitud. Consulta nuestro "
+                }
+                <a
+                  href="/legal/aviso"
+                  rel="noopener noreferrer"
+                  target="_blank"
+                >
+                  {"Aviso de Privacidad"}
+                </a>
+                {"."}
+              </p>
+              <button className="cn-button" type="submit" disabled={busy}>
+                {busy ? "Enviando…" : "Solicitar incorporación →"}
+              </button>
+              <p className="cn-note">
+                {
+                  "Respuesta comercial normalmente dentro de las siguientes 24 horas hábiles. El envío no activa una cuenta ni genera un cobro."
+                }
+              </p>
+              {status && (
+                <p
+                  role={status.error ? "alert" : "status"}
+                  className={
+                    "cn-status" + (status.error ? " cn-status--error" : "")
+                  }
+                >
+                  {status.message}
+                </p>
+              )}
+            </form>
+          </div>
+        </section>
+        <section className="cn-section" id="preguntas">
+          <div className="cn-container">
+            <div className="cn-faq">
+              <span className="cn-eyebrow">{"Colabora con claridad"}</span>
+              <h2 className="cn-title-gap">
+                {"Lo que necesitas saber antes de empezar."}
+              </h2>
+              <details>
+                <summary>{"¿Qué productos puedo trabajar?"}</summary>
+                <p>
+                  {
+                    "Crédito simple, líneas revolventes, factoraje, arrendamiento vehicular y de maquinaria o equipo, e hipotecario de vivienda. La disponibilidad de alternativas depende del perfil del cliente y del catálogo vigente de instituciones y productos."
+                  }
+                </p>
+              </details>
+              <details>
+                <summary>{"¿Necesito ser broker para participar?"}</summary>
+                <p>
+                  {
+                    "Puedes solicitar tu incorporación como broker profesional o como aliado referidor. Si solo quieres canalizar oportunidades, nuestro equipo te explica cómo compartirlas y qué seguimiento corresponde a cada parte."
+                  }
+                </p>
+              </details>
+              <details>
+                <summary>
+                  {"¿Cómo conozco mi comisión y cuándo se paga?"}
+                </summary>
+                <p>
+                  {
+                    "La comisión depende del producto, la operación y tu esquema de colaboración. El monto se valida antes del pago y se cumplen los requisitos documentales y comerciales correspondientes. Puedes consultar el desglose y estado disponible según tu rol. Si perteneces a una red, Crédito Negocios paga al Master y este liquida a sus brokers; si operas sin Master, el pago corresponde directamente al broker."
+                  }
+                </p>
+              </details>
+              <details>
+                <summary>
+                  {"¿Cómo se protege la oportunidad que registro?"}
+                </summary>
+                <p>
+                  {
+                    "La oportunidad queda registrada para dar seguimiento a su atribución comercial. La protección, vigencia, renovaciones y resolución de coincidencias se rigen por el convenio y las reglas aplicables; te las explicamos durante tu incorporación."
+                  }
+                </p>
+              </details>
+              <details>
+                <summary>{"¿Qué condiciones tiene el acceso?"}</summary>
+                <p>
+                  {
+                    "El equipo te confirma las condiciones de acceso y cualquier beneficio o promoción vigente antes de activar tu cuenta. Enviar esta solicitud no activa una suscripción ni genera un cobro."
+                  }
+                </p>
+              </details>
+              <details>
+                <summary>
+                  {"¿Mi cuenta se activa al enviar el formulario?"}
+                </summary>
+                <p>
+                  {
+                    "Primero recibimos tu solicitud. Normalmente te contactamos dentro de las siguientes 24 horas hábiles para conocer tu operación, explicar las condiciones y ayudarte con la invitación y activación. Puedes pedir una demostración durante ese contacto."
+                  }
+                </p>
+              </details>
+            </div>
+          </div>
+        </section>
+      </main>
+      <footer className="cn-footer">
+        <div className="cn-container">
+          <div className="cn-footer-top">
+            <div>
+              <a className="cn-logo" href="https://www.creditonegocios.com.mx/">
+                <img
+                  alt="Crédito Negocios"
+                  height="52"
+                  loading="lazy"
+                  src="/credito-negocios-07.jpg"
+                  width="190"
+                />
               </a>
-            </Button>
+              <p>
+                {
+                  "Alternativas de financiamiento para tus clientes. Herramientas y acompañamiento para tu operación."
+                }
+              </p>
+            </div>
+            <div className="cn-footer-links">
+              <a href="https://app.creditonegocios.com.mx/">
+                {"Acceder a la plataforma"}
+              </a>
+              <a
+                href="https://wa.me/525623300270"
+                rel="noopener noreferrer"
+                target="_blank"
+              >
+                {"WhatsApp"}
+              </a>
+              <a href="mailto:info@creditonegocios.com.mx">
+                {"info@creditonegocios.com.mx"}
+              </a>
+            </div>
           </div>
-        </div>
-      </section>
-
-      <footer className="border-t border-[#173653] bg-[#1F476B] text-white">
-        <div className="mx-auto grid max-w-[90rem] grid-cols-1 items-center gap-4 px-4 py-8 text-sm sm:px-6 lg:grid-cols-[auto_1fr_auto] lg:gap-6 lg:px-8">
-          <div className="flex items-center justify-center lg:justify-start">
-            <img src="/credito-negocios-07.jpg" alt="Credito Negocios" className="h-12 w-auto rounded-sm object-contain sm:h-16" />
-          </div>
-
-          <div className="text-center text-base text-blue-100">© 2026 Crédito Negocios</div>
-
-          <div className="flex flex-wrap items-center justify-center gap-4 text-blue-100 lg:justify-end">
-            <a href="mailto:info@creditonegocios.com.mx" className="inline-flex items-center gap-2 hover:text-white">
-              <Mail className="h-4 w-4" />
-              info@creditonegocios.com.mx
-            </a>
-            <a href={whatsappUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-2 hover:text-white">
-              <Phone className="h-4 w-4" />
-              WhatsApp
-            </a>
+          <div className="cn-footer-bottom">
+            <span>{"© 2026 Crédito Negocios"}</span>
+            <div className="cn-footer-links">
+              <a href="/legal/aviso">{"Aviso de Privacidad"}</a>
+              <a href="/legal/terminos">{"Términos y Condiciones"}</a>
+              <a href="https://www.creditonegocios.com.mx/">
+                {"Busco financiamiento"}
+              </a>
+            </div>
           </div>
         </div>
       </footer>

@@ -1,4 +1,4 @@
-const { existsSync, mkdirSync, copyFileSync } = require('node:fs');
+const { existsSync, mkdirSync, copyFileSync, cpSync } = require('node:fs');
 const { join, resolve } = require('node:path');
 
 const landingIndex = resolve('landing', 'index.html');
@@ -20,6 +20,8 @@ for (const { outputDir, htmlTargets } of outputTargets) {
   const outputLogoJpg = join(outputDir, 'Credito Negocios-07.jpg');
   const outputLogoNormalized = join(outputDir, 'credito-negocios-07.jpg');
   mkdirSync(outputDir, { recursive: true });
+    copyFileSync(resolve("landing", "brand.css"), join(outputDir, "brand.css"));
+    cpSync(resolve("landing", "fonts"), join(outputDir, "fonts"), { recursive: true });
 
   for (const htmlTarget of htmlTargets) {
     copyFileSync(landingIndex, join(outputDir, htmlTarget));

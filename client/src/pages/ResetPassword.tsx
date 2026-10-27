@@ -114,7 +114,7 @@ export default function ResetPassword() {
   // Error state
   if (error && !token) {
     return (
-      <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
+      <div className="cn-public cn-auth min-h-screen bg-slate-50 flex items-center justify-center p-4">
         <div className="w-full max-w-md text-center">
           <div className="mb-6">
             <img 
@@ -159,7 +159,7 @@ export default function ResetPassword() {
   // Success state
   if (resetComplete) {
     return (
-      <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
+      <div className="cn-public cn-auth min-h-screen bg-slate-50 flex items-center justify-center p-4">
         <div className="w-full max-w-md text-center">
           <div className="mb-6">
             <img 
@@ -202,7 +202,7 @@ export default function ResetPassword() {
 
   // Set password form (universal for reset or activation)
   return (
-    <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
+    <div className="cn-public cn-auth min-h-screen bg-slate-50 flex items-center justify-center p-4">
       <div className="w-full max-w-md">
         <div className="text-center mb-6">
           <img 

@@ -61,7 +61,7 @@ export default function LegalDocumentPage({ document }: LegalDocumentPageProps) 
     : "Vigente";
 
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-900">
+    <div className="cn-public cn-legal min-h-screen bg-slate-50 text-slate-900">
       <header className="border-b bg-white px-5 py-4">
         <div className="mx-auto flex max-w-4xl flex-wrap items-center justify-between gap-3">
           <Link href="/" className="font-semibold text-primary">
