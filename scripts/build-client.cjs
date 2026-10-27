@@ -1,4 +1,4 @@
-const { existsSync, mkdirSync, copyFileSync } = require('node:fs');
+const { existsSync, mkdirSync, copyFileSync, cpSync } = require('node:fs');
 const { join, resolve } = require('node:path');
 const { spawnSync } = require('node:child_process');
 
@@ -16,6 +16,8 @@ function emitLandingPublic() {
 
   for (const { outputDir, htmlTargets } of landingOutputs) {
     mkdirSync(outputDir, { recursive: true });
+    copyFileSync(resolve("landing", "brand.css"), join(outputDir, "brand.css"));
+    cpSync(resolve("landing", "fonts"), join(outputDir, "fonts"), { recursive: true });
 
     for (const htmlTarget of htmlTargets) {
       copyFileSync(landingIndex, join(outputDir, htmlTarget));
@@ -40,6 +42,8 @@ function emitLandingPublic() {
 }
 
 function runViteBuild() {
+  copyFileSync(resolve("landing", "brand.css"), resolve("client/public/brand.css"));
+  cpSync(resolve("landing", "fonts"), resolve("client/public/fonts"), { recursive: true });
   let viteBin;
 
   try {

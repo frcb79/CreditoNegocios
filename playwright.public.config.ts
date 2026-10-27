@@ -1,0 +1,2 @@
+import { defineConfig } from '@playwright/test';
+export default defineConfig({testDir:'./tests/public-web',timeout:30000,fullyParallel:true,workers:2,reporter:'list',outputDir:'test-results/public-web',use:{baseURL:'http://127.0.0.1:4173',headless:true,launchOptions:{executablePath:process.env.CN_CHROMIUM_PATH}},webServer:{command:'node scripts/preview-public-web.cjs',url:'http://127.0.0.1:4173/landing.html',reuseExistingServer:false}});

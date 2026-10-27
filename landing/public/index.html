@@ -1,1710 +1,895 @@
-<!DOCTYPE html>
+<!doctype html>
+
 <html lang="es">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Crédito Negocios - Arrendamiento y Créditos para Empresas | Soluciones a la Medida</title>
-<meta name="description" content="Créditos empresariales + Arrendamiento de autos y maquinaria. Desde $100K hasta $30M. Respuesta rápida, tasas competitivas.">
-<link rel="icon" type="image/jpeg" href="/credito-negocios-07.jpg" />
-<script src="https://cdn.tailwindcss.com"></script>
-<script>
-tailwind.config = {
-  theme: {
-    extend: {
-      colors: {
-        brand: {
-          navy: '#1F476B',
-          navyDark: '#173653',
-          navyLight: '#2B5B85',
-          teal: '#00cca2',
-          orange: '#f59e0b'
-        }
-      }
-    }
-  }
-}
-</script>
-<style>
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap');
-* { font-family: 'Inter', sans-serif; }
-
-.gradient-navy { background: linear-gradient(135deg, #2B5B85 0%, #1F476B 58%, #173653 100%); }
-.gradient-teal  { background: linear-gradient(135deg, #00cca2 0%, #00FFCA 100%); }
-.gradient-orange{ background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%); }
-
-/* Unified icon gradient: logo blue */
-.gradient-brand { background: linear-gradient(135deg, #2B5B85 0%, #1F476B 58%, #173653 100%); }
-
-.hero-pattern {
-  background-color: #1F476B;
-  background-image: url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%2300cca2' fill-opacity='0.1'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E");
-}
-
-.card-hover { transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); }
-.card-hover:hover { transform: translateY(-8px); box-shadow: 0 20px 40px rgba(0,0,0,0.12); }
-
-.tab-content { display: none !important; }
-.tab-content.active { display: block !important; animation: fadeIn 0.4s ease-in; }
-.tab-btn { border: 2px solid transparent; }
-.tab-btn-active { background: #ffffff !important; color: #1F476B !important; border: 2px solid #1F476B !important; }
-.tab-btn-inactive { background: transparent; color: #374151; border: 2px solid transparent; }
-.carousel-wrap { overflow: hidden; position: relative; }
-.carousel-track { display: flex; gap: 24px; transition: transform 0.35s cubic-bezier(.4,0,.2,1); }
-.caso-card { flex: 0 0 calc(33.333% - 16px); min-width: calc(33.333% - 16px); }
-@media(max-width:1023px){ .caso-card { flex: 0 0 calc(50% - 12px); min-width: calc(50% - 12px); } }
-@media(max-width:767px){ .caso-card { flex: 0 0 100%; min-width: 100%; } }
-.carousel-dot { width:10px; height:10px; border-radius:50%; background:#cbd5e1; border:none; cursor:pointer; transition:background .2s; }
-.carousel-dot.active { background:#00cca2; }
-@keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
-
-.whatsapp-float {
-  position: fixed; width: 52px; height: 52px; bottom: 24px; right: 24px;
-  background-color: #25d366; color: #FFF; border-radius: 9999px; text-align: center;
-  font-size: 24px; box-shadow: 0 8px 18px rgba(0,0,0,0.22); z-index: 100;
-  display: flex; align-items: center; justify-content: center;
-  transition: all 0.3s ease; animation: pulse 2s infinite;
-}
-.whatsapp-float:hover { transform: scale(1.1); box-shadow: 2px 2px 25px rgba(37,211,102,0.5); }
-@keyframes pulse {
-  0%, 100% { box-shadow: 0 0 0 0 rgba(37,211,102,0.7); }
-  50%       { box-shadow: 0 0 0 15px rgba(37,211,102,0); }
-}
-
-.dropdown { position: relative; }
-.dropdown-content {
-  display: none; position: absolute; top: 100%; left: 0;
-  background: white; min-width: 220px; box-shadow: 0 10px 25px rgba(0,0,0,0.1);
-  border-radius: 12px; padding: 8px 0; z-index: 200;
-  padding-top: 8px; margin-top: 4px;
-}
-.dropdown-content.open { display: block; }
-.dropdown-content a { display: block; padding: 12px 20px; color: #374151; transition: all 0.2s; }
-.dropdown-content a:hover { background: #f3f4f6; color: #1F476B; padding-left: 24px; }
-</style>
-</head>
-
-<body class="bg-gray-50">
-
-<!-- WhatsApp Float Button -->
-<a href="https://wa.me/525623300270" target="_blank" class="whatsapp-float">
-  <svg class="w-6 h-6" fill="currentColor" viewBox="0 0 24 24">
-    <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/>
-  </svg>
-</a>
-
-<!-- Navigation -->
-<nav class="fixed w-full bg-brand-navy shadow-lg z-50 border-b border-white/10">
-  <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-    <div class="flex items-center justify-between md:grid md:grid-cols-[auto_1fr_auto] h-20 gap-4">
-      <!-- Logo -->
-      <div class="flex items-center">
-        <div class="flex items-center gap-2">
-          <a href="#inicio" class="block rounded-lg overflow-hidden">
-            <img src="/credito-negocios-07.jpg" alt="Crédito Negocios" class="h-[53px] w-auto object-contain rounded-sm" />
-          </a>
-        </div>
-      </div>
-
-      <!-- Desktop Menu Centered -->
-      <div class="hidden md:flex items-center justify-center space-x-6">
-        <a href="#inicio" class="text-white hover:text-teal-200 font-medium transition">Inicio</a>
-
-        <div class="dropdown">
-          <a href="#arrendamiento" class="text-white hover:text-teal-200 font-medium transition flex items-center gap-1">
-            Arrendamiento
-            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
-            </svg>
-          </a>
-          <div class="dropdown-content">
-            <a href="#arrendamiento" data-tab-target="vehicular">Vehicular</a>
-            <a href="#arrendamiento" data-tab-target="maquinaria">Maquinaria y Equipo</a>
-          </div>
-        </div>
-
-        <div class="dropdown">
-          <a href="#creditos" class="text-white hover:text-teal-200 font-medium transition flex items-center gap-1">
-            Créditos
-            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
-            </svg>
-          </a>
-          <div class="dropdown-content">
-            <a href="#credito-simple">Crédito Simple</a>
-            <a href="#credito-revolvente">Línea Revolvente</a>
-            <a href="#factoraje">Factoraje</a>
-            <a href="#sustitucion-pasivos">Sustitución de Pasivos</a>
-            <a href="#soluciones-medida">A la Medida</a>
-          </div>
-        </div>
-
-        <a href="#casos" class="text-white hover:text-teal-200 font-medium transition">Casos de Éxito</a>
-        <a href="#referidos" class="text-white hover:text-teal-200 font-medium transition">Referidos</a>
-        <a href="#faq" class="text-white hover:text-teal-200 font-medium transition">FAQ</a>
-      </div>
-
-      <!-- Desktop Actions -->
-      <div class="hidden md:flex items-center gap-3 justify-end">
-        <a href="https://app.creditonegocios.com.mx/brokers" class="text-white border border-white/80 px-5 py-2.5 rounded-lg font-semibold text-sm hover:bg-white hover:text-brand-navy shadow-sm transition">
-          Soy Broker
-        </a>
-        <a href="#contacto" class="bg-white text-brand-navy border border-white px-6 py-2.5 rounded-lg font-semibold text-sm hover:bg-slate-100 shadow-md transition">
-          Solicitar Ahora
-        </a>
-      </div>
-
-      <!-- Mobile Quick Actions -->
-      <div class="md:hidden flex items-center gap-2">
-        <a href="#referidos" class="text-white border border-white/80 px-3 py-2 rounded-lg font-semibold text-xs hover:bg-white hover:text-brand-navy shadow-sm transition">
-          Referidos
-        </a>
-        <a href="#contacto" class="bg-white text-brand-navy border border-white px-3 py-2 rounded-lg font-semibold text-xs hover:bg-slate-100 shadow-sm transition">
-          Cotizar
-        </a>
-      </div>
-    </div>
-  </div>
-</nav>
-
-<!-- ═══════════════════════════════════════════════════
-     HERO
-═══════════════════════════════════════════════════ -->
-<section id="inicio" class="bg-white pt-32 pb-20 text-brand-navy">
-  <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-    <div class="text-center mb-16">
-      <h1 class="text-5xl lg:text-6xl font-black mb-6 leading-tight">
-        Soluciones Financieras<br/>
-        <span class="text-brand-teal"> para tu Empresa</span>
-      </h1>
-      <p class="text-xl lg:text-2xl text-gray-600 max-w-3xl mx-auto mb-3">
-        Créditos empresariales + Arrendamiento de autos y maquinaria
-      </p>
-      <p class="text-2xl font-bold text-brand-navy text-center mb-10">Desde $100K hasta $30M</p>
-    </div>
-
-    <!-- Dual Hero Cards — ✅ Fondo blanco, texto de color -->
-    <div class="grid md:grid-cols-2 gap-8 max-w-5xl mx-auto">
-
-      <!-- Arrendamiento Card -->
-      <div class="bg-white rounded-3xl p-8 border border-[#cfeee6] shadow-[0_10px_30px_rgba(13,84,96,0.06)] hover:shadow-xl transition card-hover">
-        <div class="flex items-center gap-4 mb-5">
-          <div class="w-14 h-14 gradient-brand rounded-2xl flex items-center justify-center flex-shrink-0">
-            <svg class="w-7 h-7 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
-            </svg>
-          </div>
-          <h3 class="text-3xl font-bold text-brand-navy">Arrendamiento</h3>
-        </div>
-        <p class="text-gray-600 mb-2">Todo tipo de vehículos hasta maquinaria pesada.</p>
-        <p class="text-gray-600 mb-5">Flexibilidad y Deducibilidad Total.</p>
-        <ul class="space-y-2 mb-8 text-sm">
-          <li class="flex items-center gap-2">
-            <svg class="w-5 h-5 text-brand-teal" fill="currentColor" viewBox="0 0 20 20">
-              <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z"/>
-            </svg>
-            <span class="text-gray-700">Vehículos de todas las marcas</span>
-          </li>
-          <li class="flex items-center gap-2">
-            <svg class="w-5 h-5 text-brand-teal" fill="currentColor" viewBox="0 0 20 20">
-              <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z"/>
-            </svg>
-            <span class="text-gray-700">Maquinaria desde $50k hasta $50M+</span>
-          </li>
-          <li class="flex items-center gap-2">
-            <svg class="w-5 h-5 text-brand-teal" fill="currentColor" viewBox="0 0 20 20">
-              <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z"/>
-            </svg>
-            <span class="text-gray-700">Todo incluido: seguro y mantenimiento</span>
-          </li>
-        </ul>
-        <a href="#arrendamiento" class="block w-full gradient-brand text-white text-center py-3 rounded-lg font-semibold shadow-md hover:shadow-lg transition-all duration-200">
-          Conocer Arrendamiento →
-        </a>
-      </div>
-
-      <!-- Créditos Card -->
-      <div class="bg-white rounded-3xl p-8 border border-[#cfeee6] shadow-[0_10px_30px_rgba(13,84,96,0.06)] hover:shadow-xl transition card-hover">
-        <div class="flex items-center gap-4 mb-5">
-          <div class="w-14 h-14 gradient-brand rounded-2xl flex items-center justify-center flex-shrink-0">
-            <svg class="w-7 h-7 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
-            </svg>
-          </div>
-          <h3 class="text-3xl font-bold text-brand-navy">Créditos</h3>
-        </div>
-        <p class="text-gray-600 mb-6">
-          Desde $100k hasta $30M. Simple, revolvente, factoraje y más. Aprobación en 7 días.
-        </p>
-        <ul class="space-y-2 mb-8 text-sm">
-          <li class="flex items-center gap-2">
-            <svg class="w-5 h-5 text-brand-teal" fill="currentColor" viewBox="0 0 20 20">
-              <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z"/>
-            </svg>
-            <span class="text-gray-700">Tasas altamente competitivas</span>
-          </li>
-          <li class="flex items-center gap-2">
-            <svg class="w-5 h-5 text-brand-teal" fill="currentColor" viewBox="0 0 20 20">
-              <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z"/>
-            </svg>
-            <span class="text-gray-700">Plazos flexibles hasta 60 meses</span>
-          </li>
-          <li class="flex items-center gap-2">
-            <svg class="w-5 h-5 text-brand-teal" fill="currentColor" viewBox="0 0 20 20">
-              <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z"/>
-            </svg>
-            <span class="text-gray-700">Soluciones personalizadas</span>
-          </li>
-        </ul>
-        <a href="#creditos" class="block w-full gradient-brand text-white text-center py-3 rounded-lg font-semibold shadow-md hover:shadow-lg transition-all duration-200">
-          Conocer Créditos →
-        </a>
-      </div>
-
-    </div>
-  </div>
-</section>
-
-<!-- Stats Bar -->
-<section class="gradient-navy py-12 border-b border-white/10">
-  <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-    <div class="grid md:grid-cols-4 gap-8 text-center">
-      <div>
-        <div class="text-4xl font-black text-white mb-2">
-          <span class="counter-value" data-counter="150" data-growth="0.06" data-reference="2026-04-01" data-prefix="$" data-suffix="M+" data-decimals="0">$0M+</span>
-        </div>
-        <p class="text-blue-100">Financiamiento Otorgado</p>
-      </div>
-      <div>
-        <div class="text-4xl font-black text-white mb-2">
-          <span class="counter-value" data-counter="100" data-growth="0.06" data-reference="2026-04-01" data-suffix="+" data-decimals="0">0+</span>
-        </div>
-        <p class="text-blue-100">Empresas y Negocios Financiados</p>
-      </div>
-      <div>
-        <div class="text-4xl font-black text-white mb-2">
-          <span class="counter-value" data-counter="7" data-prefix="" data-suffix=" Días" data-decimals="0">0 Días</span>
-        </div>
-        <p class="text-blue-100">Tiempo Promedio de Aprobación</p>
-      </div>
-      <div>
-        <div class="text-4xl font-black text-white mb-2">
-          <span class="counter-value" data-counter="4.8" data-suffix="/5" data-decimals="1">0/5</span>
-        </div>
-        <p class="text-blue-100">Calificación de Clientes</p>
-      </div>
-    </div>
-  </div>
-</section>
-
-<!-- ═══════════════════════════════════════════════════
-     ARRENDAMIENTO
-═══════════════════════════════════════════════════ -->
-<section id="arrendamiento" class="py-20 bg-gray-50">
-  <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-    <div class="text-center mb-12">
-      <div class="inline-block bg-teal-100 text-brand-teal text-sm font-bold px-4 py-2 rounded-full mb-4">
-         ARRENDAMIENTO
-      </div>
-      <h2 class="text-4xl lg:text-5xl font-black text-gray-900 mb-4">Arrendamiento Sin Límites</h2>
-      <p class="text-xl text-gray-600 max-w-3xl mx-auto">
-        Desde vehículos hasta maquinaria pesada. Flexibilidad en pago inicial, residual, plazos y deducibilidad. Respuesta en menos de 48 horas.
-      </p>
-    </div>
-
-    <!-- Tabs -->
-    <div class="flex justify-center mb-8">
-      <div class="inline-flex bg-white rounded-full p-2 shadow-lg">
-        <button id="btn-vehicular" onclick="switchTab('vehicular')" class="tab-btn tab-btn-active px-8 py-3 rounded-full font-bold transition">
-          🚗 Vehicular
+  <head>
+    <meta charset="utf-8" />
+    <meta content="width=device-width, initial-scale=1.0" name="viewport" />
+    <title>
+      Crédito Negocios | Alternativas de financiamiento para tu empresa
+    </title>
+    <meta
+      content="Encuentra alternativas de crédito, factoraje y arrendamiento entre múltiples instituciones financieras. Crédito Negocios te orienta y acompaña durante el proceso."
+      name="description"
+    />
+    <meta content="#1f476b" name="theme-color" />
+    <link href="/brand.css" rel="stylesheet" />
+    <link rel="icon" type="image/jpeg" href="/credito-negocios-07.jpg" />
+  </head>
+  <body class="cn-public">
+    <a class="cn-skip" href="#contenido">Ir al contenido</a>
+    <header class="cn-header">
+      <nav aria-label="Navegación principal" class="cn-container cn-nav">
+        <a aria-label="Crédito Negocios — inicio" class="cn-logo" href="#inicio"
+          ><img
+            alt="Crédito Negocios"
+            height="52"
+            src="/credito-negocios-07.jpg"
+            width="205"
+        /></a>
+        <button
+          aria-controls="main-menu"
+          aria-expanded="false"
+          class="cn-menu-button"
+          id="menu-toggle"
+          type="button"
+        >
+          Menú
         </button>
-        <button id="btn-maquinaria" onclick="switchTab('maquinaria')" class="tab-btn tab-btn-inactive px-8 py-3 rounded-full font-bold transition">
-          🏗️ Maquinaria &amp; Equipo
-        </button>
-      </div>
-    </div>
-
-    <!-- Tab: Vehicular -->
-    <div id="tab-vehicular" class="tab-content active"><span id="arrendamiento-vehicular"></span>
-      <div class="grid lg:grid-cols-3 gap-8 mb-12">
-        <div class="bg-white rounded-2xl p-8 shadow-lg card-hover">
-          <div class="w-12 h-12 gradient-brand rounded-xl flex items-center justify-center mb-4">
-            <span class="text-white text-2xl font-bold">1</span>
-          </div>
-          <h3 class="text-2xl font-bold text-gray-900 mb-3">Membresía Total</h3>
-          <p class="text-gray-600 mb-6">Todo incluido sin preocupaciones. Sin enganche, seguro, mantenimiento y renovación flexible.</p>
-          <ul class="space-y-2 text-sm">
-            <li class="flex items-start gap-2">
-              <svg class="w-5 h-5 text-brand-teal flex-shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
-                <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z"/>
-              </svg>
-              <span>100% deducible</span>
-            </li>
-            <li class="flex items-start gap-2">
-              <svg class="w-5 h-5 text-brand-teal flex-shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
-                <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z"/>
-              </svg>
-              <span>Seguro cobertura amplia</span>
-            </li>
-            <li class="flex items-start gap-2">
-              <svg class="w-5 h-5 text-brand-teal flex-shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
-                <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z"/>
-              </svg>
-              <span>Mantenimiento incluido</span>
-            </li>
-          </ul>
+        <div class="cn-links" id="main-menu">
+          <a href="#soluciones">Soluciones</a
+          ><a href="#como-funciona">Cómo funciona</a><a href="#faq">Preguntas</a
+          ><a href="https://app.creditonegocios.com.mx/brokers">Soy broker</a
+          ><a class="cn-button cn-button--outline" href="#contacto"
+            >Conocer mis opciones</a
+          >
         </div>
-
-        <div class="bg-gradient-to-br from-brand-teal to-teal-600 rounded-2xl p-8 text-white shadow-lg card-hover">
-          <div class="w-12 h-12 bg-white/20 rounded-xl flex items-center justify-center mb-4">
-            <span class="text-white text-2xl font-bold">2</span>
-          </div>
-          <h3 class="text-2xl font-bold mb-3">Inversión Plus</h3>
-          <p class="text-teal-100 mb-6">Invierte tu capital, genera rendimientos y usa el vehículo. Deduce 100%.</p>
-          <div class="bg-white/10 rounded-xl p-4 mb-6">
-            <p class="text-sm mb-1">Ejemplo: Auto $1.5M</p>
-            <p class="text-3xl font-black">Costo real: $550k</p>
-          </div>
-          <a href="#contacto" class="block w-full bg-white text-brand-teal text-center py-3 rounded-lg font-semibold shadow-md hover:bg-gray-100 transition">
-            Calcular ROI
-          </a>
-        </div>
-
-        <div class="bg-white rounded-2xl p-8 shadow-lg card-hover">
-          <div class="w-12 h-12 gradient-brand rounded-xl flex items-center justify-center mb-4">
-            <span class="text-white text-2xl font-bold">3</span>
-          </div>
-          <h3 class="text-2xl font-bold text-gray-900 mb-3">Crédito Auto</h3>
-          <p class="text-gray-600 mb-6">Financiamiento tradicional con tasas competitivas hasta 60 meses.</p>
-          <ul class="space-y-2 text-sm">
-            <li class="flex items-start gap-2">
-              <svg class="w-5 h-5 text-brand-teal flex-shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
-                <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z"/>
-              </svg>
-              <span>Plazos hasta 60 meses</span>
-            </li>
-            <li class="flex items-start gap-2">
-              <svg class="w-5 h-5 text-brand-teal flex-shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
-                <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z"/>
-              </svg>
-              <span>Aprobación rápida</span>
-            </li>
-            <li class="flex items-start gap-2">
-              <svg class="w-5 h-5 text-brand-teal flex-shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
-                <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z"/>
-              </svg>
-              <span>Tasas competitivas</span>
-            </li>
-          </ul>
-        </div>
-      </div>
-    </div>
-
-    <!-- Tab: Maquinaria -->
-    <div id="tab-maquinaria" class="tab-content"><span id="arrendamiento-maquinaria"></span>
-      <!-- ✅ Banner informativo con más presencia -->
-      <div class="bg-gradient-to-br from-[#ecfbf6] to-[#dff5ef] rounded-3xl p-8 lg:p-10 text-brand-navy mb-12 border border-[#b7e8da] shadow-md">
-        <div class="grid md:grid-cols-4 gap-6 text-center">
+      </nav>
+    </header>
+    <main id="contenido">
+      <section class="cn-hero" id="inicio">
+        <div class="cn-container cn-hero-grid">
           <div>
-            <div class="w-12 h-12 mx-auto mb-3 rounded-full bg-teal-100 flex items-center justify-center">
-              <svg class="w-6 h-6 text-brand-teal" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
-            </div>
-            <p class="font-bold text-lg mb-1 text-brand-navy">Ultra Rápido</p>
-            <p class="text-sm text-slate-600">Respuesta en 36 hrs</p>
-          </div>
-          <div>
-            <div class="w-12 h-12 mx-auto mb-3 rounded-full bg-teal-100 flex items-center justify-center">
-              <svg class="w-6 h-6 text-brand-teal" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10l7-7m0 0h-5m5 0v5M11 14l-7 7m0 0h5m-5 0v-5"/></svg>
-            </div>
-            <p class="font-bold text-lg mb-1 text-brand-navy">Sin Límites</p>
-            <p class="text-sm text-slate-600">Desde $50k hasta $50M+</p>
-          </div>
-          <div>
-            <div class="w-12 h-12 mx-auto mb-3 rounded-full bg-teal-100 flex items-center justify-center">
-              <svg class="w-6 h-6 text-brand-teal" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
-            </div>
-            <p class="font-bold text-lg mb-1 text-brand-navy">Deducción Total</p>
-            <p class="text-sm text-slate-600">100% deducible</p>
-          </div>
-          <div>
-            <div class="w-12 h-12 mx-auto mb-3 rounded-full bg-teal-100 flex items-center justify-center">
-              <svg class="w-6 h-6 text-brand-teal" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5h2m-1 0v14m-7-4h14"/></svg>
-            </div>
-            <p class="font-bold text-lg mb-1 text-brand-navy">Todo Incluido</p>
-            <p class="text-sm text-slate-600">Mantenimiento y soporte</p>
-          </div>
-        </div>
-      </div>
-
-      <!-- ✅ Iconos unificados: gradiente teal→navy -->
-      <div class="grid md:grid-cols-4 gap-6">
-        <div class="bg-white rounded-2xl p-6 card-hover border-2 border-transparent hover:border-brand-navy transition">
-          <div class="w-14 h-14 gradient-navy rounded-xl flex items-center justify-center mb-4">
-            <svg class="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"/>
-            </svg>
-          </div>
-          <h4 class="font-bold text-gray-900 mb-2">Construcción</h4>
-          <p class="text-sm text-gray-600">Excavadoras, grúas, montacargas</p>
-        </div>
-
-        <div class="bg-white rounded-2xl p-6 card-hover border-2 border-transparent hover:border-brand-navy transition">
-          <div class="w-14 h-14 gradient-navy rounded-xl flex items-center justify-center mb-4">
-            <svg class="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/>
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
-            </svg>
-          </div>
-          <h4 class="font-bold text-gray-900 mb-2">Manufactura</h4>
-          <p class="text-sm text-gray-600">CNC, tornos, prensas</p>
-        </div>
-
-        <div class="bg-white rounded-2xl p-6 card-hover border-2 border-transparent hover:border-brand-navy transition">
-          <div class="w-14 h-14 gradient-navy rounded-xl flex items-center justify-center mb-4">
-            <svg class="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z"/>
-            </svg>
-          </div>
-          <h4 class="font-bold text-gray-900 mb-2">Médico</h4>
-          <p class="text-sm text-gray-600">Resonancia, rayos X, quirúrgicos</p>
-        </div>
-
-        <div class="bg-white rounded-2xl p-6 card-hover border-2 border-transparent hover:border-brand-navy transition">
-          <div class="w-14 h-14 gradient-navy rounded-xl flex items-center justify-center mb-4">
-            <svg class="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/>
-            </svg>
-          </div>
-          <h4 class="font-bold text-gray-900 mb-2">Tecnología</h4>
-          <p class="text-sm text-gray-600">Servidores, equipos TI</p>
-        </div>
-      </div>
-    </div>
-
-  </div>
-</section>
-
-<!-- ═══════════════════════════════════════════════════
-     CRÉDITOS — Financiamiento Rápido y Flexible
-═══════════════════════════════════════════════════ -->
-<section id="creditos" class="py-20 bg-white">
-  <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-    <div class="text-center mb-16">
-      <div class="inline-block bg-teal-100 text-brand-teal text-sm font-bold px-4 py-2 rounded-full mb-4">
-         CRÉDITOS EMPRESARIALES
-      </div>
-      <h2 class="text-4xl lg:text-5xl font-black text-gray-900 mb-4">Financiamiento Rápido y Flexible</h2>
-      <p class="text-xl text-gray-600 max-w-3xl mx-auto">
-        Desde $100,000 hasta $30 millones con tasas altamente competitivas y aprobación en 7 días
-      </p>
-    </div>
-
-    <!-- ✅ 4 productos en 1 línea — todos blancos -->
-    <div class="grid md:grid-cols-2 lg:grid-cols-4 gap-6 mb-12">
-
-      <!-- 1. Crédito Simple — ✅ Blanco (antes naranja) -->
-      <div id="credito-simple" class="bg-white border-2 border-gray-200 rounded-3xl p-8 shadow-lg card-hover h-full flex flex-col">
-        <div class="w-14 h-14 gradient-brand rounded-2xl flex items-center justify-center mb-6">
-          <svg class="w-7 h-7 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 14h.01M12 14h.01M15 11h.01M12 11h.01M9 11h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z"/>
-          </svg>
-        </div>
-        <h3 class="text-2xl font-bold text-gray-900 mb-3">Crédito Simple</h3>
-        <p class="text-gray-600 mb-4">De $100k a $30M en 7 días</p>
-        <p class="text-sm text-gray-600 mb-6">Financiamiento estructurado con mensualidades fijas. Plazos hasta 60 meses.</p>
-        <ul class="space-y-2 text-sm mb-8">
-          <li class="flex items-start gap-2">
-            <svg class="w-5 h-5 text-brand-teal flex-shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
-              <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z"/>
-            </svg>
-            <span>Montos personalizados</span>
-          </li>
-          <li class="flex items-start gap-2">
-            <svg class="w-5 h-5 text-brand-teal flex-shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
-              <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z"/>
-            </svg>
-            <span>Tasas competitivas</span>
-          </li>
-          <li class="flex items-start gap-2">
-            <svg class="w-5 h-5 text-brand-teal flex-shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
-              <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z"/>
-            </svg>
-            <span>Aprobación rápida</span>
-          </li>
-        </ul>
-        <!-- ✅ Botón Gray-700 -->
-        <a href="#contacto" class="block w-full mt-auto text-white text-center py-2.5 rounded-lg font-semibold shadow-md hover:opacity-90 transition" style="background-color:#1F476B">
-          Solicitar →
-        </a>
-      </div>
-
-      <!-- 2. Línea Revolvente — ✅ Icono unificado -->
-      <div id="credito-revolvente" class="bg-white border-2 border-gray-200 rounded-3xl p-8 shadow-lg card-hover h-full flex flex-col">
-        <div class="w-14 h-14 gradient-brand rounded-2xl flex items-center justify-center mb-6">
-          <svg class="w-7 h-7 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
-          </svg>
-        </div>
-        <h3 class="text-2xl font-bold text-gray-900 mb-3">Línea Revolvente</h3>
-        <p class="text-gray-600 mb-4">Hasta $2M por 24 meses</p>
-        <p class="text-sm text-gray-600 mb-6">Liquidez inmediata cuando la necesites. Funciona como tarjeta de crédito empresarial.</p>
-        <ul class="space-y-2 text-sm mb-8">
-          <li class="flex items-start gap-2">
-            <svg class="w-5 h-5 text-brand-teal flex-shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
-              <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z"/>
-            </svg>
-            <span>Disponibilidad inmediata</span>
-          </li>
-          <li class="flex items-start gap-2">
-            <svg class="w-5 h-5 text-brand-teal flex-shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
-              <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z"/>
-            </svg>
-            <span>Pagas solo lo que usas</span>
-          </li>
-          <li class="flex items-start gap-2">
-            <svg class="w-5 h-5 text-brand-teal flex-shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
-              <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z"/>
-            </svg>
-            <span>Tasas flexibles</span>
-          </li>
-        </ul>
-        <a href="#contacto" class="block w-full mt-auto text-white text-center py-2.5 rounded-lg font-semibold shadow-md hover:opacity-90 transition" style="background-color:#1F476B">
-          Solicitar →
-        </a>
-      </div>
-
-      <!-- 3. Factoraje — ✅ Icono unificado -->
-      <div id="factoraje" class="bg-white border-2 border-gray-200 rounded-3xl p-8 shadow-lg card-hover h-full flex flex-col">
-        <div class="w-14 h-14 gradient-brand rounded-2xl flex items-center justify-center mb-6">
-          <svg class="w-7 h-7 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v13m0-13V6a2 2 0 112 2h-2zm0 0V5.5A2.5 2.5 0 109.5 8H12zm-7 4h14M5 12a2 2 0 110-4h14a2 2 0 110 4M5 12v7a2 2 0 002 2h10a2 2 0 002-2v-7"/>
-          </svg>
-        </div>
-        <h3 class="text-2xl font-bold text-gray-900 mb-3">Factoraje Financiero</h3>
-        <p class="text-sm text-gray-600 mb-6">Convierte tus cuentas por cobrar en liquidez inmediata sin endeudarte.</p>
-        <ul class="space-y-2 text-sm mb-8">
-          <li class="flex items-start gap-2">
-            <svg class="w-5 h-5 text-brand-teal flex-shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
-              <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z"/>
-            </svg>
-            <span>Hasta 90% de adelanto</span>
-          </li>
-          <li class="flex items-start gap-2">
-            <svg class="w-5 h-5 text-brand-teal flex-shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
-              <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z"/>
-            </svg>
-            <span>Proceso ágil</span>
-          </li>
-          <li class="flex items-start gap-2">
-            <svg class="w-5 h-5 text-brand-teal flex-shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
-              <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z"/>
-            </svg>
-            <span>Mejora flujo de caja</span>
-          </li>
-        </ul>
-        <a href="#contacto" class="block w-full mt-auto text-white text-center py-2.5 rounded-lg font-semibold shadow-md hover:opacity-90 transition" style="background-color:#1F476B">
-          Solicitar →
-        </a>
-      </div>
-
-      <!-- 4. Sustitución de Pasivos — ✅ Nuevo producto (reemplaza Arrendamiento Financiero) -->
-      <div id="sustitucion-pasivos" class="bg-white border-2 border-gray-200 rounded-3xl p-8 shadow-lg card-hover h-full flex flex-col">
-        <div class="w-14 h-14 gradient-brand rounded-2xl flex items-center justify-center mb-6">
-          <svg class="w-7 h-7 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 14l6-6m-5.5.5h.01m4.99 5h.01M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16l3.5-2 3.5 2 3.5-2 3.5 2z"/>
-          </svg>
-        </div>
-        <h3 class="text-2xl font-bold text-gray-900 mb-3">Sustitución de Pasivos</h3>
-        <p class="text-sm text-gray-600 mb-6">Refinanciar tus deudas a mejor tasa con mejores condiciones y menores pagos mensuales.</p>
-        <ul class="space-y-2 text-sm mb-8">
-          <li class="flex items-start gap-2">
-            <svg class="w-5 h-5 text-brand-teal flex-shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
-              <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z"/>
-            </svg>
-            <span>Reduce tus pagos mensuales</span>
-          </li>
-          <li class="flex items-start gap-2">
-            <svg class="w-5 h-5 text-brand-teal flex-shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
-              <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z"/>
-            </svg>
-            <span>Mejora tu flujo de efectivo</span>
-          </li>
-          <li class="flex items-start gap-2">
-            <svg class="w-5 h-5 text-brand-teal flex-shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
-              <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z"/>
-            </svg>
-            <span>Una sola mensualidad</span>
-          </li>
-        </ul>
-        <a href="#contacto" class="block w-full mt-auto text-white text-center py-2.5 rounded-lg font-semibold shadow-md hover:opacity-90 transition" style="background-color:#1F476B">
-          Solicitar →
-        </a>
-      </div>
-
-    </div><!-- /grid 4 productos -->
-
-    <!-- ✅ Soluciones a Medida — centrado abajo, informativo (no es un producto) -->
-    <div class="max-w-5xl mx-auto">
-      <div id="soluciones-medida" class="bg-white border-2 border-brand-teal rounded-3xl p-8 shadow-lg text-gray-900">
-        <div class="flex items-start gap-6">
-          <div class="w-14 h-14 bg-teal-100 rounded-2xl flex items-center justify-center flex-shrink-0">
-            <svg class="w-7 h-7 text-brand-teal" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 4a2 2 0 114 0v1a1 1 0 001 1h3a1 1 0 011 1v3a1 1 0 01-1 1h-1a2 2 0 100 4h1a1 1 0 011 1v3a1 1 0 01-1 1h-3a1 1 0 01-1-1v-1a2 2 0 10-4 0v1a1 1 0 01-1 1H7a1 1 0 01-1-1v-3a1 1 0 00-1-1H4a2 2 0 110-4h1a1 1 0 001-1V7a1 1 0 011-1h3a1 1 0 001-1V4z"/>
-            </svg>
-          </div>
-          <div class="flex-1">
-            <h3 class="text-2xl font-bold mb-2 text-gray-900">Soluciones a la Medida</h3>
-            <p class="text-gray-600 mb-5">
-              Si nuestros productos no se ajustan a tu proyecto, nuestro equipo buscará una estructura financiera que se pueda adaptar a tus necesidades.
+            <span class="cn-eyebrow">Financiamiento con acompañamiento</span>
+            <h1>
+              Financiamiento para tu negocio.<br /><em
+                >Explora más de una opción.</em
+              >
+            </h1>
+            <p class="cn-lead">
+              Te ayudamos a encontrar alternativas de crédito, factoraje y
+              arrendamiento entre
+              <strong>múltiples instituciones financieras</strong>, de acuerdo
+              con lo que tu empresa necesita.
             </p>
-            <ul class="flex flex-nowrap gap-6 text-sm">
-              <li class="flex items-center gap-2 whitespace-nowrap">
-                <svg class="w-4 h-4 text-brand-teal flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
-                  <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z"/>
-                </svg>
-                <span>Términos 100% flexibles</span>
+            <div class="cn-actions">
+              <a class="cn-button" href="#contacto"
+                >Conocer mis opciones <span aria-hidden="true">→</span></a
+              ><a class="cn-button cn-button--outline" href="#soluciones"
+                >Explorar soluciones</a
+              >
+            </div>
+            <p class="cn-note cn-hero-note">
+              Te orientamos, presentamos alternativas y acompañamos tu
+              solicitud. La institución financiera evalúa y otorga el
+              financiamiento.
+            </p>
+          </div>
+          <div
+            aria-label="Cómo te conectamos con alternativas de financiamiento"
+            class="cn-showcase"
+          >
+            <div class="cn-showcase-head">
+              <span class="cn-eyebrow">Dale opciones a tu próximo paso</span>
+              <h2 style="font-size: 1.85rem">
+                Tu negocio puede tener más de una puerta abierta.
+              </h2>
+              <p>
+                No todos los proyectos encajan en el mismo crédito. Busquemos el
+                camino para el tuyo.
+              </p>
+            </div>
+            <div class="cn-opportunity-body">
+              <p class="cn-opportunity-question">
+                ¿Qué quieres hacer realidad?
+              </p>
+              <a
+                class="cn-need-link"
+                data-solution="Crédito Simple"
+                href="#contacto"
+              >
+                <span aria-hidden="true" class="cn-icon">↗</span>
+                <span
+                  ><strong>Tomar ese pedido grande</strong
+                  ><small
+                    >Explora crédito para inventario y capital de
+                    trabajo.</small
+                  ></span
+                >
+                <span aria-hidden="true">→</span>
+              </a>
+              <a
+                class="cn-need-link"
+                data-solution="Factoraje"
+                href="#contacto"
+              >
+                <span aria-hidden="true" class="cn-icon">↻</span>
+                <span
+                  ><strong>Cobrar antes tus facturas</strong
+                  ><small
+                    >Conoce alternativas de factoraje para recuperar
+                    liquidez.</small
+                  ></span
+                >
+                <span aria-hidden="true">→</span>
+              </a>
+              <a
+                class="cn-need-link"
+                data-solution="Arrendamiento - Maquinaria/Equipo"
+                href="#contacto"
+              >
+                <span aria-hidden="true" class="cn-icon">+</span>
+                <span
+                  ><strong>Estrenar equipo para crecer</strong
+                  ><small
+                    >Explora arrendamiento para vehículos y maquinaria.</small
+                  ></span
+                >
+                <span aria-hidden="true">→</span>
+              </a>
+              <div class="cn-opportunity-close">
+                <strong
+                  >Un solo equipo te acompaña a explorar distintas
+                  instituciones.</strong
+                >
+                <p class="cn-note">
+                  Revisamos tu perfil y las opciones disponibles para que
+                  decidas con claridad.
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+      <section aria-label="Opciones y acompañamiento" class="cn-value-strip">
+        <div class="cn-container cn-value-grid">
+          <article class="cn-value-tile">
+            <div class="cn-value-top">
+              <strong class="cn-value-number">5</strong
+              ><span class="cn-value-icon"
+                ><svg
+                  aria-hidden="true"
+                  fill="none"
+                  height="24"
+                  stroke="currentColor"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="1.7"
+                  viewbox="0 0 24 24"
+                  width="24"
+                >
+                  <rect height="7" rx="1.5" width="7" x="3" y="3"></rect>
+                  <rect height="7" rx="1.5" width="7" x="14" y="3"></rect>
+                  <rect height="7" rx="1.5" width="7" x="3" y="14"></rect>
+                  <rect height="7" rx="1.5" width="7" x="14" y="14"></rect></svg
+              ></span>
+            </div>
+            <h2>tipos de financiamiento</h2>
+            <p>
+              Crédito simple, revolvente, factoraje, arrendamiento e
+              hipotecario.
+            </p>
+          </article>
+          <article class="cn-value-tile">
+            <div class="cn-value-top">
+              <strong class="cn-value-number">1</strong
+              ><span class="cn-value-icon"
+                ><svg
+                  aria-hidden="true"
+                  fill="none"
+                  height="24"
+                  stroke="currentColor"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="1.7"
+                  viewbox="0 0 24 24"
+                  width="24"
+                >
+                  <path
+                    d="M21 11.5a8.4 8.4 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.4 8.4 0 0 1-3.8-.9L3 21l1.9-5.7a8.4 8.4 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.4 8.4 0 0 1 3.8-.9H13a8.5 8.5 0 0 1 8 8v.5Z"
+                  ></path></svg
+              ></span>
+            </div>
+            <h2>equipo que te acompaña</h2>
+            <p>Un punto de contacto para explorar distintas instituciones.</p>
+          </article>
+          <article class="cn-value-tile">
+            <div class="cn-value-top">
+              <strong class="cn-value-number">4</strong
+              ><span class="cn-value-icon"
+                ><svg
+                  aria-hidden="true"
+                  fill="none"
+                  height="24"
+                  stroke="currentColor"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="1.7"
+                  viewbox="0 0 24 24"
+                  width="24"
+                >
+                  <path
+                    d="M9 6h11M9 12h11M9 18h11M3 6h1M3 12h1M3 18h1"
+                  ></path></svg
+              ></span>
+            </div>
+            <h2>etapas para avanzar</h2>
+            <p>Objetivo, perfil, alternativas y decisión informada.</p>
+          </article>
+        </div>
+      </section>
+      <section class="cn-section" id="soluciones">
+        <div class="cn-container">
+          <div class="cn-section-heading">
+            <div>
+              <span class="cn-eyebrow">Empecemos por tu necesidad</span>
+              <h2>¿Qué quieres lograr con el financiamiento?</h2>
+              <p>No necesitas conocer el nombre del producto para comenzar.</p>
+            </div>
+          </div>
+          <div class="cn-grid cn-grid--four">
+            <article class="cn-card">
+              <span aria-hidden="true" class="cn-icon">01</span>
+              <h3>Operar o crecer</h3>
+              <p>Compra inventario, cubre gastos o financia un proyecto.</p>
+              <a class="cn-text-link" href="#credito-simple"
+                >Explorar créditos →</a
+              >
+            </article>
+            <article class="cn-card">
+              <span aria-hidden="true" class="cn-icon">02</span>
+              <h3>Cobrar antes</h3>
+              <p>
+                Tus clientes pagan a plazo, pero tu negocio necesita liquidez.
+              </p>
+              <a class="cn-text-link" href="#factoraje">Conocer factoraje →</a>
+            </article>
+            <article class="cn-card">
+              <span aria-hidden="true" class="cn-icon">03</span>
+              <h3>Adquirir equipo</h3>
+              <p>
+                Renueva vehículos o incorpora maquinaria sin concentrar toda la
+                inversión inicial.
+              </p>
+              <a class="cn-text-link" href="#arrendamiento"
+                >Explorar arrendamiento →</a
+              >
+            </article>
+            <article class="cn-card">
+              <span aria-hidden="true" class="cn-icon">04</span>
+              <h3>Revisar mis deudas</h3>
+              <p>
+                Compara alternativas para reorganizar tus compromisos actuales.
+              </p>
+              <a class="cn-text-link" href="#sustitucion-pasivos"
+                >Revisar alternativas →</a
+              >
+            </article>
+          </div>
+        </div>
+      </section>
+      <section class="cn-section cn-section--wash" id="creditos">
+        <div class="cn-container">
+          <div class="cn-section-heading">
+            <div>
+              <span class="cn-eyebrow">Alternativas para cada objetivo</span>
+              <h2>Distintos productos.<br />Un equipo que te acompaña.</h2>
+              <p>
+                Exploramos opciones con instituciones financieras. La
+                disponibilidad y las condiciones dependen del perfil de cada
+                solicitud.
+              </p>
+            </div>
+            <a class="cn-text-link" href="#contacto">Ayúdenme a elegir →</a>
+          </div>
+          <div class="cn-grid cn-grid--three">
+            <article class="cn-card" id="credito-simple">
+              <span class="cn-product-tag">Capital para crecer</span>
+              <h3>Crédito simple</h3>
+              <p>
+                Recibe un monto para invertir en inventario, expansión o
+                proyectos de tu negocio. Se paga conforme al plazo y condiciones
+                de la institución.
+              </p>
+              <a
+                class="cn-text-link"
+                data-solution="Crédito Simple"
+                href="#contacto"
+                >Explorar esta opción →</a
+              >
+            </article>
+            <article class="cn-card" id="credito-revolvente">
+              <span class="cn-product-tag">Liquidez recurrente</span>
+              <h3>Línea revolvente</h3>
+              <p>
+                Dispón de recursos conforme los necesitas y recupera
+                disponibilidad al pagar, según las condiciones de la línea
+                autorizada.
+              </p>
+              <a
+                class="cn-text-link"
+                data-solution="Línea Revolvente"
+                href="#contacto"
+                >Explorar esta opción →</a
+              >
+            </article>
+            <article class="cn-card" id="factoraje">
+              <span class="cn-product-tag">Anticipa tus cobros</span>
+              <h3>Factoraje</h3>
+              <p>
+                Explora alternativas para anticipar el cobro de tus facturas y
+                atender los gastos de tu operación mientras tus clientes pagan.
+              </p>
+              <a class="cn-text-link" data-solution="Factoraje" href="#contacto"
+                >Explorar esta opción →</a
+              >
+            </article>
+            <article class="cn-card" id="arrendamiento">
+              <span class="cn-product-tag">Equipa tu operación</span>
+              <h3>Arrendamiento</h3>
+              <p>
+                Buscamos opciones con instituciones y arrendadoras para
+                vehículos, maquinaria y equipo. Comparamos pago inicial, rentas,
+                plazo y condiciones finales.
+              </p>
+              <a
+                class="cn-text-link"
+                data-solution="Arrendamiento - Vehicular"
+                href="#contacto"
+                >Explorar esta opción →</a
+              >
+            </article>
+            <article class="cn-card" id="sustitucion-pasivos">
+              <span class="cn-product-tag">Reordena tus compromisos</span>
+              <h3>Sustitución de pasivos</h3>
+              <p>
+                Revisamos si existen alternativas para refinanciar deudas.
+                Comparamos costo total, plazo y mensualidad, no solo la tasa.
+              </p>
+              <a
+                class="cn-text-link"
+                data-solution="Sustitución de Pasivos"
+                href="#contacto"
+                >Explorar esta opción →</a
+              >
+            </article>
+            <article class="cn-card" id="hipotecario">
+              <span class="cn-product-tag">Compra tu vivienda</span>
+              <h3>Crédito hipotecario</h3>
+              <p>
+                También te acompañamos a explorar opciones para adquirir
+                vivienda, de acuerdo con tu perfil, ingresos y características
+                del inmueble.
+              </p>
+              <a
+                class="cn-text-link"
+                data-solution="Crédito Hipotecario"
+                href="#contacto"
+                >Explorar esta opción →</a
+              >
+            </article>
+          </div>
+          <p class="cn-product-note" id="soluciones-medida">
+            ¿Tu proyecto requiere una estructura distinta? Cuéntanos tu
+            necesidad para revisar si podemos ayudarte.
+          </p>
+        </div>
+      </section>
+      <section class="cn-section" id="como-funciona">
+        <div class="cn-container">
+          <div class="cn-section-heading">
+            <div>
+              <span class="cn-eyebrow">Así trabajamos contigo</span>
+              <h2>Conoce tus opciones. Decide con información.</h2>
+            </div>
+          </div>
+          <div class="cn-grid cn-grid--four">
+            <article class="cn-step">
+              <span class="cn-step-number">01</span>
+              <h3>Cuéntanos tu objetivo</h3>
+              <p>
+                Nos compartes tus datos de contacto y para qué necesitas
+                financiamiento.
+              </p>
+            </article>
+            <article class="cn-step">
+              <span class="cn-step-number">02</span>
+              <h3>Revisamos tu perfil</h3>
+              <p>
+                Te orientamos sobre productos y requisitos que podrían encajar
+                con tu negocio.
+              </p>
+            </article>
+            <article class="cn-step">
+              <span class="cn-step-number">03</span>
+              <h3>Exploramos alternativas</h3>
+              <p>
+                Te acompañamos con el expediente y la presentación ante las
+                instituciones correspondientes.
+              </p>
+            </article>
+            <article class="cn-step">
+              <span class="cn-step-number">04</span>
+              <h3>Decides con claridad</h3>
+              <p>
+                Te ayudamos a comparar tasa, plazo, comisiones y garantías de
+                las alternativas disponibles. Si la institución aprueba y
+                decides avanzar, acompañamos la formalización.
+              </p>
+            </article>
+          </div>
+        </div>
+      </section>
+      <section class="cn-section cn-section--wash" id="contacto">
+        <div class="cn-container cn-contact-grid">
+          <div class="cn-contact-copy">
+            <span class="cn-eyebrow">Hablemos de tu proyecto</span>
+            <h2>El primer paso es entender lo que necesitas.</h2>
+            <p>
+              No necesitas tener un expediente listo. Déjanos tus datos y un
+              asesor te contactará para revisar tu caso.
+            </p>
+            <ul class="cn-contact-points">
+              <li>
+                <span class="cn-check">✓</span>Te orientamos sobre productos y
+                requisitos.
               </li>
-              <li class="flex items-center gap-2 whitespace-nowrap">
-                <svg class="w-4 h-4 text-brand-teal flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
-                  <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z"/>
-                </svg>
-                <span>Asesoría de expertos financieros</span>
+              <li>
+                <span class="cn-check">✓</span>Compartes documentos cuando
+                corresponda.
               </li>
-              <li class="flex items-center gap-2 whitespace-nowrap">
-                <svg class="w-4 h-4 text-brand-teal flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
-                  <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z"/>
-                </svg>
-                <span>Estructuración financiera óptima</span>
+              <li>
+                <span class="cn-check">✓</span>Conoces las condiciones antes de
+                decidir.
               </li>
             </ul>
+            <a
+              class="cn-text-link"
+              href="https://wa.me/525623300270"
+              rel="noopener noreferrer"
+              target="_blank"
+              >Prefiero hablar por WhatsApp ↗</a
+            >
+          </div>
+          <form
+            aria-label="Solicitar orientación financiera"
+            class="cn-form"
+            id="website-lead-form"
+          >
+            <div class="cn-fields">
+              <div class="cn-field cn-field--full">
+                <label for="lead-name">Nombre completo</label
+                ><input
+                  autocomplete="name"
+                  id="lead-name"
+                  maxlength="120"
+                  minlength="2"
+                  name="name"
+                  placeholder="¿Cómo te llamas?"
+                  required=""
+                />
+              </div>
+              <div class="cn-field">
+                <label for="lead-phone">Teléfono / WhatsApp</label
+                ><input
+                  autocomplete="tel"
+                  id="lead-phone"
+                  maxlength="25"
+                  minlength="8"
+                  name="phone"
+                  placeholder="55 0000 0000"
+                  required=""
+                  type="tel"
+                />
+              </div>
+              <div class="cn-field">
+                <label for="lead-email">Correo electrónico</label
+                ><input
+                  autocomplete="email"
+                  id="lead-email"
+                  maxlength="254"
+                  name="email"
+                  placeholder="nombre@empresa.com"
+                  required=""
+                  type="email"
+                />
+              </div>
+              <div class="cn-field cn-field--full">
+                <label for="lead-company">Empresa <span>(opcional)</span></label
+                ><input
+                  autocomplete="organization"
+                  id="lead-company"
+                  maxlength="180"
+                  name="company"
+                  placeholder="Nombre de tu negocio"
+                />
+              </div>
+              <div class="cn-field">
+                <label for="lead-solution">¿Qué opción te interesa?</label
+                ><select id="lead-solution" name="solutionType" required="">
+                  <option value="">Selecciona una opción</option>
+                  <option>Crédito Simple</option>
+                  <option>Línea Revolvente</option>
+                  <option>Factoraje</option>
+                  <option>Arrendamiento - Vehicular</option>
+                  <option>Arrendamiento - Maquinaria/Equipo</option>
+                  <option>Sustitución de Pasivos</option>
+                  <option>Crédito Hipotecario</option>
+                  <option>Solución Personalizada</option>
+                  <option>No estoy seguro</option>
+                </select>
+              </div>
+              <div class="cn-field">
+                <label for="lead-amount">Monto aproximado</label
+                ><select id="lead-amount" name="amountRange" required="">
+                  <option value="">Selecciona un rango</option>
+                  <option>Menos de $500,000</option>
+                  <option>$500,000 - $1,000,000</option>
+                  <option>$1,000,000 - $2,000,000</option>
+                  <option>$2,000,000 - $5,000,000</option>
+                  <option>$5,000,000 - $10,000,000</option>
+                  <option>$10,000,000 - $30,000,000</option>
+                  <option>Más de $30,000,000</option>
+                  <option>Por definir</option>
+                </select>
+              </div>
+              <div class="cn-field cn-field--full">
+                <label for="lead-message"
+                  >Cuéntanos tu objetivo <span>(opcional)</span></label
+                ><textarea
+                  id="lead-message"
+                  maxlength="1200"
+                  name="message"
+                  placeholder="Por ejemplo: comprar inventario para un nuevo contrato."
+                ></textarea>
+              </div>
+            </div>
+            <p class="cn-note">
+              Usaremos tus datos para atender tu solicitud. Consulta nuestro
+              <a
+                href="https://app.creditonegocios.com.mx/legal/aviso"
+                rel="noopener noreferrer"
+                target="_blank"
+                >Aviso de Privacidad</a
+              >.
+            </p>
+            <button class="cn-button" id="website-lead-submit" type="submit">
+              Solicitar orientación <span aria-hidden="true">→</span>
+            </button>
+            <p class="cn-note">
+              Respuesta comercial normalmente dentro de las siguientes 24 horas
+              hábiles. Este formulario no es una aprobación de crédito.
+            </p>
+            <p
+              aria-live="polite"
+              hidden=""
+              id="website-lead-status"
+              role="status"
+            ></p>
+          </form>
+        </div>
+      </section>
+      <section class="cn-section" id="faq">
+        <div class="cn-container">
+          <div class="cn-faq">
+            <span class="cn-eyebrow">Antes de comenzar</span>
+            <h2 class="cn-title-gap">Resolvemos tus primeras dudas.</h2>
+            <details>
+              <summary>¿Crédito Negocios es quien me presta?</summary>
+              <p>
+                Te ayudamos a encontrar y gestionar alternativas entre múltiples
+                instituciones financieras. La evaluación, aprobación y
+                otorgamiento corresponden a la institución que participe en tu
+                operación.
+              </p>
+            </details>
+            <details>
+              <summary>
+                ¿Puedo solicitar si no sé qué producto necesito?
+              </summary>
+              <p>
+                Sí. Cuéntanos para qué necesitas los recursos y selecciona “No
+                estoy seguro” en el formulario. Te orientamos para identificar
+                qué tipo de financiamiento podría ajustarse a tu necesidad.
+              </p>
+            </details>
+            <details>
+              <summary>¿Qué requisitos, montos y tasas manejan?</summary>
+              <p>
+                Dependen del producto, la institución y tu perfil. Primero
+                revisamos tu necesidad y datos generales; después te indicamos
+                la documentación y las condiciones disponibles para tu caso.
+              </p>
+            </details>
+            <details>
+              <summary>¿Cuánto tarda una aprobación?</summary>
+              <p>
+                El tiempo depende de la institución, del producto y de que el
+                expediente esté completo. Nuestro equipo te orienta sobre los
+                pasos y tiempos de cada alternativa; enviar el formulario no
+                garantiza una aprobación.
+              </p>
+            </details>
+            <details>
+              <summary>¿Cómo funciona el arrendamiento?</summary>
+              <p>
+                Te ayudamos a comparar opciones de instituciones y arrendadoras
+                para vehículos, maquinaria y equipo. Los servicios incluidos, el
+                tratamiento fiscal y las opciones al finalizar dependen del
+                esquema y del contrato.
+              </p>
+            </details>
+            <details>
+              <summary>¿Cómo conozco los costos de la operación?</summary>
+              <p>
+                Durante la evaluación te explicamos las tasas, comisiones,
+                gastos y demás condiciones de las alternativas disponibles, para
+                que puedas revisarlas antes de decidir.
+              </p>
+            </details>
+          </div>
+        </div>
+      </section>
+      <section aria-labelledby="recruit-title" class="cn-section cn-recruit">
+        <div class="cn-container">
+          <div class="cn-recruit-heading">
+            <div>
+              <span class="cn-eyebrow"
+                >Tu red de contactos puede abrir nuevas oportunidades</span
+              >
+              <h2 id="recruit-title">
+                ¡La plataforma que te permite ganar comisiones sin límites!<br /><em
+                  >Tú traes el cliente, nosotros el capital.</em
+                >
+              </h2>
+              <p>
+                ¿Conoces a alguien que necesita crédito o arrendamiento?
+                Acércalo a Crédito Negocios y participa en las comisiones de las
+                operaciones que se concreten, conforme a tu esquema de
+                colaboración.
+              </p>
+            </div>
+            <a
+              class="cn-button"
+              href="https://app.creditonegocios.com.mx/brokers#form-brokers"
+              >Quiero generar comisiones <span aria-hidden="true">→</span></a
+            >
+          </div>
+          <div class="cn-recruit-grid">
+            <article class="cn-recruit-benefit">
+              <span class="cn-recruit-icon"
+                ><svg
+                  aria-hidden="true"
+                  fill="none"
+                  height="24"
+                  stroke="currentColor"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="1.7"
+                  viewbox="0 0 24 24"
+                  width="24"
+                >
+                  <path d="m5 12 4 4L19 6"></path></svg
+              ></span>
+              <h3>Empieza sin compromiso</h3>
+              <p>
+                Solicita información sin activar una cuenta ni generar un cobro.
+              </p>
+            </article>
+            <article class="cn-recruit-benefit">
+              <span class="cn-recruit-icon"
+                ><svg
+                  aria-hidden="true"
+                  fill="none"
+                  height="24"
+                  stroke="currentColor"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="1.7"
+                  viewbox="0 0 24 24"
+                  width="24"
+                >
+                  <path
+                    d="M21 11.5a8.4 8.4 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.4 8.4 0 0 1-3.8-.9L3 21l1.9-5.7a8.4 8.4 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.4 8.4 0 0 1 3.8-.9H13a8.5 8.5 0 0 1 8 8v.5Z"
+                  ></path></svg
+              ></span>
+              <h3>Menos fricción</h3>
+              <p>
+                Comparte la oportunidad. Te acompañamos con los siguientes
+                pasos.
+              </p>
+            </article>
+            <article class="cn-recruit-benefit">
+              <span class="cn-recruit-icon"
+                ><svg
+                  aria-hidden="true"
+                  fill="none"
+                  height="24"
+                  stroke="currentColor"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="1.7"
+                  viewbox="0 0 24 24"
+                  width="24"
+                >
+                  <circle cx="12" cy="12" r="9"></circle>
+                  <path
+                    d="M15 8h-4a2 2 0 0 0 0 4h2a2 2 0 0 1 0 4H9M12 6v2M12 16v2"
+                  ></path></svg
+              ></span>
+              <h3>Comisiones por operación</h3>
+              <p>
+                Conoce tu esquema de comisión antes de comenzar a colaborar.
+              </p>
+            </article>
+            <article class="cn-recruit-benefit">
+              <span class="cn-recruit-icon"
+                ><svg
+                  aria-hidden="true"
+                  fill="none"
+                  height="24"
+                  stroke="currentColor"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="1.7"
+                  viewbox="0 0 24 24"
+                  width="24"
+                >
+                  <circle cx="9" cy="8" r="3"></circle>
+                  <path
+                    d="M3 21v-3a6 6 0 0 1 12 0v3M16 5a3 3 0 0 1 0 6M18 15a5 5 0 0 1 3 4v2"
+                  ></path></svg
+              ></span>
+              <h3>A tu manera</h3>
+              <p>
+                Canaliza el contacto o gestiona el expediente, según tu perfil.
+              </p>
+            </article>
+            <article class="cn-recruit-benefit">
+              <span class="cn-recruit-icon"
+                ><svg
+                  aria-hidden="true"
+                  fill="none"
+                  height="24"
+                  stroke="currentColor"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="1.7"
+                  viewbox="0 0 24 24"
+                  width="24"
+                >
+                  <rect height="7" rx="1.5" width="7" x="3" y="3"></rect>
+                  <rect height="7" rx="1.5" width="7" x="14" y="3"></rect>
+                  <rect height="7" rx="1.5" width="7" x="3" y="14"></rect>
+                  <rect height="7" rx="1.5" width="7" x="14" y="14"></rect></svg
+              ></span>
+              <h3>Múltiples opciones</h3>
+              <p>
+                Crédito empresarial, factoraje, arrendamiento e hipotecario
+                entre distintas instituciones.
+              </p>
+            </article>
+          </div>
+          <p class="cn-recruit-note">
+            Tú aportas el contacto. Te ayudamos a encontrar opciones y acompañar
+            el proceso. La institución financiera evalúa y otorga el
+            financiamiento.
+          </p>
+        </div>
+      </section>
+    </main>
+    <footer class="cn-footer">
+      <div class="cn-container">
+        <div class="cn-footer-top">
+          <div>
+            <a class="cn-logo" href="#inicio"
+              ><img
+                alt="Crédito Negocios"
+                height="52"
+                loading="lazy"
+                src="/credito-negocios-07.jpg"
+                width="190"
+            /></a>
+            <p>
+              Te ayudamos a encontrar alternativas de financiamiento entre
+              múltiples instituciones financieras.
+            </p>
+          </div>
+          <div class="cn-footer-links">
+            <a href="https://app.creditonegocios.com.mx/"
+              >Acceder a la plataforma</a
+            >
+            <a
+              href="https://wa.me/525623300270"
+              rel="noopener noreferrer"
+              target="_blank"
+              >WhatsApp</a
+            >
+            <a href="mailto:info@creditonegocios.com.mx"
+              >info@creditonegocios.com.mx</a
+            >
+          </div>
+        </div>
+        <div class="cn-footer-bottom">
+          <span>© 2026 Crédito Negocios</span>
+          <div class="cn-footer-links">
+            <a href="https://app.creditonegocios.com.mx/legal/aviso"
+              >Aviso de Privacidad</a
+            ><a href="https://app.creditonegocios.com.mx/legal/terminos"
+              >Términos y Condiciones</a
+            >
           </div>
         </div>
       </div>
-    </div>
-
-  </div>
-</section>
-
-
-<!-- ═══════════════════════════════════════════════════
-     CASOS DE ÉXITO
-═══════════════════════════════════════════════════ -->
-<section id="casos" class="py-20 bg-gray-50">
-  <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-    <div class="text-center mb-12">
-      <div class="inline-block bg-teal-100 text-brand-teal text-sm font-bold px-4 py-2 rounded-full mb-4">
-         CASOS DE ÉXITO
-      </div>
-      <h2 class="text-4xl lg:text-5xl font-black text-gray-900 mb-4">Casos Reales y Testimonios</h2>
-    </div>
-
-    <div class="flex flex-col items-center gap-4 mb-10">
-      <div class="inline-flex bg-white rounded-full p-2 shadow-lg">
-        <button id="casos-btn-creditos" onclick="switchCasos('creditos')" class="tab-btn tab-btn-active px-8 py-3 rounded-full font-bold transition">
-          💳 Créditos
-        </button>
-        <button id="casos-btn-arrendamiento" onclick="switchCasos('arrendamiento')" class="tab-btn tab-btn-inactive px-8 py-3 rounded-full font-bold transition">
-          🚛 Arrendamiento
-        </button>
-      </div>
-    </div>
-
-    <!-- ── CRÉDITOS panel ── -->
-    <div id="casos-creditos" style="display:block">
-      <div class="relative">
-        <div class="carousel-wrap">
-          <div id="carousel-creditos" class="carousel-track">
-
-            <!-- Caso 1 Crédito Simple -->
-            <div class="caso-card">
-              <div class="bg-white rounded-2xl p-7 shadow-lg h-full flex flex-col">
-                <div class="flex items-center gap-3 mb-4">
-                  <div class="w-10 h-10 gradient-brand rounded-xl flex items-center justify-center flex-shrink-0">
-                    <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 14h.01M12 14h.01M15 11h.01M12 11h.01M9 11h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z"/></svg>
-                  </div>
-                  <div>
-                    <span class="text-xs font-bold text-brand-teal uppercase tracking-wide">Crédito Simple</span>
-                    <h3 class="font-bold text-gray-900 text-base leading-tight">Distribuidora Alimentos del Bajío</h3>
-                  </div>
-                </div>
-                <p class="text-xs text-gray-500 mb-1">León, Gto. &nbsp;·&nbsp; <strong>$3,200,000</strong> &nbsp;·&nbsp; 36 meses</p>
-                <p class="text-sm text-gray-600 mb-4 flex-grow">Necesitaban ampliar capacidad de almacenamiento en frío para cumplir un nuevo contrato. Su banco tardaba demasiado. Aprobamos en 5 días hábiles sin garantía hipotecaria.</p>
-                <div class="bg-teal-50 rounded-xl p-3 mb-4">
-                  <p class="text-xs font-bold text-brand-teal mb-1">✅ Resultado</p>
-                  <p class="text-sm text-gray-700">Ampliaron su bodega, cumplieron con el cliente y recuperaron la inversión en 18 meses.</p>
-                </div>
-                <blockquote class="border-l-4 border-brand-teal pl-3">
-                  <p class="text-sm italic text-gray-600">"Teníamos el dinero en cuenta antes de que venciera nuestro plazo con el cliente."</p>
-                  <footer class="text-xs text-gray-500 mt-1">— Lic. Sandoval, Director General</footer>
-                </blockquote>
-              </div>
-            </div>
-
-            <!-- Caso 2 Línea Revolvente -->
-            <div class="caso-card">
-              <div class="bg-white rounded-2xl p-7 shadow-lg h-full flex flex-col">
-                <div class="flex items-center gap-3 mb-4">
-                  <div class="w-10 h-10 gradient-brand rounded-xl flex items-center justify-center flex-shrink-0">
-                    <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
-                  </div>
-                  <div>
-                    <span class="text-xs font-bold text-brand-teal uppercase tracking-wide">Línea Revolvente</span>
-                    <h3 class="font-bold text-gray-900 text-base leading-tight">Constructora Pedraza & Asociados</h3>
-                  </div>
-                </div>
-                <p class="text-xs text-gray-500 mb-1">Querétaro, Qro. &nbsp;·&nbsp; <strong>$1,800,000</strong> &nbsp;·&nbsp; 24 meses renovables</p>
-                <p class="text-sm text-gray-600 mb-4 flex-grow">Sus clientes pagaban a 90 días pero los proveedores exigían pago al contado. Con la línea revolvente disponen solo lo necesario, pagan intereses sobre lo usado y liquidan al cobrar.</p>
-                <div class="bg-teal-50 rounded-xl p-3 mb-4">
-                  <p class="text-xs font-bold text-brand-teal mb-1">✅ Resultado</p>
-                  <p class="text-sm text-gray-700">Usaron y liquidaron la línea 6 veces en un año. El ahorro con proveedores superó el costo del crédito.</p>
-                </div>
-                <blockquote class="border-l-4 border-brand-teal pl-3">
-                  <p class="text-sm italic text-gray-600">"Usas lo que necesitas, pagas solo por eso, y siempre tienes liquidez disponible."</p>
-                  <footer class="text-xs text-gray-500 mt-1">— Ing. Carmen Pedraza, Socia Directora</footer>
-                </blockquote>
-              </div>
-            </div>
-
-            <!-- Caso 3 Factoraje -->
-            <div class="caso-card">
-              <div class="bg-white rounded-2xl p-7 shadow-lg h-full flex flex-col">
-                <div class="flex items-center gap-3 mb-4">
-                  <div class="w-10 h-10 gradient-brand rounded-xl flex items-center justify-center flex-shrink-0">
-                    <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v13m0-13V6a2 2 0 112 2h-2zm0 0V5.5A2.5 2.5 0 109.5 8H12zm-7 4h14M5 12a2 2 0 110-4h14a2 2 0 110 4M5 12v7a2 2 0 002 2h10a2 2 0 002-2v-7"/></svg>
-                  </div>
-                  <div>
-                    <span class="text-xs font-bold text-brand-teal uppercase tracking-wide">Factoraje Financiero</span>
-                    <h3 class="font-bold text-gray-900 text-base leading-tight">Manufacturas Técnicas Zenteno</h3>
-                  </div>
-                </div>
-                <p class="text-xs text-gray-500 mb-1">Saltillo, Coah. &nbsp;·&nbsp; <strong>$2,400,000</strong>/mes &nbsp;·&nbsp; Anticipo 88%</p>
-                <p class="text-sm text-gray-600 mb-4 flex-grow">Proveedor Tier 2 de la industria automotriz con clientes que pagaban a 90 días. Sin flujo para comprar materia prima ni pagar nómina. Cedían la factura y recibían el 88% en menos de 48 horas.</p>
-                <div class="bg-teal-50 rounded-xl p-3 mb-4">
-                  <p class="text-xs font-bold text-brand-teal mb-1">✅ Resultado</p>
-                  <p class="text-sm text-gray-700">Aceptaron 35% más pedidos. Crecimiento en ventas del 30% ese año.</p>
-                </div>
-                <blockquote class="border-l-4 border-brand-teal pl-3">
-                  <p class="text-sm italic text-gray-600">"Pasamos de financiar a nuestro cliente a tener el dinero en dos días."</p>
-                  <footer class="text-xs text-gray-500 mt-1">— Héctor Zenteno, Director Financiero</footer>
-                </blockquote>
-              </div>
-            </div>
-
-            <!-- Caso 4 Sustitución de Pasivos -->
-            <div class="caso-card">
-              <div class="bg-white rounded-2xl p-7 shadow-lg h-full flex flex-col">
-                <div class="flex items-center gap-3 mb-4">
-                  <div class="w-10 h-10 gradient-brand rounded-xl flex items-center justify-center flex-shrink-0">
-                    <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 14l6-6m-5.5.5h.01m4.99 5h.01M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16l3.5-2 3.5 2 3.5-2 3.5 2z"/></svg>
-                  </div>
-                  <div>
-                    <span class="text-xs font-bold text-brand-teal uppercase tracking-wide">Sustitución de Pasivos</span>
-                    <h3 class="font-bold text-gray-900 text-base leading-tight">Grupo Hotelero Miramar</h3>
-                  </div>
-                </div>
-                <p class="text-xs text-gray-500 mb-1">Puerto Vallarta, Jal. &nbsp;·&nbsp; Deuda: <strong>$8,500,000</strong> &nbsp;·&nbsp; Ahorro: $57,000/mes</p>
-                <p class="text-sm text-gray-600 mb-4 flex-grow">Tenían 2 créditos con 2 instituciones. Mensualidades combinadas que asfixiaban la operación. Los consolidamos en un solo crédito a mejor tasa.</p>
-                <div class="bg-teal-50 rounded-xl p-3 mb-4">
-                  <p class="text-xs font-bold text-brand-teal mb-1">✅ Resultado</p>
-                  <p class="text-sm text-gray-700">Una mensualidad 15% menor. Ahorro anual de $364,000 que reinvirtieron en renovación.</p>
-                </div>
-                <blockquote class="border-l-4 border-brand-teal pl-3">
-                  <p class="text-sm italic text-gray-600">"Juntar todo en un solo crédito, a mejor tasa, cambió completamente la operación."</p>
-                  <footer class="text-xs text-gray-500 mt-1">— Arq. Sofía Elizondo, Directora de Operaciones</footer>
-                </blockquote>
-              </div>
-            </div>
-
-            <!-- Caso 5 Crédito Simple -->
-            <div class="caso-card">
-              <div class="bg-white rounded-2xl p-7 shadow-lg h-full flex flex-col">
-                <div class="flex items-center gap-3 mb-4">
-                  <div class="w-10 h-10 gradient-brand rounded-xl flex items-center justify-center flex-shrink-0">
-                    <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z"/></svg>
-                  </div>
-                  <div>
-                    <span class="text-xs font-bold text-brand-teal uppercase tracking-wide">Crédito Simple</span>
-                    <h3 class="font-bold text-gray-900 text-base leading-tight">Clínica Dental Hoffmann</h3>
-                  </div>
-                </div>
-                <p class="text-xs text-gray-500 mb-1">Ciudad de México &nbsp;·&nbsp; <strong>$1,450,000</strong> &nbsp;·&nbsp; 48 meses</p>
-                <p class="text-sm text-gray-600 mb-4 flex-grow">Querían abrir un consultorio de implantología. Su banco los rechazó por antigüedad de empresa. Nosotros aprobamos en base a flujo demostrado en estados de cuenta.</p>
-                <div class="bg-teal-50 rounded-xl p-3 mb-4">
-                  <p class="text-xs font-bold text-brand-teal mb-1">✅ Resultado</p>
-                  <p class="text-sm text-gray-700">El nuevo consultorio cubría su mensualidad desde el mes 8. Hoy operan con lista de espera de 3 semanas.</p>
-                </div>
-                <blockquote class="border-l-4 border-brand-teal pl-3">
-                  <p class="text-sm italic text-gray-600">"Mi banco me dijo que no. Ustedes miraron el negocio real."</p>
-                  <footer class="text-xs text-gray-500 mt-1">— Dr. Hoffmann, Director Médico</footer>
-                </blockquote>
-              </div>
-            </div>
-
-          </div><!-- /carousel-track creditos -->
-        </div>
-
-        <!-- Controls creditos -->
-        <div class="flex items-center justify-center gap-4 mt-8">
-          <button onclick="prevSlide('creditos')" class="w-10 h-10 rounded-full gradient-brand text-white flex items-center justify-center shadow hover:shadow-lg transition">
-            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/></svg>
-          </button>
-          <div id="dots-creditos" class="flex gap-2"></div>
-          <button onclick="nextSlide('creditos')" class="w-10 h-10 rounded-full gradient-brand text-white flex items-center justify-center shadow hover:shadow-lg transition">
-            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
-          </button>
-        </div>
-      </div>
-    </div><!-- /casos-creditos -->
-
-    <!-- ── ARRENDAMIENTO panel ── -->
-    <div id="casos-arrendamiento" style="display:none">
-      <div class="relative">
-        <div class="carousel-wrap">
-          <div id="carousel-arrendamiento" class="carousel-track">
-
-            <!-- Caso 6 Arrendamiento Vehicular -->
-            <div class="caso-card">
-              <div class="bg-white rounded-2xl p-7 shadow-lg h-full flex flex-col">
-                <div class="flex items-center gap-3 mb-4">
-                  <div class="w-10 h-10 gradient-brand rounded-xl flex items-center justify-center flex-shrink-0">
-                    <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4"/></svg>
-                  </div>
-                  <div>
-                    <span class="text-xs font-bold text-brand-teal uppercase tracking-wide">Arrendamiento Vehicular</span>
-                    <h3 class="font-bold text-gray-900 text-base leading-tight">Agencia Altamira Transporte Ejecutivo</h3>
-                  </div>
-                </div>
-                <p class="text-xs text-gray-500 mb-1">CDMX &nbsp;·&nbsp; <strong>4 SUVs ejecutivas</strong> &nbsp;·&nbsp; 48 meses</p>
-                <p class="text-sm text-gray-600 mb-4 flex-grow">Necesitaban flotilla nueva para contratos corporativos pero no querían inmovilizar +$5M en activos. Arrendamiento puro con seguro y mantenimiento incluidos, 100% deducible.</p>
-                <div class="bg-teal-50 rounded-xl p-3 mb-4">
-                  <p class="text-xs font-bold text-brand-teal mb-1">✅ Resultado</p>
-                  <p class="text-sm text-gray-700">Flotilla renovada sin enganche. Ganaron 2 contratos corporativos nuevos que antes perdían por imagen.</p>
-                </div>
-                <blockquote class="border-l-4 border-brand-teal pl-3">
-                  <p class="text-sm italic text-gray-600">"Con el arrendamiento, nuestra flotilla se multiplicó sin consumir nuestro capital."</p>
-                  <footer class="text-xs text-gray-500 mt-1">— Lic. Mariana Fuentes, Directora Comercial</footer>
-                </blockquote>
-              </div>
-            </div>
-
-            <!-- Caso 7 Inversión Plus -->
-            <div class="caso-card">
-              <div class="bg-white rounded-2xl p-7 shadow-lg h-full flex flex-col">
-                <div class="flex items-center gap-3 mb-4">
-                  <div class="w-10 h-10 gradient-brand rounded-xl flex items-center justify-center flex-shrink-0">
-                    <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
-                  </div>
-                  <div>
-                    <span class="text-xs font-bold text-brand-teal uppercase tracking-wide">Arrendamiento — Inversión Plus</span>
-                    <h3 class="font-bold text-gray-900 text-base leading-tight">Despacho García Ruiz y Socios</h3>
-                  </div>
-                </div>
-                <p class="text-xs text-gray-500 mb-1">Querétaro, Qro. &nbsp;·&nbsp; Camioneta <strong>$1,450,000</strong> &nbsp;·&nbsp; 36 meses</p>
-                <p class="text-sm text-gray-600 mb-4 flex-grow">El socio director quería un vehículo de representación sin comprometer liquidez. Invirtió $550,000 en un instrumento financiero y estructuró el arrendamiento con rentas reducidas, deduciendo el 100%.</p>
-                <div class="bg-teal-50 rounded-xl p-3 mb-4">
-                  <p class="text-xs font-bold text-brand-teal mb-1">✅ Resultado</p>
-                  <p class="text-sm text-gray-700">Vehículo de $1,450,000 con costo real de $615,000 considerando rendimientos y ahorro fiscal.</p>
-                </div>
-                <blockquote class="border-l-4 border-brand-teal pl-3">
-                  <p class="text-sm italic text-gray-600">"Como contador, estos números simplemente tienen sentido."</p>
-                  <footer class="text-xs text-gray-500 mt-1">— C.P. Ernesto García, Socio Director</footer>
-                </blockquote>
-              </div>
-            </div>
-
-            <!-- Caso 8 Arrendamiento Maquinaria -->
-            <div class="caso-card">
-              <div class="bg-white rounded-2xl p-7 shadow-lg h-full flex flex-col">
-                <div class="flex items-center gap-3 mb-4">
-                  <div class="w-10 h-10 gradient-brand rounded-xl flex items-center justify-center flex-shrink-0">
-                    <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"/></svg>
-                  </div>
-                  <div>
-                    <span class="text-xs font-bold text-brand-teal uppercase tracking-wide">Arrendamiento de Maquinaria</span>
-                    <h3 class="font-bold text-gray-900 text-base leading-tight">Desarrolladora Arcos del Norte</h3>
-                  </div>
-                </div>
-                <p class="text-xs text-gray-500 mb-1">CDMX &nbsp;·&nbsp; 1 Excavadora &nbsp;·&nbsp; Valor: <strong>$4,800,000</strong> &nbsp;·&nbsp; 60 meses</p>
-                <p class="text-sm text-gray-600 mb-4 flex-grow">Ganaron un desarrollo de viviendas que requería equipo pesado especializado por 3 años. Comprar el equipo hubiera bloqueado su capacidad para el siguiente proyecto.</p>
-                <div class="bg-teal-50 rounded-xl p-3 mb-4">
-                  <p class="text-xs font-bold text-brand-teal mb-1">✅ Resultado</p>
-                  <p class="text-sm text-gray-700">Terminaron el desarrollo y devolvieron la maquinaria. Con la línea de crédito intacta, arrancaron un segundo proyecto simultáneo.</p>
-                </div>
-                <blockquote class="border-l-4 border-brand-teal pl-3">
-                  <p class="text-sm italic text-gray-600">"Arrendar nos permitió hacer dos proyectos al mismo tiempo."</p>
-                  <footer class="text-xs text-gray-500 mt-1">— Ing. Tomás Arredondo, Director de Proyectos</footer>
-                </blockquote>
-              </div>
-            </div>
-
-            <!-- Caso 9 Equipo Médico -->
-            <div class="caso-card">
-              <div class="bg-white rounded-2xl p-7 shadow-lg h-full flex flex-col">
-                <div class="flex items-center gap-3 mb-4">
-                  <div class="w-10 h-10 gradient-brand rounded-xl flex items-center justify-center flex-shrink-0">
-                    <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z"/></svg>
-                  </div>
-                  <div>
-                    <span class="text-xs font-bold text-brand-teal uppercase tracking-wide">Arrendamiento — Equipo Médico</span>
-                    <h3 class="font-bold text-gray-900 text-base leading-tight">Centro de Diagnóstico Cisneros</h3>
-                  </div>
-                </div>
-                <p class="text-xs text-gray-500 mb-1">Puebla, Pue. &nbsp;·&nbsp; Tomógrafo &nbsp;·&nbsp; Valor: <strong>$9,500,000</strong> &nbsp;·&nbsp; 60 meses</p>
-                <p class="text-sm text-gray-600 mb-4 flex-grow">Querían ofrecer imagenología avanzada sin comprometer activos que se vuelven obsoletos. Arrendamiento financiero con opción de compra final al 10%.</p>
-                <div class="bg-teal-50 rounded-xl p-3 mb-4">
-                  <p class="text-xs font-bold text-brand-teal mb-1">✅ Resultado</p>
-                  <p class="text-sm text-gray-700">El activo representó el 38% de sus ingresos desde el primer año. Se paga solo con 14 estudios al mes.</p>
-                </div>
-                <blockquote class="border-l-4 border-brand-teal pl-3">
-                  <p class="text-sm italic text-gray-600">"No tuve que demostrar activos por la misma cantidad para acceder a un equipo de +$9M."</p>
-                  <footer class="text-xs text-gray-500 mt-1">— Dr. Ignacio Cisneros, Director Médico</footer>
-                </blockquote>
-              </div>
-            </div>
-
-            <!-- Caso 10 Flotilla Comercial -->
-            <div class="caso-card">
-              <div class="bg-white rounded-2xl p-7 shadow-lg h-full flex flex-col">
-                <div class="flex items-center gap-3 mb-4">
-                  <div class="w-10 h-10 gradient-brand rounded-xl flex items-center justify-center flex-shrink-0">
-                    <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16V6a1 1 0 00-1-1H4a1 1 0 00-1 1v10a1 1 0 001 1h1m8-1a1 1 0 01-1 1H9m4-1V8a1 1 0 011-1h2.586a1 1 0 01.707.293l3.414 3.414a1 1 0 01.293.707V16a1 1 0 01-1 1h-1m-6-1a1 1 0 001 1h1M5 17a2 2 0 104 0m-4 0a2 2 0 114 0m6 0a2 2 0 104 0m-4 0a2 2 0 114 0"/></svg>
-                  </div>
-                  <div>
-                    <span class="text-xs font-bold text-brand-teal uppercase tracking-wide">Arrendamiento — Flotilla Comercial</span>
-                    <h3 class="font-bold text-gray-900 text-base leading-tight">Nutrición Animal del Centro</h3>
-                  </div>
-                </div>
-                <p class="text-xs text-gray-500 mb-1">León, Gto. &nbsp;·&nbsp; <strong>3 camiones de carga</strong> &nbsp;·&nbsp; 48 meses</p>
-                <p class="text-sm text-gray-600 mb-4 flex-grow">Flotilla de 8 años generaba $180,000 anuales en taller y fallas que retrasaban entregas. Renovaron 3 unidades con arrendamiento escalonado, mantenimiento incluido.</p>
-                <div class="bg-teal-50 rounded-xl p-3 mb-4">
-                  <p class="text-xs font-bold text-brand-teal mb-1">✅ Resultado</p>
-                  <p class="text-sm text-gray-700">Cero paros por falla mecánica en el primer año. El ahorro en taller cubre casi la mitad del costo mensual.</p>
-                </div>
-                <blockquote class="border-l-4 border-brand-teal pl-3">
-                  <p class="text-sm italic text-gray-600">"La imagen también es un activo. Hoy esas mismas empresas que nos descartaban son nuestras mejores cuentas."</p>
-                  <footer class="text-xs text-gray-500 mt-1">— Lic. Jorge Félix, Gerente Comercial</footer>
-                </blockquote>
-              </div>
-            </div>
-
-          </div><!-- /carousel-track arrendamiento -->
-        </div>
-
-        <!-- Controls arrendamiento -->
-        <div class="flex items-center justify-center gap-4 mt-8">
-          <button onclick="prevSlide('arrendamiento')" class="w-10 h-10 rounded-full gradient-brand text-white flex items-center justify-center shadow hover:shadow-lg transition">
-            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/></svg>
-          </button>
-          <div id="dots-arrendamiento" class="flex gap-2"></div>
-          <button onclick="nextSlide('arrendamiento')" class="w-10 h-10 rounded-full gradient-brand text-white flex items-center justify-center shadow hover:shadow-lg transition">
-            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
-          </button>
-        </div>
-      </div>
-    </div><!-- /casos-arrendamiento -->
-
-  </div>
-</section>
-
-<!-- ═══════════════════════════════════════════════════
-     POR QUÉ ELEGIRNOS — ✅ Iconos unificados teal→navy
-═══════════════════════════════════════════════════ -->
-<section class="py-20 bg-gray-50">
-  <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-    <div class="text-center mb-16">
-      <h2 class="text-4xl lg:text-5xl font-black text-gray-900 mb-4">Por Qué Elegirnos</h2>
-      <p class="text-xl text-gray-600">Más que financiamiento, un socio para tu crecimiento</p>
-    </div>
-    <div class="grid md:grid-cols-3 gap-8">
-      <div class="bg-white rounded-2xl p-8 shadow-lg">
-        <div class="w-14 h-14 gradient-brand rounded-2xl flex items-center justify-center mb-6">
-          <svg class="w-7 h-7 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
-          </svg>
-        </div>
-        <h3 class="text-xl font-bold text-gray-900 mb-3">Tasas Competitivas</h3>
-        <p class="text-gray-600">Nuestras tasas están entre las más bajas del mercado, garantizando que tu financiamiento sea accesible y rentable.</p>
-      </div>
-
-      <div class="bg-white rounded-2xl p-8 shadow-lg">
-        <div class="w-14 h-14 gradient-brand rounded-2xl flex items-center justify-center mb-6">
-          <svg class="w-7 h-7 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/>
-          </svg>
-        </div>
-        <h3 class="text-xl font-bold text-gray-900 mb-3">Rapidez en Aprobación</h3>
-        <p class="text-gray-600">Proceso ágil que te permite acceder a los fondos en tiempo récord. Respuesta en días, no semanas.</p>
-      </div>
-
-      <div class="bg-white rounded-2xl p-8 shadow-lg">
-        <div class="w-14 h-14 gradient-brand rounded-2xl flex items-center justify-center mb-6">
-          <svg class="w-7 h-7 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 4a2 2 0 114 0v1a1 1 0 001 1h3a1 1 0 011 1v3a1 1 0 01-1 1h-1a2 2 0 100 4h1a1 1 0 011 1v3a1 1 0 01-1 1h-3a1 1 0 01-1-1v-1a2 2 0 10-4 0v1a1 1 0 01-1 1H7a1 1 0 01-1-1v-3a1 1 0 00-1-1H4a2 2 0 110-4h1a1 1 0 001-1V7a1 1 0 011-1h3a1 1 0 001-1V4z"/>
-          </svg>
-        </div>
-        <h3 class="text-xl font-bold text-gray-900 mb-3">Productos Flexibles</h3>
-        <p class="text-gray-600">Desde líneas de crédito hasta soluciones personalizadas. Tenemos un producto para cada necesidad.</p>
-      </div>
-
-      <div class="bg-white rounded-2xl p-8 shadow-lg">
-        <div class="w-14 h-14 gradient-brand rounded-2xl flex items-center justify-center mb-6">
-          <svg class="w-7 h-7 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/>
-          </svg>
-        </div>
-        <h3 class="text-xl font-bold text-gray-900 mb-3">Transparencia Total</h3>
-        <p class="text-gray-600">Sin comisiones ocultas ni sorpresas. Términos claros y honestos desde el principio.</p>
-      </div>
-
-      <div class="bg-white rounded-2xl p-8 shadow-lg">
-        <div class="w-14 h-14 gradient-brand rounded-2xl flex items-center justify-center mb-6">
-          <svg class="w-7 h-7 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"/>
-          </svg>
-        </div>
-        <h3 class="text-xl font-bold text-gray-900 mb-3">Asesoría Experta</h3>
-        <p class="text-gray-600">Equipo de especialistas que te acompaña durante todo el proceso, asegurando la mejor decisión.</p>
-      </div>
-
-      <div class="bg-white rounded-2xl p-8 shadow-lg">
-        <div class="w-14 h-14 gradient-brand rounded-2xl flex items-center justify-center mb-6">
-          <svg class="w-7 h-7 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z"/>
-          </svg>
-        </div>
-        <h3 class="text-xl font-bold text-gray-900 mb-3">Compromiso Real</h3>
-        <p class="text-gray-600">Nos importa el crecimiento de tu empresa. No solo financiamos, acompañamos tu éxito.</p>
-      </div>
-    </div>
-  </div>
-</section>
-
-<!-- ═══════════════════════════════════════════════════
-     PROCESO — ✅ Paso 1 blanco, Paso 4 teal
-═══════════════════════════════════════════════════ -->
-<section class="py-20 bg-white">
-  <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-    <div class="text-center mb-16">
-      <h2 class="text-4xl lg:text-5xl font-black text-gray-900 mb-4">Proceso Simple en 4 Pasos</h2>
-      <p class="text-xl text-gray-600">De la solicitud a los fondos en días</p>
-    </div>
-
-    <div class="grid md:grid-cols-4 gap-8">
-
-      <!-- Paso 1 — ✅ Blanco (antes teal) -->
-      <div class="relative">
-        <div class="bg-gray-50 rounded-2xl p-8 text-center border-2 border-gray-200">
-          <div class="w-16 h-16 gradient-brand rounded-full flex items-center justify-center mx-auto mb-6 text-white text-2xl font-bold">
-            1
-          </div>
-          <h3 class="text-xl font-bold text-gray-900 mb-3">Solicita en Línea</h3>
-          <p class="text-gray-600 text-sm">Llena el formulario con información básica. Solo toma minutos.</p>
-        </div>
-        <div class="hidden md:block absolute top-1/2 -right-4 transform -translate-y-1/2">
-          <svg class="w-8 h-8 text-brand-teal" fill="currentColor" viewBox="0 0 20 20">
-            <path fill-rule="evenodd" d="M10.293 3.293a1 1 0 011.414 0l6 6a1 1 0 010 1.414l-6 6a1 1 0 01-1.414-1.414L14.586 11H3a1 1 0 110-2h11.586l-4.293-4.293a1 1 0 010-1.414z"/>
-          </svg>
-        </div>
-      </div>
-
-      <!-- Paso 2 -->
-      <div class="relative">
-        <div class="bg-gray-50 rounded-2xl p-8 text-center border-2 border-gray-200">
-          <div class="w-16 h-16 gradient-brand rounded-full flex items-center justify-center mx-auto mb-6 text-white text-2xl font-bold">
-            2
-          </div>
-          <h3 class="text-xl font-bold text-gray-900 mb-3">Evaluación Rápida</h3>
-          <p class="text-gray-600 text-sm">Revisamos tu solicitud y te damos respuesta en tiempo récord.</p>
-        </div>
-        <div class="hidden md:block absolute top-1/2 -right-4 transform -translate-y-1/2">
-          <svg class="w-8 h-8 text-brand-teal" fill="currentColor" viewBox="0 0 20 20">
-            <path fill-rule="evenodd" d="M10.293 3.293a1 1 0 011.414 0l6 6a1 1 0 010 1.414l-6 6a1 1 0 01-1.414-1.414L14.586 11H3a1 1 0 110-2h11.586l-4.293-4.293a1 1 0 010-1.414z"/>
-          </svg>
-        </div>
-      </div>
-
-      <!-- Paso 3 -->
-      <div class="relative">
-        <div class="bg-gray-50 rounded-2xl p-8 text-center border-2 border-gray-200">
-          <div class="w-16 h-16 gradient-brand rounded-full flex items-center justify-center mx-auto mb-6 text-white text-2xl font-bold">
-            3
-          </div>
-          <h3 class="text-xl font-bold text-gray-900 mb-3">Aprobación</h3>
-          <p class="text-gray-600 text-sm">Una vez aprobado, firmamos el contrato y procesamos tu solicitud.</p>
-        </div>
-        <div class="hidden md:block absolute top-1/2 -right-4 transform -translate-y-1/2">
-          <svg class="w-8 h-8 text-brand-teal" fill="currentColor" viewBox="0 0 20 20">
-            <path fill-rule="evenodd" d="M10.293 3.293a1 1 0 011.414 0l6 6a1 1 0 010 1.414l-6 6a1 1 0 01-1.414-1.414L14.586 11H3a1 1 0 110-2h11.586l-4.293-4.293a1 1 0 010-1.414z"/>
-          </svg>
-        </div>
-      </div>
-
-      <!-- Paso 4 — ✅ Teal (antes naranja) -->
-      <div class="bg-gradient-to-br from-brand-teal to-teal-600 rounded-2xl p-8 text-white text-center">
-        <div class="w-16 h-16 bg-white/20 rounded-full flex items-center justify-center mx-auto mb-6 text-white text-2xl font-bold">
-          4
-        </div>
-        <h3 class="text-xl font-bold mb-3">Recibe Fondos</h3>
-        <p class="text-teal-100 text-sm">Los fondos están disponibles en tu cuenta en 24 horas.</p>
-      </div>
-
-    </div>
-
-    <div class="text-center mt-12">
-      <a href="#contacto" class="inline-block gradient-teal text-white px-8 py-3 rounded-lg font-semibold text-base shadow-md hover:shadow-lg transition">
-        Comenzar Ahora →
-      </a>
-    </div>
-  </div>
-</section>
-
-<!-- ═══════════════════════════════════════════════════
-     FAQ
-═══════════════════════════════════════════════════ -->
-<section id="faq" class="py-20 bg-gray-50">
-  <div class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
-    <div class="text-center mb-16">
-      <h2 class="text-4xl lg:text-5xl font-black text-gray-900 mb-4">Preguntas Frecuentes</h2>
-      <p class="text-xl text-gray-600">Todo lo que necesitas saber</p>
-    </div>
-
-    <div class="space-y-4">
-
-      <!-- ✅ "buen historial crediticio" → "Buró de Crédito" -->
-      <details class="bg-white rounded-2xl overflow-hidden shadow-lg group">
-        <summary class="px-8 py-6 cursor-pointer flex justify-between items-center hover:bg-gray-50 transition">
-          <span class="font-bold text-gray-900 text-lg">¿Qué requisitos necesito para solicitar un crédito?</span>
-          <svg class="w-6 h-6 text-gray-600 group-open:rotate-180 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
-          </svg>
-        </summary>
-        <div class="px-8 pb-6">
-          <p class="text-gray-600 leading-relaxed">
-            Más de 8 meses de operación, documentos básicos de identificación, estados de cuenta bancarios, CIEC, Buró de Crédito. Para créditos menores a $500 mil no se requiere garantía.
-          </p>
-        </div>
-      </details>
-
-      <details class="bg-white rounded-2xl overflow-hidden shadow-lg group">
-        <summary class="px-8 py-6 cursor-pointer flex justify-between items-center hover:bg-gray-50 transition">
-          <span class="font-bold text-gray-900 text-lg">¿Qué tan rápidas son las aprobaciones?</span>
-          <svg class="w-6 h-6 text-gray-600 group-open:rotate-180 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
-          </svg>
-        </summary>
-        <div class="px-8 pb-6">
-          <p class="text-gray-600 leading-relaxed">
-            En promedio, nuestros créditos son aprobados y depositados en un plazo de 7 días. En muchas ocasiones se hace en menos tiempo.
-          </p>
-        </div>
-      </details>
-
-      <details class="bg-white rounded-2xl overflow-hidden shadow-lg group">
-        <summary class="px-8 py-6 cursor-pointer flex justify-between items-center hover:bg-gray-50 transition">
-          <span class="font-bold text-gray-900 text-lg">¿Puedo solicitar más de un producto?</span>
-          <svg class="w-6 h-6 text-gray-600 group-open:rotate-180 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
-          </svg>
-        </summary>
-        <div class="px-8 pb-6">
-          <p class="text-gray-600 leading-relaxed">
-            Sí, puedes combinar varios de nuestros productos según las necesidades de tu negocio.
-          </p>
-        </div>
-      </details>
-
-      <details class="bg-white rounded-2xl overflow-hidden shadow-lg group">
-        <summary class="px-8 py-6 cursor-pointer flex justify-between items-center hover:bg-gray-50 transition">
-          <span class="font-bold text-gray-900 text-lg">¿Qué diferencia hay entre crédito simple y revolvente?</span>
-          <svg class="w-6 h-6 text-gray-600 group-open:rotate-180 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
-          </svg>
-        </summary>
-        <div class="px-8 pb-6">
-          <p class="text-gray-600 leading-relaxed">
-            La revolvente funciona como tarjeta de crédito: dispones lo que necesites y pagas solo lo que usas. El crédito simple es un monto fijo con pagos mensuales según tabla de amortización.
-          </p>
-        </div>
-      </details>
-
-      <details class="bg-white rounded-2xl overflow-hidden shadow-lg group">
-        <summary class="px-8 py-6 cursor-pointer flex justify-between items-center hover:bg-gray-50 transition">
-          <span class="font-bold text-gray-900 text-lg">¿Cuál es la diferencia entre arrendamiento puro y financiero?</span>
-          <svg class="w-6 h-6 text-gray-600 group-open:rotate-180 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
-          </svg>
-        </summary>
-        <div class="px-8 pb-6">
-          <p class="text-gray-600 leading-relaxed">
-            <strong>Arrendamiento Puro:</strong> Pagas "renta" mensual. Al final devuelves el bien. 100% deducible.<br><br>
-            <strong>Arrendamiento Financiero:</strong> Pagas mensual + tienes opción de compra final. El bien puede ser tuyo al concluir.
-          </p>
-        </div>
-      </details>
-
-      <!-- ✅ Factoraje: se quitó "Nosotros cobramos directamente..." -->
-      <details class="bg-white rounded-2xl overflow-hidden shadow-lg group">
-        <summary class="px-8 py-6 cursor-pointer flex justify-between items-center hover:bg-gray-50 transition">
-          <span class="font-bold text-gray-900 text-lg">¿Cómo funciona el factoraje?</span>
-          <svg class="w-6 h-6 text-gray-600 group-open:rotate-180 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
-          </svg>
-        </summary>
-        <div class="px-8 pb-6">
-          <p class="text-gray-600 leading-relaxed">
-            Conviertes tus facturas en efectivo inmediato. Nos cedes la factura y te adelantamos del 70% al 90% de su valor.
-          </p>
-        </div>
-      </details>
-
-    </div>
-  </div>
-</section>
-
-<!-- Contact Form -->
-<section id="contacto" class="py-14 gradient-navy text-white">
-  <div class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
-    <div class="text-center mb-8">
-      <h2 class="text-3xl lg:text-4xl font-black mb-3">Solicita Tu Cotización</h2>
-      <p class="text-base lg:text-lg text-blue-100 max-w-2xl mx-auto">Completa el formulario y te contactamos en menos de 24 horas</p>
-    </div>
-
-    <form id="website-lead-form" class="bg-white rounded-2xl p-6 lg:p-8 text-gray-800 shadow-2xl border border-teal-100">
-      <div class="grid md:grid-cols-2 gap-5 mb-5">
-        <div>
-          <label class="block text-sm font-bold mb-2 text-gray-700">Nombre Completo *</label>
-          <input name="name" type="text" required class="w-full px-4 py-2.5 border-2 border-gray-200 rounded-xl focus:outline-none focus:border-brand-teal transition">
-        </div>
-        <div>
-          <label class="block text-sm font-bold mb-2 text-gray-700">Email *</label>
-          <input name="email" type="email" required class="w-full px-4 py-2.5 border-2 border-gray-200 rounded-xl focus:outline-none focus:border-brand-teal transition">
-        </div>
-      </div>
-
-      <div class="grid md:grid-cols-2 gap-5 mb-5">
-        <div>
-          <label class="block text-sm font-bold mb-2 text-gray-700">Teléfono *</label>
-          <input name="phone" type="tel" required class="w-full px-4 py-2.5 border-2 border-gray-200 rounded-xl focus:outline-none focus:border-brand-teal transition">
-        </div>
-        <div>
-          <label class="block text-sm font-bold mb-2 text-gray-700">Empresa</label>
-          <input name="company" type="text" class="w-full px-4 py-2.5 border-2 border-gray-200 rounded-xl focus:outline-none focus:border-brand-teal transition">
-        </div>
-      </div>
-
-      <div class="grid md:grid-cols-2 gap-5 mb-5">
-        <div>
-          <label class="block text-sm font-bold mb-2 text-gray-700">Tipo de Solución *</label>
-          <select name="solutionType" required class="w-full px-4 py-2.5 border-2 border-gray-200 rounded-xl focus:outline-none focus:border-brand-teal transition">
-            <option value="">Seleccionar</option>
-            <option>Arrendamiento - Vehicular</option>
-            <option>Arrendamiento - Maquinaria/Equipo</option>
-            <option>Crédito Simple</option>
-            <option>Línea Revolvente</option>
-            <option>Factoraje</option>
-            <option>Sustitución de Pasivos</option>
-            <option>Solución Personalizada</option>
-            <option>No estoy seguro</option>
-          </select>
-        </div>
-        <div>
-          <label class="block text-sm font-bold mb-2 text-gray-700">Monto Aproximado *</label>
-          <select name="amountRange" required class="w-full px-4 py-2.5 border-2 border-gray-200 rounded-xl focus:outline-none focus:border-brand-teal transition">
-            <option value="">Seleccionar</option>
-            <option>Menos de $500,000</option>
-            <option>$500,000 - $1,000,000</option>
-            <option>$1,000,000 - $2,000,000</option>
-            <option>$2,000,000 - $5,000,000</option>
-            <option>$5,000,000 - $10,000,000</option>
-            <option>$10,000,000 - $30,000,000</option>
-            <option>Más de $30,000,000</option>
-          </select>
-        </div>
-      </div>
-
-      <div class="mb-5">
-        <label class="block text-sm font-bold mb-2 text-gray-700">Mensaje</label>
-        <textarea name="message" rows="2" class="w-full px-4 py-2.5 border-2 border-gray-200 rounded-xl focus:outline-none focus:border-brand-teal transition" placeholder="Cuéntanos más sobre tu proyecto o necesidad..."></textarea>
-      </div>
-
-      <button id="website-lead-submit" type="submit" class="w-full gradient-teal text-white py-3 rounded-lg font-semibold text-base shadow-md hover:shadow-lg transition">
-        Enviar Solicitud →
-      </button>
-      <p id="website-lead-status" class="text-sm text-center mt-4 hidden"></p>
-      <p class="text-sm text-gray-500 text-center mt-6">* Respuesta garantizada en menos de 24 horas</p>
-    </form>
-  </div>
-</section>
-
-<section id="referidos" class="py-20 bg-white border-t border-gray-100">
-  <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-    <div class="max-w-4xl mx-auto text-center mb-12">
-      <div class="inline-block bg-emerald-50 text-emerald-700 text-base lg:text-lg font-black px-6 py-3 rounded-full mb-7 tracking-wide">PROGRAMA DE REFERIDOS Y BROKERS</div>
-      <h2 class="text-3xl lg:text-5xl font-black text-gray-900 leading-tight">Tú traes el cliente, nosotros ponemos el capital.</h2>
-      <p class="text-2xl lg:text-3xl font-black text-brand-teal mt-6">¡Gana comisiones sin límites!</p>
-      <p class="text-lg text-gray-600 mt-6">Si eres Broker, Contador, Consultor, o simplemente conoces a una empresa, PFAE o cliente hipotecario que necesitan financiamiento, recomiéndanos. Nosotros nos encargamos de todo el cierre; tú te llevas la comisión.</p>
-      <p class="text-xl lg:text-2xl font-black text-gray-900 mt-10">Únete a los más de <span class="counter-value text-brand-teal" data-counter="160" data-growth="0.03" data-reference="2026-04-01" data-prefix="+" data-suffix=" aliados" data-decimals="0">+0 aliados</span> que ya generan ingresos adicionales con nosotros.</p>
-      <p class="text-xl font-black text-gray-900 mt-6">Empieza a ganar comisiones desde tu primera recomendación.</p>
-    </div>
-
-    <div class="grid md:grid-cols-2 xl:grid-cols-5 gap-4 mb-8 items-stretch">
-      <div class="rounded-2xl border-2 border-emerald-200 bg-white p-4 shadow-sm">
-        <div class="flex items-start gap-3">
-          <span class="text-emerald-600 text-xl leading-none">✔</span>
-          <div><strong class="block text-gray-900 mb-1">Cero costo</strong><span class="text-sm text-gray-600">Registro gratuito y sin compromisos.</span></div>
-        </div>
-      </div>
-      <div class="rounded-2xl border-2 border-emerald-200 bg-white p-4 shadow-sm">
-        <div class="flex items-start gap-3">
-          <span class="text-emerald-600 text-xl leading-none">✔</span>
-          <div><strong class="block text-gray-900 mb-1">Cero fricción</strong><span class="text-sm text-gray-600">Registra un prospecto en 1 minuto, nosotros hacemos la venta.</span></div>
-        </div>
-      </div>
-      <div class="rounded-2xl border-2 border-emerald-200 bg-white p-4 shadow-sm">
-        <div class="flex items-start gap-3">
-          <span class="text-emerald-600 text-xl leading-none">✔</span>
-          <div><strong class="block text-gray-900 mb-1">Las más competitivas</strong><span class="text-sm text-gray-600">Gana las mejores comisiones del mercado por operación.</span></div>
-        </div>
-      </div>
-      <div class="rounded-2xl border-2 border-emerald-200 bg-white p-4 shadow-sm">
-        <div class="flex items-start gap-3">
-          <span class="text-emerald-600 text-xl leading-none">✔</span>
-          <div><strong class="block text-gray-900 mb-1">Para todos</strong><span class="text-sm text-gray-600">Manda solo el contacto o sube el expediente completo.</span></div>
-        </div>
-      </div>
-      <div class="rounded-2xl border-2 border-emerald-200 bg-white p-4 shadow-sm">
-        <div class="flex items-start gap-3">
-          <span class="text-emerald-600 text-xl leading-none">✔</span>
-          <div><strong class="block text-gray-900 mb-1">Múltiples opciones</strong><span class="text-sm text-gray-600">Bancos, SOFOMEs, financieras e hipotecas. Todo en un mismo lugar.</span></div>
-        </div>
-      </div>
-    </div>
-
-    <div class="max-w-md mx-auto text-center">
-      <a href="https://app.creditonegocios.com.mx/brokers" class="block w-full text-center bg-brand-navy text-white py-3 rounded-lg font-semibold text-base shadow-md hover:bg-brand-navyDark hover:shadow-lg transition">Quiero empezar a ganar comisiones</a>
-    </div>
-  </div>
-</section>
-
-<!-- Footer -->
-<footer class="bg-brand-navy text-white py-10 border-t border-white/10">
-  <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-    <div class="grid md:grid-cols-[1.25fr_1fr_1fr_1fr] gap-x-12 gap-y-6 mb-8">
-      <div class="max-w-xs pr-4">
-        <img src="/credito-negocios-07.jpg" alt="Crédito Negocios" class="h-[53px] lg:h-[62px] w-auto mb-4 object-contain rounded-sm" />
-        <p class="text-blue-100 text-sm leading-6 mb-4">Soluciones especializadas en arrendamiento y créditos empresariales para impulsar el crecimiento de tu negocio.</p>
-        <a href="mailto:info@creditonegocios.com.mx" class="text-sm text-white hover:text-teal-200 font-semibold transition">info@creditonegocios.com.mx</a>
-      </div>
-      <div>
-        <h4 class="font-bold text-white mb-6 text-lg">Arrendamiento</h4>
-        <ul class="space-y-3 text-sm text-blue-100">
-          <li><a href="#arrendamiento" data-tab-target="vehicular" class="hover:text-teal-200 transition">Vehicular</a></li>
-          <li><a href="#arrendamiento" data-tab-target="maquinaria" class="hover:text-teal-200 transition">Maquinaria y Equipo</a></li>
-          <li><a href="#arrendamiento" class="hover:text-teal-200 transition">Inversión Plus</a></li>
-        </ul>
-      </div>
-      <div>
-        <h4 class="font-bold text-white mb-6 text-lg">Créditos</h4>
-        <ul class="space-y-3 text-sm text-blue-100">
-          <li><a href="#credito-simple" class="hover:text-teal-200 transition">Crédito Simple</a></li>
-          <li><a href="#credito-revolvente" class="hover:text-teal-200 transition">Línea Revolvente</a></li>
-          <li><a href="#factoraje" class="hover:text-teal-200 transition">Factoraje</a></li>
-          <li><a href="#sustitucion-pasivos" class="hover:text-teal-200 transition">Sustitución de Pasivos</a></li>
-          <li><a href="#soluciones-medida" class="hover:text-teal-200 transition">Soluciones a Medida</a></li>
-        </ul>
-      </div>
-      <div>
-        <h4 class="font-bold text-white mb-6 text-lg">Enlaces</h4>
-        <ul class="space-y-3 text-sm text-blue-100">
-          <li><a href="#casos" class="hover:text-teal-200 transition">Resultados</a></li>
-          <li><a href="#faq" class="hover:text-teal-200 transition">FAQ</a></li>
-          <li><a href="https://app.creditonegocios.com.mx/" class="hover:text-teal-200 transition">Ir al App</a></li>
-          <li><a href="https://app.creditonegocios.com.mx/brokers" class="hover:text-teal-200 transition">Soy Broker</a></li>
-        </ul>
-      </div>
-    </div>
-    <div class="border-t border-white/10 pt-5 flex flex-col md:flex-row md:items-center md:justify-between text-sm text-blue-100">
-      <p>© 2026 Crédito Negocios. Todos los derechos reservados.</p>
-      <div class="flex gap-6 mt-4 md:mt-0">
-        <a href="/legal/aviso" class="hover:text-teal-200 transition">Aviso de Privacidad</a>
-        <a href="/legal/terminos" class="hover:text-teal-200 transition">Términos y Condiciones</a>
-      </div>
-    </div>
-  </div>
-</footer>
-
-
-
-<script data-cfasync="false" src="/cdn-cgi/scripts/5c5dd728/cloudflare-static/email-decode.min.js"></script><script>
-// ── DROPDOWN MENU — hover + click for arrows/options ──
-(function() {
-  var timers = new WeakMap();
-
-  function closeAllDropdowns(except) {
-    document.querySelectorAll('.dropdown-content.open').forEach(function(menu) {
-      if (menu !== except) menu.classList.remove('open');
-    });
-  }
-
-  document.querySelectorAll('.dropdown').forEach(function(dropdown) {
-    var trigger = dropdown.querySelector('a');
-    var content = dropdown.querySelector('.dropdown-content');
-    if (!trigger || !content) return;
-
-    dropdown.addEventListener('mouseenter', function() {
-      if (window.innerWidth < 768) return;
-      clearTimeout(timers.get(dropdown));
-      closeAllDropdowns(content);
-      content.classList.add('open');
-    });
-
-    dropdown.addEventListener('mouseleave', function() {
-      if (window.innerWidth < 768) return;
-      var timeout = setTimeout(function() { content.classList.remove('open'); }, 150);
-      timers.set(dropdown, timeout);
-    });
-
-    trigger.addEventListener('click', function(e) {
-      e.preventDefault();
-      var willOpen = !content.classList.contains('open');
-      closeAllDropdowns();
-      content.classList.toggle('open', willOpen);
-    });
-  });
-
-  document.addEventListener('click', function(e) {
-    if (!e.target.closest('.dropdown')) {
-      closeAllDropdowns();
-    }
-  });
-})();
-
-// ── ARRENDAMIENTO TABS ──
-function switchTab(tabName) {
-  ['vehicular','maquinaria'].forEach(function(n) {
-    var el = document.getElementById('tab-' + n);
-    if (el) el.classList[n === tabName ? 'add' : 'remove']('active');
-    var btn = document.getElementById('btn-' + n);
-    if (!btn) return;
-    if (n === tabName) { btn.classList.add('tab-btn-active'); btn.classList.remove('tab-btn-inactive'); }
-    else { btn.classList.remove('tab-btn-active'); btn.classList.add('tab-btn-inactive'); }
-  });
-}
-
-// ── CASOS DE ÉXITO TABS ──
-function switchCasos(category) {
-  ['creditos','arrendamiento'].forEach(function(cat) {
-    var btn = document.getElementById('casos-btn-' + cat);
-    var panel = document.getElementById('casos-' + cat);
-    if (cat === category) {
-      if(btn){btn.classList.add('tab-btn-active');btn.classList.remove('tab-btn-inactive');}
-      if(panel) panel.style.display = 'block';
-    } else {
-      if(btn){btn.classList.remove('tab-btn-active');btn.classList.add('tab-btn-inactive');}
-      if(panel) panel.style.display = 'none';
-    }
-  });
-  carouselState[category] = 0;
-  updateCarousel(category);
-}
-
-// ── CAROUSEL ──
-var carouselState = { creditos: 0, arrendamiento: 0 };
-
-function getVisibleCount() {
-  return window.innerWidth >= 1024 ? 3 : window.innerWidth >= 768 ? 2 : 1;
-}
-
-function updateCarousel(category) {
-  var carousel = document.getElementById('carousel-' + category);
-  if (!carousel) return;
-  var cards = carousel.querySelectorAll('.caso-card');
-  var visible = getVisibleCount();
-  var maxIdx = Math.max(0, cards.length - visible);
-  if (carouselState[category] > maxIdx) carouselState[category] = maxIdx;
-  var idx = carouselState[category];
-
-  // Flex-based slide: move by percentage
-  carousel.style.transform = 'translateX(-' + (idx * (100 / visible)) + '%)';
-
-  // Dots
-  var dotsEl = document.getElementById('dots-' + category);
-  if (!dotsEl) return;
-  dotsEl.innerHTML = '';
-  for (var i = 0; i <= maxIdx; i++) {
-    var dot = document.createElement('button');
-    dot.className = 'carousel-dot' + (i === idx ? ' active' : '');
-    dot.setAttribute('aria-label', 'Slide ' + (i+1));
-    (function(cat, n){ dot.onclick = function(){ carouselState[cat]=n; updateCarousel(cat); }; })(category, i);
-    dotsEl.appendChild(dot);
-  }
-}
-
-function nextSlide(category) {
-  var carousel = document.getElementById('carousel-' + category);
-  var visible = getVisibleCount();
-  var total = carousel ? carousel.querySelectorAll('.caso-card').length : 5;
-  carouselState[category] = Math.min(carouselState[category]+1, Math.max(0, total-visible));
-  updateCarousel(category);
-}
-function prevSlide(category) {
-  carouselState[category] = Math.max(0, carouselState[category]-1);
-  updateCarousel(category);
-}
-
-function getMonthsElapsed(referenceDate) {
-  var ref = new Date(referenceDate || '2026-04-01');
-  var now = new Date();
-  var months = (now.getFullYear() - ref.getFullYear()) * 12 + (now.getMonth() - ref.getMonth());
-  return Math.max(0, months);
-}
-
-function formatCounterValue(value, el) {
-  var decimals = parseInt(el.dataset.decimals || '0', 10);
-  var prefix = el.dataset.prefix || '';
-  var suffix = el.dataset.suffix || '';
-  var finalValue = decimals > 0 ? value.toFixed(decimals) : Math.round(value).toString();
-  return prefix + finalValue + suffix;
-}
-
-function animateCounters() {
-  document.querySelectorAll('.counter-value').forEach(function(el) {
-    var baseValue = parseFloat(el.dataset.counter || '0');
-    var growth = parseFloat(el.dataset.growth || '0');
-    var monthsElapsed = getMonthsElapsed(el.dataset.reference);
-    var target = growth > 0 ? baseValue * Math.pow(1 + growth, monthsElapsed) : baseValue;
-    var startTime = null;
-    var duration = 1400;
-
-    function step(timestamp) {
-      if (!startTime) startTime = timestamp;
-      var progress = Math.min((timestamp - startTime) / duration, 1);
-      var currentValue = target * progress;
-      el.textContent = formatCounterValue(currentValue, el);
-      if (progress < 1) {
-        requestAnimationFrame(step);
-      } else {
-        el.textContent = formatCounterValue(target, el);
+    </footer>
+    <script>
+      const menuButton = document.querySelector(".cn-menu-button"),
+        menu = document.querySelector(".cn-links");
+      function closeMenu() {
+        menuButton.setAttribute("aria-expanded", "false");
+        menu.dataset.open = "false";
       }
-    }
-
-    requestAnimationFrame(step);
-  });
-}
-
-// ── SMOOTH SCROLLING ──
-document.querySelectorAll('a[href^="#"]').forEach(function(anchor) {
-  anchor.addEventListener('click', function(e) {
-    var href = this.getAttribute('href');
-    var tabTarget = this.getAttribute('data-tab-target');
-    if (tabTarget) switchTab(tabTarget);
-    var target = document.querySelector(href);
-    if (target) {
-      e.preventDefault();
-      var offset = 80;
-      var targetPosition = target.getBoundingClientRect().top + window.pageYOffset - offset;
-      window.scrollTo({ top: targetPosition, behavior: 'smooth' });
-    }
-  });
-});
-
-// ── FORM SUBMISSION ──
-var form = document.getElementById('website-lead-form');
-if (form) {
-  form.addEventListener('submit', async function(e) {
-    e.preventDefault();
-
-    var submitBtn = document.getElementById('website-lead-submit');
-    var statusEl = document.getElementById('website-lead-status');
-    var previousText = submitBtn ? submitBtn.textContent : '';
-
-    if (submitBtn) {
-      submitBtn.disabled = true;
-      submitBtn.textContent = 'Enviando...';
-      submitBtn.style.opacity = '0.75';
-      submitBtn.style.cursor = 'not-allowed';
-    }
-
-    if (statusEl) {
-      statusEl.classList.add('hidden');
-      statusEl.textContent = '';
-      statusEl.className = 'text-sm text-center mt-4 hidden';
-    }
-
-    var data = new FormData(form);
-    var payload = {
-      name: String(data.get('name') || '').trim(),
-      email: String(data.get('email') || '').trim(),
-      phone: String(data.get('phone') || '').trim(),
-      company: String(data.get('company') || '').trim(),
-      solutionType: String(data.get('solutionType') || '').trim(),
-      amountRange: String(data.get('amountRange') || '').trim(),
-      message: String(data.get('message') || '').trim(),
-    };
-
-    var endpoint = '/api/public/website-leads';
-
-    try {
-      var response = await fetch(endpoint, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
+      menuButton.onclick = () => {
+        const open = menuButton.getAttribute("aria-expanded") !== "true";
+        menuButton.setAttribute("aria-expanded", String(open));
+        menu.dataset.open = String(open);
+      };
+      menu.onclick = (e) => {
+        if (e.target.closest("a")) closeMenu();
+      };
+      document.addEventListener("keydown", (e) => {
+        if (e.key === "Escape" && menu.dataset.open === "true") {
+          closeMenu();
+          menuButton.focus();
+        }
       });
-
-      var body = {};
-      try {
-        body = await response.json();
-      } catch (parseError) {
-        body = {};
-      }
-
-      if (!response.ok) {
-        throw new Error(body.message || 'No se pudo enviar la solicitud. Intenta nuevamente.');
-      }
-
-      if (statusEl) {
-        statusEl.textContent = 'Solicitud enviada. Te contactaremos en menos de 24 horas.';
-        statusEl.className = 'text-sm text-center mt-4 text-emerald-700';
-      }
-      form.reset();
-    } catch (error) {
-      if (statusEl) {
-        statusEl.textContent = error && error.message ? error.message : 'Error al enviar la solicitud. Intenta de nuevo.';
-        statusEl.className = 'text-sm text-center mt-4 text-red-600';
-      }
-    } finally {
-      if (submitBtn) {
-        submitBtn.disabled = false;
-        submitBtn.textContent = previousText || 'Enviar Solicitud →';
-        submitBtn.style.opacity = '1';
-        submitBtn.style.cursor = 'pointer';
-      }
-    }
-  });
-}
-
-// ── INIT ──
-document.addEventListener('DOMContentLoaded', function() {
-  switchTab('vehicular');
-  switchCasos('creditos');
-  updateCarousel('creditos');
-  updateCarousel('arrendamiento');
-  animateCounters();
-
-  var btnV = document.getElementById('btn-vehicular');
-  var btnM = document.getElementById('btn-maquinaria');
-  if (btnV) { btnV.classList.add('tab-btn-active'); btnV.classList.remove('tab-btn-inactive'); }
-  if (btnM) { btnM.classList.remove('tab-btn-active'); btnM.classList.add('tab-btn-inactive'); }
-
-  var cbC = document.getElementById('casos-btn-creditos');
-  var cbA = document.getElementById('casos-btn-arrendamiento');
-  if (cbC) { cbC.classList.add('tab-btn-active'); cbC.classList.remove('tab-btn-inactive'); }
-  if (cbA) { cbA.classList.remove('tab-btn-active'); cbA.classList.add('tab-btn-inactive'); }
-
-  window.addEventListener('resize', function() {
-    updateCarousel('creditos');
-    updateCarousel('arrendamiento');
-  });
-});
-</script>
-</body>
+      document.querySelectorAll("[data-solution]").forEach((a) =>
+        a.addEventListener("click", () => {
+          document.getElementById("lead-solution").value = a.dataset.solution;
+        }),
+      );
+      const form = document.getElementById("website-lead-form"),
+        button = document.getElementById("website-lead-submit"),
+        status = document.getElementById("website-lead-status");
+      let sending = false;
+      form.addEventListener("submit", async (event) => {
+        event.preventDefault();
+        if (sending || !form.reportValidity()) return;
+        sending = true;
+        button.disabled = true;
+        button.textContent = "Enviando…";
+        status.hidden = true;
+        try {
+          const response = await fetch("/api/public/website-leads", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(Object.fromEntries(new FormData(form))),
+          });
+          if (!response.ok) throw new Error("Failed");
+          form.reset();
+          status.textContent =
+            "Recibimos tu solicitud. Un asesor te contactará para revisar tu caso.";
+          status.className = "cn-status";
+        } catch {
+          status.textContent =
+            "No pudimos enviar tu solicitud. Conservamos tus datos para que puedas intentar de nuevo.";
+          status.className = "cn-status cn-status--error";
+        } finally {
+          status.hidden = false;
+          sending = false;
+          button.disabled = false;
+          button.textContent = "Solicitar orientación →";
+        }
+      });
+    </script>
+  </body>
 </html>
