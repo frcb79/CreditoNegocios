@@ -526,7 +526,11 @@ export default function BulkImport() {
                       )}
                     </div>
                     <div className="space-y-3 border-t border-border pt-4">
-                      {canApplyFinancieras ? (
+                      {appliedFinancieras ? (
+                        <p role="status" className="text-sm font-medium text-emerald-700">
+                          Actualización completada en Staging. No hay otra confirmación pendiente.
+                        </p>
+                      ) : canApplyFinancieras ? (
                         <Button size="lg" className="w-full text-sm font-semibold" disabled={applyingFinancieras}
                           onClick={applyFinancierasV5}>
                           {applyingFinancieras ? "Aplicando cambios en borradores..." :
@@ -536,7 +540,7 @@ export default function BulkImport() {
                               : "Confirmar importación de ofertas en Staging")}
                         </Button>
                       ) : (
-                        <p role="status" className="text-sm text-destructive">
+                        <p role="alert" className="text-sm text-destructive">
                           No se puede confirmar todavía. Revisa los errores del catálogo y vuelve a previsualizar.
                         </p>
                       )}
@@ -545,8 +549,8 @@ export default function BulkImport() {
                       </p>
                       <Button onClick={() => { setFinancierasFile(null); setFinancierasPreview(null);
                         setFinancierasV5Issues([]); setFinancierasV5Match([]); setPlannedV5Families([]);
-                        setCanApplyFinancieras(false); }} variant="outline" size="sm">
-                        Cancelar
+                        setCanApplyFinancieras(false); setAppliedFinancieras(null); }} variant="outline" size="sm">
+                        {appliedFinancieras ? "Limpiar selección" : "Cancelar"}
                       </Button>
                     </div>
                   </>
