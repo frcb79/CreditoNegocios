@@ -145,6 +145,16 @@ export function previewMasterV5(buffer: Buffer, kind: MasterV5Kind): MasterV5Pre
   const headerIndex = source.table.findIndex(r => r.some(v => norm(v) === norm(C.financiera)) &&
     r.some(v => norm(v) === norm(C.oferta)));
   const header = source.table[headerIndex].map(norm);
+  // Archive all 32 original non-economic columns so every technical descriptor
+  // can be audited, including original RESICO wording and product name in ficha.
+  // Never include the 12 confidential commission columns in this archive.
+  const economicHeaders = new Set([
+    C.finTotal, C.finApertura, C.finSobretasa, C.finRenovacion,
+    C.masterTotal, C.masterApertura, C.masterSobretasa, C.masterRenovacion,
+    C.brokerTotal, C.brokerApertura, C.brokerSobretasa, C.brokerRenovacion,
+  ].map(norm));
+  const originalHeaders = source.table[headerIndex].map(asText);
+
   const required = kind === "financieras"
     ? [C.financiera, C.oferta, C.producto, C.perfil, C.min, C.max]
     : [C.financiera, C.oferta, C.finTotal, C.finApertura, C.masterApertura, C.brokerApertura];
@@ -219,7 +229,14 @@ export function previewMasterV5(buffer: Buffer, kind: MasterV5Kind): MasterV5Pre
       presence: asText(get(C.presencia)),
       // Age deliberately excluded from matching, as previously approved.
     };
+    const sourceTechnicalFields: Record<string, string> = {};
+    for (let j = 0; j < originalHeaders.length; j++) {
+      if (!originalHeaders[j] || economicHeaders.has(header[j])) continue;
+      const original = asText(cells[j]);
+      if (original) sourceTechnicalFields[originalHeaders[j]] = original;
+    }
     const condiciones: Record<string, unknown> = {
+      sourceTechnicalFields,
       rateSource: asText(get(C.tasa)),
       clientOpeningSource: aperturaCliente,
       ...(pdnRevolventeConfirmado ? { clientOpeningRatePct: 4 } : {}),
