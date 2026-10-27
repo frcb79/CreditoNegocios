@@ -435,7 +435,9 @@ export default function Financieras() {
 
                     // Economics are scoped to each institution offer and its draft/published version.
                     // Never show the obsolete institution-global rate as if it were the new offer's rate.
-                    const acceptedProfiles: string[] = (institution as any).acceptedProfiles || [];
+                    const acceptedProfiles: string[] = isSuperAdmin && productsList.length > 0
+                      ? Array.from(new Set(productsList.flatMap(p => Array.isArray(p.targetProfiles) ? p.targetProfiles : [])))
+                      : ((institution as any).acceptedProfiles || []);
 
                     const profileShort: Record<string, string> = {
                       'persona_moral': 'PM',
