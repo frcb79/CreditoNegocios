@@ -1,4 +1,4 @@
-import { resolveMasterV5Template } from "../../server/masterV5TemplateResolver";
+import { resolveMasterV5Template, planMasterV5Catalog } from "../../server/masterV5TemplateResolver";
 import { normalizeV5Family } from "../../server/masterV5Preview";
 
 const canonical = [
@@ -61,5 +61,41 @@ describe("Master V5 - product family template reconciliation", () => {
     const r = resolveMasterV5Template([{ id: "a", ...t }, { id: "b", ...t }], "arrendamiento");
     expect(r.template).toBeNull();
     expect(r.error).toMatch(/ambiguo/);
+  });
+});
+
+describe("CN V5 — recuperación transaccional de familias de Staging", () => {
+  it("planifica un único Arrendamiento para diez ofertas, más familias faltantes", () => {
+    const existing = canonical.filter(t => ["credito_simple", "credito_revolvente"].includes(
+      String((t.baseConfiguration as any).catalog_family)));
+    const plan = planMasterV5Catalog(existing, [
+      "arrendamiento", "arrendamiento", "arrendamiento", "factoraje",
+      "garantia_inmobiliaria_empresarial", "hipotecario", "anticipo_ventas_tpv",
+    ]);
+    expect(plan.errors).toEqual([]);
+    expect(plan.create.map(x => x.name)).toEqual([
+      "Arrendamiento", "Factoraje", "Hipotecario", "Anticipo de Ventas (TPV)",
+    ]);
+  });
+  it("no intenta reactivar familias archivadas ni crear un duplicado", () => {
+    const archived = { id: "inactive", name: "Arrendamiento", isActive: false,
+      baseConfiguration: { catalog_family: "arrendamiento" } };
+    const plan = planMasterV5Catalog([...canonical.filter(t => t.name !== "Arrendamiento"), archived],
+      ["arrendamiento"]);
+    expect(plan.create).toEqual([]);
+    expect(plan.errors[0]).toMatch(/desactivada/);
+  });
+  it("no programa alta si la familia ya está activa", () => {
+    const plan = planMasterV5Catalog(canonical, ["arrendamiento", "factoraje", "arrendamiento"]);
+    expect(plan.create).toEqual([]);
+    expect(plan.errors).toEqual([]);
+  });
+  it("bloquea catálogos duplicados", () => {
+    const a = { id: "1", name: "Arrendamiento", isActive: true,
+      baseConfiguration: { catalog_family: "arrendamiento" } };
+    const b = { ...a, id: "2" };
+    const plan = planMasterV5Catalog([a,b], ["arrendamiento"]);
+    expect(plan.create).toEqual([]);
+    expect(plan.errors[0]).toMatch(/ambiguo/);
   });
 });
