@@ -183,7 +183,7 @@ export default function BulkImport() {
 
   const applyFinancierasV5 = async () => {
     if (!financierasFile || !canApplyFinancieras || applyingFinancieras) return;
-    if (!window.confirm("¿Importar las ofertas V5 como BORRADORES en Staging? No se publicará ningún producto.")) return;
+    if (!window.confirm("¿Confirmas la carga en Staging? Las ofertas nuevas se crearán como borradores. En las existentes solo se completarán antigüedad empresa, buró descriptivo y aval cuando falten, sin modificar comisiones ni versiones publicadas.")) return;
     setApplyingFinancieras(true);
     try {
       const formData = new FormData();
@@ -196,6 +196,7 @@ export default function BulkImport() {
       setAppliedFinancieras(
         "Financieras creadas: " + body.result.institutionsCreated +
         "; ofertas en borrador: " + body.result.offersCreated +
+        "; borradores enriquecidos: " + (body.result.enrichedDrafts || 0) +
         "; ofertas existentes sin cambio: " + body.result.alreadyPresent +
         "; familias preparadas: " + (body.result.canonicalTemplatesCreated || []).length);
       setCanApplyFinancieras(false);
@@ -508,6 +509,9 @@ export default function BulkImport() {
                     <PreviewTable preview={financierasPreview} />
                     <div className="rounded-md border border-border p-3 text-xs space-y-1">
                       <p className="font-semibold">Coincidencias: {financierasV5Match.filter(m => m.action === 'existing_offer').length} ofertas existentes; {financierasV5Match.filter(m => m.action === 'new_offer' || m.action === 'new_institution_and_offer').length} por crear.</p>
+                      {financierasV5Match.length > 0 && financierasV5Match.every(m => m.action === 'existing_offer') && (
+                        <p>Solo completará tres campos descriptivos ausentes en borradores existentes, sin alterar las comisiones ya importadas.</p>
+                      )}
                       <p>Observaciones: {financierasV5Issues.length} (las advertencias informativas no bloquean).</p>
                       {plannedV5Families.length > 0 && (
                         <p className="font-medium text-foreground">
@@ -525,7 +529,11 @@ export default function BulkImport() {
                       {canApplyFinancieras ? (
                         <Button size="lg" className="w-full text-sm font-semibold" disabled={applyingFinancieras}
                           onClick={applyFinancierasV5}>
-                          {applyingFinancieras ? "Importando borradores..." : "Confirmar importación de ofertas en Staging"}
+                          {applyingFinancieras ? "Aplicando cambios en borradores..." :
+                            (financierasV5Match.length > 0 &&
+                             financierasV5Match.every(m => m.action === "existing_offer")
+                              ? "Completar datos faltantes de las ofertas existentes"
+                              : "Confirmar importación de ofertas en Staging")}
                         </Button>
                       ) : (
                         <p role="status" className="text-sm text-destructive">
