@@ -42,6 +42,7 @@ import {
 import { blockLegacyEconomicExcelImport, blockLegacyEconomicExcelType } from "./prelaunchEconomicImportGuard";
 import { previewMasterV5, type MasterV5Kind } from "./masterV5Preview";
 import { importMasterV5FinancialDrafts, importMasterV5CommissionDrafts } from "./masterV5StagingImport";
+import { resolveMasterV5Template } from "./masterV5TemplateResolver";
 import {
   parseSocExcel,
   syncSocFinancierasToDatabase
@@ -13270,8 +13271,31 @@ function maskCLABE(clabe?: string | null): string | null {
             institution ? 'new_offer' : 'new_institution_and_offer',
         };
       });
-      res.json({ ...preview, matches, writable: process.env.RAILWAY_ENVIRONMENT_NAME === 'staging',
-        message: 'Vista previa sin escrituras. Solo Staging permite aplicar borradores mediante el importador V5 protegido.' });
+      // Prevalidar familias activas contra el mismo resolver usado para importar.
+      // Mostrar los problemas AQUÍ, antes de habilitar "Confirmar carga".
+      const templateErrors: { row: number; field: string; level: 'error'; message: string }[] = [];
+      if (kind === 'financieras') {
+        const templates = await storage.getProductTemplates();
+        for (const row of preview.rows) {
+          const mapped = resolveMasterV5Template(templates, row.familia);
+          if (!mapped.template) templateErrors.push({
+            row: row.row, field: 'Familia de producto', level: 'error',
+            message: (mapped.error || 'Plantilla activa no disponible') + ' — ' + row.nombreOferta,
+          });
+        }
+      }
+      for (const match of matches) {
+        if (match.action === 'collision') templateErrors.push({
+          row: match.row, field: 'Oferta', level: 'error',
+          message: 'Existen varias ofertas con el mismo nombre en la financiera. Resolver antes de importar.',
+        });
+      }
+      const allErrors = [...preview.errors, ...templateErrors];
+      res.json({ ...preview, errors: allErrors, matches,
+        writable: process.env.RAILWAY_ENVIRONMENT_NAME === 'staging' && allErrors.length === 0,
+        message: allErrors.length
+          ? 'Corrige las observaciones críticas del catálogo antes de confirmar la carga. Sin escrituras.'
+          : 'Vista previa sin escrituras. Staging permite guardar borradores versionados.' });
     } catch (error: any) {
       res.status(400).json({ message: error?.message || 'No se pudo analizar el maestro V5' });
     }
