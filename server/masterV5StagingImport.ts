@@ -16,7 +16,7 @@ function conditions(row: MasterV5Row): Record<string, unknown> {
   const c: Record<string, unknown> = { ...row.condiciones };
   if (row.montoMinimo !== null) c.minAmount = row.montoMinimo;
   if (row.montoMaximo !== null) c.maxAmount = row.montoMaximo;
-  if (row.montoMaximoVariable) c.maxAmountFormula = row.montoMaximoVariable;
+  // No convertir el máximo TPV en una regla numérica; queda como descripción para el broker.
   if (row.plazoMaximoMeses !== null) c.maxTermMonths = row.plazoMaximoMeses;
   return c;
 }
