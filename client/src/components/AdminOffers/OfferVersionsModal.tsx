@@ -71,6 +71,48 @@ export default function OfferVersionsModal({
     }).format(num);
   };
 
+  const fmtPct = (value: unknown): string =>
+    value !== undefined && value !== null && value !== "" && Number.isFinite(Number(value))
+      ? Number(value).toLocaleString("es-MX", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + "%"
+      : "Pendiente";
+
+  const textValue = (value: unknown): string => {
+    if (value === null || value === undefined || value === "") return "";
+    if (typeof value === "boolean") return value ? "Sí" : "No";
+    if (Array.isArray(value)) return value.map(textValue).filter(Boolean).join(", ");
+    if (typeof value === "object") return JSON.stringify(value);
+    return String(value);
+  };
+
+  const importedFields = (condition: Record<string, any>, req: Record<string, any>) =>
+    ([
+      ["Tasa / factor (ficha)", condition.rateSource],
+      ["Apertura al cliente", condition.clientOpeningSource],
+      ["Monto máximo informativo por TPV", condition.informationalMaximumLoan],
+      ["Destino", condition.loanPurposes],
+      ["Tiempo de respuesta", condition.turnaround],
+      ["Notas de la financiera", condition.sourceNotes],
+      ["Garantía", req.guarantee],
+      ["Antigüedad mínima (meses)", req.minMonthsInBusinessSource || req.minMonthsInBusiness],
+      ["Ingreso mensual mínimo", req.minMonthlyIncomeSource || req.minMonthlyIncome],
+      ["Ingreso anual mínimo", req.minAnnualIncomeSource || req.minAnnualIncome],
+      ["Buró accionistas mínimo", req.minShareholderBureau],
+      ["Buró empresa mínimo", req.minBusinessBureau],
+      ["Buró PF mínimo", req.minPersonalBureauSource || req.minPersonalBureau],
+      ["Permite atrasos", req.allowsArrears],
+      ["Política de atrasos", req.arrearsPolicy],
+      ["Requiere CIEC", req.requiresCiec],
+      ["Estados financieros", req.requiresFinancialStatements],
+      ["Opinión SAT", req.satOpinion],
+      ["Límite de ventas gobierno", req.governmentSalesLimit],
+      ["Giros excluidos", req.excludedSectors],
+      ["Presencia geográfica", req.presence],
+      ["Documentación fuente", condition.requiredDocumentationSource],
+      ["Perfiles aceptados", req.targetProfiles],
+      ["Segmento hipotecario", condition.segmento_hipotecario],
+    ] as Array<[string, unknown]>).map(([label, value]) => [label, textValue(value)] as const)
+      .filter(([, value]) => value !== "");
+
   const getStatusBadge = (status: string) => {
     switch (status) {
       case "published":
@@ -245,6 +287,61 @@ export default function OfferVersionsModal({
                         </div>
                       </div>
 
+                      {/* Source-of-truth: complete offer-specific values stored in the version. */}
+                      <div className="border border-blue-100 bg-blue-50/30 rounded-xl p-3 space-y-3">
+                        <div>
+                          <h4 className="text-xs font-bold text-[#101F35]">Ficha técnica y requisitos de esta oferta</h4>
+                          <p className="text-[11px] text-slate-500 mt-1">
+                            Datos guardados en esta versión. No son los requisitos genéricos de la financiera.
+                          </p>
+                        </div>
+                        {importedFields(cond, req).length ? (
+                          <dl className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-2 text-xs">
+                            {importedFields(cond, req).map(([label, value]) => (
+                              <div key={label} className="border-b border-slate-100 pb-1.5 min-w-0">
+                                <dt className="text-[10px] text-slate-500 font-semibold">{label}</dt>
+                                <dd className="text-slate-800 whitespace-pre-wrap break-words">{value}</dd>
+                              </div>
+                            ))}
+                          </dl>
+                        ) : (
+                          <p className="text-xs text-slate-500">Sin ficha técnica capturada en esta versión.</p>
+                        )}
+                        {docs.length > 0 && (
+                          <div className="text-xs">
+                            <span className="font-semibold">Documentos requeridos:</span>
+                            <p className="text-slate-700 whitespace-pre-wrap break-words">{docs.join("; ")}</p>
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="border border-slate-200 rounded-xl p-3 space-y-2">
+                        <h4 className="text-xs font-bold text-slate-800">Comisiones de esta versión</h4>
+                        {cond.commissionRates?.financiera ? (
+                          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
+                            {([
+                              ["Recibe Crédito Negocios", cond.commissionRates.financiera],
+                              ["Techo Master Broker", cond.commissionRates.masterBroker],
+                              ["Broker directo", cond.commissionRates.broker],
+                            ] as Array<[string, any]>).map(([label, rates]) => (
+                              <div key={label} className="bg-slate-50 p-2 rounded-md border border-slate-100">
+                                <p className="font-semibold text-slate-700 mb-1">{label}</p>
+                                <p>Apertura: {fmtPct(rates?.apertura)}</p>
+                                <p>Renovación: {fmtPct(rates?.renovacion)}</p>
+                                <p>Sobretasa: {fmtPct(rates?.sobretasa)}</p>
+                              </div>
+                            ))}
+                            <p className="sm:col-span-3 text-[11px] text-slate-500">
+                              Sobretasa exclusiva de Crédito Negocios; no se reparte a los canales.
+                            </p>
+                          </div>
+                        ) : (
+                          <p className="text-xs text-amber-700">
+                            Comisiones pendientes de importar para esta oferta. La carga se hace únicamente desde Importación Masiva.
+                          </p>
+                        )}
+                      </div>
+
                       {/* Requisitos y Hash */}
                       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pt-2 border-t border-slate-100 text-xs">
                         <div className="flex items-center gap-1.5">
@@ -286,7 +383,7 @@ export default function OfferVersionsModal({
           <div className="flex items-center gap-2 text-slate-500">
             <Info className="w-4 h-4 text-[#2463D6] shrink-0" />
             <span>
-              <strong>Alcance B1:</strong> Catálogo y auditoría de versiones. La edición detallada de nuevas versiones estará disponible en <strong>B2</strong>.
+              Consulta de condiciones, requisitos y comisiones vinculados a cada versión de la oferta.
             </span>
           </div>
           <Button
