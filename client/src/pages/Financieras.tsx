@@ -415,7 +415,7 @@ export default function Financieras() {
                     <th className="py-3 px-3 text-center">Estado</th>
                     <th className="py-3 px-3">Perfiles Aceptados</th>
                     <th className="py-3 px-3">Productos y Categorías</th>
-                    {isAdmin && <th className="py-3 px-3 text-center">Comisión</th>}
+                    {isAdmin && <th className="py-3 px-3 text-center">Comisiones</th>}
                     <th className="py-3 px-3">Contacto</th>
                     <th className="py-3 px-4 text-right">Acción</th>
                   </tr>
@@ -433,9 +433,8 @@ export default function Financieras() {
                         .filter(Boolean)
                     ));
 
-                    // Commission display for Admin only
-                    const commissionRates = (institution as any).commissionRates;
-                    const totalCommission = commissionRates?.financiera?.total ?? (institution as any).commissionRate;
+                    // Economics are scoped to each institution offer and its draft/published version.
+                    // Never show the obsolete institution-global rate as if it were the new offer's rate.
                     const acceptedProfiles: string[] = (institution as any).acceptedProfiles || [];
 
                     const profileShort: Record<string, string> = {
@@ -538,18 +537,20 @@ export default function Financieras() {
                           </div>
                         </td>
 
-                        {/* 5. Commission (Admin only) */}
+                        {/* 5. Offer-level commissions: do not conflate historical lender-wide rates */}
                         {isAdmin && (
                           <td className="py-3 px-3 text-center whitespace-nowrap">
-                            {totalCommission !== null && totalCommission !== undefined ? (
-                              <span 
-                                className="font-semibold text-slate-900 bg-slate-100 px-2 py-0.5 rounded text-xs border border-slate-200/60"
-                                data-testid={`commission-${institution.id}`}
-                              >
-                                {totalCommission}%
-                              </span>
+                            {isSuperAdmin ? (
+                              <Link href={`/financieras/${institution.id}?tab=ofertas`}>
+                                <span className="text-[11px] font-semibold text-[#2463D6] hover:underline"
+                                  data-testid={`commission-${institution.id}`}
+                                  title="Las comisiones se administran por oferta, no por financiera">
+                                  Ver por oferta
+                                </span>
+                              </Link>
                             ) : (
-                              <span className="text-slate-400 text-[11px]">N/D</span>
+                              <span className="text-[11px] text-slate-500"
+                                title="Comisiones configuradas individualmente por oferta">Por oferta</span>
                             )}
                           </td>
                         )}
@@ -682,8 +683,6 @@ export default function Financieras() {
                     .filter(Boolean)
                 ));
 
-                const commissionRates = (institution as any).commissionRates;
-                const totalCommission = commissionRates?.financiera?.total ?? (institution as any).commissionRate;
                 const acceptedProfiles: string[] = (institution as any).acceptedProfiles || [];
 
                 const profileShort: Record<string, string> = {
@@ -758,12 +757,11 @@ export default function Financieras() {
                         <span className="text-[11px] text-slate-400 italic">Todos los perfiles</span>
                       )}
 
-                      {isAdmin && totalCommission !== null && totalCommission !== undefined && (
-                        <span 
-                          className="text-[11px] font-semibold text-slate-700 bg-slate-100 px-2 py-0.5 rounded"
+                      {isAdmin && (
+                        <span className="text-[11px] font-semibold text-slate-600 bg-slate-100 px-2 py-0.5 rounded"
                           data-testid={`commission-mobile-${institution.id}`}
-                        >
-                          Comisión: {totalCommission}%
+                          title="La comisión se establece por cada oferta">
+                          Comisiones por oferta
                         </span>
                       )}
                     </div>
