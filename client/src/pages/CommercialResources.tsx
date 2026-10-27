@@ -66,7 +66,7 @@ export default function CommercialResources() {
   const svg = useMemo(() => selection && !selection.definition.graphic ? templateSvg(selection, branding) : "", [selection, branding]);
   const preview = useMemo(() => svg ? "data:image/svg+xml;charset=utf-8," + encodeURIComponent(svg) : "", [svg]);
   const { data: approvedIdentity } = useQuery<{
-    displayName:string;whatsapp:string;approvedLogoUrl:string|null
+    displayName:string;whatsapp:string
   }>({
     queryKey:["/api/commercial-resources/my-approved-identity",user?.id],
     queryFn: async()=>{
@@ -78,7 +78,6 @@ export default function CommercialResources() {
   });
   const graphicName = approvedIdentity?.displayName || "";
   const graphicPhone = approvedIdentity?.whatsapp || "";
-  const authorizedLogo = approvedIdentity?.approvedLogoUrl || null;
   const identityReady = Boolean(selection?.definition.graphic)
     ? graphicName.trim().length >= 2 && Boolean(normalizedWhatsApp(graphicPhone))
     : safeBrandLabel(displayName).length >= 2 && Boolean(normalizedWhatsApp(whatsapp));
@@ -105,14 +104,14 @@ export default function CommercialResources() {
     if (!selection?.definition.graphic || !identityReady) return;
     setGraphicLoading(true);
     renderCommercialGraphic(selection,{
-      displayName:graphicName,whatsapp:graphicPhone,approvedLogoUrl:authorizedLogo
+      displayName:graphicName,whatsapp:graphicPhone
     }).then(canvas=>{
       if(live)setGraphicPreview(canvas.toDataURL("image/png"));
     }).catch(err=>{
       if(live)setGraphicError(err.message||"No se pudo mostrar el arte.");
     }).finally(()=>{if(live)setGraphicLoading(false);});
     return ()=>{live=false;};
-  }, [selection?.id, selection?.definition.graphic, identityReady, graphicName, graphicPhone, authorizedLogo]);
+  }, [selection?.id, selection?.definition.graphic, identityReady, graphicName, graphicPhone]);
 
   const copyCaption = async () => {
     if (!identityReady || !selection) {
@@ -138,7 +137,7 @@ export default function CommercialResources() {
     }
     if (selection.definition.graphic) {
       renderCommercialGraphic(selection,{
-        displayName:graphicName,whatsapp:graphicPhone,approvedLogoUrl:authorizedLogo
+        displayName:graphicName,whatsapp:graphicPhone
       }).then(canvas=>canvas.toBlob(png=>{
         if(!png)return toast({title:"No se pudo exportar PNG",variant:"destructive"});
         const file=URL.createObjectURL(png);
@@ -235,7 +234,7 @@ export default function CommercialResources() {
             <ShieldCheck className="w-5 h-5 text-primary shrink-0" />
             <p className="text-sm text-muted-foreground">
               Solo podrás utilizar materiales autorizados por Crédito Negocios. Los textos, beneficios y condiciones financieras no son editables.
-              Tu nombre y WhatsApp son obligatorios; tu logo propio es opcional y se toma de Perfil. {COMMERCIAL_DISCLAIMER}
+              Tu nombre y WhatsApp son obligatorios. Las piezas no muestran foto, avatar ni logo propio del Broker/Master. {COMMERCIAL_DISCLAIMER}
             </p>
           </div>
           <div className="grid grid-cols-1 xl:grid-cols-2 gap-6 items-start">
@@ -292,7 +291,7 @@ export default function CommercialResources() {
                     </p>
                   )}
                   {(selection.definition.graphic ? graphicName.trim().length < 2 : safeBrandLabel(displayName).length < 2) && <p className="text-xs text-destructive">Indica tu nombre o nombre comercial en el perfil.</p>}
-                  <p className="text-xs text-muted-foreground">{selection.definition.graphic ? "Nombre y WhatsApp se toman de tu perfil. Tu logo es opcional: si no lo subes en Perfil, la plantilla se genera sin logo propio. Los textos y fotografías no se modifican." : "Nombre y contacto son obligatorios para mantener completo el diseño. Solo personalizan la pieza, no cambian tu perfil."}</p>
+                  <p className="text-xs text-muted-foreground">{selection.definition.graphic ? "Nombre y WhatsApp se toman de tu perfil. No se usa foto, avatar ni logo propio del Broker/Master. El logotipo institucional de Crédito Negocios forma parte del diseño aprobado. Los textos y fotografías no se modifican." : "Nombre y contacto son obligatorios para mantener completo el diseño. Solo personalizan la pieza, no cambian tu perfil."}</p>
                 </div>
               )}
             </section>
