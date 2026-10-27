@@ -9616,6 +9616,39 @@ function maskCLABE(clabe?: string | null): string | null {
     }
   });
 
+  // Source of truth for lender economics is the offer VERSION, never the global institution record.
+  // Restricted to Super Admin: protects channel ceilings, platform margin and overrate.
+  app.get('/api/institution-products/commission-schemes', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub || req.user?.id;
+      if (!(await requirePlatformRole(userId, ['super_admin']))) {
+        return res.status(403).json({ code: 'SUPER_ADMIN_REQUIRED', message: 'Solo Super Admin puede consultar estos esquemas económicos' });
+      }
+      const { rows } = await pool.query([
+        'SELECT p.id AS "offerId", p.name AS "offerName", p.product_type AS "productType",',
+        'p.institution_id AS "institutionId", fi.name AS "institutionName",',
+        'v.version_number AS "versionNumber", v.status AS "versionStatus",',
+        'v.conditions->\\'commissionRates\\' AS "commissionRates",',
+        'v.conditions->>\\'overrateOwner\\' AS "overrateOwner"',
+        'FROM public.institution_products p',
+        'JOIN public.financial_institutions fi ON fi.id = p.institution_id',
+        'JOIN LATERAL (',
+        'SELECT ip.version_number, ip.status, ip.conditions',
+        'FROM public.institution_product_versions ip',
+        "WHERE ip.institution_product_id = p.id AND ip.status IN ('draft', 'published', 'active')",
+        "ORDER BY CASE ip.status WHEN 'draft' THEN 0 WHEN 'published' THEN 1 ELSE 2 END, ip.version_number DESC",
+        'LIMIT 1',
+        ') v ON TRUE',
+        "WHERE p.status IN ('draft', 'published')",
+        'ORDER BY fi.name, p.name, p.id',
+      ].join(' '));
+      res.json(rows);
+    } catch (error) {
+      console.error('Error consulting commission schemes by offer:', error);
+      res.status(500).json({ message: 'No se pudieron consultar comisiones por oferta' });
+    }
+  });
+
   app.get('/api/institution-products/:id', isAuthenticated, async (req: any, res) => {
     try {
       const { id } = req.params;
