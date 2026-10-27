@@ -183,7 +183,7 @@ export default function BulkImport() {
 
   const applyFinancierasV5 = async () => {
     if (!financierasFile || !canApplyFinancieras || applyingFinancieras) return;
-    if (!window.confirm("¿Confirmas la carga en Staging? Las ofertas nuevas se crearán como borradores. En las existentes solo se completarán antigüedad empresa, buró descriptivo y aval cuando falten, sin modificar comisiones ni versiones publicadas.")) return;
+    if (!window.confirm("¿Confirmas la carga en Staging? Las ofertas nuevas se crearán como borradores. En las existentes se completará el respaldo de los 32 campos técnicos originales y los tres descriptores faltantes, solo en borradores y sin modificar comisiones ni versiones publicadas.")) return;
     setApplyingFinancieras(true);
     try {
       const formData = new FormData();
@@ -510,7 +510,7 @@ export default function BulkImport() {
                     <div className="rounded-md border border-border p-3 text-xs space-y-1">
                       <p className="font-semibold">Coincidencias: {financierasV5Match.filter(m => m.action === 'existing_offer').length} ofertas existentes; {financierasV5Match.filter(m => m.action === 'new_offer' || m.action === 'new_institution_and_offer').length} por crear.</p>
                       {financierasV5Match.length > 0 && financierasV5Match.every(m => m.action === 'existing_offer') && (
-                        <p>Solo completará tres campos descriptivos ausentes en borradores existentes, sin alterar las comisiones ya importadas.</p>
+                        <p>Completará únicamente campos técnicos de origen que falten en los borradores existentes, sin reemplazar los valores editados ni las comisiones ya importadas.</p>
                       )}
                       <p>Observaciones: {financierasV5Issues.length} (las advertencias informativas no bloquean).</p>
                       {plannedV5Families.length > 0 && (
