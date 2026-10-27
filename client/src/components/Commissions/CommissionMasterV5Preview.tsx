@@ -14,6 +14,7 @@ type Preview = {
   errors: Issue[];
   warnings: Issue[];
   matches: Match[];
+  writable: boolean;
   rows: { row: number; financiera: string; nombreOferta: string; comisiones: Record<string, number> }[];
 };
 
@@ -22,11 +23,14 @@ export default function CommissionMasterV5Preview() {
   const [file, setFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<Preview | null>(null);
   const [loading, setLoading] = useState(false);
+  const [applying, setApplying] = useState(false);
+  const [result, setResult] = useState<string | null>(null);
 
   async function previsualizar() {
     if (!file) return;
     setLoading(true);
     setPreview(null);
+    setResult(null);
     try {
       const data = new FormData();
       data.append("file", file);
@@ -45,6 +49,30 @@ export default function CommissionMasterV5Preview() {
     }
   }
 
+  async function aplicar() {
+    if (!file || !preview?.writable || preview.errors.length || applying) return;
+    if (!window.confirm("¿Aplicar las comisiones V5 a versiones en BORRADOR en Staging? La sobretasa será exclusiva de Crédito Negocios.")) return;
+    setApplying(true);
+    try {
+      const data = new FormData();
+      data.append("file", file);
+      const res = await fetch("/api/import/v5/apply/comisiones", {
+        method: "POST", credentials: "include", body: data,
+      });
+      const body = await res.json();
+      if (!res.ok) throw Error(body.message || "No se pudieron aplicar las comisiones");
+      setResult("Borradores actualizados: " + body.result.draftVersionsUpdated +
+        "; sin cambios: " + body.result.unchanged + "; publicados: 0");
+      setPreview({ ...preview, writable: false });
+      toast({ title: "Comisiones aplicadas a borradores en Staging",
+        description: "No se alteraron tasas globales ni versiones publicadas." });
+    } catch (e: any) {
+      toast({ title: "Importación de comisiones rechazada", description: e.message, variant: "destructive" });
+    } finally {
+      setApplying(false);
+    }
+  }
+
   return (
     <Card className="border border-border/80">
       <CardHeader>
@@ -60,12 +88,13 @@ export default function CommissionMasterV5Preview() {
         <label className="block rounded-lg border border-dashed border-border p-4 cursor-pointer">
           <span className="block text-xs font-semibold mb-2">Selecciona el maestro V5 (XLSX)</span>
           <input type="file" accept=".xlsx,.xls" className="block text-xs max-w-full"
-            onChange={e => { setFile(e.target.files?.[0] || null); setPreview(null); }} />
+            onChange={e => { setFile(e.target.files?.[0] || null); setPreview(null); setResult(null); }} />
         </label>
         <Button type="button" size="sm" disabled={!file || loading} onClick={previsualizar}>
           {loading ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Eye className="h-4 w-4 mr-2" />}
           Previsualizar comisiones
         </Button>
+        {result && <Alert><AlertDescription>{result}</AlertDescription></Alert>}
         {preview && (
           <div className="space-y-3 text-sm">
             <div className="grid gap-2 grid-cols-2 sm:grid-cols-4">
@@ -102,9 +131,14 @@ export default function CommissionMasterV5Preview() {
               </p>
             ))}
             <Alert><ShieldAlert className="h-4 w-4" /><AlertDescription>
-              Vista previa solamente. La aplicación masiva sigue protegida hasta completar
-              y probar el proceso versionado en Staging.
+              La aplicación de estas condiciones solo puede realizarse en Staging,
+              a ofertas en borrador. Nunca modifica versiones publicadas.
             </AlertDescription></Alert>
+            {preview.writable && preview.errors.length === 0 && (
+              <Button type="button" size="sm" disabled={applying} onClick={aplicar}>
+                {applying ? "Aplicando..." : "Confirmar comisiones en Staging"}
+              </Button>
+            )}
           </div>
         )}
       </CardContent>
