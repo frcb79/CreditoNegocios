@@ -175,12 +175,15 @@ export function previewMasterV5(buffer: Buffer, kind: MasterV5Kind): MasterV5Pre
     const montoMaximo = numberOrNull(get(C.max));
     const montoVariable = montoMaximo === null && asText(get(C.max)) ? asText(get(C.max)) : null;
     if (montoMinimo === null) warn(C.min, "Monto mínimo no numérico; requiere revisión");
-    if (montoVariable) warn(C.max, "Máximo variable: conservar regla original; no convertir a monto fijo");
+    // El límite ligado a ventas TPV es información comercial, no un bloqueo de matching.
     if (montoMaximo !== null && montoMinimo !== null && montoMaximo < montoMinimo)
       err(C.max, "Monto máximo inferior al mínimo");
-    const aperturaCliente = asText(get(C.aperturaCliente));
-    if (/unidad pendiente/i.test(aperturaCliente)) warn(C.aperturaCliente,
-      "Unidad pendiente: no convertir automáticamente 0.04 a 4%");
+    const aperturaClienteOriginal = asText(get(C.aperturaCliente));
+    const pdnRevolventeConfirmado = norm(name) === "pdn" && norm(offer).includes("revolvente") &&
+      /^0[.,]04\s*\(unidad pendiente\)$/i.test(aperturaClienteOriginal);
+    const aperturaCliente = pdnRevolventeConfirmado ? "4%" : aperturaClienteOriginal;
+    if (!pdnRevolventeConfirmado && /unidad pendiente/i.test(aperturaClienteOriginal)) warn(C.aperturaCliente,
+      "Unidad pendiente: mantener la leyenda original y validar antes de publicar");
     for (const field of [C.antiguedad, C.ingresoMensual, C.ingresoAnual, C.buroAccionista, C.buroEmpresa, C.buroPF, C.plazo]) {
       const raw = asText(get(field));
       if (raw && !["n/a", "na", "no aplica"].includes(norm(raw)) && numberOrNull(get(field)) === null)
@@ -189,7 +192,7 @@ export function previewMasterV5(buffer: Buffer, kind: MasterV5Kind): MasterV5Pre
     const matching: Record<string, unknown> = {
       minAmount: montoMinimo,
       maxAmount: montoMaximo,
-      amountFormula: montoVariable,
+      // No introducir máximos variables en reglas automáticas de matching.
       minMonthsInBusiness: numberOrNull(get(C.antiguedad)),
       minMonthsInBusinessSource: asText(get(C.antiguedad)),
       minMonthlyIncome: numberOrNull(get(C.ingresoMensual)),
@@ -214,6 +217,8 @@ export function previewMasterV5(buffer: Buffer, kind: MasterV5Kind): MasterV5Pre
     const condiciones: Record<string, unknown> = {
       rateSource: asText(get(C.tasa)),
       clientOpeningSource: aperturaCliente,
+      ...(pdnRevolventeConfirmado ? { clientOpeningRatePct: 4 } : {}),
+      ...(montoVariable ? { informationalMaximumLoan: montoVariable } : {}),
       loanPurposes: asText(get(C.destinos)),
       maxTermMonths: numberOrNull(get(C.plazo)),
       turnaround: asText(get(C.tiempo)),
