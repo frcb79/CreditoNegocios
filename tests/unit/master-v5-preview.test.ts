@@ -9,6 +9,7 @@ const headers = [
   "Financiera sobretasa %", "Financiera renovación %", "Master total %",
   "Master apertura %", "Master sobretasa %", "Master renovación %",
   "Broker directo total %", "Broker apertura %", "Broker sobretasa %", "Broker renovación %",
+  "Antigüedad empresa (fuente)", "Buró (fuente)", "Aval",
 ];
 
 function book(data: any[][]): Buffer {
@@ -21,7 +22,7 @@ function book(data: any[][]): Buffer {
 describe("CN V5 — parser de previsualización sin escrituras", () => {
   const base = ["Pretmex", "Crédito simple", "Simple Pretmex", "Simple Pretmex",
     "PM, PFAE, RESICO", 300000, 15000000, 48, "26%", "3%",
-    .015, .015, 0, 0, .01, .01, 0, 0, .0075, .0075, 0, 0];
+    .015, .015, 0, 0, .01, .01, 0, 0, .0075, .0075, 0, 0, "PM 3 años/PFAE 5 años", "Buen historial últimos 24 meses", "RL / Aval"];
 
   it("reconoce encabezados en fila 6 y conserva Pretmex", () => {
     const result = previewMasterV5(book([base]), "financieras");
@@ -29,6 +30,14 @@ describe("CN V5 — parser de previsualización sin escrituras", () => {
     expect(result.totalRows).toBe(1);
     expect(result.rows[0].financiera).toBe("Pretmex");
     expect(result.rows[0].perfiles).toEqual(["persona_moral", "fisica_empresarial"]);
+  });
+
+  it("conserva antigüedad, buró narrativo y aval como información de oferta", () => {
+    const preview = previewMasterV5(book([base]), "financieras");
+    const req = preview.rows[0].matching;
+    expect(req.businessAgeSource).toBe("PM 3 años/PFAE 5 años");
+    expect(req.bureauPolicySource).toBe("Buen historial últimos 24 meses");
+    expect(req.guarantorSource).toBe("RL / Aval");
   });
 
   it("monto máximo por TPV no se inventa como pesos", () => {
