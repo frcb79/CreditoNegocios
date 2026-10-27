@@ -135,7 +135,9 @@ export default function FinancieraDetail() {
     'sin_sat': 'bg-slate-50 text-slate-700 border-slate-200'
   };
   
-  const acceptedProfiles = Array.isArray(institution.acceptedProfiles) ? institution.acceptedProfiles : [];
+  const acceptedProfiles = isSuperAdmin && institutionProducts.length > 0
+    ? Array.from(new Set(institutionProducts.flatMap(p => Array.isArray(p.targetProfiles) ? p.targetProfiles : [])))
+    : (Array.isArray(institution.acceptedProfiles) ? institution.acceptedProfiles : []);
   const commissionRates = institution.commissionRates || null;
 
   return (
