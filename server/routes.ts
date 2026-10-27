@@ -13271,18 +13271,14 @@ function maskCLABE(clabe?: string | null): string | null {
             institution ? 'new_offer' : 'new_institution_and_offer',
         };
       });
-      // Prevalidar familias activas contra el mismo resolver usado para importar.
-      // Mostrar los problemas AQUÍ, antes de habilitar "Confirmar carga".
+      // Vista previa: informar qué familias CANÓNICAS se darán de alta al confirmar,
+      // sin escribir nada todavía ni generar errores por familias faltantes.
       const templateErrors: { row: number; field: string; level: 'error'; message: string }[] = [];
-      if (kind === 'financieras') {
-        const templates = await storage.getProductTemplates();
-        for (const row of preview.rows) {
-          const mapped = resolveMasterV5Template(templates, row.familia);
-          if (!mapped.template) templateErrors.push({
-            row: row.row, field: 'Familia de producto', level: 'error',
-            message: (mapped.error || 'Plantilla activa no disponible') + ' — ' + row.nombreOferta,
-          });
-        }
+      const catalogPlan = kind === 'financieras'
+        ? planMasterV5Catalog(await storage.getProductTemplates(), preview.rows.map(row => row.familia))
+        : { create: [], errors: [] };
+      for (const error of catalogPlan.errors) {
+        templateErrors.push({ row: 0, field: 'Catálogo de productos', level: 'error', message: error });
       }
       for (const match of matches) {
         if (match.action === 'collision') templateErrors.push({
@@ -13292,10 +13288,11 @@ function maskCLABE(clabe?: string | null): string | null {
       }
       const allErrors = [...preview.errors, ...templateErrors];
       res.json({ ...preview, errors: allErrors, matches,
+        plannedCanonicalFamilies: catalogPlan.create.map(x => x.name),
         writable: process.env.RAILWAY_ENVIRONMENT_NAME === 'staging' && allErrors.length === 0,
         message: allErrors.length
           ? 'Corrige las observaciones críticas del catálogo antes de confirmar la carga. Sin escrituras.'
-          : 'Vista previa sin escrituras. Staging permite guardar borradores versionados.' });
+          : 'Vista previa sin escrituras. Al confirmar, Staging crea las familias canónicas faltantes y guarda las ofertas en borrador.' });
     } catch (error: any) {
       res.status(400).json({ message: error?.message || 'No se pudo analizar el maestro V5' });
     }
