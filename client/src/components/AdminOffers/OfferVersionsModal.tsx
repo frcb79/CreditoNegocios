@@ -93,6 +93,9 @@ export default function OfferVersionsModal({
       ["Tiempo de respuesta", condition.turnaround],
       ["Notas de la financiera", condition.sourceNotes],
       ["Garantía", req.guarantee],
+      ["Antigüedad de empresa (texto de financiera)", req.businessAgeSource],
+      ["Buró (política de financiera)", req.bureauPolicySource],
+      ["Aval / Obligado solidario", req.guarantorSource],
       ["Antigüedad mínima (meses)", req.minMonthsInBusinessSource || req.minMonthsInBusiness],
       ["Ingreso mensual mínimo", req.minMonthlyIncomeSource || req.minMonthlyIncome],
       ["Ingreso anual mínimo", req.minAnnualIncomeSource || req.minAnnualIncome],
@@ -306,6 +309,21 @@ export default function OfferVersionsModal({
                           </dl>
                         ) : (
                           <p className="text-xs text-slate-500">Sin ficha técnica capturada en esta versión.</p>
+                        )}
+                        {cond.sourceTechnicalFields && typeof cond.sourceTechnicalFields === "object" && (
+                          <details className="rounded-md border border-blue-100 bg-white p-2.5">
+                            <summary className="cursor-pointer text-xs font-semibold text-blue-800">
+                              Ver todas las columnas técnicas originales del Excel V5
+                            </summary>
+                            <dl className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-2">
+                              {Object.entries(cond.sourceTechnicalFields as Record<string, unknown>).map(([field, val]) => (
+                                <div key={field} className="border-b border-slate-100 pb-1 text-xs min-w-0">
+                                  <dt className="text-slate-500 text-[10px] font-semibold">{field}</dt>
+                                  <dd className="break-words whitespace-pre-wrap">{textValue(val)}</dd>
+                                </div>
+                              ))}
+                            </dl>
+                          </details>
                         )}
                         {docs.length > 0 && (
                           <div className="text-xs">
