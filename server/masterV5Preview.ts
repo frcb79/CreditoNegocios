@@ -120,7 +120,7 @@ export function normalizeV5Profiles(raw: unknown): string[] {
 export function normalizeV5Family(value: unknown): string {
   const v = norm(value);
   if (/factoraje/.test(v)) return "factoraje";
-  if (/anticipo de ventas|tpv/.test(v)) return "credito_simple";
+  if (/anticipo de ventas|anticipo tpv/.test(v)) return "anticipo_ventas_tpv";
   if (/hipotecario empresarial/.test(v)) return "garantia_inmobiliaria_empresarial";
   if (/arrendamiento|leasing/.test(v)) return "arrendamiento";
   if (/revolvente|linea de credito/.test(v)) return "revolvente";
