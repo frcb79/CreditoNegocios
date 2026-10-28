@@ -43,6 +43,8 @@ jobs:
         run: npm run check
       - name: Build
         run: npm run build
+      - name: Broker network component interactions (isolated DOM)
+        run: node scripts/test-broker-network-ui.cjs
       - name: Master V5 preview unit tests
         run: npx jest -c jest.config.cjs --runInBand tests/unit/master-v5-preview.test.ts tests/unit/master-v5-template-resolver.test.ts
 

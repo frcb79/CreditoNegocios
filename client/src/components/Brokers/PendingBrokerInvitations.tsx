@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { useToast } from "@/hooks/use-toast";
 import { INVITATION_FOLLOWUP_DAYS, invitationAgeDays, matchesInvitationFollowup, type InvitationFollowupFilter } from "@shared/brokerInvitationFollowup";
 import { Mail, Phone, RefreshCw, Search, UserRoundX } from "lucide-react";
 
@@ -21,7 +21,8 @@ export default function PendingBrokerInvitations() {
   const [filter, setFilter] = useState<InvitationFollowupFilter>("all");
   const [savingId, setSavingId] = useState<string | null>(null);
   const client = useQueryClient();
-  const { data, isLoading, isError, refetch } = useQuery<{ total: number; contacts: InviteContact[] }>({
+  const { toast } = useToast();
+  const { data, isLoading, isFetching, isError, dataUpdatedAt, refetch } = useQuery<{ total: number; contacts: InviteContact[] }>({
     queryKey: ["/api/broker-invitations/pending"],
     queryFn: async () => {
       const response = await fetch("/api/broker-invitations/pending", { credentials: "include" });
@@ -36,6 +37,16 @@ export default function PendingBrokerInvitations() {
   const overdueCount = contacts.filter(contact => matchesInvitationFollowup(contact, "overdue", "", now)).length;
   const pausedCount = contacts.filter(contact => contact.paused).length;
 
+  const refresh = async () => {
+    const result = await refetch();
+    if (result.isError) {
+      toast({ title: "No se pudo actualizar", description: "Revisa tu conexión y tu sesión de Super Admin.", variant: "destructive" });
+      return;
+    }
+    void client.invalidateQueries({ queryKey: ["/api/broker-network"] });
+    toast({ title: "Lista actualizada", description: `${result.data?.total || 0} invitaciones pendientes. Los registros activados ya no aparecen aquí.` });
+  };
+
   const setPaused = async (c: InviteContact) => {
     setSavingId(c.id);
     try {
@@ -47,7 +58,7 @@ export default function PendingBrokerInvitations() {
       if (!response.ok) throw new Error("No se pudo guardar la preferencia.");
       await client.invalidateQueries({ queryKey: ["/api/broker-invitations/pending"] });
     } catch (error: any) {
-      window.alert(error?.message || "No se pudo actualizar el seguimiento.");
+      toast({ title: "No se pudo actualizar el seguimiento", description: error?.message, variant: "destructive" });
     } finally { setSavingId(null); }
   };
 
@@ -63,14 +74,16 @@ export default function PendingBrokerInvitations() {
               Recordatorios a los 3, 7 y 12 días. A partir de 15 días, puedes identificar a quién dar seguimiento para futuras campañas.
             </p>
           </div>
-          <Button type="button" size="sm" variant="outline" onClick={()=>void refetch()}>
-            <RefreshCw className="w-4 h-4 mr-1" /> Actualizar
+          <Button type="button" size="sm" variant="outline" onClick={()=>void refresh()} disabled={isFetching} data-testid="refresh-pending-invites">
+            <RefreshCw className={`w-4 h-4 mr-1 ${isFetching ? "animate-spin" : ""}`} /> {isFetching ? "Actualizando…" : "Actualizar"}
           </Button>
         </div>
         <div className="flex gap-2 flex-wrap pt-3">
           {!isLoading && !isError && <>
-            <Badge variant="secondary">{data?.total || 0} sin registrar</Badge>
-            <Badge variant="outline">{overdueCount} con 15 días o más</Badge>
+            <Button type="button" size="sm" variant={filter === "all" ? "default" : "outline"}
+              aria-pressed={filter === "all"} onClick={()=>setFilter("all")} data-testid="summary-invites-all">{data?.total || 0} sin registrar</Button>
+            <Button type="button" size="sm" variant={filter === "overdue" ? "default" : "outline"}
+              aria-pressed={filter === "overdue"} onClick={()=>setFilter("overdue")} data-testid="summary-invites-overdue">{overdueCount} con 15 días o más</Button>
           </>}
         </div>
         <div className="flex items-center gap-2 flex-wrap pt-2">
@@ -79,21 +92,23 @@ export default function PendingBrokerInvitations() {
             <Input value={search} onChange={event=>setSearch(event.target.value)}
               className="pl-9 h-9" placeholder="Buscar persona, correo, teléfono o Master" />
           </div>
-          <Tabs value={filter} onValueChange={value=>setFilter(value as InvitationFollowupFilter)}>
-            <TabsList aria-label="Seguimiento de invitaciones" className="h-auto flex flex-wrap">
-              <TabsTrigger value="all" data-testid="filter-invites-all">Todos los pendientes ({contacts.length})</TabsTrigger>
-              <TabsTrigger value="overdue" data-testid="filter-invites-overdue">15 días o más ({overdueCount})</TabsTrigger>
-              <TabsTrigger value="paused" data-testid="filter-invites-paused">No contactar ({pausedCount})</TabsTrigger>
-            </TabsList>
-          </Tabs>
+          <div role="group" aria-label="Seguimiento de invitaciones" className="flex flex-wrap gap-1">
+            {([ ["all", `Todos los pendientes (${contacts.length})`], ["overdue", `15 días o más (${overdueCount})`], ["paused", `No contactar (${pausedCount})`] ] as const).map(([value, label]) =>
+              <Button key={value} type="button" size="sm" variant={filter === value ? "default" : "outline"}
+                aria-pressed={filter === value} onClick={()=>setFilter(value)} data-testid={`filter-invites-${value}`}>{label}</Button>)}
+          </div>
         </div>
       </CardHeader>
       <CardContent>
+        <p role="status" aria-live="polite" className="text-xs text-slate-500 mb-3" data-testid="pending-invites-status">
+          {filter === "overdue" ? "15 días o más sin registro" : filter === "paused" ? "No contactar" : "Todos los pendientes"}: {filtered.length} resultados.
+          {dataUpdatedAt > 0 && <> Última consulta: {new Date(dataUpdatedAt).toLocaleTimeString("es-MX", { timeZone: "America/Mexico_City" })}.</>}
+        </p>
         {isLoading && <p className="text-sm text-slate-500">Consultando invitados...</p>}
         {isError && <p className="text-sm text-red-700">No se pudo consultar el seguimiento. Revisa tu sesión de Super Admin.</p>}
         {!isLoading && !isError && filtered.length === 0 && (
           <p className="text-sm text-slate-500 border rounded-lg p-6 text-center">
-            No hay personas pendientes para este filtro.
+            {filter === "overdue" ? "No hay invitaciones con 15 días o más sin registro." : filter === "paused" ? "No hay contactos marcados como No contactar." : "No hay personas pendientes para esta búsqueda."}
           </p>
         )}
         {!isError && filtered.length > 0 && (

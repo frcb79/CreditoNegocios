@@ -86,6 +86,22 @@ describe("SEC-INVITES: bulk preview and explicit send routes",()=>{
       else process.env.FRONTEND_BASE_URL=originalBase;
     }
   });
+  it("distinguishes pending and registered network accounts without exposing credentials", async()=>{
+    user=superAdmin;
+    const pending=await storage.createUser({email:`pending-master-${randomUUID()}@example.test`,role:"master_broker",password:null,isActive:true,status:"active"} as any);
+    const registered=await storage.createUser({email:`registered-master-${randomUUID()}@example.test`,role:"master_broker",password:"test-only-not-a-real-hash",resetToken:"must-not-leak",isActive:true,status:"active"} as any);
+    const response=await request(app).get("/api/broker-network");
+    expect(response.status).toBe(200);
+    const p=response.body.masterBrokers.find((u:any)=>u.id===pending.id);
+    const r=response.body.masterBrokers.find((u:any)=>u.id===registered.id);
+    expect(p.registrationStatus).toBe("pending");
+    expect(r.registrationStatus).toBe("registered");
+    for(const account of [p,r]) {
+      expect(account).not.toHaveProperty("password");
+      expect(account).not.toHaveProperty("resetToken");
+      expect(account).not.toHaveProperty("resetTokenExpiry");
+    }
+  });
   it("requires authenticated Super Admin even for preview",async()=>{
     const file=template();
     let r=await request(app).post("/api/broker-invitations/bulk/preview").attach("file",file,"carga.xlsx");
