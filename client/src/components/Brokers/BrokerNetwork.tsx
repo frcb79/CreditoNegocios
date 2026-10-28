@@ -63,6 +63,9 @@ function getBrokerStatusBadge(brokerUser: any) {
       </Badge>
     );
   }
+  if (brokerUser?.registrationStatus === 'pending') {
+    return <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200 text-xs">Pendiente de registro</Badge>;
+  }
   return (
     <Badge 
       variant="outline"
@@ -343,10 +346,13 @@ export default function BrokerNetworkComponent() {
   const [showInviteModal, setShowInviteModal] = useState(false);
   const [showBulkInviteModal, setShowBulkInviteModal] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
+  const [activeNetworkTab, setActiveNetworkTab] = useState("master_brokers");
+  const [networkFilter, setNetworkFilter] = useState<"registered" | "all">("registered");
   const [expandedMasterBroker, setExpandedMasterBroker] = useState<string | null>(null);
 
   const { data: networkData, isLoading } = useQuery<any>({
     queryKey: ["/api/broker-network"],
+    refetchInterval: 60000,
   });
 
   if (isLoading || isAuthLoading) {
@@ -552,12 +558,24 @@ export default function BrokerNetworkComponent() {
     );
   }
 
+  // During a rolling release, wait for the API that supplies registration state.
+  if (isAdmin && [...(networkData?.masterBrokers || []), ...(networkData?.allBrokers || [])]
+      .some((person: any) => !person.registrationStatus)) {
+    return <Card><CardContent className="p-6" role="status">Actualizando el estado de registro de la red…</CardContent></Card>;
+  }
+
   // Vista exclusiva para SUPER ADMIN / ADMIN
-  const masterBrokers = Array.isArray(networkData?.masterBrokers) ? networkData.masterBrokers : [];
-  const directBrokers = Array.isArray(networkData?.directBrokers)
+  const allMasterBrokers = Array.isArray(networkData?.masterBrokers) ? networkData.masterBrokers : [];
+  const allDirectBrokers = Array.isArray(networkData?.directBrokers)
     ? networkData.directBrokers
     : (Array.isArray(networkData?.independentBrokers) ? networkData.independentBrokers : []);
   const allBrokers = Array.isArray(networkData?.allBrokers) ? networkData.allBrokers : [];
+  const registered = (person: any) => person?.registrationStatus === "registered";
+  const registeredMasters = allMasterBrokers.filter(registered);
+  const registeredDirect = allDirectBrokers.filter(registered);
+  const registeredBrokers = allBrokers.filter(registered);
+  const masterBrokers = networkFilter === "all" ? allMasterBrokers : registeredMasters;
+  const directBrokers = networkFilter === "all" ? allDirectBrokers : registeredDirect;
 
   const filteredMasterBrokers = masterBrokers.filter((mb: any) => {
     if (!mb) return false;
@@ -578,9 +596,9 @@ export default function BrokerNetworkComponent() {
         <Card className="border border-slate-200/80 shadow-sm bg-white">
           <CardContent className="p-4 flex items-center justify-between">
             <div>
-              <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Master Brokers</p>
-              <p className="text-2xl font-bold text-slate-900 mt-1">{masterBrokers.length}</p>
-              <p className="text-[11px] text-slate-400 mt-0.5 font-normal">Líderes de red autorizados</p>
+              <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Master Brokers registrados</p>
+              <p className="text-2xl font-bold text-slate-900 mt-1">{registeredMasters.length}</p>
+              <p className="text-[11px] text-slate-400 mt-0.5 font-normal">{allMasterBrokers.length - registeredMasters.length} pendientes de registro</p>
             </div>
             <div className="w-10 h-10 rounded-xl bg-slate-100 border border-slate-200 text-slate-700 flex items-center justify-center flex-shrink-0">
               <Network className="w-5 h-5" />
@@ -591,11 +609,11 @@ export default function BrokerNetworkComponent() {
         <Card className="border border-slate-200/80 shadow-sm bg-white">
           <CardContent className="p-4 flex items-center justify-between">
             <div>
-              <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Brokers en Redes MB</p>
+              <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Brokers registrados en redes</p>
               <p className="text-2xl font-bold text-slate-900 mt-1">
-                {masterBrokers.reduce((acc: number, mb: any) => acc + (mb.networkBrokers?.length || 0), 0)}
+                {registeredBrokers.filter((broker: any) => !!broker.masterBrokerId).length}
               </p>
-              <p className="text-[11px] text-slate-400 mt-0.5 font-normal">Asociados a un Master Broker</p>
+              <p className="text-[11px] text-slate-400 mt-0.5 font-normal">{allBrokers.filter((b: any) => !!b.masterBrokerId && !registered(b)).length} pendientes en redes</p>
             </div>
             <div className="w-10 h-10 rounded-xl bg-blue-50 border border-blue-200 text-blue-700 flex items-center justify-center flex-shrink-0">
               <Users className="w-5 h-5" />
@@ -606,9 +624,9 @@ export default function BrokerNetworkComponent() {
         <Card className="border border-slate-200/80 shadow-sm bg-white">
           <CardContent className="p-4 flex items-center justify-between">
             <div>
-              <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Brokers Directos</p>
-              <p className="text-2xl font-bold text-slate-900 mt-1">{directBrokers.length}</p>
-              <p className="text-[11px] text-slate-400 mt-0.5 font-normal">Sin Master Broker asignado</p>
+              <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Brokers directos registrados</p>
+              <p className="text-2xl font-bold text-slate-900 mt-1">{registeredDirect.length}</p>
+              <p className="text-[11px] text-slate-400 mt-0.5 font-normal">{allDirectBrokers.length - registeredDirect.length} pendientes sin Master</p>
             </div>
             <div className="w-10 h-10 rounded-xl bg-amber-50 border border-amber-200 text-amber-700 flex items-center justify-center flex-shrink-0">
               <UserCheck className="w-5 h-5" />
@@ -619,9 +637,9 @@ export default function BrokerNetworkComponent() {
         <Card className="border border-slate-200/80 shadow-sm bg-white">
           <CardContent className="p-4 flex items-center justify-between">
             <div>
-              <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Total Brokers</p>
-              <p className="text-2xl font-bold text-slate-900 mt-1">{allBrokers.length}</p>
-              <p className="text-[11px] text-slate-400 mt-0.5 font-normal">Directos + redes Master Broker</p>
+              <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Total Brokers registrados</p>
+              <p className="text-2xl font-bold text-slate-900 mt-1">{registeredBrokers.length}</p>
+              <p className="text-[11px] text-slate-400 mt-0.5 font-normal">{allBrokers.length - registeredBrokers.length} pendientes de registro</p>
             </div>
             <div className="w-10 h-10 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-700 flex items-center justify-center flex-shrink-0">
               <UserCheck className="w-5 h-5" />
@@ -632,7 +650,7 @@ export default function BrokerNetworkComponent() {
 
       {/* Barra de Búsqueda y Botones de Acción */}
       <div className="flex items-center justify-between gap-3 flex-wrap">
-        <div className="flex-1 min-w-[280px] relative">
+        {activeNetworkTab !== "invitaciones_pendientes" && <div className="flex-1 min-w-[280px] relative">
           <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5 pointer-events-none" />
           <Input 
             placeholder="Buscar por nombre, email o marca comercial..." 
@@ -640,7 +658,7 @@ export default function BrokerNetworkComponent() {
             onChange={(e) => setSearchTerm(e.target.value)}
             className="w-full bg-white pl-9 h-9 text-xs border-slate-200 rounded-lg"
           />
-        </div>
+        </div>}
         {user?.role === "super_admin"&&<Button variant="outline" size="sm"
           onClick={()=>setShowBulkInviteModal(true)} data-testid="button-invite-bulk">
           <Upload className="w-4 h-4 mr-2"/> Invitar desde Excel
@@ -655,8 +673,17 @@ export default function BrokerNetworkComponent() {
         </Button>
       </div>
 
+      {activeNetworkTab !== "invitaciones_pendientes" && <div className="flex items-center gap-2 flex-wrap" role="group" aria-label="Estado de registro en la red">
+        <Button type="button" size="sm" variant={networkFilter === "registered" ? "default" : "outline"}
+          aria-pressed={networkFilter === "registered"} onClick={() => setNetworkFilter("registered")}
+          data-testid="network-registered">Registrados</Button>
+        <Button type="button" size="sm" variant={networkFilter === "all" ? "default" : "outline"}
+          aria-pressed={networkFilter === "all"} onClick={() => setNetworkFilter("all")}
+          data-testid="network-all">Todos, incluidos invitados</Button>
+        <span className="text-xs text-slate-500">Los invitados aún sin contraseña se consultan en Invitaciones pendientes.</span>
+      </div>}
       {/* Pestañas de Gestión de Redes */}
-      <Tabs defaultValue="master_brokers" className="w-full">
+      <Tabs value={activeNetworkTab} onValueChange={setActiveNetworkTab} className="w-full">
         <TabsList className="bg-slate-100 p-1 rounded-xl h-10 inline-flex w-auto border border-slate-200/60 max-w-full overflow-x-auto">
           <TabsTrigger 
             value="master_brokers" 
@@ -691,7 +718,10 @@ export default function BrokerNetworkComponent() {
           ) : (
             filteredMasterBrokers.map((mb: any) => {
               const isExpanded = expandedMasterBroker === mb.id;
-              const networkCount = mb.networkBrokers?.length || 0;
+              const assignedBrokers = mb.networkBrokers || [];
+              const registeredCount = assignedBrokers.filter(registered).length;
+              const visibleBrokers = networkFilter === "all" ? assignedBrokers : assignedBrokers.filter(registered);
+              const networkCount = visibleBrokers.length;
 
               return (
                 <Card key={mb.id} className="border border-slate-200/80 shadow-sm overflow-hidden bg-white">
@@ -731,7 +761,7 @@ export default function BrokerNetworkComponent() {
 
                       <div className="flex items-center gap-2.5">
                         <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200 text-xs font-semibold">
-                          {networkCount} broker{networkCount !== 1 ? 's' : ''} en red
+                          {registeredCount} registrados · {assignedBrokers.length - registeredCount} pendientes
                         </Badge>
                         <Button
                           size="sm"
@@ -750,11 +780,11 @@ export default function BrokerNetworkComponent() {
                     <CardContent className="p-4 bg-white">
                       {networkCount === 0 ? (
                         <div className="p-4 bg-slate-50 rounded-xl text-center text-xs text-slate-500 border border-dashed border-slate-200">
-                          Este Master Broker aún no tiene brokers asociados a su red.
+                          No hay brokers que coincidan con el filtro de registro seleccionado.
                         </div>
                       ) : (
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                          {(mb.networkBrokers || []).map((broker: any) => (
+                          {visibleBrokers.map((broker: any) => (
                             <div 
                               key={broker.id}
                               className="p-3 bg-slate-50/70 border border-slate-200/80 rounded-xl flex items-center justify-between hover:bg-slate-50 transition-colors"
