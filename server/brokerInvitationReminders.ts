@@ -15,7 +15,10 @@ export function selectReminderDay(invitedAt: Date, now = new Date()): 3 | 7 | 12
 export async function runBrokerInvitationReminders(): Promise<{
   due: number; sent: number; failed: number; skipped: number;
 }> {
-  if (process.env.NODE_ENV === "test") return { due: 0, sent: 0, failed: 0, skipped: 0 };
+  // Staging must never send actual reminder email to real/test invitees.
+  if (process.env.NODE_ENV === "test" ||
+      process.env.RAILWAY_ENVIRONMENT_NAME !== "production")
+    return { due: 0, sent: 0, failed: 0, skipped: 0 };
   const { rows } = await pool.query<{
     id: string; email: string; first_name: string | null;
     last_name: string | null; invited_at: Date;
@@ -42,7 +45,11 @@ export async function runBrokerInvitationReminders(): Promise<{
       `INSERT INTO public.broker_invitation_reminder_events
           (user_id, reminder_day, status)
         VALUES ($1, $2, 'claimed')
-        ON CONFLICT (user_id, reminder_day) DO NOTHING RETURNING user_id`,
+        ON CONFLICT (user_id, reminder_day) DO UPDATE
+           SET status='claimed', claimed_at=NOW(), updated_at=NOW(), last_error=NULL
+         WHERE broker_invitation_reminder_events.status='failed'
+           AND broker_invitation_reminder_events.updated_at < NOW()-INTERVAL '20 hours'
+        RETURNING user_id`,
       [user.id, day],
     );
     if (!claim.rowCount) continue;
