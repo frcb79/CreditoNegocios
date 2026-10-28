@@ -39,7 +39,9 @@ function requirements(row: MasterV5Row): Record<string, unknown> {
   if (typeof row.matching.minPersonalBureau === "number")
     ranges.buroPersonaFisica = { min: row.matching.minPersonalBureau };
   return { targetProfiles: row.perfiles, ...row.matching, ranges,
-    profileRules: Object.fromEntries(row.perfiles.map(p => [p, { ranges }])) };
+    profileRules: Object.fromEntries(row.perfiles.map(p => [p, { ranges: Object.fromEntries(Object.entries(ranges).filter(([key]) =>
+      p === "persona_moral" ? key !== "buroPersonaFisica" : !["buroEmpresa", "buroAccionistaPrincipal"].includes(key)
+    )) }])) };
 }
 function check(preview: MasterV5Preview, kind: string) {
   if (preview.kind !== kind || preview.errors.length) throw Error("Hay errores que impiden importar " + kind);

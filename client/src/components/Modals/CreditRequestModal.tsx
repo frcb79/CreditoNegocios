@@ -26,7 +26,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 import { Building2, User, DollarSign, Send, AlertCircle, CheckCircle, AlertTriangle, Info, HelpCircle, XCircle, Loader2 } from "lucide-react";
-import { evaluateAllFieldsForClient } from "@/components/MatchingAnalysis/matchingRules";
+
 import { getMatchingScoreTone } from "../../../../shared/matchingPresentation";
 
 interface Client {
@@ -141,10 +141,6 @@ export default function CreditRequestModal({ isOpen, onClose, preselectedClientI
 
   const { data: productTemplates, isLoading: templatesLoading } = useQuery<ProductTemplate[]>({
     queryKey: ['/api/product-templates'],
-  });
-
-  const { data: institutionProducts, isLoading: instProductsLoading } = useQuery<any[]>({
-    queryKey: ['/api/institution-products'],
   });
 
   const { data: institutions, isLoading: institutionsLoading } = useQuery<FinancialInstitution[]>({
@@ -265,168 +261,24 @@ export default function CreditRequestModal({ isOpen, onClose, preselectedClientI
   const activeInstitutions = institutions?.filter(i => i.isActive) || [];
   const requestedAmount = parseFloat(form.watch('requestedAmount') || '0');
   
-  // Advanced matching algorithm
-  const evaluateMatch = (institution: FinancialInstitution): MatchResult => {
-    if (!selectedClient || !requestedAmount || requestedAmount <= 0) {
-      return { 
-        score: 0, 
-        category: 'unconfigured', 
-        reasons: [], 
-        warnings: ['Ingresa el cliente y monto para calcular compatibilidad'],
-        isConfigured: false
-      };
-    }
-    
-    const clientType = normalizeProfileType(selectedClient.type);
-
-    // FIRST: Check if institution accepts this client profile globally
-    const institutionAcceptedProfiles = institution.acceptedProfiles || [];
-    if (institutionAcceptedProfiles.length > 0 && !matchesProfile(institutionAcceptedProfiles, clientType)) {
-      const profileLabels = {
-        'persona_moral': 'Personas Morales',
-        'fisica': 'Personas Físicas',
-        'sin_sat': 'Sin SAT',
-        'fisica_empresarial': 'PFAE'
-      };
-      const acceptedProfilesList = institutionAcceptedProfiles
-        .map((p: string) => profileLabels[p as keyof typeof profileLabels] || p)
-        .join(', ');
-      
-      return {
-        score: 0,
-        category: 'other',
-        reasons: [],
-        warnings: [`Esta financiera no acepta este tipo de perfil (solo: ${acceptedProfilesList})`],
-        isConfigured: true
-      };
-    }
-    
-    // Check if institution has product for selected template
-    const institutionProduct = institutionProducts?.find(
-      (p: any) => p.institutionId === institution.id && p.templateId === selectedTemplateId
-    );
-
-    // Fallback: also check if institution offers this category in its products array
-    const hasCategoryProduct = (institution.products as any[])?.some(
-      (p: any) => p.category === selectedTemplate?.category || 
-                 p.name?.toLowerCase().includes(selectedTemplate?.name?.toLowerCase() || '') ||
-                 (selectedTemplate?.category && p.category?.includes(selectedTemplate.category))
-    );
-    
-    if (!institutionProduct && !hasCategoryProduct && selectedTemplateId) {
-      return {
-        score: 0,
-        category: 'other',
-        reasons: [],
-        warnings: ['No ofrece este tipo de producto'],
-        isConfigured: true
-      };
-    }
-    
-    // Check if institution product is inactive
-    if (institutionProduct && institutionProduct.isActive === false) {
-      return {
-        score: 0,
-        category: 'other',
-        reasons: [],
-        warnings: ['Este producto está inactivo temporalmente'],
-        isConfigured: true
-      };
-    }
-    
-    // Check if client type is in template's targetProfiles
-    if (selectedTemplate?.targetProfiles && selectedTemplate.targetProfiles.length > 0) {
-      if (!matchesProfile(selectedTemplate.targetProfiles, clientType)) {
-        const profileLabels = {
-          'persona_moral': 'Personas Morales',
-          'fisica': 'Personas Físicas',
-          'sin_sat': 'Sin SAT',
-          'fisica_empresarial': 'PFAE'
-        };
-        const requiredProfiles = selectedTemplate.targetProfiles
-          .map(p => profileLabels[p as keyof typeof profileLabels] || p)
-          .join(', ');
-        
-        return {
-          score: 0,
-          category: 'other',
-          reasons: [],
-          warnings: [`Este producto solo acepta: ${requiredProfiles}`],
-          isConfigured: true
-        };
-      }
-    }
-    
-    // Check if institution has restricted targetProfiles for this product
-    if (institutionProduct?.targetProfiles && institutionProduct.targetProfiles.length > 0) {
-      if (!matchesProfile(institutionProduct.targetProfiles, clientType)) {
-        const profileLabels = {
-          'persona_moral': 'Personas Morales',
-          'fisica': 'Personas Físicas',
-          'sin_sat': 'Sin SAT',
-          'fisica_empresarial': 'PFAE'
-        };
-        const requiredProfiles = institutionProduct.targetProfiles
-          .map((p: string) => profileLabels[p as keyof typeof profileLabels] || p)
-          .join(', ');
-        
-        return {
-          score: 0,
-          category: 'other',
-          reasons: [],
-          warnings: [`Esta financiera no acepta este perfil para este producto (solo: ${requiredProfiles})`],
-          isConfigured: true
-        };
-      }
-    }
-    
-    const requirements = institution.requirements?.[clientType] || institution.requirements?.[selectedClient.type];
-    
-    if (!requirements) {
-      return { 
-        score: 0, 
-        category: 'unconfigured', 
-        reasons: [], 
-        warnings: ['Sin requisitos específicos configurados para este tipo de cliente'],
-        isConfigured: false
-      };
-    }
-
-    // Comprehensive evaluation of ALL 18 fields using the unified matching rules engine
-    const fullEval = evaluateAllFieldsForClient(selectedClient, institution, requestedAmount);
-
-    // Porcentaje basado solo en criterios explícitos configurados y evaluados.
-    // No usar estado civil, escolaridad ni heurísticas no verificadas para valorar clientes.
-    const ruleScore = fullEval.score;
-    const finalScore = ruleScore;
-
-    // Re-categorize using 3-state engine
-    let finalCategory: 'recommended' | 'compatible' | 'other' | 'insufficient_data';
-    if (fullEval.matchStatus === 'not_compatible' || fullEval.failedChecks > 0) {
-      finalCategory = 'other';
-    } else if (fullEval.matchStatus === 'insufficient_data') {
-      finalCategory = 'insufficient_data';
-    } else if (finalScore >= 80) {
-      finalCategory = 'recommended';
-    } else {
-      finalCategory = 'compatible';
-    }
-
-    return {
-      score: finalScore,
-      category: finalCategory,
-      matchStatus: fullEval.matchStatus,
-      matchStatusLabel: fullEval.matchStatusLabel,
-      reasons: fullEval.reasons,
-      unmetRequirements: fullEval.unmetRequirements,
-      missingData: fullEval.missingData,
-      warnings: fullEval.warnings,
-      isConfigured: true,
-      ruleScore,
-      finalScore
-    };
+  const previewUrl = `/api/matching/preview?${new URLSearchParams({clientId:selectedClient?.id||"",productTemplateId:selectedTemplateId||"",amount:String(requestedAmount||"")})}`;
+  const [settledPreviewUrl,setSettledPreviewUrl] = useState(previewUrl);
+  useEffect(()=>{const timer=setTimeout(()=>setSettledPreviewUrl(previewUrl),250);return()=>clearTimeout(timer);},[previewUrl]);
+  const matching = useQuery<any>({queryKey:["published-offer-preview",settledPreviewUrl],enabled:isOpen&&!!selectedClient?.id&&!!selectedTemplateId&&requestedAmount>0,
+    queryFn:async()=>(await apiRequest("GET",settledPreviewUrl)).json()});
+  const evaluateMatch = (institution:FinancialInstitution):MatchResult => {
+    if(!selectedClient || !selectedTemplateId || requestedAmount<=0)return {score:0,category:'unconfigured',reasons:[],warnings:['Selecciona cliente, producto y monto'],isConfigured:false};
+    if(previewUrl!==settledPreviewUrl || matching.isError || matching.isFetching || !matching.data)return {score:0,category:'insufficient_data',reasons:[],warnings:[matching.isError?'No se pudo consultar el matching':'Consultando ofertas publicadas…'],matchStatus:'insufficient_data',isConfigured:true};
+    const offers=[...(matching.data.compatible||[]),...(matching.data.insufficientData||[]),...(matching.data.notCompatible||[])].filter((o:any)=>o.institutionId===institution.id);
+    if(!offers.length)return {score:0,category:'unconfigured',reasons:[],warnings:['Sin ofertas publicadas y vigentes de este producto'],isConfigured:false};
+    const best=offers.find((o:any)=>o.status==='COMPATIBLE') || offers.find((o:any)=>o.status==='INSUFFICIENT_DATA') || offers[0];
+    const checks=best.criteria.matched.length+best.criteria.failed.length+best.criteria.missing.length;
+    const score=checks?Math.round(best.criteria.matched.length/checks*100):0;
+    const status=best.status==='COMPATIBLE'?'compatible':best.status==='NOT_COMPATIBLE'?'not_compatible':'insufficient_data';
+    return {score,category:status==='compatible'?'compatible':status==='not_compatible'?'other':'insufficient_data',matchStatus:status,
+      reasons:[`${best.offerName} · v${best.versionNumber}`,best.summary],warnings:best.criteria.missing.map((c:any)=>c.reason),
+      unmetRequirements:best.criteria.failed.map((c:any)=>c.reason),missingData:best.criteria.missing.map((c:any)=>c.reason),isConfigured:true};
   };
-
 
   // Sort institutions by match score
   const institutionsWithMatch = activeInstitutions.map(inst => ({
@@ -450,12 +302,8 @@ export default function CreditRequestModal({ isOpen, onClose, preselectedClientI
   const renderInstitutionCard = (institution: FinancialInstitution, match: MatchResult) => {
     const isSelected = selectedInstitutions.includes(institution.id);
     
-    // Get institution's specific product for this template
-    const institutionProduct = institutionProducts?.find(
-      (p: any) => p.institutionId === institution.id && p.templateId === selectedTemplateId
-    );
-    const productName = institutionProduct?.customName || institutionProduct?.name || selectedTemplate?.name;
-    
+    const productName = match.reasons[0] || selectedTemplate?.name;
+
     let categoryBadge = null;
     let categoryIcon = null;
     
@@ -513,6 +361,7 @@ export default function CreditRequestModal({ isOpen, onClose, preselectedClientI
               <input
                 type="checkbox"
                 checked={isSelected}
+                onClick={(event) => event.stopPropagation()}
                 onChange={() => handleInstitutionToggle(institution.id)}
                 className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
                 data-testid={`checkbox-institution-${institution.id}`}
@@ -776,6 +625,9 @@ export default function CreditRequestModal({ isOpen, onClose, preselectedClientI
                       El sistema las ordena según su compatibilidad con el perfil del cliente.
                     </p>
 
+                    {matching.isError && <div role="alert" className="text-sm text-red-700 rounded-lg border p-3">
+                      No se pudo consultar el matching. <Button type="button" variant="outline" size="sm" onClick={()=>matching.refetch()}>Reintentar evaluación</Button>
+                    </div>}
                     {/* 1. Financieras Compatibles (Recomendadas y Compatibles) */}
                     {compatibleInstitutions.length > 0 && (
                       <div className="space-y-2">

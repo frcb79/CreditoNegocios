@@ -1,3 +1,4 @@
+import { offerConditions, importedCriteria, capturedRecord } from "./importedRequirements";
 /**
  * Crédito Negocios — Matching M1: Motor Evaluador Independiente de Compatibilidad
  * 
@@ -70,8 +71,17 @@ export const CRITERION_FIELD_ALIASES: Record<string, string[]> = {
   targetProfiles: ["targetProfiles", "clientProfileType", "type", "profile", "perfil", "targetProfile"],
   creditAmount: ["creditAmount", "amount", "monto", "minAmount", "maxAmount", "requestedAmount"],
   creditTerm: ["creditTerm", "term", "plazo", "minTermMonths", "maxTermMonths", "requestedTerm"],
-  companyAge: ["companyAge", "companyAgeMonths", "minCompanyAgeMonths", "yearsInBusiness", "antiguedad", "tiempoActividad", "antiguedadAnios"],
-  monthlyRevenue: ["monthlyRevenue", "minMonthlyRevenue", "ingresoMensualPromedio", "revenue", "facturacion", "ingresoMensual"],
+  annualIncome: ["annualIncome", "ingresoAnual", "minAnnualIncome"],
+  businessBureau: ["businessBureau", "buroEmpresa", "minBusinessBureau"],
+  shareholderBureau: ["shareholderBureau", "buroAccionistaPrincipal", "minShareholderBureau"],
+  personalBureau: ["personalBureau", "buroPersonaFisica", "buroPersonaFisicaSinSat", "minPersonalBureau"],
+  requiresCiec: ["requiresCiec", "satCiec"],
+  requiresFinancialStatements: ["requiresFinancialStatements", "estadosFinancieros"],
+  satOpinion: ["satOpinion", "opinionCumplimiento"],
+  governmentSalesLimit: ["governmentSalesLimit", "participacionVentasGobierno"],
+  arrearsPolicy: ["arrearsPolicy", "allowsArrears", "atrasosDeudas", "atrasosDeudasBuro", "atrasosDeudasBuroSinSat"],
+  companyAge: ["minMonthsInBusiness", "companyAge", "companyAgeMonths", "minCompanyAgeMonths", "yearsInBusiness", "antiguedad", "tiempoActividad", "antiguedadAnios"],
+  monthlyRevenue: ["minMonthlyIncome", "monthlyRevenue", "minMonthlyRevenue", "ingresoMensualPromedio", "revenue", "facturacion", "ingresoMensual"],
   bureauRequirement: ["bureauRequirement", "bureauStatus", "atrasosDeudas", "buro", "buroEmpresa", "buroPersonaFisica"],
   guaranteeType: ["guaranteeType", "hasGuarantee", "garantia", "garantias", "guarantee", "guarantees", "garantiaDetalles"],
   avalesType: ["avalesType", "hasGuarantor", "aval", "avalObligadoSolidario", "guarantor", "guarantors", "obligadoSolidario"],
@@ -84,7 +94,8 @@ export const CRITERION_FIELD_ALIASES: Record<string, string[]> = {
 export function isCriterionOriginVerified(
   criterionCode: string,
   offerInput: OfferVersionInput,
-  application: ApplicationInput
+  application: ApplicationInput,
+  capturedSourceVerified = false
 ): boolean {
   const { product, version } = offerInput;
   const { credit, client } = application;
@@ -190,7 +201,7 @@ export function isCriterionOriginVerified(
       actual.hasGuarantee?.hasGuarantee !== undefined,
     avalesType: actual.hasGuarantor !== null,
   };
-  return verifiedByCapturedSource[criterionCode] === true;
+  return verifiedByCapturedSource[criterionCode] === true || capturedSourceVerified;
 }
 
 /**
@@ -200,7 +211,9 @@ export function evaluateOfferCompatibility(
   application: ApplicationInput,
   offerInput: OfferVersionInput
 ): CompatibilityResult {
-  const { credit, client } = application;
+  const credit = capturedRecord(application.credit);
+  const client = capturedRecord(application.client);
+  application = {credit, client};
   const { product, version } = offerInput;
 
   const offerId = product?.id || version?.institutionProductId || version?.offerId || "unknown";
@@ -213,9 +226,10 @@ export function evaluateOfferCompatibility(
     "Institución Financiera";
   const versionNumber = version?.versionNumber || product?.currentVersionNumber || 1;
 
-  const cond = (version?.conditions || product?.configuration || {}) as Record<string, any>;
+  const rawConditions = (version?.conditions || product?.configuration || {}) as Record<string, any>;
   const req = (version?.requirements || {}) as Record<string, any>;
 
+  const cond = offerConditions(rawConditions, req, client, credit);
   const evaluations: CriterionEvaluation[] = [];
 
   // =========================================================================
@@ -506,7 +520,11 @@ export function evaluateOfferCompatibility(
         actualValue: null,
         reason: "No se ha documentado ni consultado el estatus de buró o historial de atrasos para el cliente.",
       });
-    } else if (bureauReq === "sin_atrasos" && hasDelinquencies === true) {
+    } else if (!["sin_atrasos", "al_corriente", "flexible", "atraso_menor_30"].includes(bureauReq) ||
+      (bureauReq === "atraso_menor_30" && hasDelinquencies === true)) {
+      evaluations.push({code: "bureauRequirement", name: "Historial de Buró de Crédito", status: "MISSING_DATA", requiredValue: bureauReq,
+        actualValue: rawStatus, reason: "La política de Buró requiere verificar su significado o los días de atraso permitidos."});
+    } else if (["sin_atrasos", "al_corriente"].includes(bureauReq) && hasDelinquencies === true) {
       evaluations.push({
         code: "bureauRequirement",
         name: "Historial de Buró de Crédito",
@@ -533,7 +551,10 @@ export function evaluateOfferCompatibility(
   const guarType = cond.guaranteeType || "sin_garantia";
   if (guarType !== "sin_garantia") {
     const { hasGuarantee, guaranteeType: actualType } = extractHasGuarantee(client, credit);
-    if (hasGuarantee === null) {
+    if (!["general","con_garantia","cualquiera","hipotecaria","inmueble","prendaria","garantia_liquida","liquida"].includes(guarType)) {
+      evaluations.push({code:"guaranteeType",name:"Requisito de Garantía Real",status:"MISSING_DATA",requiredValue:guarType,actualValue:actualType,
+        reason:"La condición particular de garantía requiere clasificación; no equivale a cualquier garantía."});
+    } else if (hasGuarantee === null) {
       evaluations.push({
         code: "guaranteeType",
         name: "Requisito de Garantía Real",
@@ -629,6 +650,9 @@ export function evaluateOfferCompatibility(
         actualValue: "sin_aval",
         reason: `La oferta requiere aval/obligado solidario y el expediente indica que el cliente no cuenta con uno.`,
       });
+    } else if (!["un_aval", "aval_requerido", "obligado_solidario"].includes(avalReq) && !(["dos_avales"].includes(avalReq) && Array.isArray(client.guarantors) && client.guarantors.length >= 2)) {
+      evaluations.push({code: "avalesType", name: "Requisito de Aval / Obligado Solidario", status: "MISSING_DATA", requiredValue: avalReq,
+        actualValue: "aval_disponible", reason: "La disponibilidad genérica de aval no acredita la cantidad o sus condiciones particulares."});
     } else {
       evaluations.push({
         code: "avalesType",
@@ -641,6 +665,10 @@ export function evaluateOfferCompatibility(
     }
   }
 
+  const additional = importedCriteria(req, cond, client, credit);
+  const capturedAdditional = new Set(additional.filter(e => e.status !== "MISSING_DATA").map(e => e.code));
+  evaluations.push(...additional);
+
   // =========================================================================
   // CLASIFICACIÓN FINAL DE COMPATIBILIDAD (CON BLINDAJE M3 DE NO-RECHAZO DEFINITIVO)
   // Regla M3: Ningún criterio cuyo origen no esté verificado debe provocar un rechazo definitivo.
@@ -650,7 +678,7 @@ export function evaluateOfferCompatibility(
     if (item.code === "eligibilityVerification") {
       return item;
     }
-    const isVerified = isCriterionOriginVerified(item.code, offerInput, application);
+    const isVerified = isCriterionOriginVerified(item.code, offerInput, application, capturedAdditional.has(item.code));
     if (!isVerified) {
       if (item.status === "FAILED") {
         return {

@@ -1,3 +1,4 @@
+import { matchPublishedCatalog } from "./matching/catalog";
 import { registerAdministrativeAudit } from "./administrativeAudit";
 import { selectHousingMortgageTemplate } from "./mortgageHousingTemplate";
 import { leaseLeadSchema } from "../shared/leasing";
@@ -5422,6 +5423,24 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Preview uses the same engine and published offer versions as saved requests.
+  app.get('/api/matching/preview', isAuthenticated, requireModuleAndAction('creditos', 'view'), async (req:any,res) => {
+    try {
+      const user = await storage.getUser(req.user?.claims?.sub || req.user?.id);
+      const {clientId,productTemplateId,amount} = req.query;
+      if(!user || typeof clientId !== "string" || typeof productTemplateId !== "string" || !productTemplateId ||
+        typeof amount !== "string" || !/^\d+(?:\.\d+)?$/.test(amount) || !Number.isFinite(Number(amount)) || Number(amount)<=0) {
+        return res.status(400).json({message:"Selecciona cliente, producto y un monto válido."});
+      }
+      const access = await authorizeClientAccess(user.id,user.role,clientId,req.tenantContext);
+      if(!access.authorized || !access.client)return res.status(access.reason==='Client not found'?404:403).json({message:"Sin acceso al expediente solicitado."});
+      const template = await storage.getProductTemplate(productTemplateId);
+      if(!template || template.isActive===false)return res.status(400).json({message:"Selecciona un producto activo."});
+      const result = await matchPublishedCatalog(storage,{client:access.client,credit:{amount:Number(amount)}},productTemplateId);
+      return res.json(result);
+    }catch(error){return res.status(500).json({message:"No fue posible evaluar las ofertas publicadas."});}
+  });
+
   // Matching M2 — consultas read-only para créditos y solicitudes independientes.
   // Se usan exclusivamente versiones PUBLICADAS y vigentes. Sin decisiones automáticas.
   app.get(
@@ -5473,50 +5492,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
           return res.status(403).json({ message: 'Expediente fuera del tenant' });
         }
 
-        const institutions = await storage.getFinancialInstitutions();
-        const active = new Map(institutions.filter(i => i.isActive !== false).map(i => [i.id, i]));
-        const offers: (OfferVersionInput & { institution?: any })[] = [];
-
-        for (const product of await storage.getInstitutionProducts()) {
-          const institution = active.get(product.institutionId);
-          if (!institution || product.isActive === false || product.status === 'archived') continue;
-          for (const version of await storage.getInstitutionProductVersions(product.id)) {
-            if (isVersionEligibleForMatching(product, version, institution).eligible) {
-              offers.push({ product, version, institution });
-            }
-          }
-        }
-
-        const result = evaluateCatalogCompatibility(
-          { credit: applicationRecord, client }, offers, { filterNonEligible: true }
-        );
-        // Respuesta de lista blanca. No exponer comisiones, márgenes, versiones draft
-        // ni inventario interno de ofertas excluidas.
-        const sanitize = (item: any) => ({
-          offerId: item.offerId,
-          offerName: item.offerName,
-          institutionId: item.institutionId,
-          institutionName: item.institutionName,
-          versionNumber: item.versionNumber,
-          status: item.status,
-          criteria: item.criteria,
-          reasons: item.reasons,
-          summary: item.summary,
-        });
-        return res.json({
-          requestId: req.params.id,
-          requestType: isSubmission ? 'credit_submission_request' : 'credit',
-          clientId: client.id,
-          summary: {
-            totalEvaluated: result.all.length,
-            compatibleCount: result.compatible.length,
-            insufficientDataCount: result.insufficientData.length,
-            notCompatibleCount: result.notCompatible.length,
-          },
-          compatible: result.compatible.map(sanitize),
-          insufficientData: result.insufficientData.map(sanitize),
-          notCompatible: result.notCompatible.map(sanitize),
-        });
+        const result = await matchPublishedCatalog(storage,{credit:applicationRecord,client},applicationRecord.productTemplateId || undefined);
+        return res.json({requestId:req.params.id,requestType:isSubmission?'credit_submission_request':'credit',clientId:client.id,...result});
       } catch (error) {
         console.error('[Matching] Error de evaluación:', error);
         return res.status(500).json({ message: 'No fue posible evaluar las ofertas' });

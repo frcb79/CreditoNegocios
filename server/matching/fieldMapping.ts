@@ -156,8 +156,8 @@ export const VERIFIED_FIELDS_AUDIT_MAP: Record<string, FieldDefinition> = {
  */
 
 export function extractRequestedAmount(credit: any, client?: any): number | null {
-  const c = client || {};
-  const cr = credit || {};
+  const c = { ...(client?.profilingData || {}), ...Object.fromEntries(Object.entries(client || {}).filter(([,v])=>v !== null && v !== undefined && v !== "")) };
+  const cr = { ...(credit?.profilingData || {}), ...Object.fromEntries(Object.entries(credit || {}).filter(([,v])=>v !== null && v !== undefined && v !== "")) };
 
   const candidateAmounts = [
     cr.amount,
@@ -173,12 +173,12 @@ export function extractRequestedAmount(credit: any, client?: any): number | null
   ].filter((v) => v !== undefined && v !== null && v !== "");
 
   for (const item of candidateAmounts) {
-    if (typeof item === "number" && !isNaN(item) && item > 0) {
+    if (typeof item === "number" && Number.isFinite(item) && item > 0) {
       return item;
     }
-    const cleaned = String(item).replace(/[^0-9.]/g, "");
-    const val = parseFloat(cleaned);
-    if (!isNaN(val) && val > 0) return val;
+    const cleaned = String(item).trim().replace(/\s*MXN$/i, "").replace(/[$,\s]/g, "");
+    const val = /^\d+(?:\.\d+)?$/.test(cleaned) ? Number(cleaned) : NaN;
+    if (Number.isFinite(val) && val > 0) return val;
   }
 
   return null;
@@ -190,21 +190,19 @@ export function extractRequestedTermMonths(credit: any, client?: any): number | 
     const months = Number(lease.plazo_deseado_meses);
     if (Number.isInteger(months) && months > 0) return months;
   }
-  if (credit?.term !== undefined && credit?.term !== null && credit?.term !== "") {
-    const val = typeof credit.term === "number" ? credit.term : parseInt(String(credit.term), 10);
-    if (!isNaN(val) && val > 0) return val;
-  }
-  if (client?.plazoDeseado !== undefined && client?.plazoDeseado !== null && client?.plazoDeseado !== "") {
-    const cleaned = String(client.plazoDeseado).replace(/[^0-9]/g, "");
-    const val = parseInt(cleaned, 10);
-    if (!isNaN(val) && val > 0) return val;
+  for (const raw of [credit?.term, client?.plazoDeseado, client?.profilingData?.plazoDeseado]) {
+    if (typeof raw === "number" && Number.isInteger(raw) && raw > 0) return raw;
+    if (typeof raw === "string") {
+      const match=raw.trim().toLowerCase().match(/^(\d+)\s*(?:mes(?:es)?)?$/);
+      if(match && Number(match[1])>0)return Number(match[1]);
+    }
   }
   return null;
 }
 
 export function extractClientProfileType(client: any, credit?: any): ClientProfileType | null {
-  const c = client || {};
-  const cr = credit || {};
+  const c = { ...(client?.profilingData || {}), ...Object.fromEntries(Object.entries(client || {}).filter(([,v])=>v !== null && v !== undefined && v !== "")) };
+  const cr = { ...(credit?.profilingData || {}), ...Object.fromEntries(Object.entries(credit || {}).filter(([,v])=>v !== null && v !== undefined && v !== "")) };
   const raw = c.type || cr.type || c.clientType || cr.clientType;
   if (!raw) return null;
   const t = String(raw).trim().toLowerCase();
@@ -224,15 +222,16 @@ export function extractClientProfileType(client: any, credit?: any): ClientProfi
 }
 
 export function extractCompanyAgeMonths(client: any, credit?: any): number | null {
-  const c = client || {};
-  const cr = credit || {};
+  const c = { ...(client?.profilingData || {}), ...Object.fromEntries(Object.entries(client || {}).filter(([,v])=>v !== null && v !== undefined && v !== "")) };
+  const cr = { ...(credit?.profilingData || {}), ...Object.fromEntries(Object.entries(credit || {}).filter(([,v])=>v !== null && v !== undefined && v !== "")) };
   const lease = cr.mortgageData?.operationType === "arrendamiento" ? cr.mortgageData.lease : null;
 
   // 1. Campo explícito en años de la empresa (Persona Moral / PFA)
   const yearsVal = c.yearsInBusiness ?? cr.yearsInBusiness ?? lease?.antiguedad_negocio_anios ?? c.antiguedadAnios ?? cr.antiguedadAnios;
   if (yearsVal !== undefined && yearsVal !== null && yearsVal !== "") {
-    const years = typeof yearsVal === "number" ? yearsVal : parseFloat(String(yearsVal));
-    if (!isNaN(years) && years >= 0) {
+    const rawYears = String(yearsVal).trim();
+    const years = typeof yearsVal === "number" ? yearsVal : /^\d+(?:\.\d+)?$/.test(rawYears) ? Number(rawYears) : NaN;
+    if (Number.isFinite(years) && years >= 0) {
       return Math.round(years * 12);
     }
   }
@@ -240,34 +239,18 @@ export function extractCompanyAgeMonths(client: any, credit?: any): number | nul
   // 1.1 Campo explícito en meses de la empresa
   const monthsVal = c.companyAgeMonths ?? cr.companyAgeMonths ?? c.antiguedadMeses ?? cr.antiguedadMeses;
   if (monthsVal !== undefined && monthsVal !== null && monthsVal !== "") {
-    const m = typeof monthsVal === "number" ? monthsVal : parseInt(String(monthsVal), 10);
-    if (!isNaN(m) && m >= 0) return m;
+    const rawMonths = String(monthsVal).trim();
+    const m = typeof monthsVal === "number" ? monthsVal : /^\d+$/.test(rawMonths) ? Number(rawMonths) : NaN;
+    if (Number.isFinite(m) && Number.isInteger(m) && m >= 0) return m;
   }
 
-  // 2. Campo específico de tiempo de actividad de la empresa (tiempoActividad)
-  const candidateTexts = [c.tiempoActividad, cr.tiempoActividad].filter(Boolean);
-  for (const text of candidateTexts) {
-    const s = String(text).trim().toLowerCase();
-    // No convertir aproximaciones ambiguas como "mas_de_2_anios" en meses exactos inventados
-    if (s.includes("mas_de") || s.includes("menos_de") || s.includes("aproximad")) {
-      continue;
-    }
-    // Formato exacto con meses: "18 meses", "24 mes"
-    if (s.includes("mes")) {
-      const match = s.match(/(\d+)\s*mes/);
-      if (match) return parseInt(match[1], 10);
-    }
-    // Formato exacto con años: "2 años", "3.5 años"
-    if (s.includes("año") || s.includes("anio")) {
-      const match = s.match(/(\d+(\.\d+)?)\s*(?:año|anio)/);
-      if (match) return Math.round(parseFloat(match[1]) * 12);
-    }
-    // Si solo hay un número entero explícito
-    const num = parseFloat(s.replace(/[^0-9.]/g, ""));
-    if (!isNaN(num) && num > 0) {
-      // Si el número es pequeño (<= 10), suele registrarse en años
-      return num <= 10 ? Math.round(num * 12) : Math.round(num);
-    }
+  // Only exact declared units are convertible; ranges and approximations remain pending.
+  for(const value of [c.tiempoActividad,cr.tiempoActividad]) {
+    const text=String(value ?? "").trim().toLowerCase();
+    const months=text.match(/^(\d+)\s*mes(?:es)?$/);
+    if(months)return Number(months[1]);
+    const years=text.match(/^(\d+(?:\.\d+)?)\s*(?:años?|anios?)$/);
+    if(years)return Math.round(Number(years[1])*12);
   }
 
   // Regla M2: Nunca usar antiguedadLaboral ni antiguedadEmpleo para inventar antigüedad de negocio
@@ -275,14 +258,14 @@ export function extractCompanyAgeMonths(client: any, credit?: any): number | nul
 }
 
 export function extractEmploymentAgeMonths(client: any, credit?: any): number | null {
-  const c = client || {};
-  const cr = credit || {};
+  const c = { ...(client?.profilingData || {}), ...Object.fromEntries(Object.entries(client || {}).filter(([,v])=>v !== null && v !== undefined && v !== "")) };
+  const cr = { ...(credit?.profilingData || {}), ...Object.fromEntries(Object.entries(credit || {}).filter(([,v])=>v !== null && v !== undefined && v !== "")) };
   const candidateTexts = [
     c.antiguedadLaboral,
     cr.antiguedadLaboral,
     c.antiguedadEmpleo,
     cr.antiguedadEmpleo,
-  ].filter(Boolean);
+  ].filter(v => v !== undefined && v !== null && v !== "");
 
   for (const text of candidateTexts) {
     const s = String(text).trim().toLowerCase();
@@ -304,8 +287,8 @@ export function extractEmploymentAgeMonths(client: any, credit?: any): number | 
 }
 
 export function extractMonthlyRevenue(client: any, credit?: any): number | null {
-  const c = client || {};
-  const cr = credit || {};
+  const c = { ...(client?.profilingData || {}), ...Object.fromEntries(Object.entries(client || {}).filter(([,v])=>v !== null && v !== undefined && v !== "")) };
+  const cr = { ...(credit?.profilingData || {}), ...Object.fromEntries(Object.entries(credit || {}).filter(([,v])=>v !== null && v !== undefined && v !== "")) };
   const lease = cr.mortgageData?.operationType === "arrendamiento" ? cr.mortgageData.lease : null;
 
   // 1. Ingreso mensual promedio general / facturación mensual
@@ -322,9 +305,9 @@ export function extractMonthlyRevenue(client: any, credit?: any): number | null 
   ].filter((v) => v !== undefined && v !== null && v !== "");
 
   for (const field of directFields) {
-    const cleaned = String(field).replace(/[^0-9.]/g, "");
-    const val = parseFloat(cleaned);
-    if (!isNaN(val) && val > 0) return val;
+    const cleaned = String(field).trim().replace(/[$,\s]/g, "");
+    const val = /^\d+(?:\.\d+)?$/.test(cleaned) ? Number(cleaned) : NaN;
+    if (Number.isFinite(val) && val >= 0) return val;
   }
 
   // 2. Ingresos específicos por perfil
@@ -333,12 +316,12 @@ export function extractMonthlyRevenue(client: any, credit?: any): number | null 
     cr.ingresoMensualPromedioComprobables,
     c.ingresoMensualPromedioComprobablesSinSat,
     cr.ingresoMensualPromedioComprobablesSinSat,
-  ].filter(Boolean);
+  ].filter(v => v !== undefined && v !== null && v !== "");
 
   for (const field of specificFields) {
-    const cleaned = String(field).replace(/[^0-9.]/g, "");
-    const val = parseFloat(cleaned);
-    if (!isNaN(val) && val > 0) return val;
+    const cleaned = String(field).trim().replace(/[$,\s]/g, "");
+    const val = /^\d+(?:\.\d+)?$/.test(cleaned) ? Number(cleaned) : NaN;
+    if (Number.isFinite(val) && val >= 0) return val;
   }
 
   // 3. Ingreso anual (dividir entre 12)
@@ -361,8 +344,8 @@ export function extractBureauStatus(client: any, credit?: any): {
   hasDelinquencies: boolean | null;
   rawStatus: string | null;
 } {
-  const c = client || {};
-  const cr = credit || {};
+  const c = { ...(client?.profilingData || {}), ...Object.fromEntries(Object.entries(client || {}).filter(([,v])=>v !== null && v !== undefined && v !== "")) };
+  const cr = { ...(credit?.profilingData || {}), ...Object.fromEntries(Object.entries(credit || {}).filter(([,v])=>v !== null && v !== undefined && v !== "")) };
 
   const delinquencyFields = [
     c.atrasosDeudas,
@@ -373,7 +356,7 @@ export function extractBureauStatus(client: any, credit?: any): {
     cr.atrasosDeudasBuroSinSat,
     c.buroStatus,
     cr.buroStatus,
-  ].filter(Boolean);
+  ].filter(v => v !== undefined && v !== null && v !== "");
 
   for (const val of delinquencyFields) {
     const s = String(val).trim().toUpperCase();
@@ -407,7 +390,7 @@ export function extractBureauStatus(client: any, credit?: any): {
     cr.buroPersonaFisica,
     c.buroPersonaFisicaSinSat,
     cr.buroPersonaFisicaSinSat,
-  ].filter(Boolean);
+  ].filter(v => v !== undefined && v !== null && v !== "");
 
   for (const val of statusFields) {
     const s = String(val).trim().toLowerCase();
@@ -426,8 +409,8 @@ export function extractHasGuarantee(client: any, credit?: any): {
   hasGuarantee: boolean | null;
   guaranteeType: string | null;
 } {
-  const c = client || {};
-  const cr = credit || {};
+  const c = { ...(client?.profilingData || {}), ...Object.fromEntries(Object.entries(client || {}).filter(([,v])=>v !== null && v !== undefined && v !== "")) };
+  const cr = { ...(credit?.profilingData || {}), ...Object.fromEntries(Object.entries(credit || {}).filter(([,v])=>v !== null && v !== undefined && v !== "")) };
 
   const boolFields = [
     c.garantia,
@@ -447,17 +430,9 @@ export function extractHasGuarantee(client: any, credit?: any): {
       return { hasGuarantee: f, guaranteeType: f ? "general" : "sin_garantia" };
     }
     const s = String(f).trim().toUpperCase();
-    if (
-      s === "SI" ||
-      s === "SÍ" ||
-      s === "TRUE" ||
-      (!["NO", "FALSE", "NINGUNA", "SIN GARANTÍA", "SIN GARANTIA"].includes(s) && s.length > 2)
-    ) {
-      if (["NO", "FALSE", "NINGUNA", "SIN GARANTÍA", "SIN GARANTIA"].includes(s)) {
-        return { hasGuarantee: false, guaranteeType: "sin_garantia" };
-      }
-      const type = c.garantiaDetalles?.tipo || cr.garantiaDetalles?.tipo || "general";
-      return { hasGuarantee: true, guaranteeType: type };
+    if (s === "SI" || s === "SÍ" || s === "TRUE" || /^(HIPOTECARIA|INMUEBLE|PRENDARIA|LIQUIDA|LÍQUIDA|MAQUINARIA|VEHICULO|VEHÍCULO)$/.test(s)) {
+      const type = c.garantiaDetalles?.tipo || cr.garantiaDetalles?.tipo || (["SI","SÍ","TRUE"].includes(s) ? "general" : s.toLowerCase());
+      return {hasGuarantee:true,guaranteeType:type};
     }
     if (s === "NO" || s === "FALSE" || s === "NINGUNA" || s === "SIN GARANTÍA" || s === "SIN GARANTIA") {
       return { hasGuarantee: false, guaranteeType: "sin_garantia" };
@@ -475,8 +450,8 @@ export function extractHasGuarantee(client: any, credit?: any): {
 }
 
 export function extractHasGuarantor(client: any, credit?: any): boolean | null {
-  const c = client || {};
-  const cr = credit || {};
+  const c = { ...(client?.profilingData || {}), ...Object.fromEntries(Object.entries(client || {}).filter(([,v])=>v !== null && v !== undefined && v !== "")) };
+  const cr = { ...(credit?.profilingData || {}), ...Object.fromEntries(Object.entries(credit || {}).filter(([,v])=>v !== null && v !== undefined && v !== "")) };
 
   const boolFields = [
     c.avalObligadoSolidario,

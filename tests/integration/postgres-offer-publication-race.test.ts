@@ -54,6 +54,9 @@ describePg("ASTRA-07: published offer versions remain immutable under concurrent
       created_at timestamp DEFAULT now(), updated_at timestamp DEFAULT now(),
       UNIQUE(institution_product_id,version_number)
     )`);
+    await pool.query("DROP TABLE IF EXISTS financial_institutions CASCADE");
+    await pool.query("CREATE TABLE financial_institutions(id varchar PRIMARY KEY,name varchar NOT NULL,is_active boolean DEFAULT true)");
+    await pool.query("INSERT INTO financial_institutions(id,name) VALUES ('financial-test','QA')");
     // Dedicated synthetic PostgreSQL only. Recreate legal fixtures to avoid
     // relying on whichever migration suite ran first in the CI job.
     await pool.query("DROP TABLE IF EXISTS legal_acceptances CASCADE");
@@ -124,6 +127,19 @@ describePg("ASTRA-07: published offer versions remain immutable under concurrent
       .where(eq(institutionProductVersions.id,draftId));
     return version;
   };
+
+  it("matching reads only the exact published parent version in one joined snapshot", async () => {
+    expect(await DbStorage.prototype.getPublishedInstitutionProductsForMatching()).toHaveLength(0);
+    await publish();
+    const result=await DbStorage.prototype.getPublishedInstitutionProductsForMatching();
+    expect(result).toHaveLength(1);
+    expect(result[0].version.id).toBe(draftId);
+    expect(result[0].product.currentVersionNumber).toBe(result[0].version.versionNumber);
+    expect(result[0].institution.name).toBe("QA");
+    expect(await DbStorage.prototype.getPublishedInstitutionProductsForMatching("another-template")).toHaveLength(0);
+    await pool.query("UPDATE institution_products SET current_version_number=99 WHERE id=$1",[offerId]);
+    expect(await DbStorage.prototype.getPublishedInstitutionProductsForMatching()).toHaveLength(0);
+  });
 
   it("rejects publication when the reviewed hash changed, preserving draft and current publication", async () => {
     const reviewed = await read();

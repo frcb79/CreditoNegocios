@@ -1989,6 +1989,25 @@ export class DbStorage implements IStorage {
   }
 
   // ===== INSTITUTION PRODUCTS =====
+  // One MVCC statement reads parent identity, exact current version and institution together.
+  // Avoid one database query per offer or mixing a new version with stale parent metadata.
+  async getPublishedInstitutionProductsForMatching(templateId?: string) {
+    return db.select({product: {
+      id:institutionProducts.id,name:institutionProducts.name,customName:institutionProducts.customName,
+      institutionId:institutionProducts.institutionId,templateId:institutionProducts.templateId,productType:institutionProducts.productType,
+      status:institutionProducts.status,isActive:institutionProducts.isActive,currentVersionNumber:institutionProducts.currentVersionNumber,targetProfiles:institutionProducts.targetProfiles,
+    },version:institutionProductVersions,institution:{id:financialInstitutions.id,name:financialInstitutions.name,isActive:financialInstitutions.isActive}})
+      .from(institutionProducts)
+      .innerJoin(institutionProductVersions, and(eq(institutionProductVersions.institutionProductId,institutionProducts.id),
+        eq(institutionProductVersions.versionNumber,institutionProducts.currentVersionNumber)))
+      .innerJoin(financialInstitutions,eq(financialInstitutions.id,institutionProducts.institutionId))
+      .where(and(eq(institutionProducts.status,"published"),eq(institutionProductVersions.status,"published"),
+        or(eq(institutionProducts.isActive,true),isNull(institutionProducts.isActive)),
+        or(eq(financialInstitutions.isActive,true),isNull(financialInstitutions.isActive)),
+        templateId ? eq(institutionProducts.templateId,templateId) : undefined))
+      .orderBy(institutionProducts.id);
+  }
+
   async getInstitutionProducts(institutionId?: string): Promise<InstitutionProductWithTemplate[]> {
     try {
       const conditions = [];
