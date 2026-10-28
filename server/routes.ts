@@ -8343,7 +8343,11 @@ function maskCLABE(clabe?: string | null): string | null {
       // Master indicated in the Excel but not in this batch must exist already.
       const masterEmails = new Set(preview.rows.filter(r=>r.role==="master_broker").map(r=>r.email));
       for (const row of preview.rows) {
-        try {
+        // Previously accepted emails and activated accounts require NO additional
+        // coupon capacity, nor coupon revalidation (the old code could reject
+        // the remaining 19 invitations because 25 rows were already sent).
+        const alreadyHandled = ["already_sent", "activated"].includes(invitationState.get(row.email) || "");
+        if (!alreadyHandled) try {
           const courtesy = await resolveOptionalInvitationPromo(
             row.promoCode || (typeof req.body?.promoCode === "string" ? req.body.promoCode : null), row.role);
           if (courtesy) {
@@ -8404,7 +8408,12 @@ function maskCLABE(clabe?: string | null): string | null {
       const couponDemand = new Map<string, { count: number; row: number }>();
       const batchMasters = new Set(parsed.rows.filter(r=>r.role==="master_broker").map(r=>r.email));
       for(const row of selectedRows) {
-        try {
+        const alreadyRegistered = await storage.getUserByEmail(row.email);
+        const hasDelivered = alreadyRegistered ? await pool.query(
+          "SELECT 1 FROM public.notifications WHERE type = 'broker_invitation_sent' AND data->>'brokerId' = $1 LIMIT 1",
+          [alreadyRegistered.id]) : null;
+        const noResend = Boolean(alreadyRegistered?.password || hasDelivered?.rowCount);
+        if (!noResend) try {
           const coupon = await resolveOptionalInvitationPromo(
             row.promoCode || (typeof req.body?.promoCode === "string" ? req.body.promoCode : null), row.role);
           if (coupon) {
