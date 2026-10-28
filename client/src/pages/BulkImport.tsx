@@ -56,6 +56,7 @@ export default function BulkImport() {
   const [isPreviewingFinancieras, setIsPreviewingFinancieras] = useState(false);
   const [financierasV5Issues, setFinancierasV5Issues] = useState<{ row: number; field: string; level: string; message: string }[]>([]);
   const [canApplyFinancieras, setCanApplyFinancieras] = useState(false);
+  const environmentLabel = typeof window !== 'undefined' && window.location.hostname.includes('staging') ? 'Staging' : 'Producción';
   const [applyingFinancieras, setApplyingFinancieras] = useState(false);
   const [appliedFinancieras, setAppliedFinancieras] = useState<string | null>(null);
   const [financierasV5Match, setFinancierasV5Match] = useState<{row:number; action:string}[]>([]);
@@ -183,7 +184,7 @@ export default function BulkImport() {
 
   const applyFinancierasV5 = async () => {
     if (!financierasFile || !canApplyFinancieras || applyingFinancieras) return;
-    if (!window.confirm("¿Confirmas la carga en Staging? Las ofertas nuevas se crearán como borradores. En las existentes se completará el respaldo de los 32 campos técnicos originales y los tres descriptores faltantes, solo en borradores y sin modificar comisiones ni versiones publicadas.")) return;
+    if (!window.confirm(`¿Confirmas la carga en ${environmentLabel}? Las ofertas nuevas se crearán como borradores. En las existentes se completará el respaldo de los 32 campos técnicos originales y los tres descriptores faltantes, solo en borradores y sin modificar comisiones ni versiones publicadas.`)) return;
     setApplyingFinancieras(true);
     try {
       const formData = new FormData();
@@ -202,7 +203,7 @@ export default function BulkImport() {
       setCanApplyFinancieras(false);
       queryClient.invalidateQueries({ queryKey: ["/api/financial-institutions"] });
       queryClient.invalidateQueries({ queryKey: ["/api/institution-products"] });
-      toast({ title: "Importación de borradores confirmada en Staging",
+      toast({ title: "Importación de borradores confirmada en " + environmentLabel,
         description: "No se publicaron ofertas ni se actualizaron comisiones globales." });
     } catch (e: any) {
       toast({ title: "Importación rechazada", description: e.message, variant: "destructive" });
@@ -515,7 +516,7 @@ export default function BulkImport() {
                       <p>Observaciones: {financierasV5Issues.length} (las advertencias informativas no bloquean).</p>
                       {plannedV5Families.length > 0 && (
                         <p className="font-medium text-foreground">
-                          Al confirmar se prepararán las familias aprobadas que faltan en Staging:
+                          Al confirmar se prepararán las familias aprobadas que faltan en {environmentLabel}:
                           {' '}{plannedV5Families.join(', ')}. No se crearán productos duplicados.
                         </p>
                       )}
@@ -528,7 +529,7 @@ export default function BulkImport() {
                     <div className="space-y-3 border-t border-border pt-4">
                       {appliedFinancieras ? (
                         <p role="status" className="text-sm font-medium text-emerald-700">
-                          Actualización completada en Staging. No hay otra confirmación pendiente.
+                          Actualización completada en {environmentLabel}. No hay otra confirmación pendiente.
                         </p>
                       ) : canApplyFinancieras ? (
                         <Button size="lg" className="w-full text-sm font-semibold" disabled={applyingFinancieras}
@@ -537,7 +538,7 @@ export default function BulkImport() {
                             (financierasV5Match.length > 0 &&
                              financierasV5Match.every(m => m.action === "existing_offer")
                               ? "Completar datos faltantes de las ofertas existentes"
-                              : "Confirmar importación de ofertas en Staging")}
+                              : `Confirmar importación de ofertas en ${environmentLabel}`)}
                         </Button>
                       ) : (
                         <p role="alert" className="text-sm text-destructive">
@@ -545,7 +546,7 @@ export default function BulkImport() {
                         </p>
                       )}
                       <p className="text-xs text-muted-foreground">
-                        Solo Staging: las ofertas quedan en borrador. Las comisiones y la publicación se realizan por separado.
+                        En {environmentLabel}, las ofertas quedan en borrador. Las comisiones y la publicación se realizan por separado.
                       </p>
                       <Button onClick={() => { setFinancierasFile(null); setFinancierasPreview(null);
                         setFinancierasV5Issues([]); setFinancierasV5Match([]); setPlannedV5Families([]);
