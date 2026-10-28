@@ -13360,11 +13360,12 @@ function maskCLABE(clabe?: string | null): string | null {
           ? 'Antes debes importar Financieras y Productos. Faltan ' + missingCommissionOffers +
             ' ofertas en el catálogo; no puedes aplicar comisiones todavía.'
           : null,
-        writable: process.env.RAILWAY_ENVIRONMENT_NAME === 'staging' &&
+        writable: ['staging', 'production'].includes(process.env.RAILWAY_ENVIRONMENT_NAME || '') &&
           allErrors.length === 0 && missingCommissionOffers === 0,
+        targetEnvironment: process.env.RAILWAY_ENVIRONMENT_NAME === 'production' ? 'production' : 'staging',
         message: allErrors.length
           ? 'Corrige las observaciones críticas del catálogo antes de confirmar la carga. Sin escrituras.'
-          : 'Vista previa sin escrituras. Al confirmar, Staging crea las familias canónicas faltantes y guarda las ofertas en borrador.' });
+          : 'Vista previa sin escrituras. Al confirmar, se crean familias canónicas faltantes y ofertas exclusivamente en borrador.' });
     } catch (error: any) {
       res.status(400).json({ message: error?.message || 'No se pudo analizar el maestro V5' });
     }
@@ -13374,8 +13375,11 @@ function maskCLABE(clabe?: string | null): string | null {
   // Keep the legacy SEC-P1 import guard in place for /api/import/financieras, /commissions and /financieras-soc.
   app.post('/api/import/v5/apply/:kind', isAuthenticated, requireModule('importacion'), excelUpload.single('file'), async (req: any, res) => {
     try {
-      if (process.env.RAILWAY_ENVIRONMENT_NAME !== 'staging') {
-        return res.status(409).json({ code: 'V5_STAGING_ONLY', message: 'La carga V5 solo está habilitada en Staging' });
+      // Explicit approved rollout: both named Railway environments, never local/unknown.
+      // Separate databases; Super Admin only; drafts only; published versions unchanged.
+      const railwayEnvironment = process.env.RAILWAY_ENVIRONMENT_NAME || '';
+      if (!['staging', 'production'].includes(railwayEnvironment)) {
+        return res.status(409).json({ code: 'V5_ENV_NOT_ALLOWED', message: 'Entorno no autorizado para importar V5' });
       }
       const userId = req.user?.claims?.sub || req.user?.id;
       if (!(await requirePlatformRole(userId, ['super_admin']))) {
@@ -13396,7 +13400,7 @@ function maskCLABE(clabe?: string | null): string | null {
         ? await importMasterV5FinancialDrafts(preview, userId)
         : await importMasterV5CommissionDrafts(preview);
       return res.json({ success: true, result, warnings: preview.warnings,
-        message: 'Importación transaccional en Staging: borradores únicamente, 0 publicaciones automáticas' });
+        message: 'Importación transaccional en ' + railwayEnvironment + ': solo borradores; ninguna publicación automática' });
     } catch (error: any) {
       console.error('V5 staging import failed:', error?.message || error);
       return res.status(409).json({ code: 'V5_IMPORT_REJECTED', message: error?.message || 'No se pudo importar V5' });
