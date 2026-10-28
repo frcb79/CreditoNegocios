@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
@@ -30,10 +30,14 @@ export default function BulkBrokerInvitationModal(props:{isOpen:boolean;onClose:
   const [batchPromoCode,setBatchPromoCode]=useState("");
   const [processed,setProcessed]=useState(0);
   const [sendStarted,setSendStarted]=useState(false);
+  // Restore the last acknowledged offset after 502/network errors. Never restart a 44-email run.
+  const nextOffset = useRef(0);
+  const accumulated = useRef<SendOutcome | null>(null);
 
   const clear=()=>{
     setFile(null);setPreview(null);setResult(null);setConfirmed(false);setError("");
     setBatchPromoCode("");setProcessed(0);setSendStarted(false);
+    nextOffset.current=0;accumulated.current=null;
   };
   const request=async (mode:"preview"|"send")=>{
     if(!file)return;
@@ -60,22 +64,27 @@ export default function BulkBrokerInvitationModal(props:{isOpen:boolean;onClose:
       if(mode==="preview"){
         const next=await doRequest(0,0);
         setPreview(next);setConfirmed(false);setResult(null);setProcessed(0);setSendStarted(false);
+        nextOffset.current=0;accumulated.current=null;
       } else {
         if(!preview?.ready || !confirmed)throw new Error("Previsualiza y confirma la lista antes de enviar.");
         setSendStarted(true);
-        const combined:SendOutcome={total:preview.total,sent:0,pending:0,failed:0,skipped:0,results:[]};
-        // The CDN must never proxy 44 serial emails through one HTTP request.
-        // Batches of six can resume after a lost response with server-side dedupe.
-        for(let offset=0;offset<preview.total;offset+=6){
-          const current=await doRequest(offset,6) as SendOutcome;
+        const combined:SendOutcome=accumulated.current || {
+          total:preview.total,sent:0,pending:0,failed:0,skipped:0,results:[],
+        };
+        accumulated.current=combined;
+        // Two invitations per HTTP call keeps the CDN/proxy well below its timeout.
+        // Persist the last ACKNOWLEDGED offset across recoverable 502/network errors.
+        for(let offset=nextOffset.current;offset<preview.total;offset+=2){
+          const current=await doRequest(offset,2) as SendOutcome;
           combined.sent+=current.sent||0;
           combined.pending+=current.pending||0;
           combined.failed+=current.failed||0;
           combined.skipped+=current.skipped||0;
           combined.results.push(...current.results);
-          setProcessed(Math.min(offset+6,preview.total));
+          nextOffset.current=Math.min(offset+2,preview.total);
+          setProcessed(nextOffset.current);
         }
-        setResult(combined);
+        setResult({...combined});
         client.invalidateQueries({queryKey:["/api/broker-network"]});
         client.invalidateQueries({queryKey:["/api/broker-invitations/pending"]});
         client.invalidateQueries({queryKey:["/api/users"]});
@@ -83,7 +92,10 @@ export default function BulkBrokerInvitationModal(props:{isOpen:boolean;onClose:
           description:`Nuevas enviadas: ${combined.sent}. Ya enviadas/activadas: ${combined.skipped}. Pendientes: ${combined.pending}. Errores: ${combined.failed}.`});
       }
     }catch(e:any){
-      setError((e.message||"Error al procesar el archivo")+
+      const reason = e instanceof TypeError && /fetch/i.test(e.message || "")
+        ? "La conexión con el servidor se interrumpió durante el envío."
+        : (e.message || "Error al procesar el archivo");
+      setError(reason+
         (mode==="send"?" El avance ya aceptado se conserva; puedes reanudar sin duplicar envíos.":""));
     }
     finally{setLoading(false);}
@@ -117,7 +129,7 @@ export default function BulkBrokerInvitationModal(props:{isOpen:boolean;onClose:
               Cupón anual para todo el lote (opcional)
             </label>
             <Input id="bulk-annual-courtesy" value={batchPromoCode}
-              onChange={event => {setBatchPromoCode(event.target.value.toUpperCase());setPreview(null);setResult(null);setConfirmed(false);}}
+              onChange={event => {setBatchPromoCode(event.target.value.toUpperCase());setPreview(null);setResult(null);setConfirmed(false);setProcessed(0);nextOffset.current=0;accumulated.current=null;}}
               placeholder="Ej. LANZAMIENTO12" data-testid="input-bulk-annual-promo"/>
             <p className="text-xs text-muted-foreground">
               Se aplicará a todas las invitaciones, salvo que una fila del Excel tenga
@@ -126,7 +138,7 @@ export default function BulkBrokerInvitationModal(props:{isOpen:boolean;onClose:
             </p>
           </div>
           <Input type="file" accept=".xlsx" aria-label="Archivo de invitaciones" data-testid="input-bulk-invites"
-            onChange={event=>{setFile(event.target.files?.[0]||null);setPreview(null);setResult(null);setConfirmed(false);setProcessed(0);setSendStarted(false);}}/>
+            onChange={event=>{setFile(event.target.files?.[0]||null);setPreview(null);setResult(null);setConfirmed(false);setProcessed(0);setSendStarted(false);nextOffset.current=0;accumulated.current=null;}}/>
           <Button disabled={!file||loading} onClick={()=>request("preview")} data-testid="button-preview-bulk-invites">
             {loading?<Loader2 className="w-4 h-4 animate-spin mr-2"/>:<Upload className="w-4 h-4 mr-2"/>}
             Revisar Excel sin enviar correos
@@ -134,7 +146,7 @@ export default function BulkBrokerInvitationModal(props:{isOpen:boolean;onClose:
           {error&&<p role="alert" className="text-sm text-red-700">{error}</p>}
           {sendStarted&&!result&&<p role="status" className="text-xs text-blue-800">
             Procesadas en esta sesión: {processed} de {preview?.total || 0}.
-            Los correos ya aceptados por el servidor no se duplicarán al reintentar.
+            Se reanudará desde la primera fila no confirmada; las enviadas se comprueban en el servidor antes de reenviar.
           </p>}
           {preview&&!result&&<>
             <div className="text-sm font-medium">
@@ -161,7 +173,7 @@ export default function BulkBrokerInvitationModal(props:{isOpen:boolean;onClose:
             </label>}
             <Button className="w-full" disabled={!preview.ready||!confirmed||loading} onClick={()=>request("send")}
               data-testid="button-send-bulk-invites">
-              {loading?`Procesando ${processed} de ${preview.total}...`:sendStarted?"Reanudar envío sin duplicar":`Enviar ${preview.total} invitaciones`}
+              {loading?`Procesando ${processed} de ${preview.total}...`:sendStarted?`Reanudar desde ${processed} de ${preview.total}`:`Enviar ${preview.total} invitaciones`}
             </Button>
           </>}
           {result&&<div className="space-y-2">
