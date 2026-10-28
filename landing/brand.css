@@ -1362,6 +1362,10 @@ body:has(.cn-screen-dialog[open]) {
 .cn-public .cn-recruit-heading > .cn-button:hover { background: #006b59; }
 
 /* Compact value cards on the main site; broker cards retain their layout. */
+.cn-public .cn-home-hero-title { font-size: clamp(2.25rem, 3.35vw, 3rem); text-wrap: initial; }
+.cn-home-values .cn-value-top .cn-value-counts { font-size: .85rem; }
+.cn-home-values .cn-value-counts strong { color: var(--cn-navy); font-size: 1.08rem; }
+@media (max-width: 700px) { .cn-home-hero-break { display: none; } }
 .cn-home-values .cn-value-tile { padding: 18px 20px; }
 .cn-home-values .cn-value-top { display: flex; flex-direction: row; float: none; align-items: center; justify-content: flex-start; gap: 12px; margin: 0 0 8px; }
 .cn-home-values .cn-value-number { font-size: 2rem; }
