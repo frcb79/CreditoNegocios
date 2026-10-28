@@ -8319,11 +8319,35 @@ function maskCLABE(clabe?: string | null): string | null {
       if (!req.file?.buffer) return res.status(400).json({message:"Adjunta la plantilla XLSX."});
       const preview = parseBrokerInvitationExcel(req.file.buffer);
       const warnings: Array<{row:number;message:string}> = [];
+      const invitationState = new Map<string, "already_sent" | "activated" | "not_sent">();
+      // Read-only reconciliation: tell the operator which rows were already
+      // delivered before offering to resume a partially processed spreadsheet.
+      if (process.env.USE_MEMORY_STORAGE !== "true") {
+      const accountStates = await pool.query<{
+        email: string; activated: boolean; delivered: boolean;
+      }>(
+        `SELECT lower(u.email) AS email, (u.password IS NOT NULL) AS activated,
+                  EXISTS(SELECT 1 FROM public.notifications n
+                         WHERE n.type='broker_invitation_sent'
+                           AND n.data->>'brokerId'=u.id) AS delivered
+             FROM public.users u
+            WHERE lower(u.email) = ANY($1::text[])`,
+        [preview.rows.map(row => row.email)],
+      );
+      for (const item of accountStates.rows) {
+        invitationState.set(item.email,
+          item.activated ? "activated" : item.delivered ? "already_sent" : "not_sent");
+      }
+      }
       const couponDemand = new Map<string, { count: number; row: number }>();
       // Master indicated in the Excel but not in this batch must exist already.
       const masterEmails = new Set(preview.rows.filter(r=>r.role==="master_broker").map(r=>r.email));
       for (const row of preview.rows) {
-        try {
+        // Previously accepted emails and activated accounts require NO additional
+        // coupon capacity, nor coupon revalidation (the old code could reject
+        // the remaining 19 invitations because 25 rows were already sent).
+        const alreadyHandled = ["already_sent", "activated"].includes(invitationState.get(row.email) || "");
+        if (!alreadyHandled) try {
           const courtesy = await resolveOptionalInvitationPromo(
             row.promoCode || (typeof req.body?.promoCode === "string" ? req.body.promoCode : null), row.role);
           if (courtesy) {
@@ -8349,7 +8373,14 @@ function maskCLABE(clabe?: string | null): string | null {
             message:`El cupón ${coupon.code} sólo tiene ${coupon.maxUses - (coupon.currentUses || 0)} usos disponibles para ${demand.count} invitados.`});
         }
       }
-      return res.json({...preview,warnings,ready:preview.errors.length===0});
+      const rowsWithStatus = preview.rows.map(row => ({
+        ...row, deliveryStatus: invitationState.get(row.email) || "not_sent",
+      }));
+      return res.json({ ...preview, rows: rowsWithStatus, warnings,
+        alreadyDelivered: rowsWithStatus.filter(row =>
+          row.deliveryStatus === "already_sent" || row.deliveryStatus === "activated").length,
+        remaining: rowsWithStatus.filter(row => row.deliveryStatus === "not_sent").length,
+        ready: preview.errors.length===0 });
     } catch(error:any) {
       return res.status(400).json({message:error?.message||"No fue posible analizar el archivo."});
     }
@@ -8367,17 +8398,22 @@ function maskCLABE(clabe?: string | null): string | null {
       const parsed = parseBrokerInvitationExcel(req.file.buffer);
       const ordered = [...parsed.rows.filter(x=>x.role==="master_broker"), ...parsed.rows.filter(x=>x.role==="broker")];
       const offset = Number(req.body?.offset ?? 0);
-      const limit = Number(req.body?.limit ?? 6);
+      const limit = Number(req.body?.limit ?? 2);
       if (!Number.isSafeInteger(offset) || offset < 0 || offset >= ordered.length ||
-          !Number.isSafeInteger(limit) || limit < 1 || limit > 6) {
-        return res.status(400).json({ message: "Lote inválido: máximo seis invitaciones por petición." });
+          !Number.isSafeInteger(limit) || limit < 1 || limit > 2) {
+        return res.status(400).json({ message: "Lote inválido: máximo dos invitaciones por petición." });
       }
       const selectedRows = ordered.slice(offset, offset + limit);
       const errors = [...parsed.errors];
       const couponDemand = new Map<string, { count: number; row: number }>();
       const batchMasters = new Set(parsed.rows.filter(r=>r.role==="master_broker").map(r=>r.email));
       for(const row of selectedRows) {
-        try {
+        const alreadyRegistered = await storage.getUserByEmail(row.email);
+        const hasDelivered = alreadyRegistered ? await pool.query(
+          "SELECT 1 FROM public.notifications WHERE type = 'broker_invitation_sent' AND data->>'brokerId' = $1 LIMIT 1",
+          [alreadyRegistered.id]) : null;
+        const noResend = Boolean(alreadyRegistered?.password || hasDelivered?.rowCount);
+        if (!noResend) try {
           const coupon = await resolveOptionalInvitationPromo(
             row.promoCode || (typeof req.body?.promoCode === "string" ? req.body.promoCode : null), row.role);
           if (coupon) {
@@ -8408,13 +8444,13 @@ function maskCLABE(clabe?: string | null): string | null {
 
       const results: Array<{row:number;email:string;role:string;status:"sent"|"pending"|"error"|"skipped";message:string}> = [];
       const masters = new Map<string,string>();
-      // Masters precede Brokers; each request is bounded to six rows.
+      // Masters precede Brokers; each request is bounded to two rows to avoid proxy 502s.
       for (const row of selectedRows) {
         try {
           const existing = await storage.getUserByEmail(row.email);
           if (existing) {
             const alreadyDelivered = await pool.query(
-              "SELECT 1 FROM public.notifications WHERE type = $1 AND data->>'brokerId' = $2 AND created_at >= NOW() - INTERVAL '14 days' LIMIT 1",
+              "SELECT 1 FROM public.notifications WHERE type = $1 AND data->>'brokerId' = $2 LIMIT 1",
               ["broker_invitation_sent", existing.id],
             );
             if (existing.password || alreadyDelivered.rowCount) {
