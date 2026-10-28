@@ -4,13 +4,17 @@ import {evaluateOfferCompatibility} from '../server/matching/compatibilityEvalua
 const file=process.argv[2];if(!file)throw Error('Indica el JSON de ofertas/versiones a revisar. No usa datos de clientes reales.');
 const offers=JSON.parse(readFileSync(file,'utf8'));
 const rows:Record<string,{rules:number;pass:number;fail:number;missing:number}>={};
-let falseCompatibility=0;
+let falseCompatibility=0,profilesEvaluated=0;
 for(const entry of offers){
  const {product,version}=structuredClone(entry);product.status='published';version.status='published';
  const req=version.requirements,cond=version.conditions;
- const base:any={type:req.targetProfiles?.[0],companyAgeMonths:1000,ingresoMensualPromedio:1000000000,ingresoAnual:12000000000,buroEmpresa:400,buroAccionistaPrincipal:760,buroPersonaFisica:760,satCiec:'si',estadosFinancieros:'si',atrasosDeudas:'no',opinionCumplimiento:'positiva',participacionVentasGobierno:'0',garantia:'si',avalObligadoSolidario:'si'};
+ for(const profile of req.targetProfiles || []){
+ profilesEvaluated++;
+ const base:any={type:profile,companyAgeMonths:1000,ingresoMensualPromedio:1000000000,ingresoAnual:12000000000,buroEmpresa:400,buroAccionistaPrincipal:760,buroPersonaFisica:760,satCiec:'si',estadosFinancieros:'si',atrasosDeudas:'no',opinionCumplimiento:'positiva',participacionVentasGobierno:'0',garantia:'si',avalObligadoSolidario:'si'};
  const checks=[['companyAge','minMonthsInBusiness','companyAgeMonths'],['monthlyRevenue','minMonthlyIncome','ingresoMensualPromedio'],['annualIncome','minAnnualIncome','ingresoAnual'],['businessBureau','minBusinessBureau','buroEmpresa'],['shareholderBureau','minShareholderBureau','buroAccionistaPrincipal'],['personalBureau','minPersonalBureau','buroPersonaFisica']];
  for(const [code,key,clientKey] of checks){
+  if((code==='businessBureau'||code==='shareholderBureau') && profile!=='persona_moral')continue;
+  if(code==='personalBureau' && profile==='persona_moral')continue;
   if(typeof req[key]!=='number' || req[key]<=0)continue;
   const counts=rows[code]??={rules:0,pass:0,fail:0,missing:0};counts.rules++;
   for(const mode of ['pass','fail','missing'] as const){
@@ -26,5 +30,6 @@ for(const entry of offers){
   }
  }
 }
+}
 if(falseCompatibility)throw Error('Se encontraron falsos compatibles');
-console.log(JSON.stringify({offers:offers.length,criteria:rows,falseCompatibility,note:'Copias en memoria. No se publica ni modifica información.'},null,2));
+console.log(JSON.stringify({offers:offers.length,profilesEvaluated,criteria:rows,falseCompatibility,note:'Copias en memoria. No se publica ni modifica información.'},null,2));

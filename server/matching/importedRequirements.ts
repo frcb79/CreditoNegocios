@@ -93,11 +93,14 @@ export function importedCriteria(req:any, cond:any, inputClient:any, credit:any)
     ["businessBureau","minBusinessBureau","buroEmpresa",["buroEmpresa"],true],
     ["personalBureau","minPersonalBureau","buroPersonaFisica",["buroPersonaFisica","buroPersonaFisicaSinSat"],false],
   ] as const){
+    const profile=extractClientProfileType(client);
+    const applicable = code === "personalBureau" ? profile !== "persona_moral" : profile === "persona_moral";
+    if(profile && !applicable)continue;
     const raw=ranges[rangeKey]?.min ?? req[alias];if(!present(raw))continue;
     const min=exactNumber(raw);if(min===0)continue;
     const actual=clientKeys.map(k=>client[k] ?? credit?.[k]).find(present);
     const interval=bureauInterval(actual,business);
-    const status=min===null ? "MISSING_DATA" : compareMinimum(interval,min);
+    const status=min===null || !profile ? "MISSING_DATA" : compareMinimum(interval,min);
     add(code,({shareholderBureau:"Buró del accionista",businessBureau:"Buró de la empresa",personalBureau:"Buró de persona física"} as any)[code],raw,actual ?? null,status,
       status==="MISSING_DATA"?"Falta un puntaje preciso o el rango declarado cruza el mínimo exigido.":status==="FAILED"?"El puntaje de Buró no alcanza el mínimo de la oferta.":"El puntaje de Buró cumple el mínimo de la oferta.");
   }
