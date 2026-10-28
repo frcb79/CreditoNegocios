@@ -19,6 +19,7 @@ import {
 import NewOfferModal from "./NewOfferModal";
 import OfferVersionsModal from "./OfferVersionsModal";
 import OfferDraftEditorModal from "./OfferDraftEditorModal";
+import BatchOfferPublishModal from "./BatchOfferPublishModal";
 import OfferPublishModal from "./OfferPublishModal";
 import {
   Search,
@@ -76,6 +77,7 @@ export default function AdminOffersList({
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
   const [typeFilter, setTypeFilter] = useState<string>("all");
   const [selectedInstId, setSelectedInstId] = useState<string>(institutionId || "all");
+  const [batchOffers, setBatchOffers] = useState<InstitutionProductWithTemplate[] | null>(null);
   const [showNewModal, setShowNewModal] = useState(false);
   const [versionModalOffer, setVersionModalOffer] = useState<InstitutionProductWithTemplate | null>(null);
   const [editingOffer, setEditingOffer] = useState<InstitutionProductWithTemplate | null>(null);
@@ -95,7 +97,7 @@ export default function AdminOffersList({
   }, [institutions]);
 
   // Fetch products / commercial offers
-  const { data: offers = [], isLoading } = useQuery<InstitutionProductWithTemplate[]>({
+  const { data: offers = [], isLoading, isError: offersError, refetch: reloadOffers } = useQuery<InstitutionProductWithTemplate[]>({
     queryKey: institutionId 
       ? ["/api/institution-products", { institutionId }] 
       : ["/api/institution-products"],
@@ -269,6 +271,12 @@ export default function AdminOffersList({
         </div>
       )}
 
+      <div className="flex justify-end">
+        <Button type="button" variant="outline" disabled={!filteredOffers.some(o => o.status === "draft")}
+          onClick={() => setBatchOffers(filteredOffers.filter(o => o.status === "draft"))} data-testid="button-batch-publish">
+          Revisar y publicar borradores visibles ({filteredOffers.filter(o => o.status === "draft").length})
+        </Button>
+      </div>
       {/* Toolbar: Filters, Search & Type Selector */}
       <div className="bg-white border border-slate-200/80 rounded-xl p-4 shadow-xs flex flex-col lg:flex-row gap-3.5 lg:items-center justify-between">
         {/* Status Pills */}
@@ -392,7 +400,7 @@ export default function AdminOffersList({
       </div>
 
       {/* Offers List Display */}
-      {isLoading ? (
+      {offersError ? <div role="alert" className="rounded-xl border p-4 text-sm text-red-700">No se pudieron cargar las ofertas. <Button type="button" variant="outline" onClick={() => reloadOffers()}>Reintentar</Button></div> : isLoading ? (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {[1, 2, 3, 4].map((i) => (
             <div key={i} className="bg-white border border-slate-200 rounded-xl p-5 space-y-3">
@@ -609,6 +617,7 @@ export default function AdminOffersList({
       )}
 
       {/* Modals */}
+      {batchOffers && <BatchOfferPublishModal offers={batchOffers} onClose={() => setBatchOffers(null)} />}
       <NewOfferModal
         isOpen={showNewModal}
         onClose={() => setShowNewModal(false)}

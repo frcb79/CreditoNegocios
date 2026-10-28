@@ -125,6 +125,22 @@ describePg("ASTRA-07: published offer versions remain immutable under concurrent
     return version;
   };
 
+  it("rejects publication when the reviewed hash changed, preserving draft and current publication", async () => {
+    const reviewed = await read();
+    await edit(7);
+    await expect(DbStorage.prototype.publishInstitutionProductVersion(offerId, draftId, {
+      changeReason: "Publicación revisada", expectedVersionHash: reviewed.versionHash!,
+    })).rejects.toThrow(/OFFER_DRAFT_CHANGED/);
+    expect((await read()).status).toBe("draft");
+    const parent = await pool.query("SELECT status FROM institution_products WHERE id=$1", [offerId]);
+    expect(parent.rows[0].status).toBe("draft");
+    const fresh = await read();
+    const result = await DbStorage.prototype.publishInstitutionProductVersion(offerId, draftId, {
+      changeReason: "Revisión actualizada", expectedVersionHash: fresh.versionHash!,
+    });
+    expect(result.status).toBe("published");
+  });
+
   it("rejects a late edit after publishing without changing conditions or hash",async()=>{
     const committed = await publish();
     expect(committed.status).toBe("published");

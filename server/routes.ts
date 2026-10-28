@@ -1,3 +1,4 @@
+import { registerAdministrativeAudit } from "./administrativeAudit";
 import { selectHousingMortgageTemplate } from "./mortgageHousingTemplate";
 import { leaseLeadSchema } from "../shared/leasing";
 import type { Express } from "express";
@@ -1272,6 +1273,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Auth middleware
   await setupAuth(app);
+  registerAdministrativeAudit(app);
 
   // Register legal routes after session/Passport initialization
   registerLegalRoutes(app);
@@ -1307,6 +1309,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
       delete safeUser.password;
       delete safeUser.resetToken;
       delete safeUser.resetTokenExpiry;
+      const accessDay = new Intl.DateTimeFormat("sv-SE", {timeZone: "America/Mexico_City", year: "numeric", month: "2-digit", day: "2-digit"}).format(new Date());
+      if (req.session && req.session.administrativeActivityDate !== accessDay) {
+        req.session.administrativeActivityDate = accessDay;
+        req.administrativeActor = user;
+        req.administrativeAction = "session_access";
+      }
       res.json({
         ...safeUser,
         memberships,
@@ -1614,6 +1622,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
             console.error("Error saving session:", saveErr);
             return res.status(500).json({ message: "Error al iniciar sesión" });
           }
+          req.administrativeActor = user;
+          req.administrativeAction = "account_registered";
           res.status(201).json({ 
             message: "Registro exitoso",
             user: { id: user.id, email: user.email, firstName: user.firstName, lastName: user.lastName, role: user.role }
@@ -1683,6 +1693,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
             console.error("Error saving session:", saveErr);
             return res.status(500).json({ message: "Error al iniciar sesión" });
           }
+          req.administrativeActor = user;
+          req.administrativeAction = "login_success";
           res.json({ 
             message: "Login exitoso",
             user: { id: user.id, email: user.email, firstName: user.firstName, lastName: user.lastName, role: user.role }
@@ -1803,7 +1815,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     privacyVersion: z.string().optional(),
   });
 
-  app.post('/api/auth/reset-password', async (req, res) => {
+  app.post('/api/auth/reset-password', async (req: any, res) => {
     try {
       const data = resetPasswordSchema.parse(req.body);
       
@@ -1820,7 +1832,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       
       const hashedPassword = await bcrypt.hash(data.password, 12);
-      if (!user.password) {
+      const wasInvitation = !user.password;
+      if (wasInvitation) {
         const legal = validateRegistrationAcceptance({
           acceptTerms: data.acceptTerms,
           termsVersion: data.termsVersion,
@@ -1849,6 +1862,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         await storage.updateUserPassword(user.id, hashedPassword);
         await storage.clearPasswordResetToken(user.id);
       }
+      req.administrativeActor = user;
+      req.administrativeAction = wasInvitation ? "invitation_registered" : "password_recovered";
       res.json({ message: "Contraseña actualizada exitosamente. Ya puedes iniciar sesión." });
     } catch (error) {
       if (error instanceof z.ZodError) {
@@ -9925,7 +9940,7 @@ function maskCLABE(clabe?: string | null): string | null {
         ? req.body.commissionRates
         : (conditions?.commissionRates !== undefined ? conditions.commissionRates : currentConditions.commissionRates);
 
-      if (commRates && typeof commRates === "object") {
+      if ((req.body.commissionRates !== undefined || conditions?.commissionRates !== undefined) && commRates && typeof commRates === "object") {
         const finRate = commRates.financiera?.apertura !== undefined && commRates.financiera?.apertura !== "" && commRates.financiera?.apertura !== null
           ? Number(commRates.financiera.apertura)
           : null;
@@ -10012,6 +10027,28 @@ function maskCLABE(clabe?: string | null): string | null {
           verified: false,
         },
       };
+
+      for (const [conditionKey, requirementKey, rangeKey] of [
+        ["minCompanyAgeMonths", "minMonthsInBusiness", "tiempoActividad"],
+        ["minMonthlyRevenue", "minMonthlyIncome", "ingresoMensualPromedio"],
+      ]) {
+        if (!Object.prototype.hasOwnProperty.call(conditions || {}, conditionKey)) continue;
+        const value = mergedConditions[conditionKey];
+        const previous = currentConditions[conditionKey] ?? currentReqs[requirementKey] ?? currentReqs.ranges?.[rangeKey]?.min ?? null;
+        if (value === previous) continue;
+        mergedRequirements[requirementKey] = value;
+        const updateRange = (ranges: any) => {
+          const next = {...(ranges || {})};
+          const range = {...(next[rangeKey] || {})};
+          if (value == null) delete range.min; else range.min = value;
+          if (Object.keys(range).length) next[rangeKey] = range; else delete next[rangeKey];
+          return next;
+        };
+        mergedRequirements.ranges = updateRange(mergedRequirements.ranges);
+        if (mergedRequirements.profileRules && typeof mergedRequirements.profileRules === "object") {
+          mergedRequirements.profileRules = Object.fromEntries(Object.entries(mergedRequirements.profileRules).map(([profile, rule]: [string, any]) => [profile, {...rule, ranges: updateRange(rule?.ranges)}]));
+        }
+      }
 
       const docsList = requiredDocuments !== undefined
         ? (Array.isArray(requiredDocuments) ? requiredDocuments : [])
@@ -10244,7 +10281,8 @@ function maskCLABE(clabe?: string | null): string | null {
       }
 
       const { id } = req.params;
-      const { changeReason, confirmPublish } = req.body;
+      const { changeReason, confirmPublish, expectedDraftId, expectedVersionHash } = req.body;
+      if ((expectedDraftId !== undefined && typeof expectedDraftId !== "string") || (expectedVersionHash !== undefined && (typeof expectedVersionHash !== "string" || !/^[a-f0-9]{64}$/.test(expectedVersionHash)))) return res.status(400).json({message: "Referencia de borrador inválida"});
 
       // Requisito 1: Confirmación explícita obligatoria
       if (!confirmPublish) {
@@ -10273,6 +10311,8 @@ function maskCLABE(clabe?: string | null): string | null {
         });
       }
 
+      if (expectedDraftId && expectedDraftId !== draftVersion.id) return res.status(409).json({message: "El borrador cambió. Revisa la oferta nuevamente."});
+
       // Compare against the previous published economics, never a draft or
       // arbitrary institution-level schedule. This does NOT create acceptance.
       const previousPublishedVersion = versions
@@ -10283,6 +10323,7 @@ function maskCLABE(clabe?: string | null): string | null {
       const publishedVersion = await storage.publishInstitutionProductVersion(id, draftVersion.id, {
         publishedBy: userId,
         changeReason: changeReason.trim(),
+        expectedVersionHash,
       });
       const commercialChange = compareOfferIntermediaryCommissions(
         previousPublishedVersion,

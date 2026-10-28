@@ -57,7 +57,7 @@ export default function OfferPublishModal({
   });
 
   const publishMutation = useMutation({
-    mutationFn: async (payload: { changeReason: string; confirmPublish: boolean }) => {
+    mutationFn: async (payload: { changeReason: string; confirmPublish: boolean; expectedDraftId?: string; expectedVersionHash?: string }) => {
       const res = await fetch(`/api/institution-products/${offer?.id}/publish`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -113,6 +113,8 @@ export default function OfferPublishModal({
     publishMutation.mutate({
       changeReason: changeReason.trim(),
       confirmPublish: true,
+      expectedDraftId: previewData?.draftVersion?.id,
+      expectedVersionHash: previewData?.draftVersion?.versionHash,
     });
   };
 

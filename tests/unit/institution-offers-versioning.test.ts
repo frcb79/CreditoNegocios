@@ -168,7 +168,7 @@ describe("Bloque A1.1 — Arquitectura Canónica de Ofertas y Versionado Aditivo
           productType: "factoraje",
         },
         {
-          conditions: {
+          conditions: { commissionRates: {financiera: {apertura: 4}, masterBroker: {apertura: 2}, broker: {apertura: 1}},
             minAmount: 200000,
             maxAmount: 5000000,
             minInterestRate: 15.0,
@@ -202,7 +202,7 @@ describe("Bloque A1.1 — Arquitectura Canónica de Ofertas y Versionado Aditivo
 
       // 3. Crear versión 2 en borrador
       const v2 = await storage.createOfferVersion(offer.id, {
-        conditions: {
+        conditions: { commissionRates: {financiera: {apertura: 4}, masterBroker: {apertura: 2}, broker: {apertura: 1}},
           minAmount: 250000,
           maxAmount: 6000000,
           minInterestRate: 14.0,
@@ -379,7 +379,7 @@ describe("Bloque A1.1 — Arquitectura Canónica de Ofertas y Versionado Aditivo
           productType: "credito_simple",
         },
         {
-          conditions: { minAmount: 100000, maxAmount: 500000, minInterestRate: 15, maxInterestRate: 20, minTermMonths: 6, maxTermMonths: 12 },
+          conditions: { commissionRates: {financiera: {apertura: 4}, masterBroker: {apertura: 2}, broker: {apertura: 1}}, minAmount: 100000, maxAmount: 500000, minInterestRate: 15, maxInterestRate: 20, minTermMonths: 6, maxTermMonths: 12 },
           requirements: { targetProfiles: ["pyme"] },
           requiredDocuments: ["ine"],
           changeReason: "Versión inicial",
@@ -391,7 +391,7 @@ describe("Bloque A1.1 — Arquitectura Canónica de Ofertas y Versionado Aditivo
 
       // Crear y publicar v2
       const v2 = await storage.createOfferVersion(offer.id, {
-        conditions: { minAmount: 150000, maxAmount: 600000, minInterestRate: 14, maxInterestRate: 19, minTermMonths: 6, maxTermMonths: 18 },
+        conditions: { commissionRates: {financiera: {apertura: 4}, masterBroker: {apertura: 2}, broker: {apertura: 1}}, minAmount: 150000, maxAmount: 600000, minInterestRate: 14, maxInterestRate: 19, minTermMonths: 6, maxTermMonths: 18 },
         requirements: { targetProfiles: ["pyme"] },
         requiredDocuments: ["ine", "csf"],
         changeReason: "Versión v2",
@@ -401,7 +401,7 @@ describe("Bloque A1.1 — Arquitectura Canónica de Ofertas y Versionado Aditivo
 
       // Crear y publicar v3
       const v3 = await storage.createOfferVersion(offer.id, {
-        conditions: { minAmount: 200000, maxAmount: 700000, minInterestRate: 13, maxInterestRate: 18, minTermMonths: 6, maxTermMonths: 24 },
+        conditions: { commissionRates: {financiera: {apertura: 4}, masterBroker: {apertura: 2}, broker: {apertura: 1}}, minAmount: 200000, maxAmount: 700000, minInterestRate: 13, maxInterestRate: 18, minTermMonths: 6, maxTermMonths: 24 },
         requirements: { targetProfiles: ["pyme"] },
         requiredDocuments: ["ine", "csf"],
         changeReason: "Versión v3",

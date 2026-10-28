@@ -1652,14 +1652,15 @@ export class DbStorage implements IStorage {
     return inserted;
   }
 
-  async getCommercialAuditLogs(filters?: { entityType?: string; entityId?: string }): Promise<any[]> {
+  async getCommercialAuditLogs(filters?: { entityType?: string; entityId?: string; limit?: number; offset?: number }): Promise<any[]> {
     const conditions = [];
     if (filters?.entityType) conditions.push(eq(commercialAuditLogs.entityType, filters.entityType));
     if (filters?.entityId) conditions.push(eq(commercialAuditLogs.entityId, filters.entityId));
 
-    return await db.select().from(commercialAuditLogs)
+    const query = db.select().from(commercialAuditLogs)
       .where(conditions.length ? and(...conditions) : undefined)
-      .orderBy(desc(commercialAuditLogs.createdAt));
+      .orderBy(desc(commercialAuditLogs.createdAt), desc(commercialAuditLogs.id));
+    return filters?.limit === undefined ? await query : await query.limit(filters.limit).offset(filters.offset ?? 0);
   }
 
   async updateUserOperationalStatus(params: {
@@ -2340,7 +2341,7 @@ export class DbStorage implements IStorage {
   async publishInstitutionProductVersion(
     productId: string,
     versionId: string,
-    options?: { publishedBy?: string; changeReason?: string }
+    options?: { publishedBy?: string; changeReason?: string; expectedVersionHash?: string }
   ): Promise<InstitutionProductVersion> {
     try {
       return await db.transaction(async (tx) => {
@@ -2362,6 +2363,10 @@ export class DbStorage implements IStorage {
         }
 
         // Gate de condiciones mínimas obligatorias antes de publicar
+        if (options?.expectedVersionHash && options.expectedVersionHash !== version.versionHash) {
+          throw new Error("OFFER_DRAFT_CHANGED: El borrador cambió. Revisa de nuevo antes de publicar.");
+        }
+
         const validation = validateMinimumPublishConditions({
           conditions: version.conditions,
           requirements: version.requirements,
@@ -2707,7 +2712,7 @@ export class DbStorage implements IStorage {
   async publishOfferVersion(
     offerId: string,
     versionId: string,
-    options?: { publishedBy?: string; changeReason?: string }
+    options?: { publishedBy?: string; changeReason?: string; expectedVersionHash?: string }
   ): Promise<FinancialInstitutionOfferVersion> {
     return this.publishInstitutionProductVersion(offerId, versionId, options);
   }

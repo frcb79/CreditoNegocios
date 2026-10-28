@@ -1,3 +1,4 @@
+import { recordAdministrativeActivity } from "./administrativeAudit";
 import passport from "passport";
 import session from "express-session";
 import type { Express, RequestHandler } from "express";
@@ -75,8 +76,12 @@ export async function setupAuth(app: Express) {
   passport.deserializeUser((user: Express.User, cb) => cb(null, user));
 
   // Global logout route
-  app.get("/api/logout", (req, res) => {
-    req.logout(() => {
+  app.get("/api/logout", async (req: any, res) => {
+    const actorId = req.user?.claims?.sub || req.user?.id;
+    const actor = actorId ? await storage.getUser(actorId).catch(() => undefined) : undefined;
+    req.logout((error: any) => {
+      if (error) return res.status(500).json({message: "No se pudo cerrar la sesión"});
+      if (actor) void recordAdministrativeActivity(actor, "logout_success", "/api/logout", "GET", 302);
       req.session.destroy(() => {
         res.clearCookie('connect.sid');
         res.redirect('/');

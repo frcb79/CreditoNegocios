@@ -621,6 +621,7 @@ export async function runAutoMigration(): Promise<void> {
 
         CREATE INDEX IF NOT EXISTS "comm_audit_entity_idx" ON public.commercial_audit_logs (entity_type, entity_id);
         CREATE INDEX IF NOT EXISTS "comm_audit_client_idx" ON public.commercial_audit_logs (client_id);
+        CREATE INDEX IF NOT EXISTS "admin_activity_recent_idx" ON public.commercial_audit_logs (created_at DESC, id DESC) WHERE entity_type = 'administrative_activity';
 
         -- 6. operational_rules_versions
         CREATE TABLE IF NOT EXISTS public.operational_rules_versions (

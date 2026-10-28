@@ -227,7 +227,7 @@ export interface IStorage {
     notes?: string;
   }): Promise<User>;
   createCommercialAuditLog(logData: any): Promise<any>;
-  getCommercialAuditLogs(filters?: { entityType?: string; entityId?: string }): Promise<any[]>;
+  getCommercialAuditLogs(filters?: { entityType?: string; entityId?: string; limit?: number; offset?: number }): Promise<any[]>;
   createUserStatusRequest(data: {
     requesterId: string;
     targetUserId: string;
@@ -455,7 +455,7 @@ export interface IStorage {
   publishInstitutionProductVersion(
     productId: string,
     versionId: string,
-    options?: { publishedBy?: string; changeReason?: string }
+    options?: { publishedBy?: string; changeReason?: string; expectedVersionHash?: string }
   ): Promise<InstitutionProductVersion>;
   updateInstitutionProductDraftVersion(
     productId: string,
@@ -502,7 +502,7 @@ export interface IStorage {
   publishOfferVersion(
     offerId: string,
     versionId: string,
-    options?: { publishedBy?: string; changeReason?: string }
+    options?: { publishedBy?: string; changeReason?: string; expectedVersionHash?: string }
   ): Promise<FinancialInstitutionOfferVersion>;
   deleteOfferVersion(id: string): Promise<boolean>;
   supersedeOfferVersion(offerId: string, oldVersionNumber: number, supersededAt?: Date): Promise<boolean>;
@@ -2657,7 +2657,7 @@ export class MemStorage implements IStorage {
     return log;
   }
 
-  async getCommercialAuditLogs(filters?: { entityType?: string; entityId?: string }): Promise<any[]> {
+  async getCommercialAuditLogs(filters?: { entityType?: string; entityId?: string; limit?: number; offset?: number }): Promise<any[]> {
     let logs = Array.from(this.commercialAuditLogs.values());
     if (filters?.entityType) {
       logs = logs.filter(l => l.entityType === filters.entityType);
@@ -2667,8 +2667,8 @@ export class MemStorage implements IStorage {
     }
     return logs.sort((a, b) => {
       const diff = new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
-      return diff !== 0 ? diff : (logs.indexOf(b) - logs.indexOf(a));
-    });
+      return diff !== 0 ? diff : String(b.id).localeCompare(String(a.id));
+    }).slice(filters?.offset ?? 0, filters?.limit === undefined ? undefined : (filters?.offset ?? 0) + filters.limit);
   }
 
   async updateUserOperationalStatus(params: {
@@ -4348,7 +4348,7 @@ export class MemStorage implements IStorage {
   async publishInstitutionProductVersion(
     productId: string,
     versionId: string,
-    options?: { publishedBy?: string; changeReason?: string }
+    options?: { publishedBy?: string; changeReason?: string; expectedVersionHash?: string }
   ): Promise<InstitutionProductVersion> {
     const product = this.institutionProducts.get(productId);
     if (!product) {
@@ -4365,6 +4365,10 @@ export class MemStorage implements IStorage {
     }
 
     // Validación de condiciones mínimas obligatorias antes de publicar
+    if (options?.expectedVersionHash && options.expectedVersionHash !== version.versionHash) {
+      throw new Error("OFFER_DRAFT_CHANGED: El borrador cambió. Revisa de nuevo antes de publicar.");
+    }
+
     const validation = validateMinimumPublishConditions({
       conditions: version.conditions,
       requirements: version.requirements,
@@ -4657,7 +4661,7 @@ export class MemStorage implements IStorage {
   async publishOfferVersion(
     offerId: string,
     versionId: string,
-    options?: { publishedBy?: string; changeReason?: string }
+    options?: { publishedBy?: string; changeReason?: string; expectedVersionHash?: string }
   ): Promise<FinancialInstitutionOfferVersion> {
     return this.publishInstitutionProductVersion(offerId, versionId, options);
   }
