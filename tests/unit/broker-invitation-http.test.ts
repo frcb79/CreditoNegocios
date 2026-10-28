@@ -93,6 +93,9 @@ describe("SEC-INVITES: bulk preview and explicit send routes",()=>{
     expect(response.body.ready).toBe(true);
     expect(response.body.total).toBe(1);
     expect(response.body.errors).toHaveLength(0);
+    expect(response.body.remaining).toBe(1);
+    expect(response.body.alreadyDelivered).toBe(0);
+    expect(response.body.rows[0].deliveryStatus).toBe("not_sent");
     const users=await storage.getAllUsers();
     expect(users.some(u=>u.email===response.body.rows[0].email)).toBe(false);
   });
