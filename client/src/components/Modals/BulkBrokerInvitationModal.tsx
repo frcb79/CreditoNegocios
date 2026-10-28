@@ -10,8 +10,9 @@ import { Download, Upload, Loader2, AlertTriangle } from "lucide-react";
 type Issue = { row: number; field: string; message: string };
 type Preview = {
   total:number;masters:number;brokers:number;ready:boolean;
+  alreadyDelivered?:number;remaining?:number;
   errors: Issue[];warnings:{row:number;message:string}[];
-  rows: Array<{row:number;email:string;firstName:string;lastName:string;role:string;masterEmail:string;promoCode?:string}>;
+  rows: Array<{row:number;email:string;firstName:string;lastName:string;role:string;masterEmail:string;promoCode?:string;deliveryStatus?:"already_sent"|"activated"|"not_sent"}>;
 };
 type SendOutcome = {
   total:number;sent:number;pending:number;failed:number;skipped:number;
@@ -151,6 +152,10 @@ export default function BulkBrokerInvitationModal(props:{isOpen:boolean;onClose:
           {preview&&!result&&<>
             <div className="text-sm font-medium">
               Total: {preview.total} · Masters: {preview.masters} · Brokers: {preview.brokers}
+              <div className="mt-1 text-emerald-800">
+                Confirmadas anteriormente: {preview.alreadyDelivered ?? 0} ·
+                Sin envío confirmado: {preview.remaining ?? preview.total}
+              </div>
             </div>
             {preview.errors.length>0&&<div className="bg-red-50 text-red-800 rounded p-3 text-sm">
               <p className="font-semibold">Corrige estos errores antes de enviar:</p>
@@ -165,6 +170,10 @@ export default function BulkBrokerInvitationModal(props:{isOpen:boolean;onClose:
                 Fila {row.row}: {row.firstName} {row.lastName} · {row.email} · {row.role==="master_broker"?"Master Broker":"Broker"}
                 {row.masterEmail&&<> · Master: {row.masterEmail}</>}
                 <span> · Cupón: {row.promoCode || batchPromoCode || "Sin cupón"}</span>
+                <span className={row.deliveryStatus==="not_sent"?"text-amber-700 font-semibold":"text-emerald-700 font-semibold"}>
+                  {" "}· {row.deliveryStatus==="activated"?"Cuenta activada":
+                    row.deliveryStatus==="already_sent"?"Envío confirmado":"Sin envío confirmado"}
+                </span>
               </div>)}
             </div>
             {preview.ready&&<label className="flex items-start gap-2 text-sm">
@@ -188,6 +197,7 @@ export default function BulkBrokerInvitationModal(props:{isOpen:boolean;onClose:
           <p className="flex gap-2 text-xs text-slate-500">
             <AlertTriangle className="w-4 h-4 shrink-0"/> Máximo 100 personas por archivo. Los Masters se procesan primero.
             Los enlaces de activación son personales y vencen en 24 horas.
+            Los registros ya enviados o activados se omiten automáticamente.
           </p>
         </div>
       </DialogContent>
