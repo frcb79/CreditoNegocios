@@ -65,7 +65,22 @@ export async function runBrokerInvitationReminders(): Promise<{
         continue;
       }
       const token = randomBytes(32).toString("hex");
-      await storage.setPasswordResetToken(user.id, token, new Date(Date.now() + 86400000));
+      // An activation or opt-out may race with this scheduled job. Never replace
+      // a token once a password has been registered, nor for paused accounts.
+      const tokenSet = await pool.query(
+        `UPDATE public.users SET reset_token=$2, reset_token_expiry=$3, updated_at=NOW()
+          WHERE id=$1 AND password IS NULL AND is_active IS DISTINCT FROM FALSE
+            AND COALESCE(profile_data->>'invitationFollowupPaused','false') <> 'true'
+        RETURNING id`,
+        [user.id, token, new Date(Date.now() + 86400000)],
+      );
+      if (!tokenSet.rowCount) {
+        await pool.query(
+          "UPDATE public.broker_invitation_reminder_events SET status='skipped', updated_at=NOW() WHERE user_id=$1 AND reminder_day=$2",
+          [user.id, day]);
+        output.skipped++;
+        continue;
+      }
       const name = [user.first_name, user.last_name].filter(Boolean).join(" ");
       const delivered = await sendBrokerInvitationReminderEmail(user.email, token, day, name);
       await pool.query(
