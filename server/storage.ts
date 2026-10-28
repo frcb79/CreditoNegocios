@@ -434,6 +434,7 @@ export interface IStorage {
   deleteProductTemplate(id: string): Promise<boolean>;
 
   // Institution Products (Canonical Offer Catalog) operations (Bloque A1 / Corrección A1.1)
+  getPublishedInstitutionProductsForMatching?(templateId?: string): Promise<Array<{product: Pick<InstitutionProduct, "id" | "name" | "customName" | "institutionId" | "templateId" | "productType" | "status" | "isActive" | "currentVersionNumber" | "targetProfiles">; version: InstitutionProductVersion; institution: Pick<FinancialInstitution, "id" | "name" | "isActive">}>>;
   getInstitutionProducts(institutionId?: string): Promise<InstitutionProductWithTemplate[]>;
   getInstitutionProduct(id: string): Promise<InstitutionProduct | undefined>;
   getInstitutionProductsByTemplate(templateId: string): Promise<InstitutionProduct[]>;

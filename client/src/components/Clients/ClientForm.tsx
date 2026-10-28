@@ -3144,7 +3144,7 @@ export default function ClientForm({ client, onSuccess }: ClientFormProps) {
                             />
 
                             {/* Campo condicional para estados financieros */}
-                            {form.watch("satCiec") === "no" && (
+
                               <FormField
                                 control={form.control}
                                 name="estadosFinancieros"
@@ -3166,7 +3166,7 @@ export default function ClientForm({ client, onSuccess }: ClientFormProps) {
                                   </FormItem>
                                 )}
                               />
-                            )}
+
 
                             {/* Opinión de Cumplimiento */}
                             <FormField
@@ -3761,7 +3761,7 @@ export default function ClientForm({ client, onSuccess }: ClientFormProps) {
                             />
 
                             {/* Campo condicional para estados financieros */}
-                            {form.watch("satCiec") === "no" && (
+
                               <FormField
                                 control={form.control}
                                 name="estadosFinancieros"
@@ -3783,7 +3783,7 @@ export default function ClientForm({ client, onSuccess }: ClientFormProps) {
                                   </FormItem>
                                 )}
                               />
-                            )}
+
 
                             {/* Opinión de Cumplimiento */}
                             <FormField

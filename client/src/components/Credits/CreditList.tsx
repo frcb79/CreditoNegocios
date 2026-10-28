@@ -1234,6 +1234,7 @@ export default function CreditList() {
                                     <h5 className="font-semibold text-sm mb-3 text-gray-700">Análisis de Matching</h5>
                                     <MatchingComparisonTable
                                       client={selectedClient}
+                                      requestId={selectedSubmission.id}
                                       institution={institution}
                                       productTemplate={selectedSubmission.productTemplate}
                                       requestedAmount={parseFloat(selectedSubmission.requestedAmount || '0')}

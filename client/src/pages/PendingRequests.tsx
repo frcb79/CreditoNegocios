@@ -1382,6 +1382,7 @@ export default function PendingRequests() {
                                         <div className="mt-3 p-3.5 bg-slate-50/80 rounded-xl border border-slate-200/70">
                                           <MatchingComparisonTable
                                             client={client}
+                                            requestId={submission.id}
                                             institution={{
                                               id: target.institution.id,
                                               name: target.institution.name,

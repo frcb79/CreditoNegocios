@@ -17,6 +17,7 @@ on:
       - 'feat/importador-maestro-v5-*'
       - 'fix/invitaciones-lotes-seguimiento-*'
       - 'fix/financieras-auditoria-*'
+      - 'fix/matching-ofertas-v5-*'
   workflow_dispatch:
 concurrency:
   group: prelaunch-${{ github.ref }}
@@ -48,6 +49,8 @@ jobs:
         run: node scripts/test-broker-network-ui.cjs
       - name: Financial offers and administrative activity component interactions (isolated DOM)
         run: node scripts/test-financieras-activity-ui.cjs
+      - name: Matching preview and comparison interactions (isolated DOM)
+        run: node scripts/test-matching-unified-ui.cjs
       - name: Master V5 preview unit tests
         run: npx jest -c jest.config.cjs --runInBand tests/unit/master-v5-preview.test.ts tests/unit/master-v5-template-resolver.test.ts
 
@@ -81,6 +84,8 @@ jobs:
             tests/unit/commission-gate-security.test.ts
             tests/unit/commission-historical-beneficiary.test.ts
             tests/unit/m1-matching-engine.test.ts
+            tests/unit/imported-offer-matching.test.ts
+            tests/unit/matching-preview-http.test.ts
             tests/unit/commercial-terms-current-version.test.ts
             tests/unit/b2-commercial-terms-acceptance.test.ts
             tests/unit/b2-manual-disbursement-validation.test.ts
