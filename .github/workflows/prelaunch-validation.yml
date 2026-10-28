@@ -14,6 +14,7 @@ on:
       - 'feat/commercial-v7-classification-*'
       - 'fix/commercial-v7-draft-reimport-classification-*'
       - 'fix/tour-anclaje-contextual-*'
+      - 'feat/importador-maestro-v5-*'
   workflow_dispatch:
 concurrency:
   group: prelaunch-${{ github.ref }}
@@ -41,6 +42,8 @@ jobs:
         run: npm run check
       - name: Build
         run: npm run build
+      - name: Master V5 preview unit tests
+        run: npx jest -c jest.config.cjs --runInBand tests/unit/master-v5-preview.test.ts tests/unit/master-v5-template-resolver.test.ts
 
   unit-regressions:
     runs-on: ubuntu-latest

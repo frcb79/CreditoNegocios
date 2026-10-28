@@ -101,6 +101,16 @@ export default function AdminOffersList({
       : ["/api/institution-products"],
   });
 
+  // Source of truth for amounts/rates/terms is the offer version, NOT legacy offer.configuration.
+  const { data: versionSummaries = [] } = useQuery<Array<{
+    offerId: string; minAmount: string | null; maxAmount: string | null;
+    minInterestRate: string | null; maxInterestRate: string | null;
+    rateSource: string | null; minTermMonths: string | null; maxTermMonths: string | null;
+  }>>({ queryKey: ["/api/institution-products/financial-summaries"] });
+
+  const summaryByOffer = useMemo(() => new Map(versionSummaries.map(v => [v.offerId, v])),
+    [versionSummaries]);
+
   // Scope to institution if prop provided or selected in filter
   const scopedOffers = useMemo(() => {
     let result = offers;
@@ -437,6 +447,14 @@ export default function AdminOffersList({
           {filteredOffers.map((offer) => {
             const instName = institutionMap.get(offer.institutionId) || institutionName || "Financiera";
             const config = (offer.configuration || {}) as any;
+            const snapshot = summaryByOffer.get(offer.id);
+            const amountMin = snapshot?.minAmount ?? config.minAmount;
+            const amountMax = snapshot?.maxAmount ?? config.maxAmount;
+            const rateMin = snapshot?.minInterestRate ?? config.minInterestRate;
+            const rateMax = snapshot?.maxInterestRate ?? config.maxInterestRate;
+            const rateDescriptor = snapshot?.rateSource || null;
+            const termMin = snapshot?.minTermMonths ?? config.minTermMonths;
+            const termMax = snapshot?.maxTermMonths ?? config.maxTermMonths;
             const targetProfiles = offer.targetProfiles || [];
             const typeLabel = PRODUCT_TYPE_LABELS[offer.productType || ""] || offer.productType || "Crédito Comercial";
 
@@ -492,19 +510,21 @@ export default function AdminOffersList({
                   <div>
                     <span className="text-[10px] text-slate-400 block font-medium">Monto</span>
                     <span className="font-semibold text-slate-800 mt-0.5 block truncate">
-                      {config.minAmount ? formatCurrency(config.minAmount) : "N/D"} — {config.maxAmount ? formatCurrency(config.maxAmount) : "N/D"}
+                      {amountMin !== undefined && amountMin !== null ? formatCurrency(amountMin) : "N/D"} — {amountMax !== undefined && amountMax !== null ? formatCurrency(amountMax) : "N/D"}
                     </span>
                   </div>
                   <div>
                     <span className="text-[10px] text-slate-400 block font-medium">Tasa Anual</span>
                     <span className="font-semibold text-slate-800 mt-0.5 block">
-                      {config.minInterestRate !== undefined ? `${config.minInterestRate}%` : "N/D"} — {config.maxInterestRate !== undefined ? `${config.maxInterestRate}%` : "N/D"}
+                      {rateMin != null || rateMax != null
+                        ? `${rateMin ?? "N/D"}% — ${rateMax ?? "N/D"}%`
+                        : rateDescriptor || "Tasa por confirmar"}
                     </span>
                   </div>
                   <div>
                     <span className="text-[10px] text-slate-400 block font-medium">Plazo</span>
                     <span className="font-semibold text-slate-800 mt-0.5 block">
-                      {config.minTermMonths !== undefined ? `${config.minTermMonths}` : "N/D"} — {config.maxTermMonths !== undefined ? `${config.maxTermMonths}m` : "N/D"}
+                      {termMin != null ? `${termMin}` : "Abierto"} — {termMax != null ? `${termMax}m` : "Abierto"}
                     </span>
                   </div>
                 </div>
@@ -527,11 +547,7 @@ export default function AdminOffersList({
                       <span className="text-[10px] text-slate-400 italic">Sin selección</span>
                     )}
 
-                    {config.commissionRates?.broker?.apertura !== undefined && (
-                      <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-700 border border-emerald-200/80">
-                        Comisión Broker: {config.commissionRates.broker.apertura}%
-                      </span>
-                    )}
+                    {/* Las comisiones solo se muestran desde la versión vigente/borrador en detalle de Super Admin. */}
                   </div>
 
                   {/* Action buttons (Mobile-responsive with flex-wrap) */}
@@ -569,7 +585,7 @@ export default function AdminOffersList({
                       data-testid={`button-versions-${offer.id}`}
                     >
                       <GitBranch className="w-3 h-3 text-[#2463D6]" />
-                      <span>Versiones (v{offer.currentVersionNumber || 1})</span>
+                      <span>Ficha y versiones (v{offer.currentVersionNumber || 1})</span>
                     </Button>
 
                     {!institutionId && (

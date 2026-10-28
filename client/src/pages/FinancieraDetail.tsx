@@ -135,7 +135,9 @@ export default function FinancieraDetail() {
     'sin_sat': 'bg-slate-50 text-slate-700 border-slate-200'
   };
   
-  const acceptedProfiles = Array.isArray(institution.acceptedProfiles) ? institution.acceptedProfiles : [];
+  const acceptedProfiles = isSuperAdmin && institutionProducts.length > 0
+    ? Array.from(new Set(institutionProducts.flatMap(p => Array.isArray(p.targetProfiles) ? p.targetProfiles : [])))
+    : (Array.isArray(institution.acceptedProfiles) ? institution.acceptedProfiles : []);
   const commissionRates = institution.commissionRates || null;
 
   return (
@@ -542,6 +544,19 @@ export default function FinancieraDetail() {
 
               {/* Requisitos Tab */}
               <TabsContent value="requisitos" className="mt-6">
+                {isSuperAdmin && institutionProducts.length > 0 ? (
+                <div className="rounded-xl border border-blue-200 bg-blue-50/50 p-6 space-y-3">
+                  <h3 className="font-bold text-slate-900 text-base">Requisitos por oferta</h3>
+                  <p className="text-sm text-slate-700">Los requisitos de buró, ingresos, antigüedad, documentos, garantías y perfiles varían por oferta. Se almacenan en su versión; no se reflejan en los antiguos requisitos generales de la financiera.</p>
+                  <Button type="button" size="sm" onClick={() => setActiveTab("ofertas")}>
+                    Consultar las {institutionProducts.length} ofertas
+                  </Button>
+                  <p className="text-xs text-slate-500">
+                    En cada oferta selecciona «Versiones» para revisar sus condiciones y requisitos.
+                    La información general antigua no representa las condiciones específicas de las ofertas V5.
+                  </p>
+                </div>
+              ) : (
                 <div className="space-y-5">
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                     <div>
@@ -625,10 +640,24 @@ export default function FinancieraDetail() {
                     </div>
                   )}
                 </div>
+              )}
               </TabsContent>
 
               {/* Comisiones Tab */}
               <TabsContent value="comisiones" className="mt-6">
+                {isSuperAdmin && institutionProducts.length > 0 ? (
+                <div className="rounded-xl border border-blue-200 bg-blue-50/50 p-6 space-y-3">
+                  <h3 className="font-bold text-slate-900 text-base">Comisiones por oferta</h3>
+                  <p className="text-sm text-slate-700">La apertura, renovación y sobretasa se administran por versión de oferta, no como una sola tasa general para esta financiera. La sobretasa es exclusiva de Crédito Negocios.</p>
+                  <Button type="button" size="sm" onClick={() => setActiveTab("ofertas")}>
+                    Consultar las {institutionProducts.length} ofertas
+                  </Button>
+                  <p className="text-xs text-slate-500">
+                    En cada oferta selecciona «Versiones» para revisar sus condiciones y requisitos.
+                    La información general antigua no representa las condiciones específicas de las ofertas V5.
+                  </p>
+                </div>
+              ) : (
                 <div>
                   <h3 className="text-sm sm:text-base font-bold text-slate-900 mb-4 flex items-center gap-2">
                     <Percent className="w-4 h-4 text-primary" />
@@ -756,6 +785,7 @@ export default function FinancieraDetail() {
                     </div>
                   )}
                 </div>
+              )}
               </TabsContent>
 
               {/* Ofertas Comerciales Tab (Super Admin Only - Diseño B1) */}

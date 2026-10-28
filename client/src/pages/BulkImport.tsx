@@ -10,11 +10,11 @@ import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Progress } from "@/components/ui/progress";
-import { Upload, Download, FileSpreadsheet, Building2, Users, CheckCircle2, XCircle, AlertCircle, Loader2, Sparkles, Layers, ShieldCheck } from "lucide-react";
+import { Upload, Download, FileSpreadsheet, Building2, Users, CheckCircle2, XCircle, AlertCircle, Loader2, Sparkles } from "lucide-react";
 import MainLayout from "@/components/MainLayout";
 import Header from "@/components/Header";
 import { downloadFinancierasTemplateClient } from "@/lib/excelTemplates";
-import CommissionBulkUploader from "@/components/Commissions/CommissionBulkUploader";
+import CommissionMasterV5Preview from "@/components/Commissions/CommissionMasterV5Preview";
 
 interface ImportError {
   row: number;
@@ -39,7 +39,10 @@ interface ImportResult {
 export default function BulkImport() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
-  const [activeTab, setActiveTab] = useState("financieras");
+  const [activeTab, setActiveTab] = useState(() =>
+    typeof window !== "undefined" && new URLSearchParams(window.location.search).get("tab") === "comisiones"
+      ? "comisiones" : "financieras"
+  );
   
   const [financierasFile, setFinancierasFile] = useState<File | null>(null);
   const [clientsFile, setClientsFile] = useState<File | null>(null);
@@ -51,52 +54,14 @@ export default function BulkImport() {
   const [clientsResult, setClientsResult] = useState<ImportResult | null>(null);
   
   const [isPreviewingFinancieras, setIsPreviewingFinancieras] = useState(false);
+  const [financierasV5Issues, setFinancierasV5Issues] = useState<{ row: number; field: string; level: string; message: string }[]>([]);
+  const [canApplyFinancieras, setCanApplyFinancieras] = useState(false);
+  const environmentLabel = typeof window !== 'undefined' && window.location.hostname.includes('staging') ? 'Staging' : 'Producción';
+  const [applyingFinancieras, setApplyingFinancieras] = useState(false);
+  const [appliedFinancieras, setAppliedFinancieras] = useState<string | null>(null);
+  const [financierasV5Match, setFinancierasV5Match] = useState<{row:number; action:string}[]>([]);
+  const [plannedV5Families, setPlannedV5Families] = useState<string[]>([]);
   const [isPreviewingClients, setIsPreviewingClients] = useState(false);
-
-  const [isSyncingSoc, setIsSyncingSoc] = useState(false);
-  const [socResult, setSocResult] = useState<any | null>(null);
-
-  const handleSyncSoc = async (file?: File) => {
-    setIsSyncingSoc(true);
-    try {
-      let res;
-      if (file) {
-        const formData = new FormData();
-        formData.append('file', file);
-        res = await fetch('/api/import/financieras-soc', {
-          method: 'POST',
-          body: formData,
-          credentials: 'include'
-        });
-      } else {
-        res = await fetch('/api/import/financieras-soc', {
-          method: 'POST',
-          credentials: 'include'
-        });
-      }
-
-      if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.message || 'Error al sincronizar SOC');
-      }
-
-      const data = await res.json();
-      setSocResult(data);
-      queryClient.invalidateQueries({ queryKey: ['/api/financial-institutions'] });
-      toast({
-        title: "Sincronización Exitosa de Fichas SOC",
-        description: `Se sincronizaron ${data.createdCount} creadas, ${data.updatedCount} actualizadas, y ${data.totalProductsCount} productos vinculados.`,
-      });
-    } catch (error: any) {
-      toast({
-        title: "Error al sincronizar SOC",
-        description: error.message,
-        variant: "destructive",
-      });
-    } finally {
-      setIsSyncingSoc(false);
-    }
-  };
 
   const handleDownloadTemplate = async (type: 'financieras' | 'clients') => {
     try {
@@ -145,6 +110,11 @@ export default function BulkImport() {
     if (type === 'financieras') {
       setFinancierasFile(file);
       setFinancierasPreview(null);
+      setFinancierasV5Issues([]);
+      setFinancierasV5Match([]);
+      setPlannedV5Families([]);
+      setCanApplyFinancieras(false);
+      setAppliedFinancieras(null);
       setFinancierasResult(null);
     } else {
       setClientsFile(file);
@@ -166,7 +136,7 @@ export default function BulkImport() {
       const formData = new FormData();
       formData.append('file', file);
       
-      const response = await fetch(`/api/import/preview/${type}`, {
+      const response = await fetch(type === 'financieras' ? '/api/import/v5/preview/financieras' : '/api/import/preview/clients', {
         method: 'POST',
         body: formData,
         credentials: 'include'
@@ -178,7 +148,29 @@ export default function BulkImport() {
       }
       
       const data = await response.json();
-      setPreview(data);
+      if (type === 'financieras') {
+        setFinancierasV5Issues([...(data.errors || []), ...(data.warnings || [])]);
+        setFinancierasV5Match(data.matches || []);
+        setPlannedV5Families(data.plannedCanonicalFamilies || []);
+        setCanApplyFinancieras(Boolean(data.writable) && (data.errors || []).length === 0);
+        setAppliedFinancieras(null);
+        const columns = ['Financiera', 'Oferta', 'Familia', 'Perfiles', 'Monto mínimo', 'Monto máximo', 'Estatus'];
+        setPreview({
+          headers: columns, totalRows: data.totalRows,
+          rows: (data.rows || []).map((r: any) => ({
+            'Financiera': r.financiera,
+            'Oferta': r.nombreOferta,
+            'Familia': r.familia,
+            'Perfiles': (r.perfiles || []).join(', '),
+            'Monto mínimo': r.montoMinimo,
+            'Monto máximo': r.montoMaximoVariable || r.montoMaximo,
+            'Estatus': (r.issues || []).some((i: any) => i.level === 'error') ? 'Error' :
+              (r.issues || []).length ? 'Revisar' : 'Validado',
+          })),
+        });
+      } else {
+        setPreview(data);
+      }
     } catch (error: any) {
       toast({
         title: "Error de previsualización",
@@ -190,57 +182,35 @@ export default function BulkImport() {
     }
   };
 
-  const importFinancierasMutation = useMutation({
-    mutationFn: async () => {
-      if (!financierasFile) throw new Error('No hay archivo seleccionado');
-      
+  const applyFinancierasV5 = async () => {
+    if (!financierasFile || !canApplyFinancieras || applyingFinancieras) return;
+    if (!window.confirm(`¿Confirmas la carga en ${environmentLabel}? Las ofertas nuevas se crearán como borradores. En las existentes se completará el respaldo de los 32 campos técnicos originales y los tres descriptores faltantes, solo en borradores y sin modificar comisiones ni versiones publicadas.`)) return;
+    setApplyingFinancieras(true);
+    try {
       const formData = new FormData();
-      formData.append('file', financierasFile);
-      
-      const response = await fetch('/api/import/financieras', {
-        method: 'POST',
-        body: formData,
-        credentials: 'include'
+      formData.append("file", financierasFile);
+      const res = await fetch("/api/import/v5/apply/financieras", {
+        method: "POST", body: formData, credentials: "include",
       });
-      
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.message || 'Error al importar');
-      }
-      
-      return response.json();
-    },
-    onSuccess: (result) => {
-      setFinancierasResult(result);
-      queryClient.invalidateQueries({ queryKey: ['/api/financial-institutions'] });
-      
-      if (result.success && result.errors.length === 0) {
-        toast({
-          title: "Importación exitosa",
-          description: `Se importaron ${result.imported} financieras/productos correctamente.`,
-        });
-      } else if (result.imported > 0) {
-        toast({
-          title: "Importación parcial",
-          description: `Se importaron ${result.imported} registros. ${result.errors.length} errores encontrados.`,
-          variant: "default",
-        });
-      } else {
-        toast({
-          title: "Error en importación",
-          description: "No se pudieron importar los datos. Revisa los errores.",
-          variant: "destructive",
-        });
-      }
-    },
-    onError: (error: any) => {
-      toast({
-        title: "Error",
-        description: error.message || "Error al importar los datos.",
-        variant: "destructive",
-      });
+      const body = await res.json();
+      if (!res.ok) throw Error(body.message || "No se pudo importar el maestro");
+      setAppliedFinancieras(
+        "Financieras creadas: " + body.result.institutionsCreated +
+        "; ofertas en borrador: " + body.result.offersCreated +
+        "; borradores enriquecidos: " + (body.result.enrichedDrafts || 0) +
+        "; ofertas existentes sin cambio: " + body.result.alreadyPresent +
+        "; familias preparadas: " + (body.result.canonicalTemplatesCreated || []).length);
+      setCanApplyFinancieras(false);
+      queryClient.invalidateQueries({ queryKey: ["/api/financial-institutions"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/institution-products"] });
+      toast({ title: "Importación de borradores confirmada en " + environmentLabel,
+        description: "No se publicaron ofertas ni se actualizaron comisiones globales." });
+    } catch (e: any) {
+      toast({ title: "Importación rechazada", description: e.message, variant: "destructive" });
+    } finally {
+      setApplyingFinancieras(false);
     }
-  });
+  };
 
   const importClientsMutation = useMutation({
     mutationFn: async () => {
@@ -371,7 +341,7 @@ export default function BulkImport() {
       <div className="mt-3 space-y-2">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <p className="text-[11px] text-muted-foreground">
-            Mostrando {Math.min(5, preview.rows.length)} de {preview.totalRows} filas detectadas
+            Mostrando {Math.min(200, preview.rows.length)} de {preview.totalRows} filas detectadas
           </p>
           {hasMatchingFields && (
             <Badge variant="outline" className="bg-emerald-500/10 text-emerald-800 dark:text-emerald-300 border-emerald-500/30 text-[10px] py-0.5">
@@ -393,7 +363,7 @@ export default function BulkImport() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {preview.rows.slice(0, 5).map((row, rowIndex) => (
+                {preview.rows.slice(0, 200).map((row, rowIndex) => (
                   <TableRow key={rowIndex} className="hover:bg-muted/30">
                     <TableCell className="font-mono text-[11px] text-muted-foreground">{rowIndex + 1}</TableCell>
                     {preview.headers.map((header, colIndex) => (
@@ -475,7 +445,7 @@ export default function BulkImport() {
     <MainLayout>
       <Header 
         title="Importación Masiva"
-        subtitle="Carga y sincroniza financieras, comisiones de red y cartera de clientes desde Excel"
+        subtitle="Importa financieras y ofertas, comisiones por oferta y clientes desde Excel"
       />
       <main className="flex-1 p-3 sm:p-5 lg:p-6 overflow-y-auto space-y-4">
 
@@ -489,7 +459,7 @@ export default function BulkImport() {
             </TabsTrigger>
             <TabsTrigger value="comisiones" className="flex-1 text-xs font-medium py-1 px-2 gap-1.5">
               <FileSpreadsheet className="w-3.5 h-3.5" />
-              <span>Comisiones Red</span>
+              <span>Comisiones por Oferta</span>
             </TabsTrigger>
             <TabsTrigger value="clients" className="flex-1 text-xs font-medium py-1 px-2 gap-1.5">
               <Users className="w-3.5 h-3.5" />
@@ -499,146 +469,7 @@ export default function BulkImport() {
         </div>
 
         <TabsContent value="financieras" className="mt-4 space-y-4">
-          {/* Fichas Técnicas Oficiales SOC Banner Card */}
-          <Card className="border border-primary/25 bg-gradient-to-r from-primary/5 via-card to-secondary/5 shadow-xs">
-            <CardHeader className="py-3 px-4 sm:px-5 border-b border-primary/10">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                <div className="flex items-center gap-2.5">
-                  <div className="p-1.5 rounded-md bg-primary/10 text-primary">
-                    <Building2 className="w-4 h-4" />
-                  </div>
-                  <div>
-                    <CardTitle className="text-sm sm:text-base font-bold flex flex-wrap items-center gap-1.5">
-                      <span>Fichas Técnicas Financieras SOC (Oficial)</span>
-                      <Badge className="bg-emerald-500/15 text-emerald-800 dark:text-emerald-300 border-emerald-500/30 text-[10px] py-0.5">
-                        17 Financieras • 31 Productos
-                      </Badge>
-                    </CardTitle>
-                    <CardDescription className="text-xs mt-0.5">
-                      Sincroniza políticas comerciales, productos de crédito y reglas oficiales entregadas por SOC
-                    </CardDescription>
-                  </div>
-                </div>
-                <div className="flex items-center gap-2">
-                  <Badge variant="outline" className="text-[11px] text-muted-foreground border-border bg-background py-0.5">
-                    <ShieldCheck className="w-3 h-3 mr-1 text-emerald-600" />
-                    Respaldo JSON
-                  </Badge>
-                </div>
-              </div>
-            </CardHeader>
-            <CardContent className="p-4 sm:p-5 space-y-3">
-              <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5">
-                <Button
-                  onClick={() => handleSyncSoc()}
-                  disabled={isSyncingSoc}
-                  size="sm"
-                  className="bg-primary hover:bg-primary/90 text-primary-foreground font-semibold shadow-xs text-xs h-9"
-                  data-testid="button-sync-soc"
-                >
-                  {isSyncingSoc ? (
-                    <>
-                      <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />
-                      Sincronizando Fichas SOC...
-                    </>
-                  ) : (
-                    <>
-                      <Sparkles className="w-3.5 h-3.5 mr-1.5" />
-                      Sincronizar Fichas Técnicas SOC Oficial
-                    </>
-                  )}
-                </Button>
-
-                <label className="inline-flex items-center justify-center rounded-md border border-input bg-background px-3 py-1.5 text-xs font-medium ring-offset-background hover:bg-muted hover:text-accent-foreground cursor-pointer transition-colors h-9">
-                  <Upload className="w-3.5 h-3.5 mr-1.5 text-muted-foreground" />
-                  <span>Subir otra versión de Fichas SOC</span>
-                  <input
-                    type="file"
-                    accept=".xlsx,.xls"
-                    className="hidden"
-                    onChange={(e) => {
-                      const f = e.target.files?.[0];
-                      if (f) handleSyncSoc(f);
-                    }}
-                  />
-                </label>
-              </div>
-
-              {socResult && (
-                <div className="p-3 rounded-lg bg-emerald-500/10 border border-emerald-500/25 text-xs space-y-2">
-                  <div className="flex items-center gap-1.5 text-emerald-800 dark:text-emerald-300 font-bold">
-                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
-                    Sincronización de Fichas SOC Completada con Éxito
-                  </div>
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-0.5 font-mono text-muted-foreground">
-                    <div className="bg-background/90 p-2 rounded border border-border/60">
-                      <span className="text-[10px] uppercase text-muted-foreground block font-sans">Nuevas Financieras</span>
-                      <strong className="text-foreground text-xs">{socResult.createdCount}</strong>
-                    </div>
-                    <div className="bg-background/90 p-2 rounded border border-border/60">
-                      <span className="text-[10px] uppercase text-muted-foreground block font-sans">Actualizadas</span>
-                      <strong className="text-foreground text-xs">{socResult.updatedCount}</strong>
-                    </div>
-                    <div className="bg-background/90 p-2 rounded border border-border/60">
-                      <span className="text-[10px] uppercase text-muted-foreground block font-sans">Productos Vinculados</span>
-                      <strong className="text-foreground text-xs">{socResult.totalProductsCount}</strong>
-                    </div>
-                    <div className="bg-background/90 p-2 rounded border border-border/60 truncate" title={socResult.backupPath}>
-                      <span className="text-[10px] uppercase text-muted-foreground block font-sans">Archivo de Respaldo</span>
-                      <span className="text-[10px] text-muted-foreground truncate block">{socResult.backupPath?.split(/[\\/]/).pop()}</span>
-                    </div>
-                  </div>
-                </div>
-              )}
-            </CardContent>
-          </Card>
-
-          <div className="grid gap-4 lg:grid-cols-2">
-            <Card className="border border-border/80 shadow-xs flex flex-col justify-between">
-              <CardHeader className="py-3 px-4 sm:px-5 border-b border-border/60">
-                <CardTitle className="text-sm font-semibold flex items-center gap-2">
-                  <Download className="w-4 h-4 text-primary" />
-                  Template de Financieras
-                </CardTitle>
-                <CardDescription className="text-xs">
-                  Plantilla oficial para cargar financieras con reglas de matching y comisiones
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="p-4 sm:p-5 space-y-3.5 flex-1 flex flex-col justify-between">
-                <div className="bg-primary/5 border border-primary/15 rounded-lg p-3 text-xs space-y-2">
-                  <p className="font-semibold text-foreground flex items-center gap-1.5">
-                    <Sparkles className="w-3.5 h-3.5 text-primary" />
-                    Reglas de Matching y Comisiones Incluidas:
-                  </p>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px]">
-                    <div className="bg-background/80 p-2 rounded border border-border/60">
-                      <p className="font-semibold text-foreground mb-0.5">🎯 Criterios de Matching (18 campos):</p>
-                      <p className="text-muted-foreground leading-relaxed">
-                        Buró PF, PM y Accionista, ingresos, facturación TPV, tolerancia, aval, CIEC y estados fin.
-                      </p>
-                    </div>
-                    <div className="bg-background/80 p-2 rounded border border-border/60">
-                      <p className="font-semibold text-foreground mb-0.5">⚙️ Producto y Comisiones:</p>
-                      <p className="text-muted-foreground leading-relaxed">
-                        Montos, plazos, tasas y comisiones para Super Admin, Broker y Master.
-                      </p>
-                    </div>
-                  </div>
-                  <p className="text-[10.5px] text-muted-foreground italic">
-                    💡 Si la financiera ya existe, se actualizan sus políticas y productos sin duplicar registros.
-                  </p>
-                </div>
-                <Button 
-                  onClick={() => handleDownloadTemplate('financieras')}
-                  className="w-full h-9 text-xs font-medium"
-                  variant="outline"
-                >
-                  <Download className="w-3.5 h-3.5 mr-1.5" />
-                  Descargar Template de Financieras
-                </Button>
-              </CardContent>
-            </Card>
-
+          <div className="max-w-5xl">
             <Card className="border border-border/80 shadow-xs flex flex-col justify-between">
               <CardHeader className="py-3 px-4 sm:px-5 border-b border-border/60">
                 <CardTitle className="text-sm font-semibold flex items-center gap-2">
@@ -646,7 +477,7 @@ export default function BulkImport() {
                   Cargar Archivo Excel
                 </CardTitle>
                 <CardDescription className="text-xs">
-                  Sube el archivo procesado para validar e importar las instituciones
+                  Selecciona la V5 para validar estructura, perfiles y coincidencias; no modifica la base de datos.
                 </CardDescription>
               </CardHeader>
               <CardContent className="p-4 sm:p-5 space-y-3.5 flex-1 flex flex-col justify-between">
@@ -677,40 +508,58 @@ export default function BulkImport() {
                 {financierasPreview && (
                   <>
                     <PreviewTable preview={financierasPreview} />
-                    <div className="flex gap-2 pt-1">
-                      <Button
-                        onClick={() => {
-                          setFinancierasFile(null);
-                          setFinancierasPreview(null);
-                        }}
-                        variant="outline"
-                        size="sm"
-                        className="flex-1 h-9 text-xs"
-                      >
-                        Cancelar
-                      </Button>
-                      <Button
-                        onClick={() => importFinancierasMutation.mutate()}
-                        disabled={importFinancierasMutation.isPending}
-                        size="sm"
-                        className="flex-1 h-9 text-xs font-semibold"
-                      >
-                        {importFinancierasMutation.isPending ? (
-                          <>
-                            <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />
-                            Importando...
-                          </>
-                        ) : (
-                          <>
-                            <Upload className="w-3.5 h-3.5 mr-1.5" />
-                            Importar {financierasPreview.totalRows} Registros
-                          </>
-                        )}
+                    <div className="rounded-md border border-border p-3 text-xs space-y-1">
+                      <p className="font-semibold">Coincidencias: {financierasV5Match.filter(m => m.action === 'existing_offer').length} ofertas existentes; {financierasV5Match.filter(m => m.action === 'new_offer' || m.action === 'new_institution_and_offer').length} por crear.</p>
+                      {financierasV5Match.length > 0 && financierasV5Match.every(m => m.action === 'existing_offer') && (
+                        <p>Completará únicamente campos técnicos de origen que falten en los borradores existentes, sin reemplazar los valores editados ni las comisiones ya importadas.</p>
+                      )}
+                      <p>Observaciones: {financierasV5Issues.length} (las advertencias informativas no bloquean).</p>
+                      {plannedV5Families.length > 0 && (
+                        <p className="font-medium text-foreground">
+                          Al confirmar se prepararán las familias aprobadas que faltan en {environmentLabel}:
+                          {' '}{plannedV5Families.join(', ')}. No se crearán productos duplicados.
+                        </p>
+                      )}
+                      {financierasV5Issues.slice(0, 16).map((issue, i) =>
+                        <p key={i} className={issue.level === 'error' ? 'text-destructive' : 'text-muted-foreground'}>
+                          Fila {issue.row} · {issue.field}: {issue.message}
+                        </p>
+                      )}
+                    </div>
+                    <div className="space-y-3 border-t border-border pt-4">
+                      {appliedFinancieras ? (
+                        <p role="status" className="text-sm font-medium text-emerald-700">
+                          Actualización completada en {environmentLabel}. No hay otra confirmación pendiente.
+                        </p>
+                      ) : canApplyFinancieras ? (
+                        <Button size="lg" className="w-full text-sm font-semibold" disabled={applyingFinancieras}
+                          onClick={applyFinancierasV5}>
+                          {applyingFinancieras ? "Aplicando cambios en borradores..." :
+                            (financierasV5Match.length > 0 &&
+                             financierasV5Match.every(m => m.action === "existing_offer")
+                              ? "Completar datos faltantes de las ofertas existentes"
+                              : `Confirmar importación de ofertas en ${environmentLabel}`)}
+                        </Button>
+                      ) : (
+                        <p role="alert" className="text-sm text-destructive">
+                          No se puede confirmar todavía. Revisa los errores del catálogo y vuelve a previsualizar.
+                        </p>
+                      )}
+                      <p className="text-xs text-muted-foreground">
+                        En {environmentLabel}, las ofertas quedan en borrador. Las comisiones y la publicación se realizan por separado.
+                      </p>
+                      <Button onClick={() => { setFinancierasFile(null); setFinancierasPreview(null);
+                        setFinancierasV5Issues([]); setFinancierasV5Match([]); setPlannedV5Families([]);
+                        setCanApplyFinancieras(false); setAppliedFinancieras(null); }} variant="outline" size="sm">
+                        {appliedFinancieras ? "Limpiar selección" : "Cancelar"}
                       </Button>
                     </div>
                   </>
                 )}
                 
+                {appliedFinancieras && (
+                  <Alert><CheckCircle2 className="h-4 w-4" /><AlertDescription>{appliedFinancieras}</AlertDescription></Alert>
+                )}
                 {financierasResult && (
                   <>
                     <ErrorList result={financierasResult} />
@@ -864,7 +713,7 @@ export default function BulkImport() {
         </TabsContent>
 
         <TabsContent value="comisiones" className="mt-4">
-          <CommissionBulkUploader />
+          <CommissionMasterV5Preview />
         </TabsContent>
       </Tabs>
       </main>

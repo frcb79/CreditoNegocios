@@ -23,9 +23,9 @@ import { useAuth } from "@/hooks/useAuth";
 import { getStatusLabel, getStatusBadgeClass } from "@/lib/statusConfig";
 import { formatDistanceToNow, format } from "date-fns";
 import { es } from "date-fns/locale";
-import CommissionBulkUploader from "@/components/Commissions/CommissionBulkUploader";
 import { cn } from "@/lib/utils";
 import { ContextualHelpLink } from "@/components/Help/ContextualHelpLink";
+import CommissionOfferSchemesModal from "@/components/Commissions/CommissionOfferSchemesModal";
 import { 
   Search, 
   Clock, 
@@ -104,9 +104,8 @@ export default function Commissions() {
   const [viewingCommission, setViewingCommission] = useState<any | null>(null);
   const [accountNumber, setAccountNumber] = useState("");
   const [showRatesModal, setShowRatesModal] = useState(false);
-  const [ratesSearchTerm, setRatesSearchTerm] = useState("");
   const [, setLocation] = useLocation();
-  const [activeTab, setActiveTab] = useState<'commissions' | 'sobretasa' | 'importar-comisiones'>('commissions');
+  const [activeTab, setActiveTab] = useState<'commissions' | 'sobretasa'>('commissions');
   
   // Bloque 6: Subpestañas operativas de Super Admin
   const [adminSubTab, setAdminSubTab] = useState<'por_aprobar' | 'dispersion' | 'historial'>('por_aprobar');
@@ -151,15 +150,6 @@ export default function Commissions() {
   const needsBankSetup = (user?.role === 'broker' || user?.role === 'master_broker') && 
     !user?.clabe && 
     (commissions.some(c => c.status === 'pending') || false);
-
-  const { data: financialInstitutions = [] } = useQuery<any[]>({
-    queryKey: ["/api/financial-institutions"],
-  });
-
-  const activeInstitutions = financialInstitutions.filter((f: any) => f.isActive !== false);
-  const filteredInstitutions = activeInstitutions.filter((f: any) =>
-    (f.name || "").toLowerCase().includes(ratesSearchTerm.toLowerCase())
-  );
 
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -692,15 +682,13 @@ export default function Commissions() {
                 <Percent className="w-4 h-4 mr-2" />
                 Control de Sobretasa (Financieras)
               </Button>
-              <Button
-                variant={activeTab === 'importar-comisiones' ? 'default' : 'outline'}
-                size="sm"
-                onClick={() => setActiveTab('importar-comisiones')}
-                className={activeTab === 'importar-comisiones' ? 'bg-blue-700 text-white hover:bg-blue-800' : 'text-blue-800 border-blue-300'}
-              >
-                <FileSpreadsheet className="w-4 h-4 mr-2" />
-                Carga Masiva de Comisiones (Excel)
-              </Button>
+              {user?.role === 'super_admin' && (
+                <Button variant="outline" size="sm" onClick={() => setLocation('/importacion-masiva?tab=comisiones')}
+                  className="text-blue-800 border-blue-300">
+                  <FileSpreadsheet className="w-4 h-4 mr-2" />
+                  Importar comisiones por oferta
+                </Button>
+              )}
             </div>
           )}
 
@@ -1071,16 +1059,18 @@ export default function Commissions() {
                     </div>
 
                     <div className="flex items-center gap-2 self-end sm:self-auto">
-                      <Button 
-                        variant="outline"
-                        size="sm"
-                        className="h-9 text-xs border-slate-200 text-slate-700 hover:bg-slate-50"
-                        onClick={() => setShowRatesModal(true)}
-                        data-testid="button-view-commission-rates"
-                      >
-                        <Layers className="w-3.5 h-3.5 mr-1.5 text-slate-500" />
-                        Esquema de Comisiones
-                      </Button>
+                      {user?.role === 'super_admin' && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="h-9 text-xs border-slate-200 text-slate-700 hover:bg-slate-50"
+                          onClick={() => setShowRatesModal(true)}
+                          data-testid="button-view-commission-rates"
+                        >
+                          <Layers className="w-3.5 h-3.5 mr-1.5 text-slate-500" />
+                          Esquemas por Oferta
+                        </Button>
+                      )}
 
                       <Button 
                         size="sm"
@@ -1822,151 +1812,12 @@ export default function Commissions() {
             </div>
           ) : null}
 
-          {/* Vista de Carga Masiva de Comisiones para Super Admin */}
-          {activeTab === 'importar-comisiones' && (user?.role === 'admin' || user?.role === 'super_admin') && (
-            <CommissionBulkUploader />
-          )}
         </main>
 
-        {/* Modal de Esquema de Comisiones por Financiera */}
-        <Dialog open={showRatesModal} onOpenChange={setShowRatesModal}>
-          <DialogContent className="max-w-4xl w-[95vw] sm:w-full max-h-[85vh] flex flex-col">
-            <DialogHeader>
-              <DialogTitle className="text-xl font-bold flex items-center gap-2">
-                <Percent className="w-5 h-5 text-primary" />
-                Esquema de Porcentajes de Comisión por Financiera
-              </DialogTitle>
-            </DialogHeader>
-
-            <div className="space-y-4 flex-1 overflow-hidden flex flex-col pt-2">
-              <div className="flex items-center justify-between gap-4">
-                <Input
-                  placeholder="Buscar financiera..."
-                  value={ratesSearchTerm}
-                  onChange={(e) => setRatesSearchTerm(e.target.value)}
-                  className="max-w-xs"
-                />
-                <Badge variant="outline" className="text-xs bg-gray-50">
-                  Rol activo: <span className="font-semibold ml-1 capitalize">{user?.role?.replace('_', ' ')}</span>
-                </Badge>
-              </div>
-
-              <div className="flex-1 overflow-y-auto border rounded-lg">
-                <table className="w-full min-w-[700px] text-sm text-left border-collapse">
-                  <thead className="bg-gray-100 text-gray-700 text-xs font-semibold sticky top-0 uppercase">
-                    <tr>
-                      <th className="p-3 border-b">Financiera</th>
-                      {(user?.role === 'admin' || user?.role === 'super_admin') && (
-                        <>
-                          <th className="p-3 border-b text-center bg-blue-50 text-blue-900">Total F.</th>
-                          <th className="p-3 border-b text-center bg-blue-50 text-blue-900">Apertura F.</th>
-                          <th className="p-3 border-b text-center bg-blue-50 text-blue-900">Sobretasa F.</th>
-                          <th className="p-3 border-b text-center bg-blue-50 text-blue-900">Renovación F.</th>
-                        </>
-                      )}
-                      {(user?.role === 'master_broker' || user?.role === 'admin' || user?.role === 'super_admin') && (
-                        <>
-                          {(user?.role === 'admin' || user?.role === 'super_admin') && (
-                            <th className="p-3 border-b text-center bg-green-50 text-green-900">Total MB</th>
-                          )}
-                          <th className="p-3 border-b text-center bg-green-50 text-green-900">Apertura MB</th>
-                          {(user?.role === 'admin' || user?.role === 'super_admin') && (
-                            <th className="p-3 border-b text-center bg-green-50 text-green-900">Sobretasa MB</th>
-                          )}
-                          <th className="p-3 border-b text-center bg-green-50 text-green-900">Renovación MB</th>
-                        </>
-                      )}
-                      <th className="p-3 border-b text-center bg-purple-50 text-purple-900">Apertura Broker</th>
-                      {(user?.role === 'admin' || user?.role === 'super_admin') && (
-                        <th className="p-3 border-b text-center bg-purple-50 text-purple-900">Sobretasa Broker</th>
-                      )}
-                      <th className="p-3 border-b text-center bg-purple-50 text-purple-900">Renovación Broker</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-200">
-                    {filteredInstitutions.length === 0 ? (
-                      <tr>
-                        <td colSpan={10} className="text-center py-8 text-neutral">
-                          No hay financieras registradas
-                        </td>
-                      </tr>
-                    ) : (
-                      filteredInstitutions.map((fi: any) => {
-                        const comm = fi.commissionRates || {};
-                        const fin = comm.financiera || {};
-                        const mb = comm.masterBroker || {};
-                        const brk = comm.broker || {};
-
-                        return (
-                          <tr key={fi.id} className="hover:bg-gray-50/80 transition-colors">
-                            <td className="p-3 font-medium text-gray-900 whitespace-nowrap">
-                              <div className="flex items-center gap-2">
-                                <Building2 className="w-3.5 h-3.5 text-muted-foreground" />
-                                {fi.name}
-                              </div>
-                            </td>
-                            {(user?.role === 'admin' || user?.role === 'super_admin') && (
-                              <>
-                                <td className="p-3 text-center font-semibold text-blue-700 bg-blue-50/30">
-                                  {fin.total !== undefined ? `${fin.total}%` : '-'}
-                                </td>
-                                <td className="p-3 text-center text-blue-600 bg-blue-50/30">
-                                  {fin.apertura !== undefined ? `${fin.apertura}%` : '-'}
-                                </td>
-                                <td className="p-3 text-center text-blue-600 bg-blue-50/30">
-                                  {fin.sobretasa !== undefined ? `${fin.sobretasa}%` : '-'}
-                                </td>
-                                <td className="p-3 text-center text-blue-600 bg-blue-50/30">
-                                  {fin.renovacion !== undefined ? `${fin.renovacion}%` : '-'}
-                                </td>
-                              </>
-                            )}
-                            {(user?.role === 'master_broker' || user?.role === 'admin' || user?.role === 'super_admin') && (
-                              <>
-                                {(user?.role === 'admin' || user?.role === 'super_admin') && (
-                                  <td className="p-3 text-center font-semibold text-green-700 bg-green-50/30">
-                                    {mb.total !== undefined ? `${mb.total}%` : '-'}
-                                  </td>
-                                )}
-                                <td className="p-3 text-center text-green-700 font-medium bg-green-50/30">
-                                  {mb.apertura !== undefined ? `${mb.apertura}%` : '-'}
-                                </td>
-                                {(user?.role === 'admin' || user?.role === 'super_admin') && (
-                                  <td className="p-3 text-center text-green-600 bg-green-50/30">
-                                    {mb.sobretasa !== undefined ? `${mb.sobretasa}%` : '-'}
-                                  </td>
-                                )}
-                                <td className="p-3 text-center text-green-600 bg-green-50/30">
-                                  {mb.renovacion !== undefined ? `${mb.renovacion}%` : '-'}
-                                </td>
-                              </>
-                            )}
-                            <td className="p-3 text-center text-purple-700 font-semibold bg-purple-50/30">
-                              {brk.apertura !== undefined ? `${brk.apertura}%` : '-'}
-                            </td>
-                            {(user?.role === 'admin' || user?.role === 'super_admin') && (
-                              <td className="p-3 text-center text-purple-600 bg-purple-50/30">
-                                {brk.sobretasa !== undefined ? `${brk.sobretasa}%` : '-'}
-                              </td>
-                            )}
-                            <td className="p-3 text-center text-purple-600 bg-purple-50/30">
-                              {brk.renovacion !== undefined ? `${brk.renovacion}%` : '-'}
-                            </td>
-                          </tr>
-                        );
-                      })
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-            <DialogFooter className="pt-3 border-t">
-              <Button variant="outline" size="sm" onClick={() => setShowRatesModal(false)}>
-                Cerrar
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
+        {/* Los esquemas económicos se consultan por VERSIÓN de oferta y solo por Super Admin. */}
+        {user?.role === 'super_admin' && (
+          <CommissionOfferSchemesModal open={showRatesModal} onOpenChange={setShowRatesModal} />
+        )}
 
         {/* Modal de Detalle de Comisión */}
         <Dialog open={!!viewingCommission} onOpenChange={(open) => !open && setViewingCommission(null)}>

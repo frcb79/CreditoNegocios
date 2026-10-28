@@ -40,6 +40,9 @@ import {
   importCommissionsFile
 } from "./commissionImport";
 import { blockLegacyEconomicExcelImport, blockLegacyEconomicExcelType } from "./prelaunchEconomicImportGuard";
+import { previewMasterV5, type MasterV5Kind } from "./masterV5Preview";
+import { importMasterV5FinancialDrafts, importMasterV5CommissionDrafts } from "./masterV5StagingImport";
+import { planMasterV5Catalog } from "./masterV5TemplateResolver";
 import {
   parseSocExcel,
   syncSocFinancierasToDatabase
@@ -9582,6 +9585,70 @@ function maskCLABE(clabe?: string | null): string | null {
     }
   });
 
+  // Super Admin only. Aggregate read-only financial summaries from versioned offers.
+  // A legacy institution/global configuration is NOT authoritative for a versioned offer.
+  app.get('/api/institution-products/financial-summaries', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub || req.user?.id;
+      if (!(await requirePlatformRole(userId, ['super_admin']))) {
+        return res.status(403).json({ code: 'SUPER_ADMIN_REQUIRED' });
+      }
+      const { rows } = await pool.query(`
+        SELECT DISTINCT ON (institution_product_id)
+          institution_product_id AS "offerId",
+          conditions ->> 'minAmount' AS "minAmount",
+          conditions ->> 'maxAmount' AS "maxAmount",
+          conditions ->> 'minInterestRate' AS "minInterestRate",
+          conditions ->> 'maxInterestRate' AS "maxInterestRate",
+          conditions ->> 'rateSource' AS "rateSource",
+          conditions ->> 'minTermMonths' AS "minTermMonths",
+          conditions ->> 'maxTermMonths' AS "maxTermMonths"
+        FROM public.institution_product_versions
+        WHERE status IN ('draft', 'published', 'active')
+        ORDER BY institution_product_id,
+          CASE status WHEN 'draft' THEN 0 WHEN 'published' THEN 1 ELSE 2 END,
+          version_number DESC
+      `);
+      res.json(rows);
+    } catch (error) {
+      console.error('Error consulting versioned offer financial summaries:', error);
+      res.status(500).json({ message: 'No se pudieron consultar las condiciones de las ofertas' });
+    }
+  });
+
+  // Source of truth for lender economics is the offer VERSION, never the global institution record.
+  // Restricted to Super Admin: protects channel ceilings, platform margin and overrate.
+  app.get('/api/institution-products/commission-schemes', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub || req.user?.id;
+      if (!(await requirePlatformRole(userId, ['super_admin']))) {
+        return res.status(403).json({ code: 'SUPER_ADMIN_REQUIRED', message: 'Solo Super Admin puede consultar estos esquemas económicos' });
+      }
+      const { rows } = await pool.query([
+        'SELECT p.id AS "offerId", p.name AS "offerName", p.product_type AS "productType",',
+        'p.institution_id AS "institutionId", fi.name AS "institutionName",',
+        'v.version_number AS "versionNumber", v.status AS "versionStatus",',
+        "v.conditions->'commissionRates' AS \"commissionRates\",",
+        "v.conditions->>'overrateOwner' AS \"overrateOwner\"",
+        'FROM public.institution_products p',
+        'JOIN public.financial_institutions fi ON fi.id = p.institution_id',
+        'JOIN LATERAL (',
+        'SELECT ip.version_number, ip.status, ip.conditions',
+        'FROM public.institution_product_versions ip',
+        "WHERE ip.institution_product_id = p.id AND ip.status IN ('draft', 'published', 'active')",
+        "ORDER BY CASE ip.status WHEN 'draft' THEN 0 WHEN 'published' THEN 1 ELSE 2 END, ip.version_number DESC",
+        'LIMIT 1',
+        ') v ON TRUE',
+        "WHERE p.status IN ('draft', 'published')",
+        'ORDER BY fi.name, p.name, p.id',
+      ].join(' '));
+      res.json(rows);
+    } catch (error) {
+      console.error('Error consulting commission schemes by offer:', error);
+      res.status(500).json({ message: 'No se pudieron consultar comisiones por oferta' });
+    }
+  });
+
   app.get('/api/institution-products/:id', isAuthenticated, async (req: any, res) => {
     try {
       const { id } = req.params;
@@ -13234,6 +13301,109 @@ function maskCLABE(clabe?: string | null): string | null {
       } else {
         cb(new Error('Solo se permiten archivos Excel (.xlsx, .xls)'));
       }
+    }
+  });
+
+  // CN-V5: read-only master preview. Does not bypass the P1 economic import guard.
+  // Requires Super Admin because the workbook contains confidential commission data.
+  app.post('/api/import/v5/preview/:kind', isAuthenticated, requireModule('importacion'), excelUpload.single('file'), async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub || req.user?.id;
+      if (!(await requirePlatformRole(userId, ['super_admin']))) {
+        return res.status(403).json({ code: 'SUPER_ADMIN_REQUIRED', message: 'Solo Super Admin puede previsualizar el maestro V5' });
+      }
+      const kind = String(req.params.kind || '');
+      if (kind !== 'financieras' && kind !== 'comisiones') {
+        return res.status(400).json({ message: 'Tipo de carga inválido' });
+      }
+      if (!req.file?.buffer) {
+        return res.status(400).json({ message: 'Adjunta el archivo Excel' });
+      }
+      const preview = previewMasterV5(req.file.buffer, kind as MasterV5Kind);
+      const norm = (v: unknown) => String(v ?? '').trim().normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/\s+/g, ' ');
+      const institutions = await storage.getFinancialInstitutions();
+      const offers = await storage.getInstitutionProducts();
+      const matches = preview.rows.map(row => {
+        const institution = institutions.find(inst => norm(inst.name) === norm(row.financiera));
+        const matchingOffers = institution ? offers.filter(offer =>
+          offer.institutionId === institution.id && norm(offer.name || offer.customName) === norm(row.nombreOferta)) : [];
+        return {
+          row: row.row,
+          institutionId: institution?.id || null,
+          existingOfferIds: matchingOffers.map(offer => offer.id),
+          action: matchingOffers.length > 1 ? 'collision' : matchingOffers.length ? 'existing_offer' :
+            institution ? 'new_offer' : 'new_institution_and_offer',
+        };
+      });
+      // Vista previa: informar qué familias CANÓNICAS se darán de alta al confirmar,
+      // sin escribir nada todavía ni generar errores por familias faltantes.
+      const templateErrors: { row: number; field: string; level: 'error'; message: string }[] = [];
+      const catalogPlan = kind === 'financieras'
+        ? planMasterV5Catalog(await storage.getProductTemplates(), preview.rows.map(row => row.familia))
+        : { create: [], errors: [] };
+      for (const error of catalogPlan.errors) {
+        templateErrors.push({ row: 0, field: 'Catálogo de productos', level: 'error', message: error });
+      }
+      for (const match of matches) {
+        if (match.action === 'collision') templateErrors.push({
+          row: match.row, field: 'Oferta', level: 'error',
+          message: 'Existen varias ofertas con el mismo nombre en la financiera. Resolver antes de importar.',
+        });
+      }
+      const allErrors = [...preview.errors, ...templateErrors];
+      const missingCommissionOffers = kind === 'comisiones'
+        ? matches.filter(match => match.action !== 'existing_offer').length
+        : 0;
+      res.json({ ...preview, errors: allErrors, matches,
+        plannedCanonicalFamilies: catalogPlan.create.map(x => x.name),
+        prerequisite: kind === 'comisiones' && missingCommissionOffers > 0
+          ? 'Antes debes importar Financieras y Productos. Faltan ' + missingCommissionOffers +
+            ' ofertas en el catálogo; no puedes aplicar comisiones todavía.'
+          : null,
+        writable: ['staging', 'production'].includes(process.env.RAILWAY_ENVIRONMENT_NAME || '') &&
+          allErrors.length === 0 && missingCommissionOffers === 0,
+        targetEnvironment: process.env.RAILWAY_ENVIRONMENT_NAME === 'production' ? 'production' : 'staging',
+        message: allErrors.length
+          ? 'Corrige las observaciones críticas del catálogo antes de confirmar la carga. Sin escrituras.'
+          : 'Vista previa sin escrituras. Al confirmar, se crean familias canónicas faltantes y ofertas exclusivamente en borrador.' });
+    } catch (error: any) {
+      res.status(400).json({ message: error?.message || 'No se pudo analizar el maestro V5' });
+    }
+  });
+
+  // CN-V5: Protected STAGING-ONLY import into versioned drafts, never published or institution-global rates.
+  // Keep the legacy SEC-P1 import guard in place for /api/import/financieras, /commissions and /financieras-soc.
+  app.post('/api/import/v5/apply/:kind', isAuthenticated, requireModule('importacion'), excelUpload.single('file'), async (req: any, res) => {
+    try {
+      // Explicit approved rollout: both named Railway environments, never local/unknown.
+      // Separate databases; Super Admin only; drafts only; published versions unchanged.
+      const railwayEnvironment = process.env.RAILWAY_ENVIRONMENT_NAME || '';
+      if (!['staging', 'production'].includes(railwayEnvironment)) {
+        return res.status(409).json({ code: 'V5_ENV_NOT_ALLOWED', message: 'Entorno no autorizado para importar V5' });
+      }
+      const userId = req.user?.claims?.sub || req.user?.id;
+      if (!(await requirePlatformRole(userId, ['super_admin']))) {
+        return res.status(403).json({ code: 'SUPER_ADMIN_REQUIRED', message: 'Solo Super Admin puede importar el maestro V5' });
+      }
+      const kind = String(req.params.kind || '');
+      if (kind !== 'financieras' && kind !== 'comisiones') {
+        return res.status(400).json({ message: 'Tipo de carga inválido' });
+      }
+      if (!req.file?.buffer) return res.status(400).json({ message: 'Adjunta el archivo Excel' });
+      const preview = previewMasterV5(req.file.buffer, kind as MasterV5Kind);
+      if (preview.errors.length > 0) return res.status(422).json({
+        code: 'V5_VALIDATION_FAILED',
+        message: 'Hay errores de validación. No se modificó ninguna oferta.',
+        errors: preview.errors,
+      });
+      const result = kind === 'financieras'
+        ? await importMasterV5FinancialDrafts(preview, userId)
+        : await importMasterV5CommissionDrafts(preview);
+      return res.json({ success: true, result, warnings: preview.warnings,
+        message: 'Importación transaccional en ' + railwayEnvironment + ': solo borradores; ninguna publicación automática' });
+    } catch (error: any) {
+      console.error('V5 staging import failed:', error?.message || error);
+      return res.status(409).json({ code: 'V5_IMPORT_REJECTED', message: error?.message || 'No se pudo importar V5' });
     }
   });
 
