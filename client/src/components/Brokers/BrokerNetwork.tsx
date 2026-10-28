@@ -16,6 +16,7 @@ import { formatDistanceToNow } from "date-fns";
 import { es } from "date-fns/locale";
 import InviteBrokerModal from "@/components/Modals/InviteBrokerModal";
 import BulkBrokerInvitationModal from "@/components/Modals/BulkBrokerInvitationModal";
+import PendingBrokerInvitations from "@/components/Brokers/PendingBrokerInvitations";
 import MasterBrokerOversight from "@/components/Commercial/MasterBrokerOversight";
 import {
   Network,
@@ -671,6 +672,11 @@ export default function BrokerNetworkComponent() {
             <Users className="w-3.5 h-3.5" />
             Brokers Directos ({filteredDirectBrokers.length})
           </TabsTrigger>
+          {user?.role === "super_admin" && (
+            <TabsTrigger value="invitaciones_pendientes" className="flex items-center gap-2 text-xs font-semibold data-[state=active]:bg-white data-[state=active]:text-slate-900 data-[state=active]:shadow-xs rounded-lg px-4 py-1.5 text-slate-600 whitespace-nowrap">
+              <Mail className="w-3.5 h-3.5" /> Invitados pendientes
+            </TabsTrigger>
+          )}
         </TabsList>
 
         {/* 1. VISTA DE MASTER BROKERS Y SUS REDES */}
@@ -836,6 +842,11 @@ export default function BrokerNetworkComponent() {
           </Card>
         </TabsContent>
 
+        {user?.role === "super_admin" && (
+          <TabsContent value="invitaciones_pendientes" className="mt-4">
+            <PendingBrokerInvitations />
+          </TabsContent>
+        )}
       </Tabs>
 
       <InviteBrokerModal 
