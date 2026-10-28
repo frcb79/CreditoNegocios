@@ -1042,3 +1042,79 @@ export async function sendClientConsentOtpEmail(input:{
     return result.error?{success:false,error:result.error.message}:{success:true};
   } catch(e:any) {return {success:false,error:e?.message||"Error al enviar OTP"};}
 }
+
+
+/** Automatic reminders on days 3, 7 and 12. Never reuse an expired invitation link. */
+export function buildBrokerInvitationReminderEmail(
+  to: string,
+  token: string,
+  day: 3 | 7 | 12,
+  name?: string,
+  baseUrl = process.env.FRONTEND_BASE_URL,
+): { subject: string; html: string; text: string } {
+  if (!baseUrl || !/^https:\/\/[^\s]+$/i.test(baseUrl)) {
+    throw new Error("La URL segura de invitaciones no está configurada.");
+  }
+  const esc = (v: string) => v.replace(/&/g, "&amp;").replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+  const link = baseUrl.replace(/\/$/, "") + "/reset-password?token=" + encodeURIComponent(token);
+  const greeting = name?.trim() || "colaborador";
+  const variants: Record<3 | 7 | 12, { subject: string; headline: string; body: string; closing: string }> = {
+    3: {
+      subject: "Tu invitación a Crédito Negocios sigue disponible",
+      headline: "Tus próximas oportunidades pueden comenzar aquí",
+      body: "Hace unos días te invitamos a formar parte de Crédito Negocios. Tu cuenta está preparada para que explores opciones de financiamiento, administres tus oportunidades y desarrolles tu actividad comercial.",
+      closing: "Si el primer enlace venció, utiliza el nuevo botón de activación de este correo.",
+    },
+    7: {
+      subject: "¿Necesitas ayuda para activar tu acceso a Crédito Negocios?",
+      headline: "Queremos que aproveches tu invitación",
+      body: "Sabemos que el día a día puede ser intenso. Si todavía no has activado tu acceso, puedes hacerlo ahora para conocer las herramientas y oportunidades comerciales de Crédito Negocios.",
+      closing: "Si necesitas orientación, responde a este correo o escríbenos a info@creditonegocios.com.mx.",
+    },
+    12: {
+      subject: "Último recordatorio de tu invitación a Crédito Negocios",
+      headline: "Tu invitación sigue disponible",
+      body: "Queremos darte una última oportunidad de activar tu cuenta e integrarte a Crédito Negocios. Si te interesa participar, puedes completar tu registro con este enlace renovado.",
+      closing: "No recibirás más recordatorios automáticos sobre esta invitación. Nuestro equipo podrá contactarte personalmente si más adelante deseas información.",
+    },
+  };
+  const v = variants[day];
+  const html = [
+    "<!doctype html><html lang='es'><head><meta charset='utf-8'></head>",
+    "<body style='margin:0;padding:24px 10px;background:#f2f5f8;font-family:Arial,Helvetica,sans-serif;color:#18304c'>",
+    "<table role='presentation' style='max-width:600px;width:100%;margin:auto;background:white;border-radius:12px;overflow:hidden' cellpadding='0' cellspacing='0'>",
+    "<tr><td style='background:#142e4a;padding:28px 30px;color:white'>",
+    "<strong style='font-size:18px'>CRÉDITO NEGOCIOS</strong></td></tr>",
+    "<tr><td style='padding:30px'>",
+    "<p>Hola, <strong>", esc(greeting), "</strong>:</p>",
+    "<h1 style='font-size:24px;color:#142e4a;line-height:1.25'>", esc(v.headline), "</h1>",
+    "<p style='font-size:15px;line-height:1.6'>", esc(v.body), "</p>",
+    "<div style='text-align:center;margin:28px 0'>",
+    "<a href='", esc(link), "' style='background:#147d52;color:white;text-decoration:none;padding:15px 24px;border-radius:7px;font-weight:bold'>ACTIVAR MI CUENTA</a>",
+    "</div><p style='font-size:14px;line-height:1.6'>", esc(v.closing), "</p>",
+    "<p style='font-size:12px;color:#69788c'>Enlace personal, de un solo uso, válido durante 24 horas. No compartas tu enlace ni tu contraseña.</p>",
+    "<p style='font-size:13px'>Equipo Crédito Negocios</p></td></tr></table></body></html>",
+  ].join("");
+  const text = ["Hola, " + greeting, v.headline, v.body, v.closing,
+    "Activa tu cuenta: " + link,
+    "Enlace personal, de un solo uso, válido durante 24 horas. Equipo Crédito Negocios"].join("\n\n");
+  void to;
+  return { subject: v.subject, html, text };
+}
+
+export async function sendBrokerInvitationReminderEmail(
+  to: string, token: string, day: 3 | 7 | 12, name?: string,
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    if (!resend) return { success: false, error: "Servicio de correo no configurado" };
+    const letter = buildBrokerInvitationReminderEmail(to, token, day, name);
+    const result = await resend.emails.send({
+      from: FROM_EMAIL, to: [to],
+      subject: letter.subject, html: letter.html, text: letter.text,
+    });
+    return result.error ? { success: false, error: result.error.message } : { success: true };
+  } catch (error: any) {
+    return { success: false, error: error?.message || "Error al enviar recordatorio" };
+  }
+}
