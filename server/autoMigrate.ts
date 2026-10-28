@@ -883,6 +883,33 @@ export async function runAutoMigration(): Promise<void> {
       if (process.env.RAILWAY_ENVIRONMENT_NAME?.toLowerCase() === 'staging') throw error;
     }
 
+    // INV-FOLLOWUP: one row per user/day prevents duplicate automatic reminders,
+    // even when multiple Railway instances execute the scheduled job.
+    // PII remains in users; this restricted table stores only reminder audit.
+    try {
+      await client.query(`
+        CREATE TABLE IF NOT EXISTS public.broker_invitation_reminder_events (
+          user_id VARCHAR NOT NULL REFERENCES public.users(id) ON DELETE RESTRICT,
+          reminder_day SMALLINT NOT NULL CHECK(reminder_day IN (3, 7, 12)),
+          status VARCHAR(16) NOT NULL DEFAULT 'claimed'
+            CHECK(status IN ('claimed', 'sent', 'failed', 'skipped')),
+          claimed_at TIMESTAMP NOT NULL DEFAULT NOW(),
+          sent_at TIMESTAMP,
+          updated_at TIMESTAMP NOT NULL DEFAULT NOW(),
+          last_error TEXT,
+          PRIMARY KEY(user_id, reminder_day)
+        );
+        CREATE INDEX IF NOT EXISTS broker_invitation_reminder_status_idx
+          ON public.broker_invitation_reminder_events(status, claimed_at);
+        ALTER TABLE public.broker_invitation_reminder_events ENABLE ROW LEVEL SECURITY;
+      `);
+      console.log("[AutoMigrate] Broker invitation reminder audit verified");
+    } catch (error) {
+      console.error("[AutoMigrate] Broker reminder schema unavailable:", error);
+      // Do not activate the automated job without its uniqueness boundary.
+      throw error;
+    }
+
     // Repair known legacy staging drift only; never run these ALTERs on Production.
     await repairStagingSchemaOnStartup(client);
     console.log("✨ [AutoMigrate] Schema verification and user sync completed successfully!");
