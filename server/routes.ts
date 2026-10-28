@@ -6,6 +6,7 @@ import { createServer, ServerResponse, type Server } from "http";
 import { WebSocketServer, WebSocket } from "ws";
 import rateLimit from "express-rate-limit";
 import { pool } from "./db";
+import { runBrokerInvitationReminders } from "./brokerInvitationReminders";
 import { storage, type IStorage } from "./storage";
 import { canViewSubmissionByOrigin, canViewCreditByOrigin, canEditCreditByOrigin } from "./dashboardVisibility";
 import { projectCreditForRole } from "./creditResponseProjection";
@@ -8241,6 +8242,65 @@ function maskCLABE(clabe?: string | null): string | null {
     },
   }).single("file");
 
+  // Invitation follow-up is an operations list, not a platform contact export.
+  // Only Super Admin may view names, phone numbers and invitation states.
+  app.get("/api/broker-invitations/pending", isAuthenticated, async (req: any, res) => {
+    try {
+      const current = await storage.getUser(req.user?.claims?.sub || req.user?.id);
+      if (current?.role !== "super_admin") return res.status(403).json({ message: "Sólo Super Admin." });
+      const { rows } = await pool.query([
+        "WITH first_invite AS (",
+        "SELECT n.data->>'brokerId' AS user_id, MIN(n.created_at) AS invited_at",
+        "FROM public.notifications n WHERE n.type = 'broker_invitation_sent'",
+        "AND n.data->>'brokerId' IS NOT NULL GROUP BY n.data->>'brokerId'",
+        "), reminder_state AS (",
+        "SELECT user_id, ARRAY_AGG(reminder_day ORDER BY reminder_day)",
+        "FILTER (WHERE status='sent') AS sent_days,",
+        "MAX(sent_at) AS last_reminder_at,",
+        "COUNT(*) FILTER (WHERE status='failed') AS failed_reminders",
+        "FROM public.broker_invitation_reminder_events GROUP BY user_id",
+        ") SELECT u.id, u.first_name AS \"firstName\", u.last_name AS \"lastName\",",
+        "u.email, u.role, COALESCE(u.profile_data->>'phone','') AS phone,",
+        "m.email AS \"masterEmail\", fi.invited_at AS \"invitedAt\",",
+        "COALESCE(rs.sent_days, ARRAY[]::smallint[]) AS \"sentDays\",",
+        "rs.last_reminder_at AS \"lastReminderAt\",",
+        "COALESCE(rs.failed_reminders, 0) AS \"failedReminders\",",
+        "COALESCE(u.profile_data->>'invitationFollowupPaused','false')='true' AS paused",
+        "FROM first_invite fi JOIN public.users u ON u.id=fi.user_id",
+        "LEFT JOIN public.users m ON m.id=u.master_broker_id",
+        "LEFT JOIN reminder_state rs ON rs.user_id=u.id",
+        "WHERE u.role IN ('broker','master_broker')",
+        "AND u.password IS NULL AND u.is_active IS DISTINCT FROM FALSE",
+        "ORDER BY fi.invited_at ASC LIMIT 1000",
+      ].join(" "));
+      return res.json({ total: rows.length, contacts: rows });
+    } catch (error) {
+      console.error("[Invites] Unable to list pending activations", error);
+      return res.status(500).json({ message: "No se pudieron consultar los invitados pendientes" });
+    }
+  });
+
+  app.post("/api/broker-invitations/pending/:id/pause", isAuthenticated, async (req: any, res) => {
+    try {
+      const actor = await storage.getUser(req.user?.claims?.sub || req.user?.id);
+      if (actor?.role !== "super_admin") return res.status(403).json({ message: "Sólo Super Admin." });
+      if (typeof req.body?.paused !== "boolean")
+        return res.status(400).json({ message: "El campo paused debe ser booleano." });
+      const target = await storage.getUser(req.params.id);
+      if (!target || !["broker","master_broker"].includes(target.role) || target.password)
+        return res.status(404).json({ message: "Invitación pendiente no encontrada." });
+      const profile = target.profileData && typeof target.profileData === "object"
+        ? target.profileData as Record<string, unknown> : {};
+      await storage.updateUser(target.id, {
+        profileData: { ...profile, invitationFollowupPaused: req.body.paused },
+      } as any);
+      return res.json({ ok: true, paused: req.body.paused });
+    } catch (error) {
+      console.error("[Invites] Unable to change reminder suppression", error);
+      return res.status(500).json({ message: "No se pudo actualizar el seguimiento." });
+    }
+  });
+
   app.get("/api/broker-invitations/bulk/template", isAuthenticated, async (req:any,res) => {
     const user = await storage.getUser(req.user?.claims?.sub || req.user?.id);
     if(user?.role!=="super_admin") return res.status(403).json({message:"Sólo Super Admin."});
@@ -13706,6 +13766,17 @@ function maskCLABE(clabe?: string | null): string | null {
       if (wsClients.get(userId) === ws) wsClients.delete(userId);
     });
   });
+
+  // Idempotent automatic reminders on day 3, 7 and 12 after a successful invitation.
+  // No extra payment, no account activation, no emails to activated/paused users.
+  cron.schedule("0 9 * * *", async () => {
+    try {
+      const stats = await runBrokerInvitationReminders();
+      console.log("[Invites] Daily reminder summary", stats);
+    } catch (error) {
+      console.error("[Invites] Daily reminder task failed:", error);
+    }
+  }, { timezone: "America/Mexico_City" });
 
   // Cron job for credit expiration alerts
   cron.schedule('0 9 * * *', async () => { // Daily at 9 AM
