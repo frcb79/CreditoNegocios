@@ -25,6 +25,7 @@ export default function CommissionMasterV5Preview() {
   const [preview, setPreview] = useState<Preview | null>(null);
   const [loading, setLoading] = useState(false);
   const [applying, setApplying] = useState(false);
+  const environmentLabel = typeof window !== 'undefined' && window.location.hostname.includes('staging') ? 'Staging' : 'Producción';
   const [result, setResult] = useState<string | null>(null);
   const formatPct = (value?: number): string =>
     typeof value === "number" && Number.isFinite(value)
@@ -56,7 +57,7 @@ export default function CommissionMasterV5Preview() {
 
   async function aplicar() {
     if (!file || !preview?.writable || preview.errors.length || applying) return;
-    if (!window.confirm("¿Aplicar las comisiones V5 a versiones en BORRADOR en Staging? La sobretasa será exclusiva de Crédito Negocios.")) return;
+    if (!window.confirm(`¿Aplicar las comisiones V5 a versiones en BORRADOR en ${environmentLabel}? La sobretasa será exclusiva de Crédito Negocios.`)) return;
     setApplying(true);
     try {
       const data = new FormData();
@@ -69,7 +70,7 @@ export default function CommissionMasterV5Preview() {
       setResult("Borradores actualizados: " + body.result.draftVersionsUpdated +
         "; sin cambios: " + body.result.unchanged + "; publicados: 0");
       setPreview({ ...preview, writable: false });
-      toast({ title: "Comisiones aplicadas a borradores en Staging",
+      toast({ title: "Comisiones aplicadas a borradores en " + environmentLabel,
         description: "No se alteraron tasas globales ni versiones publicadas." });
     } catch (e: any) {
       toast({ title: "Importación de comisiones rechazada", description: e.message, variant: "destructive" });
@@ -139,12 +140,12 @@ export default function CommissionMasterV5Preview() {
               </p>
             ))}
             <Alert><ShieldAlert className="h-4 w-4" /><AlertDescription>
-              La aplicación de estas condiciones solo puede realizarse en Staging,
+              La aplicación de estas condiciones se realiza en {environmentLabel},
               a ofertas en borrador. Nunca modifica versiones publicadas.
             </AlertDescription></Alert>
             {preview.writable && preview.errors.length === 0 && (
               <Button type="button" size="sm" disabled={applying} onClick={aplicar}>
-                {applying ? "Aplicando..." : "Confirmar comisiones en Staging"}
+                {applying ? "Aplicando..." : `Confirmar comisiones en ${environmentLabel}`}
               </Button>
             )}
           </div>
