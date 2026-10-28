@@ -8322,6 +8322,7 @@ function maskCLABE(clabe?: string | null): string | null {
       const invitationState = new Map<string, "already_sent" | "activated" | "not_sent">();
       // Read-only reconciliation: tell the operator which rows were already
       // delivered before offering to resume a partially processed spreadsheet.
+      if (process.env.USE_MEMORY_STORAGE !== "true") {
       const accountStates = await pool.query<{
         email: string; activated: boolean; delivered: boolean;
       }>(
@@ -8336,6 +8337,7 @@ function maskCLABE(clabe?: string | null): string | null {
       for (const item of accountStates.rows) {
         invitationState.set(item.email,
           item.activated ? "activated" : item.delivered ? "already_sent" : "not_sent");
+      }
       }
       const couponDemand = new Map<string, { count: number; row: number }>();
       // Master indicated in the Excel but not in this batch must exist already.
