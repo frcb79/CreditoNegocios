@@ -8,6 +8,7 @@ import cron from "node-cron";
 import { storage } from "../../server/storage";
 import { registerRoutes } from "../../server/routes";
 import { pool } from "../../server/db";
+import * as invitationEmail from "../../server/emailService";
 
 function template(role="Broker",masterEmail=""):Buffer{
   const wb=XLSX.utils.book_new();
@@ -57,6 +58,34 @@ describe("SEC-INVITES: bulk preview and explicit send routes",()=>{
     try{await pool.end();}catch{}
   });
   beforeEach(()=>{user=null;});
+  afterEach(()=>{jest.restoreAllMocks();});
+  it("omits a previously confirmed invitation even when its coupon is no longer valid",async()=>{
+    user=superAdmin;
+    const file=template();
+    const book=XLSX.read(file,{type:"buffer"});
+    const email=(XLSX.utils.sheet_to_json<any[]>(book.Sheets.Invitaciones,{header:1})[1])[2];
+    const previous=await storage.createUser({email,firstName:"Existing",lastName:"Invite",
+      role:"broker",password:null,isActive:true,status:"active"} as any);
+    const query=jest.spyOn(pool,"query").mockImplementation((async()=>({rows:[{id:previous.id}],rowCount:1})) as any);
+    const mail=jest.spyOn(invitationEmail,"sendAccountInvitationEmail");
+    const originalBase=process.env.FRONTEND_BASE_URL;
+    process.env.FRONTEND_BASE_URL="https://app.creditonegocios.com.mx";
+    try {
+      const response=await request(app).post("/api/broker-invitations/bulk/send")
+        .field("confirmation","ENVIAR_INVITACIONES").field("promoCode","EXPIRED-CODE")
+        .attach("file",file,"carga.xlsx");
+      expect(response.status).toBe(200);
+      expect(response.body.skipped).toBe(1);
+      expect(response.body.sent).toBe(0);
+      expect(response.body.results[0].status).toBe("skipped");
+      expect(mail).not.toHaveBeenCalled();
+      expect(query.mock.calls.every(args=>!String(args[0]).includes("14 days"))).toBe(true);
+      expect((await storage.getAllUsers()).filter(u=>u.email===email)).toHaveLength(1);
+    } finally {
+      if(originalBase===undefined)delete process.env.FRONTEND_BASE_URL;
+      else process.env.FRONTEND_BASE_URL=originalBase;
+    }
+  });
   it("requires authenticated Super Admin even for preview",async()=>{
     const file=template();
     let r=await request(app).post("/api/broker-invitations/bulk/preview").attach("file",file,"carga.xlsx");
@@ -93,6 +122,9 @@ describe("SEC-INVITES: bulk preview and explicit send routes",()=>{
     expect(response.body.ready).toBe(true);
     expect(response.body.total).toBe(1);
     expect(response.body.errors).toHaveLength(0);
+    expect(response.body.remaining).toBe(1);
+    expect(response.body.alreadyDelivered).toBe(0);
+    expect(response.body.rows[0].deliveryStatus).toBe("not_sent");
     const users=await storage.getAllUsers();
     expect(users.some(u=>u.email===response.body.rows[0].email)).toBe(false);
   });

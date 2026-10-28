@@ -1,9 +1,11 @@
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { INVITATION_FOLLOWUP_DAYS, invitationAgeDays, matchesInvitationFollowup, type InvitationFollowupFilter } from "@shared/brokerInvitationFollowup";
 import { Mail, Phone, RefreshCw, Search, UserRoundX } from "lucide-react";
 
 type InviteContact = {
@@ -14,14 +16,9 @@ type InviteContact = {
   failedReminders: number; paused: boolean;
 };
 
-function ageDays(value: string): number {
-  const date = Date.parse(value);
-  return Number.isFinite(date) ? Math.max(0, Math.floor((Date.now() - date) / 86400000)) : 0;
-}
-
 export default function PendingBrokerInvitations() {
   const [search, setSearch] = useState("");
-  const [filter, setFilter] = useState<"all" | "manual" | "paused">("all");
+  const [filter, setFilter] = useState<InvitationFollowupFilter>("all");
   const [savingId, setSavingId] = useState<string | null>(null);
   const client = useQueryClient();
   const { data, isLoading, isError, refetch } = useQuery<{ total: number; contacts: InviteContact[] }>({
@@ -33,14 +30,11 @@ export default function PendingBrokerInvitations() {
     },
     refetchInterval: 60000,
   });
-  const filtered = useMemo(() => (data?.contacts || []).filter(c => {
-    const q = search.toLocaleLowerCase("es-MX").trim();
-    const match = !q || [c.firstName,c.lastName,c.email,c.phone,c.masterEmail]
-      .some(v => (v || "").toLocaleLowerCase("es-MX").includes(q));
-    return match && (filter === "all" ||
-      (filter === "manual" && ageDays(c.invitedAt) >= 12 && !c.paused) ||
-      (filter === "paused" && c.paused));
-  }), [data, search, filter]);
+  const contacts = data?.contacts || [];
+  const now = Date.now();
+  const filtered = contacts.filter(contact => matchesInvitationFollowup(contact, filter, search, now));
+  const overdueCount = contacts.filter(contact => matchesInvitationFollowup(contact, "overdue", "", now)).length;
+  const pausedCount = contacts.filter(contact => contact.paused).length;
 
   const setPaused = async (c: InviteContact) => {
     setSavingId(c.id);
@@ -57,17 +51,16 @@ export default function PendingBrokerInvitations() {
     } finally { setSavingId(null); }
   };
 
-  const manualCount = (data?.contacts || []).filter(c=>ageDays(c.invitedAt)>=12&&!c.paused).length;
 
   return (
     <Card className="border-slate-200">
       <CardHeader className="pb-4">
         <div className="flex items-center justify-between flex-wrap gap-3">
           <div>
-            <CardTitle className="text-base">Invitados pendientes de activación</CardTitle>
+            <CardTitle className="text-base">Invitaciones pendientes de registro</CardTitle>
             <p className="text-xs text-slate-500 mt-1">
               Contactos invitados por correo que aún no han creado su contraseña.
-              Recordatorios únicos a los 3, 7 y 12 días; después, seguimiento personal.
+              Recordatorios a los 3, 7 y 12 días. A partir de 15 días, puedes identificar a quién dar seguimiento para futuras campañas.
             </p>
           </div>
           <Button type="button" size="sm" variant="outline" onClick={()=>void refetch()}>
@@ -75,8 +68,10 @@ export default function PendingBrokerInvitations() {
           </Button>
         </div>
         <div className="flex gap-2 flex-wrap pt-3">
-          <Badge variant="secondary">{data?.total || 0} sin activar</Badge>
-          <Badge variant="outline">{manualCount} seguimiento personal</Badge>
+          {!isLoading && !isError && <>
+            <Badge variant="secondary">{data?.total || 0} sin registrar</Badge>
+            <Badge variant="outline">{overdueCount} con 15 días o más</Badge>
+          </>}
         </div>
         <div className="flex items-center gap-2 flex-wrap pt-2">
           <div className="relative flex-1 min-w-[230px]">
@@ -84,9 +79,13 @@ export default function PendingBrokerInvitations() {
             <Input value={search} onChange={event=>setSearch(event.target.value)}
               className="pl-9 h-9" placeholder="Buscar persona, correo, teléfono o Master" />
           </div>
-          <Button variant={filter==="all"?"default":"outline"} size="sm" onClick={()=>setFilter("all")}>Todos</Button>
-          <Button variant={filter==="manual"?"default":"outline"} size="sm" onClick={()=>setFilter("manual")}>Seguimiento manual</Button>
-          <Button variant={filter==="paused"?"default":"outline"} size="sm" onClick={()=>setFilter("paused")}>No contactar</Button>
+          <Tabs value={filter} onValueChange={value=>setFilter(value as InvitationFollowupFilter)}>
+            <TabsList aria-label="Seguimiento de invitaciones" className="h-auto flex flex-wrap">
+              <TabsTrigger value="all" data-testid="filter-invites-all">Todos los pendientes ({contacts.length})</TabsTrigger>
+              <TabsTrigger value="overdue" data-testid="filter-invites-overdue">15 días o más ({overdueCount})</TabsTrigger>
+              <TabsTrigger value="paused" data-testid="filter-invites-paused">No contactar ({pausedCount})</TabsTrigger>
+            </TabsList>
+          </Tabs>
         </div>
       </CardHeader>
       <CardContent>
@@ -110,8 +109,8 @@ export default function PendingBrokerInvitations() {
               </thead>
               <tbody className="divide-y">
                 {filtered.map(c => {
-                  const days = ageDays(c.invitedAt);
-                  const manual = days >= 12 && !c.paused;
+                  const days = invitationAgeDays(c.invitedAt, now);
+                  const manual = days >= INVITATION_FOLLOWUP_DAYS && !c.paused;
                   return (
                     <tr key={c.id} className="align-top">
                       <td className="p-3 font-medium text-slate-800">
@@ -122,10 +121,10 @@ export default function PendingBrokerInvitations() {
                         <a className="flex items-center gap-1 text-blue-700 hover:underline" href={"mailto:"+c.email}>
                           <Mail className="w-3 h-3" />{c.email}
                         </a>
-                        {c.phone && <a className="flex items-center gap-1 text-slate-700 mt-2"
+                        {c.phone ? <a className="flex items-center gap-1 text-slate-700 mt-2"
                           href={"tel:"+c.phone.replace(/[^0-9+]/g,"")}>
                           <Phone className="w-3 h-3" />{c.phone}
-                        </a>}
+                        </a> : <span className="block mt-2 text-slate-400">Sin teléfono registrado</span>}
                       </td>
                       <td className="p-3 text-slate-600">{c.masterEmail || "Directo / sin Master"}</td>
                       <td className="p-3 text-slate-600">
@@ -138,7 +137,7 @@ export default function PendingBrokerInvitations() {
                       <td className="p-3">
                         <Badge variant="outline" className={c.paused?"text-slate-500":manual?
                           "text-amber-700 border-amber-300":"text-blue-700 border-blue-200"}>
-                          {c.paused?"Sin más correos":manual?"Seguimiento manual":"Pendiente de activación"}
+                          {c.paused?"Sin más correos":manual?"15 días o más sin registro":"Pendiente de registro"}
                         </Badge>
                       </td>
                       <td className="p-3">
@@ -157,7 +156,8 @@ export default function PendingBrokerInvitations() {
         )}
         <p className="text-[11px] text-slate-500 mt-3">
           Esta tabla no representa correos pendientes de envío del Excel. Muestra cuentas ya invitadas
-          que todavía no han completado su activación. No se envían correos desde esta vista.
+          que todavía no han creado su contraseña. El grupo de 15 días o más incluye los contactos
+          marcados como «No contactar», que conservan esa restricción. Esta vista no inicia campañas ni envía correos.
         </p>
       </CardContent>
     </Card>
