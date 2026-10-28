@@ -111,9 +111,13 @@ export function importedCriteria(req:any, cond:any, inputClient:any, credit:any)
     add("annualIncome","Ingreso anual mínimo",annual,raw??null,status,status==="MISSING_DATA"?"Ingreso anual ausente o rango insuficiente para confirmar el umbral.":status==="FAILED"?"El ingreso anual no alcanza el mínimo.":"El ingreso anual alcanza el mínimo.");
   }else if(!present(annual) && present(req.minAnnualIncomeSource) && !["no aplica","n/a"].includes(textKey(req.minAnnualIncomeSource)))pending("annualIncome","Ingreso anual variable",req.minAnnualIncomeSource);
   if(!present(cond.minMonthlyRevenue) && present(req.minMonthlyIncomeSource) && !["no aplica","n/a"].includes(textKey(req.minMonthlyIncomeSource)))pending("monthlyRevenue","Ingreso mensual variable",req.minMonthlyIncomeSource);
-  for(const [code,key,label] of [["requiresCiec","satCiec","Conexión SAT (CIEC)"],["requiresFinancialStatements","estadosFinancieros","Estados financieros"]]){
+  if(!present(cond.minCompanyAgeMonths) && present(req.minMonthsInBusinessSource) && !["no aplica","n/a"].includes(textKey(req.minMonthsInBusinessSource)))pending("companyAge","Antigüedad variable",req.minMonthsInBusinessSource);
+  for(const [code,key,label,header] of [["requiresCiec","satCiec","Conexión SAT (CIEC)","Requiere CIEC"],["requiresFinancialStatements","estadosFinancieros","Estados financieros","Estados financieros"]]){
     if(req[code]===true){const actual=client[key] ?? credit?.[key],value=yesNo(actual);add(code,label,true,actual??null,value===null?"MISSING_DATA":value?"PASSED":"FAILED",value===null?"Falta confirmar este requisito en el expediente.":value?"El expediente declara contar con el requisito.":"El expediente declara no contar con el requisito exigido.");}
-    else if(present(req[code]) && req[code]!==false)pending(code,label,req[code]);
+    else if(Object.prototype.hasOwnProperty.call(req,code) && req[code]!==false) {
+      const source=cond.sourceTechnicalFields?.[header];
+      if(!["no aplica","n/a"].includes(textKey(source)))pending(code,label,source || req[code] || "Sin definición en la fuente");
+    }
   }
   if(present(req.satOpinion) && !["no aplica","n/a"].includes(textKey(req.satOpinion))){
     const expected=textKey(req.satOpinion),actual=client.opinionCumplimiento ?? credit?.opinionCumplimiento,key=textKey(actual);
@@ -129,6 +133,7 @@ export function importedCriteria(req:any, cond:any, inputClient:any, credit:any)
     else if(bureau.hasDelinquencies===true && req.allowsArrears && ["no aplica","sin limite","sin restriccion"].includes(policy))status="PASSED";
     add("arrearsPolicy","Tolerancia de atrasos",{allowsArrears:req.allowsArrears,policy:req.arrearsPolicy},bureau.rawStatus,status,status==="FAILED"?"La oferta no admite atrasos y el cliente declara incidencias.":status==="PASSED"?"El historial declarado cumple la política estructurada de atrasos.":"Se requiere verificar atrasos y los días o importes permitidos; el texto libre no acredita el umbral.");
   }
+  if(Object.prototype.hasOwnProperty.call(req,"allowsArrears") && req.allowsArrears==null)pending("arrearsPolicy","Política de atrasos sin definición",cond.sourceTechnicalFields?.["Permite atrasos"] || "Sin definición en la fuente");
   if(present(req.governmentSalesLimit)){
     const policy=textKey(req.governmentSalesLimit),actual=client.participacionVentasGobierno ?? credit?.participacionVentasGobierno,interval=percentageInterval(actual);
     const less=policy.match(/^(?:menor a|menos de|<)\s*(\d+(?:\.\d+)?)%$/),zero=policy==="0" || policy==="0%";

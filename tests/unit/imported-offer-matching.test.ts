@@ -95,4 +95,10 @@ describe('Published imported requirements: one explicit three-state result per m
   }
  });
 
+ it('never treats undefined imported boolean policies or variable age as absence of a requirement',()=>{
+  const result=evaluateOfferCompatibility(app(),offer({requiresCiec:null,requiresFinancialStatements:null,allowsArrears:null,minMonthsInBusiness:null,minMonthsInBusinessSource:'Según operación'}));
+  for(const code of ['requiresCiec','requiresFinancialStatements','arrearsPolicy','companyAge'])expect(find(result,code).status).toBe('MISSING_DATA');
+  expect(result.status).toBe('INSUFFICIENT_DATA');
+ });
+
 });
