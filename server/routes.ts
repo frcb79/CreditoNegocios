@@ -1335,6 +1335,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
     message: { message: "Demasiados intentos. Intenta de nuevo en 15 minutos." },
   });
 
+  // Super Admin bulk Excel: one browser request per small chunk, never one
+  // long-running request for 44+ provider email calls. Separate from auth rate limit.
+  const bulkBrokerInvitationLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000,
+    max: 24,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: { message: "Demasiados lotes de invitaciones. Intenta nuevamente más adelante." },
+  });
+
   const publicLeadLimiter = rateLimit({
     windowMs: 15 * 60 * 1000,
     max: 10,
@@ -8285,7 +8295,7 @@ function maskCLABE(clabe?: string | null): string | null {
     }
   });
 
-  app.post("/api/broker-invitations/bulk/send", isAuthenticated, authMutationLimiter,
+  app.post("/api/broker-invitations/bulk/send", isAuthenticated, bulkBrokerInvitationLimiter,
     invitationExcelUpload, async (req:any,res) => {
     try {
       const userId = req.user?.claims?.sub || req.user?.id;
@@ -8295,10 +8305,18 @@ function maskCLABE(clabe?: string | null): string | null {
       if (!req.file?.buffer) return res.status(400).json({message:"Adjunta la plantilla XLSX."});
       validateInvitationTransport();
       const parsed = parseBrokerInvitationExcel(req.file.buffer);
+      const ordered = [...parsed.rows.filter(x=>x.role==="master_broker"), ...parsed.rows.filter(x=>x.role==="broker")];
+      const offset = Number(req.body?.offset ?? 0);
+      const limit = Number(req.body?.limit ?? 6);
+      if (!Number.isSafeInteger(offset) || offset < 0 || offset >= ordered.length ||
+          !Number.isSafeInteger(limit) || limit < 1 || limit > 6) {
+        return res.status(400).json({ message: "Lote inválido: máximo seis invitaciones por petición." });
+      }
+      const selectedRows = ordered.slice(offset, offset + limit);
       const errors = [...parsed.errors];
       const couponDemand = new Map<string, { count: number; row: number }>();
       const batchMasters = new Set(parsed.rows.filter(r=>r.role==="master_broker").map(r=>r.email));
-      for(const row of parsed.rows) {
+      for(const row of selectedRows) {
         try {
           const coupon = await resolveOptionalInvitationPromo(
             row.promoCode || (typeof req.body?.promoCode === "string" ? req.body.promoCode : null), row.role);
@@ -8309,13 +8327,9 @@ function maskCLABE(clabe?: string | null): string | null {
         } catch (error: any) {
           errors.push({row:row.row,field:"codigo_promocional",message:error.message || "Cupón inválido"});
         }
-        // A completed account is not an invitation target. Fail the whole
-        // preflight BEFORE sending any emails or creating new accounts.
-        const existing = await storage.getUserByEmail(row.email);
-        if (existing?.password) {
-          errors.push({row:row.row,field:"correo",
-            message:"La cuenta ya está activada. No se enviará otra invitación."});
-        }
+        // Activated accounts are skipped, never sent again. This is essential
+        // when resuming a partially processed Excel after a browser 502.
+        // A mismatched unactivated account is still rejected by the canonical dispatch.
         if (row.masterEmail && !batchMasters.has(row.masterEmail)) {
           const master = await storage.getUserByEmail(row.masterEmail);
           if (!master || master.role !== "master_broker" || master.isActive === false)
@@ -8332,13 +8346,26 @@ function maskCLABE(clabe?: string | null): string | null {
       // ALL row/association validation before first persistent creation/email.
       if(errors.length) return res.status(422).json({message:"Corrige la plantilla antes de enviar.",errors});
 
-      const results: Array<{row:number;email:string;role:string;status:"sent"|"pending"|"error";message:string}> = [];
+      const results: Array<{row:number;email:string;role:string;status:"sent"|"pending"|"error"|"skipped";message:string}> = [];
       const masters = new Map<string,string>();
-      // First Masters, then Brokers, while preserving source row number.
-      const ordered = [...parsed.rows.filter(x=>x.role==="master_broker"),
-        ...parsed.rows.filter(x=>x.role==="broker")];
-      for (const row of ordered) {
+      // Masters precede Brokers; each request is bounded to six rows.
+      for (const row of selectedRows) {
         try {
+          const existing = await storage.getUserByEmail(row.email);
+          if (existing) {
+            const alreadyDelivered = await pool.query(
+              "SELECT 1 FROM public.notifications WHERE type = $1 AND data->>'brokerId' = $2 AND created_at >= NOW() - INTERVAL '14 days' LIMIT 1",
+              ["broker_invitation_sent", existing.id],
+            );
+            if (existing.password || alreadyDelivered.rowCount) {
+              if (row.role === "master_broker") masters.set(row.email, existing.id);
+              results.push({row: row.row, email: row.email, role: row.role,
+                status: "skipped", message: existing.password
+                  ? "Cuenta ya activada; no se reenvía."
+                  : "Invitación enviada anteriormente; no se duplica."});
+              continue;
+            }
+          }
           let masterBrokerId: string | null = null;
           if (row.masterEmail) {
             masterBrokerId = masters.get(row.masterEmail) || null;
@@ -8365,7 +8392,9 @@ function maskCLABE(clabe?: string | null): string | null {
       const sent=results.filter(r=>r.status==="sent").length;
       const pending=results.filter(r=>r.status==="pending").length;
       const failed=results.filter(r=>r.status==="error").length;
-      return res.json({total:results.length,sent,pending,failed,
+      const skipped=results.filter(r=>r.status==="skipped").length;
+      return res.json({total:results.length,sourceTotal:ordered.length,sent,pending,failed,skipped,
+        nextOffset:offset+selectedRows.length,hasMore:offset+selectedRows.length<ordered.length,
         results:results.sort((a,b)=>a.row-b.row)});
     } catch(error:any) {
       if(error instanceof BrokerInvitationError) return res.status(error.statusCode).json({message:error.message});
