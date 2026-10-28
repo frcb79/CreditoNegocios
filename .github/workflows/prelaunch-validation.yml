@@ -16,6 +16,7 @@ on:
       - 'fix/tour-anclaje-contextual-*'
       - 'feat/importador-maestro-v5-*'
       - 'fix/invitaciones-lotes-seguimiento-*'
+      - 'fix/financieras-auditoria-*'
   workflow_dispatch:
 concurrency:
   group: prelaunch-${{ github.ref }}
@@ -45,6 +46,8 @@ jobs:
         run: npm run build
       - name: Broker network component interactions (isolated DOM)
         run: node scripts/test-broker-network-ui.cjs
+      - name: Financial offers and administrative activity component interactions (isolated DOM)
+        run: node scripts/test-financieras-activity-ui.cjs
       - name: Master V5 preview unit tests
         run: npx jest -c jest.config.cjs --runInBand tests/unit/master-v5-preview.test.ts tests/unit/master-v5-template-resolver.test.ts
 
@@ -126,6 +129,8 @@ jobs:
             tests/unit/broker-invitation-http.test.ts
             tests/unit/rbac.test.ts
             tests/unit/settings-audit-role-ux.test.ts
+            tests/unit/financieras-activity-http.test.ts
+            tests/unit/institution-offers-versioning.test.ts
             tests/unit/broker-legal-ux-postlaunch.test.ts
             tests/unit/admin-legal-evidence-http.test.ts
             tests/unit/mortgage-family-consolidation.test.ts

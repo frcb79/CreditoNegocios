@@ -1,4 +1,4 @@
-import { eq, and, or, inArray, lt, desc } from "drizzle-orm";
+import { eq, ne, and, or, inArray, lt, desc } from "drizzle-orm";
 import {
   commercialOpportunities,
   commercialActivities,
@@ -1586,7 +1586,7 @@ export class MockCommercialOpportunityStorage implements ICommercialOpportunityS
     entityId?: string;
     limit?: number;
   }): Promise<CommercialAuditLog[]> {
-    let result = [...this.auditLogs];
+    let result = this.auditLogs.filter(log => log.entityType !== "administrative_activity");
     if (filter?.entityType) result = result.filter((l) => l.entityType === filter.entityType);
     if (filter?.entityId) result = result.filter((l) => l.entityId === filter.entityId);
     return result.slice(0, filter?.limit || 100);
@@ -1829,25 +1829,17 @@ export class DrizzleCommercialOpportunityStorage implements ICommercialOpportuni
     entityId?: string;
     limit?: number;
   }): Promise<CommercialAuditLog[]> {
-    const conditions: any[] = [];
+    const conditions: any[] = [ne(commercialAuditLogs.entityType, "administrative_activity")];
     if (filter?.entityType) conditions.push(eq(commercialAuditLogs.entityType, filter.entityType));
     if (filter?.entityId) conditions.push(eq(commercialAuditLogs.entityId, filter.entityId));
     const limit = filter?.limit || 100;
 
-    if (conditions.length > 0) {
-      return await this.db
-        .select()
-        .from(commercialAuditLogs)
-        .where(and(...conditions))
-        .orderBy(desc(commercialAuditLogs.createdAt))
-        .limit(limit);
-    }
-    return await this.db
-      .select()
-      .from(commercialAuditLogs)
+    return await this.db.select().from(commercialAuditLogs)
+      .where(and(...conditions))
       .orderBy(desc(commercialAuditLogs.createdAt))
       .limit(limit);
   }
+
 }
 
 export function createCommercialOpportunityService(

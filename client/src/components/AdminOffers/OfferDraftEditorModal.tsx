@@ -121,27 +121,30 @@ export default function OfferDraftEditorModal({
 
   // Documentos requeridos
   const [selectedDocs, setSelectedDocs] = useState<string[]>([]);
+  const [publishAfterSave, setPublishAfterSave] = useState(false);
   const [customDocName, setCustomDocName] = useState<string>("");
 
   // Motivo de cambio
   const [changeReason, setChangeReason] = useState<string>("");
 
   // Cargar versión en borrador desde el backend
-  const { data: draftData, isLoading: isLoadingDraft } = useQuery<{
+  const { data: draftData, isLoading: isLoadingDraft, isError: draftError } = useQuery<{
     product: any;
     draftVersion: InstitutionProductVersion | null;
   }>({
     queryKey: [`/api/institution-products/${offer?.id}/draft`],
     enabled: isOpen && !!offer?.id,
+    refetchOnWindowFocus: false,
   });
 
   // Inicializar el formulario con los datos de la versión borrador
   useEffect(() => {
     if (!offer) return;
 
-    setName(offer.name || offer.customName || "");
-    setDescription(offer.description || "");
-    setProductType(offer.productType || "credito_simple");
+    const future = (draftData?.draftVersion?.variablesConfiguration as any)?.futureMetadata;
+    setName(future?.name || offer.name || offer.customName || "");
+    setDescription(future?.description ?? offer.description ?? "");
+    setProductType(future?.productType || offer.productType || "credito_simple");
 
     const draft = draftData?.draftVersion;
     const cond = (draft?.conditions || offer.configuration || {}) as Record<string, any>;
@@ -178,15 +181,15 @@ export default function OfferDraftEditorModal({
     setCommissionNotes(comm.notes || "");
 
     // Condiciones de elegibilidad
-    setMinCompanyAgeMonths(cond.minCompanyAgeMonths ? String(cond.minCompanyAgeMonths) : "");
-    setMinMonthlyRevenue(cond.minMonthlyRevenue ? String(cond.minMonthlyRevenue) : "");
-    setBureauRequirement(cond.bureauRequirement || "sin_requisito");
-    setGuaranteeType(cond.guaranteeType || "sin_garantia");
-    setAvalesType(cond.avalesType || "no_requerido");
+    setMinCompanyAgeMonths(String(cond.minCompanyAgeMonths ?? req.minMonthsInBusiness ?? req.ranges?.tiempoActividad?.min ?? ""));
+    setMinMonthlyRevenue(String(cond.minMonthlyRevenue ?? req.minMonthlyIncome ?? req.ranges?.ingresoMensualPromedio?.min ?? ""));
+    setBureauRequirement(cond.bureauRequirement || "por_definir");
+    setGuaranteeType(cond.guaranteeType || "por_definir");
+    setAvalesType(cond.avalesType || "por_definir");
 
     // Documentos requeridos
     if (Array.isArray(draft?.requiredDocuments)) {
-      setSelectedDocs(draft.requiredDocuments);
+      setSelectedDocs(draft.requiredDocuments.filter((doc): doc is string => typeof doc === "string"));
     } else {
       setSelectedDocs([]);
     }
@@ -223,8 +226,11 @@ export default function OfferDraftEditorModal({
         description: `Se actualizaron las condiciones de la versión borrador v${data.version?.versionNumber || 1}.`,
       });
       onClose();
+      if (publishAfterSave && offer) onOpenPublish?.(data.product || offer);
+      setPublishAfterSave(false);
     },
     onError: (err: any) => {
+      setPublishAfterSave(false);
       toast({
         title: "Error al guardar el borrador",
         description: err.message || "No se pudo actualizar la versión borrador.",
@@ -258,8 +264,10 @@ export default function OfferDraftEditorModal({
   };
 
   // Validaciones de coherencia en tiempo de guardado
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = (e: React.FormEvent, review = false) => {
     e.preventDefault();
+
+    if (isLoadingDraft || !draftData?.draftVersion || saveMutation.isPending) return;
 
     if (!name.trim()) {
       toast({
@@ -270,6 +278,12 @@ export default function OfferDraftEditorModal({
       return;
     }
 
+    const numericValues = [minAmount, maxAmount, minRate, maxRate, minTerm, maxTerm, minCompanyAgeMonths, minMonthlyRevenue];
+    if (numericValues.some(value => value.trim() !== "" && (!Number.isFinite(Number(value)) || Number(value) < 0)) ||
+        [minTerm,maxTerm,minCompanyAgeMonths].some(value => value.trim() !== "" && !Number.isInteger(Number(value)))) {
+      toast({title: "Valor numérico inválido", description: "Usa valores positivos o cero y meses enteros.", variant: "destructive"});
+      return;
+    }
     // Coherencia de montos capturados
     const parsedMinAmt = minAmount.trim() !== "" ? parseFloat(minAmount) : null;
     const parsedMaxAmt = maxAmount.trim() !== "" ? parseFloat(maxAmount) : null;
@@ -356,35 +370,38 @@ export default function OfferDraftEditorModal({
     }
 
     // Construir conditions combinando variables financieras, comisiones y de elegibilidad
+    const baseConditions = (draftData?.draftVersion?.conditions || offer?.configuration || {}) as Record<string, any>;
     const conditions: Record<string, any> = {};
-    if (parsedMinAmt !== null) conditions.minAmount = parsedMinAmt;
-    if (parsedMaxAmt !== null) conditions.maxAmount = parsedMaxAmt;
-    if (parsedMinR !== null) conditions.minInterestRate = parsedMinR;
-    if (parsedMaxR !== null) conditions.maxInterestRate = parsedMaxR;
-    if (parsedMinT !== null) conditions.minTermMonths = parsedMinT;
-    if (parsedMaxT !== null) conditions.maxTermMonths = parsedMaxT;
+    conditions.minAmount = parsedMinAmt;
+    conditions.maxAmount = parsedMaxAmt;
+    conditions.minInterestRate = parsedMinR;
+    conditions.maxInterestRate = parsedMaxR;
+    conditions.minTermMonths = parsedMinT;
+    conditions.maxTermMonths = parsedMaxT;
 
     // Comisiones individuales por oferta
-    if (parsedFinComm !== null || parsedMasterComm !== null || parsedBrokerComm !== null || commissionNotes.trim() !== "") {
+    const baseComm = baseConditions.commissionRates || {};
+    const rateText = (value: any) => value == null ? "" : String(value);
+    const commissionsChanged = finCommissionRate !== rateText(baseComm.financiera?.apertura) ||
+      masterCommissionRate !== rateText(baseComm.masterBroker?.apertura) ||
+      brokerCommissionRate !== rateText(baseComm.broker?.apertura) || commissionNotes !== (baseComm.notes || "");
+    if (commissionsChanged) {
       conditions.commissionRates = {
-        financiera: { apertura: parsedFinComm !== null ? parsedFinComm : undefined },
-        masterBroker: { apertura: parsedMasterComm !== null ? parsedMasterComm : undefined },
-        broker: { apertura: parsedBrokerComm !== null ? parsedBrokerComm : undefined },
-        type: "porcentaje",
+        ...baseComm,
+        financiera: { ...baseComm.financiera, apertura: parsedFinComm },
+        masterBroker: { ...baseComm.masterBroker, apertura: parsedMasterComm },
+        broker: { ...baseComm.broker, apertura: parsedBrokerComm },
+        type: baseComm.type || "porcentaje",
         notes: commissionNotes.trim(),
       };
     }
 
     // Variables de elegibilidad (asociadas a campos reales del expediente)
-    if (minCompanyAgeMonths.trim() !== "") {
-      conditions.minCompanyAgeMonths = parseInt(minCompanyAgeMonths, 10);
-    }
-    if (minMonthlyRevenue.trim() !== "") {
-      conditions.minMonthlyRevenue = parseFloat(minMonthlyRevenue);
-    }
-    conditions.bureauRequirement = bureauRequirement;
-    conditions.guaranteeType = guaranteeType;
-    conditions.avalesType = avalesType;
+    conditions.minCompanyAgeMonths = minCompanyAgeMonths.trim() ? Number(minCompanyAgeMonths) : null;
+    conditions.minMonthlyRevenue = minMonthlyRevenue.trim() ? Number(minMonthlyRevenue) : null;
+    if (bureauRequirement !== "por_definir") conditions.bureauRequirement = bureauRequirement;
+    if (guaranteeType !== "por_definir") conditions.guaranteeType = guaranteeType;
+    if (avalesType !== "por_definir") conditions.avalesType = avalesType;
 
     const payload = {
       name: name.trim(),
@@ -396,9 +413,9 @@ export default function OfferDraftEditorModal({
         targetProfiles: selectedProfiles,
         minCompanyAgeMonths: conditions.minCompanyAgeMonths,
         minMonthlyRevenue: conditions.minMonthlyRevenue,
-        bureauRequirement,
-        guaranteeType,
-        avalesType,
+        ...(bureauRequirement !== "por_definir" ? { bureauRequirement } : {}),
+        ...(guaranteeType !== "por_definir" ? { guaranteeType } : {}),
+        ...(avalesType !== "por_definir" ? { avalesType } : {}),
         eligibilityVariablesStatus: {
           matchingActive: false,
           verified: false,
@@ -406,15 +423,44 @@ export default function OfferDraftEditorModal({
       },
       requiredDocuments: selectedDocs,
       variablesConfiguration: {
-        garantias: guaranteeType,
-        avales: avalesType,
+        ...(draftData?.draftVersion?.variablesConfiguration as Record<string, any> || {}),
+        futureMetadata: { name: name.trim(), customName: name.trim(), description: description.trim(), productType },
+        ...(guaranteeType !== "por_definir" ? { garantias: guaranteeType } : {}),
+        ...(avalesType !== "por_definir" ? { avales: avalesType } : {}),
       },
       changeReason: changeReason.trim() || "Modificación de parámetros comerciales y comisiones en borrador",
     };
 
+    setPublishAfterSave(review);
     saveMutation.mutate(payload);
   };
 
+  const sourceConditions = (draftData?.draftVersion?.conditions || {}) as Record<string, any>;
+  const sourceRequirements = (draftData?.draftVersion?.requirements || {}) as Record<string, any>;
+  const sourceFields: Record<string, unknown> = sourceConditions.sourceTechnicalFields || {};
+  const eligibilityDetails: Record<string, unknown> = {
+    "Antigüedad según archivo": sourceRequirements.businessAgeSource || sourceRequirements.minMonthsInBusinessSource,
+    "Ventas mensuales según archivo": sourceRequirements.minMonthlyIncomeSource,
+    "Ventas anuales mínimas": sourceRequirements.minAnnualIncome ?? sourceRequirements.minAnnualIncomeSource,
+    "Tolerancia de Buró": sourceRequirements.bureauPolicySource,
+    "Buró accionista mínimo": sourceRequirements.minShareholderBureau,
+    "Buró empresa mínimo": sourceRequirements.minBusinessBureau,
+    "Buró persona física mínimo": sourceRequirements.minPersonalBureau ?? sourceRequirements.minPersonalBureauSource,
+    "Permite atrasos": sourceRequirements.allowsArrears == null ? null : sourceRequirements.allowsArrears ? "Sí" : "No",
+    "Política de atrasos": sourceRequirements.arrearsPolicy,
+    "Requisito de garantía": sourceRequirements.guarantee,
+    "Aval / obligado solidario": sourceRequirements.guarantorSource,
+    "Requiere CIEC": sourceRequirements.requiresCiec == null ? null : sourceRequirements.requiresCiec ? "Sí" : "No",
+    "Estados financieros": sourceRequirements.requiresFinancialStatements == null ? null : sourceRequirements.requiresFinancialStatements ? "Sí" : "No",
+    "Opinión SAT": sourceRequirements.satOpinion,
+    "Ventas a gobierno máximo": sourceRequirements.governmentSalesLimit,
+    "Restricciones de giro": sourceRequirements.excludedSectors,
+    "Presencia": sourceRequirements.presence,
+  };
+  const sourcePanel = (fields: Record<string, unknown>) => <dl className="grid grid-cols-1 sm:grid-cols-2 gap-3 rounded-xl border p-3 text-xs" data-testid="offer-imported-fields">
+    {Object.entries(fields).filter(([,v]) => v !== null && v !== undefined && v !== "").map(([key,value]) =>
+      <div key={key}><dt className="font-semibold text-slate-700">{key}</dt><dd className="text-slate-600 whitespace-pre-wrap break-words">{String(value)}</dd></div>)}
+  </dl>;
   const draftVersionNumber = draftData?.draftVersion?.versionNumber || offer?.currentVersionNumber || 1;
 
   return (
@@ -461,6 +507,9 @@ export default function OfferDraftEditorModal({
 
           {/* Body with Tabs */}
           <div className="flex-1 overflow-y-auto p-5 sm:p-6">
+            {isLoadingDraft && <p role="status">Cargando los datos del borrador…</p>}
+            {draftError && <p role="alert" className="text-red-700">No se pudo cargar el borrador. Cierra y vuelve a abrir la oferta.</p>}
+            <fieldset disabled={isLoadingDraft || draftError || !draftData?.draftVersion || saveMutation.isPending}>
             <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
               <TabsList className="grid grid-cols-2 sm:grid-cols-5 bg-slate-100 p-1 rounded-xl h-auto gap-1">
                 <TabsTrigger
@@ -502,6 +551,13 @@ export default function OfferDraftEditorModal({
 
               {/* TAB 1: CONDICIONES FINANCIERAS Y GENERALES */}
               <TabsContent value="condiciones" className="space-y-4 pt-1">
+                {sourcePanel({"Tasa / factor según archivo": sourceConditions.rateSource,
+                  "Apertura al cliente": sourceConditions.clientOpeningSource,
+                  "Monto máximo variable": sourceConditions.informationalMaximumLoan,
+                  "Destinos": sourceConditions.loanPurposes, "Tiempo de respuesta": sourceConditions.turnaround,
+                  "Observaciones": sourceConditions.sourceNotes})}
+                {Object.keys(sourceFields).length > 0 && <details className="text-xs"><summary className="cursor-pointer font-semibold">Ver todos los datos del archivo importado</summary>{sourcePanel(sourceFields)}</details>}
+
                 {/* Datos Básicos */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 p-4 bg-slate-50/60 rounded-xl border border-slate-200/70">
                   <div className="space-y-1">
@@ -894,9 +950,8 @@ export default function OfferDraftEditorModal({
                   {TARGET_PROFILES.map((profile) => {
                     const isChecked = selectedProfiles.includes(profile.id);
                     return (
-                      <div
+                      <label
                         key={profile.id}
-                        onClick={() => handleProfileToggle(profile.id)}
                         className={cn(
                           "p-3.5 rounded-xl border transition-all cursor-pointer flex items-start space-x-3 select-none",
                           isChecked
@@ -920,7 +975,7 @@ export default function OfferDraftEditorModal({
                             {profile.id === "sin_sat" && "Empresas que comprueban ingresos por flujo de cuenta bancaria"}
                           </span>
                         </div>
-                      </div>
+                      </label>
                     );
                   })}
                 </div>
@@ -932,6 +987,8 @@ export default function OfferDraftEditorModal({
 
               {/* TAB 4: CONDICIONES DE ELEGIBILIDAD */}
               <TabsContent value="elegibilidad" className="space-y-4 pt-1">
+                <p className="text-xs font-semibold">Detalle de elegibilidad importado</p>
+                {sourcePanel(eligibilityDetails)}
                 <div className="p-3 bg-amber-50/70 border border-amber-200/80 rounded-xl text-xs text-amber-900 leading-relaxed">
                   <strong>Variables de Elegibilidad:</strong> No se asume que los datos estén recopilados. Únicamente se contrastan contra campos reales del expediente del cliente. Las condiciones no verificadas documentalmente quedan pendientes y nunca activas en el motor de Matching.
                 </div>
@@ -1003,6 +1060,7 @@ export default function OfferDraftEditorModal({
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
+                        <SelectItem value="por_definir">Por clasificar (revisar detalle importado)</SelectItem>
                         <SelectItem value="sin_requisito" className="text-xs">Sin requisito estricto</SelectItem>
                         <SelectItem value="al_corriente" className="text-xs">Sin atrasos (MOP 01 al corriente)</SelectItem>
                         <SelectItem value="atraso_menor_30" className="text-xs">Atraso leve permitido (&lt; 30 días)</SelectItem>
@@ -1029,6 +1087,7 @@ export default function OfferDraftEditorModal({
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
+                        <SelectItem value="por_definir">Por clasificar (revisar detalle importado)</SelectItem>
                         <SelectItem value="sin_garantia" className="text-xs">Sin Garantía (Crédito Quirografario)</SelectItem>
                         <SelectItem value="garantia_liquida" className="text-xs">Garantía Líquida</SelectItem>
                         <SelectItem value="hipotecaria" className="text-xs">Garantía Hipotecaria (Inmueble)</SelectItem>
@@ -1055,6 +1114,7 @@ export default function OfferDraftEditorModal({
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
+                        <SelectItem value="por_definir">Por clasificar (revisar detalle importado)</SelectItem>
                         <SelectItem value="no_requerido" className="text-xs">No Requerido</SelectItem>
                         <SelectItem value="un_aval" className="text-xs">Un Aval / Obligado Solidario</SelectItem>
                         <SelectItem value="dos_avales" className="text-xs">Dos Avales</SelectItem>
@@ -1090,9 +1150,8 @@ export default function OfferDraftEditorModal({
                     {STANDARD_DOCUMENTS.map((doc) => {
                       const isSelected = selectedDocs.includes(doc.label);
                       return (
-                        <div
+                        <label
                           key={doc.id}
-                          onClick={() => handleDocToggle(doc.label)}
                           className={cn(
                             "p-2.5 rounded-lg border text-xs flex items-center space-x-2.5 cursor-pointer select-none transition-all",
                             isSelected
@@ -1104,8 +1163,8 @@ export default function OfferDraftEditorModal({
                             checked={isSelected}
                             onCheckedChange={() => handleDocToggle(doc.label)}
                           />
-                          <span className="truncate">{doc.label}</span>
-                        </div>
+                          <span>{doc.label}</span>
+                        </label>
                       );
                     })}
                   </div>
@@ -1188,6 +1247,7 @@ export default function OfferDraftEditorModal({
                 className="h-8 text-xs border-slate-200"
               />
             </div>
+            </fieldset>
           </div>
 
           {/* Footer */}
@@ -1211,10 +1271,8 @@ export default function OfferDraftEditorModal({
                   type="button"
                   variant="outline"
                   size="sm"
-                  onClick={() => {
-                    onClose();
-                    if (offer) onOpenPublish(offer);
-                  }}
+                  disabled={isLoadingDraft || saveMutation.isPending || !draftData?.draftVersion}
+                  onClick={(event) => handleSubmit(event, true)}
                   className="h-8 text-xs border-emerald-300 text-emerald-700 hover:bg-emerald-50 font-semibold gap-1.5"
                   data-testid="button-open-publish-from-editor"
                 >
@@ -1225,7 +1283,7 @@ export default function OfferDraftEditorModal({
               <Button
                 type="submit"
                 size="sm"
-                disabled={saveMutation.isPending}
+                disabled={isLoadingDraft || saveMutation.isPending || !draftData?.draftVersion}
                 className="h-8 text-xs bg-[#2463D6] hover:bg-[#1d52b3] text-white font-semibold gap-1.5 shadow-sm"
                 data-testid="button-save-draft"
               >

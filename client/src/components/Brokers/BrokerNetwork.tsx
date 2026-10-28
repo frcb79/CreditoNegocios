@@ -347,7 +347,6 @@ export default function BrokerNetworkComponent() {
   const [showBulkInviteModal, setShowBulkInviteModal] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
   const [activeNetworkTab, setActiveNetworkTab] = useState("master_brokers");
-  const [networkFilter, setNetworkFilter] = useState<"registered" | "all">("registered");
   const [expandedMasterBroker, setExpandedMasterBroker] = useState<string | null>(null);
 
   const { data: networkData, isLoading } = useQuery<any>({
@@ -574,8 +573,8 @@ export default function BrokerNetworkComponent() {
   const registeredMasters = allMasterBrokers.filter(registered);
   const registeredDirect = allDirectBrokers.filter(registered);
   const registeredBrokers = allBrokers.filter(registered);
-  const masterBrokers = networkFilter === "all" ? allMasterBrokers : registeredMasters;
-  const directBrokers = networkFilter === "all" ? allDirectBrokers : registeredDirect;
+  const masterBrokers = registeredMasters;
+  const directBrokers = registeredDirect;
 
   const filteredMasterBrokers = masterBrokers.filter((mb: any) => {
     if (!mb) return false;
@@ -673,15 +672,6 @@ export default function BrokerNetworkComponent() {
         </Button>
       </div>
 
-      {activeNetworkTab !== "invitaciones_pendientes" && <div className="flex items-center gap-2 flex-wrap" role="group" aria-label="Estado de registro en la red">
-        <Button type="button" size="sm" variant={networkFilter === "registered" ? "default" : "outline"}
-          aria-pressed={networkFilter === "registered"} onClick={() => setNetworkFilter("registered")}
-          data-testid="network-registered">Registrados</Button>
-        <Button type="button" size="sm" variant={networkFilter === "all" ? "default" : "outline"}
-          aria-pressed={networkFilter === "all"} onClick={() => setNetworkFilter("all")}
-          data-testid="network-all">Todos, incluidos invitados</Button>
-        <span className="text-xs text-slate-500">Los invitados aún sin contraseña se consultan en Invitaciones pendientes.</span>
-      </div>}
       {/* Pestañas de Gestión de Redes */}
       <Tabs value={activeNetworkTab} onValueChange={setActiveNetworkTab} className="w-full">
         <TabsList className="bg-slate-100 p-1 rounded-xl h-10 inline-flex w-auto border border-slate-200/60 max-w-full overflow-x-auto">
@@ -720,7 +710,7 @@ export default function BrokerNetworkComponent() {
               const isExpanded = expandedMasterBroker === mb.id;
               const assignedBrokers = mb.networkBrokers || [];
               const registeredCount = assignedBrokers.filter(registered).length;
-              const visibleBrokers = networkFilter === "all" ? assignedBrokers : assignedBrokers.filter(registered);
+              const visibleBrokers = assignedBrokers.filter(registered);
               const networkCount = visibleBrokers.length;
 
               return (

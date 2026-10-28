@@ -146,6 +146,13 @@ export function validateOfferVersionParameters(data: Partial<InsertInstitutionPr
 
   if (data.conditions) {
     const c = data.conditions as Record<string, any>;
+    for (const key of ["minAmount", "maxAmount", "minInterestRate", "maxInterestRate", "minTermMonths", "maxTermMonths", "minCompanyAgeMonths", "minMonthlyRevenue"]) {
+      const value = c[key];
+      if (value != null && (typeof value !== "number" || !Number.isFinite(value) || value < 0)) errors.push(`${key} debe ser un número finito mayor o igual a cero`);
+    }
+    for (const key of ["minTermMonths", "maxTermMonths", "minCompanyAgeMonths"]) {
+      if (c[key] != null && !Number.isInteger(c[key])) errors.push(`${key} debe contener meses enteros`);
+    }
     if (typeof c.minAmount === "number" && typeof c.maxAmount === "number" && c.minAmount > c.maxAmount) {
       errors.push("minAmount no puede ser mayor que maxAmount");
     }

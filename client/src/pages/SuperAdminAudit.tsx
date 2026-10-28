@@ -1,3 +1,4 @@
+import AdministrativeActivity from "@/components/AdministrativeActivity";
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "wouter";
@@ -46,7 +47,7 @@ type StatusRequest = {
   targetUser?: Person | null;
   reviewer?: Person | null;
 };
-type AuditSection = "commercial" | "configuration" | "requests";
+type AuditSection = "activity" | "commercial" | "configuration" | "requests";
 type AuditRow = {
   entry: AuditEntry;
   actionLabel: string;
@@ -134,7 +135,7 @@ async function getJson<T>(url: string): Promise<T> {
 }
 
 export default function SuperAdminAudit() {
-  const [section, setSection] = useState<AuditSection>("commercial");
+  const [section, setSection] = useState<AuditSection>("activity");
   const [search, setSearch] = useState("");
   const [fromDate, setFromDate] = useState("");
   const [toDate, setToDate] = useState("");
@@ -154,12 +155,12 @@ export default function SuperAdminAudit() {
   // Master requests already include hydrated requester and target accounts.
   const requests = useQuery<StatusRequest[]>({
     queryKey: ["/api/admin/status-requests"],
-    enabled: section !== "configuration",
+    enabled: section === "commercial" || section === "requests",
     queryFn: () => getJson<StatusRequest[]>("/api/admin/status-requests"),
   });
   const users = useQuery<Person[]>({
     queryKey: ["/api/users"],
-    enabled: section !== "requests",
+    enabled: section === "commercial" || section === "configuration",
     queryFn: () => getJson<Person[]>("/api/users"),
   });
   const userMap = useMemo(() => new Map((users.data || []).map(user => [user.id, user])), [users.data]);
@@ -218,8 +219,7 @@ export default function SuperAdminAudit() {
                 <ClipboardList className="w-4 h-4" /> Historial administrativo
               </CardTitle>
               <CardDescription className="text-xs leading-relaxed">
-                Registro de sólo lectura construido con las fuentes actuales de gobernanza, reglas comerciales
-                y solicitudes de estado. No incluye todavía toda la actividad de clientes, créditos y comisiones.
+                Registro de accesos, registros y movimientos de la plataforma, junto con las fuentes de gobernanza, reglas comerciales y solicitudes de estado.
                 Los identificadores técnicos se conservan en el sistema, no en este listado.
               </CardDescription>
             </CardHeader>
@@ -227,11 +227,12 @@ export default function SuperAdminAudit() {
 
           <Tabs value={section} onValueChange={value => {setSection(value as AuditSection); setResult("all");}}>
             <TabsList className="flex flex-wrap h-auto gap-1 p-1">
+              <TabsTrigger value="activity" data-testid="audit-tab-activity" className="text-xs">Accesos y movimientos</TabsTrigger>
               <TabsTrigger value="commercial" data-testid="audit-tab-commercial" className="text-xs">Gobernanza comercial</TabsTrigger>
               <TabsTrigger value="configuration" data-testid="audit-tab-configuration" className="text-xs">Reglas comerciales</TabsTrigger>
               <TabsTrigger value="requests" data-testid="audit-tab-requests" className="text-xs">Solicitudes de estado</TabsTrigger>
             </TabsList>
-            <Card className="border-border/70 mt-3">
+            {section !== "activity" && <Card className="border-border/70 mt-3">
               <CardContent className="p-3 sm:p-4 space-y-3">
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-2">
                   <label className="text-xs space-y-1 lg:col-span-2">
@@ -298,7 +299,8 @@ export default function SuperAdminAudit() {
                   una búsqueda sin resultados no significa que no existan eventos más antiguos.
                 </p>
               </CardContent>
-            </Card>
+            </Card>}
+            <TabsContent value="activity" className="mt-4">{section === "activity" && <AdministrativeActivity />}</TabsContent>
 
             <TabsContent value="commercial" className="mt-4" data-testid="audit-commercial-content">
               {selectedAudit.isLoading || users.isLoading || requests.isLoading ?
