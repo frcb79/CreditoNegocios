@@ -1360,3 +1360,13 @@ body:has(.cn-screen-dialog[open]) {
 .cn-public .cn-recruit-note { margin-top: 24px; }
 .cn-public .cn-recruit-heading > .cn-button { background: var(--cn-green); color: #fff; }
 .cn-public .cn-recruit-heading > .cn-button:hover { background: #006b59; }
+
+/* Compact value cards on the main site; broker cards retain their layout. */
+.cn-home-values .cn-value-tile { padding: 18px 20px; }
+.cn-home-values .cn-value-top { display: flex; flex-direction: row; float: none; align-items: center; justify-content: flex-start; gap: 12px; margin: 0 0 8px; }
+.cn-home-values .cn-value-number { font-size: 2rem; }
+.cn-home-values .cn-value-top h2 { flex: 1; margin: 0; font-size: 1rem; }
+.cn-home-values .cn-value-icon { width: 36px; height: 36px; flex-shrink: 0; }
+.cn-footer .cn-footer-disclosure { margin: 0 0 24px; color: #e1eaf1; font-size: .7rem; line-height: 1.6; }
+.cn-footer-disclosure a { text-decoration: underline; text-underline-offset: 2px; }
+@media (max-width: 700px) { .cn-home-values .cn-value-tile { min-height: 0; } .cn-home-values .cn-value-top { float: none; flex-direction: row; } }
