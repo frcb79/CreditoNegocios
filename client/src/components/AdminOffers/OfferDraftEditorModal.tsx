@@ -1000,7 +1000,8 @@ export default function OfferDraftEditorModal({
               <TabsContent value="elegibilidad" className="space-y-4 pt-1">
                 <p className="text-xs font-semibold">Detalle de elegibilidad importado</p>
                 {sourcePanel(eligibilityDetails)}
-                {(agePolicy.hasConflict || agePolicy.resolved) && <div className="rounded-xl border border-amber-300 p-3 space-y-3 text-xs" data-testid="age-policy-review">
+                {agePolicy.hasConflict && !agePolicy.needsReview && !agePolicy.resolved && <p className="text-xs text-blue-700" data-testid="age-policy-source-specific">El archivo original fija mínimos específicos por perfil; el matching utilizará esos valores en lugar del mínimo numérico general importado.</p>}
+                {(agePolicy.needsReview || agePolicy.resolved) && <div className="rounded-xl border border-amber-300 p-3 space-y-3 text-xs" data-testid="age-policy-review">
                   <strong>Conciliar antigüedad por perfil</strong>
                   <p>Fuente: {agePolicy.source}. {agePolicy.resolved ? "Conciliación guardada." : "La publicación queda bloqueada hasta confirmar la política correcta."} Conservamos el texto original.</p>
                   {agePolicy.rows.map(row => <label className="block space-y-1" key={row.profile}>
