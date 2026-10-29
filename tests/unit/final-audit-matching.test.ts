@@ -47,7 +47,9 @@ describe("Final audit adversarial regressions", () => {
     for (const client of [{ buroEmpresa: "bueno-250-309" }, { atrasosDeudasBuroSinSat: "no" },
       { type: "persona_moral", atrasosDeudasBuro: "no" }, { type: "sin_sat", atrasosDeudasBuro: "no" },
       { atrasosDeudas: "no", atrasosDeudasBuro: "si" }, { atrasosDeudas: "no sé si tiene atrasos" }]) {
-      expect(evaluate(offer({ allowsArrears: false }), client).status).toBe("INSUFFICIENT_DATA");
+      const result = evaluate(offer({ allowsArrears: false, targetProfiles: ["persona_moral", "fisica_empresarial", "sin_sat"] }), client);
+      expect(criterion(result, "arrearsPolicy")[0].status).toBe("MISSING_DATA");
+      expect(result.status).toBe("INSUFFICIENT_DATA");
     }
     expect(evaluate(offer({ allowsArrears: false }), { atrasosDeudas: false }).status).toBe("COMPATIBLE");
     expect(evaluate(offer({ allowsArrears: false }), { atrasosDeudas: true }).status).toBe("NOT_COMPATIBLE");
