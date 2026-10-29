@@ -40,7 +40,7 @@ export function offerConditions(conditions: any, req: any, client: any, credit: 
   const agePolicy = getOfferAgePolicy(conditions, req);
   const age = agePolicy.rows.find(r => r.profile === extractClientProfileType(capturedRecord(client)));
   if (age?.pending || (!age && agePolicy.needsReview)) c.minCompanyAgeMonths = null;
-  else if (agePolicy.resolved && age) c.minCompanyAgeMonths = age.effectiveMonths;
+  else if (age && age.effectiveMonths !== null) c.minCompanyAgeMonths = age.effectiveMonths;
   // Do not interpret free text as a relaxed rule. Only exact categories have automatic meaning.
   const guarantee = textKey(req.guarantee);
   if (!present(c.guaranteeType)) {
