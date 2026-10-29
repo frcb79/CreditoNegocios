@@ -45,6 +45,7 @@ describe("Final audit adversarial regressions", () => {
   });
   it("ignores unrelated scores/declarations and leaves conflicting declarations pending", () => {
     for (const client of [{ buroEmpresa: "bueno-250-309" }, { atrasosDeudasBuroSinSat: "no" },
+      { type: "persona_moral", atrasosDeudasBuro: "no" }, { type: "sin_sat", atrasosDeudasBuro: "no" },
       { atrasosDeudas: "no", atrasosDeudasBuro: "si" }, { atrasosDeudas: "no sé si tiene atrasos" }]) {
       expect(evaluate(offer({ allowsArrears: false }), client).status).toBe("INSUFFICIENT_DATA");
     }

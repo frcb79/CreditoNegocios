@@ -347,12 +347,11 @@ export function extractBureauStatus(client: any, credit?: any): {
   const c = { ...(client?.profilingData || {}), ...Object.fromEntries(Object.entries(client || {}).filter(([,v])=>v !== null && v !== undefined && v !== "")) };
   const cr = { ...(credit?.profilingData || {}), ...Object.fromEntries(Object.entries(credit || {}).filter(([,v])=>v !== null && v !== undefined && v !== "")) };
 
-  const profile = extractClientProfileType(c);
+  const profile = extractClientProfileType(c, cr);
   const delinquencyFields = [
     c.atrasosDeudas,
     cr.atrasosDeudas,
-    c.atrasosDeudasBuro,
-    cr.atrasosDeudasBuro,
+    ...(profile === "fisica" || profile === "fisica_empresarial" ? [c.atrasosDeudasBuro, cr.atrasosDeudasBuro] : []),
     ...(profile === "sin_sat" ? [c.atrasosDeudasBuroSinSat, cr.atrasosDeudasBuroSinSat] : []),
     c.buroStatus,
     cr.buroStatus,
