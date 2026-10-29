@@ -8,6 +8,7 @@ import cron from "node-cron";
 import { storage } from "../../server/storage";
 import { registerRoutes } from "../../server/routes";
 import { pool } from "../../server/db";
+import { evaluateOfferCompatibility } from "../../server/matching/compatibilityEvaluator";
 
 const rates = {financiera:{apertura:4,sobretasa:1,renovacion:2,total:7},masterBroker:{apertura:2,sobretasa:0,renovacion:1,total:3},broker:{apertura:1,sobretasa:0,renovacion:0.5,total:1.5},type:"porcentaje",notes:"No alterar otros componentes"};
 
@@ -48,6 +49,10 @@ describe("Financieras editing/publication and administrative activity HTTP",()=>
   const preview=await request(app).get(`/api/institution-products/${offer.id}/publish-preview`);
   expect(preview.body.validation.isValid).toBe(true);
   const old=preview.body.draftVersion;
+  for (const missingReference of [{}, {expectedDraftId:old.id}, {expectedVersionHash:old.versionHash}]) {
+    const missing=await request(app).post(`/api/institution-products/${offer.id}/publish`).send({confirmPublish:true,changeReason:"No reference",...missingReference});
+    expect(missing.status).toBe(428);expect(missing.body.code).toBe("OFFER_REVIEW_REQUIRED");
+  }
   await request(app).put(`/api/institution-products/${offer.id}/draft`).send({conditions:{maxAmount:600000},changeReason:"Cambio posterior"});
   const stale=await request(app).post(`/api/institution-products/${offer.id}/publish`).send({confirmPublish:true,changeReason:"Publicación QA",expectedDraftId:old.id,expectedVersionHash:old.versionHash});
   expect(stale.status).toBe(400);expect(stale.body.message).toContain("OFFER_DRAFT_CHANGED");
@@ -66,6 +71,30 @@ describe("Financieras editing/publication and administrative activity HTTP",()=>
   const future=await storage.getInstitutionProductVersion(draft.id);
   expect((future?.requirements as any).minMonthsInBusiness).toBe(36);
   expect((future?.requirements as any).ranges.tiempoActividad.min).toBe(36);
+ });
+ it("preserves criteria on document-only saves and records explicit age reconciliation",async()=>{
+  user=admin;
+  const created=await storage.createOffer({institutionId:offer.institutionId,name:"Isolated age policy",status:"draft",productType:"credito_simple"},
+    {conditions:{minAmount:100,maxAmount:1000000},requirements:{targetProfiles:["persona_moral","fisica_empresarial"],minMonthsInBusiness:24},requiredDocuments:["CSF"],changeReason:"QA"});
+  const path=`/api/institution-products/${created.offer.id}`;
+  const candidate={client:{type:"fisica_empresarial",companyAgeMonths:12},credit:{amount:100000}};
+  const saved=await request(app).put(path+'/draft').send({requiredDocuments:["CSF","INE"]});
+  expect(saved.status).toBe(200);
+  expect(evaluateOfferCompatibility(candidate,{product:saved.body.product,version:saved.body.version}).status).toBe("NOT_COMPATIBLE");
+  expect(saved.body.version.conditions.eligibilityEvaluation).toBeUndefined();
+  await request(app).put(path+'/draft').send({requirements:{businessAgeSource:"PM 2 / PFAE 3 años"}});
+  const blocked=await request(app).get(path+'/publish-preview');expect(blocked.body.validation.isValid).toBe(false);
+  const premature=await request(app).post(path+'/publish').send({confirmPublish:true,changeReason:"Blocked conflict",expectedDraftId:blocked.body.draftVersion.id,expectedVersionHash:blocked.body.draftVersion.versionHash});
+  expect(premature.status).toBe(400);expect(premature.body.message).toContain("Antigüedad");
+  const bad=await request(app).put(path+'/draft').send({businessAgeReview:{confirmed:true,monthsByProfile:{persona_moral:24},reason:"Missing PFAE"}});
+  expect(bad.status).toBe(400);
+  const reviewed=await request(app).put(path+'/draft').send({businessAgeReview:{confirmed:true,monthsByProfile:{persona_moral:24,fisica_empresarial:36},reason:"Policy confirmed",reviewedBy:"forged"}});
+  expect(reviewed.status).toBe(200);expect(reviewed.body.version.requirements.businessAgeResolution.reviewedBy).toBe(admin.id);
+  expect((await request(app).get(path+'/publish-preview')).body.validation.isValid).toBe(true);
+  expect(evaluateOfferCompatibility({...candidate,client:{...candidate.client,companyAgeMonths:30}},{product:reviewed.body.product,version:reviewed.body.version}).status).toBe("NOT_COMPATIBLE");
+  // A change to the reviewed source invalidates the reconciliation without modifying history.
+  await request(app).put(path+'/draft').send({requirements:{businessAgeSource:"PM 2 / PFAE 4 años"}});
+  expect((await request(app).get(path+'/publish-preview')).body.validation.isValid).toBe(false);
  });
  it("records successful and rejected mutations using route templates, with no body or query secrets",async()=>{
   user=admin;

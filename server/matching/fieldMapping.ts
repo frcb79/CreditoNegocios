@@ -347,59 +347,26 @@ export function extractBureauStatus(client: any, credit?: any): {
   const c = { ...(client?.profilingData || {}), ...Object.fromEntries(Object.entries(client || {}).filter(([,v])=>v !== null && v !== undefined && v !== "")) };
   const cr = { ...(credit?.profilingData || {}), ...Object.fromEntries(Object.entries(credit || {}).filter(([,v])=>v !== null && v !== undefined && v !== "")) };
 
+  const profile = extractClientProfileType(c);
   const delinquencyFields = [
     c.atrasosDeudas,
     cr.atrasosDeudas,
     c.atrasosDeudasBuro,
     cr.atrasosDeudasBuro,
-    c.atrasosDeudasBuroSinSat,
-    cr.atrasosDeudasBuroSinSat,
+    ...(profile === "sin_sat" ? [c.atrasosDeudasBuroSinSat, cr.atrasosDeudasBuroSinSat] : []),
     c.buroStatus,
     cr.buroStatus,
   ].filter(v => v !== undefined && v !== null && v !== "");
 
-  for (const val of delinquencyFields) {
-    const s = String(val).trim().toUpperCase();
-    if (
-      s === "NO" ||
-      s === "FALSE" ||
-      s.includes("SIN ATRASO") ||
-      s.includes("AL CORRIENTE") ||
-      s.includes("AL_CORRIENTE")
-    ) {
-      return { hasDelinquencies: false, rawStatus: s };
-    }
-    if (
-      s === "SI" ||
-      s === "SÍ" ||
-      s === "TRUE" ||
-      s === "CON ATRASOS" ||
-      s.includes("ATRASO") ||
-      s.includes("QUEBRANTO")
-    ) {
-      return { hasDelinquencies: true, rawStatus: s };
-    }
-  }
-
-  const statusFields = [
-    c.buroEmpresa,
-    cr.buroEmpresa,
-    c.buroAccionistaPrincipal,
-    cr.buroAccionistaPrincipal,
-    c.buroPersonaFisica,
-    cr.buroPersonaFisica,
-    c.buroPersonaFisicaSinSat,
-    cr.buroPersonaFisicaSinSat,
-  ].filter(v => v !== undefined && v !== null && v !== "");
-
-  for (const val of statusFields) {
-    const s = String(val).trim().toLowerCase();
-    if (s.includes("sin atraso") || s.includes("bueno") || s.includes("excelente") || s.includes("al corriente")) {
-      return { hasDelinquencies: false, rawStatus: val };
-    }
-    if (s.includes("malo") || s.includes("atraso") || s.includes("quiebra") || s.includes("quebranto")) {
-      return { hasDelinquencies: true, rawStatus: val };
-    }
+  const parsed = delinquencyFields.map(val => {
+    const raw = String(val).trim().toUpperCase();
+    if (["NO", "FALSE", "SIN ATRASOS", "SIN ATRASO", "AL CORRIENTE", "AL_CORRIENTE"].includes(raw)) return { value: false, raw };
+    if (["SI", "SÍ", "TRUE", "CON ATRASOS", "ATRASOS", "QUEBRANTO", "CON QUEBRANTO"].includes(raw)) return { value: true, raw };
+    return { value: null, raw };
+  });
+  // Unknown or contradictory declarations cannot be replaced by a score category.
+  if (parsed.length && parsed.every(item => item.value !== null && item.value === parsed[0].value)) {
+    return { hasDelinquencies: parsed[0].value, rawStatus: parsed[0].raw };
   }
 
   return { hasDelinquencies: null, rawStatus: null };

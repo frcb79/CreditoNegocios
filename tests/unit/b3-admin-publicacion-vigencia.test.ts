@@ -20,6 +20,12 @@ describe("Bloque B3 — Publicación y Vigencia de Ofertas Comerciales (Super Ad
   let offerId2: string; // Oferta para pruebas de concurrencia
   let offerId3: string; // Oferta con comisiones parciales para probar margen pendiente
 
+  async function reviewRef(id: string) {
+    const versions = await storage.getInstitutionProductVersions(id);
+    const version = versions.find(v => v.status === "draft") || versions[0];
+    return { expectedDraftId: version.id, expectedVersionHash: version.versionHash };
+  }
+
   beforeAll(async () => {
     // 1. Crear institución financiera
     await storage.createFinancialInstitution({
@@ -256,8 +262,8 @@ describe("Bloque B3 — Publicación y Vigencia de Ofertas Comerciales (Super Ad
       expect(summary.commissions.isMarginMasterPending).toBe(false);
 
       // Elegibilidad inactiva en matching
-      expect(summary.eligibility.matchingActive).toBe(false);
-      expect(summary.eligibility.status).toBe("pending_verification");
+      expect(summary.eligibility.verification.matchingActive).toBe(false);
+      expect(summary.eligibility.verification.status).toBe("pending_verification");
     });
 
     it("Identifica campos no definidos como pendientes sin inventar datos financieros", async () => {
@@ -291,6 +297,7 @@ describe("Bloque B3 — Publicación y Vigencia de Ofertas Comerciales (Super Ad
         .post(`/api/institution-products/${offerId1}/publish`)
         .set("x-test-user-id", testSuperAdminId)
         .send({
+          ...(await reviewRef(offerId1)),
           changeReason: "Aprobación de comité",
           confirmPublish: false,
         });
@@ -304,6 +311,7 @@ describe("Bloque B3 — Publicación y Vigencia de Ofertas Comerciales (Super Ad
         .post(`/api/institution-products/${offerId1}/publish`)
         .set("x-test-user-id", testSuperAdminId)
         .send({
+          ...(await reviewRef(offerId1)),
           changeReason: "ok",
           confirmPublish: true,
         });
@@ -317,6 +325,7 @@ describe("Bloque B3 — Publicación y Vigencia de Ofertas Comerciales (Super Ad
         .post(`/api/institution-products/${offerId1}/publish`)
         .set("x-test-user-id", testSuperAdminId)
         .send({
+          ...(await reviewRef(offerId1)),
           changeReason: "Publicación formal v1 aprobada por comité de riesgos",
           confirmPublish: true,
         });
@@ -340,6 +349,7 @@ describe("Bloque B3 — Publicación y Vigencia de Ofertas Comerciales (Super Ad
         .post(`/api/institution-products/${offerId1}/publish`)
         .set("x-test-user-id", testSuperAdminId)
         .send({
+          ...(await reviewRef(offerId1)),
           changeReason: "Intento de re-publicación sin borrador",
           confirmPublish: true,
         });
@@ -411,6 +421,7 @@ describe("Bloque B3 — Publicación y Vigencia de Ofertas Comerciales (Super Ad
         .post(`/api/institution-products/${offerId1}/publish`)
         .set("x-test-user-id", testSuperAdminId)
         .send({
+          ...(await reviewRef(offerId1)),
           changeReason: "Publicación formal de versión 2 tras aprobación definitiva",
           confirmPublish: true,
         });
@@ -510,11 +521,11 @@ describe("Bloque B3 — Publicación y Vigencia de Ofertas Comerciales (Super Ad
       expect(resAdmin.body.overRate).toBeUndefined();
       expect(resAdmin.body.commissionRates?.financiera?.sobretasa).toBeUndefined();
 
-      // Broker NO ve sobretasa
+      // Brokers cannot read the internal institution catalog (published offers are separate).
       const resBroker = await request(app)
         .get(`/api/financial-institutions/${institutionId}`)
         .set("x-test-user-id", testBrokerId);
-      expect(resBroker.status).toBe(200);
+      expect(resBroker.status).toBe(403);
       expect(resBroker.body.overrateCommissionRate).toBeUndefined();
       expect(resBroker.body.overRate).toBeUndefined();
       expect(resBroker.body.commissionRates?.broker?.sobretasa).toBeUndefined();
@@ -603,12 +614,14 @@ describe("Bloque B3 — Publicación y Vigencia de Ofertas Comerciales (Super Ad
       const req1 = request(app)
         .post(`/api/institution-products/${offerId2}/publish`)
         .set("x-test-user-id", testSuperAdminId)
-        .send({ changeReason: "Publicación concurrente A", confirmPublish: true });
+        .send({
+          ...(await reviewRef(offerId2)), changeReason: "Publicación concurrente A", confirmPublish: true });
 
       const req2 = request(app)
         .post(`/api/institution-products/${offerId2}/publish`)
         .set("x-test-user-id", testSuperAdminId)
-        .send({ changeReason: "Publicación concurrente B", confirmPublish: true });
+        .send({
+          ...(await reviewRef(offerId2)), changeReason: "Publicación concurrente B", confirmPublish: true });
 
       const [res1, res2] = await Promise.all([req1, req2]);
 
@@ -629,7 +642,8 @@ describe("Bloque B3 — Publicación y Vigencia de Ofertas Comerciales (Super Ad
       const res = await request(app)
         .post(`/api/institution-products/${offerId2}/publish`)
         .set("x-test-user-id", testBrokerId)
-        .send({ changeReason: "Intento de broker", confirmPublish: true });
+        .send({
+          ...(await reviewRef(offerId2)), changeReason: "Intento de broker", confirmPublish: true });
 
       expect(res.status).toBe(403);
     });

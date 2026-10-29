@@ -97,16 +97,16 @@ describe("Matching M1 — Motor de Compatibilidad y Datos Reales", () => {
         rawStatus: "AL_CORRIENTE",
       });
       expect(extractBureauStatus({ buroEmpresa: "sin atrasos" })).toEqual({
-        hasDelinquencies: false,
-        rawStatus: "sin atrasos",
+        hasDelinquencies: null,
+        rawStatus: null,
       });
       expect(extractBureauStatus({ atrasosDeudas: "si" })).toEqual({
         hasDelinquencies: true,
         rawStatus: "SI",
       });
       expect(extractBureauStatus({ buroEmpresa: "malo con quebranto" })).toEqual({
-        hasDelinquencies: true,
-        rawStatus: "malo con quebranto",
+        hasDelinquencies: null,
+        rawStatus: null,
       });
       expect(extractBureauStatus({})).toEqual({
         hasDelinquencies: null,
