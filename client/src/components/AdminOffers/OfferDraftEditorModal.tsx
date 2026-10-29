@@ -1010,7 +1010,7 @@ export default function OfferDraftEditorModal({
                       onChange={e => {setAgeMonthsByProfile(prev => ({...prev, [row.profile]: e.target.value})); setAgeReviewed(false);}} />
                   </label>)}
                   <label className="block">Motivo de conciliación<Input value={ageReviewReason} onChange={e => {setAgeReviewReason(e.target.value);setAgeReviewed(false);}} data-testid="age-review-reason" /></label>
-                  <label className="flex gap-2"><input type="checkbox" checked={ageReviewed} onChange={e => setAgeReviewed(e.target.checked)} data-testid="age-review-confirm" />Confirmo que cotejé estos mínimos por perfil con la política de la financiera.</label>
+                  <label className="flex gap-2"><input type="checkbox" checked={ageReviewed} onChange={e => setAgeReviewed(e.target.checked)} data-testid="age-review-confirm" />Confirmo que revisé la fuente y autorizo estos mínimos por perfil como responsable comercial.</label>
                 </div>}
                 <div className="p-3 bg-amber-50/70 border border-amber-200/80 rounded-xl text-xs text-amber-900 leading-relaxed">
                   <strong>Variables de Elegibilidad:</strong> No se asume que los datos estén recopilados. Únicamente se contrastan contra campos reales del expediente del cliente. Los datos faltantes o marcados como no verificados quedan pendientes por criterio.
