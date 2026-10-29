@@ -82,7 +82,7 @@ describe("Financieras editing/publication and administrative activity HTTP",()=>
   expect(saved.status).toBe(200);
   expect(evaluateOfferCompatibility(candidate,{product:saved.body.product,version:saved.body.version}).status).toBe("NOT_COMPATIBLE");
   expect(saved.body.version.conditions.eligibilityEvaluation).toBeUndefined();
-  await request(app).put(path+'/draft').send({requirements:{businessAgeSource:"PM 2 / PFAE 3 años"}});
+  await request(app).put(path+'/draft').send({requirements:{businessAgeSource:"2-3 años"}});
   const blocked=await request(app).get(path+'/publish-preview');expect(blocked.body.validation.isValid).toBe(false);
   const premature=await request(app).post(path+'/publish').send({confirmPublish:true,changeReason:"Blocked conflict",expectedDraftId:blocked.body.draftVersion.id,expectedVersionHash:blocked.body.draftVersion.versionHash});
   expect(premature.status).toBe(400);expect(premature.body.message).toContain("Antigüedad");
@@ -93,7 +93,7 @@ describe("Financieras editing/publication and administrative activity HTTP",()=>
   expect((await request(app).get(path+'/publish-preview')).body.validation.isValid).toBe(true);
   expect(evaluateOfferCompatibility({...candidate,client:{...candidate.client,companyAgeMonths:30}},{product:reviewed.body.product,version:reviewed.body.version}).status).toBe("NOT_COMPATIBLE");
   // A change to the reviewed source invalidates the reconciliation without modifying history.
-  await request(app).put(path+'/draft').send({requirements:{businessAgeSource:"PM 2 / PFAE 4 años"}});
+  await request(app).put(path+'/draft').send({requirements:{businessAgeSource:"3-4 años"}});
   expect((await request(app).get(path+'/publish-preview')).body.validation.isValid).toBe(false);
  });
  it("records successful and rejected mutations using route templates, with no body or query secrets",async()=>{
