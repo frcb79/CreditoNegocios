@@ -12,30 +12,39 @@ const criterion = (result: any, code: string) => [...result.criteria.matched, ..
 
 describe("Final audit adversarial regressions", () => {
   it.each([
-    ["PM 3 años/PFAE 5 años", 36, 48], ["PM 2 / PFAE 3 años", 24, 30], ["PM 12 / PFAE 24 meses", 12, 18],
-    ["2-3 años", 36, 48],
-  ])("leaves contradictory/ambiguous age pending and blocks publication: %s", (source, minimum, actual) => {
-    const data = offer({ businessAgeSource: source, minMonthsInBusiness: minimum });
-    const result = evaluate(data, { companyAgeMonths: actual });
-    expect(result.status).toBe("INSUFFICIENT_DATA");
-    expect(criterion(result, "companyAge")).toHaveLength(1);
-    expect(criterion(result, "companyAge")[0].status).toBe("MISSING_DATA");
-    const gate = validateMinimumPublishConditions({ ...data.version, changeReason: "Review" });
-    expect(gate.isValid).toBe(false);
-    expect(gate.errors.join(" ")).toContain("Antigüedad");
-  });
-  it("evaluates an explicitly reconciled minimum per profile and invalidates stale approval", () => {
-    const data = offer({ businessAgeSource: "PM 3 años/PFAE 5 años", minMonthsInBusiness: 36 });
-    const r: any = data.version.requirements;
-    r.businessAgeResolution = { basis: getOfferAgePolicy(data.version.conditions, r).basis,
-      monthsByProfile: { persona_moral: 36, fisica_empresarial: 60 }, reason: "Confirmed with institution",
-      reviewedBy: "test-admin", reviewedAt: "2026-10-29T12:00:00Z" };
-    expect(evaluate(data, { companyAgeMonths: 48 }).status).toBe("NOT_COMPATIBLE");
-    expect(evaluate(data, { companyAgeMonths: 60 }).status).toBe("COMPATIBLE");
-    expect(evaluate(data, { type: "persona_moral", companyAgeMonths: 36 }).status).toBe("COMPATIBLE");
+    ["PM 3 años/PFAE 5 años", 36, 60, 48],
+    ["PM 2 / PFAE 3 años", 24, 36, 30],
+    ["PM 12 / PFAE 24 meses", 12, 24, 18],
+  ])("uses explicit per-profile source without changing the original: %s", (source, pmMonths, pfaeMonths, below) => {
+    const data = offer({ businessAgeSource: source, minMonthsInBusiness: pmMonths });
+    const age = getOfferAgePolicy(data.version.conditions, data.version.requirements);
+    expect(age.needsReview).toBe(false);
+    expect(age.rows.map(row => row.effectiveMonths)).toEqual([pmMonths, pfaeMonths]);
+    expect(evaluate(data, { companyAgeMonths: below }).status).toBe("NOT_COMPATIBLE");
+    expect(evaluate(data, { companyAgeMonths: pfaeMonths }).status).toBe("COMPATIBLE");
+    expect(evaluate(data, { type: "persona_moral", companyAgeMonths: pmMonths }).status).toBe("COMPATIBLE");
     expect(validateMinimumPublishConditions({ ...data.version, changeReason: "Review" }).isValid).toBe(true);
-    r.businessAgeSource = "PM 3 años/PFAE 6 años";
+    expect(data.version.requirements.businessAgeSource).toBe(source);
+  });
+  it("blocks an edited numeric minimum that conflicts with all exact source profile limits", () => {
+    const data = offer({ businessAgeSource: "PM 3 años/PFAE 5 años", minMonthsInBusiness: 36 }, { minCompanyAgeMonths: 48 });
+    expect(getOfferAgePolicy(data.version.conditions, data.version.requirements).needsReview).toBe(true);
     expect(evaluate(data, { companyAgeMonths: 60 }).status).toBe("INSUFFICIENT_DATA");
+    expect(validateMinimumPublishConditions({ ...data.version, changeReason: "Review" }).isValid).toBe(false);
+  });
+  it("keeps Revolvente Afirme's ambiguous 2-3 year text pending until the approved PM 24-month decision is recorded", () => {
+    const data = offer({ businessAgeSource: "2-3 años", minMonthsInBusiness: 36, targetProfiles: ["persona_moral"] });
+    const r: any = data.version.requirements;
+    expect(evaluate(data, { type: "persona_moral", companyAgeMonths: 24 }).status).toBe("INSUFFICIENT_DATA");
+    expect(validateMinimumPublishConditions({ ...data.version, changeReason: "Review" }).isValid).toBe(false);
+    r.businessAgeResolution = { basis: getOfferAgePolicy(data.version.conditions, r).basis,
+      monthsByProfile: { persona_moral: 24 }, reason: "Aprobacion comercial: Revolvente Afirme 24 meses PM",
+      reviewedBy: "test-admin", reviewedAt: "2026-10-29T12:00:00Z" };
+    expect(evaluate(data, { type: "persona_moral", companyAgeMonths: 23 }).status).toBe("NOT_COMPATIBLE");
+    expect(evaluate(data, { type: "persona_moral", companyAgeMonths: 24 }).status).toBe("COMPATIBLE");
+    expect(validateMinimumPublishConditions({ ...data.version, changeReason: "Review" }).isValid).toBe(true);
+    r.businessAgeSource = "3-4 años";
+    expect(evaluate(data, { type: "persona_moral", companyAgeMonths: 24 }).status).toBe("INSUFFICIENT_DATA");
     expect(validateMinimumPublishConditions({ ...data.version, changeReason: "Review" }).isValid).toBe(false);
   });
   it.each(["bueno-592-693", "excelente", "malo-456-489"])("never infers arrears from a personal score %s", score => {
