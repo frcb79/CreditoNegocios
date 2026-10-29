@@ -32,13 +32,21 @@ export function getOfferAgePolicy(conditions: any = {}, requirements: any = {}) 
     typeof resolution?.reviewedBy === "string" && resolution.reviewedBy.length > 0 &&
     typeof resolution?.reviewedAt === "string" && Number.isFinite(Date.parse(resolution.reviewedAt)) &&
     profiles.length > 0 && profiles.every(p => valid(resolution?.monthsByProfile?.[p]));
+  // A fully explicit policy by profile is more specific than a single numeric
+  // minimum copied by the importer into every profile. Do not rewrite the source.
+  // A separately edited numeric override outside the source values must be reviewed.
+  const hasSource = normalized !== "" && !["no aplica", "n/a"].includes(normalized);
+  const fullySpecified = hasSource && profiles.length > 0 && profiles.every(p => valid(parsed[p]));
+  const explicitMinimum = conditions?.minCompanyAgeMonths;
+  const unrecognizedOverride = valid(explicitMinimum) && fullySpecified &&
+    !profiles.some(p => parsed[p] === explicitMinimum);
   const rows = profiles.map(profile => {
-    const hasSource = normalized !== "" && !["no aplica", "n/a"].includes(normalized);
     const conflict = hasSource && (!valid(parsed[profile]) || !valid(configured[profile]) || parsed[profile] !== configured[profile]);
+    const pending = conflict && !resolved && (!fullySpecified || unrecognizedOverride);
     return { profile, label: PROFILE_LABELS[profile] || profile, sourceMonths: parsed[profile] ?? null,
-      configuredMonths: configured[profile], conflict,
-      pending: conflict && !resolved,
-      effectiveMonths: resolved ? resolution.monthsByProfile[profile] : conflict ? null : configured[profile] };
+      configuredMonths: configured[profile], conflict, pending,
+      effectiveMonths: resolved ? resolution.monthsByProfile[profile] :
+        pending ? null : fullySpecified ? parsed[profile] : configured[profile] };
   });
   return { source, basis, rows, resolved: Boolean(resolved), needsReview: rows.some(r => r.pending),
     hasConflict: rows.some(r => r.conflict), resolution: resolved ? resolution : null };
