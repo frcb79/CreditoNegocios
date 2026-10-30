@@ -38,6 +38,10 @@ interface DashboardMetrics {
     totalDisbursed: number;
     totalDisbursedVolume?: number;
     activeBrokers: number;
+    activeMasterBrokers: number;
+    pendingInvitations: number;
+    publishedOffers: number;
+    activeFinancialInstitutions: number;
     totalClients: number;
     newProspectsMonth?: number;
     avgTicket?: number;
@@ -243,13 +247,31 @@ export default function MetricsGrid() {
       onClick: () => setLocation('/comisiones?filter=pending'),
     },
     {
-      title: "Brokers Activos",
+      title: "Brokers registrados",
       value: `${metrics.admin.activeBrokers}`,
-      subtitle: `${metrics.admin.totalClients} clientes registrados`,
+      subtitle: `${metrics.admin.activeMasterBrokers} Master Broker${metrics.admin.activeMasterBrokers === 1 ? "" : "s"} registrado${metrics.admin.activeMasterBrokers === 1 ? "" : "s"}`,
       icon: "fas fa-users",
       color: "indigo",
       testId: "metric-active-brokers",
-      onClick: () => setLocation('/admin/usuarios'),
+      onClick: () => setLocation('/red-brokers'),
+    },
+    {
+      title: "Invitaciones pendientes",
+      value: `${metrics.admin.pendingInvitations}`,
+      subtitle: "Brokers y Masters sin completar registro",
+      icon: "fas fa-user-clock",
+      color: "orange",
+      testId: "metric-pending-invitations",
+      onClick: () => setLocation('/red-brokers'),
+    },
+    {
+      title: "Ofertas publicadas",
+      value: `${metrics.admin.publishedOffers}`,
+      subtitle: `${metrics.admin.activeFinancialInstitutions} financieras activas`,
+      icon: "fas fa-building",
+      color: "green",
+      testId: "metric-published-offers",
+      onClick: () => setLocation('/financieras'),
     },
     {
       title: "Ticket Promedio Global",
@@ -280,7 +302,7 @@ export default function MetricsGrid() {
 
   return (
     <div
-      className={`grid grid-cols-1 sm:grid-cols-2 ${isAdmin ? 'lg:grid-cols-6' : 'lg:grid-cols-4'} gap-4 mb-6`}
+      className={`grid grid-cols-1 sm:grid-cols-2 ${isAdmin ? 'lg:grid-cols-4' : 'lg:grid-cols-4'} gap-4 mb-6`}
       data-testid="metrics-grid"
     >
       {displayCards.map((card, index) => {
