@@ -435,6 +435,60 @@ describe("AG — FASE 2B.2B: Cambios y Aceptación Comercial", () => {
     });
   });
 
+  describe("Asignación por oferta de Master Broker", () => {
+    it("sugiere broker directo por oferta y valida el techo de ese producto", async () => {
+      const master = await createTestUser("master_broker", "Master Por Oferta");
+      const inst = await createTestInstitution("Financiera Dos Productos");
+      const first = (await storage.getInstitutionProducts(inst.id))[0];
+      const second = await storage.createInstitutionProduct({
+        institutionId: inst.id, name: "Revolvente", customName: "Revolvente",
+        productType: "credito_revolvente", targetProfiles: ["persona_moral"], isActive: true,
+      } as any, {
+        conditions: {
+          minAmount: 200000, maxAmount: 2000000, maxTermMonths: 12,
+          rateSource: "Tasa indicativa",
+          commissionRates: {
+            financiera: { apertura: 4, renovacion: 2 },
+            masterBroker: { apertura: 2, renovacion: 1 },
+            broker: { apertura: 1.5, renovacion: 0.5 },
+          },
+        },
+        requirements: { targetProfiles: ["persona_moral"] },
+        requiredDocuments: ["Identificación"],
+        changeReason: "Segunda oferta de prueba",
+      });
+      const versions = await storage.getInstitutionProductVersions(second.id);
+      await storage.publishInstitutionProductVersion(second.id, versions[0].id, {
+        changeReason: "Segunda oferta publicada",
+      });
+
+      currentAuthUser = master;
+      const queried = await request(app).get("/api/master-broker/network-rates");
+      expect(queried.status).toBe(200);
+      const ownOffers = queried.body.offerItems.filter((item: any) => item.institutionId === inst.id);
+      expect(ownOffers).toHaveLength(2);
+      expect(ownOffers.find((x: any) => x.offerId === first.id).suggestedBroker.apertura).toBe(3);
+      expect(ownOffers.find((x: any) => x.offerId === second.id).masterCeiling.apertura).toBe(2);
+
+      const rejected = await request(app).put("/api/master-broker/network-rates").send({
+        rates: { [second.id]: { apertura: 3, renovacion: 0.5 } },
+      });
+      expect(rejected.status).toBe(400);
+
+      const accepted = await request(app).put("/api/master-broker/network-rates").send({
+        rates: {
+          [first.id]: { apertura: 3, renovacion: 1 },
+          [second.id]: { apertura: 1.5, renovacion: 0.5 },
+        },
+      });
+      expect(accepted.status).toBe(200);
+      const after = await request(app).get("/api/master-broker/network-rates");
+      expect(after.body.rates[first.id].apertura).toBe(3);
+      expect(after.body.rates[second.id].apertura).toBe(1.5);
+      expect(after.body.rates[second.id].sobretasa).toBe(0);
+    });
+  });
+
   describe("5. RBAC y Seguridad (Regla 6)", () => {
     it("Master Broker no puede modificar configuración comercial global (403)", async () => {
       const master = await createTestUser("master_broker", "Master Unauthorized");
