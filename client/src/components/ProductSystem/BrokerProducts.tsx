@@ -204,12 +204,16 @@ function readDisplayTerms(p: InstitutionProductWithTemplate): Record<string, any
   if (!terms) return legacy;
   return {
     ...legacy,
-    montoMinimo: terms.minAmount ?? undefined,
-    montoMaximo: terms.maxAmount ?? undefined,
-    plazoMax: terms.maxTermMonths ?? undefined,
-    plazo: terms.maxTermMonths ?? undefined,
-    tasaInteres: terms.rateSource || undefined,
-    tasa: terms.rateSource || undefined,
+    // For versioned offers, legacy financial aliases must NEVER silently
+    // reappear when a published field is unknown. Unknown means N/D.
+    montoMinimo: terms.minAmount ?? null,
+    montoMin: terms.minAmount ?? null,
+    montoMaximo: terms.maxAmount ?? null,
+    montoMax: terms.maxAmount ?? null,
+    plazoMax: terms.maxTermMonths ?? null,
+    plazo: terms.maxTermMonths ?? null,
+    tasaInteres: terms.rateSource || null,
+    tasa: terms.rateSource || null,
     destinos: terms.loanPurposes
       ? (Array.isArray(terms.loanPurposes) ? terms.loanPurposes : [String(terms.loanPurposes)])
       : [],
