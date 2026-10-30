@@ -31,6 +31,8 @@ export default function BatchOfferPublishModal({ offers, onClose }: {
     },
   });
   const selected = (preview.data || []).filter(r => r.preview?.validation.isValid && !excluded.includes(r.offer.id));
+  const blockedCount = (preview.data || []).filter(r => !r.preview?.validation.isValid).length;
+  const warningOfferCount = (preview.data || []).filter(r => Boolean(r.preview?.validation.warnings?.length)).length;
   async function publish() {
     if (publishingRef.current || running || finished || !confirmed || reason.trim().length < 3 || !selected.length) return;
     publishingRef.current = true;
@@ -56,7 +58,14 @@ export default function BatchOfferPublishModal({ offers, onClose }: {
       <DialogTitle>Confirmar y publicar ofertas en conjunto</DialogTitle>
       <DialogDescription>Revisa los borradores de la lista actual. Cada oferta se valida y publica conservando su historial. Las que tengan errores permanecen en borrador.</DialogDescription>
       {preview.isLoading ? <p role="status">Revisando {offers.length} borradores…</p> : preview.isError ? <p role="alert">No se pudo cargar la revisión. Cierra e intenta de nuevo.</p> : <>
-        <p className="text-sm">{selected.length} ofertas listas para publicar · {(preview.data || []).filter(r => !r.preview?.validation.isValid).length} bloqueadas</p>
+        <div className="space-y-1">
+          <p className="text-sm font-semibold">{selected.length} ofertas listas para publicar · {blockedCount} bloqueadas</p>
+          {warningOfferCount > 0 && (
+            <p className="text-xs text-slate-600" data-testid="batch-publish-warning-summary">
+              {warningOfferCount} ofertas tienen observaciones informativas (no bloqueantes) sobre condiciones aún no definidas completamente. Revisa sus detalles antes de confirmar; «lista» no significa que se haya fijado una tasa o un plazo mínimo.
+            </p>
+          )}
+        </div>
         <div className="space-y-3">{preview.data?.map(row => <div className="rounded-lg border p-3 text-xs space-y-2" key={row.offer.id}>
           <label className="flex gap-2 font-semibold"><input type="checkbox" checked={Boolean(row.preview?.validation.isValid && !excluded.includes(row.offer.id))}
             disabled={!row.preview?.validation.isValid || running || finished} onChange={e => setExcluded(prev => e.target.checked ? prev.filter(id => id !== row.offer.id) : [...prev, row.offer.id])} />
@@ -72,7 +81,16 @@ export default function BatchOfferPublishModal({ offers, onClose }: {
           </details>}
           {row.error && <p role="alert" className="text-red-700">{row.error}</p>}
           {row.preview?.validation.errors.map((text,i) => <p className="text-red-700" key={i}>{text}</p>)}
-          {row.preview?.validation.warnings.map((text,i) => <p className="text-amber-800" key={i}>{text}</p>)}
+          {Boolean(row.preview?.validation.warnings?.length) && (
+            <details className="text-amber-800" data-testid="batch-offer-warnings">
+              <summary className="cursor-pointer font-medium">
+                {row.preview!.validation.warnings.length} observaciones no bloqueantes · Ver advertencias
+              </summary>
+              <ul className="list-disc pl-5 pt-1 space-y-1">
+                {row.preview!.validation.warnings.map((warning, i) => <li key={i}>{warning}</li>)}
+              </ul>
+            </details>
+          )}
           {results[row.offer.id] && <p role="status" className="font-semibold">{results[row.offer.id]}</p>}
         </div>)}</div>
         {!finished && <>
