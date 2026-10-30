@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { renderCommercialGraphic } from "@/lib/commercialGraphicRenderer";
 import CommercialLibraryToolbar, { INITIAL_LIBRARY_FILTERS } from "./CommercialLibraryToolbar";
 import CommercialTemplateCard from "./CommercialTemplateCard";
-import { COMMERCIAL_STYLES, filterCommercialTemplates } from "@/lib/commercialLibrary";
+import { COMMERCIAL_STYLES, filterCommercialTemplates, type CommercialLibraryFilters } from "@/lib/commercialLibrary";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -83,7 +83,7 @@ export default function CommercialResourcesAdmin() {
   const [importReport, setImportReport] = useState<{ scanned:number;created:number;existing:number;requiresTypographyReview:number;batchId?:string } | null>(null);
   const [previewTemplateId, setPreviewTemplateId] = useState<string | null>(null);
   const [selectedDraftIds,setSelectedDraftIds]=useState<string[]>([]);
-  const [libraryFilters, setLibraryFilters] = useState({...DEFAULT_ADMIN_FILTERS});
+  const [libraryFilters, setLibraryFilters] = useState<CommercialLibraryFilters>({...DEFAULT_ADMIN_FILTERS});
 
   const { data: campaignOverview } = useQuery<{ clicks: number; links: number; received: number; linked: number }>({
     queryKey: ["/api/commercial-resources/overview"],
