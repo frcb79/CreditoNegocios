@@ -8520,29 +8520,34 @@ function maskCLABE(clabe?: string | null): string | null {
       const allInstitutions = await storage.getFinancialInstitutions();
       const activeInstitutions = allInstitutions.filter((f: any) => f.isActive !== false);
       const networkRates = (user.networkCommissionRates as any) || {};
-
+      const publishedOffers = await loadPublishedCommissionOffers();
       const items = activeInstitutions.map((inst: any) => {
-        const comm = inst.commissionRates || {};
-        const mb = comm.masterBroker || {};
-        const brk = comm.broker || {};
-
+        const offers = publishedOffers.filter(x => x.institutionId === inst.id);
+        const ceiling = masterSafeCeilings(offers);
         return {
           institutionId: inst.id,
           institutionName: inst.name,
           logoUrl: inst.logoUrl,
           category: inst.category,
+          offerCount: offers.length,
+          // These ceilings are the conservative limits across ALL offers of
+          // this institution; the per-offer breakdown is displayed below.
           masterCeiling: {
-            total: parseFloat(mb.total || '0'),
-            apertura: parseFloat(mb.apertura || '0'),
-            sobretasa: parseFloat(mb.sobretasa || '0'),
-            renovacion: parseFloat(mb.renovacion || '0'),
+            total: ceiling.apertura,
+            apertura: ceiling.apertura,
+            sobretasa: 0,
+            renovacion: ceiling.renovacion,
           },
           defaultBroker: {
-            total: parseFloat(brk.total || '0'),
-            apertura: parseFloat(brk.apertura || '0'),
-            sobretasa: parseFloat(brk.sobretasa || '0'),
-            renovacion: parseFloat(brk.renovacion || '0'),
+            total: ceiling.brokerApertura,
+            apertura: ceiling.brokerApertura,
+            sobretasa: 0,
+            renovacion: ceiling.brokerRenovacion,
           },
+          offerRates: offers.map(x => ({
+            offerId: x.offerId, offerName: x.offerName, versionNumber: x.versionNumber,
+            apertura: x.master.apertura, renovacion: x.master.renovacion
+          })),
           assignedRate: networkRates[inst.id] || null,
         };
       });
