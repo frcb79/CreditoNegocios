@@ -70,6 +70,8 @@ function GraphicDraftPreview({template}:{template:PublishedCommercialTemplate}) 
   </div>;
 }
 
+const DEFAULT_ADMIN_FILTERS = {...INITIAL_LIBRARY_FILTERS, status:"available"};
+
 export default function CommercialResourcesAdmin() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
@@ -81,7 +83,7 @@ export default function CommercialResourcesAdmin() {
   const [importReport, setImportReport] = useState<{ scanned:number;created:number;existing:number;requiresTypographyReview:number;batchId?:string } | null>(null);
   const [previewTemplateId, setPreviewTemplateId] = useState<string | null>(null);
   const [selectedDraftIds,setSelectedDraftIds]=useState<string[]>([]);
-  const [libraryFilters, setLibraryFilters] = useState({...INITIAL_LIBRARY_FILTERS});
+  const [libraryFilters, setLibraryFilters] = useState({...DEFAULT_ADMIN_FILTERS});
 
   const { data: campaignOverview } = useQuery<{ clicks: number; links: number; received: number; linked: number }>({
     queryKey: ["/api/commercial-resources/overview"],
@@ -100,6 +102,7 @@ export default function CommercialResourcesAdmin() {
   const visibleTemplates = filterCommercialTemplates(templates, libraryFilters);
   const previewTemplate = visibleTemplates.find(item => item.id === previewTemplateId) ?? null;
 
+  const retiredCount=templates.filter(item=>item.status==="retired").length;
   const visibleDrafts=visibleTemplates.filter(item=>item.status==="draft");
   const selectedDrafts=templates.filter(item=>selectedDraftIds.includes(item.id)&&item.status==="draft");
   const toggleDraft=(id:string,checked:boolean)=>{
@@ -178,7 +181,7 @@ export default function CommercialResourcesAdmin() {
       const firstImportedId=result.items?.find((item:any)=>item.result==="draft")?.id ||
         result.items?.[0]?.id;
       if(typeof firstImportedId==="string"){
-        setLibraryFilters({...INITIAL_LIBRARY_FILTERS});
+        setLibraryFilters({...DEFAULT_ADMIN_FILTERS});
         setPreviewTemplateId(firstImportedId);
       }
       toast({title:"Borradores importados",description:`${result.created} nuevos, ${result.existing} existentes. Nada publicado.`});
@@ -302,9 +305,18 @@ export default function CommercialResourcesAdmin() {
           onChange={setLibraryFilters} includeStatus />
         <div className="rounded-lg border p-3 space-y-2" data-testid="resource-admin-draft-deletion">
           <p className="text-xs text-muted-foreground">
-            Limpieza segura: solo borradores no vinculados a campañas. Puedes seleccionar los borradores de esta búsqueda, un lote completo o una sola plantilla.
+            Eliminar definitivamente solo está disponible para borradores sin vínculos a campañas. Las plantillas retiradas se conservan por historial y enlaces previamente generados; puedes ocultarlas del catálogo o consultarlas en Estado → Retiradas.
           </p>
+          {visibleDrafts.length===0 && <p className="text-xs font-medium text-amber-800 dark:text-amber-300" data-testid="no-deletable-resource-drafts">
+            No hay borradores eliminables en esta vista; por eso el botón de eliminar está deshabilitado.
+          </p>}
           <div className="flex flex-wrap gap-2">
+            {retiredCount>0 && <Button type="button" size="sm" variant="outline"
+              aria-pressed={libraryFilters.status==="retired"}
+              onClick={()=>setLibraryFilters(previous=>({...previous,status:previous.status==="retired"?"available":"retired"}))}
+              data-testid="toggle-resource-retired">
+              {libraryFilters.status==="retired"?"Ocultar retiradas":`Ver retiradas (${retiredCount})`}
+            </Button>}
             <Button type="button" size="sm" variant="outline" disabled={working||visibleDrafts.length===0}
               onClick={()=>setSelectedDraftIds(previous=>Array.from(new Set([...previous,...visibleDrafts.map(t=>t.id)])))}
               data-testid="select-filtered-drafts">
@@ -324,7 +336,7 @@ export default function CommercialResourcesAdmin() {
           <div className="min-w-0 space-y-3" data-testid="resource-admin-template-list">
             {loadingTemplates ? <p className="text-sm">Cargando plantillas…</p>
               : templates.length === 0 ? <p className="text-sm text-muted-foreground">Todavía no se han subido plantillas.</p>
-              : visibleTemplates.length === 0 ? <p className="text-sm text-muted-foreground">No hay plantillas que coincidan con los filtros.</p>
+              : visibleTemplates.length === 0 ? <p className="text-sm text-muted-foreground">No hay plantillas vigentes o en borrador que coincidan con los filtros. Si buscas versiones anteriores, utiliza «Ver retiradas» o cambia el filtro Estado.</p>
               : (
                 <div className="max-h-[68vh] overflow-y-auto overscroll-contain space-y-2 pr-2"
                   data-testid="resource-admin-scrollable-templates">
