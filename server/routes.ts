@@ -5575,19 +5575,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const { id } = req.params;
       const userId = req.user?.claims?.sub || req.user?.id;
       const user = await storage.getUser(userId);
-      // Este endpoint es del catálogo administrativo; los Brokers consultan productos/ofertas autorizadas.
-      if (!user || (user.role !== 'super_admin' && user.role !== 'admin')) {
-        return res.status(403).json({ message: "Catálogo financiero administrativo no autorizado." });
+      if (!user) return res.status(403).json({ message: "Acceso no autorizado" });
+      // Use the SAME visible set as the broker's catalog listing. Never expose
+      // administrative financial data or institutions that are unavailable to this user.
+      const visibleInstitutions = await storage.getFinancialInstitutions(userId);
+      const institution: any = visibleInstitutions.find((inst: any) => inst.id === id);
+      if (!institution || ((user.role === "broker" || user.role === "master_broker") && institution.isActive === false)) {
+        return res.status(404).json({ message: "Institución no disponible en el catálogo" });
       }
-      const institution: any = await storage.getFinancialInstitution(id);
-      
-      if (!institution) {
-        return res.status(404).json({ message: 'Financial institution not found' });
-      }
-
-      const sanitized = projectFinancialInstitutionByRole(institution, user.role);
-      
-      res.json(sanitized);
+      res.json(projectFinancialInstitutionByRole(institution, user.role));
     } catch (error) {
       console.error("Error fetching financial institution:", error);
       res.status(500).json({ message: "Failed to fetch financial institution" });
@@ -9692,7 +9688,25 @@ function maskCLABE(clabe?: string | null): string | null {
           }
           const versions = await storage.getInstitutionProductVersions(p.id);
           if (isOfferEligibleForRequests(p, versions)) {
-            eligibleCommercialOffers.push(sanitizeCommercialOffer(p, userRole));
+            const visibleProduct = sanitizeCommercialOffer(p, userRole);
+            // Financial detail is sourced from the immutable, published OFFER
+            // VERSION. Only an explicit commercial whitelist is shared; this
+            // never includes the lender gross, platform margin or overrate.
+            const published = versions.find(v => v.status === "published");
+            const c = (published?.conditions || {}) as Record<string, any>;
+            eligibleCommercialOffers.push({
+              ...visibleProduct,
+              commercialTerms: {
+                minAmount: c.minAmount ?? null,
+                maxAmount: c.maxAmount ?? null,
+                maxTermMonths: c.maxTermMonths ?? null,
+                rateSource: c.rateSource ?? null,
+                loanPurposes: c.loanPurposes ?? null,
+                turnaround: c.turnaround ?? null,
+                sourceNotes: c.sourceNotes ?? null,
+                requiredDocumentationSource: c.requiredDocumentationSource ?? null,
+              },
+            });
           }
         }
         return res.json(eligibleCommercialOffers);
@@ -9803,7 +9817,19 @@ function maskCLABE(clabe?: string | null): string | null {
         }
         const user = await storage.getUser(userId);
         const userRole = user?.role || 'broker';
-        return res.json(sanitizeCommercialOffer(product, userRole));
+        const commercialOffer = sanitizeCommercialOffer(product, userRole);
+        const published = versions.find(v => v.status === "published");
+        const c = (published?.conditions || {}) as Record<string, any>;
+        return res.json({
+          ...commercialOffer,
+          commercialTerms: {
+            minAmount: c.minAmount ?? null, maxAmount: c.maxAmount ?? null,
+            maxTermMonths: c.maxTermMonths ?? null, rateSource: c.rateSource ?? null,
+            loanPurposes: c.loanPurposes ?? null, turnaround: c.turnaround ?? null,
+            sourceNotes: c.sourceNotes ?? null,
+            requiredDocumentationSource: c.requiredDocumentationSource ?? null,
+          },
+        });
       }
       
       res.json(product);
