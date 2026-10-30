@@ -236,6 +236,13 @@ function MasterBrokerRatesConfig({ user }: { user: any }) {
               Ajusta la comisión de apertura asignada a tu equipo. El margen retenido se calcula en tiempo real.
             </CardDescription>
           </div>
+          <Button type="button" size="sm" variant="outline" onClick={downloadRatesTemplate}
+            data-testid="master-download-rates">Descargar plantilla Excel</Button>
+          <label className="cursor-pointer rounded-md border border-input px-3 py-1.5 text-xs font-semibold hover:bg-accent">
+            Subir Excel
+            <input type="file" className="sr-only" accept=".xlsx,.xls" onChange={importRatesTemplate}
+              data-testid="master-upload-rates" />
+          </label>
           <Button
             size="sm"
             onClick={handleSave}
