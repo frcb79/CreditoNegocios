@@ -1,4 +1,5 @@
 import { readFileSync } from "node:fs";
+import { filterCommercialTemplates } from "../../client/src/lib/commercialLibrary";
 import { resolve } from "node:path";
 import {
   CHANNELS, COMMERCIAL_CAMPAIGNS, campaignMessage, campaignSvg, imageSize,
@@ -63,6 +64,33 @@ describe("Biblioteca comercial - contratos, permisos y formatos", () => {
     expect(api).toContain("commercialResourceUploadSchema.safeParse");
     expect(api).toContain("commercialSuggestionSchema.safeParse");
     expect(api).not.toContain("UPDATE public.commercial_resource_suggestions");
+  });
+
+  it("shows current templates by default while keeping retired campaign history accessible", () => {
+    const makeTemplate = (id: string, status: "draft" | "published" | "retired") => ({
+      ...COM_RES_EXAMPLE, id, version: 1, status
+    });
+    const rows = [
+      makeTemplate("draft", "draft"),
+      makeTemplate("published", "published"),
+      makeTemplate("historical", "retired"),
+    ] as any;
+    const filters = {
+      search: "", product: "all", format: "all", style: "all", leasingSubtype: "all",
+      status: "available",
+    };
+    expect(filterCommercialTemplates(rows, filters).map(t => t.id)).toEqual(["draft", "published"]);
+    expect(filterCommercialTemplates(rows, {...filters, status: "retired"}).map(t => t.id)).toEqual(["historical"]);
+    expect(filterCommercialTemplates(rows, {...filters, status: "all"})).toHaveLength(3);
+
+    const admin = source("client/src/components/Commercial/CommercialResourcesAdmin.tsx");
+    expect(admin).toContain('status:"available"');
+    expect(admin).toContain('data-testid="toggle-resource-retired"');
+    expect(admin).toContain('data-testid="no-deletable-resource-drafts"');
+    expect(admin).toContain('item.status==="draft"');
+    const server = source("server/commercialResourcesRoutes.ts");
+    expect(server).toContain('row.status!=="draft"');
+    expect(server).toContain("Las publicaciones e históricos están protegidos");
   });
 
   it("keeps suggestions as a read-only inbox without statuses", () => {

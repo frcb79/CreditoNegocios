@@ -20,7 +20,9 @@ type Props={
 
 export default function CommercialLibraryToolbar({templates,filters,onChange,includeStatus=false}:Props){
   const products=Object.keys(COMMERCIAL_PRODUCTS);
-  const productCounts=new Map(products.map(p=>[p,templates.filter(t=>t.product===p).length]));
+  const countableTemplates = includeStatus && filters.status === "available"
+    ? templates.filter(t => t.status !== "retired") : templates;
+  const productCounts=new Map(products.map(p=>[p,countableTemplates.filter(t=>t.product===p).length]));
   const results=filterCommercialTemplates(templates,filters);
   const set=(part:Partial<CommercialLibraryFilters>)=>onChange({...filters,...part});
   const chooseStyle=[
@@ -67,7 +69,8 @@ export default function CommercialLibraryToolbar({templates,filters,onChange,inc
         <select aria-label="Estado" className="w-full h-9 rounded-md border bg-background px-2 text-xs"
           value={filters.status||"all"} onChange={e=>set({status:e.target.value})}
           data-testid="commercial-library-status">
-          <option value="all">Todos los estados</option>
+          <option value="available">Vigentes y borradores (sin retiradas)</option>
+          <option value="all">Todos los estados (incluye historial)</option>
           <option value="draft">Borradores</option>
           <option value="published">Publicadas</option>
           <option value="retired">Retiradas</option>
@@ -94,7 +97,7 @@ export default function CommercialLibraryToolbar({templates,filters,onChange,inc
       </p>
       {(filters.search || filters.product!=="all" || filters.format!=="all" ||
         filters.style!=="all" || (filters.leasingSubtype && filters.leasingSubtype!=="all") || (filters.status && filters.status!=="all")) && (
-        <Button size="sm" variant="ghost" type="button" onClick={()=>onChange({...INITIAL_LIBRARY_FILTERS})}>
+        <Button size="sm" variant="ghost" type="button" onClick={()=>onChange({...INITIAL_LIBRARY_FILTERS, ...(includeStatus ? {status:"available"} : {})})}>
           <X className="h-3.5 w-3.5 mr-1" /> Limpiar filtros
         </Button>
       )}
