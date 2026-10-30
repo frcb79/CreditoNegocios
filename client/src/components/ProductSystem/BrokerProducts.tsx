@@ -1,5 +1,6 @@
 import { useState, useMemo, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { formatIndicativeRate } from "@/lib/formatIndicativeRate";
 import { useLocation, useSearch } from "wouter";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -302,22 +303,7 @@ function formatPlazo(val: any): string {
   return `${num} meses`;
 }
 
-function formatRate(val: any): string | null {
-  if (val === undefined || val === null || val === "") return null;
-  // Convert numeric fraction rates: 0.18 = 18%, without changing the stored data.
-  // Do not reinterpret formulas (TIIE + spread), descriptive rates or explicit %.
-  const text = String(val).trim();
-  if (/^(?:\\d+(?:[.,]\\d+)?|[.,]\\d+)$/.test(text)) {
-    const n = Number(text.replace(",", "."));
-    const pct = n > 0 && n < 1 ? n * 100 : n;
-    return `${Number(pct.toFixed(4)).toLocaleString("es-MX", { maximumFractionDigits: 4 })}%`;
-  }
-  const fractionRange = text.match(/^(0[.,]\\d+)\\s*(?:-|–|a)\\s*(0[.,]\\d+)$/i);
-  if (fractionRange) {
-    return `${formatRate(fractionRange[1])} – ${formatRate(fractionRange[2])}`;
-  }
-  return text;
-}
+const formatRate = formatIndicativeRate;
 
 function formatFee(val: any): string {
   if (val === undefined || val === null || val === "") return "N/D";
