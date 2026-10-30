@@ -106,3 +106,22 @@ describe("Comercial catalog V2 metadata and safe draft deletion",()=>{
     expect(api).not.toContain("UPDATE public.commercial_resource_templates SET definition");
   });
 });
+
+describe("Broker catalog after offer publication",()=>{
+  it("reads authorized financial institutions through a projected commercial route",()=>{
+    const route=text("server/routes.ts").split("app.get('/api/financial-institutions/:id'")[1].split("app.post('/api/financial-institutions'")[0];
+    expect(route).toContain("storage.getFinancialInstitutions(userId)");
+    expect(route).toContain("projectFinancialInstitutionByRole(institution, user.role)");
+    expect(route).not.toContain("user.role !== 'super_admin' && user.role !== 'admin'");
+  });
+  it("uses published offer terms, canonical types and URL navigation for brokers",()=>{
+    const server=text("server/routes.ts");
+    expect(server).toContain("commercialTerms:");
+    expect(server).toContain("rateSource: c.rateSource");
+    const client=text("client/src/components/ProductSystem/BrokerProducts.tsx");
+    expect(client).toContain("readDisplayTerms(selectedProduct)");
+    expect(client).toContain('case "hipotecario":');
+    expect(client).toContain("map.capital_trabajo.push(p)");
+    expect(client).toContain("useSearch()");
+  });
+});
