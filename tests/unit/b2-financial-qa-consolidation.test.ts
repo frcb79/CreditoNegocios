@@ -728,6 +728,42 @@ describe("AG — QA FINANCIERO CONSOLIDADO | CIERRE FASE 2B", () => {
     });
   });
 
+  it("FIN-13.1: Broker ve ficha publicada sin comisiones internas", async () => {
+    const broker = await createBroker();
+    const institution = await storage.createFinancialInstitution({
+      name: "Financiera Broker Publicada", isActive: true, createdByAdmin: true,
+      commissionRate: "8", overrateCommissionRate: "2",
+      commissionRates: { financiera: { apertura: 8, sobretasa: 2 }, broker: { apertura: 2 } }
+    } as any);
+    const offer = await storage.createInstitutionProduct({
+      institutionId: institution.id, name: "Crédito Simple Visible",
+      customName: "Crédito Simple Visible", productType: "credito_simple",
+      targetProfiles: ["persona_moral"], isActive: true,
+    } as any, {
+      conditions: {
+        minAmount: 100000, maxAmount: 2000000, maxTermMonths: 36,
+        rateSource: "TIIE + diferencial",
+        commissionRates: {
+          financiera: { apertura: 8 }, masterBroker: { apertura: 4 }, broker: { apertura: 2 }
+        }
+      },
+      requirements: { targetProfiles: ["persona_moral"] },
+      requiredDocuments: ["Identificación"],
+      changeReason: "Oferta de prueba publicada"
+    });
+    const versions = await storage.getInstitutionProductVersions(offer.id);
+    await storage.publishInstitutionProductVersion(offer.id, versions[0].id, {
+      changeReason: "Publicación de prueba Broker",
+    });
+    currentAuthUser = broker;
+    const visible = await request(app).get("/api/financial-institutions/" + institution.id);
+    expect(visible.status).toBe(200);
+    expect(visible.body.name).toBe("Financiera Broker Publicada");
+    expect(visible.body.commissionRate).toBeUndefined();
+    expect(visible.body.overrateCommissionRate).toBeUndefined();
+    expect(visible.body.commissionRates?.financiera).toBeUndefined();
+  });
+
   describe("FIN-13: catálogo financiero administrativo por ID", () => {
     it("deniega a Broker el acceso directo por ID y mantiene Super Admin autorizado", async () => {
       const broker = await createBroker();

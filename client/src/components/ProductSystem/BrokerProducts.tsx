@@ -1,6 +1,6 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { useLocation } from "wouter";
+import { useLocation, useSearch } from "wouter";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -196,11 +196,50 @@ const COMMERCIAL_CATEGORIES: CategoryDefinition[] = [
   },
 ];
 
+// Only published-version commercial fields reach the Broker/Master from the
+// API; old institution-product configuration is a non-authoritative fallback.
+function readDisplayTerms(p: InstitutionProductWithTemplate): Record<string, any> {
+  const legacy = (p.configuration || {}) as Record<string, any>;
+  const terms = (p as any).commercialTerms as Record<string, any> | undefined;
+  if (!terms) return legacy;
+  return {
+    ...legacy,
+    // For versioned offers, legacy financial aliases must NEVER silently
+    // reappear when a published field is unknown. Unknown means N/D.
+    montoMinimo: terms.minAmount ?? null,
+    montoMin: terms.minAmount ?? null,
+    montoMaximo: terms.maxAmount ?? null,
+    montoMax: terms.maxAmount ?? null,
+    plazoMax: terms.maxTermMonths ?? null,
+    plazo: terms.maxTermMonths ?? null,
+    tasaInteres: terms.rateSource || null,
+    tasa: terms.rateSource || null,
+    destinos: terms.loanPurposes
+      ? (Array.isArray(terms.loanPurposes) ? terms.loanPurposes : [String(terms.loanPurposes)])
+      : [],
+    observaciones: terms.sourceNotes || undefined,
+    tiempoRespuesta: terms.turnaround || undefined,
+    documentacionFuente: terms.requiredDocumentationSource || undefined,
+  };
+}
+
 // Helper to determine product category based on real catalog data
 function getProductCategory(p: InstitutionProductWithTemplate): string {
+  // Canonical type must take precedence over legacy name heuristics.
+  switch (String(p.productType || "").toLowerCase()) {
+    case "credito_simple": return "credito_simple";
+    case "hipotecario":
+    case "garantia_inmobiliaria":
+    case "garantia_inmobiliaria_empresarial": return "garantia_inmobiliaria";
+    case "factoraje": return "factoraje";
+    case "credito_revolvente": return "credito_revolvente";
+    case "arrendamiento": return "arrendamiento";
+    case "anticipo_ventas_tpv": return "flujos_tpv";
+    case "credito_puente": return "credito_puente";
+  }
   const tName = (p.template?.name || "").toLowerCase();
   const cName = (p.customName || "").toLowerCase();
-  const config = (p.configuration || {}) as Record<string, any>;
+  const config = readDisplayTerms(p);
   const destinos = Array.isArray(config.destinos) ? config.destinos.join(" ").toLowerCase() : "";
 
   if (tName.includes("revolvente") || cName.includes("revolvente")) {
@@ -253,15 +292,16 @@ function formatPlazo(val: any): string {
   if (!val) return "N/D";
   const num = parseInt(String(val), 10);
   if (isNaN(num)) return String(val);
-  if (num <= 10) return `${num} años`;
+  // The published schema explicitly stores maxTermMonths, never years.
   return `${num} meses`;
 }
 
 function formatRate(val: any): string | null {
   if (val === undefined || val === null || val === "") return null;
-  const num = typeof val === "number" ? val : parseFloat(String(val).replace(/[^0-9.-]+/g, ""));
-  if (isNaN(num)) return null;
-  return `${num}% anual`;
+  // Rate sources may contain TIIE spreads, factors or annual percentages.
+  // Never parse TIIE+7.5 as a fabricated 7.5% annual interest rate.
+  if (typeof val === "string") return val;
+  return Number.isFinite(val) ? `${val}% anual` : null;
 }
 
 function formatFee(val: any): string {
@@ -296,7 +336,7 @@ function InstitutionCommercialCard({
 }: InstitutionCommercialCardProps) {
   const [activeIdx, setActiveIdx] = useState(0);
   const currentProd = products[activeIdx] || products[0];
-  const config = (currentProd?.configuration || {}) as Record<string, any>;
+  const config = currentProd ? readDisplayTerms(currentProd) : {};
   const minAmount = config.montoMinimo || config.montoMin;
   const maxAmount = config.montoMaximo || config.montoMax;
   const term = config.plazo || config.plazoMax;
@@ -484,7 +524,13 @@ function InstitutionCommercialCard({
 
 export default function BrokerProducts() {
   const [, setLocation] = useLocation();
+  const search = useSearch();
   const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(null);
+  useEffect(() => {
+    // URL-backed category selection restores the right view on browser Back.
+    const category = new URLSearchParams(search).get("categoria");
+    setSelectedCategoryId(COMMERCIAL_CATEGORIES.some(c => c.id === category) ? category : null);
+  }, [search]);
   const [globalSearch, setGlobalSearch] = useState("");
   const [selectedProfileFilter, setSelectedProfileFilter] = useState<string>("all");
   const [leasingAssetFilter, setLeasingAssetFilter] = useState<string>("all");
@@ -517,10 +563,16 @@ export default function BrokerProducts() {
       .filter((p) => p.isActive)
       .forEach((p) => {
         const catId = getProductCategory(p);
-        if (!map[catId]) {
-          map[catId] = [];
-        }
+        if (!map[catId]) map[catId] = [];
         map[catId].push(p);
+        // Capital de Trabajo is a financing PURPOSE, not a competing
+        // financial product type. Show qualifying simple credit offers in both
+        // the canonical Simple category and this commercial purpose view.
+        const purposes = readDisplayTerms(p).destinos;
+        if (catId === "credito_simple" && Array.isArray(purposes) &&
+          purposes.some((value: string) => /capital de trabajo|liquidez operativa|inventario/i.test(value))) {
+          map.capital_trabajo.push(p);
+        }
       });
 
     return map;
@@ -553,7 +605,7 @@ export default function BrokerProducts() {
       const q = globalSearch.toLowerCase();
       list = list.filter((p) => {
         const inst = institutionsMap.get(p.institutionId);
-        const config = (p.configuration || {}) as Record<string, any>;
+        const config = readDisplayTerms(p);
         const matchName = p.customName?.toLowerCase().includes(q);
         const matchInst = inst?.name?.toLowerCase().includes(q);
         const matchTemplate = p.template?.name?.toLowerCase().includes(q);
@@ -678,7 +730,7 @@ export default function BrokerProducts() {
               return (
                 <Card
                   key={cat.id}
-                  onClick={() => setSelectedCategoryId(cat.id)}
+                  onClick={() => setLocation(`/sistema-productos?categoria=${encodeURIComponent(cat.id)}`)}
                   className={`group relative overflow-hidden transition-all duration-200 cursor-pointer border border-slate-200/80 hover:shadow-sm hover:border-slate-300 flex flex-col justify-between ${
                     hasProducts ? "bg-white" : "bg-slate-50/50 opacity-80 hover:opacity-100"
                   }`}
@@ -762,7 +814,7 @@ export default function BrokerProducts() {
             variant="outline"
             size="sm"
             onClick={() => {
-              setSelectedCategoryId(null);
+              setLocation("/sistema-productos");
               setGlobalSearch("");
               setSelectedProfileFilter("all");
               setLeasingAssetFilter("all");
@@ -900,7 +952,7 @@ export default function BrokerProducts() {
                 <tbody className="divide-y divide-slate-100 text-xs">
                   {groupedInstitutions.map(({ institution, products }) => {
                     return products.map((prod, pIdx) => {
-                      const config = (prod.configuration || {}) as Record<string, any>;
+                      const config = readDisplayTerms(prod);
                       const minAmount = config.montoMinimo || config.montoMin;
                       const maxAmount = config.montoMaximo || config.montoMax;
                       const term = config.plazo || config.plazoMax;
@@ -1039,7 +1091,7 @@ export default function BrokerProducts() {
                 {/* Sub-rows for each product */}
                 <div className="space-y-2 pt-2 border-t border-slate-100">
                   {products.map((prod) => {
-                    const config = (prod.configuration || {}) as Record<string, any>;
+                    const config = readDisplayTerms(prod);
                     const minAmount = config.montoMinimo || config.montoMin;
                     const maxAmount = config.montoMaximo || config.montoMax;
                     const term = config.plazo || config.plazoMax;
@@ -1118,7 +1170,7 @@ export default function BrokerProducts() {
           <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto p-0 gap-0">
             {(() => {
               const inst = institutionsMap.get(selectedProduct.institutionId);
-              const config = (selectedProduct.configuration || {}) as Record<string, any>;
+              const config = readDisplayTerms(selectedProduct);
               const minAmount = config.montoMinimo || config.montoMin;
               const maxAmount = config.montoMaximo || config.montoMax;
               const term = config.plazo || config.plazoMax;
