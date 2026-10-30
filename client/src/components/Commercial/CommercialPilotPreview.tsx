@@ -18,13 +18,11 @@ const DEMO_MASTER_PROFILE = {
 /**
  * This module never calls the admin templates API. The uploaded image/map and
  * generated PNG live only in the Super Admin browser's memory.
- * Test-only logo approval simulation is NOT an approval workflow or publication.
+ * No broker/master logos or avatars are rendered, even in the private test.
  */
 export default function CommercialPilotPreview() {
   const [map, setMap] = useState<PilotGraphicMap | null>(null);
   const [background, setBackground] = useState<HTMLImageElement | null>(null);
-  const [testLogo, setTestLogo] = useState<HTMLImageElement | null>(null);
-  const [simulateLogoApproval, setSimulateLogoApproval] = useState(false);
   const [role, setRole] = useState<PilotIdentity["role"]>("broker");
   const [preview, setPreview] = useState<string>("");
   const [error, setError] = useState("");
@@ -37,11 +35,7 @@ export default function CommercialPilotPreview() {
       setWorking(true); setError("");
       try {
         const base = role === "broker" ? DEMO_BROKER_PROFILE : DEMO_MASTER_PROFILE;
-        const identity: PilotIdentity = pilotIdentityFromProfile(
-          base, role === "master_broker" && testLogo
-            ? { image: testLogo, approved: simulateLogoApproval }
-            : undefined
-        );
+        const identity: PilotIdentity = pilotIdentityFromProfile(base);
         const canvas = await renderPilotGraphic(map, background, identity);
         if (active) setPreview(canvas.toDataURL("image/png"));
       } catch (err: any) {
@@ -52,7 +46,7 @@ export default function CommercialPilotPreview() {
     }
     void makePreview();
     return () => { active = false; };
-  }, [map, background, role, testLogo, simulateLogoApproval]);
+  }, [map, background, role]);
 
   const loadMap = async (file: File) => {
     setError(""); setMap(null); setPreview("");
@@ -68,14 +62,6 @@ export default function CommercialPilotPreview() {
       setBackground(await loadPilotImage(file));
     } catch (err: any) { setError(err.message || "No se pudo leer el fondo"); }
   };
-  const loadLogo = async (file: File) => {
-    setError(""); setTestLogo(null); setSimulateLogoApproval(false);
-    try {
-      if (file.type !== "image/png" || file.size > 2_000_000) throw new Error("Utiliza solo un PNG de prueba menor a 2 MB.");
-      setTestLogo(await loadPilotImage(file));
-    } catch (err: any) { setError(err.message || "No se pudo leer el logotipo"); }
-  };
-
   return (
     <section className="rounded-xl border border-amber-500/50 bg-card p-4 space-y-3" data-testid="commercial-pilot-01-admin">
       <h3 className="font-semibold flex items-center gap-2"><AlertTriangle className="w-4 h-4" />
@@ -103,20 +89,6 @@ export default function CommercialPilotPreview() {
         <Button size="sm" variant={role === "master_broker" ? "default" : "outline"} onClick={() => setRole("master_broker")}
           data-testid="pilot-test-master">Master de prueba</Button>
       </div>
-      {role === "master_broker" && (
-        <div className="space-y-2 text-xs border rounded-md p-3">
-          <label className="block">Logo simulado para probar posición (no equivale a aprobación real)
-            <input className="block mt-1" type="file" accept="image/png" data-testid="pilot-master-logo-upload"
-              onChange={e => { const f = e.target.files?.[0]; if (f) void loadLogo(f); }} />
-          </label>
-          <label className="flex items-center gap-2">
-            <input type="checkbox" checked={simulateLogoApproval} disabled={!testLogo}
-              onChange={e => setSimulateLogoApproval(e.target.checked)}
-              data-testid="pilot-logo-approval-simulation" />
-            Simular que el logo de prueba fue aprobado (solo en esta vista, sin guardar)
-          </label>
-        </div>
-      )}
       {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
       {working && <p className="text-xs">Renderizando piloto…</p>}
       {preview ? (
