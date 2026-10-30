@@ -1,4 +1,4 @@
-import { pool } from "./db";
+import { storage } from "./storage";
 
 export type PublishedCommissionOffer = {
   offerId: string;
@@ -16,28 +16,43 @@ const safeRate = (value: unknown): number => {
   return Number.isFinite(n) && n >= 0 ? n : 0;
 };
 
-/** Published version is the sole source of current channel ceilings. */
+/**
+ * Use the same storage adapter as the rest of the application so staging,
+ * production and in-memory security tests exercise identical business rules.
+ * Do not fall back to institution-level commissionRates.
+ */
 export async function loadPublishedCommissionOffers(): Promise<PublishedCommissionOffer[]> {
-  const { rows } = await pool.query([
-    'SELECT p.id AS "offerId", p.name AS "offerName", p.institution_id AS "institutionId",',
-    'fi.name AS "institutionName", v.version_number AS "versionNumber",',
-    "v.conditions->'commissionRates'->'masterBroker' AS master,",
-    "v.conditions->'commissionRates'->'broker' AS broker",
-    'FROM public.institution_products p',
-    'JOIN public.institution_product_versions v ON v.institution_product_id=p.id',
-    'JOIN public.financial_institutions fi ON fi.id=p.institution_id',
-    "WHERE p.status='published' AND p.is_active=true AND v.status='published'",
-    'AND fi.is_active=true ORDER BY fi.name, p.name'
-  ].join(' '));
-  return rows.map((row: any) => ({
-    offerId: row.offerId,
-    offerName: row.offerName,
-    institutionId: row.institutionId,
-    institutionName: row.institutionName,
-    versionNumber: Number(row.versionNumber),
-    master: { apertura: safeRate(row.master?.apertura), renovacion: safeRate(row.master?.renovacion) },
-    broker: { apertura: safeRate(row.broker?.apertura), renovacion: safeRate(row.broker?.renovacion) }
+  const [products, institutions] = await Promise.all([
+    storage.getInstitutionProducts(),
+    storage.getFinancialInstitutions()
+  ]);
+  const institutionMap = new Map(institutions.filter(i => i.isActive !== false).map(i => [i.id, i]));
+  const published = products.filter(p => p.status === "published" &&
+    p.isActive !== false && institutionMap.has(p.institutionId));
+  const mapped = await Promise.all(published.map(async (p): Promise<PublishedCommissionOffer | null> => {
+    const versions = await storage.getInstitutionProductVersions(p.id);
+    const active = versions.find(v => v.status === "published");
+    if (!active) return null;
+    const rates = ((active.conditions || {}) as Record<string, any>).commissionRates || {};
+    return {
+      offerId: p.id,
+      offerName: p.customName || p.name,
+      institutionId: p.institutionId,
+      institutionName: institutionMap.get(p.institutionId)!.name,
+      versionNumber: active.versionNumber,
+      master: {
+        apertura: safeRate(rates.masterBroker?.apertura),
+        renovacion: safeRate(rates.masterBroker?.renovacion)
+      },
+      broker: {
+        apertura: safeRate(rates.broker?.apertura),
+        renovacion: safeRate(rates.broker?.renovacion)
+      }
+    };
   }));
+  return mapped.filter((row): row is PublishedCommissionOffer => row !== null)
+    .sort((a,b) => a.institutionName.localeCompare(b.institutionName) ||
+      a.offerName.localeCompare(b.offerName));
 }
 
 /**
