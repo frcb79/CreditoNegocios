@@ -731,7 +731,7 @@ describe("AG — QA FINANCIERO CONSOLIDADO | CIERRE FASE 2B", () => {
   it("FIN-13.1: Broker ve ficha publicada sin comisiones internas", async () => {
     const broker = await createBroker();
     const institution = await storage.createFinancialInstitution({
-      name: "Financiera Broker Publicada", isActive: true,
+      name: "Financiera Broker Publicada", isActive: true, createdByAdmin: true,
       commissionRate: "8", overrateCommissionRate: "2",
       commissionRates: { financiera: { apertura: 8, sobretasa: 2 }, broker: { apertura: 2 } }
     } as any);
