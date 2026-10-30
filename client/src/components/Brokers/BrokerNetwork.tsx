@@ -360,6 +360,7 @@ function MasterBrokerRatesConfig({ user }: { user: any }) {
 
                         <td className="py-3.5 px-4 text-center">
                           <div className="max-w-[140px] mx-auto space-y-1">
+                            <p className="text-[10px] text-slate-500">Apertura</p>
                             <div className="relative">
                               <Input
                                 type="number"
@@ -373,6 +374,7 @@ function MasterBrokerRatesConfig({ user }: { user: any }) {
                               />
                               <span className="absolute right-2.5 top-2 text-[11px] font-semibold text-slate-400 pointer-events-none">%</span>
                             </div>
+                            <p className="text-[10px] text-slate-500">Renovación</p>
                             <div className="relative">
                               <Input type="number" step="0.01" min="0"
                                 max={item.masterCeiling.renovacion}
