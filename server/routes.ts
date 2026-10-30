@@ -3102,7 +3102,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       
       const users = await storage.getAllUsers();
-      res.json(users.map(publicUserForManagement));
+      res.json(users.map(u => ({ ...publicUserForManagement(u), registrationStatus: u.password ? 'registered' : 'pending' })));
     } catch (error) {
       console.error("Error fetching users:", error);
       res.status(500).json({ message: "Failed to fetch users" });
