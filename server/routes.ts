@@ -5581,8 +5581,29 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const institution: any = user.role === "admin" || user.role === "super_admin"
         ? await storage.getFinancialInstitution(id)
         : (await storage.getFinancialInstitutions(userId)).find((inst: any) => inst.id === id);
-      if (!institution || ((user.role === "broker" || user.role === "master_broker") && institution.isActive === false)) {
-        return res.status(404).json({ message: "Institución no disponible en el catálogo" });
+      if (!institution) {
+        return res.status(user.role === "broker" || user.role === "master_broker" ? 403 : 404)
+          .json({ message: "Institución no disponible en el catálogo" });
+      }
+      if (user.role === "broker" || user.role === "master_broker") {
+        if (institution.isActive === false) {
+          return res.status(403).json({ message: "Institución no disponible" });
+        }
+        // No broker/master can open the admin-facing lender card if the
+        // institution does not have at least one eligible published offer.
+        const offers = await storage.getInstitutionProducts(id);
+        let permitted = false;
+        for (const offer of offers) {
+          if (offer.isActive === false || offer.status !== "published") continue;
+          const versions = await storage.getInstitutionProductVersions(offer.id);
+          if (isOfferEligibleForRequests(offer, versions)) {
+            permitted = true;
+            break;
+          }
+        }
+        if (!permitted) {
+          return res.status(403).json({ message: "No hay ofertas publicadas disponibles" });
+        }
       }
       res.json(projectFinancialInstitutionByRole(institution, user.role));
     } catch (error) {
