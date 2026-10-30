@@ -5570,7 +5570,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Get single financial institution by ID
-  app.get('/api/financial-institutions/:id', isAuthenticated, requireModuleAndAction('financieras', 'view'), async (req: any, res) => {
+  app.get('/api/financial-institutions/:id', isAuthenticated, requireAnyModule('financieras', 'creditos', 'aprobaciones', 'sistema_productos'), async (req: any, res) => {
     try {
       const { id } = req.params;
       const userId = req.user?.claims?.sub || req.user?.id;
