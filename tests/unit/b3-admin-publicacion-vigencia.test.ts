@@ -521,11 +521,11 @@ describe("Bloque B3 — Publicación y Vigencia de Ofertas Comerciales (Super Ad
       expect(resAdmin.body.overRate).toBeUndefined();
       expect(resAdmin.body.commissionRates?.financiera?.sobretasa).toBeUndefined();
 
-      // Brokers cannot read the internal institution catalog (published offers are separate).
+      // Brokers may read a projected institution with a published offer, but never internal economics.
       const resBroker = await request(app)
         .get(`/api/financial-institutions/${institutionId}`)
         .set("x-test-user-id", testBrokerId);
-      expect(resBroker.status).toBe(403);
+      expect(resBroker.status).toBe(200);
       expect(resBroker.body.overrateCommissionRate).toBeUndefined();
       expect(resBroker.body.overRate).toBeUndefined();
       expect(resBroker.body.commissionRates?.broker?.sobretasa).toBeUndefined();
