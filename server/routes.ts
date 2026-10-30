@@ -8672,7 +8672,8 @@ function maskCLABE(clabe?: string | null): string | null {
       }
 
       const { rates } = req.body;
-      if (!rates || typeof rates !== 'object') {
+      if (!rates || typeof rates !== 'object' || Array.isArray(rates) ||
+          !Object.keys(rates).length) {
         return res.status(400).json({ message: "Formato de tasas inválido" });
       }
 
@@ -8680,9 +8681,19 @@ function maskCLABE(clabe?: string | null): string | null {
       const instMap = new Map(allInstitutions.map((i: any) => [i.id, i]));
       const publishedOffers = await loadPublishedCommissionOffers();
       const offerMap = new Map(publishedOffers.map(offer => [offer.offerId, offer]));
-      const sanitizedRates: Record<string, any> = {};
+      // A partial edit must never erase rates already assigned to other
+      // institutions/offers. The atomic version records the entire new map.
+      const sanitizedRates: Record<string, any> = {
+        ...((user.networkCommissionRates && typeof user.networkCommissionRates === "object")
+          ? user.networkCommissionRates as Record<string, any> : {}),
+      };
 
       for (const [rateKey, rateObj] of Object.entries(rates)) {
+        if (["__proto__", "prototype", "constructor"].includes(rateKey) ||
+            (typeof rateObj !== "number" &&
+             (!rateObj || typeof rateObj !== "object" || Array.isArray(rateObj)))) {
+          return res.status(400).json({ message: "Asignación de comisiones no válida" });
+        }
         const offer = offerMap.get(rateKey);
         const instId = offer?.institutionId || rateKey;
         const inst: any = instMap.get(instId);
