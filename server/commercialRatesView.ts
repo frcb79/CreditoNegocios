@@ -36,7 +36,7 @@ export async function loadPublishedCommissionOffers(): Promise<PublishedCommissi
     const rates = ((active.conditions || {}) as Record<string, any>).commissionRates || {};
     return {
       offerId: p.id,
-      offerName: p.customName || p.name,
+      offerName: p.customName || p.name || "Oferta sin nombre",
       institutionId: p.institutionId,
       institutionName: institutionMap.get(p.institutionId)!.name,
       versionNumber: active.versionNumber,
