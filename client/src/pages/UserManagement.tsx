@@ -61,7 +61,8 @@ import {
   UserStatusRequestAction
 } from "@shared/schema";
 
-export function renderUserStatusBadge(status?: string | null, isActive?: boolean | null) {
+export function renderUserStatusBadge(status?: string | null, isActive?: boolean | null, registrationStatus?: string | null) {
+  if (status !== 'suspended' && status !== 'inactive' && isActive !== false && registrationStatus === 'pending') return <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-300 text-xs font-semibold">Pendiente de registro</Badge>;
   if (status === 'suspended') {
     return (
       <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-300 text-xs font-semibold">
@@ -1889,7 +1890,7 @@ export default function UserManagement() {
                           {u.customRoleTitle || "-"}
                         </td>
                         <td className="py-3 px-4">
-                          {renderUserStatusBadge(u.status, u.isActive)}
+                          {renderUserStatusBadge(u.status, u.isActive, (u as any).registrationStatus)}
                         </td>
                         <td className="py-3 px-4">
                           <div className="flex flex-col gap-0.5">
