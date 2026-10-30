@@ -23,7 +23,8 @@ export function buildNetworkCommissionSnapshot(
     return result;
   };
   const ceilOpen = read(copy.masterBroker?.apertura, "MASTER_APERTURA");
-  const ceilRenew = read(copy.masterBroker?.renovacion, "MASTER_RENOVACION");
+  // Renewal is optional in published V5 offers. Missing means no renewal share.
+  const ceilRenew = read(copy.masterBroker?.renovacion ?? 0, "MASTER_RENOVACION");
   const brokerOpen = read(allocation.apertura, "BROKER_APERTURA");
   const brokerRenew = read(allocation.renovacion ?? 0, "BROKER_RENOVACION");
   if (brokerOpen > ceilOpen || brokerRenew > ceilRenew) {
