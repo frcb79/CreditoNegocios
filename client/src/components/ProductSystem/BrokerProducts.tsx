@@ -466,7 +466,7 @@ function InstitutionCommercialCard({
                 Comisión Apertura
               </span>
               <p className="text-xs font-bold text-slate-900 mt-0.5">
-                {fee ? formatFee(fee) : "Consultar"}
+                {config.aperturaClienteFuente ? String(config.aperturaClienteFuente) : fee ? formatFee(fee) : "Consultar"}
               </p>
             </div>
           </div>
@@ -1278,10 +1278,10 @@ export default function BrokerProducts() {
                     {/* Details Sections */}
                     <div className="space-y-4 text-xs">
                       {/* Comisión */}
-                      {fee && (
+                      {(config.aperturaClienteFuente || fee) && (
                         <div className="flex justify-between py-2 border-b">
-                          <span className="text-muted-foreground font-medium">Comisión por Apertura</span>
-                          <span className="font-bold text-foreground">{formatFee(fee)}</span>
+                          <span className="text-muted-foreground font-medium">Comisión por Apertura al Cliente</span>
+                          <span className="font-bold text-foreground">{config.aperturaClienteFuente ? String(config.aperturaClienteFuente) : formatFee(fee)}</span>
                         </div>
                       )}
 
