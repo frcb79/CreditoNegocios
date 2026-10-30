@@ -11,6 +11,7 @@ export default function CampaignLinkPanel({
   onCampaignLink
 }: {
   onCampaignLink?: (url: string) => void;
+  selectedTemplateId?: string; // API compatibility: no template-specific link is issued.
 }) {
   const { toast } = useToast();
   const [genericUrl, setGenericUrl] = useState("");
