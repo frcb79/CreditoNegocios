@@ -6000,7 +6000,7 @@ function maskCLABE(clabe?: string | null): string | null {
         ? ((master.networkCommissionRates as Record<string, any>) || {}) : null;
       return res.json(offers.map(offer => {
         const assigned = actor.role === "master_broker" ? offer.master :
-          master ? rates?.[offer.institutionId] : offer.broker;
+          master ? (rates?.[offer.offerId] ?? rates?.[offer.institutionId] ?? null) : offer.broker;
         const validRate = (v: unknown) => v !== null && v !== undefined &&
           v !== "" && Number.isFinite(Number(v)) && Number(v) >= 0;
         const opening = validRate(assigned?.apertura) ? Number(assigned.apertura) : null;
@@ -8612,6 +8612,18 @@ function maskCLABE(clabe?: string | null): string | null {
       res.json({
         rates: networkRates,
         items,
+        // El Master puede asignar por oferta. La configuración histórica
+        // por financiera queda como fallback mientras se migra su red.
+        offerItems: publishedOffers.map(offer => ({
+          institutionId: offer.institutionId,
+          institutionName: offer.institutionName,
+          offerId: offer.offerId,
+          offerName: offer.offerName,
+          versionNumber: offer.versionNumber,
+          masterCeiling: offer.master,
+          suggestedBroker: offer.broker,
+          assignedRate: networkRates[offer.offerId] || networkRates[offer.institutionId] || null,
+        })),
       });
     } catch (error) {
       console.error("Error fetching master broker network rates:", error);
@@ -8636,13 +8648,18 @@ function maskCLABE(clabe?: string | null): string | null {
       const allInstitutions = await storage.getFinancialInstitutions();
       const instMap = new Map(allInstitutions.map((i: any) => [i.id, i]));
       const publishedOffers = await loadPublishedCommissionOffers();
+      const offerMap = new Map(publishedOffers.map(offer => [offer.offerId, offer]));
       const sanitizedRates: Record<string, any> = {};
 
-      for (const [instId, rateObj] of Object.entries(rates)) {
+      for (const [rateKey, rateObj] of Object.entries(rates)) {
+        const offer = offerMap.get(rateKey);
+        const instId = offer?.institutionId || rateKey;
         const inst: any = instMap.get(instId);
-        if (!inst) continue;
+        if (!inst || (!offer && !publishedOffers.some(x => x.institutionId === instId))) {
+          return res.status(400).json({ message: "La oferta o financiera no está publicada o disponible" });
+        }
 
-        const offers = publishedOffers.filter(x => x.institutionId === instId);
+        const offers = offer ? [offer] : publishedOffers.filter(x => x.institutionId === instId);
         const ceiling = masterSafeCeilings(offers);
         const mbCeilingApertura = ceiling.apertura;
         const mbCeilingRenovacion = ceiling.renovacion;
@@ -8651,7 +8668,9 @@ function maskCLABE(clabe?: string | null): string | null {
         const rawSobretasa = typeof rateObj === 'number' ? 0 : parseFloat((rateObj as any)?.sobretasa ?? '0');
         const rawRenovacion = typeof rateObj === 'number' ? 0 : parseFloat((rateObj as any)?.renovacion ?? '0');
 
-        if (isNaN(rawApertura) || rawApertura < 0 || isNaN(rawSobretasa) || rawSobretasa < 0 || isNaN(rawRenovacion) || rawRenovacion < 0) {
+        if (!Number.isFinite(rawApertura) || rawApertura < 0 || rawApertura > 100 ||
+            !Number.isFinite(rawSobretasa) || rawSobretasa < 0 ||
+            !Number.isFinite(rawRenovacion) || rawRenovacion < 0 || rawRenovacion > 100) {
           return res.status(400).json({ 
             message: `Las comisiones asignadas para ${inst.name} no pueden ser negativas o inválidas` 
           });
@@ -8668,7 +8687,7 @@ function maskCLABE(clabe?: string | null): string | null {
             message: `El esquema de red de ${inst.name} excede el techo autorizado: renovación hasta ${mbCeilingRenovacion}% y sobretasa 0%.`
           });
         }
-        sanitizedRates[instId] = {
+        sanitizedRates[rateKey] = {
           apertura: rawApertura,
           sobretasa: 0, // Sobretasa is never distributable to the network.
           renovacion: rawRenovacion,
