@@ -91,6 +91,8 @@ function MasterBrokerRatesConfig({ user }: { user: any }) {
       category?: string;
       masterCeiling: { total: number; apertura: number; sobretasa: number; renovacion: number };
       defaultBroker: { total: number; apertura: number; sobretasa: number; renovacion: number };
+      offerCount: number;
+      offerRates: Array<{ offerId: string; offerName: string; versionNumber: number; apertura: number; renovacion: number }>;
       assignedRate: { apertura: number; sobretasa?: number; renovacion?: number } | null;
     }>;
   }>({
@@ -153,10 +155,12 @@ function MasterBrokerRatesConfig({ user }: { user: any }) {
       for (const item of ratesData.items) {
         const val = parseFloat(ratesForm[item.institutionId]?.apertura || '0');
         const ceiling = item.masterCeiling.apertura;
-        if (val > ceiling && ceiling > 0) {
+        const renovacion = parseFloat(ratesForm[item.institutionId]?.renovacion || '0');
+        if (!Number.isFinite(val) || !Number.isFinite(renovacion) ||
+            val < 0 || renovacion < 0 || val > ceiling || renovacion > item.masterCeiling.renovacion) {
           toast({
             title: "Tasa no permitida",
-            description: `Para ${item.institutionName}, la comisión (${val}%) no puede superar tu techo de ${ceiling}%.`,
+            description: `Para ${item.institutionName}, la apertura máxima es ${ceiling}% y la renovación máxima ${item.masterCeiling.renovacion}%. La sobretasa no es distribuible.`,
             variant: "destructive",
           });
           return;
@@ -164,6 +168,74 @@ function MasterBrokerRatesConfig({ user }: { user: any }) {
       }
     }
     saveMutation.mutate(ratesForm);
+  };
+
+  const importRatesTemplate = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const input = event.currentTarget;
+    const file = input.files?.[0];
+    if (!file || !ratesData?.items) return;
+    try {
+      const XLSX = await import("xlsx");
+      const wb = XLSX.read(await file.arrayBuffer(), { type: "array" });
+      const sheet = wb.Sheets["Comisiones de Red"];
+      if (!sheet) throw new Error("Falta la hoja Comisiones de Red");
+      const rows = XLSX.utils.sheet_to_json<Record<string, any>>(sheet);
+      if (!rows.length) throw new Error("Archivo sin registros");
+      const known = new Map(ratesData.items.map(item => [item.institutionId, item]));
+      const next = { ...ratesForm };
+      const seen = new Set<string>();
+      for (const row of rows) {
+        const id = String(row.Clave_Financiera || "").trim();
+        const item = known.get(id);
+        if (!item || seen.has(id)) throw new Error("Clave financiera inválida o duplicada");
+        seen.add(id);
+        const a = Number(row.Red_Apertura_Pct);
+        const r = Number(row.Red_Renovacion_Pct);
+        if (!Number.isFinite(a) || !Number.isFinite(r) || a < 0 || r < 0 ||
+            a > item.masterCeiling.apertura || r > item.masterCeiling.renovacion) {
+          throw new Error("Comisiones fuera de los techos de " + item.institutionName);
+        }
+        next[id] = { apertura: String(a), renovacion: String(r), sobretasa: "0" };
+      }
+      setRatesForm(next);
+      setHasChanges(true);
+      toast({ title: "Excel validado", description: seen.size + " financieras listas para revisar y guardar." });
+    } catch (error: any) {
+      toast({ title: "Archivo rechazado", description: error.message || "Datos inválidos", variant: "destructive" });
+    } finally {
+      input.value = "";
+    }
+  };
+
+  const downloadRatesTemplate = async () => {
+    const XLSX = await import("xlsx");
+    const rows = (ratesData?.items || []).map(item => ({
+      Clave_Financiera: item.institutionId,
+      Financiera: item.institutionName,
+      Techo_Apertura_Pct: item.masterCeiling.apertura,
+      Techo_Renovacion_Pct: item.masterCeiling.renovacion,
+      Red_Apertura_Pct: Number(ratesForm[item.institutionId]?.apertura || 0),
+      Red_Renovacion_Pct: Number(ratesForm[item.institutionId]?.renovacion || 0)
+    }));
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rows), "Comisiones de Red");
+    const offers = (ratesData?.items || []).flatMap(item => item.offerRates.map(offer => ({
+      Financiera: item.institutionName,
+      Oferta: offer.offerName,
+      Version: offer.versionNumber,
+      Techo_Master_Apertura_Pct: offer.apertura,
+      Techo_Master_Renovacion_Pct: offer.renovacion,
+    })));
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(offers), "Topes por Oferta");
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([
+      ["Crédito Negocios - comisiones de red"],
+      ["Editar exclusivamente Red_Apertura_Pct y Red_Renovacion_Pct en Comisiones de Red."],
+      ["Una sola asignación por financiera. Los techos son los mínimos de sus ofertas."],
+      ["La pestaña Topes por Oferta es de consulta. No cambies claves ni porcentajes techo."],
+      ["Un techo 0% no permite asignación; la sobretasa pertenece a la plataforma."],
+      ["Subir Excel valida datos en pantalla; sólo Guardar Comisiones de Red efectúa el cambio."]
+    ]), "Instrucciones");
+    XLSX.writeFile(wb, "CN_Comisiones_de_Red.xlsx");
   };
 
   if (isLoading) {
@@ -217,6 +289,13 @@ function MasterBrokerRatesConfig({ user }: { user: any }) {
               Ajusta la comisión de apertura asignada a tu equipo. El margen retenido se calcula en tiempo real.
             </CardDescription>
           </div>
+          <Button type="button" size="sm" variant="outline" onClick={downloadRatesTemplate}
+            data-testid="master-download-rates">Descargar plantilla Excel</Button>
+          <label className="cursor-pointer rounded-md border border-input px-3 py-1.5 text-xs font-semibold hover:bg-accent">
+            Subir Excel
+            <input type="file" className="sr-only" accept=".xlsx,.xls" onChange={importRatesTemplate}
+              data-testid="master-upload-rates" />
+          </label>
           <Button
             size="sm"
             onClick={handleSave}
@@ -251,8 +330,11 @@ function MasterBrokerRatesConfig({ user }: { user: any }) {
                     const ceiling = item.masterCeiling.apertura;
                     const currentVal = ratesForm[item.institutionId]?.apertura ?? '';
                     const parsedVal = parseFloat(currentVal || '0');
-                    const isOverCeiling = parsedVal > ceiling && ceiling > 0;
+                    const currentRenewal = ratesForm[item.institutionId]?.renovacion ?? '';
+                    const renewalRate = parseFloat(currentRenewal || '0');
+                    const isOverCeiling = parsedVal > ceiling || renewalRate > item.masterCeiling.renovacion;
                     const netMargin = Math.max(0, ceiling - parsedVal);
+                    const renewalMargin = Math.max(0, item.masterCeiling.renovacion - renewalRate);
 
                     return (
                       <tr key={item.institutionId} className="hover:bg-slate-50/70 transition-colors">
@@ -274,21 +356,33 @@ function MasterBrokerRatesConfig({ user }: { user: any }) {
                           <Badge variant="outline" className="bg-slate-50 text-slate-700 border-slate-200 font-semibold text-xs">
                             {ceiling.toFixed(2)}% Apertura
                           </Badge>
-                          {item.masterCeiling.renovacion > 0 && (
-                            <p className="text-[10px] text-slate-500 mt-1">
-                              Renovación: {item.masterCeiling.renovacion}%
-                            </p>
+                          <p className="text-[10px] text-slate-600 mt-1 font-medium">
+                            {item.masterCeiling.renovacion.toFixed(2)}% Renovación
+                          </p>
+                          <p className="text-[10px] text-slate-400 mt-1">
+                            Límite conservador de {item.offerCount} ofertas publicadas
+                          </p>
+                          {item.offerRates.length > 0 && (
+                            <details className="mt-1 text-left text-[10px] text-slate-600">
+                              <summary className="cursor-pointer text-blue-700">Ver topes por oferta</summary>
+                              {item.offerRates.map(offer => (
+                                <p key={offer.offerId} className="mt-1">
+                                  {offer.offerName}: apertura {offer.apertura.toFixed(2)}% · renovación {offer.renovacion.toFixed(2)}%
+                                </p>
+                              ))}
+                            </details>
                           )}
                         </td>
 
                         <td className="py-3.5 px-4 text-center">
                           <div className="max-w-[140px] mx-auto space-y-1">
+                            <p className="text-[10px] text-slate-500">Apertura</p>
                             <div className="relative">
                               <Input
                                 type="number"
                                 step="0.1"
                                 min="0"
-                                max={ceiling || 100}
+                                max={ceiling}
                                 value={currentVal}
                                 onChange={(e) => handleRateChange(item.institutionId, 'apertura', e.target.value)}
                                 className={`text-center font-semibold text-xs h-8 pr-6 rounded-lg ${isOverCeiling ? 'border-rose-300 bg-rose-50 text-rose-700 focus-visible:ring-rose-400' : 'border-slate-200'}`}
@@ -296,9 +390,20 @@ function MasterBrokerRatesConfig({ user }: { user: any }) {
                               />
                               <span className="absolute right-2.5 top-2 text-[11px] font-semibold text-slate-400 pointer-events-none">%</span>
                             </div>
+                            <p className="text-[10px] text-slate-500">Renovación</p>
+                            <div className="relative">
+                              <Input type="number" step="0.01" min="0"
+                                max={item.masterCeiling.renovacion}
+                                value={currentRenewal}
+                                onChange={e => handleRateChange(item.institutionId, 'renovacion', e.target.value)}
+                                className="text-center font-semibold text-xs h-8 pr-6 rounded-lg border-slate-200"
+                                aria-label={`Renovación para ${item.institutionName}`}
+                              />
+                              <span className="absolute right-2.5 top-2 text-[11px] font-semibold text-slate-400 pointer-events-none">%</span>
+                            </div>
                             {isOverCeiling && (
                               <p className="text-[10px] text-rose-600 font-medium">
-                                Excede tu techo ({ceiling}%)
+                                Excede techo de apertura o renovación
                               </p>
                             )}
                           </div>
@@ -308,8 +413,8 @@ function MasterBrokerRatesConfig({ user }: { user: any }) {
                           <Badge variant="outline" className="bg-emerald-50 text-emerald-700 border-emerald-200 font-bold text-xs px-2.5 py-0.5">
                             {netMargin.toFixed(2)}% Neto
                           </Badge>
-                          <p className="text-[10px] text-slate-400 mt-0.5 font-normal">
-                            Retención bruta
+                          <p className="text-[10px] text-slate-500 mt-0.5 font-normal">
+                            Renovación: {renewalMargin.toFixed(2)}% · retención antes de impuestos
                           </p>
                         </td>
 
@@ -319,7 +424,8 @@ function MasterBrokerRatesConfig({ user }: { user: any }) {
                             size="sm"
                             className="text-[11px] text-slate-500 hover:text-slate-900 h-7 px-2"
                             onClick={() => {
-                              handleRateChange(item.institutionId, 'apertura', String(item.defaultBroker.apertura || '2.5'));
+                              handleRateChange(item.institutionId, 'apertura', String(item.defaultBroker.apertura));
+                              handleRateChange(item.institutionId, 'renovacion', String(item.defaultBroker.renovacion));
                             }}
                             title="Restablecer a la tasa sugerida por defecto"
                           >

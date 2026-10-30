@@ -12,6 +12,7 @@ import { pool } from "./db";
 import { runBrokerInvitationReminders } from "./brokerInvitationReminders";
 import { storage, type IStorage } from "./storage";
 import { canViewSubmissionByOrigin, canViewCreditByOrigin, canEditCreditByOrigin, summarizeCommercialAccountActivity } from "./dashboardVisibility";
+import { loadPublishedCommissionOffers, masterSafeCeilings } from "./commercialRatesView";
 import { projectCreditForRole } from "./creditResponseProjection";
 import { allowedOrigins } from "./runtimeConfig";
 import { canReadDocumentByOrigin } from "./documentVisibility";
@@ -5962,6 +5963,45 @@ function maskCLABE(clabe?: string | null): string | null {
   return '*'.repeat(Math.max(0, str.length - 4)) + str.slice(-4);
 }
 
+  // Current offer-level percentages visible ONLY to the signed-in intermediary.
+  // Commission disbursement still uses the frozen proposal/version snapshot,
+  // never today's mutable UI values.
+  app.get("/api/commissions/my-offer-rates", isAuthenticated, requireModuleAndAction("comisiones", "view"), async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub || req.user?.id;
+      const actor = await storage.getUser(userId);
+      if (!actor || !["broker", "master_broker"].includes(actor.role) ||
+          actor.isActive === false || actor.status !== "active") {
+        return res.status(403).json({ message: "Acceso comercial no autorizado" });
+      }
+      const offers = await loadPublishedCommissionOffers();
+      const master = actor.role === "broker" && actor.masterBrokerId
+        ? await storage.getUser(actor.masterBrokerId) : null;
+      const rates = (master?.role === "master_broker" &&
+        master.isActive !== false && master.status === "active")
+        ? ((master.networkCommissionRates as Record<string, any>) || {}) : null;
+      return res.json(offers.map(offer => {
+        const assigned = actor.role === "master_broker" ? offer.master :
+          master ? rates?.[offer.institutionId] : offer.broker;
+        const validRate = (v: unknown) => v !== null && v !== undefined &&
+          v !== "" && Number.isFinite(Number(v)) && Number(v) >= 0;
+        const opening = validRate(assigned?.apertura) ? Number(assigned.apertura) : null;
+        const renewal = validRate(assigned?.renovacion) ? Number(assigned.renovacion) : null;
+        return {
+          offerId: offer.offerId, offerName: offer.offerName, institutionName: offer.institutionName,
+          institutionId: offer.institutionId, versionNumber: offer.versionNumber,
+          source: actor.role === "master_broker" ? "plataforma" : master ? "master" : "plataforma",
+          assigned: opening !== null || renewal !== null,
+          apertura: opening,
+          renovacion: renewal,
+        };
+      }));
+    } catch (error) {
+      console.error("Error reading intermediary offer rates", error);
+      return res.status(503).json({ message: "No se pudieron consultar los porcentajes vigentes" });
+    }
+  });
+
   // Commissions and STP payments
   app.get('/api/commissions', isAuthenticated, requireModuleAndAction('comisiones', 'view'), async (req: any, res) => {
     try {
@@ -8519,29 +8559,34 @@ function maskCLABE(clabe?: string | null): string | null {
       const allInstitutions = await storage.getFinancialInstitutions();
       const activeInstitutions = allInstitutions.filter((f: any) => f.isActive !== false);
       const networkRates = (user.networkCommissionRates as any) || {};
-
+      const publishedOffers = await loadPublishedCommissionOffers();
       const items = activeInstitutions.map((inst: any) => {
-        const comm = inst.commissionRates || {};
-        const mb = comm.masterBroker || {};
-        const brk = comm.broker || {};
-
+        const offers = publishedOffers.filter(x => x.institutionId === inst.id);
+        const ceiling = masterSafeCeilings(offers);
         return {
           institutionId: inst.id,
           institutionName: inst.name,
           logoUrl: inst.logoUrl,
           category: inst.category,
+          offerCount: offers.length,
+          // These ceilings are the conservative limits across ALL offers of
+          // this institution; the per-offer breakdown is displayed below.
           masterCeiling: {
-            total: parseFloat(mb.total || '0'),
-            apertura: parseFloat(mb.apertura || '0'),
-            sobretasa: parseFloat(mb.sobretasa || '0'),
-            renovacion: parseFloat(mb.renovacion || '0'),
+            total: ceiling.apertura,
+            apertura: ceiling.apertura,
+            sobretasa: 0,
+            renovacion: ceiling.renovacion,
           },
           defaultBroker: {
-            total: parseFloat(brk.total || '0'),
-            apertura: parseFloat(brk.apertura || '0'),
-            sobretasa: parseFloat(brk.sobretasa || '0'),
-            renovacion: parseFloat(brk.renovacion || '0'),
+            total: ceiling.brokerApertura,
+            apertura: ceiling.brokerApertura,
+            sobretasa: 0,
+            renovacion: ceiling.brokerRenovacion,
           },
+          offerRates: offers.map(x => ({
+            offerId: x.offerId, offerName: x.offerName, versionNumber: x.versionNumber,
+            apertura: x.master.apertura, renovacion: x.master.renovacion
+          })),
           assignedRate: networkRates[inst.id] || null,
         };
       });
@@ -8572,17 +8617,17 @@ function maskCLABE(clabe?: string | null): string | null {
 
       const allInstitutions = await storage.getFinancialInstitutions();
       const instMap = new Map(allInstitutions.map((i: any) => [i.id, i]));
+      const publishedOffers = await loadPublishedCommissionOffers();
       const sanitizedRates: Record<string, any> = {};
 
       for (const [instId, rateObj] of Object.entries(rates)) {
         const inst: any = instMap.get(instId);
         if (!inst) continue;
 
-        const comm = inst.commissionRates || {};
-        const mb = comm.masterBroker || {};
-        const mbCeilingApertura = parseFloat(mb.apertura || '0');
-        const mbCeilingSobretasa = parseFloat(mb.sobretasa || '0');
-        const mbCeilingRenovacion = parseFloat(mb.renovacion || '0');
+        const offers = publishedOffers.filter(x => x.institutionId === instId);
+        const ceiling = masterSafeCeilings(offers);
+        const mbCeilingApertura = ceiling.apertura;
+        const mbCeilingRenovacion = ceiling.renovacion;
 
         const rawApertura = typeof rateObj === 'number' ? rateObj : parseFloat((rateObj as any)?.apertura ?? (rateObj as any)?.rate ?? '0');
         const rawSobretasa = typeof rateObj === 'number' ? 0 : parseFloat((rateObj as any)?.sobretasa ?? '0');
@@ -8594,16 +8639,21 @@ function maskCLABE(clabe?: string | null): string | null {
           });
         }
 
-        if (rawApertura > mbCeilingApertura && mbCeilingApertura > 0) {
+        if (rawApertura > mbCeilingApertura) {
           return res.status(400).json({ 
             message: `La comisión de apertura asignada a tu red (${rawApertura}%) para ${inst.name} no puede superar tu techo de ${mbCeilingApertura}%` 
           });
         }
 
+        if (rawSobretasa !== 0 || rawRenovacion > mbCeilingRenovacion) {
+          return res.status(400).json({
+            message: `El esquema de red de ${inst.name} excede el techo autorizado: renovación hasta ${mbCeilingRenovacion}% y sobretasa 0%.`
+          });
+        }
         sanitizedRates[instId] = {
           apertura: rawApertura,
-          sobretasa: mbCeilingSobretasa > 0 ? Math.min(rawSobretasa, mbCeilingSobretasa) : rawSobretasa,
-          renovacion: mbCeilingRenovacion > 0 ? Math.min(rawRenovacion, mbCeilingRenovacion) : rawRenovacion,
+          sobretasa: 0, // Sobretasa is never distributable to the network.
+          renovacion: rawRenovacion,
           updatedAt: new Date().toISOString(),
         };
       }

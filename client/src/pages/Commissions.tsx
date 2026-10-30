@@ -26,6 +26,7 @@ import { es } from "date-fns/locale";
 import { cn } from "@/lib/utils";
 import { ContextualHelpLink } from "@/components/Help/ContextualHelpLink";
 import CommissionOfferSchemesModal from "@/components/Commissions/CommissionOfferSchemesModal";
+import MyCommissionRatesModal from "@/components/Commissions/MyCommissionRatesModal";
 import { 
   Search, 
   Clock, 
@@ -104,6 +105,7 @@ export default function Commissions() {
   const [viewingCommission, setViewingCommission] = useState<any | null>(null);
   const [accountNumber, setAccountNumber] = useState("");
   const [showRatesModal, setShowRatesModal] = useState(false);
+  const [showMyRatesModal, setShowMyRatesModal] = useState(false);
   const [, setLocation] = useLocation();
   const [activeTab, setActiveTab] = useState<'commissions' | 'sobretasa'>('commissions');
   
@@ -1059,6 +1061,13 @@ export default function Commissions() {
                     </div>
 
                     <div className="flex items-center gap-2 self-end sm:self-auto">
+                      {(user?.role === "broker" || user?.role === "master_broker") && (
+                        <Button variant="outline" size="sm" className="h-9 text-xs"
+                          onClick={() => setShowMyRatesModal(true)}
+                          data-testid="button-view-my-commission-rates">
+                          <Percent className="w-3.5 h-3.5 mr-1.5" /> Mis porcentajes
+                        </Button>
+                      )}
                       {user?.role === 'super_admin' && (
                         <Button
                           variant="outline"
@@ -1814,6 +1823,7 @@ export default function Commissions() {
 
         </main>
 
+        <MyCommissionRatesModal open={showMyRatesModal} onOpenChange={setShowMyRatesModal} />
         {/* Los esquemas económicos se consultan por VERSIÓN de oferta y solo por Super Admin. */}
         {user?.role === 'super_admin' && (
           <CommissionOfferSchemesModal open={showRatesModal} onOpenChange={setShowRatesModal} />
