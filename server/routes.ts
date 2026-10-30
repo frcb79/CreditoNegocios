@@ -8578,17 +8578,17 @@ function maskCLABE(clabe?: string | null): string | null {
 
       const allInstitutions = await storage.getFinancialInstitutions();
       const instMap = new Map(allInstitutions.map((i: any) => [i.id, i]));
+      const publishedOffers = await loadPublishedCommissionOffers();
       const sanitizedRates: Record<string, any> = {};
 
       for (const [instId, rateObj] of Object.entries(rates)) {
         const inst: any = instMap.get(instId);
         if (!inst) continue;
 
-        const comm = inst.commissionRates || {};
-        const mb = comm.masterBroker || {};
-        const mbCeilingApertura = parseFloat(mb.apertura || '0');
-        const mbCeilingSobretasa = parseFloat(mb.sobretasa || '0');
-        const mbCeilingRenovacion = parseFloat(mb.renovacion || '0');
+        const offers = publishedOffers.filter(x => x.institutionId === instId);
+        const ceiling = masterSafeCeilings(offers);
+        const mbCeilingApertura = ceiling.apertura;
+        const mbCeilingRenovacion = ceiling.renovacion;
 
         const rawApertura = typeof rateObj === 'number' ? rateObj : parseFloat((rateObj as any)?.apertura ?? (rateObj as any)?.rate ?? '0');
         const rawSobretasa = typeof rateObj === 'number' ? 0 : parseFloat((rateObj as any)?.sobretasa ?? '0');
@@ -8600,16 +8600,21 @@ function maskCLABE(clabe?: string | null): string | null {
           });
         }
 
-        if (rawApertura > mbCeilingApertura && mbCeilingApertura > 0) {
+        if (rawApertura > mbCeilingApertura) {
           return res.status(400).json({ 
             message: `La comisión de apertura asignada a tu red (${rawApertura}%) para ${inst.name} no puede superar tu techo de ${mbCeilingApertura}%` 
           });
         }
 
+        if (rawSobretasa !== 0 || rawRenovacion > mbCeilingRenovacion) {
+          return res.status(400).json({
+            message: `El esquema de red de ${inst.name} excede el techo autorizado: renovación hasta ${mbCeilingRenovacion}% y sobretasa 0%.`
+          });
+        }
         sanitizedRates[instId] = {
           apertura: rawApertura,
-          sobretasa: mbCeilingSobretasa > 0 ? Math.min(rawSobretasa, mbCeilingSobretasa) : rawSobretasa,
-          renovacion: mbCeilingRenovacion > 0 ? Math.min(rawRenovacion, mbCeilingRenovacion) : rawRenovacion,
+          sobretasa: 0, // Sobretasa is never distributable to the network.
+          renovacion: rawRenovacion,
           updatedAt: new Date().toISOString(),
         };
       }
