@@ -22,6 +22,15 @@ describe("Master network commission frozen snapshot", () => {
     expect(buildNetworkCommissionSnapshot(source, null)).toEqual(source);
   });
 
+  it("accepts offers with opening commission only and zero renewal", () => {
+    const source = published();
+    delete (source.masterBroker as any).renovacion;
+    delete (source.broker as any).renovacion;
+    const frozen = buildNetworkCommissionSnapshot(source, { apertura: 1.5, renovacion: 0 });
+    expect(frozen.broker).toEqual({ apertura: 1.5, renovacion: 0, sobretasa: 0 });
+    expect(frozen.masterBroker).toEqual({ apertura: 1.5, renovacion: 0, sobretasa: 0 });
+  });
+
   it("preserves explicit zero broker share", () => {
     const frozen = buildNetworkCommissionSnapshot(published(), { apertura: 0, renovacion: 0 });
     expect(frozen.broker.apertura).toBe(0);
