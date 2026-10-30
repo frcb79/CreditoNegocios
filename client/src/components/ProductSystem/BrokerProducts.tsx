@@ -227,6 +227,10 @@ function readDisplayTerms(p: InstitutionProductWithTemplate): Record<string, any
     observaciones: terms.sourceNotes || undefined,
     tiempoRespuesta: terms.turnaround || undefined,
     documentacionFuente: terms.requiredDocumentationSource || undefined,
+    presencia: terms.eligibility?.presence ?? null,
+    girosProhibidos: terms.eligibility?.excludedSectors ?? null,
+    aperturaClienteFuente: terms.clientOpeningSource ?? null,
+    montoMaximoVariable: terms.informationalMaximumLoan ?? null,
   };
 }
 
@@ -1187,9 +1191,17 @@ export default function BrokerProducts() {
                 ["Ingresos mensuales mínimos", eligibility.minMonthlyIncome],
                 ["Ingresos anuales mínimos", eligibility.minAnnualIncome],
                 ["Política de Buró", eligibility.bureauPolicySource || eligibility.bureauRequirement],
+                ["Antigüedad (texto fuente)", eligibility.minMonthsInBusinessSource],
+                ["Ingresos mensuales (texto fuente)", eligibility.minMonthlyIncomeSource],
+                ["Ingresos anuales (texto fuente)", eligibility.minAnnualIncomeSource],
+                ["Opinión SAT", eligibility.satOpinion],
+                ["Límite de ventas al gobierno", eligibility.governmentSalesLimit],
                 ["Buró de empresa", eligibility.minBusinessBureau],
                 ["Buró de accionista", eligibility.minShareholderBureau],
                 ["Buró personal", eligibility.minPersonalBureau],
+                ["Buró personal (texto fuente)", eligibility.minPersonalBureauSource],
+                ["Monto máximo variable", config.montoMaximoVariable],
+                ["Apertura al cliente", config.aperturaClienteFuente],
                 ["Atrasos permitidos", eligibility.allowsArrears == null ? null : eligibility.allowsArrears ? "Sí" : "No"],
                 ["Política de atrasos", eligibility.arrearsPolicy],
                 ["Garantía", eligibility.guarantee],
