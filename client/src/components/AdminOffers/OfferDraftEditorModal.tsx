@@ -103,6 +103,7 @@ export default function OfferDraftEditorModal({
   const [minAmount, setMinAmount] = useState<string>("");
   const [maxAmount, setMaxAmount] = useState<string>("");
   const [minRate, setMinRate] = useState<string>("");
+  const [rateSource, setRateSource] = useState<string>("");
   const [maxRate, setMaxRate] = useState<string>("");
   const [minTerm, setMinTerm] = useState<string>("");
   const [maxTerm, setMaxTerm] = useState<string>("");
@@ -172,6 +173,7 @@ export default function OfferDraftEditorModal({
     setMinAmount(cond.minAmount !== undefined && cond.minAmount !== null ? String(cond.minAmount) : "");
     setMaxAmount(cond.maxAmount !== undefined && cond.maxAmount !== null ? String(cond.maxAmount) : "");
     setMinRate(cond.minInterestRate !== undefined && cond.minInterestRate !== null ? String(cond.minInterestRate) : "");
+    setRateSource(cond.rateSource === undefined || cond.rateSource === null ? "" : String(cond.rateSource));
     setMaxRate(cond.maxInterestRate !== undefined && cond.maxInterestRate !== null ? String(cond.maxInterestRate) : "");
     setMinTerm(cond.minTermMonths !== undefined && cond.minTermMonths !== null ? String(cond.minTermMonths) : "");
     setMaxTerm(cond.maxTermMonths !== undefined && cond.maxTermMonths !== null ? String(cond.maxTermMonths) : "");
@@ -403,6 +405,7 @@ export default function OfferDraftEditorModal({
     conditions.minAmount = parsedMinAmt;
     conditions.maxAmount = parsedMaxAmt;
     conditions.minInterestRate = parsedMinR;
+    conditions.rateSource = rateSource.trim() || null;
     conditions.maxInterestRate = parsedMaxR;
     conditions.minTermMonths = parsedMinT;
     conditions.maxTermMonths = parsedMaxT;
@@ -686,6 +689,13 @@ export default function OfferDraftEditorModal({
                       <div className="flex items-center gap-1.5 text-xs font-bold text-[#101F35]">
                         <Percent className="w-3.5 h-3.5 text-emerald-600" />
                         <span>Tasa de Interés (% Anual)</span>
+                      </div>
+                      <div className="space-y-1">
+                        <Label className="text-[10px] text-slate-500 font-medium">Tasa indicativa o fórmula publicada</Label>
+                        <Input type="text" value={rateSource} onChange={e => setRateSource(e.target.value)}
+                          placeholder="Ej. TIIE + 8.15, 18% o 18%-29%"
+                          className="h-8 text-xs border-slate-200" data-testid="input-rate-source" />
+                        <p className="text-[10px] text-slate-500">Este texto se muestra en el catálogo. No se convierte una fórmula TIIE a tasa fija.</p>
                       </div>
                       <div className="space-y-1">
                         <Label className="text-[10px] text-slate-500 font-medium">Tasa Mínima (%)</Label>
