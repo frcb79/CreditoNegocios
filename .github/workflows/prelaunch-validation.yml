@@ -20,8 +20,6 @@ on:
       - 'fix/matching-ofertas-v5-*'
       - 'fix/final-audit-publication*'
       - 'fix/super-admin-dashboard-*'
-      - 'fix/lanzamiento-catalogo-*'
-      - 'fix/lanzamiento-comisiones-*'
       - 'fix/lanzamiento-usuarios-utm-*'
   workflow_dispatch:
 concurrency:
