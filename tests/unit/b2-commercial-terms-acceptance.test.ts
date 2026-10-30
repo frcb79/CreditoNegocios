@@ -486,6 +486,15 @@ describe("AG — FASE 2B.2B: Cambios y Aceptación Comercial", () => {
       expect(after.body.rates[first.id].apertura).toBe(3);
       expect(after.body.rates[second.id].apertura).toBe(1.5);
       expect(after.body.rates[second.id].sobretasa).toBe(0);
+      // Updating only one product must not erase the other product's assignment.
+      const partial = await request(app).put("/api/master-broker/network-rates").send({
+        rates: { [second.id]: { apertura: 1, renovacion: 0.25 } },
+      });
+      expect(partial.status).toBe(200);
+      const preserved = await request(app).get("/api/master-broker/network-rates");
+      expect(preserved.body.rates[first.id].apertura).toBe(3);
+      expect(preserved.body.rates[second.id].apertura).toBe(1);
+      expect(preserved.body.rates[second.id].renovacion).toBe(0.25);
     });
   });
 
