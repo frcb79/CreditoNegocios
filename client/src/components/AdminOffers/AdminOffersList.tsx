@@ -45,6 +45,7 @@ import {
   Send
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { formatIndicativeRate } from "@/lib/formatIndicativeRate";
 
 interface AdminOffersListProps {
   institutionId?: string;
@@ -552,8 +553,8 @@ export default function AdminOffersList({
                     <span className="text-[10px] text-slate-400 block font-medium">Tasa Anual</span>
                     <span className="font-semibold text-slate-800 mt-0.5 block">
                       {rateMin != null || rateMax != null
-                        ? `${rateMin ?? "N/D"}% — ${rateMax ?? "N/D"}%`
-                        : rateDescriptor || "Tasa por confirmar"}
+                        ? `${formatIndicativeRate(rateMin) ?? "N/D"} — ${formatIndicativeRate(rateMax) ?? "N/D"}`
+                        : formatIndicativeRate(rateDescriptor) || "Tasa por confirmar"}
                     </span>
                   </div>
                   <div>
