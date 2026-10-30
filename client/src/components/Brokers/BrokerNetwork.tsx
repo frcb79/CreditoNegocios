@@ -219,6 +219,22 @@ function MasterBrokerRatesConfig({ user }: { user: any }) {
     }));
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rows), "Comisiones de Red");
+    const offers = (ratesData?.items || []).flatMap(item => item.offerRates.map(offer => ({
+      Financiera: item.institutionName,
+      Oferta: offer.offerName,
+      Version: offer.versionNumber,
+      Techo_Master_Apertura_Pct: offer.apertura,
+      Techo_Master_Renovacion_Pct: offer.renovacion,
+    })));
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(offers), "Topes por Oferta");
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([
+      ["Crédito Negocios - comisiones de red"],
+      ["Editar exclusivamente Red_Apertura_Pct y Red_Renovacion_Pct en Comisiones de Red."],
+      ["Una sola asignación por financiera. Los techos son los mínimos de sus ofertas."],
+      ["La pestaña Topes por Oferta es de consulta. No cambies claves ni porcentajes techo."],
+      ["Un techo 0% no permite asignación; la sobretasa pertenece a la plataforma."],
+      ["Subir Excel valida datos en pantalla; sólo Guardar Comisiones de Red efectúa el cambio."]
+    ]), "Instrucciones");
     XLSX.writeFile(wb, "CN_Comisiones_de_Red.xlsx");
   };
 
