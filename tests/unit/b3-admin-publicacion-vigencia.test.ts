@@ -525,9 +525,10 @@ describe("Bloque B3 — Publicación y Vigencia de Ofertas Comerciales (Super Ad
       const resBroker = await request(app)
         .get(`/api/financial-institutions/${institutionId}`)
         .set("x-test-user-id", testBrokerId);
-      // The fixture has no eligible published institution product version.
-      // Commercial detail remains unavailable until publication.
-      expect(resBroker.status).toBe(403);
+      // The institution is already visible in the broker catalog, even if
+      // no eligible offer is published. Its SANITIZED profile must be openable.
+      // Only the individual offer/request endpoints restrict unpublished data.
+      expect(resBroker.status).toBe(200);
       expect(resBroker.body.overrateCommissionRate).toBeUndefined();
       expect(resBroker.body.overRate).toBeUndefined();
       expect(resBroker.body.commissionRates?.broker?.sobretasa).toBeUndefined();
