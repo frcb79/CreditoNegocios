@@ -223,6 +223,7 @@ function readDisplayTerms(p: InstitutionProductWithTemplate): Record<string, any
 function getProductCategory(p: InstitutionProductWithTemplate): string {
   // Canonical type must take precedence over legacy name heuristics.
   switch (String(p.productType || "").toLowerCase()) {
+    case "credito_simple": return "credito_simple";
     case "hipotecario":
     case "garantia_inmobiliaria":
     case "garantia_inmobiliaria_empresarial": return "garantia_inmobiliaria";
