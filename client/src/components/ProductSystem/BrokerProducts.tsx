@@ -332,7 +332,7 @@ function InstitutionCommercialCard({
 }: InstitutionCommercialCardProps) {
   const [activeIdx, setActiveIdx] = useState(0);
   const currentProd = products[activeIdx] || products[0];
-  const config = (currentProd?.configuration || {}) as Record<string, any>;
+  const config = currentProd ? readDisplayTerms(currentProd) : {};
   const minAmount = config.montoMinimo || config.montoMin;
   const maxAmount = config.montoMaximo || config.montoMax;
   const term = config.plazo || config.plazoMax;
