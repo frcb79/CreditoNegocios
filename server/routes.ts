@@ -9740,6 +9740,44 @@ function maskCLABE(clabe?: string | null): string | null {
     }
   });
 
+  // Ficha comercial de la versión publicada: nunca usar los campos
+  // económicos internos de conditions/requirements ni datos del borrador.
+  const publishedCommercialTerms = (version: any) => {
+    const c = (version?.conditions || {}) as Record<string, any>;
+    const r = (version?.requirements || {}) as Record<string, any>;
+    return {
+      minAmount: c.minAmount ?? null,
+      maxAmount: c.maxAmount ?? null,
+      minTermMonths: c.minTermMonths ?? null,
+      maxTermMonths: c.maxTermMonths ?? null,
+      minInterestRate: c.minInterestRate ?? null,
+      maxInterestRate: c.maxInterestRate ?? null,
+      rateSource: c.rateSource ?? null,
+      loanPurposes: c.loanPurposes ?? null,
+      turnaround: c.turnaround ?? null,
+      sourceNotes: c.sourceNotes ?? null,
+      requiredDocumentationSource: c.requiredDocumentationSource ?? null,
+      requiredDocuments: Array.isArray(version?.requiredDocuments) ? version.requiredDocuments : [],
+      eligibility: {
+        minMonthsInBusiness: c.minCompanyAgeMonths ?? r.minMonthsInBusiness ?? null,
+        minMonthlyIncome: c.minMonthlyRevenue ?? r.minMonthlyIncome ?? null,
+        minAnnualIncome: r.minAnnualIncome ?? null,
+        bureauRequirement: c.bureauRequirement ?? r.bureauRequirement ?? null,
+        businessAgeSource: r.businessAgeSource ?? null,
+        bureauPolicySource: r.bureauPolicySource ?? null,
+        minShareholderBureau: r.minShareholderBureau ?? null,
+        minBusinessBureau: r.minBusinessBureau ?? null,
+        minPersonalBureau: r.minPersonalBureau ?? null,
+        allowsArrears: r.allowsArrears ?? null,
+        arrearsPolicy: r.arrearsPolicy ?? null,
+        guarantee: c.guaranteeType ?? r.guarantee ?? null,
+        guarantor: c.avalesType ?? r.guarantorSource ?? null,
+        requiresCiec: r.requiresCiec ?? null,
+        requiresFinancialStatements: r.requiresFinancialStatements ?? null,
+      },
+    };
+  };
+
   // 🔹 INSTITUTION PRODUCTS (Level 3A: Assigned to financieras)
   app.get('/api/institution-products', isAuthenticated, async (req: any, res) => {
     try {
@@ -9765,19 +9803,9 @@ function maskCLABE(clabe?: string | null): string | null {
             // VERSION. Only an explicit commercial whitelist is shared; this
             // never includes the lender gross, platform margin or overrate.
             const published = versions.find(v => v.status === "published");
-            const c = (published?.conditions || {}) as Record<string, any>;
             eligibleCommercialOffers.push({
               ...visibleProduct,
-              commercialTerms: {
-                minAmount: c.minAmount ?? null,
-                maxAmount: c.maxAmount ?? null,
-                maxTermMonths: c.maxTermMonths ?? null,
-                rateSource: c.rateSource ?? null,
-                loanPurposes: c.loanPurposes ?? null,
-                turnaround: c.turnaround ?? null,
-                sourceNotes: c.sourceNotes ?? null,
-                requiredDocumentationSource: c.requiredDocumentationSource ?? null,
-              },
+              commercialTerms: publishedCommercialTerms(published),
             });
           }
         }
@@ -9891,16 +9919,9 @@ function maskCLABE(clabe?: string | null): string | null {
         const userRole = user?.role || 'broker';
         const commercialOffer = sanitizeCommercialOffer(product, userRole);
         const published = versions.find(v => v.status === "published");
-        const c = (published?.conditions || {}) as Record<string, any>;
         return res.json({
           ...commercialOffer,
-          commercialTerms: {
-            minAmount: c.minAmount ?? null, maxAmount: c.maxAmount ?? null,
-            maxTermMonths: c.maxTermMonths ?? null, rateSource: c.rateSource ?? null,
-            loanPurposes: c.loanPurposes ?? null, turnaround: c.turnaround ?? null,
-            sourceNotes: c.sourceNotes ?? null,
-            requiredDocumentationSource: c.requiredDocumentationSource ?? null,
-          },
+          commercialTerms: publishedCommercialTerms(published),
         });
       }
       
@@ -9953,6 +9974,39 @@ function maskCLABE(clabe?: string | null): string | null {
     } catch (error) {
       console.error("Error fetching draft version:", error);
       res.status(500).json({ message: "Failed to fetch draft version" });
+    }
+  });
+
+  // Una oferta publicada no se edita en sitio: se clona la última versión
+  // publicada a un nuevo borrador y se preserva el historial inmutable.
+  app.post('/api/institution-products/:id/draft-from-published', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub || req.user?.id;
+      if (!(await requirePlatformRole(userId, ['super_admin']))) {
+        return res.status(403).json({ message: 'Solo Super Admin puede editar ofertas' });
+      }
+      const product = await storage.getInstitutionProduct(req.params.id);
+      if (!product) return res.status(404).json({ message: 'Oferta no encontrada' });
+      const versions = await storage.getInstitutionProductVersions(product.id);
+      const pending = versions.find(v => v.status === 'draft');
+      if (pending) return res.json({ version: pending, alreadyExists: true });
+      const published = versions.filter(v => v.status === 'published')
+        .sort((a, b) => b.versionNumber - a.versionNumber)[0];
+      if (!published || product.status !== 'published') {
+        return res.status(409).json({ message: 'Solo se puede crear una nueva versión desde una oferta publicada' });
+      }
+      const created = await storage.createInstitutionProductDraftVersion(product.id, {
+        conditions: structuredClone(published.conditions || {}),
+        requirements: structuredClone(published.requirements || {}),
+        requiredDocuments: structuredClone(published.requiredDocuments || []),
+        variablesConfiguration: structuredClone(published.variablesConfiguration || {}),
+        changeReason: 'Actualización de oferta publicada, pendiente de revisión y publicación',
+        createdBy: userId,
+      });
+      return res.status(201).json({ version: created, alreadyExists: false });
+    } catch (error) {
+      console.error('Error creating draft from published offer:', error);
+      return res.status(500).json({ message: 'No fue posible crear el borrador de la oferta' });
     }
   });
 
