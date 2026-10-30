@@ -1,4 +1,5 @@
 import { getAnnualIncomeRange } from "../../shared/annualIncome";
+import { getOfferAgePolicy } from "../../shared/offerAgePolicy";
 import type { CriterionEvaluation } from "./compatibilityEvaluator";
 import { extractBureauStatus, extractClientProfileType, extractRequestedAmount } from "./fieldMapping";
 
@@ -36,6 +37,10 @@ export function offerConditions(conditions: any, req: any, client: any, credit: 
   ]) {
     if (!Object.prototype.hasOwnProperty.call(c,key)) c[key] = ranges[range]?.[bound] ?? req[alias];
   }
+  const agePolicy = getOfferAgePolicy(conditions, req);
+  const age = agePolicy.rows.find(r => r.profile === extractClientProfileType(capturedRecord(client)));
+  if (age?.pending || (!age && agePolicy.needsReview)) c.minCompanyAgeMonths = null;
+  else if (age && age.effectiveMonths !== null) c.minCompanyAgeMonths = age.effectiveMonths;
   // Do not interpret free text as a relaxed rule. Only exact categories have automatic meaning.
   const guarantee = textKey(req.guarantee);
   if (!present(c.guaranteeType)) {
@@ -111,7 +116,7 @@ export function importedCriteria(req:any, cond:any, inputClient:any, credit:any)
     add("annualIncome","Ingreso anual mínimo",annual,raw??null,status,status==="MISSING_DATA"?"Ingreso anual ausente o rango insuficiente para confirmar el umbral.":status==="FAILED"?"El ingreso anual no alcanza el mínimo.":"El ingreso anual alcanza el mínimo.");
   }else if(!present(annual) && present(req.minAnnualIncomeSource) && !["no aplica","n/a"].includes(textKey(req.minAnnualIncomeSource)))pending("annualIncome","Ingreso anual variable",req.minAnnualIncomeSource);
   if(!present(cond.minMonthlyRevenue) && present(req.minMonthlyIncomeSource) && !["no aplica","n/a"].includes(textKey(req.minMonthlyIncomeSource)))pending("monthlyRevenue","Ingreso mensual variable",req.minMonthlyIncomeSource);
-  if(!present(cond.minCompanyAgeMonths) && present(req.minMonthsInBusinessSource) && !["no aplica","n/a"].includes(textKey(req.minMonthsInBusinessSource)))pending("companyAge","Antigüedad variable",req.minMonthsInBusinessSource);
+  if(!present(cond.minCompanyAgeMonths) && present(req.businessAgeSource || req.minMonthsInBusinessSource) && !["no aplica","n/a"].includes(textKey(req.businessAgeSource || req.minMonthsInBusinessSource)))pending("companyAge","Antigüedad pendiente de aclaración",req.businessAgeSource || req.minMonthsInBusinessSource);
   for(const [code,key,label,header] of [["requiresCiec","satCiec","Conexión SAT (CIEC)","Requiere CIEC"],["requiresFinancialStatements","estadosFinancieros","Estados financieros","Estados financieros"]]){
     if(req[code]===true){const actual=client[key] ?? credit?.[key],value=yesNo(actual);add(code,label,true,actual??null,value===null?"MISSING_DATA":value?"PASSED":"FAILED",value===null?"Falta confirmar este requisito en el expediente.":value?"El expediente declara contar con el requisito.":"El expediente declara no contar con el requisito exigido.");}
     else if(Object.prototype.hasOwnProperty.call(req,code) && req[code]!==false) {

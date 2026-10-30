@@ -1,3 +1,4 @@
+import { getOfferAgePolicy } from "../shared/offerAgePolicy";
 import { matchPublishedCatalog } from "./matching/catalog";
 import { registerAdministrativeAudit } from "./administrativeAudit";
 import { selectHousingMortgageTemplate } from "./mortgageHousingTemplate";
@@ -9904,13 +9905,8 @@ function maskCLABE(clabe?: string | null): string | null {
       if (req.body.guaranteeType !== undefined) mergedConditions.guaranteeType = req.body.guaranteeType;
       if (req.body.avalesType !== undefined) mergedConditions.avalesType = req.body.avalesType;
 
-      // Garantía de Integridad: Variables de elegibilidad pendientes de cotejo contra expediente real (Matching inactivo)
-      mergedConditions.eligibilityEvaluation = {
-        matchingActive: false,
-        status: "pending_verification",
-        verified: false,
-        originFieldsChecked: false,
-      };
+      // Editing commercial terms does not change verification of a client's evidence.
+      // Preserve existing explicit offer/criterion verification flags; never invent a global one.
 
       // Comisiones individuales por oferta (B2.2 — Canales independientes Broker Directo y Master Broker)
       let commRates = req.body.commissionRates !== undefined
@@ -9999,10 +9995,6 @@ function maskCLABE(clabe?: string | null): string | null {
         ...currentReqs,
         ...(requirements || {}),
         targetProfiles: targetProfiles !== undefined ? targetProfiles : (currentReqs.targetProfiles || product.targetProfiles || []),
-        eligibilityVariablesStatus: {
-          matchingActive: false,
-          verified: false,
-        },
       };
 
       for (const [conditionKey, requirementKey, rangeKey] of [
@@ -10025,6 +10017,22 @@ function maskCLABE(clabe?: string | null): string | null {
         if (mergedRequirements.profileRules && typeof mergedRequirements.profileRules === "object") {
           mergedRequirements.profileRules = Object.fromEntries(Object.entries(mergedRequirements.profileRules).map(([profile, rule]: [string, any]) => [profile, {...rule, ranges: updateRange(rule?.ranges)}]));
         }
+      }
+
+      // Only this explicit Super Admin action can record a commercial reconciliation.
+      // A client cannot forge attribution or retain approval after changing the source.
+      mergedRequirements.businessAgeResolution = currentReqs.businessAgeResolution;
+      if (req.body.businessAgeReview !== undefined) {
+        const review = req.body.businessAgeReview;
+        const policy = getOfferAgePolicy(mergedConditions, mergedRequirements);
+        if (!review || review.confirmed !== true || typeof review.reason !== "string" || review.reason.trim().length < 3 ||
+            !policy.rows.length || !policy.rows.every(row => Number.isSafeInteger(review.monthsByProfile?.[row.profile]) && review.monthsByProfile[row.profile] >= 0)) {
+          return res.status(400).json({ message: "Confirma los meses de antigüedad por perfil y el motivo de conciliación." });
+        }
+        mergedRequirements.businessAgeResolution = {
+          basis: policy.basis, monthsByProfile: Object.fromEntries(policy.rows.map(row => [row.profile, review.monthsByProfile[row.profile]])),
+          reason: review.reason.trim(), reviewedBy: userId, reviewedAt: new Date().toISOString(),
+        };
       }
 
       const docsList = requiredDocuments !== undefined
@@ -10151,13 +10159,13 @@ function maskCLABE(clabe?: string | null): string | null {
             notes: cr.notes || "",
           },
           eligibility: {
-            minCompanyAgeMonths: cond.minCompanyAgeMonths ?? null,
-            minMonthlyRevenue: cond.minMonthlyRevenue ?? null,
-            bureauRequirement: cond.bureauRequirement ?? "sin_requisito",
-            guaranteeType: cond.guaranteeType ?? "sin_garantia",
-            avalesType: cond.avalesType ?? "no_requerido",
-            matchingActive: false,
-            status: "pending_verification",
+            agePolicy: getOfferAgePolicy(cond, reqs),
+            minCompanyAgeMonths: cond.minCompanyAgeMonths ?? reqs.minMonthsInBusiness ?? null,
+            minMonthlyRevenue: cond.minMonthlyRevenue ?? reqs.minMonthlyIncome ?? null,
+            bureauRequirement: cond.bureauRequirement ?? reqs.bureauPolicySource ?? null,
+            guaranteeType: cond.guaranteeType ?? reqs.guarantee ?? null,
+            avalesType: cond.avalesType ?? reqs.guarantorSource ?? null,
+            verification: cond.eligibilityEvaluation ?? null,
           },
         },
       });
@@ -10259,10 +10267,12 @@ function maskCLABE(clabe?: string | null): string | null {
 
       const { id } = req.params;
       const { changeReason, confirmPublish, expectedDraftId, expectedVersionHash } = req.body;
-      if ((expectedDraftId !== undefined && typeof expectedDraftId !== "string") || (expectedVersionHash !== undefined && (typeof expectedVersionHash !== "string" || !/^[a-f0-9]{64}$/.test(expectedVersionHash)))) return res.status(400).json({message: "Referencia de borrador inválida"});
+      if (typeof expectedDraftId !== "string" || !expectedDraftId.trim() || typeof expectedVersionHash !== "string" || !/^[a-f0-9]{64}$/.test(expectedVersionHash)) {
+        return res.status(428).json({ code: "OFFER_REVIEW_REQUIRED", message: "Revisa el borrador antes de publicar: su ID y huella son obligatorios." });
+      }
 
       // Requisito 1: Confirmación explícita obligatoria
-      if (!confirmPublish) {
+      if (confirmPublish !== true) {
         return res.status(400).json({
           message: "Debe confirmar explícitamente la publicación de la oferta comercial",
         });

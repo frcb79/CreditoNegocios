@@ -445,8 +445,8 @@ describe("Bloque B2.2 — Comisiones Individuales por Oferta Comercial (Super Ad
     });
   });
 
-  describe("Requisito 5: Variables de elegibilidad respaldadas y nunca activas en Matching", () => {
-    it("Las variables de elegibilidad se guardan marcadas con matchingActive: false y respaldadas en expediente", async () => {
+  describe("Requisito 5: Variables de elegibilidad independientes de la verificación del expediente", () => {
+    it("Guardar elegibilidad no inventa una desactivación global del matching", async () => {
       const payload = {
         minCompanyAgeMonths: 24,
         minMonthlyRevenue: 300000,
@@ -469,12 +469,8 @@ describe("Bloque B2.2 — Comisiones Individuales por Oferta Comercial (Super Ad
       expect(cond.guaranteeType).toBe("hipotecaria");
       expect(cond.avalesType).toBe("un_aval");
 
-      // Garantía de Integridad: Matching inactivo preventivo y sin afirmar cotejo previo
-      expect(cond.eligibilityEvaluation).toBeDefined();
-      expect(cond.eligibilityEvaluation.matchingActive).toBe(false);
-      expect(cond.eligibilityEvaluation.status).toBe("pending_verification");
-      expect(cond.eligibilityEvaluation.verified).toBe(false);
-      expect(cond.eligibilityEvaluation.originFieldsChecked).toBe(false);
+      // Client verification is evaluated separately for each criterion.
+      expect(cond.eligibilityEvaluation).toBeUndefined();
     });
   });
 });

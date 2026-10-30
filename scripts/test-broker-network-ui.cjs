@@ -34,7 +34,8 @@ function button(label){return [...document.querySelectorAll('button')].find(e=>e
  assert(text().includes('No hay invitaciones con 15 días o más sin registro.'));
  await searchFor('');await click('filter-invites-all');
  button('Simular activación').click();await click('refresh-pending-invites');
- await waitFor(()=>document.querySelectorAll('tbody tr').length===3,'refresh removes activated');assert(text().includes('Lista actualizada'));
+ await waitFor(()=>document.querySelectorAll('tbody tr').length===3,'refresh removes activated');
+ await waitFor(()=>text().includes('Lista actualizada'),'refresh success feedback');
  await click('filter-invites-overdue');const row=[...document.querySelectorAll('tbody tr')].find(e=>e.textContent.includes('Broker Antiguo QA'));row.querySelector('button').click();
  await waitFor(()=>row.textContent.includes('Sin más correos'),'pause persists');
  await click('filter-invites-paused');assert.equal(document.querySelectorAll('tbody tr').length,2);

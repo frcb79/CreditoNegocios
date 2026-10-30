@@ -1,3 +1,4 @@
+import { getOfferAgePolicy } from "@shared/offerAgePolicy";
 import { useState, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import {
@@ -119,6 +120,10 @@ export default function OfferDraftEditorModal({
   const [guaranteeType, setGuaranteeType] = useState<string>("sin_garantia");
   const [avalesType, setAvalesType] = useState<string>("no_requerido");
 
+  const [ageMonthsByProfile, setAgeMonthsByProfile] = useState<Record<string, string>>({});
+  const [ageReviewReason, setAgeReviewReason] = useState("");
+  const [ageReviewed, setAgeReviewed] = useState(false);
+
   // Documentos requeridos
   const [selectedDocs, setSelectedDocs] = useState<string[]>([]);
   const [publishAfterSave, setPublishAfterSave] = useState(false);
@@ -186,6 +191,11 @@ export default function OfferDraftEditorModal({
     setBureauRequirement(cond.bureauRequirement || "por_definir");
     setGuaranteeType(cond.guaranteeType || "por_definir");
     setAvalesType(cond.avalesType || "por_definir");
+
+    const agePolicy = getOfferAgePolicy(cond, req);
+    setAgeMonthsByProfile(Object.fromEntries(agePolicy.rows.map(row => [row.profile, agePolicy.resolved ? String(row.effectiveMonths) : ""])));
+    setAgeReviewReason(agePolicy.resolution?.reason || "");
+    setAgeReviewed(false);
 
     // Documentos requeridos
     if (Array.isArray(draft?.requiredDocuments)) {
@@ -416,11 +426,11 @@ export default function OfferDraftEditorModal({
         ...(bureauRequirement !== "por_definir" ? { bureauRequirement } : {}),
         ...(guaranteeType !== "por_definir" ? { guaranteeType } : {}),
         ...(avalesType !== "por_definir" ? { avalesType } : {}),
-        eligibilityVariablesStatus: {
-          matchingActive: false,
-          verified: false,
-        },
       },
+      ...(ageReviewed ? { businessAgeReview: {
+        confirmed: true, reason: ageReviewReason,
+        monthsByProfile: Object.fromEntries(selectedProfiles.map(profile => [profile, ageMonthsByProfile[profile]?.trim() ? Number(ageMonthsByProfile[profile]) : null])),
+      } } : {}),
       requiredDocuments: selectedDocs,
       variablesConfiguration: {
         ...(draftData?.draftVersion?.variablesConfiguration as Record<string, any> || {}),
@@ -437,6 +447,7 @@ export default function OfferDraftEditorModal({
 
   const sourceConditions = (draftData?.draftVersion?.conditions || {}) as Record<string, any>;
   const sourceRequirements = (draftData?.draftVersion?.requirements || {}) as Record<string, any>;
+  const agePolicy = getOfferAgePolicy({ ...sourceConditions, minCompanyAgeMonths: minCompanyAgeMonths.trim() ? Number(minCompanyAgeMonths) : null }, { ...sourceRequirements, targetProfiles: selectedProfiles });
   const sourceFields: Record<string, unknown> = sourceConditions.sourceTechnicalFields || {};
   const eligibilityDetails: Record<string, unknown> = {
     "Antigüedad según archivo": sourceRequirements.businessAgeSource || sourceRequirements.minMonthsInBusinessSource,
@@ -989,8 +1000,20 @@ export default function OfferDraftEditorModal({
               <TabsContent value="elegibilidad" className="space-y-4 pt-1">
                 <p className="text-xs font-semibold">Detalle de elegibilidad importado</p>
                 {sourcePanel(eligibilityDetails)}
+                {agePolicy.hasConflict && !agePolicy.needsReview && !agePolicy.resolved && <p className="text-xs text-blue-700" data-testid="age-policy-source-specific">El archivo original fija mínimos específicos por perfil; el matching utilizará esos valores en lugar del mínimo numérico general importado.</p>}
+                {(agePolicy.needsReview || agePolicy.resolved) && <div className="rounded-xl border border-amber-300 p-3 space-y-3 text-xs" data-testid="age-policy-review">
+                  <strong>Conciliar antigüedad por perfil</strong>
+                  <p>Fuente: {agePolicy.source}. {agePolicy.resolved ? "Conciliación guardada." : "La publicación queda bloqueada hasta confirmar la política correcta."} Conservamos el texto original.</p>
+                  {agePolicy.rows.map(row => <label className="block space-y-1" key={row.profile}>
+                    <span>{row.label}: fuente {row.sourceMonths ?? "ambigua"} · configurado {row.configuredMonths ?? "pendiente"} meses</span>
+                    <Input aria-label={`Antigüedad confirmada ${row.profile}`} type="number" min="0" step="1" placeholder="Meses confirmados con la financiera" value={ageMonthsByProfile[row.profile] || ""}
+                      onChange={e => {setAgeMonthsByProfile(prev => ({...prev, [row.profile]: e.target.value})); setAgeReviewed(false);}} />
+                  </label>)}
+                  <label className="block">Motivo de conciliación<Input value={ageReviewReason} onChange={e => {setAgeReviewReason(e.target.value);setAgeReviewed(false);}} data-testid="age-review-reason" /></label>
+                  <label className="flex gap-2"><input type="checkbox" checked={ageReviewed} onChange={e => setAgeReviewed(e.target.checked)} data-testid="age-review-confirm" />Confirmo que revisé la fuente y autorizo estos mínimos por perfil como responsable comercial.</label>
+                </div>}
                 <div className="p-3 bg-amber-50/70 border border-amber-200/80 rounded-xl text-xs text-amber-900 leading-relaxed">
-                  <strong>Variables de Elegibilidad:</strong> No se asume que los datos estén recopilados. Únicamente se contrastan contra campos reales del expediente del cliente. Las condiciones no verificadas documentalmente quedan pendientes y nunca activas en el motor de Matching.
+                  <strong>Variables de Elegibilidad:</strong> No se asume que los datos estén recopilados. Únicamente se contrastan contra campos reales del expediente del cliente. Los datos faltantes o marcados como no verificados quedan pendientes por criterio.
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -1015,7 +1038,7 @@ export default function OfferDraftEditorModal({
                       <span className="text-xs text-slate-500 shrink-0 font-medium">Meses</span>
                     </div>
                     <span className="text-[10px] text-amber-700 bg-amber-50 px-2 py-0.5 rounded border border-amber-200/60 block">
-                      Matching: Inactivo (Pendiente de comprobación en campo 'yearsInBusiness' del expediente)
+                      Matching: se evalúa con los datos capturados; información faltante queda pendiente.
                     </span>
                   </div>
 
@@ -1041,7 +1064,7 @@ export default function OfferDraftEditorModal({
                       <span className="text-xs text-slate-500 shrink-0 font-medium">MXN</span>
                     </div>
                     <span className="text-[10px] text-amber-700 bg-amber-50 px-2 py-0.5 rounded border border-amber-200/60 block">
-                      Matching: Inactivo (Pendiente de comprobación en campo 'ingresoMensualPromedio' del expediente)
+                      Matching: se evalúa con los datos capturados; información faltante queda pendiente.
                     </span>
                   </div>
 
@@ -1068,7 +1091,7 @@ export default function OfferDraftEditorModal({
                       </SelectContent>
                     </Select>
                     <span className="text-[10px] text-slate-500 bg-slate-50 px-2 py-0.5 rounded border border-slate-200 block">
-                      Matching: Inactivo (Requiere consulta de buró oficial — No activo)
+                      Matching: se evalúa con los datos capturados; información faltante queda pendiente.
                     </span>
                   </div>
 
@@ -1095,7 +1118,7 @@ export default function OfferDraftEditorModal({
                       </SelectContent>
                     </Select>
                     <span className="text-[10px] text-slate-500 bg-slate-50 px-2 py-0.5 rounded border border-slate-200 block">
-                      Matching: Inactivo (Requiere expediente de garantía — No activo)
+                      Matching: se evalúa con los datos capturados; información faltante queda pendiente.
                     </span>
                   </div>
 
@@ -1122,7 +1145,7 @@ export default function OfferDraftEditorModal({
                       </SelectContent>
                     </Select>
                     <span className="text-[10px] text-slate-500 bg-slate-50 px-2 py-0.5 rounded border border-slate-200 block">
-                      Matching: Inactivo (Requiere validación de obligado solidario — No activo)
+                      Matching: se evalúa con los datos capturados; información faltante queda pendiente.
                     </span>
                   </div>
                 </div>
@@ -1130,7 +1153,7 @@ export default function OfferDraftEditorModal({
                 <div className="p-3 bg-slate-50/80 border border-slate-200/80 rounded-xl text-[11px] text-slate-600 flex items-start gap-2">
                   <Info className="w-4 h-4 text-slate-400 shrink-0 mt-0.5" />
                   <span>
-                    <strong>Garantía de Integridad:</strong> Ninguna condición de elegibilidad se encuentra activa en el motor de Matching hasta contar con la documentación y validación física en el expediente del cliente.
+                    <strong>Garantía de Integridad:</strong> Cada criterio se contrasta con el expediente. Guardar documentos o condiciones no desactiva globalmente el matching. Una contradicción de la oferta requiere conciliación antes de publicar.
                   </span>
                 </div>
               </TabsContent>

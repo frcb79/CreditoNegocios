@@ -1,4 +1,5 @@
-import { useState } from "react";
+import OfferRequirementsReview from "./OfferRequirementsReview";
+import { useState, useRef } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
@@ -11,6 +12,7 @@ type Row = { offer: InstitutionProductWithTemplate; preview?: Preview; error?: s
 export default function BatchOfferPublishModal({ offers, onClose }: {
   offers: InstitutionProductWithTemplate[]; onClose: () => void;
 }) {
+  const publishingRef = useRef(false);
   const [reason, setReason] = useState("");
   const [confirmed, setConfirmed] = useState(false);
   const [excluded, setExcluded] = useState<string[]>([]);
@@ -30,7 +32,8 @@ export default function BatchOfferPublishModal({ offers, onClose }: {
   });
   const selected = (preview.data || []).filter(r => r.preview?.validation.isValid && !excluded.includes(r.offer.id));
   async function publish() {
-    if (running || finished || !confirmed || reason.trim().length < 3 || !selected.length) return;
+    if (publishingRef.current || running || finished || !confirmed || reason.trim().length < 3 || !selected.length) return;
+    publishingRef.current = true;
     setRunning(true);
     for (const row of selected) {
       setResults(prev => ({...prev, [row.offer.id]: "Publicando…"}));
@@ -59,12 +62,12 @@ export default function BatchOfferPublishModal({ offers, onClose }: {
             disabled={!row.preview?.validation.isValid || running || finished} onChange={e => setExcluded(prev => e.target.checked ? prev.filter(id => id !== row.offer.id) : [...prev, row.offer.id])} />
             {row.offer.name || row.offer.customName} · v{row.preview?.draftVersion.versionNumber || "—"}</label>
           {row.preview && <p>Monto: {row.preview.summary?.amounts?.min ?? "Abierto"} – {row.preview.summary?.amounts?.max ?? "Abierto"} MXN. Plazo máximo: {row.preview.summary?.terms?.max ?? "Pendiente"} meses.</p>}
-          {row.preview && <details><summary className="cursor-pointer font-medium">Ver condiciones, comisiones y documentos</summary>
+          {row.preview && <details><summary className="cursor-pointer font-medium">Ver condiciones, elegibilidad, comisiones y documentos</summary>
             <div className="space-y-1 pt-2">
               <p>Tasa / factor: {row.preview.draftVersion.conditions?.rateSource || `${row.preview.summary?.rates?.min ?? "Pendiente"} – ${row.preview.summary?.rates?.max ?? "Pendiente"}%`}</p>
               <p>Perfiles: {(row.preview.summary?.targetProfiles || []).join(", ") || "Pendientes"}</p>
               {["financiera", "masterBroker", "broker"].map(role => <p key={role}>Comisión {({financiera:"Financiera",masterBroker:"Master Broker",broker:"Broker directo"} as Record<string,string>)[role]}: {Object.entries(row.preview!.draftVersion.conditions?.commissionRates?.[role] || {}).map(([key,value]) => `${key}: ${value ?? "Pendiente"}%`).join(" · ") || "Pendiente"}</p>)}
-              <p>Documentos: {(row.preview.draftVersion.requiredDocuments || []).join(" · ") || "Checklist estándar"}</p>
+              <OfferRequirementsReview version={row.preview.draftVersion} />
             </div>
           </details>}
           {row.error && <p role="alert" className="text-red-700">{row.error}</p>}

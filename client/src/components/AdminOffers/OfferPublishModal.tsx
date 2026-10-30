@@ -1,4 +1,5 @@
-import { useState } from "react";
+import OfferRequirementsReview from "./OfferRequirementsReview";
+import { useState, useEffect, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   Dialog,
@@ -47,6 +48,7 @@ export default function OfferPublishModal({
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
+  const publishingRef = useRef(false);
   const [changeReason, setChangeReason] = useState("");
   const [confirmPublish, setConfirmPublish] = useState(false);
 
@@ -54,10 +56,13 @@ export default function OfferPublishModal({
   const { data: previewData, isLoading, error } = useQuery<any>({
     queryKey: [`/api/institution-products/${offer?.id}/publish-preview`],
     enabled: !!offer?.id && isOpen,
+    refetchOnWindowFocus: false,
   });
 
+  useEffect(() => { setConfirmPublish(false); }, [offer?.id, previewData?.draftVersion?.versionHash]);
+
   const publishMutation = useMutation({
-    mutationFn: async (payload: { changeReason: string; confirmPublish: boolean; expectedDraftId?: string; expectedVersionHash?: string }) => {
+    mutationFn: async (payload: { changeReason: string; confirmPublish: boolean; expectedDraftId: string; expectedVersionHash: string }) => {
       const res = await fetch(`/api/institution-products/${offer?.id}/publish`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -81,6 +86,7 @@ export default function OfferPublishModal({
       if (onPublished) onPublished();
       onClose();
     },
+    onSettled: () => { publishingRef.current = false; },
     onError: (err: any) => {
       toast({
         title: "Error de publicación",
@@ -92,6 +98,7 @@ export default function OfferPublishModal({
 
   const handlePublish = (e: React.FormEvent) => {
     e.preventDefault();
+    if (publishingRef.current || publishMutation.isPending || !previewData?.validation?.isValid || !previewData?.draftVersion?.versionHash) return;
     if (!confirmPublish) {
       toast({
         title: "Confirmación requerida",
@@ -110,6 +117,7 @@ export default function OfferPublishModal({
       return;
     }
 
+    publishingRef.current = true;
     publishMutation.mutate({
       changeReason: changeReason.trim(),
       confirmPublish: true,
@@ -258,7 +266,7 @@ export default function OfferPublishModal({
                       <span>Tasa de Interés</span>
                     </div>
                     <span className="text-xs font-semibold text-slate-800 block">
-                      {summary?.rates?.min !== null ? `${summary.rates.min}%` : "Pendiente"} — {summary?.rates?.max !== null ? `${summary.rates.max}%` : "Pendiente"}
+                      {summary?.rates?.min != null ? `${summary.rates.min}%` : "Pendiente"} — {summary?.rates?.max != null ? `${summary.rates.max}%` : "Pendiente"}
                     </span>
                     {summary?.rates?.isPending && (
                       <Badge variant="outline" className="text-[9px] bg-amber-50 text-amber-700 border-amber-200">
@@ -274,7 +282,7 @@ export default function OfferPublishModal({
                       <span>Plazos</span>
                     </div>
                     <span className="text-xs font-semibold text-slate-800 block">
-                      {summary?.terms?.min !== null ? `${summary.terms.min}` : "Abierto"} — {summary?.terms?.max !== null ? `${summary.terms.max} meses` : "Abierto"}
+                      {summary?.terms?.min != null ? `${summary.terms.min}` : "Abierto"} — {summary?.terms?.max != null ? `${summary.terms.max} meses` : "Abierto"}
                     </span>
                     {summary?.terms?.isPending && (
                       <Badge variant="outline" className="text-[9px] bg-slate-50 text-slate-500">
@@ -346,35 +354,7 @@ export default function OfferPublishModal({
                   </span>
                 </div>
 
-                {/* 4. Perfiles, Documentos y Elegibilidad */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
-                  <div className="p-3 bg-white rounded-xl border border-slate-200 space-y-1.5">
-                    <span className="font-bold text-[#101F35] block">Perfiles Admitidos</span>
-                    <div className="flex flex-wrap gap-1">
-                      {summary?.targetProfiles && summary.targetProfiles.length > 0 ? (
-                        summary.targetProfiles.map((p: string) => (
-                          <span key={p} className="px-2 py-0.5 rounded text-[10px] font-medium bg-blue-50 text-blue-700 border border-blue-200/80">
-                            {p}
-                          </span>
-                        ))
-                      ) : (
-                        <span className="text-slate-400 italic text-[11px]">Sin perfiles seleccionados</span>
-                      )}
-                    </div>
-                  </div>
-
-                  <div className="p-3 bg-white rounded-xl border border-slate-200 space-y-1.5">
-                    <div className="flex items-center justify-between">
-                      <span className="font-bold text-[#101F35] block">Variables de Elegibilidad</span>
-                      <Badge variant="outline" className="text-[9px] bg-amber-50 text-amber-700 border-amber-200">
-                        Matching Inactivo
-                      </Badge>
-                    </div>
-                    <span className="text-[11px] text-slate-500 block leading-tight">
-                      Condiciones pendientes de verificación en expediente real del cliente. Quedan fuera del motor de Matching.
-                    </span>
-                  </div>
-                </div>
+                <OfferRequirementsReview version={draftVer} />
 
                 {/* 5. Formulario de Confirmación y Auditoría */}
                 <div className="p-4 bg-slate-50/90 rounded-xl border border-slate-200 space-y-3 pt-3">

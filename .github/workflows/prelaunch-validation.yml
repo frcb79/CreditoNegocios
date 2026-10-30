@@ -18,6 +18,7 @@ on:
       - 'fix/invitaciones-lotes-seguimiento-*'
       - 'fix/financieras-auditoria-*'
       - 'fix/matching-ofertas-v5-*'
+      - 'fix/final-audit-publication*'
   workflow_dispatch:
 concurrency:
   group: prelaunch-${{ github.ref }}
@@ -85,6 +86,9 @@ jobs:
             tests/unit/commission-historical-beneficiary.test.ts
             tests/unit/m1-matching-engine.test.ts
             tests/unit/imported-offer-matching.test.ts
+            tests/unit/final-audit-matching.test.ts
+            tests/unit/b2-admin-comisiones-ofertas.test.ts
+            tests/unit/b3-admin-publicacion-vigencia.test.ts
             tests/unit/matching-preview-http.test.ts
             tests/unit/commercial-terms-current-version.test.ts
             tests/unit/b2-commercial-terms-acceptance.test.ts

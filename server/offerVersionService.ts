@@ -1,4 +1,5 @@
 import crypto from "crypto";
+import { getOfferAgePolicy } from "../shared/offerAgePolicy";
 import type {
   InstitutionProduct,
   InstitutionProductVersion,
@@ -344,8 +345,11 @@ export function validateMinimumPublishConditions(params: {
     warnings.push("Sin esquema de comisiones asignado: margen de plataforma pendiente de definición comercial.");
   }
 
-  // 7. Variables de elegibilidad: fuera de Matching hasta verificar en expediente real
-  warnings.push("Las variables de elegibilidad no verificadas documentalmente en expediente permanecerán inactivas para Matching.");
+  const agePolicy = getOfferAgePolicy(c, r);
+  for (const row of agePolicy.rows.filter(row => row.pending)) {
+    errors.push(`Antigüedad de ${row.label}: la fuente «${agePolicy.source}» y el mínimo configurado (${row.configuredMonths ?? "pendiente"} meses) requieren conciliación en Elegibilidad antes de publicar.`);
+  }
+  warnings.push("El matching compara cada requisito con los datos capturados. Datos faltantes, ambiguos o marcados como no verificados permanecen pendientes.");
 
   // 8. Validar justificación / motivo de cambio (Trazabilidad y auditoría obligatoria)
   if (!params.changeReason || typeof params.changeReason !== "string" || params.changeReason.trim().length < 3) {
