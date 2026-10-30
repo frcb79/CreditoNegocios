@@ -85,6 +85,16 @@ describe("COM-CTA-002: incoming prospects and reusable attribution links", () =>
     expect(list).toContain("Todavía no son Clientes ni oportunidades protegidas.");
     expect(list).toContain("onReview(lead)");
   });
+  it("shows invited commercial users separately from operationally active accounts", () => {
+    const routes = file("server/routes.ts");
+    const directory = file("client/src/pages/UserManagement.tsx");
+    expect(routes).toContain("registrationStatus: ['broker','master_broker'].includes(u.role)");
+    expect(directory).toContain("Pendiente de registro");
+    expect(directory).toContain("(u as any).registrationStatus");
+    expect(directory).toContain("status === 'suspended'");
+    expect(directory).toContain("isActive === false");
+  });
+
   it("rejects suspended owners, cross-tenant client linking and concurrent duplicate submissions", () => {
     const api = file("server/campaignAcquisitionRoutes.ts");
     expect(api).toContain('user.status !== "active"');
