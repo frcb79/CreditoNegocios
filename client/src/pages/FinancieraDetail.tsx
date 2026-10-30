@@ -75,6 +75,15 @@ export default function FinancieraDetail() {
     enabled: !!id,
   });
 
+  const { data: visibleOfferCommissions = [], isLoading: loadingOfferCommissions, isError: offerCommissionsError } =
+    useQuery<Array<{ offerId: string; offerName: string; institutionId: string;
+      apertura: number | null; renovacion: number | null }>>({
+      queryKey: ["/api/commissions/my-offer-rates"],
+      enabled: isBrokerOrMaster && !!id,
+    });
+  const thisInstitutionCommissions = visibleOfferCommissions.filter(row => row.institutionId === id);
+
+
   if (isLoading) {
     return (
       <MainLayout>
@@ -690,7 +699,40 @@ export default function FinancieraDetail() {
 
               {/* Comisiones Tab */}
               <TabsContent value="comisiones" className="mt-6">
-                {isSuperAdmin && institutionProducts.length > 0 ? (
+                {isBrokerOrMaster ? (
+                  <div className="rounded-xl border border-slate-200 bg-white p-5 space-y-4">
+                    <div>
+                      <h3 className="font-semibold text-slate-900">Mis porcentajes por producto</h3>
+                      <p className="text-xs text-slate-500 mt-1">
+                        Apertura y renovación vigentes en la versión de cada oferta.
+                        La sobretasa es exclusiva de Crédito Negocios y no se ofrece al canal.
+                      </p>
+                    </div>
+                    {loadingOfferCommissions ? <p className="text-sm">Consultando porcentajes…</p> :
+                     offerCommissionsError ? <p role="alert" className="text-sm text-red-700">No se pudieron cargar las comisiones de esta financiera.</p> :
+                     thisInstitutionCommissions.length === 0 ?
+                       <p className="text-sm text-slate-600">No hay comisiones de ofertas publicadas disponibles.</p> :
+                       <div className="overflow-x-auto rounded-lg border">
+                         <table className="w-full text-left text-xs">
+                           <thead className="bg-slate-50">
+                             <tr><th className="p-3">Producto</th><th className="p-3">Apertura</th><th className="p-3">Renovación</th></tr>
+                           </thead>
+                           <tbody>
+                             {thisInstitutionCommissions.map(row => (
+                               <tr key={row.offerId} className="border-t">
+                                 <td className="p-3 font-medium">{row.offerName}</td>
+                                 <td className="p-3">{row.apertura !== null ? `${row.apertura.toFixed(2)}%` : "Por asignar"}</td>
+                                 <td className="p-3">{row.renovacion !== null ? `${row.renovacion.toFixed(2)}%` : "Por asignar"}</td>
+                               </tr>
+                             ))}
+                           </tbody>
+                         </table>
+                       </div>}
+                    {isMasterBroker && <Link href="/comisiones">
+                      <Button variant="outline" size="sm">Administrar comisiones para mi red</Button>
+                    </Link>}
+                  </div>
+                ) : isSuperAdmin && institutionProducts.length > 0 ? (
                 <div className="rounded-xl border border-blue-200 bg-blue-50/50 p-6 space-y-3">
                   <h3 className="font-bold text-slate-900 text-base">Comisiones por oferta</h3>
                   <p className="text-sm text-slate-700">La apertura, renovación y sobretasa se administran por versión de oferta, no como una sola tasa general para esta financiera. La sobretasa es exclusiva de Crédito Negocios.</p>
