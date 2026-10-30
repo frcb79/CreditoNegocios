@@ -77,13 +77,32 @@ describe("AG — FASE 2B.2B: Cambios y Aceptación Comercial", () => {
   };
 
   const createTestInstitution = async (name = "Financiera Test") => {
-    return await storage.createFinancialInstitution({
-      name,
-      commissionRates: {
-        masterBroker: { apertura: "5.0", sobretasa: "2.0", renovacion: "2.0" },
-        broker: { apertura: "3.0", sobretasa: "1.0", renovacion: "1.0" },
+    const inst = await storage.createFinancialInstitution({name, isActive: true} as any);
+    // COM launch: assignments require a real, versioned, published offer;
+    // historical lender-wide defaults are no longer a valid ceiling.
+    const product = await storage.createInstitutionProduct({
+      institutionId: inst.id, name: name + " Simple",
+      customName: name + " Simple", productType: "credito_simple",
+      targetProfiles: ["persona_moral"], isActive: true,
+    } as any, {
+      conditions: {
+        minAmount: 100000, maxAmount: 1000000, maxTermMonths: 36,
+        rateSource: "Tasa indicativa",
+        commissionRates: {
+          financiera: { apertura: 6, renovacion: 3 },
+          masterBroker: { apertura: 5, renovacion: 2 },
+          broker: { apertura: 3, renovacion: 1 },
+        },
       },
+      requirements: { targetProfiles: ["persona_moral"] },
+      requiredDocuments: ["Identificación"],
+      changeReason: "Publicación de oferta para prueba contractual",
     });
+    const versions = await storage.getInstitutionProductVersions(product.id);
+    await storage.publishInstitutionProductVersion(product.id, versions[0].id, {
+      changeReason: "Publicación para prueba de comisiones",
+    });
+    return inst;
   };
 
   const formalizeUserViaOtp = async (user: any) => {
