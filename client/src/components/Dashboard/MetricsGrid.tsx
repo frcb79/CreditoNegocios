@@ -302,7 +302,7 @@ export default function MetricsGrid() {
 
   return (
     <div
-      className={`grid grid-cols-1 sm:grid-cols-2 ${isAdmin ? 'lg:grid-cols-4' : 'lg:grid-cols-4'} gap-4 mb-6`}
+      className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6"
       data-testid="metrics-grid"
     >
       {displayCards.map((card, index) => {
