@@ -4,7 +4,8 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Building2, Percent, RefreshCw, Search } from "lucide-react";
+import { Building2, Percent, RefreshCw, Search, FileEdit } from "lucide-react";
+import { Link } from "wouter";
 
 type RateSet = {
   total?: number | string | null;
@@ -149,6 +150,15 @@ export default function CommissionOfferSchemesModal({
                       <p className="text-sm font-semibold mt-1 tabular-nums">{value}</p>
                     </div>
                   ))}
+                </div>
+                <div className="flex justify-end mt-2">
+                  <Link href={`/financieras/${offer.institutionId}?tab=ofertas`}>
+                    <Button type="button" variant="outline" size="sm" className="gap-1 text-xs"
+                      onClick={() => onOpenChange(false)} data-testid={`edit-commission-offer-${offer.offerId}`}>
+                      <FileEdit className="w-3.5 h-3.5" />
+                      Editar comisiones en nueva versión
+                    </Button>
+                  </Link>
                 </div>
                 <details>
                   <summary className="cursor-pointer text-xs font-medium text-blue-800">
