@@ -22,7 +22,7 @@ function fit(ctx:CanvasRenderingContext2D, value:string,
  ctx.fillStyle=field.color;
  ctx.fillText(text,field.x,field.y+field.height/2);
 }
-/** Independent canvas path; previous SVG templates remain untouched. */
+/** Approved-background renderer; Broker/Master contact is text-only. */
 export async function renderCommercialGraphic(
  template:PublishedCommercialTemplate, identity:GraphicIdentity
 ):Promise<HTMLCanvasElement> {
