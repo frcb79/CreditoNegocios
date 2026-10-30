@@ -3098,7 +3098,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Master Broker only sees users in their own network
       if (currentUser.role === 'master_broker') {
         const networkUsers = await storage.getUsersByMasterBroker(currentUser.id);
-        return res.json(networkUsers.map(publicUserForManagement));
+        return res.json(networkUsers.map(u => ({ ...publicUserForManagement(u), registrationStatus: u.password ? 'registered' : 'pending' })));
       }
       
       const users = await storage.getAllUsers();
