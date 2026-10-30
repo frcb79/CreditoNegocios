@@ -6061,7 +6061,7 @@ function maskCLABE(clabe?: string | null): string | null {
         ? ((master.networkCommissionRates as Record<string, any>) || {}) : null;
       return res.json(offers.map(offer => {
         const assigned = actor.role === "master_broker" ? offer.master :
-          master ? (rates?.[offer.offerId] ?? rates?.[offer.institutionId] ?? null) : offer.broker;
+          master ? (rates?.[offer.offerId] ?? rates?.[offer.institutionId] ?? offer.broker) : offer.broker;
         const validRate = (v: unknown) => v !== null && v !== undefined &&
           v !== "" && Number.isFinite(Number(v)) && Number(v) >= 0;
         const opening = validRate(assigned?.apertura) ? Number(assigned.apertura) : null;
