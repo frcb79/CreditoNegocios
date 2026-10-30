@@ -19,6 +19,7 @@ on:
       - 'fix/financieras-auditoria-*'
       - 'fix/matching-ofertas-v5-*'
       - 'fix/final-audit-publication*'
+      - 'fix/super-admin-dashboard-*'
   workflow_dispatch:
 concurrency:
   group: prelaunch-${{ github.ref }}
