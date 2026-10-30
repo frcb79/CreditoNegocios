@@ -10,7 +10,8 @@ describe("COM-CTA-002: incoming prospects and reusable attribution links", () =>
     expect(api).toContain("user!.id");
     expect(api).toContain("ON CONFLICT DO NOTHING");
     expect(api).toContain("templateId");
-    expect(api).toContain("status='published'");
+    expect(api).toContain("const templateId = null;");
+    expect(api).not.toContain("INSERT INTO public.commercial_campaign_links (token,owner_user_id,tenant_id,template_id) VALUES ($1,$2,$3,$4) ON CONFLICT");
     expect(api).not.toContain("req.body.ownerUserId");
     expect(api).not.toContain("req.query.brokerId");
     expect(api).not.toContain("req.query.redirect");
