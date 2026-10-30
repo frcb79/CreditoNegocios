@@ -49,6 +49,12 @@ export default function FinancieraDetail() {
   const isMasterBroker = user?.role === 'master_broker';
   const isBrokerOrMaster = isBroker || isMasterBroker;
 
+  // Para intermediarios el detalle fuente de verdad vive en cada oferta
+  // publicada, no en los metadatos generales heredados de la financiera.
+  useEffect(() => {
+    if (isBrokerOrMaster) setActiveTab("productos");
+  }, [isBrokerOrMaster]);
+
   useEffect(() => {
     if (typeof window !== "undefined") {
       const params = new URLSearchParams(window.location.search);
