@@ -212,8 +212,14 @@ function readDisplayTerms(p: InstitutionProductWithTemplate): Record<string, any
     montoMax: terms.maxAmount ?? null,
     plazoMax: terms.maxTermMonths ?? null,
     plazo: terms.maxTermMonths ?? null,
-    tasaInteres: terms.rateSource || null,
-    tasa: terms.rateSource || null,
+    tasaInteres: terms.rateSource || [terms.minInterestRate, terms.maxInterestRate]
+      .filter((v: unknown) => v !== null && v !== undefined && v !== "")
+      .map((v: unknown) => formatRate(v)).join(" – ") || null,
+    tasa: terms.rateSource || [terms.minInterestRate, terms.maxInterestRate]
+      .filter((v: unknown) => v !== null && v !== undefined && v !== "")
+      .map((v: unknown) => formatRate(v)).join(" – ") || null,
+    eligibility: terms.eligibility || {},
+    requiredDocuments: Array.isArray(terms.requiredDocuments) ? terms.requiredDocuments : [],
     destinos: terms.loanPurposes
       ? (Array.isArray(terms.loanPurposes) ? terms.loanPurposes : [String(terms.loanPurposes)])
       : [],
@@ -298,10 +304,19 @@ function formatPlazo(val: any): string {
 
 function formatRate(val: any): string | null {
   if (val === undefined || val === null || val === "") return null;
-  // Rate sources may contain TIIE spreads, factors or annual percentages.
-  // Never parse TIIE+7.5 as a fabricated 7.5% annual interest rate.
-  if (typeof val === "string") return val;
-  return Number.isFinite(val) ? `${val}% anual` : null;
+  // Convert numeric fraction rates: 0.18 = 18%, without changing the stored data.
+  // Do not reinterpret formulas (TIIE + spread), descriptive rates or explicit %.
+  const text = String(val).trim();
+  if (/^(?:\\d+(?:[.,]\\d+)?|[.,]\\d+)$/.test(text)) {
+    const n = Number(text.replace(",", "."));
+    const pct = n > 0 && n < 1 ? n * 100 : n;
+    return `${Number(pct.toFixed(4)).toLocaleString("es-MX", { maximumFractionDigits: 4 })}%`;
+  }
+  const fractionRange = text.match(/^(0[.,]\\d+)\\s*(?:-|–|a)\\s*(0[.,]\\d+)$/i);
+  if (fractionRange) {
+    return `${formatRate(fractionRange[1])} – ${formatRate(fractionRange[2])}`;
+  }
+  return text;
 }
 
 function formatFee(val: any): string {
@@ -1179,6 +1194,25 @@ export default function BrokerProducts() {
               const prohibitedGiros = config.girosProhibidos;
               const presence = config.presencia;
               const destinos = config.destinos;
+              const eligibility = (config.eligibility || {}) as Record<string, unknown>;
+              const publishedDocs: string[] = Array.isArray(config.requiredDocuments) ? config.requiredDocuments : [];
+              const readablePolicy: Array<[string, unknown]> = [
+                ["Antigüedad mínima (meses)", eligibility.minMonthsInBusiness],
+                ["Ingresos mensuales mínimos", eligibility.minMonthlyIncome],
+                ["Ingresos anuales mínimos", eligibility.minAnnualIncome],
+                ["Política de Buró", eligibility.bureauPolicySource || eligibility.bureauRequirement],
+                ["Buró de empresa", eligibility.minBusinessBureau],
+                ["Buró de accionista", eligibility.minShareholderBureau],
+                ["Buró personal", eligibility.minPersonalBureau],
+                ["Atrasos permitidos", eligibility.allowsArrears == null ? null : eligibility.allowsArrears ? "Sí" : "No"],
+                ["Política de atrasos", eligibility.arrearsPolicy],
+                ["Garantía", eligibility.guarantee],
+                ["Aval", eligibility.guarantor],
+                ["Requiere CIEC", eligibility.requiresCiec == null ? null : eligibility.requiresCiec ? "Sí" : "No"],
+                ["Estados financieros", eligibility.requiresFinancialStatements == null ? null : eligibility.requiresFinancialStatements ? "Sí" : "No"],
+                ["Tiempo de respuesta", config.tiempoRespuesta],
+                ["Observaciones comerciales", config.observaciones],
+              ].filter(([, value]) => value !== null && value !== undefined && value !== "" && value !== "por_definir");
 
               return (
                 <div>
@@ -1284,6 +1318,29 @@ export default function BrokerProducts() {
                           </div>
                           <p className="leading-relaxed pl-5 text-[11px]">{prohibitedGiros}</p>
                         </div>
+                      )}
+
+                      {readablePolicy.length > 0 && (
+                        <div className="rounded-lg border p-3 space-y-2">
+                          <h4 className="text-sm font-semibold">Elegibilidad y condiciones de la oferta publicada</h4>
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                            {readablePolicy.map(([label, value]) => (
+                              <div key={label}><span className="font-medium text-muted-foreground">{label}: </span>
+                                <span>{String(value)}</span></div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                      {publishedDocs.length > 0 && (
+                        <div className="rounded-lg border p-3 space-y-2">
+                          <h4 className="text-sm font-semibold">Documentos requeridos por esta oferta</h4>
+                          <ul className="list-disc pl-5 space-y-1">
+                            {publishedDocs.map((doc, index) => <li key={index}>{doc}</li>)}
+                          </ul>
+                        </div>
+                      )}
+                      {config.documentacionFuente && (
+                        <p><span className="font-medium">Documentación adicional: </span>{String(config.documentacionFuente)}</p>
                       )}
 
                       {/* Template Description */}
