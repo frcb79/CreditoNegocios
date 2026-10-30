@@ -1,5 +1,7 @@
 import { useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { useToast } from "@/hooks/use-toast";
+import { queryClient } from "@/lib/queryClient";
 import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -81,6 +83,26 @@ export default function AdminOffersList({
   const [showNewModal, setShowNewModal] = useState(false);
   const [versionModalOffer, setVersionModalOffer] = useState<InstitutionProductWithTemplate | null>(null);
   const [editingOffer, setEditingOffer] = useState<InstitutionProductWithTemplate | null>(null);
+  const [preparingVersion, setPreparingVersion] = useState<string | null>(null);
+  const { toast } = useToast();
+
+  const editPublished = async (offer: InstitutionProductWithTemplate) => {
+    setPreparingVersion(offer.id);
+    try {
+      const response = await fetch(`/api/institution-products/${offer.id}/draft-from-published`, {
+        method: "POST", credentials: "include",
+      });
+      if (!response.ok) {
+        const error = await response.json().catch(() => ({}));
+        throw new Error(error.message || "No se pudo preparar la edición");
+      }
+      await queryClient.invalidateQueries({ queryKey: [`/api/institution-products/${offer.id}/draft`] });
+      await queryClient.invalidateQueries({ queryKey: [`/api/institution-products/${offer.id}/versions`] });
+      setEditingOffer(offer);
+    } catch (error: any) {
+      toast({ title: "No se pudo editar la oferta", description: error.message, variant: "destructive" });
+    } finally { setPreparingVersion(null); }
+  };
   const [publishingOffer, setPublishingOffer] = useState<InstitutionProductWithTemplate | null>(null);
 
   // Fetch financial institutions for mapping names and filtering
@@ -590,6 +612,16 @@ export default function AdminOffersList({
                       </>
                     )}
 
+                    {offer.status === "published" && (
+                      <Button variant="outline" size="sm"
+                        disabled={preparingVersion === offer.id}
+                        onClick={() => void editPublished(offer)}
+                        className="h-7 text-[11px] font-semibold border-blue-200 text-blue-700 gap-1 px-2.5"
+                        data-testid={`button-edit-published-${offer.id}`}>
+                        <FileEdit className="w-3 h-3" />
+                        {preparingVersion === offer.id ? "Preparando..." : "Editar nueva versión"}
+                      </Button>
+                    )}
                     <Button
                       variant="outline"
                       size="sm"
