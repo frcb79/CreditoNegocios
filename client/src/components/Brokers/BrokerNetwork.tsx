@@ -170,6 +170,21 @@ function MasterBrokerRatesConfig({ user }: { user: any }) {
     saveMutation.mutate(ratesForm);
   };
 
+  const downloadRatesTemplate = async () => {
+    const XLSX = await import("xlsx");
+    const rows = (ratesData?.items || []).map(item => ({
+      Clave_Financiera: item.institutionId,
+      Financiera: item.institutionName,
+      Techo_Apertura_Pct: item.masterCeiling.apertura,
+      Techo_Renovacion_Pct: item.masterCeiling.renovacion,
+      Red_Apertura_Pct: Number(ratesForm[item.institutionId]?.apertura || 0),
+      Red_Renovacion_Pct: Number(ratesForm[item.institutionId]?.renovacion || 0)
+    }));
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rows), "Comisiones de Red");
+    XLSX.writeFile(wb, "CN_Comisiones_de_Red.xlsx");
+  };
+
   if (isLoading) {
     return (
       <div className="space-y-4 py-4">
