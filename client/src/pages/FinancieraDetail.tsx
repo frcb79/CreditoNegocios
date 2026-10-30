@@ -547,6 +547,10 @@ export default function FinancieraDetail() {
                                 ["Ingreso mensual mínimo", eligibility.minMonthlyIncome],
                                 ["Ingresos anuales mínimos", eligibility.minAnnualIncome],
                                 ["Buró", eligibility.bureauPolicySource || eligibility.bureauRequirement],
+                                ["Opinión SAT", eligibility.satOpinion],
+                                ["Ventas a gobierno", eligibility.governmentSalesLimit],
+                                ["Cobertura", eligibility.presence],
+                                ["Giros excluidos", eligibility.excludedSectors],
                                 ["Garantía", eligibility.guarantee],
                                 ["Aval", eligibility.guarantor],
                                 ["Atrasos", eligibility.arrearsPolicy],
@@ -559,6 +563,8 @@ export default function FinancieraDetail() {
                                   <div><strong>Plazo máximo:</strong> {details.maxTermMonths ?? "N/D"} meses</div>
                                   <div className="col-span-2"><strong>Tasa indicativa:</strong> {rate}</div>
                                   {criteria.map(([label, value]) => <div key={label}><strong>{label}:</strong> {String(value)}</div>)}
+                                  {details.clientOpeningSource && <div className="col-span-2"><strong>Comisión al cliente:</strong> {String(details.clientOpeningSource)}</div>}
+                                  {details.informationalMaximumLoan && <div className="col-span-2"><strong>Monto máximo variable:</strong> {String(details.informationalMaximumLoan)}</div>}
                                 </div>
                                 {Array.isArray(details.loanPurposes) && details.loanPurposes.length > 0 &&
                                   <p className="mt-3"><strong>Destinos:</strong> {details.loanPurposes.join(" · ")}</p>}
