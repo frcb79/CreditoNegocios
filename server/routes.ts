@@ -9839,8 +9839,21 @@ function maskCLABE(clabe?: string | null): string | null {
       turnaround: c.turnaround ?? null,
       sourceNotes: c.sourceNotes ?? null,
       requiredDocumentationSource: c.requiredDocumentationSource ?? null,
+      // Published source descriptors, all non-economic and used in the
+      // imported V5 commercial catalog. No raw sourceTechnicalFields here:
+      // its freeform columns might include internal/administrative data.
+      clientOpeningSource: c.clientOpeningSource ?? null,
+      informationalMaximumLoan: c.informationalMaximumLoan ?? null,
       requiredDocuments: Array.isArray(version?.requiredDocuments) ? version.requiredDocuments : [],
       eligibility: {
+        minMonthsInBusinessSource: r.minMonthsInBusinessSource ?? null,
+        minMonthlyIncomeSource: r.minMonthlyIncomeSource ?? null,
+        minAnnualIncomeSource: r.minAnnualIncomeSource ?? null,
+        minPersonalBureauSource: r.minPersonalBureauSource ?? null,
+        satOpinion: r.satOpinion ?? null,
+        governmentSalesLimit: r.governmentSalesLimit ?? null,
+        excludedSectors: r.excludedSectors ?? null,
+        presence: r.presence ?? null,
         minMonthsInBusiness: c.minCompanyAgeMonths ?? r.minMonthsInBusiness ?? null,
         minMonthlyIncome: c.minMonthlyRevenue ?? r.minMonthlyIncome ?? null,
         minAnnualIncome: r.minAnnualIncome ?? null,
