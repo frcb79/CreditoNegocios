@@ -5651,21 +5651,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
         if (institution.isActive === false) {
           return res.status(403).json({ message: "Institución no disponible" });
         }
-        // No broker/master can open the admin-facing lender card if the
-        // institution does not have at least one eligible published offer.
-        const offers = await storage.getInstitutionProducts(id);
-        let permitted = false;
-        for (const offer of offers) {
-          if (offer.isActive === false || offer.status !== "published") continue;
-          const versions = await storage.getInstitutionProductVersions(offer.id);
-          if (isOfferEligibleForRequests(offer, versions)) {
-            permitted = true;
-            break;
-          }
-        }
-        if (!permitted) {
-          return res.status(403).json({ message: "No hay ofertas publicadas disponibles" });
-        }
+        // A lender already visible in this user's catalog must also have an
+        // openable, role-sanitized profile. Previously the catalog GET showed
+        // these lenders but the detail GET returned 403 whenever no published
+        // offer was attached. That broke the broker/master "Ver detalle" link.
+        // Offers themselves remain restricted to eligible published versions
+        // by /api/institution-products and /api/institution-products/:id.
       }
       res.json(projectFinancialInstitutionByRole(institution, user.role));
     } catch (error) {
