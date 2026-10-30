@@ -170,6 +170,43 @@ function MasterBrokerRatesConfig({ user }: { user: any }) {
     saveMutation.mutate(ratesForm);
   };
 
+  const importRatesTemplate = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const input = event.currentTarget;
+    const file = input.files?.[0];
+    if (!file || !ratesData?.items) return;
+    try {
+      const XLSX = await import("xlsx");
+      const wb = XLSX.read(await file.arrayBuffer(), { type: "array" });
+      const sheet = wb.Sheets["Comisiones de Red"];
+      if (!sheet) throw new Error("Falta la hoja Comisiones de Red");
+      const rows = XLSX.utils.sheet_to_json<Record<string, any>>(sheet);
+      if (!rows.length) throw new Error("Archivo sin registros");
+      const known = new Map(ratesData.items.map(item => [item.institutionId, item]));
+      const next = { ...ratesForm };
+      const seen = new Set<string>();
+      for (const row of rows) {
+        const id = String(row.Clave_Financiera || "").trim();
+        const item = known.get(id);
+        if (!item || seen.has(id)) throw new Error("Clave financiera inválida o duplicada");
+        seen.add(id);
+        const a = Number(row.Red_Apertura_Pct);
+        const r = Number(row.Red_Renovacion_Pct);
+        if (!Number.isFinite(a) || !Number.isFinite(r) || a < 0 || r < 0 ||
+            a > item.masterCeiling.apertura || r > item.masterCeiling.renovacion) {
+          throw new Error("Comisiones fuera de los techos de " + item.institutionName);
+        }
+        next[id] = { apertura: String(a), renovacion: String(r), sobretasa: "0" };
+      }
+      setRatesForm(next);
+      setHasChanges(true);
+      toast({ title: "Excel validado", description: seen.size + " financieras listas para revisar y guardar." });
+    } catch (error: any) {
+      toast({ title: "Archivo rechazado", description: error.message || "Datos inválidos", variant: "destructive" });
+    } finally {
+      input.value = "";
+    }
+  };
+
   const downloadRatesTemplate = async () => {
     const XLSX = await import("xlsx");
     const rows = (ratesData?.items || []).map(item => ({
