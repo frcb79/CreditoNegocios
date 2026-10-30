@@ -5983,15 +5983,17 @@ function maskCLABE(clabe?: string | null): string | null {
       return res.json(offers.map(offer => {
         const assigned = actor.role === "master_broker" ? offer.master :
           master ? rates?.[offer.institutionId] : offer.broker;
-        const available = !!assigned && Number.isFinite(Number(assigned.apertura)) &&
-          Number.isFinite(Number(assigned.renovacion));
+        const validRate = (v: unknown) => v !== null && v !== undefined &&
+          v !== "" && Number.isFinite(Number(v)) && Number(v) >= 0;
+        const opening = validRate(assigned?.apertura) ? Number(assigned.apertura) : null;
+        const renewal = validRate(assigned?.renovacion) ? Number(assigned.renovacion) : null;
         return {
           offerId: offer.offerId, offerName: offer.offerName, institutionName: offer.institutionName,
           institutionId: offer.institutionId, versionNumber: offer.versionNumber,
           source: actor.role === "master_broker" ? "plataforma" : master ? "master" : "plataforma",
-          assigned: available,
-          apertura: available ? Number(assigned.apertura) : null,
-          renovacion: available ? Number(assigned.renovacion) : null,
+          assigned: opening !== null || renewal !== null,
+          apertura: opening,
+          renovacion: renewal,
         };
       }));
     } catch (error) {
