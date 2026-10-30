@@ -3098,11 +3098,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Master Broker only sees users in their own network
       if (currentUser.role === 'master_broker') {
         const networkUsers = await storage.getUsersByMasterBroker(currentUser.id);
-        return res.json(networkUsers.map(u => ({ ...publicUserForManagement(u), registrationStatus: u.password ? 'registered' : 'pending' })));
+        return res.json(networkUsers.map(u => ({ ...publicUserForManagement(u), registrationStatus: ['broker','master_broker'].includes(u.role) ? (u.password ? 'registered' : 'pending') : null })));
       }
       
       const users = await storage.getAllUsers();
-      res.json(users.map(u => ({ ...publicUserForManagement(u), registrationStatus: u.password ? 'registered' : 'pending' })));
+      res.json(users.map(u => ({ ...publicUserForManagement(u), registrationStatus: ['broker','master_broker'].includes(u.role) ? (u.password ? 'registered' : 'pending') : null })));
     } catch (error) {
       console.error("Error fetching users:", error);
       res.status(500).json({ message: "Failed to fetch users" });
@@ -8157,7 +8157,7 @@ function maskCLABE(clabe?: string | null): string | null {
         // Super Admin / Admin browser, including nested broker networks.
         const allUsers = (await storage.getAllUsers()).map(u => ({
           ...publicUserForManagement(u),
-          registrationStatus: u.password ? 'registered' : 'pending',
+          registrationStatus: ['broker','master_broker'].includes(u.role) ? (u.password ? 'registered' : 'pending') : null,
         }));
         const masterBrokers = allUsers.filter(u => u.role === 'master_broker');
         const allBrokers = allUsers.filter(u => u.role === 'broker');
@@ -8186,7 +8186,7 @@ function maskCLABE(clabe?: string | null): string | null {
       const brokers = await storage.getUsersByMasterBroker(userId);
       res.json(brokers.map(u => ({
         ...publicUserForManagement(u),
-        registrationStatus: u.password ? 'registered' : 'pending',
+        registrationStatus: ['broker','master_broker'].includes(u.role) ? (u.password ? 'registered' : 'pending') : null,
       })));
     } catch (error) {
       console.error("Error fetching broker network:", error);
