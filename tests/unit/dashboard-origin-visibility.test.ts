@@ -1,4 +1,4 @@
-import { canViewSubmissionByOrigin, canViewCreditByOrigin, canEditCreditByOrigin } from "../../server/dashboardVisibility";
+import { canViewSubmissionByOrigin, canViewCreditByOrigin, canEditCreditByOrigin, summarizeCommercialAccountActivity } from "../../server/dashboardVisibility";
 
 describe("Dashboard: ownership survives Broker transfer", () => {
   const former = { id: "master-original", role: "master_broker" };
@@ -68,5 +68,59 @@ describe("SEC-P0-02: Credit read and write are separate capabilities", () => {
       expect(canViewCreditByOrigin({ id: role, role }, record)).toBe(true);
       expect(canEditCreditByOrigin({ id: role, role }, record)).toBe(true);
     }
+  });
+});
+
+
+describe("Dashboard Super Admin: registered and pending commercial accounts", () => {
+  const accounts = [
+    { role: "broker", password: "$2b$12$registered", isActive: true, status: "active" },
+    { role: "master_broker", password: "$2b$12$registered", isActive: true, status: "active" },
+    { role: "broker", password: null, isActive: true, status: "active" },
+    { role: "master_broker", password: null, isActive: true, status: "active" },
+    { role: "broker", password: "$2b$12$suspended", isActive: true, status: "suspended" },
+    { role: "broker", password: "$2b$12$inactive", isActive: false, status: "inactive" },
+    { role: "admin", password: "$2b$12$admin", isActive: true, status: "active" },
+    { role: "system", password: "n/a", isActive: false, status: "inactive" },
+  ];
+
+  it("counts only registered, enabled Brokers and Master Brokers as active", () => {
+    expect(summarizeCommercialAccountActivity(accounts)).toEqual({
+      activeBrokers: 1,
+      activeMasterBrokers: 1,
+      pendingInvitations: 2,
+    });
+  });
+
+  it("does not treat invited accounts as brokers with access, including in Master networks", () => {
+    expect(summarizeCommercialAccountActivity(accounts.filter(u => u.role === "broker"))).toEqual({
+      activeBrokers: 1,
+      activeMasterBrokers: 0,
+      pendingInvitations: 1,
+    });
+  });
+
+  it("never counts suspended, disabled or administrative accounts in commercial totals", () => {
+    const onlyInactive = accounts.filter(u => u.status !== "active");
+    expect(summarizeCommercialAccountActivity(onlyInactive)).toEqual({
+      activeBrokers: 0,
+      activeMasterBrokers: 0,
+      pendingInvitations: 0,
+    });
+  });
+
+  it("handles the production distribution without inflating active Brokers", () => {
+    const prodLike = [
+      ...Array.from({length: 40}, () => ({role:"broker", password:null, isActive:true, status:"active"})),
+      ...Array.from({length: 3}, () => ({role:"master_broker", password:null, isActive:true, status:"active"})),
+      {role:"broker", password:"hashed", isActive:true, status:"active"},
+      {role:"broker", password:"hashed", isActive:false, status:"inactive"},
+      {role:"master_broker", password:"hashed", isActive:true, status:"active"},
+    ];
+    expect(summarizeCommercialAccountActivity(prodLike)).toEqual({
+      activeBrokers: 1,
+      activeMasterBrokers: 1,
+      pendingInvitations: 43,
+    });
   });
 });
