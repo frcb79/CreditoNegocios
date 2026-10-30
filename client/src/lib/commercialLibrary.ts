@@ -57,7 +57,8 @@ export function filterCommercialTemplates(
     if(filters.format!=="all" && commercialFormat(item)!==filters.format)return false;
     if(filters.style!=="all" && (item.style || "unclassified")!==filters.style)return false;
     if(filters.leasingSubtype && filters.leasingSubtype!=="all" && item.leasing_subtype!==filters.leasingSubtype)return false;
-    if(filters.status && filters.status!=="all" && item.status!==filters.status)return false;
+    if(filters.status === "available" && item.status === "retired")return false;
+    if(filters.status && filters.status!=="all" && filters.status!=="available" && item.status!==filters.status)return false;
     return !search || [
       item.name,item.slug,commercialProductName(item.product),item.product,item.topic||"",item.leasing_subtype||"",
       item.channel,commercialFormatLabel(commercialFormat(item)),commercialStyleLabel(item.style),
