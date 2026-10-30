@@ -52,19 +52,19 @@ describe("COM-RES-LOGO-SELF — opt-in profile logo",()=>{
     expect(()=>validateCommercialLogoPng(png(2100,64))).toThrow();
     expect(()=>validateCommercialLogoPng(Buffer.alloc(1_000_001))).toThrow();
   });
-  it("authorizes writes exclusively to current active Broker or Master, and never accepts user IDs",()=>{
+  it("disables broker/master logo upload and never composites a user logo",()=>{
     const routes=source("server/commercialResourcesRoutes.ts");
-    const settings=source("client/src/components/Commercial/CommercialProfileLogo.tsx");
-    const migration=source("migrations/0014_commercial_profile_logos.sql");
+    const settings=source("client/src/pages/Settings.tsx");
+    const page=source("client/src/pages/CommercialResources.tsx");
+    const renderer=source("client/src/lib/commercialGraphicRenderer.ts");
     expect(routes).toContain('app.post("/api/commercial-resources/my-logo",isAuthenticated');
+    expect(routes).toContain('return res.status(410).json({message:"Los logos de brokers y masters ya no se admiten en Recursos Comerciales."})');
     expect(routes).toContain('app.delete("/api/commercial-resources/my-logo",isAuthenticated');
-    expect(routes).toContain('if(!user||!SUGGEST_ROLES.has(user.role))return forbid(res)');
-    expect(routes).toContain('WHERE user_id=$1",[user.id]');
-    expect(routes).toContain('[user.id,valid.png,valid.sha256]');
-    expect(routes).not.toContain("/api/admin/commercial-resources/approve-logo/:id");
-    expect(routes).not.toContain("req.body.ownerUserId");
-    expect(settings).toContain("Si no subes logo");
-    expect(settings).toContain("derecho a utilizar este logotipo");
-    expect(migration).toContain("PRIMARY KEY REFERENCES public.users(id)");
+    expect(routes).toContain('return res.json({ displayName, whatsapp });');
+    expect(routes).not.toContain('INSERT INTO public.commercial_profile_logos');
+    expect(settings).not.toContain("CommercialProfileLogo");
+    expect(page).not.toContain("approvedLogoUrl");
+    expect(renderer).not.toContain("drawLogo");
+    expect(renderer).not.toContain("approvedLogoUrl");
   });
 });
