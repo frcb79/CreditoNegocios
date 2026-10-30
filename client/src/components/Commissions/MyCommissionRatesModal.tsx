@@ -44,8 +44,8 @@ export default function MyCommissionRatesModal({ open, onOpenChange }: {
                  <tr key={row.offerId} className="border-t">
                    <td className="p-3"><p className="font-semibold">{row.institutionName}</p>
                      <p className="text-slate-600">{row.offerName}</p></td>
-                   <td className="p-3 font-semibold">{row.assigned ? `${row.apertura?.toFixed(2)}%` : "Por asignar"}</td>
-                   <td className="p-3 font-semibold">{row.assigned ? `${row.renovacion?.toFixed(2)}%` : "Por asignar"}</td>
+                   <td className="p-3 font-semibold">{row.apertura !== null ? `${row.apertura.toFixed(2)}%` : "Por asignar"}</td>
+                   <td className="p-3 font-semibold">{row.renovacion !== null ? `${row.renovacion.toFixed(2)}%` : "Por asignar"}</td>
                    <td className="p-3"><Badge variant="outline">{row.source === "master" ? "Mi Master Broker" : "Crédito Negocios"}</Badge></td>
                  </tr>
                ))}
