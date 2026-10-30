@@ -33,3 +33,29 @@ export function canEditCreditByOrigin(user: Principal, record: OriginatedRecord)
   if (user.role !== "broker" && user.role !== "master_broker") return false;
   return Boolean(record.brokerId) && record.brokerId === user.id;
 }
+
+/**
+ * Commercial account KPIs use the same "registered" signal as /api/broker-network:
+ * a local invitation without a configured password is not a registered user.
+ * An invited account may be enabled for eventual activation; that is NOT activity.
+ * Never return password data to the dashboard client, only aggregate counts.
+ */
+type CommercialAccount = {
+  role?: string | null;
+  password?: string | null;
+  isActive?: boolean | null;
+  status?: string | null;
+};
+
+export function summarizeCommercialAccountActivity(users: CommercialAccount[]) {
+  const accounts = users.filter(u => u.role === "broker" || u.role === "master_broker");
+  const operational = (u: CommercialAccount) =>
+    u.isActive === true && u.status !== "inactive" && u.status !== "suspended";
+  const registered = (u: CommercialAccount) =>
+    typeof u.password === "string" && u.password.trim().length > 0;
+  return {
+    activeBrokers: accounts.filter(u => u.role === "broker" && operational(u) && registered(u)).length,
+    activeMasterBrokers: accounts.filter(u => u.role === "master_broker" && operational(u) && registered(u)).length,
+    pendingInvitations: accounts.filter(u => operational(u) && !registered(u)).length,
+  };
+}

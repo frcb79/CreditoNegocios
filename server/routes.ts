@@ -11,7 +11,7 @@ import rateLimit from "express-rate-limit";
 import { pool } from "./db";
 import { runBrokerInvitationReminders } from "./brokerInvitationReminders";
 import { storage, type IStorage } from "./storage";
-import { canViewSubmissionByOrigin, canViewCreditByOrigin, canEditCreditByOrigin } from "./dashboardVisibility";
+import { canViewSubmissionByOrigin, canViewCreditByOrigin, canEditCreditByOrigin, summarizeCommercialAccountActivity } from "./dashboardVisibility";
 import { projectCreditForRole } from "./creditResponseProjection";
 import { allowedOrigins } from "./runtimeConfig";
 import { canReadDocumentByOrigin } from "./documentVisibility";
@@ -2868,7 +2868,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }, 0);
 
         metrics.masterBroker = {
-          activeBrokers: networkBrokers.filter(b => b.isActive).length,
+          activeBrokers: summarizeCommercialAccountActivity(networkBrokers).activeBrokers,
           networkPipeline: networkActiveSubmissions,
           networkDisbursedVolume: networkDisbursedVol,
           networkDisbursedCredits: networkDisbursedCredits.length,
@@ -2879,13 +2879,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       if (isAdmin) {
-        const allClients = await storage.getClients();
-        const allUsers = await storage.getAllUsers();
+        const [allClients, allUsers, commercialOffers, financialInstitutions] = await Promise.all([
+          storage.getClients(),
+          storage.getAllUsers(),
+          storage.getInstitutionProducts(),
+          storage.getFinancialInstitutions(),
+        ]);
+        const commercialAccounts = summarizeCommercialAccountActivity(allUsers);
         metrics.admin = {
           totalPipeline: pipelineCount,
           totalDisbursed: disbursedCount,
           totalDisbursedVolume: disbursedVolume,
-          activeBrokers: allUsers.filter(u => (u.role === 'broker' || u.role === 'master_broker') && u.isActive).length,
+          activeBrokers: commercialAccounts.activeBrokers,
+          activeMasterBrokers: commercialAccounts.activeMasterBrokers,
+          pendingInvitations: commercialAccounts.pendingInvitations,
+          publishedOffers: commercialOffers.filter(o => o.status === 'published' && o.isActive !== false).length,
+          activeFinancialInstitutions: financialInstitutions.filter(i => i.isActive !== false).length,
           totalClients: allClients.length,
           newProspectsMonth: new Set(allClients.filter(c => c.createdAt && new Date(String(c.createdAt)).getTime() >= currentMonthStart.getTime()).map(c => c.id)).size,
           avgTicket: Math.round(avgTicket),
