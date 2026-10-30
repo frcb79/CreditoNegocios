@@ -5963,6 +5963,43 @@ function maskCLABE(clabe?: string | null): string | null {
   return '*'.repeat(Math.max(0, str.length - 4)) + str.slice(-4);
 }
 
+  // Current offer-level percentages visible ONLY to the signed-in intermediary.
+  // Commission disbursement still uses the frozen proposal/version snapshot,
+  // never today's mutable UI values.
+  app.get("/api/commissions/my-offer-rates", isAuthenticated, requireModuleAndAction("comisiones", "view"), async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub || req.user?.id;
+      const actor = await storage.getUser(userId);
+      if (!actor || !["broker", "master_broker"].includes(actor.role) ||
+          actor.isActive === false || actor.status !== "active") {
+        return res.status(403).json({ message: "Acceso comercial no autorizado" });
+      }
+      const offers = await loadPublishedCommissionOffers();
+      const master = actor.role === "broker" && actor.masterBrokerId
+        ? await storage.getUser(actor.masterBrokerId) : null;
+      const rates = (master?.role === "master_broker" &&
+        master.isActive !== false && master.status === "active")
+        ? ((master.networkCommissionRates as Record<string, any>) || {}) : null;
+      return res.json(offers.map(offer => {
+        const assigned = actor.role === "master_broker" ? offer.master :
+          master ? rates?.[offer.institutionId] : offer.broker;
+        const available = !!assigned && Number.isFinite(Number(assigned.apertura)) &&
+          Number.isFinite(Number(assigned.renovacion));
+        return {
+          offerId: offer.offerId, offerName: offer.offerName, institutionName: offer.institutionName,
+          institutionId: offer.institutionId, versionNumber: offer.versionNumber,
+          source: actor.role === "master_broker" ? "plataforma" : master ? "master" : "plataforma",
+          assigned: available,
+          apertura: available ? Number(assigned.apertura) : null,
+          renovacion: available ? Number(assigned.renovacion) : null,
+        };
+      }));
+    } catch (error) {
+      console.error("Error reading intermediary offer rates", error);
+      return res.status(503).json({ message: "No se pudieron consultar los porcentajes vigentes" });
+    }
+  });
+
   // Commissions and STP payments
   app.get('/api/commissions', isAuthenticated, requireModuleAndAction('comisiones', 'view'), async (req: any, res) => {
     try {
