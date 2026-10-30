@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useParams, Link } from "wouter";
 import { useAuth } from "@/hooks/useAuth";
+import { formatIndicativeRate } from "@/lib/formatIndicativeRate";
 import MainLayout from "@/components/MainLayout";
 import Header from "@/components/Header";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -527,12 +528,10 @@ export default function FinancieraDetail() {
                               if (!details) return null; // Admin sees full editable offer versions in the Offers tab.
                               const money = (value: unknown) => value === null || value === undefined
                                 ? "N/D" : Number(value).toLocaleString("es-MX", {style: "currency", currency: "MXN", maximumFractionDigits: 0});
-                              const rate = details.rateSource || ([details.minInterestRate, details.maxInterestRate]
-                                .filter((x: unknown) => x !== null && x !== undefined)
-                                .map((x: unknown) => {
-                                  const n = Number(x);
-                                  return Number.isFinite(n) ? (n > 0 && n < 1 ? n * 100 : n) + "%" : String(x);
-                                }).join(" – ") || "Por confirmar");
+                              const rate = (details.rateSource ? formatIndicativeRate(details.rateSource) : null) ||
+                                ([details.minInterestRate, details.maxInterestRate]
+                                  .filter((x: unknown) => x !== null && x !== undefined)
+                                  .map((x: unknown) => formatIndicativeRate(x)).join(" – ") || "Por confirmar");
                               const eligibility = details.eligibility || {};
                               const criteria: Array<[string, unknown]> = [
                                 ["Antigüedad mínima (meses)", eligibility.minMonthsInBusiness],
