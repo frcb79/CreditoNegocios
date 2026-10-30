@@ -88,13 +88,23 @@ describe("AG — FASE 2B.2B: Cambios y Aceptación Comercial", () => {
       conditions: {
         minAmount: 100000, maxAmount: 1000000, maxTermMonths: 36,
         rateSource: "Tasa indicativa",
+        loanPurposes: "Capital de trabajo",
+        clientOpeningSource: "2% al cliente",
+        requiredDocumentationSource: "Estados de cuenta y CSF",
         commissionRates: {
           financiera: { apertura: 6, renovacion: 3 },
           masterBroker: { apertura: 5, renovacion: 2 },
           broker: { apertura: 3, renovacion: 1 },
         },
       },
-      requirements: { targetProfiles: ["persona_moral"] },
+      requirements: {
+        targetProfiles: ["persona_moral"],
+        excludedSectors: "Casinos",
+        presence: "Ciudad de México",
+        satOpinion: "Positiva",
+        governmentSalesLimit: "Hasta 20%",
+        minAnnualIncomeSource: "$3,000,000 MXN",
+      },
       requiredDocuments: ["Identificación"],
       changeReason: "Publicación de oferta para prueba contractual",
     });
@@ -131,6 +141,30 @@ describe("AG — FASE 2B.2B: Cambios y Aceptación Comercial", () => {
       throw new Error(`Failed to verify OTP: ${JSON.stringify(verifyRes.body)}`);
     }
   };
+
+  describe("Catalog public detail and V5 source fields", () => {
+    it("Broker can open a visible institution and receives safe published V5 source terms", async () => {
+      const broker = await createTestUser("broker", "Broker Ficha");
+      const inst = await createTestInstitution("Catalogo Prueba " + randomUUID());
+      currentAuthUser = broker;
+      const list = await request(app).get("/api/financial-institutions");
+      expect(list.status).toBe(200);
+      expect(list.body.some((x: any) => x.id === inst.id)).toBe(true);
+      const detail = await request(app).get(`/api/financial-institutions/${inst.id}`);
+      expect(detail.status).toBe(200);
+      expect(detail.body.id).toBe(inst.id);
+      const offers = await request(app).get("/api/institution-products");
+      const offer = offers.body.find((x: any) => x.institutionId === inst.id);
+      expect(offer).toBeDefined();
+      expect(offer.commercialTerms.eligibility.excludedSectors).toBe("Casinos");
+      expect(offer.commercialTerms.eligibility.presence).toBe("Ciudad de México");
+      expect(offer.commercialTerms.eligibility.satOpinion).toBe("Positiva");
+      expect(offer.commercialTerms.clientOpeningSource).toBe("2% al cliente");
+      expect(offer.commercialTerms.requiredDocumentationSource).toBe("Estados de cuenta y CSF");
+      expect(offer.commercialTerms.commissionRates).toBeUndefined();
+      expect(offer.commercialTerms.sourceTechnicalFields).toBeUndefined();
+    });
+  });
 
   describe("1. Versionamiento y Notificación Individual de Cambios (Reglas 1, 2, 3)", () => {
     it("Super Admin modifica plazos comerciales: incrementa versión e inserta notificaciones a Brokers y Masters", async () => {
