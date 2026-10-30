@@ -1,8 +1,6 @@
 import { randomUUID } from "node:crypto";
 import type { Express, Response } from "express";
 import rateLimit from "express-rate-limit";
-import multer from "multer";
-import { validateCommercialLogoPng } from "./commercialProfileLogoValidation";
 import { normalizeV4Map, parseV4Archive, type GraphicImport } from "./commercialGraphicImporter";
 import { pool } from "./db";
 import { storage } from "./storage";
@@ -138,21 +136,14 @@ export function registerCommercialResourceRoutes(app: Express) {
     }
   });
 
-  const logoUpload = multer({
-    storage: multer.memoryStorage(), limits: { files: 1, fileSize: 1_000_000, fields: 0 }
-  });
-
-  // Commercial identity remains server-derived. A profile photo, legacy
-  // customLogo and manually approved logo do not opt a user into marketing.
+  // Commercial identity is text-only; broker/master logos are never included in artwork.
   app.get("/api/commercial-resources/my-approved-identity", isAuthenticated, async(req:any,res)=>{
     const user=await identify(req);
     if(!user || !SUGGEST_ROLES.has(user.role)) return forbid(res);
     try {
       const result=await pool.query(`
-        SELECT u.first_name,u.last_name,u.brand_name,u.profile_data,
-               l.image_sha256 AS logo_sha
+        SELECT u.first_name,u.last_name,u.brand_name,u.profile_data
         FROM public.users u
-        LEFT JOIN public.commercial_profile_logos l ON l.user_id=u.id
         WHERE u.id=$1 AND u.status='active'`,[user.id]);
       if(result.rowCount!==1)return forbid(res);
       const record=result.rows[0], profile=record.profile_data||{};
@@ -161,66 +152,24 @@ export function registerCommercialResourceRoutes(app: Express) {
         ? (record.brand_name||profile.business?.businessName||full)
         : (full||profile.business?.businessName||"");
       const whatsapp=String(profile.business?.businessPhone||profile.phone||"");
-      return res.json({
-        displayName, whatsapp,
-        approvedLogoUrl:record.logo_sha
-          ? "/api/commercial-resources/my-approved-logo?v="+record.logo_sha.slice(0,16)
-          : null
-      });
+      return res.json({ displayName, whatsapp });
     }catch(error){
       console.error("[COM_RES] Commercial identity read failed",error);
       return res.status(503).json({message:"Identidad comercial no disponible"});
     }
   });
 
+  // Legacy endpoints are intentionally disabled; stored historical logos are not deleted.
+  // Existing owners retain the authenticated DELETE endpoint below for cleanup.
   app.get("/api/commercial-resources/my-approved-logo",isAuthenticated,async(req:any,res)=>{
     const user=await identify(req);
     if(!user||!SUGGEST_ROLES.has(user.role))return forbid(res);
-    try {
-      const result=await pool.query(
-        "SELECT image_data FROM public.commercial_profile_logos WHERE user_id=$1",[user.id]);
-      if(result.rowCount!==1)return res.status(404).end();
-      res.setHeader("Content-Type","image/png");
-      res.setHeader("Cache-Control","private, no-store");
-      res.setHeader("X-Content-Type-Options","nosniff");
-      return res.end(result.rows[0].image_data);
-    }catch(error){
-      console.error("[COM_RES] Own commercial logo read failed",error);
-      return res.status(503).end();
-    }
+    return res.status(410).json({message:"No se utilizan logos de brokers ni masters en plantillas."});
   });
-
-  // Opt-in by the owner; never allow a client-chosen userId or admin bypass.
-  app.post("/api/commercial-resources/my-logo",isAuthenticated,async(req:any,res,next)=>{
+  app.post("/api/commercial-resources/my-logo",isAuthenticated,async(req:any,res)=>{
     const user=await identify(req);
     if(!user||!SUGGEST_ROLES.has(user.role))return forbid(res);
-    logoUpload.single("logo")(req,res,(err:any)=>{
-      if(err)return res.status(400).json({message:"El logo debe ser PNG de máximo 1 MB."});
-      next();
-    });
-  },async(req:any,res)=>{
-    const user=await identify(req);
-    if(!user||!SUGGEST_ROLES.has(user.role))return forbid(res);
-    const file=req.file as Express.Multer.File|undefined;
-    if(!file||file.mimetype!=="image/png"||
-       !file.originalname.toLowerCase().endsWith(".png")) {
-      return res.status(400).json({message:"Selecciona un archivo PNG válido."});
-    }
-    let valid;
-    try { valid=validateCommercialLogoPng(file.buffer); }
-    catch(err:any){return res.status(400).json({message:err.message||"PNG no compatible."});}
-    try {
-      await pool.query(`
-        INSERT INTO public.commercial_profile_logos(user_id,image_data,image_sha256,updated_at)
-        VALUES($1,$2,$3,NOW())
-        ON CONFLICT(user_id) DO UPDATE SET image_data=EXCLUDED.image_data,
-          image_sha256=EXCLUDED.image_sha256,updated_at=NOW()`,
-        [user.id,valid.png,valid.sha256]);
-      return res.json({stored:true,sha256:valid.sha256,width:valid.width,height:valid.height});
-    }catch(error){
-      console.error("[COM_RES] Self-managed commercial logo write failed",error);
-      return res.status(503).json({message:"No se pudo guardar el logo."});
-    }
+    return res.status(410).json({message:"Los logos de brokers y masters ya no se admiten en Recursos Comerciales."});
   });
 
   app.delete("/api/commercial-resources/my-logo",isAuthenticated,async(req:any,res)=>{
@@ -276,11 +225,7 @@ export function registerCommercialResourceRoutes(app: Express) {
     try {
       let png:Buffer;
       if(isLogo){
-        if(user.role!=="broker"&&user.role!=="master_broker")return forbid(res);
-        const found=await pool.query(
-          "SELECT image_data FROM public.commercial_profile_logos WHERE user_id=$1",[user.id]);
-        if(found.rowCount!==1)return res.status(404).json({message:"Logotipo no disponible"});
-        png=found.rows[0].image_data;
+        return res.status(410).json({message:"No se exponen logos propios en recursos comerciales."});
       }else{
         const found=await pool.query(`
           SELECT a.image_data FROM public.commercial_resource_artworks a

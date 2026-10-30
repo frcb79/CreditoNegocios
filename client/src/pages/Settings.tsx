@@ -33,7 +33,6 @@ import { apiRequest } from "@/lib/queryClient";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
 import { Tag, Gift, CheckCircle, ShieldCheck, Clock, AlertCircle, Sparkles, Check, Info, ArrowRight, Loader2, KeyRound } from "lucide-react";
-import CommercialProfileLogo from "@/components/Commercial/CommercialProfileLogo";
 import { CommercialRulesSettings } from "@/components/Commercial/CommercialRulesSettings";
 import { OperationalRulesContent } from "@/components/OperationalRulesContent";
 
@@ -610,7 +609,6 @@ export default function Settings() {
 
             {/* Profile Settings */}
             <TabsContent value="profile" className="space-y-4 mt-3">
-              {isBrokerOrMaster && <CommercialProfileLogo />}
               <Card className="border border-border/80 shadow-xs">
                 <CardHeader className="py-3 px-4 sm:px-6 border-b border-border/60">
                   <CardTitle className="text-base font-semibold">Información Personal</CardTitle>
