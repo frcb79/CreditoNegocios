@@ -57,12 +57,12 @@ describe("COM-PILOT-01 — isolated approved-artwork map adaptation", () => {
       profileData: { business: { businessPhone: "55 1234 5678" } }
     });
     expect(broker).toMatchObject({ role: "broker", displayName: "María Fernanda López", whatsapp: "55 1234 5678" });
-    expect(broker.logo).toBeUndefined();
+    expect('logo' in broker).toBe(false);
     const master = {
       role: "master_broker" as const, brandName: "Grupo Financiero Horizonte Capital",
       profileData: { business: { businessPhone: "55 9876 4321" } }
     };
-    expect(pilotIdentityFromProfile(master).logo).toBeUndefined();
+    expect('logo' in pilotIdentityFromProfile(master)).toBe(false);
     expect(pilotIdentityFromProfile(master).displayName).toBe("Grupo Financiero Horizonte Capital");
   });
   it("keeps obsolete pilot isolated from launch UI and retains its non-public behavior", () => {
