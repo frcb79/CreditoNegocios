@@ -69,12 +69,11 @@ export function registerCampaignAcquisitionRoutes(app: Express) {
     if (!allowedOwner(user)) return noAccess(res);
     const parsed = linkInput.safeParse(req.body || {});
     if (!parsed.success) return res.status(400).json({ message: "Solicitud de enlace inválida" });
-    const templateId = parsed.data.templateId || null;
+    // The same opaque referral token is reused for every template and channel.
+    // A cached older frontend may still send templateId: accept for backward
+    // compatibility but never create new template-specific campaign links.
+    const templateId = null;
     try {
-      if (templateId) {
-        const t = await pool.query("SELECT id FROM public.commercial_resource_templates WHERE id=$1 AND status='published'", [templateId]);
-        if (t.rowCount !== 1) return res.status(404).json({ message: "Campaña no publicada" });
-      }
       const members = await storage.getTenantMembersByUser(user!.id);
       const tenantId = members.find(m => m.isActive)?.tenantId ?? null;
       const token = randomBytes(24).toString("base64url");
@@ -224,7 +223,7 @@ export function registerCampaignAcquisitionRoutes(app: Express) {
              "(link_id,owner_user_id,tenant_id,template_id,source_channel,",
              "full_name,phone,email,product,amount_range,message,privacy_version)",
              "VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)"].join(" "),
-            [row.id,row.owner_user_id,row.tenant_id,row.template_id,row.channel || null,
+            [row.id,row.owner_user_id,row.tenant_id,row.template_id,row.channel || (row.template_id ? null : "redes_sociales"),
              data.fullName,digits,data.email || null,product,data.amountRange || null,
              data.message || null,notice.version]
           );
