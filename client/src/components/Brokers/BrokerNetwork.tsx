@@ -91,6 +91,8 @@ function MasterBrokerRatesConfig({ user }: { user: any }) {
       category?: string;
       masterCeiling: { total: number; apertura: number; sobretasa: number; renovacion: number };
       defaultBroker: { total: number; apertura: number; sobretasa: number; renovacion: number };
+      offerCount: number;
+      offerRates: Array<{ offerId: string; offerName: string; versionNumber: number; apertura: number; renovacion: number }>;
       assignedRate: { apertura: number; sobretasa?: number; renovacion?: number } | null;
     }>;
   }>({
@@ -153,10 +155,12 @@ function MasterBrokerRatesConfig({ user }: { user: any }) {
       for (const item of ratesData.items) {
         const val = parseFloat(ratesForm[item.institutionId]?.apertura || '0');
         const ceiling = item.masterCeiling.apertura;
-        if (val > ceiling && ceiling > 0) {
+        const renovacion = parseFloat(ratesForm[item.institutionId]?.renovacion || '0');
+        if (!Number.isFinite(val) || !Number.isFinite(renovacion) ||
+            val < 0 || renovacion < 0 || val > ceiling || renovacion > item.masterCeiling.renovacion) {
           toast({
             title: "Tasa no permitida",
-            description: `Para ${item.institutionName}, la comisión (${val}%) no puede superar tu techo de ${ceiling}%.`,
+            description: `Para ${item.institutionName}, la apertura máxima es ${ceiling}% y la renovación máxima ${item.masterCeiling.renovacion}%. La sobretasa no es distribuible.`,
             variant: "destructive",
           });
           return;
