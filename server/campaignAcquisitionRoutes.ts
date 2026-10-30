@@ -224,7 +224,7 @@ export function registerCampaignAcquisitionRoutes(app: Express) {
              "(link_id,owner_user_id,tenant_id,template_id,source_channel,",
              "full_name,phone,email,product,amount_range,message,privacy_version)",
              "VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)"].join(" "),
-            [row.id,row.owner_user_id,row.tenant_id,row.template_id,row.channel || null,
+            [row.id,row.owner_user_id,row.tenant_id,row.template_id,row.channel || (row.template_id ? null : "redes_sociales"),
              data.fullName,digits,data.email || null,product,data.amountRange || null,
              data.message || null,notice.version]
           );
