@@ -516,6 +516,46 @@ export default function FinancieraDetail() {
                             {product.template?.description && (
                               <p className="text-xs text-slate-600 leading-relaxed">{product.template.description}</p>
                             )}
+                            {(() => {
+                              const details = (product as any).commercialTerms as Record<string, any> | undefined;
+                              if (!details) return null; // Admin sees full editable offer versions in the Offers tab.
+                              const money = (value: unknown) => value === null || value === undefined
+                                ? "N/D" : Number(value).toLocaleString("es-MX", {style: "currency", currency: "MXN", maximumFractionDigits: 0});
+                              const rate = details.rateSource || ([details.minInterestRate, details.maxInterestRate]
+                                .filter((x: unknown) => x !== null && x !== undefined)
+                                .map((x: unknown) => {
+                                  const n = Number(x);
+                                  return Number.isFinite(n) ? (n > 0 && n < 1 ? n * 100 : n) + "%" : String(x);
+                                }).join(" – ") || "Por confirmar");
+                              const eligibility = details.eligibility || {};
+                              const criteria: Array<[string, unknown]> = [
+                                ["Antigüedad mínima (meses)", eligibility.minMonthsInBusiness],
+                                ["Ingreso mensual mínimo", eligibility.minMonthlyIncome],
+                                ["Ingresos anuales mínimos", eligibility.minAnnualIncome],
+                                ["Buró", eligibility.bureauPolicySource || eligibility.bureauRequirement],
+                                ["Garantía", eligibility.guarantee],
+                                ["Aval", eligibility.guarantor],
+                                ["Atrasos", eligibility.arrearsPolicy],
+                                ["Tiempo de respuesta", details.turnaround],
+                              ].filter(([, val]) => val !== null && val !== undefined && val !== "");
+                              return <details className="border-t pt-3 text-xs">
+                                <summary className="cursor-pointer font-semibold text-blue-700">Ver ficha comercial completa</summary>
+                                <div className="grid grid-cols-2 gap-2 mt-3">
+                                  <div><strong>Monto:</strong> {money(details.minAmount)} – {money(details.maxAmount)}</div>
+                                  <div><strong>Plazo máximo:</strong> {details.maxTermMonths ?? "N/D"} meses</div>
+                                  <div className="col-span-2"><strong>Tasa indicativa:</strong> {rate}</div>
+                                  {criteria.map(([label, value]) => <div key={label}><strong>{label}:</strong> {String(value)}</div>)}
+                                </div>
+                                {Array.isArray(details.loanPurposes) && details.loanPurposes.length > 0 &&
+                                  <p className="mt-3"><strong>Destinos:</strong> {details.loanPurposes.join(" · ")}</p>}
+                                {Array.isArray(details.requiredDocuments) && details.requiredDocuments.length > 0 &&
+                                  <div className="mt-3"><strong>Documentos requeridos</strong>
+                                    <ul className="list-disc pl-5 mt-1 space-y-1">
+                                      {details.requiredDocuments.map((doc: string, idx: number) => <li key={idx}>{doc}</li>)}
+                                    </ul>
+                                  </div>}
+                              </details>;
+                            })()}
                           </div>
                         );
                       })}
