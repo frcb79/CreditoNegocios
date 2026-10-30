@@ -63,6 +63,17 @@ describe("Final audit adversarial regressions", () => {
     expect(evaluate(offer({ allowsArrears: false }), { atrasosDeudas: false }).status).toBe("COMPATIBLE");
     expect(evaluate(offer({ allowsArrears: false }), { atrasosDeudas: true }).status).toBe("NOT_COMPATIBLE");
   });
+  it("describes textual rates and known max term accurately without blocking publication", () => {
+    const data = offer({}, { rateSource: "TIIE + 8 puntos", maxTermMonths: 48 });
+    const gate = validateMinimumPublishConditions({ ...data.version, changeReason: "Review" });
+    expect(gate.isValid).toBe(true);
+    expect(gate.pendingFields).toContain("interestRate");
+    expect(gate.pendingFields).toContain("termMonths");
+    expect(gate.warnings.some(w => w.includes("fórmula comercial") && w.includes("rango numérico"))).toBe(true);
+    expect(gate.warnings.some(w => w.includes("Plazo máximo registrado: 48 meses") && w.includes("plazo mínimo"))).toBe(true);
+    expect(gate.warnings.some(w => w.includes("plazo abierto"))).toBe(false);
+  });
+
   it("retains explicit origin restrictions after a reconciliation", () => {
     expect(evaluate(offer({ minMonthsInBusiness: 24 }, { originVerified: false }), { companyAgeMonths: 12 }).status).toBe("INSUFFICIENT_DATA");
   });
