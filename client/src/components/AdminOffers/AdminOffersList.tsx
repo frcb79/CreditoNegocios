@@ -271,10 +271,15 @@ export default function AdminOffersList({
         </div>
       )}
 
-      <div className="flex justify-end">
-        <Button type="button" variant="outline" disabled={!filteredOffers.some(o => o.status === "draft")}
-          onClick={() => setBatchOffers(filteredOffers.filter(o => o.status === "draft"))} data-testid="button-batch-publish">
-          Revisar y publicar borradores visibles ({filteredOffers.filter(o => o.status === "draft").length})
+      <div className="flex w-full justify-end">
+        <Button
+          type="button"
+          disabled={!filteredOffers.some(o => o.status === "draft")}
+          onClick={() => setBatchOffers(filteredOffers.filter(o => o.status === "draft"))}
+          data-testid="button-batch-publish"
+          className="w-full sm:w-auto max-w-full min-w-0 min-h-10 px-4 py-2 rounded-lg bg-[#2463D6] hover:bg-[#1d52b3] text-white hover:text-white font-semibold text-xs sm:text-sm leading-snug text-center whitespace-normal shadow-sm focus-visible:ring-2 focus-visible:ring-[#2463D6]/40 disabled:opacity-50"
+        >
+          Revisar y publicar borradores ({filteredOffers.filter(o => o.status === "draft").length})
         </Button>
       </div>
       {/* Toolbar: Filters, Search & Type Selector */}
