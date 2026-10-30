@@ -4924,6 +4924,36 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
       if (blocked) return res.status(409).json(blocked);
 
+      // A direct credit also needs the *same* server-owned network allocation
+      // frozen before credit creation. Never trust a client-provided split.
+      (creditData as any).originMasterBrokerId = effectiveMasterBrokerId;
+      if (hasLineage && effectiveMasterBrokerId &&
+          effectiveMasterBrokerId !== originationCheck.brokerId) {
+        const master = await storage.getUser(effectiveMasterBrokerId);
+        if (!master || master.role !== "master_broker" || master.isActive === false) {
+          return res.status(409).json({ code: "NETWORK_COMMISSION_MASTER_INVALID" });
+        }
+        const originalRates = validatedProposal.commissionRates;
+        if (!originalRates || typeof originalRates !== "object") {
+          return res.status(409).json({ code: "NETWORK_COMMISSION_SCHEDULE_MISSING" });
+        }
+        const allocatedRates = (master.networkCommissionRates || {}) as Record<string, any>;
+        const allocation = allocatedRates[explicitOfferId] ??
+          allocatedRates[canonicalFinancialInstitutionId || ""] ??
+          { apertura: originalRates.broker?.apertura, renovacion: originalRates.broker?.renovacion ?? 0 };
+        try {
+          (creditData as any).finalProposal = {
+            ...validatedProposal,
+            commissionRates: buildNetworkCommissionSnapshot(originalRates, allocation),
+          };
+        } catch (error: any) {
+          return res.status(409).json({
+            code: String(error?.message || "NETWORK_COMMISSION_INVALID"),
+            message: "La comisión asignada al broker no es compatible con esta oferta.",
+          });
+        }
+      }
+
       const credit = await storage.createCredit(creditData);
       
       // Create notification
