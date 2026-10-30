@@ -13,6 +13,7 @@ import { runBrokerInvitationReminders } from "./brokerInvitationReminders";
 import { storage, type IStorage } from "./storage";
 import { canViewSubmissionByOrigin, canViewCreditByOrigin, canEditCreditByOrigin, summarizeCommercialAccountActivity } from "./dashboardVisibility";
 import { loadPublishedCommissionOffers, masterSafeCeilings } from "./commercialRatesView";
+import { buildNetworkCommissionSnapshot } from "./networkCommissionSnapshot";
 import { projectCreditForRole } from "./creditResponseProjection";
 import { allowedOrigins } from "./runtimeConfig";
 import { canReadDocumentByOrigin } from "./documentVisibility";
@@ -807,7 +808,7 @@ async function checkOfferCommissionAcceptanceForNewOperation(args: {
  * accept client-supplied commission allocation as a commercial authority.
  */
 async function validateTargetOfferVersion(
-  target: { financialInstitutionId: string; institutionProposal: unknown },
+  target: { financialInstitutionId: string; institutionProposal: unknown; requestId?: string },
   proposal: Record<string, any>,
 ): Promise<Record<string, any>> {
   const incoming = readFrozenOfferLineage(proposal);
@@ -839,13 +840,43 @@ async function validateTargetOfferVersion(
     throw new Error("OFFER_VERSION_NOT_PUBLISHED");
   }
   const conditions = (version.conditions || {}) as Record<string, unknown>;
+  const publishedRates = (conditions.commissionRates && typeof conditions.commissionRates === "object")
+    ? conditions.commissionRates as Record<string, any> : null;
+  let snapshotRates: Record<string, any> | null = publishedRates
+    ? JSON.parse(JSON.stringify(publishedRates)) : null;
+  // A previously recorded institution proposal is already a server-owned
+  // snapshot. Do not replace its allocation if network terms later changed.
+  const priorProposal = target.institutionProposal as Record<string, any> | null;
+  if (previous && priorProposal?.commissionRates && typeof priorProposal.commissionRates === "object") {
+    snapshotRates = JSON.parse(JSON.stringify(priorProposal.commissionRates));
+  } else if (snapshotRates && target.requestId) {
+    const request = await storage.getCreditSubmissionRequest(target.requestId);
+    if (!request) throw new Error("NETWORK_COMMISSION_REQUEST_NOT_FOUND");
+    const masterId = request.originMasterBrokerId;
+    // Direct-originating Masters earn their approved ceiling in one share.
+    if (masterId && request.brokerId !== masterId) {
+      const master = await storage.getUser(masterId);
+      if (!master || master.role !== "master_broker" || master.isActive === false) {
+        throw new Error("NETWORK_COMMISSION_MASTER_INVALID");
+      }
+      const networkRates = (master.networkCommissionRates || {}) as Record<string, any>;
+      const allocation = networkRates[incoming.institutionProductId] ??
+        networkRates[target.financialInstitutionId] ??
+        (snapshotRates.broker ? {
+          apertura: snapshotRates.broker.apertura,
+          renovacion: snapshotRates.broker.renovacion ?? 0,
+        } : null);
+      if (!allocation) throw new Error("NETWORK_COMMISSION_ALLOCATION_MISSING");
+      snapshotRates = buildNetworkCommissionSnapshot(snapshotRates, allocation);
+    }
+  }
   return {
     ...proposal,
     institutionProductId: incoming.institutionProductId,
     versionNumber: incoming.versionNumber,
-    // Server-owned, version-specific rates: never take a rate map from the request.
-    ...(conditions.commissionRates && typeof conditions.commissionRates === "object"
-      ? { commissionRates: conditions.commissionRates } : {}),
+    // Rates are frozen when the institution proposal is first recorded,
+    // including the network broker share and Master residual.
+    ...(snapshotRates ? { commissionRates: snapshotRates } : {}),
   };
 }
 
@@ -12718,8 +12749,8 @@ function maskCLABE(clabe?: string | null): string | null {
       res.json(projectSubmissionTarget(target, user.role));
     } catch (error) {
       const code = error instanceof Error ? error.message : "";
-      if (code.startsWith("OFFER_VERSION_")) {
-        return res.status(409).json({ code, message: "La oferta o versión no coincide con la respuesta." });
+      if (code.startsWith("OFFER_VERSION_") || code.startsWith("NETWORK_COMMISSION_")) {
+        return res.status(409).json({ code, message: "La oferta, versión o asignación de comisiones no es válida." });
       }
       if (error instanceof Error && error.message === "TARGET_ALREADY_SELECTED") {
         return res.status(409).json({
