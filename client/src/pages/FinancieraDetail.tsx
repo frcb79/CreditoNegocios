@@ -533,7 +533,7 @@ export default function FinancieraDetail() {
                                   .filter((x: unknown) => x !== null && x !== undefined)
                                   .map((x: unknown) => formatIndicativeRate(x)).join(" – ") || "Por confirmar");
                               const eligibility = details.eligibility || {};
-                              const criteria: Array<[string, unknown]> = [
+                              const criteria: Array<[string, unknown]> = ([
                                 ["Antigüedad mínima (meses)", eligibility.minMonthsInBusiness],
                                 ["Ingreso mensual mínimo", eligibility.minMonthlyIncome],
                                 ["Ingresos anuales mínimos", eligibility.minAnnualIncome],
@@ -542,7 +542,7 @@ export default function FinancieraDetail() {
                                 ["Aval", eligibility.guarantor],
                                 ["Atrasos", eligibility.arrearsPolicy],
                                 ["Tiempo de respuesta", details.turnaround],
-                              ].filter(([, val]) => val !== null && val !== undefined && val !== "");
+                              ] as Array<[string, unknown]>).filter(([, val]) => val !== null && val !== undefined && val !== "");
                               return <details className="border-t pt-3 text-xs">
                                 <summary className="cursor-pointer font-semibold text-blue-700">Ver ficha comercial completa</summary>
                                 <div className="grid grid-cols-2 gap-2 mt-3">
