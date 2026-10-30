@@ -334,6 +334,23 @@ describe("Bloque B2.1 — Editor de Ofertas Comerciales en Borrador (Super Admin
       expect(res.status).toBe(403);
     });
 
+    it("rechaza sobretasa repartible a Master o Broker incluso desde API", async () => {
+      const denied = await request(app)
+        .put(`/api/institution-products/${publishedProductId}/draft`)
+        .set("x-test-user-id", testSuperAdminId)
+        .send({ conditions: {
+          commissionRates: {
+            financiera: { apertura: 4, renovacion: 2, sobretasa: 1 },
+            masterBroker: { apertura: 2, renovacion: 1, sobretasa: 0.5 },
+            broker: { apertura: 1.5, renovacion: 0.75, sobretasa: 0 },
+          },
+        }});
+      expect(denied.status).toBe(400);
+      expect(denied.body.errors).toEqual(
+        expect.arrayContaining([expect.stringContaining("La sobretasa no puede asignarse a Master")])
+      );
+    });
+
     it("la sobretasa y renovación solo se guardan en el nuevo borrador", async () => {
       const before = await storage.getInstitutionProductVersions(publishedProductId);
       const v1 = before.find(v => v.status === "published")!;
