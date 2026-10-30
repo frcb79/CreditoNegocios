@@ -5578,8 +5578,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (!user) return res.status(403).json({ message: "Acceso no autorizado" });
       // Use the SAME visible set as the broker's catalog listing. Never expose
       // administrative financial data or institutions that are unavailable to this user.
-      const visibleInstitutions = await storage.getFinancialInstitutions(userId);
-      const institution: any = visibleInstitutions.find((inst: any) => inst.id === id);
+      const institution: any = user.role === "admin" || user.role === "super_admin"
+        ? await storage.getFinancialInstitution(id)
+        : (await storage.getFinancialInstitutions(userId)).find((inst: any) => inst.id === id);
       if (!institution || ((user.role === "broker" || user.role === "master_broker") && institution.isActive === false)) {
         return res.status(404).json({ message: "Institución no disponible en el catálogo" });
       }
