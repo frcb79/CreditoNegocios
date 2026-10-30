@@ -127,7 +127,8 @@ export default function Commissions() {
   };
 
   const getSobretasaRate = (c: any): number => {
-    const proposalRate = c.credit?.finalProposal?.commissionRates?.superAdmin?.sobretasa;
+    const proposalRate = c.credit?.finalProposal?.commissionRates?.financiera?.sobretasa ??
+      c.credit?.finalProposal?.commissionRates?.superAdmin?.sobretasa;
     if (proposalRate !== undefined && proposalRate !== null && !isNaN(Number(proposalRate))) {
       return Number(proposalRate);
     }
