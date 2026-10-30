@@ -1182,7 +1182,7 @@ export default function BrokerProducts() {
               const destinos = config.destinos;
               const eligibility = (config.eligibility || {}) as Record<string, unknown>;
               const publishedDocs: string[] = Array.isArray(config.requiredDocuments) ? config.requiredDocuments : [];
-              const readablePolicy: Array<[string, unknown]> = [
+              const readablePolicy: Array<[string, unknown]> = ([
                 ["Antigüedad mínima (meses)", eligibility.minMonthsInBusiness],
                 ["Ingresos mensuales mínimos", eligibility.minMonthlyIncome],
                 ["Ingresos anuales mínimos", eligibility.minAnnualIncome],
@@ -1198,7 +1198,7 @@ export default function BrokerProducts() {
                 ["Estados financieros", eligibility.requiresFinancialStatements == null ? null : eligibility.requiresFinancialStatements ? "Sí" : "No"],
                 ["Tiempo de respuesta", config.tiempoRespuesta],
                 ["Observaciones comerciales", config.observaciones],
-              ].filter(([, value]) => value !== null && value !== undefined && value !== "" && value !== "por_definir");
+              ] as Array<[string, unknown]>).filter(([, value]) => value !== null && value !== undefined && value !== "" && value !== "por_definir");
 
               return (
                 <div>
