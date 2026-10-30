@@ -54,13 +54,17 @@ describe("COM-CTA-002: incoming prospects and reusable attribution links", () =>
     expect(page).toContain('data-testid="public-campaign-success"');
   });
 
-  it("lets a broker reuse a generic link and generate per-campaign links", () => {
+  it("lets a broker reuse one personal link with predefined UTM parameters", () => {
     const panel = file("client/src/components/Commercial/CampaignLinkPanel.tsx");
     expect(panel).toContain("makeLink()");
-    expect(panel).toContain("makeLink(selectedTemplateId)");
+    expect(panel).toContain('url.searchParams.set("utm_source", "redes_sociales")');
+    expect(panel).toContain('url.searchParams.set("utm_medium", "social")');
+    expect(panel).toContain('url.searchParams.set("utm_campaign", "productos_financieros")');
+    expect(panel).toContain('url.searchParams.set("utm_content", "inicio")');
+    expect(panel).not.toContain("makeLink(selectedTemplateId)");
     expect(panel).toContain("window.location.origin");
     expect(panel).toContain('data-testid="copy-personal-link"');
-    expect(panel).toContain('data-testid="copy-campaign-link"');
+    expect(panel).not.toContain('data-testid="copy-campaign-link"');
     expect(panel).toContain('data-testid="campaign-clicks"');
     expect(panel).toContain('data-testid="campaign-submissions"');
     const library = file("client/src/pages/CommercialResources.tsx");
