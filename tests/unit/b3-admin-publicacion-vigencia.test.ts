@@ -36,7 +36,7 @@ describe("Bloque B3 — Publicación y Vigencia de Ofertas Comerciales (Super Ad
       overrateCommissionRate: "1.5",
       commissionRates: {
         financiera: { total: "5.5", apertura: "4.5", sobretasa: "1.0" },
-        masterBroker: { total: "4.0", apertura: "3.5", sobretasa: "0.5" },
+        masterBroker: { total: "3.5", apertura: "3.5", sobretasa: "0.0" },
         broker: { total: "2.5", apertura: "2.5", sobretasa: "0.0" },
       },
     } as any);
@@ -87,8 +87,8 @@ describe("Bloque B3 — Publicación y Vigencia de Ofertas Comerciales (Super Ad
           maxTermMonths: 36,
           commissionRates: {
             financiera: { apertura: 4.5, sobretasa: 1.0 },
-            masterBroker: { apertura: 3.0, sobretasa: 0.5 },
-            broker: { apertura: 2.0, sobretasa: 0.2 },
+            masterBroker: { apertura: 3.0, sobretasa: 0 },
+            broker: { apertura: 2.0, sobretasa: 0 },
             channels: {
               directBroker: { brokerRate: 2.0, platformGrossMargin: 2.5 },
               masterBroker: { networkCeiling: 3.0, platformGrossMargin: 1.5 },
@@ -119,8 +119,8 @@ describe("Bloque B3 — Publicación y Vigencia de Ofertas Comerciales (Super Ad
           maxTermMonths: 36,
           commissionRates: {
             financiera: { apertura: 4.5, sobretasa: 1.0 },
-            masterBroker: { apertura: 3.0, sobretasa: 0.5 },
-            broker: { apertura: 2.0, sobretasa: 0.2 },
+            masterBroker: { apertura: 3.0, sobretasa: 0 },
+            broker: { apertura: 2.0, sobretasa: 0 },
             channels: {
               directBroker: { brokerRate: 2.0, platformGrossMargin: 2.5 },
               masterBroker: { networkCeiling: 3.0, platformGrossMargin: 1.5 },
@@ -369,7 +369,7 @@ describe("Bloque B3 — Publicación y Vigencia de Ofertas Comerciales (Super Ad
           commissionRates: {
             financiera: { apertura: 4.5, sobretasa: 1.0 },
             broker: { apertura: 2.0 },
-            masterBroker: { apertura: 3.0, sobretasa: 0.5 },
+            masterBroker: { apertura: 3.0, sobretasa: 0 },
           },
           eligibilityEvaluation: {
             matchingActive: false,
@@ -396,7 +396,7 @@ describe("Bloque B3 — Publicación y Vigencia de Ofertas Comerciales (Super Ad
           commissionRates: {
             financiera: { apertura: 5.5, sobretasa: 1.0 },
             broker: { apertura: 2.5 },
-            masterBroker: { apertura: 3.5, sobretasa: 0.5 },
+            masterBroker: { apertura: 3.5, sobretasa: 0 },
           },
           changeReason: "Edición tentativa de borrador v2",
         });
@@ -452,7 +452,7 @@ describe("Bloque B3 — Publicación y Vigencia de Ofertas Comerciales (Super Ad
       expect(res.status).toBe(200);
       const config = res.body.configuration;
       expect(config.commissionRates?.financiera?.sobretasa).toBe(1.0);
-      expect(config.commissionRates?.masterBroker?.sobretasa).toBe(0.5);
+      expect(config.commissionRates?.masterBroker?.sobretasa).toBe(0);
     });
 
     it("Admin regular NO ve sobretasas al consultar la oferta", async () => {
