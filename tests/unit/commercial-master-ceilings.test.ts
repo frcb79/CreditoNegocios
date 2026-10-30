@@ -28,3 +28,19 @@ describe("Master network ceilings come from published offer versions", () => {
     expect(masterSafeCeilings([]).apertura).toBe(0);
   });
 });
+
+describe("Intermediary rate view security contract", () => {
+  it("does not reveal lender gross economics to Broker/Master", () => {
+    const { readFileSync } = require("node:fs");
+    const routes = readFileSync("server/routes.ts", "utf8") as string;
+    const section = routes.split('app.get("/api/commissions/my-offer-rates"')[1]
+      .split("// Commissions and STP payments")[0];
+    expect(section).toContain('actor.role === "broker"');
+    expect(section).toContain("master.networkCommissionRates");
+    expect(section).toContain("offer.broker");
+    expect(section).not.toContain("offer.financiera");
+    const view = readFileSync("client/src/pages/Commissions.tsx", "utf8") as string;
+    expect(view).toContain("button-view-my-commission-rates");
+    expect(view).toContain("MyCommissionRatesModal");
+  });
+});
