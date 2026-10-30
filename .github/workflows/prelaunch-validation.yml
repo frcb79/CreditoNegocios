@@ -20,6 +20,7 @@ on:
       - 'fix/matching-ofertas-v5-*'
       - 'fix/final-audit-publication*'
       - 'fix/super-admin-dashboard-*'
+      - 'fix/lanzamiento-comisiones-*'
   workflow_dispatch:
 concurrency:
   group: prelaunch-${{ github.ref }}
