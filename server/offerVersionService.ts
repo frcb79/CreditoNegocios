@@ -270,7 +270,11 @@ export function validateMinimumPublishConditions(params: {
   }
   if (!hasMinRate || !hasMaxRate) {
     pendingFields.push("interestRate");
-    warnings.push("Tasas de interés no definidas completamente: la oferta quedará con tasa pendiente según evaluación de riesgo.");
+    warnings.push(
+      typeof c.rateSource === "string" && c.rateSource.trim()
+        ? "Existe una tasa o fórmula comercial en el archivo de origen, pero no un rango numérico completo. Revisa la fórmula antes de cotizar."
+        : "No hay rango numérico completo de tasas; la tasa final debe confirmarse antes de cotizar."
+    );
   }
 
   // 3. Validar plazos de crédito
@@ -288,7 +292,13 @@ export function validateMinimumPublishConditions(params: {
   }
   if (!hasMinTerm || !hasMaxTerm) {
     pendingFields.push("termMonths");
-    warnings.push("Plazos no definidos completamente: la oferta quedará con plazo abierto o a determinar comercialmente.");
+    warnings.push(
+      hasMaxTerm && !hasMinTerm
+        ? `Plazo máximo registrado: ${c.maxTermMonths} meses. El plazo mínimo no está especificado; el máximo sí se respeta.`
+        : hasMinTerm && !hasMaxTerm
+          ? `Plazo mínimo registrado: ${c.minTermMonths} meses. El plazo máximo está pendiente de confirmar.`
+          : "Plazos mínimo y máximo no especificados: confirmar con la financiera antes de cotizar."
+    );
   }
 
   // 4. Validar perfiles de cliente (Requisito comercial indispensable)
