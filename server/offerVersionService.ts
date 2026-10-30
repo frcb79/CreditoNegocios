@@ -154,6 +154,14 @@ function validateAdditionalCommissionRates(rates: Record<string, any>): string[]
   const master = percent(rates.masterBroker?.renovacion, "Renovación Master");
   const broker = percent(rates.broker?.renovacion, "Renovación Broker");
   percent(rates.financiera?.sobretasa, "Sobretasa Crédito Negocios");
+  const masterOverrate = percent(rates.masterBroker?.sobretasa, "Sobretasa Master");
+  const brokerOverrate = percent(rates.broker?.sobretasa, "Sobretasa Broker");
+  if (masterOverrate !== null && masterOverrate !== 0) {
+    errors.push("La sobretasa no puede asignarse a Master Broker");
+  }
+  if (brokerOverrate !== null && brokerOverrate !== 0) {
+    errors.push("La sobretasa no puede asignarse a Broker");
+  }
   if (fin !== null) {
     if (master !== null && master > fin) errors.push("Renovación Master no puede superar a financiera");
     if (broker !== null && broker > fin) errors.push("Renovación Broker no puede superar a financiera");
