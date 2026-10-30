@@ -73,6 +73,15 @@ const bottomNavigation = [
   { name: 'Configuración', href: '/configuracion', icon: Settings },
 ];
 
+// Distinct, low-emphasis role identification in the identity footer (desktop and mobile).
+const ROLE_BADGE: Record<string, { label: string; classes: string }> = {
+  super_admin: { label: "Super Admin", classes: "bg-blue-100 text-blue-800 border-blue-200 dark:bg-blue-900/30 dark:text-blue-200 dark:border-blue-800" },
+  admin: { label: "Admin", classes: "bg-violet-100 text-violet-800 border-violet-200 dark:bg-violet-900/30 dark:text-violet-200 dark:border-violet-800" },
+  master_broker: { label: "Master Broker", classes: "bg-emerald-100 text-emerald-800 border-emerald-200 dark:bg-emerald-900/30 dark:text-emerald-200 dark:border-emerald-800" },
+  broker: { label: "Broker", classes: "bg-slate-100 text-slate-700 border-slate-300 dark:bg-slate-800 dark:text-slate-200 dark:border-slate-600" },
+};
+const fallbackRoleBadge = { label: "Usuario", classes: "bg-slate-100 text-slate-700 border-slate-200" };
+
 const sectionLabels: Record<string, string> = {
   operacion: "Operación",
   catalogos: "Catálogos",
@@ -358,8 +367,14 @@ export default function Sidebar() {
                   {user?.firstName} {user?.lastName}
                 </p>
                 <div className="flex items-center gap-1 mt-0.5">
-                  <span className="text-[10px] font-medium tracking-wide text-sidebar-primary bg-sidebar-accent/80 px-1.5 py-0.5 rounded capitalize inline-block border border-sidebar-border/50 truncate max-w-[140px]">
-                    {user?.role?.replace('_', ' ')}
+                  <span
+                    data-testid={`sidebar-role-badge${testIdSuffix}`}
+                    className={cn(
+                      "inline-flex max-w-[145px] items-center rounded-full border px-2 py-0.5 text-[10px] font-semibold tracking-wide leading-tight",
+                      (ROLE_BADGE[user?.role || ""] || fallbackRoleBadge).classes
+                    )}
+                  >
+                    {(ROLE_BADGE[user?.role || ""] || fallbackRoleBadge).label}
                   </span>
                 </div>
               </div>
