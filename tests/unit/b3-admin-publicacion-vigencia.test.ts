@@ -33,6 +33,7 @@ describe("Bloque B3 — Publicación y Vigencia de Ofertas Comerciales (Super Ad
       name: "Financiera B3 Horizonte",
       email: "horizonte@b3-test.com",
       isActive: true,
+      createdByAdmin: true, // Visible to commercial brokers via the catalog.
       overrateCommissionRate: "1.5",
       commissionRates: {
         financiera: { total: "5.5", apertura: "4.5", sobretasa: "1.0" },
