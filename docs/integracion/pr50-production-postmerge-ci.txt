@@ -1,0 +1,4 @@
+PR #50 post-merge production regression confirmation
+Application code reference: f2aedfc5dff4998bcbbe955fe3a9d91ba2f89ba8
+Test-only correction: B3 fixture uses createdByAdmin=true for a lender intended to be broker-visible.
+The doc-only extra commit in this QA branch does not alter runtime application code.
