@@ -77,7 +77,11 @@ describe("AG — FASE 2B.2B: Cambios y Aceptación Comercial", () => {
   };
 
   const createTestInstitution = async (name = "Financiera Test") => {
-    const inst = await storage.createFinancialInstitution({name, isActive: true} as any);
+    // Platform-created catalog institutions are visible to commercial roles.
+    // Ad-hoc private lender records must not be exposed via the broker listing.
+    const inst = await storage.createFinancialInstitution({
+      name, isActive: true, createdByAdmin: true,
+    } as any);
     // COM launch: assignments require a real, versioned, published offer;
     // historical lender-wide defaults are no longer a valid ceiling.
     const product = await storage.createInstitutionProduct({
