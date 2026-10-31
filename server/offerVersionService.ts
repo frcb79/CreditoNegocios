@@ -133,6 +133,42 @@ export function compareOfferIntermediaryCommissions(
   };
 }
 
+/**
+ * Validación independiente de renovación y sobretasa. El techo de apertura
+ * no se reutiliza para estos conceptos económicos distintos.
+ */
+function validateAdditionalCommissionRates(rates: Record<string, any>): string[] {
+  const errors: string[] = [];
+  const percent = (value: unknown, name: string): number | null => {
+    if (value === undefined || value === null || value === "") return null;
+    if (typeof value !== "number" && typeof value !== "string") {
+      errors.push(`${name} inválido`); return null;
+    }
+    const n = Number(value);
+    if (!Number.isFinite(n) || n < 0 || n > 100) {
+      errors.push(`${name} debe estar entre 0% y 100%`); return null;
+    }
+    return n;
+  };
+  const fin = percent(rates.financiera?.renovacion, "Renovación financiera");
+  const master = percent(rates.masterBroker?.renovacion, "Renovación Master");
+  const broker = percent(rates.broker?.renovacion, "Renovación Broker");
+  percent(rates.financiera?.sobretasa, "Sobretasa Crédito Negocios");
+  const masterOverrate = percent(rates.masterBroker?.sobretasa, "Sobretasa Master");
+  const brokerOverrate = percent(rates.broker?.sobretasa, "Sobretasa Broker");
+  if (masterOverrate !== null && masterOverrate !== 0) {
+    errors.push("La sobretasa no puede asignarse a Master Broker");
+  }
+  if (brokerOverrate !== null && brokerOverrate !== 0) {
+    errors.push("La sobretasa no puede asignarse a Broker");
+  }
+  if (fin !== null) {
+    if (master !== null && master > fin) errors.push("Renovación Master no puede superar a financiera");
+    if (broker !== null && broker > fin) errors.push("Renovación Broker no puede superar a financiera");
+  }
+  return errors;
+}
+
 // Alias retrocompatible
 export const computeOfferVersionHash = computeInstitutionProductVersionHash;
 
@@ -167,6 +203,7 @@ export function validateOfferVersionParameters(data: Partial<InsertInstitutionPr
     // Validación económica de comisiones por oferta (B2.2)
     if (c.commissionRates && typeof c.commissionRates === "object") {
       const cr = c.commissionRates as Record<string, any>;
+    errors.push(...validateAdditionalCommissionRates(cr));
       const finRate = cr.financiera?.apertura !== undefined && cr.financiera?.apertura !== null && cr.financiera?.apertura !== ""
         ? Number(cr.financiera.apertura)
         : undefined;
@@ -317,6 +354,7 @@ export function validateMinimumPublishConditions(params: {
   // 6. Validar coherencia económica de comisiones individuales por oferta
   if (c.commissionRates && typeof c.commissionRates === "object") {
     const cr = c.commissionRates as Record<string, any>;
+    errors.push(...validateAdditionalCommissionRates(cr));
     const finRate = cr.financiera?.apertura !== undefined && cr.financiera?.apertura !== null && cr.financiera?.apertura !== ""
       ? Number(cr.financiera.apertura)
       : undefined;

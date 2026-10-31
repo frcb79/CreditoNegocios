@@ -13,6 +13,7 @@ import { runBrokerInvitationReminders } from "./brokerInvitationReminders";
 import { storage, type IStorage } from "./storage";
 import { canViewSubmissionByOrigin, canViewCreditByOrigin, canEditCreditByOrigin, summarizeCommercialAccountActivity } from "./dashboardVisibility";
 import { loadPublishedCommissionOffers, masterSafeCeilings } from "./commercialRatesView";
+import { buildNetworkCommissionSnapshot } from "./networkCommissionSnapshot";
 import { projectCreditForRole } from "./creditResponseProjection";
 import { allowedOrigins } from "./runtimeConfig";
 import { canReadDocumentByOrigin } from "./documentVisibility";
@@ -807,7 +808,7 @@ async function checkOfferCommissionAcceptanceForNewOperation(args: {
  * accept client-supplied commission allocation as a commercial authority.
  */
 async function validateTargetOfferVersion(
-  target: { financialInstitutionId: string; institutionProposal: unknown },
+  target: { financialInstitutionId: string; institutionProposal: unknown; requestId?: string },
   proposal: Record<string, any>,
 ): Promise<Record<string, any>> {
   const incoming = readFrozenOfferLineage(proposal);
@@ -839,13 +840,43 @@ async function validateTargetOfferVersion(
     throw new Error("OFFER_VERSION_NOT_PUBLISHED");
   }
   const conditions = (version.conditions || {}) as Record<string, unknown>;
+  const publishedRates = (conditions.commissionRates && typeof conditions.commissionRates === "object")
+    ? conditions.commissionRates as Record<string, any> : null;
+  let snapshotRates: Record<string, any> | null = publishedRates
+    ? JSON.parse(JSON.stringify(publishedRates)) : null;
+  // A previously recorded institution proposal is already a server-owned
+  // snapshot. Do not replace its allocation if network terms later changed.
+  const priorProposal = target.institutionProposal as Record<string, any> | null;
+  if (previous && priorProposal?.commissionRates && typeof priorProposal.commissionRates === "object") {
+    snapshotRates = JSON.parse(JSON.stringify(priorProposal.commissionRates));
+  } else if (snapshotRates && target.requestId) {
+    const request = await storage.getCreditSubmissionRequest(target.requestId);
+    if (!request) throw new Error("NETWORK_COMMISSION_REQUEST_NOT_FOUND");
+    const masterId = request.originMasterBrokerId;
+    // Direct-originating Masters earn their approved ceiling in one share.
+    if (masterId && request.brokerId !== masterId) {
+      const master = await storage.getUser(masterId);
+      if (!master || master.role !== "master_broker" || master.isActive === false) {
+        throw new Error("NETWORK_COMMISSION_MASTER_INVALID");
+      }
+      const networkRates = (master.networkCommissionRates || {}) as Record<string, any>;
+      const allocation = networkRates[incoming.institutionProductId] ??
+        networkRates[target.financialInstitutionId] ??
+        (snapshotRates.broker ? {
+          apertura: snapshotRates.broker.apertura,
+          renovacion: snapshotRates.broker.renovacion ?? 0,
+        } : null);
+      if (!allocation) throw new Error("NETWORK_COMMISSION_ALLOCATION_MISSING");
+      snapshotRates = buildNetworkCommissionSnapshot(snapshotRates, allocation);
+    }
+  }
   return {
     ...proposal,
     institutionProductId: incoming.institutionProductId,
     versionNumber: incoming.versionNumber,
-    // Server-owned, version-specific rates: never take a rate map from the request.
-    ...(conditions.commissionRates && typeof conditions.commissionRates === "object"
-      ? { commissionRates: conditions.commissionRates } : {}),
+    // Rates are frozen when the institution proposal is first recorded,
+    // including the network broker share and Master residual.
+    ...(snapshotRates ? { commissionRates: snapshotRates } : {}),
   };
 }
 
@@ -4893,6 +4924,36 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
       if (blocked) return res.status(409).json(blocked);
 
+      // A direct credit also needs the *same* server-owned network allocation
+      // frozen before credit creation. Never trust a client-provided split.
+      (creditData as any).originMasterBrokerId = effectiveMasterBrokerId;
+      if (hasLineage && effectiveMasterBrokerId &&
+          effectiveMasterBrokerId !== originationCheck.brokerId) {
+        const master = await storage.getUser(effectiveMasterBrokerId);
+        if (!master || master.role !== "master_broker" || master.isActive === false) {
+          return res.status(409).json({ code: "NETWORK_COMMISSION_MASTER_INVALID" });
+        }
+        const originalRates = validatedProposal.commissionRates;
+        if (!originalRates || typeof originalRates !== "object") {
+          return res.status(409).json({ code: "NETWORK_COMMISSION_SCHEDULE_MISSING" });
+        }
+        const allocatedRates = (master.networkCommissionRates || {}) as Record<string, any>;
+        const allocation = allocatedRates[explicitOfferId] ??
+          allocatedRates[canonicalFinancialInstitutionId || ""] ??
+          { apertura: originalRates.broker?.apertura, renovacion: originalRates.broker?.renovacion ?? 0 };
+        try {
+          (creditData as any).finalProposal = {
+            ...validatedProposal,
+            commissionRates: buildNetworkCommissionSnapshot(originalRates, allocation),
+          };
+        } catch (error: any) {
+          return res.status(409).json({
+            code: String(error?.message || "NETWORK_COMMISSION_INVALID"),
+            message: "La comisión asignada al broker no es compatible con esta oferta.",
+          });
+        }
+      }
+
       const credit = await storage.createCredit(creditData);
       
       // Create notification
@@ -5590,21 +5651,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
         if (institution.isActive === false) {
           return res.status(403).json({ message: "Institución no disponible" });
         }
-        // No broker/master can open the admin-facing lender card if the
-        // institution does not have at least one eligible published offer.
-        const offers = await storage.getInstitutionProducts(id);
-        let permitted = false;
-        for (const offer of offers) {
-          if (offer.isActive === false || offer.status !== "published") continue;
-          const versions = await storage.getInstitutionProductVersions(offer.id);
-          if (isOfferEligibleForRequests(offer, versions)) {
-            permitted = true;
-            break;
-          }
-        }
-        if (!permitted) {
-          return res.status(403).json({ message: "No hay ofertas publicadas disponibles" });
-        }
+        // A lender already visible in this user's catalog must also have an
+        // openable, role-sanitized profile. Previously the catalog GET showed
+        // these lenders but the detail GET returned 403 whenever no published
+        // offer was attached. That broke the broker/master "Ver detalle" link.
+        // Offers themselves remain restricted to eligible published versions
+        // by /api/institution-products and /api/institution-products/:id.
       }
       res.json(projectFinancialInstitutionByRole(institution, user.role));
     } catch (error) {
@@ -6000,7 +6052,7 @@ function maskCLABE(clabe?: string | null): string | null {
         ? ((master.networkCommissionRates as Record<string, any>) || {}) : null;
       return res.json(offers.map(offer => {
         const assigned = actor.role === "master_broker" ? offer.master :
-          master ? rates?.[offer.institutionId] : offer.broker;
+          master ? (rates?.[offer.offerId] ?? rates?.[offer.institutionId] ?? offer.broker) : offer.broker;
         const validRate = (v: unknown) => v !== null && v !== undefined &&
           v !== "" && Number.isFinite(Number(v)) && Number(v) >= 0;
         const opening = validRate(assigned?.apertura) ? Number(assigned.apertura) : null;
@@ -8612,6 +8664,18 @@ function maskCLABE(clabe?: string | null): string | null {
       res.json({
         rates: networkRates,
         items,
+        // El Master puede asignar por oferta. La configuración histórica
+        // por financiera queda como fallback mientras se migra su red.
+        offerItems: publishedOffers.map(offer => ({
+          institutionId: offer.institutionId,
+          institutionName: offer.institutionName,
+          offerId: offer.offerId,
+          offerName: offer.offerName,
+          versionNumber: offer.versionNumber,
+          masterCeiling: offer.master,
+          suggestedBroker: offer.broker,
+          assignedRate: networkRates[offer.offerId] || networkRates[offer.institutionId] || null,
+        })),
       });
     } catch (error) {
       console.error("Error fetching master broker network rates:", error);
@@ -8629,20 +8693,36 @@ function maskCLABE(clabe?: string | null): string | null {
       }
 
       const { rates } = req.body;
-      if (!rates || typeof rates !== 'object') {
+      if (!rates || typeof rates !== 'object' || Array.isArray(rates) ||
+          !Object.keys(rates).length) {
         return res.status(400).json({ message: "Formato de tasas inválido" });
       }
 
       const allInstitutions = await storage.getFinancialInstitutions();
       const instMap = new Map(allInstitutions.map((i: any) => [i.id, i]));
       const publishedOffers = await loadPublishedCommissionOffers();
-      const sanitizedRates: Record<string, any> = {};
+      const offerMap = new Map(publishedOffers.map(offer => [offer.offerId, offer]));
+      // A partial edit must never erase rates already assigned to other
+      // institutions/offers. The atomic version records the entire new map.
+      const sanitizedRates: Record<string, any> = {
+        ...((user.networkCommissionRates && typeof user.networkCommissionRates === "object")
+          ? user.networkCommissionRates as Record<string, any> : {}),
+      };
 
-      for (const [instId, rateObj] of Object.entries(rates)) {
+      for (const [rateKey, rateObj] of Object.entries(rates)) {
+        if (["__proto__", "prototype", "constructor"].includes(rateKey) ||
+            (typeof rateObj !== "number" &&
+             (!rateObj || typeof rateObj !== "object" || Array.isArray(rateObj)))) {
+          return res.status(400).json({ message: "Asignación de comisiones no válida" });
+        }
+        const offer = offerMap.get(rateKey);
+        const instId = offer?.institutionId || rateKey;
         const inst: any = instMap.get(instId);
-        if (!inst) continue;
+        if (!inst || (!offer && !publishedOffers.some(x => x.institutionId === instId))) {
+          return res.status(400).json({ message: "La oferta o financiera no está publicada o disponible" });
+        }
 
-        const offers = publishedOffers.filter(x => x.institutionId === instId);
+        const offers = offer ? [offer] : publishedOffers.filter(x => x.institutionId === instId);
         const ceiling = masterSafeCeilings(offers);
         const mbCeilingApertura = ceiling.apertura;
         const mbCeilingRenovacion = ceiling.renovacion;
@@ -8651,7 +8731,9 @@ function maskCLABE(clabe?: string | null): string | null {
         const rawSobretasa = typeof rateObj === 'number' ? 0 : parseFloat((rateObj as any)?.sobretasa ?? '0');
         const rawRenovacion = typeof rateObj === 'number' ? 0 : parseFloat((rateObj as any)?.renovacion ?? '0');
 
-        if (isNaN(rawApertura) || rawApertura < 0 || isNaN(rawSobretasa) || rawSobretasa < 0 || isNaN(rawRenovacion) || rawRenovacion < 0) {
+        if (!Number.isFinite(rawApertura) || rawApertura < 0 || rawApertura > 100 ||
+            !Number.isFinite(rawSobretasa) || rawSobretasa < 0 ||
+            !Number.isFinite(rawRenovacion) || rawRenovacion < 0 || rawRenovacion > 100) {
           return res.status(400).json({ 
             message: `Las comisiones asignadas para ${inst.name} no pueden ser negativas o inválidas` 
           });
@@ -8668,7 +8750,7 @@ function maskCLABE(clabe?: string | null): string | null {
             message: `El esquema de red de ${inst.name} excede el techo autorizado: renovación hasta ${mbCeilingRenovacion}% y sobretasa 0%.`
           });
         }
-        sanitizedRates[instId] = {
+        sanitizedRates[rateKey] = {
           apertura: rawApertura,
           sobretasa: 0, // Sobretasa is never distributable to the network.
           renovacion: rawRenovacion,
@@ -9740,6 +9822,57 @@ function maskCLABE(clabe?: string | null): string | null {
     }
   });
 
+  // Ficha comercial de la versión publicada: nunca usar los campos
+  // económicos internos de conditions/requirements ni datos del borrador.
+  const publishedCommercialTerms = (version: any) => {
+    const c = (version?.conditions || {}) as Record<string, any>;
+    const r = (version?.requirements || {}) as Record<string, any>;
+    return {
+      minAmount: c.minAmount ?? null,
+      maxAmount: c.maxAmount ?? null,
+      minTermMonths: c.minTermMonths ?? null,
+      maxTermMonths: c.maxTermMonths ?? null,
+      minInterestRate: c.minInterestRate ?? null,
+      maxInterestRate: c.maxInterestRate ?? null,
+      rateSource: c.rateSource ?? null,
+      loanPurposes: c.loanPurposes ?? null,
+      turnaround: c.turnaround ?? null,
+      sourceNotes: c.sourceNotes ?? null,
+      requiredDocumentationSource: c.requiredDocumentationSource ?? null,
+      // Published source descriptors, all non-economic and used in the
+      // imported V5 commercial catalog. No raw sourceTechnicalFields here:
+      // its freeform columns might include internal/administrative data.
+      clientOpeningSource: c.clientOpeningSource ?? null,
+      informationalMaximumLoan: c.informationalMaximumLoan ?? null,
+      requiredDocuments: Array.isArray(version?.requiredDocuments) ? version.requiredDocuments : [],
+      eligibility: {
+        minMonthsInBusinessSource: r.minMonthsInBusinessSource ?? null,
+        minMonthlyIncomeSource: r.minMonthlyIncomeSource ?? null,
+        minAnnualIncomeSource: r.minAnnualIncomeSource ?? null,
+        minPersonalBureauSource: r.minPersonalBureauSource ?? null,
+        satOpinion: r.satOpinion ?? null,
+        governmentSalesLimit: r.governmentSalesLimit ?? null,
+        excludedSectors: r.excludedSectors ?? null,
+        presence: r.presence ?? null,
+        minMonthsInBusiness: c.minCompanyAgeMonths ?? r.minMonthsInBusiness ?? null,
+        minMonthlyIncome: c.minMonthlyRevenue ?? r.minMonthlyIncome ?? null,
+        minAnnualIncome: r.minAnnualIncome ?? null,
+        bureauRequirement: c.bureauRequirement ?? r.bureauRequirement ?? null,
+        businessAgeSource: r.businessAgeSource ?? null,
+        bureauPolicySource: r.bureauPolicySource ?? null,
+        minShareholderBureau: r.minShareholderBureau ?? null,
+        minBusinessBureau: r.minBusinessBureau ?? null,
+        minPersonalBureau: r.minPersonalBureau ?? null,
+        allowsArrears: r.allowsArrears ?? null,
+        arrearsPolicy: r.arrearsPolicy ?? null,
+        guarantee: c.guaranteeType ?? r.guarantee ?? null,
+        guarantor: c.avalesType ?? r.guarantorSource ?? null,
+        requiresCiec: r.requiresCiec ?? null,
+        requiresFinancialStatements: r.requiresFinancialStatements ?? null,
+      },
+    };
+  };
+
   // 🔹 INSTITUTION PRODUCTS (Level 3A: Assigned to financieras)
   app.get('/api/institution-products', isAuthenticated, async (req: any, res) => {
     try {
@@ -9765,19 +9898,9 @@ function maskCLABE(clabe?: string | null): string | null {
             // VERSION. Only an explicit commercial whitelist is shared; this
             // never includes the lender gross, platform margin or overrate.
             const published = versions.find(v => v.status === "published");
-            const c = (published?.conditions || {}) as Record<string, any>;
             eligibleCommercialOffers.push({
               ...visibleProduct,
-              commercialTerms: {
-                minAmount: c.minAmount ?? null,
-                maxAmount: c.maxAmount ?? null,
-                maxTermMonths: c.maxTermMonths ?? null,
-                rateSource: c.rateSource ?? null,
-                loanPurposes: c.loanPurposes ?? null,
-                turnaround: c.turnaround ?? null,
-                sourceNotes: c.sourceNotes ?? null,
-                requiredDocumentationSource: c.requiredDocumentationSource ?? null,
-              },
+              commercialTerms: publishedCommercialTerms(published),
             });
           }
         }
@@ -9891,16 +10014,9 @@ function maskCLABE(clabe?: string | null): string | null {
         const userRole = user?.role || 'broker';
         const commercialOffer = sanitizeCommercialOffer(product, userRole);
         const published = versions.find(v => v.status === "published");
-        const c = (published?.conditions || {}) as Record<string, any>;
         return res.json({
           ...commercialOffer,
-          commercialTerms: {
-            minAmount: c.minAmount ?? null, maxAmount: c.maxAmount ?? null,
-            maxTermMonths: c.maxTermMonths ?? null, rateSource: c.rateSource ?? null,
-            loanPurposes: c.loanPurposes ?? null, turnaround: c.turnaround ?? null,
-            sourceNotes: c.sourceNotes ?? null,
-            requiredDocumentationSource: c.requiredDocumentationSource ?? null,
-          },
+          commercialTerms: publishedCommercialTerms(published),
         });
       }
       
@@ -9953,6 +10069,39 @@ function maskCLABE(clabe?: string | null): string | null {
     } catch (error) {
       console.error("Error fetching draft version:", error);
       res.status(500).json({ message: "Failed to fetch draft version" });
+    }
+  });
+
+  // Una oferta publicada no se edita en sitio: se clona la última versión
+  // publicada a un nuevo borrador y se preserva el historial inmutable.
+  app.post('/api/institution-products/:id/draft-from-published', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub || req.user?.id;
+      if (!(await requirePlatformRole(userId, ['super_admin']))) {
+        return res.status(403).json({ message: 'Solo Super Admin puede editar ofertas' });
+      }
+      const product = await storage.getInstitutionProduct(req.params.id);
+      if (!product) return res.status(404).json({ message: 'Oferta no encontrada' });
+      const versions = await storage.getInstitutionProductVersions(product.id);
+      const pending = versions.find(v => v.status === 'draft');
+      if (pending) return res.json({ version: pending, alreadyExists: true });
+      const published = versions.filter(v => v.status === 'published')
+        .sort((a, b) => b.versionNumber - a.versionNumber)[0];
+      if (!published || product.status !== 'published') {
+        return res.status(409).json({ message: 'Solo se puede crear una nueva versión desde una oferta publicada' });
+      }
+      const created = await storage.createInstitutionProductDraftVersion(product.id, {
+        conditions: structuredClone(published.conditions || {}),
+        requirements: structuredClone(published.requirements || {}),
+        requiredDocuments: structuredClone(published.requiredDocuments || []),
+        variablesConfiguration: structuredClone(published.variablesConfiguration || {}),
+        changeReason: 'Actualización de oferta publicada, pendiente de revisión y publicación',
+        createdBy: userId,
+      });
+      return res.status(201).json({ version: created, alreadyExists: false });
+    } catch (error) {
+      console.error('Error creating draft from published offer:', error);
+      return res.status(500).json({ message: 'No fue posible crear el borrador de la oferta' });
     }
   });
 
@@ -12645,8 +12794,8 @@ function maskCLABE(clabe?: string | null): string | null {
       res.json(projectSubmissionTarget(target, user.role));
     } catch (error) {
       const code = error instanceof Error ? error.message : "";
-      if (code.startsWith("OFFER_VERSION_")) {
-        return res.status(409).json({ code, message: "La oferta o versión no coincide con la respuesta." });
+      if (code.startsWith("OFFER_VERSION_") || code.startsWith("NETWORK_COMMISSION_")) {
+        return res.status(409).json({ code, message: "La oferta, versión o asignación de comisiones no es válida." });
       }
       if (error instanceof Error && error.message === "TARGET_ALREADY_SELECTED") {
         return res.status(409).json({

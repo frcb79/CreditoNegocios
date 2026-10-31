@@ -297,6 +297,85 @@ describe("Bloque B2.1 — Editor de Ofertas Comerciales en Borrador (Super Admin
     });
   });
 
+  describe("Edición segura de ofertas ya publicadas", () => {
+    it("crea un borrador v2 desde v1 sin mutar las condiciones publicadas", async () => {
+      const before = await storage.getInstitutionProductVersions(publishedProductId);
+      const v1 = before.find(v => v.status === "published");
+      expect(v1).toBeDefined();
+      const oldHash = v1!.versionHash;
+      const oldConditions = JSON.stringify(v1!.conditions);
+
+      const created = await request(app)
+        .post(`/api/institution-products/${publishedProductId}/draft-from-published`)
+        .set("x-test-user-id", testSuperAdminId);
+      expect(created.status).toBe(201);
+      expect(created.body.version.status).toBe("draft");
+      expect(created.body.version.versionNumber).toBe(2);
+      expect(created.body.version.conditions).toEqual(v1!.conditions);
+
+      const after = await storage.getInstitutionProductVersions(publishedProductId);
+      const published = after.find(v => v.id === v1!.id);
+      expect(published?.status).toBe("published");
+      expect(published?.versionHash).toBe(oldHash);
+      expect(JSON.stringify(published?.conditions)).toBe(oldConditions);
+
+      const repeated = await request(app)
+        .post(`/api/institution-products/${publishedProductId}/draft-from-published`)
+        .set("x-test-user-id", testSuperAdminId);
+      expect(repeated.status).toBe(200);
+      expect(repeated.body.alreadyExists).toBe(true);
+      expect(repeated.body.version.id).toBe(created.body.version.id);
+    });
+
+    it("broker no puede crear un borrador de una oferta publicada", async () => {
+      const res = await request(app)
+        .post(`/api/institution-products/${publishedProductId}/draft-from-published`)
+        .set("x-test-user-id", testBrokerId);
+      expect(res.status).toBe(403);
+    });
+
+    it("rechaza sobretasa repartible a Master o Broker incluso desde API", async () => {
+      const denied = await request(app)
+        .put(`/api/institution-products/${publishedProductId}/draft`)
+        .set("x-test-user-id", testSuperAdminId)
+        .send({ conditions: {
+          commissionRates: {
+            financiera: { apertura: 4, renovacion: 2, sobretasa: 1 },
+            masterBroker: { apertura: 2, renovacion: 1, sobretasa: 0.5 },
+            broker: { apertura: 1.5, renovacion: 0.75, sobretasa: 0 },
+          },
+        }});
+      expect(denied.status).toBe(400);
+      expect(denied.body.errors).toEqual(
+        expect.arrayContaining([expect.stringContaining("La sobretasa no puede asignarse a Master")])
+      );
+    });
+
+    it("la sobretasa y renovación solo se guardan en el nuevo borrador", async () => {
+      const before = await storage.getInstitutionProductVersions(publishedProductId);
+      const v1 = before.find(v => v.status === "published")!;
+      const res = await request(app)
+        .put(`/api/institution-products/${publishedProductId}/draft`)
+        .set("x-test-user-id", testSuperAdminId)
+        .send({ conditions: {
+          commissionRates: {
+            financiera: { apertura: 4, renovacion: 2, sobretasa: 1 },
+            masterBroker: { apertura: 2, renovacion: 1, sobretasa: 0 },
+            broker: { apertura: 1.5, renovacion: 0.75, sobretasa: 0 },
+          },
+          overrateOwner: "credito_negocios",
+        }});
+      expect(res.status).toBe(200);
+      expect(res.body.version.conditions.commissionRates.financiera.sobretasa).toBe(1);
+      expect(res.body.version.conditions.commissionRates.financiera.renovacion).toBe(2);
+      expect(res.body.version.conditions.overrateOwner).toBe("credito_negocios");
+      const after = await storage.getInstitutionProductVersions(publishedProductId);
+      const published = after.find(v => v.id === v1.id)!;
+      expect(published.versionHash).toEqual(v1.versionHash);
+      expect(published.conditions).toEqual(v1.conditions);
+    });
+  });
+
   describe("Seguridad RBAC: Exclusivo Super Admin", () => {
     it("Rechaza a Broker con 403 al intentar acceder o editar borradores", async () => {
       // 1. GET draft como Broker -> 403

@@ -17,6 +17,7 @@ import { es } from "date-fns/locale";
 import InviteBrokerModal from "@/components/Modals/InviteBrokerModal";
 import BulkBrokerInvitationModal from "@/components/Modals/BulkBrokerInvitationModal";
 import PendingBrokerInvitations from "@/components/Brokers/PendingBrokerInvitations";
+import MyCommissionRatesModal from "@/components/Commissions/MyCommissionRatesModal";
 import MasterBrokerOversight from "@/components/Commercial/MasterBrokerOversight";
 import {
   Network,
@@ -81,9 +82,11 @@ function MasterBrokerRatesConfig({ user }: { user: any }) {
   const queryClient = useQueryClient();
   const [ratesForm, setRatesForm] = useState<Record<string, { apertura: string; sobretasa?: string; renovacion?: string }>>({});
   const [hasChanges, setHasChanges] = useState(false);
+  const [offerEditorOpen, setOfferEditorOpen] = useState(false);
 
   const { data: ratesData, isLoading } = useQuery<{
     rates: Record<string, any>;
+    offerItems?: Array<{ offerId: string }>;
     items: Array<{
       institutionId: string;
       institutionName: string;
@@ -243,6 +246,25 @@ function MasterBrokerRatesConfig({ user }: { user: any }) {
       <div className="space-y-4 py-4">
         <Skeleton className="h-12 w-full rounded-xl" />
         <Skeleton className="h-48 w-full rounded-xl" />
+      </div>
+    );
+  }
+
+  // Fuente única para asignaciones: por oferta/version. El editor antiguo por
+  // financiera se mantiene sólo como compatibilidad con servidores anteriores.
+  if (Array.isArray(ratesData?.offerItems)) {
+    return (
+      <div className="rounded-xl border border-slate-200 bg-white p-5 space-y-3">
+        <h3 className="text-base font-semibold">Comisiones por oferta para tu red</h3>
+        <p className="text-sm text-slate-600">
+          Asigna a tus brokers porcentajes de apertura y renovación por producto.
+          Puedes aceptar los valores sugeridos de Crédito Negocios por oferta o para todas las ofertas publicadas.
+        </p>
+        <Button type="button" onClick={() => setOfferEditorOpen(true)}
+          data-testid="open-master-offer-commission-editor">
+          <Percent className="w-4 h-4 mr-2" /> Administrar comisiones por oferta
+        </Button>
+        <MyCommissionRatesModal open={offerEditorOpen} onOpenChange={setOfferEditorOpen} />
       </div>
     );
   }

@@ -127,7 +127,8 @@ export default function Commissions() {
   };
 
   const getSobretasaRate = (c: any): number => {
-    const proposalRate = c.credit?.finalProposal?.commissionRates?.superAdmin?.sobretasa;
+    const proposalRate = c.credit?.finalProposal?.commissionRates?.financiera?.sobretasa ??
+      c.credit?.finalProposal?.commissionRates?.superAdmin?.sobretasa;
     if (proposalRate !== undefined && proposalRate !== null && !isNaN(Number(proposalRate))) {
       return Number(proposalRate);
     }
@@ -139,7 +140,7 @@ export default function Commissions() {
     if (instOverRate !== undefined && instOverRate !== null && !isNaN(Number(instOverRate))) {
       return Number(instOverRate);
     }
-    return 5.0; // Default standard sobretasa in the platform (5.0%)
+    return 0; // Nunca inventar una sobretasa: solo se reconoce si la oferta/propuesta la registra.
   };
 
   const { data: commissionsData, isLoading, isError, error, refetch } = useQuery<any[]>({

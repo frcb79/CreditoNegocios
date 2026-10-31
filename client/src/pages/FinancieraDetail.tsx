@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useParams, Link } from "wouter";
 import { useAuth } from "@/hooks/useAuth";
+import { formatIndicativeRate } from "@/lib/formatIndicativeRate";
 import MainLayout from "@/components/MainLayout";
 import Header from "@/components/Header";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -49,6 +50,12 @@ export default function FinancieraDetail() {
   const isMasterBroker = user?.role === 'master_broker';
   const isBrokerOrMaster = isBroker || isMasterBroker;
 
+  // Para intermediarios el detalle fuente de verdad vive en cada oferta
+  // publicada, no en los metadatos generales heredados de la financiera.
+  useEffect(() => {
+    if (isBrokerOrMaster) setActiveTab("productos");
+  }, [isBrokerOrMaster]);
+
   useEffect(() => {
     if (typeof window !== "undefined") {
       const params = new URLSearchParams(window.location.search);
@@ -67,6 +74,15 @@ export default function FinancieraDetail() {
     queryKey: [`/api/institution-products`, { institutionId: id }],
     enabled: !!id,
   });
+
+  const { data: visibleOfferCommissions = [], isLoading: loadingOfferCommissions, isError: offerCommissionsError } =
+    useQuery<Array<{ offerId: string; offerName: string; institutionId: string;
+      apertura: number | null; renovacion: number | null }>>({
+      queryKey: ["/api/commissions/my-offer-rates"],
+      enabled: isBrokerOrMaster && !!id,
+    });
+  const thisInstitutionCommissions = visibleOfferCommissions.filter(row => row.institutionId === id);
+
 
   if (isLoading) {
     return (
@@ -516,6 +532,50 @@ export default function FinancieraDetail() {
                             {product.template?.description && (
                               <p className="text-xs text-slate-600 leading-relaxed">{product.template.description}</p>
                             )}
+                            {(() => {
+                              const details = (product as any).commercialTerms as Record<string, any> | undefined;
+                              if (!details) return null; // Admin sees full editable offer versions in the Offers tab.
+                              const money = (value: unknown) => value === null || value === undefined
+                                ? "N/D" : Number(value).toLocaleString("es-MX", {style: "currency", currency: "MXN", maximumFractionDigits: 0});
+                              const rate = (details.rateSource ? formatIndicativeRate(details.rateSource) : null) ||
+                                ([details.minInterestRate, details.maxInterestRate]
+                                  .filter((x: unknown) => x !== null && x !== undefined)
+                                  .map((x: unknown) => formatIndicativeRate(x)).join(" – ") || "Por confirmar");
+                              const eligibility = details.eligibility || {};
+                              const criteria: Array<[string, unknown]> = ([
+                                ["Antigüedad mínima (meses)", eligibility.minMonthsInBusiness],
+                                ["Ingreso mensual mínimo", eligibility.minMonthlyIncome],
+                                ["Ingresos anuales mínimos", eligibility.minAnnualIncome],
+                                ["Buró", eligibility.bureauPolicySource || eligibility.bureauRequirement],
+                                ["Opinión SAT", eligibility.satOpinion],
+                                ["Ventas a gobierno", eligibility.governmentSalesLimit],
+                                ["Cobertura", eligibility.presence],
+                                ["Giros excluidos", eligibility.excludedSectors],
+                                ["Garantía", eligibility.guarantee],
+                                ["Aval", eligibility.guarantor],
+                                ["Atrasos", eligibility.arrearsPolicy],
+                                ["Tiempo de respuesta", details.turnaround],
+                              ] as Array<[string, unknown]>).filter(([, val]) => val !== null && val !== undefined && val !== "");
+                              return <details className="border-t pt-3 text-xs">
+                                <summary className="cursor-pointer font-semibold text-blue-700">Ver ficha comercial completa</summary>
+                                <div className="grid grid-cols-2 gap-2 mt-3">
+                                  <div><strong>Monto:</strong> {money(details.minAmount)} – {money(details.maxAmount)}</div>
+                                  <div><strong>Plazo máximo:</strong> {details.maxTermMonths ?? "N/D"} meses</div>
+                                  <div className="col-span-2"><strong>Tasa indicativa:</strong> {rate}</div>
+                                  {criteria.map(([label, value]) => <div key={label}><strong>{label}:</strong> {String(value)}</div>)}
+                                  {details.clientOpeningSource && <div className="col-span-2"><strong>Comisión al cliente:</strong> {String(details.clientOpeningSource)}</div>}
+                                  {details.informationalMaximumLoan && <div className="col-span-2"><strong>Monto máximo variable:</strong> {String(details.informationalMaximumLoan)}</div>}
+                                </div>
+                                {Array.isArray(details.loanPurposes) && details.loanPurposes.length > 0 &&
+                                  <p className="mt-3"><strong>Destinos:</strong> {details.loanPurposes.join(" · ")}</p>}
+                                {Array.isArray(details.requiredDocuments) && details.requiredDocuments.length > 0 &&
+                                  <div className="mt-3"><strong>Documentos requeridos</strong>
+                                    <ul className="list-disc pl-5 mt-1 space-y-1">
+                                      {details.requiredDocuments.map((doc: string, idx: number) => <li key={idx}>{doc}</li>)}
+                                    </ul>
+                                  </div>}
+                              </details>;
+                            })()}
                           </div>
                         );
                       })}
@@ -645,7 +705,40 @@ export default function FinancieraDetail() {
 
               {/* Comisiones Tab */}
               <TabsContent value="comisiones" className="mt-6">
-                {isSuperAdmin && institutionProducts.length > 0 ? (
+                {isBrokerOrMaster ? (
+                  <div className="rounded-xl border border-slate-200 bg-white p-5 space-y-4">
+                    <div>
+                      <h3 className="font-semibold text-slate-900">Mis porcentajes por producto</h3>
+                      <p className="text-xs text-slate-500 mt-1">
+                        Apertura y renovación vigentes en la versión de cada oferta.
+                        La sobretasa es exclusiva de Crédito Negocios y no se ofrece al canal.
+                      </p>
+                    </div>
+                    {loadingOfferCommissions ? <p className="text-sm">Consultando porcentajes…</p> :
+                     offerCommissionsError ? <p role="alert" className="text-sm text-red-700">No se pudieron cargar las comisiones de esta financiera.</p> :
+                     thisInstitutionCommissions.length === 0 ?
+                       <p className="text-sm text-slate-600">No hay comisiones de ofertas publicadas disponibles.</p> :
+                       <div className="overflow-x-auto rounded-lg border">
+                         <table className="w-full text-left text-xs">
+                           <thead className="bg-slate-50">
+                             <tr><th className="p-3">Producto</th><th className="p-3">Apertura</th><th className="p-3">Renovación</th></tr>
+                           </thead>
+                           <tbody>
+                             {thisInstitutionCommissions.map(row => (
+                               <tr key={row.offerId} className="border-t">
+                                 <td className="p-3 font-medium">{row.offerName}</td>
+                                 <td className="p-3">{row.apertura !== null ? `${row.apertura.toFixed(2)}%` : "Por asignar"}</td>
+                                 <td className="p-3">{row.renovacion !== null ? `${row.renovacion.toFixed(2)}%` : "Por asignar"}</td>
+                               </tr>
+                             ))}
+                           </tbody>
+                         </table>
+                       </div>}
+                    {isMasterBroker && <Link href="/comisiones">
+                      <Button variant="outline" size="sm">Administrar comisiones para mi red</Button>
+                    </Link>}
+                  </div>
+                ) : isSuperAdmin && institutionProducts.length > 0 ? (
                 <div className="rounded-xl border border-blue-200 bg-blue-50/50 p-6 space-y-3">
                   <h3 className="font-bold text-slate-900 text-base">Comisiones por oferta</h3>
                   <p className="text-sm text-slate-700">La apertura, renovación y sobretasa se administran por versión de oferta, no como una sola tasa general para esta financiera. La sobretasa es exclusiva de Crédito Negocios.</p>

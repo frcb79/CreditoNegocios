@@ -103,12 +103,17 @@ export default function OfferDraftEditorModal({
   const [minAmount, setMinAmount] = useState<string>("");
   const [maxAmount, setMaxAmount] = useState<string>("");
   const [minRate, setMinRate] = useState<string>("");
+  const [rateSource, setRateSource] = useState<string>("");
   const [maxRate, setMaxRate] = useState<string>("");
   const [minTerm, setMinTerm] = useState<string>("");
   const [maxTerm, setMaxTerm] = useState<string>("");
 
   // Esquema de comisiones individual por oferta (B2.2)
   const [finCommissionRate, setFinCommissionRate] = useState<string>("");
+  const [finRenewal, setFinRenewal] = useState("");
+  const [finOverrate, setFinOverrate] = useState("");
+  const [masterRenewal, setMasterRenewal] = useState("");
+  const [brokerRenewal, setBrokerRenewal] = useState("");
   const [masterCommissionRate, setMasterCommissionRate] = useState<string>("");
   const [brokerCommissionRate, setBrokerCommissionRate] = useState<string>("");
   const [commissionNotes, setCommissionNotes] = useState<string>("");
@@ -168,6 +173,7 @@ export default function OfferDraftEditorModal({
     setMinAmount(cond.minAmount !== undefined && cond.minAmount !== null ? String(cond.minAmount) : "");
     setMaxAmount(cond.maxAmount !== undefined && cond.maxAmount !== null ? String(cond.maxAmount) : "");
     setMinRate(cond.minInterestRate !== undefined && cond.minInterestRate !== null ? String(cond.minInterestRate) : "");
+    setRateSource(cond.rateSource === undefined || cond.rateSource === null ? "" : String(cond.rateSource));
     setMaxRate(cond.maxInterestRate !== undefined && cond.maxInterestRate !== null ? String(cond.maxInterestRate) : "");
     setMinTerm(cond.minTermMonths !== undefined && cond.minTermMonths !== null ? String(cond.minTermMonths) : "");
     setMaxTerm(cond.maxTermMonths !== undefined && cond.maxTermMonths !== null ? String(cond.maxTermMonths) : "");
@@ -183,6 +189,10 @@ export default function OfferDraftEditorModal({
     setBrokerCommissionRate(
       comm.broker?.apertura !== undefined && comm.broker?.apertura !== null ? String(comm.broker.apertura) : ""
     );
+    setFinRenewal(comm.financiera?.renovacion == null ? "" : String(comm.financiera.renovacion));
+    setFinOverrate(comm.financiera?.sobretasa == null ? "" : String(comm.financiera.sobretasa));
+    setMasterRenewal(comm.masterBroker?.renovacion == null ? "" : String(comm.masterBroker.renovacion));
+    setBrokerRenewal(comm.broker?.renovacion == null ? "" : String(comm.broker.renovacion));
     setCommissionNotes(comm.notes || "");
 
     // Condiciones de elegibilidad
@@ -334,6 +344,16 @@ export default function OfferDraftEditorModal({
     const parsedFinComm = finCommissionRate.trim() !== "" ? parseFloat(finCommissionRate) : null;
     const parsedMasterComm = masterCommissionRate.trim() !== "" ? parseFloat(masterCommissionRate) : null;
     const parsedBrokerComm = brokerCommissionRate.trim() !== "" ? parseFloat(brokerCommissionRate) : null;
+    const parseExtra = (v: string) => v.trim() === "" ? null : Number(v);
+    const parsedFinRenewal = parseExtra(finRenewal);
+    const parsedFinOverrate = parseExtra(finOverrate);
+    const parsedMasterRenewal = parseExtra(masterRenewal);
+    const parsedBrokerRenewal = parseExtra(brokerRenewal);
+    if ([parsedFinRenewal, parsedFinOverrate, parsedMasterRenewal, parsedBrokerRenewal]
+      .some(value => value !== null && (!Number.isFinite(value) || value < 0 || value > 100))) {
+      toast({ title: "Porcentaje inválido", description: "Las tasas deben estar entre 0% y 100%.", variant: "destructive" });
+      return;
+    }
 
     if (parsedFinComm !== null && (isNaN(parsedFinComm) || parsedFinComm < 0)) {
       toast({
@@ -385,6 +405,7 @@ export default function OfferDraftEditorModal({
     conditions.minAmount = parsedMinAmt;
     conditions.maxAmount = parsedMaxAmt;
     conditions.minInterestRate = parsedMinR;
+    conditions.rateSource = rateSource.trim() || null;
     conditions.maxInterestRate = parsedMaxR;
     conditions.minTermMonths = parsedMinT;
     conditions.maxTermMonths = parsedMaxT;
@@ -394,16 +415,23 @@ export default function OfferDraftEditorModal({
     const rateText = (value: any) => value == null ? "" : String(value);
     const commissionsChanged = finCommissionRate !== rateText(baseComm.financiera?.apertura) ||
       masterCommissionRate !== rateText(baseComm.masterBroker?.apertura) ||
-      brokerCommissionRate !== rateText(baseComm.broker?.apertura) || commissionNotes !== (baseComm.notes || "");
+      brokerCommissionRate !== rateText(baseComm.broker?.apertura) ||
+      finRenewal !== rateText(baseComm.financiera?.renovacion) ||
+      finOverrate !== rateText(baseComm.financiera?.sobretasa) ||
+      masterRenewal !== rateText(baseComm.masterBroker?.renovacion) ||
+      brokerRenewal !== rateText(baseComm.broker?.renovacion) ||
+      commissionNotes !== (baseComm.notes || "");
     if (commissionsChanged) {
       conditions.commissionRates = {
         ...baseComm,
-        financiera: { ...baseComm.financiera, apertura: parsedFinComm },
-        masterBroker: { ...baseComm.masterBroker, apertura: parsedMasterComm },
-        broker: { ...baseComm.broker, apertura: parsedBrokerComm },
+        financiera: { ...baseComm.financiera, apertura: parsedFinComm, renovacion: parsedFinRenewal, sobretasa: parsedFinOverrate },
+        masterBroker: { ...baseComm.masterBroker, apertura: parsedMasterComm, renovacion: parsedMasterRenewal, sobretasa: 0 },
+        broker: { ...baseComm.broker, apertura: parsedBrokerComm, renovacion: parsedBrokerRenewal, sobretasa: 0 },
         type: baseComm.type || "porcentaje",
         notes: commissionNotes.trim(),
       };
+      // Sobretasa exclusivamente interna: jamás forma parte de las comisiones repartibles.
+      conditions.overrateOwner = "credito_negocios";
     }
 
     // Variables de elegibilidad (asociadas a campos reales del expediente)
@@ -663,6 +691,13 @@ export default function OfferDraftEditorModal({
                         <span>Tasa de Interés (% Anual)</span>
                       </div>
                       <div className="space-y-1">
+                        <Label className="text-[10px] text-slate-500 font-medium">Tasa indicativa o fórmula publicada</Label>
+                        <Input type="text" value={rateSource} onChange={e => setRateSource(e.target.value)}
+                          placeholder="Ej. TIIE + 8.15, 18% o 18%-29%"
+                          className="h-8 text-xs border-slate-200" data-testid="input-rate-source" />
+                        <p className="text-[10px] text-slate-500">Este texto se muestra en el catálogo. No se convierte una fórmula TIIE a tasa fija.</p>
+                      </div>
+                      <div className="space-y-1">
                         <Label className="text-[10px] text-slate-500 font-medium">Tasa Mínima (%)</Label>
                         <Input
                           type="number"
@@ -756,6 +791,21 @@ export default function OfferDraftEditorModal({
                         <span className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-slate-400 font-bold">%</span>
                       </div>
                     </div>
+
+                    <div className="space-y-1">
+                      <Label className="text-[10px] text-slate-500">Renovación (% de crédito)</Label>
+                      <Input type="number" step="0.01" min="0" max="100"
+                        value={finRenewal} onChange={e => setFinRenewal(e.target.value)}
+                        placeholder="0.00" className="h-8 text-xs"
+                        data-testid="input-fin-renewal" />
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-[10px] text-slate-500">Sobretasa CN (%) — exclusiva de plataforma</Label>
+                      <Input type="number" step="0.01" min="0" max="100"
+                        value={finOverrate} onChange={e => setFinOverrate(e.target.value)}
+                        placeholder="0.00" className="h-8 text-xs"
+                        data-testid="input-fin-overrate" />
+                    </div>
                     <span className="text-[10px] text-slate-400 block leading-tight">
                       Monto bruto que la financiera paga a Crédito Negocios por colocación.
                     </span>
@@ -787,6 +837,14 @@ export default function OfferDraftEditorModal({
                         <span className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-slate-400 font-bold">%</span>
                       </div>
                     </div>
+
+                    <div className="space-y-1">
+                      <Label className="text-[10px] text-slate-500">Renovación autorizada (%)</Label>
+                      <Input type="number" step="0.01" min="0" max="100"
+                        value={masterRenewal} onChange={e => setMasterRenewal(e.target.value)}
+                        placeholder="0.00" className="h-8 text-xs"
+                        data-testid="input-master-renewal" />
+                    </div>
                     <span className="text-[10px] text-slate-400 block leading-tight">
                       Tope de red. En colocación directa percibe este porcentaje; en red, percibe el diferencial.
                     </span>
@@ -817,6 +875,14 @@ export default function OfferDraftEditorModal({
                         />
                         <span className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-slate-400 font-bold">%</span>
                       </div>
+                    </div>
+
+                    <div className="space-y-1">
+                      <Label className="text-[10px] text-slate-500">Renovación autorizada (%)</Label>
+                      <Input type="number" step="0.01" min="0" max="100"
+                        value={brokerRenewal} onChange={e => setBrokerRenewal(e.target.value)}
+                        placeholder="0.00" className="h-8 text-xs"
+                        data-testid="input-broker-renewal" />
                     </div>
                     <span className="text-[10px] text-slate-400 block leading-tight">
                       Comisión garantizada al broker originador que registra la solicitud.

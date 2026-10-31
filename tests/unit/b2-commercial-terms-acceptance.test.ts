@@ -77,7 +77,11 @@ describe("AG — FASE 2B.2B: Cambios y Aceptación Comercial", () => {
   };
 
   const createTestInstitution = async (name = "Financiera Test") => {
-    const inst = await storage.createFinancialInstitution({name, isActive: true} as any);
+    // Platform-created catalog institutions are visible to commercial roles.
+    // Ad-hoc private lender records must not be exposed via the broker listing.
+    const inst = await storage.createFinancialInstitution({
+      name, isActive: true, createdByAdmin: true,
+    } as any);
     // COM launch: assignments require a real, versioned, published offer;
     // historical lender-wide defaults are no longer a valid ceiling.
     const product = await storage.createInstitutionProduct({
@@ -88,13 +92,23 @@ describe("AG — FASE 2B.2B: Cambios y Aceptación Comercial", () => {
       conditions: {
         minAmount: 100000, maxAmount: 1000000, maxTermMonths: 36,
         rateSource: "Tasa indicativa",
+        loanPurposes: "Capital de trabajo",
+        clientOpeningSource: "2% al cliente",
+        requiredDocumentationSource: "Estados de cuenta y CSF",
         commissionRates: {
           financiera: { apertura: 6, renovacion: 3 },
           masterBroker: { apertura: 5, renovacion: 2 },
           broker: { apertura: 3, renovacion: 1 },
         },
       },
-      requirements: { targetProfiles: ["persona_moral"] },
+      requirements: {
+        targetProfiles: ["persona_moral"],
+        excludedSectors: "Casinos",
+        presence: "Ciudad de México",
+        satOpinion: "Positiva",
+        governmentSalesLimit: "Hasta 20%",
+        minAnnualIncomeSource: "$3,000,000 MXN",
+      },
       requiredDocuments: ["Identificación"],
       changeReason: "Publicación de oferta para prueba contractual",
     });
@@ -131,6 +145,30 @@ describe("AG — FASE 2B.2B: Cambios y Aceptación Comercial", () => {
       throw new Error(`Failed to verify OTP: ${JSON.stringify(verifyRes.body)}`);
     }
   };
+
+  describe("Catalog public detail and V5 source fields", () => {
+    it("Broker can open a visible institution and receives safe published V5 source terms", async () => {
+      const broker = await createTestUser("broker", "Broker Ficha");
+      const inst = await createTestInstitution("Catalogo Prueba " + randomUUID());
+      currentAuthUser = broker;
+      const list = await request(app).get("/api/financial-institutions");
+      expect(list.status).toBe(200);
+      expect(list.body.some((x: any) => x.id === inst.id)).toBe(true);
+      const detail = await request(app).get(`/api/financial-institutions/${inst.id}`);
+      expect(detail.status).toBe(200);
+      expect(detail.body.id).toBe(inst.id);
+      const offers = await request(app).get("/api/institution-products");
+      const offer = offers.body.find((x: any) => x.institutionId === inst.id);
+      expect(offer).toBeDefined();
+      expect(offer.commercialTerms.eligibility.excludedSectors).toBe("Casinos");
+      expect(offer.commercialTerms.eligibility.presence).toBe("Ciudad de México");
+      expect(offer.commercialTerms.eligibility.satOpinion).toBe("Positiva");
+      expect(offer.commercialTerms.clientOpeningSource).toBe("2% al cliente");
+      expect(offer.commercialTerms.requiredDocumentationSource).toBe("Estados de cuenta y CSF");
+      expect(offer.commercialTerms.commissionRates).toBeUndefined();
+      expect(offer.commercialTerms.sourceTechnicalFields).toBeUndefined();
+    });
+  });
 
   describe("1. Versionamiento y Notificación Individual de Cambios (Reglas 1, 2, 3)", () => {
     it("Super Admin modifica plazos comerciales: incrementa versión e inserta notificaciones a Brokers y Masters", async () => {
@@ -432,6 +470,69 @@ describe("AG — FASE 2B.2B: Cambios y Aceptación Comercial", () => {
       });
 
       expect(unblockedRes.status).toBe(201);
+    });
+  });
+
+  describe("Asignación por oferta de Master Broker", () => {
+    it("sugiere broker directo por oferta y valida el techo de ese producto", async () => {
+      const master = await createTestUser("master_broker", "Master Por Oferta");
+      const inst = await createTestInstitution("Financiera Dos Productos");
+      const first = (await storage.getInstitutionProducts(inst.id))[0];
+      const second = await storage.createInstitutionProduct({
+        institutionId: inst.id, name: "Revolvente", customName: "Revolvente",
+        productType: "credito_revolvente", targetProfiles: ["persona_moral"], isActive: true,
+      } as any, {
+        conditions: {
+          minAmount: 200000, maxAmount: 2000000, maxTermMonths: 12,
+          rateSource: "Tasa indicativa",
+          commissionRates: {
+            financiera: { apertura: 4, renovacion: 2 },
+            masterBroker: { apertura: 2, renovacion: 1 },
+            broker: { apertura: 1.5, renovacion: 0.5 },
+          },
+        },
+        requirements: { targetProfiles: ["persona_moral"] },
+        requiredDocuments: ["Identificación"],
+        changeReason: "Segunda oferta de prueba",
+      });
+      const versions = await storage.getInstitutionProductVersions(second.id);
+      await storage.publishInstitutionProductVersion(second.id, versions[0].id, {
+        changeReason: "Segunda oferta publicada",
+      });
+
+      currentAuthUser = master;
+      const queried = await request(app).get("/api/master-broker/network-rates");
+      expect(queried.status).toBe(200);
+      const ownOffers = queried.body.offerItems.filter((item: any) => item.institutionId === inst.id);
+      expect(ownOffers).toHaveLength(2);
+      expect(ownOffers.find((x: any) => x.offerId === first.id).suggestedBroker.apertura).toBe(3);
+      expect(ownOffers.find((x: any) => x.offerId === second.id).masterCeiling.apertura).toBe(2);
+
+      const rejected = await request(app).put("/api/master-broker/network-rates").send({
+        rates: { [second.id]: { apertura: 3, renovacion: 0.5 } },
+      });
+      expect(rejected.status).toBe(400);
+
+      const accepted = await request(app).put("/api/master-broker/network-rates").send({
+        rates: {
+          [first.id]: { apertura: 3, renovacion: 1 },
+          [second.id]: { apertura: 1.5, renovacion: 0.5 },
+        },
+      });
+      expect(accepted.status).toBe(200);
+      const after = await request(app).get("/api/master-broker/network-rates");
+      expect(after.body.rates[first.id].apertura).toBe(3);
+      expect(after.body.rates[second.id].apertura).toBe(1.5);
+      expect(after.body.rates[second.id].sobretasa).toBe(0);
+      // Updating only one product must not erase the other product's assignment.
+      const partial = await request(app).put("/api/master-broker/network-rates").send({
+        rates: { [second.id]: { apertura: 1, renovacion: 0.25 } },
+      });
+      expect(partial.status).toBe(200);
+      const preserved = await request(app).get("/api/master-broker/network-rates");
+      expect(preserved.body.rates[first.id].apertura).toBe(3);
+      expect(preserved.body.rates[second.id].apertura).toBe(1);
+      expect(preserved.body.rates[second.id].renovacion).toBe(0.25);
     });
   });
 

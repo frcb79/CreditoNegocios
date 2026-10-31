@@ -90,6 +90,9 @@ jobs:
             tests/unit/imported-offer-matching.test.ts
             tests/unit/final-audit-matching.test.ts
             tests/unit/b2-admin-comisiones-ofertas.test.ts
+            tests/unit/b2-admin-editor-ofertas.test.ts
+            tests/unit/network-commission-snapshot.test.ts
+            tests/unit/indicative-rate-format.test.ts
             tests/unit/b3-admin-publicacion-vigencia.test.ts
             tests/unit/matching-preview-http.test.ts
             tests/unit/commercial-terms-current-version.test.ts

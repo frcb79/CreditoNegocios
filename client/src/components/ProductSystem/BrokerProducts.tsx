@@ -1,5 +1,6 @@
 import { useState, useMemo, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { formatIndicativeRate } from "@/lib/formatIndicativeRate";
 import { useLocation, useSearch } from "wouter";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -212,14 +213,24 @@ function readDisplayTerms(p: InstitutionProductWithTemplate): Record<string, any
     montoMax: terms.maxAmount ?? null,
     plazoMax: terms.maxTermMonths ?? null,
     plazo: terms.maxTermMonths ?? null,
-    tasaInteres: terms.rateSource || null,
-    tasa: terms.rateSource || null,
+    tasaInteres: terms.rateSource || [terms.minInterestRate, terms.maxInterestRate]
+      .filter((v: unknown) => v !== null && v !== undefined && v !== "")
+      .map((v: unknown) => formatRate(v)).join(" – ") || null,
+    tasa: terms.rateSource || [terms.minInterestRate, terms.maxInterestRate]
+      .filter((v: unknown) => v !== null && v !== undefined && v !== "")
+      .map((v: unknown) => formatRate(v)).join(" – ") || null,
+    eligibility: terms.eligibility || {},
+    requiredDocuments: Array.isArray(terms.requiredDocuments) ? terms.requiredDocuments : [],
     destinos: terms.loanPurposes
       ? (Array.isArray(terms.loanPurposes) ? terms.loanPurposes : [String(terms.loanPurposes)])
       : [],
     observaciones: terms.sourceNotes || undefined,
     tiempoRespuesta: terms.turnaround || undefined,
     documentacionFuente: terms.requiredDocumentationSource || undefined,
+    presencia: terms.eligibility?.presence ?? null,
+    girosProhibidos: terms.eligibility?.excludedSectors ?? null,
+    aperturaClienteFuente: terms.clientOpeningSource ?? null,
+    montoMaximoVariable: terms.informationalMaximumLoan ?? null,
   };
 }
 
@@ -296,13 +307,7 @@ function formatPlazo(val: any): string {
   return `${num} meses`;
 }
 
-function formatRate(val: any): string | null {
-  if (val === undefined || val === null || val === "") return null;
-  // Rate sources may contain TIIE spreads, factors or annual percentages.
-  // Never parse TIIE+7.5 as a fabricated 7.5% annual interest rate.
-  if (typeof val === "string") return val;
-  return Number.isFinite(val) ? `${val}% anual` : null;
-}
+const formatRate = formatIndicativeRate;
 
 function formatFee(val: any): string {
   if (val === undefined || val === null || val === "") return "N/D";
@@ -461,7 +466,7 @@ function InstitutionCommercialCard({
                 Comisión Apertura
               </span>
               <p className="text-xs font-bold text-slate-900 mt-0.5">
-                {fee ? formatFee(fee) : "Consultar"}
+                {config.aperturaClienteFuente ? String(config.aperturaClienteFuente) : fee ? formatFee(fee) : "Consultar"}
               </p>
             </div>
           </div>
@@ -1179,6 +1184,33 @@ export default function BrokerProducts() {
               const prohibitedGiros = config.girosProhibidos;
               const presence = config.presencia;
               const destinos = config.destinos;
+              const eligibility = (config.eligibility || {}) as Record<string, unknown>;
+              const publishedDocs: string[] = Array.isArray(config.requiredDocuments) ? config.requiredDocuments : [];
+              const readablePolicy: Array<[string, unknown]> = ([
+                ["Antigüedad mínima (meses)", eligibility.minMonthsInBusiness],
+                ["Ingresos mensuales mínimos", eligibility.minMonthlyIncome],
+                ["Ingresos anuales mínimos", eligibility.minAnnualIncome],
+                ["Política de Buró", eligibility.bureauPolicySource || eligibility.bureauRequirement],
+                ["Antigüedad (texto fuente)", eligibility.minMonthsInBusinessSource],
+                ["Ingresos mensuales (texto fuente)", eligibility.minMonthlyIncomeSource],
+                ["Ingresos anuales (texto fuente)", eligibility.minAnnualIncomeSource],
+                ["Opinión SAT", eligibility.satOpinion],
+                ["Límite de ventas al gobierno", eligibility.governmentSalesLimit],
+                ["Buró de empresa", eligibility.minBusinessBureau],
+                ["Buró de accionista", eligibility.minShareholderBureau],
+                ["Buró personal", eligibility.minPersonalBureau],
+                ["Buró personal (texto fuente)", eligibility.minPersonalBureauSource],
+                ["Monto máximo variable", config.montoMaximoVariable],
+                ["Apertura al cliente", config.aperturaClienteFuente],
+                ["Atrasos permitidos", eligibility.allowsArrears == null ? null : eligibility.allowsArrears ? "Sí" : "No"],
+                ["Política de atrasos", eligibility.arrearsPolicy],
+                ["Garantía", eligibility.guarantee],
+                ["Aval", eligibility.guarantor],
+                ["Requiere CIEC", eligibility.requiresCiec == null ? null : eligibility.requiresCiec ? "Sí" : "No"],
+                ["Estados financieros", eligibility.requiresFinancialStatements == null ? null : eligibility.requiresFinancialStatements ? "Sí" : "No"],
+                ["Tiempo de respuesta", config.tiempoRespuesta],
+                ["Observaciones comerciales", config.observaciones],
+              ] as Array<[string, unknown]>).filter(([, value]) => value !== null && value !== undefined && value !== "" && value !== "por_definir");
 
               return (
                 <div>
@@ -1246,10 +1278,10 @@ export default function BrokerProducts() {
                     {/* Details Sections */}
                     <div className="space-y-4 text-xs">
                       {/* Comisión */}
-                      {fee && (
+                      {(config.aperturaClienteFuente || fee) && (
                         <div className="flex justify-between py-2 border-b">
-                          <span className="text-muted-foreground font-medium">Comisión por Apertura</span>
-                          <span className="font-bold text-foreground">{formatFee(fee)}</span>
+                          <span className="text-muted-foreground font-medium">Comisión por Apertura al Cliente</span>
+                          <span className="font-bold text-foreground">{config.aperturaClienteFuente ? String(config.aperturaClienteFuente) : formatFee(fee)}</span>
                         </div>
                       )}
 
@@ -1284,6 +1316,29 @@ export default function BrokerProducts() {
                           </div>
                           <p className="leading-relaxed pl-5 text-[11px]">{prohibitedGiros}</p>
                         </div>
+                      )}
+
+                      {readablePolicy.length > 0 && (
+                        <div className="rounded-lg border p-3 space-y-2">
+                          <h4 className="text-sm font-semibold">Elegibilidad y condiciones de la oferta publicada</h4>
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                            {readablePolicy.map(([label, value]) => (
+                              <div key={label}><span className="font-medium text-muted-foreground">{label}: </span>
+                                <span>{String(value)}</span></div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                      {publishedDocs.length > 0 && (
+                        <div className="rounded-lg border p-3 space-y-2">
+                          <h4 className="text-sm font-semibold">Documentos requeridos por esta oferta</h4>
+                          <ul className="list-disc pl-5 space-y-1">
+                            {publishedDocs.map((doc, index) => <li key={index}>{doc}</li>)}
+                          </ul>
+                        </div>
+                      )}
+                      {config.documentacionFuente && (
+                        <p><span className="font-medium">Documentación adicional: </span>{String(config.documentacionFuente)}</p>
                       )}
 
                       {/* Template Description */}
