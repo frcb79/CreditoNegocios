@@ -665,7 +665,7 @@ export default function Commissions() {
           )}
 
           {/* Selector de Pestañas para Super Admin */}
-          {(user?.role === 'admin' || user?.role === 'super_admin') && (
+          {(user?.role === 'super_admin') && (
             <div className="flex gap-2 mb-6 border-b pb-3 flex-wrap">
               <Button
                 variant={activeTab === 'commissions' ? 'default' : 'outline'}
@@ -1655,7 +1655,7 @@ export default function Commissions() {
             </>
           )}
           {/* Vista de Sobretasas para Super Admin (#11) */}
-          {activeTab === 'sobretasa' && (user?.role === 'admin' || user?.role === 'super_admin') ? (
+          {activeTab === 'sobretasa' && (user?.role === 'super_admin') ? (
             <div className="space-y-6">
               {/* Disclaimer informativo sobre Sobretasas */}
               <div className="p-4 bg-purple-50 border-2 border-purple-200 rounded-xl flex items-start gap-3 shadow-sm">
