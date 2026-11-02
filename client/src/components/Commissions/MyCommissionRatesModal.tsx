@@ -81,6 +81,7 @@ export default function MyCommissionRatesModal({ open, onOpenChange }: {
       ...Object.fromEntries(network.offerItems.map(item => [item.offerId, suggested(item)])),
     }));
     setDirty(true);
+    setChangedOfferIds(network.offerItems.map(item => item.offerId));
   };
 
   const save = useMutation({
