@@ -65,16 +65,16 @@ describe("COM-RES-GRAPHICS-V4: generic artwork import",()=>{
  it("refuses checksum mismatch, QR, missing WhatsApp and geometry outside the canvas",()=>{
   const png=fakePng();const good=map(png);
   expect(()=>normalizeV4Map(Buffer.from(JSON.stringify(good)),fakePng(1080,1920),
-   "01_Impactantes_Explicativas_NUEVAS/")).toThrow();
+   "ARTES_Y_MAPAS/01_Impactantes_Explicativas_NUEVAS/")).toThrow();
   const qr=structuredClone(good);qr.fields.TRACKING_LINK.qr=true;
   expect(()=>normalizeV4Map(Buffer.from(JSON.stringify(qr)),png,
-   "01_Impactantes_Explicativas_NUEVAS/")).toThrow(/QR/);
+   "ARTES_Y_MAPAS/01_Impactantes_Explicativas_NUEVAS/")).toThrow(/QR/);
   const invalid=structuredClone(good);invalid.fields.BROKER_WHATSAPP.required=false;
   expect(()=>normalizeV4Map(Buffer.from(JSON.stringify(invalid)),png,
-   "01_Impactantes_Explicativas_NUEVAS/")).toThrow();
+   "ARTES_Y_MAPAS/01_Impactantes_Explicativas_NUEVAS/")).toThrow();
   const overflow=structuredClone(good);overflow.fields.BROKER_NAME.x=1000;
   expect(()=>normalizeV4Map(Buffer.from(JSON.stringify(overflow)),png,
-   "01_Impactantes_Explicativas_NUEVAS/")).toThrow();
+   "ARTES_Y_MAPAS/01_Impactantes_Explicativas_NUEVAS/")).toThrow();
  });
  it("rejects invalid or empty ZIP archives",()=>{
   expect(()=>readV4Zip(Buffer.from("not zip"))).toThrow();
@@ -92,7 +92,7 @@ describe("COM-RES-GRAPHICS-V4: generic artwork import",()=>{
   expect(api).toContain("typographyReviewRequired");
   expect(api).toContain("commercial_profile_logos");
   expect(api).toContain('"/api/commercial-resources/my-logo"');
-  expect(api).toContain('user.id,valid.png,valid.sha256');
+  expect(api).toContain('return res.status(410).json({message:"Los logos de brokers y masters ya no se admiten en Recursos Comerciales."})');
   expect(api).not.toContain('"/api/admin/commercial-resources/approve-logo/:id"');
   expect(api).toContain("user?.role!==\"super_admin\"");
   expect(api).not.toContain("PUBLICAR REFERENCIAS FOTOGRAFICAS");
@@ -114,13 +114,13 @@ describe("COM-RES-GRAPHICS-V4: generic artwork import",()=>{
   const page=load("client/src/pages/CommercialResources.tsx");
   const admin=load("client/src/components/Commercial/CommercialResourcesAdmin.tsx");
   expect(renderer).toContain('ctx.drawImage(background,0,0)');
-  expect(renderer).toContain('if(identity.approvedLogoUrl)');
+  expect(renderer).not.toContain('approvedLogoUrl');
   expect(renderer).toContain('if(!phone)throw new Error');
   expect(renderer).not.toContain("Asesor Financiero");
   expect(page).toContain("/api/commercial-resources/my-approved-identity");
   const settings=load("client/src/pages/Settings.tsx");
   const profileLogo=load("client/src/components/Commercial/CommercialProfileLogo.tsx");
-  expect(settings).toContain("{isBrokerOrMaster && <CommercialProfileLogo />}");
+  expect(settings).not.toContain("CommercialProfileLogo");
   expect(profileLogo).toContain('data-testid="commercial-profile-logo-input"');
   expect(profileLogo).toContain('data-testid="commercial-profile-logo-remove"');
   expect(admin).not.toContain('data-testid="admin-commercial-logo-approval"');

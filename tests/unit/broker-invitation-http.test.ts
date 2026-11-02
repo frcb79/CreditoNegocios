@@ -1,3 +1,4 @@
+import { confirmAccountAccess } from "../../server/accountAccess";
 import { randomUUID } from "node:crypto";
 import express from "express";
 import type { Server } from "node:http";
@@ -90,6 +91,7 @@ describe("SEC-INVITES: bulk preview and explicit send routes",()=>{
     user=superAdmin;
     const pending=await storage.createUser({email:`pending-master-${randomUUID()}@example.test`,role:"master_broker",password:null,isActive:true,status:"active"} as any);
     const registered=await storage.createUser({email:`registered-master-${randomUUID()}@example.test`,role:"master_broker",password:"test-only-not-a-real-hash",resetToken:"must-not-leak",isActive:true,status:"active"} as any);
+    await confirmAccountAccess(registered.id);
     const response=await request(app).get("/api/broker-network");
     expect(response.status).toBe(200);
     const p=response.body.masterBrokers.find((u:any)=>u.id===pending.id);

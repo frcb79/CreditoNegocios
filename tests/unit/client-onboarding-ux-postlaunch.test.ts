@@ -54,8 +54,8 @@ describe("Alta de clientes postlanzamiento — UX incremental", () => {
     expect(advanced).toContain('Accordion type="multiple"');
     expect(advanced).toContain('data-testid="client-advanced-profile-form"');
     expect(advanced).not.toContain("Estado civil es requerido para Persona Física");
-    expect(advanced).toContain('data.atrasosDeudasBuro === "si"');
-    expect(advanced).toContain('data.cuentaConGarantiaFisica === "hipotecaria"');
+    expect(source("shared/clientProfileValidation.ts")).toContain('data.atrasosDeudasBuro === "si"');
+    expect(source("shared/clientProfileValidation.ts")).toContain('data.cuentaConGarantiaFisica === "hipotecaria"');
   });
 
   it("las sugerencias no inventan requisitos del catálogo ni scoring", () => {

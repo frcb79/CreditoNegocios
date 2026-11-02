@@ -83,13 +83,13 @@ describe("COM-CTA-002: incoming prospects and reusable attribution links", () =>
     expect(clients).toContain("linkReviewedClient(savedClient.id)");
     expect(quick).toContain('"/api/clients/check-duplicates"');
     expect(quick).toContain("initialValues?: Partial<QuickFormFields>");
-    expect(list).toContain("Todavía no son Clientes ni oportunidades protegidas.");
+    expect(list).toContain("El registro no crea por sí mismo una oportunidad protegida.");
     expect(list).toContain("onReview(lead)");
   });
   it("shows invited commercial users separately from operationally active accounts", () => {
     const routes = file("server/routes.ts");
     const directory = file("client/src/pages/UserManagement.tsx");
-    expect(routes).toContain("registrationStatus: ['broker','master_broker'].includes(u.role)");
+    expect(routes).toContain("withAccountAccess");
     expect(directory).toContain("Pendiente de registro");
     expect(directory).toContain("(u as any).registrationStatus");
     expect(directory).toContain("status === 'suspended'");

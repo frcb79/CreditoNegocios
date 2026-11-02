@@ -1,3 +1,4 @@
+import PublicProspectCompletion from "@/pages/PublicProspectCompletion";
 import { Switch, Route, Redirect } from "wouter";
 import { queryClient } from "./lib/queryClient";
 import { QueryClientProvider } from "@tanstack/react-query";
@@ -83,6 +84,7 @@ function Router() {
       {/* Broker acquisition page - accessible without auth */}
       <Route path="/brokers" component={BrokersLanding} />
       <Route path="/c/:token" component={PublicCampaignLanding} />
+      <Route path="/completar-perfil/:token" component={PublicProspectCompletion} />
       
       {isLoading || !isAuthenticated ? (
         <Route path="/" component={Landing} />

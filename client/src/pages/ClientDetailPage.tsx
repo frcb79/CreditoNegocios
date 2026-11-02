@@ -1,3 +1,5 @@
+import { useAuth } from "@/hooks/useAuth";
+import ProspectCompletionLinkButton from "@/components/Clients/ProspectCompletionLinkButton";
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useRoute, useLocation } from "wouter";
@@ -138,6 +140,7 @@ export const formatDisplayValue = (val: any): string => {
 };
 
 export default function ClientDetailPage() {
+  const {user} = useAuth();
   const [, params] = useRoute("/clientes/:clientId");
   const [, setLocation] = useLocation();
   const [showHistoryForm, setShowHistoryForm] = useState(false);
@@ -348,6 +351,7 @@ export default function ClientDetailPage() {
       </Header>
         
       <main className="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8 space-y-6">
+        {user?.id === client.brokerId && <div className="flex justify-end mb-4"><ProspectCompletionLinkButton clientId={client.id} /></div>}
         <ClientProfileGuidance client={client} onEdit={() => handleEditClient(client)} />
 
         {/* Institutional Profile Header Card */}

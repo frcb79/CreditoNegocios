@@ -1,3 +1,4 @@
+import { PROSPECT_INTAKE_SCHEMA_SQL } from "./prospectIntakeSchema";
 import { pool } from "./db";
 import bcrypt from "bcrypt";
 import { repairStagingSchemaOnStartup } from "./stagingSchemaRepair";
@@ -883,6 +884,9 @@ export async function runAutoMigration(): Promise<void> {
       console.error('[AutoMigrate] Campaign attribution schema unavailable:', error);
       if (process.env.RAILWAY_ENVIRONMENT_NAME?.toLowerCase() === 'staging') throw error;
     }
+
+    // Dossier + prospect self-service schema is required by the new routes.
+    await client.query(PROSPECT_INTAKE_SCHEMA_SQL);
 
     // INV-FOLLOWUP: one row per user/day prevents duplicate automatic reminders,
     // even when multiple Railway instances execute the scheduled job.

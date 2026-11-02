@@ -65,7 +65,7 @@ describe("COM-RES private image transport: avoid proxy image GET cookie loss",()
     const admin=source("client/src/components/Commercial/CommercialResourcesAdmin.tsx");
     expect(api).toContain('app.post("/api/commercial-resources/private-artwork-data",isAuthenticated');
     expect(api).toContain("t.status='published' OR $2='super_admin'");
-    expect(api).toContain('user.role!=="broker"&&user.role!=="master_broker"');
+    expect(api).toContain('return res.status(410).json({message:"No se exponen logos propios en recursos comerciales."})');
     expect(api).toContain('Cache-Control","private, no-store, max-age=0"');
     expect(api).toContain('return res.status(200).end(JSON.stringify(');
     expect(api).not.toContain("UPDATE public.commercial_resource_templates SET definition");

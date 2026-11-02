@@ -1,3 +1,4 @@
+import { Link } from "wouter";
 import { useState, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import MainLayout from "@/components/MainLayout";
@@ -101,7 +102,7 @@ export default function Notifications() {
   const { fetchNotifications } = useNotifications();
 
   const { data: notifications, isLoading } = useQuery<Notification[]>({
-    queryKey: ["/api/notifications"],
+    queryKey: ["/api/notifications"], refetchInterval:10000, refetchOnWindowFocus:true,
   });
 
   const markReadMutation = useMutation({
@@ -354,6 +355,7 @@ export default function Notifications() {
                       >
                         {notification.message}
                       </p>
+                      {["prospect_received","prospect_profile_received"].includes(notification.type || "") && <Link href="/clientes?tab=recibidos" className="inline-block mt-2 text-xs font-semibold text-primary underline">Ver prospectos recibidos</Link>}
                     </div>
 
                     {/* Mark as read quick button if unread */}

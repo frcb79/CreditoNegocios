@@ -62,8 +62,8 @@ async function getJson<T>(url: string): Promise<T> {
 }
 
 export default function SuperAdminLegalEvidenceDialog({
-  user, onClose,
-}: { user: Subject | null; onClose: () => void }) {
+  user, onClose, embedded = false,
+}: { user: Subject | null; onClose: () => void; embedded?: boolean }) {
   const [selected, setSelected] = useState<string | null>(null);
   const history = useQuery<{ user: Subject; formalization: Overview; acceptances: Acceptance[] }>({
     queryKey: ["/api/admin/legal/users", user?.id, "acceptances"],
@@ -81,15 +81,13 @@ export default function SuperAdminLegalEvidenceDialog({
   const content = detail?.isPersonalized && snapshotText ? snapshotText : detail?.document?.content;
   const title = user ? [user.firstName, user.lastName].filter(Boolean).join(" ") || user.email : "";
 
-  return (
-    <Dialog open={Boolean(user)} onOpenChange={open => { if (!open) { setSelected(null); onClose(); } }}>
-      <DialogContent className="max-w-4xl w-[96vw] max-h-[92vh] overflow-y-auto" data-testid="dialog-admin-legal-evidence">
-        <DialogHeader>
-          <DialogTitle>Convenios y evidencias · {title}</DialogTitle>
-          <DialogDescription>
+  const panel = (<>
+        <div>
+          <h3 className="font-semibold">Convenios y evidencias · {title}</h3>
+          <p className="text-sm text-muted-foreground">
             Consulta exclusiva de Super Admin. Documentos históricos inmutables; nunca se firman ni modifican en nombre del usuario.
-          </DialogDescription>
-        </DialogHeader>
+          </p>
+        </div>
         {history.isLoading ? <p className="text-sm">Consultando evidencias...</p> :
           history.isError ? <p className="text-sm text-destructive">No se pudo consultar el expediente legal.</p> :
           history.data && <>
@@ -149,7 +147,12 @@ export default function SuperAdminLegalEvidenceDialog({
                 </>}
             </section>}
           </>}
-      </DialogContent>
-    </Dialog>
-  );
+  </>);
+  if (embedded) return <section className="space-y-4">{panel}</section>;
+  return <Dialog open={Boolean(user)} onOpenChange={open => { if (!open) { setSelected(null); onClose(); } }}>
+    <DialogContent className="max-w-4xl w-[96vw] max-h-[92vh] overflow-y-auto" data-testid="dialog-admin-legal-evidence">
+      <DialogHeader><DialogTitle>Expediente legal</DialogTitle><DialogDescription>Convenios y aceptaciones del asesor</DialogDescription></DialogHeader>
+      {panel}
+    </DialogContent>
+  </Dialog>;
 }

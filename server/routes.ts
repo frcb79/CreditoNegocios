@@ -1,3 +1,7 @@
+import { checkProspectIntakeSchemaReadiness } from "./prospectIntakeSchema";
+import { registerProspectCompletionRoutes } from "./prospectCompletionRoutes";
+import { confirmAccountAccess, withAccountAccess } from "./accountAccess";
+import { registerBrokerDossierRoutes } from "./brokerDossierRoutes";
 import { getOfferAgePolicy } from "../shared/offerAgePolicy";
 import { matchPublishedCatalog } from "./matching/catalog";
 import { registerAdministrativeAudit } from "./administrativeAudit";
@@ -1264,7 +1268,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const userCount = Number(dbCheck.rows[0]?.user_count ?? 0);
       let schemaReadiness;
       try {
-        schemaReadiness=await checkPrelaunchSchemaReadiness(pool);
+        const [prelaunch,intake]=await Promise.all([checkPrelaunchSchemaReadiness(pool),checkProspectIntakeSchemaReadiness(pool)]);
+        schemaReadiness={ready:prelaunch.ready&&intake.ready,missingCount:prelaunch.missingCount+intake.missingCount};
       } catch (schemaError) {
         console.error("[HEALTH] Prelaunch schema query failed:",schemaError);
         return res.status(503).json({
@@ -1321,7 +1326,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Platform-owned public-facing marketing catalogue and minimal suggestion intake.
   registerCommercialResourceRoutes(app);
-  registerCampaignAcquisitionRoutes(app);
+  registerCampaignAcquisitionRoutes(app, broadcastToUser);
+  registerProspectCompletionRoutes(app, broadcastToUser);
+  registerBrokerDossierRoutes(app);
 
   // Auth routes
   app.get('/api/auth/user', isAuthenticated, async (req: any, res) => {
@@ -1358,6 +1365,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       const accessDay = new Intl.DateTimeFormat("sv-SE", {timeZone: "America/Mexico_City", year: "numeric", month: "2-digit", day: "2-digit"}).format(new Date());
       if (req.session && req.session.administrativeActivityDate !== accessDay) {
+        await confirmAccountAccess(user.id);
         req.session.administrativeActivityDate = accessDay;
         req.administrativeActor = user;
         req.administrativeAction = "session_access";
@@ -1664,11 +1672,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
         
         // Explicitly save session to ensure it's written to the store before responding
-        req.session.save((saveErr: any) => {
+        req.session.save(async (saveErr: any) => {
           if (saveErr) {
             console.error("Error saving session:", saveErr);
             return res.status(500).json({ message: "Error al iniciar sesión" });
           }
+          try { await confirmAccountAccess(user.id); }
+          catch { return res.status(503).json({message: "No se pudo confirmar el acceso. Intenta nuevamente."}); }
           req.administrativeActor = user;
           req.administrativeAction = "account_registered";
           res.status(201).json({ 
@@ -1735,11 +1745,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
         
         // Explicitly save session to ensure it's written to the store before responding
-        req.session.save((saveErr: any) => {
+        req.session.save(async (saveErr: any) => {
           if (saveErr) {
             console.error("Error saving session:", saveErr);
             return res.status(500).json({ message: "Error al iniciar sesión" });
           }
+          try { await confirmAccountAccess(user.id); }
+          catch { return res.status(503).json({message: "No se pudo confirmar el acceso. Intenta nuevamente."}); }
           req.administrativeActor = user;
           req.administrativeAction = "login_success";
           res.json({ 
@@ -2913,7 +2925,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }, 0);
 
         metrics.masterBroker = {
-          activeBrokers: summarizeCommercialAccountActivity(networkBrokers).activeBrokers,
+          activeBrokers: summarizeCommercialAccountActivity(await withAccountAccess(networkBrokers)).activeBrokers,
           networkPipeline: networkActiveSubmissions,
           networkDisbursedVolume: networkDisbursedVol,
           networkDisbursedCredits: networkDisbursedCredits.length,
@@ -2930,7 +2942,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           storage.getInstitutionProducts(),
           storage.getFinancialInstitutions(),
         ]);
-        const commercialAccounts = summarizeCommercialAccountActivity(allUsers);
+        const commercialAccounts = summarizeCommercialAccountActivity(await withAccountAccess(allUsers));
         metrics.admin = {
           totalPipeline: pipelineCount,
           totalDisbursed: disbursedCount,
@@ -3143,11 +3155,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Master Broker only sees users in their own network
       if (currentUser.role === 'master_broker') {
         const networkUsers = await storage.getUsersByMasterBroker(currentUser.id);
-        return res.json(networkUsers.map(u => ({ ...publicUserForManagement(u), registrationStatus: ['broker','master_broker'].includes(u.role) ? (u.password ? 'registered' : 'pending') : null })));
+        return res.json((await withAccountAccess(networkUsers)).map(publicUserForManagement));
       }
       
       const users = await storage.getAllUsers();
-      res.json(users.map(u => ({ ...publicUserForManagement(u), registrationStatus: ['broker','master_broker'].includes(u.role) ? (u.password ? 'registered' : 'pending') : null })));
+      res.json((await withAccountAccess(users)).map(publicUserForManagement));
     } catch (error) {
       console.error("Error fetching users:", error);
       res.status(500).json({ message: "Failed to fetch users" });
@@ -8278,10 +8290,7 @@ function maskCLABE(clabe?: string | null): string | null {
       if (isAdmin) {
         // API never sends hashed passwords or reusable reset tokens to a
         // Super Admin / Admin browser, including nested broker networks.
-        const allUsers = (await storage.getAllUsers()).map(u => ({
-          ...publicUserForManagement(u),
-          registrationStatus: ['broker','master_broker'].includes(u.role) ? (u.password ? 'registered' : 'pending') : null,
-        }));
+        const allUsers = (await withAccountAccess(await storage.getAllUsers())).map(publicUserForManagement);
         const masterBrokers = allUsers.filter(u => u.role === 'master_broker');
         const allBrokers = allUsers.filter(u => u.role === 'broker');
 
@@ -8307,10 +8316,7 @@ function maskCLABE(clabe?: string | null): string | null {
 
       // If user is a Master Broker, return their own brokers
       const brokers = await storage.getUsersByMasterBroker(userId);
-      res.json(brokers.map(u => ({
-        ...publicUserForManagement(u),
-        registrationStatus: ['broker','master_broker'].includes(u.role) ? (u.password ? 'registered' : 'pending') : null,
-      })));
+      res.json((await withAccountAccess(brokers)).map(publicUserForManagement));
     } catch (error) {
       console.error("Error fetching broker network:", error);
       res.status(500).json({ message: "Failed to fetch broker network" });
@@ -8453,7 +8459,7 @@ function maskCLABE(clabe?: string | null): string | null {
       const invitationState = new Map<string, "already_sent" | "activated" | "not_sent">();
       // Read-only reconciliation: tell the operator which rows were already
       // delivered before offering to resume a partially processed spreadsheet.
-      if (process.env.USE_MEMORY_STORAGE !== "true") {
+      if (process.env.USE_MEMORY_STORAGE !== "true" && process.env.NODE_ENV !== "test") {
       const accountStates = await pool.query<{
         email: string; activated: boolean; delivered: boolean;
       }>(
@@ -9158,7 +9164,9 @@ function maskCLABE(clabe?: string | null): string | null {
       }
 
       const members = await storage.getTenantMembersWithUsers(tenantId);
-      res.json(members);
+      const fullUsers = (await Promise.all(members.map(m => storage.getUser(m.user.id)))).filter(Boolean) as any[];
+      const evidence = new Map((await withAccountAccess(fullUsers)).map(u => [u.id,u]));
+      res.json(members.map(m => ({...m,user:{...m.user,registrationStatus:evidence.get(m.user.id)?.registrationStatus,hasAccessed:evidence.get(m.user.id)?.hasAccessed}})));
     } catch (error) {
       console.error("Error listing organization members:", error);
       res.status(500).json({ message: "Error interno del servidor al procesar la solicitud." });

@@ -1,3 +1,4 @@
+import { ProspectCompletionForm } from "./PublicProspectCompletion";
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link, useParams } from "wouter";
@@ -37,6 +38,8 @@ export default function PublicCampaignLanding() {
   const [submitting, setSubmitting] = useState(false);
   const [errorText, setErrorText] = useState("");
   const [complete, setComplete] = useState(false);
+  const [completionToken, setCompletionToken] = useState("");
+  const [showProfile, setShowProfile] = useState(false);
 
   const { data, isLoading, error } = useQuery<CampaignInfo>({
     queryKey: ["public-campaign", token],
@@ -71,6 +74,7 @@ export default function PublicCampaignLanding() {
       });
       const result = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(result.message || "No se pudo enviar tu solicitud");
+      if (typeof result.completionPath === "string") setCompletionToken(result.completionPath.split("/").pop() || "");
       setComplete(true);
     } catch (error: any) {
       setErrorText(error.message || "No fue posible enviar tu solicitud");
@@ -87,7 +91,7 @@ export default function PublicCampaignLanding() {
           <span className="text-xs text-slate-600">Solicitud de financiamiento</span>
         </div>
       </header>
-      <main className="mx-auto max-w-2xl px-4 py-8">
+      <main className={"mx-auto px-4 py-8 " + (showProfile ? "max-w-5xl" : "max-w-2xl")}>
         {isLoading ? (
           <p className="text-sm text-muted-foreground">Cargando tu formulario...</p>
         ) : error || !data ? (
@@ -95,11 +99,14 @@ export default function PublicCampaignLanding() {
             <h1 className="font-bold text-xl">Enlace no disponible</h1>
             <p className="text-sm text-muted-foreground mt-2">Solicita a tu asesor un enlace actualizado.</p>
           </div>
+        ) : showProfile && completionToken ? (
+          <ProspectCompletionForm token={completionToken} initialProfile={{type:"fisica",firstName:name,phone,email}} onBack={() => setShowProfile(false)} />
         ) : complete ? (
           <div className="rounded-xl border bg-white p-6 text-center space-y-3" data-testid="public-campaign-success">
             <CheckCircle2 className="mx-auto h-12 w-12 text-emerald-600" />
             <h1 className="text-xl font-bold">Solicitud recibida</h1>
             <p>Compartimos tu solicitud con el asesor que te invitó. Podrá contactarte para revisar alternativas.</p>
+            {completionToken && <><p className="text-sm">Puedes completar ahora tu perfil para que tu asesor tenga más información.</p><Button onClick={() => setShowProfile(true)} data-testid="continue-prospect-profile">Completar mi información ahora</Button></>}
             <p className="text-sm text-muted-foreground">El envío no significa aprobación de crédito.</p>
           </div>
         ) : (

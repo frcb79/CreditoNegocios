@@ -1,3 +1,4 @@
+import { useQueryClient } from "@tanstack/react-query";
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { useAuth } from '@/hooks/useAuth';
 import { buildWebSocketUrl } from '@/lib/runtimeConfig';
@@ -14,6 +15,7 @@ const NotificationContext = createContext<NotificationContextType | undefined>(u
 
 export function NotificationProvider({ children }: { children: React.ReactNode }) {
   const { user, isAuthenticated } = useAuth();
+  const queryClient = useQueryClient();
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
 
@@ -64,6 +66,9 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
       const data = JSON.parse(event.data);
       
       if (data.type === 'notification') {
+        if (["prospect_received","prospect_profile_received"].includes(data.notification?.type)) {
+          for (const key of ["/api/commercial-resources/received","/api/clients","/api/notifications","/api/commercial-resources/overview"]) void queryClient.invalidateQueries({queryKey:[key]});
+        }
         setNotifications(prev => [data.notification, ...prev]);
         setUnreadCount(prev => prev + 1);
       }
@@ -76,7 +81,7 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
     return () => {
       socket.close();
     };
-  }, [user?.id]);
+  }, [user?.id, queryClient]);
 
   // Fetch notifications on mount, then poll as a resilient fallback if a
   // session expires or WebSocket transport is unavailable.

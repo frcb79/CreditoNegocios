@@ -81,7 +81,6 @@ export function pilotWhatsApp(value: string): string {
 }
 export type PilotIdentity = {
   role: "broker" | "master_broker"; displayName: string; whatsapp: string;
-  logo?: { image: HTMLImageElement; approved: boolean };
 };
 export type PilotProfile = {
   role: "broker" | "master_broker";
@@ -89,13 +88,13 @@ export type PilotProfile = {
   profileData?: { phone?: string | null; business?: { businessName?: string | null; businessPhone?: string | null } } | null;
 };
 /** Identity is read from an authenticated-profile-shaped record, never from campaign copy. */
-export function pilotIdentityFromProfile(profile: PilotProfile, authorizedLogo?: PilotIdentity["logo"]): PilotIdentity {
+export function pilotIdentityFromProfile(profile: PilotProfile): PilotIdentity {
   const fullName = [profile.firstName, profile.lastName].filter(Boolean).join(" ").trim();
   const business = profile.profileData?.business;
   const displayName = (profile.role === "master_broker" ? profile.brandName : null) ||
     business?.businessName || fullName;
   const whatsapp = business?.businessPhone || profile.profileData?.phone || "";
-  return { role: profile.role, displayName, whatsapp, ...(authorizedLogo?.approved ? { logo: authorizedLogo } : {}) };
+  return { role: profile.role, displayName, whatsapp };
 }
 
 function drawFittedText(ctx: CanvasRenderingContext2D, value: string, field: TextField, weight: number): number {
@@ -113,13 +112,6 @@ function drawFittedText(ctx: CanvasRenderingContext2D, value: string, field: Tex
   const baseline = field.y + (field.height + measure.actualBoundingBoxAscent - measure.actualBoundingBoxDescent) / 2;
   ctx.fillText(value, field.x, baseline);
   return size;
-}
-
-function drawContainedLogo(ctx: CanvasRenderingContext2D, image: HTMLImageElement, box: LogoField) {
-  if (!image.complete || !image.naturalWidth || !image.naturalHeight) throw new Error("Logotipo no disponible.");
-  const ratio = Math.min(box.width / image.naturalWidth, box.height / image.naturalHeight);
-  const width = image.naturalWidth * ratio, height = image.naturalHeight * ratio;
-  ctx.drawImage(image, box.x + (box.width - width) / 2, box.y + (box.height - height) / 2, width, height);
 }
 
 export async function loadPilotImage(file: Blob): Promise<HTMLImageElement> {
@@ -166,7 +158,6 @@ export async function renderPilotGraphic(map: PilotGraphicMap, background: HTMLI
   drawFittedText(ctx, name, map.fields.BROKER_NAME, 700);
   drawFittedText(ctx, phone, map.fields.BROKER_WHATSAPP, 600);
   drawFittedText(ctx, map.fields.CTA.defaultApprovedText || "", map.fields.CTA, 600);
-  if (identity.logo?.approved) drawContainedLogo(ctx, identity.logo.image, map.fields.BROKER_LOGO);
   // Never draw user-supplied QR, captions, or institutional logo overlays.
   return canvas;
 }

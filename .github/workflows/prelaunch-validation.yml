@@ -23,6 +23,7 @@ on:
       - 'fix/master-offer-rates-private-copy-*'
       - 'fix/super-admin-dashboard-*'
       - 'fix/lanzamiento-usuarios-utm-*'
+      - 'feat/broker-dossier-*'
   workflow_dispatch:
 concurrency:
   group: prelaunch-${{ github.ref }}
@@ -50,6 +51,10 @@ jobs:
         run: npm run check
       - name: Build
         run: npm run build
+      - name: Broker dossier and prospect self-service (isolated PostgreSQL and DOM)
+        run: |
+          npm run test:prospect-intake
+          node scripts/test-broker-dossier-intake-ui.cjs
       - name: Broker network component interactions (isolated DOM)
         run: node scripts/test-broker-network-ui.cjs
       - name: Financial offers and administrative activity component interactions (isolated DOM)
@@ -130,6 +135,10 @@ jobs:
             tests/unit/commercial-catalog-v2.test.ts
             tests/unit/commercial-classification-v7.test.ts
             tests/unit/commercial-artwork-auth-delivery.test.ts
+            tests/unit/commercial-graphic-import-http.test.ts
+            tests/unit/commercial-graphic-importer-v4.test.ts
+            tests/unit/commercial-pilot-v1.test.ts
+            tests/unit/commercial-profile-logo-self.test.ts
             tests/unit/campaign-acquisition-v1.test.ts
             tests/unit/network-transitions-safety.test.ts
             tests/unit/client-credit-origin-list.test.ts

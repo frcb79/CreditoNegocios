@@ -88,7 +88,6 @@ export function campaignSvg(campaign: Campaign, channel: SocialChannel, branding
   const label = escapeXml(campaign.product.toUpperCase());
   const suffix = escapeXml(campaign.supportingLine);
   const bottom = height - (tall ? 395 : 315);
-  const initials = escapeXml((safeBrandLabel(branding.displayName).charAt(0) || "C").toUpperCase());
   const background = visual?.colors.background || '#092a44';
   const accent = visual?.colors.accent || '#bce8ea';
   const foreground = visual?.colors.foreground || '#ffffff';
@@ -110,10 +109,7 @@ export function campaignSvg(campaign: Campaign, channel: SocialChannel, branding
     ...(visual?.highlights?.length ? [text(85, bottom - (tall ? 185 : 105), tall ? 31 : 25, escapeXml(visual.highlights.slice(0,2).join("  •  ")), accent, 700)] : []),
     ...(visual ? [text(85, bottom - (tall ? 98 : 50), tall ? 32 : 26, escapeXml(visual.cta), foreground, 700)] : []),
     '<rect x="0" y="' + bottom + '" width="' + width + '" height="' + (height-bottom) + '" fill="#0b2e4a" opacity=".96"/>',
-    '<rect x="85" y="' + (bottom + 48) + '" width="94" height="94" rx="23" fill="#bce8ea"/>',
-    text(115, bottom + 111, 55, initials, '#0c3c5a', 800),
-    text(205, bottom + 89, 38, safeName, '#ffffff', 700),
-    text(205, bottom + 131, 27, 'Asesor de financiamiento', '#d0e8f1'),
+    text(85, bottom + 92, 38, safeName, '#ffffff', 700),
     text(85, height - 106, 33, phone ? 'WhatsApp: +' + phone : 'Consulta tus alternativas', '#effaff', 700),
     text(85, height - 47, 20, 'Sujeto a evaluación y condiciones de cada institución financiera.', '#aec6d8'),
     '</svg>'
