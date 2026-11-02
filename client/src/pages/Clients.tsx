@@ -106,7 +106,7 @@ export default function Clients() {
       </Header>
       
       <main className="flex-1 p-4 sm:p-6 lg:p-8 overflow-y-auto">
-        {canReceive && viewMode === "list" && <div className="flex justify-end mb-4"><ProspectCompletionLinkButton /></div>}
+        {canReceive && viewMode === "list" && activeTab === "recibidos" && <div className="flex justify-end mb-4"><ProspectCompletionLinkButton /></div>}
         {viewMode === "list" && (
           <Tabs value={canReceive ? activeTab : "cartera"} onValueChange={setActiveTab} className="space-y-4">
             <TabsList className="flex flex-wrap w-fit">
