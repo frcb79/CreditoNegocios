@@ -222,7 +222,7 @@ function MasterBrokerRatesConfig({ user }: { user: any }) {
       }
       setRatesForm(next);
       setHasChanges(true);
-      setChangedInstitutionIds(prev => [...new Set([...prev, ...seen])]);
+      setChangedInstitutionIds(prev => Array.from(new Set(prev.concat(Array.from(seen)))));
       toast({ title: "Excel validado", description: seen.size + " financieras listas para revisar y guardar." });
     } catch (error: any) {
       toast({ title: "Archivo rechazado", description: error.message || "Datos inválidos", variant: "destructive" });
