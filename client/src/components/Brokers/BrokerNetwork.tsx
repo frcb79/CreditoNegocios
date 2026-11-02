@@ -109,9 +109,10 @@ function MasterBrokerRatesConfig({ user }: { user: any }) {
       ratesData.items.forEach(item => {
         const assigned = item.assignedRate;
         initial[item.institutionId] = {
-          apertura: assigned?.apertura !== undefined ? String(assigned.apertura) : String(item.defaultBroker.apertura || ''),
-          sobretasa: assigned?.sobretasa !== undefined ? String(assigned.sobretasa) : String(item.defaultBroker.sobretasa || ''),
-          renovacion: assigned?.renovacion !== undefined ? String(assigned.renovacion) : String(item.defaultBroker.renovacion || ''),
+          apertura: String(assigned?.apertura ?? item.defaultBroker.apertura ?? 0),
+          // Zero is a valid value, not an empty field. Overrate belongs to CN.
+          sobretasa: "0",
+          renovacion: String(assigned?.renovacion ?? item.defaultBroker.renovacion ?? 0),
         };
       });
       setRatesForm(initial);
@@ -170,7 +171,17 @@ function MasterBrokerRatesConfig({ user }: { user: any }) {
         }
       }
     }
-    saveMutation.mutate(ratesForm);
+    // Never transmit empty inputs as NaN. Renewal is optional (0%), and
+    // overrate is never distributable to the Master/Broker network.
+    const sanitized = Object.fromEntries(Object.entries(ratesForm).map(([institutionId, values]) => [
+      institutionId,
+      {
+        apertura: values.apertura.trim(),
+        renovacion: values.renovacion?.trim() || "0",
+        sobretasa: "0",
+      },
+    ]));
+    saveMutation.mutate(sanitized);
   };
 
   const importRatesTemplate = async (event: React.ChangeEvent<HTMLInputElement>) => {
