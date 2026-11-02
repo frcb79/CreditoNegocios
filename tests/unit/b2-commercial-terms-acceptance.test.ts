@@ -474,6 +474,42 @@ describe("AG — FASE 2B.2B: Cambios y Aceptación Comercial", () => {
   });
 
   describe("Asignación por oferta de Master Broker", () => {
+    it("guarda apertura con renovación y sobretasa vacías como cero y rechaza texto inválido", async () => {
+      const master = await createTestUser("master_broker", "Master Ceros");
+      const institution = await createTestInstitution("Red Ceros " + randomUUID());
+      currentAuthUser = master;
+
+      // Regression: the legacy Vercel editor sent both optional fields as "".
+      const saved = await request(app).put("/api/master-broker/network-rates").send({
+        rates: {
+          [institution.id]: { apertura: "2.50", renovacion: "", sobretasa: "" },
+        },
+      });
+      expect(saved.status).toBe(200);
+      const current = await request(app).get("/api/master-broker/network-rates");
+      expect(current.status).toBe(200);
+      expect(current.body.rates[institution.id]).toMatchObject({
+        apertura: 2.5, renovacion: 0, sobretasa: 0,
+      });
+
+      // Malformed/nonzero privileged values must not be accepted.
+      for (const bad of [
+        { apertura: "1foo", renovacion: "", sobretasa: "" },
+        { apertura: "2.0", renovacion: "0oops", sobretasa: "" },
+        { apertura: "2.0", renovacion: "", sobretasa: "0.2" },
+        { apertura: "20.0", renovacion: "", sobretasa: "" },
+      ]) {
+        const invalid = await request(app).put("/api/master-broker/network-rates").send({
+          rates: { [institution.id]: bad },
+        });
+        expect(invalid.status).toBe(400);
+      }
+      const unchanged = await request(app).get("/api/master-broker/network-rates");
+      expect(unchanged.body.rates[institution.id]).toMatchObject({
+        apertura: 2.5, renovacion: 0, sobretasa: 0,
+      });
+    });
+
     it("sugiere broker directo por oferta y valida el techo de ese producto", async () => {
       const master = await createTestUser("master_broker", "Master Por Oferta");
       const inst = await createTestInstitution("Financiera Dos Productos");
