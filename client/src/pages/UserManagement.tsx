@@ -1,3 +1,4 @@
+import SuperAdminBrokerDossierDialog from "@/components/Users/SuperAdminBrokerDossierDialog";
 import { useState, useEffect, useMemo } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import MainLayout from "@/components/MainLayout";
@@ -63,6 +64,7 @@ import {
 
 export function renderUserStatusBadge(status?: string | null, isActive?: boolean | null, registrationStatus?: string | null) {
   if (status !== 'suspended' && status !== 'inactive' && isActive !== false && registrationStatus === 'pending') return <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-300 text-xs font-semibold">Pendiente de registro</Badge>;
+  if (status !== 'suspended' && status !== 'inactive' && isActive !== false && registrationStatus === 'awaiting_first_access') return <Badge variant="outline" className="text-xs">Pendiente de primer acceso</Badge>;
   if (status === 'suspended') {
     return (
       <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-300 text-xs font-semibold">
@@ -322,6 +324,7 @@ export default function UserManagement() {
   const [operationalStatusNotes, setOperationalStatusNotes] = useState<string>("");
   const [networkTransitionUser, setNetworkTransitionUser] = useState<User | null>(null);
   const [networkHistoryUser, setNetworkHistoryUser] = useState<User | null>(null);
+  const [dossierUser, setDossierUser] = useState<User | null>(null);
   const [legalEvidenceUser, setLegalEvidenceUser] = useState<User | null>(null);
   const [legalStatusFilter, setLegalStatusFilter] = useState("all");
 
@@ -1412,7 +1415,7 @@ export default function UserManagement() {
 
                                 <td className="py-2.5 px-3 text-center">
                                   <div className="flex flex-col items-center gap-1">
-                                    {renderUserStatusBadge(m.user?.status, m.user?.isActive ?? m.isActive)}
+                                    {renderUserStatusBadge(m.user?.status, m.user?.isActive ?? m.isActive, m.user?.registrationStatus)}
                                     {(() => {
                                       const pendingReq = getPendingRequestForBroker(m.user?.id);
                                       if (pendingReq) {
@@ -1632,7 +1635,7 @@ export default function UserManagement() {
                               </div>
 
                               <div className="flex flex-col items-end gap-1">
-                                {renderUserStatusBadge(m.user?.status, m.user?.isActive ?? m.isActive)}
+                                {renderUserStatusBadge(m.user?.status, m.user?.isActive ?? m.isActive, m.user?.registrationStatus)}
                                 {(() => {
                                   const pendingReq = getPendingRequestForBroker(m.user?.id);
                                   if (pendingReq) {
@@ -1934,11 +1937,12 @@ export default function UserManagement() {
                         <td className="py-3 px-6 text-right">
                           <div className="flex items-center justify-end gap-1">
                             {isSuperAdmin && (u.role === "broker" || u.role === "master_broker") && (
+                              <><Button variant="outline" size="sm" onClick={() => setDossierUser(u)} className="h-8 text-xs" data-testid={`button-admin-dossier-${u.id}`}>Ver expediente</Button>
                               <Button variant="ghost" size="sm" onClick={() => setLegalEvidenceUser(u)}
                                 className="h-8 text-xs" title="Consultar convenio, firma OTP, versiones y comprobante"
                                 data-testid={`button-admin-legal-${u.id}`}>
                                 <ShieldCheck className="h-3.5 w-3.5 mr-1" /> Convenios
-                              </Button>
+                              </Button></>
                             )}
                             {isSuperAdmin && (u.role === 'broker' || u.role === 'master_broker') && (
                               <Button
@@ -3727,7 +3731,7 @@ export default function UserManagement() {
                 <div className="text-muted-foreground font-mono">{operationalStatusUser.email}</div>
                 <div className="flex items-center gap-2 pt-1">
                   <span className="text-muted-foreground">Estado actual:</span>
-                  {renderUserStatusBadge(operationalStatusUser.status, operationalStatusUser.isActive)}
+                  {renderUserStatusBadge(operationalStatusUser.status, operationalStatusUser.isActive, (operationalStatusUser as any).registrationStatus)}
                   <Badge variant="outline" className="text-[10px]">{operationalStatusUser.role}</Badge>
                 </div>
               </div>
@@ -3904,6 +3908,7 @@ export default function UserManagement() {
         </Dialog>
       )}
 
+      {isSuperAdmin && <SuperAdminBrokerDossierDialog key={dossierUser?.id || "dossier-closed"} user={dossierUser} allUsers={legacyUsers || []} onClose={() => setDossierUser(null)} />}
       {isSuperAdmin && <SuperAdminLegalEvidenceDialog key={legalEvidenceUser?.id || "closed"}
         user={legalEvidenceUser} onClose={() => setLegalEvidenceUser(null)} />}
       <Dialog open={Boolean(networkHistoryUser)} onOpenChange={(open) => { if (!open) setNetworkHistoryUser(null); }}>
@@ -3965,7 +3970,7 @@ export default function UserManagement() {
                 <div className="text-muted-foreground font-mono">{statusRequestModal.targetUser.email}</div>
                 <div className="flex items-center gap-2 pt-1">
                   <span className="text-muted-foreground">Estado actual:</span>
-                  {renderUserStatusBadge(statusRequestModal.targetUser.status, statusRequestModal.targetUser.isActive)}
+                  {renderUserStatusBadge(statusRequestModal.targetUser.status, statusRequestModal.targetUser.isActive, (statusRequestModal.targetUser as any).registrationStatus)}
                   <Badge variant="outline" className="text-[10px]">Tu Red</Badge>
                 </div>
               </div>

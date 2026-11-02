@@ -43,6 +43,7 @@ export function canEditCreditByOrigin(user: Principal, record: OriginatedRecord)
 type CommercialAccount = {
   role?: string | null;
   password?: string | null;
+  hasAccessed?: boolean;
   isActive?: boolean | null;
   status?: string | null;
 };
@@ -54,8 +55,8 @@ export function summarizeCommercialAccountActivity(users: CommercialAccount[]) {
   const registered = (u: CommercialAccount) =>
     typeof u.password === "string" && u.password.trim().length > 0;
   return {
-    activeBrokers: accounts.filter(u => u.role === "broker" && operational(u) && registered(u)).length,
-    activeMasterBrokers: accounts.filter(u => u.role === "master_broker" && operational(u) && registered(u)).length,
+    activeBrokers: accounts.filter(u => u.role === "broker" && operational(u) && registered(u) && u.hasAccessed === true).length,
+    activeMasterBrokers: accounts.filter(u => u.role === "master_broker" && operational(u) && registered(u) && u.hasAccessed === true).length,
     pendingInvitations: accounts.filter(u => operational(u) && !registered(u)).length,
   };
 }

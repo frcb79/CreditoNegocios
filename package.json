@@ -38,7 +38,8 @@
     "validate:staging:quick": "powershell -ExecutionPolicy Bypass -File scripts/run-staging-validation.ps1 -SkipBackendPreflight -SkipDbCompare -SkipMigrationPreflight -ExtendedSmoke",
     "preflight:backend": "node scripts/preflight-env.cjs backend",
     "preflight:frontend": "node scripts/preflight-env.cjs frontend",
-    "preflight:migration": "node scripts/preflight-env.cjs migration"
+    "preflight:migration": "node scripts/preflight-env.cjs migration",
+    "test:prospect-intake": "node scripts/run-prospect-intake.cjs"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.10.0",
@@ -134,6 +135,7 @@
     "zod-validation-error": "^3.4.0"
   },
   "devDependencies": {
+    "@electric-sql/pglite": "0.5.14",
     "@playwright/test": "^1.62.1",
     "@replit/vite-plugin-cartographer": "^0.3.0",
     "@replit/vite-plugin-runtime-error-modal": "^0.0.3",

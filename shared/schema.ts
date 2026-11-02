@@ -199,6 +199,8 @@ export interface TenantMemberWithUser {
     permissions: unknown;
     isActive: boolean | null;
     status?: UserOperationalStatus | string | null;
+    registrationStatus?: string | null;
+    hasAccessed?: boolean;
     statusChangedAt?: Date | null;
     statusChangeReason?: string | null;
     statusChangeNotes?: string | null;

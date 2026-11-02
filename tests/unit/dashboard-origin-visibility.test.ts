@@ -74,8 +74,8 @@ describe("SEC-P0-02: Credit read and write are separate capabilities", () => {
 
 describe("Dashboard Super Admin: registered and pending commercial accounts", () => {
   const accounts = [
-    { role: "broker", password: "$2b$12$registered", isActive: true, status: "active" },
-    { role: "master_broker", password: "$2b$12$registered", isActive: true, status: "active" },
+    { role: "broker", password: "$2b$12$registered", hasAccessed: true, isActive: true, status: "active" },
+    { role: "master_broker", password: "$2b$12$registered", hasAccessed: true, isActive: true, status: "active" },
     { role: "broker", password: null, isActive: true, status: "active" },
     { role: "master_broker", password: null, isActive: true, status: "active" },
     { role: "broker", password: "$2b$12$suspended", isActive: true, status: "suspended" },
@@ -113,9 +113,9 @@ describe("Dashboard Super Admin: registered and pending commercial accounts", ()
     const prodLike = [
       ...Array.from({length: 40}, () => ({role:"broker", password:null, isActive:true, status:"active"})),
       ...Array.from({length: 3}, () => ({role:"master_broker", password:null, isActive:true, status:"active"})),
-      {role:"broker", password:"hashed", isActive:true, status:"active"},
-      {role:"broker", password:"hashed", isActive:false, status:"inactive"},
-      {role:"master_broker", password:"hashed", isActive:true, status:"active"},
+      {role:"broker", password:"hashed", hasAccessed:true, isActive:true, status:"active"},
+      {role:"broker", password:"hashed", hasAccessed:true, isActive:false, status:"inactive"},
+      {role:"master_broker", password:"hashed", hasAccessed:true, isActive:true, status:"active"},
     ];
     expect(summarizeCommercialAccountActivity(prodLike)).toEqual({
       activeBrokers: 1,

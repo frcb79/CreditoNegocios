@@ -23,7 +23,10 @@ app.use(helmet({ contentSecurityPolicy: false, crossOriginEmbedderPolicy: false 
 // LEG-10 bearer tokens are secrets, not telemetry.  Neither access logs nor
 // structured production request serializers may receive the raw token URL.
 const isSensitiveConsentPath = (path: string) =>
-  path.startsWith("/api/client-consent/") || path.startsWith("/autorizar-expediente/");
+  path.startsWith("/api/client-consent/") || path.startsWith("/autorizar-expediente/") ||
+  path.startsWith("/api/public/campaign/") || path.startsWith("/api/public/prospect-completion/") ||
+  path.startsWith("/api/commercial-resources/completion-links") || path.startsWith("/completar-perfil/") ||
+  path.startsWith("/api/admin/brokers/");
 app.use((req, res, next) => {
   if (isSensitiveConsentPath(req.path)) {
     res.setHeader("Cache-Control", "private, no-store");

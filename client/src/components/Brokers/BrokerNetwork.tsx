@@ -67,6 +67,7 @@ function getBrokerStatusBadge(brokerUser: any) {
   if (brokerUser?.registrationStatus === 'pending') {
     return <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200 text-xs">Pendiente de registro</Badge>;
   }
+  if (brokerUser?.registrationStatus === "awaiting_first_access") return <Badge variant="outline" className="text-xs">Pendiente de primer acceso</Badge>;
   return (
     <Badge 
       variant="outline"
@@ -718,7 +719,7 @@ export default function BrokerNetworkComponent() {
     ? networkData.directBrokers
     : (Array.isArray(networkData?.independentBrokers) ? networkData.independentBrokers : []);
   const allBrokers = Array.isArray(networkData?.allBrokers) ? networkData.allBrokers : [];
-  const registered = (person: any) => person?.registrationStatus === "registered";
+  const registered = (person: any) => ["registered","awaiting_first_access"].includes(person?.registrationStatus);
   const registeredMasters = allMasterBrokers.filter(registered);
   const registeredDirect = allDirectBrokers.filter(registered);
   const registeredBrokers = allBrokers.filter(registered);

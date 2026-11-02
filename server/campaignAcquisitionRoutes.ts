@@ -1,3 +1,6 @@
+import { normalizeProspectPhone } from "../shared/prospectContact";
+import { publishProspectNotification, type ProspectNotificationPublisher } from "./prospectNotifications";
+import { makeCompletionToken, completionTokenHash } from "./prospectCompletionRoutes";
 import type { Express, Response } from "express";
 import { randomBytes } from "node:crypto";
 import rateLimit from "express-rate-limit";
@@ -63,7 +66,7 @@ const activeLinkCondition = [
   "))"
 ].join(" ");
 
-export function registerCampaignAcquisitionRoutes(app: Express) {
+export function registerCampaignAcquisitionRoutes(app: Express, publish?: ProspectNotificationPublisher) {
   app.post("/api/commercial-resources/links", isAuthenticated, async (req: any, res) => {
     const user = await identify(req);
     if (!allowedOwner(user)) return noAccess(res);
@@ -127,17 +130,30 @@ export function registerCampaignAcquisitionRoutes(app: Express) {
     try {
       const results = await pool.query(
         ["SELECT m.id,m.full_name,m.phone,m.email,m.product,m.amount_range,m.message,",
-         "m.created_at,m.linked_client_id,t.name AS campaign_name,t.channel",
+         "m.created_at,m.linked_client_id,m.profile_data,m.profile_received_at,m.source_channel,t.name AS campaign_name,t.channel",
          "FROM public.commercial_marketing_leads m",
          "LEFT JOIN public.commercial_resource_templates t ON t.id=m.template_id",
          "WHERE m.owner_user_id=$1 ORDER BY m.created_at DESC LIMIT 200"].join(" "),
         [user!.id]
       );
+      res.setHeader("Cache-Control", "private, no-store");
       return res.json(results.rows);
     } catch (error) {
       console.error("[CampaignLinks] Inbox failed", error);
       return res.status(503).json({ message: "No fue posible cargar prospectos recibidos" });
     }
+  });
+
+  app.get("/api/commercial-resources/received/:id/profiles", isAuthenticated, async (req: any, res) => {
+    const user = await identify(req);
+    if (!allowedOwner(user)) return noAccess(res);
+    try {
+      const own = await pool.query("SELECT id FROM public.commercial_marketing_leads WHERE id=$1 AND owner_user_id=$2", [req.params.id,user!.id]);
+      if (!own.rows[0]) return res.status(404).json({message:"Prospecto no encontrado"});
+      const profiles = await pool.query("SELECT id,profile_data,privacy_version,submitted_at FROM public.prospect_profile_submissions WHERE lead_id=$1 ORDER BY submitted_at DESC", [req.params.id]);
+      res.setHeader("Cache-Control","private, no-store");
+      return res.json(profiles.rows);
+    } catch { return res.status(503).json({message:"No se pudo consultar el historial de información enviada"}); }
   });
 
   // Only the originating broker/master may link a received lead to their
@@ -198,7 +214,7 @@ export function registerCampaignAcquisitionRoutes(app: Express) {
     const parsed = intakeInput.safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ message: parsed.error.issues[0]?.message || "Datos incorrectos" });
     const data = parsed.data;
-    const digits = data.phone.replace(/\D/g, "");
+    const digits = normalizeProspectPhone(data.phone);
     if (digits.length < 10 || digits.length > 15) return res.status(400).json({ message: "Proporciona un teléfono válido" });
     const notice = getPublishedLegalDocument("aviso");
     if (!notice || notice.version !== data.privacyVersion) return res.status(409).json({ message: "Actualiza y confirma el Aviso de Privacidad vigente" });
@@ -209,6 +225,8 @@ export function registerCampaignAcquisitionRoutes(app: Express) {
       // Serialize submissions for the same link and normalized phone so that
       // simultaneous retries cannot create duplicate marketing leads.
       const client = await pool.connect();
+      let completionPath: string | undefined;
+      let notification: any;
       try {
         await client.query("BEGIN");
         await client.query("SELECT pg_advisory_xact_lock(hashtext($1))", ["marketing-lead:" + row.id + ":" + digits]);
@@ -218,15 +236,23 @@ export function registerCampaignAcquisitionRoutes(app: Express) {
           [row.id,digits]
         );
         if (!existing.rows[0]) {
-          await client.query(
+          const inserted = await client.query(
             ["INSERT INTO public.commercial_marketing_leads",
              "(link_id,owner_user_id,tenant_id,template_id,source_channel,",
              "full_name,phone,email,product,amount_range,message,privacy_version)",
-             "VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)"].join(" "),
+             "VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING id"].join(" "),
             [row.id,row.owner_user_id,row.tenant_id,row.template_id,row.channel || (row.template_id ? null : "redes_sociales"),
              data.fullName,digits,data.email || null,product,data.amountRange || null,
              data.message || null,notice.version]
           );
+          const leadId = inserted.rows[0].id;
+          const completionToken = makeCompletionToken();
+          await client.query("INSERT INTO public.prospect_completion_links (token_hash,owner_user_id,tenant_id,lead_id) VALUES ($1,$2,$3,$4)",
+            [completionTokenHash(completionToken), row.owner_user_id, row.tenant_id, leadId]);
+          completionPath = "/completar-perfil/" + completionToken;
+          const notified = await client.query("INSERT INTO public.notifications (user_id,type,title,message,data) VALUES ($1,'prospect_received','Nuevo prospecto recibido','Recibiste una solicitud desde tu enlace personal.',$2) RETURNING *",
+            [row.owner_user_id,JSON.stringify({leadId,actionUrl:"/clientes?tab=recibidos"})]);
+          notification = notified.rows[0];
         }
         await client.query("COMMIT");
       } catch (error) {
@@ -235,9 +261,11 @@ export function registerCampaignAcquisitionRoutes(app: Express) {
       } finally {
         client.release();
       }
-      return res.status(201).json({ message: "Solicitud recibida. Tu asesor podrá contactarte." });
+      publishProspectNotification(publish, notification);
+      res.setHeader("Cache-Control", "private, no-store");
+      return res.status(201).json({ message: "Solicitud recibida. Tu asesor podrá contactarte.", ...(completionPath ? {completionPath} : {}) });
     } catch (error) {
-      console.error("[CampaignLinks] Public intake failed", error);
+      console.error("[CampaignLinks] Public intake failed", {code: (error as any)?.code});
       return res.status(503).json({ message: "No fue posible registrar tu solicitud" });
     }
   });

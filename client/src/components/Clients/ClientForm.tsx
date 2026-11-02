@@ -1,9 +1,9 @@
+import { clientProfileFormSchema as formSchema, profileForPublicSubmission } from "@shared/clientProfileValidation";
 import { useState } from "react";
 import { useForm, useFieldArray } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { updatedInsertClientSchema, type InsertClient } from "@shared/schema";
-import { z } from "zod";
+import type { InsertClient } from "@shared/schema";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
@@ -22,112 +22,12 @@ import { ANNUAL_INCOME_OPTIONS, getAnnualIncomeLabel } from "@shared/annualIncom
 interface ClientFormProps {
   client?: any;
   onSuccess?: () => void;
+  onPublicSubmit?: (profile: Record<string, unknown>) => Promise<void>;
+  submitLabel?: string;
 }
 
-const formSchema = updatedInsertClientSchema.extend({
-  brokerId: updatedInsertClientSchema.shape.brokerId.optional(),
-  rfc: updatedInsertClientSchema.shape.rfc.optional(), // RFC opcional para SIN SAT
-}).superRefine((data, ctx) => {
-  // Validaciones SOLO condicionales - permitir crear clientes con datos parciales
-  
-  // Validación condicional: si seleccionas "si" en atrasos, debes dar detalles
-  if (data.atrasosDeudas === "si" && !data.atrasosDetalles) {
-    ctx.addIssue({
-      code: z.ZodIssueCode.custom,
-      message: "Detalles de atrasos son requeridos cuando se selecciona 'SI'",
-      path: ["atrasosDetalles"],
-    });
-  }
-  
-  // Validación condicional: si seleccionas "no" en SAT CIEC, debes indicar si tienes estados financieros
-  if (data.satCiec === "no" && !data.estadosFinancieros) {
-    ctx.addIssue({
-      code: z.ZodIssueCode.custom,
-      message: "Información sobre estados financieros es requerida cuando no acepta SAT CIEC",
-      path: ["estadosFinancieros"],
-    });
-  }
-  
-  // Validación condicional: si seleccionas "negativa" en opinión, debes dar detalles
-  if (data.opinionCumplimiento === "negativa" && !data.opinionDetalles) {
-    ctx.addIssue({
-      code: z.ZodIssueCode.custom,
-      message: "Detalles de opinión negativa son requeridos",
-      path: ["opinionDetalles"],
-    });
-  }
-  
-  // Validación condicional: si tienes créditos vigentes, debes dar detalles y cada crédito debe tener todos sus campos completos
-  if (data.creditosVigentes === "si") {
-    if (!data.creditosVigentesDetalles || !Array.isArray(data.creditosVigentesDetalles) || data.creditosVigentesDetalles.length === 0) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: "Debes agregar al menos un crédito vigente con todos sus datos completos",
-        path: ["creditosVigentesDetalles"],
-      });
-    } else {
-      data.creditosVigentesDetalles.forEach((credit: any, index: number) => {
-        if (!credit.tipo || !credit.tipo.trim()) {
-          ctx.addIssue({
-            code: z.ZodIssueCode.custom,
-            message: "El tipo de crédito es requerido",
-            path: ["creditosVigentesDetalles", index, "tipo"],
-          });
-        }
-        if (!credit.institucion || !credit.institucion.trim()) {
-          ctx.addIssue({
-            code: z.ZodIssueCode.custom,
-            message: "La institución financiera es requerida",
-            path: ["creditosVigentesDetalles", index, "institucion"],
-          });
-        }
-        if (!credit.saldoOriginal || String(credit.saldoOriginal).trim() === '') {
-          ctx.addIssue({
-            code: z.ZodIssueCode.custom,
-            message: "El saldo original es requerido",
-            path: ["creditosVigentesDetalles", index, "saldoOriginal"],
-          });
-        }
-        if (!credit.saldo || String(credit.saldo).trim() === '') {
-          ctx.addIssue({
-            code: z.ZodIssueCode.custom,
-            message: "El saldo actual es requerido",
-            path: ["creditosVigentesDetalles", index, "saldo"],
-          });
-        }
-        if (!credit.fechaInicio || !credit.fechaInicio.trim()) {
-          ctx.addIssue({
-            code: z.ZodIssueCode.custom,
-            message: "La fecha de inicio es requerida",
-            path: ["creditosVigentesDetalles", index, "fechaInicio"],
-          });
-        }
-        if (!credit.fechaTermino || !credit.fechaTermino.trim()) {
-          ctx.addIssue({
-            code: z.ZodIssueCode.custom,
-            message: "La fecha de término es requerida",
-            path: ["creditosVigentesDetalles", index, "fechaTermino"],
-          });
-        }
-      });
-    }
-  }
-  
 
-  // Perfilamiento incremental: solo exigir detalles cuando se declara una condición.
-  // No bloquear la actualización por datos demográficos o financieros aún desconocidos.
-  if (data.type === "fisica") {
-    if (data.atrasosDeudasBuro === "si" && !data.atrasosDeudasBuroDetalles) {
-      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["atrasosDeudasBuroDetalles"], message: "Describe los atrasos señalados" });
-    }
-    if ((data.cuentaConGarantiaFisica === "prendaria" || data.cuentaConGarantiaFisica === "hipotecaria") &&
-        (!data.garantiaFisicaDetalles || Object.keys(data.garantiaFisicaDetalles).length === 0)) {
-      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["garantiaFisicaDetalles"], message: "Describe la garantía seleccionada" });
-    }
-  }
-});
-
-export default function ClientForm({ client, onSuccess }: ClientFormProps) {
+export default function ClientForm({ client, onSuccess, onPublicSubmit, submitLabel }: ClientFormProps) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [clientType, setClientType] = useState<"persona_moral" | "fisica_empresarial" | "fisica" | "sin_sat">(client?.type || "fisica");
@@ -144,7 +44,7 @@ export default function ClientForm({ client, onSuccess }: ClientFormProps) {
   const [isCheckingDuplicate, setIsCheckingDuplicate] = useState(false);
 
   const runDuplicateCheck = async (rfcVal?: string, phoneVal?: string, emailVal?: string) => {
-    if (client?.id) return;
+    if (onPublicSubmit || client?.id) return;
     const rfc = rfcVal !== undefined ? rfcVal : form.getValues("rfc");
     const phone = phoneVal !== undefined ? phoneVal : form.getValues("phone");
     const email = emailVal !== undefined ? emailVal : form.getValues("email");
@@ -303,6 +203,11 @@ export default function ClientForm({ client, onSuccess }: ClientFormProps) {
     },
   });
 
+  const publicMutation = useMutation({
+    mutationFn: async (data: Record<string, unknown>) => onPublicSubmit!(data),
+    onError: (error: Error) => toast({title: "No se pudo enviar el perfil", description: error.message, variant: "destructive"}),
+  });
+
   const onSubmit = (data: InsertClient) => {
     // Si seleccionó SI en créditos vigentes, validar y filtrar
     let cleanedCredits: any[] = [];
@@ -339,20 +244,22 @@ export default function ClientForm({ client, onSuccess }: ClientFormProps) {
       type: clientType,
     };
 
-    if (client) {
+    if (onPublicSubmit) {
+      publicMutation.mutate(profileForPublicSubmission(submitData));
+    } else if (client) {
       updateMutation.mutate(submitData);
     } else {
       createMutation.mutate(submitData);
     }
   };
 
-  const isLoading = createMutation.isPending || updateMutation.isPending;
+  const isLoading = createMutation.isPending || updateMutation.isPending || publicMutation.isPending;
 
   return (
     <Card className="border-border/80 shadow-sm max-w-5xl mx-auto" data-testid="client-advanced-profile-form">
       <CardHeader className="p-4 sm:p-6 border-b bg-muted/20">
-        <CardTitle className="text-xl">{client ? "Completar o editar perfil" : "Nuevo Cliente"}</CardTitle>
-        <p className="text-sm text-muted-foreground">Completa los datos que conozcas. No necesitas un expediente completo para conservar al prospecto.</p>
+        <CardTitle className="text-xl">{onPublicSubmit ? (submitLabel ? "Revisar perfil recibido" : "Completa tu información") : client ? "Completar o editar perfil" : "Nuevo Cliente"}</CardTitle>
+        <p className="text-sm text-muted-foreground">Completa los datos que conozcas. Puedes dejar pendientes los que aún no tengas disponibles.</p>
       </CardHeader>
       <CardContent className="p-4 sm:p-6">
         <Form {...form}>
@@ -1973,7 +1880,7 @@ export default function ClientForm({ client, onSuccess }: ClientFormProps) {
                                 
                                 <div className="flex items-center justify-between pt-2">
                                     <p className="text-xs text-muted-foreground">
-                                      * Recuerda hacer clic en <strong>{client ? "Actualizar Cliente" : "Crear Cliente"}</strong> al final del formulario para guardar los cambios.
+                                      * Recuerda hacer clic en <strong>{onPublicSubmit ? (submitLabel || "Enviar mi información") : client ? "Actualizar Cliente" : "Crear Cliente"}</strong> al final del formulario para guardar los cambios.
                                     </p>
                                     <Button
                                       type="button"
@@ -2574,7 +2481,7 @@ export default function ClientForm({ client, onSuccess }: ClientFormProps) {
                                 
                                 <div className="flex items-center justify-between pt-2">
                                   <p className="text-xs text-muted-foreground">
-                                    * Recuerda hacer clic en <strong>{client ? "Actualizar Cliente" : "Crear Cliente"}</strong> al final del formulario para guardar los cambios.
+                                    * Recuerda hacer clic en <strong>{onPublicSubmit ? (submitLabel || "Enviar mi información") : client ? "Actualizar Cliente" : "Crear Cliente"}</strong> al final del formulario para guardar los cambios.
                                   </p>
                                   <Button
                                     type="button"
@@ -3384,7 +3291,7 @@ export default function ClientForm({ client, onSuccess }: ClientFormProps) {
                                 
                                 <div className="flex items-center justify-between pt-2">
                                   <p className="text-xs text-muted-foreground">
-                                    * Recuerda hacer clic en <strong>{client ? "Actualizar Cliente" : "Crear Cliente"}</strong> al final del formulario para guardar los cambios.
+                                    * Recuerda hacer clic en <strong>{onPublicSubmit ? (submitLabel || "Enviar mi información") : client ? "Actualizar Cliente" : "Crear Cliente"}</strong> al final del formulario para guardar los cambios.
                                   </p>
                                   <Button
                                     type="button"
@@ -4001,7 +3908,7 @@ export default function ClientForm({ client, onSuccess }: ClientFormProps) {
                                 
                                 <div className="flex items-center justify-between pt-2">
                                   <p className="text-xs text-muted-foreground">
-                                    * Recuerda hacer clic en <strong>{client ? "Actualizar Cliente" : "Crear Cliente"}</strong> al final del formulario para guardar los cambios.
+                                    * Recuerda hacer clic en <strong>{onPublicSubmit ? (submitLabel || "Enviar mi información") : client ? "Actualizar Cliente" : "Crear Cliente"}</strong> al final del formulario para guardar los cambios.
                                   </p>
                                   <Button
                                     type="button"
@@ -4058,7 +3965,7 @@ export default function ClientForm({ client, onSuccess }: ClientFormProps) {
                 onClick={() => onSuccess?.()}
                 data-testid="button-cancel"
               >
-                Cancelar
+                {onPublicSubmit ? "Volver" : "Cancelar"}
               </Button>
               <Button 
                 type="submit" 
@@ -4067,7 +3974,7 @@ export default function ClientForm({ client, onSuccess }: ClientFormProps) {
                 data-testid="button-submit-client"
               >
                 {isLoading && <i className="fas fa-spinner fa-spin mr-2"></i>}
-                {client ? "Actualizar Cliente" : "Crear Cliente"}
+                {onPublicSubmit ? (submitLabel || "Enviar mi información") : client ? "Actualizar Cliente" : "Crear Cliente"}
               </Button>
             </div>
           </form>
