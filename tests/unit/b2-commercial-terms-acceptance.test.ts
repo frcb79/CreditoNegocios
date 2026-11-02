@@ -489,8 +489,9 @@ describe("AG — FASE 2B.2B: Cambios y Aceptación Comercial", () => {
       const current = await request(app).get("/api/master-broker/network-rates");
       expect(current.status).toBe(200);
       expect(current.body.rates[institution.id]).toMatchObject({
-        apertura: 2.5, renovacion: 0, sobretasa: 0,
+        apertura: 2.5, renovacion: 0,
       });
+      expect(JSON.stringify(current.body)).not.toMatch(/sobretasa|overrate|brokerDirecto|brokerDirect/i);
 
       // Malformed/nonzero privileged values must not be accepted.
       for (const bad of [
@@ -506,7 +507,7 @@ describe("AG — FASE 2B.2B: Cambios y Aceptación Comercial", () => {
       }
       const unchanged = await request(app).get("/api/master-broker/network-rates");
       expect(unchanged.body.rates[institution.id]).toMatchObject({
-        apertura: 2.5, renovacion: 0, sobretasa: 0,
+        apertura: 2.5, renovacion: 0,
       });
     });
 
@@ -539,9 +540,11 @@ describe("AG — FASE 2B.2B: Cambios y Aceptación Comercial", () => {
       currentAuthUser = master;
       const queried = await request(app).get("/api/master-broker/network-rates");
       expect(queried.status).toBe(200);
+      expect(JSON.stringify(queried.body)).not.toMatch(/sobretasa|overrate|platformMargin|financieraRate/i);
+      expect(queried.body.rates).toEqual({});
       const ownOffers = queried.body.offerItems.filter((item: any) => item.institutionId === inst.id);
       expect(ownOffers).toHaveLength(2);
-      expect(ownOffers.find((x: any) => x.offerId === first.id).suggestedBroker.apertura).toBe(3);
+      expect(ownOffers.find((x: any) => x.offerId === first.id).suggestedBroker.apertura).toBe(3.75);
       expect(ownOffers.find((x: any) => x.offerId === second.id).masterCeiling.apertura).toBe(2);
 
       const rejected = await request(app).put("/api/master-broker/network-rates").send({
@@ -559,7 +562,8 @@ describe("AG — FASE 2B.2B: Cambios y Aceptación Comercial", () => {
       const after = await request(app).get("/api/master-broker/network-rates");
       expect(after.body.rates[first.id].apertura).toBe(3);
       expect(after.body.rates[second.id].apertura).toBe(1.5);
-      expect(after.body.rates[second.id].sobretasa).toBe(0);
+      expect(after.body.rates[second.id].sobretasa).toBeUndefined();
+      expect(after.body.offerItems.find((x: any) => x.offerId === second.id).suggestedBroker.apertura).toBe(1.5);
       // Updating only one product must not erase the other product's assignment.
       const partial = await request(app).put("/api/master-broker/network-rates").send({
         rates: { [second.id]: { apertura: 1, renovacion: 0.25 } },
@@ -569,6 +573,31 @@ describe("AG — FASE 2B.2B: Cambios y Aceptación Comercial", () => {
       expect(preserved.body.rates[first.id].apertura).toBe(3);
       expect(preserved.body.rates[second.id].apertura).toBe(1);
       expect(preserved.body.rates[second.id].renovacion).toBe(0.25);
+    });
+  });
+
+  describe("Master network rate privacy", () => {
+    it("rejects non-Master requests and never returns restricted economic fields in the Master profile", async () => {
+      const master = await createTestUser("master_broker", "Master Privacidad");
+      const broker = await createTestUser("broker", "Broker Privacidad");
+      const inst = await createTestInstitution("Privacidad " + randomUUID());
+
+      currentAuthUser = master;
+      const accepted = await request(app).put("/api/master-broker/network-rates").send({
+        rates: { [inst.id]: { apertura: "2", renovacion: "0", sobretasa: "0" } },
+      });
+      expect(accepted.status).toBe(200);
+      expect(accepted.body.rates[inst.id]).toEqual({ apertura: 2, renovacion: 0 });
+      expect(JSON.stringify(accepted.body)).not.toContain("sobretasa");
+
+      const profile = await request(app).get("/api/auth/user");
+      expect(profile.status).toBe(200);
+      expect(profile.body.networkCommissionRates[inst.id]).toEqual({ apertura: 2, renovacion: 0 });
+      expect(JSON.stringify(profile.body.networkCommissionRates)).not.toContain("sobretasa");
+
+      currentAuthUser = broker;
+      const denied = await request(app).get("/api/master-broker/network-rates");
+      expect(denied.status).toBe(403);
     });
   });
 
