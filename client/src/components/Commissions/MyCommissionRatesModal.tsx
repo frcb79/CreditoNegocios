@@ -31,6 +31,7 @@ export default function MyCommissionRatesModal({ open, onOpenChange }: {
   const client = useQueryClient();
   const [form, setForm] = useState<Record<string, EditableRate>>({});
   const [dirty, setDirty] = useState(false);
+  const [changedOfferIds, setChangedOfferIds] = useState<string[]>([]);
   const { data = [], isLoading, isError } = useQuery<RateRow[]>({
     queryKey: ["/api/commissions/my-offer-rates"],
     enabled: open,
@@ -40,10 +41,18 @@ export default function MyCommissionRatesModal({ open, onOpenChange }: {
       return r.json();
     }
   });
-  const { data: network, isLoading: networkLoading, isError: networkError } = useQuery<NetworkData>({
+  const { data: network, isLoading: networkLoading, isError: networkError, refetch: refetchNetwork } = useQuery<NetworkData>({
     queryKey: ["/api/master-broker/network-rates"],
     enabled: open && isMaster,
   });
+
+  useEffect(() => {
+    // A 403 indicates the server session's role no longer matches the
+    // cached Master view (common after switching test accounts).
+    if (networkError && open && isMaster) {
+      void client.invalidateQueries({ queryKey: ["/api/auth/user"] });
+    }
+  }, [networkError, open, isMaster, client]);
 
   useEffect(() => {
     if (!open || !network || !isMaster) return;
@@ -56,11 +65,13 @@ export default function MyCommissionRatesModal({ open, onOpenChange }: {
     }
     setForm(initial);
     setDirty(false);
+    setChangedOfferIds([]);
   }, [open, isMaster, network]);
 
   const setRate = (id: string, field: keyof EditableRate, value: string) => {
     setForm(previous => ({ ...previous, [id]: { ...previous[id], [field]: value } }));
     setDirty(true);
+    setChangedOfferIds(previous => previous.includes(id) ? previous : [...previous, id]);
   };
   const suggested = (item: OfferRate) => ({
     apertura: String(Math.min(item.suggestedBroker.apertura, item.masterCeiling.apertura)),
@@ -69,6 +80,7 @@ export default function MyCommissionRatesModal({ open, onOpenChange }: {
   const applySuggested = (item: OfferRate) => {
     setForm(previous => ({ ...previous, [item.offerId]: suggested(item) }));
     setDirty(true);
+    setChangedOfferIds(previous => previous.includes(item.offerId) ? previous : [...previous, item.offerId]);
   };
   const applyAll = () => {
     if (!network) return;
@@ -77,6 +89,7 @@ export default function MyCommissionRatesModal({ open, onOpenChange }: {
       ...Object.fromEntries(network.offerItems.map(item => [item.offerId, suggested(item)])),
     }));
     setDirty(true);
+    setChangedOfferIds(network.offerItems.map(item => item.offerId));
   };
 
   const save = useMutation({
@@ -86,6 +99,7 @@ export default function MyCommissionRatesModal({ open, onOpenChange }: {
     },
     onSuccess: () => {
       setDirty(false);
+      setChangedOfferIds([]);
       void client.invalidateQueries({ queryKey: ["/api/master-broker/network-rates"] });
       void client.invalidateQueries({ queryKey: ["/api/commissions/my-offer-rates"] });
       void client.invalidateQueries({ queryKey: ["/api/financial-institutions"] });
@@ -97,18 +111,18 @@ export default function MyCommissionRatesModal({ open, onOpenChange }: {
   const saveAll = () => {
     if (!network) return;
     const payload: Record<string, EditableRate> = {};
-    for (const item of network.offerItems) {
+    for (const item of network.offerItems.filter(item => changedOfferIds.includes(item.offerId))) {
       const entry = form[item.offerId];
       if (!entry || (entry.apertura.trim() === "" && entry.renovacion.trim() === "")) continue;
       const a = Number(entry.apertura);
-      const r = Number(entry.renovacion);
-      if (!entry.apertura.trim() || !entry.renovacion.trim() ||
+      const r = entry.renovacion.trim() === "" ? 0 : Number(entry.renovacion);
+      if (!entry.apertura.trim() ||
           !Number.isFinite(a) || !Number.isFinite(r) || a < 0 || r < 0 ||
           a > item.masterCeiling.apertura || r > item.masterCeiling.renovacion) {
         toast({ title: "Porcentaje no permitido", description: `Revisa los porcentajes de ${item.institutionName} — ${item.offerName}. No puedes superar tu techo de apertura o renovación.`, variant: "destructive" });
         return;
       }
-      payload[item.offerId] = { apertura: entry.apertura, renovacion: entry.renovacion };
+      payload[item.offerId] = { apertura: entry.apertura, renovacion: entry.renovacion.trim() || "0" };
     }
     if (!Object.keys(payload).length) {
       toast({ title: "Sin asignaciones", description: "Selecciona al menos una oferta antes de guardar." });
@@ -124,28 +138,34 @@ export default function MyCommissionRatesModal({ open, onOpenChange }: {
           <DialogTitle>{isMaster ? "Mis porcentajes y asignación a mi red" : "Mis porcentajes por oferta"}</DialogTitle>
           <DialogDescription>
             Apertura y renovación vigentes por oferta. Las operaciones confirmadas mantienen las tasas congeladas de su propuesta y versión.
-            {isMaster && " La sugerencia corresponde a la comisión que Crédito Negocios ofrece al broker directo, limitada por tu techo."}
+            {isMaster && " Los valores sugeridos son únicamente una referencia opcional y puedes ajustarlos dentro de tus límites autorizados."}
           </DialogDescription>
         </DialogHeader>
         {isMaster ? (
           <>
             <div className="flex items-center justify-between gap-2 flex-wrap">
-              <p className="text-xs text-slate-500">La sobretasa es exclusiva de Crédito Negocios; nunca se asigna a la red.</p>
+              <p className="text-xs text-slate-500">Las sugerencias son orientativas. Tú decides cuánto asignar a tu red.</p>
               <div className="flex gap-2">
                 <Button variant="outline" size="sm" onClick={applyAll} disabled={!network?.offerItems?.length || save.isPending}
                   data-testid="apply-all-suggested">Aceptar sugeridos para todas</Button>
-                <Button size="sm" onClick={saveAll} disabled={!dirty || save.isPending}
+                <Button size="sm" onClick={saveAll} disabled={!dirty || !network?.offerItems?.length || networkError || save.isPending}
                   data-testid="save-master-offer-rates">{save.isPending ? "Guardando..." : "Guardar asignaciones"}</Button>
               </div>
             </div>
             {networkLoading ? <p className="text-sm">Consultando ofertas...</p> :
-             networkError ? <p role="alert" className="text-sm text-red-700">No se pudieron cargar los límites de comisiones de red.</p> :
+             networkError ? <div role="alert" className="flex items-center gap-3 flex-wrap text-sm text-red-700">
+                <span>No fue posible consultar las ofertas de esta sesión. Verifica tu acceso de Master Broker.</span>
+                <Button type="button" variant="outline" size="sm" onClick={() => {
+                  void client.invalidateQueries({ queryKey: ["/api/auth/user"] });
+                  void refetchNetwork();
+                }}>Reintentar</Button>
+              </div> :
              !network?.offerItems?.length ? <p className="text-sm">No hay ofertas publicadas para asignar.</p> :
               <div className="min-h-0 flex-1 overflow-auto rounded-lg border">
                 <table className="w-full min-w-[780px] text-left text-xs">
                   <thead className="sticky top-0 bg-slate-50 text-slate-600">
                     <tr><th className="p-3">Financiera / Oferta</th><th className="p-3">Mi techo</th>
-                      <th className="p-3">Sugerido al broker</th><th className="p-3">Asignar apertura</th>
+                      <th className="p-3">Referencia sugerida</th><th className="p-3">Asignar apertura</th>
                       <th className="p-3">Asignar renovación</th><th className="p-3">Acción</th></tr>
                   </thead>
                   <tbody>

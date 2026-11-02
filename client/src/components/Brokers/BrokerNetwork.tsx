@@ -111,7 +111,7 @@ function MasterBrokerRatesConfig({ user }: { user: any }) {
         const assigned = item.assignedRate;
         initial[item.institutionId] = {
           apertura: String(assigned?.apertura ?? item.defaultBroker.apertura ?? 0),
-          // Zero is a valid value, not an empty field. Overrate belongs to CN.
+          // Zero is a valid optional value; internal dimensions never render.
           sobretasa: "0",
           renovacion: String(assigned?.renovacion ?? item.defaultBroker.renovacion ?? 0),
         };
@@ -173,7 +173,7 @@ function MasterBrokerRatesConfig({ user }: { user: any }) {
             val < 0 || renovacion < 0 || val > ceiling || renovacion > item.masterCeiling.renovacion) {
           toast({
             title: "Tasa no permitida",
-            description: `Para ${item.institutionName}, la apertura máxima es ${ceiling}% y la renovación máxima ${item.masterCeiling.renovacion}%. La sobretasa no es distribuible.`,
+            description: `Para ${item.institutionName}, la apertura máxima es ${ceiling}% y la renovación máxima ${item.masterCeiling.renovacion}%.`,
             variant: "destructive",
           });
           return;
@@ -252,11 +252,11 @@ function MasterBrokerRatesConfig({ user }: { user: any }) {
     })));
     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(offers), "Topes por Oferta");
     XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([
-      ["Crédito Negocios - comisiones de red"],
+      ["Comisiones de mi red"],
       ["Editar exclusivamente Red_Apertura_Pct y Red_Renovacion_Pct en Comisiones de Red."],
       ["Una sola asignación por financiera. Los techos son los mínimos de sus ofertas."],
       ["La pestaña Topes por Oferta es de consulta. No cambies claves ni porcentajes techo."],
-      ["Un techo 0% no permite asignación; la sobretasa pertenece a la plataforma."],
+      ["Si el límite de una comisión es 0%, no se podrá asignar un porcentaje mayor."],
       ["Subir Excel valida datos en pantalla; sólo Guardar Comisiones de Red efectúa el cambio."]
     ]), "Instrucciones");
     XLSX.writeFile(wb, "CN_Comisiones_de_Red.xlsx");
@@ -279,7 +279,7 @@ function MasterBrokerRatesConfig({ user }: { user: any }) {
         <h3 className="text-base font-semibold">Comisiones por oferta para tu red</h3>
         <p className="text-sm text-slate-600">
           Asigna a tus brokers porcentajes de apertura y renovación por producto.
-          Puedes aceptar los valores sugeridos de Crédito Negocios por oferta o para todas las ofertas publicadas.
+          Los valores sugeridos son una referencia opcional por oferta. Puedes modificarlos dentro de tus límites.
         </p>
         <Button type="button" onClick={() => setOfferEditorOpen(true)}
           data-testid="open-master-offer-commission-editor">
@@ -305,7 +305,7 @@ function MasterBrokerRatesConfig({ user }: { user: any }) {
               Autonomía de Comisiones para tu Red de Brókers
             </h4>
             <p className="text-xs text-slate-300 leading-relaxed font-normal">
-              Crédito Negocios te otorga un <strong className="text-white font-semibold">porcentaje techo</strong> por cada financiera. Aquí tú decides qué porcentaje compartes a los brókers de tu equipo. Tu <strong className="text-emerald-400 font-semibold">Margen Neto</strong> se calcula automáticamente y es tu retención directa por cada colocación.
+              Puedes asignar porcentajes a los brókers de tu red, respetando los límites de cada oferta. Tu <strong className="text-emerald-400 font-semibold">margen estimado</strong> se calcula automáticamente.
             </p>
           </div>
         </div>
