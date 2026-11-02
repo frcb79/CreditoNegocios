@@ -1343,6 +1343,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
       delete safeUser.password;
       delete safeUser.resetToken;
       delete safeUser.resetTokenExpiry;
+      // Only Super Admin may see internal economic dimensions, including
+      // historical fields in network rate snapshots returned with the profile.
+      if (user.role !== "super_admin" && safeUser.networkCommissionRates &&
+          typeof safeUser.networkCommissionRates === "object") {
+        safeUser.networkCommissionRates = Object.fromEntries(
+          Object.entries(safeUser.networkCommissionRates as Record<string, any>).map(([key, rate]) => [
+            key, typeof rate === "number" ? { apertura: rate, renovacion: 0 } : {
+              apertura: rate?.apertura ?? rate?.rate ?? 0,
+              renovacion: rate?.renovacion ?? 0
+            }
+          ])
+        );
+      }
       const accessDay = new Intl.DateTimeFormat("sv-SE", {timeZone: "America/Mexico_City", year: "numeric", month: "2-digit", day: "2-digit"}).format(new Date());
       if (req.session && req.session.administrativeActivityDate !== accessDay) {
         req.session.administrativeActivityDate = accessDay;
@@ -8629,6 +8642,20 @@ function maskCLABE(clabe?: string | null): string | null {
       const allInstitutions = await storage.getFinancialInstitutions();
       const activeInstitutions = allInstitutions.filter((f: any) => f.isActive !== false);
       const networkRates = (user.networkCommissionRates as any) || {};
+      // Master-facing API: return only opening/renewal allocations. Internal
+      // economic dimensions must never leave the privileged server context.
+      const publicRates = Object.fromEntries(
+        Object.entries(networkRates).map(([key, value]: [string, any]) => [
+          key, typeof value === "number" ? { apertura: value, renovacion: 0 } : {
+            apertura: value?.apertura ?? value?.rate ?? 0,
+            renovacion: value?.renovacion ?? 0
+          },
+        ])
+      );
+      // Optional reference is calculated solely from the Master's authorized
+      // ceiling. It is not a disclosure of any other broker channel's rates.
+      const referenceRate = (ceiling: number) =>
+        Math.max(0, Math.floor((ceiling * 0.75 + Number.EPSILON) * 100) / 100);
       const publishedOffers = await loadPublishedCommissionOffers();
       const items = activeInstitutions.map((inst: any) => {
         const offers = publishedOffers.filter(x => x.institutionId === inst.id);
@@ -8644,25 +8671,23 @@ function maskCLABE(clabe?: string | null): string | null {
           masterCeiling: {
             total: ceiling.apertura,
             apertura: ceiling.apertura,
-            sobretasa: 0,
             renovacion: ceiling.renovacion,
           },
           defaultBroker: {
-            total: ceiling.brokerApertura,
-            apertura: ceiling.brokerApertura,
-            sobretasa: 0,
-            renovacion: ceiling.brokerRenovacion,
+            total: referenceRate(ceiling.apertura),
+            apertura: referenceRate(ceiling.apertura),
+            renovacion: referenceRate(ceiling.renovacion),
           },
           offerRates: offers.map(x => ({
             offerId: x.offerId, offerName: x.offerName, versionNumber: x.versionNumber,
             apertura: x.master.apertura, renovacion: x.master.renovacion
           })),
-          assignedRate: networkRates[inst.id] || null,
+          assignedRate: publicRates[inst.id] || null,
         };
       });
 
       res.json({
-        rates: networkRates,
+        rates: publicRates,
         items,
         // El Master puede asignar por oferta. La configuración histórica
         // por financiera queda como fallback mientras se migra su red.
@@ -8673,8 +8698,11 @@ function maskCLABE(clabe?: string | null): string | null {
           offerName: offer.offerName,
           versionNumber: offer.versionNumber,
           masterCeiling: offer.master,
-          suggestedBroker: offer.broker,
-          assignedRate: networkRates[offer.offerId] || networkRates[offer.institutionId] || null,
+          suggestedBroker: {
+            apertura: referenceRate(offer.master.apertura),
+            renovacion: referenceRate(offer.master.renovacion),
+          },
+          assignedRate: publicRates[offer.offerId] || publicRates[offer.institutionId] || null,
         })),
       });
     } catch (error) {
@@ -8757,7 +8785,7 @@ function maskCLABE(clabe?: string | null): string | null {
 
         if (rawSobretasa !== 0 || rawRenovacion > mbCeilingRenovacion) {
           return res.status(400).json({
-            message: `El esquema de red de ${inst.name} excede el techo autorizado: renovación hasta ${mbCeilingRenovacion}% y sobretasa 0%.`
+            message: `No se pudo validar la asignación para ${inst.name}. Revisa los porcentajes y los límites autorizados.`
           });
         }
         sanitizedRates[rateKey] = {
@@ -8783,7 +8811,9 @@ function maskCLABE(clabe?: string | null): string | null {
           message: committed.changed
             ? "Comisiones de red actualizadas y nueva versión publicada."
             : "Sin cambios materiales en las comisiones de red.",
-          rates: committed.rates,
+          rates: Object.fromEntries(Object.entries(committed.rates as Record<string, any>).map(([key, value]) => [
+            key, { apertura: value?.apertura ?? 0, renovacion: value?.renovacion ?? 0 }
+          ])),
           version: committed.version?.version || null,
           changed: committed.changed,
         });
@@ -8799,7 +8829,9 @@ function maskCLABE(clabe?: string | null): string | null {
       });
       return res.json({
         message: "Comisiones de red actualizadas exitosamente",
-        rates: updatedUser?.networkCommissionRates || sanitizedRates,
+        rates: Object.fromEntries(Object.entries(sanitizedRates).map(([key, value]) => [
+          key, { apertura: value?.apertura ?? 0, renovacion: value?.renovacion ?? 0 }
+        ])),
       });
     } catch (error) {
       console.error("Error updating master broker network rates:", error);
