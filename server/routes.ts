@@ -8727,9 +8727,19 @@ function maskCLABE(clabe?: string | null): string | null {
         const mbCeilingApertura = ceiling.apertura;
         const mbCeilingRenovacion = ceiling.renovacion;
 
-        const rawApertura = typeof rateObj === 'number' ? rateObj : parseFloat((rateObj as any)?.apertura ?? (rateObj as any)?.rate ?? '0');
-        const rawSobretasa = typeof rateObj === 'number' ? 0 : parseFloat((rateObj as any)?.sobretasa ?? '0');
-        const rawRenovacion = typeof rateObj === 'number' ? 0 : parseFloat((rateObj as any)?.renovacion ?? '0');
+        // The legacy Master editor sends empty input strings for zero-rate
+        // renewal/overrate. Empty means 0, but malformed nonempty values must
+        // never be silently accepted by parseFloat (e.g. "1abc").
+        const parseNetworkPercentage = (value: unknown): number => {
+          if (value == null || (typeof value === "string" && value.trim() === "")) return 0;
+          if (typeof value !== "number" && typeof value !== "string") return Number.NaN;
+          return Number(value);
+        };
+        const rawApertura = parseNetworkPercentage(
+          typeof rateObj === 'number' ? rateObj : (rateObj as any)?.apertura ?? (rateObj as any)?.rate
+        );
+        const rawSobretasa = typeof rateObj === 'number' ? 0 : parseNetworkPercentage((rateObj as any)?.sobretasa);
+        const rawRenovacion = typeof rateObj === 'number' ? 0 : parseNetworkPercentage((rateObj as any)?.renovacion);
 
         if (!Number.isFinite(rawApertura) || rawApertura < 0 || rawApertura > 100 ||
             !Number.isFinite(rawSobretasa) || rawSobretasa < 0 ||

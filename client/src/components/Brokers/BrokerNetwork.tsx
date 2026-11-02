@@ -82,6 +82,7 @@ function MasterBrokerRatesConfig({ user }: { user: any }) {
   const queryClient = useQueryClient();
   const [ratesForm, setRatesForm] = useState<Record<string, { apertura: string; sobretasa?: string; renovacion?: string }>>({});
   const [hasChanges, setHasChanges] = useState(false);
+  const [changedInstitutionIds, setChangedInstitutionIds] = useState<string[]>([]);
   const [offerEditorOpen, setOfferEditorOpen] = useState(false);
 
   const { data: ratesData, isLoading } = useQuery<{
@@ -109,13 +110,15 @@ function MasterBrokerRatesConfig({ user }: { user: any }) {
       ratesData.items.forEach(item => {
         const assigned = item.assignedRate;
         initial[item.institutionId] = {
-          apertura: assigned?.apertura !== undefined ? String(assigned.apertura) : String(item.defaultBroker.apertura || ''),
-          sobretasa: assigned?.sobretasa !== undefined ? String(assigned.sobretasa) : String(item.defaultBroker.sobretasa || ''),
-          renovacion: assigned?.renovacion !== undefined ? String(assigned.renovacion) : String(item.defaultBroker.renovacion || ''),
+          apertura: String(assigned?.apertura ?? item.defaultBroker.apertura ?? 0),
+          // Zero is a valid value, not an empty field. Overrate belongs to CN.
+          sobretasa: "0",
+          renovacion: String(assigned?.renovacion ?? item.defaultBroker.renovacion ?? 0),
         };
       });
       setRatesForm(initial);
       setHasChanges(false);
+      setChangedInstitutionIds([]);
     }
   }, [ratesData]);
 
@@ -128,6 +131,7 @@ function MasterBrokerRatesConfig({ user }: { user: any }) {
       queryClient.invalidateQueries({ queryKey: ["/api/master-broker/network-rates"] });
       queryClient.invalidateQueries({ queryKey: ["/api/financial-institutions"] });
       setHasChanges(false);
+      setChangedInstitutionIds([]);
       toast({
         title: "Comisiones de Red Guardadas",
         description: "El esquema de comisiones para tu equipo ha sido actualizado.",
@@ -151,11 +155,17 @@ function MasterBrokerRatesConfig({ user }: { user: any }) {
       }
     }));
     setHasChanges(true);
+    setChangedInstitutionIds(prev => prev.includes(instId) ? prev : [...prev, instId]);
   };
 
   const handleSave = () => {
+    // Publish only rates the Master explicitly edited. Sending all 26
+    // suggested defaults would unintentionally assign the entire network.
+    const changedItems = (ratesData?.items || []).filter(item =>
+      changedInstitutionIds.includes(item.institutionId));
+    if (!changedItems.length) return;
     if (ratesData?.items) {
-      for (const item of ratesData.items) {
+      for (const item of changedItems) {
         const val = parseFloat(ratesForm[item.institutionId]?.apertura || '0');
         const ceiling = item.masterCeiling.apertura;
         const renovacion = parseFloat(ratesForm[item.institutionId]?.renovacion || '0');
@@ -170,7 +180,17 @@ function MasterBrokerRatesConfig({ user }: { user: any }) {
         }
       }
     }
-    saveMutation.mutate(ratesForm);
+    // Never transmit empty inputs as NaN. Renewal is optional (0%), and
+    // overrate is never distributable to the Master/Broker network.
+    const sanitized = Object.fromEntries(changedItems.map(item => [
+      item.institutionId,
+      {
+        apertura: ratesForm[item.institutionId]?.apertura?.trim() || "0",
+        renovacion: ratesForm[item.institutionId]?.renovacion?.trim() || "0",
+        sobretasa: "0",
+      },
+    ]));
+    saveMutation.mutate(sanitized);
   };
 
   const importRatesTemplate = async (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -202,6 +222,7 @@ function MasterBrokerRatesConfig({ user }: { user: any }) {
       }
       setRatesForm(next);
       setHasChanges(true);
+      setChangedInstitutionIds(prev => Array.from(new Set(prev.concat(Array.from(seen)))));
       toast({ title: "Excel validado", description: seen.size + " financieras listas para revisar y guardar." });
     } catch (error: any) {
       toast({ title: "Archivo rechazado", description: error.message || "Datos inválidos", variant: "destructive" });
