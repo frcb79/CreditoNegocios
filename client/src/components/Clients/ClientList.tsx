@@ -29,6 +29,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { CLIENT_TYPE_PRESENTATION, isClientProfileType } from "@/lib/clientTypePresentation";
+import ProspectCompletionLinkButton from "./ProspectCompletionLinkButton";
 
 interface ClientListProps {
   onSelectClient: (client: Client) => void;
@@ -317,15 +318,18 @@ export default function ClientList({ onSelectClient, onNewClient }: ClientListPr
             </>
           )}
 
-          {/* Primary CTA */}
-          <Button 
-            onClick={onNewClient}
-            className="bg-primary hover:bg-primary-dark text-primary-foreground text-xs font-medium h-9 shadow-sm shrink-0 whitespace-nowrap"
-            data-testid="button-new-client"
-          >
-            <Plus className="w-3.5 h-3.5 mr-1.5" />
-            <span>Nuevo Cliente</span>
-          </Button>
+          {/* Client entry actions */}
+          <div className="flex flex-col sm:flex-row gap-2.5 shrink-0">
+            <ProspectCompletionLinkButton />
+            <Button
+              onClick={onNewClient}
+              className="bg-primary hover:bg-primary-dark text-primary-foreground text-xs font-medium h-9 shadow-sm shrink-0 whitespace-nowrap"
+              data-testid="button-new-client"
+            >
+              <Plus className="w-3.5 h-3.5 mr-1.5" />
+              <span>Nuevo Cliente</span>
+            </Button>
+          </div>
         </div>
       </div>
 
