@@ -47,6 +47,14 @@ export default function MyCommissionRatesModal({ open, onOpenChange }: {
   });
 
   useEffect(() => {
+    // A 403 indicates the server session's role no longer matches the
+    // cached Master view (common after switching test accounts).
+    if (networkError && open && isMaster) {
+      void client.invalidateQueries({ queryKey: ["/api/auth/user"] });
+    }
+  }, [networkError, open, isMaster, client]);
+
+  useEffect(() => {
     if (!open || !network || !isMaster) return;
     const initial: Record<string, EditableRate> = {};
     for (const item of network.offerItems || []) {
