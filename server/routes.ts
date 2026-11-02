@@ -8459,7 +8459,7 @@ function maskCLABE(clabe?: string | null): string | null {
       const invitationState = new Map<string, "already_sent" | "activated" | "not_sent">();
       // Read-only reconciliation: tell the operator which rows were already
       // delivered before offering to resume a partially processed spreadsheet.
-      if (process.env.USE_MEMORY_STORAGE !== "true") {
+      if (process.env.USE_MEMORY_STORAGE !== "true" && process.env.NODE_ENV !== "test") {
       const accountStates = await pool.query<{
         email: string; activated: boolean; delivered: boolean;
       }>(

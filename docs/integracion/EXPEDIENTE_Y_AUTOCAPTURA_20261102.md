@@ -10,6 +10,8 @@ Fecha: 2 de noviembre de 2026. Base inicial revisada: `6817ccccd59bef1bae1324979
 4. **Enlace para contacto previo.** Clientes, la ficha propia de un cliente y la bandeja de prospectos permiten generar un enlace de captura directa. Puede ser para un nuevo contacto, una ficha existente o un prospecto ya recibido. No envía mensajes automáticamente. El asesor copia y comparte el enlace.
 5. **Perfilamiento y recepción.** Se reutiliza el formulario de perfil y se comparte su validación condicional entre frontend y servidor. Los tipos son PM, PFAE, PF y Sin SAT. Se pueden dejar datos pendientes. Al completar un perfil válido se crea o completa el cliente propio si no existe conflicto y el asesor cumple la formalización y facultades vigentes. No se crea automáticamente una oportunidad comercial, solicitud de crédito o autorización para entregar documentos a financieras.
 
+6. **Materiales comerciales, consolidación de #44.** Se integra la eliminación de logos y avatares personales: sólo nombre y WhatsApp del Broker/Master, conservando el logotipo institucional y el fondo aprobado. Se mantiene `multer`, necesario para recibir ZIP o PNG + mapa. Los mapas anteriores con geometría de logo siguen siendo compatibles, pero el renderizador no dibuja esa imagen. Los logos históricos no se eliminan; sus endpoints de lectura/carga quedan deshabilitados.
+
 ## Reglas de conservación y acceso
 
 - Toda captación queda atribuida al owner/tenant almacenados en el servidor; los cuerpos públicos no pueden asignar broker, tenant, rol o estado.
@@ -40,7 +42,21 @@ Backend y frontend requieren desplegar esta versión. No se aplicó esta migraci
 - `npm run test:prospect-intake`: **14/14** escenarios HTTP/SQL sobre PostgreSQL aislado (PGlite), con persistencia real, transacciones, rollback/reintento, duplicados, formatos telefónicos mexicanos, consumo único, caducidad, suspensión, formalización, historia incremental y privilegios de Data API.
 - `node scripts/test-broker-dossier-intake-ui.cjs`: comportamiento de pestañas, acceso confirmado, archivos, convenios/PDF, actividad, consentimiento, envío del formulario completo e invitación ligada a una ficha; correcto.
 - `node scripts/test-broker-network-ui.cjs` y `node scripts/test-financieras-activity-ui.cjs`: regresiones funcionales existentes correctas.
-- La verificación de UI utiliza DOM simulado. No se completó una inspección visual con Chromium: el descargable de este entorno fue inválido.
-- Batería general tras integrar el cambio: **993 aprobadas, 5 fallidas y 90 omitidas** (1,088 pruebas). Los cinco fallos se reprodujeron también en un checkout intacto de la base: cuatro casos de preview multipart en `broker-invitation-http.test.ts` y un caso de fixtures/grupos en `commercial-graphic-importer-v4.test.ts`. Se registran como fallos previos; no se sustituyen por pruebas omitidas.
+- Chromium real: expediente, pestañas de documentos/convenios, texto histórico aceptado, consentimiento, envío del perfil completo y generación de enlace privado, en escritorio (1440 px) y móvil (390 px). Inspección de capturas y comprobación de ausencia de desbordamiento horizontal en el formulario. APIs ficticias; sin escrituras en producción.
+- Chromium real: carga de PNG por POST autenticado, renderizado y exportación de 1080 × 1350 con nombre/WhatsApp; el área del logotipo institucional se conserva píxel a píxel y no se solicita ningún logo personal. Se usó un fondo sintético de QA, no se modificaron artes definitivos.
+- `tests/unit/commercial-graphic-import-http.test.ts`: **4/4** pruebas de ZIP multipart, borrador, conservación de bytes, rechazo de checksum antes de transacción, rollback y permisos. Usa transporte HTTP real y base simulada; la persistencia del flujo de prospectos se verifica separadamente con PostgreSQL.
+- Batería general final: **1,002 aprobadas, 0 fallidas y 90 omitidas** (1,092 pruebas). Se corrigieron los cinco fallos previos: el preview de invitaciones ahora respeta la selección de almacenamiento en memoria de NODE_ENV=test y el fixture de artes usa el grupo completo permitido. También se actualizó la expectativa de permisos de logos personales conforme a su desactivación.
+
+La prueba visual es reproducible con `node scripts/test-broker-commercial-browser.cjs` después del build y de instalar Chromium de Playwright. Puede usarse `CHROMIUM_EXECUTABLE_PATH` para una instalación externa; `BROWSER_QA_OUTPUT` permite elegir el directorio de capturas.
 
 La prueba Jest de integración ejecuta el verificador PostgreSQL en un subproceso Node para que PGlite funcione sin exigir flags experimentales de módulos a toda la batería existente. Su dependencia está fijada y sólo es de desarrollo.
+
+
+## Secuencia para producción y plantillas
+
+1. Revisar y fusionar únicamente el PR #53, que reúne expediente/autocaptura y el alcance útil de #44 con su corrección. No fusionar #44 por separado sobre esta versión.
+2. Confirmar que Railway y Vercel despliegan el mismo commit de main; comprobar salud/esquema y los recorridos con los roles reales.
+3. Cargar el ZIP definitivo de artes como borrador desde Recursos Comerciales. Revisar nombres, WhatsApp y composición con un Broker y un Master.
+4. Publicar cada plantilla revisada; la publicación actual sigue siendo individual. Confirmar catálogo y descarga desde ambos roles.
+
+Este desarrollo no ha fusionado main, desplegado producción ni cargado/publicado plantillas definitivas. Los conteos de plantillas de otra conversación no se consideran una nueva consulta de producción.
