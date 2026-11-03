@@ -1,4 +1,5 @@
 import { getOfferAgePolicy } from "@shared/offerAgePolicy";
+import { LEASING_ASSET_TYPES, normalizeLeasingAssetType } from "@shared/leasing";
 import { useState, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import {
@@ -124,6 +125,10 @@ export default function OfferDraftEditorModal({
   const [bureauRequirement, setBureauRequirement] = useState<string>("sin_requisito");
   const [guaranteeType, setGuaranteeType] = useState<string>("sin_garantia");
   const [avalesType, setAvalesType] = useState<string>("no_requerido");
+  const [leasingAssets, setLeasingAssets] = useState<string[]>([]);
+  const [sourceGuarantee, setSourceGuarantee] = useState("");
+  const [sourceBureau, setSourceBureau] = useState("");
+  const [excludedSectors, setExcludedSectors] = useState("");
 
   const [ageMonthsByProfile, setAgeMonthsByProfile] = useState<Record<string, string>>({});
   const [ageReviewReason, setAgeReviewReason] = useState("");
@@ -201,6 +206,12 @@ export default function OfferDraftEditorModal({
     setBureauRequirement(cond.bureauRequirement || "por_definir");
     setGuaranteeType(cond.guaranteeType || "por_definir");
     setAvalesType(cond.avalesType || "por_definir");
+    const assetSource = (draft?.variablesConfiguration as any)?.tipo_activo_arrendado ?? cond.tipo_activo_arrendado ?? req.tipo_activo_arrendado;
+    const assetValues = Array.isArray(assetSource) ? assetSource : Array.isArray(assetSource?.allowedValues) ? assetSource.allowedValues : [];
+    setLeasingAssets(assetValues.map(normalizeLeasingAssetType).filter((value: string | null): value is string => Boolean(value)));
+    setSourceGuarantee(String(req.guarantee || ""));
+    setSourceBureau(String(req.bureauPolicySource || ""));
+    setExcludedSectors(String(req.excludedSectors || ""));
 
     const agePolicy = getOfferAgePolicy(cond, req);
     setAgeMonthsByProfile(Object.fromEntries(agePolicy.rows.map(row => [row.profile, agePolicy.resolved ? String(row.effectiveMonths) : ""])));
@@ -449,6 +460,9 @@ export default function OfferDraftEditorModal({
       conditions,
       requirements: {
         targetProfiles: selectedProfiles,
+        guarantee: sourceGuarantee.trim(),
+        bureauPolicySource: sourceBureau.trim(),
+        excludedSectors: excludedSectors.trim(),
         minCompanyAgeMonths: conditions.minCompanyAgeMonths,
         minMonthlyRevenue: conditions.minMonthlyRevenue,
         ...(bureauRequirement !== "por_definir" ? { bureauRequirement } : {}),
@@ -462,6 +476,7 @@ export default function OfferDraftEditorModal({
       requiredDocuments: selectedDocs,
       variablesConfiguration: {
         ...(draftData?.draftVersion?.variablesConfiguration as Record<string, any> || {}),
+        ...(productType === "arrendamiento" ? { tipo_activo_arrendado: leasingAssets } : {}),
         futureMetadata: { name: name.trim(), customName: name.trim(), description: description.trim(), productType },
         ...(guaranteeType !== "por_definir" ? { garantias: guaranteeType } : {}),
         ...(avalesType !== "por_definir" ? { avales: avalesType } : {}),
@@ -1066,6 +1081,20 @@ export default function OfferDraftEditorModal({
               <TabsContent value="elegibilidad" className="space-y-4 pt-1">
                 <p className="text-xs font-semibold">Detalle de elegibilidad importado</p>
                 {sourcePanel(eligibilityDetails)}
+                <div className="rounded-xl border border-blue-200 bg-blue-50/40 p-4 space-y-3 text-xs">
+                  <strong>Condiciones de la oferta confirmadas por la financiera</strong>
+                  <p>Conserva el texto fuente y clasifica los criterios estructurados abajo. El texto por sí solo no confirma que el cliente cumpla.</p>
+                  <label className="block space-y-1">Garantía indicada por la financiera<Textarea value={sourceGuarantee} onChange={e => setSourceGuarantee(e.target.value)} /></label>
+                  <label className="block space-y-1">Política adicional de Buró<Textarea value={sourceBureau} onChange={e => setSourceBureau(e.target.value)} /></label>
+                  <label className="block space-y-1">Giros o actividades excluidos<Textarea value={excludedSectors} onChange={e => setExcludedSectors(e.target.value)} /></label>
+                  {productType === "arrendamiento" && <div className="space-y-2" data-testid="leasing-asset-types">
+                    <strong>Activos admitidos expresamente por esta oferta</strong>
+                    <p>Selecciona solo los tipos confirmados por la arrendadora; dejar vacío mantiene la validación pendiente.</p>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">{LEASING_ASSET_TYPES.map(asset => <label key={asset.value} className="flex items-center gap-2">
+                      <input type="checkbox" checked={leasingAssets.includes(asset.value)} onChange={() => setLeasingAssets(prev => prev.includes(asset.value) ? prev.filter(value => value !== asset.value) : [...prev, asset.value])} />{asset.label}
+                    </label>)}</div>
+                  </div>}
+                </div>
                 {agePolicy.hasConflict && !agePolicy.needsReview && !agePolicy.resolved && <p className="text-xs text-blue-700" data-testid="age-policy-source-specific">El archivo original fija mínimos específicos por perfil; el matching utilizará esos valores en lugar del mínimo numérico general importado.</p>}
                 {(agePolicy.needsReview || agePolicy.resolved) && <div className="rounded-xl border border-amber-300 p-3 space-y-3 text-xs" data-testid="age-policy-review">
                   <strong>Conciliar antigüedad por perfil</strong>
