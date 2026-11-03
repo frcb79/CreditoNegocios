@@ -2,14 +2,13 @@ import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link, useParams } from "wouter";
 import ClientForm from "@/components/Clients/ClientForm";
+import ProspectPageLayout from "@/components/Clients/ProspectPageLayout";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Button } from "@/components/ui/button";
 import { CheckCircle2 } from "lucide-react";
 
-export function ProspectCompletionForm({ token, initialProfile, onBack }: { token: string; initialProfile?: Record<string, unknown>; onBack?: () => void }) {
-  const [accepted, setAccepted] = useState(false);
-  const [complete, setComplete] = useState(false);
-  const info = useQuery<{ advisorName: string; privacyVersion: string }>({
+function useCompletionInfo(token: string) {
+  return useQuery<{ advisorName: string; privacyVersion: string }>({
     queryKey: ["public-prospect-completion", token], retry: false, staleTime: Infinity, refetchOnWindowFocus: false,
     queryFn: async () => {
       const response = await fetch("/api/public/prospect-completion/" + encodeURIComponent(token), { credentials: "omit", cache: "no-store" });
@@ -18,6 +17,12 @@ export function ProspectCompletionForm({ token, initialProfile, onBack }: { toke
       return body;
     },
   });
+}
+
+export function ProspectCompletionForm({ token, initialProfile, onBack }: { token: string; initialProfile?: Record<string, unknown>; onBack?: () => void }) {
+  const [accepted, setAccepted] = useState(false);
+  const [complete, setComplete] = useState(false);
+  const info = useCompletionInfo(token);
   if (info.isLoading) return <p role="status">Preparando tu formulario…</p>;
   if (info.error || !info.data) return <div role="alert" className="rounded-xl border bg-white p-6 space-y-3"><h1 className="text-xl font-bold">Enlace no disponible</h1><p>{info.error instanceof Error ? info.error.message : "Solicita un nuevo enlace a tu asesor."}</p></div>;
   if (complete) return <div className="rounded-xl border bg-white p-8 text-center space-y-3" data-testid="prospect-profile-success"><CheckCircle2 className="mx-auto text-emerald-600 h-12 w-12" /><h1 className="text-2xl font-bold">Información recibida</h1><p>Tu información fue enviada a {info.data.advisorName}. Tu asesor podrá revisarla contigo.</p><p className="text-sm text-muted-foreground">El envío no significa aprobación de financiamiento.</p></div>;
@@ -40,5 +45,6 @@ export function ProspectCompletionForm({ token, initialProfile, onBack }: { toke
 }
 export default function PublicProspectCompletion() {
   const { token } = useParams<{ token: string }>();
-  return <div className="min-h-screen bg-slate-50 text-slate-900"><header className="border-b bg-white px-5 py-4 font-bold">Crédito Negocios · Información para tu asesor</header><main className="max-w-5xl mx-auto px-4 py-6"><ProspectCompletionForm key={token} token={token} /></main></div>;
+  const info = useCompletionInfo(token);
+  return <ProspectPageLayout advisorName={info.data?.advisorName} wide><ProspectCompletionForm key={token} token={token} /></ProspectPageLayout>;
 }

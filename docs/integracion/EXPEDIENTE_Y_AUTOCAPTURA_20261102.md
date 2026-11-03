@@ -60,3 +60,19 @@ La prueba Jest de integración ejecuta el verificador PostgreSQL en un subproces
 4. Publicar cada plantilla revisada; la publicación actual sigue siendo individual. Confirmar catálogo y descarga desde ambos roles.
 
 Este desarrollo no ha fusionado main, desplegado producción ni cargado/publicado plantillas definitivas. Los conteos de plantillas de otra conversación no se consideran una nueva consulta de producción.
+
+## Seguimiento: presentación del asesor y revisión de roles
+
+Los PR #53 y #54 están fusionados. Se confirmó #54 (`aa72e11`) en Railway SUCCESS y aplicación/landing Vercel READY. La presentación propuesta en esta rama aplica a `/c/:token` y `/completar-perfil/:token`: nombre del asesor/despacho arriba, “Asesoría en financiamiento”, y al pie “Powered by” con el logotipo institucional existente y enlaces legales. El encabezado obtiene la identidad de la respuesta del servidor; una URL vencida no muestra un asesor anterior. La consulta del enlace directo se comparte mediante React Query, sin una petición adicional para el encabezado.
+
+Verificación de este cambio:
+
+- TypeScript y build de cliente/servidor correctos.
+- 24 pruebas existentes de permisos/expediente, captación, perfil público e invitaciones aprobadas.
+- 14 escenarios HTTP/PostgreSQL aislados de captación y persistencia aprobados.
+- 3 pruebas HTTP existentes del ciclo de sesión Passport/WebSocket aprobadas.
+- Prueba DOM existente del expediente/autocaptura aprobada.
+- Chromium real en 1440 y 390 px con nombres de Broker y despacho Master ficticios: cabecera, logo cargado, pie legal, nombre largo sin desbordamiento, contacto → perfil completo → confirmación, captura directa y enlace vencido correctos. Las APIs de esta inspección visual son ficticias; no equivale a una sesión de producción.
+- Producción: salud HTTP 200; expediente anónimo rechazado con 401 y enlace privado inexistente rechazado con 404.
+
+Pendiente para cerrar la revisión con roles reales: sesión autenticada de Super Admin y revisión de Clientes/Recursos Comerciales como Broker/Master. El intento de acceso seguro quedó interrumpido y no se dispone de una sesión en el navegador de revisión. No se tomaron sesiones de la base, no se cambiaron credenciales ni se enviaron prospectos de prueba a producción. Las plantillas definitivas permanecen fuera de este cambio.
