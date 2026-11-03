@@ -95,8 +95,11 @@ async function run(client: PoolClient, source: Catalog, apply: boolean) {
   )).rows;
   const nameForStageId = new Map(dbInstitutions.map(x=>[x.id, x.name]));
   const dbOffers = dbOffersRaw.map(x=>({...x,institution_name:nameForStageId.get(x.institution_id)}));
-  const productByKey = requireUnique(dbOffers, offerKey, "STAGING_OFFER");
   const prodProducts = requireUnique(source.institution_products, offerKey, "SOURCE_OFFER");
+  // Legacy staging rows (21) may duplicate names and have no product type.
+  // Ignore those extras, but require unique matches for the 52 canonical offers.
+  const canonicalStageOffers = dbOffers.filter(x => prodProducts.has(offerKey(x)));
+  const productByKey = requireUnique(canonicalStageOffers, offerKey, "STAGING_CANONICAL_OFFER");
   for(const key of prodProducts.keys()){
     if (!productByKey.has(key)) throw new Error("CATALOG_SYNC_OFFER_MISSING:" + key);
   }
