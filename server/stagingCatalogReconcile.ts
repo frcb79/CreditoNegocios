@@ -265,6 +265,14 @@ export async function reconcileStagingCatalog(pool: Pool): Promise<void> {
   assertStaging();
   const source=requireCatalogPayload()!;
   const apply=process.env.STAGING_CATALOG_SYNC_APPLY==="CONFIRMED_STAGE_ONLY_20261103";
+  if (apply && (source as any).payload_kind !== "FULL_FINANCIAL_CATALOG") {
+    throw new Error("CATALOG_SYNC_APPLY_REQUIRES_FULL_SOURCE_PAYLOAD");
+  }
+  if (apply && (!source.financial_institutions.every(x=>Object.prototype.hasOwnProperty.call(x,"requirements") && Object.prototype.hasOwnProperty.call(x,"commission_rates")) ||
+    !source.institution_products.every(x=>Object.prototype.hasOwnProperty.call(x,"configuration")) ||
+    !source.institution_product_versions.every(x=>Object.prototype.hasOwnProperty.call(x,"conditions") && Object.prototype.hasOwnProperty.call(x,"requirements")))) {
+    throw new Error("CATALOG_SYNC_APPLY_INCOMPLETE_SOURCE_FIELDS");
+  }
   const client=await pool.connect();
   try {
     await client.query("BEGIN ISOLATION LEVEL SERIALIZABLE");
