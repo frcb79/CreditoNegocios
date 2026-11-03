@@ -492,10 +492,15 @@ export default function CreditList() {
   };
 
   const isMortgageItem = (item: UnifiedCreditItem) => {
+    const operationData = item.rawSubmission?.mortgageData || item.rawCredit?.mortgageData;
+    // Leasing details also live in mortgageData; that field alone cannot define the product.
+    if (item.productTemplateName?.toLowerCase().includes('arrendamiento') ||
+        operationData?.operationType === 'arrendamiento' || operationData?.lease) {
+      return false;
+    }
     return Boolean(
       item.productTemplateName?.toLowerCase().includes("hipotecario") ||
-      (item.rawSubmission?.mortgageData && Object.keys(item.rawSubmission.mortgageData).length > 0) ||
-      (item.rawCredit?.mortgageData && Object.keys(item.rawCredit.mortgageData).length > 0)
+      (operationData && Object.keys(operationData).length > 0)
     );
   };
 
