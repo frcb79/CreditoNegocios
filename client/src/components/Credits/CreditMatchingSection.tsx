@@ -407,7 +407,7 @@ export default function CreditMatchingSection({ creditId, clientName, requestTyp
                       <div className="mt-3 p-2.5 rounded-md bg-amber-50/80 border border-amber-200/90 text-xs text-amber-900 space-y-1">
                         <div className="flex items-center gap-1.5 font-semibold text-amber-950">
                           <AlertTriangle className="w-3.5 h-3.5 text-amber-600" />
-                          <span>Datos o comprobantes requeridos en el expediente:</span>
+                          <span>Pendientes de validar en la oferta o el expediente:</span>
                         </div>
                         <ul className="list-disc list-inside space-y-0.5 pl-1 text-[11px] text-amber-800">
                           {offer.criteria.missing.map((m) => (
