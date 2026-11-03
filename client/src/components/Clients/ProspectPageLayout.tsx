@@ -1,5 +1,18 @@
 import type { ReactNode } from "react";
 import { Link } from "wouter";
+import { ShieldCheck } from "lucide-react";
+
+export function ProspectTrustNotice({ advisorName, personalLink = false }: { advisorName: string; personalLink?: boolean }) {
+  return <aside className="flex items-start gap-3 rounded-xl border border-teal-200 bg-teal-50/70 p-4 text-sm text-slate-700" data-testid="prospect-trust-notice">
+    <ShieldCheck className="mt-0.5 h-5 w-5 shrink-0 text-teal-700" aria-hidden="true" />
+    <div className="space-y-1.5">
+      <p className="font-semibold text-slate-900">Un formulario de Crédito Negocios para tu asesor</p>
+      <p>Este formulario de Crédito Negocios está dirigido a <strong>{advisorName}</strong>. Tu información será recibida para dar seguimiento a tu solicitud; no se envía automáticamente a financieras.</p>
+      {personalLink && <p>Tu enlace es individual, vence y se utiliza una sola vez. Los datos que ya estén en tu expediente no se muestran aquí.</p>}
+      <p>No solicitamos contraseñas ni depósitos mediante este formulario. Consulta el Aviso de Privacidad antes de enviarlo.</p>
+    </div>
+  </aside>;
+}
 
 export default function ProspectPageLayout({ advisorName, wide = false, testId, children }: {
   advisorName?: string;

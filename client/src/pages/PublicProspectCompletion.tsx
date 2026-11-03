@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link, useParams } from "wouter";
 import ClientForm from "@/components/Clients/ClientForm";
-import ProspectPageLayout from "@/components/Clients/ProspectPageLayout";
+import ProspectPageLayout, { ProspectTrustNotice } from "@/components/Clients/ProspectPageLayout";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Button } from "@/components/ui/button";
 import { CheckCircle2 } from "lucide-react";
@@ -28,6 +28,7 @@ export function ProspectCompletionForm({ token, initialProfile, onBack }: { toke
   if (complete) return <div className="rounded-xl border bg-white p-8 text-center space-y-3" data-testid="prospect-profile-success"><CheckCircle2 className="mx-auto text-emerald-600 h-12 w-12" /><h1 className="text-2xl font-bold">Información recibida</h1><p>Tu información fue enviada a {info.data.advisorName}. Tu asesor podrá revisarla contigo.</p><p className="text-sm text-muted-foreground">El envío no significa aprobación de financiamiento.</p></div>;
   return <div className="space-y-5" data-testid="prospect-completion-form">
     <div className="bg-white border rounded-xl p-5 space-y-3"><h1 className="text-2xl font-bold">Completa tu perfil de financiamiento</h1><p>Tu información será recibida por <strong>{info.data.advisorName}</strong>. Puedes dejar pendientes los datos que aún no tengas disponibles.</p>
+      <ProspectTrustNotice advisorName={info.data.advisorName} personalLink />
       <label className="flex gap-3 items-start text-sm"><Checkbox checked={accepted} onCheckedChange={v => setAccepted(v === true)} aria-label="Acepto el Aviso de Privacidad" /><span>He leído el <Link href="/legal/aviso" target="_blank" className="underline">Aviso de Privacidad</Link> y autorizo compartir esta información con Crédito Negocios y el asesor indicado para atender mi solicitud.</span></label>
       {!accepted && <p className="text-sm text-muted-foreground">Confirma el Aviso de Privacidad para continuar.</p>}
     </div>

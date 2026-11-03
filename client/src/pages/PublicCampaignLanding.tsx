@@ -1,5 +1,5 @@
 import { ProspectCompletionForm } from "./PublicProspectCompletion";
-import ProspectPageLayout from "@/components/Clients/ProspectPageLayout";
+import ProspectPageLayout, { ProspectTrustNotice } from "@/components/Clients/ProspectPageLayout";
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link, useParams } from "wouter";
@@ -9,7 +9,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { CheckCircle2, ShieldCheck } from "lucide-react";
+import { CheckCircle2 } from "lucide-react";
 
 type CampaignInfo = {
   advisorName: string;
@@ -110,6 +110,7 @@ export default function PublicCampaignLanding() {
               <p className="text-sm text-slate-600 mt-2">Comparte tus datos para que <strong>{data.advisorName}</strong> pueda contactarte y revisar alternativas contigo.</p>
               {data.campaignName !== "Financiamiento" && <p className="text-xs text-muted-foreground mt-1">Campaña: {data.campaignName}</p>}
             </div>
+            <ProspectTrustNotice advisorName={data.advisorName} />
             <form className="space-y-4" onSubmit={submit}>
               <div className="space-y-1.5">
                 <Label htmlFor="lead-full-name">Tu nombre completo *</Label>
@@ -170,10 +171,7 @@ export default function PublicCampaignLanding() {
                 className="w-full" data-testid="landing-submit">
                 {submitting ? "Enviando solicitud..." : "Enviar solicitud"}
               </Button>
-              <p className="text-xs text-muted-foreground flex items-start gap-1.5">
-                <ShieldCheck className="h-4 w-4 shrink-0" />
-                No solicitamos contraseñas ni depósitos. Toda alternativa está sujeta a evaluación por la institución financiera.
-              </p>
+              <p className="text-xs text-muted-foreground">Toda alternativa está sujeta a evaluación por la institución financiera.</p>
             </form>
           </div>
         )}

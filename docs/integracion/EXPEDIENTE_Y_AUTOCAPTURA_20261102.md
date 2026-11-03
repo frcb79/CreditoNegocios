@@ -76,3 +76,11 @@ Verificación de este cambio:
 - Producción: salud HTTP 200; expediente anónimo rechazado con 401 y enlace privado inexistente rechazado con 404.
 
 Pendiente para cerrar la revisión con roles reales: sesión autenticada de Super Admin y revisión de Clientes/Recursos Comerciales como Broker/Master. El intento de acceso seguro quedó interrumpido y no se dispone de una sesión en el navegador de revisión. No se tomaron sesiones de la base, no se cambiaron credenciales ni se enviaron prospectos de prueba a producción. Las plantillas definitivas permanecen fuera de este cambio.
+
+## Ajuste de confianza y enlaces (3 de noviembre)
+
+El PR #56 ya está fusionado y desplegado. El cliente real de arrendamiento reportado existe; se reparó únicamente su relación comercial con el Broker originador, sin recaptura ni duplicación. La consulta de matching vuelve a enviar la sesión. La revisión visual autenticada con roles reales sigue pendiente.
+
+En ambos formularios públicos se añade un aviso visible con identidad del asesor, propósito de la captura, ausencia de envío automático a financieras y la advertencia de no entregar contraseñas ni depósitos. En el enlace individual se explica además que vence, se consume una vez y no revela datos previos del expediente. El pie institucional existente conserva “Powered by”, el logo de Crédito Negocios y los enlaces legales.
+
+El enlace de redes es estable por Broker/Master y captura primero contacto básico; al continuar en la misma sesión precarga nombre, teléfono y correo. El enlace individual puede crearse sin ficha previa o ligado a un cliente/prospecto existente. Por privacidad, su GET devuelve únicamente asesor y versión del aviso: no precarga datos personales ya guardados. Esta decisión mantiene simple la primera versión y evita divulgar el expediente si se reenvía el enlace.
