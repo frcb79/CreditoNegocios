@@ -124,6 +124,9 @@ async function run(client: PoolClient, source: Catalog, apply: boolean) {
     throw new Error("CATALOG_SYNC_PRODUCT_COVERAGE_INVALID");
   }
   const extraOffers = dbOffers.length - 52;
+  if (dbInstitutions.length !== 27 || dbOffers.length !== 73 || stageVersions.length !== 52) {
+    throw new Error("CATALOG_SYNC_STAGE_COUNTS_DRIFTED");
+  }
   const missingVersions = source.institution_product_versions.filter(
     v => !versionMap.has(prodIdToStageId.get(v.product_id)+"|"+v.version_number)
   );
@@ -142,8 +145,7 @@ async function run(client: PoolClient, source: Catalog, apply: boolean) {
     submissionsUntouched: Number(before.submissions)
   };
   console.info("[STAGING-SYNC-PREFLIGHT]",JSON.stringify(summary));
-  if (!apply) return;
-
+  // Verify references even in dry-run mode before promoting any financial terms.
   // Ensure no stage operation has an immutable reference to an offer version
   // whose financial terms could be replaced. Never rewrite historical quotes.
   const matchedIds = [...prodIdToStageId.values()];
@@ -157,7 +159,9 @@ async function run(client: PoolClient, source: Catalog, apply: boolean) {
     ") refs",
     [matchedIds],
   );
-  if (Number(referenced.rows[0].n)>0) throw new Error("CATALOG_SYNC_REFERENCE_REVIEW_REQUIRED");
+  console.info("[STAGING-SYNC-REFERENCES]",JSON.stringify({associatedToCanonicalOffers:Number(referenced.rows[0].n)}));
+  if (Number(referenced.rows[0].n)>0 && apply) throw new Error("CATALOG_SYNC_REFERENCE_REVIEW_REQUIRED");
+  if (!apply) return;
 
   // Only the 26 matching financial institutions; no contacts, emails or PII.
   const institutionColumns = [
@@ -174,7 +178,8 @@ async function run(client: PoolClient, source: Catalog, apply: boolean) {
   for (const record of source.financial_institutions) {
     const stageId = institutionByName.get(institutionKey(record))!.id;
     const parts = institutionColumns.map((c,i)=>'"'+c+'"=$'+(i+1)+(institutionJson.has(c)?"::jsonb":""));
-    const values = institutionColumns.map(c=> record[c] === undefined ? null : record[c]);
+    const values = institutionColumns.map(c=> record[c] === undefined ? null :
+      (institutionJson.has(c) ? JSON.stringify(record[c]) : record[c]));
     await client.query("UPDATE public.financial_institutions SET "+
       parts.join(",")+",updated_at=NOW() WHERE id=$"+(values.length+1),[...values,stageId]);
   }
@@ -190,7 +195,8 @@ async function run(client: PoolClient, source: Catalog, apply: boolean) {
       (["configuration","active_variables"].includes(c)?"::jsonb":""));
     await client.query("UPDATE public.institution_products SET "+ clauses.join(",")+
       ",updated_at=NOW() WHERE id=$"+(productColumns.length+1),
-      [...productColumns.map(c=>record[c]===undefined?null:record[c]),targetId]);
+      [...productColumns.map(c=>record[c]===undefined?null:
+        (["configuration","active_variables"].includes(c) ? JSON.stringify(record[c]) : record[c])),targetId]);
   }
 
   const stageAdmin = await client.query(
@@ -212,8 +218,8 @@ async function run(client: PoolClient, source: Catalog, apply: boolean) {
     const existing=versionMap.get(productId+"|"+version.version_number);
     const fields=[
       version.status,version.effective_from,version.effective_to,
-      version.conditions,version.requirements,version.required_documents,
-      version.variables_configuration,version.change_reason,hash,
+      JSON.stringify(version.conditions),JSON.stringify(version.requirements),version.required_documents,
+      JSON.stringify(version.variables_configuration),version.change_reason,hash,
       version.published_at,version.status==="published"?stageAdminId:null
     ];
     if (existing) {
