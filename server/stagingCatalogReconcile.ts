@@ -190,7 +190,9 @@ async function run(client: PoolClient, source: Catalog, apply: boolean) {
   );
   console.info("[STAGING-SYNC-REFERENCES]",JSON.stringify({associatedToCanonicalOffers:Number(referenced.rows[0].n)}));
   if (Number(referenced.rows[0].n)>0 && apply) throw new Error("CATALOG_SYNC_REFERENCE_REVIEW_REQUIRED");
-  if (!apply) return;
+  // When the full source is present, execute the exact SQL even during DRY_RUN.
+  // reconcileStagingCatalog() will ROLLBACK the entire transaction on dry runs.
+  if (!apply && (source as any).payload_kind !== "FULL_FINANCIAL_CATALOG") return;
 
   // Only the 26 matching financial institutions; no contacts, emails or PII.
   const institutionColumns = [
@@ -288,7 +290,7 @@ async function run(client: PoolClient, source: Catalog, apply: boolean) {
       Number(after.published_versions)!==52) {
     throw new Error("CATALOG_SYNC_POSTCONDITION_FAILED");
   }
-  console.info("[STAGING-SYNC-APPLIED]",JSON.stringify({
+  console.info(apply ? "[STAGING-SYNC-APPLIED]" : "[STAGING-SYNC-TESTED-WITH-ROLLBACK]",JSON.stringify({
     institutions:26,products:52,versions:54,extraLegacyRetained:extraOffers,
     users:Number(after.users),clients:Number(after.clients),
     submissions:Number(after.submissions)
