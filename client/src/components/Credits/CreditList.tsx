@@ -1234,7 +1234,7 @@ export default function CreditList() {
                   {submissionTargets && submissionTargets.length === 0 ? (
                     <div className="text-center py-8 text-gray-500">
                       <Building2 className="w-12 h-12 mx-auto mb-2 text-gray-300" />
-                      <p className="text-sm">No se han enviado a financieras aún</p>
+                      <p className="text-sm">No hay financieras propuestas todavía</p>
                     </div>
                   ) : (
                     submissionTargets?.map((target) => {
