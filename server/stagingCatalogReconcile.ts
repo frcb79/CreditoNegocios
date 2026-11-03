@@ -52,6 +52,32 @@ function requireUnique(items: RecordLike[], key: (x: RecordLike) => string, labe
   }
   return m;
 }
+function unpackLzw16(input: string): string {
+  if (!/^[A-Za-z0-9+/=]+$/.test(input)) throw new Error("CATALOG_SYNC_INVALID_PACKING");
+  const bytes=Buffer.from(input,"base64");
+  if (bytes.length%2!==0 || bytes.length < 2 || bytes.length > 500000) {
+    throw new Error("CATALOG_SYNC_PACKING_SIZE_INVALID");
+  }
+  const dict: string[]=[];
+  let next=256;
+  const first=bytes.readUInt16BE(0);
+  if (first>255) throw new Error("CATALOG_SYNC_PACKING_FIRST_CODE");
+  let previous=String.fromCharCode(first);
+  const decoded: string[]=[previous];
+  for(let i=2; i<bytes.length; i+=2) {
+    const code=bytes.readUInt16BE(i);
+    const current=code<256 ? String.fromCharCode(code)
+      : dict[code] ?? (code===next ? previous+previous[0] : null);
+    if(current===null || current.length>200000) throw new Error("CATALOG_SYNC_PACKING_INVALID_CODE");
+    decoded.push(current);
+    if(next<65536) dict[next++]=previous+current[0];
+    previous=current;
+  }
+  const plain=Buffer.from(decoded.join(""),"latin1").toString("utf8");
+  if(plain.length>1500000) throw new Error("CATALOG_SYNC_PAYLOAD_TOO_LARGE");
+  return plain;
+}
+
 function requireCatalogPayload(): Catalog | null {
   const countText = process.env.STAGING_CATALOG_SYNC_CHUNKS;
   if (!countText) return null;
@@ -65,6 +91,9 @@ function requireCatalogPayload(): Catalog | null {
     const value = process.env[key];
     if (!value) throw new Error("CATALOG_SYNC_CHUNK_MISSING_" + i);
     raw += value;
+  }
+  if (process.env.STAGING_CATALOG_SYNC_ENCODING === "LZW16_BASE64") {
+    raw=unpackLzw16(raw);
   }
   const checksum = createHash("md5").update(raw).digest("hex");
   if (checksum !== process.env.STAGING_CATALOG_SYNC_MD5) {
