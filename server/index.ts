@@ -8,6 +8,7 @@ import { allowedOrigins, isAllowedOrigin } from "./runtimeConfig";
 import { runAutoMigration } from "./autoMigrate";
 import { pool } from "./db";
 import { ensureStagingCatalogBackup, logStagingCatalogOverview } from "./stagingCatalogBackup";
+import { reconcileStagingCatalog } from "./stagingCatalogReconcile";
 import { rejectCrossSiteMutations } from "./csrfProtection";
 
 const isProd = process.env.NODE_ENV === "production";
@@ -114,6 +115,12 @@ app.use((req, res, next) => {
     await runAutoMigration();
   } catch (migErr) {
     console.error("⚠️ [Startup] Auto-migration error:", migErr);
+  }
+
+  // Default is a READ-ONLY dry run. An APPLY requires a separate, explicit
+  // staging-only environment gate and an independently verified backup.
+  if (process.env.STAGING_CATALOG_SYNC_CHUNKS) {
+    await reconcileStagingCatalog(pool);
   }
 
   // Staging only: report aggregate catalog parity without exporting user data.
