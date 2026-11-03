@@ -1,3 +1,5 @@
+import { execFileSync } from "node:child_process";
+import { resolve } from "node:path";
 import { selectReminderDay } from "../../server/brokerInvitationReminders";
 import { buildBrokerInvitationReminderEmail } from "../../server/emailService";
 
@@ -37,4 +39,19 @@ describe("Broker invitation follow-up cadence", () => {
       "test@example.com", "abc", 3, "Test", "http://unsafe.example"
     )).toThrow(/URL segura/);
   });
+});
+
+describe("Broker reminder SQL regression", () => {
+  it("stores sent/failed results without parameter type conflicts and blocks ambiguous retries", () => {
+    const output = execFileSync(process.execPath, [
+      "--import", "tsx", "--test", "--test-reporter=tap", "scripts/test-broker-reminder-sql.ts"
+    ], {
+      cwd: resolve(process.cwd()),
+      timeout: 40000,
+      encoding: "utf8",
+      env: { ...process.env, NODE_ENV: "test", USE_MEMORY_STORAGE: "true" },
+    });
+    expect(output).toMatch(/# fail 0/);
+    expect(output).toMatch(/# tests 1/);
+  }, 45000);
 });
