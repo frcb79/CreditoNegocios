@@ -6,6 +6,7 @@ import { registerRoutes } from "./routes";
 import { setupVite, serveStatic, log } from "./vite";
 import { allowedOrigins, isAllowedOrigin } from "./runtimeConfig";
 import { runAutoMigration } from "./autoMigrate";
+import { pool } from "./db";
 import { rejectCrossSiteMutations } from "./csrfProtection";
 
 const isProd = process.env.NODE_ENV === "production";
@@ -108,6 +109,25 @@ app.use((req, res, next) => {
     await runAutoMigration();
   } catch (migErr) {
     console.error("⚠️ [Startup] Auto-migration error:", migErr);
+  }
+
+  // Staging only: report aggregate catalog parity without exporting user data.
+  // This is read-only and never connects to production from staging.
+  if (process.env.RAILWAY_ENVIRONMENT_NAME === "staging") {
+    try {
+      const { rows } = await pool.query(`
+        SELECT
+          (SELECT COUNT(*)::int FROM public.financial_institutions) AS financial_institutions,
+          (SELECT COUNT(*)::int FROM public.institution_products) AS institution_products,
+          (SELECT COUNT(*)::int FROM public.institution_product_versions) AS institution_product_versions,
+          (SELECT COUNT(*)::int FROM public.users) AS users,
+          (SELECT COUNT(*)::int FROM public.clients) AS clients,
+          (SELECT COUNT(*)::int FROM public.prospect_completion_links) AS prospect_completion_links
+      `);
+      console.info("[STAGING-PARITY] Aggregate record counts:", JSON.stringify(rows[0]));
+    } catch (error) {
+      console.warn("[STAGING-PARITY] Catalog count check incomplete:", error instanceof Error ? error.message : "unknown");
+    }
   }
 
   const server = await registerRoutes(app);
