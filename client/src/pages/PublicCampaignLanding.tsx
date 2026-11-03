@@ -1,4 +1,5 @@
 import { ProspectCompletionForm } from "./PublicProspectCompletion";
+import ProspectPageLayout, { ProspectTrustNotice } from "@/components/Clients/ProspectPageLayout";
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link, useParams } from "wouter";
@@ -8,7 +9,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { CheckCircle2, ShieldCheck } from "lucide-react";
+import { CheckCircle2 } from "lucide-react";
 
 type CampaignInfo = {
   advisorName: string;
@@ -84,14 +85,7 @@ export default function PublicCampaignLanding() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-900" data-testid="public-campaign-landing">
-      <header className="border-b bg-white px-5 py-4">
-        <div className="mx-auto max-w-2xl flex items-center justify-between gap-4">
-          <span className="font-bold text-lg text-slate-800">Crédito Negocios</span>
-          <span className="text-xs text-slate-600">Solicitud de financiamiento</span>
-        </div>
-      </header>
-      <main className={"mx-auto px-4 py-8 " + (showProfile ? "max-w-5xl" : "max-w-2xl")}>
+    <ProspectPageLayout advisorName={data?.advisorName} wide={showProfile} testId="public-campaign-landing">
         {isLoading ? (
           <p className="text-sm text-muted-foreground">Cargando tu formulario...</p>
         ) : error || !data ? (
@@ -112,10 +106,11 @@ export default function PublicCampaignLanding() {
         ) : (
           <div className="rounded-xl border bg-white p-5 sm:p-8 shadow-sm space-y-5">
             <div>
-              <h1 className="text-2xl font-bold">Encuentra alternativas de financiamiento</h1>
-              <p className="text-sm text-slate-600 mt-2">Tu solicitud será atendida por <strong>{data.advisorName}</strong> a través de Crédito Negocios.</p>
+              <h1 className="text-2xl font-bold">Cuéntanos qué financiamiento buscas</h1>
+              <p className="text-sm text-slate-600 mt-2">Comparte tus datos para que <strong>{data.advisorName}</strong> pueda contactarte y revisar alternativas contigo.</p>
               {data.campaignName !== "Financiamiento" && <p className="text-xs text-muted-foreground mt-1">Campaña: {data.campaignName}</p>}
             </div>
+            <ProspectTrustNotice advisorName={data.advisorName} />
             <form className="space-y-4" onSubmit={submit}>
               <div className="space-y-1.5">
                 <Label htmlFor="lead-full-name">Tu nombre completo *</Label>
@@ -176,14 +171,10 @@ export default function PublicCampaignLanding() {
                 className="w-full" data-testid="landing-submit">
                 {submitting ? "Enviando solicitud..." : "Enviar solicitud"}
               </Button>
-              <p className="text-xs text-muted-foreground flex items-start gap-1.5">
-                <ShieldCheck className="h-4 w-4 shrink-0" />
-                No solicitamos contraseñas ni depósitos. Toda alternativa está sujeta a evaluación por la institución financiera.
-              </p>
+              <p className="text-xs text-muted-foreground">Toda alternativa está sujeta a evaluación por la institución financiera.</p>
             </form>
           </div>
         )}
-      </main>
-    </div>
+    </ProspectPageLayout>
   );
 }
