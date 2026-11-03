@@ -27,7 +27,7 @@ import {
   type BankAnalysisReport, type InsertBankAnalysisReport,
   type PromoCode, type InsertPromoCode,
   type PromoRedemption, type InsertPromoRedemption,
-  commercialAuditLogs, type UserOperationalStatus,
+  commercialAuditLogs, clientCommercialRelationships, type UserOperationalStatus,
   userStatusRequests, type UserStatusRequest, type UserStatusRequestStatus, type UserStatusRequestAction,
   legalDocumentVersions, legalAcceptances, formalizationOtpRequests,
   type LegalDocumentVersionDb, type InsertLegalDocumentVersionDb, type LegalAcceptance, type InsertLegalAcceptance, type FormalizationOtpRequest,
@@ -54,6 +54,7 @@ import { assertFrozenOfferLineage, readFrozenOfferLineage } from "./offerLineage
 import { assertOfferCommissionAcceptanceInTransaction, assertLegacyProposalPredatesPublishedCatalogInTransaction } from "./offerCommissionTransactionalGate";
 import { assertTargetReviewMutable } from "./targetReviewTransitions";
 import { getPlatformTenant, getOwnedTenant } from "./brokerNetworkTransitionService";
+import { initialClientRelationship } from "./initialClientRelationship";
 import { randomUUID, createHash } from "crypto";
 import { annualCourtesyExpiry } from "./invitationWelcomePromo";
 import {
@@ -2920,17 +2921,18 @@ export class DbStorage implements IStorage {
     }
   }
 
-  async createClient(clientData: InsertClient): Promise<Client> {
+  async createClient(clientData: InsertClient, options?: { initialRelationshipValidityDays?: number }): Promise<Client> {
     try {
-      const [created] = await db
-        .insert(clients)
-        .values({
-          ...clientData,
-          createdAt: new Date(),
-          updatedAt: new Date(),
-        })
-        .returning();
-      return created;
+      return await db.transaction(async (tx) => {
+        const [created] = await tx.insert(clients).values({
+          ...clientData, createdAt: new Date(), updatedAt: new Date(),
+        }).returning();
+        const relationship = initialClientRelationship(
+          created, options?.initialRelationshipValidityDays, "client_registered",
+        );
+        if (relationship) await tx.insert(clientCommercialRelationships).values(relationship);
+        return created;
+      });
     } catch (error) {
       console.error("Error creating client:", error);
       throw error;
@@ -4950,6 +4952,7 @@ export class DbStorage implements IStorage {
     clientId?: string;
     submissionData: Omit<InsertCreditSubmissionRequest, 'clientId'>;
     financialInstitutionIds?: string[];
+    initialRelationshipValidityDays?: number;
   }): Promise<{
     client: Client;
     submission: CreditSubmissionRequest;
@@ -5014,6 +5017,15 @@ export class DbStorage implements IStorage {
           updatedAt: new Date(),
         })
         .returning();
+
+      if (params.clientData) {
+        const relationship = initialClientRelationship(
+          client, params.initialRelationshipValidityDays, "leasing_quote_requested",
+        );
+        if (relationship) await tx.insert(clientCommercialRelationships).values({
+          ...relationship, masterBrokerId: originMasterBrokerId,
+        });
+      }
 
       // Insert targets within transaction if provided
       const targets: CreditSubmissionTarget[] = [];

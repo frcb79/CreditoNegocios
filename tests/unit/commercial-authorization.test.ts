@@ -31,6 +31,27 @@ describe("Fase 3: Capa de Autorización Desacoplada (ClientAccessScope)", () => 
     mockStorage.clients = [sampleClient];
   });
 
+  it("el dueño de un tenant Broker ve su propio cliente sin recibir privilegios sobre otros", async () => {
+    const otherClient = { ...sampleClient, id: "client-sibling", brokerId: "broker-sibling" };
+    mockStorage.clients.push(otherClient);
+    const context = {
+      tenant: { id: "tenant-1", type: "broker" },
+      membership: { role: "owner", isActive: true },
+    };
+    const own = await authService.authorizeClientAccess({
+      userId: sampleClient.brokerId!, userRole: "broker", clientId: sampleClient.id,
+      tenantContext: context, now,
+    });
+    const sibling = await authService.authorizeClientAccess({
+      userId: sampleClient.brokerId!, userRole: "broker", clientId: otherClient.id,
+      tenantContext: context, now,
+    });
+    expect(own.scope).toBe("historical_scoped");
+    expect(own.capabilities.canViewBasicProfile).toBe(true);
+    expect(sibling.scope).toBe("none");
+    expect(sibling.capabilities.canViewBasicProfile).toBe(false);
+  });
+
   describe("1. Super Admin y Mesa de Control: Acceso Administrativo Completo (`full`)", () => {
     it("otorga scope 'full' a super_admin con todas las capacidades habilitadas", async () => {
       const result = await authService.authorizeClientAccess({
