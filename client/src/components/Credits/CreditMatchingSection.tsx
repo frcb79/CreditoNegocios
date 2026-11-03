@@ -74,6 +74,7 @@ export default function CreditMatchingSection({ creditId, clientName, requestTyp
     queryFn: async () => {
       const res = await fetch(`/api/${requestType === "submission" ? "credit-submissions" : "credits"}/${encodeURIComponent(creditId)}/matching`, {
         headers: { "Accept": "application/json" },
+        credentials: "include",
       });
       if (!res.ok) {
         const errJson = await res.json().catch(() => ({}));
