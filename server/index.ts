@@ -7,6 +7,7 @@ import { setupVite, serveStatic, log } from "./vite";
 import { allowedOrigins, isAllowedOrigin } from "./runtimeConfig";
 import { runAutoMigration } from "./autoMigrate";
 import { pool } from "./db";
+import { ensureStagingCatalogBackup, logStagingCatalogOverview } from "./stagingCatalogBackup";
 import { rejectCrossSiteMutations } from "./csrfProtection";
 
 const isProd = process.env.NODE_ENV === "production";
@@ -104,6 +105,10 @@ app.use((req, res, next) => {
 });
 
 (async () => {
+  // Never run schema-changing auto-migrations in staging without a verified
+  // point-in-time logical snapshot of the financial catalog first.
+  await ensureStagingCatalogBackup(pool);
+
   // Ensure database schema and super admin users exist before starting routes
   try {
     await runAutoMigration();
@@ -129,6 +134,8 @@ app.use((req, res, next) => {
       console.warn("[STAGING-PARITY] Catalog count check incomplete:", error instanceof Error ? error.message : "unknown");
     }
   }
+
+  await logStagingCatalogOverview(pool);
 
   const server = await registerRoutes(app);
 
