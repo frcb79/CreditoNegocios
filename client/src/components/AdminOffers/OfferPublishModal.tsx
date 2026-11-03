@@ -14,6 +14,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
+import { apiRequest } from "@/lib/queryClient";
 import { InstitutionProductWithTemplate } from "@shared/schema";
 import {
   Send,
@@ -63,15 +64,7 @@ export default function OfferPublishModal({
 
   const publishMutation = useMutation({
     mutationFn: async (payload: { changeReason: string; confirmPublish: boolean; expectedDraftId: string; expectedVersionHash: string }) => {
-      const res = await fetch(`/api/institution-products/${offer?.id}/publish`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-      if (!res.ok) {
-        const errorData = await res.json().catch(() => ({}));
-        throw new Error(errorData.message || "Error al publicar la oferta");
-      }
+      const res = await apiRequest("POST", `/api/institution-products/${offer?.id}/publish`, payload);
       return res.json();
     },
     onSuccess: (data) => {
