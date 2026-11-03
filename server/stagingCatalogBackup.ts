@@ -148,4 +148,44 @@ export async function logStagingCatalogOverview(pool: Pool): Promise<void> {
     "SELECT status, COUNT(*)::int AS count FROM public.institution_product_versions GROUP BY status ORDER BY status",
   );
   console.info("[STAGING-VERSION-STATUSES] " + JSON.stringify(versionStatus.rows));
+
+  // Fingerprints only: never log banking/commercial values or document data.
+  // MD5 here is a deterministic comparison label, not a security primitive.
+  const institutionFields = await pool.query(`
+    SELECT id,
+      md5(coalesce(requirements, 'null'::jsonb)::text) AS requirements_hash,
+      md5(coalesce(products, 'null'::jsonb)::text) AS products_hash,
+      md5(coalesce(commission_rates, 'null'::jsonb)::text) AS commissions_hash,
+      md5(coalesce(additional_costs, 'null'::jsonb)::text) AS costs_hash,
+      md5(coalesce(application_process, 'null'::jsonb)::text) AS process_hash,
+      md5(coalesce(to_jsonb(required_documents), 'null'::jsonb)::text) AS documents_hash
+    FROM public.financial_institutions ORDER BY id
+  `);
+  for (const row of institutionFields.rows) {
+    console.info("[STAGING-INSTITUTION-FIELDS] " + JSON.stringify(row));
+  }
+
+  const productFields = await pool.query(`
+    SELECT id,
+      md5(coalesce(configuration, 'null'::jsonb)::text) AS configuration_hash,
+      md5(coalesce(to_jsonb(target_profiles), 'null'::jsonb)::text) AS profiles_hash,
+      md5(coalesce(active_variables, 'null'::jsonb)::text) AS variables_hash,
+      coalesce(is_active,false) AS active
+    FROM public.institution_products ORDER BY id
+  `);
+  for (const row of productFields.rows) {
+    console.info("[STAGING-PRODUCT-FIELDS] " + JSON.stringify(row));
+  }
+
+  const versionFields = await pool.query(`
+    SELECT institution_product_id, version_number, status,
+      md5(coalesce(conditions, 'null'::jsonb)::text) AS conditions_hash,
+      md5(coalesce(requirements, 'null'::jsonb)::text) AS requirements_hash,
+      md5(coalesce(to_jsonb(required_documents), 'null'::jsonb)::text) AS documents_hash,
+      md5(coalesce(variables_configuration, 'null'::jsonb)::text) AS variables_hash
+    FROM public.institution_product_versions ORDER BY institution_product_id, version_number
+  `);
+  for (const row of versionFields.rows) {
+    console.info("[STAGING-VERSION-FIELDS] " + JSON.stringify(row));
+  }
 }
