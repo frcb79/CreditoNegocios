@@ -496,6 +496,9 @@ export default function CreditList() {
     if (norm.includes('winner') || norm.includes('ganador')) {
       return { label, badgeClass: "bg-purple-50 text-purple-800 border-purple-200/80", dotClass: "bg-purple-500" };
     }
+    if (norm === 'contact_initiated' || norm === 'in_progress') {
+      return { label, badgeClass: "bg-indigo-100 text-indigo-900 border-indigo-300 font-semibold", dotClass: "bg-indigo-600" };
+    }
     if (norm.includes('sent') || norm.includes('enviad') || norm.includes('proposals') || norm.includes('propuesta')) {
       return { label, badgeClass: "bg-blue-50 text-blue-800 border-blue-200/80", dotClass: "bg-blue-500" };
     }
