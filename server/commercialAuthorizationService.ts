@@ -203,7 +203,10 @@ export class CommercialAuthorizationService {
     }
 
     // 3. Acceso Administrativo a nivel Tenant (Admin / Mesa de Control acotados a su tenant)
-    const isTenantAdminOrMesa = Boolean(
+    // Broker/Master membership is not a platform or tenant administrator grant.
+    // Their client access must follow the commercial relationship and origin
+    // checks below, even when they own their own Broker tenant.
+    const isTenantAdminOrMesa = !["broker", "master_broker"].includes(userRole) && Boolean(
       userRole === "admin" ||
       userRole === "mesa_control" ||
       tenantContext?.membership?.role === "owner" ||

@@ -256,7 +256,7 @@ export interface IStorage {
   // Client operations
   getClients(filters?: string | { brokerId?: string; tenantId?: string; tenantIds?: string[] }): Promise<Client[]>;
   getClient(id: string): Promise<Client | undefined>;
-  createClient(client: InsertClient): Promise<Client>;
+  createClient(client: InsertClient, options?: { initialRelationshipValidityDays?: number }): Promise<Client>;
   updateClient(id: string, client: Partial<InsertClient>): Promise<Client | undefined>;
   deleteClient(id: string): Promise<boolean>;
 
@@ -551,6 +551,7 @@ export interface IStorage {
     clientId?: string;
     submissionData: Omit<InsertCreditSubmissionRequest, 'clientId'>;
     financialInstitutionIds?: string[];
+    initialRelationshipValidityDays?: number;
   }): Promise<{
     client: Client;
     submission: CreditSubmissionRequest;

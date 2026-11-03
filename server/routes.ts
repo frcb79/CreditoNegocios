@@ -4020,7 +4020,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
         createdBy: userId,
       });
       
-      const client = await storage.createClient(clientData);
+      const config = await commercialConfigService.getConfig();
+      const client = await storage.createClient(clientData, {
+        initialRelationshipValidityDays: config.activeRelationshipValidityDays,
+      });
       
       // Create notification
       await storage.createNotification({
@@ -11807,6 +11810,7 @@ function maskCLABE(clabe?: string | null): string | null {
         clientId: lead.clientId,
         submissionData,
         financialInstitutionIds: [],
+        initialRelationshipValidityDays: (await commercialConfigService.getConfig()).activeRelationshipValidityDays,
       });
 
       // La oportunidad no implica aprobación crediticia, cotización en firme o envío a financiera.
