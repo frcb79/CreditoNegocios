@@ -92,6 +92,7 @@ export default function CreditList() {
   const [masterTab, setMasterTab] = useState<'direct' | 'network'>('direct');
   const [proposalCredit, setProposalCredit] = useState<Credit | null>(null);
   const [selectedSubmissionId, setSelectedSubmissionId] = useState<string | null>(null);
+  const [proposedInstitutionIds, setProposedInstitutionIds] = useState<string[]>([]);
   const [selectedCreditItem, setSelectedCreditItem] = useState<UnifiedCreditItem | null>(null);
   const [expandedInstitutions, setExpandedInstitutions] = useState<Set<string>>(new Set());
   const [, setLocation] = useLocation();
@@ -155,6 +156,26 @@ export default function CreditList() {
   const { data: institutions } = useQuery<any[]>({
     queryKey: ["/api/financial-institutions"],
     enabled: !!selectedSubmissionId,
+  });
+
+  const { data: submissionMatching } = useQuery<any>({
+    queryKey: ["matching", "submission", selectedSubmissionId],
+    queryFn: async () => (await apiRequest("GET", `/api/credit-submissions/${encodeURIComponent(selectedSubmissionId!)}/matching`)).json(),
+    enabled: !!selectedSubmissionId,
+  });
+
+  const proposeInstitutionsMutation = useMutation({
+    mutationFn: async () => apiRequest("POST", `/api/credit-submissions/${encodeURIComponent(selectedSubmissionId!)}/targets`, {
+      financialInstitutionIds: proposedInstitutionIds,
+    }),
+    onSuccess: () => {
+      setProposedInstitutionIds([]);
+      queryClient.invalidateQueries({ queryKey: ["/api/credit-submissions"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/credit-submissions", selectedSubmissionId] });
+      queryClient.invalidateQueries({ queryKey: ["/api/credit-submission-targets"] });
+      toast({ title: "Financieras propuestas", description: "Quedaron para revisión interna; no se compartió el expediente con las financieras." });
+    },
+    onError: (error: any) => toast({ title: "No se pudieron agregar financieras", description: error.message, variant: "destructive" }),
   });
 
   const { data: productTemplates } = useQuery<any[]>({
@@ -505,6 +526,7 @@ export default function CreditList() {
   };
 
   const handleItemClick = (item: UnifiedCreditItem) => {
+    setProposedInstitutionIds([]);
     setSelectedCreditItem(item);
     if (item.type === 'submission') {
       setSelectedSubmissionId(item.id);
@@ -1189,6 +1211,26 @@ export default function CreditList() {
                   </CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-4">
+                  {(() => {
+                    const offers = [...(submissionMatching?.compatible || []), ...(submissionMatching?.insufficientData || []), ...(submissionMatching?.notCompatible || [])];
+                    const existingIds = new Set((submissionTargets || selectedSubmission.targets || []).map((target: any) => target.financialInstitutionId));
+                    const candidates = Array.from(new Map(offers.filter((offer: any) => offer.institutionId && !existingIds.has(offer.institutionId))
+                      .map((offer: any) => [offer.institutionId, offer])).values()) as any[];
+                    return candidates.length > 0 && (isAdmin || selectedSubmission.brokerId === user?.id || isMasterBroker) ? (
+                      <div className="rounded-lg border border-blue-200 bg-blue-50/50 p-4 space-y-3" data-testid="propose-institutions">
+                        <p className="font-semibold text-sm">Proponer financieras para revisión</p>
+                        <p className="text-xs text-slate-600">Puedes proponer ofertas aunque el análisis indique información insuficiente o requisitos no cumplidos. Super admin revisará cada propuesta antes de cualquier envío.</p>
+                        <div className="grid gap-2 sm:grid-cols-2">
+                          {candidates.map((offer: any) => <label key={offer.institutionId} className="flex items-start gap-2 rounded border bg-white p-2 text-sm cursor-pointer">
+                            <input type="checkbox" className="mt-1" checked={proposedInstitutionIds.includes(offer.institutionId)}
+                              onChange={() => setProposedInstitutionIds(prev => prev.includes(offer.institutionId) ? prev.filter(id => id !== offer.institutionId) : [...prev, offer.institutionId])} />
+                            <span>{offer.institutionName || institutions?.find(inst => inst.id === offer.institutionId)?.name || 'Financiera'}<span className="block text-xs text-slate-600">{offer.status === 'COMPATIBLE' ? 'Compatible' : offer.status === 'NOT_COMPATIBLE' ? 'No compatible: requiere revisión especial' : 'Información insuficiente'}</span></span>
+                          </label>)}
+                        </div>
+                        <Button type="button" size="sm" disabled={!proposedInstitutionIds.length || proposeInstitutionsMutation.isPending} onClick={() => proposeInstitutionsMutation.mutate()}>Enviar {proposedInstitutionIds.length || ''} a revisión interna</Button>
+                      </div>
+                    ) : null;
+                  })()}
                   {submissionTargets && submissionTargets.length === 0 ? (
                     <div className="text-center py-8 text-gray-500">
                       <Building2 className="w-12 h-12 mx-auto mb-2 text-gray-300" />
