@@ -1,3 +1,4 @@
+import { execFileSync } from "node:child_process";
 /**
  * Read-only unauthenticated HTTP checks via staging-local loopback.
  * Does not create sessions, users, clients, offers, files or any operation.
@@ -6,6 +7,13 @@ export async function runStagingUnauthenticatedHttpSmoke(port:number):Promise<vo
   if(process.env.STAGING_AUDIT_HTTP!=="true")return;
   if(process.env.RAILWAY_ENVIRONMENT_NAME!=="staging" ||
      process.env.RAILWAY_ENVIRONMENT_ID!=="e3134695-aaec-41e2-8622-41e3701ed985")return;
+  let pgDumpVersion: string | null = null;
+  try {
+    pgDumpVersion=execFileSync("pg_dump",["--version"],{timeout:3000,encoding:"utf8",stdio:"pipe"}).trim();
+  } catch {
+    pgDumpVersion=null;
+  }
+  console.info("[STAGING-BACKUP-CAPABILITY] "+JSON.stringify({pgDumpAvailable:!!pgDumpVersion,version:pgDumpVersion}));
   const checks:Array<[string,number]>=[
     ["/api/health",200],
     ["/api/auth/user",401],
