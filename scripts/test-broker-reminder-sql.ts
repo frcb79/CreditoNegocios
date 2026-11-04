@@ -25,6 +25,7 @@ test("reminder result SQL and retry boundaries in isolated PostgreSQL", async ()
     `);
     // Preserve historic D12 events; permit D15 without unlocking other days.
     await pg.query("INSERT INTO public.broker_invitation_reminder_events (user_id,reminder_day) VALUES ($1,12)", ["existing-d12"]);
+    await pg.exec("ALTER TABLE public.broker_invitation_reminder_events ADD COLUMN provider_message_id VARCHAR(255)");
     await pg.exec(BROKER_INVITATION_DAY_15_MIGRATION_SQL);
     await pg.exec(BROKER_INVITATION_DAY_15_MIGRATION_SQL);
     const existing = await pg.query("SELECT reminder_day FROM public.broker_invitation_reminder_events WHERE user_id=$1", ["existing-d12"]);
@@ -57,12 +58,13 @@ test("reminder result SQL and retry boundaries in isolated PostgreSQL", async ()
     assert.equal(await claim("new-sent", 3), 1);
     const sent = await pg.query(REMINDER_OUTCOME_SQL, ["new-sent", 3, "sent", "", true, "message-accepted-123"]);
     assert.equal(sent.affectedRows, 1, "the result UPDATE must parse and execute");
-    const sentState = (await pg.query<{status:string; sent_at:Date|null;last_error:string|null}>(
-      "SELECT status,sent_at,last_error FROM public.broker_invitation_reminder_events WHERE user_id='new-sent'"
+    const sentState = (await pg.query<{status:string; sent_at:Date|null;last_error:string|null;provider_message_id:string|null}>(
+      "SELECT status,sent_at,last_error,provider_message_id FROM public.broker_invitation_reminder_events WHERE user_id='new-sent'"
     )).rows[0];
     assert.equal(sentState.status, "sent");
     assert.ok(sentState.sent_at);
     assert.equal(sentState.last_error, null);
+    assert.equal(sentState.provider_message_id, "message-accepted-123", "Resend identifier is stored with send outcome");
     assert.equal(await claim("new-sent", 3), 0, "confirmed sends must never repeat");
     assert.equal(await claim("new-failed", 7), 1);
     await pg.query(REMINDER_OUTCOME_SQL, ["new-failed", 7, "failed", "Recipient rejected", false, null]);
