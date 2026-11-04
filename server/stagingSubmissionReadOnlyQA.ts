@@ -58,6 +58,21 @@ export async function validateStageSubmissionsReadOnly(pool:Pool):Promise<void> 
       errors.push(err instanceof Error?err.message:"unknown");
     }
   }
+  // Aggregate template linkage only. Do not print applicant information, IDs,
+  // amounts or any credit/application contents.
+  const templateGroups=(await pool.query(
+    "SELECT coalesce(t.name,'<Sin plantilla>') template, "+
+    "count(*)::int requests, coalesce(t.is_active,false) active, "+
+    "(SELECT count(*)::int FROM public.institution_products op "+
+    "JOIN public.institution_product_versions ov ON ov.institution_product_id=op.id "+
+    " AND ov.version_number=op.current_version_number "+
+    "WHERE op.template_id=r.product_template_id AND op.status='published' "+
+    " AND ov.status='published' AND op.is_active IS DISTINCT FROM false) published_offers "+
+    "FROM public.credit_submission_requests r "+
+    "LEFT JOIN public.product_templates t ON t.id=r.product_template_id "+
+    "GROUP BY r.product_template_id,t.name,t.is_active ORDER BY count(*) DESC"
+  )).rows;
+  console.info("[STAGING-SUBMISSION-TEMPLATE-GROUPS] "+JSON.stringify(templateGroups));
   const report={totalSubmissions:submissions.length,checked:matches,missingClients,
     withoutPublishedTemplateOffers:withoutOffers,matchClassifications:{
       compatible:passes,insufficient:incomplete,incompatible:rejects},
