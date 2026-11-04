@@ -2,6 +2,7 @@
 import { strict as assert } from "node:assert";
 import { test } from "node:test";
 import { PGlite } from "@electric-sql/pglite";
+import { BROKER_INVITATION_DAY_15_MIGRATION_SQL } from "../server/brokerInvitationReminderSchema";
 import {
   REMINDER_CLAIM_SQL, REMINDER_OUTCOME_SQL, UNCERTAIN_REMINDER_PREFIX,
 } from "../server/brokerInvitationReminders";
@@ -22,6 +23,16 @@ test("reminder result SQL and retry boundaries in isolated PostgreSQL", async ()
         PRIMARY KEY (user_id, reminder_day)
       );
     `);
+    // Preserve historic D12 events; permit D15 without unlocking other days.
+    await pg.query("INSERT INTO public.broker_invitation_reminder_events (user_id,reminder_day) VALUES ($1,12)", ["existing-d12"]);
+    await pg.exec(BROKER_INVITATION_DAY_15_MIGRATION_SQL);
+    await pg.exec(BROKER_INVITATION_DAY_15_MIGRATION_SQL);
+    const existing = await pg.query("SELECT reminder_day FROM public.broker_invitation_reminder_events WHERE user_id=$1", ["existing-d12"]);
+    assert.equal(existing.rows.length, 1, "historic events must be kept");
+    assert.equal((existing.rows[0] as any).reminder_day, 12);
+    const day15 = await pg.query("INSERT INTO public.broker_invitation_reminder_events (user_id,reminder_day,status) VALUES ($1,15,'claimed') RETURNING reminder_day", ["new-day-15"]);
+    assert.equal(day15.rows.length, 1);
+    await assert.rejects(pg.query("INSERT INTO public.broker_invitation_reminder_events (user_id,reminder_day) VALUES ($1,14)", ["invalid-day-14"]));
     const oldFailure = "inconsistent types deduced for parameter $3";
     for (const [userId, error, ageHours] of [
       ["legacy", oldFailure, 48],
