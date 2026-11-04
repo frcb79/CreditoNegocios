@@ -2,6 +2,7 @@ import { checkProspectIntakeSchemaReadiness } from "./prospectIntakeSchema";
 import { registerProspectCompletionRoutes } from "./prospectCompletionRoutes";
 import { confirmAccountAccess, withAccountAccess } from "./accountAccess";
 import { dispatchCommercialActivationWelcome } from "./commercialWelcomeService";
+import { registerEmailDeliveryAuditRoutes } from "./emailDeliveryAuditRoutes";
 import { registerBrokerDossierRoutes } from "./brokerDossierRoutes";
 import { getOfferAgePolicy } from "../shared/offerAgePolicy";
 import { matchPublishedCatalog } from "./matching/catalog";
@@ -1314,6 +1315,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Auth middleware
   await setupAuth(app);
   registerAdministrativeAudit(app);
+  registerEmailDeliveryAuditRoutes(app);
 
   // Register legal routes after session/Passport initialization
   registerLegalRoutes(app);
