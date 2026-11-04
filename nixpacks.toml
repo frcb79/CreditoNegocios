@@ -2,5 +2,10 @@
 [variables]
 NPM_CONFIG_PRODUCTION = "false"
 
+# PostgreSQL 18 client tooling for one-shot staging database backups.
+# Preserve Nixpacks' default Node/tool packages with the array extension.
+[phases.setup]
+nixPkgs = ["...", "postgresql_18"]
+
 [phases.install]
 cmds = ["npm ci --include=dev"]
