@@ -15,6 +15,7 @@ import { runStagingDocumentE2E } from "./stagingDocumentE2E";
 import { validateStageSubmissionsReadOnly } from "./stagingSubmissionReadOnlyQA";
 import { runStagingUnauthenticatedHttpSmoke } from "./stagingHttpUnauthSmoke";
 import { exportStagingDatabaseOutsideRailway } from "./stagingExternalBackup";
+import { validateStagingRestore } from "./stagingRestoreCheck";
 import { rejectCrossSiteMutations } from "./csrfProtection";
 
 const isProd = process.env.NODE_ENV === "production";
@@ -172,6 +173,14 @@ app.use((req, res, next) => {
       await exportStagingDatabaseOutsideRailway();
     } catch (error) {
       console.error("[STAGING-EXTERNAL-DB-BACKUP-ERROR]", error instanceof Error ? error.message : "unknown");
+    }
+  }
+
+  if (process.env.STAGING_RESTORE_QA === "true") {
+    try {
+      await validateStagingRestore();
+    } catch (error) {
+      console.error("[STAGING-RESTORE-QA-ERROR]", error instanceof Error ? error.message : "unknown");
     }
   }
 
