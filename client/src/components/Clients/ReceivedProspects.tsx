@@ -194,9 +194,9 @@ export default function ReceivedProspects({
                     </div>)}
                 </div>)}
               </>}
-              {["failed","pending"].includes(matchDetails.data.status) &&
-                <Button size="sm" variant="outline" onClick={()=>void retryMatch()} disabled={retryingMatch}>
-                  {retryingMatch ? "Evaluando..." : "Reintentar matching"}
+              {["failed","pending","identity_review"].includes(matchDetails.data.status) &&
+                <Button size="sm" variant="outline" onClick={()=>void retryMatch().catch(()=>{})} disabled={retryingMatch}>
+                  {retryingMatch ? "Evaluando..." : matchDetails.data.status === "identity_review" ? "Evaluar después de vincular cliente" : "Reintentar matching"}
                 </Button>}
               <p className="text-xs text-muted-foreground">Solo registro interno; el envío a una financiera requiere el flujo autorizado de gestión de crédito.</p>
             </div>}
