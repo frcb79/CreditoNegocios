@@ -55,7 +55,7 @@ test("reminder result SQL and retry boundaries in isolated PostgreSQL", async ()
     assert.equal(await claim("provider-failed", 3), 1, "known provider failures may retry");
     assert.equal(await claim("provider-failed", 3), 0, "an active claim cannot duplicate dispatch");
     assert.equal(await claim("new-sent", 3), 1);
-    const sent = await pg.query(REMINDER_OUTCOME_SQL, ["new-sent", 3, "sent", "", true]);
+    const sent = await pg.query(REMINDER_OUTCOME_SQL, ["new-sent", 3, "sent", "", true, "message-accepted-123"]);
     assert.equal(sent.affectedRows, 1, "the result UPDATE must parse and execute");
     const sentState = (await pg.query<{status:string; sent_at:Date|null;last_error:string|null}>(
       "SELECT status,sent_at,last_error FROM public.broker_invitation_reminder_events WHERE user_id='new-sent'"
@@ -65,7 +65,7 @@ test("reminder result SQL and retry boundaries in isolated PostgreSQL", async ()
     assert.equal(sentState.last_error, null);
     assert.equal(await claim("new-sent", 3), 0, "confirmed sends must never repeat");
     assert.equal(await claim("new-failed", 7), 1);
-    await pg.query(REMINDER_OUTCOME_SQL, ["new-failed", 7, "failed", "Recipient rejected", false]);
+    await pg.query(REMINDER_OUTCOME_SQL, ["new-failed", 7, "failed", "Recipient rejected", false, null]);
     const failedState = (await pg.query<{status:string;sent_at:Date|null;last_error:string|null}>(
       "SELECT status,sent_at,last_error FROM public.broker_invitation_reminder_events WHERE user_id='new-failed'"
     )).rows[0];
