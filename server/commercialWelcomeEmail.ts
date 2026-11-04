@@ -41,7 +41,7 @@ export function renderCommercialActivationWelcome(input: WelcomeCopyInput) {
     { title: "Arrendamiento empresarial", amount: "$1,000,000 MXN", rate: "2%", commission: "$20,000 MXN" },
   ];
   const statement =
-    "Estos son ejemplos exclusivamente ilustrativos y no promesas de ingresos ni porcentajes garantizados. " +
+    "Ejemplos exclusivamente ilustrativos. No son promesas de ingresos ni porcentajes garantizados. " +
     "Las comisiones reales dependen de tu asignación, el producto, la institución y las condiciones de cada operación.";
   const subject = "¡" + name + ", tu plataforma ya está lista! Consigue tu primer prospecto";
   const text = [
