@@ -26,6 +26,7 @@ on:
       - 'feat/broker-dossier-*'
       - 'fix/leasing-client-visibility-*'
       - 'feat/issue-63-*'
+      - 'feat/resend-audit-*'
   workflow_dispatch:
 concurrency:
   group: prelaunch-${{ github.ref }}
@@ -53,6 +54,8 @@ jobs:
         run: npm run check
       - name: Build
         run: npm run build
+      - name: Resend signed delivery SQL test (isolated PGlite, Node runner)
+        run: node --import tsx --test scripts/test-resend-delivery-sql.ts
       - name: Broker dossier and prospect self-service (isolated PostgreSQL and DOM)
         run: |
           npm run test:prospect-intake
@@ -154,6 +157,7 @@ jobs:
             tests/unit/broker-invitation-followup.test.ts
             tests/unit/broker-invitation-email.test.ts
             tests/unit/activation-commercial-welcome.test.ts
+            tests/unit/resend-delivery-audit.test.ts
             tests/unit/broker-invitation-http.test.ts
             tests/unit/rbac.test.ts
             tests/unit/settings-audit-role-ux.test.ts

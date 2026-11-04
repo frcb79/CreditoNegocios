@@ -299,7 +299,7 @@ export async function sendAccountInvitationEmail(
   to: string, token: string, role: "broker" | "master_broker",
   name?: string, personalMessage?: string,
   courtesy?: { code: string; name: string; durationMonths: 12 },
-): Promise<{success:boolean;error?:string}> {
+): Promise<{success:boolean;error?:string;providerMessageId?:string}> {
   try {
     if (!resend) return { success: false, error: "Servicio de correo no configurado" };
     const invitation = buildAccountInvitationEmail(to, token, role, name, personalMessage,
@@ -308,7 +308,8 @@ export async function sendAccountInvitationEmail(
       from: FROM_EMAIL, to: [to],
       subject: invitation.subject, html: invitation.html, text: invitation.text,
     });
-    return result.error ? { success: false, error: result.error.message } : { success: true };
+    return result.error ? { success: false, error: result.error.message } : result.data?.id ?
+      { success: true, providerMessageId: result.data.id } : { success: false, error: "Proveedor no confirmó el envío" };
   } catch (error: any) {
     return { success: false, error: error?.message || "Error al enviar la invitación" };
   }
@@ -1126,7 +1127,7 @@ export function buildBrokerInvitationReminderEmail(
 
 export async function sendBrokerInvitationReminderEmail(
   to: string, token: string, day: 3 | 7 | 12 | 15, name?: string,
-): Promise<{ success: boolean; error?: string }> {
+): Promise<{ success: boolean; error?: string; providerMessageId?: string }> {
   try {
     if (!resend) return { success: false, error: "Servicio de correo no configurado" };
     const letter = buildBrokerInvitationReminderEmail(to, token, day, name);
@@ -1134,7 +1135,8 @@ export async function sendBrokerInvitationReminderEmail(
       from: FROM_EMAIL, to: [to],
       subject: letter.subject, html: letter.html, text: letter.text,
     });
-    return result.error ? { success: false, error: result.error.message } : { success: true };
+    return result.error ? { success: false, error: result.error.message } : result.data?.id ?
+      { success: true, providerMessageId: result.data.id } : { success: false, error: "Proveedor no confirmó el envío" };
   } catch (error: any) {
     return { success: false, error: error?.message || "Error al enviar recordatorio" };
   }

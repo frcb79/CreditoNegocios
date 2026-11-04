@@ -7,6 +7,7 @@ import { setupVite, serveStatic, log } from "./vite";
 import { allowedOrigins, isAllowedOrigin } from "./runtimeConfig";
 import { runAutoMigration } from "./autoMigrate";
 import { rejectCrossSiteMutations } from "./csrfProtection";
+import { registerResendWebhook } from "./resendDeliveryWebhook";
 
 const isProd = process.env.NODE_ENV === "production";
 
@@ -26,7 +27,7 @@ const isSensitiveConsentPath = (path: string) =>
   path.startsWith("/api/client-consent/") || path.startsWith("/autorizar-expediente/") ||
   path.startsWith("/api/public/campaign/") || path.startsWith("/api/public/prospect-completion/") ||
   path.startsWith("/api/commercial-resources/completion-links") || path.startsWith("/completar-perfil/") ||
-  path.startsWith("/api/admin/brokers/");
+  path.startsWith("/api/admin/brokers/") || path.startsWith("/api/webhooks/resend");
 app.use((req, res, next) => {
   if (isSensitiveConsentPath(req.path)) {
     res.setHeader("Cache-Control", "private, no-store");
@@ -63,6 +64,9 @@ app.use((req, res, next) => {
 
   next();
 });
+
+// Raw-body verification must run before the global JSON parser.
+registerResendWebhook(app);
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));

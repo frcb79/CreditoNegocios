@@ -119,7 +119,7 @@ export async function dispatchBrokerInvitation(
     await storage.createNotification({
       userId, type: "broker_invitation_sent", title: "Invitación de acceso enviada",
       message: `Invitación enviada a ${normalizedEmail}`,
-      data: { email: normalizedEmail, brokerId: targetBroker.id }, priority: "medium",
+      data: { email: normalizedEmail, brokerId: targetBroker.id, resendMessageId: delivered.providerMessageId || null }, priority: "medium",
     }).catch(error => console.warn("[Invitation] Sender notification pending", error));
   } else {
     console.error("[Invitation] Email delivery failed; invitation pending:", delivered.error);
