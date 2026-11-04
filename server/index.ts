@@ -10,6 +10,7 @@ import { pool } from "./db";
 import { ensureStagingCatalogBackup, logStagingCatalogOverview } from "./stagingCatalogBackup";
 import { reconcileStagingCatalog } from "./stagingCatalogReconcile";
 import { runStagingReadOnlyQA } from "./stagingMatchingAudit";
+import { reconcileStagingTemplates } from "./stagingTemplateSync";
 import { rejectCrossSiteMutations } from "./csrfProtection";
 
 const isProd = process.env.NODE_ENV === "production";
@@ -122,6 +123,11 @@ app.use((req, res, next) => {
   // staging-only environment gate and an independently verified backup.
   if (process.env.STAGING_CATALOG_SYNC_CHUNKS) {
     await reconcileStagingCatalog(pool);
+  }
+
+  // Staging metadata sync is opt-in, transactional and defaults to rollback.
+  if (process.env.STAGING_TEMPLATE_SYNC_CHUNKS) {
+    await reconcileStagingTemplates(pool);
   }
 
   // Staging only: report aggregate catalog parity without exporting user data.
