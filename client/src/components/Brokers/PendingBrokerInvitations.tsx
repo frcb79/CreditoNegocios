@@ -147,7 +147,7 @@ export default function PendingBrokerInvitations() {
                       </td>
                       <td className="p-3 text-slate-600">
                         {c.sentDays?.length ? c.sentDays.map(d=>"D"+d).join(" · ") : "Aún no corresponden"}
-                        {Number(c.failedReminders)>0 && <div className="text-amber-700">Revisar error de correo</div>}
+                        {Number(c.failedReminders)>0 && <div className="text-amber-700">Verificar envío de recordatorio</div>}
                       </td>
                       <td className="p-3">
                         <Badge variant="outline" className={c.paused?"text-slate-500":manual?
