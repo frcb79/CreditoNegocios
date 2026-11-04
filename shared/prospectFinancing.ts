@@ -30,7 +30,7 @@ export function normalizeFinancingFamily(value: unknown): string | null {
     arrendamiento: "arrendamiento", arrendamiento_puro: "arrendamiento",
     hipotecario: "hipotecario", hipotecario_vivienda: "hipotecario", hipotecario_empresarial: "hipotecario",
     garantia_inmobiliaria_empresarial: "hipotecario",
-    tpv_anticipo: "tpv_anticipo", tpv: "tpv_anticipo", anticipo_ventas: "tpv_anticipo",
+    tpv_anticipo: "tpv_anticipo", tpv: "tpv_anticipo", anticipo_ventas: "tpv_anticipo", anticipo_ventas_tpv: "tpv_anticipo",
   };
   return aliases[name] || null;
 }
