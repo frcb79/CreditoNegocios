@@ -29,6 +29,10 @@ describe("Issue #63 – activation welcome and confidentiality",()=>{
     expect(master.text).toContain("tu red");
     expect(broker.text).not.toContain("Como Master Broker");
     for(const output of [broker,master]){
+      expect(output.html).toContain("Tu próxima comisión puede estar entre tus contactos");
+      expect(output.html.indexOf("$15,000")).toBeLessThan(output.html.indexOf("Tu primer prospecto en 10 minutos"));
+      expect(output.html.indexOf("$20,000")).toBeLessThan(output.html.indexOf("Tu primer prospecto en 10 minutos"));
+      expect(output.text.indexOf("$15,000")).toBeLessThan(output.text.indexOf("Tu meta para los próximos 10 minutos"));
       expect(output.html).toContain("$15,000");
       expect(output.html).toContain("$20,000");
       expect(output.text).toContain("1.5%");
