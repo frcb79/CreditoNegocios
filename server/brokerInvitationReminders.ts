@@ -32,12 +32,13 @@ export const REMINDER_OUTCOME_SQL = `UPDATE public.broker_invitation_reminder_ev
           WHERE user_id=$1 AND reminder_day=$2`;
 
 /** At most one reminder on a scheduled run, never three catch-up emails at once. */
-export function selectReminderDay(invitedAt: Date, now = new Date()): 3 | 7 | 12 | null {
+export function selectReminderDay(invitedAt: Date, now = new Date()): 3 | 7 | 12 | 15 | null {
   const elapsed = now.getTime() - invitedAt.getTime();
   if (elapsed < 3 * 86400000) return null;
   if (elapsed < 7 * 86400000) return 3;
   if (elapsed < 12 * 86400000) return 7;
-  return 12;
+  if (elapsed < 15 * 86400000) return 12;
+  return 15;
 }
 
 export async function runBrokerInvitationReminders(): Promise<{
