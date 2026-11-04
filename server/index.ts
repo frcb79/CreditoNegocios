@@ -146,7 +146,11 @@ app.use((req, res, next) => {
   await logStagingCatalogOverview(pool);
 
   // Test catalog matching and role isolation with synthetic in-memory records only.
-  await runStagingReadOnlyQA(pool);
+  try {
+    await runStagingReadOnlyQA(pool);
+  } catch (error) {
+    console.error("[STAGING-FUNCTIONAL-QA-ERROR]", error instanceof Error ? error.message : "unknown");
+  }
 
   const server = await registerRoutes(app);
 
