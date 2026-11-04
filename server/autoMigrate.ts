@@ -1,4 +1,5 @@
 import { PROSPECT_INTAKE_SCHEMA_SQL } from "./prospectIntakeSchema";
+import { BROKER_INVITATION_DAY_15_MIGRATION_SQL } from "./brokerInvitationReminderSchema";
 import { pool } from "./db";
 import bcrypt from "bcrypt";
 import { repairStagingSchemaOnStartup } from "./stagingSchemaRepair";
@@ -895,7 +896,7 @@ export async function runAutoMigration(): Promise<void> {
       await client.query(`
         CREATE TABLE IF NOT EXISTS public.broker_invitation_reminder_events (
           user_id VARCHAR NOT NULL REFERENCES public.users(id) ON DELETE RESTRICT,
-          reminder_day SMALLINT NOT NULL CHECK(reminder_day IN (3, 7, 12)),
+          reminder_day SMALLINT NOT NULL CHECK(reminder_day IN (3, 7, 12, 15)),
           status VARCHAR(16) NOT NULL DEFAULT 'claimed'
             CHECK(status IN ('claimed', 'sent', 'failed', 'skipped')),
           claimed_at TIMESTAMP NOT NULL DEFAULT NOW(),
@@ -908,6 +909,7 @@ export async function runAutoMigration(): Promise<void> {
           ON public.broker_invitation_reminder_events(status, claimed_at);
         ALTER TABLE public.broker_invitation_reminder_events ENABLE ROW LEVEL SECURITY;
       `);
+      await client.query(BROKER_INVITATION_DAY_15_MIGRATION_SQL);
       console.log("[AutoMigrate] Broker invitation reminder audit verified");
     } catch (error) {
       console.error("[AutoMigrate] Broker reminder schema unavailable:", error);
