@@ -11,6 +11,7 @@ import { ensureStagingCatalogBackup, logStagingCatalogOverview } from "./staging
 import { reconcileStagingCatalog } from "./stagingCatalogReconcile";
 import { runStagingReadOnlyQA } from "./stagingMatchingAudit";
 import { reconcileStagingTemplates } from "./stagingTemplateSync";
+import { runStagingDocumentE2E } from "./stagingDocumentE2E";
 import { rejectCrossSiteMutations } from "./csrfProtection";
 
 const isProd = process.env.NODE_ENV === "production";
@@ -146,6 +147,14 @@ app.use((req, res, next) => {
       console.info("[STAGING-PARITY] Aggregate record counts:", JSON.stringify(rows[0]));
     } catch (error) {
       console.warn("[STAGING-PARITY] Catalog count check incomplete:", error instanceof Error ? error.message : "unknown");
+    }
+  }
+
+  if (process.env.STAGING_DOCUMENT_E2E === "true") {
+    try {
+      await runStagingDocumentE2E();
+    } catch (error) {
+      console.error("[STAGING-DOCUMENT-E2E-ERROR]", error instanceof Error ? error.message : "unknown");
     }
   }
 
