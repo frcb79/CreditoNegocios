@@ -130,8 +130,10 @@ export function registerCampaignAcquisitionRoutes(app: Express, publish?: Prospe
     try {
       const results = await pool.query(
         ["SELECT m.id,m.full_name,m.phone,m.email,m.product,m.amount_range,m.message,",
-         "m.created_at,m.linked_client_id,m.profile_data,m.profile_received_at,m.source_channel,t.name AS campaign_name,t.channel",
+         "m.created_at,m.linked_client_id,m.profile_data,m.profile_received_at,m.source_channel,t.name AS campaign_name,t.channel,",
+         "p.status AS preapplication_status,p.summary AS preapplication_summary,p.financing_data AS financing,p.evaluated_at AS preapplication_evaluated_at",
          "FROM public.commercial_marketing_leads m",
+         "LEFT JOIN public.prospect_preapplications p ON p.lead_id=m.id AND p.owner_user_id=m.owner_user_id",
          "LEFT JOIN public.commercial_resource_templates t ON t.id=m.template_id",
          "WHERE m.owner_user_id=$1 ORDER BY m.created_at DESC LIMIT 200"].join(" "),
         [user!.id]
