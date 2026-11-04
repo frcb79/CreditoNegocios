@@ -99,8 +99,8 @@ export default function PublicCampaignLanding() {
             initialFinancing={{
               product:actualProduct,
               // Reuse a single stated number for confirmation; ranges are never guessed as exact amounts.
-              amount: /^\\$?[\\d,]+(?:\\s*MXN)?$/i.test(amountRange.trim()) ?
-                amountRange.replace(/[^\\d]/g,"") : "",
+              amount: /^\$?[\d,]+(?:\s*MXN)?$/i.test(amountRange.trim()) ?
+                amountRange.replace(/[^\d]/g,"") : "",
               purpose:message.trim(),
             }}
             onBack={() => setShowProfile(false)} />
