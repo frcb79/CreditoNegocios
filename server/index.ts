@@ -9,6 +9,7 @@ import { runAutoMigration } from "./autoMigrate";
 import { pool } from "./db";
 import { ensureStagingCatalogBackup, logStagingCatalogOverview } from "./stagingCatalogBackup";
 import { reconcileStagingCatalog } from "./stagingCatalogReconcile";
+import { runStagingReadOnlyQA } from "./stagingMatchingAudit";
 import { rejectCrossSiteMutations } from "./csrfProtection";
 
 const isProd = process.env.NODE_ENV === "production";
@@ -143,6 +144,9 @@ app.use((req, res, next) => {
   }
 
   await logStagingCatalogOverview(pool);
+
+  // Test catalog matching and role isolation with synthetic in-memory records only.
+  await runStagingReadOnlyQA(pool);
 
   const server = await registerRoutes(app);
 
