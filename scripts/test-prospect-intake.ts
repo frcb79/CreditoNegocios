@@ -11,6 +11,7 @@ import { PROSPECT_INTAKE_SCHEMA_SQL, checkProspectIntakeSchemaReadiness } from "
 import { PROSPECT_AUTO_MATCHING_SCHEMA_SQL } from "../server/prospectAutoMatchingSchema";
 import { registerCampaignAcquisitionRoutes } from "../server/campaignAcquisitionRoutes";
 import { registerProspectCompletionRoutes } from "../server/prospectCompletionRoutes";
+import { registerProspectAutoMatchingRoutes } from "../server/prospectAutoMatchingRoutes";
 import { getPublishedLegalDocument } from "../server/legalDocuments";
 
 import { before as beforeAll, after as afterAll, afterEach, describe, it } from "node:test";
@@ -83,6 +84,7 @@ describe("Prospect self-service: HTTP → PostgreSQL transaction → advisor inb
     app.use(express.json());
     registerCampaignAcquisitionRoutes(app);
     registerProspectCompletionRoutes(app);
+    registerProspectAutoMatchingRoutes(app);
   });
   afterAll(async () => {mocks.forEach(mock => mock.mockRestore());await pg?.close();});
   afterEach(() => {failNotification=false;});
