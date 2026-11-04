@@ -1044,11 +1044,11 @@ export async function sendClientConsentOtpEmail(input:{
 }
 
 
-/** Automatic reminders on days 3, 7 and 12. Never reuse an expired invitation link. */
+/** Automatic reminders on days 3, 7, 12 and 15. Never reuse an expired invitation link. */
 export function buildBrokerInvitationReminderEmail(
   to: string,
   token: string,
-  day: 3 | 7 | 12,
+  day: 3 | 7 | 12 | 15,
   name?: string,
   baseUrl = process.env.FRONTEND_BASE_URL,
 ): { subject: string; html: string; text: string } {
@@ -1059,7 +1059,7 @@ export function buildBrokerInvitationReminderEmail(
     .replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
   const link = baseUrl.replace(/\/$/, "") + "/reset-password?token=" + encodeURIComponent(token);
   const greeting = name?.trim() || "colaborador";
-  const variants: Record<3 | 7 | 12, { subject: string; headline: string; body: string; closing: string }> = {
+  const variants: Record<3 | 7 | 12 | 15, { subject: string; headline: string; body: string; closing: string }> = {
     3: {
       subject: "Tu invitación a Crédito Negocios sigue disponible",
       headline: "Tus próximas oportunidades pueden comenzar aquí",
@@ -1073,13 +1073,24 @@ export function buildBrokerInvitationReminderEmail(
       closing: "Si necesitas orientación, responde a este correo o escríbenos a info@creditonegocios.com.mx.",
     },
     12: {
-      subject: "Último recordatorio de tu invitación a Crédito Negocios",
+      subject: "Tu invitación continúa disponible: falta un último paso",
       headline: "Tu invitación sigue disponible",
-      body: "Queremos darte una última oportunidad de activar tu cuenta e integrarte a Crédito Negocios. Si te interesa participar, puedes completar tu registro con este enlace renovado.",
-      closing: "No recibirás más recordatorios automáticos sobre esta invitación. Nuestro equipo podrá contactarte personalmente si más adelante deseas información.",
+      body: "Queremos que conozcas las oportunidades comerciales que puedes desarrollar desde Crédito Negocios. Si te interesa participar, activa tu cuenta con el enlace renovado.",
+      closing: "Pronto recibirás nuestro último correo de seguimiento a esta invitación, con algunos ejemplos de oportunidades de negocio.",
+    },
+    15: {
+      subject: "Una oportunidad empresarial puede generar $15,000 o $20,000 en comisiones ilustrativas",
+      headline: "La próxima oportunidad podría estar entre tus contactos",
+      body: "Tal vez ya conoces al dueño de un negocio que necesita capital o al director de una empresa que busca arrendamiento. Una recomendación adecuada puede abrir una nueva oportunidad comercial. Mira estos dos ejemplos hipotéticos:",
+      closing: "Activa tu cuenta para explorar alternativas de financiamiento y registrar tu primer prospecto. Este es el último recordatorio automático de tu invitación.",
     },
   };
   const v = variants[day];
+  const day15Examples = day === 15 ? [
+    { label: "Crédito para un negocio", amount: "$1,000,000 MXN", rate: "1.5% ilustrativo", commission: "$15,000 MXN" },
+    { label: "Arrendamiento empresarial", amount: "$1,000,000 MXN", rate: "2% ilustrativo", commission: "$20,000 MXN" },
+  ] : [];
+  const note15 = "Ejemplos exclusivamente ilustrativos, no garantizan ingresos ni representan una comisión ofrecida. El porcentaje, monto y pago real dependen de la institución, producto, condiciones de la operación y comisión asignada al asesor.";
   const html = [
     "<!doctype html><html lang='es'><head><meta charset='utf-8'></head>",
     "<body style='margin:0;padding:24px 10px;background:#f2f5f8;font-family:Arial,Helvetica,sans-serif;color:#18304c'>",
@@ -1090,13 +1101,23 @@ export function buildBrokerInvitationReminderEmail(
     "<p>Hola, <strong>", esc(greeting), "</strong>:</p>",
     "<h1 style='font-size:24px;color:#142e4a;line-height:1.25'>", esc(v.headline), "</h1>",
     "<p style='font-size:15px;line-height:1.6'>", esc(v.body), "</p>",
+    ...day15Examples.map(example => [
+      "<div style='padding:16px;margin:10px 0;background:#f2f7fb;border:1px solid #dce6ef;border-radius:8px'>",
+      "<strong style='font-size:15px'>", esc(example.label), "</strong>",
+      "<p style='margin:8px 0'>Monto: ", esc(example.amount), " · Comisión: ", esc(example.rate), "</p>",
+      "<strong style='font-size:20px;color:#147d52'>", esc(example.commission), "</strong>",
+      "</div>",
+    ].join("")),
+    ...(day === 15 ? ["<p style='font-size:12px;color:#69788c'>", esc(note15), "</p>"] : []),
     "<div style='text-align:center;margin:28px 0'>",
     "<a href='", esc(link), "' style='background:#147d52;color:white;text-decoration:none;padding:15px 24px;border-radius:7px;font-weight:bold'>ACTIVAR MI CUENTA</a>",
     "</div><p style='font-size:14px;line-height:1.6'>", esc(v.closing), "</p>",
     "<p style='font-size:12px;color:#69788c'>Enlace personal, de un solo uso, válido durante 24 horas. No compartas tu enlace ni tu contraseña.</p>",
     "<p style='font-size:13px'>Equipo Crédito Negocios</p></td></tr></table></body></html>",
   ].join("");
-  const text = ["Hola, " + greeting, v.headline, v.body, v.closing,
+  const text = ["Hola, " + greeting, v.headline, v.body,
+    ...day15Examples.map(example => `${example.label}: ${example.amount} × ${example.rate} = ${example.commission}`),
+    ...(day === 15 ? [note15] : []), v.closing,
     "Activa tu cuenta: " + link,
     "Enlace personal, de un solo uso, válido durante 24 horas. Equipo Crédito Negocios"].join("\n\n");
   void to;
@@ -1104,7 +1125,7 @@ export function buildBrokerInvitationReminderEmail(
 }
 
 export async function sendBrokerInvitationReminderEmail(
-  to: string, token: string, day: 3 | 7 | 12, name?: string,
+  to: string, token: string, day: 3 | 7 | 12 | 15, name?: string,
 ): Promise<{ success: boolean; error?: string }> {
   try {
     if (!resend) return { success: false, error: "Servicio de correo no configurado" };
