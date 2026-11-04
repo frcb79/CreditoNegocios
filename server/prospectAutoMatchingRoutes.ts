@@ -52,8 +52,27 @@ export function registerProspectAutoMatchingRoutes(app: Express) {
           AND p.tenant_id IS NOT DISTINCT FROM l.tenant_id
       `,[param.data,owner]);
       if(!found.rows[0]) return res.status(404).json({message:"Pre-solicitud no encontrada"});
-      if(["awaiting_details","identity_review"].includes(found.rows[0].status))
-        return res.status(409).json({message:"Primero revisa identidad y datos de financiamiento"});
+      if(found.rows[0].status==="awaiting_details")
+        return res.status(409).json({message:"Primero solicita el producto, monto, plazo y destino"});
+      if(found.rows[0].status==="identity_review") {
+        // The advisor must explicitly link a reviewed client they own.
+        // Never infer a client identity from an open public link.
+        const verified=await pool.query(`
+          SELECT l.linked_client_id FROM public.commercial_marketing_leads l
+          JOIN public.clients c ON c.id=l.linked_client_id
+          JOIN public.prospect_preapplications p ON p.lead_id=l.id
+          WHERE l.id=$1 AND l.owner_user_id=$2 AND p.owner_user_id=$2
+            AND c.broker_id=$2 AND c.tenant_id IS NOT DISTINCT FROM p.tenant_id
+            AND l.tenant_id IS NOT DISTINCT FROM p.tenant_id
+        `,[param.data,owner]);
+        const clientId=verified.rows[0]?.linked_client_id;
+        if(!clientId) return res.status(409).json({message:"Primero vincula el cliente a tu ficha después de revisar identidad"});
+        await pool.query(`
+          UPDATE public.prospect_preapplications SET client_id=$3,status='pending',updated_at=NOW()
+          WHERE lead_id=$1 AND owner_user_id=$2 AND status='identity_review'
+            AND client_id IS NULL
+        `,[param.data,owner,clientId]);
+      }
       const assessment=await evaluateProspectPreapplication(param.data,owner);
       return res.json({assessment});
     }catch{return res.status(503).json({message:"No fue posible realizar la evaluación"});}
