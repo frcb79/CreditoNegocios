@@ -48,6 +48,7 @@ export default function ReceivedProspects({
   const { user } = useAuth();
   const cache = useQueryClient();
   const [selected, setSelected] = useState<ReceivedMarketingLead | null>(null);
+  const canAccess = user?.role === "broker" || user?.role === "master_broker";
   const [selectedMatch, setSelectedMatch] = useState<string | null>(null);
   const [retryingMatch, setRetryingMatch] = useState(false);
   const matchDetails = useQuery<{
@@ -56,8 +57,8 @@ export default function ReceivedProspects({
     summary: {status:string;institutionCount?:number;message?:string} | null;
     details: {
       compatible: {offerId:string;offerName:string;institutionName?:string;versionNumber:number;reasons:string[]}[];
-      insufficientData: {offerId:string;offerName:string;institutionName?:string;reasons:string[]}[];
-      notCompatible: {offerId:string;offerName:string;institutionName?:string;reasons:string[]}[];
+      insufficientData: {offerId:string;offerName:string;institutionName?:string;versionNumber?:number;reasons:string[]}[];
+      notCompatible: {offerId:string;offerName:string;institutionName?:string;versionNumber?:number;reasons:string[]}[];
       summary: {compatibleCount:number;insufficientDataCount:number;notCompatibleCount:number};
     } | null;
   }>({
@@ -82,7 +83,7 @@ export default function ReceivedProspects({
     } finally { setRetryingMatch(false); }
   };
 
-  const canAccess = user?.role === "broker" || user?.role === "master_broker";
+
   const { data: leads = [], isLoading, error } = useQuery<ReceivedMarketingLead[]>({
     queryKey: ["/api/commercial-resources/received"],
     queryFn: async () => {
