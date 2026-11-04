@@ -94,7 +94,16 @@ export default function PublicCampaignLanding() {
             <p className="text-sm text-muted-foreground mt-2">Solicita a tu asesor un enlace actualizado.</p>
           </div>
         ) : showProfile && completionToken ? (
-          <ProspectCompletionForm token={completionToken} initialProfile={{type:"fisica",firstName:name,phone,email}} onBack={() => setShowProfile(false)} />
+          <ProspectCompletionForm token={completionToken}
+            initialProfile={{type:"fisica",firstName:name,phone,email}}
+            initialFinancing={{
+              product:actualProduct,
+              // Reuse a single stated number for confirmation; ranges are never guessed as exact amounts.
+              amount: /^\\$?[\\d,]+(?:\\s*MXN)?$/i.test(amountRange.trim()) ?
+                amountRange.replace(/[^\\d]/g,"") : "",
+              purpose:message.trim(),
+            }}
+            onBack={() => setShowProfile(false)} />
         ) : complete ? (
           <div className="rounded-xl border bg-white p-6 text-center space-y-3" data-testid="public-campaign-success">
             <CheckCircle2 className="mx-auto h-12 w-12 text-emerald-600" />
