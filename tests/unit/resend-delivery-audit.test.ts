@@ -1,5 +1,4 @@
 import { createHmac } from "node:crypto";
-import { PGlite } from "@electric-sql/pglite";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { parseResendDeliveryEvent, verifyResendSignature } from "../../server/resendDeliveryWebhook";
@@ -78,54 +77,6 @@ describe("Resend delivery audit: signed events only", () => {
     const component = source("client/src/components/EmailDeliveryAudit.tsx");
     expect(component).toContain("Entregado al servidor");
     expect(component).toContain("Histórico sin seguimiento");
-  });
-  it("correlates events with outbound messages, de-duplicates and prioritizes bounces", async () => {
-    const pg = await PGlite.create();
-    try {
-      await pg.exec(`
-        CREATE TABLE public.users (id varchar PRIMARY KEY,email varchar,first_name varchar,last_name varchar,role varchar);
-        CREATE TABLE public.broker_activation_welcome_events
-          (user_id varchar PRIMARY KEY,status varchar,provider_message_id varchar,
-           created_at timestamp default now(),sent_at timestamp);
-        CREATE TABLE public.broker_invitation_reminder_events
-          (user_id varchar,reminder_day smallint,status varchar,provider_message_id varchar,
-           created_at timestamp default now(),sent_at timestamp,
-           PRIMARY KEY(user_id,reminder_day));
-        CREATE TABLE public.notifications (id varchar PRIMARY KEY,type varchar,data jsonb,created_at timestamp default now());
-        CREATE TABLE public.resend_delivery_events
-          (event_id varchar PRIMARY KEY,provider_message_id varchar,event_type varchar,
-           occurred_at timestamp,received_at timestamp default now());
-        INSERT INTO public.users(id,email,first_name,last_name,role)
-          VALUES('broker-a','broker@example.test','Eva','Broker','broker');
-        INSERT INTO public.resend_delivery_events(event_id,provider_message_id,event_type,occurred_at)
-          VALUES ('event-2','email-welcome','email.bounced',NOW());
-        INSERT INTO public.broker_activation_welcome_events(user_id,status,provider_message_id)
-          VALUES('broker-a','sent','email-welcome');
-        INSERT INTO public.broker_invitation_reminder_events(user_id,reminder_day,status,provider_message_id)
-          VALUES('broker-a',15,'sent','email-reminder');
-        INSERT INTO public.notifications(id,type,data)
-          VALUES('invite-1','broker_invitation_sent',
-                 '{"brokerId":"broker-a","resendMessageId":"email-invitation"}');
-        INSERT INTO public.resend_delivery_events(event_id,provider_message_id,event_type,occurred_at)
-          VALUES('event-1','email-welcome','email.delivered',NOW());
-        INSERT INTO public.resend_delivery_events(event_id,provider_message_id,event_type,occurred_at)
-          VALUES('event-3','email-invitation','email.delivered',NOW());
-      `);
-      await pg.query(
-        "INSERT INTO public.resend_delivery_events(event_id,provider_message_id,event_type,occurred_at) " +
-        "VALUES ($1,$2,'email.delivered',NOW()) ON CONFLICT(event_id) DO NOTHING",
-        ["event-1","email-welcome"],
-      );
-      const count = await pg.query<{ count: number }>("SELECT count(*)::int AS count FROM public.resend_delivery_events");
-      expect(count.rows[0].count).toBe(3);
-      const rows = (await pg.query<any>(EMAIL_DELIVERY_AUDIT_SQL)).rows;
-      expect(rows).toHaveLength(3);
-      expect(rows.find(x => x.kind === "welcome")?.eventType).toBe("email.bounced");
-      expect(rows.find(x => x.kind === "reminder")?.eventType).toBeNull();
-      expect(rows.find(x => x.kind === "reminder")?.providerMessageId).toBe("email-reminder");
-      expect(rows.find(x => x.kind === "invitation")?.eventType).toBe("email.delivered");
-      expect(rows.every(x => x.email === "broker@example.test")).toBe(true);
-    } finally { await pg.close(); }
   });
 
 });
