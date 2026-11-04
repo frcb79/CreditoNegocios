@@ -34,7 +34,7 @@ export function normalizeFinancingFamily(value: unknown): string | null {
   };
   return aliases[name] || null;
 }
-export function matchesFinancingFamily(product: {productType?:unknown; template?:{category?:unknown}} | null, family:string) {
+export function matchesFinancingFamily(product: {productType?:unknown; template?:{category?:unknown}|null} | null, family:string) {
   const type=normalizeFinancingFamily(product?.productType);
   const template=normalizeFinancingFamily(product?.template?.category);
   if (type && template && type !== template) return false; // conflicting published classification
