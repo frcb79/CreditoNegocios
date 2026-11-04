@@ -118,6 +118,10 @@ export function registerProspectCompletionRoutes(app: Express, publish?: Prospec
         'Tu prospecto completó información. Puedes consultarla en Clientes → Prospectos recibidos.',$2) RETURNING *`,
       [link.owner_user_id, JSON.stringify({ leadId, clientId, actionUrl: "/clientes?tab=recibidos" })]);
       await tx.query("COMMIT");
+      // Release the profile transaction before matching. This prevents pool exhaustion
+      // (or deadlocks under a single test/worker connection) during catalogue evaluation.
+      tx.release();
+      tx = undefined;
       publishProspectNotification(publish, notified.rows[0]);
       // Match only after COMMIT. A catalogue failure cannot erase the captured profile.
       // The public assessment is deliberately anonymized; lender details stay internal.
