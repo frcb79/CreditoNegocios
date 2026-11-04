@@ -1640,6 +1640,16 @@ export class DbStorage implements IStorage {
         password: params.passwordHash, resetToken: null,
         resetTokenExpiry: null, updatedAt: now, ...courtesyUpdate,
       }).where(eq(users.id, user.id));
+      // ISSUE-63: create the durable welcome event inside the same transaction
+      // as legal acceptance and password activation. Existing accounts and
+      // password resets cannot enqueue a welcome.
+      if (user.role === "broker" || user.role === "master_broker") {
+        await tx.execute(sql`
+          INSERT INTO public.broker_activation_welcome_events (user_id, status)
+          VALUES (${user.id}, 'pending')
+          ON CONFLICT (user_id) DO NOTHING
+        `);
+      }
       return [terms, privacy];
     });
   }
