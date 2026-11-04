@@ -12,6 +12,8 @@ import { reconcileStagingCatalog } from "./stagingCatalogReconcile";
 import { runStagingReadOnlyQA } from "./stagingMatchingAudit";
 import { reconcileStagingTemplates } from "./stagingTemplateSync";
 import { runStagingDocumentE2E } from "./stagingDocumentE2E";
+import { validateStageSubmissionsReadOnly } from "./stagingSubmissionReadOnlyQA";
+import { runStagingUnauthenticatedHttpSmoke } from "./stagingHttpUnauthSmoke";
 import { rejectCrossSiteMutations } from "./csrfProtection";
 
 const isProd = process.env.NODE_ENV === "production";
@@ -158,6 +160,12 @@ app.use((req, res, next) => {
     }
   }
 
+  try {
+    await validateStageSubmissionsReadOnly(pool);
+  } catch (error) {
+    console.error("[STAGING-SUBMISSION-QA-ERROR]", error instanceof Error ? error.message : "unknown");
+  }
+
   await logStagingCatalogOverview(pool);
 
   // Test catalog matching and role isolation with synthetic in-memory records only.
@@ -206,5 +214,8 @@ app.use((req, res, next) => {
 
   server.listen(listenOptions, () => {
     log(`serving on ${host}:${port}`);
+    void runStagingUnauthenticatedHttpSmoke(port).catch(error => {
+      console.error("[STAGING-HTTP-UNAUTH-QA-ERROR]", error instanceof Error ? error.message : "unknown");
+    });
   });
 })();
