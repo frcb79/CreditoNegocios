@@ -64,15 +64,36 @@ export async function insertProspectPreapplication(tx: PoolClient, values: {
   const status = !values.financing ? "awaiting_details" : !values.clientId ? "identity_review" : "pending";
   const financing = values.financing || {};
   const hash = prospectHash({profile: values.profile, financing});
-  await tx.query(`
+  const saved = await tx.query(`
     INSERT INTO public.prospect_preapplications
       (lead_id,owner_user_id,tenant_id,client_id,completion_link_id,
        profile_snapshot,financing_data,privacy_version,status,input_hash)
     VALUES($1,$2,$3,$4,$5,$6::jsonb,$7::jsonb,$8,$9,$10)
-    ON CONFLICT(lead_id) DO NOTHING
+    ON CONFLICT(lead_id) DO UPDATE SET
+      client_id=EXCLUDED.client_id,
+      completion_link_id=EXCLUDED.completion_link_id,
+      profile_snapshot=EXCLUDED.profile_snapshot,
+      financing_data=EXCLUDED.financing_data,
+      privacy_version=EXCLUDED.privacy_version,
+      consent_at=NOW(),
+      status=EXCLUDED.status, input_hash=EXCLUDED.input_hash,
+      summary=NULL, details=NULL, catalog_hash=NULL, evaluated_at=NULL, updated_at=NOW()
+    WHERE public.prospect_preapplications.owner_user_id=EXCLUDED.owner_user_id
+      AND public.prospect_preapplications.tenant_id IS NOT DISTINCT FROM EXCLUDED.tenant_id
+      AND (public.prospect_preapplications.input_hash<>EXCLUDED.input_hash
+           OR public.prospect_preapplications.client_id IS DISTINCT FROM EXCLUDED.client_id)
+    RETURNING id
   `,[values.leadId,values.ownerUserId,values.tenantId,values.clientId,
     values.completionLinkId,JSON.stringify(values.profile),JSON.stringify(financing),
     values.privacyVersion,status,hash]);
+  if(!saved.rowCount) {
+    // An identical retry is fine; a cross-owner/tenant conflict is not.
+    const existing=await tx.query(
+      "SELECT owner_user_id,tenant_id FROM public.prospect_preapplications WHERE lead_id=$1",
+      [values.leadId]);
+    if(!existing.rows[0] || existing.rows[0].owner_user_id!==values.ownerUserId ||
+       existing.rows[0].tenant_id!==values.tenantId) throw new Error("PROSPECT_PREAPPLICATION_OWNER_CONFLICT");
+  }
   return status;
 }
 type Preapplication = {
