@@ -935,11 +935,6 @@ export async function runAutoMigration(): Promise<void> {
           EXECUTE format('REVOKE ALL ON public.resend_delivery_events FROM %I',api_role);
         END LOOP;
       END $email_roles$;
-      ALTER TABLE public.broker_invitation_reminder_events
-        ADD COLUMN IF NOT EXISTS provider_message_id VARCHAR(255);
-      CREATE INDEX IF NOT EXISTS broker_reminder_provider_message_idx
-        ON public.broker_invitation_reminder_events(provider_message_id)
-        WHERE provider_message_id IS NOT NULL;
     `);
     console.log("[AutoMigrate] Resend signed delivery audit verified");
 
@@ -962,6 +957,13 @@ export async function runAutoMigration(): Promise<void> {
         CREATE INDEX IF NOT EXISTS broker_invitation_reminder_status_idx
           ON public.broker_invitation_reminder_events(status, claimed_at);
         ALTER TABLE public.broker_invitation_reminder_events ENABLE ROW LEVEL SECURITY;
+      `);
+      await client.query(`
+      ALTER TABLE public.broker_invitation_reminder_events
+        ADD COLUMN IF NOT EXISTS provider_message_id VARCHAR(255);
+      CREATE INDEX IF NOT EXISTS broker_reminder_provider_message_idx
+        ON public.broker_invitation_reminder_events(provider_message_id)
+        WHERE provider_message_id IS NOT NULL;
       `);
       await client.query(BROKER_INVITATION_DAY_15_MIGRATION_SQL);
       console.log("[AutoMigrate] Broker invitation reminder audit verified");
