@@ -1,4 +1,5 @@
 import AdministrativeActivity from "@/components/AdministrativeActivity";
+import EmailDeliveryAudit from "@/components/EmailDeliveryAudit";
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "wouter";
@@ -47,7 +48,7 @@ type StatusRequest = {
   targetUser?: Person | null;
   reviewer?: Person | null;
 };
-type AuditSection = "activity" | "commercial" | "configuration" | "requests";
+type AuditSection = "activity" | "commercial" | "configuration" | "requests" | "email";
 type AuditRow = {
   entry: AuditEntry;
   actionLabel: string;
@@ -231,8 +232,9 @@ export default function SuperAdminAudit() {
               <TabsTrigger value="commercial" data-testid="audit-tab-commercial" className="text-xs">Gobernanza comercial</TabsTrigger>
               <TabsTrigger value="configuration" data-testid="audit-tab-configuration" className="text-xs">Reglas comerciales</TabsTrigger>
               <TabsTrigger value="requests" data-testid="audit-tab-requests" className="text-xs">Solicitudes de estado</TabsTrigger>
+              <TabsTrigger value="email" data-testid="audit-tab-email" className="text-xs">Correos enviados</TabsTrigger>
             </TabsList>
-            {section !== "activity" && <Card className="border-border/70 mt-3">
+            {section !== "activity" && section !== "email" && <Card className="border-border/70 mt-3">
               <CardContent className="p-3 sm:p-4 space-y-3">
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-2">
                   <label className="text-xs space-y-1 lg:col-span-2">
@@ -301,6 +303,7 @@ export default function SuperAdminAudit() {
               </CardContent>
             </Card>}
             <TabsContent value="activity" className="mt-4">{section === "activity" && <AdministrativeActivity />}</TabsContent>
+            <TabsContent value="email" className="mt-4">{section === "email" && <EmailDeliveryAudit />}</TabsContent>
 
             <TabsContent value="commercial" className="mt-4" data-testid="audit-commercial-content">
               {selectedAudit.isLoading || users.isLoading || requests.isLoading ?
