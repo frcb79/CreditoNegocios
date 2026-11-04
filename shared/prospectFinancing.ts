@@ -21,7 +21,7 @@ export type ProspectFinancing = z.infer<typeof prospectFinancingSchema>;
 /** When an offer has no explicit structured family, it cannot count as a match. */
 export function normalizeFinancingFamily(value: unknown): string | null {
   if (typeof value !== "string") return null;
-  const name = value.toLowerCase().trim().replace(/[\\s-]+/g, "_");
+  const name = value.toLowerCase().trim().replace(/[\s-]+/g, "_");
   const aliases: Record<string, string> = {
     credito_simple: "simple", simple: "simple", credito_tradicional: "simple",
     capital_trabajo: "simple", capital_de_trabajo: "simple",
