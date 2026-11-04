@@ -36,7 +36,7 @@ describe("Issue #63 – activation welcome and confidentiality",()=>{
       expect(output.text).toContain("No son promesas");
       expect(output.html.toLowerCase()).not.toContain("sobretasa");
       expect(output.html).not.toContain("Crédito Negocios paga");
-      expect(output.text).toContain("no implica suscripción a newsletters");
+      expect(output.text).toContain("No implica suscripción a newsletters");
       expect(output.html).toContain("Mensaje transaccional");
     }
   });
