@@ -27,6 +27,7 @@ on:
       - 'fix/leasing-client-visibility-*'
       - 'feat/issue-63-*'
       - 'feat/resend-audit-*'
+      - 'feat/issue-65-*'
   workflow_dispatch:
 concurrency:
   group: prelaunch-${{ github.ref }}
@@ -158,6 +159,7 @@ jobs:
             tests/unit/broker-invitation-email.test.ts
             tests/unit/activation-commercial-welcome.test.ts
             tests/unit/resend-delivery-audit.test.ts
+            tests/unit/prospect-auto-matching.test.ts
             tests/unit/broker-invitation-http.test.ts
             tests/unit/rbac.test.ts
             tests/unit/settings-audit-role-ux.test.ts

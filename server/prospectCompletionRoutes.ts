@@ -11,12 +11,14 @@ import { isAuthenticated } from "./auth";
 import { getPublishedLegalDocument } from "./legalDocuments";
 import { publicClientProfileSchema } from "../shared/clientProfileValidation";
 import { persistProspectProfile, profileIsBlank } from "./prospectProfilePersistence";
+import { prospectFinancingSchema } from "../shared/prospectFinancing";
+import { insertProspectPreapplication, evaluateProspectPreapplication } from "./prospectAutoMatching";
 
 export const completionTokenHash = (token: string) => createHash("sha256").update(token).digest("hex");
 export const makeCompletionToken = () => randomBytes(24).toString("base64url");
 const tokenSchema = z.string().regex(/^[a-zA-Z0-9_-]{32}$/);
 const limiter = rateLimit({ windowMs: 15 * 60 * 1000, limit: 60, standardHeaders: "draft-7", legacyHeaders: false });
-const input = z.object({ profile: publicClientProfileSchema, acknowledgePrivacy: z.literal(true),
+const input = z.object({ profile: publicClientProfileSchema, financing: prospectFinancingSchema.optional(), acknowledgePrivacy: z.literal(true),
   privacyVersion: z.string().min(1).max(40), companyWebsite: z.literal("").optional() }).strict();
 const lookup = `SELECT l.*,u.first_name,u.last_name,u.brand_name
   FROM public.prospect_completion_links l JOIN public.users u ON u.id=l.owner_user_id
@@ -103,13 +105,28 @@ export function registerProspectCompletionRoutes(app: Express, publish?: Prospec
       }
       await tx.query(`INSERT INTO public.prospect_profile_submissions (completion_link_id,lead_id,profile_data,privacy_version)
         VALUES ($1,$2,$3,$4)`, [link.id,leadId,JSON.stringify(profile),notice.version]);
+      // Internal preapplication shares the same atomic boundary as the submitted profile.
+      // If the request has no exact amount/term or the identity requires review,
+      // retain the preapplication but do not invent a financial institution count.
+      await insertProspectPreapplication(tx, {
+        leadId, ownerUserId: link.owner_user_id, tenantId: link.tenant_id,
+        clientId, completionLinkId: link.id, profile,
+        financing: parsed.data.financing, privacyVersion: notice.version,
+      });
       await tx.query("UPDATE public.prospect_completion_links SET used_at=NOW() WHERE id=$1", [link.id]);
       const notified = await tx.query(`INSERT INTO public.notifications (user_id,type,title,message,data) VALUES ($1,'prospect_profile_received','Información de prospecto recibida',
         'Tu prospecto completó información. Puedes consultarla en Clientes → Prospectos recibidos.',$2) RETURNING *`,
       [link.owner_user_id, JSON.stringify({ leadId, clientId, actionUrl: "/clientes?tab=recibidos" })]);
       await tx.query("COMMIT");
+      // Release the profile transaction before matching. This prevents pool exhaustion
+      // (or deadlocks under a single test/worker connection) during catalogue evaluation.
+      tx.release();
+      tx = undefined;
       publishProspectNotification(publish, notified.rows[0]);
-      return res.status(201).json({ message: "Tu información fue recibida por tu asesor." });
+      // Match only after COMMIT. A catalogue failure cannot erase the captured profile.
+      // The public assessment is deliberately anonymized; lender details stay internal.
+      const assessment = await evaluateProspectPreapplication(leadId,link.owner_user_id);
+      return res.status(201).json({ message: "Tu información fue recibida por tu asesor.", assessment });
     } catch {
       if (tx) await tx.query("ROLLBACK").catch(() => {});
       return res.status(503).json({ message: "No se pudo guardar el perfil. Tu enlace sigue disponible para reintentar." });

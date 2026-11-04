@@ -1,4 +1,5 @@
 import { PROSPECT_INTAKE_SCHEMA_SQL } from "./prospectIntakeSchema";
+import { PROSPECT_AUTO_MATCHING_SCHEMA_SQL } from "./prospectAutoMatchingSchema";
 import { BROKER_INVITATION_DAY_15_MIGRATION_SQL } from "./brokerInvitationReminderSchema";
 import { pool } from "./db";
 import bcrypt from "bcrypt";
@@ -888,6 +889,8 @@ export async function runAutoMigration(): Promise<void> {
 
     // Dossier + prospect self-service schema is required by the new routes.
     await client.query(PROSPECT_INTAKE_SCHEMA_SQL);
+    await client.query(PROSPECT_AUTO_MATCHING_SCHEMA_SQL);
+    console.log("[AutoMigrate] Prospect preapplication and automatic matching audit verified");
 
     // ISSUE-63: a transactional activation writes one event per Broker/Master.
     // This audit is private, never exposed through Supabase's Data API.

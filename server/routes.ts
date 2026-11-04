@@ -1,5 +1,6 @@
 import { checkProspectIntakeSchemaReadiness } from "./prospectIntakeSchema";
 import { registerProspectCompletionRoutes } from "./prospectCompletionRoutes";
+import { registerProspectAutoMatchingRoutes } from "./prospectAutoMatchingRoutes";
 import { confirmAccountAccess, withAccountAccess } from "./accountAccess";
 import { dispatchCommercialActivationWelcome } from "./commercialWelcomeService";
 import { registerEmailDeliveryAuditRoutes } from "./emailDeliveryAuditRoutes";
@@ -1331,6 +1332,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   registerCommercialResourceRoutes(app);
   registerCampaignAcquisitionRoutes(app, broadcastToUser);
   registerProspectCompletionRoutes(app, broadcastToUser);
+  registerProspectAutoMatchingRoutes(app);
   registerBrokerDossierRoutes(app);
 
   // Auth routes
