@@ -889,6 +889,55 @@ export async function runAutoMigration(): Promise<void> {
     // Dossier + prospect self-service schema is required by the new routes.
     await client.query(PROSPECT_INTAKE_SCHEMA_SQL);
 
+    // ISSUE-63: a transactional activation writes one event per Broker/Master.
+    // This audit is private, never exposed through Supabase's Data API.
+    try {
+      await client.query(`
+        CREATE TABLE IF NOT EXISTS public.broker_activation_welcome_events (
+          user_id VARCHAR PRIMARY KEY REFERENCES public.users(id) ON DELETE RESTRICT,
+          status VARCHAR(16) NOT NULL DEFAULT 'pending'
+            CHECK(status IN ('pending','claimed','sent','failed')),
+          created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+          claimed_at TIMESTAMP,
+          sent_at TIMESTAMP,
+          updated_at TIMESTAMP NOT NULL DEFAULT NOW(),
+          provider_message_id VARCHAR(255),
+          last_error TEXT
+        );
+        CREATE INDEX IF NOT EXISTS broker_activation_welcome_status_idx
+          ON public.broker_activation_welcome_events(status,created_at);
+        ALTER TABLE public.broker_activation_welcome_events ENABLE ROW LEVEL SECURITY;
+        REVOKE ALL ON public.broker_activation_welcome_events FROM PUBLIC;
+      `);
+      console.log("[AutoMigrate] Broker first-activation commercial welcome audit verified");
+    } catch (error) {
+      console.error("[AutoMigrate] Broker welcome audit schema failed:", error);
+      throw error;
+    }
+
+    // Signed Resend events remain private; credentials and mail contents are never stored.
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS public.resend_delivery_events (
+        event_id VARCHAR(150) PRIMARY KEY,
+        provider_message_id VARCHAR(255) NOT NULL,
+        event_type VARCHAR(32) NOT NULL
+          CHECK(event_type IN ('email.sent','email.delivered','email.delivery_delayed',
+            'email.bounced','email.failed','email.complained','email.suppressed')),
+        occurred_at TIMESTAMP NOT NULL,
+        received_at TIMESTAMP NOT NULL DEFAULT NOW()
+      );
+      CREATE INDEX IF NOT EXISTS resend_delivery_events_message_idx
+        ON public.resend_delivery_events(provider_message_id,occurred_at DESC);
+      ALTER TABLE public.resend_delivery_events ENABLE ROW LEVEL SECURITY;
+      REVOKE ALL ON public.resend_delivery_events FROM PUBLIC;
+      DO $email_roles$ DECLARE api_role TEXT; BEGIN
+        FOR api_role IN SELECT rolname FROM pg_roles WHERE rolname IN ('anon','authenticated') LOOP
+          EXECUTE format('REVOKE ALL ON public.resend_delivery_events FROM %I',api_role);
+        END LOOP;
+      END $email_roles$;
+    `);
+    console.log("[AutoMigrate] Resend signed delivery audit verified");
+
     // INV-FOLLOWUP: one row per user/day prevents duplicate automatic reminders,
     // even when multiple Railway instances execute the scheduled job.
     // PII remains in users; this restricted table stores only reminder audit.
@@ -908,6 +957,13 @@ export async function runAutoMigration(): Promise<void> {
         CREATE INDEX IF NOT EXISTS broker_invitation_reminder_status_idx
           ON public.broker_invitation_reminder_events(status, claimed_at);
         ALTER TABLE public.broker_invitation_reminder_events ENABLE ROW LEVEL SECURITY;
+      `);
+      await client.query(`
+      ALTER TABLE public.broker_invitation_reminder_events
+        ADD COLUMN IF NOT EXISTS provider_message_id VARCHAR(255);
+      CREATE INDEX IF NOT EXISTS broker_reminder_provider_message_idx
+        ON public.broker_invitation_reminder_events(provider_message_id)
+        WHERE provider_message_id IS NOT NULL;
       `);
       await client.query(BROKER_INVITATION_DAY_15_MIGRATION_SQL);
       console.log("[AutoMigrate] Broker invitation reminder audit verified");
