@@ -1,6 +1,7 @@
 import { checkProspectIntakeSchemaReadiness } from "./prospectIntakeSchema";
 import { registerProspectCompletionRoutes } from "./prospectCompletionRoutes";
 import { confirmAccountAccess, withAccountAccess } from "./accountAccess";
+import { dispatchCommercialActivationWelcome } from "./commercialWelcomeService";
 import { registerBrokerDossierRoutes } from "./brokerDossierRoutes";
 import { getOfferAgePolicy } from "../shared/offerAgePolicy";
 import { matchPublishedCatalog } from "./matching/catalog";
@@ -1752,6 +1753,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
           }
           try { await confirmAccountAccess(user.id); }
           catch { return res.status(503).json({message: "No se pudo confirmar el acceso. Intenta nuevamente."}); }
+          // Recover a newly activated account's pending welcome if the first
+          // post-activation HTTP response was interrupted; claim is idempotent.
+          if (user.role === "broker" || user.role === "master_broker") {
+            void dispatchCommercialActivationWelcome(user.id).catch(() => {
+              console.error("[WELCOME-63] Background dispatch failed");
+            });
+          }
           req.administrativeActor = user;
           req.administrativeAction = "login_success";
           res.json({ 
@@ -1924,6 +1932,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
       req.administrativeActor = user;
       req.administrativeAction = wasInvitation ? "invitation_registered" : "password_recovered";
       res.json({ message: "Contraseña actualizada exitosamente. Ya puedes iniciar sesión." });
+      // Only real invitation activation, never password recovery.
+      // Delivery is independent of activation success and has a DB uniqueness gate.
+      if (wasInvitation && (user.role === "broker" || user.role === "master_broker")) {
+        void dispatchCommercialActivationWelcome(user.id).catch(() => {
+          console.error("[WELCOME-63] Post-activation dispatch failed");
+        });
+      }
     } catch (error) {
       if (error instanceof z.ZodError) {
         return res.status(400).json({ message: error.errors[0].message });
