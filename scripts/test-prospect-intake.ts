@@ -8,6 +8,7 @@ import { pool } from "../server/db";
 import { storage } from "../server/storage";
 import { clients } from "../shared/schema";
 import { PROSPECT_INTAKE_SCHEMA_SQL, checkProspectIntakeSchemaReadiness } from "../server/prospectIntakeSchema";
+import { PROSPECT_AUTO_MATCHING_SCHEMA_SQL } from "../server/prospectAutoMatchingSchema";
 import { registerCampaignAcquisitionRoutes } from "../server/campaignAcquisitionRoutes";
 import { registerProspectCompletionRoutes } from "../server/prospectCompletionRoutes";
 import { getPublishedLegalDocument } from "../server/legalDocuments";
@@ -52,6 +53,8 @@ describe("Prospect self-service: HTTP → PostgreSQL transaction → advisor inb
     `);
     await pg.exec(readFileSync("migrations/0011_commercial_campaign_links_and_leads.sql","utf8"));
     await pg.exec(PROSPECT_INTAKE_SCHEMA_SQL);
+    await pg.exec(PROSPECT_AUTO_MATCHING_SCHEMA_SQL);
+    await pg.exec(PROSPECT_AUTO_MATCHING_SCHEMA_SQL);
     expect((await checkProspectIntakeSchemaReadiness({query})).ready).toBe(true);
     // Same migration is replayable on both ordinary PostgreSQL and Supabase.
     await pg.exec(PROSPECT_INTAKE_SCHEMA_SQL);
@@ -105,6 +108,12 @@ describe("Prospect self-service: HTTP → PostgreSQL transaction → advisor inb
     const lead: any = (await pg.query("SELECT * FROM commercial_marketing_leads WHERE phone='5512345001'")).rows[0];
     expect(lead.linked_client_id).toBeTruthy();
     expect(lead.profile_data.ingresoAnual).toBe("hasta-250000");
+    const preapp:any=(await pg.query("SELECT * FROM prospect_preapplications WHERE lead_id=$1",[lead.id])).rows[0];
+    expect(preapp).toBeTruthy();
+    expect(preapp.status).toBe("awaiting_details");
+    expect(preapp.owner_user_id).toBe(owner.id);
+    expect((await pg.query("SELECT * FROM prospect_matching_evaluations WHERE preapplication_id=$1",[preapp.id])).rows).toHaveLength(0);
+
     expect((await pg.query("SELECT * FROM clients WHERE id=$1",[lead.linked_client_id])).rows).toHaveLength(1);
   });
   it("does not expose any existing prospect fields through a direct link", async () => {
@@ -211,4 +220,68 @@ describe("Prospect self-service: HTTP → PostgreSQL transaction → advisor inb
       expect(result.allowed).toBe(false);
     }
   });
+  it("captures a complete financing request, creates one preapplication and hides institution details from the public", async () => {
+    const token=await direct();
+    const financing={product:"simple",amount:1000000,termMonths:36,purpose:"Ampliar capital de trabajo"};
+    const answer=await request(app).post("/api/public/prospect-completion/"+token)
+      .send({profile:profile("5512345025"),financing,acknowledgePrivacy:true,privacyVersion:notice.version});
+    expect(answer.status).toBe(201);
+    expect(answer.body.assessment).toBeTruthy();
+    expect(JSON.stringify(answer.body.assessment)).not.toMatch(/institutionId|institutionName|offerId|comision|sobretasa|tasa/gi);
+    const appRows=(await pg.query<any>("SELECT * FROM prospect_preapplications WHERE financing_data->>'purpose'=$1",
+      [financing.purpose])).rows;
+    expect(appRows).toHaveLength(1);
+    const item=appRows[0];
+    expect(item.owner_user_id).toBe(owner.id);
+    expect(item.financing_data.amount).toBe(1000000);
+    expect(item.client_id).toBeTruthy();
+    const list=await request(app).get("/api/commercial-resources/received").set("x-test-user-id",owner.id);
+    expect(list.status).toBe(200);
+    expect(list.body.find((row:any)=>row.id===item.lead_id)?.preapplication_status).toBeTruthy();
+    const disallowed=await request(app).get("/api/commercial-resources/received/"+item.lead_id+"/preapplication")
+      .set("x-test-user-id",other.id);
+    expect(disallowed.status).toBe(404);
+    const allowed=await request(app).get("/api/commercial-resources/received/"+item.lead_id+"/preapplication")
+      .set("x-test-user-id",owner.id);
+    expect(allowed.status).toBe(200);
+    expect(allowed.body.financing.amount).toBe(1000000);
+    expect(allowed.headers["cache-control"]).toBe("private, no-store");
+    // The public token remains one-use.
+    expect((await submit(token,profile("5512345025"))).status).toBe(404);
+  });
+  it("preserves the profile if matching throws, then allows an owner-only retry", async () => {
+    const previous=(storage as any).getPublishedInstitutionProductsForMatching;
+    (storage as any).getPublishedInstitutionProductsForMatching=async()=>{throw new Error("Synthetic catalogue outage");};
+    try {
+      const token=await direct();
+      const response=await request(app).post("/api/public/prospect-completion/"+token).send({
+        profile:profile("5512345026"),
+        financing:{product:"arrendamiento",amount:1200000,termMonths:36,
+          purpose:"Adquirir maquinaria para el negocio",leasingAssetType:"maquinaria"},
+        acknowledgePrivacy:true,privacyVersion:notice.version,
+      });
+      expect(response.status).toBe(201);
+      expect(response.body.assessment.status).toBe("pending");
+      const p=(await pg.query<any>(
+        "SELECT * FROM prospect_preapplications WHERE financing_data->>'product'='arrendamiento' ORDER BY created_at DESC LIMIT 1")).rows[0];
+      expect(p.status).toBe("failed");
+      expect(p.client_id).toBeTruthy();
+      expect((await pg.query("SELECT * FROM clients WHERE phone='5512345026'")).rows).toHaveLength(1);
+      const forbidden=await request(app).post("/api/commercial-resources/received/"+p.lead_id+"/preapplication/retry")
+        .set("x-test-user-id",other.id).send({});
+      expect(forbidden.status).toBe(404);
+      (storage as any).getPublishedInstitutionProductsForMatching=async()=>[];
+      const success=await request(app).post("/api/commercial-resources/received/"+p.lead_id+"/preapplication/retry")
+        .set("x-test-user-id",owner.id).send({});
+      expect(success.status).toBe(200);
+      expect(success.body.assessment.status).toBe("under_review");
+      expect((await pg.query<any>("SELECT status FROM prospect_preapplications WHERE id=$1",[p.id])).rows[0].status).toBe("evaluated");
+      expect((await pg.query("SELECT * FROM prospect_matching_evaluations WHERE preapplication_id=$1",[p.id])).rows).toHaveLength(1);
+      const repeated=await request(app).post("/api/commercial-resources/received/"+p.lead_id+"/preapplication/retry")
+        .set("x-test-user-id",owner.id).send({});
+      expect(repeated.status).toBe(200);
+      expect((await pg.query("SELECT * FROM prospect_matching_evaluations WHERE preapplication_id=$1",[p.id])).rows).toHaveLength(1);
+    } finally { (storage as any).getPublishedInstitutionProductsForMatching=previous; }
+  });
+
 });
