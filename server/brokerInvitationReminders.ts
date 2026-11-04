@@ -28,6 +28,7 @@ export const REMINDER_OUTCOME_SQL = `UPDATE public.broker_invitation_reminder_ev
             SET status=$3::varchar,
                 sent_at=CASE WHEN $5::boolean THEN NOW() ELSE NULL END,
                 last_error=CASE WHEN $5::boolean THEN NULL ELSE LEFT($4::text, 500) END,
+                provider_message_id=CASE WHEN $5::boolean THEN $6::varchar ELSE provider_message_id END,
                 updated_at=NOW()
           WHERE user_id=$1 AND reminder_day=$2`;
 
@@ -111,7 +112,7 @@ export async function runBrokerInvitationReminders(): Promise<{
       const delivered = await sendBrokerInvitationReminderEmail(user.email, token, day, name);
       await pool.query(
         REMINDER_OUTCOME_SQL,
-        [user.id, day, delivered.success ? "sent" : "failed", delivered.error || "", delivered.success],
+        [user.id, day, delivered.success ? "sent" : "failed", delivered.error || "", delivered.success, delivered.providerMessageId || null],
       );
       if (delivered.success) output.sent++;
       else output.failed++;
