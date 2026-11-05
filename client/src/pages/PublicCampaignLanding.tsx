@@ -59,7 +59,7 @@ export default function PublicCampaignLanding() {
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!data || !privacyAccepted || !validPhone) return;
+    if (!data || !privacyAccepted || !validPhone || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) return;
     setSubmitting(true);
     setErrorText("");
     try {
@@ -135,7 +135,7 @@ export default function PublicCampaignLanding() {
                 {phone && !validPhone && <p className="text-xs text-destructive">Ingresa un teléfono de 10 a 15 dígitos.</p>}
               </div>
               <div className="space-y-1.5">
-                <Label htmlFor="lead-email">Correo electrónico (opcional)</Label>
+                <Label htmlFor="lead-email">Correo electrónico *</Label>
                 <Input id="lead-email" type="email" autoComplete="email" maxLength={160}
                   value={email} onChange={e => setEmail(e.target.value)} data-testid="landing-email" />
               </div>
