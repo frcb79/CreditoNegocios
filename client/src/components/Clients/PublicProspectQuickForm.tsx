@@ -1,5 +1,7 @@
 import { useState, type FormEvent } from "react";
 import { Input } from "@/components/ui/input";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Link } from "wouter";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -35,9 +37,11 @@ const GUARANTEE_ASSETS = [
   {value:"otros",label:"Otro bien"},
 ];
 
-export default function PublicProspectQuickForm({ initialProfile, onPublicSubmit }: {
+export default function PublicProspectQuickForm({ initialProfile, onPublicSubmit, consentAccepted=true, onConsentChange }: {
   initialProfile?: Record<string, unknown>;
   onPublicSubmit: (profile: Record<string, unknown>) => Promise<void>;
+  consentAccepted?: boolean;
+  onConsentChange?: (accepted:boolean)=>void;
 }) {
   const initial = (field:string) => typeof initialProfile?.[field] === "string" ? String(initialProfile[field]) : "";
   const [type,setType] = useState<QuickProspectInput["type"]>(
@@ -80,6 +84,7 @@ export default function PublicProspectQuickForm({ initialProfile, onPublicSubmit
     event.preventDefault();
     setError("");
     if (loading) return;
+    if (!consentAccepted) {setError("Acepta el Aviso de Privacidad para enviar tu evaluación.");return;}
     try {
       const profile = buildQuickProspectProfile({
         type,firstName,lastName,businessName,phone,email,monthlyIncome,
@@ -92,12 +97,12 @@ export default function PublicProspectQuickForm({ initialProfile, onPublicSubmit
       setError(err instanceof Error ? err.message : "No fue posible enviar tus datos. Intenta de nuevo.");
     } finally { setLoading(false); }
   }
-  return <Card className="border-blue-100 max-w-5xl mx-auto shadow-sm" data-testid="public-prospect-quick-form">
-    <CardHeader className="border-b bg-slate-50/70 pb-4">
-      <CardTitle className="text-xl">Completa tu información y perfil financiero</CardTitle>
+  return <Card className="border-blue-100 w-full shadow-sm rounded-2xl overflow-hidden" data-testid="public-prospect-quick-form">
+    <CardHeader className="border-b bg-gradient-to-r from-blue-50 to-white py-6 px-5 sm:px-7">
+      <CardTitle className="text-2xl text-blue-950">Completa tu información y perfil financiero</CardTitle>
       <p className="text-sm text-slate-600">Necesitamos algunos datos para realizar tu evaluación preliminar. Puedes dejar pendientes los que no conozcas y completarlos después con tu asesor.</p>
     </CardHeader>
-    <CardContent className="pt-5">
+    <CardContent className="pt-6 px-5 sm:px-7">
       <form onSubmit={event=>void submit(event)} className="space-y-7">
         <div className="space-y-4">
           <div className="space-y-2">
@@ -117,7 +122,7 @@ export default function PublicProspectQuickForm({ initialProfile, onPublicSubmit
             <Input id="quick-business" value={businessName} onChange={e=>setBusinessName(e.target.value)}
               maxLength={150} required data-testid="input-business-name" />
           </label>}
-          <div className="grid gap-4 sm:grid-cols-2">
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             <label className="block space-y-2"><Label htmlFor="quick-first">{company?"Nombre de contacto *":"Nombre(s) *"}</Label>
               <Input id="quick-first" value={firstName} onChange={e=>setFirstName(e.target.value)}
                 autoComplete="given-name" maxLength={100} required data-testid="input-first-name" /></label>
@@ -157,7 +162,7 @@ export default function PublicProspectQuickForm({ initialProfile, onPublicSubmit
             <div><h3 className="text-lg font-bold text-slate-950">Perfilamiento para encontrar alternativas</h3>
               <p className="text-sm text-slate-600">Estos criterios ayudan a identificar productos compatibles. Responde lo que sepas; no se consultará Buró ni SAT en esta etapa.</p></div>
           </div>
-          <div className="grid gap-4 sm:grid-cols-2">
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {(type==="fisica" || pfae) && pick("creditBureau","Calificación aproximada en Buró (si la conoces)",BUREAU)}
             {noSat && pick("hasBureauHistory","¿Cuenta con historial en Buró?",YES_NO)}
             {noSat && financial.hasBureauHistory==="si" && pick("creditBureauShareholder","Calificación aproximada en Buró",BUREAU)}
@@ -193,11 +198,22 @@ export default function PublicProspectQuickForm({ initialProfile, onPublicSubmit
           <ShieldCheck className="h-4 w-4 shrink-0 text-blue-800" />
           En esta etapa no es necesario compartir más información ni documentación. Si tu evaluación preliminar avanza favorablemente, tu asesor podrá solicitar información adicional más adelante.
         </div>
+        {onConsentChange && <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-4">
+          <label className="flex gap-3 items-start text-sm text-slate-700">
+            <Checkbox checked={consentAccepted} onCheckedChange={v=>onConsentChange(v===true)}
+              aria-label="Acepto el Aviso de Privacidad"/>
+            <span>He leído el <Link href="/legal/aviso" target="_blank" className="underline text-blue-800">
+              Aviso de Privacidad</Link> y autorizo compartir mis datos con Crédito Negocios y mi asesor
+              para la evaluación preliminar. El envío posterior a instituciones requerirá autorización adicional.</span>
+          </label>
+        </div>}
         {error && <p role="alert" className="text-sm text-red-700" data-testid="public-profile-error">{error}</p>}
-        <Button className="w-full sm:w-auto bg-blue-800 hover:bg-blue-900 text-white" type="submit"
+        <div className="flex justify-center py-2">
+        <Button className="w-full sm:w-auto min-h-12 px-8 bg-blue-800 hover:bg-blue-900 text-white text-base shadow-md" type="submit"
           disabled={loading} data-testid="button-submit-client">
           {loading?<><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Analizando...</>:"Enviar y conocer mi evaluación preliminar"}
         </Button>
+        </div>
       </form>
     </CardContent>
   </Card>;
