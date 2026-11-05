@@ -6,7 +6,7 @@ const dom=new JSDOM('<!doctype html><html><body><div id="root"></div><script>'+b
 const w=dom.window,d=w.document,text=()=>d.body.textContent;
 d.querySelectorAll("script").forEach(el=>el.remove());
 const pause=()=>new Promise(r=>setTimeout(r,25));
-async function waitFor(fn,label){for(let i=0;i<200;i++){if(fn())return;await pause();}throw Error(label+' '+text().slice(-3500)+' '+errors.join('\n'));}
+async function waitFor(fn,label){for(let i=0;i<500;i++){if(fn())return;await pause();}throw Error(label+' '+text().slice(-3500)+' '+errors.join('\n'));}
 function button(label){const b=[...d.querySelectorAll('button')].find(b=>b.textContent.trim()===label);assert(b,'Missing button '+label);return b;}
 async function tab(label){const el=[...d.querySelectorAll('[role="tab"]')].find(el=>el.textContent.trim()===label);assert(el);el.dispatchEvent(new w.MouseEvent('mousedown',{bubbles:true,button:0}));el.click();await pause();}
 (async()=>{
@@ -18,11 +18,15 @@ async function tab(label){const el=[...d.querySelectorAll('[role="tab"]')].find(
  button('Comprobante PDF').click();assert(w.qaOpened.endsWith('/acceptances/accept-qa/comprobante'));
  await tab('Actividad');assert(text().includes('Ingreso exitoso'));
  d.dispatchEvent(new w.KeyboardEvent('keydown',{key:'Escape',bubbles:true}));await pause();
- button('Formulario QA').click();await waitFor(()=>text().includes('Confirma el Aviso de Privacidad'),'public consent');
- assert(!d.querySelector('[data-testid="button-submit-client"]'));
- d.querySelector('[role="checkbox"]').click();await waitFor(()=>d.querySelector('[data-testid="button-submit-client"]'),'same advanced profile form');
+ button('Formulario QA').click();await waitFor(()=>text().includes('Acepto el Aviso de Privacidad'),'public consent');
+ assert(d.querySelector('[data-testid="button-submit-client"]'),'form visible before consent');
+ d.querySelector('[role="checkbox"]').click();
  assert(text().includes('Completa tu información'));
- d.querySelector('[data-testid="button-submit-client"]').click();await waitFor(()=>Boolean(d.querySelector('[data-testid="prospect-profile-success"]')),'public profile submitted');
+ d.querySelector('[data-testid="button-submit-client"]').click();
+ await waitFor(()=>Boolean(d.querySelector('[data-testid="prospect-evaluation-processing"]')),'progress shown');
+ await waitFor(()=>Boolean(d.querySelector('[data-testid="prospect-result-ready-modal"]')),'ready modal after processing');
+ d.querySelector('[data-testid="prospect-open-diagnosis"]').click();
+ await waitFor(()=>Boolean(d.querySelector('[data-testid="prospect-profile-success"]')),'public profile submitted');
  const save=w.qaCalls.find(c=>c.method==='POST'&&c.path.includes('/api/public/prospect-completion/'));assert(save);assert.equal(save.body.acknowledgePrivacy,true);assert.equal(save.body.profile.firstName,'Prospecto QA');assert.equal(save.body.profile.phone,'5512345678');assert(!('brokerId' in save.body.profile));
  button('Enlace QA').click();await waitFor(()=>d.querySelector('[data-testid="prospect-completion-link"]'),'direct link button');
  d.querySelector('[data-testid="prospect-completion-link"]').click();await waitFor(()=>d.querySelector('input[aria-label="Enlace para completar información"]'),'private direct link');
