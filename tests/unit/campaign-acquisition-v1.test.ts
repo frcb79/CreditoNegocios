@@ -51,7 +51,8 @@ describe("COM-CTA-002: incoming prospects and reusable attribution links", () =>
     expect(app.indexOf('path="/c/:token"')).toBeLessThan(app.indexOf("isLoading || !isAuthenticated ?"));
     expect(page).toContain('data-testid="landing-privacy"');
     expect(page).toContain("acknowledgePrivacy: true");
-    expect(page).toContain('href="/legal/aviso"');
+    expect(page).toContain('href="/legal/aviso?public=1"');
+    expect(page).not.toContain('href="/legal/aviso"');
     expect(page).toContain('data-testid="public-campaign-success"');
   });
 
