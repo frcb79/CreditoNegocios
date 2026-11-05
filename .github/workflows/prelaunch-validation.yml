@@ -28,6 +28,7 @@ on:
       - 'feat/issue-63-*'
       - 'feat/resend-audit-*'
       - 'fix/email-audit-pilot-*'
+      - 'fix/welcome-email-no-raw-link-*'
   workflow_dispatch:
 concurrency:
   group: prelaunch-${{ github.ref }}
