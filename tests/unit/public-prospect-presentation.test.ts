@@ -48,7 +48,7 @@ describe("Approved public prospect journey — result & documentation",()=>{
     expect(PUBLIC_PROCESS_TIMES.map(x=>x.value)).toEqual([
       "1 - 4 hrs.","4 - 12 hrs.","12 - 36 hrs.",
     ]);
-    expect(PUBLIC_PROCESS_TIMES.map(x=>x.title).join(" ")).toMatch(/Verificación de alternativas.*Envío inicial.*recopilación de documentos/);
+    expect(PUBLIC_PROCESS_TIMES.map(x=>x.title).join(" ")).toMatch(/Asesor verifica alternativas.*Envío inicial.*recopilación de documentos/);
   });
   it("does not repeat failed and passed categories when offers disagree",()=>{
     const assessment=aggregateProspectAssessment({
