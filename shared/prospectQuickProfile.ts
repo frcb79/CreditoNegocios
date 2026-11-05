@@ -92,8 +92,11 @@ export function buildQuickProspectProfile(input: QuickProspectInput) {
   const noSat = input.type === "sin_sat";
   const pfae = input.type === "fisica_empresarial";
   const company = input.type === "persona_moral";
-  appendIfValue(data, company ? "ingresoMensualPromedio" :
-    noSat ? "ingresoMensualPromedioComprobablesSinSat" : "ingresoMensualPromedioComprobables", String(monthly));
+  // Keep the common monthly figure consumed by legacy matching, and the typed
+  // profiling field used by each borrower group. Never report a verified income.
+  appendIfValue(data, "ingresoMensualPromedio", String(monthly));
+  if (!company) appendIfValue(data, noSat ? "ingresoMensualPromedioComprobablesSinSat" :
+    "ingresoMensualPromedioComprobables", String(monthly));
   if (company) appendIfValue(data, "egresoMensualPromedio", numeric(f.monthlyOutgoings));
 
   if (pf || pfae) appendIfValue(data, "buroPersonaFisica", optional(f.creditBureau));
