@@ -78,6 +78,8 @@ export function buildQuickProspectProfile(input: QuickProspectInput) {
   if (yearsText && (!/^\d{1,3}$/.test(yearsText) || Number(yearsText) > 150))
     throw new Error("Indica los años de actividad, o deja ese dato pendiente.");
   const annualBand = annualIncomeBandFromMonthly(input.type, monthly);
+  if (!optional(input.email) || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(input.email.trim()))
+    throw new Error("Indica un correo electrónico válido.");
   const data: Record<string, unknown> = {
     type: input.type,
     firstName: input.firstName.trim(),

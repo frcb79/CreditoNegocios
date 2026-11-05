@@ -3,9 +3,15 @@ import { aggregateProspectAssessment } from "../../server/prospectAutoMatching";
 
 const basic={
   type:"fisica_empresarial" as const, firstName:"María",lastName:"López",
-  businessName:"",phone:"5512345678",email:"",rfc:"",monthlyIncome:"120000",yearsInBusiness:"3",
+  businessName:"",phone:"5512345678",email:"maria@example.test",rfc:"",monthlyIncome:"120000",yearsInBusiness:"3",
 };
 describe("Issue #65: short public form and honest zero-match diagnostics",()=>{
+  it("requires valid prospect email for public matching",()=>{
+    expect(()=>buildQuickProspectProfile({...basic,email:""})).toThrow(/correo electrónico/i);
+    expect(()=>buildQuickProspectProfile({...basic,email:"invalido"})).toThrow(/correo electrónico/i);
+    expect(buildQuickProspectProfile(basic).email).toBe("maria@example.test");
+  });
+
   it("derives annual band from declared monthly income, without claiming documented revenue",()=>{
     const profile=buildQuickProspectProfile(basic);
     expect(profile.ingresoMensualPromedio).toBe("120000");
@@ -100,7 +106,7 @@ describe("Issue #65: short public form and honest zero-match diagnostics",()=>{
     });
     expect(review).toMatchObject({
       status:"under_review",reviewedOffers:1,
-      criteria:{matched:["Monto solicitado"],notMatched:["Tipo de cliente"],toReview:[]},
+      criteria:{matched:["Monto solicitado"],notMatched:["Tipo de cliente — condiciones específicas del producto"],toReview:[]},
     });
     expect(review.institutionCount).toBeUndefined();
     expect(JSON.stringify(review)).not.toContain("secret-institution");

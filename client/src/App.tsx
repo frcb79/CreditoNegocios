@@ -1,4 +1,5 @@
 import PublicProspectCompletion from "@/pages/PublicProspectCompletion";
+import { isPublicProspectJourneyPath } from "@shared/publicProspectRouteGuard";
 import { Switch, Route, Redirect } from "wouter";
 import { queryClient } from "./lib/queryClient";
 import { QueryClientProvider } from "@tanstack/react-query";
@@ -120,14 +121,31 @@ function Router() {
   );
 }
 
+/** A public acquisition link is a guest-only experience.
+ * It must never mount dashboard routes, auth redirects or account notifications,
+ * even when a browser happens to have a logged-in platform session. */
+function GuestProspectRouter() {
+  return <Switch>
+    <Route path="/c/:token" component={PublicCampaignLanding}/>
+    <Route path="/completar-perfil/:token" component={PublicProspectCompletion}/>
+    <Route>
+      <main className="min-h-screen flex items-center justify-center bg-slate-50 px-4">
+        <section role="alert" className="max-w-lg rounded-xl border bg-white p-8 text-center">
+          <h1 className="text-xl font-bold">Enlace no disponible</h1>
+          <p className="mt-2 text-sm text-slate-600">Solicita un enlace nuevo a tu asesor.</p>
+        </section>
+      </main>
+    </Route>
+  </Switch>;
+}
 function App() {
+  const publicJourney=isPublicProspectJourneyPath(window.location.pathname);
   return (
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
-        <NotificationProvider>
-          <Toaster />
-          <Router />
-        </NotificationProvider>
+        <Toaster/>
+        {publicJourney ? <GuestProspectRouter/> :
+          <NotificationProvider><Router/></NotificationProvider>}
       </TooltipProvider>
     </QueryClientProvider>
   );

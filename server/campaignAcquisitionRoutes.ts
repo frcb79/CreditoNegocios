@@ -16,7 +16,7 @@ const linkInput = z.object({ templateId: z.string().min(10).max(80).optional() }
 const intakeInput = z.object({
   fullName: z.string().trim().min(3).max(120),
   phone: z.string().trim().min(10).max(25),
-  email: z.union([z.string().trim().email().max(160), z.literal("")]).optional(),
+  email: z.string().trim().email().min(3).max(160),
   product: resourceProductSchema.optional(),
   amountRange: z.string().trim().max(80).optional(),
   message: z.string().trim().max(600).optional(),

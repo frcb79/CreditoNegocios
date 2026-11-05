@@ -75,7 +75,7 @@ describe("Issue #65 — prospect matching safety",()=>{
     expect(publicResult).toMatchObject({
       status:"possible_options",institutionCount:1,
       criteria:{matched:["Tipo de cliente","Monto solicitado","Plazo deseado","Ingresos del negocio"],
-        toReview:["Antigüedad del negocio","Historial crediticio"]},
+        toReview:["Antigüedad del negocio","Comportamiento de pagos declarado"]},
     });
     const serialized=JSON.stringify(publicResult);
     for(const sensitive of ["bank-secret","second-bank","secretSpecialRate",
@@ -106,6 +106,38 @@ describe("Issue #65 — prospect matching safety",()=>{
     expect(result.summary.totalEvaluated).toBe(2);
     // Missing source evidence can prevent COMPATIBLE; never upgrade unknowns.
     expect(result.compatible.every(x=>x.criteria.failed.length===0&&x.criteria.missing.length===0)).toBe(true);
+  });
+  it("identifies both published leasing scenarios with a documented strong profile",async()=>{
+    const leaseOffer=(id:string,fin:string,bureau:string)=>createOffer(id,fin,"arrendamiento","published",{
+      product:{targetProfiles:["persona_moral","fisica_empresarial"]},
+      version:{conditions:{
+        minAmount:250000,maxAmount:10000000,maxTermMonths:60,minCompanyAgeMonths:12,
+        minMonthlyRevenue:50000,bureauRequirement:bureau,avalesType:"un_aval",
+      },requirements:{}},
+    });
+    const financing={product:"arrendamiento" as const,amount:500000,termMonths:36,
+      purpose:"Arrendar maquinaria",leasingAssetType:"maquinaria" as const};
+    const profile={type:"fisica_empresarial",yearsInBusiness:3,
+      ingresoMensualPromedio:"150000",ingresoMensualPromedioComprobables:"150000",
+      atrasosDeudasBuro:"no",avalObligadoSolidario:"si",garantia:"sin-garantia"};
+    const source:any={getPublishedInstitutionProductsForMatching:async()=>[
+      leaseOffer("lease-a","fin-lease-a","al_corriente"),
+      leaseOffer("lease-b","fin-lease-b","atraso_menor_30"),
+    ]};
+    const result=await matchPublishedCatalog(source,{client:profile,
+      credit:buildProspectCredit(financing)},undefined,"arrendamiento");
+    const assessment=aggregateProspectAssessment(result);
+    expect(result.summary.totalEvaluated).toBe(2);
+    expect(assessment.identifiedInstitutionCount).toBe(2);
+    expect(JSON.stringify(assessment)).not.toMatch(/fin-lease-a|fin-lease-b|offerId|institutionId/i);
+  });
+  it("explains range-based bureau review without disclosing thresholds",()=>{
+    const summary=aggregateProspectAssessment({
+      compatible:[],insufficientData:[{institutionId:"fin-a",criteria:{
+        missing:[{code:"personalBureau",status:"MISSING_DATA",actualValue:"bueno-592-693"}]}}],
+      notCompatible:[],
+    });
+    expect(summary.criteria?.toReview).toEqual(["Historial crediticio personal (dentro de rango)"]);
   });
   it("creates the expected verified credit structure for leasing",()=>{
     expect(buildProspectCredit({

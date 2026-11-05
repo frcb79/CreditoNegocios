@@ -12,6 +12,8 @@ export type PublicProspectAssessment = {
   institutionCount?: number;
   /** Unique lenders with at least a preliminary match (including pending checks). */
   identifiedInstitutionCount?: number;
+  /** Unique institutions whose published offers were checked (not all compatible). */
+  evaluatedInstitutionCount?: number;
   reviewedOffers?: number;
   message: string;
   /** Only broad public categories, never lender eligibility rules or thresholds. */
@@ -32,12 +34,12 @@ const PUBLIC_CRITERION_LABELS: Record<string,string> = {
   requiresFinancialStatements: "Estados financieros",
   satOpinion: "Cumplimiento fiscal",
   governmentSalesLimit: "Ventas con gobierno",
-  arrearsPolicy: "Antecedentes de atrasos",
+  arrearsPolicy: "Política de atrasos por validar con la financiera",
   creditAmount: "Monto solicitado",
   creditTerm: "Plazo deseado",
   companyAge: "Antigüedad del negocio",
   monthlyRevenue: "Ingresos del negocio",
-  bureauRequirement: "Historial crediticio",
+  bureauRequirement: "Comportamiento de pagos declarado",
   guaranteeType: "Garantías",
   avalesType: "Avales",
   tipo_activo_arrendado: "Tipo de activo",
@@ -48,9 +50,9 @@ const PUBLIC_CRITERION_LABELS: Record<string,string> = {
 type PublicCriterionInput = {
   institutionId: string;
   criteria?: {
-    matched?: { code:string;status?:string }[];
-    missing?: { code:string;status?:string }[];
-    failed?: { code:string;status?:string }[];
+    matched?: { code:string;status?:string; actualValue?:unknown }[];
+    missing?: { code:string;status?:string; actualValue?:unknown }[];
+    failed?: { code:string;status?:string; actualValue?:unknown }[];
   };
 };
 export function summarizePublicCriteria(result: {
@@ -65,7 +67,24 @@ export function summarizePublicCriteria(result: {
   const labels=(rows:PublicCriterionInput[],bucket:"matched"|"missing"|"failed",status:string)=>
     Array.from(new Set(rows.flatMap(row=>row.criteria?.[bucket]||[])
       .filter(item=>item.status===status)
-      .map(item=>PUBLIC_CRITERION_LABELS[item.code])
+      .map(item=>{
+        const base=PUBLIC_CRITERION_LABELS[item.code];
+        if(!base)return "";
+        const scoreCriteria=["personalBureau","businessBureau","shareholderBureau"];
+        if(bucket==="missing" && scoreCriteria.includes(item.code) &&
+          typeof item.actualValue==="string" &&
+          /^(alto|bueno|medio|bajo|malo)-\d+-\d+$/.test(item.actualValue))
+          return base+" (dentro de rango)";
+        if(bucket==="failed") {
+          const help:Record<string,string>={
+            creditAmount:" — algunas ofertas manejan montos diferentes al solicitado",
+            creditTerm:" — los plazos disponibles varían entre productos",
+            guaranteeType:" — algunas ofertas requieren otro tipo de respaldo",
+          };
+          return base+(help[item.code]||" — condiciones específicas del producto");
+        }
+        return base;
+      })
       .filter((label):label is string=>Boolean(label))));
   // First show evidence from viable offers, not failure reasons drawn
   // from unrelated products discarded by this same matching engine.
@@ -96,27 +115,34 @@ export function aggregateProspectAssessment(result: {
   // never count as identified options; don't invent a minimum of two.
   const identified = new Set([...result.compatible,...result.insufficientData]
     .map(row=>row.institutionId).filter(x=>x && x!=="unknown"));
+  const evaluated = new Set([...result.compatible,...result.insufficientData,...result.notCompatible]
+    .map(row=>row && typeof row==="object" && "institutionId" in row ?
+      String((row as {institutionId:unknown}).institutionId):"")
+    .filter(x=>x && x!=="unknown"));
   const reviewedOffers=Math.max(0,result.summary?.totalEvaluated ??
     (result.compatible.length+result.insufficientData.length+result.notCompatible.length));
   const criteria=summarizePublicCriteria(result);
   if (institutions.size) return {
     status: "possible_options", institutionCount: institutions.size,
-    identifiedInstitutionCount:identified.size, reviewedOffers, criteria,
+    identifiedInstitutionCount:identified.size, evaluatedInstitutionCount:evaluated.size,
+    reviewedOffers, criteria,
     message: "Con los datos proporcionados identificamos " + institutions.size +
       " instituciones financieras con alternativas preliminares. Tu asesor confirmará los requisitos antes de avanzar. No es una aprobación ni una oferta de crédito.",
   };
   if (result.insufficientData.length) return {
     status: "missing_information", reviewedOffers, criteria,
-    identifiedInstitutionCount:identified.size,
+    identifiedInstitutionCount:identified.size, evaluatedInstitutionCount:evaluated.size,
     message: "Revisamos " + reviewedOffers +
       " productos del catálogo. Identificamos coincidencias preliminares que necesitan confirmar requisitos. Tu asesor continuará contigo.",
   };
   if (!reviewedOffers) return {
     status: "under_review", reviewedOffers:0, criteria,
+    evaluatedInstitutionCount:evaluated.size,
     message: "Todavía no hay ofertas publicadas comparables para el tipo de financiamiento seleccionado. Registramos tu solicitud y tu asesor revisará otras alternativas.",
   };
   return {
     status: "under_review", reviewedOffers, criteria,
+    evaluatedInstitutionCount:evaluated.size,
     message: "Revisamos " + reviewedOffers +
       " productos del catálogo. Algunas condiciones requieren análisis adicional. Tu solicitud quedó registrada y tu asesor continuará buscando alternativas.",
   };
@@ -198,17 +224,20 @@ export async function evaluateProspectPreapplication(
       [leadId,ownerUserId]);
     const row=current.rows[0];
     if (!row) return pending;
-    if (row.status === "evaluated" && row.client_id) {
+    if (row.status === "evaluated") {
       const result=await pool.query<{summary:PublicProspectAssessment}>(
         "SELECT summary FROM public.prospect_preapplications WHERE id=$1", [row.id]);
       return result.rows[0]?.summary || pending;
     }
-    if (!row.client_id || row.status === "identity_review" || row.status === "awaiting_details")
-      return pending;
+    // A public preliminary comparison uses the captured profile snapshot,
+    // not the creation of an internal client record. Identity review remains
+    // mandatory before any regulated origination or lender submission.
+    if (row.status === "awaiting_details" || !row.financing_data ||
+        !Object.keys(row.financing_data).length) return pending;
     const claim=await pool.query<Preapplication>(`
       UPDATE public.prospect_preapplications SET status='evaluating',updated_at=NOW()
       WHERE id=$1 AND owner_user_id=$2
-        AND (status IN ('pending','failed')
+        AND (status IN ('pending','failed','identity_review')
            OR (status='evaluating' AND updated_at < NOW()-INTERVAL '5 minutes'))
       RETURNING *
     `,[row.id,ownerUserId]);

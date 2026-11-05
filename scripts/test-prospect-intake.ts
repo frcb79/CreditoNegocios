@@ -37,7 +37,7 @@ describe("Prospect self-service: HTTP → PostgreSQL transaction → advisor inb
     return result.body.path.split("/").pop();
   };
   const submit = (token: string, profile: any) => request(app).post("/api/public/prospect-completion/" + token).send({profile,acknowledgePrivacy:true,privacyVersion:notice.version});
-  const profile = (phone: string, more = {}) => ({type:"fisica",firstName:"Prospecto",phone,...more});
+  const profile = (phone: string, more = {}) => ({type:"fisica",firstName:"Prospecto",phone,email:`prospect-${phone}@example.test`,...more});
   beforeAll(async () => {
     pg = await PGlite.create();
     const clientColumns = Object.entries(getTableColumns(clients)).map(([key, column]) =>
@@ -93,7 +93,7 @@ describe("Prospect self-service: HTTP → PostgreSQL transaction → advisor inb
     const a = await asOwner(links).send({}), b = await asOwner(links).send({});
     expect(a.body.path).toBe(b.body.path);
     const token = a.body.path.split("/").pop();
-    const body = {fullName:"Contacto Redes",phone:"5512345001",product:"simple",acknowledgePrivacy:true,privacyVersion:notice.version};
+    const body = {fullName:"Contacto Redes",phone:"5512345001",email:"lead-5512345001@example.test",product:"simple",acknowledgePrivacy:true,privacyVersion:notice.version};
     const first = await request(app).post(`/api/public/campaign/${token}/submit`).send(body);
     expect(first.status).toBe(201);
     expect(first.body.completionPath).toMatch(/^\/completar-perfil\/[\w-]{32}$/);

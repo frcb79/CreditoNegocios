@@ -6,7 +6,7 @@ import {
 
 export type PublicDisplayAssessment = {
   status:"possible_options"|"missing_information"|"under_review"|"pending";
-  institutionCount?:number; identifiedInstitutionCount?:number; reviewedOffers?:number; message:string;
+  institutionCount?:number; identifiedInstitutionCount?:number; evaluatedInstitutionCount?:number; reviewedOffers?:number; message:string;
   criteria?:{matched:string[];toReview:string[];notMatched:string[]};
 };
 export default function ProspectEvaluationResult({
@@ -22,19 +22,23 @@ export default function ProspectEvaluationResult({
   const hasOptions=assessment?.status==="possible_options" && Number(assessment.institutionCount)>0;
   const prelimCount=Math.max(0,assessment?.identifiedInstitutionCount || assessment?.institutionCount || 0);
   const hasPrelimMatches=prelimCount>0;
+  const evaluatedInstitutions=Math.max(0,assessment?.evaluatedInstitutionCount||0);
+  const showIdentifiedMatches=prelimCount>=2;
+  const showGroundedReviewPool=!showIdentifiedMatches && evaluatedInstitutions>=2;
+  const displayedCount=showIdentifiedMatches?prelimCount:showGroundedReviewPool?evaluatedInstitutions:null;
   const rows=buildPublicProspectSummary(profile,financing);
   const docs=getPublicDocumentGroups(profile.type);
   const matched=assessment?.criteria?.matched||[];
   const pending=assessment?.criteria?.toReview||[];
   const failed=assessment?.criteria?.notMatched||[];
   const criteria=[
-    {title:"Criterios cumplidos",subtitle:"Coincidencias del análisis; no equivalen a una aprobación.",
+    {title:"Criterios cumplidos",subtitle:"Coincidencias generales encontradas con los datos que proporcionaste.",
       labels:matched,bg:"border-emerald-200 bg-emerald-50/60",color:"text-emerald-800",icon:CheckCircle2,
-      empty:"No se identificaron coincidencias confirmadas."},
-    {title:"Para confirmar",subtitle:"Información que podría afinar la evaluación con tu asesor.",
+      empty:"Tu asesor revisará los criterios aplicables."},
+    {title:"Para confirmar",subtitle:"Validaciones adicionales que pueden confirmar tu asesor y las financieras.",
       labels:pending,bg:"border-amber-200 bg-amber-50/60",color:"text-amber-800",icon:CalendarClock,
       empty:"No hay categorías adicionales pendientes identificadas."},
-    {title:"Aspectos por revisar",subtitle:"Criterios que requieren otra evaluación; no son un rechazo definitivo.",
+    {title:"Aspectos por revisar",subtitle:"Algunas alternativas tienen condiciones distintas a las de tu solicitud. Tu asesor revisará las opciones más convenientes; no necesitas llenar otro formulario.",
       labels:failed,bg:"border-slate-200 bg-slate-50",color:"text-slate-700",icon:CircleHelp,
       empty:"Sin observaciones generales registradas."},
   ];
@@ -106,10 +110,11 @@ export default function ProspectEvaluationResult({
               <div className="rounded-xl bg-blue-800 p-5 text-white">
                 <Landmark className="h-6 w-6 text-blue-100"/>
                 <p className="mt-2 text-4xl font-extrabold tabular-nums"
-                  data-testid="verified-institution-count">{hasPrelimMatches?prelimCount:"En revisión"}</p>
+                  data-testid="verified-institution-count">{displayedCount??"Búsqueda activa"}</p>
                 <p className="mt-1 text-sm font-semibold">
-                  {hasPrelimMatches?"Financieras identificadas con match preliminar a tu perfil":
-                    "Alternativas que revisará tu asesor"}
+                  {showIdentifiedMatches?"Financieras identificadas con match a tu perfil":
+                    showGroundedReviewPool?"Financieras con productos para revisión de tu asesor":
+                    "Tu asesor buscará alternativas adicionales"}
                 </p>
               </div>
               <div className="rounded-xl border border-blue-200 bg-white p-5 text-blue-950">
@@ -120,9 +125,11 @@ export default function ProspectEvaluationResult({
               </div>
             </div>
             <p className="text-xs leading-relaxed text-slate-600">
-              {hasPrelimMatches ?
-                "Son alternativas preliminares sujetas a confirmación de requisitos por el asesor y la institución financiera." :
-                "Tu asesor revisará opciones adicionales y requisitos pendientes. El diagnóstico no es una negativa ni una aprobación."}
+              {showIdentifiedMatches ?
+                "Las coincidencias son preliminares y requieren validación de requisitos por cada financiera." :
+                showGroundedReviewPool ?
+                "Se compararon productos de esas financieras. Algunas condiciones no coinciden todavía; esto no implica que exista una propuesta aprobada." :
+                "Tu asesor continuará explorando opciones. Aún no podemos confirmar un número mínimo de financieras compatibles."}
             </p>
           </div>
         </div>
