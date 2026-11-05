@@ -112,6 +112,32 @@ export async function assertDocumentStorageEnvironmentIsolatedAndAuthorized(
   }
 }
 
+
+// Railway's S3-compatible bucket is used only in staging.
+// Production retains its current Supabase provider.
+const useRailwayDocuments = () =>
+  process.env.RAILWAY_ENVIRONMENT_NAME === "staging" &&
+  process.env.STAGING_RAILWAY_STORAGE_ENABLED === "true";
+
+function railwaySettings() {
+  if (!useRailwayDocuments() ||
+      process.env.RAILWAY_ENVIRONMENT_ID !== "e3134695-aaec-41e2-8622-41e3701ed985")
+    throw new Error("STAGING_STORAGE_NOT_ISOLATED");
+  const endpoint = process.env.RAILWAY_S3_ENDPOINT || "";
+  const bucket = process.env.RAILWAY_S3_BUCKET || "";
+  const region = process.env.RAILWAY_S3_REGION || "";
+  const accessKey = process.env.RAILWAY_S3_ACCESS_KEY_ID || "";
+  const secretKey = process.env.RAILWAY_S3_SECRET_ACCESS_KEY || "";
+  const style = process.env.RAILWAY_S3_URL_STYLE || "virtual-host";
+  const url = new URL(endpoint);
+  if (url.protocol !== "https:" || url.hostname !== "t3.storageapi.dev" ||
+      !/^cn-staging-documents-[a-z0-9]+$/.test(bucket) ||
+      !region || !accessKey || !secretKey ||
+      (style !== "virtual-host" && style !== "path"))
+    throw new Error("STAGING_STORAGE_NOT_ISOLATED");
+  return { endpoint, bucket, region, accessKey, secretKey, style };
+}
+
 function sanitizeSegment(value: string) {
   return value.replace(/[^a-zA-Z0-9._-]/g, "-");
 }
