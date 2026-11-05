@@ -106,7 +106,7 @@ describe("Issue #65: short public form and honest zero-match diagnostics",()=>{
     });
     expect(review).toMatchObject({
       status:"under_review",reviewedOffers:1,
-      criteria:{matched:["Monto solicitado"],notMatched:["Tipo de cliente"],toReview:[]},
+      criteria:{matched:["Monto solicitado"],notMatched:["Tipo de cliente — condiciones específicas del producto"],toReview:[]},
     });
     expect(review.institutionCount).toBeUndefined();
     expect(JSON.stringify(review)).not.toContain("secret-institution");
