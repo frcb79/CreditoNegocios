@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { parseResendDeliveryEvent, verifyResendSignature } from "../../server/resendDeliveryWebhook";
 import { EMAIL_DELIVERY_AUDIT_SQL } from "../../server/emailDeliveryAuditRoutes";
+import { PILOT_WELCOME_TARGETS, isPilotWelcomeEnabled } from "../../server/oneTimeHistoricWelcomePilot";
 
 const key = Buffer.from("unit-test-svix-secret-material-2026");
 const secret = "whsec_" + key.toString("base64");
@@ -55,6 +56,8 @@ describe("Resend delivery audit: signed events only", () => {
     expect(api).toContain('isAuthenticated');
     expect(api).toContain('"private, no-store"');
     expect(EMAIL_DELIVERY_AUDIT_SQL).toContain("LEFT JOIN LATERAL");
+    expect(EMAIL_DELIVERY_AUDIT_SQL).toContain("COALESCE(r.claimed_at,r.updated_at,r.sent_at) AS created_at");
+    expect(EMAIL_DELIVERY_AUDIT_SQL).not.toContain("r.created_at");
     expect(EMAIL_DELIVERY_AUDIT_SQL.indexOf("'email.complained'")).toBeGreaterThan(-1);
     expect(EMAIL_DELIVERY_AUDIT_SQL).toContain("LIMIT 200");
     expect(EMAIL_DELIVERY_AUDIT_SQL).not.toContain("reset_token");
@@ -77,6 +80,24 @@ describe("Resend delivery audit: signed events only", () => {
     const component = source("client/src/components/EmailDeliveryAudit.tsx");
     expect(component).toContain("Entregado al servidor");
     expect(component).toContain("Histórico sin seguimiento");
+  });
+
+  it("allows a production pilot for only the two explicitly authorized registered accounts", () => {
+    expect(PILOT_WELCOME_TARGETS).toEqual([
+      { email:"fcb@creditonegocios.com.mx",role:"master_broker" },
+      { email:"fcb@10xteam.com.mx",role:"broker" },
+    ]);
+    const settings = {RAILWAY_ENVIRONMENT_NAME:"production", MAIL_PILOT_20261104_ENABLED:"enabled",
+      RESEND_API_KEY:"test-not-a-real-key", NODE_ENV:"production"};
+    expect(isPilotWelcomeEnabled(settings)).toBe(true);
+    expect(isPilotWelcomeEnabled({...settings,RAILWAY_ENVIRONMENT_NAME:"staging"})).toBe(false);
+    expect(isPilotWelcomeEnabled({...settings,MAIL_PILOT_20261104_ENABLED:"disabled"})).toBe(false);
+    expect(isPilotWelcomeEnabled({...settings,NODE_ENV:"test"})).toBe(false);
+    expect(isPilotWelcomeEnabled({...settings,RESEND_API_KEY:""})).toBe(false);
+    const sourceText=source("server/oneTimeHistoricWelcomePilot.ts");
+    expect(sourceText).toContain("ON CONFLICT(user_id) DO NOTHING");
+    expect(sourceText).toContain("dispatchCommercialActivationWelcome(id)");
+    expect(sourceText).not.toContain("SELECT id FROM public.users");
   });
 
 });

@@ -8,6 +8,9 @@ import { allowedOrigins, isAllowedOrigin } from "./runtimeConfig";
 import { runAutoMigration } from "./autoMigrate";
 import { rejectCrossSiteMutations } from "./csrfProtection";
 import { registerResendWebhook } from "./resendDeliveryWebhook";
+import { dispatchOneTimeHistoricWelcomePilot } from "./oneTimeHistoricWelcomePilot";
+import { dispatchOneTimePendingInvitations } from "./oneTimePendingInvitationRecovery";
+import { dispatchHistoricalWelcomeRemainder } from "./oneTimeHistoricalWelcomeRemainder";
 
 const isProd = process.env.NODE_ENV === "production";
 
@@ -153,5 +156,15 @@ app.use((req, res, next) => {
 
   server.listen(listenOptions, () => {
     log(`serving on ${host}:${port}`);
+    // Only the two explicitly authorized historical recipients; production opt-in,
+    // post-migration, nonblocking and deduplicated in the delivery audit.
+    void dispatchOneTimeHistoricWelcomePilot().catch(() =>
+      logger.error("[MAIL-PILOT-20261104] Unexpected startup failure"));
+    // Explicitly authorized re-invitation for unactivated accounts only; at-most-once per user.
+    void dispatchOneTimePendingInvitations().catch(() =>
+      logger.error("[INVITATION-RECOVERY] Unexpected startup failure"));
+    // Remaining registered users, excluding the original two-user pilot by unique event key.
+    void dispatchHistoricalWelcomeRemainder().catch(() =>
+      logger.error("[WELCOME-REMAINDER] Unexpected startup failure"));
   });
 })();

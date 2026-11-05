@@ -27,6 +27,9 @@ on:
       - 'fix/leasing-client-visibility-*'
       - 'feat/issue-63-*'
       - 'feat/resend-audit-*'
+      - 'fix/email-audit-pilot-*'
+      - 'fix/welcome-email-no-raw-link-*'
+      - 'fix/one-time-pending-invitations-*'
       - 'feat/issue-65-*'
       - 'feat/issue65-transparent-public-match-*'
       - 'feat/issue65-prospect-short-form-diagnostics-*'
@@ -161,6 +164,7 @@ jobs:
             tests/unit/websocket-session-http.test.ts
             tests/unit/broker-invitation-bulk.test.ts
             tests/unit/broker-invitation-reminders.test.ts
+            tests/unit/one-time-pending-invitations.test.ts
             tests/unit/broker-invitation-followup.test.ts
             tests/unit/broker-invitation-email.test.ts
             tests/unit/activation-commercial-welcome.test.ts
