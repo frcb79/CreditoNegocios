@@ -25,6 +25,7 @@ on:
       - 'fix/lanzamiento-usuarios-utm-*'
       - 'feat/broker-dossier-*'
       - 'fix/leasing-client-visibility-*'
+      - 'feat/staging-railway-volume-*'
       - 'feat/issue-63-*'
       - 'feat/resend-audit-*'
       - 'fix/email-audit-pilot-*'
