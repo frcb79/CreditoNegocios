@@ -85,102 +85,120 @@ export function ProspectCompletionForm({ token, initialProfile, initialFinancing
       </div>
 
       <div className="p-5 sm:p-8 space-y-6" data-testid="public-anonymous-matching">
-        <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 sm:p-5" data-testid="prospect-submitted-summary">
-          <p className="mb-3 text-sm font-semibold text-slate-900">Datos que utilizamos para la evaluación</p>
-          <div className="grid gap-3 sm:grid-cols-3">
-            <div><p className="text-xs text-slate-500">Financiamiento solicitado</p>
-              <p className="font-medium text-sm text-slate-900">{PRODUCT_OPTIONS.find(x=>x.id===product)?.name || "Por revisar"}</p></div>
-            <div><p className="text-xs text-slate-500">Monto</p>
-              <p className="font-medium text-sm text-slate-900">{Number(amount).toLocaleString("es-MX",{style:"currency",currency:"MXN",maximumFractionDigits:0})}</p></div>
-            <div><p className="text-xs text-slate-500">Plazo</p>
-              <p className="font-medium text-sm text-slate-900">{termMonths} meses</p></div>
+        <div className="grid gap-4 lg:grid-cols-[1.35fr_.65fr]">
+          <div className={hasOptions ?
+            "rounded-2xl bg-gradient-to-br from-blue-900 to-blue-700 text-white p-6 sm:p-8 shadow-sm" :
+            "rounded-2xl border border-blue-200 bg-blue-50 p-6 sm:p-8"}>
+            <div className={"mb-4 inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-bold " +
+              (hasOptions ? "bg-white/15 text-white" : "bg-white text-blue-900 border border-blue-200")}>
+              <CheckCircle2 className="h-4 w-4" /> Evaluación preliminar registrada
+            </div>
+            <h2 className="text-2xl sm:text-3xl font-extrabold leading-tight" data-testid="matching-result-headline">
+              {hasOptions ? "Encontramos alternativas para explorar contigo" :
+                reviewedOffers>0 ? "Tenemos un diagnóstico para continuar" :
+                "Tu asesor revisará alternativas para ti"}
+            </h2>
+            <p className={"mt-4 text-sm sm:text-base leading-relaxed " +
+              (hasOptions?"text-blue-100":"text-slate-700")}>
+              {assessment?.message || "Recibimos tu información. Tu asesor continuará la revisión."}
+            </p>
+            <p className={"mt-4 text-xs "+(hasOptions?"text-blue-100":"text-slate-600")}>
+              El análisis es orientativo y no constituye aprobación ni una oferta de financiamiento.
+            </p>
+          </div>
+          <div className="rounded-2xl border border-slate-200 bg-white p-6 flex flex-col justify-center items-center text-center shadow-sm"
+            data-testid="verified-match-summary">
+            <div className={"h-16 w-16 flex items-center justify-center rounded-2xl mb-3 " +
+              (hasOptions?"bg-blue-100 text-blue-900":"bg-slate-100 text-slate-700")}>
+              <ClipboardCheck className="h-8 w-8" />
+            </div>
+            {hasOptions ? <>
+              <p className="text-5xl sm:text-6xl font-extrabold tracking-tight tabular-nums text-blue-950"
+                data-testid="verified-institution-count">{assessment!.institutionCount}</p>
+              <p className="mt-2 font-semibold text-slate-950">
+                {assessment!.institutionCount===1?"Institución potencialmente compatible":"Instituciones potencialmente compatibles"}
+              </p>
+              <p className="mt-2 text-xs text-slate-600">Sin revelar instituciones ni condiciones privadas.</p>
+            </> : <>
+              <p className="text-3xl font-bold text-slate-950">
+                {reviewedOffers > 0 ? "Por afinar" : "En revisión"}
+              </p>
+              <p className="mt-2 text-sm text-slate-600">
+                {reviewedOffers > 0 ? "Aún no se confirma una alternativa completa." :
+                  "No hay productos publicados comparables para esta selección."}
+              </p>
+            </>}
           </div>
         </div>
-        {reviewedOffers > 0 && <p className="text-sm font-medium text-blue-950 rounded-md bg-blue-50 border border-blue-100 px-4 py-2"
-          data-testid="real-reviewed-offers">Revisamos {reviewedOffers} {reviewedOffers===1?"producto publicado":"productos publicados"} de la familia de financiamiento que solicitaste.</p>}
-        {hasOptions ? <div className="grid sm:grid-cols-[auto_1fr] items-center gap-4 rounded-xl border border-blue-200 bg-blue-50 p-5">
-          <div className="flex items-center justify-center rounded-xl bg-white border border-blue-100 px-6 py-4">
-            <span className="text-5xl font-extrabold tabular-nums text-blue-900" data-testid="verified-institution-count">
-              {assessment!.institutionCount}
-            </span>
+
+        <div className="rounded-xl border border-slate-200 p-4 sm:p-5" data-testid="prospect-submitted-summary">
+          <div className="flex flex-wrap justify-between items-center gap-2 mb-4">
+            <h3 className="font-bold text-slate-950">Tu solicitud en resumen</h3>
+            {reviewedOffers>0 && <span className="rounded-full bg-blue-50 border border-blue-100 px-3 py-1 text-xs font-medium text-blue-900"
+              data-testid="real-reviewed-offers">{reviewedOffers} {reviewedOffers===1?"producto comparado":"productos comparados"}</span>}
           </div>
-          <div>
-            <h2 className="text-lg sm:text-xl font-bold text-blue-950">
-              {assessment!.institutionCount === 1 ? "Institución con una alternativa preliminar" :
-                "Instituciones con alternativas preliminares"}
-            </h2>
-            <p className="text-sm text-slate-700 leading-relaxed mt-1">
-              Encontramos opciones que podrían adaptarse a tu solicitud según los criterios evaluados.
-              Tu asesor confirmará requisitos y disponibilidad.
-            </p>
+          <div className="grid gap-3 sm:grid-cols-3 text-sm">
+            <div className="rounded-lg bg-slate-50 p-3"><p className="text-xs text-slate-500">Financiamiento</p>
+              <p className="mt-1 font-semibold text-slate-950">{PRODUCT_OPTIONS.find(x=>x.id===product)?.name||"Por revisar"}</p></div>
+            <div className="rounded-lg bg-slate-50 p-3"><p className="text-xs text-slate-500">Monto solicitado</p>
+              <p className="mt-1 font-semibold text-slate-950">{Number(amount).toLocaleString("es-MX",{style:"currency",currency:"MXN",maximumFractionDigits:0})}</p></div>
+            <div className="rounded-lg bg-slate-50 p-3"><p className="text-xs text-slate-500">Plazo deseado</p>
+              <p className="mt-1 font-semibold text-slate-950">{termMonths} meses</p></div>
           </div>
-        </div> :
-          <div className="rounded-xl border border-amber-200 bg-amber-50 p-5">
-            <h2 className="font-semibold text-amber-950">
-              {assessment?.status==="missing_information" ? "Hay datos que necesitamos confirmar" :
-                assessment?.status==="under_review" && reviewedOffers>0 ? "Revisamos los criterios y encontramos puntos por resolver" :
-                "Tu información está lista para revisión"}
-            </h2>
-            <p className="mt-2 text-sm leading-relaxed text-slate-700">
-              {assessment?.message || "Tu asesor continuará con la revisión de tu solicitud."}
-            </p>
-          </div>}
+        </div>
 
         {hasEvaluated && (criteriaMatched.length>0 || criteriaPending.length>0 || criteriaNotMatched.length>0) &&
-          <div className="grid gap-4 md:grid-cols-2" data-testid="public-criteria-evidence">
-            <div className="rounded-xl border border-emerald-200 bg-emerald-50/50 p-4 sm:p-5">
-              <div className="flex items-center gap-2 font-semibold text-emerald-900">
-                <ClipboardCheck className="w-5 h-5 shrink-0" /> Coincidencias del análisis
+          <div className="space-y-3" data-testid="public-criteria-evidence">
+            <h3 className="text-lg font-bold text-slate-950">Lo que detectó la evaluación</h3>
+            <div className="grid gap-3 md:grid-cols-3">
+              <div className="rounded-xl border border-emerald-200 bg-emerald-50/50 p-4">
+                <div className="font-semibold text-emerald-900 flex items-center gap-2">
+                  <CheckCircle2 className="h-5 w-5" /> Criterios cumplidos
+                </div>
+                <p className="mt-2 text-xs text-slate-600">Coincidencias verificadas en el análisis de productos, sin implicar aprobación.</p>
+                <div className="mt-3 space-y-2">{criteriaMatched.length ? criteriaMatched.map(label=>
+                  <p key={label} className="flex items-start gap-2 text-sm text-slate-800">
+                    <CheckCircle2 className="mt-0.5 h-4 w-4 text-emerald-700 shrink-0"/>{label}</p>) :
+                  <p className="text-sm text-slate-600">Sin coincidencias confirmadas aún.</p>}</div>
               </div>
-              <p className="mt-2 text-xs leading-relaxed text-slate-600">
-                {hasOptions?"Aspectos que coinciden con al menos una alternativa preliminar.":"Criterios satisfechos en algunos productos, aunque todavía no hay una opción compatible en conjunto."}
-              </p>
-              {criteriaMatched.length ? <div className="mt-3 space-y-2">
-                {criteriaMatched.map(label=><div key={label} className="flex gap-2 text-sm text-slate-800 items-start">
-                  <CheckCircle2 className="w-4 h-4 text-emerald-700 mt-0.5 shrink-0" /> {label}
-                </div>)}
-              </div> : <p className="mt-3 text-sm text-slate-600">Sin coincidencias confirmadas todavía.</p>}
+              <div className="rounded-xl border border-amber-200 bg-amber-50/40 p-4">
+                <div className="font-semibold text-amber-900 flex items-center gap-2">
+                  <CircleHelp className="h-5 w-5" /> Para confirmar
+                </div>
+                <p className="mt-2 text-xs text-slate-600">Información que podría afinar la evaluación con tu asesor.</p>
+                <div className="mt-3 space-y-2">{criteriaPending.length ? criteriaPending.map(label=>
+                  <p key={label} className="flex items-start gap-2 text-sm text-slate-800">
+                    <ArrowRight className="mt-0.5 h-4 w-4 text-amber-700 shrink-0"/>{label}</p>) :
+                  <p className="text-sm text-slate-600">No hay categorías pendientes identificadas.</p>}</div>
+              </div>
+              <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                <div className="font-semibold text-slate-900 flex items-center gap-2">
+                  <CircleHelp className="h-5 w-5" /> Aspectos por revisar
+                </div>
+                <p className="mt-2 text-xs text-slate-600">Criterios sin coincidencia en algún producto, no un rechazo definitivo.</p>
+                <div className="mt-3 space-y-2">{criteriaNotMatched.length ? criteriaNotMatched.map(label=>
+                  <p key={label} className="flex items-start gap-2 text-sm text-slate-800">
+                    <ArrowRight className="mt-0.5 h-4 w-4 text-slate-500 shrink-0"/>{label}</p>) :
+                  <p className="text-sm text-slate-600">No se identificaron aspectos desfavorables generales.</p>}</div>
+              </div>
             </div>
-            <div className="rounded-xl border border-amber-200 bg-amber-50/50 p-4 sm:p-5">
-              <div className="flex items-center gap-2 font-semibold text-amber-900">
-                <CircleHelp className="w-5 h-5 shrink-0" /> Para afinar la evaluación
-              </div>
-              <p className="mt-2 text-xs leading-relaxed text-slate-600">
-                Información que podría abrir más alternativas; no significa incumplimiento.
-              </p>
-              {criteriaPending.length ? <div className="mt-3 space-y-2">
-                {criteriaPending.map(label=><div key={label} className="flex gap-2 text-sm text-slate-800 items-start">
-                  <ArrowRight className="w-4 h-4 text-amber-700 mt-0.5 shrink-0" /> {label}
-                </div>)}
-              </div> : <p className="mt-3 text-sm text-slate-600">No se identificaron requisitos pendientes generales.</p>}
-            </div>
-            {criteriaNotMatched.length>0 && <div className="rounded-xl border border-rose-200 bg-rose-50/50 p-4 sm:p-5 md:col-span-2">
-              <div className="flex items-center gap-2 font-semibold text-rose-900">
-                <CircleHelp className="w-5 h-5 shrink-0" /> Criterios que no coincidieron
-              </div>
-              <p className="mt-2 text-xs leading-relaxed text-slate-600">
-                Son categorías generales con alguna condición incumplida. No representan un rechazo definitivo ni revelan criterios internos de una institución.
-              </p>
-              <div className="mt-3 flex flex-wrap gap-2">
-                {criteriaNotMatched.map(label=><span key={label}
-                  className="rounded-md border border-rose-200 bg-white px-3 py-1.5 text-sm text-slate-800">{label}</span>)}
-              </div>
-            </div>}
           </div>}
 
-        <div className="rounded-xl border bg-slate-50 p-4 sm:p-5 space-y-3">
-          <h2 className="font-semibold text-slate-900">¿Qué sigue?</h2>
-          <div className="grid gap-3 sm:grid-cols-3 text-sm">
-            <div className="flex gap-2 items-start"><CheckCircle2 className="w-5 h-5 shrink-0 text-emerald-700" /><span>Recibimos tus datos</span></div>
-            <div className="flex gap-2 items-start"><CheckCircle2 className="w-5 h-5 shrink-0 text-emerald-700" />
-              <span>{hasEvaluated?"Se realizó el análisis preliminar":"Análisis por completar"}</span></div>
-            <div className="flex gap-2 items-start"><ArrowRight className="w-5 h-5 shrink-0 text-blue-800" /><span>Tu asesor revisará los siguientes pasos</span></div>
+        <div className="rounded-2xl border border-blue-100 bg-blue-50/50 p-5 sm:p-6">
+          <h3 className="text-lg font-bold text-blue-950">¿Qué sigue con tu solicitud?</h3>
+          <div className="mt-4 grid gap-4 sm:grid-cols-3">
+            <div className="flex gap-3 items-start"><span className="rounded-full bg-emerald-100 text-emerald-900 h-8 w-8 flex items-center justify-center font-bold shrink-0">1</span>
+              <div><p className="font-semibold text-sm">Recibimos tus datos</p><p className="text-xs text-slate-600 mt-1">Tu asesor ya tiene la solicitud.</p></div></div>
+            <div className="flex gap-3 items-start"><span className="rounded-full bg-blue-100 text-blue-900 h-8 w-8 flex items-center justify-center font-bold shrink-0">2</span>
+              <div><p className="font-semibold text-sm">Evaluación preliminar</p><p className="text-xs text-slate-600 mt-1">{hasEvaluated?"Se analizaron productos publicados.":"Pendiente de finalizar la comparación."}</p></div></div>
+            <div className="flex gap-3 items-start"><span className="rounded-full bg-blue-100 text-blue-900 h-8 w-8 flex items-center justify-center font-bold shrink-0">3</span>
+              <div><p className="font-semibold text-sm">Tu asesor continúa</p><p className="text-xs text-slate-600 mt-1">Te apoyará con requisitos y alternativas.</p></div></div>
           </div>
         </div>
         <p className="text-xs leading-relaxed text-slate-600 border-t pt-4">
-          Los resultados utilizan información proporcionada y criterios del catálogo de ofertas vigentes.
-          No representan aprobación, oferta de crédito ni actividad histórica de colocación;
-          la decisión y condiciones finales dependen de cada institución. No se ha enviado tu expediente a ninguna financiera.
+          El resultado utiliza los datos proporcionados y las reglas del catálogo de ofertas publicadas.
+          No representa aprobación ni oferta de crédito. Las condiciones y decisiones finales dependen de cada institución.
+          No se ha enviado tu expediente a ninguna financiera y no mostramos nombres, umbrales ni tasas internas.
         </p>
       </div>
     </section>;
