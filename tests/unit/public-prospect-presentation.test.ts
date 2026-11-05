@@ -43,11 +43,12 @@ describe("Approved public prospect journey — result & documentation",()=>{
     expect(groups).toHaveLength(1);
     expect(JSON.stringify(groups)).not.toMatch(/Acta constitutiva|asambleas|registro en RPC/);
   });
-  it("leaves operational service times unpromised until supplied by the business",()=>{
+  it("presents business-approved time ranges as indicative, not lender approval promises",()=>{
     expect(PUBLIC_PROCESS_TIMES).toHaveLength(3);
     expect(PUBLIC_PROCESS_TIMES.map(x=>x.value)).toEqual([
-      "Por confirmar","Por confirmar","Depende de cada institución",
+      "1 - 4 hrs.","4 - 12 hrs.","12 - 36 hrs.",
     ]);
+    expect(PUBLIC_PROCESS_TIMES.map(x=>x.title).join(" ")).toMatch(/Verificación de alternativas.*Envío inicial.*recopilación de documentos/);
   });
   it("does not repeat failed and passed categories when offers disagree",()=>{
     const assessment=aggregateProspectAssessment({
