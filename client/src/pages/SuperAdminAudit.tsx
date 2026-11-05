@@ -227,13 +227,15 @@ export default function SuperAdminAudit() {
           </Card>
 
           <Tabs value={section} onValueChange={value => {setSection(value as AuditSection); setResult("all");}}>
-            <TabsList className="flex flex-wrap h-auto gap-1 p-1">
-              <TabsTrigger value="activity" data-testid="audit-tab-activity" className="text-xs">Accesos y movimientos</TabsTrigger>
-              <TabsTrigger value="commercial" data-testid="audit-tab-commercial" className="text-xs">Gobernanza comercial</TabsTrigger>
-              <TabsTrigger value="configuration" data-testid="audit-tab-configuration" className="text-xs">Reglas comerciales</TabsTrigger>
-              <TabsTrigger value="requests" data-testid="audit-tab-requests" className="text-xs">Solicitudes de estado</TabsTrigger>
-              <TabsTrigger value="email" data-testid="audit-tab-email" className="text-xs">Correos enviados</TabsTrigger>
-            </TabsList>
+            <div className="overflow-x-auto rounded-xl border border-slate-300 bg-slate-100 p-1.5 shadow-sm">
+              <TabsList aria-label="Secciones de auditoría" className="flex w-max min-w-full justify-start h-auto gap-1 bg-transparent p-0">
+                <TabsTrigger value="activity" data-testid="audit-tab-activity" className="font-semibold whitespace-nowrap px-4 py-2.5 rounded-md text-slate-800 hover:bg-white hover:text-blue-900 focus-visible:ring-2 focus-visible:ring-blue-600 data-[state=active]:bg-blue-800 data-[state=active]:text-white data-[state=active]:shadow-md">Accesos y movimientos</TabsTrigger>
+                <TabsTrigger value="commercial" data-testid="audit-tab-commercial" className="font-semibold whitespace-nowrap px-4 py-2.5 rounded-md text-slate-800 hover:bg-white hover:text-blue-900 focus-visible:ring-2 focus-visible:ring-blue-600 data-[state=active]:bg-blue-800 data-[state=active]:text-white data-[state=active]:shadow-md">Gobernanza comercial</TabsTrigger>
+                <TabsTrigger value="configuration" data-testid="audit-tab-configuration" className="font-semibold whitespace-nowrap px-4 py-2.5 rounded-md text-slate-800 hover:bg-white hover:text-blue-900 focus-visible:ring-2 focus-visible:ring-blue-600 data-[state=active]:bg-blue-800 data-[state=active]:text-white data-[state=active]:shadow-md">Reglas comerciales</TabsTrigger>
+                <TabsTrigger value="requests" data-testid="audit-tab-requests" className="font-semibold whitespace-nowrap px-4 py-2.5 rounded-md text-slate-800 hover:bg-white hover:text-blue-900 focus-visible:ring-2 focus-visible:ring-blue-600 data-[state=active]:bg-blue-800 data-[state=active]:text-white data-[state=active]:shadow-md">Solicitudes de estado</TabsTrigger>
+                <TabsTrigger value="email" data-testid="audit-tab-email" className="font-semibold whitespace-nowrap px-4 py-2.5 rounded-md text-slate-800 hover:bg-white hover:text-blue-900 focus-visible:ring-2 focus-visible:ring-blue-600 data-[state=active]:bg-blue-800 data-[state=active]:text-white data-[state=active]:shadow-md">Correos enviados</TabsTrigger>
+              </TabsList>
+            </div>
             {section !== "activity" && section !== "email" && <Card className="border-border/70 mt-3">
               <CardContent className="p-3 sm:p-4 space-y-3">
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-2">
