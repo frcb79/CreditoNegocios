@@ -87,7 +87,7 @@ export function ProspectCompletionForm({ token, initialProfile, initialFinancing
       <div className="p-5 sm:p-8 space-y-6" data-testid="public-anonymous-matching">
         {reviewedOffers > 0 && <p className="text-sm font-medium text-blue-950 rounded-md bg-blue-50 border border-blue-100 px-4 py-2"
           data-testid="real-reviewed-offers">Revisamos {reviewedOffers} {reviewedOffers===1?"producto publicado":"productos publicados"} de la familia de financiamiento que solicitaste.</p>}
-        {hasOptions ? <div className="grid sm:grid-cols-[auto_1fr] items-center gap-4 rounded-xl border border-blue-200 bg-blue-50 p-5>
+        {hasOptions ? <div className="grid sm:grid-cols-[auto_1fr] items-center gap-4 rounded-xl border border-blue-200 bg-blue-50 p-5">
           <div className="flex items-center justify-center rounded-xl bg-white border border-blue-100 px-6 py-4">
             <span className="text-5xl font-extrabold tabular-nums text-blue-900" data-testid="verified-institution-count">
               {assessment!.institutionCount}
