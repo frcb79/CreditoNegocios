@@ -27,6 +27,7 @@ on:
       - 'fix/leasing-client-visibility-*'
       - 'feat/issue-63-*'
       - 'feat/resend-audit-*'
+      - 'fix/email-audit-pilot-*'
   workflow_dispatch:
 concurrency:
   group: prelaunch-${{ github.ref }}
