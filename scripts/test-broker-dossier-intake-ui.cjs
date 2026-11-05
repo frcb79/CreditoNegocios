@@ -21,6 +21,7 @@ async function tab(label){const el=[...d.querySelectorAll('[role="tab"]')].find(
  button('Formulario QA').click();await waitFor(()=>text().includes('He leído el Aviso de Privacidad'),'public consent');
  assert(d.querySelector('[data-testid="button-submit-client"]'),'form visible before consent');
  d.querySelector('[role="checkbox"]').click();
+ await waitFor(()=>d.querySelector('[role="checkbox"]')?.getAttribute('aria-checked')==='true','privacy consent active');
  assert(text().includes('Completa tu información'));
  d.querySelector('[data-testid="button-submit-client"]').click();
  await waitFor(()=>Boolean(d.querySelector('[data-testid="prospect-evaluation-processing"]')),'progress shown');
