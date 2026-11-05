@@ -9,6 +9,7 @@ import { runAutoMigration } from "./autoMigrate";
 import { rejectCrossSiteMutations } from "./csrfProtection";
 import { registerResendWebhook } from "./resendDeliveryWebhook";
 import { dispatchOneTimeHistoricWelcomePilot } from "./oneTimeHistoricWelcomePilot";
+import { dispatchOneTimePendingInvitations } from "./oneTimePendingInvitationRecovery";
 
 const isProd = process.env.NODE_ENV === "production";
 
@@ -158,5 +159,8 @@ app.use((req, res, next) => {
     // post-migration, nonblocking and deduplicated in the delivery audit.
     void dispatchOneTimeHistoricWelcomePilot().catch(() =>
       logger.error("[MAIL-PILOT-20261104] Unexpected startup failure"));
+    // Explicitly authorized re-invitation for unactivated accounts only; at-most-once per user.
+    void dispatchOneTimePendingInvitations().catch(() =>
+      logger.error("[INVITATION-RECOVERY] Unexpected startup failure"));
   });
 })();
