@@ -56,6 +56,11 @@ describe("Resend delivery audit: signed events only", () => {
     expect(api).toContain('isAuthenticated');
     expect(api).toContain('"private, no-store"');
     expect(EMAIL_DELIVERY_AUDIT_SQL).toContain("LEFT JOIN LATERAL");
+    expect(EMAIL_DELIVERY_AUDIT_SQL).toContain("invitationRecovery20261105");
+    expect(EMAIL_DELIVERY_AUDIT_SQL).toContain("'reinvitation'::text");
+    expect(EMAIL_DELIVERY_AUDIT_SQL).toContain("'provider_only'::text");
+    expect(EMAIL_DELIVERY_AUDIT_SQL).toContain("THEN 'uncertain' ELSE r.status");
+    expect(EMAIL_DELIVERY_AUDIT_SQL).toContain("FROM all_messages o");
     expect(EMAIL_DELIVERY_AUDIT_SQL).toContain("COALESCE(r.claimed_at,r.updated_at,r.sent_at) AS created_at");
     expect(EMAIL_DELIVERY_AUDIT_SQL).not.toContain("r.created_at");
     expect(EMAIL_DELIVERY_AUDIT_SQL.indexOf("'email.complained'")).toBeGreaterThan(-1);

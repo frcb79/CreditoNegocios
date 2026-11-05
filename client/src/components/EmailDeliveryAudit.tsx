@@ -8,9 +8,9 @@ import { apiRequest } from "@/lib/queryClient";
 import { MailCheck, RefreshCw, Search } from "lucide-react";
 
 type DeliveryRow = {
-  id: string; userId: string; email: string | null;
+  id: string; userId: string | null; email: string | null;
   firstName: string | null; lastName: string | null;
-  role: string; kind: "welcome" | "reminder" | "invitation";
+  role: string | null; kind: "welcome" | "reminder" | "invitation" | "reinvitation" | "provider_only";
   reminderDay: number | null; dispatchStatus: string;
   providerMessageId: string | null; eventType: string | null;
   createdAt: string; sentAt: string | null; eventAt: string | null;
@@ -27,6 +27,8 @@ function date(value: string | null) {
 function kind(row: DeliveryRow) {
   if (row.kind === "welcome") return "Bienvenida";
   if (row.kind === "invitation") return "Invitación";
+  if (row.kind === "reinvitation") return "Reinvitación";
+  if (row.kind === "provider_only") return "Evento de Resend sin vinculación";
   return "Recordatorio · día " + (row.reminderDay || "?");
 }
 export function deliveryLabel(row: DeliveryRow) {
@@ -44,6 +46,7 @@ export function deliveryLabel(row: DeliveryRow) {
     label: row.providerMessageId ? "Aceptado; entrega sin confirmar" : "Histórico sin seguimiento",
     variant: "outline" as const,
   };
+  if (row.dispatchStatus === "uncertain") return { label: "Resultado no confirmado", variant: "outline" as const };
   if (row.dispatchStatus === "failed") return { label: "Error de envío", variant: "destructive" as const };
   if (row.dispatchStatus === "skipped") return { label: "Omitido", variant: "secondary" as const };
   if (row.dispatchStatus === "claimed") return { label: "En proceso / por verificar", variant: "outline" as const };
@@ -77,6 +80,7 @@ export default function EmailDeliveryAudit() {
         </CardTitle>
         <CardDescription className="text-xs">
           Distingue cuándo Resend acepta el envío y cuándo el servidor de destino confirma la entrega.
+          Incluye reinvitaciones y eventos del webhook sin registro de envío asociado.
           La entrega no significa que el destinatario leyó el mensaje.
         </CardDescription>
       </CardHeader>
@@ -96,28 +100,31 @@ export default function EmailDeliveryAudit() {
             <option value="all">Todos los correos</option>
             <option value="welcome">Bienvenidas</option>
             <option value="invitation">Invitaciones</option>
+            <option value="reinvitation">Reinvitaciones</option>
             <option value="reminder">Recordatorios</option>
+            <option value="provider_only">Sin vinculación local</option>
           </select>
           <Button size="sm" variant="outline" onClick={() => void data.refetch()} disabled={data.isFetching}>
             <RefreshCw className="w-3.5 h-3.5 mr-1.5" /> Actualizar
           </Button>
         </div>
-        {data.isLoading ? <p className="text-sm">Consultando Resend y registros internos...</p> :
+        {data.isLoading ? <p className="text-sm">Consultando eventos de Resend registrados en la plataforma...</p> :
           data.isError ? <p role="alert" className="text-sm text-destructive">
             No se pudo cargar el seguimiento de correos.
           </p> : !rows.length ? <p className="text-sm text-muted-foreground">
-            Sin registros en esta selección. Los eventos nuevos aparecerán cuando se envíen correos.
+            Sin registros en esta selección. Los eventos nuevos aparecerán cuando se reciban y registren.
           </p> : <div className="space-y-2">
             <p className="text-xs text-muted-foreground">{rows.length} de hasta {data.data?.limit} registros más recientes</p>
             {rows.map(row => {
               const state = deliveryLabel(row);
-              const person = [row.firstName, row.lastName].filter(Boolean).join(" ") || row.email || "Sin nombre";
+              const person = [row.firstName, row.lastName].filter(Boolean).join(" ") || row.email || "Envío sin vincular";
               return <div key={row.id} className="border rounded-md p-3 text-xs space-y-1.5">
                 <div className="flex items-center justify-between flex-wrap gap-2">
                   <span className="font-semibold">{person} · {kind(row)}</span>
                   <Badge variant={state.variant}>{state.label}</Badge>
                 </div>
-                <p className="text-muted-foreground">{row.email || "Destinatario no disponible"} · {row.role === "master_broker" ? "Master Broker" : "Broker"}</p>
+                <p className="text-muted-foreground">{row.email || "Destinatario no almacenado"} · {row.role === "master_broker" ? "Master Broker" : row.role === "broker" ? "Broker" : "Sin cuenta vinculada"}</p>
+                {row.kind === "provider_only" && <p className="font-mono break-all">ID Resend: {row.providerMessageId}</p>}
                 <p>Registro: {date(row.createdAt)}{row.eventAt ? " · Último resultado: " + date(row.eventAt) : ""}</p>
                 {row.dispatchStatus === "failed" && !row.eventType && <p className="text-destructive">
                   El intento de envío no quedó confirmado; revisar el detalle técnico antes de reenviar.
