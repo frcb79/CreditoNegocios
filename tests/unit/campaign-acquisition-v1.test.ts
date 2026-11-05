@@ -51,7 +51,8 @@ describe("COM-CTA-002: incoming prospects and reusable attribution links", () =>
     expect(app.indexOf('path="/c/:token"')).toBeLessThan(app.indexOf("isLoading || !isAuthenticated ?"));
     expect(page).toContain('data-testid="landing-privacy"');
     expect(page).toContain("acknowledgePrivacy: true");
-    expect(page).toContain('href="/legal/aviso"');
+    expect(page).toContain('href="/legal/aviso?public=1"');
+    expect(page).not.toContain('href="/legal/aviso"');
     expect(page).toContain('data-testid="public-campaign-success"');
   });
 
@@ -69,7 +70,9 @@ describe("COM-CTA-002: incoming prospects and reusable attribution links", () =>
     expect(panel).toContain('data-testid="campaign-clicks"');
     expect(panel).toContain('data-testid="campaign-submissions"');
     const library = file("client/src/pages/CommercialResources.tsx");
-    expect(library).toContain("canSuggest && campaignLink?.templateId !== selection.id");
+    // One generic link must work across all materials, without per-template regeneration.
+    expect(library).toContain("canSuggest && !campaignLink");
+    expect(library).toContain("<CampaignLinkPanel onCampaignLink={setCampaignLink} />");
     expect(library).toContain("El enlace de esta campaña todavía no está disponible");
   });
 

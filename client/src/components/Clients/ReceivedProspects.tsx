@@ -26,6 +26,10 @@ export type ReceivedMarketingLead = {
   profile_data: Record<string, unknown> | null;
   profile_received_at: string | null;
   source_channel: string | null;
+  preapplication_status?: string | null;
+  preapplication_summary?: { status: string; institutionCount?: number; message?: string } | null;
+  preapplication_evaluated_at?: string | null;
+  financing?: { product?: string; amount?: number; termMonths?: number; purpose?: string } | null;
 };
 const PRODUCT_NAMES: Record<string, string> = {
   simple: "Crédito Simple",
@@ -45,6 +49,41 @@ export default function ReceivedProspects({
   const cache = useQueryClient();
   const [selected, setSelected] = useState<ReceivedMarketingLead | null>(null);
   const canAccess = user?.role === "broker" || user?.role === "master_broker";
+  const [selectedMatch, setSelectedMatch] = useState<string | null>(null);
+  const [retryingMatch, setRetryingMatch] = useState(false);
+  const matchDetails = useQuery<{
+    status: string;
+    financing: {product?: string; amount?: number; termMonths?: number; purpose?: string};
+    summary: {status:string;institutionCount?:number;message?:string} | null;
+    details: {
+      compatible: {offerId:string;offerName:string;institutionName?:string;versionNumber:number;reasons:string[]}[];
+      insufficientData: {offerId:string;offerName:string;institutionName?:string;versionNumber?:number;reasons:string[]}[];
+      notCompatible: {offerId:string;offerName:string;institutionName?:string;versionNumber?:number;reasons:string[]}[];
+      summary: {compatibleCount:number;insufficientDataCount:number;notCompatibleCount:number};
+    } | null;
+  }>({
+    queryKey:["preapplication", selectedMatch],
+    enabled: Boolean(selectedMatch && canAccess),
+    queryFn:async()=> {
+      const response=await fetch("/api/commercial-resources/received/" + encodeURIComponent(selectedMatch!) + "/preapplication",
+        {credentials:"include",cache:"no-store"});
+      if(!response.ok)throw new Error("No se pudo abrir la pre-solicitud.");
+      return response.json();
+    },
+  });
+  const retryMatch=async()=> {
+    if(!selectedMatch)return;
+    setRetryingMatch(true);
+    try {
+      const response=await apiRequest("POST",
+        "/api/commercial-resources/received/" + encodeURIComponent(selectedMatch) + "/preapplication/retry",{});
+      if(!response.ok)throw new Error("No fue posible repetir la evaluación");
+      await cache.invalidateQueries({queryKey:["preapplication", selectedMatch]});
+      await cache.invalidateQueries({queryKey:["/api/commercial-resources/received"]});
+    } finally { setRetryingMatch(false); }
+  };
+
+
   const { data: leads = [], isLoading, error } = useQuery<ReceivedMarketingLead[]>({
     queryKey: ["/api/commercial-resources/received"],
     queryFn: async () => {
@@ -89,6 +128,15 @@ export default function ReceivedProspects({
                 <span className="inline-flex items-center gap-1"><Phone className="h-4 w-4 text-muted-foreground" /> {lead.phone}</span>
                 {lead.email && <span className="inline-flex items-center gap-1 break-all"><Mail className="h-4 w-4 text-muted-foreground" /> {lead.email}</span>}
               </div>
+              {lead.preapplication_status && <p className="text-sm rounded-md bg-muted px-3 py-2">
+                <strong>Pre-solicitud:</strong> {lead.preapplication_status === "evaluated"
+                  ? (lead.preapplication_summary?.status === "possible_options"
+                    ? String(lead.preapplication_summary?.institutionCount || 0) + " instituciones con alternativas preliminares"
+                    : "Evaluación preliminar: revisar información")
+                  : lead.preapplication_status === "identity_review" ? "Verificar identidad antes de evaluar"
+                  : lead.preapplication_status === "awaiting_details" ? "Faltan datos de financiamiento"
+                  : "Evaluación pendiente o por reintentar"}
+              </p>}
               <p className="text-sm">
                 <strong>Interés:</strong> {lead.product ? PRODUCT_NAMES[lead.product] || lead.product : "Por definir"}
                 {lead.amount_range && " · " + lead.amount_range}
@@ -99,6 +147,11 @@ export default function ReceivedProspects({
                   <a href={"tel:+" + (lead.phone.length === 10 ? "52" : "") + lead.phone}><Phone className="w-4 h-4 mr-1" /> Contactar</a>
                 </Button>
                 <ProspectCompletionLinkButton leadId={lead.id} />
+                {lead.preapplication_status && <Button size="sm" variant="outline" onClick={() => setSelectedMatch(lead.id)}
+                  data-testid={"open-preapplication-" + lead.id}>
+                  Ver pre-solicitud y matching
+                </Button>}
+
                 {lead.profile_data && <Button size="sm" variant="outline" onClick={() => setSelected(lead)}>{lead.linked_client_id ? "Revisar información enviada" : "Revisar perfil y registrar"}</Button>}
                 {lead.linked_client_id ?
                   <Button size="sm" onClick={() => onOpenClient(lead.linked_client_id!)}>
@@ -112,6 +165,43 @@ export default function ReceivedProspects({
           ))}
         </div>
       )}
+      <Dialog open={Boolean(selectedMatch)} onOpenChange={open => {if(!open)setSelectedMatch(null);}}>
+        <DialogContent className="max-w-4xl w-[96vw] max-h-[88vh] overflow-y-auto">
+          <DialogHeader><DialogTitle>Pre-solicitud y matching automático</DialogTitle>
+            <DialogDescription>Evaluación interna preliminar. El prospecto no conoce instituciones ni tasas; ninguna solicitud ha sido enviada a financieras.</DialogDescription>
+          </DialogHeader>
+          {matchDetails.isLoading ? <p>Consultando evaluación...</p> : matchDetails.isError ? <p role="alert">No fue posible cargar el detalle.</p> :
+            matchDetails.data && <div className="space-y-4 text-sm">
+              <p><strong>Estado:</strong> {matchDetails.data.status === "evaluated" ? "Evaluación completada" :
+                matchDetails.data.status === "identity_review" ? "Validar identidad antes de evaluar" :
+                matchDetails.data.status === "awaiting_details" ? "Datos de financiamiento pendientes" :
+                "Evaluación pendiente"}</p>
+              <p><strong>Solicitud:</strong> {matchDetails.data.financing.product || "Por definir"} ·
+                {matchDetails.data.financing.amount?.toLocaleString("es-MX",{style:"currency",currency:"MXN"}) || "Monto pendiente"} ·
+                {matchDetails.data.financing.termMonths || "Plazo pendiente"} meses</p>
+              {matchDetails.data.financing.purpose && <p><strong>Destino:</strong> {matchDetails.data.financing.purpose}</p>}
+              {matchDetails.data.summary?.message && <p className="rounded-lg bg-muted p-3">{matchDetails.data.summary.message}</p>}
+              {matchDetails.data.details && <>
+                <p><strong>Resultados:</strong> {matchDetails.data.details.compatible.length} ofertas compatibles ·
+                  {matchDetails.data.details.insufficientData.length} pendientes de información ·
+                  {matchDetails.data.details.notCompatible.length} no compatibles.</p>
+                {(["compatible","insufficientData","notCompatible"] as const).map(group=><div key={group} className="space-y-2">
+                  <h3 className="font-semibold">{group === "compatible" ? "Alternativas preliminares" : group === "insufficientData" ? "Requieren verificación" : "No compatibles con los datos capturados"}</h3>
+                  {matchDetails.data!.details![group].length === 0 ? <p className="text-muted-foreground">Sin ofertas en esta categoría.</p> :
+                    matchDetails.data!.details![group].map((offer,index)=><div key={offer.offerId + "-" + index} className="border rounded-lg p-3 space-y-1">
+                      <p className="font-semibold">{offer.institutionName || "Institución"} — {offer.offerName} (v{offer.versionNumber || "?"})</p>
+                      {offer.reasons.slice(0,6).map((reason,i)=><p key={i} className="text-xs">{reason}</p>)}
+                    </div>)}
+                </div>)}
+              </>}
+              {["failed","pending","identity_review"].includes(matchDetails.data.status) &&
+                <Button size="sm" variant="outline" onClick={()=>void retryMatch().catch(()=>{})} disabled={retryingMatch}>
+                  {retryingMatch ? "Evaluando..." : matchDetails.data.status === "identity_review" ? "Evaluar después de vincular cliente" : "Reintentar matching"}
+                </Button>}
+              <p className="text-xs text-muted-foreground">Solo registro interno; el envío a una financiera requiere el flujo autorizado de gestión de crédito.</p>
+            </div>}
+        </DialogContent>
+      </Dialog>
       <Dialog open={Boolean(selected)} onOpenChange={open => {if (!open) setSelected(null);}}><DialogContent className="max-w-5xl w-[96vw] max-h-[92vh] overflow-y-auto"><DialogHeader><DialogTitle>Información enviada por el prospecto</DialogTitle><DialogDescription>Revisa los datos capturados directamente. Los valores ya registrados se conservan; puedes comparar y editar desde su ficha.</DialogDescription></DialogHeader>
         {selected?.profile_data && (selected.linked_client_id ? <><ProfileSubmissionSummary profile={selected.profile_data} /><Button onClick={() => onOpenClient(selected.linked_client_id!)}>Abrir ficha del cliente</Button></> : <ClientForm key={selected.id} client={selected.profile_data} submitLabel="Revisar y registrar en Clientes" onSuccess={() => setSelected(null)} onPublicSubmit={async profile => {
           const duplicate = await (await apiRequest("POST","/api/clients/check-duplicates",{rfc:profile.rfc,phone:profile.phone,email:profile.email})).json();

@@ -109,7 +109,11 @@ export const clientProfileFormSchema = clientProfileBaseSchema.superRefine(valid
 export const publicClientProfileSchema = clientProfileBaseSchema.omit({
   brokerId: true, tenantId: true, createdBy: true, isActive: true, originOpportunity: true,
 }).extend({ type: z.enum(["persona_moral", "fisica_empresarial", "fisica", "sin_sat"]) })
-.strict().superRefine(validateClientProfile).superRefine((data, ctx) => {
+.strict().superRefine((data, ctx) => {
+  // Public prequalification is NOT the internal full-client dossier. For a YES
+  // answer, the advisor collects credit/guarantee/tax evidence later; don't
+  // force those internal detail rules on the anonymous prospect.
+
   if (JSON.stringify(data).length > 60000) ctx.addIssue({ code: "custom", message: "El perfil excede el tamaño permitido" });
   if (data.type === "persona_moral" && !data.businessName?.trim()) ctx.addIssue({ code: "custom", path: ["businessName"], message: "Indica la razón social" });
   if (data.type !== "persona_moral" && !data.firstName?.trim()) ctx.addIssue({ code: "custom", path: ["firstName"], message: "Indica tu nombre" });

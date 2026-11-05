@@ -45,7 +45,7 @@ export default function PublicCampaignLanding() {
   const { data, isLoading, error } = useQuery<CampaignInfo>({
     queryKey: ["public-campaign", token],
     queryFn: async () => {
-      const res = await fetch("/api/public/campaign/" + encodeURIComponent(token), { cache: "no-store" });
+      const res = await fetch("/api/public/campaign/" + encodeURIComponent(token), { credentials:"omit", cache: "no-store" });
       if (!res.ok) throw new Error("El enlace ya no está disponible");
       return res.json();
     },
@@ -59,7 +59,7 @@ export default function PublicCampaignLanding() {
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!data || !privacyAccepted || !validPhone) return;
+    if (!data || !privacyAccepted || !validPhone || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) return;
     setSubmitting(true);
     setErrorText("");
     try {
@@ -94,7 +94,16 @@ export default function PublicCampaignLanding() {
             <p className="text-sm text-muted-foreground mt-2">Solicita a tu asesor un enlace actualizado.</p>
           </div>
         ) : showProfile && completionToken ? (
-          <ProspectCompletionForm token={completionToken} initialProfile={{type:"fisica",firstName:name,phone,email}} onBack={() => setShowProfile(false)} />
+          <ProspectCompletionForm token={completionToken}
+            initialProfile={{type:"fisica",firstName:name,phone,email}}
+            initialFinancing={{
+              product:actualProduct,
+              // Reuse a single stated number for confirmation; ranges are never guessed as exact amounts.
+              amount: /^\$?[\d,]+(?:\s*MXN)?$/i.test(amountRange.trim()) ?
+                amountRange.replace(/[^\d]/g,"") : "",
+              purpose:message.trim(),
+            }}
+            onBack={() => setShowProfile(false)} />
         ) : complete ? (
           <div className="rounded-xl border bg-white p-6 text-center space-y-3" data-testid="public-campaign-success">
             <CheckCircle2 className="mx-auto h-12 w-12 text-emerald-600" />
@@ -126,8 +135,8 @@ export default function PublicCampaignLanding() {
                 {phone && !validPhone && <p className="text-xs text-destructive">Ingresa un teléfono de 10 a 15 dígitos.</p>}
               </div>
               <div className="space-y-1.5">
-                <Label htmlFor="lead-email">Correo electrónico (opcional)</Label>
-                <Input id="lead-email" type="email" autoComplete="email" maxLength={160}
+                <Label htmlFor="lead-email">Correo electrónico *</Label>
+                <Input id="lead-email" type="email" required autoComplete="email" maxLength={160}
                   value={email} onChange={e => setEmail(e.target.value)} data-testid="landing-email" />
               </div>
               <div className="space-y-1.5">
@@ -164,7 +173,7 @@ export default function PublicCampaignLanding() {
               <label className="flex gap-3 text-sm items-start cursor-pointer">
                 <Checkbox checked={privacyAccepted} onCheckedChange={x => setPrivacyAccepted(x === true)}
                   className="mt-0.5" data-testid="landing-privacy" />
-                <span>He leído el <Link href="/legal/aviso" target="_blank" className="underline text-blue-700">Aviso de Privacidad</Link> y autorizo compartir mis datos con Crédito Negocios y el asesor indicado para que contacten conmigo sobre esta solicitud.</span>
+                <span>He leído el <Link href="/legal/aviso?public=1" target="_blank" className="underline text-blue-700">Aviso de Privacidad</Link> y autorizo compartir mis datos con Crédito Negocios y el asesor indicado para que contacten conmigo sobre esta solicitud.</span>
               </label>
               {errorText && <p role="alert" className="text-sm text-destructive">{errorText}</p>}
               <Button type="submit" disabled={submitting || !validPhone || !privacyAccepted || !actualProduct || name.trim().length < 3}
