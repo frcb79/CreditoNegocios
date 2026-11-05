@@ -36,8 +36,8 @@ export default function ProspectPageLayout({ advisorName, wide = false, testId, 
           <img src="/credito-negocios-07.jpg" alt="Crédito Negocios" width={176} height={45} className="w-44 h-auto object-contain" />
         </div>
         <nav aria-label="Documentos legales" className="flex flex-wrap justify-center gap-x-4 gap-y-2 text-xs text-white/90">
-          <Link href="/legal/aviso" className="underline underline-offset-4">Aviso de Privacidad</Link>
-          <Link href="/legal/terminos" className="underline underline-offset-4">Términos y Condiciones</Link>
+          <Link href="/legal/aviso?public=1" target="_blank" rel="noopener noreferrer" className="underline underline-offset-4">Aviso de Privacidad</Link>
+          <Link href="/legal/terminos?public=1" target="_blank" rel="noopener noreferrer" className="underline underline-offset-4">Términos y Condiciones</Link>
         </nav>
       </div>
     </footer>
