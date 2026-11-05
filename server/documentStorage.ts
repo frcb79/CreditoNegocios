@@ -199,6 +199,17 @@ export async function migrateLocalDocumentToStorage(params: {
   mimeType?: string | null;
   context: UploadContext;
 }) {
+  if (stagingVolumeEnabled()) {
+    const root = requireStagingVolume();
+    const storageKey = buildStoragePath({
+      originalname: params.fileName,
+    } as Express.Multer.File, params.context);
+    const destination = path.resolve(root, storageKey);
+    if (!destination.startsWith(root + path.sep)) throw new Error("INVALID_DOCUMENT_PATH");
+    await fs.mkdir(path.dirname(destination), { recursive: true });
+    await fs.copyFile(params.sourcePath, destination);
+    return { filePath: destination, storageProvider: "local" as const };
+  }
   await assertDocumentStorageEnvironmentIsolatedAndAuthorized();
   if (!supabaseAdmin) {
     throw new Error("Supabase Storage is not configured for this environment");
