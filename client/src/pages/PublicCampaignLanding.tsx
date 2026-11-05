@@ -173,7 +173,7 @@ export default function PublicCampaignLanding() {
               <label className="flex gap-3 text-sm items-start cursor-pointer">
                 <Checkbox checked={privacyAccepted} onCheckedChange={x => setPrivacyAccepted(x === true)}
                   className="mt-0.5" data-testid="landing-privacy" />
-                <span>He leído el <Link href="/legal/aviso" target="_blank" className="underline text-blue-700">Aviso de Privacidad</Link> y autorizo compartir mis datos con Crédito Negocios y el asesor indicado para que contacten conmigo sobre esta solicitud.</span>
+                <span>He leído el <Link href="/legal/aviso?public=1" target="_blank" className="underline text-blue-700">Aviso de Privacidad</Link> y autorizo compartir mis datos con Crédito Negocios y el asesor indicado para que contacten conmigo sobre esta solicitud.</span>
               </label>
               {errorText && <p role="alert" className="text-sm text-destructive">{errorText}</p>}
               <Button type="submit" disabled={submitting || !validPhone || !privacyAccepted || !actualProduct || name.trim().length < 3}
