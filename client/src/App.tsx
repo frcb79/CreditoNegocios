@@ -120,14 +120,27 @@ function Router() {
   );
 }
 
+/** A public acquisition link is a guest-only experience.
+ * It must never mount dashboard routes, auth redirects or account notifications,
+ * even when a browser happens to have a logged-in platform session. */
+export function isPublicProspectJourneyPath(pathname:string):boolean {
+  return /^\\/(?:c|completar-perfil)\\/[A-Za-z0-9_-]{32}$/.test(pathname);
+}
+function GuestProspectRouter() {
+  return <Switch>
+    <Route path="/c/:token" component={PublicCampaignLanding}/>
+    <Route path="/completar-perfil/:token" component={PublicProspectCompletion}/>
+    <Route component={NotFound}/>
+  </Switch>;
+}
 function App() {
+  const publicJourney=isPublicProspectJourneyPath(window.location.pathname);
   return (
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
-        <NotificationProvider>
-          <Toaster />
-          <Router />
-        </NotificationProvider>
+        <Toaster/>
+        {publicJourney ? <GuestProspectRouter/> :
+          <NotificationProvider><Router/></NotificationProvider>}
       </TooltipProvider>
     </QueryClientProvider>
   );
