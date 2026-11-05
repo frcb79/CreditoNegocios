@@ -136,7 +136,7 @@ export default function PublicCampaignLanding() {
               </div>
               <div className="space-y-1.5">
                 <Label htmlFor="lead-email">Correo electrónico *</Label>
-                <Input id="lead-email" type="email" autoComplete="email" maxLength={160}
+                <Input id="lead-email" type="email" required autoComplete="email" maxLength={160}
                   value={email} onChange={e => setEmail(e.target.value)} data-testid="landing-email" />
               </div>
               <div className="space-y-1.5">
