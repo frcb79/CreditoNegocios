@@ -29,6 +29,7 @@ on:
       - 'feat/resend-audit-*'
       - 'feat/issue-65-*'
       - 'feat/issue65-transparent-public-match-*'
+      - 'feat/issue65-prospect-short-form-diagnostics-*'
   workflow_dispatch:
 concurrency:
   group: prelaunch-${{ github.ref }}
@@ -161,6 +162,7 @@ jobs:
             tests/unit/activation-commercial-welcome.test.ts
             tests/unit/resend-delivery-audit.test.ts
             tests/unit/prospect-auto-matching.test.ts
+            tests/unit/prospect-quick-profile.test.ts
             tests/unit/broker-invitation-http.test.ts
             tests/unit/rbac.test.ts
             tests/unit/settings-audit-role-ux.test.ts

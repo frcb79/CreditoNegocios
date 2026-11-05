@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link, useParams } from "wouter";
-import ClientForm from "@/components/Clients/ClientForm";
+import PublicProspectQuickForm from "@/components/Clients/PublicProspectQuickForm";
 import ProspectPageLayout, { ProspectTrustNotice } from "@/components/Clients/ProspectPageLayout";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Button } from "@/components/ui/button";
@@ -15,8 +15,9 @@ import { LEASING_ASSET_TYPES } from "@shared/leasing";
 type Assessment = {
   status: "possible_options" | "missing_information" | "under_review" | "pending";
   institutionCount?: number;
+  reviewedOffers?: number;
   message: string;
-  criteria?: { matched: string[]; toReview: string[] };
+  criteria?: { matched: string[]; toReview: string[]; notMatched: string[] };
 };
 type InitialFinancing = {
   product?: string; amount?: string; termMonths?: string; purpose?: string;
@@ -66,7 +67,9 @@ export function ProspectCompletionForm({ token, initialProfile, initialFinancing
     const hasOptions=assessment?.status === "possible_options" && Number(assessment.institutionCount) > 0;
     const criteriaMatched=assessment?.criteria?.matched || [];
     const criteriaPending=assessment?.criteria?.toReview || [];
-    const hasEvaluated=Boolean(assessment && assessment.status !== "pending");
+    const criteriaNotMatched=assessment?.criteria?.notMatched || [];
+    const reviewedOffers=assessment?.reviewedOffers || 0;
+    const hasEvaluated=Boolean(assessment && assessment.status !== "pending" && reviewedOffers > 0);
     return <section className="overflow-hidden rounded-2xl border border-blue-100 bg-white shadow-sm"
       data-testid="prospect-profile-success">
       <div className="bg-[#103d72] px-6 py-8 sm:px-10 text-white">
@@ -82,6 +85,19 @@ export function ProspectCompletionForm({ token, initialProfile, initialFinancing
       </div>
 
       <div className="p-5 sm:p-8 space-y-6" data-testid="public-anonymous-matching">
+        <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 sm:p-5" data-testid="prospect-submitted-summary">
+          <p className="mb-3 text-sm font-semibold text-slate-900">Datos que utilizamos para la evaluación</p>
+          <div className="grid gap-3 sm:grid-cols-3">
+            <div><p className="text-xs text-slate-500">Financiamiento solicitado</p>
+              <p className="font-medium text-sm text-slate-900">{PRODUCT_OPTIONS.find(x=>x.id===product)?.name || "Por revisar"}</p></div>
+            <div><p className="text-xs text-slate-500">Monto</p>
+              <p className="font-medium text-sm text-slate-900">{Number(amount).toLocaleString("es-MX",{style:"currency",currency:"MXN",maximumFractionDigits:0})}</p></div>
+            <div><p className="text-xs text-slate-500">Plazo</p>
+              <p className="font-medium text-sm text-slate-900">{termMonths} meses</p></div>
+          </div>
+        </div>
+        {reviewedOffers > 0 && <p className="text-sm font-medium text-blue-950 rounded-md bg-blue-50 border border-blue-100 px-4 py-2"
+          data-testid="real-reviewed-offers">Revisamos {reviewedOffers} {reviewedOffers===1?"producto publicado":"productos publicados"} de la familia de financiamiento que solicitaste.</p>}
         {hasOptions ? <div className="grid sm:grid-cols-[auto_1fr] items-center gap-4 rounded-xl border border-blue-200 bg-blue-50 p-5">
           <div className="flex items-center justify-center rounded-xl bg-white border border-blue-100 px-6 py-4">
             <span className="text-5xl font-extrabold tabular-nums text-blue-900" data-testid="verified-institution-count">
@@ -102,7 +118,7 @@ export function ProspectCompletionForm({ token, initialProfile, initialFinancing
           <div className="rounded-xl border border-amber-200 bg-amber-50 p-5">
             <h2 className="font-semibold text-amber-950">
               {assessment?.status==="missing_information" ? "Hay datos que necesitamos confirmar" :
-                assessment?.status==="under_review" ? "Tu asesor revisará otras alternativas" :
+                assessment?.status==="under_review" && reviewedOffers>0 ? "Revisamos los criterios y encontramos puntos por resolver" :
                 "Tu información está lista para revisión"}
             </h2>
             <p className="mt-2 text-sm leading-relaxed text-slate-700">
@@ -110,14 +126,14 @@ export function ProspectCompletionForm({ token, initialProfile, initialFinancing
             </p>
           </div>}
 
-        {hasEvaluated && (criteriaMatched.length>0 || criteriaPending.length>0) &&
+        {hasEvaluated && (criteriaMatched.length>0 || criteriaPending.length>0 || criteriaNotMatched.length>0) &&
           <div className="grid gap-4 md:grid-cols-2" data-testid="public-criteria-evidence">
             <div className="rounded-xl border border-emerald-200 bg-emerald-50/50 p-4 sm:p-5">
               <div className="flex items-center gap-2 font-semibold text-emerald-900">
                 <ClipboardCheck className="w-5 h-5 shrink-0" /> Coincidencias del análisis
               </div>
               <p className="mt-2 text-xs leading-relaxed text-slate-600">
-                Aspectos que coinciden con al menos una alternativa preliminar.
+                {hasOptions?"Aspectos que coinciden con al menos una alternativa preliminar.":"Criterios satisfechos en algunos productos, aunque todavía no hay una opción compatible en conjunto."}
               </p>
               {criteriaMatched.length ? <div className="mt-3 space-y-2">
                 {criteriaMatched.map(label=><div key={label} className="flex gap-2 text-sm text-slate-800 items-start">
@@ -136,8 +152,20 @@ export function ProspectCompletionForm({ token, initialProfile, initialFinancing
                 {criteriaPending.map(label=><div key={label} className="flex gap-2 text-sm text-slate-800 items-start">
                   <ArrowRight className="w-4 h-4 text-amber-700 mt-0.5 shrink-0" /> {label}
                 </div>)}
-              </div> : <p className="mt-3 text-sm text-slate-600">Por ahora no hay pendientes generales identificados.</p>}
+              </div> : <p className="mt-3 text-sm text-slate-600">No se identificaron requisitos pendientes generales.</p>}
             </div>
+            {criteriaNotMatched.length>0 && <div className="rounded-xl border border-rose-200 bg-rose-50/50 p-4 sm:p-5 md:col-span-2">
+              <div className="flex items-center gap-2 font-semibold text-rose-900">
+                <CircleHelp className="w-5 h-5 shrink-0" /> Criterios que no coincidieron
+              </div>
+              <p className="mt-2 text-xs leading-relaxed text-slate-600">
+                Son categorías generales con alguna condición incumplida. No representan un rechazo definitivo ni revelan criterios internos de una institución.
+              </p>
+              <div className="mt-3 flex flex-wrap gap-2">
+                {criteriaNotMatched.map(label=><span key={label}
+                  className="rounded-md border border-rose-200 bg-white px-3 py-1.5 text-sm text-slate-800">{label}</span>)}
+              </div>
+            </div>}
           </div>}
 
         <div className="rounded-xl border bg-slate-50 p-4 sm:p-5 space-y-3">
@@ -211,7 +239,7 @@ export function ProspectCompletionForm({ token, initialProfile, initialFinancing
         </div>}
         {financingError && <p role="alert" className="text-sm text-destructive">{financingError}</p>}
       </section>
-      <ClientForm client={initialProfile} onSuccess={onBack || (() => setAccepted(false))} onPublicSubmit={async profile => {
+      <PublicProspectQuickForm initialProfile={initialProfile} onPublicSubmit={async profile => {
         const money=Number(amount), months=Number(termMonths);
         if (!product || !amount || !Number.isInteger(money) || money < 10000 || money > 1000000000000 ||
             !termMonths || !Number.isInteger(months) || months < 1 || months > 360 ||
