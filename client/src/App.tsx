@@ -128,7 +128,14 @@ function GuestProspectRouter() {
   return <Switch>
     <Route path="/c/:token" component={PublicCampaignLanding}/>
     <Route path="/completar-perfil/:token" component={PublicProspectCompletion}/>
-    <Route component={NotFound}/>
+    <Route>
+      <main className="min-h-screen flex items-center justify-center bg-slate-50 px-4">
+        <section role="alert" className="max-w-lg rounded-xl border bg-white p-8 text-center">
+          <h1 className="text-xl font-bold">Enlace no disponible</h1>
+          <p className="mt-2 text-sm text-slate-600">Solicita un enlace nuevo a tu asesor.</p>
+        </section>
+      </main>
+    </Route>
   </Switch>;
 }
 function App() {
