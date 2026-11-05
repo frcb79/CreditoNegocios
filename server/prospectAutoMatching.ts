@@ -71,7 +71,7 @@ export function summarizePublicCriteria(result: {
         const scoreCriteria=["personalBureau","businessBureau","shareholderBureau"];
         if(bucket==="missing" && scoreCriteria.includes(item.code) &&
           typeof item.actualValue==="string" &&
-          /^(alto|bueno|medio|bajo|malo)-\\d+-\\d+$/.test(item.actualValue))
+          /^(alto|bueno|medio|bajo|malo)-\d+-\d+$/.test(item.actualValue))
           return base+" (dentro de rango)";
         if(bucket==="failed") {
           const help:Record<string,string>={
