@@ -134,11 +134,13 @@ export function buildQuickProspectProfile(input: QuickProspectInput) {
     noSat ? "tieneAvalObligadoSolidarioSinSat" : "avalObligadoSolidario", optional(f.guarantor));
 
   appendIfValue(data, "creditosVigentes", optional(f.existingCredits));
-  if (f.existingCredits === "si") {
-    if (!f.credits?.length || f.credits.length > 5 ||
+  // A yes/no answer is sufficient for an initial match. The full balances
+  // and documents belong to a later stage, never a required public subform.
+  if (f.existingCredits === "si" && f.credits?.length) {
+    if (f.credits.length > 5 ||
       f.credits.some(c => !c.tipo?.trim() || !c.institucion?.trim() ||
         !numeric(c.saldoOriginal) || !numeric(c.saldo) || !c.fechaInicio || !c.fechaTermino))
-      throw new Error("Completa los datos de cada crédito vigente (máximo cinco).");
+      throw new Error("Revisa los datos opcionales de los créditos vigentes.");
     data.creditosVigentesDetalles = f.credits.map(c => ({
       tipo: c.tipo.trim(), institucion: c.institucion.trim(),
       saldoOriginal: numeric(c.saldoOriginal), saldo: numeric(c.saldo),
