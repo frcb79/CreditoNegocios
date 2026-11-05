@@ -69,8 +69,9 @@ function appendIfValue(record: Record<string, unknown>, key: string, value: unkn
 }
 
 export function buildQuickProspectProfile(input: QuickProspectInput) {
-  const monthly = Number(numeric(input.monthlyIncome) || NaN);
-  if (!Number.isFinite(monthly) || monthly <= 0)
+  const rawIncome = input.monthlyIncome.trim().replace(/[$,\\s]/g, "");
+  const monthly = /^\\d+(?:\\.\\d{1,2})?$/.test(rawIncome) ? Number(rawIncome) : NaN;
+  if (!Number.isFinite(monthly) || monthly <= 0 || monthly > 1000000000000)
     throw new Error("Indica tus ingresos mensuales aproximados en MXN.");
   const yearsText = input.yearsInBusiness.trim();
   if (yearsText && (!/^\d{1,3}$/.test(yearsText) || Number(yearsText) > 150))
