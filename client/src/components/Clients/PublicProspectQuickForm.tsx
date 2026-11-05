@@ -213,7 +213,7 @@ export default function PublicProspectQuickForm({ initialProfile, onPublicSubmit
           <label className="flex gap-3 items-start text-sm text-slate-700">
             <Checkbox checked={consentAccepted} onCheckedChange={v=>onConsentChange(v===true)}
               aria-label="Acepto el Aviso de Privacidad"/>
-            <span>He leído el <Link href="/legal/aviso" target="_blank" className="underline text-blue-800">
+            <span>He leído el <Link href="/legal/aviso?public=1" target="_blank" className="underline text-blue-800">
               Aviso de Privacidad</Link> y autorizo compartir mis datos con Crédito Negocios y mi asesor
               para la evaluación preliminar. El envío posterior a instituciones requerirá autorización adicional.</span>
           </label>
