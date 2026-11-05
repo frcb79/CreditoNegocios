@@ -1,9 +1,8 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Link, useParams } from "wouter";
+import { useParams } from "wouter";
 import PublicProspectQuickForm from "@/components/Clients/PublicProspectQuickForm";
 import ProspectPageLayout, { ProspectTrustNotice } from "@/components/Clients/ProspectPageLayout";
-import { Checkbox } from "@/components/ui/checkbox";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -12,6 +11,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import ProspectEvaluationProgress, { type ProspectProcessingPhase } from "@/components/Clients/ProspectEvaluationProgress";
 import ProspectEvaluationResult from "@/components/Clients/ProspectEvaluationResult";
 import { LEASING_ASSET_TYPES } from "@shared/leasing";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
+import { CheckCircle2, Layers, LockKeyhole, Zap, ShieldCheck } from "lucide-react";
 
 type Assessment = {
   status: "possible_options" | "missing_information" | "under_review" | "pending";
@@ -50,6 +51,7 @@ export function ProspectCompletionForm({ token, initialProfile, initialFinancing
 }) {
   const [accepted, setAccepted] = useState(false);
   const [complete, setComplete] = useState(false);
+  const [readyDialogOpen, setReadyDialogOpen] = useState(false);
   const [submittedProfile, setSubmittedProfile] = useState<Record<string,unknown> | null>(null);
   const [processing, setProcessing] = useState(false);
   const [processingPhase, setProcessingPhase] = useState<ProspectProcessingPhase>("sending");
@@ -67,7 +69,6 @@ export function ProspectCompletionForm({ token, initialProfile, initialFinancing
     <p>{info.error instanceof Error ? info.error.message : "Solicita un nuevo enlace a tu asesor."}</p>
   </div>;
 
-  if (processing) return <ProspectEvaluationProgress phase={processingPhase}/>;
   if (complete && submittedProfile) return <ProspectEvaluationResult
     assessment={assessment}
     profile={submittedProfile}
@@ -75,23 +76,69 @@ export function ProspectCompletionForm({ token, initialProfile, initialFinancing
     advisorName={info.data.advisorName}
   />;
 
-  return <div className="space-y-5" data-testid="prospect-completion-form">
-    <div className="bg-white border rounded-xl p-5 space-y-3">
-      <h1 className="text-2xl font-bold">Solicita tu evaluación preliminar</h1>
-      <p>Completa tus datos de financiamiento y perfil financiero para comparar alternativas publicadas. Tu asesor será <strong>{info.data.advisorName}</strong>.</p>
-      <ProspectTrustNotice advisorName={info.data.advisorName} personalLink />
-      <label className="flex gap-3 items-start text-sm">
-        <Checkbox checked={accepted} onCheckedChange={v => setAccepted(v === true)} aria-label="Acepto el Aviso de Privacidad" />
-        <span>He leído el <Link href="/legal/aviso" target="_blank" className="underline">Aviso de Privacidad</Link> y autorizo compartir mis datos con Crédito Negocios y el asesor indicado para realizar una evaluación preliminar de financiamiento. El envío posterior a instituciones requiere validaciones y autorizaciones adicionales.</span>
-      </label>
-      {!accepted && <p className="text-sm text-muted-foreground">Confirma el Aviso de Privacidad para continuar.</p>}
-    </div>
-    {accepted && <>
-      <section className="bg-white border rounded-xl p-5 space-y-4" aria-label="Financiamiento solicitado">
+  return <>
+    {processing && <ProspectEvaluationProgress phase={processingPhase}/>}
+    <Dialog open={readyDialogOpen} onOpenChange={()=>{}}>
+      <DialogContent className="max-w-md" data-testid="prospect-result-ready-modal">
+        <DialogHeader>
+          <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-emerald-50 text-emerald-700 mb-3">
+            <CheckCircle2 className="h-8 w-8"/>
+          </div>
+          <DialogTitle className="text-2xl">Tu evaluación preliminar está lista</DialogTitle>
+          <DialogDescription>Terminamos de revisar las alternativas publicadas y preparamos el resumen
+            para que continúes con tu asesor.</DialogDescription>
+        </DialogHeader>
+        <DialogFooter>
+          <Button className="w-full bg-blue-800 text-white hover:bg-blue-900"
+            data-testid="prospect-open-diagnosis"
+            onClick={()=>{setReadyDialogOpen(false);setComplete(true);setProcessing(false);}}>
+            Ver mi diagnóstico
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+    <div className={processing?"hidden":"space-y-5"} data-testid="prospect-completion-form">
+    <header className="overflow-hidden rounded-2xl bg-gradient-to-r from-[#0d376c] to-[#154c91] px-6 py-7 text-white shadow-sm sm:px-9"
+      data-testid="prospect-form-header">
+      <div className="flex items-center gap-4">
+        <ShieldCheck className="h-11 w-11 shrink-0 text-blue-100"/>
+        <div><p className="text-sm font-medium text-blue-100">Crédito Negocios</p>
+          <h1 className="text-2xl font-extrabold sm:text-3xl">Solicita tu evaluación preliminar</h1>
+          <p className="mt-1 text-sm text-blue-100">
+            Captura la información esencial y obtén una evaluación preliminar de tu solicitud.
+          </p></div>
+      </div>
+    </header>
+    <section className="grid items-center gap-5 px-2 py-3 md:grid-cols-[1fr_1.25fr]" data-testid="prospect-form-benefits">
+      <div>
+        <h2 className="text-2xl font-extrabold leading-tight text-blue-950 sm:text-3xl">
+          Da el primer paso para impulsar tu negocio
+        </h2>
+        <p className="mt-3 text-sm leading-relaxed text-slate-600">
+          Completa los datos esenciales de tu negocio y perfil financiero.
+          Con ellos compararemos alternativas publicadas que podrían ajustarse a tus necesidades.
+        </p>
+      </div>
+      <div className="grid grid-cols-3 gap-2 border-l border-blue-100 pl-3 text-center sm:gap-4 sm:pl-6">
+        {([
+          [Zap,"Evaluación preliminar","Rápida y sin compromiso"],
+          [Layers,"Opciones a tu medida","Según tu perfil financiero"],
+          [LockKeyhole,"Información protegida","Datos tratados de forma segura"],
+        ] as const).map(([Icon,title,description])=><div key={title} className="flex flex-col items-center gap-2">
+          <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-blue-50 text-blue-800">
+            <Icon className="h-6 w-6"/></div>
+          <p className="text-xs font-bold leading-tight text-blue-950 sm:text-sm">{title}</p>
+          <p className="text-[11px] leading-snug text-slate-600">{description}</p>
+        </div>)}
+      </div>
+    </section>
+    <ProspectTrustNotice advisorName={info.data.advisorName} personalLink />
+      <section className="bg-white border border-blue-100 rounded-2xl p-5 sm:p-7 space-y-5 shadow-sm" aria-label="Financiamiento solicitado">
         <div>
-          <h2 className="text-lg font-bold">¿Qué financiamiento necesitas?</h2>
-          <p className="text-sm text-muted-foreground">Estos datos permiten comparar automáticamente las alternativas publicadas, sin enviar tu solicitud a ninguna institución.</p>
+          <h2 className="text-2xl font-extrabold text-blue-950">¿Qué financiamiento necesitas?</h2>
+          <p className="text-sm text-slate-600">Cuéntanos los detalles principales del financiamiento que estás buscando.</p>
         </div>
+        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         <div className="space-y-2">
           <Label>Tipo de financiamiento *</Label>
           <Select value={product} onValueChange={v=>{setProduct(v);setFinancingError("");}}>
@@ -99,7 +146,6 @@ export function ProspectCompletionForm({ token, initialProfile, initialFinancing
             <SelectContent>{PRODUCT_OPTIONS.map(option=><SelectItem key={option.id} value={option.id}>{option.name}</SelectItem>)}</SelectContent>
           </Select>
         </div>
-        <div className="grid sm:grid-cols-2 gap-4">
           <label className="space-y-2">
             <Label htmlFor="prospect-requested-amount">Monto exacto solicitado (MXN) *</Label>
             <Input id="prospect-requested-amount" data-testid="prospect-financing-amount" type="number" inputMode="numeric"
@@ -112,13 +158,13 @@ export function ProspectCompletionForm({ token, initialProfile, initialFinancing
               min={1} max={360} step={1} value={termMonths} onChange={e=>setTermMonths(e.target.value)}
               placeholder="Ej. 36" />
           </label>
-        </div>
         <label className="space-y-2 block">
           <Label htmlFor="prospect-purpose">Destino del financiamiento *</Label>
           <Textarea id="prospect-purpose" data-testid="prospect-financing-purpose" rows={2}
             maxLength={600} value={purpose} onChange={e=>setPurpose(e.target.value)}
             placeholder="Ej. Adquirir maquinaria, capital de trabajo, ampliación..." />
         </label>
+        </div>
         {product === "arrendamiento" && <div className="space-y-2">
           <Label>Tipo de activo que deseas arrendar *</Label>
           <Select value={leasingAssetType} onValueChange={setLeasingAssetType}>
@@ -128,7 +174,9 @@ export function ProspectCompletionForm({ token, initialProfile, initialFinancing
         </div>}
         {financingError && <p role="alert" className="text-sm text-destructive">{financingError}</p>}
       </section>
-      <PublicProspectQuickForm initialProfile={initialProfile} onPublicSubmit={async profile => {
+      <PublicProspectQuickForm initialProfile={initialProfile} consentAccepted={accepted} onConsentChange={setAccepted}
+        onPublicSubmit={async profile => {
+        if(!accepted)throw new Error("Acepta el Aviso de Privacidad para continuar.");
         const money=Number(amount), months=Number(termMonths);
         if (!product || !amount || !Number.isInteger(money) || money < 10000 || money > 1000000000000 ||
             !termMonths || !Number.isInteger(months) || months < 1 || months > 360 ||
@@ -139,9 +187,6 @@ export function ProspectCompletionForm({ token, initialProfile, initialFinancing
         setFinancingError("");
         const financing={product,amount:money,termMonths:months,purpose:purpose.trim(),
           ...(product === "arrendamiento" ? {leasingAssetType} : {})};
-        // Show the processing view while the server performs the real catalog
-        // comparison. Hold the prepared state briefly so the result does not
-        // replace the form instantly on a fast response.
         const startedAt=Date.now();
         setSubmittedProfile(profile);
         setProcessingPhase("sending");
@@ -156,19 +201,20 @@ export function ProspectCompletionForm({ token, initialProfile, initialFinancing
           if(!response.ok) throw new Error(result.message || "No se pudo enviar la información");
           setAssessment(result.assessment || null);
           setProcessingPhase("ready");
+          // A real request has completed; respect five seconds of visible
+          // progress without pretending to perform extra server-side work.
           await new Promise<void>(resolve=>setTimeout(resolve,
-            Math.max(800,1800-(Date.now()-startedAt))));
-          setComplete(true);
+            Math.max(0,5000-(Date.now()-startedAt))));
+          setReadyDialogOpen(true);
         } catch(error) {
           setSubmittedProfile(null);
-          throw error;
-        } finally {
           setProcessing(false);
+          throw error;
         }
       }} />
-    </>}
-    {!accepted && onBack && <Button variant="outline" onClick={onBack}>Volver</Button>}
-  </div>;
+    {onBack && <Button variant="outline" onClick={onBack}>Volver</Button>}
+  </div>
+  </>;
 }
 
 export default function PublicProspectCompletion() {

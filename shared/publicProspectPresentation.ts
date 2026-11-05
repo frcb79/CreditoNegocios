@@ -132,11 +132,10 @@ export function getPublicDocumentGroups(clientType:unknown):PublicDocumentGroup[
     ],
   }];
 }
-/** The user will provide actual times after reviewing the design.
- * Never publish illustrative ranges as real service level promises.
- */
+/** Rangos operativos proporcionados por Crédito Negocios. Son orientativos,
+ * no plazos de aprobación ni garantías de respuesta de la financiera. */
 export const PUBLIC_PROCESS_TIMES = [
-  {title:"Contacto y revisión inicial con tu asesor",value:"Por confirmar"},
-  {title:"Presentación y selección de alternativas",value:"Por confirmar"},
-  {title:"Revisión y respuesta de la financiera",value:"Depende de cada institución"},
+  {title:"Verificación de alternativas y requerimientos de financieras.",value:"1 - 4 hrs."},
+  {title:"Envío inicial a financieras. En caso que se requiera más información te contactaremos.",value:"4 - 12 hrs."},
+  {title:"Proceso con financiera y recopilación de documentos.",value:"12 - 36 hrs."},
 ] as const;

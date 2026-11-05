@@ -43,11 +43,12 @@ describe("Approved public prospect journey — result & documentation",()=>{
     expect(groups).toHaveLength(1);
     expect(JSON.stringify(groups)).not.toMatch(/Acta constitutiva|asambleas|registro en RPC/);
   });
-  it("leaves operational service times unpromised until supplied by the business",()=>{
+  it("presents business-approved time ranges as indicative, not lender approval promises",()=>{
     expect(PUBLIC_PROCESS_TIMES).toHaveLength(3);
     expect(PUBLIC_PROCESS_TIMES.map(x=>x.value)).toEqual([
-      "Por confirmar","Por confirmar","Depende de cada institución",
+      "1 - 4 hrs.","4 - 12 hrs.","12 - 36 hrs.",
     ]);
+    expect(PUBLIC_PROCESS_TIMES.map(x=>x.title).join(" ")).toMatch(/Verificación de alternativas.*Envío inicial.*recopilación de documentos/);
   });
   it("does not repeat failed and passed categories when offers disagree",()=>{
     const assessment=aggregateProspectAssessment({
@@ -62,8 +63,10 @@ describe("Approved public prospect journey — result & documentation",()=>{
     const groups=assessment.criteria!;
     const all=[...groups.matched,...groups.toReview,...groups.notMatched];
     expect(new Set(all).size).toBe(all.length);
-    expect(groups.notMatched).toEqual(["Plazo deseado","Monto solicitado"]);
-    expect(groups.matched).toContain("Antigüedad del negocio");
-    expect(groups.matched).not.toContain("Plazo deseado");
+    // Offers with MISSING_DATA are viable preliminarily. Unrelated rejected
+    // offers must not make the same criterion look failed in public.
+    expect(groups.notMatched).toEqual([]);
+    expect(groups.toReview).toEqual(["Monto solicitado"]);
+    expect(groups.matched).toEqual(["Plazo deseado","Antigüedad del negocio"]);
   });
 });

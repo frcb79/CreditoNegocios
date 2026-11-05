@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import MainLayout from "@/components/MainLayout";
 import Header from "@/components/Header";
 import CommercialResourcesAdmin from "@/components/Commercial/CommercialResourcesAdmin";
@@ -12,7 +12,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
-import { Copy, Download, Megaphone, Send, ShieldCheck } from "lucide-react";
+import { Copy, Download, Megaphone, Send, ShieldCheck, Link2, UserRound, MessageSquareText, CheckCircle2, Pencil } from "lucide-react";
 import {
   imageSize, templateSvg, templateCaption, safeBrandLabel, normalizedWhatsApp,
   type PublishedCommercialTemplate
@@ -29,6 +29,11 @@ async function getPublished(): Promise<PublishedCommercialTemplate[]> {
 export default function CommercialResources() {
   const { user } = useAuth();
   const { toast } = useToast();
+  const queryClient = useQueryClient();
+  const [activeTab,setActiveTab]=useState<"plantillas"|"enlace"|"datos"|"sugerencias">("plantillas");
+  const [commercialName,setCommercialName]=useState("");
+  const [commercialPhone,setCommercialPhone]=useState("");
+  const [savingCommercial,setSavingCommercial]=useState(false);
   const { data: templates = [], isLoading, error } = useQuery<PublishedCommercialTemplate[]>({
     queryKey: ["/api/commercial-resources/templates"],
     queryFn: getPublished,
@@ -39,7 +44,7 @@ export default function CommercialResources() {
   const [displayName, setDisplayName] = useState("");
   const [whatsapp, setWhatsapp] = useState("");
   const [loadedUser, setLoadedUser] = useState("");
-  const [campaignLink, setCampaignLink] = useState<{ templateId: string; url: string } | null>(null);
+  const [campaignLink, setCampaignLink] = useState("");
   const [graphicPreview, setGraphicPreview] = useState("");
   const [graphicError, setGraphicError] = useState("");
   const [graphicLoading, setGraphicLoading] = useState(false);
@@ -76,8 +81,36 @@ export default function CommercialResources() {
     },
     enabled:Boolean(user?.id && ["broker","master_broker"].includes(user.role))
   });
-  const graphicName = approvedIdentity?.displayName || "";
-  const graphicPhone = approvedIdentity?.whatsapp || "";
+  const graphicName = approvedIdentity?.displayName || displayName || "";
+  const graphicPhone = approvedIdentity?.whatsapp || whatsapp || "";
+  useEffect(()=>{
+    if(!approvedIdentity)return;
+    setCommercialName(approvedIdentity.displayName);
+    setCommercialPhone(approvedIdentity.whatsapp);
+  },[approvedIdentity?.displayName,approvedIdentity?.whatsapp]);
+  const saveCommercial=async()=>{
+    if(savingCommercial)return;
+    if(commercialName.trim().length<2 || !normalizedWhatsApp(commercialPhone)) {
+      toast({title:"Revisa tu nombre y teléfono o WhatsApp.",variant:"destructive"});
+      return;
+    }
+    setSavingCommercial(true);
+    try {
+      const response=await fetch("/api/commercial-resources/my-approved-identity",{
+        method:"PATCH",credentials:"include",headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({displayName:commercialName.trim(),whatsapp:commercialPhone.trim()}),
+      });
+      const data=await response.json().catch(()=>({}));
+      if(!response.ok)throw new Error(data.message||"No se pudieron guardar los cambios.");
+      queryClient.setQueryData(["/api/commercial-resources/my-approved-identity",user?.id],data);
+      setDisplayName(data.displayName);
+      setWhatsapp(data.whatsapp);
+      await queryClient.invalidateQueries({queryKey:["/api/auth/user"]});
+      toast({title:"Información comercial actualizada",description:"Las plantillas ya usarán estos datos."});
+      setActiveTab("plantillas");
+    }catch(err:any){toast({title:"No se pudo guardar",description:err.message,variant:"destructive"});}
+    finally{setSavingCommercial(false);}
+  };
   const identityReady = Boolean(selection?.definition.graphic)
     ? graphicName.trim().length >= 2 && Boolean(normalizedWhatsApp(graphicPhone))
     : safeBrandLabel(displayName).length >= 2 && Boolean(normalizedWhatsApp(whatsapp));
@@ -118,12 +151,12 @@ export default function CommercialResources() {
       toast({ title: "Completa tu nombre y WhatsApp antes de usar la plantilla", variant: "destructive" });
       return;
     }
-    if (canSuggest && (!campaignLink || campaignLink.templateId !== selection.id)) {
+    if (canSuggest && !campaignLink) {
       toast({ title: "El enlace de esta campaña todavía no está disponible", description: "Obténlo desde Tus enlaces de captación antes de compartir el texto.", variant: "destructive" });
       return;
     }
     try {
-      await navigator.clipboard.writeText(caption + (campaignLink?.templateId === selection?.id ? "\n\nMás información: " + campaignLink.url : ""));
+      await navigator.clipboard.writeText(caption + (campaignLink ? "\n\nMás información: " + campaignLink : ""));
       toast({ title: "Texto copiado" });
     } catch {
       toast({ title: "No se pudo copiar", description: "Selecciona el texto y cópialo manualmente.", variant: "destructive" });
@@ -229,7 +262,26 @@ export default function CommercialResources() {
       <Header title="Recursos Comerciales" subtitle={isSuperAdmin ? "Importar, revisar y aprobar plantillas comerciales" : "Plantillas aprobadas para comunicar alternativas de financiamiento"} />
       <main className="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8">
         <div className="mx-auto max-w-7xl space-y-6 pb-12">
-          {!isSuperAdmin && (<>
+          {canSuggest && <div className="rounded-2xl border border-blue-200 bg-gradient-to-r from-blue-50 to-white p-4 sm:p-5 flex flex-wrap items-center justify-between gap-4" data-testid="commercial-link-shortcut">
+            <div className="flex items-start gap-3">
+              <span className="rounded-xl bg-blue-100 p-2.5 text-blue-900"><Link2 className="w-5 h-5"/></span>
+              <div><p className="font-semibold text-blue-950">Tu enlace personal de captación</p>
+                <p className="text-sm text-slate-600">Comparte tu enlace y recibe prospectos directamente en tu cuenta.</p></div>
+            </div>
+            <Button size="sm" onClick={()=>setActiveTab("enlace")} data-testid="commercial-link-shortcut-action"><Link2 className="mr-2 h-4 w-4"/> Ver y copiar enlace</Button>
+          </div>}
+          {canSuggest && <div role="tablist" aria-label="Secciones de Recursos Comerciales"
+            className="grid grid-cols-2 gap-2 rounded-xl border bg-slate-50 p-2 sm:grid-cols-4" data-testid="commercial-tabs">
+            {([
+              ["plantillas","Plantillas",Megaphone],["enlace","Mi enlace",Link2],
+              ["datos","Mis datos",UserRound],["sugerencias","Sugerencias",MessageSquareText],
+            ] as const).map(([id,label,Icon])=><button type="button" key={id}
+              role="tab" aria-selected={activeTab===id} data-testid={"commercial-tab-"+id}
+              className={"flex items-center justify-center gap-2 rounded-lg px-3 py-3 text-sm font-semibold transition-colors "+
+                (activeTab===id?"bg-blue-800 text-white shadow-sm":"bg-white text-slate-700 hover:bg-blue-50")}
+              onClick={()=>setActiveTab(id)}><Icon className="h-4 w-4"/>{label}</button>)}
+          </div>}
+          {!isSuperAdmin && (!canSuggest || activeTab==="plantillas") && (<>
           <div className="rounded-lg border bg-card p-4 flex gap-2 items-start">
             <ShieldCheck className="w-5 h-5 text-primary shrink-0" />
             <p className="text-sm text-muted-foreground">
@@ -272,26 +324,21 @@ export default function CommercialResources() {
                   </div>
                 )}
               {selection && (
-                <div className="space-y-3 border-t pt-4">
-                  <h3 className="font-semibold text-sm">Tu información en la publicación</h3>
-                  <label className="block text-sm font-medium" htmlFor="resource-display-name">Nombre del broker o negocio</label>
-                  <Input id="resource-display-name" maxLength={42} disabled={Boolean(selection.definition.graphic)} value={selection.definition.graphic ? graphicName : displayName} onChange={e => setDisplayName(e.target.value)}
-                    placeholder="Nombre o nombre comercial" data-testid="resource-brand" />
-                  {selection.definition.allowedIdentityFields.whatsapp && (
-                    <>
-                      <label className="block text-sm font-medium" htmlFor="resource-whatsapp">Teléfono o WhatsApp</label>
-                      <Input id="resource-whatsapp" inputMode="tel" maxLength={25} disabled={Boolean(selection.definition.graphic)} value={selection.definition.graphic ? graphicPhone : whatsapp}
-                        onChange={e => setWhatsapp(e.target.value)} data-testid="resource-whatsapp" />
-                      {(!normalizedWhatsApp(selection.definition.graphic ? graphicPhone : whatsapp)) && <p className="text-xs text-destructive">Actualiza un WhatsApp válido en tu perfil; es obligatorio para generar la pieza.</p>}
-                    </>
-                  )}
-                  {selection.definition.allowedIdentityFields.institutionalLogo && (
-                    <p className="text-xs text-muted-foreground" data-testid="resource-institutional-logo">
-                      El logotipo institucional de Crédito Negocios se incluirá automáticamente.
-                    </p>
-                  )}
-                  {(selection.definition.graphic ? graphicName.trim().length < 2 : safeBrandLabel(displayName).length < 2) && <p className="text-xs text-destructive">Indica tu nombre o nombre comercial en el perfil.</p>}
-                  <p className="text-xs text-muted-foreground">{selection.definition.graphic ? "Nombre y WhatsApp se toman de tu perfil. Nunca se agrega un logo o avatar del asesor. Los textos y fotografías aprobados no se modifican." : "Nombre y contacto son obligatorios para mantener completo el diseño. Solo personalizan la pieza, no cambian tu perfil."}</p>
+                <div className="rounded-xl border border-blue-100 bg-blue-50/40 p-4 space-y-3" data-testid="commercial-personalization-info">
+                  <div className="flex items-center justify-between gap-3">
+                    <h3 className="font-semibold text-sm">Tus datos en la plantilla</h3>
+                    {canSuggest && <Button variant="outline" size="sm"
+                      onClick={()=>setActiveTab("datos")} data-testid="commercial-edit-from-preview">
+                      <Pencil className="mr-1 h-4 w-4"/> Editar
+                    </Button>}
+                  </div>
+                  <p className="text-sm"><strong>Nombre:</strong> {graphicName || "Por completar"}</p>
+                  <p className="text-sm"><strong>WhatsApp:</strong> {normalizedWhatsApp(graphicPhone) ? "+"+normalizedWhatsApp(graphicPhone) : "Por completar"}</p>
+                  {!identityReady && <p className="text-xs text-amber-800">
+                    Para descargar, guarda tu nombre y WhatsApp en Mis datos.
+                    Puedes visualizar el arte aprobado aunque falte personalizarlo.
+                  </p>}
+                  <p className="text-xs text-slate-600">El contenido aprobado y el logo institucional no se modifican.</p>
                 </div>
               )}
             </section>
@@ -304,7 +351,21 @@ export default function CommercialResources() {
                       {selection.definition.graphic ? (
                         graphicPreview
                           ? <img src={graphicPreview} alt={"Plantilla gráfica aprobada " + selection.name} className="max-h-[520px] w-full object-contain rounded-md" data-testid="resource-graphic-preview" />
-                          : <p className="text-xs text-muted-foreground">{graphicLoading ? "Preparando diseño personalizado…" : (graphicError || "Completa tus datos de perfil para ver la plantilla.")}</p>
+                          : identityReady
+                            ? <p className="text-xs text-muted-foreground">
+                                {graphicLoading ? "Preparando diseño personalizado…" :
+                                  (graphicError || "Preparando vista previa…")}
+                              </p>
+                            : <div className="space-y-2">
+                                <img
+                                  src={"/api/commercial-resources/templates/"+encodeURIComponent(selection.id)+"/art"}
+                                  alt={"Vista del material autorizado "+selection.name}
+                                  className="max-h-[520px] w-full rounded-md object-contain"
+                                  data-testid="resource-graphic-preview-unpersonalized"/>
+                                <p className="text-center text-xs text-slate-600">
+                                  Vista del arte aprobado. Guarda tu nombre y WhatsApp en Mis datos para personalizarlo.
+                                </p>
+                              </div>
                       ) : <img src={preview} alt={"Plantilla aprobada " + selection.name}
                         className="max-h-[520px] w-full object-contain rounded-md" />}
                       {!selection.definition.graphic && selection.definition.allowedIdentityFields.institutionalLogo && (
@@ -321,7 +382,7 @@ export default function CommercialResources() {
                   <div className="border-t pt-3 space-y-3">
                     <div className="flex justify-between items-center gap-2">
                       <p className="text-sm font-semibold">{selection.channel === "tiktok" ? "Guion vertical aprobado" : "Texto aprobado para publicar"}</p>
-                      <Button size="sm" variant="outline" onClick={copyCaption} disabled={!identityReady || (canSuggest && campaignLink?.templateId !== selection.id)} className="gap-1" data-testid="resource-copy-caption">
+                      <Button size="sm" variant="outline" onClick={copyCaption} disabled={!identityReady || (canSuggest && !campaignLink)} className="gap-1" data-testid="resource-copy-caption">
                         <Copy className="w-4 h-4" /> Copiar
                       </Button>
                     </div>
@@ -333,10 +394,26 @@ export default function CommercialResources() {
             </section>
           </div>
           </>)}
-          {canSuggest && <CampaignLinkPanel key={selection?.id || "general"}
-            selectedTemplateId={selection?.id}
-            onCampaignLink={url => { if (selection) setCampaignLink({ templateId: selection.id, url }); }} />}
-          {canSuggest && (
+          {canSuggest && <div className={activeTab==="enlace"?"":"hidden"} aria-hidden={activeTab!=="enlace"}>
+            <CampaignLinkPanel onCampaignLink={setCampaignLink} />
+          </div>}
+          {canSuggest && activeTab==="datos" && <section className="rounded-xl border bg-card p-5 space-y-5 max-w-2xl" role="tabpanel" data-testid="commercial-edit-identity">
+            <div className="flex gap-3 items-start">
+              <UserRound className="h-6 w-6 text-blue-800"/>
+              <div><h2 className="text-lg font-bold">Mi identidad comercial</h2>
+                <p className="text-sm text-slate-600">Los datos se toman de Configuración → Negocio. Puedes actualizarlos aquí y se usarán en tus próximas plantillas.</p></div>
+            </div>
+            <label className="block space-y-2"><span className="text-sm font-medium">Nombre del broker o negocio</span>
+              <Input value={commercialName} maxLength={100} onChange={e=>setCommercialName(e.target.value)}
+                data-testid="resource-brand" placeholder="Nombre comercial o del broker"/></label>
+            <label className="block space-y-2"><span className="text-sm font-medium">Teléfono / WhatsApp para tus materiales</span>
+              <Input value={commercialPhone} maxLength={25} inputMode="tel" onChange={e=>setCommercialPhone(e.target.value)}
+                data-testid="resource-whatsapp" placeholder="Ej. 55 1234 5678"/></label>
+            <p className="text-xs text-slate-600">Si no cambias el teléfono, utilizaremos el registrado en tu cuenta. Un cambio aquí también actualizará la información del negocio.</p>
+            <Button onClick={()=>void saveCommercial()} disabled={savingCommercial || commercialName.trim().length<2 || !normalizedWhatsApp(commercialPhone)}
+              data-testid="commercial-save-identity"><CheckCircle2 className="mr-2 h-4 w-4"/>{savingCommercial?"Guardando…":"Guardar y ver mis plantillas"}</Button>
+          </section>}
+          {canSuggest && activeTab==="sugerencias" && (
             <section className="border rounded-xl bg-card p-4 sm:p-5 space-y-3 max-w-3xl" data-testid="commercial-suggestion-form">
               <h2 className="font-semibold">¿Qué material te gustaría encontrar aquí?</h2>
               <p className="text-sm text-muted-foreground">

@@ -10,6 +10,8 @@ export const prospectHash = (data: unknown) =>
 export type PublicProspectAssessment = {
   status: "possible_options" | "missing_information" | "under_review" | "pending";
   institutionCount?: number;
+  /** Unique lenders with at least a preliminary match (including pending checks). */
+  identifiedInstitutionCount?: number;
   reviewedOffers?: number;
   message: string;
   /** Only broad public categories, never lender eligibility rules or thresholds. */
@@ -22,6 +24,15 @@ const pending: PublicProspectAssessment = {
 
 const PUBLIC_CRITERION_LABELS: Record<string,string> = {
   targetProfiles: "Tipo de cliente",
+  annualIncome: "Ingresos anuales estimados",
+  businessBureau: "Buró de la empresa",
+  shareholderBureau: "Buró del accionista",
+  personalBureau: "Historial crediticio personal",
+  requiresCiec: "Información fiscal SAT",
+  requiresFinancialStatements: "Estados financieros",
+  satOpinion: "Cumplimiento fiscal",
+  governmentSalesLimit: "Ventas con gobierno",
+  arrearsPolicy: "Antecedentes de atrasos",
   creditAmount: "Monto solicitado",
   creditTerm: "Plazo deseado",
   companyAge: "Antigüedad del negocio",
@@ -56,21 +67,21 @@ export function summarizePublicCriteria(result: {
       .filter(item=>item.status===status)
       .map(item=>PUBLIC_CRITERION_LABELS[item.code])
       .filter((label):label is string=>Boolean(label))));
-  // With no wholly compatible offer, criteria passed on partially matching
-  // or rejected offers remain useful evidence but are NOT a lender match.
-  const considered=result.compatible.length?result.compatible:
-    [...result.insufficientData,...rejected];
-  const allPassed=labels(considered,"matched","PASSED");
-  const allMissing=labels([...result.insufficientData,...rejected],"missing","MISSING_DATA");
-  const allFailed=labels(rejected,"failed","FAILED");
-  // Criteria are evaluated per OFFER, so the same category may pass one offer
-  // and fail another. Do not show it in green and red simultaneously.
-  // Without a complete match, prefer the conservative "review" category.
-  const matched=allPassed.filter(label=>result.compatible.length>0 ||
-    (!allFailed.includes(label) && !allMissing.includes(label))).slice(0,5);
-  const notMatched=allFailed.filter(label=>!matched.includes(label)).slice(0,4);
-  const toReview=allMissing.filter(label=>!matched.includes(label) && !notMatched.includes(label))
-    .slice(0,4);
+  // First show evidence from viable offers, not failure reasons drawn
+  // from unrelated products discarded by this same matching engine.
+  // This prevents "Monto solicitado" from being marked as both good and bad
+  // merely because two lenders have different limits.
+  const hasViable=result.compatible.length>0 || result.insufficientData.length>0;
+  const primary=result.compatible.length?result.compatible:
+    result.insufficientData.length?result.insufficientData:rejected;
+  const allPassed=labels(primary,"matched","PASSED");
+  const allMissing=labels(
+    hasViable ? [...result.compatible,...result.insufficientData] : rejected,
+    "missing","MISSING_DATA");
+  const allFailed=hasViable?[]:labels(rejected,"failed","FAILED");
+  const matched=allPassed.filter(label=>!allFailed.includes(label));
+  const toReview=allMissing.filter(label=>!matched.includes(label));
+  const notMatched=allFailed.filter(label=>!matched.includes(label) && !toReview.includes(label));
   return {matched,toReview,notMatched};
 }
 
@@ -81,18 +92,24 @@ export function aggregateProspectAssessment(result: {
   summary?: { totalEvaluated?: number };
 }): PublicProspectAssessment {
   const institutions = new Set(result.compatible.map(row => row.institutionId).filter(x => x && x !== "unknown"));
+  // Match preliminar: compatible o con información pendiente. Rejected lenders
+  // never count as identified options; don't invent a minimum of two.
+  const identified = new Set([...result.compatible,...result.insufficientData]
+    .map(row=>row.institutionId).filter(x=>x && x!=="unknown"));
   const reviewedOffers=Math.max(0,result.summary?.totalEvaluated ??
     (result.compatible.length+result.insufficientData.length+result.notCompatible.length));
   const criteria=summarizePublicCriteria(result);
   if (institutions.size) return {
-    status: "possible_options", institutionCount: institutions.size, reviewedOffers, criteria,
+    status: "possible_options", institutionCount: institutions.size,
+    identifiedInstitutionCount:identified.size, reviewedOffers, criteria,
     message: "Con los datos proporcionados identificamos " + institutions.size +
       " instituciones financieras con alternativas preliminares. Tu asesor confirmará los requisitos antes de avanzar. No es una aprobación ni una oferta de crédito.",
   };
   if (result.insufficientData.length) return {
     status: "missing_information", reviewedOffers, criteria,
+    identifiedInstitutionCount:identified.size,
     message: "Revisamos " + reviewedOffers +
-      " productos del catálogo. Aún no hay una coincidencia completa; algunos criterios necesitan verificarse. Tu asesor te ayudará a completar lo necesario.",
+      " productos del catálogo. Identificamos coincidencias preliminares que necesitan confirmar requisitos. Tu asesor continuará contigo.",
   };
   if (!reviewedOffers) return {
     status: "under_review", reviewedOffers:0, criteria,
@@ -101,7 +118,7 @@ export function aggregateProspectAssessment(result: {
   return {
     status: "under_review", reviewedOffers, criteria,
     message: "Revisamos " + reviewedOffers +
-      " productos del catálogo, pero los datos actuales no cumplen todas sus condiciones. No significa que tu solicitud esté rechazada: tu asesor podrá revisar los criterios y otras alternativas.",
+      " productos del catálogo. Algunas condiciones requieren análisis adicional. Tu solicitud quedó registrada y tu asesor continuará buscando alternativas.",
   };
 }
 export function buildProspectCredit(financing: ProspectFinancing) {
