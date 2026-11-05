@@ -198,17 +198,20 @@ export async function evaluateProspectPreapplication(
       [leadId,ownerUserId]);
     const row=current.rows[0];
     if (!row) return pending;
-    if (row.status === "evaluated" && row.client_id) {
+    if (row.status === "evaluated") {
       const result=await pool.query<{summary:PublicProspectAssessment}>(
         "SELECT summary FROM public.prospect_preapplications WHERE id=$1", [row.id]);
       return result.rows[0]?.summary || pending;
     }
-    if (!row.client_id || row.status === "identity_review" || row.status === "awaiting_details")
-      return pending;
+    // A public preliminary comparison uses the captured profile snapshot,
+    // not the creation of an internal client record. Identity review remains
+    // mandatory before any regulated origination or lender submission.
+    if (row.status === "awaiting_details" || !row.financing_data ||
+        !Object.keys(row.financing_data).length) return pending;
     const claim=await pool.query<Preapplication>(`
       UPDATE public.prospect_preapplications SET status='evaluating',updated_at=NOW()
       WHERE id=$1 AND owner_user_id=$2
-        AND (status IN ('pending','failed')
+        AND (status IN ('pending','failed','identity_review')
            OR (status='evaluating' AND updated_at < NOW()-INTERVAL '5 minutes'))
       RETURNING *
     `,[row.id,ownerUserId]);
