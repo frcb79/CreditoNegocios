@@ -29,6 +29,45 @@ describe("Issue #65: short public form and honest zero-match diagnostics",()=>{
       .toBe("Comercio MX SA");
     expect(()=>buildQuickProspectProfile({...basic,phone:"123"})).toThrow();
   });
+  it("preserves bureau, arrears, guarantees, guarantors and credit data for a physical person",()=>{
+    const profile=buildQuickProspectProfile({...basic,type:"fisica",financial:{
+      creditBureau:"bueno-592-693",hasArrears:"no",guarantee:"hipotecaria",
+      guaranteeValue:"2500000",propertyType:"casa",guarantor:"si",existingCredits:"no",
+    }});
+    expect(profile).toMatchObject({
+      buroPersonaFisica:"bueno-592-693",atrasosDeudasBuro:"no",
+      cuentaConGarantiaFisica:"hipotecaria",tieneAvalObligadoSolidarioFisica:"si",creditosVigentes:"no",
+      garantiaFisicaDetalles:{valor:"2500000",tipoInmueble:"casa"},
+    });
+    expect(profile).not.toHaveProperty("gastosFijosMensualesPromedio");
+    expect(profile).not.toHaveProperty("ingresoMensualPromedioNoComprobables");
+  });
+  it("preserves company matching fields and conditional credit evidence without requiring dossier items",()=>{
+    const profile=buildQuickProspectProfile({...basic,type:"persona_moral",businessName:"Empresa MX",financial:{
+      creditBureauCompany:"alto-310-400", creditBureauShareholder:"medio-524-591",
+      governmentSales:"0",terminalSales:"hasta-50000",satConnection:"no",financialStatements:"si",
+      complianceOpinion:"positiva",hasArrears:"no",guarantee:"sin-garantia",existingCredits:"si",
+      credits:[{tipo:"simple",institucion:"Ejemplo",saldoOriginal:"50000",saldo:"25000",
+        fechaInicio:"2025-01-01",fechaTermino:"2027-01-01"}],
+    }});
+    expect(profile).toMatchObject({buroEmpresa:"alto-310-400",
+      buroAccionistaPrincipal:"medio-524-591",participacionVentasGobierno:"0",
+      ventasTerminalBancaria:"hasta-50000",satCiec:"no",estadosFinancieros:"si",
+      creditosVigentes:"si"});
+    expect(profile.creditosVigentesDetalles).toHaveLength(1);
+    expect(profile).not.toHaveProperty("notes");
+    expect(()=>buildQuickProspectProfile({...basic,type:"persona_moral",businessName:"Empresa MX",
+      financial:{existingCredits:"si",credits:[]}})).toThrow(/crédito vigente/i);
+  });
+  it("uses Sin SAT's typed bureau and income fields without inventing documented revenue",()=>{
+    const profile=buildQuickProspectProfile({...basic,type:"sin_sat",financial:{
+      hasBureauHistory:"si",creditBureauShareholder:"medio-524-591",
+      guarantor:"no",existingCredits:"no",hasArrears:"no",guarantee:"sin-garantia",
+    }});
+    expect(profile).toMatchObject({buroPersonaFisicaSinSat:"si",
+      buroAccionistaPrincipal:"medio-524-591",tieneAvalObligadoSolidarioSinSat:"no",
+      ingresoMensualPromedioComprobablesSinSat:"120000"});
+  });
   it("shows real evaluated offers and reasons even with zero compatible institutions",()=>{
     const review=aggregateProspectAssessment({
       compatible:[],insufficientData:[],
