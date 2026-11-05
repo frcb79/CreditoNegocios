@@ -134,17 +134,17 @@ export default function CommercialResources() {
     let live=true;
     setGraphicPreview("");
     setGraphicError("");
-    if (!selection?.definition.graphic) return;
+    if (!selection?.definition.graphic || !identityReady) return;
     setGraphicLoading(true);
     renderCommercialGraphic(selection,{
-      displayName:graphicName || "Tu nombre comercial",whatsapp:graphicPhone || ""
+      displayName:graphicName,whatsapp:graphicPhone
     }).then(canvas=>{
       if(live)setGraphicPreview(canvas.toDataURL("image/png"));
     }).catch(err=>{
       if(live)setGraphicError(err.message||"No se pudo mostrar el arte.");
     }).finally(()=>{if(live)setGraphicLoading(false);});
     return ()=>{live=false;};
-  }, [selection?.id, selection?.definition.graphic, graphicName, graphicPhone]);
+  }, [selection?.id, selection?.definition.graphic, identityReady, graphicName, graphicPhone]);
 
   const copyCaption = async () => {
     if (!identityReady || !selection) {
@@ -351,7 +351,21 @@ export default function CommercialResources() {
                       {selection.definition.graphic ? (
                         graphicPreview
                           ? <img src={graphicPreview} alt={"Plantilla gráfica aprobada " + selection.name} className="max-h-[520px] w-full object-contain rounded-md" data-testid="resource-graphic-preview" />
-                          : <p className="text-xs text-muted-foreground">{graphicLoading ? "Preparando diseño personalizado…" : (graphicError || "Cargando vista previa del material aprobado…")}</p>
+                          : identityReady
+                            ? <p className="text-xs text-muted-foreground">
+                                {graphicLoading ? "Preparando diseño personalizado…" :
+                                  (graphicError || "Preparando vista previa…")}
+                              </p>
+                            : <div className="space-y-2">
+                                <img
+                                  src={"/api/commercial-resources/templates/"+encodeURIComponent(selection.id)+"/art"}
+                                  alt={"Vista del material autorizado "+selection.name}
+                                  className="max-h-[520px] w-full rounded-md object-contain"
+                                  data-testid="resource-graphic-preview-unpersonalized"/>
+                                <p className="text-center text-xs text-slate-600">
+                                  Vista del arte aprobado. Guarda tu nombre y WhatsApp en Mis datos para personalizarlo.
+                                </p>
+                              </div>
                       ) : <img src={preview} alt={"Plantilla aprobada " + selection.name}
                         className="max-h-[520px] w-full object-contain rounded-md" />}
                       {!selection.definition.graphic && selection.definition.allowedIdentityFields.institutionalLogo && (
