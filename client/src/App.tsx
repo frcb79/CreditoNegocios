@@ -1,4 +1,5 @@
 import PublicProspectCompletion from "@/pages/PublicProspectCompletion";
+import { isPublicProspectJourneyPath } from "@shared/publicProspectRouteGuard";
 import { Switch, Route, Redirect } from "wouter";
 import { queryClient } from "./lib/queryClient";
 import { QueryClientProvider } from "@tanstack/react-query";
@@ -123,9 +124,6 @@ function Router() {
 /** A public acquisition link is a guest-only experience.
  * It must never mount dashboard routes, auth redirects or account notifications,
  * even when a browser happens to have a logged-in platform session. */
-export function isPublicProspectJourneyPath(pathname:string):boolean {
-  return /^\/(?:c|completar-perfil)\/[A-Za-z0-9_-]{32}$/.test(pathname);
-}
 function GuestProspectRouter() {
   return <Switch>
     <Route path="/c/:token" component={PublicCampaignLanding}/>
