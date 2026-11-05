@@ -170,6 +170,16 @@ async function safeDeleteLocalFile(filePath: string) {
 }
 
 export async function persistDocumentFile(file: Express.Multer.File, context: UploadContext) {
+  if (stagingVolumeEnabled()) {
+    try {
+      return await migrateLocalDocumentToStorage({
+        sourcePath: file.path, fileName: file.originalname,
+        mimeType: file.mimetype, context,
+      });
+    } finally {
+      await safeDeleteLocalFile(file.path);
+    }
+  }
   // Do not silently fall back to ephemeral local uploads in Staging.
   await assertDocumentStorageEnvironmentIsolatedAndAuthorized();
   if (!supabaseAdmin) {
