@@ -5,6 +5,8 @@ import {
   CLAIM_INVITATION_RECOVERY_SQL, RECOVERY_MARKER,
 } from "../../server/oneTimePendingInvitationRecovery";
 
+import { isHistoricalWelcomeRemainderEnabled } from "../../server/oneTimeHistoricalWelcomeRemainder";
+
 const source = (path:string) => readFileSync(resolve(process.cwd(),path),"utf8");
 
 describe("One-time broker invitation resend: pending recipients only",()=>{
@@ -24,6 +26,18 @@ describe("One-time broker invitation resend: pending recipients only",()=>{
       {FRONTEND_BASE_URL:"http://localhost:3000"},
       {NODE_ENV:"test"},
     ]) expect(isPendingInvitationRecoveryEnabled({...ok,...override})).toBe(false);
+  });
+  it("backfills only registered accounts not already covered by a welcome event",()=>{
+    const enabled={RAILWAY_ENVIRONMENT_NAME:"production",
+      WELCOME_REMAINDER_20261105_ENABLED:"enabled",RESEND_API_KEY:"test",NODE_ENV:"production"};
+    expect(isHistoricalWelcomeRemainderEnabled(enabled)).toBe(true);
+    expect(isHistoricalWelcomeRemainderEnabled({...enabled,RAILWAY_ENVIRONMENT_NAME:"staging"})).toBe(false);
+    expect(isHistoricalWelcomeRemainderEnabled({...enabled,WELCOME_REMAINDER_20261105_ENABLED:"disabled"})).toBe(false);
+    const src=source("server/oneTimeHistoricalWelcomeRemainder.ts");
+    expect(src).toContain("u.password IS NOT NULL");
+    expect(src).toContain("NOT EXISTS (");
+    expect(src).toContain("ON CONFLICT(user_id) DO NOTHING RETURNING user_id");
+    expect(src).toContain("dispatchCommercialActivationWelcome(user.id)");
   });
   it("queries only the originally invited, unactivated, active broker/master cohort",()=>{
     expect(PENDING_INVITATION_RECOVERY_SQL).toContain("u.password IS NULL");
