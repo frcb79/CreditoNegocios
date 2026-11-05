@@ -48,10 +48,10 @@ export function summarizePublicCriteria(result: {
   // Only fully compatible offers contribute fulfilled criteria; incomplete
   // offers can suggest general topics to validate, not confirmed rejections.
   const safeLabels=(rows:PublicCriterionInput[], bucket:"matched"|"missing")=>
-    [...new Set(rows.flatMap(row => row.criteria?.[bucket] || [])
+    Array.from(new Set(rows.flatMap(row => row.criteria?.[bucket] || [])
       .filter(item => bucket==="matched" ? item.status==="PASSED" : item.status==="MISSING_DATA")
       .map(item => PUBLIC_CRITERION_LABELS[item.code])
-      .filter((label):label is string => Boolean(label)))];
+      .filter((label):label is string => Boolean(label))));
   const matched=safeLabels(result.compatible,"matched").slice(0,5);
   const toReview=safeLabels(result.insufficientData,"missing")
     .filter(label=>!matched.includes(label)).slice(0,4);
