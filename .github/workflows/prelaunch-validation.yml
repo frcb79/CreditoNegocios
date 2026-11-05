@@ -32,6 +32,7 @@ on:
       - 'feat/issue65-prospect-short-form-diagnostics-*'
       - 'fix/issue65-profile-match-followup-*'
       - 'feat/issue65-approved-prospect-journey-*'
+      - 'feat/issue65-commercial-ui-and-diagnostics-*'
   workflow_dispatch:
 concurrency:
   group: prelaunch-${{ github.ref }}
