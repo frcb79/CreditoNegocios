@@ -12,6 +12,8 @@ export type PublicProspectAssessment = {
   institutionCount?: number;
   /** Unique lenders with at least a preliminary match (including pending checks). */
   identifiedInstitutionCount?: number;
+  /** Unique institutions whose published offers were checked (not all compatible). */
+  evaluatedInstitutionCount?: number;
   reviewedOffers?: number;
   message: string;
   /** Only broad public categories, never lender eligibility rules or thresholds. */
@@ -113,27 +115,34 @@ export function aggregateProspectAssessment(result: {
   // never count as identified options; don't invent a minimum of two.
   const identified = new Set([...result.compatible,...result.insufficientData]
     .map(row=>row.institutionId).filter(x=>x && x!=="unknown"));
+  const evaluated = new Set([...result.compatible,...result.insufficientData,...result.notCompatible]
+    .map(row=>row && typeof row==="object" && "institutionId" in row ?
+      String((row as {institutionId:unknown}).institutionId):"")
+    .filter(x=>x && x!=="unknown"));
   const reviewedOffers=Math.max(0,result.summary?.totalEvaluated ??
     (result.compatible.length+result.insufficientData.length+result.notCompatible.length));
   const criteria=summarizePublicCriteria(result);
   if (institutions.size) return {
     status: "possible_options", institutionCount: institutions.size,
-    identifiedInstitutionCount:identified.size, reviewedOffers, criteria,
+    identifiedInstitutionCount:identified.size, evaluatedInstitutionCount:evaluated.size,
+    reviewedOffers, criteria,
     message: "Con los datos proporcionados identificamos " + institutions.size +
       " instituciones financieras con alternativas preliminares. Tu asesor confirmará los requisitos antes de avanzar. No es una aprobación ni una oferta de crédito.",
   };
   if (result.insufficientData.length) return {
     status: "missing_information", reviewedOffers, criteria,
-    identifiedInstitutionCount:identified.size,
+    identifiedInstitutionCount:identified.size, evaluatedInstitutionCount:evaluated.size,
     message: "Revisamos " + reviewedOffers +
       " productos del catálogo. Identificamos coincidencias preliminares que necesitan confirmar requisitos. Tu asesor continuará contigo.",
   };
   if (!reviewedOffers) return {
     status: "under_review", reviewedOffers:0, criteria,
+    evaluatedInstitutionCount:evaluated.size,
     message: "Todavía no hay ofertas publicadas comparables para el tipo de financiamiento seleccionado. Registramos tu solicitud y tu asesor revisará otras alternativas.",
   };
   return {
     status: "under_review", reviewedOffers, criteria,
+    evaluatedInstitutionCount:evaluated.size,
     message: "Revisamos " + reviewedOffers +
       " productos del catálogo. Algunas condiciones requieren análisis adicional. Tu solicitud quedó registrada y tu asesor continuará buscando alternativas.",
   };
