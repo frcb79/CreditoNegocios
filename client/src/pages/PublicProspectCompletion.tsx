@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { PREQUALIFICATION_MIN_DURATION_MS } from "@/lib/prospectProgressTiming";
 import { useQuery } from "@tanstack/react-query";
 import { useParams } from "wouter";
 import PublicProspectQuickForm from "@/components/Clients/PublicProspectQuickForm";
@@ -201,10 +202,10 @@ export function ProspectCompletionForm({ token, initialProfile, initialFinancing
           if(!response.ok) throw new Error(result.message || "No se pudo enviar la información");
           setAssessment(result.assessment || null);
           setProcessingPhase("ready");
-          // A real request has completed; respect five seconds of visible
+          // A real request has completed; respect at least eight seconds of visible
           // progress without pretending to perform extra server-side work.
           await new Promise<void>(resolve=>setTimeout(resolve,
-            Math.max(0,5000-(Date.now()-startedAt))));
+            Math.max(0,PREQUALIFICATION_MIN_DURATION_MS-(Date.now()-startedAt))));
           setReadyDialogOpen(true);
         } catch(error) {
           setSubmittedProfile(null);
