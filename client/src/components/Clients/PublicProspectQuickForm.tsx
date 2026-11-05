@@ -56,7 +56,16 @@ export default function PublicProspectQuickForm({ initialProfile, onPublicSubmit
     initial("ingresoMensualPromedioComprobables") || initial("ingresoMensualPromedioComprobablesSinSat"));
   const [yearsInBusiness,setYearsInBusiness] = useState(initialProfile?.yearsInBusiness != null ?
     String(initialProfile.yearsInBusiness) : "");
-  const [financial,setFinancial] = useState<QuickFinancialInput>({});
+  const [financial,setFinancial] = useState<QuickFinancialInput>(()=>({
+    hasArrears: initial("atrasosDeudas") || initial("atrasosDeudasBuro") ||
+      initial("atrasosDeudasBuroSinSat"),
+    creditBureau: initial("buroPersonaFisica"),
+    creditBureauCompany: initial("buroEmpresa"),
+    creditBureauShareholder: initial("buroAccionistaPrincipal"),
+    guarantor: initial("avalObligadoSolidario") || initial("tieneAvalObligadoSolidarioFisica") ||
+      initial("tieneAvalObligadoSolidarioSinSat"),
+    existingCredits: initial("creditosVigentes"),
+  }));
   const [error,setError] = useState("");
   const [loading,setLoading] = useState(false);
   const business = type !== "fisica";
