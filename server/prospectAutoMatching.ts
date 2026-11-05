@@ -11,28 +11,71 @@ export type PublicProspectAssessment = {
   status: "possible_options" | "missing_information" | "under_review" | "pending";
   institutionCount?: number;
   message: string;
+  /** Public labels are a strict whitelist, never lender criteria or thresholds. */
+  criteria?: { matched: string[]; toReview: string[] };
 };
 const pending: PublicProspectAssessment = {
   status: "pending",
   message: "Recibimos tus datos. Tu asesor revisará las alternativas y la información pendiente.",
 };
+
+/** Only these generic categories can be disclosed to public visitors. */
+const PUBLIC_CRITERION_LABELS: Record<string,string> = {
+  targetProfiles: "Tipo de cliente",
+  creditAmount: "Monto solicitado",
+  creditTerm: "Plazo deseado",
+  companyAge: "Antigüedad del negocio",
+  monthlyRevenue: "Ingresos del negocio",
+  bureauRequirement: "Historial crediticio",
+  guaranteeType: "Garantías",
+  avalesType: "Avales",
+  tipo_activo_arrendado: "Tipo de activo",
+  leaseFinancialPolicies: "Información de arrendamiento",
+  leaseProductFamily: "Tipo de financiamiento",
+  eligibilityVerification: "Validación de requisitos",
+};
+type PublicCriterionInput = {
+  institutionId: string;
+  criteria?: {
+    matched?: { code:string;status?:string }[];
+    missing?: { code:string;status?:string }[];
+  };
+};
+export function summarizePublicCriteria(result: {
+  compatible: PublicCriterionInput[];
+  insufficientData: PublicCriterionInput[];
+}): {matched:string[];toReview:string[]} {
+  // Only fully compatible offers contribute fulfilled criteria; incomplete
+  // offers can suggest general topics to validate, not confirmed rejections.
+  const safeLabels=(rows:PublicCriterionInput[], bucket:"matched"|"missing")=>
+    [...new Set(rows.flatMap(row => row.criteria?.[bucket] || [])
+      .filter(item => bucket==="matched" ? item.status==="PASSED" : item.status==="MISSING_DATA")
+      .map(item => PUBLIC_CRITERION_LABELS[item.code])
+      .filter((label):label is string => Boolean(label)))];
+  const matched=safeLabels(result.compatible,"matched").slice(0,5);
+  const toReview=safeLabels(result.insufficientData,"missing")
+    .filter(label=>!matched.includes(label)).slice(0,4);
+  return {matched,toReview};
+}
+
 export function aggregateProspectAssessment(result: {
-  compatible: {institutionId:string}[];
-  insufficientData: {institutionId:string}[];
+  compatible: PublicCriterionInput[];
+  insufficientData: PublicCriterionInput[];
   notCompatible: unknown[];
 }): PublicProspectAssessment {
   const institutions = new Set(result.compatible.map(row => row.institutionId).filter(x => x && x !== "unknown"));
+  const criteria = summarizePublicCriteria(result);
   if (institutions.size) return {
-    status: "possible_options", institutionCount: institutions.size,
+    status: "possible_options", institutionCount: institutions.size, criteria,
     message: "Con la información que compartiste, identificamos " + institutions.size +
       " instituciones financieras con productos que podrían adaptarse a lo que buscas. Tu asesor revisará contigo los siguientes pasos. Esta evaluación es preliminar y no constituye una aprobación ni una oferta de crédito.",
   };
   if (result.insufficientData.length) return {
-    status: "missing_information",
+    status: "missing_information", criteria,
     message: "Para identificar opciones con mayor precisión necesitamos verificar algunos datos. Tu asesor te ayudará.",
   };
   return {
-    status: "under_review",
+    status: "under_review", criteria,
     message: "Recibimos tu información. Tu asesor continuará revisando alternativas. Este resultado no representa un rechazo definitivo.",
   };
 }
