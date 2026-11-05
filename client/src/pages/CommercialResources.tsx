@@ -44,7 +44,7 @@ export default function CommercialResources() {
   const [displayName, setDisplayName] = useState("");
   const [whatsapp, setWhatsapp] = useState("");
   const [loadedUser, setLoadedUser] = useState("");
-  const [campaignLink, setCampaignLink] = useState<{ templateId: string; url: string } | null>(null);
+  const [campaignLink, setCampaignLink] = useState("");
   const [graphicPreview, setGraphicPreview] = useState("");
   const [graphicError, setGraphicError] = useState("");
   const [graphicLoading, setGraphicLoading] = useState(false);
@@ -151,12 +151,12 @@ export default function CommercialResources() {
       toast({ title: "Completa tu nombre y WhatsApp antes de usar la plantilla", variant: "destructive" });
       return;
     }
-    if (canSuggest && (!campaignLink || campaignLink.templateId !== selection.id)) {
+    if (canSuggest && !campaignLink) {
       toast({ title: "El enlace de esta campaña todavía no está disponible", description: "Obténlo desde Tus enlaces de captación antes de compartir el texto.", variant: "destructive" });
       return;
     }
     try {
-      await navigator.clipboard.writeText(caption + (campaignLink?.templateId === selection?.id ? "\n\nMás información: " + campaignLink.url : ""));
+      await navigator.clipboard.writeText(caption + (campaignLink ? "\n\nMás información: " + campaignLink : ""));
       toast({ title: "Texto copiado" });
     } catch {
       toast({ title: "No se pudo copiar", description: "Selecciona el texto y cópialo manualmente.", variant: "destructive" });
@@ -382,7 +382,7 @@ export default function CommercialResources() {
                   <div className="border-t pt-3 space-y-3">
                     <div className="flex justify-between items-center gap-2">
                       <p className="text-sm font-semibold">{selection.channel === "tiktok" ? "Guion vertical aprobado" : "Texto aprobado para publicar"}</p>
-                      <Button size="sm" variant="outline" onClick={copyCaption} disabled={!identityReady || (canSuggest && campaignLink?.templateId !== selection.id)} className="gap-1" data-testid="resource-copy-caption">
+                      <Button size="sm" variant="outline" onClick={copyCaption} disabled={!identityReady || (canSuggest && !campaignLink)} className="gap-1" data-testid="resource-copy-caption">
                         <Copy className="w-4 h-4" /> Copiar
                       </Button>
                     </div>
@@ -394,9 +394,9 @@ export default function CommercialResources() {
             </section>
           </div>
           </>)}
-          {canSuggest && activeTab==="enlace" && <CampaignLinkPanel
-            selectedTemplateId={selection?.id}
-            onCampaignLink={url => { if (selection) setCampaignLink({ templateId: selection.id, url }); }} />}
+          {canSuggest && <div className={activeTab==="enlace"?"":"hidden"} aria-hidden={activeTab!=="enlace"}>
+            <CampaignLinkPanel onCampaignLink={setCampaignLink} />
+          </div>}
           {canSuggest && activeTab==="datos" && <section className="rounded-xl border bg-card p-5 space-y-5 max-w-2xl" role="tabpanel" data-testid="commercial-edit-identity">
             <div className="flex gap-3 items-start">
               <UserRound className="h-6 w-6 text-blue-800"/>
