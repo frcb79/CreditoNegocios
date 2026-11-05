@@ -56,8 +56,28 @@ describe("Issue #65: short public form and honest zero-match diagnostics",()=>{
       creditosVigentes:"si"});
     expect(profile.creditosVigentesDetalles).toHaveLength(1);
     expect(profile).not.toHaveProperty("notes");
-    expect(()=>buildQuickProspectProfile({...basic,type:"persona_moral",businessName:"Empresa MX",
-      financial:{existingCredits:"si",credits:[]}})).toThrow(/crédito vigente/i);
+    const lightweight=buildQuickProspectProfile({...basic,type:"persona_moral",businessName:"Empresa MX",
+      financial:{existingCredits:"si",credits:[]}});
+    expect(lightweight.creditosVigentes).toBe("si");
+    expect(lightweight).not.toHaveProperty("creditosVigentesDetalles");
+  });
+  it("asks only guarantee asset type and credit yes/no during public prequalification",()=>{
+    const profile=buildQuickProspectProfile({...basic,type:"fisica",financial:{
+      hasGuarantee:"si",guaranteeAsset:"inmueble",existingCredits:"si",
+    }});
+    expect(profile).toMatchObject({
+      cuentaConGarantiaFisica:"hipotecaria",
+      garantiaFisicaDetalles:{tipo:"inmueble"},creditosVigentes:"si",
+    });
+    for(const field of ["creditosVigentesDetalles","gastosFijosMensualesPromedio"])
+      expect(profile).not.toHaveProperty(field);
+    expect(profile.garantiaFisicaDetalles).not.toHaveProperty("valor");
+    expect(profile.garantiaFisicaDetalles).not.toHaveProperty("ano");
+    expect(profile.garantiaFisicaDetalles).not.toHaveProperty("ubicacion");
+    expect(()=>buildQuickProspectProfile({...basic,financial:{hasGuarantee:"si"}}))
+      .toThrow(/tipo de bien/i);
+    expect(buildQuickProspectProfile({...basic,financial:{hasGuarantee:"no"}}))
+      .toMatchObject({garantia:"sin-garantia"});
   });
   it("uses Sin SAT's typed bureau and income fields without inventing documented revenue",()=>{
     const profile=buildQuickProspectProfile({...basic,type:"sin_sat",financial:{

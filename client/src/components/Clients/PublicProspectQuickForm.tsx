@@ -4,8 +4,8 @@ import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Loader2, ShieldCheck, Landmark, Plus, Trash2 } from "lucide-react";
-import { buildQuickProspectProfile, type QuickProspectInput, type QuickFinancialInput, type ExistingCreditInput } from "@shared/prospectQuickProfile";
+import { Loader2, ShieldCheck, Landmark } from "lucide-react";
+import { buildQuickProspectProfile, type QuickProspectInput, type QuickFinancialInput } from "@shared/prospectQuickProfile";
 
 const YES_NO = [{value:"si",label:"Sí"},{value:"no",label:"No"}];
 const BUREAU = [
@@ -28,8 +28,12 @@ const GUARANTEES = [
   {value:"hipotecaria",label:"Hipotecaria / inmueble"},
   {value:"otros",label:"Otra"},
 ];
-const PROPERTY_TYPES = ["oficina","departamento","casa","bodega","terreno","otro"].map(x=>({value:x,label:x.charAt(0).toUpperCase()+x.slice(1)}));
-const EMPTY_CREDIT: ExistingCreditInput = {tipo:"",institucion:"",saldoOriginal:"",saldo:"",fechaInicio:"",fechaTermino:""};
+const GUARANTEE_ASSETS = [
+  {value:"vehiculos",label:"Vehículos"},
+  {value:"maquinaria",label:"Maquinaria / equipo"},
+  {value:"inmueble",label:"Inmueble"},
+  {value:"otros",label:"Otro bien"},
+];
 
 export default function PublicProspectQuickForm({ initialProfile, onPublicSubmit }: {
   initialProfile?: Record<string, unknown>;
@@ -49,7 +53,6 @@ export default function PublicProspectQuickForm({ initialProfile, onPublicSubmit
   const [yearsInBusiness,setYearsInBusiness] = useState(initialProfile?.yearsInBusiness != null ?
     String(initialProfile.yearsInBusiness) : "");
   const [financial,setFinancial] = useState<QuickFinancialInput>({});
-  const [credits,setCredits] = useState<ExistingCreditInput[]>([{...EMPTY_CREDIT}]);
   const [error,setError] = useState("");
   const [loading,setLoading] = useState(false);
   const business = type !== "fisica";
@@ -73,14 +76,6 @@ export default function PublicProspectQuickForm({ initialProfile, onPublicSubmit
         placeholder={placeholder} maxLength={300} data-testid={"public-profile-"+key} />
     </label>;
   }
-  function creditField(index:number,field:keyof ExistingCreditInput,label:string,inputType="text") {
-    return <label className="space-y-1.5 block">
-      <Label>{label}</Label>
-      <Input type={inputType} value={credits[index][field]} onChange={e=>setCredits(rows=>rows.map((row,i)=>
-        i===index ? {...row,[field]:e.target.value} : row))} required maxLength={120}
-        data-testid={"public-credit-"+index+"-"+field} />
-    </label>;
-  }
   async function submit(event:FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setError("");
@@ -89,7 +84,7 @@ export default function PublicProspectQuickForm({ initialProfile, onPublicSubmit
       const profile = buildQuickProspectProfile({
         type,firstName,lastName,businessName,phone,email,monthlyIncome,
         yearsInBusiness:business?yearsInBusiness:"",
-        financial:{...financial,credits:financial.existingCredits==="si"?credits:undefined},
+        financial,
       });
       setLoading(true);
       await onPublicSubmit(profile);
@@ -100,7 +95,7 @@ export default function PublicProspectQuickForm({ initialProfile, onPublicSubmit
   return <Card className="border-blue-100 max-w-5xl mx-auto shadow-sm" data-testid="public-prospect-quick-form">
     <CardHeader className="border-b bg-slate-50/70 pb-4">
       <CardTitle className="text-xl">Completa tu información y perfil financiero</CardTitle>
-      <p className="text-sm text-slate-600">Con estos datos comparamos las alternativas publicadas. Puedes dejar pendientes los que no conozcas; tu asesor podrá completar el expediente posteriormente.</p>
+      <p className="text-sm text-slate-600">Necesitamos algunos datos para realizar tu evaluación preliminar. Puedes dejar pendientes los que no conozcas y completarlos después con tu asesor.</p>
     </CardHeader>
     <CardContent className="pt-5">
       <form onSubmit={event=>void submit(event)} className="space-y-7">
@@ -170,16 +165,8 @@ export default function PublicProspectQuickForm({ initialProfile, onPublicSubmit
             {company && pick("creditBureauShareholder","Buró del accionista principal",BUREAU)}
             {pick("hasArrears","¿Tienes atrasos, deudas vencidas o quitas en Buró?",YES_NO)}
             {financial.hasArrears==="si" && typed("arrearsDetails","Describe brevemente los atrasos","Ej. Crédito con atraso, fecha aproximada")}
-            {pick("guarantee","¿Cuentas con garantía para respaldar el crédito?",GUARANTEES.filter(o=>o.value!=="otros"||company||pfae))}
-            {financial.guarantee && financial.guarantee!=="sin-garantia" && <>
-              {financial.guarantee==="prendaria" && pick("guaranteeAsset","Tipo de bien en garantía",
-                ["vehiculos","maquinaria","otros"].map(x=>({value:x,label:x==="vehiculos"?"Vehículos":x==="maquinaria"?"Maquinaria":"Otro"})))}
-              {financial.guarantee==="hipotecaria" && pick("propertyType","Tipo de inmueble",PROPERTY_TYPES)}
-              {typed("guaranteeValue","Valor aproximado de la garantía (MXN)","Ej. 2500000")}
-              {typed("guaranteeYear","Año del bien (si aplica)","Ej. 2020")}
-              {typed("guaranteeLocation","Ubicación general de la garantía","Estado o municipio, sin domicilio completo")}
-              {typed("guaranteeLegalStatus","Situación legal de la garantía","Ej. Libre de gravamen")}
-            </>}
+            {pick("hasGuarantee","¿Cuentas con garantía para respaldar el crédito?",YES_NO)}
+            {financial.hasGuarantee==="si" && pick("guaranteeAsset","Tipo de bien en garantía",GUARANTEE_ASSETS)}
             {pick("guarantor","¿Cuentas con aval u obligado solidario?",YES_NO)}
             {(company||pfae) && <>
               {pick("governmentSales","Participación de ventas con gobierno",[
@@ -201,30 +188,10 @@ export default function PublicProspectQuickForm({ initialProfile, onPublicSubmit
             </>}
             {pick("existingCredits","¿Tienes créditos vigentes?",YES_NO)}
           </div>
-          {financial.existingCredits==="si" && <div className="space-y-4 rounded-lg border bg-white p-4" data-testid="public-existing-credits">
-            <div><h4 className="font-semibold">Créditos vigentes</h4>
-              <p className="text-xs text-slate-600">Completa los datos que permitan evaluar tu nivel de endeudamiento.</p></div>
-            {credits.map((credit,index)=><div key={index} className="rounded-lg border bg-slate-50 p-4 space-y-3">
-              <div className="flex items-center justify-between"><strong className="text-sm">Crédito {index+1}</strong>
-                {credits.length>1 && <Button type="button" variant="ghost" size="sm" aria-label={"Eliminar crédito "+(index+1)}
-                  onClick={()=>setCredits(rows=>rows.filter((_,i)=>i!==index))}><Trash2 className="h-4 w-4" /></Button>}
-              </div>
-              <div className="grid gap-3 sm:grid-cols-2">
-                {creditField(index,"tipo","Tipo de crédito")}
-                {creditField(index,"institucion","Institución financiera")}
-                {creditField(index,"saldoOriginal","Monto original (MXN)","number")}
-                {creditField(index,"saldo","Saldo actual (MXN)","number")}
-                {creditField(index,"fechaInicio","Fecha de inicio","date")}
-                {creditField(index,"fechaTermino","Fecha de vencimiento","date")}
-              </div>
-            </div>)}
-            {credits.length<5 && <Button type="button" variant="outline" size="sm"
-              onClick={()=>setCredits(rows=>[...rows,{...EMPTY_CREDIT}])}><Plus className="h-4 w-4 mr-2" /> Agregar otro crédito</Button>}
-          </div>}
         </section>
         <div className="flex items-start gap-2 rounded-lg border border-blue-100 bg-blue-50/50 px-3 py-3 text-xs text-slate-700">
           <ShieldCheck className="h-4 w-4 shrink-0 text-blue-800" />
-          No necesitas proporcionar CURP, domicilio, estado civil ni documentos. Tu asesor podrá solicitar después los datos de expediente.
+          En esta etapa no es necesario compartir más información ni documentación. Si tu evaluación preliminar avanza favorablemente, tu asesor podrá solicitar información adicional más adelante.
         </div>
         {error && <p role="alert" className="text-sm text-red-700" data-testid="public-profile-error">{error}</p>}
         <Button className="w-full sm:w-auto bg-blue-800 hover:bg-blue-900 text-white" type="submit"

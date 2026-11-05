@@ -14,6 +14,7 @@ export type QuickFinancialInput = {
   hasArrears?: string;
   arrearsDetails?: string;
   guarantee?: string;
+  hasGuarantee?: "si" | "no";
   guaranteeAsset?: string;
   guaranteeValue?: string;
   guaranteeYear?: string;
@@ -117,8 +118,13 @@ export function buildQuickProspectProfile(input: QuickProspectInput) {
 
   const guaranteeKey = pf ? "cuentaConGarantiaFisica" : noSat ? "cuentaConGarantiaSinSat" : "garantia";
   const guaranteeDetailsKey = pf ? "garantiaFisicaDetalles" : noSat ? "garantiaSinSatDetalles" : "garantiaDetalles";
-  appendIfValue(data, guaranteeKey, optional(f.guarantee));
-  if (f.guarantee && f.guarantee !== "sin-garantia") {
+  if (f.hasGuarantee === "si" && !f.guaranteeAsset)
+    throw new Error("Selecciona el tipo de bien que ofrecerías como garantía.");
+  const declaredGuarantee = f.hasGuarantee === "no" ? "sin-garantia" :
+    f.hasGuarantee === "si" ? (f.guaranteeAsset === "inmueble" ? "hipotecaria" :
+      f.guaranteeAsset === "otros" && !pf && !noSat ? "otros" : "prendaria") : f.guarantee;
+  appendIfValue(data, guaranteeKey, optional(declaredGuarantee));
+  if (declaredGuarantee && declaredGuarantee !== "sin-garantia") {
     const details: Record<string, unknown> = {};
     appendIfValue(details, "tipo", optional(f.guaranteeAsset));
     appendIfValue(details, pf || noSat ? "valor" : "monto", numeric(f.guaranteeValue));
@@ -134,11 +140,13 @@ export function buildQuickProspectProfile(input: QuickProspectInput) {
     noSat ? "tieneAvalObligadoSolidarioSinSat" : "avalObligadoSolidario", optional(f.guarantor));
 
   appendIfValue(data, "creditosVigentes", optional(f.existingCredits));
-  if (f.existingCredits === "si") {
-    if (!f.credits?.length || f.credits.length > 5 ||
+  // A yes/no answer is sufficient for an initial match. The full balances
+  // and documents belong to a later stage, never a required public subform.
+  if (f.existingCredits === "si" && f.credits?.length) {
+    if (f.credits.length > 5 ||
       f.credits.some(c => !c.tipo?.trim() || !c.institucion?.trim() ||
         !numeric(c.saldoOriginal) || !numeric(c.saldo) || !c.fechaInicio || !c.fechaTermino))
-      throw new Error("Completa los datos de cada crédito vigente (máximo cinco).");
+      throw new Error("Revisa los datos opcionales de los créditos vigentes.");
     data.creditosVigentesDetalles = f.credits.map(c => ({
       tipo: c.tipo.trim(), institucion: c.institucion.trim(),
       saldoOriginal: numeric(c.saldoOriginal), saldo: numeric(c.saldo),
