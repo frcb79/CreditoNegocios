@@ -6,7 +6,7 @@ import {
 
 export type PublicDisplayAssessment = {
   status:"possible_options"|"missing_information"|"under_review"|"pending";
-  institutionCount?:number; reviewedOffers?:number; message:string;
+  institutionCount?:number; identifiedInstitutionCount?:number; reviewedOffers?:number; message:string;
   criteria?:{matched:string[];toReview:string[];notMatched:string[]};
 };
 export default function ProspectEvaluationResult({
@@ -20,14 +20,15 @@ export default function ProspectEvaluationResult({
   const reviewedOffers=Math.max(0,assessment?.reviewedOffers||0);
   const hasEvaluated=Boolean(assessment && assessment.status!=="pending" && reviewedOffers>0);
   const hasOptions=assessment?.status==="possible_options" && Number(assessment.institutionCount)>0;
-  const institutionCount=hasOptions ? assessment!.institutionCount! : 0;
+  const prelimCount=Math.max(0,assessment?.identifiedInstitutionCount || assessment?.institutionCount || 0);
+  const hasPrelimMatches=prelimCount>0;
   const rows=buildPublicProspectSummary(profile,financing);
   const docs=getPublicDocumentGroups(profile.type);
   const matched=assessment?.criteria?.matched||[];
   const pending=assessment?.criteria?.toReview||[];
   const failed=assessment?.criteria?.notMatched||[];
   const criteria=[
-    {title:"Criterios cumplidos",subtitle:"Coincidencias del análisis. No implican una aprobación.",
+    {title:"Criterios cumplidos",subtitle:"Coincidencias del análisis; no equivalen a una aprobación.",
       labels:matched,bg:"border-emerald-200 bg-emerald-50/60",color:"text-emerald-800",icon:CheckCircle2,
       empty:"No se identificaron coincidencias confirmadas."},
     {title:"Para confirmar",subtitle:"Información que podría afinar la evaluación con tu asesor.",
@@ -66,15 +67,20 @@ export default function ProspectEvaluationResult({
         <div className="grid gap-3 lg:grid-cols-3">
           {criteria.map(card=><div key={card.title} className={"rounded-xl border p-4 sm:p-5 "+card.bg}>
             <div className={"flex items-center gap-2 font-semibold "+card.color}>
-              <card.icon className="h-5 w-5 shrink-0"/>{card.title}
+              <card.icon className="h-5 w-5 shrink-0"/><span className="flex-1">{card.title}</span>
+              <span className="inline-flex min-w-8 items-center justify-center rounded-full bg-white px-2 py-1 text-xs font-extrabold"
+                data-testid={"criteria-total-"+card.title.toLowerCase().replace(/\W+/g,"-")}>{card.labels.length}</span>
             </div>
             <p className="mt-2 text-xs leading-relaxed text-slate-600">{card.subtitle}</p>
             <div className="mt-4 space-y-2">
-              {hasEvaluated && card.labels.length ? card.labels.map(label=>
+              {hasEvaluated && card.labels.length ? card.labels.slice(0,4).map(label=>
                 <div key={label} className="flex items-start gap-2 text-sm text-slate-800">
                   <CheckCircle2 className={"mt-0.5 h-4 w-4 shrink-0 "+card.color}/><span>{label}</span>
                 </div>) : <p className="text-sm text-slate-600">
                   {hasEvaluated?card.empty:"Tu asesor revisará los datos capturados."}</p>}
+              {card.labels.length>4 && <p className="pt-1 text-xs text-slate-600">
+                +{card.labels.length-4} criterios adicionales revisados
+              </p>}
             </div>
           </div>)}
         </div>
@@ -89,9 +95,7 @@ export default function ProspectEvaluationResult({
             </span>
             <h2 className="mt-3 text-2xl font-extrabold leading-tight text-slate-950"
               data-testid="matching-result-headline">
-              {hasOptions?"Encontramos alternativas para continuar":
-               hasEvaluated?"Tenemos un diagnóstico para continuar":
-               "Tu asesor continuará revisando alternativas"}
+              Tenemos un diagnóstico para continuar
             </h2>
             <p className="mt-3 text-sm leading-relaxed text-slate-700">
               {assessment?.message||"Recibimos tu solicitud. El asesor continuará con la evaluación."}
@@ -102,10 +106,10 @@ export default function ProspectEvaluationResult({
               <div className="rounded-xl bg-blue-800 p-5 text-white">
                 <Landmark className="h-6 w-6 text-blue-100"/>
                 <p className="mt-2 text-4xl font-extrabold tabular-nums"
-                  data-testid="verified-institution-count">{hasEvaluated?institutionCount:"—"}</p>
+                  data-testid="verified-institution-count">{hasPrelimMatches?prelimCount:"En revisión"}</p>
                 <p className="mt-1 text-sm font-semibold">
-                  {hasOptions?"Financieras potencialmente compatibles":
-                    "Financieras con coincidencia completa identificadas"}
+                  {hasPrelimMatches?"Financieras identificadas con match preliminar a tu perfil":
+                    "Alternativas que revisará tu asesor"}
                 </p>
               </div>
               <div className="rounded-xl border border-blue-200 bg-white p-5 text-blue-950">
@@ -116,9 +120,9 @@ export default function ProspectEvaluationResult({
               </div>
             </div>
             <p className="text-xs leading-relaxed text-slate-600">
-              {hasEvaluated && !hasOptions ?
-                "Por ahora no hay coincidencias completas. Esto no equivale a una negativa de financiamiento." :
-                "Los resultados son preliminares y no constituyen aprobación ni oferta de crédito."}
+              {hasPrelimMatches ?
+                "Son alternativas preliminares sujetas a confirmación de requisitos por el asesor y la institución financiera." :
+                "Tu asesor revisará opciones adicionales y requisitos pendientes. El diagnóstico no es una negativa ni una aprobación."}
             </p>
           </div>
         </div>
@@ -143,17 +147,20 @@ export default function ProspectEvaluationResult({
       <section className="space-y-3" data-testid="prospect-process-times">
         <h2 className="text-xl font-bold text-slate-950">Tiempos estimados del proceso</h2>
         <p className="text-sm text-slate-600">
-          Los tiempos varían según la financiera y las características del caso.
-          Tu asesor te confirmará los plazos aplicables.
+          Rangos operativos orientativos de seguimiento. La respuesta final y entrega del crédito dependen de cada institución.
         </p>
         <div className="grid gap-3 sm:grid-cols-3">
           {PUBLIC_PROCESS_TIMES.map((item,index)=><div key={item.title}
-            className="flex gap-3 rounded-xl border border-slate-200 p-4">
-            {index===0?<CalendarClock className="h-6 w-6 shrink-0 text-blue-800"/>:
-              index===1?<FileText className="h-6 w-6 shrink-0 text-blue-800"/>:
-              <Landmark className="h-6 w-6 shrink-0 text-blue-800"/>}
-            <div><p className="text-xs font-bold text-blue-800">{item.value}</p>
-              <p className="mt-1 text-sm text-slate-800">{item.title}</p></div>
+            className="flex min-h-28 flex-col gap-3 rounded-xl border border-blue-100 bg-gradient-to-br from-white to-blue-50/60 p-4 shadow-sm sm:flex-row sm:items-start">
+            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-100 text-blue-900">
+              {index===0?<CalendarClock className="h-5 w-5"/>:
+                index===1?<FileText className="h-5 w-5"/>:<Landmark className="h-5 w-5"/>}
+            </span>
+            <div className="space-y-2">
+              <span className="inline-flex rounded-full bg-blue-100 px-3 py-1 text-sm font-extrabold text-blue-900">
+                {item.value}</span>
+              <p className="text-sm leading-relaxed text-slate-800">{item.title}</p>
+            </div>
           </div>)}
         </div>
       </section>
@@ -163,15 +170,15 @@ export default function ProspectEvaluationResult({
         <p className="text-sm text-slate-600">Puedes ir reuniéndolos para agilizar tu trámite.
           No es obligatorio entregarlos en esta etapa; tu asesor te confirmará cuáles aplican.</p>
         {docs.map(group=><div key={group.heading}
-          className="rounded-2xl border border-blue-100 bg-blue-50/40 p-4 sm:p-5">
-          <div className="mb-4 flex gap-3 items-start">
+          className="grid gap-4 rounded-2xl border border-blue-100 bg-blue-50/40 p-4 sm:p-5 lg:grid-cols-[200px_1fr]">
+          <div className="flex gap-3 items-start">
             <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-100 text-blue-900">
               <FileText className="h-5 w-5"/></span>
             <div><h3 className="font-bold text-blue-950">{group.heading}</h3>
               <p className="text-xs text-slate-600">{group.description}</p></div>
           </div>
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            {group.items.map(item=><div key={item.title} className="rounded-xl border border-slate-200 bg-white p-3">
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+            {group.items.map(item=><div key={item.title} className="rounded-xl border border-blue-100 bg-white p-3 shadow-sm">
               <FileText className="mb-2 h-5 w-5 text-blue-700"/>
               <p className="text-sm font-semibold text-slate-950">{item.title}</p>
               {item.detail && <p className="mt-1 text-xs leading-relaxed text-slate-600">{item.detail}</p>}
