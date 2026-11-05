@@ -149,14 +149,48 @@ export function registerCommercialResourceRoutes(app: Express) {
       if(result.rowCount!==1)return forbid(res);
       const record=result.rows[0], profile=record.profile_data||{};
       const full=[record.first_name,record.last_name].filter(Boolean).join(" ");
-      const displayName=user.role==="master_broker"
-        ? (record.brand_name||profile.business?.businessName||full)
-        : (full||profile.business?.businessName||"");
-      const whatsapp=String(profile.business?.businessPhone||profile.phone||"");
-      return res.json({ displayName, whatsapp });
+      // Source of truth: Settings > Negocio. If incomplete, reuse the
+      // account's registered name and telephone instead of blocking preview.
+      const displayName=String(profile.business?.businessName||record.brand_name||full||"").trim();
+      const whatsapp=String(profile.business?.businessPhone||profile.phone||"").trim();
+      return res.json({displayName,whatsapp});
     }catch(error){
       console.error("[COM_RES] Commercial identity read failed",error);
       return res.status(503).json({message:"Identidad comercial no disponible"});
+    }
+  });
+
+  // Editing commercial identity updates the very same fields as
+  // Settings > Negocio; no separate disconnected WhatsApp or name is stored.
+  app.patch("/api/commercial-resources/my-approved-identity",isAuthenticated,async(req:any,res)=>{
+    const user=await identify(req);
+    if(!user || !SUGGEST_ROLES.has(user.role))return forbid(res);
+    const parsed=z.object({
+      displayName:z.string().trim().min(2).max(100),
+      whatsapp:z.string().trim().min(10).max(25),
+    }).strict().safeParse(req.body);
+    if(!parsed.success)return res.status(400).json({message:"Revisa el nombre y el teléfono comercial."});
+    const digits=parsed.data.whatsapp.replace(/\D/g,"");
+    const normalized=digits.length===10?"52"+digits:digits;
+    if(!/^\d{11,15}$/.test(normalized))
+      return res.status(400).json({message:"Captura un teléfono o WhatsApp válido."});
+    try {
+      const result=await pool.query(`
+        UPDATE public.users
+        SET profile_data=jsonb_set(
+          COALESCE(profile_data,'{}'::jsonb),'{business}',
+          COALESCE(profile_data->'business','{}'::jsonb) ||
+          jsonb_build_object('businessName',$2::text,'businessPhone',$3::text),true),
+          updated_at=NOW()
+        WHERE id=$1 AND status='active' AND is_active IS DISTINCT FROM FALSE
+          AND role IN ('broker','master_broker')
+        RETURNING id
+      `,[user.id,parsed.data.displayName,parsed.data.whatsapp]);
+      if(!result.rowCount)return forbid(res);
+      return res.json({displayName:parsed.data.displayName,whatsapp:parsed.data.whatsapp});
+    } catch(err) {
+      console.error("[COM_RES] Failed updating own commercial identity");
+      return res.status(503).json({message:"No fue posible guardar tu información comercial."});
     }
   });
 
