@@ -32,12 +32,12 @@ const PUBLIC_CRITERION_LABELS: Record<string,string> = {
   requiresFinancialStatements: "Estados financieros",
   satOpinion: "Cumplimiento fiscal",
   governmentSalesLimit: "Ventas con gobierno",
-  arrearsPolicy: "Antecedentes de atrasos",
+  arrearsPolicy: "Política de atrasos por validar con la financiera",
   creditAmount: "Monto solicitado",
   creditTerm: "Plazo deseado",
   companyAge: "Antigüedad del negocio",
   monthlyRevenue: "Ingresos del negocio",
-  bureauRequirement: "Historial crediticio",
+  bureauRequirement: "Comportamiento de pagos declarado",
   guaranteeType: "Garantías",
   avalesType: "Avales",
   tipo_activo_arrendado: "Tipo de activo",
@@ -48,9 +48,9 @@ const PUBLIC_CRITERION_LABELS: Record<string,string> = {
 type PublicCriterionInput = {
   institutionId: string;
   criteria?: {
-    matched?: { code:string;status?:string }[];
-    missing?: { code:string;status?:string }[];
-    failed?: { code:string;status?:string }[];
+    matched?: { code:string;status?:string; actualValue?:unknown }[];
+    missing?: { code:string;status?:string; actualValue?:unknown }[];
+    failed?: { code:string;status?:string; actualValue?:unknown }[];
   };
 };
 export function summarizePublicCriteria(result: {
@@ -65,7 +65,24 @@ export function summarizePublicCriteria(result: {
   const labels=(rows:PublicCriterionInput[],bucket:"matched"|"missing"|"failed",status:string)=>
     Array.from(new Set(rows.flatMap(row=>row.criteria?.[bucket]||[])
       .filter(item=>item.status===status)
-      .map(item=>PUBLIC_CRITERION_LABELS[item.code])
+      .map(item=>{
+        const base=PUBLIC_CRITERION_LABELS[item.code];
+        if(!base)return "";
+        const scoreCriteria=["personalBureau","businessBureau","shareholderBureau"];
+        if(bucket==="missing" && scoreCriteria.includes(item.code) &&
+          typeof item.actualValue==="string" &&
+          /^(alto|bueno|medio|bajo|malo)-\\d+-\\d+$/.test(item.actualValue))
+          return base+" (dentro de rango)";
+        if(bucket==="failed") {
+          const help:Record<string,string>={
+            creditAmount:" — algunas ofertas manejan montos diferentes al solicitado",
+            creditTerm:" — los plazos disponibles varían entre productos",
+            guaranteeType:" — algunas ofertas requieren otro tipo de respaldo",
+          };
+          return base+(help[item.code]||" — condiciones específicas del producto");
+        }
+        return base;
+      })
       .filter((label):label is string=>Boolean(label))));
   // First show evidence from viable offers, not failure reasons drawn
   // from unrelated products discarded by this same matching engine.
