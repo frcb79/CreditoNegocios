@@ -1,4 +1,4 @@
-import { randomUUID } from "crypto";
+import { randomUUID, createHash } from "crypto";
 import { promises as fs } from "fs";
 import path from "path";
 import { createClient } from "@supabase/supabase-js";
@@ -111,6 +111,17 @@ export async function assertDocumentStorageEnvironmentIsolatedAndAuthorized(
   }
 }
 
+const stagingVolumeEnabled = () => process.env.RAILWAY_ENVIRONMENT_NAME === "staging" &&
+  process.env.STAGING_DOCUMENT_VOLUME_ENABLED === "true";
+
+const requireStagingVolume = () => {
+  if (process.env.RAILWAY_ENVIRONMENT_ID !== "e3134695-aaec-41e2-8622-41e3701ed985" ||
+      process.env.RAILWAY_VOLUME_MOUNT_PATH !== "/data/cn-documents") {
+    throw new Error("STAGING_DOCUMENT_VOLUME_NOT_ISOLATED");
+  }
+  return "/data/cn-documents";
+};
+
 function sanitizeSegment(value: string) {
   return value.replace(/[^a-zA-Z0-9._-]/g, "-");
 }
@@ -159,6 +170,16 @@ async function safeDeleteLocalFile(filePath: string) {
 }
 
 export async function persistDocumentFile(file: Express.Multer.File, context: UploadContext) {
+  if (stagingVolumeEnabled()) {
+    try {
+      return await migrateLocalDocumentToStorage({
+        sourcePath: file.path, fileName: file.originalname,
+        mimeType: file.mimetype, context,
+      });
+    } finally {
+      await safeDeleteLocalFile(file.path);
+    }
+  }
   // Do not silently fall back to ephemeral local uploads in Staging.
   await assertDocumentStorageEnvironmentIsolatedAndAuthorized();
   if (!supabaseAdmin) {
@@ -188,6 +209,17 @@ export async function migrateLocalDocumentToStorage(params: {
   mimeType?: string | null;
   context: UploadContext;
 }) {
+  if (stagingVolumeEnabled()) {
+    const root = requireStagingVolume();
+    const storageKey = buildStoragePath({
+      originalname: params.fileName,
+    } as Express.Multer.File, params.context);
+    const destination = path.resolve(root, storageKey);
+    if (!destination.startsWith(root + path.sep)) throw new Error("INVALID_DOCUMENT_PATH");
+    await fs.mkdir(path.dirname(destination), { recursive: true });
+    await fs.copyFile(params.sourcePath, destination);
+    return { filePath: destination, storageProvider: "local" as const };
+  }
   await assertDocumentStorageEnvironmentIsolatedAndAuthorized();
   if (!supabaseAdmin) {
     throw new Error("Supabase Storage is not configured for this environment");
@@ -270,6 +302,50 @@ export async function getDocumentAccessTarget(
     kind: "local",
     absolutePath: path.isAbsolute(filePath) ? filePath : path.resolve(process.cwd(), filePath),
   };
+}
+
+export async function runStagingVolumePdfQA() {
+  if (!stagingVolumeEnabled() || process.env.STAGING_VOLUME_PDF_QA !== "true") return;
+  const key = "ab960719-12f9-47c0-8175-dc6f3fc3ed2b/d2449166-4086-41f8-89f2-28e7354773ed/other-6ec0173e-5eb7-484f-b4c3-c0856c8a8779.pdf";
+  if (!supabaseAdmin) throw new Error("STAGING_PDF_QA_SOURCE_UNAVAILABLE");
+  const source = await supabaseAdmin.storage.from("staging-documents").download(key);
+  if (source.error || !source.data) throw new Error("STAGING_PDF_QA_DOWNLOAD_FAILED");
+  const original = Buffer.from(await source.data.arrayBuffer());
+  if (original.length !== 187613) throw new Error("STAGING_PDF_QA_BAD_SIZE");
+  const temporary = path.join("/tmp", "cn-volume-qa-" + randomUUID() + ".pdf");
+  await fs.writeFile(temporary, original);
+  let destination: string | null = null;
+  try {
+    const stored = await migrateLocalDocumentToStorage({
+      sourcePath: temporary, fileName: "volume-test.pdf", mimeType: "application/pdf",
+      context: { brokerId: "staging-qa", clientId: "volume-check", type: "other" },
+    });
+    destination = stored.filePath;
+    const access = await getDocumentAccessTarget(destination, { download: true, fileName: "volume-test.pdf" });
+    if (access.kind !== "local") throw new Error("STAGING_PDF_QA_NOT_LOCAL");
+    const copied = await fs.readFile(access.absolutePath);
+    if (createHash("sha256").update(original).digest("hex") !==
+        createHash("sha256").update(copied).digest("hex"))
+      throw new Error("STAGING_PDF_QA_CHECKSUM");
+    await removeStoredDocument(destination);
+    destination = null;
+    console.info("[STAGING_VOLUME_PDF_QA] PASS upload/read/download/delete, bytes=" + original.length);
+    if (process.env.STAGING_REMOVE_LEGACY_STORAGE === "true") {
+      await assertDocumentStorageEnvironmentIsolatedAndAuthorized();
+      const backups = [
+        "staging-20261104032434/manifest.json", "staging-20261104032434/part-0000.bin",
+        "staging-20261104032503/manifest.json", "staging-20261104032503/part-0000.bin",
+      ];
+      const removedPdf = await supabaseAdmin.storage.from("staging-documents").remove([key]);
+      if (removedPdf.error) throw new Error("STAGING_CLEANUP_DOCUMENT_FAILED");
+      const removedBackups = await supabaseAdmin.storage.from("staging-db-backups").remove(backups);
+      if (removedBackups.error) throw new Error("STAGING_CLEANUP_BACKUPS_FAILED");
+      console.info("[STAGING_LEGACY_STORAGE_CLEANUP] PASS 5 legacy objects");
+    }
+  } finally {
+    if (destination) await removeStoredDocument(destination).catch(() => {});
+    await fs.unlink(temporary).catch(() => {});
+  }
 }
 
 export function isSupabaseStorageEnabled() {
