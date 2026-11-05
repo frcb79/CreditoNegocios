@@ -14,6 +14,7 @@ type AccessTarget =
   | { kind: "redirect"; url: string }
   | { kind: "local"; absolutePath: string };
 
+// S3 storage migration: staging will use its private Railway bucket once validated.
 const supabaseUrl = process.env.SUPABASE_URL;
 const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 const supabaseStorageBucket = process.env.SUPABASE_STORAGE_BUCKET || "documents";
