@@ -28,13 +28,13 @@ export default function ProspectEvaluationResult({
   const pending=assessment?.criteria?.toReview||[];
   const failed=assessment?.criteria?.notMatched||[];
   const criteria=[
-    {title:"Criterios cumplidos",subtitle:"Coincidencias del análisis; no equivalen a una aprobación.",
+    {title:"Criterios cumplidos",subtitle:"Coincidencias generales encontradas con los datos que proporcionaste.",
       labels:matched,bg:"border-emerald-200 bg-emerald-50/60",color:"text-emerald-800",icon:CheckCircle2,
-      empty:"No se identificaron coincidencias confirmadas."},
-    {title:"Para confirmar",subtitle:"Información que podría afinar la evaluación con tu asesor.",
+      empty:"Tu asesor revisará los criterios aplicables."},
+    {title:"Para confirmar",subtitle:"Validaciones adicionales que pueden confirmar tu asesor y las financieras.",
       labels:pending,bg:"border-amber-200 bg-amber-50/60",color:"text-amber-800",icon:CalendarClock,
       empty:"No hay categorías adicionales pendientes identificadas."},
-    {title:"Aspectos por revisar",subtitle:"Criterios que requieren otra evaluación; no son un rechazo definitivo.",
+    {title:"Aspectos por revisar",subtitle:"Algunas alternativas tienen condiciones distintas a las de tu solicitud. Tu asesor revisará las opciones más convenientes; no necesitas llenar otro formulario.",
       labels:failed,bg:"border-slate-200 bg-slate-50",color:"text-slate-700",icon:CircleHelp,
       empty:"Sin observaciones generales registradas."},
   ];
@@ -108,7 +108,7 @@ export default function ProspectEvaluationResult({
                 <p className="mt-2 text-4xl font-extrabold tabular-nums"
                   data-testid="verified-institution-count">{hasPrelimMatches?prelimCount:"En revisión"}</p>
                 <p className="mt-1 text-sm font-semibold">
-                  {hasPrelimMatches?"Financieras identificadas con match preliminar a tu perfil":
+                  {hasPrelimMatches?"Financieras identificadas con match a tu perfil":
                     "Alternativas que revisará tu asesor"}
                 </p>
               </div>
