@@ -112,7 +112,7 @@ export default function LegalDocumentPage({ document }: LegalDocumentPageProps) 
         ) : null}
       </main>
       <footer className="border-t bg-white px-5 py-6">
-        <LegalLinks />
+        <LegalLinks guest={guestLegal}/>
       </footer>
     </div>
   );
