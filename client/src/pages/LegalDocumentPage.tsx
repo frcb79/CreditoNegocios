@@ -17,14 +17,15 @@ interface LegalDocumentPageProps {
 export default function LegalDocumentPage({ document }: LegalDocumentPageProps) {
   const search = useSearch();
   const version = new URLSearchParams(search).get("version");
+  const guestLegal = new URLSearchParams(search).get("public") === "1";
   const title = getDocumentTitle(document);
 
   const { data, isLoading, error, refetch } = useQuery<LegalDocumentVersion>({
-    queryKey: ["/api/legal", document, version],
+    queryKey: ["/api/legal", document, version, guestLegal],
     queryFn: async () => {
       const suffix = version === null ? "" : `?version=${encodeURIComponent(version)}`;
       const response = await fetch(buildApiUrl(`/api/legal/${document}${suffix}`), {
-        credentials: "include",
+        credentials: guestLegal ? "omit" : "include",
       });
       if (!response.ok) {
         if (response.status === 401) {
@@ -64,12 +65,11 @@ export default function LegalDocumentPage({ document }: LegalDocumentPageProps) 
     <div className="cn-public cn-legal min-h-screen bg-slate-50 text-slate-900">
       <header className="border-b bg-white px-5 py-4">
         <div className="mx-auto flex max-w-4xl flex-wrap items-center justify-between gap-3">
-          <Link href="/" className="font-semibold text-primary">
-            Crédito Negocios
-          </Link>
-          <Link href="/" className="text-sm underline">
+          {guestLegal ? <span className="font-semibold text-primary">Crédito Negocios</span> :
+            <Link href="/" className="font-semibold text-primary">Crédito Negocios</Link>}
+          {!guestLegal && <Link href="/" className="text-sm underline">
             Volver a la plataforma
-          </Link>
+          </Link>}
         </div>
       </header>
       <main className="mx-auto max-w-4xl px-5 py-8 sm:py-12">
@@ -83,7 +83,7 @@ export default function LegalDocumentPage({ document }: LegalDocumentPageProps) 
             </Button>
             {version !== null ? (
               <p>
-                <Link href={`/legal/${document}`} className="underline">
+                <Link href={`/legal/${document}${guestLegal ? "?public=1" : ""}`} className="underline">
                   Consultar versión vigente
                 </Link>
               </p>
@@ -97,7 +97,7 @@ export default function LegalDocumentPage({ document }: LegalDocumentPageProps) 
             </p>
             <p className="mt-2 text-sm">
               <Link
-                href={`/legal/${document}?version=${encodeURIComponent(data.version)}`}
+                href={`/legal/${document}?version=${encodeURIComponent(data.version)}${guestLegal ? "&public=1" : ""}`}
                 className="underline"
               >
                 Enlace a esta versión
