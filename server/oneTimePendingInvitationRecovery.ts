@@ -113,12 +113,14 @@ export async function dispatchOneTimePendingInvitations(): Promise<{
             AND profile_data->'invitationRecovery20261105'->>'status'='claimed'
         `,[user.id,result.success?"sent":"failed",
           result.providerMessageId||null,
-          result.success?null:(result.error||"UNKNOWN").slice(0,150)]);
+          result.success?null:"MAIL_DELIVERY_FAILED"]);
       } catch {
         console.error("[INVITATION-RECOVERY] Audit update failed; not retrying send");
       }
       if (result.success) totals.sent++;
       else totals.failed++;
+      // Resend has a low default requests-per-second cap. Pace the approved batch.
+      await new Promise(resolve => setTimeout(resolve, 650));
     } catch {
       // A preclaim error is safely distinguishable from a mail attempt.
       totals.failed++;
