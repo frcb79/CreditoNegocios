@@ -60,7 +60,9 @@ describe("COM-RES-LOGO-SELF — opt-in profile logo",()=>{
     expect(routes).toContain('app.post("/api/commercial-resources/my-logo",isAuthenticated');
     expect(routes).toContain('return res.status(410).json({message:"Los logos de brokers y masters ya no se admiten en Recursos Comerciales."})');
     expect(routes).toContain('app.delete("/api/commercial-resources/my-logo",isAuthenticated');
-    expect(routes).toContain('return res.json({ displayName, whatsapp });');
+    expect(routes).toMatch(/return res\.json\(\{\s*displayName\s*,\s*whatsapp\s*\}\);/);
+    expect(routes).toContain('app.patch("/api/commercial-resources/my-approved-identity",isAuthenticated');
+    expect(routes).toContain("jsonb_build_object('businessName',$2::text,'businessPhone',$3::text)");
     expect(routes).not.toContain('INSERT INTO public.commercial_profile_logos');
     expect(settings).not.toContain("CommercialProfileLogo");
     expect(page).not.toContain("approvedLogoUrl");
