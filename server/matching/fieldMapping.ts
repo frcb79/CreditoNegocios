@@ -396,11 +396,11 @@ export function extractHasGuarantee(client: any, credit?: any): {
       return { hasGuarantee: f, guaranteeType: f ? "general" : "sin_garantia" };
     }
     const s = String(f).trim().toUpperCase();
-    if (s === "SI" || s === "SÍ" || s === "TRUE" || /^(HIPOTECARIA|INMUEBLE|PRENDARIA|LIQUIDA|LÍQUIDA|MAQUINARIA|VEHICULO|VEHÍCULO)$/.test(s)) {
+    if (s === "SI" || s === "SÍ" || s === "TRUE" || /^(HIPOTECARIA|INMUEBLE|PRENDARIA|LIQUIDA|LÍQUIDA|MAQUINARIA|VEHICULO|VEHÍCULO|OTROS)$/.test(s)) {
       const type = c.garantiaDetalles?.tipo || cr.garantiaDetalles?.tipo || (["SI","SÍ","TRUE"].includes(s) ? "general" : s.toLowerCase());
       return {hasGuarantee:true,guaranteeType:type};
     }
-    if (s === "NO" || s === "FALSE" || s === "NINGUNA" || s === "SIN GARANTÍA" || s === "SIN GARANTIA") {
+    if (s === "NO" || s === "FALSE" || s === "NINGUNA" || s === "SIN GARANTÍA" || s === "SIN GARANTIA" || s === "SIN-GARANTIA") {
       return { hasGuarantee: false, guaranteeType: "sin_garantia" };
     }
   }
