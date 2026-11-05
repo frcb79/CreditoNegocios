@@ -48,6 +48,37 @@ describe("Issue #65 — prospect matching safety",()=>{
     expect(aggregateProspectAssessment({compatible:[],insufficientData:[],notCompatible:items}))
       .toMatchObject({status:"under_review"});
   });
+  it("summarizes only verified criteria without leaking thresholds, institution names or internal economics",()=>{
+    const publicResult=aggregateProspectAssessment({
+      compatible:[{institutionId:"bank-secret", criteria:{matched:[
+        {code:"targetProfiles",status:"PASSED"},{code:"creditAmount",status:"PASSED"},
+        {code:"creditTerm",status:"PASSED"},{code:"monthlyRevenue",status:"PASSED"},
+        {code:"secretSpecialRate",status:"PASSED"},
+      ],missing:[]}}],
+      insufficientData:[{institutionId:"second-bank",criteria:{matched:[],missing:[
+        {code:"companyAge",status:"MISSING_DATA"},{code:"bureauRequirement",status:"MISSING_DATA"},
+        {code:"secretUnderwritingRule",status:"MISSING_DATA"},
+      ]}}],
+      notCompatible:[],
+    });
+    expect(publicResult).toMatchObject({
+      status:"possible_options",institutionCount:1,
+      criteria:{matched:["Tipo de cliente","Monto solicitado","Plazo deseado","Ingresos del negocio"],
+        toReview:["Antigüedad del negocio","Historial crediticio"]},
+    });
+    const serialized=JSON.stringify(publicResult);
+    for(const sensitive of ["bank-secret","second-bank","secretSpecialRate",
+      "secretUnderwritingRule","comision","sobretasa","tasa","minAmount","creditAmount"]) {
+      expect(serialized).not.toContain(sensitive);
+    }
+    const unknown=aggregateProspectAssessment({
+      compatible:[],insufficientData:[{institutionId:"bank",criteria:{matched:[],missing:[
+        {code:"guaranteeType",status:"MISSING_DATA"}]}}],notCompatible:[],
+    });
+    expect(unknown.institutionCount).toBeUndefined();
+    expect(unknown.criteria?.matched).toEqual([]);
+    expect(unknown.criteria?.toReview).toEqual(["Garantías"]);
+  });
   it("reuses published catalog engine and excludes wrong family, draft, expired and inactive offers",async()=>{
     const offers=[
       createOffer("o-1","fin-1","simple"),

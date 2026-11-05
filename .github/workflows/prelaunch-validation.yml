@@ -28,6 +28,7 @@ on:
       - 'feat/issue-63-*'
       - 'feat/resend-audit-*'
       - 'feat/issue-65-*'
+      - 'feat/issue65-transparent-public-match-*'
   workflow_dispatch:
 concurrency:
   group: prelaunch-${{ github.ref }}

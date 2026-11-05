@@ -9,13 +9,14 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { CheckCircle2 } from "lucide-react";
+import { CheckCircle2, ClipboardCheck, ShieldCheck, ArrowRight, CircleHelp } from "lucide-react";
 import { LEASING_ASSET_TYPES } from "@shared/leasing";
 
 type Assessment = {
   status: "possible_options" | "missing_information" | "under_review" | "pending";
   institutionCount?: number;
   message: string;
+  criteria?: { matched: string[]; toReview: string[] };
 };
 type InitialFinancing = {
   product?: string; amount?: string; termMonths?: string; purpose?: string;
@@ -61,16 +62,101 @@ export function ProspectCompletionForm({ token, initialProfile, initialFinancing
     <p>{info.error instanceof Error ? info.error.message : "Solicita un nuevo enlace a tu asesor."}</p>
   </div>;
 
-  if (complete) return <div className="rounded-xl border bg-white p-8 text-center space-y-3" data-testid="prospect-profile-success">
-    <CheckCircle2 className="mx-auto text-emerald-600 h-12 w-12" />
-    <h1 className="text-2xl font-bold">Información recibida</h1>
-    <p>Tu información fue enviada a {info.data.advisorName}.</p>
-    {assessment && <div className="rounded-lg bg-slate-50 p-5 text-base" data-testid="public-anonymous-matching">
-      <p>{assessment.message}</p>
-    </div>}
-    {!assessment && <p>Tu asesor podrá revisar las opciones contigo.</p>}
-    <p className="text-sm text-muted-foreground">La evaluación preliminar no es una aprobación ni una oferta de crédito.</p>
-  </div>;
+  if (complete) {
+    const hasOptions=assessment?.status === "possible_options" && Number(assessment.institutionCount) > 0;
+    const criteriaMatched=assessment?.criteria?.matched || [];
+    const criteriaPending=assessment?.criteria?.toReview || [];
+    const hasEvaluated=Boolean(assessment && assessment.status !== "pending");
+    return <section className="overflow-hidden rounded-2xl border border-blue-100 bg-white shadow-sm"
+      data-testid="prospect-profile-success">
+      <div className="bg-[#103d72] px-6 py-8 sm:px-10 text-white">
+        <div className="flex items-center gap-2 text-sm font-semibold text-blue-100">
+          <ShieldCheck className="h-5 w-5" /> Evaluación preliminar · Crédito Negocios
+        </div>
+        <h1 className="mt-3 text-2xl sm:text-3xl font-bold">
+          {hasEvaluated ? "Ya analizamos tu solicitud" : "Recibimos tu solicitud"}
+        </h1>
+        <p className="mt-2 text-sm sm:text-base text-blue-100 leading-relaxed">
+          Tu información quedó registrada con {info.data.advisorName}. Tu asesor podrá continuar contigo.
+        </p>
+      </div>
+
+      <div className="p-5 sm:p-8 space-y-6" data-testid="public-anonymous-matching">
+        {hasOptions ? <div className="grid sm:grid-cols-[auto_1fr] items-center gap-4 rounded-xl border border-blue-200 bg-blue-50 p-5">
+          <div className="flex items-center justify-center rounded-xl bg-white border border-blue-100 px-6 py-4">
+            <span className="text-5xl font-extrabold tabular-nums text-blue-900" data-testid="verified-institution-count">
+              {assessment!.institutionCount}
+            </span>
+          </div>
+          <div>
+            <h2 className="text-lg sm:text-xl font-bold text-blue-950">
+              {assessment!.institutionCount === 1 ? "Institución con una alternativa preliminar" :
+                "Instituciones con alternativas preliminares"}
+            </h2>
+            <p className="text-sm text-slate-700 leading-relaxed mt-1">
+              Encontramos opciones que podrían adaptarse a tu solicitud según los criterios evaluados.
+              Tu asesor confirmará requisitos y disponibilidad.
+            </p>
+          </div>
+        </div> :
+          <div className="rounded-xl border border-amber-200 bg-amber-50 p-5">
+            <h2 className="font-semibold text-amber-950">
+              {assessment?.status==="missing_information" ? "Hay datos que necesitamos confirmar" :
+                assessment?.status==="under_review" ? "Tu asesor revisará otras alternativas" :
+                "Tu información está lista para revisión"}
+            </h2>
+            <p className="mt-2 text-sm leading-relaxed text-slate-700">
+              {assessment?.message || "Tu asesor continuará con la revisión de tu solicitud."}
+            </p>
+          </div>}
+
+        {hasEvaluated && (criteriaMatched.length>0 || criteriaPending.length>0) &&
+          <div className="grid gap-4 md:grid-cols-2" data-testid="public-criteria-evidence">
+            <div className="rounded-xl border border-emerald-200 bg-emerald-50/50 p-4 sm:p-5">
+              <div className="flex items-center gap-2 font-semibold text-emerald-900">
+                <ClipboardCheck className="w-5 h-5 shrink-0" /> Coincidencias del análisis
+              </div>
+              <p className="mt-2 text-xs leading-relaxed text-slate-600">
+                Aspectos que coinciden con al menos una alternativa preliminar.
+              </p>
+              {criteriaMatched.length ? <div className="mt-3 space-y-2">
+                {criteriaMatched.map(label=><div key={label} className="flex gap-2 text-sm text-slate-800 items-start">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-700 mt-0.5 shrink-0" /> {label}
+                </div>)}
+              </div> : <p className="mt-3 text-sm text-slate-600">Sin coincidencias confirmadas todavía.</p>}
+            </div>
+            <div className="rounded-xl border border-amber-200 bg-amber-50/50 p-4 sm:p-5">
+              <div className="flex items-center gap-2 font-semibold text-amber-900">
+                <CircleHelp className="w-5 h-5 shrink-0" /> Para afinar la evaluación
+              </div>
+              <p className="mt-2 text-xs leading-relaxed text-slate-600">
+                Información que podría abrir más alternativas; no significa incumplimiento.
+              </p>
+              {criteriaPending.length ? <div className="mt-3 space-y-2">
+                {criteriaPending.map(label=><div key={label} className="flex gap-2 text-sm text-slate-800 items-start">
+                  <ArrowRight className="w-4 h-4 text-amber-700 mt-0.5 shrink-0" /> {label}
+                </div>)}
+              </div> : <p className="mt-3 text-sm text-slate-600">Por ahora no hay pendientes generales identificados.</p>}
+            </div>
+          </div>}
+
+        <div className="rounded-xl border bg-slate-50 p-4 sm:p-5 space-y-3">
+          <h2 className="font-semibold text-slate-900">¿Qué sigue?</h2>
+          <div className="grid gap-3 sm:grid-cols-3 text-sm">
+            <div className="flex gap-2 items-start"><CheckCircle2 className="w-5 h-5 shrink-0 text-emerald-700" /><span>Recibimos tus datos</span></div>
+            <div className="flex gap-2 items-start"><CheckCircle2 className="w-5 h-5 shrink-0 text-emerald-700" />
+              <span>{hasEvaluated?"Se realizó el análisis preliminar":"Análisis por completar"}</span></div>
+            <div className="flex gap-2 items-start"><ArrowRight className="w-5 h-5 shrink-0 text-blue-800" /><span>Tu asesor revisará los siguientes pasos</span></div>
+          </div>
+        </div>
+        <p className="text-xs leading-relaxed text-slate-600 border-t pt-4">
+          Los resultados utilizan información proporcionada y criterios del catálogo de ofertas vigentes.
+          No representan aprobación, oferta de crédito ni actividad histórica de colocación;
+          la decisión y condiciones finales dependen de cada institución. No se ha enviado tu expediente a ninguna financiera.
+        </p>
+      </div>
+    </section>;
+  }
 
   return <div className="space-y-5" data-testid="prospect-completion-form">
     <div className="bg-white border rounded-xl p-5 space-y-3">
