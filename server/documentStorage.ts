@@ -111,6 +111,17 @@ export async function assertDocumentStorageEnvironmentIsolatedAndAuthorized(
   }
 }
 
+const stagingVolumeEnabled = () => process.env.RAILWAY_ENVIRONMENT_NAME === "staging" &&
+  process.env.STAGING_DOCUMENT_VOLUME_ENABLED === "true";
+
+const requireStagingVolume = () => {
+  if (process.env.RAILWAY_ENVIRONMENT_ID !== "e3134695-aaec-41e2-8622-41e3701ed985" ||
+      process.env.RAILWAY_VOLUME_MOUNT_PATH !== "/data/cn-documents") {
+    throw new Error("STAGING_DOCUMENT_VOLUME_NOT_ISOLATED");
+  }
+  return "/data/cn-documents";
+};
+
 function sanitizeSegment(value: string) {
   return value.replace(/[^a-zA-Z0-9._-]/g, "-");
 }
