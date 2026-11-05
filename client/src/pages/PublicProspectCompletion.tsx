@@ -12,6 +12,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import ProspectEvaluationProgress, { type ProspectProcessingPhase } from "@/components/Clients/ProspectEvaluationProgress";
 import ProspectEvaluationResult from "@/components/Clients/ProspectEvaluationResult";
 import { LEASING_ASSET_TYPES } from "@shared/leasing";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
+import { CheckCircle2, Layers, LockKeyhole, Zap, ShieldCheck } from "lucide-react";
 
 type Assessment = {
   status: "possible_options" | "missing_information" | "under_review" | "pending";
@@ -50,6 +52,7 @@ export function ProspectCompletionForm({ token, initialProfile, initialFinancing
 }) {
   const [accepted, setAccepted] = useState(false);
   const [complete, setComplete] = useState(false);
+  const [readyDialogOpen, setReadyDialogOpen] = useState(false);
   const [submittedProfile, setSubmittedProfile] = useState<Record<string,unknown> | null>(null);
   const [processing, setProcessing] = useState(false);
   const [processingPhase, setProcessingPhase] = useState<ProspectProcessingPhase>("sending");
@@ -67,7 +70,6 @@ export function ProspectCompletionForm({ token, initialProfile, initialFinancing
     <p>{info.error instanceof Error ? info.error.message : "Solicita un nuevo enlace a tu asesor."}</p>
   </div>;
 
-  if (processing) return <ProspectEvaluationProgress phase={processingPhase}/>;
   if (complete && submittedProfile) return <ProspectEvaluationResult
     assessment={assessment}
     profile={submittedProfile}
@@ -75,7 +77,28 @@ export function ProspectCompletionForm({ token, initialProfile, initialFinancing
     advisorName={info.data.advisorName}
   />;
 
-  return <div className="space-y-5" data-testid="prospect-completion-form">
+  return <>
+    {processing && <ProspectEvaluationProgress phase={processingPhase}/>}
+    <Dialog open={readyDialogOpen} onOpenChange={()=>{}}>
+      <DialogContent className="max-w-md" data-testid="prospect-result-ready-modal">
+        <DialogHeader>
+          <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-emerald-50 text-emerald-700 mb-3">
+            <CheckCircle2 className="h-8 w-8"/>
+          </div>
+          <DialogTitle className="text-2xl">Tu evaluación preliminar está lista</DialogTitle>
+          <DialogDescription>Terminamos de revisar las alternativas publicadas y preparamos el resumen
+            para que continúes con tu asesor.</DialogDescription>
+        </DialogHeader>
+        <DialogFooter>
+          <Button className="w-full bg-blue-800 text-white hover:bg-blue-900"
+            data-testid="prospect-open-diagnosis"
+            onClick={()=>{setReadyDialogOpen(false);setComplete(true);setProcessing(false);}}>
+            Ver mi diagnóstico
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+    <div className={processing?"hidden":"space-y-5"} data-testid="prospect-completion-form">
     <div className="bg-white border rounded-xl p-5 space-y-3">
       <h1 className="text-2xl font-bold">Solicita tu evaluación preliminar</h1>
       <p>Completa tus datos de financiamiento y perfil financiero para comparar alternativas publicadas. Tu asesor será <strong>{info.data.advisorName}</strong>.</p>
@@ -139,9 +162,6 @@ export function ProspectCompletionForm({ token, initialProfile, initialFinancing
         setFinancingError("");
         const financing={product,amount:money,termMonths:months,purpose:purpose.trim(),
           ...(product === "arrendamiento" ? {leasingAssetType} : {})};
-        // Show the processing view while the server performs the real catalog
-        // comparison. Hold the prepared state briefly so the result does not
-        // replace the form instantly on a fast response.
         const startedAt=Date.now();
         setSubmittedProfile(profile);
         setProcessingPhase("sending");
@@ -156,19 +176,21 @@ export function ProspectCompletionForm({ token, initialProfile, initialFinancing
           if(!response.ok) throw new Error(result.message || "No se pudo enviar la información");
           setAssessment(result.assessment || null);
           setProcessingPhase("ready");
+          // A real request has completed; respect five seconds of visible
+          // progress without pretending to perform extra server-side work.
           await new Promise<void>(resolve=>setTimeout(resolve,
-            Math.max(800,1800-(Date.now()-startedAt))));
-          setComplete(true);
+            Math.max(0,5000-(Date.now()-startedAt))));
+          setReadyDialogOpen(true);
         } catch(error) {
           setSubmittedProfile(null);
-          throw error;
-        } finally {
           setProcessing(false);
+          throw error;
         }
       }} />
     </>}
     {!accepted && onBack && <Button variant="outline" onClick={onBack}>Volver</Button>}
-  </div>;
+  </div>
+  </>;
 }
 
 export default function PublicProspectCompletion() {
