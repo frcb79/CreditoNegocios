@@ -124,7 +124,7 @@ function Router() {
  * It must never mount dashboard routes, auth redirects or account notifications,
  * even when a browser happens to have a logged-in platform session. */
 export function isPublicProspectJourneyPath(pathname:string):boolean {
-  return /^\\/(?:c|completar-perfil)\\/[A-Za-z0-9_-]{32}$/.test(pathname);
+  return /^\/(?:c|completar-perfil)\/[A-Za-z0-9_-]{32}$/.test(pathname);
 }
 function GuestProspectRouter() {
   return <Switch>
