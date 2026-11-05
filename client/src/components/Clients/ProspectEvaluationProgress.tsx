@@ -1,8 +1,17 @@
+import { useEffect, useState } from "react";
+import { prospectProgressStage, PREQUALIFICATION_STAGE_BOUNDARIES_MS } from "@/lib/prospectProgressTiming";
 import { CheckCircle2, Circle, ClipboardCheck, Landmark, Loader2, ShieldCheck } from "lucide-react";
 
 export type ProspectProcessingPhase = "sending" | "ready";
 export default function ProspectEvaluationProgress({phase}:{phase:ProspectProcessingPhase}) {
-  const ready=phase==="ready";
+  const [activeStage,setActiveStage]=useState<0|1|2>(0);
+  useEffect(()=>{
+    const start=Date.now();
+    const timers=PREQUALIFICATION_STAGE_BOUNDARIES_MS.map(boundary=>
+      setTimeout(()=>setActiveStage(prospectProgressStage(Date.now()-start)),boundary));
+    return ()=>timers.forEach(clearTimeout);
+  },[]);
+  const ready=phase==="ready" && activeStage===2;
   const stages=[
     {title:"Validando información capturada",detail:"Comprobamos los datos de tu solicitud."},
     {title:"Comparando alternativas publicadas",detail:"El motor revisa criterios del catálogo de financiamiento."},
@@ -31,8 +40,8 @@ export default function ProspectEvaluationProgress({phase}:{phase:ProspectProces
         </p>
         <div className="mt-7 space-y-3">
           {stages.map((stage,index)=>{
-            const done=ready ? index<2 : index===0;
-            const active=ready ? index===2 : index===1;
+            const done=index<activeStage;
+            const active=index===activeStage;
             return <div key={stage.title} className={"flex items-center gap-3 rounded-xl border p-4 "+
               (done?"border-emerald-200 bg-emerald-50/80":
                 active?"border-blue-200 bg-blue-100/60":"border-slate-200 bg-white")}>
