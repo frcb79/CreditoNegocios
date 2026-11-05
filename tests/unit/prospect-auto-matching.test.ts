@@ -41,10 +41,12 @@ describe("Issue #65 — prospect matching safety",()=>{
     const publicResult=aggregateProspectAssessment({
       compatible:items,insufficientData:[{institutionId:"fin-3"}],notCompatible:[],
     });
-    expect(publicResult).toMatchObject({status:"possible_options",institutionCount:2});
+    expect(publicResult).toMatchObject({status:"possible_options",institutionCount:2,identifiedInstitutionCount:3});
     expect(JSON.stringify(publicResult)).not.toMatch(/institutionId|institutionName|offerId|fin-1|sobretasa|comision|approvalProbability/gi);
     expect(aggregateProspectAssessment({compatible:[],insufficientData:items,notCompatible:[]}))
-      .toMatchObject({status:"missing_information"});
+      .toMatchObject({status:"missing_information",identifiedInstitutionCount:2});
+    expect(aggregateProspectAssessment({compatible:[],insufficientData:[],notCompatible:items}).identifiedInstitutionCount)
+      .toBeUndefined();
     expect(aggregateProspectAssessment({compatible:[],insufficientData:[],notCompatible:items}))
       .toMatchObject({status:"under_review"});
   });
