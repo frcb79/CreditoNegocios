@@ -18,7 +18,7 @@ WITH outbound AS (
          u.email, u.first_name, u.last_name, u.role,
          'reminder'::text AS kind, r.reminder_day,
          r.status AS dispatch_status, r.provider_message_id,
-         r.created_at, r.sent_at
+         COALESCE(r.claimed_at,r.updated_at,r.sent_at) AS created_at, r.sent_at
   FROM public.broker_invitation_reminder_events r
   JOIN public.users u ON u.id=r.user_id
   UNION ALL
