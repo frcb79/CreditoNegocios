@@ -84,6 +84,8 @@ export default function PublicProspectQuickForm({ initialProfile, onPublicSubmit
     event.preventDefault();
     setError("");
     if (loading) return;
+    if (!email.trim()) {setError("Es necesario indicar un correo electrónico válido.");return;}
+    if (!financial.hasArrears) {setError("Confirma si has tenido atrasos, deudas vencidas o quitas en Buró.");return;}
     if (!consentAccepted) {setError("Acepta el Aviso de Privacidad para enviar tu evaluación.");return;}
     try {
       const profile = buildQuickProspectProfile({
@@ -132,9 +134,9 @@ export default function PublicProspectQuickForm({ initialProfile, onPublicSubmit
             <label className="block space-y-2"><Label htmlFor="quick-phone">WhatsApp / teléfono *</Label>
               <Input id="quick-phone" value={phone} onChange={e=>setPhone(e.target.value)}
                 autoComplete="tel" inputMode="tel" maxLength={25} required data-testid="input-phone" /></label>
-            <label className="block space-y-2"><Label htmlFor="quick-email">Correo electrónico (opcional)</Label>
+            <label className="block space-y-2"><Label htmlFor="quick-email">Correo electrónico *</Label>
               <Input id="quick-email" type="email" value={email} onChange={e=>setEmail(e.target.value)}
-                autoComplete="email" maxLength={200} data-testid="input-email" /></label>
+                autoComplete="email" maxLength={200} required data-testid="input-email" /></label>
             <label className="block space-y-2">
               <Label htmlFor="quick-income">{company?"Ventas promedio mensuales (MXN) *":"Ingresos mensuales promedio (MXN) *"}</Label>
               <Input id="quick-income" inputMode="decimal" type="number" min={1} max={1000000000000}
@@ -168,7 +170,7 @@ export default function PublicProspectQuickForm({ initialProfile, onPublicSubmit
             {noSat && financial.hasBureauHistory==="si" && pick("creditBureauShareholder","Calificación aproximada en Buró",BUREAU)}
             {company && pick("creditBureauCompany","Buró de crédito de la empresa",COMPANY_BUREAU)}
             {company && pick("creditBureauShareholder","Buró del accionista principal",BUREAU)}
-            {pick("hasArrears","¿Tienes atrasos, deudas vencidas o quitas en Buró?",YES_NO)}
+            {pick("hasArrears","¿Has tenido atrasos, deudas vencidas o quitas en Buró? *",YES_NO)}
             {financial.hasArrears==="si" && typed("arrearsDetails","Describe brevemente los atrasos","Ej. Crédito con atraso, fecha aproximada")}
             {pick("hasGuarantee","¿Cuentas con garantía para respaldar el crédito?",YES_NO)}
             {financial.hasGuarantee==="si" && pick("guaranteeAsset","Tipo de bien en garantía",GUARANTEE_ASSETS)}
