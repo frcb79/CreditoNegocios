@@ -30,6 +30,7 @@ on:
       - 'feat/issue-65-*'
       - 'feat/issue65-transparent-public-match-*'
       - 'feat/issue65-prospect-short-form-diagnostics-*'
+      - 'fix/issue65-profile-match-followup-*'
   workflow_dispatch:
 concurrency:
   group: prelaunch-${{ github.ref }}
