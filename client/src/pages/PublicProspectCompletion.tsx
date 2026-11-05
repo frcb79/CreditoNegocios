@@ -85,6 +85,17 @@ export function ProspectCompletionForm({ token, initialProfile, initialFinancing
       </div>
 
       <div className="p-5 sm:p-8 space-y-6" data-testid="public-anonymous-matching">
+        <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 sm:p-5" data-testid="prospect-submitted-summary">
+          <p className="mb-3 text-sm font-semibold text-slate-900">Datos que utilizamos para la evaluación</p>
+          <div className="grid gap-3 sm:grid-cols-3">
+            <div><p className="text-xs text-slate-500">Financiamiento solicitado</p>
+              <p className="font-medium text-sm text-slate-900">{PRODUCT_OPTIONS.find(x=>x.id===product)?.name || "Por revisar"}</p></div>
+            <div><p className="text-xs text-slate-500">Monto</p>
+              <p className="font-medium text-sm text-slate-900">{Number(amount).toLocaleString("es-MX",{style:"currency",currency:"MXN",maximumFractionDigits:0})}</p></div>
+            <div><p className="text-xs text-slate-500">Plazo</p>
+              <p className="font-medium text-sm text-slate-900">{termMonths} meses</p></div>
+          </div>
+        </div>
         {reviewedOffers > 0 && <p className="text-sm font-medium text-blue-950 rounded-md bg-blue-50 border border-blue-100 px-4 py-2"
           data-testid="real-reviewed-offers">Revisamos {reviewedOffers} {reviewedOffers===1?"producto publicado":"productos publicados"} de la familia de financiamiento que solicitaste.</p>}
         {hasOptions ? <div className="grid sm:grid-cols-[auto_1fr] items-center gap-4 rounded-xl border border-blue-200 bg-blue-50 p-5">
