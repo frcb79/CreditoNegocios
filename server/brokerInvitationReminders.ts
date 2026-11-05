@@ -63,6 +63,7 @@ export async function runBrokerInvitationReminders(): Promise<{
       FROM first_invite fi JOIN public.users u ON u.id = fi.user_id
      WHERE u.role IN ('broker', 'master_broker')
        AND u.password IS NULL AND u.is_active IS DISTINCT FROM FALSE
+       AND (u.reset_token_expiry IS NULL OR u.reset_token_expiry <= NOW())
        AND coalesce(u.profile_data->>'invitationFollowupPaused', 'false') <> 'true'
        AND fi.invited_at <= NOW() - INTERVAL '3 days'
      ORDER BY fi.invited_at ASC LIMIT 250`);
@@ -94,6 +95,7 @@ export async function runBrokerInvitationReminders(): Promise<{
       const tokenSet = await pool.query(
         `UPDATE public.users SET reset_token=$2, reset_token_expiry=$3, updated_at=NOW()
           WHERE id=$1 AND password IS NULL AND is_active IS DISTINCT FROM FALSE
+            AND (reset_token_expiry IS NULL OR reset_token_expiry <= NOW())
             AND COALESCE(profile_data->>'invitationFollowupPaused','false') <> 'true'
         RETURNING id`,
         [user.id, token, new Date(Date.now() + 86400000)],
