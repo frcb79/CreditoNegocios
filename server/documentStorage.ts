@@ -304,6 +304,38 @@ export async function getDocumentAccessTarget(
   };
 }
 
+export async function runStagingVolumePdfQA() {
+  if (!stagingVolumeEnabled() || process.env.STAGING_VOLUME_PDF_QA !== "true") return;
+  const key = "ab960719-12f9-47c0-8175-dc6f3fc3ed2b/d2449166-4086-41f8-89f2-28e7354773ed/other-6ec0173e-5eb7-484f-b4c3-c0856c8a8779.pdf";
+  if (!supabaseAdmin) throw new Error("STAGING_PDF_QA_SOURCE_UNAVAILABLE");
+  const source = await supabaseAdmin.storage.from("staging-documents").download(key);
+  if (source.error || !source.data) throw new Error("STAGING_PDF_QA_DOWNLOAD_FAILED");
+  const original = Buffer.from(await source.data.arrayBuffer());
+  if (original.length !== 187613) throw new Error("STAGING_PDF_QA_BAD_SIZE");
+  const temporary = path.join("/tmp", "cn-volume-qa-" + randomUUID() + ".pdf");
+  await fs.writeFile(temporary, original);
+  let destination: string | null = null;
+  try {
+    const stored = await migrateLocalDocumentToStorage({
+      sourcePath: temporary, fileName: "volume-test.pdf", mimeType: "application/pdf",
+      context: { brokerId: "staging-qa", clientId: "volume-check", type: "other" },
+    });
+    destination = stored.filePath;
+    const access = await getDocumentAccessTarget(destination, { download: true, fileName: "volume-test.pdf" });
+    if (access.kind !== "local") throw new Error("STAGING_PDF_QA_NOT_LOCAL");
+    const copied = await fs.readFile(access.absolutePath);
+    if (createHash("sha256").update(original).digest("hex") !==
+        createHash("sha256").update(copied).digest("hex"))
+      throw new Error("STAGING_PDF_QA_CHECKSUM");
+    await removeStoredDocument(destination);
+    destination = null;
+    console.info("[STAGING_VOLUME_PDF_QA] PASS upload/read/download/delete, bytes=" + original.length);
+  } finally {
+    if (destination) await removeStoredDocument(destination).catch(() => {});
+    await fs.unlink(temporary).catch(() => {});
+  }
+}
+
 export function isSupabaseStorageEnabled() {
   return Boolean(supabaseAdmin);
 }
