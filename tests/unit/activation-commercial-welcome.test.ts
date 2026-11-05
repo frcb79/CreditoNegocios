@@ -18,9 +18,16 @@ describe("Issue #63 – activation welcome and confidentiality",()=>{
     expect(broker.html).toContain("Tu primer prospecto en 10 minutos");
     expect(broker.html).toContain("/recursos-comerciales");
     expect(broker.html).toContain("/clientes");
-    expect(broker.html).toContain("/c/"+token);
-    expect(broker.html).toContain("utm_source=redes_sociales");
-    expect(broker.html).toContain("utm_medium=social");
+    expect(broker.html).not.toContain("/c/"+token);
+    expect(broker.text).not.toContain("/c/"+token);
+    expect(broker.html).not.toContain("utm_source=");
+    expect(broker.text).not.toContain("utm_medium=");
+    expect(broker.html).toContain("Obtener mi enlace");
+    expect(broker.html).toContain("Tu enlace de captación");
+    expect(broker.text).toContain("Obtener mi enlace");
+    // The server can still prepare a stable attributed URL without printing it in the email.
+    expect(broker.captureUrl).toContain("/c/"+token);
+    expect(broker.captureUrl).toContain("utm_source=redes_sociales");
     expect(broker.text).toContain("Crear Enlace a Prospecto");
     expect(broker.html).toContain("María O&#39;Hara");
   });
