@@ -53,8 +53,7 @@ export function renderCommercialActivationWelcome(input: WelcomeCopyInput) {
     "",
     "Tu meta para los próximos 10 minutos:",
     "1. Abre Recursos Comerciales: hay plantillas listas para compartir por WhatsApp y redes sociales.",
-    "2. Comparte una plantilla e incorpora tu enlace personal de captación (ya preparado con etiquetas generales):",
-    capture,
+    "2. Dentro de Recursos Comerciales, ve a «Tu enlace de captación», pulsa «Obtener mi enlace» y después «Copiar». Compártelo junto con la plantilla que elijas.",
     "3. En Clientes, utiliza «Crear Enlace a Prospecto» para pedir a un interesado sus datos sin capturarlos tú.",
     "4. Revisa los prospectos recibidos y gestiona el perfilamiento, alternativas financieras, solicitudes y comisiones desde la plataforma.",
     "",
@@ -94,7 +93,7 @@ export function renderCommercialActivationWelcome(input: WelcomeCopyInput) {
     '<h2 style="font-size:20px;margin:24px 0 16px">Tu primer prospecto en 10 minutos</h2>' +
     '<ol style="padding-left:20px;line-height:1.8">' +
     '<li>Abre <a href="' + library + '">Recursos Comerciales</a> y elige una plantilla lista para redes sociales o WhatsApp.</li>' +
-    '<li>Compártela junto con <a href="' + escapeHtml(capture) + '">tu enlace personal de captación</a>.</li>' +
+    '<li>Dentro de <a href="' + library + '">Recursos Comerciales</a>, localiza <strong>Tu enlace de captación</strong>, pulsa <strong>Obtener mi enlace</strong> y después <strong>Copiar</strong>. Compártelo con tu plantilla.</li>' +
     '<li>En <a href="' + customers + '">Clientes</a>, utiliza «Crear Enlace a Prospecto» para un contacto interesado.</li>' +
     '<li>Revisa tus prospectos recibidos y da seguimiento a sus solicitudes, alternativas financieras y comisiones.</li>' +
     '</ol>' +
@@ -103,7 +102,7 @@ export function renderCommercialActivationWelcome(input: WelcomeCopyInput) {
     '<p>' + escapeHtml(masterStep) + '</p>' +
     '<div style="text-align:center;margin:28px 0"><a href="' + library +
     '" style="display:inline-block;padding:15px 24px;background:#134e93;color:#fff;border-radius:8px;text-decoration:none;font-weight:bold">Consigue tu primer prospecto hoy</a></div>' +
-    '<p style="font-size:14px">Tu enlace personal: <a href="' + escapeHtml(capture) + '">' + escapeHtml(capture) + '</a></p>' +
+    '<p style="font-size:14px;color:#43566e">Tu enlace es personal. Siempre puedes encontrarlo y copiarlo desde <strong>Recursos Comerciales → Tu enlace de captación</strong>.</p>' +
     '<p style="font-size:14px"><a href="' + library + '">Biblioteca Comercial</a> · ' +
     '<a href="' + customers + '">Crear Enlace a Prospecto</a> · <a href="' + home + '">Tu plataforma</a></p>' +
     '</td></tr>' +
