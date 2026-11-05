@@ -14,7 +14,7 @@ test("Resend delivery audit handles duplicate and out-of-order events", async ()
          created_at timestamp default now(),sent_at timestamp);
       CREATE TABLE public.broker_invitation_reminder_events
         (user_id varchar,reminder_day smallint,status varchar,provider_message_id varchar,
-         created_at timestamp default now(),sent_at timestamp,
+         claimed_at timestamp default now(),updated_at timestamp default now(),sent_at timestamp,
          PRIMARY KEY(user_id,reminder_day));
       CREATE TABLE public.notifications (id varchar PRIMARY KEY,type varchar,data jsonb,created_at timestamp default now());
       CREATE TABLE public.resend_delivery_events
