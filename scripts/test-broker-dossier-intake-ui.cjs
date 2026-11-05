@@ -18,7 +18,7 @@ async function tab(label){const el=[...d.querySelectorAll('[role="tab"]')].find(
  button('Comprobante PDF').click();assert(w.qaOpened.endsWith('/acceptances/accept-qa/comprobante'));
  await tab('Actividad');assert(text().includes('Ingreso exitoso'));
  d.dispatchEvent(new w.KeyboardEvent('keydown',{key:'Escape',bubbles:true}));await pause();
- button('Formulario QA').click();await waitFor(()=>text().includes('Acepto el Aviso de Privacidad'),'public consent');
+ button('Formulario QA').click();await waitFor(()=>text().includes('He leído el Aviso de Privacidad'),'public consent');
  assert(d.querySelector('[data-testid="button-submit-client"]'),'form visible before consent');
  d.querySelector('[role="checkbox"]').click();
  assert(text().includes('Completa tu información'));
