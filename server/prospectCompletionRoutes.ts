@@ -18,7 +18,7 @@ export const completionTokenHash = (token: string) => createHash("sha256").updat
 export const makeCompletionToken = () => randomBytes(24).toString("base64url");
 const tokenSchema = z.string().regex(/^[a-zA-Z0-9_-]{32}$/);
 const limiter = rateLimit({ windowMs: 15 * 60 * 1000, limit: 60, standardHeaders: "draft-7", legacyHeaders: false });
-const input = z.object({ profile: publicClientProfileSchema, financing: prospectFinancingSchema.optional(), acknowledgePrivacy: z.literal(true),
+const input = z.object({ profile: publicClientProfileSchema.refine(profile=>Boolean(profile.email?.trim()), {message:"Es necesario proporcionar correo electrónico.",path:["email"]}), financing: prospectFinancingSchema.optional(), acknowledgePrivacy: z.literal(true),
   privacyVersion: z.string().min(1).max(40), companyWebsite: z.literal("").optional() }).strict();
 const lookup = `SELECT l.*,u.first_name,u.last_name,u.brand_name
   FROM public.prospect_completion_links l JOIN public.users u ON u.id=l.owner_user_id
