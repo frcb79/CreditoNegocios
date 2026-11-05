@@ -22,7 +22,7 @@ async function tab(label){const el=[...d.querySelectorAll('[role="tab"]')].find(
  assert(!d.querySelector('[data-testid="button-submit-client"]'));
  d.querySelector('[role="checkbox"]').click();await waitFor(()=>d.querySelector('[data-testid="button-submit-client"]'),'same advanced profile form');
  assert(text().includes('Completa tu información'));
- d.querySelector('[data-testid="button-submit-client"]').click();await waitFor(()=>text().includes('Información recibida'),'public profile submitted');
+ d.querySelector('[data-testid="button-submit-client"]').click();await waitFor(()=>Boolean(d.querySelector('[data-testid="prospect-profile-success"]')),'public profile submitted');
  const save=w.qaCalls.find(c=>c.method==='POST'&&c.path.includes('/api/public/prospect-completion/'));assert(save);assert.equal(save.body.acknowledgePrivacy,true);assert.equal(save.body.profile.firstName,'Prospecto QA');assert.equal(save.body.profile.phone,'5512345678');assert(!('brokerId' in save.body.profile));
  button('Enlace QA').click();await waitFor(()=>d.querySelector('[data-testid="prospect-completion-link"]'),'direct link button');
  d.querySelector('[data-testid="prospect-completion-link"]').click();await waitFor(()=>d.querySelector('input[aria-label="Enlace para completar información"]'),'private direct link');
