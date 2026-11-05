@@ -1,6 +1,7 @@
 import { prospectFinancingSchema, matchesFinancingFamily, normalizeFinancingFamily } from "../../shared/prospectFinancing";
 import { aggregateProspectAssessment, buildProspectCredit } from "../../server/prospectAutoMatching";
 import { matchPublishedCatalog } from "../../server/matching/catalog";
+import { extractHasGuarantee } from "../../server/matching/fieldMapping";
 
 const financing={product:"simple" as const,amount:1000000,termMonths:36,purpose:"Capital de trabajo"};
 const createOffer=(id:string,institution:string,family:string,versionStatus="published",extra:any={})=>({
@@ -33,6 +34,14 @@ describe("Issue #65 — prospect matching safety",()=>{
     expect(matchesFinancingFamily({productType:"arrendamiento"},"arrendamiento")).toBe(true);
     expect(matchesFinancingFamily({productType:"other"},"simple")).toBe(false);
     expect(matchesFinancingFamily({productType:"simple",template:{category:"arrendamiento"}},"simple")).toBe(false);
+  });
+  it("recognizes public guarantee answers in the matching engine",()=>{
+    expect(extractHasGuarantee({garantia:"sin-garantia"})).toMatchObject({
+      hasGuarantee:false,guaranteeType:"sin_garantia",
+    });
+    expect(extractHasGuarantee({garantia:"hipotecaria",garantiaDetalles:{tipo:"inmueble"}}))
+      .toMatchObject({hasGuarantee:true,guaranteeType:"inmueble"});
+    expect(extractHasGuarantee({garantia:"otros"}).hasGuarantee).toBe(true);
   });
   it("counts unique verified institutions, not offer rows, without private fields",()=>{
     const items=[
