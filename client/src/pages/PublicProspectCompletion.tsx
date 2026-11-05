@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link, useParams } from "wouter";
-import ClientForm from "@/components/Clients/ClientForm";
+import PublicProspectQuickForm from "@/components/Clients/PublicProspectQuickForm";
 import ProspectPageLayout, { ProspectTrustNotice } from "@/components/Clients/ProspectPageLayout";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Button } from "@/components/ui/button";
@@ -211,7 +211,7 @@ export function ProspectCompletionForm({ token, initialProfile, initialFinancing
         </div>}
         {financingError && <p role="alert" className="text-sm text-destructive">{financingError}</p>}
       </section>
-      <ClientForm client={initialProfile} onSuccess={onBack || (() => setAccepted(false))} onPublicSubmit={async profile => {
+      <PublicProspectQuickForm initialProfile={initialProfile} onPublicSubmit={async profile => {
         const money=Number(amount), months=Number(termMonths);
         if (!product || !amount || !Number.isInteger(money) || money < 10000 || money > 1000000000000 ||
             !termMonths || !Number.isInteger(months) || months < 1 || months > 360 ||
