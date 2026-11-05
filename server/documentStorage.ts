@@ -330,6 +330,18 @@ export async function runStagingVolumePdfQA() {
     await removeStoredDocument(destination);
     destination = null;
     console.info("[STAGING_VOLUME_PDF_QA] PASS upload/read/download/delete, bytes=" + original.length);
+    if (process.env.STAGING_REMOVE_LEGACY_STORAGE === "true") {
+      await assertDocumentStorageEnvironmentIsolatedAndAuthorized();
+      const backups = [
+        "staging-20261104032434/manifest.json", "staging-20261104032434/part-0000.bin",
+        "staging-20261104032503/manifest.json", "staging-20261104032503/part-0000.bin",
+      ];
+      const removedPdf = await supabaseAdmin.storage.from("staging-documents").remove([key]);
+      if (removedPdf.error) throw new Error("STAGING_CLEANUP_DOCUMENT_FAILED");
+      const removedBackups = await supabaseAdmin.storage.from("staging-db-backups").remove(backups);
+      if (removedBackups.error) throw new Error("STAGING_CLEANUP_BACKUPS_FAILED");
+      console.info("[STAGING_LEGACY_STORAGE_CLEANUP] PASS 5 legacy objects");
+    }
   } finally {
     if (destination) await removeStoredDocument(destination).catch(() => {});
     await fs.unlink(temporary).catch(() => {});
