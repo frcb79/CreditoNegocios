@@ -45,7 +45,7 @@ export default function PublicCampaignLanding() {
   const { data, isLoading, error } = useQuery<CampaignInfo>({
     queryKey: ["public-campaign", token],
     queryFn: async () => {
-      const res = await fetch("/api/public/campaign/" + encodeURIComponent(token), { cache: "no-store" });
+      const res = await fetch("/api/public/campaign/" + encodeURIComponent(token), { credentials:"omit", cache: "no-store" });
       if (!res.ok) throw new Error("El enlace ya no está disponible");
       return res.json();
     },
