@@ -60,10 +60,17 @@ export function summarizePublicCriteria(result: {
   // or rejected offers remain useful evidence but are NOT a lender match.
   const considered=result.compatible.length?result.compatible:
     [...result.insufficientData,...rejected];
-  const matched=labels(considered,"matched","PASSED").slice(0,5);
-  const toReview=labels([...result.insufficientData,...rejected],"missing","MISSING_DATA")
+  const allPassed=labels(considered,"matched","PASSED");
+  const allMissing=labels([...result.insufficientData,...rejected],"missing","MISSING_DATA");
+  const allFailed=labels(rejected,"failed","FAILED");
+  // Criteria are evaluated per OFFER, so the same category may pass one offer
+  // and fail another. Do not show it in green and red simultaneously.
+  // Without a complete match, prefer the conservative "review" category.
+  const matched=allPassed.filter(label=>result.compatible.length>0 ||
+    (!allFailed.includes(label) && !allMissing.includes(label))).slice(0,5);
+  const notMatched=allFailed.filter(label=>!matched.includes(label)).slice(0,4);
+  const toReview=allMissing.filter(label=>!matched.includes(label) && !notMatched.includes(label))
     .slice(0,4);
-  const notMatched=labels(rejected,"failed","FAILED").slice(0,4);
   return {matched,toReview,notMatched};
 }
 
