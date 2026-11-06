@@ -26,15 +26,15 @@ describe("Railway staging RLS hardening safety guard", () => {
     }
   });
   it("prevents RLS changes when a table is missing or the backend cannot bypass it", () => {
-    const rows = TABLES.map(name => ({name, rls_enabled:false, owner:"postgres",
+    const rows = TABLES.map((name: string) => ({name, rls_enabled:false, owner:"postgres",
       db_role:"postgres", is_superuser:true, bypasses_rls:true,
       can_select:true, can_insert:true, can_update:true, can_delete:true}));
     const ok = analyzeCatalog(rows);
     expect(ok).toMatchObject({ missing:[], unsafeOwner:[], noAccess:[], enabled:0, total:9 });
     expect(analyzeCatalog(rows.slice(1)).missing).toContain(TABLES[0]);
-    const withoutPrivilege = rows.map((r,i)=>i? r : {...r, can_update:false});
+    const withoutPrivilege = rows.map((r: (typeof rows)[number], i: number)=>i? r : {...r, can_update:false});
     expect(analyzeCatalog(withoutPrivilege).noAccess).toContain(TABLES[0]);
-    const unsafe = rows.map((r,i)=>i? r : {...r,owner:"somebody",
+    const unsafe = rows.map((r: (typeof rows)[number], i: number)=>i? r : {...r,owner:"somebody",
       is_superuser:false,bypasses_rls:false});
     expect(analyzeCatalog(unsafe).unsafeOwner).toContain(TABLES[0]);
   });
