@@ -304,16 +304,41 @@ export async function getDocumentAccessTarget(
   };
 }
 
+/**
+ * End-to-end Railway volume probe using a newly generated, synthetic PDF.
+ * No Supabase bucket, legacy document, personal data or network access.
+ */
+function createSyntheticVolumeQaPdf(): Buffer {
+  const message = "BT /F1 12 Tf 36 140 Td (Railway staging volume QA) Tj ET\n";
+  const objects = [
+    "<< /Type /Catalog /Pages 2 0 R >>",
+    "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+    "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 300 200] /Contents 4 0 R /Resources << /Font << /F1 5 0 R >> >> >>",
+    "<< /Length " + Buffer.byteLength(message) + " >>\nstream\n" + message + "endstream",
+    "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>"
+  ];
+  let pdf = "%PDF-1.4\n";
+  const offsets = [0];
+  for (let index = 0; index < objects.length; index++) {
+    offsets.push(Buffer.byteLength(pdf));
+    pdf += (index + 1) + " 0 obj\n" + objects[index] + "\nendobj\n";
+  }
+  const xref = Buffer.byteLength(pdf);
+  pdf += "xref\n0 " + (objects.length + 1) + "\n0000000000 65535 f \n";
+  for (const offset of offsets.slice(1)) {
+    pdf += offset.toString().padStart(10, "0") + " 00000 n \n";
+  }
+  pdf += "trailer\n<< /Size " + (objects.length + 1) + " /Root 1 0 R >>\n";
+  pdf += "startxref\n" + xref + "\n%%EOF\n";
+  return Buffer.from(pdf, "utf8");
+}
+
 export async function runStagingVolumePdfQA() {
   if (!stagingVolumeEnabled() || process.env.STAGING_VOLUME_PDF_QA !== "true") return;
-  const key = "ab960719-12f9-47c0-8175-dc6f3fc3ed2b/d2449166-4086-41f8-89f2-28e7354773ed/other-6ec0173e-5eb7-484f-b4c3-c0856c8a8779.pdf";
-  if (!supabaseAdmin) throw new Error("STAGING_PDF_QA_SOURCE_UNAVAILABLE");
-  const source = await supabaseAdmin.storage.from("staging-documents").download(key);
-  if (source.error || !source.data) throw new Error("STAGING_PDF_QA_DOWNLOAD_FAILED");
-  const original = Buffer.from(await source.data.arrayBuffer());
-  if (original.length !== 187613) throw new Error("STAGING_PDF_QA_BAD_SIZE");
+  const root = requireStagingVolume();
+  const original = createSyntheticVolumeQaPdf();
   const temporary = path.join("/tmp", "cn-volume-qa-" + randomUUID() + ".pdf");
-  await fs.writeFile(temporary, original);
+  await fs.writeFile(temporary, original, { flag: "wx" });
   let destination: string | null = null;
   try {
     const stored = await migrateLocalDocumentToStorage({
@@ -321,27 +346,26 @@ export async function runStagingVolumePdfQA() {
       context: { brokerId: "staging-qa", clientId: "volume-check", type: "other" },
     });
     destination = stored.filePath;
-    const access = await getDocumentAccessTarget(destination, { download: true, fileName: "volume-test.pdf" });
-    if (access.kind !== "local") throw new Error("STAGING_PDF_QA_NOT_LOCAL");
+    if (stored.storageProvider !== "local" ||
+        !destination.startsWith(root + path.sep)) {
+      throw new Error("STAGING_VOLUME_PDF_QA_NOT_RAILWAY");
+    }
+    const access = await getDocumentAccessTarget(destination, {
+      download: true, fileName: "volume-test.pdf"
+    });
+    if (access.kind !== "local") throw new Error("STAGING_VOLUME_PDF_QA_NOT_LOCAL");
     const copied = await fs.readFile(access.absolutePath);
     if (createHash("sha256").update(original).digest("hex") !==
-        createHash("sha256").update(copied).digest("hex"))
-      throw new Error("STAGING_PDF_QA_CHECKSUM");
-    await removeStoredDocument(destination);
-    destination = null;
-    console.info("[STAGING_VOLUME_PDF_QA] PASS upload/read/download/delete, bytes=" + original.length);
-    if (process.env.STAGING_REMOVE_LEGACY_STORAGE === "true") {
-      await assertDocumentStorageEnvironmentIsolatedAndAuthorized();
-      const backups = [
-        "staging-20261104032434/manifest.json", "staging-20261104032434/part-0000.bin",
-        "staging-20261104032503/manifest.json", "staging-20261104032503/part-0000.bin",
-      ];
-      const removedPdf = await supabaseAdmin.storage.from("staging-documents").remove([key]);
-      if (removedPdf.error) throw new Error("STAGING_CLEANUP_DOCUMENT_FAILED");
-      const removedBackups = await supabaseAdmin.storage.from("staging-db-backups").remove(backups);
-      if (removedBackups.error) throw new Error("STAGING_CLEANUP_BACKUPS_FAILED");
-      console.info("[STAGING_LEGACY_STORAGE_CLEANUP] PASS 5 legacy objects");
+        createHash("sha256").update(copied).digest("hex")) {
+      throw new Error("STAGING_VOLUME_PDF_QA_CHECKSUM");
     }
+    await removeStoredDocument(destination);
+    if (await fs.stat(destination).then(() => true, error => {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") return false;
+      throw error;
+    })) throw new Error("STAGING_VOLUME_PDF_QA_DELETE_FAILED");
+    destination = null;
+    console.info("[STAGING_VOLUME_PDF_QA] PASS synthetic PDF write/read/download/delete, bytes=" + original.length);
   } finally {
     if (destination) await removeStoredDocument(destination).catch(() => {});
     await fs.unlink(temporary).catch(() => {});
