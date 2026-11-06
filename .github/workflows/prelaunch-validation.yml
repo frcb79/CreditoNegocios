@@ -131,6 +131,7 @@ jobs:
             tests/unit/client-consent-release-gate.test.ts
             tests/unit/client-consent-send-atomic.test.ts
             tests/unit/document-storage-staging-isolation.test.ts
+            tests/unit/staging-rls-hardening.test.ts
             tests/unit/client-consent-revocation-expiry.test.ts
             tests/unit/broker-profile-expediente.test.ts
             tests/unit/m2-m3-matching-regression.test.ts
