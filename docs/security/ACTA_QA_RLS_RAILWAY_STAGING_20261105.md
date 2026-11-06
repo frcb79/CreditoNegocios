@@ -27,3 +27,15 @@
 - Ninguna migración ni cambio de grants, RLS o datos en Supabase producción.
 - No cerrar ni fusionar PR históricos, ni ejecutar newsletters o envíos de Resend.
 - No reutilizar Supabase staging antiguo ni borrar documentos de producción.
+
+## Resultado verificado — 2026-11-06
+
+- Railway staging deploy `ff45dce3-22f1-4fbb-8435-4087f32bd196` SUCCESS, commit `3631dd1993141503f277a1ddd01fb90dcba55dde`.
+- `[STAGING_RLS_DDL] PASS created or verified origin_attribution_reviews with no DML`.
+- `[STAGING_RLS_QA] before: tables=9/9 enabled=0` y `[STAGING_RLS_QA] PASS: nine staging tables RLS enabled; backend queries verified`.
+- `[STAGING_RLS_ONE_TIME] PASS`. La aplicación comenzó a escuchar en puerto 5000 y `GET /api/health` devolvió 200.
+- Restaurado en Railway staging el predeploy ordinario de aislamiento y auditoría **solo lectura**; `STAGING_RLS_APPLY=false`, `STAGING_VOLUME_PDF_QA=false`.
+- Las tablas `anon`/`authenticated` no pueden tener acceso público por estos cambios: no se ejecutaron `GRANT` ni políticas abiertas. La comprobación de privilegios de esos roles en Supabase producción fue una revisión de lectura anterior, **no una prueba de escritura en producción**.
+- No se modificó `main`, no hubo DDL en Supabase producción, no se envió correo.
+
+Para futuras mejoras de seguridad en producción se requiere una revisión y aprobación **independiente**: los cambios ejecutados aquí son exclusivamente de staging.
