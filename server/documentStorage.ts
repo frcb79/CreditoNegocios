@@ -319,9 +319,9 @@ function createSyntheticVolumeQaPdf(): Buffer {
   ];
   let pdf = "%PDF-1.4\n";
   const offsets = [0];
-  for (const [index, object] of objects.entries()) {
+  for (let index = 0; index < objects.length; index++) {
     offsets.push(Buffer.byteLength(pdf));
-    pdf += (index + 1) + " 0 obj\n" + object + "\nendobj\n";
+    pdf += (index + 1) + " 0 obj\n" + objects[index] + "\nendobj\n";
   }
   const xref = Buffer.byteLength(pdf);
   pdf += "xref\n0 " + (objects.length + 1) + "\n0000000000 65535 f \n";
