@@ -39,6 +39,7 @@ on:
       - 'feat/issue65-commercial-ui-and-diagnostics-*'
       - 'fix/issue65-public-prequalification-8sec-*'
       - 'staging/prod-parity-guard-*'
+      - 'sync/staging-*'
   workflow_dispatch:
 concurrency:
   group: prelaunch-${{ github.ref }}

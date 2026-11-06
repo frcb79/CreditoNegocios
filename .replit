@@ -41,7 +41,4 @@ waitForPort = 5000
 [agent]
 integrations = ["javascript_log_in_with_replit:1.0.0"]
 
-[userenv]
-
-[userenv.shared]
-RESEND_API_KEY = "re_GoQBcvmS_J87bf8VgMuA7pvsL6VoGZqWK"
+# Runtime secrets are configured in Railway and must never be committed.
