@@ -4,6 +4,7 @@ import { randomUUID } from "node:crypto";
 import type { Express, Response } from "express";
 import rateLimit from "express-rate-limit";
 import { normalizeV4Map, parseV4Archive, type GraphicImport } from "./commercialGraphicImporter";
+import { commercialBulkPublishSchema, bulkPublicationBlockers, type CommercialPublicationCandidate } from "./commercialBulkPublication";
 import { pool } from "./db";
 import { storage } from "./storage";
 import { isAuthenticated } from "./auth";
@@ -503,6 +504,65 @@ export function registerCommercialResourceRoutes(app: Express) {
       await client.query("ROLLBACK");
       console.error("[COM_RES] Atomic draft deletion failed",error);
       return res.status(503).json({message:"No se pudieron eliminar los borradores. No se modificó el lote."});
+    }finally{client.release();}
+  });
+
+  // Publish a reviewed selection in ONE transaction, never one POST per item.
+  // The client cannot bypass commercial/legal approval or choose two versions
+  // with the same slug. No campaign links, assets or prior revisions are deleted.
+  app.post("/api/admin/commercial-resources/drafts/publish",isAuthenticated,async(req:any,res)=>{
+    const user=await identify(req);
+    if(user?.role!=="super_admin")return forbid(res);
+    const parsed=commercialBulkPublishSchema.safeParse(req.body);
+    if(!parsed.success)return res.status(400).json({
+      message:"Selecciona de 1 a 200 borradores únicos y confirma la revisión comercial y legal.",
+    });
+    const {ids}=parsed.data;
+    const client=await pool.connect();
+    try{
+      await client.query("BEGIN");
+      // Lock slugs in a stable order; same advisory namespace as import,
+      // delete and single publication. A competing edit is rechecked below.
+      const slugRows=await client.query(
+        "SELECT DISTINCT slug FROM public.commercial_resource_templates WHERE id=ANY($1::varchar[]) ORDER BY slug",
+        [ids]);
+      for(const row of slugRows.rows){
+        await client.query("SELECT pg_advisory_xact_lock(hashtext($1))",["resources:"+row.slug]);
+      }
+      const selected=await client.query(
+        `SELECT t.id,t.slug,t.version,t.name,t.status,t.definition,
+                a.template_id AS artwork_id
+         FROM public.commercial_resource_templates t
+         LEFT JOIN public.commercial_resource_artworks a ON a.template_id=t.id
+         WHERE t.id=ANY($1::varchar[])
+         ORDER BY t.id FOR UPDATE OF t`,[ids]);
+      const blockers=bulkPublicationBlockers(
+        ids,selected.rows as CommercialPublicationCandidate[]);
+      if(blockers.length){
+        await client.query("ROLLBACK");
+        return res.status(409).json({
+          message:"No se publicó ninguna plantilla. Corrige primero lo siguiente: "+
+            blockers.slice(0,3).join(" "),
+          blockers,
+        });
+      }
+      const slugs=selected.rows.map(row=>row.slug as string);
+      const retired=await client.query(
+        "UPDATE public.commercial_resource_templates SET status='retired',retired_at=NOW() WHERE slug=ANY($1::varchar[]) AND status='published' RETURNING id",
+        [slugs]);
+      const published=await client.query(
+        `UPDATE public.commercial_resource_templates
+         SET status='published',published_by=$2,published_at=NOW()
+         WHERE id=ANY($1::varchar[]) AND status='draft'
+         RETURNING id,slug,version,status,published_at`,
+        [ids,user.id]);
+      if(published.rowCount!==ids.length)throw new Error("No se actualizaron todas las plantillas");
+      await client.query("COMMIT");
+      return res.json({published:published.rowCount,retired:retired.rowCount,items:published.rows});
+    }catch(error){
+      await client.query("ROLLBACK");
+      console.error("[COM_RES] Atomic bulk publication failed",error);
+      return res.status(503).json({message:"No se pudo publicar el lote. Ninguna publicación parcial fue confirmada."});
     }finally{client.release();}
   });
 

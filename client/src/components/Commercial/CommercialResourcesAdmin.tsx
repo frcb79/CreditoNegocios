@@ -5,9 +5,10 @@ import CommercialTemplateCard from "./CommercialTemplateCard";
 import { COMMERCIAL_STYLES, filterCommercialTemplates, type CommercialLibraryFilters } from "@/lib/commercialLibrary";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
-import { Upload, ShieldCheck, Library, Inbox, Eye, Trash2 } from "lucide-react";
+import { Upload, ShieldCheck, Library, Inbox, Eye, Trash2, Send } from "lucide-react";
 import {
   commercialResourceUploadSchema, COM_RES_EXAMPLE
 } from "@shared/commercialResourceDefinition";
@@ -83,6 +84,8 @@ export default function CommercialResourcesAdmin() {
   const [importReport, setImportReport] = useState<{ scanned:number;created:number;existing:number;requiresTypographyReview:number;batchId?:string } | null>(null);
   const [previewTemplateId, setPreviewTemplateId] = useState<string | null>(null);
   const [selectedDraftIds,setSelectedDraftIds]=useState<string[]>([]);
+  const [publishDialogOpen,setPublishDialogOpen]=useState(false);
+  const [bulkPublicationApproved,setBulkPublicationApproved]=useState(false);
   const [libraryFilters, setLibraryFilters] = useState<CommercialLibraryFilters>({...DEFAULT_ADMIN_FILTERS});
 
   const { data: campaignOverview } = useQuery<{ clicks: number; links: number; received: number; linked: number }>({
@@ -105,6 +108,14 @@ export default function CommercialResourcesAdmin() {
   const retiredCount=templates.filter(item=>item.status==="retired").length;
   const visibleDrafts=visibleTemplates.filter(item=>item.status==="draft");
   const selectedDrafts=templates.filter(item=>selectedDraftIds.includes(item.id)&&item.status==="draft");
+  const selectedSlugs=selectedDrafts.map(item=>item.slug);
+  const duplicatedSlugCount=selectedSlugs.length-new Set(selectedSlugs).size;
+  const typographyPending=selectedDrafts.filter(item=>
+    item.definition.graphic?.typographyReviewRequired).length;
+  const replacedPublishedCount=templates.filter(item=>
+    item.status==="published"&&selectedSlugs.includes(item.slug)).length;
+  const publicationReady=selectedDrafts.length>0&&selectedDrafts.length<=200&&
+    duplicatedSlugCount===0&&typographyPending===0;
   const toggleDraft=(id:string,checked:boolean)=>{
     setSelectedDraftIds(previous=>checked
       ? Array.from(new Set([...previous,id])):previous.filter(value=>value!==id));
@@ -133,6 +144,43 @@ export default function CommercialResourcesAdmin() {
       toast({title:"Borradores eliminados",description:result.deleted+" eliminado(s). Ninguna publicación fue afectada."});
     }catch(error:any){toast({title:"No se pudieron eliminar",description:error.message,variant:"destructive"});}
     finally{setWorking(false);}
+  };
+
+  // One batch may contain older draft revisions of the same campaign.
+  // Offer an explicit choice of the newest version without altering the
+  // existing selection behavior used by bulk deletion.
+  const keepLatestDraftPerTemplate=()=>{
+    const latest=new Map<string,PublishedCommercialTemplate>();
+    for(const item of selectedDrafts){
+      const current=latest.get(item.slug);
+      if(!current||item.version>current.version)latest.set(item.slug,item);
+    }
+    setSelectedDraftIds(Array.from(latest.values()).map(item=>item.id));
+    setBulkPublicationApproved(false);
+  };
+
+  const publishSelectedDrafts=async()=>{
+    if(working||!publicationReady||!bulkPublicationApproved)return;
+    const ids=selectedDrafts.map(item=>item.id);
+    setWorking(true);
+    try{
+      const result=await postJson("/api/admin/commercial-resources/drafts/publish",{
+        ids,editorialLegalApproved:true,
+      });
+      await Promise.all([
+        queryClient.invalidateQueries({queryKey:["/api/admin/commercial-resources/templates"]}),
+        queryClient.invalidateQueries({queryKey:["/api/commercial-resources/templates"]}),
+      ]);
+      setSelectedDraftIds(previous=>previous.filter(id=>!ids.includes(id)));
+      setPublishDialogOpen(false);
+      setBulkPublicationApproved(false);
+      toast({title:"Lote publicado correctamente",
+        description:result.published+" plantilla(s) publicadas. "+
+          result.retired+" versión(es) anteriores retiradas."});
+    }catch(error:any){
+      toast({title:"No se publicó el lote",description:error.message,
+        variant:"destructive"});
+    }finally{setWorking(false);}
   };
 
   const validateDraft = () => {
@@ -305,7 +353,7 @@ export default function CommercialResourcesAdmin() {
           onChange={setLibraryFilters} includeStatus />
         <div className="rounded-lg border p-3 space-y-2" data-testid="resource-admin-draft-deletion">
           <p className="text-xs text-muted-foreground">
-            Eliminar definitivamente solo está disponible para borradores sin vínculos a campañas. Las plantillas retiradas se conservan por historial y enlaces previamente generados; puedes ocultarlas del catálogo o consultarlas en Estado → Retiradas.
+            Selecciona los borradores filtrados y publícalos todos con una sola confirmación (máximo 200). Solo se publican versiones aprobadas; las anteriores quedan en el historial. También puedes eliminar borradores sin vínculos a campañas.
           </p>
           {visibleDrafts.length===0 && <p className="text-xs font-medium text-amber-800 dark:text-amber-300" data-testid="no-deletable-resource-drafts">
             No hay borradores eliminables en esta vista; por eso el botón de eliminar está deshabilitado.
@@ -324,6 +372,11 @@ export default function CommercialResourcesAdmin() {
             </Button>
             <Button type="button" size="sm" variant="outline" disabled={working||selectedDraftIds.length===0}
               onClick={()=>setSelectedDraftIds([])}>Limpiar selección</Button>
+            <Button type="button" size="sm" disabled={working||selectedDrafts.length===0}
+              onClick={()=>{setBulkPublicationApproved(false);setPublishDialogOpen(true);}}
+              data-testid="publish-selected-drafts">
+              <Send className="w-3.5 h-3.5 mr-1"/> Publicar seleccionadas ({selectedDrafts.length})
+            </Button>
             <Button type="button" size="sm" variant="destructive"
               disabled={working||selectedDrafts.length===0}
               onClick={()=>deleteDrafts(selectedDrafts.map(t=>t.id))}
@@ -515,6 +568,80 @@ export default function CommercialResourcesAdmin() {
 
         </div>
       </details>
+      <Dialog open={publishDialogOpen} onOpenChange={open=>{
+        if(working)return;
+        setPublishDialogOpen(open);
+        if(!open)setBulkPublicationApproved(false);
+      }}>
+        <DialogContent className="sm:max-w-lg" data-testid="resource-bulk-publish-dialog">
+          <DialogHeader>
+            <DialogTitle>Publicar plantillas seleccionadas</DialogTitle>
+            <DialogDescription>
+              Vas a publicar {selectedDrafts.length} plantilla(s) para brokers y masters
+              en una sola operación. Revisa el lote antes de confirmar.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3 text-sm">
+            <div className="rounded-lg border bg-muted/30 p-3 space-y-1">
+              <p className="font-semibold">{selectedDrafts.length} borradores seleccionados</p>
+              <p className="text-muted-foreground">
+                {replacedPublishedCount} versión(es) publicada(s) del mismo identificador
+                pasarán a retiradas. Sus registros y vínculos históricos se conservan.
+              </p>
+              <ul className="mt-2 max-h-40 overflow-y-auto list-disc pl-5 space-y-1"
+                data-testid="resource-bulk-publish-list">
+                {selectedDrafts.slice(0,12).map(item=><li key={item.id}>
+                  {item.name} · v{item.version}
+                </li>)}
+                {selectedDrafts.length>12&&<li>Y {selectedDrafts.length-12} más…</li>}
+              </ul>
+            </div>
+            {selectedDrafts.length>200&&<p role="alert" className="text-destructive">
+              El límite por operación es de 200 plantillas. Reduce la selección.
+            </p>}
+            {duplicatedSlugCount>0&&<div role="alert" className="space-y-2 rounded-lg border border-amber-300 p-3">
+              <p className="text-amber-900 dark:text-amber-300">
+                Seleccionaste varias versiones del mismo identificador.
+                Para publicar, debes elegir solo una versión por plantilla.
+              </p>
+              <Button type="button" size="sm" variant="outline" disabled={working}
+                onClick={keepLatestDraftPerTemplate}
+                data-testid="resource-bulk-keep-latest">
+                Elegir la versión más reciente de cada plantilla
+              </Button>
+            </div>}
+            {typographyPending>0&&<p role="alert" className="text-destructive">
+              {typographyPending} arte(s) requieren confirmar su mapa y tipografía.
+              Revisa esas plantillas individualmente antes de publicar el lote.
+            </p>}
+            <p className="text-xs text-muted-foreground">
+              La operación es íntegra: si una plantilla no cumple los requisitos
+              (por ejemplo, arte sin PNG o estado modificado), no se publicará ninguna.
+            </p>
+            <label className="flex items-start gap-2 rounded-lg border p-3 cursor-pointer"
+              htmlFor="resource-bulk-publish-approval">
+              <input id="resource-bulk-publish-approval" type="checkbox"
+                checked={bulkPublicationApproved} disabled={working}
+                onChange={event=>setBulkPublicationApproved(event.target.checked)}
+                data-testid="resource-bulk-publish-approval"/>
+              <span>Confirmo que revisé y aprobé comercial y legalmente
+                los textos, fotografías, claims, mapas y tipografías
+                de todas las plantillas seleccionadas.</span>
+            </label>
+          </div>
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button variant="outline" type="button" disabled={working}
+              onClick={()=>{setPublishDialogOpen(false);setBulkPublicationApproved(false);}}>
+              Cancelar
+            </Button>
+            <Button type="button" disabled={working||!publicationReady||!bulkPublicationApproved}
+              onClick={()=>void publishSelectedDrafts()}
+              data-testid="confirm-bulk-publish">
+              {working?"Publicando…":`Publicar ${selectedDrafts.length} plantillas`}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </section>
   );
 }
