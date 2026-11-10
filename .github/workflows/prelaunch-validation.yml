@@ -154,6 +154,7 @@ jobs:
             tests/unit/commercial-library-filters.test.ts
             tests/unit/commercial-catalog-v2.test.ts
             tests/unit/commercial-bulk-publication.test.ts
+            tests/unit/commercial-bulk-publication-http.test.ts
             tests/unit/commercial-classification-v7.test.ts
             tests/unit/commercial-artwork-auth-delivery.test.ts
             tests/unit/commercial-graphic-import-http.test.ts
