@@ -92,6 +92,8 @@ describe("Commercial Resources — atomic batch publication",()=>{
     expect(ui).toContain('data-testid="resource-bulk-publish-dialog"');
     expect(ui).toContain('data-testid="resource-bulk-publish-approval"');
     expect(ui).toContain('data-testid="confirm-bulk-publish"');
+    expect(ui).toContain('data-testid="resource-bulk-keep-latest"');
+    expect(ui).toContain("item.version>current.version");
     expect(ui).toContain('"/api/admin/commercial-resources/drafts/publish"');
     expect(ui).toContain("editorialLegalApproved:true");
     expect(ui).toContain("duplicatedSlugCount===0&&typographyPending===0");
