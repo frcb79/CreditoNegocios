@@ -146,6 +146,19 @@ export default function CommercialResourcesAdmin() {
     finally{setWorking(false);}
   };
 
+  // One batch may contain older draft revisions of the same campaign.
+  // Offer an explicit choice of the newest version without altering the
+  // existing selection behavior used by bulk deletion.
+  const keepLatestDraftPerTemplate=()=>{
+    const latest=new Map<string,PublishedCommercialTemplate>();
+    for(const item of selectedDrafts){
+      const current=latest.get(item.slug);
+      if(!current||item.version>current.version)latest.set(item.slug,item);
+    }
+    setSelectedDraftIds([...latest.values()].map(item=>item.id));
+    setBulkPublicationApproved(false);
+  };
+
   const publishSelectedDrafts=async()=>{
     if(working||!publicationReady||!bulkPublicationApproved)return;
     const ids=selectedDrafts.map(item=>item.id);
@@ -586,10 +599,17 @@ export default function CommercialResourcesAdmin() {
             {selectedDrafts.length>200&&<p role="alert" className="text-destructive">
               El límite por operación es de 200 plantillas. Reduce la selección.
             </p>}
-            {duplicatedSlugCount>0&&<p role="alert" className="text-destructive">
-              Seleccionaste varias versiones del mismo identificador. Elige solo una
-              versión por plantilla antes de continuar.
-            </p>}
+            {duplicatedSlugCount>0&&<div role="alert" className="space-y-2 rounded-lg border border-amber-300 p-3">
+              <p className="text-amber-900 dark:text-amber-300">
+                Seleccionaste varias versiones del mismo identificador.
+                Para publicar, debes elegir solo una versión por plantilla.
+              </p>
+              <Button type="button" size="sm" variant="outline" disabled={working}
+                onClick={keepLatestDraftPerTemplate}
+                data-testid="resource-bulk-keep-latest">
+                Elegir la versión más reciente de cada plantilla
+              </Button>
+            </div>}
             {typographyPending>0&&<p role="alert" className="text-destructive">
               {typographyPending} arte(s) requieren confirmar su mapa y tipografía.
               Revisa esas plantillas individualmente antes de publicar el lote.
