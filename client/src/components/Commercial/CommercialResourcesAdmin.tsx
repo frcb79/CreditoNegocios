@@ -155,7 +155,7 @@ export default function CommercialResourcesAdmin() {
       const current=latest.get(item.slug);
       if(!current||item.version>current.version)latest.set(item.slug,item);
     }
-    setSelectedDraftIds([...latest.values()].map(item=>item.id));
+    setSelectedDraftIds(Array.from(latest.values()).map(item=>item.id));
     setBulkPublicationApproved(false);
   };
 
