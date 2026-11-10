@@ -340,7 +340,7 @@ export default function CommercialResourcesAdmin() {
           onChange={setLibraryFilters} includeStatus />
         <div className="rounded-lg border p-3 space-y-2" data-testid="resource-admin-draft-deletion">
           <p className="text-xs text-muted-foreground">
-            Eliminar definitivamente solo está disponible para borradores sin vínculos a campañas. Las plantillas retiradas se conservan por historial y enlaces previamente generados; puedes ocultarlas del catálogo o consultarlas en Estado → Retiradas.
+            Selecciona los borradores filtrados y publícalos todos con una sola confirmación (máximo 200). Solo se publican versiones aprobadas; las anteriores quedan en el historial. También puedes eliminar borradores sin vínculos a campañas.
           </p>
           {visibleDrafts.length===0 && <p className="text-xs font-medium text-amber-800 dark:text-amber-300" data-testid="no-deletable-resource-drafts">
             No hay borradores eliminables en esta vista; por eso el botón de eliminar está deshabilitado.
