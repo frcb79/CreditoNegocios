@@ -71,7 +71,9 @@ describe("First-party session API routing — no DNS or subdomain changes",()=>{
     expect(config).toContain('"https://app.creditonegocios.com.mx"');
     expect(config).toContain('"https://credito-negocios.vercel.app"');
     expect(config).toContain('process.env.RAILWAY_ENVIRONMENT_NAME==="staging"');
-    expect(config).toContain('["https://credito-negocios-staging.vercel.app"] : []');
+    expect(config).toContain('STAGING_AUTH_PREVIEW_ORIGIN');
+    expect(config).toContain('francos-projects-62938903');
+    expect(config).toContain('process.env.RAILWAY_ENVIRONMENT_NAME==="staging"');
     expect(config).toContain("if (allowedOrigins.has(norm)) return true");
     expect(config).toContain("return false;");
   });
