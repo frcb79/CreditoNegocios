@@ -38,6 +38,7 @@ on:
       - 'feat/issue65-approved-prospect-journey-*'
       - 'feat/issue65-commercial-ui-and-diagnostics-*'
       - 'fix/issue65-public-prequalification-8sec-*'
+      - 'release/first-party-api-session-*'
       - 'staging/prod-parity-guard-*'
       - 'release/commercial-bulk-publish-*'
   workflow_dispatch:
@@ -166,6 +167,7 @@ jobs:
             tests/unit/credit-response-projection.test.ts
             tests/unit/document-origin-visibility.test.ts
             tests/unit/websocket-session-gate.test.ts
+            tests/unit/first-party-api-session-routing.test.ts
             tests/unit/websocket-session-http.test.ts
             tests/unit/broker-invitation-bulk.test.ts
             tests/unit/broker-invitation-reminders.test.ts
