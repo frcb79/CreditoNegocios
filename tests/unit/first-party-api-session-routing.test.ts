@@ -70,7 +70,8 @@ describe("First-party session API routing — no DNS or subdomain changes",()=>{
     const config=text("server/runtimeConfig.ts");
     expect(config).toContain('"https://app.creditonegocios.com.mx"');
     expect(config).toContain('"https://credito-negocios.vercel.app"');
-    expect(config).toContain('"https://credito-negocios-staging.vercel.app"');
+    expect(config).toContain('process.env.RAILWAY_ENVIRONMENT_NAME==="staging"');
+    expect(config).toContain('["https://credito-negocios-staging.vercel.app"] : []');
     expect(config).toContain("if (allowedOrigins.has(norm)) return true");
     expect(config).toContain("return false;");
   });
