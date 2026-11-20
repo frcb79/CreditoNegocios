@@ -66,6 +66,15 @@ describe("First-party session API routing — no DNS or subdomain changes",()=>{
     }
   });
 
+  it("allows only exact public Vercel app origins through CSRF protections",()=>{
+    const config=text("server/runtimeConfig.ts");
+    expect(config).toContain('"https://app.creditonegocios.com.mx"');
+    expect(config).toContain('"https://credito-negocios.vercel.app"');
+    expect(config).toContain('"https://credito-negocios-staging.vercel.app"');
+    expect(config).toContain("if (allowedOrigins.has(norm)) return true");
+    expect(config).toContain("return false;");
+  });
+
   it("prohibits CDN caching for all authenticated API responses",()=>{
     const conf=JSON.parse(text("vercel.json"));
     expect(conf.headers).toEqual([{
