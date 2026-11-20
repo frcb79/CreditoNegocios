@@ -1,8 +1,16 @@
+import { usesFirstPartyApiProxy } from "./apiOriginPolicy";
+
 function stripTrailingSlash(value: string) {
   return value.replace(/\/$/, "");
 }
 
 export function getApiBaseUrl() {
+  // On the established Vercel app hosts /api is a same-origin reverse proxy.
+  // Do this BEFORE any legacy VITE_API_BASE_URL override to avoid third-party
+  // session cookies being rejected by Safari/Chrome on iOS.
+  if (typeof window !== "undefined" &&
+      usesFirstPartyApiProxy(window.location.hostname)) return "";
+
   const value = import.meta.env.VITE_API_BASE_URL?.trim();
   if (value) return stripTrailingSlash(value);
   if (typeof window !== "undefined" && window.location.hostname.includes("staging")) {
