@@ -42,7 +42,9 @@ export function buildWebSocketUrl(path: string) {
     return `${stripTrailingSlash(override)}${path}`;
   }
 
-  const apiBaseUrl = getApiBaseUrl();
+  // HTTP may be same-origin while WebSocket must still reach the backend directly.
+  // Preserve the legacy backend endpoint when WS_BASE_URL is not configured.
+  const apiBaseUrl = import.meta.env.VITE_API_BASE_URL?.trim() || getApiBaseUrl();
   if (apiBaseUrl) {
     const apiUrl = new URL(apiBaseUrl);
     const protocol = apiUrl.protocol === "https:" ? "wss:" : "ws:";

@@ -23,7 +23,6 @@ const defaultOrigins = [
   "https://www.creditonegocios.com.mx",
   "https://app.creditonegocios.com.mx",
   "https://credito-negocios.vercel.app",
-  "https://credito-negocios-staging.vercel.app",
   "https://creditonegocios-staging.up.railway.app",
   "https://creditonegocios-production.up.railway.app",
 ];

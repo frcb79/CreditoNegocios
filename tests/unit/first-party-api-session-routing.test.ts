@@ -37,7 +37,8 @@ describe("First-party session API routing — no DNS or subdomain changes",()=>{
     expect(code).toContain('if (typeof window !== "undefined" &&');
     expect(code).toContain('usesFirstPartyApiProxy(window.location.hostname)) return "";');
     expect(code).toContain("return `${getApiBaseUrl()}${path}`");
-    expect(code).toContain("buildWebSocketUrl(path)");
+    expect(code).toContain("export function buildWebSocketUrl(path: string)");
+    expect(code).toContain("const apiBaseUrl = import.meta.env.VITE_API_BASE_URL?.trim() || getApiBaseUrl()");
     expect(code).toContain("const override = import.meta.env.VITE_WS_BASE_URL?.trim()");
   });
 
@@ -70,6 +71,8 @@ describe("First-party session API routing — no DNS or subdomain changes",()=>{
     const config=text("server/runtimeConfig.ts");
     expect(config).toContain('"https://app.creditonegocios.com.mx"');
     expect(config).toContain('"https://credito-negocios.vercel.app"');
+    const defaults=config.split("const defaultOrigins = [")[1]?.split("];")[0];
+    expect(defaults).not.toContain('"https://credito-negocios-staging.vercel.app"');
     expect(config).toContain('process.env.RAILWAY_ENVIRONMENT_NAME==="staging"');
     expect(config).toContain('STAGING_AUTH_PREVIEW_ORIGIN');
     expect(config).toContain('francos-projects-62938903');
