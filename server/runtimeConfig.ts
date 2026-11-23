@@ -19,10 +19,10 @@ const defaultOrigins = [
   "http://localhost:5173",
   "http://127.0.0.1:3000",
   "http://127.0.0.1:5173",
-  "https://credito-negocios-staging.vercel.app",
   "https://creditonegocios.com.mx",
   "https://www.creditonegocios.com.mx",
   "https://app.creditonegocios.com.mx",
+  "https://credito-negocios.vercel.app",
   "https://creditonegocios-staging.up.railway.app",
   "https://creditonegocios-production.up.railway.app",
 ];
@@ -34,6 +34,8 @@ export const frontendBaseUrl = process.env.FRONTEND_BASE_URL
 export const allowedOrigins = new Set(
   [
     ...defaultOrigins,
+    ...(process.env.RAILWAY_ENVIRONMENT_NAME==="staging" || process.env.RAILWAY_ENVIRONMENT==="staging"
+      ? ["https://credito-negocios-staging.vercel.app"] : []),
     ...splitOrigins(process.env.ALLOWED_ORIGINS),
     ...(frontendBaseUrl ? [frontendBaseUrl] : []),
   ].filter(Boolean),
