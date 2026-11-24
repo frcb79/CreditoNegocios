@@ -39,6 +39,44 @@ export function evaluatePartialSimple(application:ApplicationInput, offer:OfferV
     reasons:[note,...partial.reasons],partialCoverage:{requestedAmount:requested,evaluatedAmount,remainingAmount}};
 }
 
+type Combination = { allocations: {institutionId:string; institutionName?:string; offerId:string; versionNumber:number; amount:number}[]; totalAmount:number; requestedAmount:number };
+
+/** Indicative two-lender scenarios. No duplicate institutions, no unknown bounds,
+ * and every allocation is evaluated again. Never establishes joint affordability. */
+export function buildSimpleCombinations(application:ApplicationInput, offers:(OfferVersionInput & {institution?:any})[], rows:CatalogMatch[]):Combination[] {
+  const requested=extractRequestedAmount(application.credit,application.client);
+  if (requested===null || !Number.isSafeInteger(Math.round(requested*100))) return [];
+  const client=capturedRecord(application.client),credit=capturedRecord(application.credit);
+  const candidates=rows.filter(r=>r.status!=="NOT_COMPATIBLE" && r.institutionId!=="unknown").flatMap(row=>{
+    const source=offers.find(o=>o.product?.id===row.offerId && o.version?.versionNumber===row.versionNumber &&
+      matchesFinancingFamily(o.product,"simple") && isVersionEligibleForMatching(o.product,o.version,o.institution).eligible);
+    if(!source)return [];
+    const cond=offerConditions(source.version?.conditions||{},source.version?.requirements||{},client,credit);
+    if(typeof cond.minAmount!=="number" || !Number.isFinite(cond.minAmount) || cond.minAmount<=0 ||
+       typeof cond.maxAmount!=="number" || !Number.isFinite(cond.maxAmount) || cond.maxAmount<=0)return [];
+    const min=Math.ceil(cond.minAmount*100),max=Math.floor(Math.min(cond.maxAmount,row.partialCoverage?.evaluatedAmount??requested)*100);
+    if(min>max || !Number.isSafeInteger(min) || !Number.isSafeInteger(max))return [];
+    return [{row,source,min,max}];
+  });
+  const target=Math.round(requested*100),result:Combination[]=[];
+  for(let i=0;i<candidates.length;i++)for(let j=i+1;j<candidates.length;j++){
+    const a=candidates[i],b=candidates[j];
+    if(a.row.institutionId===b.row.institutionId || (!a.row.partialCoverage && !b.row.partialCoverage))continue;
+    const lower=Math.max(a.min,target-b.max),upper=Math.min(a.max,target-b.min);
+    if(lower>upper)continue;
+    const aAmount=upper/100,bAmount=(target-upper)/100;
+    const check=(x:typeof a,amount:number)=>{
+      const evaluation=evaluateOfferCompatibility({client,credit:{...credit,amount}},x.source);
+      return evaluation.status!=="NOT_COMPATIBLE" && evaluation.criteria.matched.some(c=>c.code==="creditAmount");
+    };
+    if(!check(a,aAmount)||!check(b,bAmount))continue;
+    const allocation=(x:typeof a,amount:number)=>({institutionId:x.row.institutionId,institutionName:x.row.institutionName,offerId:x.row.offerId,versionNumber:x.row.versionNumber,amount});
+    result.push({allocations:[allocation(a,aAmount),allocation(b,bAmount)],totalAmount:target/100,requestedAmount:requested});
+    if(result.length>=5)return result;
+  }
+  return result;
+}
+
 function evaluateCatalog(application:ApplicationInput, offers:(OfferVersionInput & {institution?:any})[]) {
   const base=evaluateCatalogCompatibility(application,offers,{filterNonEligible:true});
   const all:CatalogMatch[]=base.all.map(full=>{
@@ -46,7 +84,7 @@ function evaluateCatalog(application:ApplicationInput, offers:(OfferVersionInput
       isVersionEligibleForMatching(o.product,o.version,o.institution).eligible);
     return offer ? evaluatePartialSimple(application,offer,full) : full;
   });
-  return {...base,all,compatible:all.filter(r=>r.status==="COMPATIBLE"),
+  return {...base,all,combinations:buildSimpleCombinations(application,offers,all),compatible:all.filter(r=>r.status==="COMPATIBLE"),
     insufficientData:all.filter(r=>r.status==="INSUFFICIENT_DATA"),notCompatible:all.filter(r=>r.status==="NOT_COMPATIBLE")};
 }
 
@@ -76,5 +114,5 @@ export async function matchPublishedCatalog(storage:IStorage, application:Applic
 }
 function presentResult(result: ReturnType<typeof evaluateCatalog>) {
   return {summary:{totalEvaluated:result.all.length,compatibleCount:result.compatible.length,insufficientDataCount:result.insufficientData.length,notCompatibleCount:result.notCompatible.length},
-    compatible:result.compatible.map(publicMatch),insufficientData:result.insufficientData.map(publicMatch),notCompatible:result.notCompatible.map(publicMatch)};
+    compatible:result.compatible.map(publicMatch),insufficientData:result.insufficientData.map(publicMatch),notCompatible:result.notCompatible.map(publicMatch),combinations:result.combinations};
 }
