@@ -139,6 +139,29 @@ describe("Issue #65 — prospect matching safety",()=>{
     });
     expect(summary.criteria?.toReview).toEqual(["Historial crediticio personal (dentro de rango)"]);
   });
+  it("keeps partial scenarios internal and does not claim full coverage",async()=>{
+    const a=createOffer("offer-synthetic-a","lender-synthetic-a","simple","published",{version:{
+      conditions:{minAmount:100000,maxAmount:5000000},
+      requirements:{targetProfiles:["fisica_empresarial"],minPersonalBureau:500,guarantee:"Sin garantía hasta 1.99 MDP; con garantía hasta 5 MDP",guarantorSource:"no"}
+    }});
+    const b=createOffer("offer-synthetic-b","lender-synthetic-b","simple","published",{version:{
+      conditions:{minAmount:80000,maxAmount:10000000},
+      requirements:{targetProfiles:["fisica_empresarial"],minPersonalBureau:600,guarantee:"No aplica",guarantorSource:"RL"}
+    }});
+    const client={type:"fisica_empresarial",garantia:"sin-garantia",avalObligadoSolidario:"no",buroPersonaFisica:"bueno-592-693"};
+    const credit={amount:2200000,term:24};
+    const result=await matchPublishedCatalog({getPublishedInstitutionProductsForMatching:async()=>[a,b]} as any,{client,credit},undefined,"simple");
+    expect(result.compatible).toHaveLength(0);
+    expect(result.insufficientData).toHaveLength(2);
+    expect(result.insufficientData.find(x=>x.offerId==="offer-synthetic-a")?.partialCoverage?.evaluatedAmount).toBe(1990000);
+    expect(result.insufficientData.find(x=>x.offerId==="offer-synthetic-b")?.criteria.missing.some(x=>x.code==="guarantorPolicy")).toBe(true);
+    expect(result.combinations[0].allocations.map(x=>x.amount)).toEqual([1990000,210000]);
+    const summary=aggregateProspectAssessment(result);
+    expect(summary.identifiedInstitutionCount).toBe(2);
+    expect(summary.status).toBe("missing_information");
+    expect(summary.criteria?.matched).not.toContain("Garantías");
+    expect(JSON.stringify(summary)).not.toMatch(/offer-synthetic|lender-synthetic|1990000|210000|combinations|partialCoverage|institutionId/);
+  });
   it("creates the expected verified credit structure for leasing",()=>{
     expect(buildProspectCredit({
       product:"arrendamiento",amount:3000000,termMonths:48,purpose:"Maquinaria de producción",leasingAssetType:"maquinaria",
