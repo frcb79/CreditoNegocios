@@ -1,7 +1,8 @@
 import { getAnnualIncomeRange } from "../../shared/annualIncome";
+import { reviewedSupport } from "../../shared/offerPersonalSupport";
 import { getOfferAgePolicy } from "../../shared/offerAgePolicy";
 import type { CriterionEvaluation } from "./compatibilityEvaluator";
-import { extractBureauStatus, extractClientProfileType, extractRequestedAmount } from "./fieldMapping";
+import { extractBureauStatus, extractClientProfileType, extractRequestedAmount, extractHasGuarantor } from "./fieldMapping";
 
 export const textKey = (v: unknown) => String(v ?? "").trim().normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/\s+/g, " ");
 export const present = (v: unknown) => v !== undefined && v !== null && v !== "";
@@ -54,6 +55,13 @@ export function offerConditions(conditions: any, req: any, client: any, credit: 
       const threshold = Number((conditional || above)![1])*1000000;
       c.guaranteeType = amount <= threshold ? "sin_garantia" : "con_garantia";
     }
+  }
+  const reviewed=reviewedSupport(conditions,req,extractClientProfileType(capturedRecord(client)));
+  if (reviewed !== undefined) {
+    c.personalSupportPolicy=reviewed;
+    // A reviewed profile-specific policy replaces only the legacy generic personal backing rule.
+    c.avalesType="no_requerido";
+    return c;
   }
   if (!present(c.avalesType)) {
     const aval = textKey(req.guarantorSource);
@@ -148,7 +156,23 @@ export function importedCriteria(req:any, cond:any, inputClient:any, credit:any)
   }
   if(present(cond.informationalMaximumLoan))pending("variableMaximumLoan","Monto máximo ligado a ventas",cond.informationalMaximumLoan);
   if(present(req.guarantee) && !present(cond.guaranteeType))pending("guaranteePolicy","Condiciones particulares de garantía",req.guarantee);
-  if(present(req.guarantorSource) && !present(cond.avalesType))pending("guarantorPolicy","Condiciones particulares de aval",req.guarantorSource);
+  if(cond.personalSupportPolicy!==undefined){
+    const policy=cond.personalSupportPolicy;
+    const name="Respaldo personal / representante legal";
+    if(policy==="por_confirmar")pending("guarantorPolicy",name,policy);
+    else if(policy==="no_requerido" || policy==="representante_firmante"){
+      add("guarantorPolicy",name,policy,null,"PASSED","La política revisada no exige respaldo personal adicional; la representación se acredita durante la formalización.");
+    } else {
+      const fields:Record<string,string>={representante_solidario:"representanteAsumeObligacionSolidaria",aval_adicional:"cuentaConAvalAdicional",obligado_solidario:"cuentaConObligadoSolidario"};
+      const specific=fields[policy] ? yesNo(client[fields[policy]] ?? credit?.[fields[policy]]) : null;
+      const generic=extractHasGuarantor(client,credit);
+      // Generic yes cannot prove a particular legal capacity; generic no cannot
+      // prove whether the representative personally agrees to assume an obligation.
+      const value=policy==="aval_o_solidario"?generic:specific!==null?specific:policy!=="representante_solidario"&&generic===false?false:null;
+      add("guarantorPolicy",name,policy,value,value===null?"MISSING_DATA":value?"PASSED":"FAILED",
+        value===null?"Confirmar la disponibilidad y la figura específica del respaldo personal.":value?"El expediente declara disponibilidad del respaldo exigido.":"El expediente declara no contar con el respaldo personal exigido.");
+    }
+  } else if(present(req.guarantorSource) && !present(cond.avalesType))pending("guarantorPolicy","Condiciones particulares de aval",req.guarantorSource);
   if(present(req.bureauPolicySource) && !(["bueno","excelente","buen score","flexible"].includes(textKey(req.bureauPolicySource)) && [req.minBusinessBureau,req.minShareholderBureau,req.minPersonalBureau].some(v=>typeof v === "number" && v>0) && typeof req.allowsArrears === "boolean"))pending("bureauPolicyReview","Condiciones adicionales de Buró",req.bureauPolicySource);
   if(present(req.excludedSectors) && !["no aplica","ninguno","sin restricciones"].includes(textKey(req.excludedSectors)))pending("excludedSectors","Restricciones de giro y actividad",req.excludedSectors);
   if(present(req.presence) && !["nacional","nivel nacional"].includes(textKey(req.presence)))pending("presence","Restricciones geográficas",req.presence);
