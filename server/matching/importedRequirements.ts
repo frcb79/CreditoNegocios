@@ -107,7 +107,7 @@ export function importedCriteria(req:any, cond:any, inputClient:any, credit:any)
     const interval=bureauInterval(actual,business);
     const status=min===null || !profile ? "MISSING_DATA" : compareMinimum(interval,min);
     add(code,({shareholderBureau:"Buró del accionista",businessBureau:"Buró de la empresa",personalBureau:"Buró de persona física"} as any)[code],raw,actual ?? null,status,
-      status==="MISSING_DATA"?"Falta un puntaje preciso o el rango declarado cruza el mínimo exigido.":status==="FAILED"?"El puntaje de Buró no alcanza el mínimo de la oferta.":"El puntaje de Buró cumple el mínimo de la oferta.");
+      status==="MISSING_DATA"?(interval && min!==null && interval.min<min && interval.max>=min ? "Rango de Buró parcialmente admisible: alternativa potencial; confirmar puntaje exacto antes de aprobar." : "Falta confirmar el puntaje o el mínimo exigido."):status==="FAILED"?"El puntaje de Buró no alcanza el mínimo de la oferta.":"El puntaje de Buró cumple el mínimo de la oferta.");
   }
   const annual=ranges.ingresoAnual?.min ?? req.minAnnualIncome;
   if(present(annual) && annual!==0){
