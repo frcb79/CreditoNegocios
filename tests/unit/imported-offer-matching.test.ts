@@ -1,3 +1,4 @@
+import {evaluatePartialSimple,matchPublishedCatalog} from '../../server/matching/catalog';
 import {evaluateOfferCompatibility,isCriterionOriginVerified} from '../../server/matching/compatibilityEvaluator';
 import {offerConditions,bureauInterval,compareMinimum} from '../../server/matching/importedRequirements';
 const offer=(requirements:any={},conditions:any={})=>({product:{id:'offer',institutionId:'fin',name:'Oferta QA',status:'published'},version:{id:'v1',versionNumber:1,status:'published',conditions:{minAmount:100,maxAmount:1000000,maxTermMonths:36,...conditions},requirements:{targetProfiles:['persona_moral','fisica_empresarial','fisica','sin_sat'],...requirements}}});
@@ -101,4 +102,52 @@ describe('Published imported requirements: one explicit three-state result per m
   expect(result.status).toBe('INSUFFICIENT_DATA');
  });
 
+});
+
+
+describe('Matching comercial: cobertura parcial y rango de Buró',()=>{
+ const candidate=(amount=2200000,client:any={})=>({credit:{amount,term:24},client:{type:'fisica_empresarial',garantia:'no',avalObligadoSolidario:'no',buroPersonaFisica:'bueno-592-693',...client}});
+ const simple=(requirements:any={},conditions:any={},family='credito_simple')=>{
+  const base=offer({targetProfiles:['fisica_empresarial'],...requirements},conditions);
+  return {...base,product:{...base.product,productType:family}};
+ };
+ it('keeps overlapping bureau ranges selectable without calling the score verified',()=>{
+  const source=simple({minPersonalBureau:600},{maxAmount:3000000});
+  const result=evaluateOfferCompatibility(candidate(),source);
+  expect(result.status).toBe('INSUFFICIENT_DATA');
+  expect(find(result,'personalBureau').reason).toContain('parcialmente admisible');
+  expect(evaluateOfferCompatibility(candidate(2200000,{buroPersonaFisica:'medio-524-591'}),source).status).toBe('NOT_COMPATIBLE');
+ });
+ it('evaluates the amount cap without changing the original request or offer',()=>{
+  const application=candidate(),source=simple({minPersonalBureau:600},{maxAmount:1200000});
+  const before=JSON.stringify([application,source]);
+  const result=evaluatePartialSimple(application,source,evaluateOfferCompatibility(application,source));
+  expect(result.status).toBe('INSUFFICIENT_DATA');
+  expect(result.partialCoverage).toEqual({requestedAmount:2200000,evaluatedAmount:1200000,remainingAmount:1000000});
+  expect(find(result,'creditAmount').actualValue).toBe(1200000);
+  expect(JSON.stringify([application,source])).toBe(before);
+ });
+ it('rechecks the conditional collateral limit at the partial amount',()=>{
+  const application=candidate(),source=simple({guarantee:'Sin garantía hasta 1.99 MDP; con garantía hasta 5 MDP'},{maxAmount:5000000});
+  const result=evaluatePartialSimple(application,source,evaluateOfferCompatibility(application,source));
+  expect(result.partialCoverage?.evaluatedAmount).toBe(1990000);
+  expect(result.status).toBe('INSUFFICIENT_DATA');
+ });
+ it.each([{minPersonalBureau:700},{targetProfiles:['persona_moral']},{guarantorSource:'si'}])('does not hide another exclusion %j',requirements=>{
+  const application=candidate(),source=simple(requirements);
+  const result=evaluatePartialSimple(application,source,evaluateOfferCompatibility(application,source));
+  expect(result.status).toBe('NOT_COMPATIBLE');expect(result.partialCoverage).toBeUndefined();
+ });
+ it('never creates a partial amount for a different family or below the minimum',()=>{
+  const application=candidate();
+  for(const source of [simple({}, {}, 'arrendamiento'),simple({}, {minAmount:1500000,maxAmount:1000000})]){
+   const result=evaluatePartialSimple(application,source,evaluateOfferCompatibility(application,source));
+   expect(result.partialCoverage).toBeUndefined();
+  }
+ });
+ it('does not turn a draft into a catalog opportunity',async()=>{
+  const source=simple();source.version.status='draft';
+  const result=await matchPublishedCatalog({getPublishedInstitutionProductsForMatching:async()=>[source]} as any,candidate());
+  expect(result.summary.totalEvaluated).toBe(0);
+ });
 });
