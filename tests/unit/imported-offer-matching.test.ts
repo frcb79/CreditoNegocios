@@ -1,4 +1,4 @@
-import {evaluatePartialSimple,matchPublishedCatalog} from '../../server/matching/catalog';
+import {evaluatePartialSimple,matchPublishedCatalog,buildSimpleCombinations} from '../../server/matching/catalog';
 import {evaluateOfferCompatibility,isCriterionOriginVerified} from '../../server/matching/compatibilityEvaluator';
 import {offerConditions,bureauInterval,compareMinimum} from '../../server/matching/importedRequirements';
 const offer=(requirements:any={},conditions:any={})=>({product:{id:'offer',institutionId:'fin',name:'Oferta QA',status:'published'},version:{id:'v1',versionNumber:1,status:'published',conditions:{minAmount:100,maxAmount:1000000,maxTermMonths:36,...conditions},requirements:{targetProfiles:['persona_moral','fisica_empresarial','fisica','sin_sat'],...requirements}}});
@@ -144,6 +144,21 @@ describe('Matching comercial: cobertura parcial y rango de Buró',()=>{
    const result=evaluatePartialSimple(application,source,evaluateOfferCompatibility(application,source));
    expect(result.partialCoverage).toBeUndefined();
   }
+ });
+ it('combines two distinct institutions within exact bounds without marking either approved',()=>{
+  const application=candidate(),base=simple({}, {minAmount:500000,maxAmount:1200000});
+  const a={...base,product:{...base.product,id:'a',institutionId:'fin-a'}};
+  const b={...base,product:{...base.product,id:'b',institutionId:'fin-b'}};
+  const rows=[a,b].map(source=>evaluatePartialSimple(application,source,evaluateOfferCompatibility(application,source)));
+  const result=buildSimpleCombinations(application,[a,b],rows);
+  expect(result).toHaveLength(1);
+  expect(result[0].allocations.map(x=>x.amount)).toEqual([1200000,1000000]);
+  expect(result[0].totalAmount).toBe(2200000);
+  const same={...b,product:{...b.product,institutionId:'fin-a'}};
+  expect(buildSimpleCombinations(application,[a,same],[rows[0],evaluatePartialSimple(application,same,evaluateOfferCompatibility(application,same))])).toEqual([]);
+  const tooLow=simple({}, {minAmount:100000,maxAmount:300000});
+  const low={...tooLow,product:{...tooLow.product,id:'c',institutionId:'fin-c'}};
+  expect(buildSimpleCombinations(application,[a,low],[rows[0],evaluatePartialSimple(application,low,evaluateOfferCompatibility(application,low))])).toEqual([]);
  });
  it('does not turn a draft into a catalog opportunity',async()=>{
   const source=simple();source.version.status='draft';
