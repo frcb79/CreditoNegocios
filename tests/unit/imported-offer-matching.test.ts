@@ -1,3 +1,4 @@
+import {supportBasis} from "../../shared/offerPersonalSupport";
 import {evaluatePartialSimple,matchPublishedCatalog,buildSimpleCombinations} from '../../server/matching/catalog';
 import {evaluateOfferCompatibility,isCriterionOriginVerified} from '../../server/matching/compatibilityEvaluator';
 import {offerConditions,bureauInterval,compareMinimum} from '../../server/matching/importedRequirements';
@@ -164,5 +165,40 @@ describe('Matching comercial: cobertura parcial y rango de Buró',()=>{
   const source=simple();source.version.status='draft';
   const result=await matchPublishedCatalog({getPublishedInstitutionProductsForMatching:async()=>[source]} as any,candidate());
   expect(result.summary.totalEvaluated).toBe(0);
+ });
+});
+
+describe("Reviewed personal support by fiscal profile",()=>{
+ const source=(pm:string,pfae:string)=>{
+  const o=offer({targetProfiles:["persona_moral","fisica_empresarial"],guarantorSource:"RL"},{avalesType:"un_aval"});
+  const r:any=o.version.requirements;
+  r.personalSupportResolution={basis:supportBasis(o.version.conditions,r),byProfile:{persona_moral:pm,fisica_empresarial:pfae},reviewedBy:"qa-admin",reviewedAt:"2026-01-01T00:00:00Z",reason:"Commercial review QA"};
+  return o;
+ };
+ it("does not require a separate guarantor when representative signs only; evaluates each fiscal profile independently",()=>{
+  const o=source("representante_solidario","representante_firmante");
+  const pm=evaluateOfferCompatibility(app({type:"persona_moral",avalObligadoSolidario:"no"}),o);
+  expect(find(pm,"guarantorPolicy").status).toBe("MISSING_DATA");
+  const pfae=evaluateOfferCompatibility(app({type:"fisica_empresarial",avalObligadoSolidario:"no"}),o);
+  expect(find(pfae,"guarantorPolicy").status).toBe("PASSED");
+  expect(find(pfae,"avalesType")).toBeUndefined();
+ });
+ it("never substitutes generic yes for a specific legal figure",()=>{
+  const o=source("aval_adicional","obligado_solidario");
+  expect(find(evaluateOfferCompatibility(app({avalObligadoSolidario:"si"}),o),"guarantorPolicy").status).toBe("MISSING_DATA");
+  expect(find(evaluateOfferCompatibility(app({avalObligadoSolidario:"no"}),o),"guarantorPolicy").status).toBe("FAILED");
+  expect(find(evaluateOfferCompatibility(app({avalObligadoSolidario:"si",cuentaConAvalAdicional:"si"}),o),"guarantorPolicy").status).toBe("PASSED");
+ });
+ it("invalidates stale review after source or profile changes and preserves ambiguity",()=>{
+  const o=source("no_requerido","no_requerido");
+  o.version.requirements.guarantorSource="Aval obligatorio";
+  expect(find(evaluateOfferCompatibility(app(),o),"guarantorPolicy").status).toBe("MISSING_DATA");
+  const p=source("por_confirmar","por_confirmar");
+  expect(find(evaluateOfferCompatibility(app(),p),"guarantorPolicy").status).toBe("MISSING_DATA");
+ });
+ it("a reviewed signer policy never removes a separate real guarantee",()=>{
+  const o=source("representante_firmante","no_requerido");
+  o.version.conditions.guaranteeType="hipotecaria";
+  expect(find(evaluateOfferCompatibility(app({garantia:"no"}),o),"guaranteeType").status).toBe("FAILED");
  });
 });
