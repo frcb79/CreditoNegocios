@@ -258,8 +258,8 @@ describe("Fase 2B.1B — Cierre de Integridad Financiera y Eliminación de Rutas
       } as any);
       const template = await storage.createProductTemplate({name:"Canalización QA",category:"credito_simple",isActive:true,createdBy:admin.id} as any);
       const {offer,version} = await storage.createOffer({institutionId:lender.id,templateId:template.id,name:"Oferta canalización QA",productType:"credito_simple",isActive:true,status:"draft"},
-        {conditions:{minAmount:100,maxAmount:1000000},requirements:{targetProfiles:["persona_moral"]},requiredDocuments:[],changeReason:"QA"});
-      await storage.publishInstitutionProductVersion(offer.id,version.id,{changeReason:"QA"});
+        {conditions:{minAmount:100,maxAmount:1000000},requirements:{targetProfiles:["persona_moral"]},requiredDocuments:[],changeReason:"Fixture de canalización QA"});
+      await storage.publishInstitutionProductVersion(offer.id,version.id,{changeReason:"Publicación de prueba QA"});
       const submission = await storage.createCreditSubmissionRequest({
         clientId: client.id, brokerId: brokerA.id, originMasterBrokerId: masterOld.id,
         productTemplateId:template.id, requestedAmount: "100000.00", status: "approved",
