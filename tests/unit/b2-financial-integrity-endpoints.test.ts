@@ -256,9 +256,13 @@ describe("Fase 2B.1B — Cierre de Integridad Financiera y Eliminación de Rutas
       const lender = await storage.createFinancialInstitution({
         name: `Financiera Canalización ${randomUUID()}`, isActive: true,
       } as any);
+      const template = await storage.createProductTemplate({name:"Canalización QA",category:"credito_simple",isActive:true,createdBy:admin.id} as any);
+      const {offer,version} = await storage.createOffer({institutionId:lender.id,templateId:template.id,name:"Oferta canalización QA",productType:"credito_simple",isActive:true,status:"draft"},
+        {conditions:{minAmount:100,maxAmount:1000000},requirements:{targetProfiles:["persona_moral"]},requiredDocuments:[],changeReason:"QA"});
+      await storage.publishInstitutionProductVersion(offer.id,version.id,{changeReason:"QA"});
       const submission = await storage.createCreditSubmissionRequest({
         clientId: client.id, brokerId: brokerA.id, originMasterBrokerId: masterOld.id,
-        requestedAmount: "100000.00", status: "approved",
+        productTemplateId:template.id, requestedAmount: "100000.00", status: "approved",
       } as any);
       await storage.updateUser(brokerA.id, { masterBrokerId: masterNew.id } as any);
 
@@ -279,9 +283,14 @@ describe("Fase 2B.1B — Cierre de Integridad Financiera y Eliminación de Rutas
       // Platform-owned direct origination is exempt from Broker formalization;
       // verify legitimate administrator channeling remains available.
       const platformSubmission = await storage.createCreditSubmissionRequest({
-        clientId: client.id, brokerId: admin.id, requestedAmount: "100000.00", status: "approved",
+        clientId: client.id, brokerId: admin.id, productTemplateId:template.id, requestedAmount: "100000.00", status: "approved",
       } as any);
       currentAuthUser = admin;
+      const unavailable = await storage.createFinancialInstitution({name:"Sin oferta QA",isActive:true} as any);
+      const invalid = await request(app).post(`/api/credit-submissions/${platformSubmission.id}/targets`)
+        .send({financialInstitutionIds:[lender.id,unavailable.id]});
+      expect(invalid.status).toBe(422);
+      expect(await storage.getCreditSubmissionTargets({requestId:platformSubmission.id})).toHaveLength(0);
       const allowed = await request(app).post(`/api/credit-submissions/${platformSubmission.id}/targets`)
         .send({ financialInstitutionIds: [lender.id] });
       expect(allowed.status).toBe(201);
