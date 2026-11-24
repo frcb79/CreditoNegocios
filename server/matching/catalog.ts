@@ -35,7 +35,7 @@ export function evaluatePartialSimple(application:ApplicationInput, offer:OfferV
   if (partial.status === "NOT_COMPATIBLE" || !partial.criteria.matched.some(c=>c.code==="creditAmount")) return full;
   const remainingAmount = Math.round((requested-evaluatedAmount)*100)/100;
   const note = "Alternativa parcial preliminar: hasta $" + evaluatedAmount.toLocaleString("es-MX") + " MXN de $" + requested.toLocaleString("es-MX") + " MXN solicitados. Sujeta a aprobación y capacidad de pago conjunta.";
-  return {...partial,status:"INSUFFICIENT_DATA",summary:note+" "+partial.summary,
+  return {...partial,status:"INSUFFICIENT_DATA",summary:note+" "+(partial.status==="COMPATIBLE" ? "Los criterios evaluados cumplen para ese importe; no implica aprobación." : partial.summary),
     reasons:[note,...partial.reasons],partialCoverage:{requestedAmount:requested,evaluatedAmount,remainingAmount}};
 }
 
