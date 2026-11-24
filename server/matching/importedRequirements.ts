@@ -56,6 +56,7 @@ export function offerConditions(conditions: any, req: any, client: any, credit: 
       c.guaranteeType = amount <= threshold ? "sin_garantia" : "con_garantia";
     }
   }
+  delete c.personalSupportPolicy; // Derived only from attributed review, never a raw condition.
   const reviewed=reviewedSupport(conditions,req,extractClientProfileType(capturedRecord(client)));
   if (reviewed !== undefined) {
     c.personalSupportPolicy=reviewed;
