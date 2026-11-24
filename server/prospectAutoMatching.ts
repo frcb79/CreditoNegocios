@@ -49,6 +49,7 @@ const PUBLIC_CRITERION_LABELS: Record<string,string> = {
 };
 type PublicCriterionInput = {
   institutionId: string;
+  partialCoverage?: {requestedAmount:number;evaluatedAmount:number;remainingAmount:number};
   criteria?: {
     matched?: { code:string;status?:string; actualValue?:unknown }[];
     missing?: { code:string;status?:string; actualValue?:unknown }[];
@@ -65,7 +66,7 @@ export function summarizePublicCriteria(result: {
       Boolean(item) && typeof item === "object" && "institutionId" in (item as object),
   );
   const labels=(rows:PublicCriterionInput[],bucket:"matched"|"missing"|"failed",status:string)=>
-    Array.from(new Set(rows.flatMap(row=>row.criteria?.[bucket]||[])
+    Array.from(new Set(rows.flatMap(row=>(row.criteria?.[bucket]||[]).filter(item=>!(row.partialCoverage && bucket==="matched" && ["creditAmount","guaranteeType"].includes(item.code))))
       .filter(item=>item.status===status)
       .map(item=>{
         const base=PUBLIC_CRITERION_LABELS[item.code];
@@ -100,6 +101,7 @@ export function summarizePublicCriteria(result: {
   const allFailed=hasViable?[]:labels(rejected,"failed","FAILED");
   const matched=allPassed.filter(label=>!allFailed.includes(label));
   const toReview=allMissing.filter(label=>!matched.includes(label));
+  if ([...result.compatible,...result.insufficientData].some(row=>row.partialCoverage) && !matched.includes("Monto solicitado") && !toReview.includes("Monto solicitado — cobertura parcial por confirmar")) toReview.push("Monto solicitado — cobertura parcial por confirmar");
   const notMatched=allFailed.filter(label=>!matched.includes(label) && !toReview.includes(label));
   return {matched,toReview,notMatched};
 }
