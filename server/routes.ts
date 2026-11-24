@@ -6,6 +6,7 @@ import { dispatchCommercialActivationWelcome } from "./commercialWelcomeService"
 import { registerEmailDeliveryAuditRoutes } from "./emailDeliveryAuditRoutes";
 import { registerBrokerDossierRoutes } from "./brokerDossierRoutes";
 import { getOfferAgePolicy } from "../shared/offerAgePolicy";
+import { isPersonalSupport, supportBasis, SUPPORT_PROFILES } from "../shared/offerPersonalSupport";
 import { matchPublishedCatalog } from "./matching/catalog";
 import { registerAdministrativeAudit } from "./administrativeAudit";
 import { selectHousingMortgageTemplate } from "./mortgageHousingTemplate";
@@ -10349,6 +10350,23 @@ function maskCLABE(clabe?: string | null): string | null {
 
       // Only this explicit Super Admin action can record a commercial reconciliation.
       // A client cannot forge attribution or retain approval after changing the source.
+      // Only explicit Super Admin review can resolve personal support; attribution is server-owned.
+      mergedRequirements.personalSupportResolution = currentReqs.personalSupportResolution;
+      if (req.body.personalSupportReview !== undefined) {
+        const review = req.body.personalSupportReview;
+        const profiles = mergedRequirements.targetProfiles;
+        if (!review || review.confirmed !== true || typeof review.reason !== "string" ||
+            review.reason.trim().length < 3 || !Array.isArray(profiles) || !profiles.length ||
+            !profiles.every((profile: string) => SUPPORT_PROFILES.includes(profile as any) && isPersonalSupport(review.byProfile?.[profile]))) {
+          return res.status(400).json({message:"Confirma el respaldo personal por cada perfil admitido y el motivo de revisión."});
+        }
+        mergedRequirements.personalSupportResolution = {
+          basis: supportBasis(mergedConditions,mergedRequirements),
+          byProfile: Object.fromEntries(profiles.map((profile: string)=>[profile,review.byProfile[profile]])),
+          reason: review.reason.trim(), reviewedBy: userId, reviewedAt: new Date().toISOString(),
+        };
+      }
+
       mergedRequirements.businessAgeResolution = currentReqs.businessAgeResolution;
       if (req.body.businessAgeReview !== undefined) {
         const review = req.body.businessAgeReview;
