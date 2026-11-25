@@ -19,7 +19,7 @@ import rateLimit from "express-rate-limit";
 import { pool } from "./db";
 import { runBrokerInvitationReminders } from "./brokerInvitationReminders";
 import { storage, type IStorage } from "./storage";
-import { canViewSubmissionByOrigin, canViewCreditByOrigin, canEditCreditByOrigin, summarizeCommercialAccountActivity } from "./dashboardVisibility";
+import { canViewSubmissionByOrigin, canViewCreditByOrigin, canEditCreditByOrigin, summarizeCommercialAccountActivity, isActiveSubmissionPipelineStatus, isSubmissionAwaitingReview, isEventWithinPeriod, confirmedVolumeWithinPeriod } from "./dashboardVisibility";
 import { loadPublishedCommissionOffers, masterSafeCeilings } from "./commercialRatesView";
 import { buildNetworkCommissionSnapshot } from "./networkCommissionSnapshot";
 import { projectCreditForRole } from "./creditResponseProjection";
@@ -529,6 +529,23 @@ async function authorizeClientAccess(
  * Administrative platform operations are intentionally allowed in their
  * own name; delegated origination also checks the effective Broker's link.
  */
+// Administrative capture uses the advisor's commercial organization, not the operator's tenant.
+async function resolveAdminCaptureTenant(actor: any, brokerId: string | undefined, fallback: string | null, preferred?: string | null): Promise<{ allowed: boolean; tenantId: string | null; organization?: string; message?: string }> {
+  if (!["admin", "super_admin"].includes(actor?.role) || !brokerId || brokerId === actor.id) return { allowed: true, tenantId: fallback };
+  const advisor = await storage.getUser(brokerId);
+  if (!advisor || !["broker", "master_broker"].includes(advisor.role) || advisor.isActive === false || advisor.status !== "active") {
+    return { allowed: false, tenantId: null, message: "Selecciona un Broker o Master Broker activo." };
+  }
+  const memberships = await storage.getTenantMembersByUser(brokerId);
+  const eligible = (await Promise.all(memberships.filter(m => m.isActive === true && (m.role === "owner" || m.canOriginate === true)).map(async m => ({ membership: m, tenant: await storage.getTenant(m.tenantId) }))))
+    .filter(x => x.tenant && x.tenant.isActive !== false && ["broker", "master_broker"].includes(x.tenant.type));
+  const preferredTenant = preferred ? eligible.find(x => x.tenant!.id === preferred) : undefined;
+  const owners = eligible.filter(x => x.membership.role === "owner");
+  const choice = preferredTenant ?? (owners.length === 1 ? owners[0] : owners.length === 0 && eligible.length === 1 ? eligible[0] : undefined);
+  if (!choice?.tenant) return { allowed: false, tenantId: null, message: "El asesor no tiene una organización comercial activa y unívoca. Revisa su membresía antes de asignar." };
+  return { allowed: true, tenantId: choice.tenant.id, organization: choice.tenant.name };
+}
+
 async function validateClientOriginationAccess(params: {
   clientId: unknown;
   callerUser: any;
@@ -2773,10 +2790,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       );
 
       // Active pipeline requests (in progress)
-      const activePipelineSubmissions = userSubmissions.filter(s =>
-        s.status === 'submitted' || s.status === 'evaluating' || s.status === 'under_review' ||
-        s.status === 'offers_received' || s.status === 'winner_selected' || s.status === 'in_progress'
-      );
+      const activePipelineSubmissions = userSubmissions.filter(s => isActiveSubmissionPipelineStatus(s.status));
       const pipelineCount = activePipelineSubmissions.length;
 
       // Créditos vinculados a la red: se utiliza el Master de ORIGEN del
@@ -2848,7 +2862,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       };
 
       const currentMonthPaid = commissions
-        .filter(c => c.status === 'paid' && c.createdAt && new Date(c.createdAt) >= currentMonthStart)
+        .filter(c => c.status === 'paid' && isEventWithinPeriod(c.paidAt, currentMonthStart, now))
         .reduce((sum, c) => sum + getRoleCommAmount(c), 0);
 
       const allTimePaid = commissions
@@ -2869,20 +2883,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
         s.createdAt && new Date(s.createdAt) >= currentMonthStart
       ).length;
 
-      const currentMonthDisbursed = disbursedCredits.filter(c =>
-        c.createdAt && new Date(c.createdAt) >= currentMonthStart
-      );
-      const currentMonthDisbursedVol = currentMonthDisbursed.reduce((sum, c) => sum + parseFloat(c.amount || '0'), 0);
-
-      const lastMonthDisbursed = disbursedCredits.filter(c =>
-        c.createdAt && new Date(c.createdAt) >= lastMonthStart && new Date(c.createdAt) <= lastMonthEnd
-      );
-      const lastMonthDisbursedVol = lastMonthDisbursed.reduce((sum, c) => sum + parseFloat(c.amount || '0'), 0);
-
+      const currentMonthDisbursedVol = confirmedVolumeWithinPeriod(disbursedCredits,currentMonthStart,now);
+      const lastMonthDisbursedVol = confirmedVolumeWithinPeriod(disbursedCredits,lastMonthStart,lastMonthEnd);
       const lastMonthPaid = commissions
-        .filter(c => c.status === 'paid' && c.createdAt &&
-                new Date(c.createdAt) >= lastMonthStart && new Date(c.createdAt) <= lastMonthEnd)
-        .reduce((sum, c) => sum + parseFloat(c.amount || '0'), 0);
+        .filter(c => c.status === 'paid' && isEventWithinPeriod(c.paidAt,lastMonthStart,lastMonthEnd))
+        .reduce((sum, c) => sum + getRoleCommAmount(c), 0);
 
       const formatTrend = (current: number, previous: number, labelUnit = '') => {
         if (previous === 0 && current > 0) {
@@ -2908,7 +2913,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         pipelineRequests: pipelineCount,
         disbursedCredits: disbursedCount,
         disbursedVolume: disbursedVolume,
-        commissionsPaid: currentMonthPaid > 0 ? currentMonthPaid : allTimePaid,
+        commissionsPaid: currentMonthPaid,
         commissionsPending: pendingCommissions,
         commissionsPendingCount: pendingCommissionsCount,
         commissionsTotal: allTimePaid + pendingCommissions,
@@ -2917,8 +2922,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       };
 
       metrics.trend = {
-        pipeline: formatTrend(currentMonthSubmissions > 0 ? currentMonthSubmissions : pipelineCount, lastMonthSubmissions, ' casos'),
-        disbursedVolume: formatTrend(currentMonthDisbursedVol > 0 ? currentMonthDisbursedVol : disbursedVolume, lastMonthDisbursedVol),
+        pipeline: formatTrend(currentMonthSubmissions, lastMonthSubmissions, ' casos'),
+        disbursedVolume: formatTrend(currentMonthDisbursedVol, lastMonthDisbursedVol),
         commissionsPaid: formatTrend(currentMonthPaid, lastMonthPaid),
       };
 
@@ -2933,9 +2938,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           const confirmedAmt = prop.disbursementConfirmation?.confirmedAmount ?? (c as any).confirmedDisbursedAmount;
           return sum + (confirmedAmt != null ? parseFloat(String(confirmedAmt)) : parseFloat(c.amount || '0'));
         }, 0);
-        const networkActiveSubmissions = userSubmissions.filter(s =>
-          s.brokerId !== userId && (s.status === 'submitted' || s.status === 'evaluating' || s.status === 'under_review' || s.status === 'in_progress')
-        ).length;
+        const networkActiveSubmissions = activePipelineSubmissions.filter(s => s.brokerId !== userId).length;
 
         const mbGrossPending = commissions.filter(c => c.status === 'pending').reduce((sum, c) => {
           return sum + (parseFloat(c.brokerShare || '0') + parseFloat(c.masterBrokerShare || '0'));
@@ -2947,6 +2950,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         metrics.masterBroker = {
           activeBrokers: summarizeCommercialAccountActivity(await withAccountAccess(networkBrokers)).activeBrokers,
           networkPipeline: networkActiveSubmissions,
+          directPipeline: activePipelineSubmissions.filter(s => s.brokerId === userId).length,
           networkDisbursedVolume: networkDisbursedVol,
           networkDisbursedCredits: networkDisbursedCredits.length,
           networkCommissionsGross: mbGrossPending,
@@ -3003,9 +3007,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const userCredits = allCredits.filter(credit => canViewCreditByOrigin(user, credit));
 
       // Calculate pipeline stages across both submissions in-flight and credits
-      const en_revision = userSubmissions.filter(s =>
-        s.status === 'submitted' || s.status === 'under_review' || s.status === 'evaluating'
-      ).length;
+      const en_revision = userSubmissions.filter(s => isSubmissionAwaitingReview(s.status)).length;
 
       const validacion = userSubmissions.filter(s =>
         s.status === 'offers_received' || s.status === 'in_progress'
@@ -4013,6 +4015,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  app.get('/api/admin/capture-originators', isAuthenticated, requireModuleAndAction('clientes', 'edit'), async (req: any, res) => {
+    try {
+      const actor = await storage.getUser(req.user.claims.sub);
+      if (!actor || !["admin", "super_admin"].includes(actor.role)) return res.status(403).json({ message: "Sólo administración." });
+      const candidates = (await storage.getAllUsers()).filter(u => ["broker", "master_broker"].includes(u.role) && u.isActive !== false && u.status === "active" && Boolean(u.password));
+      const rows = await Promise.all(candidates.map(async u => {
+        const scope = await resolveAdminCaptureTenant(actor, u.id, null);
+        return scope.allowed ? { id: u.id, firstName: u.firstName, lastName: u.lastName, brandName: u.brandName, role: u.role, organization: scope.organization } : null;
+      }));
+      res.setHeader("Cache-Control", "private, no-store");
+      return res.json(rows.filter(Boolean));
+    } catch {
+      return res.status(503).json({message:"No fue posible consultar asesores disponibles."});
+    }
+  });
+
   app.post('/api/clients', isAuthenticated, requireModuleAndAction('clientes', 'edit'), async (req: any, res) => {
     try {
       const userId = req.user.claims.sub;
@@ -4032,10 +4050,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
       }
 
+      const captureScope = await resolveAdminCaptureTenant(user, originationCheck.brokerId, req.tenantContext?.tenant?.id || null);
+      if (!captureScope.allowed) return res.status(409).json({code:"ORIGINATOR_ORGANIZATION_REQUIRED",message:captureScope.message});
+
       const clientData = updatedInsertClientSchema.parse({
         ...req.body,
         originOpportunity: req.body.originOpportunity || 'credito_empresarial',
-        tenantId: req.tenantContext?.tenant?.id || null,
+        tenantId: captureScope.tenantId,
         brokerId: originationCheck.brokerId,
         createdBy: userId,
       });
@@ -4940,11 +4961,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
       }
 
+      const captureScope = await resolveAdminCaptureTenant(user, originationCheck.brokerId, req.tenantContext?.tenant?.id || null, (await storage.getClient(req.body.clientId))?.tenantId);
+      if (!captureScope.allowed) return res.status(409).json({code:"ORIGINATOR_ORGANIZATION_REQUIRED",message:captureScope.message});
+
       const creditData = insertCreditSchema.parse({
         ...req.body,
         finalProposal: validatedProposal,
         financialInstitutionId: canonicalFinancialInstitutionId,
-        tenantId: req.tenantContext?.tenant?.id || null,
+        tenantId: captureScope.tenantId,
         brokerId: originationCheck.brokerId,
         createdBy: userId,
       });
@@ -11420,9 +11444,12 @@ function maskCLABE(clabe?: string | null): string | null {
         });
       }
 
+      const captureScope = await resolveAdminCaptureTenant(user, originationCheck.brokerId, req.tenantContext?.tenant?.id || null, (await storage.getClient(req.body.clientId))?.tenantId);
+      if (!captureScope.allowed) return res.status(409).json({code:"ORIGINATOR_ORGANIZATION_REQUIRED",message:captureScope.message});
+
       const submissionData = insertCreditSubmissionRequestSchema.parse({
         ...req.body,
-        tenantId: req.tenantContext?.tenant?.id || null,
+        tenantId: captureScope.tenantId,
         brokerId: originationCheck.brokerId,
         createdBy: userId,
         status: 'pending_admin'
@@ -11463,6 +11490,8 @@ function maskCLABE(clabe?: string | null): string | null {
         const clientName: string = (client ? (client.type === 'persona_moral' ? client.businessName : `${client.firstName} ${client.lastName}`.trim()) : null) || 'Cliente';
         const formattedAmount = `$${parseFloat(submission.requestedAmount.toString()).toLocaleString('es-MX')} MXN`;
 
+        const originator = await storage.getUser(submission.brokerId) || user;
+        const originMasterId = submission.originMasterBrokerId;
         const allUsers = await storage.getAllUsers();
         const admins = allUsers.filter(u => u.role === 'admin' || u.role === 'super_admin');
 
@@ -11484,10 +11513,10 @@ function maskCLABE(clabe?: string | null): string | null {
         // Send email alert to Super Admin
         sendSuperAdminNotificationEmail({
           title: `Nueva Solicitud de Crédito: ${clientName}`,
-          message: `Se ha recibido una nueva solicitud de crédito para ${clientName} por ${formattedAmount}. Registrada por el broker ${user.firstName} ${user.lastName || ''}. Requiere revisión administrativa y visto bueno para enviarse a financieras.`,
+          message: `Se ha recibido una nueva solicitud de crédito para ${clientName} por ${formattedAmount}. Registrada por el broker ${originator.firstName} ${originator.lastName || ''}. Requiere revisión administrativa y visto bueno para enviarse a financieras.`,
           type: 'credit_submission_created',
           clientName,
-          brokerName: `${user.firstName} ${user.lastName || ''}`.trim(),
+          brokerName: `${originator.firstName} ${originator.lastName || ''}`.trim(),
           amount: formattedAmount,
           actionUrl: '/solicitudes-pendientes',
           details: {
@@ -11498,23 +11527,23 @@ function maskCLABE(clabe?: string | null): string | null {
         }).catch(e => console.error('[Email] Error sending super admin notification on submission created:', e));
 
         // 2. Notify Master Broker if applicable
-        if (user.masterBrokerId) {
+        if (originMasterId && originMasterId !== originator.id) {
           const mbNotif = await storage.createNotification({
-            userId: user.masterBrokerId,
+            userId: originMasterId,
             type: 'credit_submission_created',
             title: 'Nueva solicitud en tu red de brokers',
-            message: `${user.firstName} ${user.lastName || ''} registró una solicitud para ${clientName} por ${formattedAmount}.`,
+            message: `${originator.firstName} ${originator.lastName || ''} registró una solicitud para ${clientName} por ${formattedAmount}.`,
             relatedEntityType: 'credit_submission',
             relatedEntityId: submission.id,
             priority: 'normal',
           });
-          broadcastToUser(user.masterBrokerId, { type: 'notification', notification: mbNotif });
-          broadcastToUser(user.masterBrokerId, { type: 'submission_created', submissionId: submission.id });
+          broadcastToUser(originMasterId, { type: 'notification', notification: mbNotif });
+          broadcastToUser(originMasterId, { type: 'submission_created', submissionId: submission.id });
         }
 
         // 3. Notify the submitting Broker
         const brokerNotif = await storage.createNotification({
-          userId: user.id,
+          userId: originator.id,
           type: 'credit_submission_created',
           title: 'Solicitud enviada a revisión',
           message: `Tu solicitud para ${clientName} por ${formattedAmount} fue registrada exitosamente y está en revisión administrativa.`,
@@ -11522,7 +11551,7 @@ function maskCLABE(clabe?: string | null): string | null {
           relatedEntityId: submission.id,
           priority: 'normal',
         });
-        broadcastToUser(user.id, { type: 'notification', notification: brokerNotif });
+        broadcastToUser(originator.id, { type: 'notification', notification: brokerNotif });
       } catch (notifErr) {
         console.error("Error creating notifications on submission creation:", notifErr);
       }
@@ -11563,11 +11592,15 @@ function maskCLABE(clabe?: string | null): string | null {
         return res.status(403).json({ message: "No tienes permiso para registrar operaciones hipotecarias" });
       }
 
+      const isAdminCapture = ["admin","super_admin"].includes(user.role);
+      const existingCaptureClient = isAdminCapture && typeof req.body.clientId === "string" ? await storage.getClient(req.body.clientId) : undefined;
+      const existingCaptureOwner = existingCaptureClient?.brokerId ? await storage.getUser(existingCaptureClient.brokerId) : undefined;
+      const delegatedId = req.body.brokerId || (existingCaptureOwner && ["broker","master_broker"].includes(existingCaptureOwner.role) ? existingCaptureOwner.id : undefined);
       const originationCheck = await validateCommercialOriginationAndFormalization({
         callerUser: user,
         callerMembership: req.tenantContext?.membership,
         tenantId: req.tenantContext?.tenant?.id,
-        requestedBrokerId: req.body.brokerId,
+        requestedBrokerId: delegatedId,
       });
 
       if (!originationCheck.allowed) {
@@ -11577,7 +11610,9 @@ function maskCLABE(clabe?: string | null): string | null {
         });
       }
 
-      const tenantId = req.tenantContext?.tenant?.id || null;
+      const captureScope = await resolveAdminCaptureTenant(user, originationCheck.brokerId, req.tenantContext?.tenant?.id || null, existingCaptureClient?.tenantId);
+      if (!captureScope.allowed) return res.status(409).json({code:"ORIGINATOR_ORGANIZATION_REQUIRED",message:captureScope.message});
+      const tenantId = captureScope.tenantId;
       const brokerId = originationCheck.brokerId;
 
       const {
@@ -11693,6 +11728,8 @@ function maskCLABE(clabe?: string | null): string | null {
         const clientName = `${client.firstName || ''} ${client.lastName || ''}`.trim() || 'Prospecto Hipotecario';
         const formattedAmount = `$${parseFloat(requestedAmount.toString()).toLocaleString('es-MX')} MXN`;
 
+        const originator = await storage.getUser(submission.brokerId) || user;
+        const originMasterId = submission.originMasterBrokerId;
         const allUsers = await storage.getAllUsers();
         const admins = allUsers.filter(u => u.role === 'admin' || u.role === 'super_admin');
 
@@ -11701,7 +11738,7 @@ function maskCLABE(clabe?: string | null): string | null {
             userId: admin.id,
             type: 'credit_submission_created',
             title: 'Nueva oportunidad Hipotecario Vivienda',
-            message: `Oportunidad hipotecaria para ${clientName} por ${formattedAmount}. Registrada por ${user.firstName} ${user.lastName || ''}.`,
+            message: `Oportunidad hipotecaria para ${clientName} por ${formattedAmount}. Registrada por ${originator.firstName} ${originator.lastName || ''}.`,
             relatedEntityType: 'credit_submission',
             relatedEntityId: submission.id,
             priority: 'high',
@@ -11710,18 +11747,22 @@ function maskCLABE(clabe?: string | null): string | null {
           broadcastToUser(admin.id, { type: 'submission_created', submissionId: submission.id });
         }
 
-        if (user.masterBrokerId) {
+        if (originMasterId && originMasterId !== originator.id) {
           const mbNotif = await storage.createNotification({
-            userId: user.masterBrokerId,
+            userId: originMasterId,
             type: 'credit_submission_created',
             title: 'Nueva oportunidad hipotecaria en tu red',
-            message: `${user.firstName} ${user.lastName || ''} registró una oportunidad hipotecaria para ${clientName} por ${formattedAmount}.`,
+            message: `${originator.firstName} ${originator.lastName || ''} registró una oportunidad hipotecaria para ${clientName} por ${formattedAmount}.`,
             relatedEntityType: 'credit_submission',
             relatedEntityId: submission.id,
             priority: 'normal',
           });
-          broadcastToUser(user.masterBrokerId, { type: 'notification', notification: mbNotif });
-          broadcastToUser(user.masterBrokerId, { type: 'submission_created', submissionId: submission.id });
+          broadcastToUser(originMasterId, { type: 'notification', notification: mbNotif });
+          broadcastToUser(originMasterId, { type: 'submission_created', submissionId: submission.id });
+        }
+        if (originator.id !== userId) {
+          const notif = await storage.createNotification({userId:originator.id,type:"credit_submission_created",title:"Oportunidad hipotecaria registrada",message:"Backoffice registró una oportunidad hipotecaria a tu nombre para revisión interna.",relatedEntityType:"credit_submission",relatedEntityId:submission.id,priority:"normal"});
+          broadcastToUser(originator.id,{type:"notification",notification:notif});
         }
       } catch (notifErr) {
         console.error("Error creating notifications for mortgage lead:", notifErr);
@@ -11758,16 +11799,22 @@ function maskCLABE(clabe?: string | null): string | null {
       if (!user || !['broker', 'master_broker', 'admin', 'super_admin'].includes(user.role)) {
         return res.status(403).json({ message: "Sin permiso para registrar arrendamientos" });
       }
+      const isAdminCapture = ["admin","super_admin"].includes(user.role);
+      const existingCaptureClient = isAdminCapture && typeof req.body.clientId === "string" ? await storage.getClient(req.body.clientId) : undefined;
+      const existingCaptureOwner = existingCaptureClient?.brokerId ? await storage.getUser(existingCaptureClient.brokerId) : undefined;
+      const delegatedId = req.body.brokerId || (existingCaptureOwner && ["broker","master_broker"].includes(existingCaptureOwner.role) ? existingCaptureOwner.id : undefined);
       const scope = await validateCommercialOriginationAndFormalization({
         callerUser: user,
         callerMembership: req.tenantContext?.membership,
         tenantId: req.tenantContext?.tenant?.id,
-        requestedBrokerId: req.body?.brokerId,
+        requestedBrokerId: delegatedId,
       });
       if (!scope.allowed) {
         return res.status(scope.statusCode || 403).json({ code: scope.code, message: scope.message });
       }
-      const tenantId = req.tenantContext?.tenant?.id || null;
+      const captureScope = await resolveAdminCaptureTenant(user, scope.brokerId, req.tenantContext?.tenant?.id || null, existingCaptureClient?.tenantId);
+      if (!captureScope.allowed) return res.status(409).json({code:"ORIGINATOR_ORGANIZATION_REQUIRED",message:captureScope.message});
+      const tenantId = captureScope.tenantId;
       const brokerId = scope.brokerId;
       let clientData: any;
       if (lead.clientId) {
@@ -11878,6 +11925,13 @@ function maskCLABE(clabe?: string | null): string | null {
             priority: 'normal',
           });
           broadcastToUser(admin.id, { type: 'notification', notification });
+        }
+        const originator = await storage.getUser(submission.brokerId);
+        const recipients = new Set([originator?.id,submission.originMasterBrokerId].filter((id):id is string=>Boolean(id) && id!==userId));
+        for (const id of Array.from(recipients)) {
+          if (admins.some(a=>a.id===id)) continue;
+          const notif = await storage.createNotification({userId:id,type:"credit_submission_created",title:"Oportunidad de arrendamiento registrada",message:"Se registró una solicitud de cotización en tu cartera o red para revisión interna.",relatedEntityType:"credit_submission",relatedEntityId:submission.id,priority:"normal"});
+          broadcastToUser(id,{type:"notification",notification:notif});
         }
       } catch (notifyErr) {
         console.error('Leasing lead notification error:', notifyErr);

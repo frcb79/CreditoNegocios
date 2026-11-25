@@ -17,6 +17,8 @@ import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/hooks/useAuth";
+import { CaptureOriginatorSelect,useCaptureOriginators,validCaptureOriginator } from "@/components/Clients/CaptureOriginatorSelect";
 import { apiRequest } from "@/lib/queryClient";
 import {
   Home,
@@ -78,6 +80,10 @@ export default function MortgageLeadModal({
   onSuccess,
 }: MortgageLeadModalProps) {
   const { toast } = useToast();
+  const {user}=useAuth();
+  const adminCapture=user?.role==="admin" || user?.role==="super_admin";
+  const [originator,setOriginator]=useState("");
+  const originators=useCaptureOriginators(Boolean(adminCapture && isOpen));
   const queryClient = useQueryClient();
 
   const [selectedClient, setSelectedClient] = useState<Client | null>(existingClient || null);
@@ -140,6 +146,7 @@ export default function MortgageLeadModal({
   useEffect(() => {
     if (isOpen) {
       setSelectedClient(existingClient || null);
+      setOriginator("");
       setDuplicateWarning(null);
       setSelectedInstitutions([]);
       form.reset({
@@ -277,6 +284,7 @@ export default function MortgageLeadModal({
         ...data,
         financedPercentage,
         financialInstitutionIds: selectedInstitutions,
+        ...(adminCapture && !selectedClient && originator!=='__self__' ? {brokerId:originator} : {}),
       };
 
       if (selectedClient) {
@@ -310,6 +318,7 @@ export default function MortgageLeadModal({
   });
 
   const onSubmit = (data: MortgageLeadFormValues) => {
+    if (adminCapture && !selectedClient && !validCaptureOriginator(originator,originators)) {toast({title:'Selecciona un asesor o registro directo de plataforma',variant:'destructive'});return;}
     // Validar datos de contacto si no es cliente existente
     if (!selectedClient && (!data.firstName || !data.phone || !data.email)) {
       toast({
@@ -346,6 +355,8 @@ export default function MortgageLeadModal({
 
         <Form {...form}>
           <form onSubmit={form.handleSubmit(onSubmit, (errors) => console.error("[MortgageLeadModal] Validation errors:", errors))} className="space-y-6 mt-4">
+            {adminCapture && !selectedClient && <CaptureOriginatorSelect id="mortgage-originator" value={originator} onChange={setOriginator} query={originators}/>}
+            {adminCapture && selectedClient && <p className="text-xs text-muted-foreground">Se conserva el asesor originador del expediente seleccionado.</p>}
             {/* SECCIÓN 1: DATOS DE CONTACTO */}
             <div className="bg-gray-50 border border-gray-200 rounded-xl p-4 space-y-4">
               <div className="flex items-center justify-between border-b border-gray-200 pb-2">

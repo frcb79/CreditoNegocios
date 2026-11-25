@@ -43,7 +43,12 @@ describe("Alta de clientes postlanzamiento — UX incremental", () => {
     expect(ui).toContain("if (result?.clientExists)");
     expect(ui).toContain("duplicate?.isSameTenant ? duplicate.existingClient?.id : null");
     expect(ui).not.toContain('tenantId:');
-    expect(ui).not.toContain('brokerId:');
+    // Delegation is now an explicit Backoffice-only UI choice; the API still
+    // owns tenant, authorization and formalization. Ordinary capture sends no brokerId.
+    expect(ui).toContain('...(adminCapture && originator !== "__self__" ? { brokerId: originator } : {})');
+    expect(ui).toContain('if (adminCapture && (!originator');
+    const page = source("client/src/pages/Clients.tsx");
+    expect(page).toContain('adminCapture={user?.role === "admin" || user?.role === "super_admin"}');
     expect(ui).not.toContain('createdBy:');
   });
 
