@@ -8,15 +8,19 @@ import { Textarea } from "@/components/ui/textarea";
 import { apiRequest } from "@/lib/queryClient";
 import { historicalCreditIntakeSchema,mexicoToday } from "@shared/historicalCreditIntake";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/hooks/useAuth";
 type Choice={id:string;name:string};
 type Client={id:string;brokerId:string;type:string;businessName?:string;firstName?:string;lastName?:string;broker?:{firstName?:string;lastName?:string;role?:string}};
 type Doc={id:string;fileName:string;creditId?:string;isValid?:boolean};
-type Intake={id:string;reference:string;actualDate:string;amount:string;clientName:string;institutionName:string;commissionStatus:string};
+type Intake={id:string;reference:string;actualDate:string;amount:string;clientName:string;institutionName:string;commissionStatus:string;status:string;historicalNetwork:string;historicalMasterName?:string;evidenceName?:string;paymentEvidenceName?:string;economicReconciliation?:string;creditId?:string};
 const empty={clientId:"",financialInstitutionId:"",productTemplateId:"",externalReference:"",actualDate:"",amount:"",termMonths:"",evidenceDocumentId:"",historicalNetwork:"unknown",historicalMasterName:"",commissionStatus:"unknown",commissionEvidenceDocumentId:"",notes:""};
 const clientName=(c:Client)=>c.businessName||[c.firstName,c.lastName].filter(Boolean).join(" ")||c.id;
 const cls="h-10 w-full border rounded-md bg-background px-2 text-sm";
 export default function HistoricalCreditIntakeModal({isOpen,onClose}:{isOpen:boolean;onClose:()=>void}){
   const {toast}=useToast(),cache=useQueryClient();
+  const {user}=useAuth();
+  const superAdmin=user?.role==="super_admin";
+  const [reviewId,setReviewId]=useState(""),[masterId,setMasterId]=useState(""),[network,setNetwork]=useState(""),[reason,setReason]=useState(""),[reviewed,setReviewed]=useState(false);
   const [fields,setFields]=useState(empty),[confirmed,setConfirmed]=useState(false),[error,setError]=useState("");
   const put=(k:keyof typeof empty,v:string)=>{setFields(f=>({...f,[k]:v,...(k==="clientId"?{evidenceDocumentId:"",commissionEvidenceDocumentId:""}:{})}));if(k==="clientId")setConfirmed(false);setError("");};
   const clients=useQuery<Client[]>({queryKey:["/api/clients"],enabled:isOpen});
@@ -24,6 +28,8 @@ export default function HistoricalCreditIntakeModal({isOpen,onClose}:{isOpen:boo
   const products=useQuery<Choice[]>({queryKey:["/api/product-templates"],enabled:isOpen});
   const documents=useQuery<Doc[]>({queryKey:["historical-intake-documents",fields.clientId],enabled:isOpen&&!!fields.clientId,queryFn:async()=>(await apiRequest("GET","/api/documents?clientId="+encodeURIComponent(fields.clientId))).json()});
   const intakes=useQuery<Intake[]>({queryKey:["/api/admin/historical-credit-intakes"],enabled:isOpen});
+  const masters=useQuery<Array<{id:string;name:string}>>({queryKey:["/api/admin/historical-credit-intakes/master-options"],enabled:isOpen&&superAdmin});
+  const reviewMutation=useMutation({mutationFn:async(x:Intake)=>(await apiRequest("POST","/api/admin/historical-credit-intakes/"+x.id+"/reconcile",{historicalNetwork:network,originMasterBrokerId:network==="master"?masterId:null,evidenceReviewed:reviewed,reviewReason:reason})).json(),onSuccess:()=>{cache.invalidateQueries({queryKey:["/api/admin/historical-credit-intakes"]});cache.invalidateQueries({queryKey:["/api/credits"]});setReviewId("");setReviewed(false);setReason("");setMasterId("");setNetwork("");setError("");toast({title:"Crédito histórico registrado",description:"Disponible para seguimiento. No genera comisiones ni pagos."});},onError:(e:Error)=>setError(e.message)});
   const selected=clients.data?.find(c=>c.id===fields.clientId);
   const eligibleDocs=(documents.data||[]).filter(d=>!d.creditId&&d.isValid!==false);
   const create=useMutation({mutationFn:async(data:unknown)=>(await apiRequest("POST","/api/admin/historical-credit-intakes",data)).json(),onSuccess:()=>{cache.invalidateQueries({queryKey:["/api/admin/historical-credit-intakes"]});setFields(empty);setConfirmed(false);setError("");toast({title:"Registro histórico guardado",description:"Pendiente de conciliación. No se generó comisión."});},onError:(e:Error)=>setError(e.message)});
@@ -46,6 +52,18 @@ export default function HistoricalCreditIntakeModal({isOpen,onClose}:{isOpen:boo
     {error&&<p role="alert" className="text-sm text-destructive">{error}</p>}
     <DialogFooter><Button type="button" variant="outline" onClick={onClose} disabled={create.isPending}>Cerrar</Button><Button type="submit" disabled={create.isPending||!confirmed||!fields.evidenceDocumentId}>Guardar para conciliación</Button></DialogFooter>
   </form>
-  <section className="border-t pt-3 space-y-2"><h3 className="text-sm font-semibold">Registros históricos por conciliar</h3>{intakes.isError?<p className="text-xs text-destructive">No se pudo consultar la lista.</p>:intakes.isLoading?<p className="text-xs">Cargando...</p>:!intakes.data?.length?<p className="text-xs text-muted-foreground">Sin registros históricos.</p>:intakes.data.map(x=><div key={x.id} className="rounded-md border p-2 text-xs"><p className="font-medium">{x.clientName} · {x.institutionName}</p><p>{x.reference} · {x.actualDate} · ${Number(x.amount).toLocaleString("es-MX")} MXN</p><p className="text-muted-foreground">Pendiente de conciliación</p></div>)}</section>
+  <section className="border-t pt-3 space-y-2"><h3 className="text-sm font-semibold">Registros históricos por conciliar</h3>{intakes.isError?<p className="text-xs text-destructive">No se pudo consultar la lista.</p>:intakes.isLoading?<p className="text-xs">Cargando...</p>:!intakes.data?.length?<p className="text-xs text-muted-foreground">Sin registros históricos.</p>:intakes.data.map(x=><div key={x.id} className="rounded-md border p-2 text-xs"><p className="font-medium">{x.clientName} · {x.institutionName}</p><p>{x.reference} · {x.actualDate} · ${Number(x.amount).toLocaleString("es-MX")} MXN</p><p className="text-muted-foreground">{x.status==="historical_recorded"?"Registrado para seguimiento · sin comisión automática":"Pendiente de conciliación"}</p>
+    {x.economicReconciliation==="pending"&&<p className="text-amber-700">Conciliación económica pendiente</p>}
+    {superAdmin&&x.status!=="historical_recorded"&&<Button type="button" size="sm" variant="outline" onClick={()=>{setReviewId(x.id);setMasterId("");setNetwork(x.historicalNetwork==="unknown"?"":x.historicalNetwork);setReason("");setReviewed(false);setError("");}}>Revisar evidencia</Button>}
+    {reviewId===x.id&&superAdmin&&x.status!=="historical_recorded"&&<div className="mt-2 border-t pt-2 space-y-2">
+      <p>Red declarada: {x.historicalNetwork} {x.historicalMasterName||""}</p><p>Comisión declarada: {x.commissionStatus}</p><p>Evidencia: {x.evidenceName||"No disponible"} {x.paymentEvidenceName?" · Pago: "+x.paymentEvidenceName:""}</p>
+      <Label>Red histórica verificada</Label><select className={cls} value={network} onChange={e=>{setNetwork(e.target.value);setMasterId("");setReviewed(false);}}><option value="">Selecciona red acreditada</option><option value="direct">Directa / plataforma</option><option value="master">Master Broker</option></select>
+      {network==="master"&&<select className={cls} value={masterId} onChange={e=>{setMasterId(e.target.value);setReviewed(false);}}><option value="">Master histórico acreditado</option>{masters.data?.map(m=><option key={m.id} value={m.id}>{m.name||m.id}</option>)}</select>}
+      <Textarea placeholder="Motivo de revisión y evidencia comprobada (mín. 10 caracteres)" value={reason} onChange={e=>setReason(e.target.value)} maxLength={1000}/>
+      <label className="flex items-start gap-2"><input type="checkbox" checked={reviewed} onChange={e=>setReviewed(e.target.checked)}/>Verifiqué los documentos, el originador histórico y el estado declarado. Entiendo que no se crea una comisión ni se confirma una dispersión ordinaria.</label>
+      <Button type="button" size="sm" disabled={!network||!reviewed||reason.trim().length<10||(network==="master"&&!masterId)||reviewMutation.isPending} onClick={()=>reviewMutation.mutate(x)}>Registrar crédito para seguimiento</Button>
+      {error&&<p role="alert" className="text-destructive">{error}</p>}
+    </div>}
+    </div>)}</section>
   </DialogContent></Dialog>;
 }

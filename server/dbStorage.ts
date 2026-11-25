@@ -3053,6 +3053,7 @@ export class DbStorage implements IStorage {
   
   async createCredit(credit: InsertCredit): Promise<Credit> {
     try {
+      if(credit.status==="historical_recorded" || (credit.finalProposal as any)?.historicalRecord)throw new Error("HISTORICAL_REVIEW_REQUIRED");
       const snapshotLineage = readFrozenOfferLineage(credit.finalProposal);
       const explicitLineage = credit.institutionProductId || credit.versionNumber != null
         ? readFrozenOfferLineage({
@@ -3219,6 +3220,7 @@ export class DbStorage implements IStorage {
       const { originMasterBrokerId: _immutableOrigin,
         institutionProductId: _immutableOffer, versionNumber: _immutableVersion,
         ...safeCredit } = credit as any;
+      if(safeCredit.status==="historical_recorded" || safeCredit.finalProposal?.historicalRecord)throw new Error("HISTORICAL_REVIEW_REQUIRED");
       if (safeCredit.finalProposal !== undefined) {
         const [existing] = await db.select().from(credits).where(eq(credits.id, id)).limit(1);
         if (!existing) return undefined;
@@ -3243,7 +3245,7 @@ export class DbStorage implements IStorage {
           ...safeCredit,
           updatedAt: new Date(),
         })
-        .where(eq(credits.id, id))
+        .where(and(eq(credits.id, id),ne(credits.status,'historical_recorded'),sql`NOT (coalesce(${credits.finalProposal},'{}'::jsonb) ? 'historicalRecord')`))
         .returning();
       return updated;
     } catch (error) {
@@ -3500,7 +3502,7 @@ export class DbStorage implements IStorage {
       const [locked] = await tx.select().from(credits)
         .where(eq(credits.id, params.creditId)).for("update");
       if (!locked) throw new Error("DISBURSEMENT_CREDIT_NOT_FOUND");
-      if (["cancelled", "rejected"].includes(locked.status) || !locked.brokerId ||
+      if (["cancelled", "rejected","historical_recorded"].includes(locked.status) || (locked.finalProposal as any)?.historicalRecord || !locked.brokerId ||
           !locked.financialInstitutionId) {
         throw new Error("DISBURSEMENT_CREDIT_NOT_ELIGIBLE");
       }

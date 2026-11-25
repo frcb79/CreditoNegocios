@@ -36,3 +36,13 @@ export const historicalCreditIntakeSchema=z.object({
   if(v.commissionStatus!=="paid_external" && v.commissionEvidenceDocumentId)ctx.addIssue({code:"custom",path:["commissionEvidenceDocumentId"],message:"La evidencia de pago corresponde a una comisión previamente pagada."});
 });
 export type HistoricalCreditIntake=z.infer<typeof historicalCreditIntakeSchema>;
+
+export const historicalCreditReviewSchema=z.object({
+  historicalNetwork:z.enum(["direct","master"]),
+  originMasterBrokerId:id.nullable(),
+  evidenceReviewed:z.literal(true),
+  reviewReason:z.string().trim().min(10).max(1000),
+}).strict().superRefine((v,ctx)=>{
+  if((v.historicalNetwork==="master")!==Boolean(v.originMasterBrokerId))ctx.addIssue({code:"custom",path:["originMasterBrokerId"],message:"Identifica al Master histórico sólo si corresponde."});
+});
+export type HistoricalCreditReview=z.infer<typeof historicalCreditReviewSchema>;

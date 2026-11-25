@@ -1,4 +1,4 @@
-import { historicalCreditIntakeSchema,validHistoricalDate } from "../../shared/historicalCreditIntake";
+import { historicalCreditIntakeSchema,validHistoricalDate,historicalCreditReviewSchema } from "../../shared/historicalCreditIntake";
 const base={clientId:"client",brokerId:"broker",financialInstitutionId:"lender",productTemplateId:"simple",externalReference:" cn  123 ",actualDate:"2025-01-31",amount:"2200000.01",termMonths:36,evidenceDocumentId:"evidence",historicalNetwork:"unknown",commissionStatus:"pending",originatorConfirmed:true};
 describe("Historical credit intake safety",()=>{
   it("normalizes the reference and money without asserting a verified dispersal",()=>{
@@ -20,5 +20,18 @@ describe("Historical credit intake safety",()=>{
   });
   it("rejects any forged financial status, rate or actor fields",()=>{
     for(const extra of [{status:"disbursed"},{commissionRates:{broker:5}},{createdBy:"other"},{originMasterBrokerId:"other"},{originatorConfirmed:false}])expect(historicalCreditIntakeSchema.safeParse({...base,...extra}).success).toBe(false);
+  });
+});
+
+describe("Historical reconciliation input",()=>{
+  const review={historicalNetwork:"direct",originMasterBrokerId:null,evidenceReviewed:true,reviewReason:"Evidencia histórica revisada."};
+  it("requires evidence attestation and the correct historical network identity",()=>{
+    expect(historicalCreditReviewSchema.safeParse(review).success).toBe(true);
+    expect(historicalCreditReviewSchema.safeParse({...review,evidenceReviewed:false}).success).toBe(false);
+    expect(historicalCreditReviewSchema.safeParse({...review,historicalNetwork:"unknown"}).success).toBe(false);
+    expect(historicalCreditReviewSchema.safeParse({...review,historicalNetwork:"master"}).success).toBe(false);
+    expect(historicalCreditReviewSchema.safeParse({...review,historicalNetwork:"master",originMasterBrokerId:"master"}).success).toBe(true);
+    expect(historicalCreditReviewSchema.safeParse({...review,originMasterBrokerId:"master"}).success).toBe(false);
+    expect(historicalCreditReviewSchema.safeParse({...review,commissionRates:{broker:2}}).success).toBe(false);
   });
 });
