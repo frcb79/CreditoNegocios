@@ -11928,7 +11928,7 @@ function maskCLABE(clabe?: string | null): string | null {
         }
         const originator = await storage.getUser(submission.brokerId);
         const recipients = new Set([originator?.id,submission.originMasterBrokerId].filter((id):id is string=>Boolean(id) && id!==userId));
-        for (const id of recipients) {
+        for (const id of Array.from(recipients)) {
           if (admins.some(a=>a.id===id)) continue;
           const notif = await storage.createNotification({userId:id,type:"credit_submission_created",title:"Oportunidad de arrendamiento registrada",message:"Se registró una solicitud de cotización en tu cartera o red para revisión interna.",relatedEntityType:"credit_submission",relatedEntityId:submission.id,priority:"normal"});
           broadcastToUser(id,{type:"notification",notification:notif});
