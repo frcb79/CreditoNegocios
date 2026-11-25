@@ -496,6 +496,19 @@ describe("Cierre P0: Formalización Obligatoria y Cierre de Bypasses en Originac
       expect(submission.body.submission.brokerId).toBe(formalizedBroker.id);
       expect(submission.body.submission.tenantId).toBe(tenant.id);
       expect(submission.body.submission.createdBy).toBe(admin.id);
+      // Special paths must keep the same originator and organization, including
+      // when administration opens an existing client's expediente.
+      const mortgageTemplate = await storage.createProductTemplate({name:"Hipotecario",category:"hipotecario",isActive:true,baseConfiguration:{catalog_family:"hipotecario",variants:["vivienda","empresarial"]},createdBy:admin.id} as any);
+      await storage.createProductTemplate({name:"Arrendamiento",category:"arrendamiento",isActive:true,createdBy:admin.id} as any);
+      const mortgage = await request(app).post("/api/mortgage-leads").send({clientId:res.body.id,requestedAmount:"500000",propertyValue:"800000",incomeType:"asalariado"});
+      expect(mortgage.status).toBe(201);
+      expect(mortgage.body.submission.brokerId).toBe(formalizedBroker.id);
+      expect(mortgage.body.submission.tenantId).toBe(tenant.id);
+      const lease=await request(app).post("/api/leasing-leads").send({clientId:res.body.id,assetType:"vehiculo",brand:"Toyota",model:"Corolla",year:2026,unitValue:450000,quantity:1});
+      expect(lease.status).toBe(201);
+      expect(lease.body.submission.brokerId).toBe(formalizedBroker.id);
+      expect(lease.body.submission.tenantId).toBe(tenant.id);
+      expect(lease.body.submission.createdBy).toBe(admin.id);
     });
     it("No inventa una organización si el asesor formalizado no tiene membresía válida", async () => {
       const admin = await createTestUser("admin", "Admin QA");

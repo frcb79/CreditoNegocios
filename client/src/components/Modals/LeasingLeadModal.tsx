@@ -9,6 +9,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/hooks/useAuth";
+import { CaptureOriginatorSelect,useCaptureOriginators,validCaptureOriginator } from "@/components/Clients/CaptureOriginatorSelect";
 import { apiRequest } from "@/lib/queryClient";
 import type { Client } from "@shared/schema";
 import { LEASING_ASSET_TYPES, leaseLeadSchema } from "@shared/leasing";
@@ -35,6 +37,10 @@ interface LeasingLeadModalProps {
 
 export default function LeasingLeadModal({ isOpen, onClose, existingClient, onSuccess }: LeasingLeadModalProps) {
   const { toast } = useToast();
+  const {user}=useAuth();
+  const adminCapture=user?.role==="admin" || user?.role==="super_admin";
+  const [originator,setOriginator]=useState("");
+  const originators=useCaptureOriginators(Boolean(adminCapture && isOpen));
   const queryClient = useQueryClient();
   const [fields, setFields] = useState<Fields>(empty);
   const [useExisting, setUseExisting] = useState(false);
@@ -45,6 +51,7 @@ export default function LeasingLeadModal({ isOpen, onClose, existingClient, onSu
       setFields({ ...empty, clientId: existingClient?.id || "" });
       setUseExisting(Boolean(existingClient?.id));
       setFormError("");
+      setOriginator("");
     }
   }, [isOpen, existingClient?.id]);
 
@@ -63,6 +70,7 @@ export default function LeasingLeadModal({ isOpen, onClose, existingClient, onSu
   });
 
   const handleSubmit = () => {
+    if (adminCapture && !useExisting && !validCaptureOriginator(originator,originators)) {setFormError("Selecciona un asesor o registro directo de plataforma.");return;}
     const payload: Record<string, unknown> = {
       assetType: fields.assetType,
       assetDescription: fields.assetDescription || undefined,
@@ -96,7 +104,7 @@ export default function LeasingLeadModal({ isOpen, onClose, existingClient, onSu
       return;
     }
     setFormError("");
-    submit.mutate(valid.data);
+    submit.mutate({...valid.data,...(adminCapture && !useExisting && originator!=='__self__' ? {brokerId:originator}: {})});
   };
   const selectedClient = existingClient?.id === fields.clientId
     ? existingClient
@@ -137,10 +145,11 @@ export default function LeasingLeadModal({ isOpen, onClose, existingClient, onSu
                   <SelectTrigger data-testid="select-lease-existing-client"><SelectValue placeholder="Buscar en mi cartera" /></SelectTrigger>
                   <SelectContent>{clients.map(c => <SelectItem key={c.id} value={c.id}>{nameOf(c)}{c.rfc ? ` · ${c.rfc}` : ""}</SelectItem>)}</SelectContent>
                 </Select>
-                {selectedClient && <p className="text-xs text-muted-foreground">Se creará una nueva oportunidad para {nameOf(selectedClient)} sin duplicar su expediente.</p>}
+                {selectedClient && <p className="text-xs text-muted-foreground">Se creará una nueva oportunidad para {nameOf(selectedClient)} sin duplicar su expediente.{adminCapture ? ' Se conserva su asesor originador.' : ''}</p>}
               </div>
             ) : (
               <>
+                {adminCapture && <CaptureOriginatorSelect id="lease-originator" value={originator} onChange={setOriginator} query={originators}/>}
                 <div className="space-y-1.5">
                   <Label>Tipo de prospecto *</Label>
                   <Select value={fields.clientType} onValueChange={v => put("clientType", v)}>

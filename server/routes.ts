@@ -11592,11 +11592,15 @@ function maskCLABE(clabe?: string | null): string | null {
         return res.status(403).json({ message: "No tienes permiso para registrar operaciones hipotecarias" });
       }
 
+      const isAdminCapture = ["admin","super_admin"].includes(user.role);
+      const existingCaptureClient = isAdminCapture && typeof req.body.clientId === "string" ? await storage.getClient(req.body.clientId) : undefined;
+      const existingCaptureOwner = existingCaptureClient?.brokerId ? await storage.getUser(existingCaptureClient.brokerId) : undefined;
+      const delegatedId = req.body.brokerId || (existingCaptureOwner && ["broker","master_broker"].includes(existingCaptureOwner.role) ? existingCaptureOwner.id : undefined);
       const originationCheck = await validateCommercialOriginationAndFormalization({
         callerUser: user,
         callerMembership: req.tenantContext?.membership,
         tenantId: req.tenantContext?.tenant?.id,
-        requestedBrokerId: req.body.brokerId,
+        requestedBrokerId: delegatedId,
       });
 
       if (!originationCheck.allowed) {
@@ -11606,7 +11610,9 @@ function maskCLABE(clabe?: string | null): string | null {
         });
       }
 
-      const tenantId = req.tenantContext?.tenant?.id || null;
+      const captureScope = await resolveAdminCaptureTenant(user, originationCheck.brokerId, req.tenantContext?.tenant?.id || null, existingCaptureClient?.tenantId);
+      if (!captureScope.allowed) return res.status(409).json({code:"ORIGINATOR_ORGANIZATION_REQUIRED",message:captureScope.message});
+      const tenantId = captureScope.tenantId;
       const brokerId = originationCheck.brokerId;
 
       const {
@@ -11722,6 +11728,8 @@ function maskCLABE(clabe?: string | null): string | null {
         const clientName = `${client.firstName || ''} ${client.lastName || ''}`.trim() || 'Prospecto Hipotecario';
         const formattedAmount = `$${parseFloat(requestedAmount.toString()).toLocaleString('es-MX')} MXN`;
 
+        const originator = await storage.getUser(submission.brokerId) || user;
+        const originMasterId = submission.originMasterBrokerId;
         const allUsers = await storage.getAllUsers();
         const admins = allUsers.filter(u => u.role === 'admin' || u.role === 'super_admin');
 
@@ -11730,7 +11738,7 @@ function maskCLABE(clabe?: string | null): string | null {
             userId: admin.id,
             type: 'credit_submission_created',
             title: 'Nueva oportunidad Hipotecario Vivienda',
-            message: `Oportunidad hipotecaria para ${clientName} por ${formattedAmount}. Registrada por ${user.firstName} ${user.lastName || ''}.`,
+            message: `Oportunidad hipotecaria para ${clientName} por ${formattedAmount}. Registrada por ${originator.firstName} ${originator.lastName || ''}.`,
             relatedEntityType: 'credit_submission',
             relatedEntityId: submission.id,
             priority: 'high',
@@ -11739,18 +11747,22 @@ function maskCLABE(clabe?: string | null): string | null {
           broadcastToUser(admin.id, { type: 'submission_created', submissionId: submission.id });
         }
 
-        if (user.masterBrokerId) {
+        if (originMasterId && originMasterId !== originator.id) {
           const mbNotif = await storage.createNotification({
-            userId: user.masterBrokerId,
+            userId: originMasterId,
             type: 'credit_submission_created',
             title: 'Nueva oportunidad hipotecaria en tu red',
-            message: `${user.firstName} ${user.lastName || ''} registró una oportunidad hipotecaria para ${clientName} por ${formattedAmount}.`,
+            message: `${originator.firstName} ${originator.lastName || ''} registró una oportunidad hipotecaria para ${clientName} por ${formattedAmount}.`,
             relatedEntityType: 'credit_submission',
             relatedEntityId: submission.id,
             priority: 'normal',
           });
-          broadcastToUser(user.masterBrokerId, { type: 'notification', notification: mbNotif });
-          broadcastToUser(user.masterBrokerId, { type: 'submission_created', submissionId: submission.id });
+          broadcastToUser(originMasterId, { type: 'notification', notification: mbNotif });
+          broadcastToUser(originMasterId, { type: 'submission_created', submissionId: submission.id });
+        }
+        if (originator.id !== userId) {
+          const notif = await storage.createNotification({userId:originator.id,type:"credit_submission_created",title:"Oportunidad hipotecaria registrada",message:"Backoffice registró una oportunidad hipotecaria a tu nombre para revisión interna.",relatedEntityType:"credit_submission",relatedEntityId:submission.id,priority:"normal"});
+          broadcastToUser(originator.id,{type:"notification",notification:notif});
         }
       } catch (notifErr) {
         console.error("Error creating notifications for mortgage lead:", notifErr);
@@ -11787,16 +11799,22 @@ function maskCLABE(clabe?: string | null): string | null {
       if (!user || !['broker', 'master_broker', 'admin', 'super_admin'].includes(user.role)) {
         return res.status(403).json({ message: "Sin permiso para registrar arrendamientos" });
       }
+      const isAdminCapture = ["admin","super_admin"].includes(user.role);
+      const existingCaptureClient = isAdminCapture && typeof req.body.clientId === "string" ? await storage.getClient(req.body.clientId) : undefined;
+      const existingCaptureOwner = existingCaptureClient?.brokerId ? await storage.getUser(existingCaptureClient.brokerId) : undefined;
+      const delegatedId = req.body.brokerId || (existingCaptureOwner && ["broker","master_broker"].includes(existingCaptureOwner.role) ? existingCaptureOwner.id : undefined);
       const scope = await validateCommercialOriginationAndFormalization({
         callerUser: user,
         callerMembership: req.tenantContext?.membership,
         tenantId: req.tenantContext?.tenant?.id,
-        requestedBrokerId: req.body?.brokerId,
+        requestedBrokerId: delegatedId,
       });
       if (!scope.allowed) {
         return res.status(scope.statusCode || 403).json({ code: scope.code, message: scope.message });
       }
-      const tenantId = req.tenantContext?.tenant?.id || null;
+      const captureScope = await resolveAdminCaptureTenant(user, scope.brokerId, req.tenantContext?.tenant?.id || null, existingCaptureClient?.tenantId);
+      if (!captureScope.allowed) return res.status(409).json({code:"ORIGINATOR_ORGANIZATION_REQUIRED",message:captureScope.message});
+      const tenantId = captureScope.tenantId;
       const brokerId = scope.brokerId;
       let clientData: any;
       if (lead.clientId) {
@@ -11907,6 +11925,13 @@ function maskCLABE(clabe?: string | null): string | null {
             priority: 'normal',
           });
           broadcastToUser(admin.id, { type: 'notification', notification });
+        }
+        const originator = await storage.getUser(submission.brokerId);
+        const recipients = new Set([originator?.id,submission.originMasterBrokerId].filter((id):id is string=>Boolean(id) && id!==userId));
+        for (const id of recipients) {
+          if (admins.some(a=>a.id===id)) continue;
+          const notif = await storage.createNotification({userId:id,type:"credit_submission_created",title:"Oportunidad de arrendamiento registrada",message:"Se registró una solicitud de cotización en tu cartera o red para revisión interna.",relatedEntityType:"credit_submission",relatedEntityId:submission.id,priority:"normal"});
+          broadcastToUser(id,{type:"notification",notification:notif});
         }
       } catch (notifyErr) {
         console.error('Leasing lead notification error:', notifyErr);
