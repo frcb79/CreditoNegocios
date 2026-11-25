@@ -17,6 +17,8 @@ import { createServer, ServerResponse, type Server } from "http";
 import { WebSocketServer, WebSocket } from "ws";
 import rateLimit from "express-rate-limit";
 import { pool } from "./db";
+import { historicalCreditIntakeSchema } from "../shared/historicalCreditIntake";
+import { recordHistoricalCreditIntake,listHistoricalCreditIntakes,HistoricalIntakeError } from "./historicalCreditIntakeService";
 import { runBrokerInvitationReminders } from "./brokerInvitationReminders";
 import { storage, type IStorage } from "./storage";
 import { canViewSubmissionByOrigin, canViewCreditByOrigin, canEditCreditByOrigin, summarizeCommercialAccountActivity } from "./dashboardVisibility";
@@ -4816,6 +4818,24 @@ export async function registerRoutes(app: Express): Promise<Server> {
       console.error("Error fetching credits:", error);
       res.status(500).json({ message: "Failed to fetch credits" });
     }
+  });
+
+  // Historical intake is an immutable report, NOT a financial write to credits.
+  app.get('/api/admin/historical-credit-intakes',isAuthenticated,requireModuleAndAction('creditos','view'),async(req:any,res)=>{
+    const user=await storage.getUser(req.user.claims.sub);
+    if(!user||!["admin","super_admin"].includes(user.role))return res.status(403).json({message:"Sólo Backoffice."});
+    if(process.env.USE_MEMORY_STORAGE==="true"||process.env.NODE_ENV==="test")return res.status(503).json({message:"Requiere PostgreSQL aislado."});
+    try{res.setHeader("Cache-Control","private, no-store");return res.json(await listHistoricalCreditIntakes(pool,user.id));}
+    catch(e){if(e instanceof HistoricalIntakeError)return res.status(e.status).json({code:e.code,message:e.message});return res.status(500).json({message:"No fue posible consultar los registros históricos."});}
+  });
+  app.post('/api/admin/historical-credit-intakes',isAuthenticated,requireModuleAndAction('creditos','edit'),async(req:any,res)=>{
+    const user=await storage.getUser(req.user.claims.sub);
+    if(!user||!["admin","super_admin"].includes(user.role))return res.status(403).json({message:"Sólo Backoffice."});
+    const parsed=historicalCreditIntakeSchema.safeParse(req.body);
+    if(!parsed.success)return res.status(400).json({message:parsed.error.issues[0]?.message||"Revisa los datos de la operación histórica."});
+    if(process.env.USE_MEMORY_STORAGE==="true"||process.env.NODE_ENV==="test")return res.status(503).json({message:"Requiere PostgreSQL aislado."});
+    try{return res.status(201).json(await recordHistoricalCreditIntake(pool,user.id,parsed.data));}
+    catch(e){if(e instanceof HistoricalIntakeError)return res.status(e.status).json({code:e.code,message:e.message});return res.status(500).json({message:"No fue posible registrar la operación histórica."});}
   });
 
   app.post('/api/credits', isAuthenticated, requireModuleAndAction('creditos', 'edit'), async (req: any, res) => {
