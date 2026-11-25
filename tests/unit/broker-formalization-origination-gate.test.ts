@@ -557,15 +557,21 @@ describe("Cierre P0: Formalización Obligatoria y Cierre de Bypasses en Originac
         brokerId: formalizedBroker.id,
       });
 
+      const template = await storage.createProductTemplate({name:"Crédito canalización formalizada QA",category:"credito_simple",isActive:true,createdBy:formalizedBroker.id} as any);
+      const institution = await storage.createFinancialInstitution({name:`Canalización QA ${randomUUID()}`,isActive:true} as any);
+      const {offer,version}=await storage.createOffer({institutionId:institution.id,templateId:template.id,name:"Oferta formalización QA",productType:"credito_simple",isActive:true,status:"draft"},
+        {conditions:{minAmount:100,maxAmount:2000000},requirements:{targetProfiles:["persona_moral"]},requiredDocuments:[],changeReason:"Fixture formalización QA"});
+      await storage.publishInstitutionProductVersion(offer.id,version.id,{changeReason:"Publicación de prueba QA"});
       const submission = await storage.createCreditSubmissionRequest({
         clientId: client.id,
         brokerId: formalizedBroker.id,
+        productTemplateId:template.id,
         requestedAmount: "1000000",
         purpose: "adquisicion",
       });
 
       currentAuthUser = formalizedBroker;
-      const dummyInstId = randomUUID();
+      const dummyInstId = institution.id;
       const res = await request(app)
         .post(`/api/credit-submissions/${submission.id}/targets`)
         .send({

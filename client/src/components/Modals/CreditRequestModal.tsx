@@ -196,6 +196,12 @@ export default function CreditRequestModal({ isOpen, onClose, preselectedClientI
   };
 
   const onSubmit = (data: CreditRequestForm) => {
+    const allowed = new Set(institutionsWithMatch.filter(i=>i.match.isConfigured!==false).map(i=>i.institution.id));
+    if (previewUrl!==settledPreviewUrl || matching.isError || matching.isFetching || !matching.data ||
+      data.financialInstitutionIds.some(id=>!allowed.has(id))) {
+      toast({title:"Revisa las financieras seleccionadas",description:"Espera la evaluación vigente y selecciona únicamente financieras con ofertas del producto.",variant:"destructive"});
+      return;
+    }
     submitRequestMutation.mutate(data);
   };
 
@@ -301,8 +307,10 @@ export default function CreditRequestModal({ isOpen, onClose, preselectedClientI
 
   const renderInstitutionCard = (institution: FinancialInstitution, match: MatchResult) => {
     const isSelected = selectedInstitutions.includes(institution.id);
+    const canSelect = match.isConfigured !== false && previewUrl === settledPreviewUrl && !!matching.data && !matching.isError && !matching.isFetching;
     
     const productName = match.reasons[0] || selectedTemplate?.name;
+    const partialNote = match.reasons.find(r=>r.startsWith("Alternativa parcial preliminar:"));
 
     let categoryBadge = null;
     let categoryIcon = null;
@@ -324,7 +332,7 @@ export default function CreditRequestModal({ isOpen, onClose, preselectedClientI
     } else if (match.matchStatus === 'insufficient_data' || match.category === 'insufficient_data') {
       categoryBadge = (
         <Badge variant="outline" className="bg-amber-50 text-amber-800 border-amber-300 text-xs font-semibold">
-          ⚠ Información Insuficiente
+          ⚠ Alternativa por confirmar
         </Badge>
       );
       categoryIcon = <AlertTriangle className="w-4 h-4 text-amber-600" />;
@@ -356,11 +364,12 @@ export default function CreditRequestModal({ isOpen, onClose, preselectedClientI
                   ? 'bg-green-50/50 border-green-200 hover:bg-green-50'
                   : 'bg-white border-gray-200 hover:bg-gray-50'
               }`}
-              onClick={() => handleInstitutionToggle(institution.id)}
+              onClick={() => {if(canSelect || isSelected) handleInstitutionToggle(institution.id);}}
             >
               <input
                 type="checkbox"
                 checked={isSelected}
+                disabled={!canSelect && !isSelected}
                 onClick={(event) => event.stopPropagation()}
                 onChange={() => handleInstitutionToggle(institution.id)}
                 className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
@@ -374,6 +383,7 @@ export default function CreditRequestModal({ isOpen, onClose, preselectedClientI
                     {productName && (
                       <p className="text-xs text-blue-600 font-medium truncate">📦 {productName}</p>
                     )}
+                    {partialNote && <p className="text-xs text-amber-800">{partialNote}</p>}
                     {match.matchStatus === 'not_compatible' && (match.unmetRequirements?.length ?? 0) > 0 && (
                       <p className="text-xs text-rose-700 truncate" title={match.unmetRequirements?.join('; ')}>
                         Regla excluyente: {match.unmetRequirements?.[0]}
@@ -652,9 +662,9 @@ export default function CreditRequestModal({ isOpen, onClose, preselectedClientI
                         <div className="flex items-center space-x-2">
                           <AlertTriangle className="w-4 h-4 text-amber-600" />
                           <h4 className="font-semibold text-sm text-amber-900">
-                            Información Insuficiente ({insufficientInstitutions.length})
+                            Alternativas por confirmar ({insufficientInstitutions.length})
                           </h4>
-                          <span className="text-xs text-muted-foreground">Falta información para evaluar compatibilidad definitiva</span>
+                          <span className="text-xs text-muted-foreground">Pueden incluir financiamiento parcial o requisitos pendientes</span>
                         </div>
                         <div className="grid grid-cols-1 gap-2 max-h-48 overflow-y-auto">
                           {insufficientInstitutions.map(({ institution, match }) => 
@@ -688,9 +698,9 @@ export default function CreditRequestModal({ isOpen, onClose, preselectedClientI
                         <div className="flex items-center space-x-2">
                           <HelpCircle className="w-4 h-4 text-gray-500" />
                           <h4 className="font-semibold text-sm text-gray-700">
-                            Sin Configuración / Requieren Información Adicional ({unconfiguredInstitutions.length})
+                            Sin oferta vigente del producto ({unconfiguredInstitutions.length})
                           </h4>
-                          <span className="text-xs text-muted-foreground">Financieras sin requisitos parametrizados para este tipo de cliente</span>
+                          <span className="text-xs text-muted-foreground">No disponibles para esta solicitud</span>
                         </div>
                         <div className="grid grid-cols-1 gap-2 max-h-40 overflow-y-auto">
                           {unconfiguredInstitutions.map(({ institution, match }) => 
@@ -757,7 +767,7 @@ export default function CreditRequestModal({ isOpen, onClose, preselectedClientI
               </Button>
               <Button
                 type="submit"
-                disabled={submitRequestMutation.isPending || clientsLoading || institutionsLoading}
+                disabled={submitRequestMutation.isPending || clientsLoading || institutionsLoading || matching.isFetching || matching.isError || !matching.data || previewUrl!==settledPreviewUrl}
                 className="bg-primary text-primary-foreground hover:bg-primary/90"
                 data-testid="button-submit-request"
               >

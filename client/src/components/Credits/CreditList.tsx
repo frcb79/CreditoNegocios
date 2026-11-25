@@ -80,6 +80,12 @@ type UnifiedCreditItem = {
 
 // Ahora se usa configuración compartida desde @/lib/statusConfig
 
+function hasReceivedInstitutionProposal(target:any): boolean {
+  const proposal = target?.institutionProposal;
+  return !!target?.proposalReceivedAt && !!proposal && typeof proposal === "object" &&
+    !Array.isArray(proposal) && Number.isFinite(Number(proposal.approvedAmount)) && Number(proposal.approvedAmount)>0;
+}
+
 export default function CreditList() {
   const { user } = useAuth();
   const isAdmin = user?.role === 'admin' || user?.role === 'super_admin';
@@ -252,7 +258,7 @@ export default function CreditList() {
       submissions.forEach(sub => {
         const targets = sub.targets || [];
         const targetsCount = targets.length;
-        const proposalsCount = targets.filter((t: any) => t.institutionProposal).length;
+        const proposalsCount = targets.filter(hasReceivedInstitutionProposal).length;
         const statusSummary = getSubmissionStatusSummary(targets);
 
         const winningTargets = targets.filter((t: any) => 
@@ -1206,9 +1212,9 @@ export default function CreditList() {
                 <CardHeader>
                   <CardTitle className="text-lg flex items-center justify-between">
                     <span>Financieras Seleccionadas ({submissionTargets?.length || 0})</span>
-                    {submissionTargets && submissionTargets.filter(t => t.institutionProposal).length > 0 && (
+                    {submissionTargets && submissionTargets.filter(hasReceivedInstitutionProposal).length > 0 && (
                       <Badge className="bg-green-100 text-green-800">
-                        {submissionTargets.filter(t => t.institutionProposal).length} Propuesta(s)
+                        {submissionTargets.filter(hasReceivedInstitutionProposal).length} Propuesta(s)
                       </Badge>
                     )}
                   </CardTitle>
@@ -1296,7 +1302,7 @@ export default function CreditList() {
                                   </div>
                                 )}
 
-                                {target.institutionProposal && (
+                                {hasReceivedInstitutionProposal(target) && (
                                   <Card className="border-green-200 bg-green-50">
                                     <CardHeader>
                                       <CardTitle className="text-sm text-green-900">Propuesta Institucional</CardTitle>

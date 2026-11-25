@@ -96,6 +96,21 @@ describe("Financieras editing/publication and administrative activity HTTP",()=>
   await request(app).put(path+'/draft').send({requirements:{businessAgeSource:"3-4 años"}});
   expect((await request(app).get(path+'/publish-preview')).body.validation.isValid).toBe(false);
  });
+ it("requires explicit support review for every fiscal profile and records server-owned attribution",async()=>{
+  user=admin;
+  const created=await storage.createOffer({institutionId:offer.institutionId,name:"Support policy QA",status:"draft",productType:"credito_simple"},
+    {conditions:{minAmount:100,maxAmount:1000000,avalesType:"un_aval"},requirements:{targetProfiles:["persona_moral","fisica_empresarial"],guarantorSource:"RL"},requiredDocuments:[],changeReason:"Fixture QA"});
+  const path=`/api/institution-products/${created.offer.id}/draft`;
+  const invalid=await request(app).put(path).send({personalSupportReview:{confirmed:true,reason:"Confirmado QA",byProfile:{persona_moral:"representante_solidario"}}});
+  expect(invalid.status).toBe(400);
+  const valid=await request(app).put(path).send({personalSupportReview:{confirmed:true,reason:"Confirmado QA",byProfile:{persona_moral:"representante_solidario",fisica_empresarial:"representante_firmante"},reviewedBy:"forged"}});
+  expect(valid.status).toBe(200);
+  expect(valid.body.version.requirements.guarantorSource).toBe("RL");
+  expect(valid.body.version.requirements.personalSupportResolution.reviewedBy).toBe(admin.id);
+  const saved=await request(app).put(path).send({requirements:{personalSupportResolution:{reviewedBy:"forged"}}});
+  expect(saved.status).toBe(200);
+  expect(saved.body.version.requirements.personalSupportResolution.reviewedBy).toBe(admin.id);
+ });
  it("records successful and rejected mutations using route templates, with no body or query secrets",async()=>{
   user=admin;
   await request(app).put(`/api/institution-products/${offer.id}/draft?private=do-not-log`).send({conditions:{maxAmount:-1},password:"never-log-me",changeReason:"Rejected QA"});

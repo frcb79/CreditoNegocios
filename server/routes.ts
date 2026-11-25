@@ -6,6 +6,7 @@ import { dispatchCommercialActivationWelcome } from "./commercialWelcomeService"
 import { registerEmailDeliveryAuditRoutes } from "./emailDeliveryAuditRoutes";
 import { registerBrokerDossierRoutes } from "./brokerDossierRoutes";
 import { getOfferAgePolicy } from "../shared/offerAgePolicy";
+import { isPersonalSupport, supportBasis, SUPPORT_PROFILES } from "../shared/offerPersonalSupport";
 import { matchPublishedCatalog } from "./matching/catalog";
 import { registerAdministrativeAudit } from "./administrativeAudit";
 import { selectHousingMortgageTemplate } from "./mortgageHousingTemplate";
@@ -10349,6 +10350,23 @@ function maskCLABE(clabe?: string | null): string | null {
 
       // Only this explicit Super Admin action can record a commercial reconciliation.
       // A client cannot forge attribution or retain approval after changing the source.
+      // Only explicit Super Admin review can resolve personal support; attribution is server-owned.
+      mergedRequirements.personalSupportResolution = currentReqs.personalSupportResolution;
+      if (req.body.personalSupportReview !== undefined) {
+        const review = req.body.personalSupportReview;
+        const profiles = mergedRequirements.targetProfiles;
+        if (!review || review.confirmed !== true || typeof review.reason !== "string" ||
+            review.reason.trim().length < 3 || !Array.isArray(profiles) || !profiles.length ||
+            !profiles.every((profile: string) => SUPPORT_PROFILES.includes(profile as any) && isPersonalSupport(review.byProfile?.[profile]))) {
+          return res.status(400).json({message:"Confirma el respaldo personal por cada perfil admitido y el motivo de revisión."});
+        }
+        mergedRequirements.personalSupportResolution = {
+          basis: supportBasis(mergedConditions,mergedRequirements),
+          byProfile: Object.fromEntries(profiles.map((profile: string)=>[profile,review.byProfile[profile]])),
+          reason: review.reason.trim(), reviewedBy: userId, reviewedAt: new Date().toISOString(),
+        };
+      }
+
       mergedRequirements.businessAgeResolution = currentReqs.businessAgeResolution;
       if (req.body.businessAgeReview !== undefined) {
         const review = req.body.businessAgeReview;
@@ -11410,12 +11428,25 @@ function maskCLABE(clabe?: string | null): string | null {
         status: 'pending_admin'
       });
 
+      // Validate against the current published product catalogue before any write.
+      const selectedIds = req.body.financialInstitutionIds;
+      if (selectedIds !== undefined && (!Array.isArray(selectedIds) || selectedIds.some((id:any)=>typeof id!=="string" || !id.trim()))) {
+        return res.status(400).json({message:"Selección de financieras inválida."});
+      }
+      if (selectedIds?.length) {
+        const client = await storage.getClient(submissionData.clientId);
+        const template = await storage.getProductTemplate(submissionData.productTemplateId!);
+        if (!client || !template || template.isActive===false) return res.status(400).json({message:"Selecciona un expediente y producto activos."});
+        const result = await matchPublishedCatalog(storage,{client,credit:{amount:submissionData.requestedAmount}},template.id);
+        const allowed = new Set([...result.compatible,...result.insufficientData,...result.notCompatible].map(o=>o.institutionId));
+        if (selectedIds.some((id:string)=>!allowed.has(id))) return res.status(422).json({message:"Una o más financieras no tienen oferta vigente del producto seleccionado."});
+      }
       const submission = await storage.createCreditSubmissionRequest(submissionData);
       
       // Create targets for each selected financial institution
       const targets = [];
       if (req.body.financialInstitutionIds && Array.isArray(req.body.financialInstitutionIds)) {
-        for (const institutionId of req.body.financialInstitutionIds) {
+        for (const institutionId of Array.from(new Set<string>(req.body.financialInstitutionIds))) {
           const targetData = {
             requestId: submission.id,
             financialInstitutionId: institutionId,
@@ -11908,8 +11939,16 @@ function maskCLABE(clabe?: string | null): string | null {
       const existingTargets = await storage.getCreditSubmissionTargets({ requestId: id });
       const existingInstIds = new Set(existingTargets.map(t => t.financialInstitutionId));
 
+      const client = await storage.getClient(submission.clientId);
+      const template = submission.productTemplateId ? await storage.getProductTemplate(submission.productTemplateId) : undefined;
+      if (!client || !template || template.isActive===false) return res.status(400).json({message:"Selecciona un expediente y producto activos."});
+      if (financialInstitutionIds.some((id:any)=>typeof id!=="string" || !id.trim())) return res.status(400).json({message:"Selección de financieras inválida."});
+      const result = await matchPublishedCatalog(storage,{client,credit:{...submission,amount:submission.requestedAmount}},template.id);
+      const allowed = new Set([...result.compatible,...result.insufficientData,...result.notCompatible].map(o=>o.institutionId));
+      const uniqueIds = Array.from(new Set<string>(financialInstitutionIds));
+      if (uniqueIds.some(id=>!existingInstIds.has(id) && !allowed.has(id))) return res.status(422).json({message:"Una o más financieras no tienen oferta vigente del producto seleccionado."});
       const newTargets = [];
-      for (const institutionId of financialInstitutionIds) {
+      for (const institutionId of uniqueIds) {
         if (!existingInstIds.has(institutionId)) {
           const target = await storage.createCreditSubmissionTarget({
             requestId: id,

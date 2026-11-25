@@ -57,6 +57,7 @@ interface MatchingResponse {
   insufficientData: CompatibilityOfferResult[];
   notCompatible: CompatibilityOfferResult[];
   excludedOffers?: { offerId: string; reason: string }[];
+  combinations?: {allocations:{institutionId:string;institutionName?:string;offerId:string;versionNumber:number;amount:number}[];totalAmount:number;requestedAmount:number}[];
 }
 
 interface CreditMatchingSectionProps {
@@ -199,6 +200,14 @@ export default function CreditMatchingSection({ creditId, clientName, requestTyp
       </CardHeader>
 
       <CardContent className="pt-4 space-y-5">
+        {!!data.combinations?.length && <section className="rounded-lg border border-blue-200 bg-blue-50/40 p-4 space-y-3" data-testid="matching-combinations">
+          <h3 className="font-semibold text-sm">Combinaciones preliminares de financiamiento</h3>
+          <p className="text-xs text-muted-foreground">Escenarios con dos instituciones distintas. Los importes son evaluados individualmente; requieren confirmar capacidad de pago conjunta, condiciones y aprobación de ambas. No son propuestas recibidas.</p>
+          {data.combinations.map((scenario,i)=><div key={scenario.allocations.map(a=>a.offerId).join(":")} className="rounded-md bg-background border p-3 text-sm">
+            <p className="font-medium">Alternativa {i+1} · ${scenario.totalAmount.toLocaleString("es-MX")} MXN</p>
+            {scenario.allocations.map(a=><div key={a.offerId} className="flex justify-between gap-3 text-xs mt-1"><span>{a.institutionName||"Financiera"} · v{a.versionNumber}</span><strong>${a.amount.toLocaleString("es-MX")}</strong></div>)}
+          </div>)}
+        </section>}
         {/* Métricas Operativas */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
           <div 

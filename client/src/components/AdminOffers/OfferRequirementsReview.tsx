@@ -1,3 +1,4 @@
+import { PERSONAL_SUPPORT_OPTIONS, reviewedSupport } from "@shared/offerPersonalSupport";
 import { getOfferAgePolicy } from "@shared/offerAgePolicy";
 
 const display = (value: unknown): string => value == null || value === "" ? "Pendiente de definición" :
@@ -12,7 +13,7 @@ export default function OfferRequirementsReview({ version }: { version: any }) {
   const policies = [
     ["Antigüedad según archivo", age.source], ["Buró: historial exigido", c.bureauRequirement ?? r.bureauPolicySource],
     ["Condiciones adicionales de Buró", r.bureauPolicySource], ["Permite atrasos", r.allowsArrears], ["Tolerancia de atrasos", r.arrearsPolicy],
-    ["Garantía", c.guaranteeType ?? r.guarantee], ["Detalle de garantía", r.guarantee], ["Aval", c.avalesType ?? r.guarantorSource],
+    ["Garantía", c.guaranteeType ?? r.guarantee], ["Detalle de garantía", r.guarantee], ["Aval original", r.guarantorSource], ["Regla general de aval (legado)", c.avalesType],
     ["CIEC", r.requiresCiec], ["Estados financieros", r.requiresFinancialStatements], ["Opinión SAT", r.satOpinion],
     ["Ventas a gobierno", r.governmentSalesLimit], ["Giros excluidos", r.excludedSectors], ["Cobertura geográfica", r.presence],
   ];
@@ -24,6 +25,7 @@ export default function OfferRequirementsReview({ version }: { version: any }) {
       const ranges = { ...(r.ranges || {}), ...(r.profileRules?.[row.profile]?.ranges || {}) };
       const rules = [
         ["Antigüedad mínima (meses)", row.effectiveMonths],
+        ["Respaldo personal por perfil", PERSONAL_SUPPORT_OPTIONS.find(o=>o.value===reviewedSupport(c,r,row.profile))?.label ?? "Sin revisión específica; aplica regla general"],
         ["Ingreso mensual mínimo (MXN)", Object.prototype.hasOwnProperty.call(c, "minMonthlyRevenue") ? c.minMonthlyRevenue : ranges.ingresoMensualPromedio?.min ?? r.minMonthlyIncome ?? r.minMonthlyIncomeSource],
         ["Ingreso anual mínimo (MXN)", ranges.ingresoAnual?.min ?? r.minAnnualIncome ?? r.minAnnualIncomeSource],
         ...(row.profile === "persona_moral" ? [
@@ -35,6 +37,7 @@ export default function OfferRequirementsReview({ version }: { version: any }) {
         {rules.map(([label, value]) => <p key={String(label)}>{label}: {display(value)}</p>)}
       </div>;
     })}</div>
+    {r.personalSupportResolution && <p>Revisión de respaldo personal: {r.personalSupportResolution.reason}. Si cambió la fuente o el perfil, se requiere nueva confirmación.</p>}
     {age.resolved && <p>Antigüedad conciliada por perfil. Motivo: {age.resolution.reason}</p>}
     <dl className="grid grid-cols-1 sm:grid-cols-2 gap-2">{policies.map(([label, value]) => <div key={String(label)}><dt className="font-medium">{label}</dt><dd className="whitespace-pre-wrap">{display(value)}</dd></div>)}</dl>
     <div><strong>Documentos requeridos</strong>{version?.requiredDocuments?.length ? <ul className="list-disc pl-5">{version.requiredDocuments.map((doc: string, i: number) => <li key={i}>{doc}</li>)}</ul> : <p>Sin documentos especificados; revisar checklist del expediente.</p>}</div>

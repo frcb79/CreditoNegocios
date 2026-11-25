@@ -1,3 +1,4 @@
+import { PERSONAL_SUPPORT_OPTIONS, reviewedSupport, type PersonalSupport } from "@shared/offerPersonalSupport";
 import { getOfferAgePolicy } from "@shared/offerAgePolicy";
 import { LEASING_ASSET_TYPES, normalizeLeasingAssetType } from "@shared/leasing";
 import { useState, useEffect } from "react";
@@ -125,6 +126,9 @@ export default function OfferDraftEditorModal({
   const [bureauRequirement, setBureauRequirement] = useState<string>("sin_requisito");
   const [guaranteeType, setGuaranteeType] = useState<string>("sin_garantia");
   const [avalesType, setAvalesType] = useState<string>("no_requerido");
+  const [supportByProfile,setSupportByProfile]=useState<Record<string,PersonalSupport>>({});
+  const [supportReviewReason,setSupportReviewReason]=useState("");
+  const [supportReviewed,setSupportReviewed]=useState(false);
   const [leasingAssets, setLeasingAssets] = useState<string[]>([]);
   const [sourceGuarantee, setSourceGuarantee] = useState("");
   const [sourceBureau, setSourceBureau] = useState("");
@@ -206,6 +210,9 @@ export default function OfferDraftEditorModal({
     setBureauRequirement(cond.bureauRequirement || "por_definir");
     setGuaranteeType(cond.guaranteeType || "por_definir");
     setAvalesType(cond.avalesType || "por_definir");
+    setSupportByProfile(Object.fromEntries(TARGET_PROFILES.map(p=>[p.id,reviewedSupport(cond,req,p.id)??"por_confirmar"])));
+    setSupportReviewReason("");
+    setSupportReviewed(false);
     const assetSource = (draft?.variablesConfiguration as any)?.tipo_activo_arrendado ?? cond.tipo_activo_arrendado ?? req.tipo_activo_arrendado;
     const assetValues = Array.isArray(assetSource) ? assetSource : Array.isArray(assetSource?.allowedValues) ? assetSource.allowedValues : [];
     setLeasingAssets(assetValues.map(normalizeLeasingAssetType).filter((value: string | null): value is string => Boolean(value)));
@@ -469,6 +476,10 @@ export default function OfferDraftEditorModal({
         ...(guaranteeType !== "por_definir" ? { guaranteeType } : {}),
         ...(avalesType !== "por_definir" ? { avalesType } : {}),
       },
+      ...(supportReviewed ? {personalSupportReview:{
+        confirmed:true,reason:supportReviewReason.trim(),
+        byProfile:Object.fromEntries(selectedProfiles.map(profile=>[profile,supportByProfile[profile]??"por_confirmar"])),
+      }} : {}),
       ...(ageReviewed ? { businessAgeReview: {
         confirmed: true, reason: ageReviewReason,
         monthsByProfile: Object.fromEntries(selectedProfiles.map(profile => [profile, ageMonthsByProfile[profile]?.trim() ? Number(ageMonthsByProfile[profile]) : null])),
@@ -1217,11 +1228,27 @@ export default function OfferDraftEditorModal({
                     </span>
                   </div>
 
+                  <div className="sm:col-span-2 p-4 bg-white rounded-xl border border-slate-200 space-y-3">
+                    <Label className="text-xs font-bold">Respaldo personal por perfil fiscal</Label>
+                    <p className="text-xs text-slate-600">Fuente importada: {sourceRequirements.guarantorSource || "No especificada"}. No se modifica la fuente original. La garantía real se configura por separado.</p>
+                    {selectedProfiles.map(profile=><div key={profile} className="space-y-1">
+                      <Label className="text-xs">{TARGET_PROFILES.find(p=>p.id===profile)?.label||profile}</Label>
+                      <Select value={supportByProfile[profile]??"por_confirmar"} onValueChange={value=>{setSupportByProfile(prev=>({...prev,[profile]:value as PersonalSupport}));setSupportReviewed(false);}}>
+                        <SelectTrigger className="h-8 text-xs" data-testid={`support-policy-${profile}`}><SelectValue/></SelectTrigger>
+                        <SelectContent>{PERSONAL_SUPPORT_OPTIONS.map(o=><SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}</SelectContent>
+                      </Select>
+                    </div>)}
+                    <Label className="text-xs">Motivo / evidencia de revisión comercial</Label>
+                    <Textarea value={supportReviewReason} onChange={e=>{setSupportReviewReason(e.target.value);setSupportReviewed(false);}} placeholder="Referencia de ficha o confirmación comercial" rows={2}/>
+                    <div className="flex items-center gap-2"><Checkbox checked={supportReviewed} disabled={supportReviewReason.trim().length<3 || !selectedProfiles.length} onCheckedChange={v=>setSupportReviewed(v===true)}/><span className="text-xs">Confirmo la clasificación por perfil y deseo guardarla en el borrador.</span></div>
+                    <p className="text-xs text-slate-500">Sin confirmación explícita se conserva la clasificación existente. Un respaldo ambiguo queda por confirmar.</p>
+                  </div>
+
                   {/* Avales */}
                   <div className="sm:col-span-2 p-4 bg-white rounded-xl border border-slate-200 space-y-2">
                     <div className="flex items-center justify-between">
                       <Label className="text-xs font-bold text-slate-800">
-                        Requisito de Aval / Obligado Solidario
+                        Regla general de aval (legado, si no hay revisión por perfil)
                       </Label>
                       <Badge variant="outline" className="text-[9px] bg-amber-50 text-amber-700 border-amber-200">
                         Pendiente de Verificación Documental

@@ -23,7 +23,7 @@ async function input(e,value){Object.getOwnPropertyDescriptor(w.HTMLInputElement
  await waitFor(()=>[...d.querySelectorAll('[role="option"]')].length,'product options');
  const option=[...d.querySelectorAll('[role="option"]')][0];option.dispatchEvent(new w.KeyboardEvent('keydown',{key:'Enter',bubbles:true}));option.click();await pause();
  const amount=d.querySelector('input[data-testid="input-requested-amount"]') || d.querySelector('input[placeholder="0"]');assert(amount,'amount input');await input(amount,'100000');
- await waitFor(()=>text().includes('Oferta valida'),'preview used by request form');assert(text().includes('Información Insuficiente'));
+ await waitFor(()=>text().includes('Oferta valida'),'preview used by request form');assert(text().includes('Alternativas por confirmar'));
  const calls=w.matchingCalls.filter(url=>url.startsWith('/api/matching/preview?'));assert(calls.length>=2);assert(!w.matchingCalls.includes('/api/institution-products'));
  findButton('Simular fallo QA').click();await waitFor(()=>text().includes('No se pudo consultar el matching'),'request error');assert(!text().includes('Oferta valida'));
  assert.equal(errors.length,0,errors.join('\n'));

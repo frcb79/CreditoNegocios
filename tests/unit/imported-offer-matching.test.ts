@@ -1,3 +1,5 @@
+import {supportBasis} from "../../shared/offerPersonalSupport";
+import {evaluatePartialSimple,matchPublishedCatalog,buildSimpleCombinations} from '../../server/matching/catalog';
 import {evaluateOfferCompatibility,isCriterionOriginVerified} from '../../server/matching/compatibilityEvaluator';
 import {offerConditions,bureauInterval,compareMinimum} from '../../server/matching/importedRequirements';
 const offer=(requirements:any={},conditions:any={})=>({product:{id:'offer',institutionId:'fin',name:'Oferta QA',status:'published'},version:{id:'v1',versionNumber:1,status:'published',conditions:{minAmount:100,maxAmount:1000000,maxTermMonths:36,...conditions},requirements:{targetProfiles:['persona_moral','fisica_empresarial','fisica','sin_sat'],...requirements}}});
@@ -101,4 +103,102 @@ describe('Published imported requirements: one explicit three-state result per m
   expect(result.status).toBe('INSUFFICIENT_DATA');
  });
 
+});
+
+
+describe('Matching comercial: cobertura parcial y rango de Buró',()=>{
+ const candidate=(amount=2200000,client:any={})=>({credit:{amount,term:24},client:{type:'fisica_empresarial',garantia:'no',avalObligadoSolidario:'no',buroPersonaFisica:'bueno-592-693',...client}});
+ const simple=(requirements:any={},conditions:any={},family='credito_simple')=>{
+  const base=offer({targetProfiles:['fisica_empresarial'],...requirements},conditions);
+  return {...base,product:{...base.product,productType:family}};
+ };
+ it('keeps overlapping bureau ranges selectable without calling the score verified',()=>{
+  const source=simple({minPersonalBureau:600},{maxAmount:3000000});
+  const result=evaluateOfferCompatibility(candidate(),source);
+  expect(result.status).toBe('INSUFFICIENT_DATA');
+  expect(find(result,'personalBureau').reason).toContain('parcialmente admisible');
+  expect(evaluateOfferCompatibility(candidate(2200000,{buroPersonaFisica:'medio-524-591'}),source).status).toBe('NOT_COMPATIBLE');
+ });
+ it('evaluates the amount cap without changing the original request or offer',()=>{
+  const application=candidate(),source=simple({minPersonalBureau:600},{maxAmount:1200000});
+  const before=JSON.stringify([application,source]);
+  const result=evaluatePartialSimple(application,source,evaluateOfferCompatibility(application,source));
+  expect(result.status).toBe('INSUFFICIENT_DATA');
+  expect(result.partialCoverage).toEqual({requestedAmount:2200000,evaluatedAmount:1200000,remainingAmount:1000000});
+  expect(find(result,'creditAmount').actualValue).toBe(1200000);
+  expect(JSON.stringify([application,source])).toBe(before);
+ });
+ it('rechecks the conditional collateral limit at the partial amount',()=>{
+  const application=candidate(),source=simple({guarantee:'Sin garantía hasta 1.99 MDP; con garantía hasta 5 MDP'},{maxAmount:5000000});
+  const result=evaluatePartialSimple(application,source,evaluateOfferCompatibility(application,source));
+  expect(result.partialCoverage?.evaluatedAmount).toBe(1990000);
+  expect(result.status).toBe('INSUFFICIENT_DATA');
+ });
+ it.each([{minPersonalBureau:700},{targetProfiles:['persona_moral']},{guarantorSource:'si'}])('does not hide another exclusion %j',requirements=>{
+  const application=candidate(),source=simple(requirements);
+  const result=evaluatePartialSimple(application,source,evaluateOfferCompatibility(application,source));
+  expect(result.status).toBe('NOT_COMPATIBLE');expect(result.partialCoverage).toBeUndefined();
+ });
+ it('never creates a partial amount for a different family or below the minimum',()=>{
+  const application=candidate();
+  for(const source of [simple({}, {}, 'arrendamiento'),simple({}, {minAmount:1500000,maxAmount:1000000})]){
+   const result=evaluatePartialSimple(application,source,evaluateOfferCompatibility(application,source));
+   expect(result.partialCoverage).toBeUndefined();
+  }
+ });
+ it('combines two distinct institutions within exact bounds without marking either approved',()=>{
+  const application=candidate(),base=simple({}, {minAmount:500000,maxAmount:1200000});
+  const a={...base,product:{...base.product,id:'a',institutionId:'fin-a'}};
+  const b={...base,product:{...base.product,id:'b',institutionId:'fin-b'}};
+  const rows=[a,b].map(source=>evaluatePartialSimple(application,source,evaluateOfferCompatibility(application,source)));
+  const result=buildSimpleCombinations(application,[a,b],rows);
+  expect(result).toHaveLength(1);
+  expect(result[0].allocations.map(x=>x.amount)).toEqual([1200000,1000000]);
+  expect(result[0].totalAmount).toBe(2200000);
+  const same={...b,product:{...b.product,institutionId:'fin-a'}};
+  expect(buildSimpleCombinations(application,[a,same],[rows[0],evaluatePartialSimple(application,same,evaluateOfferCompatibility(application,same))])).toEqual([]);
+  const tooLow=simple({}, {minAmount:100000,maxAmount:300000});
+  const low={...tooLow,product:{...tooLow.product,id:'c',institutionId:'fin-c'}};
+  expect(buildSimpleCombinations(application,[a,low],[rows[0],evaluatePartialSimple(application,low,evaluateOfferCompatibility(application,low))])).toEqual([]);
+ });
+ it('does not turn a draft into a catalog opportunity',async()=>{
+  const source=simple();source.version.status='draft';
+  const result=await matchPublishedCatalog({getPublishedInstitutionProductsForMatching:async()=>[source]} as any,candidate());
+  expect(result.summary.totalEvaluated).toBe(0);
+ });
+});
+
+describe("Reviewed personal support by fiscal profile",()=>{
+ const source=(pm:string,pfae:string)=>{
+  const o=offer({targetProfiles:["persona_moral","fisica_empresarial"],guarantorSource:"RL"},{avalesType:"un_aval"});
+  const r:any=o.version.requirements;
+  r.personalSupportResolution={basis:supportBasis(o.version.conditions,r),byProfile:{persona_moral:pm,fisica_empresarial:pfae},reviewedBy:"qa-admin",reviewedAt:"2026-01-01T00:00:00Z",reason:"Commercial review QA"};
+  return o;
+ };
+ it("does not require a separate guarantor when representative signs only; evaluates each fiscal profile independently",()=>{
+  const o=source("representante_solidario","representante_firmante");
+  const pm=evaluateOfferCompatibility(app({type:"persona_moral",avalObligadoSolidario:"no"}),o);
+  expect(find(pm,"guarantorPolicy").status).toBe("MISSING_DATA");
+  const pfae=evaluateOfferCompatibility(app({type:"fisica_empresarial",avalObligadoSolidario:"no"}),o);
+  expect(find(pfae,"guarantorPolicy").status).toBe("PASSED");
+  expect(find(pfae,"avalesType")).toBeUndefined();
+ });
+ it("never substitutes generic yes for a specific legal figure",()=>{
+  const o=source("aval_adicional","obligado_solidario");
+  expect(find(evaluateOfferCompatibility(app({avalObligadoSolidario:"si"}),o),"guarantorPolicy").status).toBe("MISSING_DATA");
+  expect(find(evaluateOfferCompatibility(app({avalObligadoSolidario:"no"}),o),"guarantorPolicy").status).toBe("FAILED");
+  expect(find(evaluateOfferCompatibility(app({avalObligadoSolidario:"si",cuentaConAvalAdicional:"si"}),o),"guarantorPolicy").status).toBe("PASSED");
+ });
+ it("invalidates stale review after source or profile changes and preserves ambiguity",()=>{
+  const o=source("no_requerido","no_requerido");
+  o.version.requirements.guarantorSource="Aval obligatorio";
+  expect(find(evaluateOfferCompatibility(app(),o),"guarantorPolicy").status).toBe("MISSING_DATA");
+  const p=source("por_confirmar","por_confirmar");
+  expect(find(evaluateOfferCompatibility(app(),p),"guarantorPolicy").status).toBe("MISSING_DATA");
+ });
+ it("a reviewed signer policy never removes a separate real guarantee",()=>{
+  const o=source("representante_firmante","no_requerido");
+  o.version.conditions.guaranteeType="hipotecaria";
+  expect(find(evaluateOfferCompatibility(app({garantia:"no"}),o),"guaranteeType").status).toBe("FAILED");
+ });
 });
