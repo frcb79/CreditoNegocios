@@ -255,6 +255,7 @@ jobs:
             tests/integration/postgres-commercial-config-atomic.test.ts
             tests/integration/postgres-network-rates-atomic.test.ts
             tests/integration/postgres-staging-schema-repair.test.ts
+            tests/integration/postgres-historical-credit-intake.test.ts
           )
           selected=()
           for i in "${!tests[@]}"; do
