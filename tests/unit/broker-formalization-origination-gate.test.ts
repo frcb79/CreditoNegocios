@@ -471,6 +471,8 @@ describe("Cierre P0: Formalización Obligatoria y Cierre de Bypasses en Originac
       const admin = await createTestUser("admin", "Admin Gestor Dos");
       const formalizedBroker = await createTestUser("broker", "Broker ConDocs");
       await formalizeUserViaOtp(formalizedBroker);
+      const tenant = await storage.createTenant({name:"Organización asesor QA",slug:`org-${randomUUID()}`,type:"broker"});
+      await storage.createTenantMember({tenantId:tenant.id,userId:formalizedBroker.id,role:"owner",canOriginate:true,isActive:true});
 
       currentAuthUser = admin;
       const res = await request(app)
@@ -487,6 +489,22 @@ describe("Cierre P0: Formalización Obligatoria y Cierre de Bypasses en Originac
 
       expect(res.status).toBe(201);
       expect(res.body.brokerId).toBe(formalizedBroker.id);
+      expect(res.body.tenantId).toBe(tenant.id);
+      expect(res.body.createdBy).toBe(admin.id);
+      const submission = await request(app).post("/api/credit-submissions").send({clientId:res.body.id,brokerId:formalizedBroker.id,requestedAmount:"100000",financialInstitutionIds:[]});
+      expect(submission.status).toBe(201);
+      expect(submission.body.submission.brokerId).toBe(formalizedBroker.id);
+      expect(submission.body.submission.tenantId).toBe(tenant.id);
+      expect(submission.body.submission.createdBy).toBe(admin.id);
+    });
+    it("No inventa una organización si el asesor formalizado no tiene membresía válida", async () => {
+      const admin = await createTestUser("admin", "Admin QA");
+      const broker = await createTestUser("broker", "Asesor Sin Organizacion");
+      await formalizeUserViaOtp(broker);
+      currentAuthUser = admin;
+      const res = await request(app).post("/api/clients").send({type:"persona_moral",businessName:"Empresa QA",brokerId:broker.id});
+      expect(res.status).toBe(409);
+      expect(res.body.code).toBe("ORIGINATOR_ORGANIZATION_REQUIRED");
     });
   });
 

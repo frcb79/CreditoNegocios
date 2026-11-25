@@ -131,6 +131,7 @@ export default function Clients() {
           ) : (
             <QuickClientForm
               key={incomingLead?.id || "new-client"}
+              adminCapture={user?.role === "admin" || user?.role === "super_admin"}
               initialValues={incomingLead ? {
                 type: "sin_sat",
                 firstName: incomingLead.full_name,

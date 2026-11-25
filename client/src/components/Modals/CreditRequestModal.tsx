@@ -24,6 +24,7 @@ import { Badge } from "@/components/ui/badge";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/hooks/useAuth";
 import { apiRequest } from "@/lib/queryClient";
 import { Building2, User, DollarSign, Send, AlertCircle, CheckCircle, AlertTriangle, Info, HelpCircle, XCircle, Loader2 } from "lucide-react";
 
@@ -102,6 +103,8 @@ type CreditRequestForm = z.infer<typeof creditRequestSchema>;
 
 export default function CreditRequestModal({ isOpen, onClose, preselectedClientId }: CreditRequestModalProps) {
   const { toast } = useToast();
+  const { user } = useAuth();
+  const isPlatformAdmin = user?.role === "admin" || user?.role === "super_admin";
   const queryClient = useQueryClient();
   const [selectedInstitutions, setSelectedInstitutions] = useState<string[]>([]);
 
@@ -157,6 +160,7 @@ export default function CreditRequestModal({ isOpen, onClose, preselectedClientI
         purpose: data.purpose,
         brokerNotes: data.brokerNotes,
         financialInstitutionIds: data.financialInstitutionIds,
+        ...(isPlatformAdmin && selectedClient?.brokerId && ["broker","master_broker"].includes(selectedClient.broker?.role) ? { brokerId: selectedClient.brokerId } : {}),
       };
 
       return apiRequest("POST", "/api/credit-submissions", requestData);
@@ -522,6 +526,7 @@ export default function CreditRequestModal({ isOpen, onClose, preselectedClientI
                     <p className="text-sm text-gray-600 capitalize">
                       {getClientTypeLabel(selectedClient.type)}
                     </p>
+                    {isPlatformAdmin && <p className="text-xs text-muted-foreground" data-testid="request-originator">Originador: {selectedClient.broker?.firstName ? [selectedClient.broker.firstName,selectedClient.broker.lastName].filter(Boolean).join(" ") : "Plataforma / registro directo"}</p>}
                   </div>
                 </div>
               </div>

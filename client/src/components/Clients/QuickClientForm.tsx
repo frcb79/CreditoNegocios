@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Building2, BriefcaseBusiness, UserRound, Store, ShieldCheck, Loader2, ArrowRight, Info } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -48,11 +48,13 @@ export default function QuickClientForm({
   onCancel,
   onExisting,
   initialValues,
+  adminCapture = false,
 }: {
   onSaved: (client: Client) => void;
   onCancel: () => void;
   onExisting: (clientId: string) => void;
   initialValues?: Partial<QuickFormFields>;
+  adminCapture?: boolean;
 }) {
   const { toast } = useToast();
   const cache = useQueryClient();
@@ -63,6 +65,10 @@ export default function QuickClientForm({
   const [checking, setChecking] = useState(false);
   const [saving, setSaving] = useState(false);
   const [requestError, setRequestError] = useState("");
+  const [originator, setOriginator] = useState("");
+  const originators = useQuery<Array<{id:string;firstName?:string;lastName?:string;brandName?:string;role:string;organization?:string}>>({
+    queryKey: ["/api/admin/capture-originators"], enabled: adminCapture,
+  });
 
   const update = (key: keyof QuickFormFields, value: string) => {
     setFields(prev => ({ ...prev, [key]: value }));
@@ -106,6 +112,7 @@ export default function QuickClientForm({
   const handleSave = async (event: React.FormEvent) => {
     event.preventDefault();
     if (saving || checking) return;
+    if (adminCapture && (!originator || (originator !== '__self__' && !originators.data?.some(u => u.id === originator)))) { setRequestError('Selecciona un asesor válido o registro directo de plataforma.'); return; }
     const parsed = quickClientSchema.safeParse(fields);
     if (!parsed.success) {
       const next: Record<string, string> = {};
@@ -143,6 +150,7 @@ export default function QuickClientForm({
         yearsInBusiness: typeof data.yearsInBusiness === "number" ? data.yearsInBusiness : null,
         notes: data.notes || null,
         originOpportunity: "credito_empresarial",
+        ...(adminCapture && originator !== "__self__" ? { brokerId: originator } : {}),
       };
       const saved = await apiRequest("POST", "/api/clients", payload);
       const client = await saved.json() as Client;
@@ -182,6 +190,17 @@ export default function QuickClientForm({
       <CardContent className="p-0">
         <form onSubmit={handleSave} noValidate>
           <div className="p-4 sm:p-6 space-y-6">
+            {adminCapture && <section className="space-y-2">
+              <Label htmlFor="quick-originator">Asignar cliente a *</Label>
+              <select id="quick-originator" data-testid="quick-originator" className="w-full h-10 rounded-md border bg-background px-3 text-sm" value={originator} onChange={e=>{setOriginator(e.target.value);setRequestError("");}}>
+                <option value="">Selecciona un asesor</option>
+                <option value="__self__">Plataforma / registro directo</option>
+                {originators.data?.map(u=><option key={u.id} value={u.id}>{u.brandName || [u.firstName,u.lastName].filter(Boolean).join(" ") || u.id} · {u.role==="master_broker"?"Master Broker":"Broker"} · {u.organization}</option>)}
+              </select>
+              {originators.isError && <p role="alert" className="text-sm text-destructive">No se pudo cargar la red. Reintenta antes de asignar.</p>}
+              {originators.isLoading && <p className="text-xs text-muted-foreground">Cargando asesores...</p>}
+              <p className="text-xs text-muted-foreground">Se registra tu usuario como capturista y el asesor elegido como originador comercial.</p>
+            </section>}
             <section aria-labelledby="quick-client-type-title" className="space-y-3">
               <h2 id="quick-client-type-title" className="font-semibold text-sm">1. Tipo de cliente</h2>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">

@@ -19,6 +19,7 @@ on:
       - 'fix/financieras-auditoria-*'
       - 'fix/matching-ofertas-v5-*'
       - 'fix/matching-partial-opportunities-*'
+      - 'fix/backoffice-delegated-capture-*'
       - 'fix/final-audit-publication*'
       - 'fix/master-network-rates-*'
       - 'fix/master-offer-rates-private-copy-*'
