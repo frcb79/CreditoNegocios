@@ -89,3 +89,19 @@ describe("SEC-P0-STORAGE: Staging requires a separate Supabase PROJECT", () => {
       .not.toThrow();
   });
 });
+
+describe("Railway-only staging volume QA regression", () => {
+  it("generates a synthetic PDF and never retrieves legacy Supabase files", () => {
+    const { readFileSync } = require("node:fs");
+    const { resolve } = require("node:path");
+    const source = readFileSync(resolve(process.cwd(), "server/documentStorage.ts"), "utf8");
+    const qa = source.split("export async function runStagingVolumePdfQA() {")[1]
+      .split("export function isSupabaseStorageEnabled()")[0];
+    expect(qa).toContain("createSyntheticVolumeQaPdf()");
+    expect(qa).toContain("migrateLocalDocumentToStorage");
+    expect(qa).toContain("getDocumentAccessTarget");
+    expect(qa).toContain("removeStoredDocument");
+    expect(qa).toContain("STAGING_VOLUME_PDF_QA_DELETE_FAILED");
+    expect(qa).not.toMatch(/supabaseAdmin|\\.storage\\.|staging-documents|SUPABASE_URL/);
+  });
+});

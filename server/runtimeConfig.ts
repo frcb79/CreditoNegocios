@@ -35,7 +35,13 @@ export const allowedOrigins = new Set(
   [
     ...defaultOrigins,
     ...(process.env.RAILWAY_ENVIRONMENT_NAME==="staging" || process.env.RAILWAY_ENVIRONMENT==="staging"
-      ? ["https://credito-negocios-staging.vercel.app"] : []),
+      ? [
+          "https://credito-negocios-staging.vercel.app",
+          // One explicit, operator-controlled Vercel QA preview; staging ONLY.
+          // Never accept this origin in production or allow arbitrary domains.
+          ...splitOrigins(process.env.STAGING_AUTH_PREVIEW_ORIGIN)
+            .filter(origin=>/^https:\/\/credito-negocios-[a-z0-9]+-francos-projects-62938903\.vercel\.app$/.test(origin)),
+        ] : []),
     ...splitOrigins(process.env.ALLOWED_ORIGINS),
     ...(frontendBaseUrl ? [frontendBaseUrl] : []),
   ].filter(Boolean),
