@@ -131,6 +131,7 @@ export default function ReportsChart({
               label={({ name, percent }) => `${name}: ${(percent * 100).toFixed(0)}%`}
               outerRadius={85}
               fill="#0f172a"
+              nameKey={xKey || "name"}
               dataKey={yKeys[0] || 'value'}
             >
               {data.map((entry, index) => (
