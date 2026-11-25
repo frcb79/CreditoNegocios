@@ -27,6 +27,7 @@ interface DashboardMetrics {
   masterBroker?: {
     activeBrokers: number;
     networkPipeline: number;
+    directPipeline?: number;
     networkDisbursedVolume: number;
     networkDisbursedCredits?: number;
     networkCommissionsGross?: number;
@@ -172,7 +173,7 @@ export default function MetricsGrid() {
     {
       title: "Pipeline de mi Red",
       value: `${metrics.masterBroker.networkPipeline} solicitudes`,
-      subtitle: `Mi pipeline directo: ${metrics.broker.pipelineRequests}`,
+      subtitle: `Mi pipeline directo: ${metrics.masterBroker.directPipeline ?? 0}`,
       icon: "fas fa-network-wired",
       color: "blue",
       testId: "metric-network-pipeline",

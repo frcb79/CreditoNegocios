@@ -60,3 +60,27 @@ export function summarizeCommercialAccountActivity(users: CommercialAccount[]) {
     pendingInvitations: accounts.filter(u => operational(u) && !registered(u)).length,
   };
 }
+
+/** A newly submitted request awaiting internal review is already in the pipeline. */
+export function isActiveSubmissionPipelineStatus(status: string): boolean {
+  return ["pending_admin","submitted","evaluating","under_review","offers_received","winner_selected","in_progress"].includes(status);
+}
+export function isSubmissionAwaitingReview(status: string): boolean {
+  return ["pending_admin","submitted","under_review","evaluating"].includes(status);
+}
+/** Monthly figures require an actual event date, never the record creation date. */
+export function isEventWithinPeriod(value: unknown, start: Date, end?: Date): boolean {
+  if (typeof value !== "string" && !(value instanceof Date)) return false;
+  const date = new Date(value);
+  return Number.isFinite(date.getTime()) && date >= start && (!end || date <= end);
+}
+export function confirmedVolumeWithinPeriod(records: Array<{finalProposal?: unknown}>, start: Date, end?: Date): number {
+  return records.reduce((sum,record)=>{
+    const p=(record.finalProposal || {}) as Record<string,any>;
+    const tranches=Array.isArray(p.disbursementTranches) ? p.disbursementTranches : p.disbursementConfirmation ? [p.disbursementConfirmation] : [];
+    return sum+tranches.reduce((n:number,t:any)=>{
+      const amount=Number(t?.confirmedAmount);
+      return n+(t?.status==="confirmed" && Number.isFinite(amount) && amount>0 && isEventWithinPeriod(t.confirmedAt,start,end) ? amount : 0);
+    },0);
+  },0);
+}

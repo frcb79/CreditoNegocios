@@ -19,7 +19,7 @@ import rateLimit from "express-rate-limit";
 import { pool } from "./db";
 import { runBrokerInvitationReminders } from "./brokerInvitationReminders";
 import { storage, type IStorage } from "./storage";
-import { canViewSubmissionByOrigin, canViewCreditByOrigin, canEditCreditByOrigin, summarizeCommercialAccountActivity } from "./dashboardVisibility";
+import { canViewSubmissionByOrigin, canViewCreditByOrigin, canEditCreditByOrigin, summarizeCommercialAccountActivity, isActiveSubmissionPipelineStatus, isSubmissionAwaitingReview, isEventWithinPeriod, confirmedVolumeWithinPeriod } from "./dashboardVisibility";
 import { loadPublishedCommissionOffers, masterSafeCeilings } from "./commercialRatesView";
 import { buildNetworkCommissionSnapshot } from "./networkCommissionSnapshot";
 import { projectCreditForRole } from "./creditResponseProjection";
@@ -2790,10 +2790,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       );
 
       // Active pipeline requests (in progress)
-      const activePipelineSubmissions = userSubmissions.filter(s =>
-        s.status === 'submitted' || s.status === 'evaluating' || s.status === 'under_review' ||
-        s.status === 'offers_received' || s.status === 'winner_selected' || s.status === 'in_progress'
-      );
+      const activePipelineSubmissions = userSubmissions.filter(s => isActiveSubmissionPipelineStatus(s.status));
       const pipelineCount = activePipelineSubmissions.length;
 
       // Créditos vinculados a la red: se utiliza el Master de ORIGEN del
@@ -2865,7 +2862,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       };
 
       const currentMonthPaid = commissions
-        .filter(c => c.status === 'paid' && c.createdAt && new Date(c.createdAt) >= currentMonthStart)
+        .filter(c => c.status === 'paid' && isEventWithinPeriod(c.paidAt, currentMonthStart, now))
         .reduce((sum, c) => sum + getRoleCommAmount(c), 0);
 
       const allTimePaid = commissions
@@ -2886,20 +2883,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
         s.createdAt && new Date(s.createdAt) >= currentMonthStart
       ).length;
 
-      const currentMonthDisbursed = disbursedCredits.filter(c =>
-        c.createdAt && new Date(c.createdAt) >= currentMonthStart
-      );
-      const currentMonthDisbursedVol = currentMonthDisbursed.reduce((sum, c) => sum + parseFloat(c.amount || '0'), 0);
-
-      const lastMonthDisbursed = disbursedCredits.filter(c =>
-        c.createdAt && new Date(c.createdAt) >= lastMonthStart && new Date(c.createdAt) <= lastMonthEnd
-      );
-      const lastMonthDisbursedVol = lastMonthDisbursed.reduce((sum, c) => sum + parseFloat(c.amount || '0'), 0);
-
+      const currentMonthDisbursedVol = confirmedVolumeWithinPeriod(disbursedCredits,currentMonthStart,now);
+      const lastMonthDisbursedVol = confirmedVolumeWithinPeriod(disbursedCredits,lastMonthStart,lastMonthEnd);
       const lastMonthPaid = commissions
-        .filter(c => c.status === 'paid' && c.createdAt &&
-                new Date(c.createdAt) >= lastMonthStart && new Date(c.createdAt) <= lastMonthEnd)
-        .reduce((sum, c) => sum + parseFloat(c.amount || '0'), 0);
+        .filter(c => c.status === 'paid' && isEventWithinPeriod(c.paidAt,lastMonthStart,lastMonthEnd))
+        .reduce((sum, c) => sum + getRoleCommAmount(c), 0);
 
       const formatTrend = (current: number, previous: number, labelUnit = '') => {
         if (previous === 0 && current > 0) {
@@ -2925,7 +2913,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         pipelineRequests: pipelineCount,
         disbursedCredits: disbursedCount,
         disbursedVolume: disbursedVolume,
-        commissionsPaid: currentMonthPaid > 0 ? currentMonthPaid : allTimePaid,
+        commissionsPaid: currentMonthPaid,
         commissionsPending: pendingCommissions,
         commissionsPendingCount: pendingCommissionsCount,
         commissionsTotal: allTimePaid + pendingCommissions,
@@ -2934,8 +2922,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       };
 
       metrics.trend = {
-        pipeline: formatTrend(currentMonthSubmissions > 0 ? currentMonthSubmissions : pipelineCount, lastMonthSubmissions, ' casos'),
-        disbursedVolume: formatTrend(currentMonthDisbursedVol > 0 ? currentMonthDisbursedVol : disbursedVolume, lastMonthDisbursedVol),
+        pipeline: formatTrend(currentMonthSubmissions, lastMonthSubmissions, ' casos'),
+        disbursedVolume: formatTrend(currentMonthDisbursedVol, lastMonthDisbursedVol),
         commissionsPaid: formatTrend(currentMonthPaid, lastMonthPaid),
       };
 
@@ -2950,9 +2938,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           const confirmedAmt = prop.disbursementConfirmation?.confirmedAmount ?? (c as any).confirmedDisbursedAmount;
           return sum + (confirmedAmt != null ? parseFloat(String(confirmedAmt)) : parseFloat(c.amount || '0'));
         }, 0);
-        const networkActiveSubmissions = userSubmissions.filter(s =>
-          s.brokerId !== userId && (s.status === 'submitted' || s.status === 'evaluating' || s.status === 'under_review' || s.status === 'in_progress')
-        ).length;
+        const networkActiveSubmissions = activePipelineSubmissions.filter(s => s.brokerId !== userId).length;
 
         const mbGrossPending = commissions.filter(c => c.status === 'pending').reduce((sum, c) => {
           return sum + (parseFloat(c.brokerShare || '0') + parseFloat(c.masterBrokerShare || '0'));
@@ -2964,6 +2950,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         metrics.masterBroker = {
           activeBrokers: summarizeCommercialAccountActivity(await withAccountAccess(networkBrokers)).activeBrokers,
           networkPipeline: networkActiveSubmissions,
+          directPipeline: activePipelineSubmissions.filter(s => s.brokerId === userId).length,
           networkDisbursedVolume: networkDisbursedVol,
           networkDisbursedCredits: networkDisbursedCredits.length,
           networkCommissionsGross: mbGrossPending,
@@ -3020,9 +3007,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const userCredits = allCredits.filter(credit => canViewCreditByOrigin(user, credit));
 
       // Calculate pipeline stages across both submissions in-flight and credits
-      const en_revision = userSubmissions.filter(s =>
-        s.status === 'submitted' || s.status === 'under_review' || s.status === 'evaluating'
-      ).length;
+      const en_revision = userSubmissions.filter(s => isSubmissionAwaitingReview(s.status)).length;
 
       const validacion = userSubmissions.filter(s =>
         s.status === 'offers_received' || s.status === 'in_progress'

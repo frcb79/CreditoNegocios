@@ -80,11 +80,7 @@ type UnifiedCreditItem = {
 
 // Ahora se usa configuración compartida desde @/lib/statusConfig
 
-function hasReceivedInstitutionProposal(target:any): boolean {
-  const proposal = target?.institutionProposal;
-  return !!target?.proposalReceivedAt && !!proposal && typeof proposal === "object" &&
-    !Array.isArray(proposal) && Number.isFinite(Number(proposal.approvedAmount)) && Number(proposal.approvedAmount)>0;
-}
+import { hasReceivedInstitutionProposal } from "@shared/institutionProposalPresentation";
 
 export default function CreditList() {
   const { user } = useAuth();
