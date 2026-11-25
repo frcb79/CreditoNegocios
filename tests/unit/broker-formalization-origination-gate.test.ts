@@ -444,6 +444,18 @@ describe("Cierre P0: Formalización Obligatoria y Cierre de Bypasses en Originac
     });
   });
 
+  it("No permite que un broker sin membresía origine a nombre de otro asesor formalizado", async () => {
+    const caller = await createTestUser("broker", "Broker Sin Membresía");
+    const target = await createTestUser("broker", "Broker Ajeno Formalizado");
+    await formalizeUserViaOtp(caller);
+    await formalizeUserViaOtp(target);
+    currentAuthUser = caller;
+    const res = await request(app).post("/api/clients").send({
+      type:"persona_moral",businessName:"Intento ajeno QA",phone:"5512345678",brokerId:target.id,
+    });
+    expect(res.status).toBe(403);
+  });
+
   describe("5. Admin actuando en nombre de broker no formalizado: bloqueo 403", () => {
     it("Admin no puede crear clientes en nombre de broker sin formalizar", async () => {
       const admin = await createTestUser("admin", "Admin Gestor");
