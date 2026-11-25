@@ -6,6 +6,7 @@ import { registerRoutes } from "./routes";
 import { setupVite, serveStatic, log } from "./vite";
 import { allowedOrigins, isAllowedOrigin } from "./runtimeConfig";
 import { runAutoMigration } from "./autoMigrate";
+import { runStagingVolumePdfQA } from "./documentStorage";
 import { rejectCrossSiteMutations } from "./csrfProtection";
 import { registerResendWebhook } from "./resendDeliveryWebhook";
 import { dispatchOneTimeHistoricWelcomePilot } from "./oneTimeHistoricWelcomePilot";
@@ -156,6 +157,11 @@ app.use((req, res, next) => {
 
   server.listen(listenOptions, () => {
     log(`serving on ${host}:${port}`);
+    if (process.env.RAILWAY_ENVIRONMENT_NAME === "staging" &&
+        process.env.STAGING_VOLUME_PDF_QA === "true") {
+      void runStagingVolumePdfQA().catch(err =>
+        console.error("[STAGING_VOLUME_PDF_QA] FAIL", err.message));
+    }
     // Only the two explicitly authorized historical recipients; production opt-in,
     // post-migration, nonblocking and deduplicated in the delivery audit.
     void dispatchOneTimeHistoricWelcomePilot().catch(() =>
