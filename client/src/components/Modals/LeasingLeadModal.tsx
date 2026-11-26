@@ -9,6 +9,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/hooks/useAuth";
+import { CaptureOriginatorSelect,useCaptureOriginators,validCaptureOriginator } from "@/components/Clients/CaptureOriginatorSelect";
 import { apiRequest } from "@/lib/queryClient";
 import type { Client } from "@shared/schema";
 import { LEASING_ASSET_TYPES, leaseLeadSchema } from "@shared/leasing";
@@ -35,6 +37,10 @@ interface LeasingLeadModalProps {
 
 export default function LeasingLeadModal({ isOpen, onClose, existingClient, onSuccess }: LeasingLeadModalProps) {
   const { toast } = useToast();
+  const {user}=useAuth();
+  const adminCapture=user?.role==="admin" || user?.role==="super_admin";
+  const [originator,setOriginator]=useState("");
+  const originators=useCaptureOriginators(Boolean(adminCapture && isOpen));
   const queryClient = useQueryClient();
   const [fields, setFields] = useState<Fields>(empty);
   const [useExisting, setUseExisting] = useState(false);
@@ -45,6 +51,7 @@ export default function LeasingLeadModal({ isOpen, onClose, existingClient, onSu
       setFields({ ...empty, clientId: existingClient?.id || "" });
       setUseExisting(Boolean(existingClient?.id));
       setFormError("");
+      setOriginator("");
     }
   }, [isOpen, existingClient?.id]);
 
@@ -63,6 +70,7 @@ export default function LeasingLeadModal({ isOpen, onClose, existingClient, onSu
   });
 
   const handleSubmit = () => {
+    if (adminCapture && !useExisting && !validCaptureOriginator(originator,originators)) {setFormError("Selecciona un asesor o registro directo de plataforma.");return;}
     const payload: Record<string, unknown> = {
       assetType: fields.assetType,
       assetDescription: fields.assetDescription || undefined,
@@ -96,7 +104,7 @@ export default function LeasingLeadModal({ isOpen, onClose, existingClient, onSu
       return;
     }
     setFormError("");
-    submit.mutate(valid.data);
+    submit.mutate({...valid.data,...(adminCapture && !useExisting && originator!=='__self__' ? {brokerId:originator}: {})});
   };
   const selectedClient = existingClient?.id === fields.clientId
     ? existingClient
@@ -118,12 +126,12 @@ export default function LeasingLeadModal({ isOpen, onClose, existingClient, onSu
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => { if (!open && !submit.isPending) onClose(); }}>
-      <DialogContent className="sm:max-w-2xl max-h-[92vh] flex flex-col p-0 overflow-hidden" data-testid="modal-leasing-lead">
+      <DialogContent className="w-[calc(100%-1rem)] sm:w-full sm:max-w-2xl max-h-[92dvh] rounded-lg flex flex-col p-0 overflow-hidden" data-testid="modal-leasing-lead">
         <DialogHeader className="p-4 sm:p-5 border-b bg-muted/20">
           <DialogTitle className="flex items-center gap-2"><Truck className="h-5 w-5 text-primary" /> Solicitar cotización de Arrendamiento</DialogTitle>
           <DialogDescription>Con los datos básicos y el activo podemos iniciar la cotización. El expediente completo se solicita después, si tu prospecto está interesado.</DialogDescription>
         </DialogHeader>
-        <div className="flex-1 min-h-0 overflow-y-auto p-4 sm:p-5 space-y-5">
+        <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain p-4 sm:p-5 space-y-5">
           <section className="space-y-3">
             <h3 className="text-sm font-semibold flex items-center gap-2"><Building2 className="h-4 w-4" /> 1. Prospecto</h3>
             <div className="flex flex-wrap gap-2">
@@ -137,10 +145,11 @@ export default function LeasingLeadModal({ isOpen, onClose, existingClient, onSu
                   <SelectTrigger data-testid="select-lease-existing-client"><SelectValue placeholder="Buscar en mi cartera" /></SelectTrigger>
                   <SelectContent>{clients.map(c => <SelectItem key={c.id} value={c.id}>{nameOf(c)}{c.rfc ? ` · ${c.rfc}` : ""}</SelectItem>)}</SelectContent>
                 </Select>
-                {selectedClient && <p className="text-xs text-muted-foreground">Se creará una nueva oportunidad para {nameOf(selectedClient)} sin duplicar su expediente.</p>}
+                {selectedClient && <p className="text-xs text-muted-foreground">Se creará una nueva oportunidad para {nameOf(selectedClient)} sin duplicar su expediente.{adminCapture ? ' Se conserva su asesor originador.' : ''}</p>}
               </div>
             ) : (
               <>
+                {adminCapture && <CaptureOriginatorSelect id="lease-originator" value={originator} onChange={setOriginator} query={originators}/>}
                 <div className="space-y-1.5">
                   <Label>Tipo de prospecto *</Label>
                   <Select value={fields.clientType} onValueChange={v => put("clientType", v)}>
@@ -236,9 +245,9 @@ export default function LeasingLeadModal({ isOpen, onClose, existingClient, onSu
           </Alert>
           {formError && <Alert variant="destructive" role="alert"><AlertDescription data-testid="lease-form-error">{formError}</AlertDescription></Alert>}
         </div>
-        <DialogFooter className="p-4 border-t bg-background flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+        <DialogFooter className="p-4 pb-[max(1rem,env(safe-area-inset-bottom))] border-t bg-background flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
           <Button type="button" variant="outline" onClick={onClose} disabled={submit.isPending}>Cancelar</Button>
-          <Button type="button" onClick={handleSubmit} disabled={submit.isPending} data-testid="button-submit-leasing">
+          <Button type="button" onClick={handleSubmit} disabled={submit.isPending} className="min-h-11 sm:min-h-9 h-auto whitespace-normal" data-testid="button-submit-leasing">
             <CheckCircle2 className="h-4 w-4 mr-1.5" /> {submit.isPending ? "Guardando..." : "Registrar para cotización"}
           </Button>
         </DialogFooter>
