@@ -1,3 +1,4 @@
+import {COMMERCIAL_MAIL_TEST_SCHEMA_SQL} from "./commercialMailTestSchema";
 import {COMMERCIAL_MAIL_PLAN_SCHEMA_SQL} from "./commercialMailPlanSchema";
 export const COMMERCIAL_MAIL_DRAFT_SCHEMA_SQL = `
 CREATE TABLE IF NOT EXISTS public.commercial_mail_draft_revisions (
@@ -22,4 +23,5 @@ DO $engagement$ BEGIN
   END IF;
 END $engagement$;
 ${COMMERCIAL_MAIL_PLAN_SCHEMA_SQL}
+${COMMERCIAL_MAIL_TEST_SCHEMA_SQL}
 `;

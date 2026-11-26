@@ -4,6 +4,7 @@ import {z} from "zod";
 import {pool} from "./db";
 import {storage} from "./storage";
 import {isAuthenticated} from "./auth";
+import {registerCommercialMailTestRoutes} from "./commercialMailTestRoutes";
 import {registerCommercialMailPlanRoutes} from "./commercialMailPlanRoutes";
 import {COMMERCIAL_MAIL_RECIPIENTS_SQL} from "./commercialMailRecipients";
 import {audiences,commercialMailSchema} from "../shared/commercialMailDrafts";
@@ -49,5 +50,6 @@ export function registerCommercialMailDraftRoutes(app:Express){
     try{const {rows}=await pool.query('SELECT draft_id AS id,revision,content,created_at AS "updatedAt" FROM public.commercial_mail_draft_revisions WHERE draft_id=$1 ORDER BY revision DESC LIMIT 100',[req.params.id]);return res.json(rows);}catch{return res.status(503).json({message:"No fue posible consultar versiones"});}
   });
   registerCommercialMailPlanRoutes(app,isAuthenticated,guard);
-  // No send, token creation or recipient export in this release.
+  registerCommercialMailTestRoutes(app,isAuthenticated,guard);
+  // No commercial campaign dispatch, token creation or recipient export in this release.
 }
