@@ -19,6 +19,8 @@ on:
       - 'fix/financieras-auditoria-*'
       - 'fix/matching-ofertas-v5-*'
       - 'fix/matching-partial-opportunities-*'
+      - 'fix/backoffice-historical-intake-*'
+      - 'fix/backoffice-report-integrity-*'
       - 'fix/backoffice-delegated-capture-*'
       - 'sync/staging-*'
       - 'fix/first-party-api-session-*'
@@ -152,6 +154,7 @@ jobs:
             tests/unit/annual-income-matching.test.ts
             tests/unit/submission-status-display.test.ts
             tests/unit/dashboard-origin-visibility.test.ts
+            tests/unit/operational-report-metrics.test.ts
             tests/unit/client-list-visibility.test.ts
             tests/unit/client-onboarding-ux-postlaunch.test.ts
             tests/unit/user-tour-help-v2.test.ts
@@ -197,6 +200,7 @@ jobs:
             tests/unit/admin-legal-evidence-http.test.ts
             tests/unit/mortgage-family-consolidation.test.ts
             tests/unit/leasing-postlaunch.test.ts
+            tests/unit/historical-credit-intake.test.ts
             tests/unit/institution-proposal-presentation.test.ts
           )
           selected=()
@@ -261,6 +265,7 @@ jobs:
             tests/integration/postgres-commercial-config-atomic.test.ts
             tests/integration/postgres-network-rates-atomic.test.ts
             tests/integration/postgres-staging-schema-repair.test.ts
+            tests/integration/postgres-historical-credit-intake.test.ts
           )
           selected=()
           for i in "${!tests[@]}"; do

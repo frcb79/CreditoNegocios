@@ -3,6 +3,7 @@ import { resolveSubmissionDisplayStatus } from "../../../shared/submissionDispla
 // Centraliza labels y colores para mantener consistencia en toda la aplicación
 
 export const ALL_STATUS_LABELS: Record<string, string> = {
+  historical_recorded: "Crédito histórico registrado",
   pending_admin: "Pendiente de revisión",
   under_review: "En revisión",
   in_review: "En revisión",
@@ -100,6 +101,7 @@ export const targetStatusConfig: Record<string, { label: string; color: string }
 };
 
 export const creditStatusConfig: Record<string, { label: string; color: string }> = {
+  historical_recorded: {label:"Crédito histórico registrado",color:"bg-slate-100 text-slate-800 border-slate-300"},
   pending_admin: { label: "Pendiente de revisión", color: "bg-amber-100 text-amber-800 border-amber-300 font-semibold" },
   under_review: { label: "En revisión", color: "bg-amber-100 text-amber-800 border-amber-300 font-medium" },
   in_review: { label: "En revisión", color: "bg-amber-100 text-amber-800 border-amber-300 font-medium" },

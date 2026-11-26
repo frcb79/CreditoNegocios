@@ -18,6 +18,8 @@ import { createServer, ServerResponse, type Server } from "http";
 import { WebSocketServer, WebSocket } from "ws";
 import rateLimit from "express-rate-limit";
 import { pool } from "./db";
+import { historicalCreditIntakeSchema,historicalCreditReviewSchema } from "../shared/historicalCreditIntake";
+import { recordHistoricalCreditIntake,listHistoricalCreditIntakes,reconcileHistoricalCreditIntake,historicalMasterOptions,HistoricalIntakeError } from "./historicalCreditIntakeService";
 import { runBrokerInvitationReminders } from "./brokerInvitationReminders";
 import { storage, type IStorage } from "./storage";
 import { canViewSubmissionByOrigin, canViewCreditByOrigin, canEditCreditByOrigin, summarizeCommercialAccountActivity, isActiveSubmissionPipelineStatus, isSubmissionAwaitingReview, isEventWithinPeriod, confirmedVolumeWithinPeriod } from "./dashboardVisibility";
@@ -4841,6 +4843,41 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Historical intake is an immutable report, NOT a financial write to credits.
+  app.get('/api/admin/historical-credit-intakes',isAuthenticated,requireModuleAndAction('creditos','view'),async(req:any,res)=>{
+    const user=await storage.getUser(req.user.claims.sub);
+    if(!user||!["admin","super_admin"].includes(user.role))return res.status(403).json({message:"Sólo Backoffice."});
+    if(process.env.USE_MEMORY_STORAGE==="true"||process.env.NODE_ENV==="test")return res.status(503).json({message:"Requiere PostgreSQL aislado."});
+    try{res.setHeader("Cache-Control","private, no-store");return res.json(await listHistoricalCreditIntakes(pool,user.id));}
+    catch(e){if(e instanceof HistoricalIntakeError)return res.status(e.status).json({code:e.code,message:e.message});return res.status(500).json({message:"No fue posible consultar los registros históricos."});}
+  });
+  app.post('/api/admin/historical-credit-intakes',isAuthenticated,requireModuleAndAction('creditos','edit'),async(req:any,res)=>{
+    const user=await storage.getUser(req.user.claims.sub);
+    if(!user||!["admin","super_admin"].includes(user.role))return res.status(403).json({message:"Sólo Backoffice."});
+    const parsed=historicalCreditIntakeSchema.safeParse(req.body);
+    if(!parsed.success)return res.status(400).json({message:parsed.error.issues[0]?.message||"Revisa los datos de la operación histórica."});
+    if(process.env.USE_MEMORY_STORAGE==="true"||process.env.NODE_ENV==="test")return res.status(503).json({message:"Requiere PostgreSQL aislado."});
+    try{return res.status(201).json(await recordHistoricalCreditIntake(pool,user.id,parsed.data));}
+    catch(e){if(e instanceof HistoricalIntakeError)return res.status(e.status).json({code:e.code,message:e.message});return res.status(500).json({message:"No fue posible registrar la operación histórica."});}
+  });
+
+  app.get('/api/admin/historical-credit-intakes/master-options',isAuthenticated,requireModuleAndAction('creditos','view'),async(req:any,res)=>{
+    const user=await storage.getUser(req.user.claims.sub);
+    if(user?.role!=="super_admin")return res.status(403).json({message:"Sólo Super Admin."});
+    if(process.env.USE_MEMORY_STORAGE==="true"||process.env.NODE_ENV==="test")return res.status(503).json({message:"Requiere PostgreSQL."});
+    try{res.setHeader("Cache-Control","private, no-store");return res.json(await historicalMasterOptions(pool,user.id));}
+    catch(e){if(e instanceof HistoricalIntakeError)return res.status(e.status).json({code:e.code,message:e.message});return res.status(500).json({message:"No fue posible consultar Masters."});}
+  });
+  app.post('/api/admin/historical-credit-intakes/:id/reconcile',isAuthenticated,requireModuleAndAction('creditos','edit'),async(req:any,res)=>{
+    const user=await storage.getUser(req.user.claims.sub);
+    if(user?.role!=="super_admin")return res.status(403).json({message:"Sólo Super Admin."});
+    const parsed=historicalCreditReviewSchema.safeParse(req.body);
+    if(!parsed.success)return res.status(400).json({message:parsed.error.issues[0]?.message||"Revisa la conciliación."});
+    if(process.env.USE_MEMORY_STORAGE==="true"||process.env.NODE_ENV==="test")return res.status(503).json({message:"Requiere PostgreSQL."});
+    try{return res.json(await reconcileHistoricalCreditIntake(pool,user.id,req.params.id,parsed.data));}
+    catch(e){if(e instanceof HistoricalIntakeError)return res.status(e.status).json({code:e.code,message:e.message});return res.status(500).json({message:"No fue posible conciliar el registro."});}
+  });
+
   app.post('/api/credits', isAuthenticated, requireModuleAndAction('creditos', 'edit'), async (req: any, res) => {
     try {
       const userId = req.user.claims.sub;
@@ -4862,6 +4899,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // OPE-09: generic create cannot impersonate verified disbursement.
       const claimedProposal = req.body?.finalProposal;
+      if(req.body?.status==="historical_recorded" || (claimedProposal && Object.prototype.hasOwnProperty.call(claimedProposal,"historicalRecord")))return res.status(409).json({code:"HISTORICAL_REVIEW_REQUIRED",message:"Usa el flujo de registro histórico."});
       const verifiedKeys = ["disbursementStatus", "disbursementConfirmation",
         "disbursementTranches", "confirmedDisbursedAmount", "disbursementConfirmedAt",
         "disbursementConfirmedBy"];
@@ -5063,6 +5101,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       
       const oldCredit = authResult.credit;
+      if(oldCredit?.status==="historical_recorded" || (oldCredit?.finalProposal as any)?.historicalRecord || req.body?.status==="historical_recorded" || (req.body?.finalProposal && Object.prototype.hasOwnProperty.call(req.body.finalProposal,"historicalRecord")))return res.status(409).json({code:"HISTORICAL_RECORD_IMMUTABLE",message:"El registro histórico sólo puede conciliarse mediante el flujo autorizado."});
       // PRE-P0: once created, a credit's client, Broker, tenant, historical
       // origin and linked opportunity are not freely reassignable. This also
       // prevents bypassing immutable economic/commission provenance.
@@ -5179,6 +5218,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (!credit) {
         return res.status(404).json({ message: "Crédito no encontrado" });
       }
+
+      if(credit.status==='historical_recorded' || (credit.finalProposal as any)?.historicalRecord)return res.status(409).json({code:'HISTORICAL_COMMISSION_RECONCILIATION_REQUIRED',message:'El crédito histórico no genera comisión por confirmación ordinaria.'});
 
       // REGLA 1 (OPE-10/11/12): Elegibilidad operativa del crédito
       if (['cancelled', 'rejected'].includes(credit.status)) {
