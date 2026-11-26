@@ -1,6 +1,7 @@
 import {z} from "zod";
 export const audiences=["pending_registration","registered_no_requests","individual","newsletter"] as const;
 export const commercialMailSchema=z.object({name:z.string().trim().min(3).max(120),audience:z.enum(audiences),recipientIds:z.array(z.string().min(1).max(100)).max(500).optional(),steps:z.array(z.object({day:z.number().int().min(1).max(90),subject:z.string().trim().min(3).max(180),body:z.string().trim().min(10).max(12000),cta:z.enum(["activate","login","reply","none"])}).strict()).min(1).max(12)}).strict().superRefine((v,ctx)=>{
+  if(v.audience==="newsletter"&&(v.steps.length!==1||v.steps[0].day!==1))ctx.addIssue({code:"custom",path:["steps"],message:"Cada edición de newsletter contiene un solo envío (día 1)."});
   if(v.audience==="individual"&&(v.recipientIds?.length??0)>1)ctx.addIssue({code:"custom",path:["recipientIds"],message:"El seguimiento individual admite un solo destinatario."});
   if(v.recipientIds && new Set(v.recipientIds).size!==v.recipientIds.length)ctx.addIssue({code:"custom",path:["recipientIds"],message:"No se permiten destinatarios duplicados."});
   if(v.steps.some((s,i)=>i>0&&s.day<=v.steps[i-1].day))ctx.addIssue({code:"custom",path:["steps"],message:"Los días deben ser únicos y ascendentes."});
@@ -22,3 +23,14 @@ export const commercialMailStarters:CommercialMailDraft[]=[
 {name:"Newsletter comercial",audience:"newsletter",steps:[{day:1,subject:"Oportunidades de negocio con Crédito Negocios",body:"Hola, {{nombre}}:\n\nEsta semana te invitamos a revisar las alternativas disponibles para tus clientes y compartir tu enlace personal. Si tienes una oportunidad, responde a este correo y revisamos el siguiente paso contigo.",cta:"login"}]}
 ];
 export function commercialMailPreview(body:string,name="Asesor de ejemplo"){return body.replace(/\{\{nombre\}\}/g,name);}
+
+/** Import local plain text only. Never execute HTML or accept audience/schedule from a file. */
+export function importCommercialNewsletter(raw:string,fileName:string):CommercialMailDraft {
+  if(raw.length>24000||!fileName.toLowerCase().endsWith(".txt"))throw Error("Usa un archivo TXT de hasta 24,000 caracteres.");
+  const text=raw.replace(/^\uFEFF/,"").replace(/\r\n?/g,"\n").trim();
+  const match=/^Asunto:[ \t]*([^\n]+)\n+([\s\S]+)$/i.exec(text);
+  const subject=match?.[1].trim()||"",body=(match?.[2]||text).trim();
+  if(body.length<10||body.length>12000||subject.length>180||/[\x00-\x08\x0B\x0C\x0E-\x1F]/.test(body))throw Error("Revisa el texto: contenido de 10 a 12,000 caracteres y asunto de hasta 180.");
+  const name=fileName.replace(/\.txt$/i,"").trim().slice(0,120);
+  return {name:name.length>=3?name:"Nueva edición",audience:"newsletter",steps:[{day:1,subject,body,cta:"login"}]};
+}
