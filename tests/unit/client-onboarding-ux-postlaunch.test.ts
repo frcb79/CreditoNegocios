@@ -52,11 +52,18 @@ describe("Alta de clientes postlanzamiento — UX incremental", () => {
     expect(ui).not.toContain('createdBy:');
   });
 
-  it("mantiene edición avanzada con acordeones y validación condicional por riesgo", () => {
+  it("mantiene edición avanzada con navegación por secciones y validación condicional por riesgo", () => {
     const advanced = source("client/src/components/Clients/ClientForm.tsx");
     expect(advanced).toContain('value="datos-basicos"');
     expect(advanced).toContain('value="perfilamiento"');
     expect(advanced).toContain('Accordion type="multiple"');
+    expect(advanced).toContain('data-testid="advanced-tab-financial"');
+    expect(advanced).toContain('useState<string[]>([initialSection])');
+    const quick = source("client/src/components/Clients/QuickClientForm.tsx");
+    expect(quick).toContain('grid grid-cols-4');
+    expect(quick).toContain('data-testid="quick-tab-matching"');
+    expect(quick).toContain('data-testid="quick-save-and-profile"');
+    expect(source("client/src/pages/Clients.tsx")).toContain('setInitialProfileSection("perfilamiento")');
     expect(advanced).toContain('data-testid="client-advanced-profile-form"');
     expect(advanced).not.toContain("Estado civil es requerido para Persona Física");
     expect(source("shared/clientProfileValidation.ts")).toContain('data.atrasosDeudasBuro === "si"');
