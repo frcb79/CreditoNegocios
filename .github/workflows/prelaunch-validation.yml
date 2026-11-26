@@ -20,6 +20,7 @@ on:
       - 'fix/matching-ofertas-v5-*'
       - 'fix/matching-partial-opportunities-*'
       - 'fix/backoffice-delegated-capture-*'
+      - 'feat/commercial-mail-manager-*'
       - 'fix/final-audit-publication*'
       - 'fix/master-network-rates-*'
       - 'fix/master-offer-rates-private-copy-*'
@@ -178,6 +179,7 @@ jobs:
             tests/unit/broker-invitation-email.test.ts
             tests/unit/activation-commercial-welcome.test.ts
             tests/unit/resend-delivery-audit.test.ts
+            tests/unit/commercial-mail-drafts.test.ts
             tests/unit/prospect-auto-matching.test.ts
             tests/unit/prospect-quick-profile.test.ts
             tests/unit/public-prospect-presentation.test.ts

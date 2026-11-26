@@ -69,12 +69,14 @@ SELECT o.id, o.user_id AS "userId", o.email, o.first_name AS "firstName",
        o.reminder_day AS "reminderDay", o.dispatch_status AS "dispatchStatus",
        o.provider_message_id AS "providerMessageId",
        o.created_at AS "createdAt", o.sent_at AS "sentAt",
-       event.event_type AS "eventType", event.occurred_at AS "eventAt"
+       event.event_type AS "eventType", event.occurred_at AS "eventAt",
+       EXISTS(SELECT 1 FROM public.resend_delivery_events e WHERE e.provider_message_id=o.provider_message_id AND e.event_type='email.opened') AS "opened",
+       EXISTS(SELECT 1 FROM public.resend_delivery_events e WHERE e.provider_message_id=o.provider_message_id AND e.event_type='email.clicked') AS "clicked"
 FROM all_messages o
 LEFT JOIN LATERAL (
   SELECT e.event_type, e.occurred_at
   FROM public.resend_delivery_events e
-  WHERE e.provider_message_id=o.provider_message_id
+  WHERE e.provider_message_id=o.provider_message_id AND e.event_type NOT IN ('email.opened','email.clicked')
   ORDER BY CASE e.event_type
     WHEN 'email.complained' THEN 100
     WHEN 'email.bounced' THEN 95

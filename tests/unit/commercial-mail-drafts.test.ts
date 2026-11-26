@@ -1,0 +1,8 @@
+import {commercialMailSchema,commercialMailStarters,commercialMailPreview} from "../../shared/commercialMailDrafts";
+import {readFileSync} from "node:fs";
+describe("Commercial mail draft manager",()=>{
+  it("keeps two 4-step sequences, an individual and newsletter draft",()=>{expect(commercialMailStarters.map(x=>x.steps.length)).toEqual([4,4,1,1]);for(const x of commercialMailStarters)expect(commercialMailSchema.safeParse(x).success).toBe(true);});
+  it("rejects duplicate days and activation CTA for registered accounts",()=>{const x=commercialMailStarters[0];expect(commercialMailSchema.safeParse({...x,audience:"registered_no_requests"}).success).toBe(false);expect(commercialMailSchema.safeParse({...x,steps:[x.steps[0],x.steps[0]]}).success).toBe(false);});
+  it("renders plain text personalization and disallows forged dispatch state",()=>{expect(commercialMailPreview("Hola {{nombre}}","Ana")).toBe("Hola Ana");expect(commercialMailSchema.safeParse({...commercialMailStarters[0],status:"sent"}).success).toBe(false);});
+  it("has Super Admin guard, version conflict protection and no send path",()=>{const s=readFileSync("server/commercialMailDraftRoutes.ts","utf8");expect(s).toContain('actor.role!=="super_admin"');expect(s).toContain("latest!==expectedRevision");expect(s).not.toContain("resend.emails.send");expect(s).not.toContain("reset_token");});
+});
