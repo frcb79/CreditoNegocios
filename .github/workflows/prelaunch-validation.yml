@@ -19,6 +19,8 @@ on:
       - 'fix/financieras-auditoria-*'
       - 'fix/matching-ofertas-v5-*'
       - 'fix/matching-partial-opportunities-*'
+      - 'fix/backoffice-delegated-capture-*'
+      - 'fix/mobile-commercial-capture-*'
       - 'fix/backoffice-historical-intake-*'
       - 'fix/final-audit-publication*'
       - 'fix/master-network-rates-*'
@@ -192,6 +194,7 @@ jobs:
             tests/unit/mortgage-family-consolidation.test.ts
             tests/unit/leasing-postlaunch.test.ts
             tests/unit/historical-credit-intake.test.ts
+            tests/unit/institution-proposal-presentation.test.ts
           )
           selected=()
           for i in "${!tests[@]}"; do

@@ -1,4 +1,4 @@
-import { canViewSubmissionByOrigin, canViewCreditByOrigin, canEditCreditByOrigin, summarizeCommercialAccountActivity } from "../../server/dashboardVisibility";
+import { canViewSubmissionByOrigin, canViewCreditByOrigin, canEditCreditByOrigin, summarizeCommercialAccountActivity, isActiveSubmissionPipelineStatus, isSubmissionAwaitingReview, isEventWithinPeriod, confirmedVolumeWithinPeriod } from "../../server/dashboardVisibility";
 
 describe("Dashboard: ownership survives Broker transfer", () => {
   const former = { id: "master-original", role: "master_broker" };
@@ -122,5 +122,25 @@ describe("Dashboard Super Admin: registered and pending commercial accounts", ()
       activeMasterBrokers: 1,
       pendingInvitations: 43,
     });
+  });
+});
+
+describe("Backoffice: pipeline and dated metrics",()=>{
+  it("counts pending_admin for all active pipeline and review KPIs",()=>{
+    expect(isActiveSubmissionPipelineStatus("pending_admin")).toBe(true);
+    expect(isSubmissionAwaitingReview("pending_admin")).toBe(true);
+    expect(isActiveSubmissionPipelineStatus("rejected")).toBe(false);
+    expect(isSubmissionAwaitingReview("in_progress")).toBe(false);
+  });
+  it("counts only confirmed tranches dated within the period, not record creation or whole loan",()=>{
+    const from=new Date("2026-11-01T00:00:00Z"),to=new Date("2026-11-30T23:59:59Z");
+    const records=[{finalProposal:{disbursementTranches:[
+      {status:"confirmed",confirmedAmount:400,confirmedAt:"2026-10-30T00:00:00Z"},
+      {status:"confirmed",confirmedAmount:600,confirmedAt:"2026-11-02T00:00:00Z"},
+      {status:"reported",confirmedAmount:900,confirmedAt:"2026-11-02T00:00:00Z"},
+    ]}},{finalProposal:{disbursementConfirmation:{status:"confirmed",confirmedAmount:500}}}];
+    expect(confirmedVolumeWithinPeriod(records,from,to)).toBe(600);
+    expect(isEventWithinPeriod(undefined,from,to)).toBe(false);
+    expect(isEventWithinPeriod("2026-11-15T00:00:00Z",from,to)).toBe(true);
   });
 });

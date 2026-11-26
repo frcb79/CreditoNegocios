@@ -24,6 +24,7 @@ import { Badge } from "@/components/ui/badge";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/hooks/useAuth";
 import { apiRequest } from "@/lib/queryClient";
 import { Building2, User, DollarSign, Send, AlertCircle, CheckCircle, AlertTriangle, Info, HelpCircle, XCircle, Loader2 } from "lucide-react";
 
@@ -102,6 +103,8 @@ type CreditRequestForm = z.infer<typeof creditRequestSchema>;
 
 export default function CreditRequestModal({ isOpen, onClose, preselectedClientId }: CreditRequestModalProps) {
   const { toast } = useToast();
+  const { user } = useAuth();
+  const isPlatformAdmin = user?.role === "admin" || user?.role === "super_admin";
   const queryClient = useQueryClient();
   const [selectedInstitutions, setSelectedInstitutions] = useState<string[]>([]);
 
@@ -157,6 +160,7 @@ export default function CreditRequestModal({ isOpen, onClose, preselectedClientI
         purpose: data.purpose,
         brokerNotes: data.brokerNotes,
         financialInstitutionIds: data.financialInstitutionIds,
+        ...(isPlatformAdmin && selectedClient?.brokerId && ["broker","master_broker"].includes(selectedClient.broker?.role) ? { brokerId: selectedClient.brokerId } : {}),
       };
 
       return apiRequest("POST", "/api/credit-submissions", requestData);
@@ -457,7 +461,7 @@ export default function CreditRequestModal({ isOpen, onClose, preselectedClientI
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="sm:max-w-3xl max-h-[90vh] overflow-y-auto">
+      <DialogContent className="w-[calc(100%-1rem)] sm:w-full sm:max-w-3xl max-h-[92dvh] overflow-y-auto overscroll-contain rounded-lg p-4 sm:p-6">
         <DialogHeader>
           <DialogTitle className="flex items-center space-x-2">
             <Send className="w-5 h-5 text-blue-600" />
@@ -488,15 +492,15 @@ export default function CreditRequestModal({ isOpen, onClose, preselectedClientI
                   <FormLabel>Cliente *</FormLabel>
                   <Select onValueChange={field.onChange} value={field.value}>
                     <FormControl>
-                      <SelectTrigger data-testid="select-client">
+                      <SelectTrigger className="min-h-11 text-base sm:text-sm" data-testid="select-client">
                         <SelectValue placeholder="Selecciona un cliente" />
                       </SelectTrigger>
                     </FormControl>
                     <SelectContent>
                       {clients?.map((client) => (
                         <SelectItem key={client.id} value={client.id}>
-                          <div className="flex items-center space-x-2">
-                            <span>{getClientDisplayName(client)}</span>
+                          <div className="flex flex-wrap items-center gap-1 max-w-[65vw] sm:max-w-none">
+                            <span className="break-words text-left">{getClientDisplayName(client)}</span>
                             <span className={`text-xs px-2 py-0.5 rounded-full ${getClientTypeBadgeColor(client.type)}`}>
                               {getClientTypeLabel(client.type)}
                             </span>
@@ -522,6 +526,7 @@ export default function CreditRequestModal({ isOpen, onClose, preselectedClientI
                     <p className="text-sm text-gray-600 capitalize">
                       {getClientTypeLabel(selectedClient.type)}
                     </p>
+                    {isPlatformAdmin && <p className="text-xs text-muted-foreground" data-testid="request-originator">Originador: {selectedClient.broker?.firstName ? [selectedClient.broker.firstName,selectedClient.broker.lastName].filter(Boolean).join(" ") : "Plataforma / registro directo"}</p>}
                   </div>
                 </div>
               </div>
@@ -755,7 +760,7 @@ export default function CreditRequestModal({ isOpen, onClose, preselectedClientI
             />
 
             {/* Submit Button */}
-            <DialogFooter className="gap-2 pt-4 border-t border-border/60">
+            <DialogFooter className="sticky bottom-0 z-10 bg-background border-t border-border/60 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] gap-2">
               <Button
                 type="button"
                 variant="outline"
@@ -768,7 +773,7 @@ export default function CreditRequestModal({ isOpen, onClose, preselectedClientI
               <Button
                 type="submit"
                 disabled={submitRequestMutation.isPending || clientsLoading || institutionsLoading || matching.isFetching || matching.isError || !matching.data || previewUrl!==settledPreviewUrl}
-                className="bg-primary text-primary-foreground hover:bg-primary/90"
+                className="min-h-11 sm:min-h-9 h-auto whitespace-normal bg-primary text-primary-foreground hover:bg-primary/90"
                 data-testid="button-submit-request"
               >
                 {submitRequestMutation.isPending ? (

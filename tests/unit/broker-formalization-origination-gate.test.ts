@@ -444,6 +444,18 @@ describe("Cierre P0: Formalización Obligatoria y Cierre de Bypasses en Originac
     });
   });
 
+  it("No permite que un broker sin membresía origine a nombre de otro asesor formalizado", async () => {
+    const caller = await createTestUser("broker", "Broker Sin Membresía");
+    const target = await createTestUser("broker", "Broker Ajeno Formalizado");
+    await formalizeUserViaOtp(caller);
+    await formalizeUserViaOtp(target);
+    currentAuthUser = caller;
+    const res = await request(app).post("/api/clients").send({
+      type:"persona_moral",businessName:"Intento ajeno QA",phone:"5512345678",brokerId:target.id,
+    });
+    expect(res.status).toBe(403);
+  });
+
   describe("5. Admin actuando en nombre de broker no formalizado: bloqueo 403", () => {
     it("Admin no puede crear clientes en nombre de broker sin formalizar", async () => {
       const admin = await createTestUser("admin", "Admin Gestor");
@@ -471,6 +483,8 @@ describe("Cierre P0: Formalización Obligatoria y Cierre de Bypasses en Originac
       const admin = await createTestUser("admin", "Admin Gestor Dos");
       const formalizedBroker = await createTestUser("broker", "Broker ConDocs");
       await formalizeUserViaOtp(formalizedBroker);
+      const tenant = await storage.createTenant({name:"Organización asesor QA",slug:`org-${randomUUID()}`,type:"broker"});
+      await storage.createTenantMember({tenantId:tenant.id,userId:formalizedBroker.id,role:"owner",canOriginate:true,isActive:true});
 
       currentAuthUser = admin;
       const res = await request(app)
@@ -487,6 +501,35 @@ describe("Cierre P0: Formalización Obligatoria y Cierre de Bypasses en Originac
 
       expect(res.status).toBe(201);
       expect(res.body.brokerId).toBe(formalizedBroker.id);
+      expect(res.body.tenantId).toBe(tenant.id);
+      expect(res.body.createdBy).toBe(admin.id);
+      const submission = await request(app).post("/api/credit-submissions").send({clientId:res.body.id,brokerId:formalizedBroker.id,requestedAmount:"100000",financialInstitutionIds:[]});
+      expect(submission.status).toBe(201);
+      expect(submission.body.submission.brokerId).toBe(formalizedBroker.id);
+      expect(submission.body.submission.tenantId).toBe(tenant.id);
+      expect(submission.body.submission.createdBy).toBe(admin.id);
+      // Special paths must keep the same originator and organization, including
+      // when administration opens an existing client's expediente.
+      const mortgageTemplate = await storage.createProductTemplate({name:"Hipotecario",category:"hipotecario",isActive:true,baseConfiguration:{catalog_family:"hipotecario",variants:["vivienda","empresarial"]},createdBy:admin.id} as any);
+      await storage.createProductTemplate({name:"Arrendamiento",category:"arrendamiento",isActive:true,createdBy:admin.id} as any);
+      const mortgage = await request(app).post("/api/mortgage-leads").send({clientId:res.body.id,requestedAmount:"500000",propertyValue:"800000",incomeType:"asalariado"});
+      expect(mortgage.status).toBe(201);
+      expect(mortgage.body.submission.brokerId).toBe(formalizedBroker.id);
+      expect(mortgage.body.submission.tenantId).toBe(tenant.id);
+      const lease=await request(app).post("/api/leasing-leads").send({clientId:res.body.id,assetType:"vehiculo",brand:"Toyota",model:"Corolla",year:2026,unitValue:450000,quantity:1});
+      expect(lease.status).toBe(201);
+      expect(lease.body.submission.brokerId).toBe(formalizedBroker.id);
+      expect(lease.body.submission.tenantId).toBe(tenant.id);
+      expect(lease.body.submission.createdBy).toBe(admin.id);
+    });
+    it("No inventa una organización si el asesor formalizado no tiene membresía válida", async () => {
+      const admin = await createTestUser("admin", "Admin QA");
+      const broker = await createTestUser("broker", "Asesor Sin Organizacion");
+      await formalizeUserViaOtp(broker);
+      currentAuthUser = admin;
+      const res = await request(app).post("/api/clients").send({type:"persona_moral",businessName:"Empresa QA",brokerId:broker.id});
+      expect(res.status).toBe(409);
+      expect(res.body.code).toBe("ORIGINATOR_ORGANIZATION_REQUIRED");
     });
   });
 

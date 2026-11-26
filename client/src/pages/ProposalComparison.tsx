@@ -1,4 +1,6 @@
 import { useState } from "react";
+import { useAuth } from "@/hooks/useAuth";
+import { hasReceivedInstitutionProposal } from "@shared/institutionProposalPresentation";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useRoute, useLocation } from "wouter";
 import MainLayout from "@/components/MainLayout";
@@ -69,6 +71,7 @@ interface CreditSubmissionRequest {
 
 export default function ProposalComparison() {
   const { toast } = useToast();
+  const { user } = useAuth();
   const queryClient = useQueryClient();
   const [, setLocation] = useLocation();
   const [match, params] = useRoute<{ requestId: string }>("/comparar-propuestas/:requestId");
@@ -265,7 +268,7 @@ export default function ProposalComparison() {
         </Badge>
       );
     }
-    if (target.status === 'institution_approved' || target.institutionProposal) {
+    if (hasReceivedInstitutionProposal(target)) {
       return (
         <Badge variant="outline" className="bg-emerald-50 text-emerald-700 border-emerald-200 text-xs font-medium">
           <CheckCircle className="w-3 h-3 mr-1 text-emerald-600" />
@@ -333,7 +336,8 @@ export default function ProposalComparison() {
             <div className="grid gap-5 md:grid-cols-2 lg:grid-cols-3">
               {targetsList.map((target) => {
                 const proposal = target.institutionProposal;
-                const hasProposal = Boolean(proposal && proposal.approvedAmount);
+                const hasProposal = hasReceivedInstitutionProposal(target);
+                const canAcceptProposal = hasProposal && ['approved','institution_approved','selected_winner'].includes(target.status) && (user?.role === 'admin' || user?.role === 'super_admin' || (Boolean(user?.id) && user?.id === request?.brokerId));
                 
                 const monthlyPayment = hasProposal ? calculateMonthlyPayment(
                   proposal!.approvedAmount,
@@ -514,7 +518,7 @@ export default function ProposalComparison() {
                               Ver Detalle de Selección
                             </Button>
                           </div>
-                        ) : hasProposal ? (
+                        ) : canAcceptProposal ? (
                           <Button
                             className="w-full bg-primary hover:bg-primary/90 text-white text-xs h-9 font-medium shadow-xs"
                             onClick={() => selectWinnerMutation.mutate(target.id)}

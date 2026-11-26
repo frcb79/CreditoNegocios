@@ -159,12 +159,13 @@ export async function validateCommercialOrigination(
     };
   }
 
-  // 2. Legacy standalone user without membership
+  // Legacy standalone users retain self-origination only. An explicit
+  // foreign broker ID is never authorization to act on their behalf.
   if (!callerMembership) {
-    return {
-      allowed: true,
-      brokerId: requestedBrokerId || callerUser.id,
-    };
+    if (requestedBrokerId && requestedBrokerId !== callerUser.id) {
+      return { allowed: false, message: "No puedes originar a nombre de otro asesor sin una organización comercial autorizada." };
+    }
+    return { allowed: true, brokerId: callerUser.id };
   }
 
   const isOwner = callerMembership.role === "owner";
@@ -207,10 +208,7 @@ export async function validateCommercialOrigination(
     };
   }
 
-  return {
-    allowed: true,
-    brokerId: requestedBrokerId,
-  };
+  return { allowed: false, message: "No se pudo verificar la organización del asesor asignado." };
 }
 
 /**

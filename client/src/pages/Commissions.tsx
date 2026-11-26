@@ -579,9 +579,9 @@ export default function Commissions() {
         
         <main className="flex-1 p-4 sm:p-6 lg:p-8 overflow-y-auto">
           <div className="space-y-6">
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-2 sm:gap-6">
               {Array.from({ length: 3 }).map((_, i) => (
-                <Skeleton key={i} className="h-32 w-full" />
+                <Skeleton key={i} className="h-20 sm:h-32 w-full" />
               ))}
             </div>
             <Skeleton className="h-96 w-full" />
@@ -702,10 +702,10 @@ export default function Commissions() {
                   {/* KPIs de Comisiones — Fintech Institucional (Máximo 3-4 métricas sobrias) */}
               {isSuperAdmin ? (
                 /* Super Admin: 4 métricas operativas clave */
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+                <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-4 mb-3 sm:mb-6">
                   {/* KPI 1: Por Aprobar */}
-                  <div className="bg-white border border-slate-200/80 rounded-xl p-4 shadow-sm flex flex-col justify-between">
-                    <div className="flex items-center justify-between text-xs font-medium text-slate-500 mb-1.5">
+                  <div className="bg-white border border-slate-200/80 rounded-xl min-w-0 p-2.5 sm:p-4 shadow-sm flex flex-col justify-between">
+                    <div className="flex flex-wrap items-center justify-between gap-1 text-[11px] sm:text-xs font-medium text-slate-500 mb-1 sm:mb-1.5">
                       <span className="flex items-center gap-1.5">
                         <span className="w-2 h-2 rounded-full bg-amber-500" />
                         Por Aprobar
@@ -715,19 +715,19 @@ export default function Commissions() {
                       </span>
                     </div>
                     <div className="mt-1">
-                      <div className="text-2xl font-bold text-slate-900 tracking-tight">
+                      <div className="text-base sm:text-2xl break-words font-bold text-slate-900 tracking-tight">
                         ${saPorAprobarAmount.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                        <span className="text-xs font-normal text-slate-500 ml-1">MXN</span>
+                        <span className="text-[10px] sm:text-xs font-normal text-slate-500 ml-1">MXN</span>
                       </div>
-                      <p className="text-[11px] text-slate-500 mt-1">
+                      <p className="text-[10px] sm:text-[11px] leading-tight text-slate-500 mt-1">
                         Comisiones congelables previas a dispersión
                       </p>
                     </div>
                   </div>
 
                   {/* KPI 2: Aprobado para Dispersión */}
-                  <div className="bg-white border border-slate-200/80 rounded-xl p-4 shadow-sm flex flex-col justify-between">
-                    <div className="flex items-center justify-between text-xs font-medium text-slate-500 mb-1.5">
+                  <div className="bg-white border border-slate-200/80 rounded-xl min-w-0 p-2.5 sm:p-4 shadow-sm flex flex-col justify-between">
+                    <div className="flex flex-wrap items-center justify-between gap-1 text-[11px] sm:text-xs font-medium text-slate-500 mb-1 sm:mb-1.5">
                       <span className="flex items-center gap-1.5">
                         <span className="w-2 h-2 rounded-full bg-blue-500" />
                         Listo para Dispersión
@@ -737,19 +737,19 @@ export default function Commissions() {
                       </span>
                     </div>
                     <div className="mt-1">
-                      <div className="text-2xl font-bold text-slate-900 tracking-tight">
+                      <div className="text-base sm:text-2xl break-words font-bold text-slate-900 tracking-tight">
                         ${saAprobadoDispersionAmount.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                        <span className="text-xs font-normal text-slate-500 ml-1">MXN</span>
+                        <span className="text-[10px] sm:text-xs font-normal text-slate-500 ml-1">MXN</span>
                       </div>
-                      <p className="text-[11px] text-slate-500 mt-1">
+                      <p className="text-[10px] sm:text-[11px] leading-tight text-slate-500 mt-1">
                         Aprobado formalmente para dispersión
                       </p>
                     </div>
                   </div>
 
                   {/* KPI 3: En Dispersión */}
-                  <div className="bg-white border border-slate-200/80 rounded-xl p-4 shadow-sm flex flex-col justify-between">
-                    <div className="flex items-center justify-between text-xs font-medium text-slate-500 mb-1.5">
+                  <div className="bg-white border border-slate-200/80 rounded-xl min-w-0 p-2.5 sm:p-4 shadow-sm flex flex-col justify-between">
+                    <div className="flex flex-wrap items-center justify-between gap-1 text-[11px] sm:text-xs font-medium text-slate-500 mb-1 sm:mb-1.5">
                       <span className="flex items-center gap-1.5">
                         <span className="w-2 h-2 rounded-full bg-indigo-500 animate-pulse" />
                         En Dispersión
@@ -759,19 +759,19 @@ export default function Commissions() {
                       </span>
                     </div>
                     <div className="mt-1">
-                      <div className="text-2xl font-bold text-slate-900 tracking-tight">
+                      <div className="text-base sm:text-2xl break-words font-bold text-slate-900 tracking-tight">
                         ${saEnDispersionAmount.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                        <span className="text-xs font-normal text-slate-500 ml-1">MXN</span>
+                        <span className="text-[10px] sm:text-xs font-normal text-slate-500 ml-1">MXN</span>
                       </div>
-                      <p className="text-[11px] text-slate-500 mt-1">
+                      <p className="text-[10px] sm:text-[11px] leading-tight text-slate-500 mt-1">
                         Procesándose en cola de dispersión
                       </p>
                     </div>
                   </div>
 
                   {/* KPI 4: Pagado */}
-                  <div className="bg-white border border-slate-200/80 rounded-xl p-4 shadow-sm flex flex-col justify-between">
-                    <div className="flex items-center justify-between text-xs font-medium text-slate-500 mb-1.5">
+                  <div className="bg-white border border-slate-200/80 rounded-xl min-w-0 p-2.5 sm:p-4 shadow-sm flex flex-col justify-between">
+                    <div className="flex flex-wrap items-center justify-between gap-1 text-[11px] sm:text-xs font-medium text-slate-500 mb-1 sm:mb-1.5">
                       <span className="flex items-center gap-1.5">
                         <span className="w-2 h-2 rounded-full bg-emerald-500" />
                         Pagado a la Red
@@ -781,11 +781,11 @@ export default function Commissions() {
                       </span>
                     </div>
                     <div className="mt-1">
-                      <div className="text-2xl font-bold text-emerald-700 tracking-tight">
+                      <div className="text-base sm:text-2xl break-words font-bold text-emerald-700 tracking-tight">
                         ${totalPaidPayout.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                        <span className="text-xs font-normal text-slate-500 ml-1">MXN</span>
+                        <span className="text-[10px] sm:text-xs font-normal text-slate-500 ml-1">MXN</span>
                       </div>
-                      <p className="text-[11px] text-slate-500 mt-1">
+                      <p className="text-[10px] sm:text-[11px] leading-tight text-slate-500 mt-1">
                         Liquidadas exitosamente a brokers y redes
                       </p>
                     </div>
@@ -793,10 +793,10 @@ export default function Commissions() {
                 </div>
               ) : isMasterBrokerRole ? (
                 /* Master Broker: 3 métricas de red institucional */
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+                <div className="grid grid-cols-2 md:grid-cols-3 gap-2 sm:gap-4 mb-3 sm:mb-6">
                   {/* MB KPI 1: Ingreso Bruto Red */}
-                  <div className="bg-white border border-slate-200/80 rounded-xl p-4 shadow-sm flex flex-col justify-between">
-                    <div className="flex items-center justify-between text-xs font-medium text-slate-500 mb-1.5">
+                  <div className="bg-white border border-slate-200/80 rounded-xl min-w-0 p-2.5 sm:p-4 shadow-sm flex flex-col justify-between">
+                    <div className="flex flex-wrap items-center justify-between gap-1 text-[11px] sm:text-xs font-medium text-slate-500 mb-1 sm:mb-1.5">
                       <span className="flex items-center gap-1.5">
                         <span className="w-2 h-2 rounded-full bg-blue-500" />
                         Ingreso Bruto de Red
@@ -804,19 +804,19 @@ export default function Commissions() {
                       <span className="text-[11px] font-medium text-slate-500">Plataforma</span>
                     </div>
                     <div className="mt-1">
-                      <div className="text-2xl font-bold text-slate-900 tracking-tight">
+                      <div className="text-base sm:text-2xl break-words font-bold text-slate-900 tracking-tight">
                         ${mbGrossFromPlatform.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                        <span className="text-xs font-normal text-slate-500 ml-1">MXN</span>
+                        <span className="text-[10px] sm:text-xs font-normal text-slate-500 ml-1">MXN</span>
                       </div>
-                      <p className="text-[11px] text-slate-500 mt-1">
+                      <p className="text-[10px] sm:text-[11px] leading-tight text-slate-500 mt-1">
                         Monto asignado por la plataforma para tu red
                       </p>
                     </div>
                   </div>
 
                   {/* MB KPI 2: Por Pagar a Brokers */}
-                  <div className="bg-white border border-slate-200/80 rounded-xl p-4 shadow-sm flex flex-col justify-between">
-                    <div className="flex items-center justify-between text-xs font-medium text-slate-500 mb-1.5">
+                  <div className="bg-white border border-slate-200/80 rounded-xl min-w-0 p-2.5 sm:p-4 shadow-sm flex flex-col justify-between">
+                    <div className="flex flex-wrap items-center justify-between gap-1 text-[11px] sm:text-xs font-medium text-slate-500 mb-1 sm:mb-1.5">
                       <span className="flex items-center gap-1.5">
                         <span className="w-2 h-2 rounded-full bg-amber-500" />
                         Corresponde a Originadores
@@ -824,19 +824,19 @@ export default function Commissions() {
                       <span className="text-[11px] font-medium text-amber-700">Subordinados</span>
                     </div>
                     <div className="mt-1">
-                      <div className="text-2xl font-bold text-slate-900 tracking-tight">
+                      <div className="text-base sm:text-2xl break-words font-bold text-slate-900 tracking-tight">
                         ${mbOwedToBrokers.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                        <span className="text-xs font-normal text-slate-500 ml-1">MXN</span>
+                        <span className="text-[10px] sm:text-xs font-normal text-slate-500 ml-1">MXN</span>
                       </div>
-                      <p className="text-[11px] text-slate-500 mt-1">
+                      <p className="text-[10px] sm:text-[11px] leading-tight text-slate-500 mt-1">
                         Comisiones a transferir a originadores de tu red
                       </p>
                     </div>
                   </div>
 
                   {/* MB KPI 3: Ganancia Neta Master */}
-                  <div className="bg-white border border-slate-200/80 rounded-xl p-4 shadow-sm flex flex-col justify-between">
-                    <div className="flex items-center justify-between text-xs font-medium text-slate-500 mb-1.5">
+                  <div className="bg-white border border-slate-200/80 rounded-xl min-w-0 p-2.5 sm:p-4 shadow-sm flex flex-col justify-between">
+                    <div className="flex flex-wrap items-center justify-between gap-1 text-[11px] sm:text-xs font-medium text-slate-500 mb-1 sm:mb-1.5">
                       <span className="flex items-center gap-1.5">
                         <span className="w-2 h-2 rounded-full bg-emerald-500" />
                         Tu Ganancia Neta
@@ -846,11 +846,11 @@ export default function Commissions() {
                       </span>
                     </div>
                     <div className="mt-1">
-                      <div className="text-2xl font-bold text-emerald-700 tracking-tight">
+                      <div className="text-base sm:text-2xl break-words font-bold text-emerald-700 tracking-tight">
                         ${mbNetEarnings.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                        <span className="text-xs font-normal text-slate-500 ml-1">MXN</span>
+                        <span className="text-[10px] sm:text-xs font-normal text-slate-500 ml-1">MXN</span>
                       </div>
-                      <p className="text-[11px] text-slate-500 mt-1">
+                      <p className="text-[10px] sm:text-[11px] leading-tight text-slate-500 mt-1">
                         Pagado: ${mbNetPaid.toLocaleString('es-MX', { maximumFractionDigits: 0 })} • Pendiente: ${mbNetPending.toLocaleString('es-MX', { maximumFractionDigits: 0 })}
                       </p>
                     </div>
@@ -858,10 +858,10 @@ export default function Commissions() {
                 </div>
               ) : (
                 /* Broker Directo: 3 métricas sobrias */
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+                <div className="grid grid-cols-2 md:grid-cols-3 gap-2 sm:gap-4 mb-3 sm:mb-6">
                   {/* Broker KPI 1: Pendientes */}
-                  <div className="bg-white border border-slate-200/80 rounded-xl p-4 shadow-sm flex flex-col justify-between">
-                    <div className="flex items-center justify-between text-xs font-medium text-slate-500 mb-1.5">
+                  <div className="bg-white border border-slate-200/80 rounded-xl min-w-0 p-2.5 sm:p-4 shadow-sm flex flex-col justify-between">
+                    <div className="flex flex-wrap items-center justify-between gap-1 text-[11px] sm:text-xs font-medium text-slate-500 mb-1 sm:mb-1.5">
                       <span className="flex items-center gap-1.5">
                         <span className="w-2 h-2 rounded-full bg-amber-500" />
                         Comisiones Pendientes
@@ -871,19 +871,19 @@ export default function Commissions() {
                       </span>
                     </div>
                     <div className="mt-1">
-                      <div className="text-2xl font-bold text-slate-900 tracking-tight">
+                      <div className="text-base sm:text-2xl break-words font-bold text-slate-900 tracking-tight">
                         ${brokerTotalPending.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                        <span className="text-xs font-normal text-slate-500 ml-1">MXN</span>
+                        <span className="text-[10px] sm:text-xs font-normal text-slate-500 ml-1">MXN</span>
                       </div>
-                      <p className="text-[11px] text-slate-500 mt-1">
+                      <p className="text-[10px] sm:text-[11px] leading-tight text-slate-500 mt-1">
                         En trámite de aprobación o dispersión
                       </p>
                     </div>
                   </div>
 
                   {/* Broker KPI 2: Pagadas */}
-                  <div className="bg-white border border-slate-200/80 rounded-xl p-4 shadow-sm flex flex-col justify-between">
-                    <div className="flex items-center justify-between text-xs font-medium text-slate-500 mb-1.5">
+                  <div className="bg-white border border-slate-200/80 rounded-xl min-w-0 p-2.5 sm:p-4 shadow-sm flex flex-col justify-between">
+                    <div className="flex flex-wrap items-center justify-between gap-1 text-[11px] sm:text-xs font-medium text-slate-500 mb-1 sm:mb-1.5">
                       <span className="flex items-center gap-1.5">
                         <span className="w-2 h-2 rounded-full bg-emerald-500" />
                         Comisiones Pagadas
@@ -893,19 +893,19 @@ export default function Commissions() {
                       </span>
                     </div>
                     <div className="mt-1">
-                      <div className="text-2xl font-bold text-emerald-700 tracking-tight">
+                      <div className="text-base sm:text-2xl break-words font-bold text-emerald-700 tracking-tight">
                         ${brokerTotalPaid.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                        <span className="text-xs font-normal text-slate-500 ml-1">MXN</span>
+                        <span className="text-[10px] sm:text-xs font-normal text-slate-500 ml-1">MXN</span>
                       </div>
-                      <p className="text-[11px] text-slate-500 mt-1">
+                      <p className="text-[10px] sm:text-[11px] leading-tight text-slate-500 mt-1">
                         Transferidas a tu cuenta bancaria
                       </p>
                     </div>
                   </div>
 
                   {/* Broker KPI 3: Total Acumulado */}
-                  <div className="bg-white border border-slate-200/80 rounded-xl p-4 shadow-sm flex flex-col justify-between">
-                    <div className="flex items-center justify-between text-xs font-medium text-slate-500 mb-1.5">
+                  <div className="bg-white border border-slate-200/80 rounded-xl min-w-0 p-2.5 sm:p-4 shadow-sm flex flex-col justify-between">
+                    <div className="flex flex-wrap items-center justify-between gap-1 text-[11px] sm:text-xs font-medium text-slate-500 mb-1 sm:mb-1.5">
                       <span className="flex items-center gap-1.5">
                         <span className="w-2 h-2 rounded-full bg-slate-400" />
                         Total Generado
@@ -913,11 +913,11 @@ export default function Commissions() {
                       <span className="text-[11px] font-medium text-slate-500">Histórico</span>
                     </div>
                     <div className="mt-1">
-                      <div className="text-2xl font-bold text-slate-900 tracking-tight">
+                      <div className="text-base sm:text-2xl break-words font-bold text-slate-900 tracking-tight">
                         ${brokerTotal.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                        <span className="text-xs font-normal text-slate-500 ml-1">MXN</span>
+                        <span className="text-[10px] sm:text-xs font-normal text-slate-500 ml-1">MXN</span>
                       </div>
-                      <p className="text-[11px] text-slate-500 mt-1">
+                      <p className="text-[10px] sm:text-[11px] leading-tight text-slate-500 mt-1">
                         Total de comisiones registradas
                       </p>
                     </div>
@@ -948,7 +948,7 @@ export default function Commissions() {
 
                     {/* Operational Subtabs for Super Admin */}
                     {isSuperAdmin && (
-                      <div className="flex items-center gap-1.5 p-1 bg-slate-100/80 rounded-lg border border-slate-200/80 self-start md:self-auto">
+                      <div className="flex flex-wrap items-center gap-1.5 p-1 bg-slate-100/80 rounded-lg border border-slate-200/80 self-start md:self-auto max-w-full">
                         <button
                           type="button"
                           onClick={() => {

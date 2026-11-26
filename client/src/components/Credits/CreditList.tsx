@@ -80,11 +80,7 @@ type UnifiedCreditItem = {
 
 // Ahora se usa configuración compartida desde @/lib/statusConfig
 
-function hasReceivedInstitutionProposal(target:any): boolean {
-  const proposal = target?.institutionProposal;
-  return !!target?.proposalReceivedAt && !!proposal && typeof proposal === "object" &&
-    !Array.isArray(proposal) && Number.isFinite(Number(proposal.approvedAmount)) && Number(proposal.approvedAmount)>0;
-}
+import { hasReceivedInstitutionProposal } from "@shared/institutionProposalPresentation";
 
 export default function CreditList() {
   const { user } = useAuth();
@@ -615,7 +611,7 @@ export default function CreditList() {
         )}
 
         {/* Subheader / Toolbar */}
-        <div className="p-4 sm:p-5 border-b border-slate-100 flex flex-col sm:flex-row gap-4 sm:items-center sm:justify-between bg-white">
+        <div className="p-3 sm:p-5 border-b border-slate-100 flex flex-col sm:flex-row gap-2 sm:gap-4 sm:items-center sm:justify-between bg-white">
           <div className="flex items-center gap-3">
             <h2 className="text-base font-semibold text-slate-900 tracking-tight">
               Operaciones registradas
@@ -625,8 +621,8 @@ export default function CreditList() {
             </span>
           </div>
 
-          <div className="flex items-center gap-3 flex-1 sm:max-w-md">
-            <div className="relative flex-1">
+          <div className="flex items-center gap-2 sm:gap-3 flex-1 min-w-0 sm:max-w-md">
+            <div className="relative flex-1 min-w-0">
               <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
               <Input
                 placeholder="Buscar por cliente, ID o monto..."
@@ -636,7 +632,7 @@ export default function CreditList() {
                 className="pl-9 h-9 text-xs placeholder:text-slate-400 border-slate-200 bg-slate-50/50 focus:bg-white transition-colors"
               />
             </div>
-            <div className="w-44">
+            <div className="w-28 sm:w-44 shrink-0">
               <Select value={filterStatus} onValueChange={setFilterStatus}>
                 <SelectTrigger data-testid="select-credit-status" className="h-9 text-xs border-slate-200 bg-white">
                   <SelectValue placeholder="Estado" />
@@ -664,7 +660,7 @@ export default function CreditList() {
 
         {/* Table Content */}
         {filteredItems.length === 0 ? (
-          <div className="text-center py-16 px-4">
+          <div className="text-center py-8 sm:py-16 px-4">
             <div className="w-12 h-12 rounded-full bg-slate-100 text-slate-400 flex items-center justify-center mx-auto mb-3">
               <FileText className="w-6 h-6" />
             </div>
@@ -679,8 +675,8 @@ export default function CreditList() {
           </div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[850px] text-left border-collapse">
-              <thead>
+            <table className="block sm:table w-full sm:min-w-[850px] text-left border-collapse">
+              <thead className="hidden sm:table-header-group">
                 <tr className="border-b border-slate-200 bg-slate-50/80 text-[11px] font-semibold uppercase tracking-wider text-slate-500 select-none">
                   <th className="py-3 px-4">Cliente / Expediente</th>
                   <th className="py-3 px-4">Producto / Vertical</th>
@@ -692,7 +688,7 @@ export default function CreditList() {
                   <th className="py-3 px-3 text-right">Acciones</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-100">
+              <tbody className="block sm:table-row-group divide-y divide-slate-200 sm:divide-slate-100">
                 {filteredItems.map((item) => {
                   const isMortgage = isMortgageItem(item);
                   const statusInfo = getStatusDisplay(item);
@@ -700,11 +696,11 @@ export default function CreditList() {
                     <tr
                       key={item.id}
                       onClick={() => handleItemClick(item)}
-                      className="hover:bg-slate-50/70 transition-colors cursor-pointer group h-[60px]"
+                      className="grid grid-cols-2 gap-x-2 gap-y-1 p-3 sm:table-row sm:p-0 hover:bg-slate-50/70 transition-colors cursor-pointer group sm:h-[60px]"
                       data-testid={`item-${item.id}`}
                     >
                       {/* 1. Cliente / Expediente */}
-                      <td className="py-3 px-4">
+                      <td className="block min-w-0 col-span-2 py-1 sm:table-cell sm:py-3 sm:px-4">
                         <div className="flex flex-col min-w-0">
                           <span 
                             className="text-sm font-semibold text-slate-900 group-hover:text-primary transition-colors" 
@@ -720,7 +716,7 @@ export default function CreditList() {
                       </td>
 
                       {/* 2. Producto / Vertical */}
-                      <td className="py-3 px-4">
+                      <td className="block min-w-0  py-1 sm:table-cell sm:py-3 sm:px-4"><span className="block sm:hidden text-[10px] font-medium text-slate-500 mb-0.5">Producto / Vertical</span>
                         {isMortgage ? (
                           <span 
                             data-testid={`badge-mortgage-${item.id}`} 
@@ -744,8 +740,8 @@ export default function CreditList() {
                       </td>
 
                       {/* 3. Monto */}
-                      <td className="py-3 px-4 text-right">
-                        <div className="flex flex-col items-end whitespace-nowrap">
+                      <td className="block min-w-0  py-1 sm:table-cell sm:py-3 sm:px-4 sm:text-right"><span className="block sm:hidden text-[10px] font-medium text-slate-500 mb-0.5">Monto</span>
+                        <div className="flex flex-col items-start sm:items-end break-words sm:whitespace-nowrap">
                           <span className="text-sm font-semibold text-slate-900 tabular-nums">
                             ${parseFloat(item.amount || '0').toLocaleString('es-MX')} MXN
                           </span>
@@ -760,7 +756,7 @@ export default function CreditList() {
                       </td>
 
                       {/* 4. Financiera */}
-                      <td className="py-2.5 px-4">
+                      <td className="block min-w-0  py-1 sm:table-cell sm:py-2.5 sm:px-4"><span className="block sm:hidden text-[10px] font-medium text-slate-500 mb-0.5">Financiera</span>
                         {(() => {
                           if (item.winningTargets && item.winningTargets.length > 0) {
                             const instName = item.winningTargets[0].financialInstitution?.name || 'Financiera Ganadora';
@@ -788,12 +784,12 @@ export default function CreditList() {
                       </td>
 
                       {/* 5. Estado */}
-                      <td className="py-2.5 px-4 text-center">
-                        <div className="flex flex-col items-center justify-center gap-0.5">
+                      <td className="block min-w-0  py-1 sm:table-cell sm:py-2.5 sm:px-4 sm:text-center"><span className="block sm:hidden text-[10px] font-medium text-slate-500 mb-0.5">Estado</span>
+                        <div className="flex flex-col items-start sm:items-center justify-center gap-0.5">
                           <span 
                             data-testid={`item-status-${item.id}`}
                             className={cn(
-                              "inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium border whitespace-nowrap",
+                              "inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium border whitespace-normal sm:whitespace-nowrap",
                               statusInfo.badgeClass
                             )}
                           >
@@ -809,7 +805,7 @@ export default function CreditList() {
                       </td>
 
                       {/* 6. Originador */}
-                      <td className="py-2.5 px-4">
+                      <td className="block min-w-0  py-1 sm:table-cell sm:py-2.5 sm:px-4"><span className="block sm:hidden text-[10px] font-medium text-slate-500 mb-0.5">Originador</span>
                         <div className="flex flex-col text-xs max-w-[170px]">
                           {item.broker ? (
                             <>
@@ -838,7 +834,7 @@ export default function CreditList() {
                       </td>
 
                       {/* 7. Actualizado */}
-                      <td className="py-2.5 px-3 text-center">
+                      <td className="block min-w-0  py-1 sm:table-cell sm:py-2.5 sm:px-3 sm:text-center"><span className="block sm:hidden text-[10px] font-medium text-slate-500 mb-0.5">Actualizado</span>
                         <span 
                           className="text-xs text-slate-500 whitespace-nowrap"
                           title={format(new Date(item.createdAt), "dd 'de' MMMM, yyyy HH:mm", { locale: es })}
@@ -848,19 +844,19 @@ export default function CreditList() {
                       </td>
 
                       {/* 8. Acciones */}
-                      <td className="py-2.5 px-3 text-right" onClick={(e) => e.stopPropagation()}>
+                      <td className="block min-w-0 col-span-2 py-1 sm:table-cell sm:py-2.5 sm:px-3 sm:text-right" onClick={(e) => e.stopPropagation()}>
                         <div className="flex items-center justify-end gap-1">
                           <Button
                             variant="outline"
                             size="sm"
-                            className="h-7 px-2.5 text-xs font-medium text-slate-700 hover:text-slate-900 border-slate-200 hover:bg-slate-50"
+                            className="h-10 sm:h-7 px-2.5 text-xs font-medium text-slate-700 hover:text-slate-900 border-slate-200 hover:bg-slate-50"
                             onClick={() => handleItemClick(item)}
                           >
                             Gestionar
                           </Button>
                           <DropdownMenu>
                             <DropdownMenuTrigger asChild>
-                              <Button variant="ghost" size="sm" className="h-7 w-7 p-0 text-slate-400 hover:text-slate-700">
+                              <Button variant="ghost" size="sm" className="h-10 w-10 sm:h-7 sm:w-7 p-0 text-slate-400 hover:text-slate-700">
                                 <MoreHorizontal className="w-4 h-4" />
                               </Button>
                             </DropdownMenuTrigger>

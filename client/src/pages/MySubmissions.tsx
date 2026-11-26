@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { hasReceivedInstitutionProposal } from "@shared/institutionProposalPresentation";
 import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@/hooks/useAuth";
 import MainLayout from "@/components/MainLayout";
@@ -532,7 +533,7 @@ export default function MySubmissions() {
                     <div className="space-y-2">
                       {selectedCredit.targets.map((target: any) => {
                         const isDispersedTarget = target.status === 'dispersed';
-                        const prop = target.institutionProposal;
+                        const prop = hasReceivedInstitutionProposal(target) ? target.institutionProposal : null;
                         return (
                           <div 
                             key={target.id}
