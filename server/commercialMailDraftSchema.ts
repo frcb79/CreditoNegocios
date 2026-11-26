@@ -1,3 +1,4 @@
+import {COMMERCIAL_MAIL_PLAN_SCHEMA_SQL} from "./commercialMailPlanSchema";
 export const COMMERCIAL_MAIL_DRAFT_SCHEMA_SQL = `
 CREATE TABLE IF NOT EXISTS public.commercial_mail_draft_revisions (
   draft_id varchar(36) NOT NULL,
@@ -20,4 +21,5 @@ DO $engagement$ BEGIN
     ALTER TABLE public.resend_delivery_events ADD CONSTRAINT resend_delivery_events_event_type_check CHECK(event_type IN ('email.sent','email.delivered','email.delivery_delayed','email.bounced','email.failed','email.complained','email.suppressed','email.opened','email.clicked'));
   END IF;
 END $engagement$;
+${COMMERCIAL_MAIL_PLAN_SCHEMA_SQL}
 `;

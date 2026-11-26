@@ -4,6 +4,7 @@ import {z} from "zod";
 import {pool} from "./db";
 import {storage} from "./storage";
 import {isAuthenticated} from "./auth";
+import {registerCommercialMailPlanRoutes} from "./commercialMailPlanRoutes";
 import {COMMERCIAL_MAIL_RECIPIENTS_SQL} from "./commercialMailRecipients";
 import {audiences,commercialMailSchema} from "../shared/commercialMailDrafts";
 const writeSchema=z.object({id:z.string().uuid().optional(),expectedRevision:z.number().int().min(0),content:commercialMailSchema}).strict();
@@ -47,5 +48,6 @@ export function registerCommercialMailDraftRoutes(app:Express){
     if(!z.string().uuid().safeParse(req.params.id).success)return res.status(400).json({message:"ID inválido"});
     try{const {rows}=await pool.query('SELECT draft_id AS id,revision,content,created_at AS "updatedAt" FROM public.commercial_mail_draft_revisions WHERE draft_id=$1 ORDER BY revision DESC LIMIT 100',[req.params.id]);return res.json(rows);}catch{return res.status(503).json({message:"No fue posible consultar versiones"});}
   });
-  // Intentionally no send, schedule, token creation or recipient export in this draft-only release.
+  registerCommercialMailPlanRoutes(app,isAuthenticated,guard);
+  // No send, token creation or recipient export in this release.
 }

@@ -1,0 +1,28 @@
+import {useState} from "react";
+import {useQuery,useMutation,useQueryClient} from "@tanstack/react-query";
+import {Button} from "@/components/ui/button";
+import {Input} from "@/components/ui/input";
+import {Card,CardHeader,CardTitle,CardContent} from "@/components/ui/card";
+import {apiRequest} from "@/lib/queryClient";
+import type {CommercialMailDraft} from "@shared/commercialMailDrafts";
+type Draft={id:string;revision:number;content:CommercialMailDraft};
+type Plan={id:string;draftId:string;revision:number;startsAt:string;state:"planned"|"cancelled";name:string;audience:string;recipientCount:number;jobCount:number};
+const endpoint="/api/admin/commercial-mail-plans";
+export default function CommercialMailPlans({drafts}:{drafts:Draft[]}){
+  const cache=useQueryClient();
+  const plans=useQuery<{plans:Plan[];dispatchEnabled:boolean}>({queryKey:[endpoint]});
+  const [id,setId]=useState(""),[start,setStart]=useState(""),[confirm,setConfirm]=useState(false),[message,setMessage]=useState("");
+  const draft=drafts.find(d=>d.id===id), date=new Date(start);
+  const valid=!!draft?.content.recipientIds?.length&&Number.isFinite(date.getTime())&&date.getTime()>Date.now()+60000;
+  const schedule=useMutation({mutationFn:async()=>{if(!draft||!valid||!confirm)throw Error("Revisa la selección.");return (await apiRequest("POST",endpoint,{draftId:draft.id,revision:draft.revision,startsAt:date.toISOString(),confirm:true})).json();},onSuccess:()=>{setConfirm(false);setMessage("Calendario preparado; ningún envío fue activado.");cache.invalidateQueries({queryKey:[endpoint]});},onError:(e:Error)=>setMessage(e.message)});
+  const cancel=useMutation({mutationFn:async(id:string)=>(await apiRequest("POST",endpoint+"/"+id+"/cancel",{})).json(),onSuccess:()=>{setMessage("Preparación cancelada.");cache.invalidateQueries({queryKey:[endpoint]});},onError:(e:Error)=>setMessage(e.message)});
+  return <Card><CardHeader><CardTitle className="text-sm">Calendario de campañas</CardTitle><p className="text-xs text-muted-foreground">Modo preparación: guarda fechas y destinatarios de una versión. No se enviarán correos automáticamente.</p></CardHeader><CardContent className="space-y-3">
+    <label className="block text-sm">Borrador guardado<select className="w-full border rounded-md h-10 bg-background" value={id} onChange={e=>{setId(e.target.value);setConfirm(false);}}><option value="">Selecciona una campaña</option>{drafts.map(d=><option key={d.id} value={d.id}>{d.content.name} · v{d.revision}</option>)}</select></label>
+    <label className="block text-sm">Inicio (hora local de este dispositivo)<Input type="datetime-local" value={start} onChange={e=>{setStart(e.target.value);setConfirm(false);}}/></label>
+    {draft&&<div className="border rounded-md p-3 space-y-2"><p className="text-sm font-medium">{draft.content.recipientIds?.length??0} destinatarios · {draft.content.steps.length} correos por destinatario</p>{draft.content.audience==="pending_registration"&&<p className="text-xs text-amber-700">Requiere coordinar recordatorios de invitación antes de autorizar envíos.</p>}{draft.content.steps.map(s=><div key={s.day} className="text-xs break-words">Día {s.day} · {Number.isFinite(date.getTime())?new Date(date.getTime()+(s.day-1)*86400000).toLocaleString("es-MX"):"Fecha pendiente"} · {s.subject}</div>)}</div>}
+    <label className="flex gap-2 items-start text-sm"><input type="checkbox" checked={confirm} onChange={e=>setConfirm(e.target.checked)}/> Confirmo que revisé el calendario y la versión guardada; sólo quiero preparar la campaña.</label>
+    <Button disabled={!valid||!confirm||schedule.isPending} onClick={()=>schedule.mutate()}>Preparar calendario</Button>
+    {message&&<p role="status" className="text-sm">{message}</p>}
+    {plans.isError?<p role="alert">No se pudo consultar el calendario.</p>:plans.isLoading?<p>Cargando…</p>:plans.data?.plans.map(p=><div key={p.id} className="border rounded-md p-3 flex flex-wrap items-center gap-2"><div className="flex-1 min-w-0"><p className="font-medium text-sm break-words">{p.name} · v{p.revision}</p><p className="text-xs text-muted-foreground">{new Date(p.startsAt).toLocaleString("es-MX")} · {p.recipientCount} destinatarios · {p.jobCount} envíos previstos · {p.state==="cancelled"?"Cancelada":"Preparada, sin envíos"}</p></div>{p.state==="planned"&&<Button variant="outline" size="sm" disabled={cancel.isPending} onClick={()=>cancel.mutate(p.id)}>Cancelar preparación</Button>}</div>)}
+  </CardContent></Card>;
+}
