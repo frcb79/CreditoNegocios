@@ -63,7 +63,12 @@ describe("Alta de clientes postlanzamiento — UX incremental", () => {
     expect(advanced).toContain('useState<string[]>([initialSection])');
     for (const group of ["income","bureau","guarantees","credits"]) expect(advanced.split(`data-financial-section="${group}"`).length-1).toBe(4);
     expect(advanced).toContain('setFinancialSection("all")');
+    expect(advanced).toContain('data-testid="profile-step-actions"');
+    expect(advanced).toContain('data-testid="profile-next"');
+    expect(advanced).toContain('Guardar y salir');
+    expect(advanced).toContain('Guardar perfil');
     const quick = source("client/src/components/Clients/QuickClientForm.tsx");
+    expect(quick).toContain('data-testid="quick-step-actions"');
     expect(quick).toContain('grid grid-cols-4');
     expect(quick).toContain('data-testid="quick-tab-matching"');
     expect(quick).toContain('data-testid="quick-save-and-profile"');
@@ -72,6 +77,16 @@ describe("Alta de clientes postlanzamiento — UX incremental", () => {
     expect(advanced).not.toContain("Estado civil es requerido para Persona Física");
     expect(source("shared/clientProfileValidation.ts")).toContain('data.atrasosDeudasBuro === "si"');
     expect(source("shared/clientProfileValidation.ts")).toContain('data.cuentaConGarantiaFisica === "hipotecaria"');
+  });
+
+  it("aplica superficies neutras solo al espacio autenticado y agrupa filtros",()=>{
+    const css=source("client/src/index.css");
+    expect(css).toContain(".cn-workspace main");
+    expect(css).toContain("--cn-panel-border: #c3d0de");
+    expect(css).toContain("--cn-panel-shadow: 0 1px 3px");
+    const list=source("client/src/components/Clients/ClientList.tsx");
+    expect(list.indexOf('data-testid="button-new-client"')).toBeLessThan(list.indexOf('data-testid="client-filters"'));
+    expect(list).toContain('data-testid="client-filters" className="grid grid-cols-2');
   });
 
   it("las sugerencias no inventan requisitos del catálogo ni scoring", () => {
