@@ -611,7 +611,7 @@ export default function CreditList() {
         )}
 
         {/* Subheader / Toolbar */}
-        <div className="p-4 sm:p-5 border-b border-slate-100 flex flex-col sm:flex-row gap-4 sm:items-center sm:justify-between bg-white">
+        <div className="p-3 sm:p-5 border-b border-slate-100 flex flex-col sm:flex-row gap-2 sm:gap-4 sm:items-center sm:justify-between bg-white">
           <div className="flex items-center gap-3">
             <h2 className="text-base font-semibold text-slate-900 tracking-tight">
               Operaciones registradas
@@ -621,8 +621,8 @@ export default function CreditList() {
             </span>
           </div>
 
-          <div className="flex items-center gap-3 flex-1 sm:max-w-md">
-            <div className="relative flex-1">
+          <div className="flex items-center gap-2 sm:gap-3 flex-1 min-w-0 sm:max-w-md">
+            <div className="relative flex-1 min-w-0">
               <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
               <Input
                 placeholder="Buscar por cliente, ID o monto..."
@@ -632,7 +632,7 @@ export default function CreditList() {
                 className="pl-9 h-9 text-xs placeholder:text-slate-400 border-slate-200 bg-slate-50/50 focus:bg-white transition-colors"
               />
             </div>
-            <div className="w-44">
+            <div className="w-28 sm:w-44 shrink-0">
               <Select value={filterStatus} onValueChange={setFilterStatus}>
                 <SelectTrigger data-testid="select-credit-status" className="h-9 text-xs border-slate-200 bg-white">
                   <SelectValue placeholder="Estado" />
@@ -659,7 +659,7 @@ export default function CreditList() {
 
         {/* Table Content */}
         {filteredItems.length === 0 ? (
-          <div className="text-center py-16 px-4">
+          <div className="text-center py-8 sm:py-16 px-4">
             <div className="w-12 h-12 rounded-full bg-slate-100 text-slate-400 flex items-center justify-center mx-auto mb-3">
               <FileText className="w-6 h-6" />
             </div>
