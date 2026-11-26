@@ -247,7 +247,7 @@ export default function LeasingLeadModal({ isOpen, onClose, existingClient, onSu
         </div>
         <DialogFooter className="p-4 pb-[max(1rem,env(safe-area-inset-bottom))] border-t bg-background flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
           <Button type="button" variant="outline" onClick={onClose} disabled={submit.isPending}>Cancelar</Button>
-          <Button type="button" onClick={handleSubmit} disabled={submit.isPending} data-testid="button-submit-leasing">
+          <Button type="button" onClick={handleSubmit} disabled={submit.isPending} className="min-h-11 sm:min-h-9 h-auto whitespace-normal" data-testid="button-submit-leasing">
             <CheckCircle2 className="h-4 w-4 mr-1.5" /> {submit.isPending ? "Guardando..." : "Registrar para cotización"}
           </Button>
         </DialogFooter>

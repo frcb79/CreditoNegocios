@@ -973,7 +973,7 @@ export default function MortgageLeadModal({
               <Button
                 type="submit"
                 disabled={saveLeadMutation.isPending}
-                className="bg-amber-600 hover:bg-amber-700 text-white font-medium"
+                className="min-h-11 sm:min-h-9 h-auto whitespace-normal bg-amber-600 hover:bg-amber-700 text-white font-medium"
                 data-testid="button-save-mortgage-lead"
               >
                 {saveLeadMutation.isPending ? (

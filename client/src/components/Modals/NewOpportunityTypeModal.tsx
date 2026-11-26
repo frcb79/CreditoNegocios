@@ -51,8 +51,10 @@ export default function NewOpportunityTypeModal({
               onClose();
               onSelectEmpresarial();
             }}
+            role="button" tabIndex={0}
+            onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onClose(); onSelectEmpresarial(); } }}
             data-testid="option-select-empresarial"
-            className="group cursor-pointer border-2 border-gray-200 hover:border-blue-500 hover:shadow-md transition-all duration-200 bg-white hover:bg-blue-50/20"
+            className="group cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary border-2 border-gray-200 hover:border-blue-500 hover:shadow-md transition-all duration-200 bg-white hover:bg-blue-50/20"
           >
             <CardContent className="p-3 sm:p-5 flex flex-col justify-between h-full">
               <div className="space-y-3">
@@ -82,8 +84,10 @@ export default function NewOpportunityTypeModal({
               onClose();
               onSelectHipotecario();
             }}
+            role="button" tabIndex={0}
+            onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onClose(); onSelectHipotecario(); } }}
             data-testid="option-select-hipotecario"
-            className="group cursor-pointer border-2 border-amber-200 hover:border-amber-500 hover:shadow-md transition-all duration-200 bg-gradient-to-b from-amber-50/30 to-white"
+            className="group cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary border-2 border-amber-200 hover:border-amber-500 hover:shadow-md transition-all duration-200 bg-gradient-to-b from-amber-50/30 to-white"
           >
             <CardContent className="p-3 sm:p-5 flex flex-col justify-between h-full">
               <div className="space-y-3">
@@ -114,8 +118,10 @@ export default function NewOpportunityTypeModal({
           {/* Opción C: Arrendamiento - cotización inicial con datos mínimos */}
           <Card
             onClick={() => { onClose(); onSelectArrendamiento(); }}
+            role="button" tabIndex={0}
+            onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onClose(); onSelectArrendamiento(); } }}
             data-testid="option-select-arrendamiento"
-            className="group cursor-pointer border-2 border-teal-200 hover:border-teal-500 hover:shadow-md transition-all duration-200 bg-white hover:bg-teal-50/20"
+            className="group cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary border-2 border-teal-200 hover:border-teal-500 hover:shadow-md transition-all duration-200 bg-white hover:bg-teal-50/20"
           >
             <CardContent className="p-3 sm:p-5 flex flex-col justify-between h-full">
               <div className="space-y-3">
