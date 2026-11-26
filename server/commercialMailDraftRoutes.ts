@@ -4,7 +4,8 @@ import {z} from "zod";
 import {pool} from "./db";
 import {storage} from "./storage";
 import {isAuthenticated} from "./auth";
-import {commercialMailSchema} from "../shared/commercialMailDrafts";
+import {COMMERCIAL_MAIL_RECIPIENTS_SQL} from "./commercialMailRecipients";
+import {audiences,commercialMailSchema} from "../shared/commercialMailDrafts";
 const writeSchema=z.object({id:z.string().uuid().optional(),expectedRevision:z.number().int().min(0),content:commercialMailSchema}).strict();
 export function registerCommercialMailDraftRoutes(app:Express){
   const guard=async(req:any,res:any,next:any)=>{
@@ -13,6 +14,14 @@ export function registerCommercialMailDraftRoutes(app:Express){
   };
   app.get("/api/admin/commercial-mail-drafts",isAuthenticated,guard,async(_req,res)=>{
     try{const {rows}=await pool.query(`SELECT DISTINCT ON(draft_id) draft_id AS id,revision,content,created_at AS "updatedAt" FROM public.commercial_mail_draft_revisions ORDER BY draft_id,revision DESC`);res.json(rows);}catch{return res.status(503).json({message:"No fue posible consultar borradores"});}
+  });
+  app.get("/api/admin/commercial-mail-drafts/recipients",isAuthenticated,guard,async(req,res)=>{
+    const audience=z.enum(audiences).safeParse(req.query.audience);
+    if(!audience.success)return res.status(400).json({message:"Audiencia inválida"});
+    try{const {rows}=await pool.query(COMMERCIAL_MAIL_RECIPIENTS_SQL,[audience.data]);
+      if(rows.length>500)return res.status(422).json({message:"Audiencia supera 500 candidatos; requiere paginación antes de continuar."});
+      return res.json({recipients:rows});
+    }catch{return res.status(503).json({message:"No fue posible calcular destinatarios"});}
   });
   app.post("/api/admin/commercial-mail-drafts",isAuthenticated,guard,async(req:any,res)=>{
     const parsed=writeSchema.safeParse(req.body);if(!parsed.success)return res.status(400).json({message:parsed.error.issues[0]?.message||"Borrador inválido"});

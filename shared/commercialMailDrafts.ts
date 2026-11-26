@@ -1,6 +1,7 @@
 import {z} from "zod";
 export const audiences=["pending_registration","registered_no_requests","individual","newsletter"] as const;
-export const commercialMailSchema=z.object({name:z.string().trim().min(3).max(120),audience:z.enum(audiences),steps:z.array(z.object({day:z.number().int().min(1).max(90),subject:z.string().trim().min(3).max(180),body:z.string().trim().min(10).max(12000),cta:z.enum(["activate","login","reply","none"])}).strict()).min(1).max(12)}).strict().superRefine((v,ctx)=>{
+export const commercialMailSchema=z.object({name:z.string().trim().min(3).max(120),audience:z.enum(audiences),recipientIds:z.array(z.string().min(1).max(100)).max(500).optional(),steps:z.array(z.object({day:z.number().int().min(1).max(90),subject:z.string().trim().min(3).max(180),body:z.string().trim().min(10).max(12000),cta:z.enum(["activate","login","reply","none"])}).strict()).min(1).max(12)}).strict().superRefine((v,ctx)=>{
+  if(v.recipientIds && new Set(v.recipientIds).size!==v.recipientIds.length)ctx.addIssue({code:"custom",path:["recipientIds"],message:"No se permiten destinatarios duplicados."});
   if(v.steps.some((s,i)=>i>0&&s.day<=v.steps[i-1].day))ctx.addIssue({code:"custom",path:["steps"],message:"Los días deben ser únicos y ascendentes."});
   if(v.steps.some(s=>s.cta==="activate"&&v.audience!=="pending_registration"))ctx.addIssue({code:"custom",path:["steps"],message:"El enlace de activación sólo aplica a registros pendientes."});
 });
