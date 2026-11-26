@@ -20,6 +20,7 @@ on:
       - 'fix/matching-ofertas-v5-*'
       - 'fix/matching-partial-opportunities-*'
       - 'fix/backoffice-delegated-capture-*'
+      - 'fix/mobile-commercial-capture-*'
       - 'feat/commercial-mail-manager-*'
       - 'fix/final-audit-publication*'
       - 'fix/master-network-rates-*'

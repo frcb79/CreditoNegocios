@@ -27,7 +27,7 @@ export default function NewOpportunityTypeModal({
 }: NewOpportunityTypeModalProps) {
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="sm:max-w-3xl p-6">
+      <DialogContent className="w-[calc(100%-1rem)] sm:w-full sm:max-w-3xl max-h-[92dvh] overflow-y-auto overscroll-contain rounded-lg p-4 sm:p-6">
         <DialogHeader className="text-center sm:text-left">
           <div className="flex items-center space-x-2">
             <div className="p-2 bg-blue-100 rounded-lg text-primary">
@@ -44,17 +44,19 @@ export default function NewOpportunityTypeModal({
           </div>
         </DialogHeader>
 
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-4">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 sm:gap-4 mt-2 sm:mt-4">
           {/* Opción A: Crédito Empresarial */}
           <Card
             onClick={() => {
               onClose();
               onSelectEmpresarial();
             }}
+            role="button" tabIndex={0}
+            onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onClose(); onSelectEmpresarial(); } }}
             data-testid="option-select-empresarial"
-            className="group cursor-pointer border-2 border-gray-200 hover:border-blue-500 hover:shadow-md transition-all duration-200 bg-white hover:bg-blue-50/20"
+            className="group cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary border-2 border-gray-200 hover:border-blue-500 hover:shadow-md transition-all duration-200 bg-white hover:bg-blue-50/20"
           >
-            <CardContent className="p-5 flex flex-col justify-between h-full">
+            <CardContent className="p-3 sm:p-5 flex flex-col justify-between h-full">
               <div className="space-y-3">
                 <div className="w-12 h-12 rounded-xl bg-blue-100 text-blue-700 flex items-center justify-center group-hover:scale-105 transition-transform">
                   <Building2 className="w-6 h-6" />
@@ -82,10 +84,12 @@ export default function NewOpportunityTypeModal({
               onClose();
               onSelectHipotecario();
             }}
+            role="button" tabIndex={0}
+            onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onClose(); onSelectHipotecario(); } }}
             data-testid="option-select-hipotecario"
-            className="group cursor-pointer border-2 border-amber-200 hover:border-amber-500 hover:shadow-md transition-all duration-200 bg-gradient-to-b from-amber-50/30 to-white"
+            className="group cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary border-2 border-amber-200 hover:border-amber-500 hover:shadow-md transition-all duration-200 bg-gradient-to-b from-amber-50/30 to-white"
           >
-            <CardContent className="p-5 flex flex-col justify-between h-full">
+            <CardContent className="p-3 sm:p-5 flex flex-col justify-between h-full">
               <div className="space-y-3">
                 <div className="flex items-center justify-between">
                   <div className="w-12 h-12 rounded-xl bg-amber-100 text-amber-700 flex items-center justify-center group-hover:scale-105 transition-transform">
@@ -114,10 +118,12 @@ export default function NewOpportunityTypeModal({
           {/* Opción C: Arrendamiento - cotización inicial con datos mínimos */}
           <Card
             onClick={() => { onClose(); onSelectArrendamiento(); }}
+            role="button" tabIndex={0}
+            onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onClose(); onSelectArrendamiento(); } }}
             data-testid="option-select-arrendamiento"
-            className="group cursor-pointer border-2 border-teal-200 hover:border-teal-500 hover:shadow-md transition-all duration-200 bg-white hover:bg-teal-50/20"
+            className="group cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary border-2 border-teal-200 hover:border-teal-500 hover:shadow-md transition-all duration-200 bg-white hover:bg-teal-50/20"
           >
-            <CardContent className="p-5 flex flex-col justify-between h-full">
+            <CardContent className="p-3 sm:p-5 flex flex-col justify-between h-full">
               <div className="space-y-3">
                 <div className="flex items-center justify-between">
                   <div className="w-12 h-12 rounded-xl bg-teal-100 text-teal-700 flex items-center justify-center group-hover:scale-105 transition-transform">
