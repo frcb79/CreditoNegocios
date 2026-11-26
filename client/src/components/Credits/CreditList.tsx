@@ -674,8 +674,8 @@ export default function CreditList() {
           </div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[850px] text-left border-collapse">
-              <thead>
+            <table className="block sm:table w-full sm:min-w-[850px] text-left border-collapse">
+              <thead className="hidden sm:table-header-group">
                 <tr className="border-b border-slate-200 bg-slate-50/80 text-[11px] font-semibold uppercase tracking-wider text-slate-500 select-none">
                   <th className="py-3 px-4">Cliente / Expediente</th>
                   <th className="py-3 px-4">Producto / Vertical</th>
@@ -687,7 +687,7 @@ export default function CreditList() {
                   <th className="py-3 px-3 text-right">Acciones</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-100">
+              <tbody className="block sm:table-row-group divide-y divide-slate-200 sm:divide-slate-100">
                 {filteredItems.map((item) => {
                   const isMortgage = isMortgageItem(item);
                   const statusInfo = getStatusDisplay(item);
@@ -695,11 +695,11 @@ export default function CreditList() {
                     <tr
                       key={item.id}
                       onClick={() => handleItemClick(item)}
-                      className="hover:bg-slate-50/70 transition-colors cursor-pointer group h-[60px]"
+                      className="grid grid-cols-2 gap-x-2 gap-y-1 p-3 sm:table-row sm:p-0 hover:bg-slate-50/70 transition-colors cursor-pointer group sm:h-[60px]"
                       data-testid={`item-${item.id}`}
                     >
                       {/* 1. Cliente / Expediente */}
-                      <td className="py-3 px-4">
+                      <td className="block min-w-0 col-span-2 py-1 sm:table-cell sm:py-3 sm:px-4">
                         <div className="flex flex-col min-w-0">
                           <span 
                             className="text-sm font-semibold text-slate-900 group-hover:text-primary transition-colors" 
@@ -715,7 +715,7 @@ export default function CreditList() {
                       </td>
 
                       {/* 2. Producto / Vertical */}
-                      <td className="py-3 px-4">
+                      <td className="block min-w-0  py-1 sm:table-cell sm:py-3 sm:px-4"><span className="block sm:hidden text-[10px] font-medium text-slate-500 mb-0.5">Producto / Vertical</span>
                         {isMortgage ? (
                           <span 
                             data-testid={`badge-mortgage-${item.id}`} 
@@ -739,8 +739,8 @@ export default function CreditList() {
                       </td>
 
                       {/* 3. Monto */}
-                      <td className="py-3 px-4 text-right">
-                        <div className="flex flex-col items-end whitespace-nowrap">
+                      <td className="block min-w-0  py-1 sm:table-cell sm:py-3 sm:px-4 sm:text-right"><span className="block sm:hidden text-[10px] font-medium text-slate-500 mb-0.5">Monto</span>
+                        <div className="flex flex-col items-start sm:items-end break-words sm:whitespace-nowrap">
                           <span className="text-sm font-semibold text-slate-900 tabular-nums">
                             ${parseFloat(item.amount || '0').toLocaleString('es-MX')} MXN
                           </span>
@@ -755,7 +755,7 @@ export default function CreditList() {
                       </td>
 
                       {/* 4. Financiera */}
-                      <td className="py-2.5 px-4">
+                      <td className="block min-w-0  py-1 sm:table-cell sm:py-2.5 sm:px-4"><span className="block sm:hidden text-[10px] font-medium text-slate-500 mb-0.5">Financiera</span>
                         {(() => {
                           if (item.winningTargets && item.winningTargets.length > 0) {
                             const instName = item.winningTargets[0].financialInstitution?.name || 'Financiera Ganadora';
@@ -783,12 +783,12 @@ export default function CreditList() {
                       </td>
 
                       {/* 5. Estado */}
-                      <td className="py-2.5 px-4 text-center">
-                        <div className="flex flex-col items-center justify-center gap-0.5">
+                      <td className="block min-w-0  py-1 sm:table-cell sm:py-2.5 sm:px-4 sm:text-center"><span className="block sm:hidden text-[10px] font-medium text-slate-500 mb-0.5">Estado</span>
+                        <div className="flex flex-col items-start sm:items-center justify-center gap-0.5">
                           <span 
                             data-testid={`item-status-${item.id}`}
                             className={cn(
-                              "inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium border whitespace-nowrap",
+                              "inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium border whitespace-normal sm:whitespace-nowrap",
                               statusInfo.badgeClass
                             )}
                           >
@@ -804,7 +804,7 @@ export default function CreditList() {
                       </td>
 
                       {/* 6. Originador */}
-                      <td className="py-2.5 px-4">
+                      <td className="block min-w-0  py-1 sm:table-cell sm:py-2.5 sm:px-4"><span className="block sm:hidden text-[10px] font-medium text-slate-500 mb-0.5">Originador</span>
                         <div className="flex flex-col text-xs max-w-[170px]">
                           {item.broker ? (
                             <>
@@ -833,7 +833,7 @@ export default function CreditList() {
                       </td>
 
                       {/* 7. Actualizado */}
-                      <td className="py-2.5 px-3 text-center">
+                      <td className="block min-w-0  py-1 sm:table-cell sm:py-2.5 sm:px-3 sm:text-center"><span className="block sm:hidden text-[10px] font-medium text-slate-500 mb-0.5">Actualizado</span>
                         <span 
                           className="text-xs text-slate-500 whitespace-nowrap"
                           title={format(new Date(item.createdAt), "dd 'de' MMMM, yyyy HH:mm", { locale: es })}
@@ -843,19 +843,19 @@ export default function CreditList() {
                       </td>
 
                       {/* 8. Acciones */}
-                      <td className="py-2.5 px-3 text-right" onClick={(e) => e.stopPropagation()}>
+                      <td className="block min-w-0 col-span-2 py-1 sm:table-cell sm:py-2.5 sm:px-3 sm:text-right" onClick={(e) => e.stopPropagation()}>
                         <div className="flex items-center justify-end gap-1">
                           <Button
                             variant="outline"
                             size="sm"
-                            className="h-7 px-2.5 text-xs font-medium text-slate-700 hover:text-slate-900 border-slate-200 hover:bg-slate-50"
+                            className="h-10 sm:h-7 px-2.5 text-xs font-medium text-slate-700 hover:text-slate-900 border-slate-200 hover:bg-slate-50"
                             onClick={() => handleItemClick(item)}
                           >
                             Gestionar
                           </Button>
                           <DropdownMenu>
                             <DropdownMenuTrigger asChild>
-                              <Button variant="ghost" size="sm" className="h-7 w-7 p-0 text-slate-400 hover:text-slate-700">
+                              <Button variant="ghost" size="sm" className="h-10 w-10 sm:h-7 sm:w-7 p-0 text-slate-400 hover:text-slate-700">
                                 <MoreHorizontal className="w-4 h-4" />
                               </Button>
                             </DropdownMenuTrigger>

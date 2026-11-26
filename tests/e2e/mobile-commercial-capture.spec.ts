@@ -28,6 +28,14 @@ for(const [device,profile,engine] of [["iPhone 13",devices["iPhone 13"],webkit],
         const page=await context.newPage();await page.goto("/");
         await page.locator("#login-email").fill(email!);await page.locator("#login-password").fill(password!);await page.locator('button[type="submit"]').click();
         await expect(page.locator("#login-email")).toBeHidden({timeout:20000});
+        await page.goto("/");
+        const metrics=page.getByTestId("metrics-grid");
+        await expect(metrics).toBeVisible();
+        expect(await metrics.evaluate(el=>getComputedStyle(el).gridTemplateColumns.split(" ").length)).toBe(2);
+        await noPageOverflow(page);
+        await page.goto("/comisiones");
+        await expect(page.getByTestId("input-search-commissions")).toBeVisible();
+        await noPageOverflow(page);
         const open=async()=>{await page.goto("/clientes");await page.getByTestId("button-new-client").click();await expect(page.getByRole("dialog")).toBeVisible();};
         await open();await page.getByTestId("option-select-empresarial").click();
         await expect(page.getByTestId("quick-client-form")).toBeVisible();
