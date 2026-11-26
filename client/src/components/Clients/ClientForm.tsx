@@ -4017,7 +4017,7 @@ export default function ClientForm({ client, onSuccess, onPublicSubmit, submitLa
                 onClick={() => onSuccess?.()}
                 data-testid="button-cancel"
               >
-                {onPublicSubmit ? "Volver" : "Cancelar"}
+                Volver
               </Button>
               <Button 
                 type="submit" 
@@ -4026,7 +4026,7 @@ export default function ClientForm({ client, onSuccess, onPublicSubmit, submitLa
                 data-testid="button-submit-client"
               >
                 {isLoading && <i className="fas fa-spinner fa-spin mr-2"></i>}
-                {onPublicSubmit ? (submitLabel || "Enviar mi información") : client ? "Actualizar Cliente" : "Crear Cliente"}
+                {submitLabel || "Enviar mi información"}
               </Button>
             </div>
 
