@@ -296,14 +296,16 @@ export default function QuickClientForm({
               {requestError && <Alert variant="destructive" role="alert"><AlertDescription>{requestError}</AlertDescription></Alert>}
             </section>
           </div>
-          <div className="sticky bottom-0 z-10 border-t bg-background/95 backdrop-blur p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:px-6 flex flex-wrap gap-2 items-center sm:justify-end shadow-sm">
-            <Button type="button" variant="outline" onClick={onCancel} disabled={saving}>Cancelar</Button>
-            <Button type="submit" value="save" variant="outline" className="min-h-11 flex-1 sm:flex-none sm:min-h-9" disabled={saving || checking} data-testid="button-submit-client">
+          <div className="cn-form-actions sticky bottom-0 z-10 p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:px-6 space-y-2" data-testid="quick-form-actions">
+            <div className="flex items-center justify-between gap-2"><Button type="button" variant="ghost" className="h-9 text-xs" onClick={onCancel} disabled={saving}>Cancelar</Button>
+            <Button type="submit" value="save" variant="outline" className="h-9 text-xs" disabled={saving || checking} data-testid="button-submit-client">
               {saving ? <Loader2 className="h-4 w-4 mr-1.5 animate-spin" /> : null}
               {saving ? "Guardando..." : "Guardar prospecto"}
             </Button>
-            {section==="matching" && <Button type="button" variant="ghost" onClick={()=>setSection("contact")} disabled={saving||checking}>Anterior</Button>}
-            {section==="contact" ? <Button type="button" onClick={advanceContact} className="min-h-11 w-full sm:w-auto" disabled={saving||checking} data-testid="quick-next-matching">Siguiente: datos del negocio <ArrowRight className="w-4 h-4 ml-1"/></Button> : <Button type="submit" value="profile" className="min-h-11 w-full sm:w-auto" disabled={saving||checking} data-testid="quick-save-and-profile">Siguiente: perfil financiero <ArrowRight className="w-4 h-4 ml-1"/></Button>}
+            </div>
+            <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,2fr)] gap-2" data-testid="quick-step-actions"><Button type="button" variant="outline" className="h-11 px-2" onClick={()=>setSection("contact")} disabled={section==="contact"||saving||checking}>Anterior</Button>
+            {section==="contact" ? <Button type="button" onClick={advanceContact} className="h-11 min-w-0 px-2 whitespace-normal text-xs sm:text-sm" disabled={saving||checking} data-testid="quick-next-matching">Siguiente: datos del negocio <ArrowRight className="w-4 h-4 ml-1"/></Button> : <Button type="submit" value="profile" className="h-11 min-w-0 px-2 whitespace-normal text-xs sm:text-sm" disabled={saving||checking} data-testid="quick-save-and-profile">Siguiente: perfil financiero <ArrowRight className="w-4 h-4 ml-1"/></Button>}
+            </div>
           </div>
         </form>
       </CardContent>

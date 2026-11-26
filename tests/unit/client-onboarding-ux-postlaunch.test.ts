@@ -63,6 +63,11 @@ describe("Alta de clientes postlanzamiento — UX incremental", () => {
     expect(advanced).toContain('useState<string[]>([initialSection])');
     for (const group of ["income","bureau","guarantees","credits"]) expect(advanced.split(`data-financial-section="${group}"`).length-1).toBe(4);
     expect(advanced).toContain('setFinancialSection("all")');
+    expect(advanced).toContain('data-testid="profile-step-actions"');
+    expect(advanced).toContain('data-testid="profile-next"');
+    expect(advanced).toContain('Guardar y salir');
+    expect(advanced).toContain('Guardar perfil');
+    expect(quick).toContain('data-testid="quick-step-actions"');
     const quick = source("client/src/components/Clients/QuickClientForm.tsx");
     expect(quick).toContain('grid grid-cols-4');
     expect(quick).toContain('data-testid="quick-tab-matching"');

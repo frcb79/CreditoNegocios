@@ -13,10 +13,10 @@ async function fits(page:Page,locator:Locator){
 async function noPageOverflow(page:Page){
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth+2)).toBe(true);
 }
-for(const [device,profile,engine] of [["iPhone 13",devices["iPhone 13"],webkit],["Pixel 7",devices["Pixel 7"],chromium]] as const){
+for(const [device,profile,engine] of [["iPhone SE",devices["iPhone SE"],webkit],["iPhone 13",devices["iPhone 13"],webkit],["Pixel 7",devices["Pixel 7"],chromium]] as const){
   for(const role of ["BRK","MB"] as const){
     test(device+" / "+role+" — client and opportunity entry",async()=>{
-      test.setTimeout(90000);
+      test.setTimeout(120000);
       const email=process.env["STAGING_"+role+"_EMAIL"],password=process.env["STAGING_"+role+"_PASSWORD"],base=process.env.STAGING_URL;
       test.skip(!email||!password||!base,"Dedicated staging account and URL required.");
       const url=new URL(base!);
@@ -36,7 +36,9 @@ for(const [device,profile,engine] of [["iPhone 13",devices["iPhone 13"],webkit],
         await page.goto("/comisiones");
         await expect(page.getByTestId("input-search-commissions")).toBeVisible();
         await noPageOverflow(page);
-        const open=async()=>{await page.goto("/clientes");await page.getByTestId("button-new-client").click();await expect(page.getByRole("dialog")).toBeVisible();};
+        const open=async()=>{await page.goto("/clientes");await expect(page.getByTestId("client-filters")).toBeVisible();
+          const type=await page.getByTestId("select-client-type").boundingBox(),state=await page.getByTestId("select-commercial-filter").boundingBox();
+          expect(type&&state&&Math.abs(type.y-state.y)<3).toBe(true);await fits(page,page.getByTestId("button-new-client"));await page.getByTestId("button-new-client").click();await expect(page.getByRole("dialog")).toBeVisible();};
         await open();await page.getByTestId("option-select-empresarial").click();
         await expect(page.getByTestId("quick-client-form")).toBeVisible();
         const types=await page.locator('[data-testid^="quick-type-"]').all();
@@ -59,6 +61,29 @@ for(const [device,profile,engine] of [["iPhone 13",devices["iPhone 13"],webkit],
         await expect(page.getByTestId("quick-client-industry")).toHaveValue("Comercio");
         await fits(page,page.getByTestId("quick-save-and-profile"));
         await fits(page,page.getByTestId("button-submit-client"));await noPageOverflow(page);
+        // Intercept both write endpoints; this tests the handoff and buttons without creating a real prospect.
+        const fakeId="00000000-0000-4000-8000-000000000095";
+        await page.route("**/api/clients/check-duplicates",route=>route.fulfill({json:{clientExists:false}}));
+        await page.route("**/api/clients",async route=>{
+          if(route.request().method()==="POST"){
+            const body=route.request().postDataJSON();
+            await route.fulfill({status:201,json:{...body,id:fakeId,createdAt:new Date().toISOString(),updatedAt:new Date().toISOString()}});
+          }else await route.continue();
+        });
+        await page.getByTestId("quick-save-and-profile").click();
+        await expect(page.getByTestId("client-advanced-profile-form")).toBeVisible();
+        const next=page.getByTestId("profile-next"),prev=page.getByTestId("profile-previous");
+        await expect(next).toHaveText("Siguiente: Buró");
+        for(const [label,tab] of [["Siguiente: Buró","bureau"],["Siguiente: Garantías / SAT","guarantees"],["Siguiente: Créditos","credits"]] as const){
+          await expect(next).toHaveText(label);
+          await fits(page,next);await fits(page,prev);
+          const n=await next.boundingBox(),p=await prev.boundingBox();expect(n&&p&&Math.abs(n.y-p.y)<3).toBe(true);
+          await next.click();await expect(page.getByTestId("financial-tab-"+tab)).toHaveAttribute("aria-pressed","true");
+        }
+        await expect(page.getByTestId("button-submit-client")).toHaveText("Guardar perfil");
+        await fits(page,page.getByTestId("button-submit-client"));await noPageOverflow(page);
+        await prev.click();await expect(page.getByTestId("financial-tab-guarantees")).toHaveAttribute("aria-pressed","true");
+        await page.unroute("**/api/clients/check-duplicates");await page.unroute("**/api/clients");
         await open();await page.getByTestId("option-select-hipotecario").click();
         await expect(page.getByRole("dialog")).toBeVisible();await fits(page,page.getByTestId("button-save-mortgage-lead"));await noPageOverflow(page);
         await open();await page.getByTestId("option-select-arrendamiento").click();

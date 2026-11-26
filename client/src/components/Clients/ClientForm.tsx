@@ -259,6 +259,14 @@ export default function ClientForm({ client, onSuccess, onPublicSubmit, submitLa
   };
 
   const isLoading = createMutation.isPending || updateMutation.isPending || publicMutation.isPending;
+  const financialIndex = financialSections.findIndex(s=>s.id===financialSection);
+  const inFinancial = openSections.includes("perfilamiento");
+  const nextFinancial = inFinancial && financialIndex>=0 ? financialSections[financialIndex+1] : undefined;
+  const hasNext = !inFinancial || !!nextFinancial;
+  const goSection = (section: "datos-basicos" | "perfilamiento", step?: typeof financialSections[number]["id"]) => {
+    setOpenSections([section]); if(step) setFinancialSection(step);
+    requestAnimationFrame(()=>document.getElementById(section==="perfilamiento"?"financial-step-navigation":"profile-step-navigation")?.scrollIntoView({block:"start"}));
+  };
 
   return (
     <Card className="border-border/80 shadow-sm max-w-5xl mx-auto" data-testid="client-advanced-profile-form">
@@ -273,9 +281,9 @@ export default function ClientForm({ client, onSuccess, onPublicSubmit, submitLa
             setFinancialSection("all");
             toast({ title: "Revisa los campos señalados", description: "Completa solo los detalles condicionados por tus respuestas.", variant: "destructive" });
           })} className="space-y-6">
-            {!onPublicSubmit && <nav aria-label="Secciones del perfil" className="sticky top-0 z-10 grid grid-cols-2 gap-1 bg-background border rounded-lg p-1 shadow-sm">
-              <Button type="button" aria-pressed={openSections.includes("datos-basicos")} variant={openSections.includes("datos-basicos")?"default":"ghost"} onClick={()=>setOpenSections(["datos-basicos"])} data-testid="advanced-tab-contact" className="min-h-11 whitespace-normal text-xs sm:text-sm">Contacto / negocio</Button>
-              <Button type="button" aria-pressed={openSections.includes("perfilamiento")} variant={openSections.includes("perfilamiento")?"default":"ghost"} onClick={()=>setOpenSections(["perfilamiento"])} data-testid="advanced-tab-financial" className="min-h-11 whitespace-normal text-xs sm:text-sm">3. Perfil financiero</Button>
+            {!onPublicSubmit && <nav id="profile-step-navigation" aria-label="Secciones del perfil" className="sticky top-0 z-10 grid grid-cols-2 gap-1 bg-background border rounded-lg p-1 shadow-sm">
+              <Button type="button" aria-pressed={openSections.includes("datos-basicos")} variant={openSections.includes("datos-basicos")?"default":"ghost"} onClick={()=>goSection("datos-basicos")} data-testid="advanced-tab-contact" className="min-h-11 whitespace-normal text-xs sm:text-sm">Contacto / negocio</Button>
+              <Button type="button" aria-pressed={openSections.includes("perfilamiento")} variant={openSections.includes("perfilamiento")?"default":"ghost"} onClick={()=>goSection("perfilamiento")} data-testid="advanced-tab-financial" className="min-h-11 whitespace-normal text-xs sm:text-sm">3. Perfil financiero</Button>
             </nav>}
             {/* Client Type Selection */}
             <div className="space-y-2" hidden={!onPublicSubmit && !openSections.includes("datos-basicos")}>
@@ -1356,7 +1364,7 @@ export default function ClientForm({ client, onSuccess, onPublicSubmit, submitLa
                       </CardTitle>
                     </CardHeader>
                     <CardContent className="space-y-6 p-3 sm:p-6">
-                      {!onPublicSubmit && <div className="space-y-2"><nav aria-label="Información financiera" className="grid grid-cols-4 gap-1 rounded-lg border bg-background p-1">{financialSections.map(s=><Button key={s.id} type="button" variant={financialSection===s.id?"default":"ghost"} aria-pressed={financialSection===s.id} data-testid={"financial-tab-"+s.id} className="min-h-11 min-w-0 px-1 whitespace-normal text-[11px] sm:text-sm" onClick={()=>setFinancialSection(s.id)}>{s.label}</Button>)}</nav><p className="text-xs text-muted-foreground">Completa lo que conozcas. Puedes cambiar de sección sin perder tus respuestas.</p></div>}
+                      {!onPublicSubmit && <div className="space-y-2"><nav id="financial-step-navigation" aria-label="Información financiera" className="grid grid-cols-4 gap-1 rounded-lg border bg-background p-1">{financialSections.map(s=><Button key={s.id} type="button" variant={financialSection===s.id?"default":"ghost"} aria-pressed={financialSection===s.id} data-testid={"financial-tab-"+s.id} className="min-h-11 min-w-0 px-1 whitespace-normal text-[11px] sm:text-sm" onClick={()=>goSection("perfilamiento",s.id)}>{s.label}</Button>)}</nav><p className="text-xs text-muted-foreground">Completa lo que conozcas. Puedes cambiar de sección sin perder tus respuestas.</p></div>}
                       {/* Campos específicos de perfilamiento para Persona Física */}
                       {clientType === "fisica" && (
                         <>
@@ -4001,10 +4009,8 @@ export default function ClientForm({ client, onSuccess, onPublicSubmit, submitLa
               </p>
             </div>
 
+            {onPublicSubmit ? (
             <div className="sticky bottom-0 z-10 flex flex-wrap justify-end gap-2 border-t bg-background/95 backdrop-blur py-3 px-1 shadow-sm">
-              {!onPublicSubmit && openSections.includes("perfilamiento") && financialSection!=="all" && financialSection!=="income" && <Button type="button" variant="ghost" className="min-h-11" onClick={()=>{const i=financialSections.findIndex(s=>s.id===financialSection);setFinancialSection(financialSections[i-1].id);}}>Anterior</Button>}
-              {!onPublicSubmit && openSections.includes("perfilamiento") && financialSection!=="all" && financialSection!=="credits" && <Button type="button" variant="outline" className="min-h-11 w-full sm:w-auto" onClick={()=>{const i=financialSections.findIndex(s=>s.id===financialSection);setFinancialSection(financialSections[i+1].id);}}>Siguiente: {financialSections[financialSections.findIndex(s=>s.id===financialSection)+1]?.label}</Button>}
-              {!onPublicSubmit && openSections.includes("datos-basicos") && !openSections.includes("perfilamiento") && <Button type="button" variant="outline" className="min-h-11 w-full sm:w-auto" onClick={()=>setOpenSections(["perfilamiento"])}>Continuar al perfil financiero</Button>}
               <Button 
                 type="button" 
                 variant="outline" 
@@ -4023,6 +4029,21 @@ export default function ClientForm({ client, onSuccess, onPublicSubmit, submitLa
                 {onPublicSubmit ? (submitLabel || "Enviar mi información") : client ? "Actualizar Cliente" : "Crear Cliente"}
               </Button>
             </div>
+
+            ) : (
+              <div className="cn-form-actions sticky bottom-0 z-10 rounded-t-lg px-2 pt-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] space-y-2" data-testid="profile-form-actions">
+                <div className="flex items-center justify-between gap-2">
+                  <Button type="button" variant="ghost" className="h-9 px-2 text-xs text-muted-foreground" disabled={isLoading} onClick={()=>onSuccess?.()} data-testid="button-cancel">Salir sin cambios</Button>
+                  {hasNext && <Button type="submit" variant="outline" className="h-9 px-2 text-xs" disabled={isLoading} data-testid="button-submit-client">{isLoading ? "Guardando..." : "Guardar y salir"}</Button>}
+                </div>
+                <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,2fr)] gap-2" data-testid="profile-step-actions">
+                  <Button type="button" variant="outline" className="h-11 min-w-0 px-2" disabled={isLoading||!inFinancial} data-testid="profile-previous" onClick={()=>financialIndex>0 ? goSection("perfilamiento",financialSections[financialIndex-1].id) : goSection("datos-basicos")}>Anterior</Button>
+                  {hasNext ? <Button type="button" className="h-11 min-w-0 px-2 whitespace-normal text-xs sm:text-sm" disabled={isLoading} data-testid="profile-next" onClick={()=>goSection("perfilamiento",nextFinancial?.id||"income")}>{nextFinancial ? "Siguiente: "+nextFinancial.label : "Siguiente: perfil financiero"}</Button> :
+                    <Button type="submit" className="h-11 min-w-0 px-2 whitespace-normal" disabled={isLoading} data-testid="button-submit-client">{isLoading ? "Guardando..." : "Guardar perfil"}</Button>}
+                </div>
+                <p className="text-center text-[11px] text-muted-foreground">{inFinancial && financialIndex>=0 ? "Perfil financiero · "+(financialIndex+1)+" de "+financialSections.length : inFinancial ? "Revisa los datos señalados" : "Contacto y negocio"}</p>
+              </div>
+            )}
           </form>
         </Form>
       </CardContent>
