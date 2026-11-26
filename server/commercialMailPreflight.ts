@@ -1,12 +1,12 @@
 import type {CommercialMailDraft} from "../shared/commercialMailDrafts";
 export type PlannedMailJob={userId:string;scheduledFor:string|Date};
 export function summarizeCommercialMailPlan(audience:CommercialMailDraft["audience"],state:string,jobs:PlannedMailJob[],eligible:Set<string>,now=new Date()){
-  const users=new Set(jobs.map(j=>j.userId)),excluded=[...users].filter(id=>!eligible.has(id)).length;
+  const users=new Set(jobs.map(j=>j.userId)),excluded=Array.from(users).filter(id=>!eligible.has(id)).length;
   const eligibleJobs=jobs.filter(j=>eligible.has(j.userId));
   const overdueJobs=eligibleJobs.filter(j=>new Date(j.scheduledFor).getTime()<=now.getTime()).length;
   const blockers=["El motor de envío comercial aún no está habilitado."];
   if(state!=="planned")blockers.push("La campaña está cancelada.");
-  if(audience==="pending_registration")blockers.push("Debe coordinarse con la secuencia existente de invitaciones antes de habilitar el envío.");
+  if(audience==="pending_registration")blockers.push("La recuperación pertenece a la secuencia única de invitaciones; no se enviará desde un calendario separado.");
   if(excluded)blockers.push("Hay destinatarios que ya no cumplen el segmento; deben omitirse.");
   if(overdueJobs)blockers.push("Hay fechas vencidas; no deben enviarse correos acumulados automáticamente.");
   return {recipientCount:users.size,eligibleRecipients:users.size-excluded,excludedRecipients:excluded,eligibleFutureJobs:eligibleJobs.length-overdueJobs,overdueJobs,blockers,dispatchEnabled:false};

@@ -33,6 +33,7 @@ test("reminder result SQL and retry boundaries in isolated PostgreSQL", async ()
     assert.equal((existing.rows[0] as any).reminder_day, 12);
     const day15 = await pg.query("INSERT INTO public.broker_invitation_reminder_events (user_id,reminder_day,status) VALUES ($1,15,'claimed') RETURNING reminder_day", ["new-day-15"]);
     assert.equal(day15.rows.length, 1);
+    for (const day of [25,29,33,39]) assert.equal((await pg.query("INSERT INTO public.broker_invitation_reminder_events (user_id,reminder_day) VALUES ($1,$2)",["extended",day])).affectedRows,1);
     await assert.rejects(pg.query("INSERT INTO public.broker_invitation_reminder_events (user_id,reminder_day) VALUES ($1,14)", ["invalid-day-14"]));
     const oldFailure = "inconsistent types deduced for parameter $3";
     for (const [userId, error, ageHours] of [

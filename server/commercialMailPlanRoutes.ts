@@ -43,6 +43,7 @@ export function registerCommercialMailPlanRoutes(app:Express,auth:RequestHandler
       const draft=commercialMailSchema.safeParse(row.content);
       if(!draft.success||!draft.data.recipientIds?.length){await tx.query("ROLLBACK");return res.status(422).json({message:"Guarda una selección explícita de destinatarios."});}
       const content=draft.data, ids=content.recipientIds!;
+      if(content.audience==="pending_registration"){await tx.query("ROLLBACK");return res.status(422).json({message:"La recuperación usa la secuencia única de invitación (días 25, 29, 33 y 39), no un calendario independiente."});}
       const candidates=(await tx.query(COMMERCIAL_MAIL_RECIPIENTS_SQL,[content.audience])).rows;
       const allowed=new Set(candidates.map(r=>r.id));
       if(candidates.length>500||ids.some(id=>!allowed.has(id))){await tx.query("ROLLBACK");return res.status(409).json({message:"La audiencia cambió. Revisa el borrador antes de programar."});}
