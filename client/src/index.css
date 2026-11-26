@@ -165,7 +165,7 @@
 .cn-workspace {
   --background: #edf2f7;
   --border: #c8d4e1;
-  --input: #b5c3d3;
+  --input: #8193a8;
   --cn-panel-border: #c3d0de;
   --cn-panel-shadow: 0 1px 3px rgb(23 46 73 / 0.08);
 }
@@ -176,6 +176,7 @@
   --cn-panel-border: #40546b;
   --cn-panel-shadow: 0 1px 3px rgb(0 0 0 / 0.24);
 }
+.cn-workspace main .cn-card.border:not([class*="border-"]),
 .cn-workspace main :where(.cn-card, .bg-white.rounded-xl, .bg-white.rounded-lg, .bg-card.rounded-xl, .bg-card.rounded-lg).border:where(.border-border, [class~="border-border/70"], [class~="border-border/80"], [class~="border-slate-200/80"], .border-slate-200) {
   border-color: var(--cn-panel-border);
   box-shadow: var(--cn-panel-shadow);
