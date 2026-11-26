@@ -126,12 +126,12 @@ export default function LeasingLeadModal({ isOpen, onClose, existingClient, onSu
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => { if (!open && !submit.isPending) onClose(); }}>
-      <DialogContent className="sm:max-w-2xl max-h-[92vh] flex flex-col p-0 overflow-hidden" data-testid="modal-leasing-lead">
+      <DialogContent className="w-[calc(100%-1rem)] sm:w-full sm:max-w-2xl max-h-[92dvh] rounded-lg flex flex-col p-0 overflow-hidden" data-testid="modal-leasing-lead">
         <DialogHeader className="p-4 sm:p-5 border-b bg-muted/20">
           <DialogTitle className="flex items-center gap-2"><Truck className="h-5 w-5 text-primary" /> Solicitar cotización de Arrendamiento</DialogTitle>
           <DialogDescription>Con los datos básicos y el activo podemos iniciar la cotización. El expediente completo se solicita después, si tu prospecto está interesado.</DialogDescription>
         </DialogHeader>
-        <div className="flex-1 min-h-0 overflow-y-auto p-4 sm:p-5 space-y-5">
+        <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain p-4 sm:p-5 space-y-5">
           <section className="space-y-3">
             <h3 className="text-sm font-semibold flex items-center gap-2"><Building2 className="h-4 w-4" /> 1. Prospecto</h3>
             <div className="flex flex-wrap gap-2">
@@ -245,7 +245,7 @@ export default function LeasingLeadModal({ isOpen, onClose, existingClient, onSu
           </Alert>
           {formError && <Alert variant="destructive" role="alert"><AlertDescription data-testid="lease-form-error">{formError}</AlertDescription></Alert>}
         </div>
-        <DialogFooter className="p-4 border-t bg-background flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+        <DialogFooter className="p-4 pb-[max(1rem,env(safe-area-inset-bottom))] border-t bg-background flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
           <Button type="button" variant="outline" onClick={onClose} disabled={submit.isPending}>Cancelar</Button>
           <Button type="button" onClick={handleSubmit} disabled={submit.isPending} data-testid="button-submit-leasing">
             <CheckCircle2 className="h-4 w-4 mr-1.5" /> {submit.isPending ? "Guardando..." : "Registrar para cotización"}

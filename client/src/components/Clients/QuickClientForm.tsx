@@ -173,7 +173,7 @@ export default function QuickClientForm({
         value={fields[key]} onChange={e => update(key, e.target.value)}
         type={type} placeholder={placeholder} aria-invalid={Boolean(errors[key])}
         aria-describedby={errors[key] ? "quick-client-error-" + key : undefined}
-        className={cn("h-10", errors[key] && "border-destructive")}
+        className={cn("h-11 text-base sm:h-10 sm:text-sm", errors[key] && "border-destructive")}
       />
       {errors[key] && <p id={"quick-client-error-" + key} className="text-xs text-destructive" role="alert">{errors[key]}</p>}
     </div>
@@ -279,9 +279,9 @@ export default function QuickClientForm({
               {requestError && <Alert variant="destructive" role="alert"><AlertDescription>{requestError}</AlertDescription></Alert>}
             </section>
           </div>
-          <div className="sticky bottom-0 z-10 border-t bg-background/95 backdrop-blur p-3 sm:px-6 flex flex-wrap gap-2 items-center justify-end shadow-sm">
+          <div className="sticky bottom-0 z-10 border-t bg-background/95 backdrop-blur p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:px-6 grid grid-cols-[auto_1fr] sm:flex gap-2 items-center sm:justify-end shadow-sm">
             <Button type="button" variant="outline" onClick={onCancel} disabled={saving}>Cancelar</Button>
-            <Button type="submit" disabled={saving || checking} data-testid="button-submit-client">
+            <Button type="submit" className="min-h-11 sm:min-h-9" disabled={saving || checking} data-testid="button-submit-client">
               {saving ? <Loader2 className="h-4 w-4 mr-1.5 animate-spin" /> : null}
               {saving ? "Guardando..." : "Guardar prospecto"}
             </Button>
