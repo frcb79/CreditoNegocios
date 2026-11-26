@@ -11,7 +11,7 @@ export function registerCommercialMailUnsubscribe(app:Express){
     return res.type("html").send('<!doctype html><html lang="es"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Preferencias de correo</title><main style="font-family:Arial;max-width:460px;margin:40px auto;padding:16px"><h1>Correos comerciales</h1><p>Confirma si deseas dejar de recibir novedades y campañas de Crédito Negocios. Los avisos operativos de tu cuenta no cambian.</p><form method="post"><button type="submit" name="confirm" value="yes">Dejar de recibir correos comerciales</button></form></main></html>');
   });
   app.post(path,express.urlencoded({extended:false,limit:"1kb"}),async(req,res)=>{
-    res.set({"Cache-Control":"no-store","Referrer-Policy":"no-referrer"});
+    res.set({"Cache-Control":"no-store","Referrer-Policy":"no-referrer","X-Robots-Tag":"noindex, nofollow"});
     const token=verify(req.params.token);
     if(!token||!(req.body?.confirm==="yes"||req.body?.["List-Unsubscribe"]==="One-Click"))return res.status(400).send("Solicitud inválida.");
     try{

@@ -11,6 +11,6 @@ test("dispatch requires explicit production configuration and a signed opt-out",
  assert.equal(readCommercialUnsubscribeToken(token+"x",secret),null);
  assert.equal(readCommercialUnsubscribeToken(token,secret+"x"),null);
  const mail=renderCommercialMail({day:1,subject:"Hola {{nombre}}",body:"Hola {{nombre}} <script>",cta:"login"},"<Asesor>",env.FRONTEND_BASE_URL,"https://app.creditonegocios.com.mx/api/commercial-mail/unsubscribe/"+token);
- assert.ok(mail.html.includes("&lt;Asesor&gt;"));assert.ok(!mail.html.includes("<script>"));assert.ok(mail.html.includes("/login"));assert.ok(mail.text.includes("Dejar de recibir"));
+ assert.ok(mail.html.includes("&lt;Asesor&gt;"));assert.ok(!mail.html.includes("<script>"));assert.ok(mail.html.includes('href="https://app.creditonegocios.com.mx/"'));assert.ok(mail.text.includes("Dejar de recibir"));
  assert.throws(()=>renderCommercialMail({day:1,subject:"Hola",body:"Hola asesor",cta:"activate"},"Asesor",env.FRONTEND_BASE_URL,"https://example.test"));
 });

@@ -68,9 +68,9 @@ export function registerCommercialMailPlanRoutes(app:Express,auth:RequestHandler
       if(!row||row.state!=="planned"||row.revision!==req.body.revision||new Date(row.starts_at).getTime()<Date.now()+60000||!draft.success||draft.data.audience==="pending_registration"){await tx.query("ROLLBACK");return res.status(409).json({message:"Campaña inválida, cancelada o con inicio vencido."});}
       const jobs=(await tx.query("SELECT DISTINCT user_id FROM public.commercial_mail_plan_jobs WHERE plan_id=$1",[req.params.id])).rows;
       const users=(await tx.query(COMMERCIAL_MAIL_RECIPIENTS_SQL,[draft.data.audience])).rows;
-      const byId=new Map(users.map(u=>[u.id,u]));
+      const byId=new Map<string,{id:string;email:string}>(users.map(u=>[u.id,u]));
       if(!jobs.length||users.length>500||jobs.some(j=>!byId.has(j.user_id))){await tx.query("ROLLBACK");return res.status(409).json({message:"La audiencia cambió. Prepara un calendario nuevo."});}
-      const hashes=Object.fromEntries(jobs.map(j=>[j.user_id,commercialEmailHash(byId.get(j.user_id).email)]));
+      const hashes=Object.fromEntries(jobs.map(j=>[j.user_id,commercialEmailHash(byId.get(j.user_id)!.email)]));
       const result=await tx.query("INSERT INTO public.commercial_mail_approvals(plan_id,approved_by,recipient_hashes) VALUES($1,$2,$3::jsonb) ON CONFLICT DO NOTHING RETURNING plan_id",[req.params.id,req.commercialMailActor,JSON.stringify(hashes)]);
       if(!result.rowCount){await tx.query("ROLLBACK");return res.status(409).json({message:"Ya se aprobó esta campaña."});}
       await tx.query("COMMIT");return res.json({approved:true});

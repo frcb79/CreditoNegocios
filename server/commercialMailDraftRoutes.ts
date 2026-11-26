@@ -1,7 +1,6 @@
 import cron from "node-cron";
 import {runCommercialMailDispatch} from "./commercialMailDispatch";
 import {commercialMailDispatchSettings} from "./commercialMailDispatchRender";
-import {registerCommercialMailUnsubscribe} from "./commercialMailUnsubscribe";
 import type {Express} from "express";
 import {randomUUID} from "node:crypto";
 import {z} from "zod";
@@ -55,6 +54,5 @@ export function registerCommercialMailDraftRoutes(app:Express){
   });
   registerCommercialMailPlanRoutes(app,isAuthenticated,guard);
   registerCommercialMailTestRoutes(app,isAuthenticated,guard);
-  registerCommercialMailUnsubscribe(app);
   if(commercialMailDispatchSettings(process.env).enabled)cron.schedule("*/5 * * * *",async()=>{try{console.log("[CommercialMail]",await runCommercialMailDispatch());}catch{console.error("[CommercialMail] Dispatch task failed");}},{timezone:"America/Mexico_City"});
 }
