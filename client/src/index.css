@@ -159,3 +159,34 @@
     max-width: calc(100vw - 24px);
   }
 }
+
+/* Authenticated workspace surfaces: separate neutral panels from the canvas.
+   Public pages, semantic status colors and alert borders stay unchanged. */
+.cn-workspace {
+  --background: #edf2f7;
+  --border: #c8d4e1;
+  --input: #8193a8;
+  --cn-panel-border: #c3d0de;
+  --cn-panel-shadow: 0 1px 3px rgb(23 46 73 / 0.08);
+}
+.dark .cn-workspace {
+  --background: #101d2d;
+  --border: #40546b;
+  --input: #52667e;
+  --cn-panel-border: #40546b;
+  --cn-panel-shadow: 0 1px 3px rgb(0 0 0 / 0.24);
+}
+.cn-workspace main .cn-card.border:not([class*="border-"]),
+.cn-workspace main :where(.cn-card, .bg-white.rounded-xl, .bg-white.rounded-lg, .bg-card.rounded-xl, .bg-card.rounded-lg).border:where(.border-border, [class~="border-border/70"], [class~="border-border/80"], [class~="border-slate-200/80"], .border-slate-200) {
+  border-color: var(--cn-panel-border);
+  box-shadow: var(--cn-panel-shadow);
+}
+.cn-workspace main :where(input, textarea, button[role="combobox"]):where(.border-input, .border-slate-200) {
+  border-color: var(--input);
+}
+/* A fixed grid, not flex-wrap, prevents competing form actions from reordering. */
+.cn-form-actions {
+  border-top: 1px solid var(--cn-panel-border, var(--border));
+  background: var(--card);
+  box-shadow: 0 -3px 9px rgb(23 46 73 / 0.06);
+}

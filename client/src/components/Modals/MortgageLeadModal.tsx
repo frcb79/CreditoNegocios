@@ -333,7 +333,7 @@ export default function MortgageLeadModal({
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="sm:max-w-3xl max-h-[92vh] overflow-y-auto p-6">
+      <DialogContent className="w-[calc(100%-1rem)] sm:w-full sm:max-w-3xl max-h-[92dvh] overflow-y-auto overscroll-contain rounded-lg p-4 sm:p-6">
         <DialogHeader>
           <div className="flex items-center space-x-3">
             <div className="w-10 h-10 rounded-xl bg-amber-100 text-amber-800 flex items-center justify-center">
@@ -959,7 +959,7 @@ export default function MortgageLeadModal({
             />
 
             {/* BOTONES DE ACCIÓN */}
-            <DialogFooter className="flex flex-row items-center justify-between pt-4 border-t border-border/60">
+            <DialogFooter className="sticky bottom-0 z-10 bg-background flex flex-col-reverse sm:flex-row items-stretch sm:items-center sm:justify-between gap-2 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] border-t border-border/60">
               <Button
                 type="button"
                 variant="outline"
@@ -973,7 +973,7 @@ export default function MortgageLeadModal({
               <Button
                 type="submit"
                 disabled={saveLeadMutation.isPending}
-                className="bg-amber-600 hover:bg-amber-700 text-white font-medium"
+                className="min-h-11 sm:min-h-9 h-auto whitespace-normal bg-amber-600 hover:bg-amber-700 text-white font-medium"
                 data-testid="button-save-mortgage-lead"
               >
                 {saveLeadMutation.isPending ? (

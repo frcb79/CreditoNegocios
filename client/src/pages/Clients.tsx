@@ -27,6 +27,7 @@ export default function Clients() {
   const { user } = useAuth();
   const canReceive = user?.role === "broker" || user?.role === "master_broker";
   const cache = useQueryClient();
+  const [initialProfileSection, setInitialProfileSection] = useState<"datos-basicos" | "perfilamiento">("datos-basicos");
   const [editingClient, setEditingClient] = useState<Client | null>(null);
   const [isTypeModalOpen, setIsTypeModalOpen] = useState(false);
   const [isMortgageModalOpen, setIsMortgageModalOpen] = useState(false);
@@ -46,6 +47,7 @@ export default function Clients() {
     if (editClientId && allClients) {
       const clientToEdit = allClients.find(c => c.id === editClientId);
       if (clientToEdit) {
+        setInitialProfileSection("datos-basicos");
         setEditingClient(clientToEdit);
         setViewMode("form");
         // Clear the URL param after loading
@@ -91,6 +93,8 @@ export default function Clients() {
   };
 
   const handleFormSuccess = () => {
+    if (editingClient && initialProfileSection === "perfilamiento") setLocation(`/clientes/${editingClient.id}`);
+    setInitialProfileSection("datos-basicos");
     setViewMode("list");
     setEditingClient(null);
     setIncomingLead(null);
@@ -125,7 +129,9 @@ export default function Clients() {
         {viewMode === "form" && (
           editingClient ? (
             <ClientForm
+              key={editingClient.id}
               client={editingClient}
+              initialSection={initialProfileSection}
               onSuccess={handleFormSuccess}
             />
           ) : (
@@ -144,8 +150,14 @@ export default function Clients() {
                   incomingLead.message || ""
                 ].filter(Boolean).join("\n")
               } : undefined}
-              onSaved={async savedClient => {
+              onSaved={async (savedClient, continueProfile) => {
                 await linkReviewedClient(savedClient.id);
+                if (continueProfile) {
+                  setInitialProfileSection("perfilamiento");
+                  setEditingClient(savedClient);
+                  setViewMode("form");
+                  return;
+                }
                 setViewMode("list");
                 setLocation(`/clientes/${savedClient.id}`);
               }}

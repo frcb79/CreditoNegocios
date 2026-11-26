@@ -47,20 +47,46 @@ describe("Alta de clientes postlanzamiento — UX incremental", () => {
     // owns tenant, authorization and formalization. Ordinary capture sends no brokerId.
     expect(ui).toContain('...(adminCapture && originator !== "__self__" ? { brokerId: originator } : {})');
     expect(ui).toContain('if (adminCapture && (!originator');
+    expect(ui).toContain('if (!validateContact()) return;');
+    expect(ui).toContain('disabled={!contactConfirmed||saving||checking}');
     const page = source("client/src/pages/Clients.tsx");
     expect(page).toContain('adminCapture={user?.role === "admin" || user?.role === "super_admin"}');
     expect(ui).not.toContain('createdBy:');
   });
 
-  it("mantiene edición avanzada con acordeones y validación condicional por riesgo", () => {
+  it("mantiene edición avanzada con navegación por secciones y validación condicional por riesgo", () => {
     const advanced = source("client/src/components/Clients/ClientForm.tsx");
     expect(advanced).toContain('value="datos-basicos"');
     expect(advanced).toContain('value="perfilamiento"');
     expect(advanced).toContain('Accordion type="multiple"');
+    expect(advanced).toContain('data-testid="advanced-tab-financial"');
+    expect(advanced).toContain('useState<string[]>([initialSection])');
+    for (const group of ["income","bureau","guarantees","credits"]) expect(advanced.split(`data-financial-section="${group}"`).length-1).toBe(4);
+    expect(advanced).toContain('setFinancialSection("all")');
+    expect(advanced).toContain('data-testid="profile-step-actions"');
+    expect(advanced).toContain('data-testid="profile-next"');
+    expect(advanced).toContain('Guardar y salir');
+    expect(advanced).toContain('Guardar perfil');
+    const quick = source("client/src/components/Clients/QuickClientForm.tsx");
+    expect(quick).toContain('data-testid="quick-step-actions"');
+    expect(quick).toContain('grid grid-cols-4');
+    expect(quick).toContain('data-testid="quick-tab-matching"');
+    expect(quick).toContain('data-testid="quick-save-and-profile"');
+    expect(source("client/src/pages/Clients.tsx")).toContain('setInitialProfileSection("perfilamiento")');
     expect(advanced).toContain('data-testid="client-advanced-profile-form"');
     expect(advanced).not.toContain("Estado civil es requerido para Persona Física");
     expect(source("shared/clientProfileValidation.ts")).toContain('data.atrasosDeudasBuro === "si"');
     expect(source("shared/clientProfileValidation.ts")).toContain('data.cuentaConGarantiaFisica === "hipotecaria"');
+  });
+
+  it("aplica superficies neutras solo al espacio autenticado y agrupa filtros",()=>{
+    const css=source("client/src/index.css");
+    expect(css).toContain(".cn-workspace main");
+    expect(css).toContain("--cn-panel-border: #c3d0de");
+    expect(css).toContain("--cn-panel-shadow: 0 1px 3px");
+    const list=source("client/src/components/Clients/ClientList.tsx");
+    expect(list.indexOf('data-testid="button-new-client"')).toBeLessThan(list.indexOf('data-testid="client-filters"'));
+    expect(list).toContain('data-testid="client-filters" className="grid grid-cols-2');
   });
 
   it("las sugerencias no inventan requisitos del catálogo ni scoring", () => {

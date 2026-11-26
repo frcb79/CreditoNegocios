@@ -218,35 +218,43 @@ export default function ClientList({ onSelectClient, onNewClient }: ClientListPr
   return (
     <div className="bg-white border border-slate-200/80 rounded-xl shadow-sm overflow-hidden">
       {/* Subheader / Toolbar */}
-      <div className="p-4 sm:p-5 border-b border-slate-100 flex flex-col md:flex-row gap-4 md:items-center md:justify-between bg-white">
-        <div className="flex items-center justify-between sm:justify-start gap-3">
-          <div className="flex items-center gap-2.5">
-            <h2 className="text-base font-semibold text-slate-900 tracking-tight">
+      <div className="p-3 sm:p-5 border-b border-slate-100 flex flex-col gap-3 bg-white">
+        <div className="flex items-center justify-between gap-2 min-w-0">
+          <div className="flex items-center gap-1.5 min-w-0">
+            <h2 className="text-sm sm:text-base font-semibold text-slate-900 tracking-tight leading-tight">
               Clientes registrados
             </h2>
-            <span className="text-xs font-medium px-2.5 py-0.5 rounded-full bg-slate-100 text-slate-600 border border-slate-200">
+            <span className="text-xs font-medium px-1.5 sm:px-2.5 py-0.5 shrink-0 rounded-full bg-slate-100 text-slate-600 border border-slate-200">
               {filteredClients.length}
             </span>
           </div>
+            <Button
+              onClick={onNewClient}
+              className="bg-primary hover:bg-primary-dark text-primary-foreground text-xs font-medium min-h-11 sm:min-h-9 h-auto px-2 sm:px-3 shadow-sm shrink-0 whitespace-nowrap"
+              data-testid="button-new-client"
+            >
+              <Plus className="w-3.5 h-3.5 mr-1.5" />
+              <span>Nuevo cliente</span>
+            </Button>
         </div>
 
-        <div className="flex flex-col sm:flex-row sm:flex-wrap items-stretch sm:items-center gap-2.5 flex-1 md:max-w-none lg:max-w-2xl md:justify-end">
+        <div data-testid="client-filters" className="grid grid-cols-2 sm:flex sm:flex-wrap items-stretch sm:items-center gap-2 min-w-0">
           {/* Search Input */}
-          <div className="relative flex-1 min-w-[200px]">
+          <div className="relative col-span-2 flex-1 min-w-0 sm:min-w-[200px]">
             <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
             <Input
               placeholder="Buscar por cliente, RFC o teléfono..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               data-testid="input-search-clients"
-              className="pl-9 h-9 text-xs placeholder:text-slate-400 border-slate-200 bg-slate-50/50 focus:bg-white transition-colors"
+              className="pl-9 h-11 sm:h-9 text-base sm:text-xs placeholder:text-slate-400 border-slate-200 bg-slate-50/50 focus:bg-white transition-colors"
             />
           </div>
 
           {/* Filter Type */}
-          <div className="w-full sm:w-40">
+          <div className="w-full min-w-0 sm:w-40">
             <Select value={filterType} onValueChange={setFilterType}>
-              <SelectTrigger data-testid="select-client-type" className="h-9 text-xs border-slate-200 bg-white">
+              <SelectTrigger data-testid="select-client-type" className="h-11 sm:h-9 text-xs border-slate-200 bg-white">
                 <SelectValue placeholder="Tipo de cliente" />
               </SelectTrigger>
               <SelectContent>
@@ -260,9 +268,9 @@ export default function ClientList({ onSelectClient, onNewClient }: ClientListPr
           </div>
 
           {/* Commercial Governance Filter */}
-          <div className="w-full sm:w-48">
+          <div className="w-full min-w-0 sm:w-48">
             <Select value={filterCommercial} onValueChange={setFilterCommercial}>
-              <SelectTrigger data-testid="select-commercial-filter" className="h-9 text-xs border-slate-200 bg-white">
+              <SelectTrigger data-testid="select-commercial-filter" className="h-11 sm:h-9 text-xs border-slate-200 bg-white">
                 <SelectValue placeholder="Estado comercial" />
               </SelectTrigger>
               <SelectContent>
@@ -281,9 +289,9 @@ export default function ClientList({ onSelectClient, onNewClient }: ClientListPr
           {isAdmin && (
             <>
               {masterBrokerOptions.length > 0 && (
-                <div className="w-full sm:w-44">
+                <div className="w-full min-w-0 sm:w-44">
                   <Select value={filterMasterBroker} onValueChange={setFilterMasterBroker}>
-                    <SelectTrigger data-testid="select-master-broker" className="h-9 text-xs border-slate-200 bg-white">
+                    <SelectTrigger data-testid="select-master-broker" className="h-11 sm:h-9 text-xs border-slate-200 bg-white">
                       <SelectValue placeholder="Master Broker" />
                     </SelectTrigger>
                     <SelectContent>
@@ -299,9 +307,9 @@ export default function ClientList({ onSelectClient, onNewClient }: ClientListPr
               )}
 
               {brokerOptions.length > 0 && (
-                <div className="w-full sm:w-40">
+                <div className="w-full min-w-0 sm:w-40">
                   <Select value={filterBroker} onValueChange={setFilterBroker}>
-                    <SelectTrigger data-testid="select-broker" className="h-9 text-xs border-slate-200 bg-white">
+                    <SelectTrigger data-testid="select-broker" className="h-11 sm:h-9 text-xs border-slate-200 bg-white">
                       <SelectValue placeholder="Broker" />
                     </SelectTrigger>
                     <SelectContent>
@@ -319,17 +327,7 @@ export default function ClientList({ onSelectClient, onNewClient }: ClientListPr
           )}
 
           {/* Client entry actions */}
-          <div className="flex flex-col sm:flex-row gap-2.5 shrink-0">
-            <ProspectCompletionLinkButton />
-            <Button
-              onClick={onNewClient}
-              className="bg-primary hover:bg-primary-dark text-primary-foreground text-xs font-medium h-9 shadow-sm shrink-0 whitespace-nowrap"
-              data-testid="button-new-client"
-            >
-              <Plus className="w-3.5 h-3.5 mr-1.5" />
-              <span>Nuevo Cliente</span>
-            </Button>
-          </div>
+          {!isAdmin && <div className="col-span-2 flex [&>button]:w-full sm:[&>button]:w-auto sm:ml-auto"><ProspectCompletionLinkButton /></div>}
         </div>
       </div>
 
