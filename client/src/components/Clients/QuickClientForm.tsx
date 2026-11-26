@@ -59,6 +59,7 @@ export default function QuickClientForm({
   const { toast } = useToast();
   const cache = useQueryClient();
   const [fields, setFields] = useState<QuickFormFields>(() => ({ ...initial, ...initialValues }));
+  const [contactConfirmed, setContactConfirmed] = useState(false);
   const [section, setSection] = useState<"contact" | "matching">("contact");
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [duplicate, setDuplicate] = useState<DuplicateCheckResult | null>(null);
@@ -76,6 +77,7 @@ export default function QuickClientForm({
     setErrors(prev => ({ ...prev, [key]: "" }));
     setRequestError("");
     if (["type", "businessName", "firstName", "lastName", "email", "phone", "rfc"].includes(key)) {
+      setContactConfirmed(false);
       setDuplicate(null);
       setCheckedSignature("");
     }
@@ -110,11 +112,24 @@ export default function QuickClientForm({
     }
   };
 
+  const validateContact = () => {
+    if (adminCapture && (!originator || (originator !== "__self__" && !originators.data?.some(u=>u.id===originator)))) {
+      setRequestError("Selecciona el asesor antes de continuar."); setSection("contact"); return false;
+    }
+    const parsed=quickClientSchema.safeParse({...fields,industry:"",yearsInBusiness:"",state:"",notes:""});
+    if (!parsed.success) {
+      const next:Record<string,string>={}; for(const issue of parsed.error.issues) next[String(issue.path[0])]=issue.message;
+      setErrors(prev=>({...prev,...next})); setRequestError("Completa los datos de contacto señalados para continuar.");
+      setSection("contact"); requestAnimationFrame(()=>document.getElementById("quick-client-"+String(parsed.error.issues[0]?.path[0]))?.focus()); return false;
+    }
+    setRequestError(""); return true;
+  };
+  const advanceContact=()=>{if(validateContact()){setContactConfirmed(true);setSection("matching");requestAnimationFrame(()=>document.getElementById("quick-steps")?.scrollIntoView({block:"start"}));}};
   const handleSave = async (event: React.FormEvent) => {
     event.preventDefault();
     if (saving || checking) return;
     const continueProfile = (event.nativeEvent as SubmitEvent).submitter?.getAttribute("value") === "profile";
-    if (adminCapture && (!originator || (originator !== '__self__' && !originators.data?.some(u => u.id === originator)))) { setRequestError('Selecciona un asesor válido o registro directo de plataforma.'); return; }
+    if (!validateContact()) return;
     const parsed = quickClientSchema.safeParse(fields);
     if (!parsed.success) {
       const next: Record<string, string> = {};
@@ -194,9 +209,9 @@ export default function QuickClientForm({
       <CardContent className="p-0">
         <form onSubmit={handleSave} noValidate>
           <div className="p-4 sm:p-6 space-y-6">
-            {adminCapture && <section className="space-y-2">
+            {adminCapture && <section hidden={section!=="contact"} className="space-y-2">
               <Label htmlFor="quick-originator">Asignar cliente a *</Label>
-              <select id="quick-originator" data-testid="quick-originator" className="w-full h-10 rounded-md border bg-background px-3 text-sm" value={originator} onChange={e=>{setOriginator(e.target.value);setRequestError("");}}>
+              <select id="quick-originator" data-testid="quick-originator" className="w-full h-10 rounded-md border bg-background px-3 text-sm" value={originator} onChange={e=>{setOriginator(e.target.value);setContactConfirmed(false);setRequestError("");}}>
                 <option value="">Selecciona un asesor</option>
                 <option value="__self__">Plataforma / registro directo</option>
                 {originators.data?.map(u=><option key={u.id} value={u.id}>{u.brandName || [u.firstName,u.lastName].filter(Boolean).join(" ") || u.id} · {u.role==="master_broker"?"Master Broker":"Broker"} · {u.organization}</option>)}
@@ -205,7 +220,7 @@ export default function QuickClientForm({
               {originators.isLoading && <p className="text-xs text-muted-foreground">Cargando asesores...</p>}
               <p className="text-xs text-muted-foreground">Se registra tu usuario como capturista y el asesor elegido como originador comercial.</p>
             </section>}
-            <section aria-labelledby="quick-client-type-title" className="space-y-3">
+            <section hidden={section!=="contact"} aria-labelledby="quick-client-type-title" className="space-y-3">
               <h2 id="quick-client-type-title" className="font-semibold text-sm">1. Tipo de cliente</h2>
               <div className="grid grid-cols-4 gap-1.5 sm:gap-2.5">
                 {CLIENT_TYPE_OPTIONS.map(type => {
@@ -235,12 +250,12 @@ export default function QuickClientForm({
               )}
             </section>
 
-            <nav aria-label="Secciones del prospecto" className="sticky top-0 z-10 grid grid-cols-2 gap-1 rounded-lg border bg-background p-1 shadow-sm">
-              <Button type="button" variant={section==="contact"?"default":"ghost"} aria-pressed={section==="contact"} data-testid="quick-tab-contact" onClick={()=>setSection("contact")} className="min-h-11 text-xs sm:text-sm whitespace-normal">1. Datos de contacto</Button>
-              <Button type="button" variant={section==="matching"?"default":"ghost"} aria-pressed={section==="matching"} data-testid="quick-tab-matching" onClick={()=>setSection("matching")} className="min-h-11 text-xs sm:text-sm whitespace-normal">2. Perfil y matching</Button>
+            <nav id="quick-steps" aria-label="Secciones del prospecto" className="sticky top-0 z-10 grid grid-cols-2 gap-1 rounded-lg border bg-background p-1 shadow-sm">
+              <Button type="button" variant={section==="contact"?"default":"ghost"} aria-pressed={section==="contact"} data-testid="quick-tab-contact" onClick={()=>setSection("contact")} className="min-h-11 text-xs sm:text-sm whitespace-normal">1. Contacto</Button>
+              <Button type="button" variant={section==="matching"?"default":"ghost"} aria-pressed={section==="matching"} data-testid="quick-tab-matching" onClick={advanceContact} disabled={!contactConfirmed||saving||checking} className="min-h-11 text-xs sm:text-sm whitespace-normal">2. Datos del negocio</Button>
             </nav>
             <section hidden={section!=="contact"} aria-labelledby="quick-client-contact-title" className="space-y-3 border-t pt-5">
-              <h2 id="quick-client-contact-title" className="text-sm font-semibold">2. Datos esenciales</h2>
+              <h2 id="quick-client-contact-title" className="text-sm font-semibold">Datos esenciales</h2>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 {fields.type === "persona_moral" && field("businessName", "Razón social", "Nombre de la empresa", "text", true)}
                 {field("firstName", fields.type === "persona_moral" ? "Nombre del contacto" : "Nombre", "Nombre del prospecto", "text", fields.type !== "persona_moral")}
@@ -252,8 +267,8 @@ export default function QuickClientForm({
               <p className="text-xs text-muted-foreground">Para guardar es suficiente contar con teléfono o correo. No solicitamos información financiera en esta etapa.</p>
             </section>
             <section hidden={section!=="matching"} className="border rounded-lg p-3 space-y-3" data-testid="quick-matching-panel">
-              <h2 className="font-semibold text-sm">Información inicial para el matching</h2>
-              <p className="text-xs text-muted-foreground">Opcional. Guarda y continúa al perfil financiero completo: ingresos, buró, créditos y garantías. No necesitas tener todas las respuestas.</p>
+              <h2 className="font-semibold text-sm">Datos del negocio para matching</h2>
+              <p className="text-xs text-muted-foreground">Paso 2 de 3 · Estos datos son opcionales. Después puedes completar ingresos, buró, garantías y créditos sin volver a capturar el contacto.</p>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2">
                     {field("industry", "Giro / actividad", "Ej. Comercio, manufactura")}
                     {field("yearsInBusiness", "Antigüedad del negocio (años)", "Ej. 5", "number")}
@@ -287,7 +302,8 @@ export default function QuickClientForm({
               {saving ? <Loader2 className="h-4 w-4 mr-1.5 animate-spin" /> : null}
               {saving ? "Guardando..." : "Guardar prospecto"}
             </Button>
-            {section==="contact" ? <Button type="button" onClick={()=>setSection("matching")} className="min-h-11 w-full sm:w-auto" disabled={saving||checking} data-testid="quick-next-matching">Continuar al matching <ArrowRight className="w-4 h-4 ml-1"/></Button> : <Button type="submit" value="profile" className="min-h-11 w-full sm:w-auto" disabled={saving||checking} data-testid="quick-save-and-profile">Guardar y completar perfil financiero <ArrowRight className="w-4 h-4 ml-1"/></Button>}
+            {section==="matching" && <Button type="button" variant="ghost" onClick={()=>setSection("contact")} disabled={saving||checking}>Anterior</Button>}
+            {section==="contact" ? <Button type="button" onClick={advanceContact} className="min-h-11 w-full sm:w-auto" disabled={saving||checking} data-testid="quick-next-matching">Siguiente: datos del negocio <ArrowRight className="w-4 h-4 ml-1"/></Button> : <Button type="submit" value="profile" className="min-h-11 w-full sm:w-auto" disabled={saving||checking} data-testid="quick-save-and-profile">Siguiente: perfil financiero <ArrowRight className="w-4 h-4 ml-1"/></Button>}
           </div>
         </form>
       </CardContent>

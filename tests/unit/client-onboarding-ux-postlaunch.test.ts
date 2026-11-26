@@ -47,6 +47,8 @@ describe("Alta de clientes postlanzamiento — UX incremental", () => {
     // owns tenant, authorization and formalization. Ordinary capture sends no brokerId.
     expect(ui).toContain('...(adminCapture && originator !== "__self__" ? { brokerId: originator } : {})');
     expect(ui).toContain('if (adminCapture && (!originator');
+    expect(ui).toContain('if (!validateContact()) return;');
+    expect(ui).toContain('disabled={!contactConfirmed||saving||checking}');
     const page = source("client/src/pages/Clients.tsx");
     expect(page).toContain('adminCapture={user?.role === "admin" || user?.role === "super_admin"}');
     expect(ui).not.toContain('createdBy:');

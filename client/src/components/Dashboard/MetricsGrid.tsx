@@ -66,13 +66,13 @@ export default function MetricsGrid() {
 
   if (isLoading) {
     return (
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-4 mb-2 sm:mb-6">
         {Array.from({ length: 4 }).map((_, i) => (
           <Card key={i} className="border border-border/70 bg-card shadow-sm">
-            <CardContent className="p-4">
-              <Skeleton className="h-3.5 w-24 mb-2" />
-              <Skeleton className="h-7 w-28 mb-1.5" />
-              <Skeleton className="h-3 w-36" />
+            <CardContent className="p-2.5 sm:p-4">
+              <Skeleton className="h-3 w-3/4 mb-1.5 sm:h-3.5 sm:w-24 sm:mb-2" />
+              <Skeleton className="h-5 w-4/5 mb-1 sm:h-7 sm:w-28 sm:mb-1.5" />
+              <Skeleton className="h-3 w-full sm:w-36" />
             </CardContent>
           </Card>
         ))}
@@ -82,7 +82,7 @@ export default function MetricsGrid() {
 
   if (!metrics) {
     return (
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-4 mb-2 sm:mb-6">
         <Card className="border border-border/70 bg-card p-4">
           <CardContent className="p-2">
             <p className="text-center text-sm text-muted-foreground">Error al cargar métricas operativas</p>
@@ -303,7 +303,7 @@ export default function MetricsGrid() {
 
   return (
     <div
-      className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6"
+      className="grid grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-4 mb-2 sm:mb-6"
       data-testid="metrics-grid"
     >
       {displayCards.map((card, index) => {
@@ -315,32 +315,35 @@ export default function MetricsGrid() {
             className={`border border-border/70 bg-card shadow-2xs transition-all duration-150 ${
               isClickable ? 'cursor-pointer hover:border-primary/40 hover:shadow-sm' : ''
             }`}
+            role={isClickable?"button":undefined}
+            tabIndex={isClickable?0:undefined}
+            onKeyDown={isClickable?e=>{if(e.key==="Enter"||e.key===" "){e.preventDefault();card.onClick();}}:undefined}
             onClick={card.onClick}
           >
-            <CardContent className="p-4">
-              <div className="flex items-start justify-between gap-3">
+            <CardContent className="p-2.5 sm:p-4">
+              <div className="flex items-start justify-between gap-1 sm:gap-3">
                 <div className="flex-1 min-w-0">
                   <p
-                    className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider truncate"
+                    className="text-[10px] sm:text-[11px] font-medium text-muted-foreground leading-tight sm:uppercase sm:tracking-wider sm:truncate"
                     data-testid={`${card.testId}-title`}
                   >
                     {card.title}
                   </p>
                   <p
-                    className="text-xl font-bold text-foreground mt-1 tracking-tight font-mono tabular-nums truncate"
+                    className="text-sm sm:text-xl font-bold text-foreground mt-1 tracking-tight font-mono tabular-nums break-words sm:truncate"
                     data-testid={`${card.testId}-value`}
                   >
                     {card.value}
                   </p>
-                  <div className="mt-1 min-h-[16px]">
+                  <div className="mt-0.5 sm:mt-1 sm:min-h-[16px]">
                     {'trend' in card && card.trend ? (
                       renderTrendIndicator(card.trend)
                     ) : 'subtitle' in card && card.subtitle ? (
-                      <p className="text-[11px] text-muted-foreground truncate">{card.subtitle}</p>
+                      <p className="text-[10px] sm:text-[11px] leading-tight text-muted-foreground break-words sm:truncate">{card.subtitle}</p>
                     ) : null}
                   </div>
                 </div>
-                <div className={`w-9 h-9 rounded-md flex items-center justify-center flex-shrink-0 ${style.bg}`}>
+                <div className={`hidden sm:flex w-9 h-9 rounded-md items-center justify-center flex-shrink-0 ${style.bg}`}>
                   <i className={`${card.icon} text-sm`}></i>
                 </div>
               </div>

@@ -74,6 +74,7 @@ export default function ClientForm({ client, onSuccess, onPublicSubmit, submitLa
   };
 
   const form = useForm<InsertClient>({
+    shouldUnregister: false,
     resolver: zodResolver(formSchema),
     defaultValues: {
       type: clientType,
@@ -273,8 +274,8 @@ export default function ClientForm({ client, onSuccess, onPublicSubmit, submitLa
             toast({ title: "Revisa los campos señalados", description: "Completa solo los detalles condicionados por tus respuestas.", variant: "destructive" });
           })} className="space-y-6">
             {!onPublicSubmit && <nav aria-label="Secciones del perfil" className="sticky top-0 z-10 grid grid-cols-2 gap-1 bg-background border rounded-lg p-1 shadow-sm">
-              <Button type="button" variant={openSections.includes("datos-basicos")?"default":"ghost"} onClick={()=>setOpenSections(["datos-basicos"])} data-testid="advanced-tab-contact" className="min-h-11 whitespace-normal text-xs sm:text-sm">1. Datos del prospecto</Button>
-              <Button type="button" variant={openSections.includes("perfilamiento")?"default":"ghost"} onClick={()=>setOpenSections(["perfilamiento"])} data-testid="advanced-tab-financial" className="min-h-11 whitespace-normal text-xs sm:text-sm">2. Perfil financiero y matching</Button>
+              <Button type="button" aria-pressed={openSections.includes("datos-basicos")} variant={openSections.includes("datos-basicos")?"default":"ghost"} onClick={()=>setOpenSections(["datos-basicos"])} data-testid="advanced-tab-contact" className="min-h-11 whitespace-normal text-xs sm:text-sm">Contacto / negocio</Button>
+              <Button type="button" aria-pressed={openSections.includes("perfilamiento")} variant={openSections.includes("perfilamiento")?"default":"ghost"} onClick={()=>setOpenSections(["perfilamiento"])} data-testid="advanced-tab-financial" className="min-h-11 whitespace-normal text-xs sm:text-sm">3. Perfil financiero</Button>
             </nav>}
             {/* Client Type Selection */}
             <div className="space-y-2" hidden={!onPublicSubmit && !openSections.includes("datos-basicos")}>
@@ -4001,6 +4002,7 @@ export default function ClientForm({ client, onSuccess, onPublicSubmit, submitLa
             </div>
 
             <div className="sticky bottom-0 z-10 flex flex-wrap justify-end gap-2 border-t bg-background/95 backdrop-blur py-3 px-1 shadow-sm">
+              {!onPublicSubmit && openSections.includes("perfilamiento") && financialSection!=="all" && financialSection!=="income" && <Button type="button" variant="ghost" className="min-h-11" onClick={()=>{const i=financialSections.findIndex(s=>s.id===financialSection);setFinancialSection(financialSections[i-1].id);}}>Anterior</Button>}
               {!onPublicSubmit && openSections.includes("perfilamiento") && financialSection!=="all" && financialSection!=="credits" && <Button type="button" variant="outline" className="min-h-11 w-full sm:w-auto" onClick={()=>{const i=financialSections.findIndex(s=>s.id===financialSection);setFinancialSection(financialSections[i+1].id);}}>Siguiente: {financialSections[financialSections.findIndex(s=>s.id===financialSection)+1]?.label}</Button>}
               {!onPublicSubmit && openSections.includes("datos-basicos") && !openSections.includes("perfilamiento") && <Button type="button" variant="outline" className="min-h-11 w-full sm:w-auto" onClick={()=>setOpenSections(["perfilamiento"])}>Continuar al perfil financiero</Button>}
               <Button 
