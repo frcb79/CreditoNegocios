@@ -73,7 +73,8 @@ export async function runBrokerInvitationReminders(): Promise<{
        AND (u.reset_token_expiry IS NULL OR u.reset_token_expiry <= NOW())
        AND coalesce(u.profile_data->>'invitationFollowupPaused', 'false') <> 'true'
        AND fi.invited_at <= NOW() - INTERVAL '3 days'
-     ORDER BY fi.invited_at ASC LIMIT 250`);
+       AND (NOT $1::boolean OR fi.invited_at > NOW() - INTERVAL '43 days')
+     ORDER BY fi.invited_at ASC LIMIT 250`,[process.env.COMMERCIAL_INVITATION_EXTENSION_ENABLED === "true"]);
   const output = { due: 0, sent: 0, failed: 0, skipped: 0 };
   for (const user of rows) {
     const day = selectReminderDay(new Date(user.invited_at), new Date(), process.env.COMMERCIAL_INVITATION_EXTENSION_ENABLED === "true");

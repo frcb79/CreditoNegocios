@@ -10,7 +10,7 @@ import { MailCheck, RefreshCw, Search } from "lucide-react";
 type DeliveryRow = {
   id: string; userId: string | null; email: string | null;
   firstName: string | null; lastName: string | null;
-  role: string | null; kind: "welcome" | "reminder" | "invitation" | "reinvitation" | "provider_only";
+  role: string | null; kind: "welcome" | "reminder" | "invitation" | "reinvitation" | "commercial" | "provider_only";
   reminderDay: number | null; dispatchStatus: string;
   providerMessageId: string | null; eventType: string | null;
   createdAt: string; sentAt: string | null; eventAt: string | null; opened?:boolean; clicked?:boolean;
@@ -28,6 +28,7 @@ function kind(row: DeliveryRow) {
   if (row.kind === "welcome") return "Bienvenida";
   if (row.kind === "invitation") return "Invitación";
   if (row.kind === "reinvitation") return "Reinvitación";
+  if (row.kind === "commercial") return "Campaña comercial · día " + (row.reminderDay || "?");
   if (row.kind === "provider_only") return "Evento de Resend sin vinculación";
   return "Recordatorio · día " + (row.reminderDay || "?");
 }
@@ -102,6 +103,7 @@ export default function EmailDeliveryAudit() {
             <option value="invitation">Invitaciones</option>
             <option value="reinvitation">Reinvitaciones</option>
             <option value="reminder">Recordatorios</option>
+            <option value="commercial">Campañas comerciales</option>
             <option value="provider_only">Sin vinculación local</option>
           </select>
           <Button size="sm" variant="outline" onClick={() => void data.refetch()} disabled={data.isFetching}>

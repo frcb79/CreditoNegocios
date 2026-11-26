@@ -1,3 +1,4 @@
+import {commercialMailDispatchSettings,commercialEmailHash} from "./commercialMailDispatchRender";
 import type {Express,RequestHandler} from "express";
 import {randomUUID} from "node:crypto";
 import {z} from "zod";
@@ -8,10 +9,10 @@ import {COMMERCIAL_MAIL_RECIPIENTS_SQL} from "./commercialMailRecipients";
 import {INSERT_COMMERCIAL_MAIL_PLAN_JOBS_SQL,LIST_COMMERCIAL_MAIL_PLANS_SQL} from "./commercialMailPlanSchema";
 const scheduleInput=z.object({draftId:z.string().uuid(),revision:z.number().int().positive(),startsAt:z.string().datetime({offset:true}),confirm:z.literal(true)}).strict();
 const endpoint="/api/admin/commercial-mail-plans";
-// Plans are non-executable until an independently reviewed dispatch worker is installed.
+// Preparation is not approval; dispatch additionally requires explicit production configuration.
 export function registerCommercialMailPlanRoutes(app:Express,auth:RequestHandler,guard:RequestHandler){
   app.get(endpoint,auth,guard,async(_req,res)=>{
-    try{const {rows}=await pool.query(LIST_COMMERCIAL_MAIL_PLANS_SQL);return res.json({plans:rows,dispatchEnabled:false});}
+    try{const {rows}=await pool.query(LIST_COMMERCIAL_MAIL_PLANS_SQL);return res.json({plans:rows,dispatchEnabled:commercialMailDispatchSettings(process.env).enabled});}
     catch{return res.status(503).json({message:"No se pudieron consultar las campañas previstas"});}
   });
   app.get(endpoint+"/:id/preflight",auth,guard,async(req,res)=>{
@@ -55,6 +56,25 @@ export function registerCommercialMailPlanRoutes(app:Express,auth:RequestHandler
       await tx.query("COMMIT");
       return res.status(201).json({id,dispatchEnabled:false,jobCount:ids.length*content.steps.length});
     }catch{await tx.query("ROLLBACK").catch(()=>{});return res.status(503).json({message:"No se pudo preparar la campaña"});}finally{tx.release();}
+  });
+  app.post(endpoint+"/:id/approve",auth,guard,async(req:any,res)=>{
+    if(!commercialMailDispatchSettings(process.env).enabled)return res.status(403).json({message:"El envío comercial está deshabilitado."});
+    if(!z.string().uuid().safeParse(req.params.id).success||!z.object({confirm:z.literal(true),revision:z.number().int().positive()}).strict().safeParse(req.body).success)return res.status(400).json({message:"Confirma la versión y el envío real."});
+    const tx=await pool.connect().catch(()=>null);if(!tx)return res.status(503).json({message:"Base de datos no disponible"});
+    try{
+      await tx.query("BEGIN");
+      const row=(await tx.query("SELECT p.state,p.revision,p.starts_at,r.content FROM public.commercial_mail_plans p JOIN public.commercial_mail_draft_revisions r ON r.draft_id=p.draft_id AND r.revision=p.revision WHERE p.id=$1 FOR UPDATE OF p",[req.params.id])).rows[0];
+      const draft=commercialMailSchema.safeParse(row?.content);
+      if(!row||row.state!=="planned"||row.revision!==req.body.revision||new Date(row.starts_at).getTime()<Date.now()+60000||!draft.success||draft.data.audience==="pending_registration"){await tx.query("ROLLBACK");return res.status(409).json({message:"Campaña inválida, cancelada o con inicio vencido."});}
+      const jobs=(await tx.query("SELECT DISTINCT user_id FROM public.commercial_mail_plan_jobs WHERE plan_id=$1",[req.params.id])).rows;
+      const users=(await tx.query(COMMERCIAL_MAIL_RECIPIENTS_SQL,[draft.data.audience])).rows;
+      const byId=new Map(users.map(u=>[u.id,u]));
+      if(!jobs.length||users.length>500||jobs.some(j=>!byId.has(j.user_id))){await tx.query("ROLLBACK");return res.status(409).json({message:"La audiencia cambió. Prepara un calendario nuevo."});}
+      const hashes=Object.fromEntries(jobs.map(j=>[j.user_id,commercialEmailHash(byId.get(j.user_id).email)]));
+      const result=await tx.query("INSERT INTO public.commercial_mail_approvals(plan_id,approved_by,recipient_hashes) VALUES($1,$2,$3::jsonb) ON CONFLICT DO NOTHING RETURNING plan_id",[req.params.id,req.commercialMailActor,JSON.stringify(hashes)]);
+      if(!result.rowCount){await tx.query("ROLLBACK");return res.status(409).json({message:"Ya se aprobó esta campaña."});}
+      await tx.query("COMMIT");return res.json({approved:true});
+    }catch{await tx.query("ROLLBACK").catch(()=>{});return res.status(503).json({message:"No se pudo aprobar la campaña."});}finally{tx.release();}
   });
   app.post(endpoint+"/:id/cancel",auth,guard,async(req:any,res)=>{
     if(!z.string().uuid().safeParse(req.params.id).success)return res.status(400).json({message:"ID inválido"});

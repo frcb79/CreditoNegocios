@@ -49,6 +49,12 @@ WITH outbound AS (
               ELSE NULL::timestamp END AS sent_at
   FROM public.users u
   WHERE u.profile_data ? 'invitationRecovery20261105'
+  UNION ALL
+  SELECT 'commercial:' || d.plan_id || ':' || d.user_id || ':' || d.step_day, d.user_id,
+         d.recipient_email,u.first_name,u.last_name,u.role,
+         'commercial'::text,d.step_day,d.status,d.provider_message_id,d.claimed_at,d.sent_at
+  FROM public.commercial_mail_dispatches d JOIN public.users u ON u.id=d.user_id
+  WHERE d.status IN ('claimed','sent','uncertain')
 ), all_messages AS (
   SELECT * FROM outbound
   UNION ALL

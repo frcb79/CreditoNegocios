@@ -38,7 +38,11 @@ FROM unnest($3::varchar[]) AS recipient CROSS JOIN unnest($4::int[]) AS day
 export const LIST_COMMERCIAL_MAIL_PLANS_SQL = `
 SELECT p.id,p.draft_id AS "draftId",p.revision,p.starts_at AS "startsAt",p.state,
        r.content->>'name' AS name,r.content->>'audience' AS audience,
-       count(DISTINCT j.user_id)::int AS "recipientCount",count(j.user_id)::int AS "jobCount"
+       count(DISTINCT j.user_id)::int AS "recipientCount",count(j.user_id)::int AS "jobCount",
+       EXISTS(SELECT 1 FROM public.commercial_mail_approvals a WHERE a.plan_id=p.id) AS approved,
+       (SELECT count(*)::int FROM public.commercial_mail_dispatches d WHERE d.plan_id=p.id AND d.status='sent') AS "sentCount",
+       (SELECT count(*)::int FROM public.commercial_mail_dispatches d WHERE d.plan_id=p.id AND d.status IN ('claimed','uncertain')) AS "uncertainCount",
+       (SELECT count(*)::int FROM public.commercial_mail_dispatches d WHERE d.plan_id=p.id AND d.status IN ('expired','skipped')) AS "skippedCount"
 FROM public.commercial_mail_plans p
 JOIN public.commercial_mail_draft_revisions r ON r.draft_id=p.draft_id AND r.revision=p.revision
 JOIN public.commercial_mail_plan_jobs j ON j.plan_id=p.id

@@ -7,6 +7,7 @@ WITH invitation_users AS (
   SELECT user_id,provider_message_id FROM public.broker_activation_welcome_events
   UNION ALL SELECT user_id,provider_message_id FROM public.broker_invitation_reminder_events
   UNION ALL SELECT data->>'brokerId',data->>'resendMessageId' FROM public.notifications WHERE type='broker_invitation_sent'
+  UNION ALL SELECT user_id,provider_message_id FROM public.commercial_mail_dispatches
   UNION ALL SELECT id,profile_data->'invitationRecovery20261105'->>'providerMessageId' FROM public.users
 ), blocked AS (
   SELECT DISTINCT m.user_id FROM known_messages m JOIN public.resend_delivery_events e

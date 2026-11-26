@@ -10,6 +10,7 @@ test("Commercial mail selection recalculates registration, activity and exclusio
       CREATE TABLE public.notifications(type varchar,data jsonb);
       CREATE TABLE public.broker_activation_welcome_events(user_id varchar,provider_message_id varchar);
       CREATE TABLE public.broker_invitation_reminder_events(user_id varchar,provider_message_id varchar);
+      CREATE TABLE public.commercial_mail_dispatches(user_id varchar,provider_message_id varchar);
       CREATE TABLE public.resend_delivery_events(provider_message_id varchar,event_type varchar);
       CREATE TABLE public.credit_submission_requests(broker_id varchar,origin_master_broker_id varchar);
       CREATE TABLE public.credits(broker_id varchar,origin_master_broker_id varchar);
@@ -41,6 +42,8 @@ test("Commercial mail selection recalculates registration, activity and exclusio
     assert.deepEqual(await ids("registered_no_requests"),["pending","quiet"]);
     await pg.exec("INSERT INTO public.credits VALUES('quiet',NULL)");
     assert.deepEqual(await ids("registered_no_requests"),["pending"]);
+    await pg.exec("INSERT INTO public.commercial_mail_dispatches VALUES('pending','m3'); INSERT INTO public.resend_delivery_events VALUES('m3','email.complained')");
+    assert.deepEqual(await ids("registered_no_requests"),[]);
     const projection=(await pg.query(COMMERCIAL_MAIL_RECIPIENTS_SQL,["individual"])).rows[0];
     assert.ok(!("password" in (projection as object)));
   }finally{await pg.close();}

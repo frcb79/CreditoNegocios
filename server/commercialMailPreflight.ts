@@ -4,7 +4,7 @@ export function summarizeCommercialMailPlan(audience:CommercialMailDraft["audien
   const users=new Set(jobs.map(j=>j.userId)),excluded=Array.from(users).filter(id=>!eligible.has(id)).length;
   const eligibleJobs=jobs.filter(j=>eligible.has(j.userId));
   const overdueJobs=eligibleJobs.filter(j=>new Date(j.scheduledFor).getTime()<=now.getTime()).length;
-  const blockers=["El motor de envío comercial aún no está habilitado."];
+  const blockers=["La preparación no autoriza envíos; requiere aprobación y habilitación independiente."];
   if(state!=="planned")blockers.push("La campaña está cancelada.");
   if(audience==="pending_registration")blockers.push("La recuperación pertenece a la secuencia única de invitaciones; no se enviará desde un calendario separado.");
   if(excluded)blockers.push("Hay destinatarios que ya no cumplen el segmento; deben omitirse.");
