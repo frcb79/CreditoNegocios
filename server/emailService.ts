@@ -1,4 +1,6 @@
 import { Resend } from 'resend';
+import type { InvitationReminderDay } from './brokerInvitationReminderSchema';
+import { commercialMailStarters } from '../shared/commercialMailDrafts';
 
 const resend = process.env.RESEND_API_KEY ? new Resend(process.env.RESEND_API_KEY) : null;
 
@@ -1049,7 +1051,7 @@ export async function sendClientConsentOtpEmail(input:{
 export function buildBrokerInvitationReminderEmail(
   to: string,
   token: string,
-  day: 3 | 7 | 12 | 15,
+  day: InvitationReminderDay,
   name?: string,
   baseUrl = process.env.FRONTEND_BASE_URL,
 ): { subject: string; html: string; text: string } {
@@ -1060,7 +1062,7 @@ export function buildBrokerInvitationReminderEmail(
     .replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
   const link = baseUrl.replace(/\/$/, "") + "/reset-password?token=" + encodeURIComponent(token);
   const greeting = name?.trim() || "colaborador";
-  const variants: Record<3 | 7 | 12 | 15, { subject: string; headline: string; body: string; closing: string }> = {
+  const variants: Partial<Record<InvitationReminderDay, { subject: string; headline: string; body: string; closing: string }>> = {
     3: {
       subject: "Tu invitación a Crédito Negocios sigue disponible",
       headline: "Tus próximas oportunidades pueden comenzar aquí",
@@ -1077,16 +1079,18 @@ export function buildBrokerInvitationReminderEmail(
       subject: "Tu invitación continúa disponible: falta un último paso",
       headline: "Tu invitación sigue disponible",
       body: "Queremos que conozcas las oportunidades comerciales que puedes desarrollar desde Crédito Negocios. Si te interesa participar, activa tu cuenta con el enlace renovado.",
-      closing: "Pronto recibirás nuestro último correo de seguimiento a esta invitación, con algunos ejemplos de oportunidades de negocio.",
+      closing: "Pronto recibirás otro correo de seguimiento a esta invitación, con algunos ejemplos de oportunidades de negocio.",
     },
     15: {
       subject: "Una oportunidad empresarial puede generar $15,000 o $20,000 en comisiones ilustrativas",
       headline: "La próxima oportunidad podría estar entre tus contactos",
       body: "Tal vez ya conoces al dueño de un negocio que necesita capital o al director de una empresa que busca arrendamiento. Una recomendación adecuada puede abrir una nueva oportunidad comercial. Mira estos dos ejemplos hipotéticos:",
-      closing: "Activa tu cuenta para explorar alternativas de financiamiento y registrar tu primer prospecto. Este es el último recordatorio automático de tu invitación.",
+      closing: "Activa tu cuenta para explorar alternativas de financiamiento y registrar tu primer prospecto. Estamos para ayudarte a comenzar.",
     },
   };
-  const v = variants[day];
+  const extension = commercialMailStarters[0].steps.find(s => s.day === day);
+  const v = variants[day] ?? (extension ? {subject:extension.subject,headline:extension.subject,body:extension.body.replace(/^Hola, \{\{nombre\}\}:\s*/, ""),closing:"Si necesitas ayuda, escríbenos a info@creditonegocios.com.mx."} : undefined);
+  if (!v) throw new Error("Día de seguimiento inválido");
   const day15Examples = day === 15 ? [
     { label: "Crédito para un negocio", amount: "$1,000,000 MXN", rate: "1.5% ilustrativo", commission: "$15,000 MXN" },
     { label: "Arrendamiento empresarial", amount: "$1,000,000 MXN", rate: "2% ilustrativo", commission: "$20,000 MXN" },
@@ -1126,7 +1130,7 @@ export function buildBrokerInvitationReminderEmail(
 }
 
 export async function sendBrokerInvitationReminderEmail(
-  to: string, token: string, day: 3 | 7 | 12 | 15, name?: string,
+  to: string, token: string, day: InvitationReminderDay, name?: string,
 ): Promise<{ success: boolean; error?: string; providerMessageId?: string }> {
   try {
     if (!resend) return { success: false, error: "Servicio de correo no configurado" };
