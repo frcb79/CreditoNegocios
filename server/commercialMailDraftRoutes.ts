@@ -32,6 +32,13 @@ export function registerCommercialMailDraftRoutes(app:Express){
       await tx.query("SELECT pg_advisory_xact_lock(hashtextextended($1,0))",["commercial-mail:"+key]);
       const latest=(await tx.query("SELECT max(revision)::int AS revision FROM public.commercial_mail_draft_revisions WHERE draft_id=$1",[key])).rows[0].revision||0;
       if(latest!==expectedRevision){await tx.query("ROLLBACK");return res.status(409).json({message:"El borrador cambió. Actualiza antes de guardar."});}
+      if(content.recipientIds?.length){
+        const candidates=(await tx.query(COMMERCIAL_MAIL_RECIPIENTS_SQL,[content.audience])).rows;
+        const allowed=new Set(candidates.map(row=>row.id));
+        if(candidates.length>500||content.recipientIds.some(id=>!allowed.has(id))){
+          await tx.query("ROLLBACK");return res.status(409).json({message:"La audiencia cambió. Actualiza la selección antes de guardar."});
+        }
+      }
       const result=await tx.query('INSERT INTO public.commercial_mail_draft_revisions(draft_id,revision,content,created_by) VALUES($1,$2,$3::jsonb,$4) RETURNING draft_id AS id,revision,content,created_at AS "updatedAt"',[key,latest+1,JSON.stringify(content),req.commercialMailActor]);
       await tx.query("COMMIT");return res.status(201).json(result.rows[0]);
     }catch{await tx.query("ROLLBACK").catch(()=>{});return res.status(503).json({message:"No fue posible guardar el borrador"});}finally{tx.release();}

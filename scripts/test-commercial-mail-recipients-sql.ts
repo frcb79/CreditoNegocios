@@ -1,0 +1,47 @@
+import { strict as assert } from "node:assert";
+import { test } from "node:test";
+import { PGlite } from "@electric-sql/pglite";
+import { COMMERCIAL_MAIL_RECIPIENTS_SQL } from "../server/commercialMailRecipients";
+test("Commercial mail selection recalculates registration, activity and exclusions in isolated PostgreSQL",async()=>{
+  const pg=await PGlite.create();
+  try{
+    await pg.exec(`
+      CREATE TABLE public.users(id varchar PRIMARY KEY,email varchar,first_name varchar,last_name varchar,role varchar DEFAULT 'broker',password varchar,status varchar DEFAULT 'active',is_active boolean DEFAULT true,access_status varchar DEFAULT 'free',profile_data jsonb DEFAULT '{}');
+      CREATE TABLE public.notifications(type varchar,data jsonb);
+      CREATE TABLE public.broker_activation_welcome_events(user_id varchar,provider_message_id varchar);
+      CREATE TABLE public.broker_invitation_reminder_events(user_id varchar,provider_message_id varchar);
+      CREATE TABLE public.resend_delivery_events(provider_message_id varchar,event_type varchar);
+      CREATE TABLE public.credit_submission_requests(broker_id varchar,origin_master_broker_id varchar);
+      CREATE TABLE public.credits(broker_id varchar,origin_master_broker_id varchar);
+      CREATE TABLE public.commercial_marketing_leads(owner_user_id varchar);
+      CREATE TABLE public.tenants(id varchar,is_active boolean);
+      CREATE TABLE public.tenant_members(user_id varchar,tenant_id varchar,is_active boolean);
+      INSERT INTO public.tenants VALUES ('t',true);
+      INSERT INTO public.users(id,email,password) SELECT id,id||'@example.test',CASE WHEN id IN ('pending','uninvited') THEN NULL ELSE 'synthetic' END FROM unnest(ARRAY['pending','uninvited','quiet','originator','master','lead','paused','optout','bounce','inactive','nomember','admin','expired']) AS x(id);
+      UPDATE public.users SET role='master_broker' WHERE id='master';
+      UPDATE public.users SET role='super_admin' WHERE id='admin';
+      UPDATE public.users SET profile_data='{"invitationFollowupPaused":true}' WHERE id='paused';
+      UPDATE public.users SET profile_data='{"commercialMailOptOut":true}' WHERE id='optout';
+      UPDATE public.users SET is_active=false WHERE id='inactive';
+      UPDATE public.users SET access_status='expired' WHERE id='expired';
+      INSERT INTO public.tenant_members SELECT id,'t',true FROM public.users WHERE id<>'nomember';
+      INSERT INTO public.notifications VALUES('broker_invitation_sent','{"brokerId":"pending","resendMessageId":"m1"}'),('broker_invitation_sent','{"brokerId":"bounce","resendMessageId":"m2"}');
+      INSERT INTO public.resend_delivery_events VALUES('m2','email.bounced');
+      INSERT INTO public.credit_submission_requests VALUES('originator','master');
+      INSERT INTO public.commercial_marketing_leads VALUES('lead');
+    `);
+    const ids=async(a:string)=>(await pg.query<{id:string}>(COMMERCIAL_MAIL_RECIPIENTS_SQL,[a])).rows.map(r=>r.id).sort();
+    assert.deepEqual(await ids("pending_registration"),["pending"]);
+    assert.deepEqual(await ids("registered_no_requests"),["quiet"]);
+    assert.deepEqual(await ids("individual"),["lead","master","originator","quiet"]);
+    assert.deepEqual(await ids("newsletter"),["lead","master","originator","quiet"]);
+    assert.deepEqual(await ids("invalid"),[]);
+    await pg.exec("UPDATE public.users SET password='synthetic' WHERE id='pending'");
+    assert.deepEqual(await ids("pending_registration"),[]);
+    assert.deepEqual(await ids("registered_no_requests"),["pending","quiet"]);
+    await pg.exec("INSERT INTO public.credits VALUES('quiet',NULL)");
+    assert.deepEqual(await ids("registered_no_requests"),["pending"]);
+    const projection=(await pg.query(COMMERCIAL_MAIL_RECIPIENTS_SQL,["individual"])).rows[0];
+    assert.ok(!("password" in (projection as object)));
+  }finally{await pg.close();}
+});

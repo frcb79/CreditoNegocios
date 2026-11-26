@@ -54,7 +54,10 @@ test("Resend delivery audit handles duplicate and out-of-order events", async ()
     assert.equal(duplicate.affectedRows, 0, "replayed event does not insert a second row");
     const count = await pg.query<{ count: number }>("SELECT count(*)::int AS count FROM public.resend_delivery_events");
     assert.equal(count.rows[0].count, 5);
+    await pg.exec("INSERT INTO public.resend_delivery_events(event_id,provider_message_id,event_type,occurred_at) VALUES ('event-open','email-invitation','email.opened',NOW()),('event-click','email-invitation','email.clicked',NOW())");
     const rows = (await pg.query<any>(EMAIL_DELIVERY_AUDIT_SQL)).rows;
+    assert.equal(rows.find(x=>x.kind==="invitation")?.opened,true);
+    assert.equal(rows.find(x=>x.kind==="invitation")?.clicked,true);
     assert.equal(rows.length, 6);
     assert.equal(rows.find(x => x.kind === "welcome")?.eventType, "email.bounced");
     assert.equal(rows.find(x => x.kind === "reminder" && x.reminderDay === 15)?.eventType, null);
