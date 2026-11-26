@@ -24,14 +24,15 @@ interface ClientFormProps {
   onSuccess?: () => void;
   onPublicSubmit?: (profile: Record<string, unknown>) => Promise<void>;
   submitLabel?: string;
+  initialSection?: "datos-basicos" | "perfilamiento";
 }
 
 
-export default function ClientForm({ client, onSuccess, onPublicSubmit, submitLabel }: ClientFormProps) {
+export default function ClientForm({ client, onSuccess, onPublicSubmit, submitLabel, initialSection = "datos-basicos" }: ClientFormProps) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [clientType, setClientType] = useState<"persona_moral" | "fisica_empresarial" | "fisica" | "sin_sat">(client?.type || "fisica");
-  const [openSections, setOpenSections] = useState<string[]>(["datos-basicos"]);
+  const [openSections, setOpenSections] = useState<string[]>([initialSection]);
   // The customer's own legal representative will receive LEG-10 OTP; never
   // substitute the Broker's business contact or personal email.
   const [clientRepresentativeName,setClientRepresentativeName]=useState<string>(
@@ -267,8 +268,12 @@ export default function ClientForm({ client, onSuccess, onPublicSubmit, submitLa
             setOpenSections(["datos-basicos", "perfilamiento"]);
             toast({ title: "Revisa los campos señalados", description: "Completa solo los detalles condicionados por tus respuestas.", variant: "destructive" });
           })} className="space-y-6">
+            {!onPublicSubmit && <nav aria-label="Secciones del perfil" className="sticky top-0 z-10 grid grid-cols-2 gap-1 bg-background border rounded-lg p-1 shadow-sm">
+              <Button type="button" variant={openSections.includes("datos-basicos")?"default":"ghost"} onClick={()=>setOpenSections(["datos-basicos"])} data-testid="advanced-tab-contact" className="min-h-11 whitespace-normal text-xs sm:text-sm">1. Datos del prospecto</Button>
+              <Button type="button" variant={openSections.includes("perfilamiento")?"default":"ghost"} onClick={()=>setOpenSections(["perfilamiento"])} data-testid="advanced-tab-financial" className="min-h-11 whitespace-normal text-xs sm:text-sm">2. Perfil financiero y matching</Button>
+            </nav>}
             {/* Client Type Selection */}
-            <div className="space-y-2">
+            <div className="space-y-2" hidden={!onPublicSubmit && !openSections.includes("datos-basicos")}>
               <label className="text-sm font-medium text-gray-900">Tipo de Cliente</label>
               <Tabs value={clientType} onValueChange={(value) => {
                   const nextType = value as keyof typeof ANNUAL_INCOME_OPTIONS;
@@ -280,14 +285,14 @@ export default function ClientForm({ client, onSuccess, onPublicSubmit, submitLa
                     form.setValue("ingresoAnual", "no-disponible", { shouldValidate: true });
                   }
                 }}>
-                <TabsList className="grid w-full grid-cols-2 sm:grid-cols-4 h-auto bg-muted/30 gap-1 p-1 rounded-lg">
+                <TabsList className="grid w-full grid-cols-4 h-auto bg-muted/30 gap-1 p-1 rounded-lg">
                   <TabsTrigger 
                     value="persona_moral" 
                     data-testid="tab-persona-moral" 
                     disabled={!!client} 
                     className="text-xs sm:text-sm py-2 data-[state=active]:border-blue-500 data-[state=active]:bg-blue-50 data-[state=active]:text-blue-800 border-blue-200 bg-background hover:bg-blue-50 rounded-md transition-colors"
                   >
-                    Persona Moral
+                    <span className="sm:hidden">PM</span><span className="hidden sm:inline">Persona Moral</span>
                   </TabsTrigger>
                   <TabsTrigger 
                     value="fisica_empresarial" 
@@ -303,7 +308,7 @@ export default function ClientForm({ client, onSuccess, onPublicSubmit, submitLa
                     disabled={!!client} 
                     className="text-xs sm:text-sm py-2 data-[state=active]:border-emerald-500 data-[state=active]:bg-emerald-50 data-[state=active]:text-emerald-800 border-emerald-200 bg-background hover:bg-emerald-50 rounded-md transition-colors"
                   >
-                    Persona Física
+                    <span className="sm:hidden">PF</span><span className="hidden sm:inline">Persona Física</span>
                   </TabsTrigger>
                   <TabsTrigger 
                     value="sin_sat" 
@@ -1098,8 +1103,8 @@ export default function ClientForm({ client, onSuccess, onPublicSubmit, submitLa
             
             {/* Perfilamiento Tab */}
             <div className="space-y-6">
-              <Accordion type="multiple" value={openSections} onValueChange={setOpenSections} className="space-y-3">
-                <AccordionItem value="datos-basicos" className="rounded-lg border border-border bg-card px-4 sm:px-5" data-testid="profile-section-basics">
+              <Accordion type="multiple" value={openSections} onValueChange={onPublicSubmit ? setOpenSections : (values)=>{if(values.length)setOpenSections(values);}} className="space-y-3">
+                <AccordionItem value="datos-basicos" className="rounded-lg border border-border bg-card px-4 sm:px-5" data-testid="profile-section-basics" hidden={!onPublicSubmit && !openSections.includes("datos-basicos")}>
                   <AccordionTrigger className="text-left hover:no-underline gap-3">
                     <span className="space-y-1">
                       <span className="flex items-center gap-2 font-semibold"><User className="h-4 w-4 text-primary" /> Datos del cliente y contacto</span>
@@ -1330,7 +1335,7 @@ export default function ClientForm({ client, onSuccess, onPublicSubmit, submitLa
                   />
                   </AccordionContent>
                 </AccordionItem>
-                <AccordionItem value="perfilamiento" className="rounded-lg border border-border bg-card px-4 sm:px-5" data-testid="profile-section-financial">
+                <AccordionItem value="perfilamiento" className="rounded-lg border border-border bg-card px-4 sm:px-5" data-testid="profile-section-financial" hidden={!onPublicSubmit && !openSections.includes("perfilamiento")}>
                   <AccordionTrigger className="text-left hover:no-underline gap-3">
                     <span className="space-y-1">
                       <span className="flex items-center gap-2 font-semibold"><TrendingUp className="h-4 w-4 text-primary" /> Información financiera y perfilamiento</span>
@@ -3958,7 +3963,8 @@ export default function ClientForm({ client, onSuccess, onPublicSubmit, submitLa
               </p>
             </div>
 
-            <div className="sticky bottom-0 z-10 flex flex-wrap justify-end gap-3 border-t bg-background/95 backdrop-blur py-3 px-1 shadow-sm">
+            <div className="sticky bottom-0 z-10 flex flex-wrap justify-end gap-2 border-t bg-background/95 backdrop-blur py-3 px-1 shadow-sm">
+              {!onPublicSubmit && openSections.includes("datos-basicos") && !openSections.includes("perfilamiento") && <Button type="button" variant="outline" className="min-h-11 w-full sm:w-auto" onClick={()=>setOpenSections(["perfilamiento"])}>Continuar al perfil financiero</Button>}
               <Button 
                 type="button" 
                 variant="outline" 

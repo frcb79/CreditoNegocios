@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
+
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
@@ -50,7 +50,7 @@ export default function QuickClientForm({
   initialValues,
   adminCapture = false,
 }: {
-  onSaved: (client: Client) => void;
+  onSaved: (client: Client, continueProfile?: boolean) => void;
   onCancel: () => void;
   onExisting: (clientId: string) => void;
   initialValues?: Partial<QuickFormFields>;
@@ -59,6 +59,7 @@ export default function QuickClientForm({
   const { toast } = useToast();
   const cache = useQueryClient();
   const [fields, setFields] = useState<QuickFormFields>(() => ({ ...initial, ...initialValues }));
+  const [section, setSection] = useState<"contact" | "matching">("contact");
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [duplicate, setDuplicate] = useState<DuplicateCheckResult | null>(null);
   const [checkedSignature, setCheckedSignature] = useState("");
@@ -112,6 +113,7 @@ export default function QuickClientForm({
   const handleSave = async (event: React.FormEvent) => {
     event.preventDefault();
     if (saving || checking) return;
+    const continueProfile = (event.nativeEvent as SubmitEvent).submitter?.getAttribute("value") === "profile";
     if (adminCapture && (!originator || (originator !== '__self__' && !originators.data?.some(u => u.id === originator)))) { setRequestError('Selecciona un asesor válido o registro directo de plataforma.'); return; }
     const parsed = quickClientSchema.safeParse(fields);
     if (!parsed.success) {
@@ -121,7 +123,9 @@ export default function QuickClientForm({
         if (!next[key]) next[key] = issue.message;
       }
       setErrors(next);
-      document.getElementById("quick-client-" + String(parsed.error.issues[0]?.path[0]))?.focus();
+      const first = String(parsed.error.issues[0]?.path[0]);
+      setSection(["industry", "yearsInBusiness", "state", "notes"].includes(first) ? "matching" : "contact");
+      requestAnimationFrame(() => document.getElementById("quick-client-" + first)?.focus());
       return;
     }
     setSaving(true);
@@ -157,7 +161,7 @@ export default function QuickClientForm({
       await cache.invalidateQueries({ queryKey: ["/api/clients"] });
       cache.invalidateQueries({ queryKey: ["/api/dashboard/metrics"] });
       toast({ title: "Prospecto guardado", description: "Puedes completar su perfil cuando la operación lo requiera." });
-      onSaved(client);
+      onSaved(client, continueProfile);
     } catch (error: any) {
       setRequestError(error?.message || "No se pudo guardar el prospecto. Inténtalo nuevamente.");
     } finally {
@@ -185,7 +189,7 @@ export default function QuickClientForm({
     <Card className="max-w-4xl mx-auto border-border/80 shadow-sm" data-testid="quick-client-form">
       <CardHeader className="border-b bg-muted/20 p-4 sm:p-6 space-y-1">
         <CardTitle className="text-xl">Nuevo prospecto</CardTitle>
-        <CardDescription>Registra lo esencial para comenzar. El perfil financiero puede completarse después, según la operación.</CardDescription>
+        <CardDescription>Registra los datos básicos y continúa al perfil financiero para mejorar el matching. Puedes guardar y completarlo después.</CardDescription>
       </CardHeader>
       <CardContent className="p-0">
         <form onSubmit={handleSave} noValidate>
@@ -203,7 +207,7 @@ export default function QuickClientForm({
             </section>}
             <section aria-labelledby="quick-client-type-title" className="space-y-3">
               <h2 id="quick-client-type-title" className="font-semibold text-sm">1. Tipo de cliente</h2>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+              <div className="grid grid-cols-4 gap-1.5 sm:gap-2.5">
                 {CLIENT_TYPE_OPTIONS.map(type => {
                   const meta = CLIENT_TYPE_PRESENTATION[type];
                   const Icon = clientTypeIcons[type];
@@ -211,18 +215,19 @@ export default function QuickClientForm({
                   return (
                     <button
                       type="button" key={type} data-testid={"quick-type-" + type}
-                      aria-pressed={selected} onClick={() => update("type", type)}
-                      className={cn("flex items-center gap-3 text-left rounded-lg border p-3 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring", selected ? meta.selectedClass : "border-border bg-card hover:bg-muted/50")}
+                      aria-label={meta.label + ": " + meta.description} aria-pressed={selected} onClick={() => update("type", type)}
+                      className={cn("flex flex-col sm:flex-row items-center gap-1 sm:gap-3 text-center sm:text-left rounded-lg border px-1 py-2 sm:p-3 min-w-0 min-h-16 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring", selected ? meta.selectedClass : "border-border bg-card hover:bg-muted/50")}
                     >
-                      <span className={cn("rounded-md p-2 shrink-0", meta.iconClass)}><Icon className="h-5 w-5" /></span>
+                      <span className={cn("rounded-md p-1.5 sm:p-2 shrink-0", meta.iconClass)}><Icon className="h-4 w-4 sm:h-5 sm:w-5" /></span>
                       <span className="min-w-0">
-                        <span className="block text-sm font-semibold">{meta.label}</span>
-                        <span className="block text-xs text-muted-foreground">{meta.description}</span>
+                        <span className="block text-xs sm:text-sm font-semibold sm:hidden">{meta.short}</span><span className="hidden sm:block text-sm font-semibold">{meta.label}</span>
+                        <span className="hidden sm:block text-xs text-muted-foreground">{meta.description}</span>
                       </span>
                     </button>
                   );
                 })}
               </div>
+              <p className="text-xs text-muted-foreground sm:hidden">{CLIENT_TYPE_PRESENTATION[fields.type].label} · {CLIENT_TYPE_PRESENTATION[fields.type].description}</p>
               {fields.type === "sin_sat" && (
                 <p className="text-xs text-muted-foreground flex gap-1.5 items-start"><Info className="w-4 h-4 shrink-0" />
                   Para prospectos sin información fiscal disponible. No equivale a un rechazo de crédito ni impide completar el perfil posteriormente.
@@ -230,7 +235,11 @@ export default function QuickClientForm({
               )}
             </section>
 
-            <section aria-labelledby="quick-client-contact-title" className="space-y-3 border-t pt-5">
+            <nav aria-label="Secciones del prospecto" className="sticky top-0 z-10 grid grid-cols-2 gap-1 rounded-lg border bg-background p-1 shadow-sm">
+              <Button type="button" variant={section==="contact"?"default":"ghost"} aria-pressed={section==="contact"} data-testid="quick-tab-contact" onClick={()=>setSection("contact")} className="min-h-11 text-xs sm:text-sm whitespace-normal">1. Datos de contacto</Button>
+              <Button type="button" variant={section==="matching"?"default":"ghost"} aria-pressed={section==="matching"} data-testid="quick-tab-matching" onClick={()=>setSection("matching")} className="min-h-11 text-xs sm:text-sm whitespace-normal">2. Perfil y matching</Button>
+            </nav>
+            <section hidden={section!=="contact"} aria-labelledby="quick-client-contact-title" className="space-y-3 border-t pt-5">
               <h2 id="quick-client-contact-title" className="text-sm font-semibold">2. Datos esenciales</h2>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 {fields.type === "persona_moral" && field("businessName", "Razón social", "Nombre de la empresa", "text", true)}
@@ -242,14 +251,9 @@ export default function QuickClientForm({
               </div>
               <p className="text-xs text-muted-foreground">Para guardar es suficiente contar con teléfono o correo. No solicitamos información financiera en esta etapa.</p>
             </section>
-            <Accordion type="single" collapsible className="border rounded-lg px-4">
-              <AccordionItem value="additional" className="border-b-0">
-                <AccordionTrigger className="text-sm text-left hover:no-underline" data-testid="quick-additional-trigger">
-                  <span><span className="font-semibold">Información adicional para el matching</span>
-                    <span className="block text-xs font-normal text-muted-foreground mt-1">Opcional · Si conoces estos datos, ayudarán a evaluar productos más adelante.</span>
-                  </span>
-                </AccordionTrigger>
-                <AccordionContent>
+            <section hidden={section!=="matching"} className="border rounded-lg p-3 space-y-3" data-testid="quick-matching-panel">
+              <h2 className="font-semibold text-sm">Información inicial para el matching</h2>
+              <p className="text-xs text-muted-foreground">Opcional. Guarda y continúa al perfil financiero completo: ingresos, buró, créditos y garantías. No necesitas tener todas las respuestas.</p>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2">
                     {field("industry", "Giro / actividad", "Ej. Comercio, manufactura")}
                     {field("yearsInBusiness", "Antigüedad del negocio (años)", "Ej. 5", "number")}
@@ -259,9 +263,7 @@ export default function QuickClientForm({
                     <Label htmlFor="quick-client-notes">Notas del prospecto</Label>
                     <Textarea id="quick-client-notes" value={fields.notes} onChange={e => update("notes", e.target.value)} rows={3} maxLength={2000} placeholder="Información relevante para una futura solicitud" />
                   </div>
-                </AccordionContent>
-              </AccordionItem>
-            </Accordion>
+            </section>
             <section aria-label="Comprobar cliente existente" className="space-y-3">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <span className="flex gap-1.5 items-center text-sm font-medium"><ShieldCheck className="h-4 w-4 text-primary" /> Protección de clientes y oportunidades</span>
@@ -279,12 +281,13 @@ export default function QuickClientForm({
               {requestError && <Alert variant="destructive" role="alert"><AlertDescription>{requestError}</AlertDescription></Alert>}
             </section>
           </div>
-          <div className="sticky bottom-0 z-10 border-t bg-background/95 backdrop-blur p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:px-6 grid grid-cols-[auto_1fr] sm:flex gap-2 items-center sm:justify-end shadow-sm">
+          <div className="sticky bottom-0 z-10 border-t bg-background/95 backdrop-blur p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:px-6 flex flex-wrap gap-2 items-center sm:justify-end shadow-sm">
             <Button type="button" variant="outline" onClick={onCancel} disabled={saving}>Cancelar</Button>
-            <Button type="submit" className="min-h-11 sm:min-h-9" disabled={saving || checking} data-testid="button-submit-client">
+            <Button type="submit" value="save" variant="outline" className="min-h-11 flex-1 sm:flex-none sm:min-h-9" disabled={saving || checking} data-testid="button-submit-client">
               {saving ? <Loader2 className="h-4 w-4 mr-1.5 animate-spin" /> : null}
               {saving ? "Guardando..." : "Guardar prospecto"}
             </Button>
+            {section==="contact" ? <Button type="button" onClick={()=>setSection("matching")} className="min-h-11 w-full sm:w-auto" disabled={saving||checking} data-testid="quick-next-matching">Continuar al matching <ArrowRight className="w-4 h-4 ml-1"/></Button> : <Button type="submit" value="profile" className="min-h-11 w-full sm:w-auto" disabled={saving||checking} data-testid="quick-save-and-profile">Guardar y completar perfil financiero <ArrowRight className="w-4 h-4 ml-1"/></Button>}
           </div>
         </form>
       </CardContent>
