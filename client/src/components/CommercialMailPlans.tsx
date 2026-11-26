@@ -7,11 +7,14 @@ import {apiRequest} from "@/lib/queryClient";
 import type {CommercialMailDraft} from "@shared/commercialMailDrafts";
 type Draft={id:string;revision:number;content:CommercialMailDraft};
 type Plan={id:string;draftId:string;revision:number;startsAt:string;state:"planned"|"cancelled";name:string;audience:string;recipientCount:number;jobCount:number};
+type Preflight={recipientCount:number;eligibleRecipients:number;excludedRecipients:number;eligibleFutureJobs:number;overdueJobs:number;blockers:string[];dispatchEnabled:boolean};
 const endpoint="/api/admin/commercial-mail-plans";
 export default function CommercialMailPlans({drafts}:{drafts:Draft[]}){
   const cache=useQueryClient();
   const plans=useQuery<{plans:Plan[];dispatchEnabled:boolean}>({queryKey:[endpoint]});
   const [id,setId]=useState(""),[start,setStart]=useState(""),[confirm,setConfirm]=useState(false),[message,setMessage]=useState("");
+  const [reviewId,setReviewId]=useState("");
+  const review=useQuery<Preflight>({queryKey:[endpoint,reviewId,"preflight"],enabled:!!reviewId,queryFn:async()=>(await apiRequest("GET",endpoint+"/"+reviewId+"/preflight")).json()});
   const draft=drafts.find(d=>d.id===id), date=new Date(start);
   const valid=!!draft?.content.recipientIds?.length&&Number.isFinite(date.getTime())&&date.getTime()>Date.now()+60000;
   const schedule=useMutation({mutationFn:async()=>{if(!draft||!valid||!confirm)throw Error("Revisa la selección.");return (await apiRequest("POST",endpoint,{draftId:draft.id,revision:draft.revision,startsAt:date.toISOString(),confirm:true})).json();},onSuccess:()=>{setConfirm(false);setMessage("Calendario preparado; ningún envío fue activado.");cache.invalidateQueries({queryKey:[endpoint]});},onError:(e:Error)=>setMessage(e.message)});
@@ -23,6 +26,6 @@ export default function CommercialMailPlans({drafts}:{drafts:Draft[]}){
     <label className="flex gap-2 items-start text-sm"><input type="checkbox" checked={confirm} onChange={e=>setConfirm(e.target.checked)}/> Confirmo que revisé el calendario y la versión guardada; sólo quiero preparar la campaña.</label>
     <Button disabled={!valid||!confirm||schedule.isPending} onClick={()=>schedule.mutate()}>Preparar calendario</Button>
     {message&&<p role="status" className="text-sm">{message}</p>}
-    {plans.isError?<p role="alert">No se pudo consultar el calendario.</p>:plans.isLoading?<p>Cargando…</p>:plans.data?.plans.map(p=><div key={p.id} className="border rounded-md p-3 flex flex-wrap items-center gap-2"><div className="flex-1 min-w-0"><p className="font-medium text-sm break-words">{p.name} · v{p.revision}</p><p className="text-xs text-muted-foreground">{new Date(p.startsAt).toLocaleString("es-MX")} · {p.recipientCount} destinatarios · {p.jobCount} envíos previstos · {p.state==="cancelled"?"Cancelada":"Preparada, sin envíos"}</p></div>{p.state==="planned"&&<Button variant="outline" size="sm" disabled={cancel.isPending} onClick={()=>cancel.mutate(p.id)}>Cancelar preparación</Button>}</div>)}
+    {plans.isError?<p role="alert">No se pudo consultar el calendario.</p>:plans.isLoading?<p>Cargando…</p>:plans.data?.plans.map(p=><div key={p.id} className="border rounded-md p-3 flex flex-wrap items-center gap-2"><div className="flex-1 min-w-0"><p className="font-medium text-sm break-words">{p.name} · v{p.revision}</p><p className="text-xs text-muted-foreground">{new Date(p.startsAt).toLocaleString("es-MX")} · {p.recipientCount} destinatarios · {p.jobCount} envíos previstos · {p.state==="cancelled"?"Cancelada":"Preparada, sin envíos"}</p></div>{p.state==="planned"&&<Button variant="outline" size="sm" disabled={cancel.isPending} onClick={()=>cancel.mutate(p.id)}>Cancelar preparación</Button>}<Button variant="outline" size="sm" onClick={()=>{setReviewId(p.id);if(reviewId===p.id)void review.refetch();}}>Revalidar audiencia</Button>{reviewId===p.id&&<div className="basis-full border-t pt-2 text-xs space-y-1">{review.isFetching?<p>Recalculando…</p>:review.isError?<p role="alert">No se pudo verificar la elegibilidad.</p>:review.data&&<><p>{review.data.eligibleRecipients} elegibles · {review.data.excludedRecipients} fuera del segmento · {review.data.eligibleFutureJobs} envíos futuros · {review.data.overdueJobs} fechas vencidas</p>{review.data.blockers.map(b=><p key={b} className="text-muted-foreground">{b}</p>)}</>}</div>}</div>)}
   </CardContent></Card>;
 }

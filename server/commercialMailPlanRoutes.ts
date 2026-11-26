@@ -2,6 +2,7 @@ import type {Express,RequestHandler} from "express";
 import {randomUUID} from "node:crypto";
 import {z} from "zod";
 import {pool} from "./db";
+import {summarizeCommercialMailPlan} from "./commercialMailPreflight";
 import {commercialMailSchema} from "../shared/commercialMailDrafts";
 import {COMMERCIAL_MAIL_RECIPIENTS_SQL} from "./commercialMailRecipients";
 import {INSERT_COMMERCIAL_MAIL_PLAN_JOBS_SQL,LIST_COMMERCIAL_MAIL_PLANS_SQL} from "./commercialMailPlanSchema";
@@ -12,6 +13,19 @@ export function registerCommercialMailPlanRoutes(app:Express,auth:RequestHandler
   app.get(endpoint,auth,guard,async(_req,res)=>{
     try{const {rows}=await pool.query(LIST_COMMERCIAL_MAIL_PLANS_SQL);return res.json({plans:rows,dispatchEnabled:false});}
     catch{return res.status(503).json({message:"No se pudieron consultar las campañas previstas"});}
+  });
+  app.get(endpoint+"/:id/preflight",auth,guard,async(req,res)=>{
+    if(!z.string().uuid().safeParse(req.params.id).success)return res.status(400).json({message:"ID inválido"});
+    try{
+      const plan=(await pool.query("SELECT p.state,r.content FROM public.commercial_mail_plans p JOIN public.commercial_mail_draft_revisions r ON r.draft_id=p.draft_id AND r.revision=p.revision WHERE p.id=$1",[req.params.id])).rows[0];
+      if(!plan)return res.status(404).json({message:"Campaña no encontrada"});
+      const draft=commercialMailSchema.safeParse(plan.content);
+      if(!draft.success)return res.status(409).json({message:"Versión de campaña inválida"});
+      const candidates=(await pool.query(COMMERCIAL_MAIL_RECIPIENTS_SQL,[draft.data.audience])).rows;
+      if(candidates.length>500)return res.status(422).json({message:"Audiencia supera el límite de revisión; no se puede confirmar elegibilidad."});
+      const jobs=(await pool.query('SELECT user_id AS "userId",scheduled_for AS "scheduledFor" FROM public.commercial_mail_plan_jobs WHERE plan_id=$1',[req.params.id])).rows;
+      return res.json(summarizeCommercialMailPlan(draft.data.audience,plan.state,jobs,new Set(candidates.map(r=>r.id))));
+    }catch{return res.status(503).json({message:"No se pudo revalidar la campaña"});}
   });
   app.post(endpoint,auth,guard,async(req:any,res)=>{
     const parsed=scheduleInput.safeParse(req.body);

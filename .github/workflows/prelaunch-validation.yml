@@ -72,7 +72,7 @@ jobs:
       - name: Build
         run: npm run build
       - name: Resend signed delivery SQL test (isolated PGlite, Node runner)
-        run: node --import tsx --test scripts/test-resend-delivery-sql.ts scripts/test-commercial-mail-recipients-sql.ts scripts/test-commercial-mail-plans-sql.ts scripts/test-commercial-mail-test-render.ts
+        run: node --import tsx --test scripts/test-resend-delivery-sql.ts scripts/test-commercial-mail-recipients-sql.ts scripts/test-commercial-mail-plans-sql.ts scripts/test-commercial-mail-test-render.ts scripts/test-commercial-mail-preflight.ts
       - name: Broker dossier and prospect self-service (isolated PostgreSQL and DOM)
         run: |
           npm run test:prospect-intake
