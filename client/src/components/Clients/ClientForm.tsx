@@ -33,6 +33,8 @@ export default function ClientForm({ client, onSuccess, onPublicSubmit, submitLa
   const queryClient = useQueryClient();
   const [clientType, setClientType] = useState<"persona_moral" | "fisica_empresarial" | "fisica" | "sin_sat">(client?.type || "fisica");
   const [openSections, setOpenSections] = useState<string[]>([initialSection]);
+  const financialSections = [{id:"income",label:"Ingresos"},{id:"bureau",label:"Buró"},{id:"guarantees",label:"Garantías / SAT"},{id:"credits",label:"Créditos"}] as const;
+  const [financialSection,setFinancialSection]=useState<typeof financialSections[number]["id"] | "all">("income");
   // The customer's own legal representative will receive LEG-10 OTP; never
   // substitute the Broker's business contact or personal email.
   const [clientRepresentativeName,setClientRepresentativeName]=useState<string>(
@@ -224,6 +226,7 @@ export default function ClientForm({ client, onSuccess, onPublicSubmit, submitLa
       );
 
       if (cleanedCredits.length === 0 || hasIncomplete) {
+        setOpenSections(["perfilamiento"]);setFinancialSection("credits");
         toast({
           title: "Campos de crédito incompletos",
           description: "Debes completar todos los datos del crédito vigente (Tipo, Institución, Saldo Original, Saldo Actual, Fecha Inicio y Fecha Término).",
@@ -266,6 +269,7 @@ export default function ClientForm({ client, onSuccess, onPublicSubmit, submitLa
         <Form {...form}>
           <form onSubmit={form.handleSubmit(onSubmit, () => {
             setOpenSections(["datos-basicos", "perfilamiento"]);
+            setFinancialSection("all");
             toast({ title: "Revisa los campos señalados", description: "Completa solo los detalles condicionados por tus respuestas.", variant: "destructive" });
           })} className="space-y-6">
             {!onPublicSubmit && <nav aria-label="Secciones del perfil" className="sticky top-0 z-10 grid grid-cols-2 gap-1 bg-background border rounded-lg p-1 shadow-sm">
@@ -1350,11 +1354,13 @@ export default function ClientForm({ client, onSuccess, onPublicSubmit, submitLa
                         Perfil del Cliente
                       </CardTitle>
                     </CardHeader>
-                    <CardContent className="space-y-6">
+                    <CardContent className="space-y-6 p-3 sm:p-6">
+                      {!onPublicSubmit && <div className="space-y-2"><nav aria-label="Información financiera" className="grid grid-cols-4 gap-1 rounded-lg border bg-background p-1">{financialSections.map(s=><Button key={s.id} type="button" variant={financialSection===s.id?"default":"ghost"} aria-pressed={financialSection===s.id} data-testid={"financial-tab-"+s.id} className="min-h-11 min-w-0 px-1 whitespace-normal text-[11px] sm:text-sm" onClick={()=>setFinancialSection(s.id)}>{s.label}</Button>)}</nav><p className="text-xs text-muted-foreground">Completa lo que conozcas. Puedes cambiar de sección sin perder tus respuestas.</p></div>}
                       {/* Campos específicos de perfilamiento para Persona Física */}
                       {clientType === "fisica" && (
                         <>
                           <div className="mt-2 pt-4 border-t border-primary/20">
+                            <div hidden={!onPublicSubmit && financialSection !== "all" && financialSection !== "income"} className={onPublicSubmit ? "contents" : "space-y-4"} data-financial-section="income">
                             {/* Rango anual orientativo: no sustituye ingreso mensual verificado. */}
                             <FormField
                               control={form.control}
@@ -1445,6 +1451,8 @@ export default function ClientForm({ client, onSuccess, onPublicSubmit, submitLa
                               )}
                             />
 
+                            </div>
+                            <div hidden={!onPublicSubmit && financialSection !== "all" && financialSection !== "bureau"} className={onPublicSubmit ? "contents" : "space-y-4"} data-financial-section="bureau">
                             {/* Buró de Crédito Persona Física */}
                             <FormField
                               control={form.control}
@@ -1517,6 +1525,8 @@ export default function ClientForm({ client, onSuccess, onPublicSubmit, submitLa
                               />
                             )}
 
+                            </div>
+                            <div hidden={!onPublicSubmit && financialSection !== "all" && financialSection !== "guarantees"} className={onPublicSubmit ? "contents" : "space-y-4"} data-financial-section="guarantees">
                             {/* Cuenta con Garantía */}
                             <FormField
                               control={form.control}
@@ -1715,6 +1725,8 @@ export default function ClientForm({ client, onSuccess, onPublicSubmit, submitLa
                               )}
                             />
 
+                            </div>
+                            <div hidden={!onPublicSubmit && financialSection !== "all" && financialSection !== "credits"} className={onPublicSubmit ? "contents" : "space-y-4"} data-financial-section="credits">
                             {/* Créditos vigentes */}
                             <FormField
                               control={form.control}
@@ -1923,6 +1935,7 @@ export default function ClientForm({ client, onSuccess, onPublicSubmit, submitLa
                               )}
                             />
                           </div>
+                          </div>
                         </>
                       )}
 
@@ -1930,6 +1943,7 @@ export default function ClientForm({ client, onSuccess, onPublicSubmit, submitLa
                       {clientType === "sin_sat" && (
                         <>
                           <div className="mt-8 pt-6 border-t border-primary/20">
+                            <div hidden={!onPublicSubmit && financialSection !== "all" && financialSection !== "income"} className={onPublicSubmit ? "contents" : "space-y-4"} data-financial-section="income">
                             {/* Rango anual orientativo: no sustituye ingreso mensual verificado. */}
                             <FormField
                               control={form.control}
@@ -2017,6 +2031,8 @@ export default function ClientForm({ client, onSuccess, onPublicSubmit, submitLa
                               )}
                             />
 
+                            </div>
+                            <div hidden={!onPublicSubmit && financialSection !== "all" && financialSection !== "bureau"} className={onPublicSubmit ? "contents" : "space-y-4"} data-financial-section="bureau">
                             {/* Buró de Crédito Persona Física */}
                             <FormField
                               control={form.control}
@@ -2114,6 +2130,8 @@ export default function ClientForm({ client, onSuccess, onPublicSubmit, submitLa
                               />
                             )}
 
+                            </div>
+                            <div hidden={!onPublicSubmit && financialSection !== "all" && financialSection !== "guarantees"} className={onPublicSubmit ? "contents" : "space-y-4"} data-financial-section="guarantees">
                             {/* Cuenta con Garantía */}
                             <FormField
                               control={form.control}
@@ -2316,6 +2334,8 @@ export default function ClientForm({ client, onSuccess, onPublicSubmit, submitLa
                               )}
                             />
 
+                            </div>
+                            <div hidden={!onPublicSubmit && financialSection !== "all" && financialSection !== "credits"} className={onPublicSubmit ? "contents" : "space-y-4"} data-financial-section="credits">
                             {/* Créditos Vigentes */}
                             <FormField
                               control={form.control}
@@ -2524,6 +2544,7 @@ export default function ClientForm({ client, onSuccess, onPublicSubmit, submitLa
                               )}
                             />
                           </div>
+                          </div>
                         </>
                       )}
 
@@ -2531,6 +2552,7 @@ export default function ClientForm({ client, onSuccess, onPublicSubmit, submitLa
                       {clientType === "fisica_empresarial" && (
                         <>
                           <div className="mt-8 pt-6 border-t border-primary/20">
+                            <div hidden={!onPublicSubmit && financialSection !== "all" && financialSection !== "income"} className={onPublicSubmit ? "contents" : "space-y-4"} data-financial-section="income">
                             {/* Información Laboral */}
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
                               <FormField
@@ -2735,6 +2757,8 @@ export default function ClientForm({ client, onSuccess, onPublicSubmit, submitLa
                               )}
                             />
 
+                            </div>
+                            <div hidden={!onPublicSubmit && financialSection !== "all" && financialSection !== "bureau"} className={onPublicSubmit ? "contents" : "space-y-4"} data-financial-section="bureau">
                             {/* Buró de Crédito PFAE */}
                             <FormField
                               control={form.control}
@@ -2807,6 +2831,8 @@ export default function ClientForm({ client, onSuccess, onPublicSubmit, submitLa
                               />
                             )}
 
+                            </div>
+                            <div hidden={!onPublicSubmit && financialSection !== "all" && financialSection !== "guarantees"} className={onPublicSubmit ? "contents" : "space-y-4"} data-financial-section="guarantees">
                             {/* Cuenta con Garantía */}
                             <FormField
                               control={form.control}
@@ -3126,6 +3152,8 @@ export default function ClientForm({ client, onSuccess, onPublicSubmit, submitLa
                               />
                             )}
 
+                            </div>
+                            <div hidden={!onPublicSubmit && financialSection !== "all" && financialSection !== "credits"} className={onPublicSubmit ? "contents" : "space-y-4"} data-financial-section="credits">
                             {/* Créditos Vigentes */}
                             <FormField
                               control={form.control}
@@ -3334,6 +3362,7 @@ export default function ClientForm({ client, onSuccess, onPublicSubmit, submitLa
                               )}
                             />
                           </div>
+                          </div>
                         </>
                       )}
 
@@ -3341,6 +3370,7 @@ export default function ClientForm({ client, onSuccess, onPublicSubmit, submitLa
                       {clientType === "persona_moral" && (
                         <>
                           <div className="mt-8 pt-6 border-t border-primary/20">
+                            <div hidden={!onPublicSubmit && financialSection !== "all" && financialSection !== "income"} className={onPublicSubmit ? "contents" : "space-y-4"} data-financial-section="income">
                             {/* Ingresos y Egresos Mensuales */}
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
                               <FormField
@@ -3460,6 +3490,8 @@ export default function ClientForm({ client, onSuccess, onPublicSubmit, submitLa
                               )}
                             />
 
+                            </div>
+                            <div hidden={!onPublicSubmit && financialSection !== "all" && financialSection !== "bureau"} className={onPublicSubmit ? "contents" : "space-y-4"} data-financial-section="bureau">
                             {/* Buró de Crédito */}
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
                               <FormField
@@ -3559,6 +3591,8 @@ export default function ClientForm({ client, onSuccess, onPublicSubmit, submitLa
                               />
                             )}
 
+                            </div>
+                            <div hidden={!onPublicSubmit && financialSection !== "all" && financialSection !== "guarantees"} className={onPublicSubmit ? "contents" : "space-y-4"} data-financial-section="guarantees">
                             {/* Cuenta con Garantía */}
                             <FormField
                               control={form.control}
@@ -3743,6 +3777,8 @@ export default function ClientForm({ client, onSuccess, onPublicSubmit, submitLa
                               />
                             )}
 
+                            </div>
+                            <div hidden={!onPublicSubmit && financialSection !== "all" && financialSection !== "credits"} className={onPublicSubmit ? "contents" : "space-y-4"} data-financial-section="credits">
                             {/* Créditos Vigentes */}
                             <FormField
                               control={form.control}
@@ -3951,6 +3987,7 @@ export default function ClientForm({ client, onSuccess, onPublicSubmit, submitLa
                               )}
                             />
                           </div>
+                          </div>
                         </>
                       )}
                     </CardContent>
@@ -3964,6 +4001,7 @@ export default function ClientForm({ client, onSuccess, onPublicSubmit, submitLa
             </div>
 
             <div className="sticky bottom-0 z-10 flex flex-wrap justify-end gap-2 border-t bg-background/95 backdrop-blur py-3 px-1 shadow-sm">
+              {!onPublicSubmit && openSections.includes("perfilamiento") && financialSection!=="all" && financialSection!=="credits" && <Button type="button" variant="outline" className="min-h-11 w-full sm:w-auto" onClick={()=>{const i=financialSections.findIndex(s=>s.id===financialSection);setFinancialSection(financialSections[i+1].id);}}>Siguiente: {financialSections[financialSections.findIndex(s=>s.id===financialSection)+1]?.label}</Button>}
               {!onPublicSubmit && openSections.includes("datos-basicos") && !openSections.includes("perfilamiento") && <Button type="button" variant="outline" className="min-h-11 w-full sm:w-auto" onClick={()=>setOpenSections(["perfilamiento"])}>Continuar al perfil financiero</Button>}
               <Button 
                 type="button" 

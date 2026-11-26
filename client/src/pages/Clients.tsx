@@ -93,6 +93,8 @@ export default function Clients() {
   };
 
   const handleFormSuccess = () => {
+    if (editingClient && initialProfileSection === "perfilamiento") setLocation(`/clientes/${editingClient.id}`);
+    setInitialProfileSection("datos-basicos");
     setViewMode("list");
     setEditingClient(null);
     setIncomingLead(null);
