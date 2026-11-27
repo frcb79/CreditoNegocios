@@ -29,7 +29,7 @@ export default function ReGestionSection() {
           <CardTitle className="text-sm font-semibold">Oportunidades de Renovación</CardTitle>
         </CardHeader>
         <CardContent className="p-4">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="cn-adaptive-grid grid grid-cols-1 md:grid-cols-3 gap-4">
             {Array.from({ length: 3 }).map((_, i) => (
               <Skeleton key={i} className="h-32 w-full rounded-md" />
             ))}
@@ -45,8 +45,8 @@ export default function ReGestionSection() {
   return (
     <Card className="mb-6 border border-border/70 bg-card shadow-2xs" data-testid="re-gestion-card">
       <CardHeader className="p-4 pb-3 border-b border-border/40">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center space-x-2">
+        <div className="flex items-center justify-between gap-2 flex-wrap">
+          <div className="flex items-center gap-2 flex-wrap">
             <CardTitle className="text-sm font-semibold text-foreground tracking-tight">
               Renovaciones y Re-gestión Comercial
             </CardTitle>
@@ -77,7 +77,7 @@ export default function ReGestionSection() {
             <p className="text-xs text-muted-foreground">No hay créditos próximos a vencer en tu cartera actual</p>
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="cn-adaptive-grid grid grid-cols-1 md:grid-cols-3 gap-4">
             {displayOpportunities.map((opportunity) => {
               const daysToExpire = differenceInDays(new Date(opportunity.endDate), new Date());
               const isUrgent = daysToExpire <= 15;
@@ -88,7 +88,7 @@ export default function ReGestionSection() {
                   className="border border-border/60 rounded-md p-3.5 bg-muted/20 hover:bg-muted/40 transition-colors"
                   data-testid={`re-gestion-${opportunity.id}`}
                 >
-                  <div className="flex items-center justify-between mb-2">
+                  <div className="flex items-center justify-between gap-2 flex-wrap mb-2">
                     <span className="text-xs font-semibold text-foreground">
                       Cliente #{opportunity.clientId.slice(-6).toUpperCase()}
                     </span>
@@ -105,13 +105,13 @@ export default function ReGestionSection() {
                   </div>
 
                   <div className="space-y-1.5 text-xs text-muted-foreground mb-3 font-mono tabular-nums">
-                    <div className="flex justify-between">
+                    <div className="flex justify-between gap-2 flex-wrap">
                       <span>Monto actual:</span>
                       <span className="font-semibold text-foreground">
                         ${parseFloat(opportunity.currentAmount || '0').toLocaleString('es-MX')} MXN
                       </span>
                     </div>
-                    <div className="flex justify-between">
+                    <div className="flex justify-between gap-2 flex-wrap">
                       <span>Nuevo límite sugerido:</span>
                       <span className="font-semibold text-primary">
                         ${parseFloat(opportunity.suggestedAmount || '0').toLocaleString('es-MX')} MXN
