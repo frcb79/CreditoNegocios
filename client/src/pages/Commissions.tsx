@@ -579,7 +579,7 @@ export default function Commissions() {
         
         <main className="flex-1 p-4 sm:p-6 lg:p-8 overflow-y-auto">
           <div className="space-y-6">
-            <div className="grid grid-cols-2 md:grid-cols-3 gap-2 sm:gap-6">
+            <div className="cn-kpi-grid grid grid-cols-2 md:grid-cols-3 gap-2 sm:gap-6">
               {Array.from({ length: 3 }).map((_, i) => (
                 <Skeleton key={i} className="h-20 sm:h-32 w-full" />
               ))}
@@ -702,7 +702,7 @@ export default function Commissions() {
                   {/* KPIs de Comisiones — Fintech Institucional (Máximo 3-4 métricas sobrias) */}
               {isSuperAdmin ? (
                 /* Super Admin: 4 métricas operativas clave */
-                <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-4 mb-3 sm:mb-6">
+                <div className="cn-kpi-grid grid grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-4 mb-3 sm:mb-6">
                   {/* KPI 1: Por Aprobar */}
                   <div className="bg-white border border-slate-200/80 rounded-xl min-w-0 p-2.5 sm:p-4 shadow-sm flex flex-col justify-between">
                     <div className="flex flex-wrap items-center justify-between gap-1 text-[11px] sm:text-xs font-medium text-slate-500 mb-1 sm:mb-1.5">
@@ -793,7 +793,7 @@ export default function Commissions() {
                 </div>
               ) : isMasterBrokerRole ? (
                 /* Master Broker: 3 métricas de red institucional */
-                <div className="grid grid-cols-2 md:grid-cols-3 gap-2 sm:gap-4 mb-3 sm:mb-6">
+                <div className="cn-kpi-grid grid grid-cols-2 md:grid-cols-3 gap-2 sm:gap-4 mb-3 sm:mb-6">
                   {/* MB KPI 1: Ingreso Bruto Red */}
                   <div className="bg-white border border-slate-200/80 rounded-xl min-w-0 p-2.5 sm:p-4 shadow-sm flex flex-col justify-between">
                     <div className="flex flex-wrap items-center justify-between gap-1 text-[11px] sm:text-xs font-medium text-slate-500 mb-1 sm:mb-1.5">
@@ -858,7 +858,7 @@ export default function Commissions() {
                 </div>
               ) : (
                 /* Broker Directo: 3 métricas sobrias */
-                <div className="grid grid-cols-2 md:grid-cols-3 gap-2 sm:gap-4 mb-3 sm:mb-6">
+                <div className="cn-kpi-grid grid grid-cols-2 md:grid-cols-3 gap-2 sm:gap-4 mb-3 sm:mb-6">
                   {/* Broker KPI 1: Pendientes */}
                   <div className="bg-white border border-slate-200/80 rounded-xl min-w-0 p-2.5 sm:p-4 shadow-sm flex flex-col justify-between">
                     <div className="flex flex-wrap items-center justify-between gap-1 text-[11px] sm:text-xs font-medium text-slate-500 mb-1 sm:mb-1.5">

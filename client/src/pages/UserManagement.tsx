@@ -1164,7 +1164,7 @@ export default function UserManagement() {
                       onValueChange={setSelectedTenantId}
                     >
                       <SelectTrigger 
-                        className="h-8 mt-0.5 font-semibold text-xs border-slate-300 min-w-[240px]" 
+                        className="h-8 mt-0.5 font-semibold text-xs border-slate-300 w-full sm:w-[240px] min-w-0" 
                         data-testid="select-tenant"
                       >
                         <SelectValue placeholder="Seleccionar organización..." />
@@ -1205,7 +1205,7 @@ export default function UserManagement() {
             </div>
 
             {/* Metrics Strip (Compact Institutional Bar) */}
-            <div className="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-xl p-3 shadow-sm grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4 divide-y-0 sm:divide-x divide-slate-100 dark:divide-slate-800">
+            <div className="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-xl p-3 shadow-sm grid cn-kpi-grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4 divide-y-0 sm:divide-x divide-slate-100 dark:divide-slate-800">
               <div className="flex items-center gap-3 pt-1 sm:pt-0 sm:px-2">
                 <div className="p-2 rounded-lg bg-blue-50 dark:bg-blue-950/40 text-blue-600 shrink-0">
                   <Users className="h-4 w-4" />

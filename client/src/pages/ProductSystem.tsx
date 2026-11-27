@@ -77,7 +77,7 @@ export default function ProductSystem() {
           {(user?.role === "broker" || user?.role === "master_broker") && <PendingOfferCommissionAcceptances />}
           {/* Overview Cards (Platform Admins only) */}
           {isAdmin && (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div className="cn-kpi-grid grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
               <Card className="border border-slate-200/80 shadow-sm bg-white">
                 <CardContent className="p-4 flex items-center justify-between">
                   <div>

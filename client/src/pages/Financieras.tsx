@@ -217,7 +217,7 @@ export default function Financieras() {
           subtitle="Administra tu red de financieras aliadas y condiciones operativas"
         />
         <main className="flex-1 p-4 sm:p-6 lg:p-8 overflow-y-auto">
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+          <div className="cn-adaptive-grid grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
             {Array.from({ length: 6 }).map((_, i) => (
               <div key={i} className="bg-white border border-slate-200/80 rounded-xl p-5 space-y-4 shadow-sm">
                 <div className="flex items-center justify-between">

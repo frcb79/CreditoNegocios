@@ -675,7 +675,7 @@ export default function CreditList() {
           </div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="block sm:table w-full sm:min-w-[850px] text-left border-collapse">
+            <table className="cn-credit-table block sm:table w-full sm:min-w-[850px] text-left border-collapse">
               <thead className="hidden sm:table-header-group">
                 <tr className="border-b border-slate-200 bg-slate-50/80 text-[11px] font-semibold uppercase tracking-wider text-slate-500 select-none">
                   <th className="py-3 px-4">Cliente / Expediente</th>
@@ -716,7 +716,7 @@ export default function CreditList() {
                       </td>
 
                       {/* 2. Producto / Vertical */}
-                      <td className="block min-w-0  py-1 sm:table-cell sm:py-3 sm:px-4"><span className="block sm:hidden text-[10px] font-medium text-slate-500 mb-0.5">Producto / Vertical</span>
+                      <td className="block min-w-0  py-1 sm:table-cell sm:py-3 sm:px-4"><span className="cn-credit-label block sm:hidden text-[10px] font-medium text-slate-500 mb-0.5">Producto / Vertical</span>
                         {isMortgage ? (
                           <span 
                             data-testid={`badge-mortgage-${item.id}`} 
@@ -740,7 +740,7 @@ export default function CreditList() {
                       </td>
 
                       {/* 3. Monto */}
-                      <td className="block min-w-0  py-1 sm:table-cell sm:py-3 sm:px-4 sm:text-right"><span className="block sm:hidden text-[10px] font-medium text-slate-500 mb-0.5">Monto</span>
+                      <td className="block min-w-0  py-1 sm:table-cell sm:py-3 sm:px-4 sm:text-right"><span className="cn-credit-label block sm:hidden text-[10px] font-medium text-slate-500 mb-0.5">Monto</span>
                         <div className="flex flex-col items-start sm:items-end break-words sm:whitespace-nowrap">
                           <span className="text-sm font-semibold text-slate-900 tabular-nums">
                             ${parseFloat(item.amount || '0').toLocaleString('es-MX')} MXN
@@ -756,7 +756,7 @@ export default function CreditList() {
                       </td>
 
                       {/* 4. Financiera */}
-                      <td className="block min-w-0  py-1 sm:table-cell sm:py-2.5 sm:px-4"><span className="block sm:hidden text-[10px] font-medium text-slate-500 mb-0.5">Financiera</span>
+                      <td className="block min-w-0  py-1 sm:table-cell sm:py-2.5 sm:px-4"><span className="cn-credit-label block sm:hidden text-[10px] font-medium text-slate-500 mb-0.5">Financiera</span>
                         {(() => {
                           if (item.winningTargets && item.winningTargets.length > 0) {
                             const instName = item.winningTargets[0].financialInstitution?.name || 'Financiera Ganadora';
@@ -784,7 +784,7 @@ export default function CreditList() {
                       </td>
 
                       {/* 5. Estado */}
-                      <td className="block min-w-0  py-1 sm:table-cell sm:py-2.5 sm:px-4 sm:text-center"><span className="block sm:hidden text-[10px] font-medium text-slate-500 mb-0.5">Estado</span>
+                      <td className="block min-w-0  py-1 sm:table-cell sm:py-2.5 sm:px-4 sm:text-center"><span className="cn-credit-label block sm:hidden text-[10px] font-medium text-slate-500 mb-0.5">Estado</span>
                         <div className="flex flex-col items-start sm:items-center justify-center gap-0.5">
                           <span 
                             data-testid={`item-status-${item.id}`}
@@ -805,7 +805,7 @@ export default function CreditList() {
                       </td>
 
                       {/* 6. Originador */}
-                      <td className="block min-w-0  py-1 sm:table-cell sm:py-2.5 sm:px-4"><span className="block sm:hidden text-[10px] font-medium text-slate-500 mb-0.5">Originador</span>
+                      <td className="block min-w-0  py-1 sm:table-cell sm:py-2.5 sm:px-4"><span className="cn-credit-label block sm:hidden text-[10px] font-medium text-slate-500 mb-0.5">Originador</span>
                         <div className="flex flex-col text-xs max-w-[170px]">
                           {item.broker ? (
                             <>
@@ -834,7 +834,7 @@ export default function CreditList() {
                       </td>
 
                       {/* 7. Actualizado */}
-                      <td className="block min-w-0  py-1 sm:table-cell sm:py-2.5 sm:px-3 sm:text-center"><span className="block sm:hidden text-[10px] font-medium text-slate-500 mb-0.5">Actualizado</span>
+                      <td className="block min-w-0  py-1 sm:table-cell sm:py-2.5 sm:px-3 sm:text-center"><span className="cn-credit-label block sm:hidden text-[10px] font-medium text-slate-500 mb-0.5">Actualizado</span>
                         <span 
                           className="text-xs text-slate-500 whitespace-nowrap"
                           title={format(new Date(item.createdAt), "dd 'de' MMMM, yyyy HH:mm", { locale: es })}

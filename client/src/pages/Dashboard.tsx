@@ -81,7 +81,7 @@ export default function Dashboard() {
         </section>
 
         {/* 2. ¿Qué tengo que atender? y flujo activo (Pipeline + Requieren atención) */}
-        <section aria-label="Operación en Curso y Pendientes" className="grid grid-cols-1 lg:grid-cols-3 gap-3 sm:gap-6">
+        <section aria-label="Operación en Curso y Pendientes" className="cn-dashboard-flow grid grid-cols-1 lg:grid-cols-3 gap-3 sm:gap-6">
           <div className="lg:col-span-2">
             <CreditPipeline />
           </div>

@@ -400,7 +400,7 @@ export default function FinancieraDetail() {
                       <Clock className="w-4 h-4 text-primary" />
                       <span>Tiempos Estimados de Respuesta</span>
                     </h3>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                    <div className="cn-kpi-grid grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
                       {Object.entries(estimatedTimeframes).map(([key, value]) => {
                         const labelMap: Record<string, string> = {
                           analysis: "Análisis",
