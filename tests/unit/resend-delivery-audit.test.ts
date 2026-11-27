@@ -41,7 +41,7 @@ describe("Resend delivery audit: signed events only", () => {
     expect(parseResendDeliveryEvent(eventId, Buffer.from("{broken"))).toBeNull();
     expect(parseResendDeliveryEvent(eventId, Buffer.from(JSON.stringify({
       type: "email.opened", created_at: "2026-11-04T12:00:00.000Z", data: { email_id: "email-123" },
-    })))).toBeNull();
+    })))).toEqual({eventId,providerMessageId:"email-123",eventType:"email.opened",occurredAt:new Date("2026-11-04T12:00:00.000Z")});
     expect(parseResendDeliveryEvent("fake id", raw)).toBeNull();
   });
   it("keeps original body before JSON parser and restricts admin visibility", () => {

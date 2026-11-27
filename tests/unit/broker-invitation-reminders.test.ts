@@ -18,9 +18,10 @@ describe("Broker invitation follow-up cadence", () => {
     expect(selectReminderDay(daysAgo(14), now)).toBe(12);
     expect(selectReminderDay(daysAgo(15), now)).toBe(15);
     expect(selectReminderDay(daysAgo(26), now)).toBe(15);
+    for(const [elapsed,day] of [[24,15],[25,25],[28,25],[29,29],[33,33],[39,39],[42,39],[43,null],[100,null]] as const) expect(selectReminderDay(daysAgo(elapsed),now,true)).toBe(day);
   });
   it("generates a distinct message for each reminder day with a fresh activation link", () => {
-    const cases = [3,7,12,15] as const;
+    const cases = [3,7,12,15,25,29,33,39] as const;
     const seen = new Set<string>();
     for (const day of cases) {
       const output = buildBrokerInvitationReminderEmail(
@@ -34,7 +35,7 @@ describe("Broker invitation follow-up cadence", () => {
       expect(output.subject).not.toContain("test@example.com");
       seen.add(output.subject);
     }
-    expect(seen.size).toBe(4);
+    expect(seen.size).toBe(8);
   });
   it("uses illustrative commissions tied to business credit and leasing only on day 15", () => {
     const final = buildBrokerInvitationReminderEmail(
