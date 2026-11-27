@@ -1,3 +1,4 @@
+import { registerCommercialMailDraftRoutes } from "./commercialMailDraftRoutes";
 import { checkProspectIntakeSchemaReadiness } from "./prospectIntakeSchema";
 import { registerProspectCompletionRoutes } from "./prospectCompletionRoutes";
 import { registerProspectAutoMatchingRoutes } from "./prospectAutoMatchingRoutes";
@@ -1337,6 +1338,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   await setupAuth(app);
   registerAdministrativeAudit(app);
   registerEmailDeliveryAuditRoutes(app);
+  registerCommercialMailDraftRoutes(app);
 
   // Register legal routes after session/Passport initialization
   registerLegalRoutes(app);

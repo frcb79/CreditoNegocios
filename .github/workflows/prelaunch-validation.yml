@@ -22,6 +22,7 @@ on:
       - 'fix/backoffice-delegated-capture-*'
       - 'fix/mobile-commercial-capture-*'
       - 'fix/backoffice-historical-intake-*'
+      - 'feat/commercial-mail-manager-*'
       - 'fix/final-audit-publication*'
       - 'fix/master-network-rates-*'
       - 'fix/master-offer-rates-private-copy-*'
@@ -73,7 +74,7 @@ jobs:
       - name: Build
         run: npm run build
       - name: Resend signed delivery SQL test (isolated PGlite, Node runner)
-        run: node --import tsx --test scripts/test-resend-delivery-sql.ts
+        run: node --import tsx --test scripts/test-resend-delivery-sql.ts scripts/test-commercial-mail-recipients-sql.ts scripts/test-commercial-mail-plans-sql.ts scripts/test-commercial-mail-test-render.ts scripts/test-commercial-mail-preflight.ts scripts/test-commercial-mail-dispatch-render.ts
       - name: Broker dossier and prospect self-service (isolated PostgreSQL and DOM)
         run: |
           npm run test:prospect-intake
@@ -180,6 +181,7 @@ jobs:
             tests/unit/broker-invitation-email.test.ts
             tests/unit/activation-commercial-welcome.test.ts
             tests/unit/resend-delivery-audit.test.ts
+            tests/unit/commercial-mail-drafts.test.ts
             tests/unit/prospect-auto-matching.test.ts
             tests/unit/prospect-quick-profile.test.ts
             tests/unit/public-prospect-presentation.test.ts

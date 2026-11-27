@@ -1,3 +1,4 @@
+import {registerCommercialMailUnsubscribe} from "./commercialMailUnsubscribe";
 import express, { type Request, Response, NextFunction } from "express";
 import helmet from "helmet";
 import pinoHttp from "pino-http";
@@ -30,7 +31,8 @@ const isSensitiveConsentPath = (path: string) =>
   path.startsWith("/api/client-consent/") || path.startsWith("/autorizar-expediente/") ||
   path.startsWith("/api/public/campaign/") || path.startsWith("/api/public/prospect-completion/") ||
   path.startsWith("/api/commercial-resources/completion-links") || path.startsWith("/completar-perfil/") ||
-  path.startsWith("/api/admin/brokers/") || path.startsWith("/api/webhooks/resend");
+  path.startsWith("/api/admin/brokers/") || path.startsWith("/api/webhooks/resend") ||
+  path.startsWith("/api/commercial-mail/unsubscribe/");
 app.use((req, res, next) => {
   if (isSensitiveConsentPath(req.path)) {
     res.setHeader("Cache-Control", "private, no-store");
@@ -39,6 +41,9 @@ app.use((req, res, next) => {
   }
   next();
 });
+
+// Signed unsubscribe is a narrow, session-independent endpoint; register before browser CSRF and logging.
+registerCommercialMailUnsubscribe(app);
 
 // Runs BEFORE CORS, parsers, sessions and routes: rejects cross-site writes
 // regardless of content type (HTML forms and multipart included).
