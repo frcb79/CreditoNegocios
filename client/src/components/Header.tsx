@@ -18,20 +18,20 @@ export default function Header({ title, subtitle, action, children }: HeaderProp
   const { unreadCount } = useNotifications();
 
   return (
-    <header className="sticky top-0 z-30 bg-card border-b border-border/70 pl-14 sm:pl-16 lg:px-8 pr-4 min-h-[72px] h-[72px] flex items-center shadow-2xs">
-      <div className="flex items-center justify-between gap-3 sm:gap-4 w-full">
+    <header className="sticky top-0 z-30 bg-card border-b border-border/70 pl-14 sm:pl-16 lg:px-8 pr-4 min-h-[72px] py-2 flex items-center shadow-2xs">
+      <div className="cn-header-inner flex flex-wrap items-center justify-between gap-2 sm:gap-4 w-full min-w-0">
         <div className="min-w-0 flex-1">
-          <h2 className="text-lg sm:text-xl font-bold tracking-tight text-foreground truncate" data-testid="header-title">
+          <h2 className="text-lg sm:text-xl font-bold tracking-tight text-foreground break-words" data-testid="header-title">
             {title}
           </h2>
           {subtitle && (
-            <p className="text-muted-foreground text-xs sm:text-sm mt-0.5 truncate" data-testid="header-subtitle">
+            <p className="text-muted-foreground text-xs sm:text-sm mt-0.5 break-words" data-testid="header-subtitle">
               {subtitle}
             </p>
           )}
         </div>
         
-        <div className="flex items-center flex-wrap justify-end gap-2 sm:gap-3 flex-shrink-0">
+        <div className="flex items-center flex-wrap justify-end gap-2 sm:gap-3 min-w-0 max-w-full">
           {/* Notifications */}
           <Link href="/notificaciones">
             <button 
@@ -60,7 +60,7 @@ export default function Header({ title, subtitle, action, children }: HeaderProp
               <Link href={action.href}>
                 <Button 
                   size="sm"
-                  className="bg-primary text-primary-foreground hover:bg-primary-dark shadow-2xs h-8 text-xs font-medium"
+                  className="bg-primary text-primary-foreground hover:bg-primary-dark shadow-2xs min-h-11 sm:min-h-8 h-auto whitespace-normal text-xs font-medium"
                   data-testid="header-action-button"
                 >
                   <Plus className="h-3.5 w-3.5 mr-1.5" />
@@ -71,7 +71,7 @@ export default function Header({ title, subtitle, action, children }: HeaderProp
               <Button 
                 onClick={action.onClick}
                 size="sm"
-                className="bg-primary text-primary-foreground hover:bg-primary-dark shadow-2xs h-8 text-xs font-medium"
+                className="bg-primary text-primary-foreground hover:bg-primary-dark shadow-2xs min-h-11 sm:min-h-8 h-auto whitespace-normal text-xs font-medium"
                 data-testid="header-action-button"
               >
                 <Plus className="h-3.5 w-3.5 mr-1.5" />

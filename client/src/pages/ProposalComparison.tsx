@@ -213,7 +213,7 @@ export default function ProposalComparison() {
               <div className="h-8 w-36 bg-slate-200 rounded-lg animate-pulse"></div>
               <div className="h-4 w-28 bg-slate-200 rounded animate-pulse"></div>
             </div>
-            <div className="grid gap-5 md:grid-cols-2 lg:grid-cols-3">
+            <div className="cn-adaptive-grid grid gap-5 md:grid-cols-2 lg:grid-cols-3">
               {Array.from({ length: 3 }).map((_, i) => (
                 <div key={i} className="bg-white border border-slate-200/80 rounded-xl p-5 shadow-xs animate-pulse space-y-4">
                   <div className="flex items-center justify-between">
@@ -333,7 +333,7 @@ export default function ProposalComparison() {
               <p className="text-xs text-slate-500 mt-1">No hay financieras seleccionadas para esta solicitud de crédito.</p>
             </div>
           ) : (
-            <div className="grid gap-5 md:grid-cols-2 lg:grid-cols-3">
+            <div className="cn-adaptive-grid grid gap-5 md:grid-cols-2 lg:grid-cols-3">
               {targetsList.map((target) => {
                 const proposal = target.institutionProposal;
                 const hasProposal = hasReceivedInstitutionProposal(target);

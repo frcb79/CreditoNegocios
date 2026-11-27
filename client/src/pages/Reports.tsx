@@ -204,7 +204,7 @@ export default function Reports() {
         <main className="flex-1 p-4 sm:p-6 lg:p-8 overflow-y-auto">
           <div className="space-y-4">
             <Skeleton className="h-14 w-full rounded-lg" />
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+            <div className="cn-kpi-grid grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
               {Array.from({ length: 4 }).map((_, i) => (
                 <Skeleton key={i} className="h-20 w-full rounded-lg" />
               ))}
@@ -273,7 +273,7 @@ export default function Reports() {
           </div>
 
           {/* Compact Key Metrics Grid */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="cn-kpi-grid grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
             {/* Métricas 1: Créditos con dispersión confirmada */}
             <Card className="border border-border shadow-sm bg-card">
               <CardContent className="p-4 flex items-center justify-between">

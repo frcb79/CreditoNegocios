@@ -1,6 +1,5 @@
 import CommercialMailDrafts from "@/components/CommercialMailDrafts";
 import AdministrativeActivity from "@/components/AdministrativeActivity";
-import EmailDeliveryAudit from "@/components/EmailDeliveryAudit";
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "wouter";
@@ -229,12 +228,12 @@ export default function SuperAdminAudit() {
 
           <Tabs value={section} onValueChange={value => {setSection(value as AuditSection); setResult("all");}}>
             <div className="overflow-x-auto rounded-xl border border-slate-300 bg-slate-100 p-1.5 shadow-sm">
-              <TabsList aria-label="Secciones de auditoría" className="flex w-max min-w-full justify-start h-auto gap-1 bg-transparent p-0">
-                <TabsTrigger value="activity" data-testid="audit-tab-activity" className="font-semibold whitespace-nowrap px-4 py-2.5 rounded-md text-slate-800 hover:bg-white hover:text-blue-900 focus-visible:ring-2 focus-visible:ring-blue-600 data-[state=active]:bg-blue-800 data-[state=active]:text-white data-[state=active]:shadow-md">Accesos y movimientos</TabsTrigger>
-                <TabsTrigger value="commercial" data-testid="audit-tab-commercial" className="font-semibold whitespace-nowrap px-4 py-2.5 rounded-md text-slate-800 hover:bg-white hover:text-blue-900 focus-visible:ring-2 focus-visible:ring-blue-600 data-[state=active]:bg-blue-800 data-[state=active]:text-white data-[state=active]:shadow-md">Gobernanza comercial</TabsTrigger>
-                <TabsTrigger value="configuration" data-testid="audit-tab-configuration" className="font-semibold whitespace-nowrap px-4 py-2.5 rounded-md text-slate-800 hover:bg-white hover:text-blue-900 focus-visible:ring-2 focus-visible:ring-blue-600 data-[state=active]:bg-blue-800 data-[state=active]:text-white data-[state=active]:shadow-md">Reglas comerciales</TabsTrigger>
-                <TabsTrigger value="requests" data-testid="audit-tab-requests" className="font-semibold whitespace-nowrap px-4 py-2.5 rounded-md text-slate-800 hover:bg-white hover:text-blue-900 focus-visible:ring-2 focus-visible:ring-blue-600 data-[state=active]:bg-blue-800 data-[state=active]:text-white data-[state=active]:shadow-md">Solicitudes de estado</TabsTrigger>
-                <TabsTrigger value="email" data-testid="audit-tab-email" className="font-semibold whitespace-nowrap px-4 py-2.5 rounded-md text-slate-800 hover:bg-white hover:text-blue-900 focus-visible:ring-2 focus-visible:ring-blue-600 data-[state=active]:bg-blue-800 data-[state=active]:text-white data-[state=active]:shadow-md">Correos comerciales</TabsTrigger>
+              <TabsList aria-label="Secciones de auditoría" className="flex flex-wrap w-full justify-start h-auto gap-1 bg-transparent p-0">
+                <TabsTrigger value="activity" data-testid="audit-tab-activity" className="font-semibold whitespace-normal text-left px-3 py-2.5 rounded-md text-slate-800 hover:bg-white hover:text-blue-900 focus-visible:ring-2 focus-visible:ring-blue-600 data-[state=active]:bg-blue-800 data-[state=active]:text-white data-[state=active]:shadow-md">Accesos y movimientos</TabsTrigger>
+                <TabsTrigger value="commercial" data-testid="audit-tab-commercial" className="font-semibold whitespace-normal text-left px-3 py-2.5 rounded-md text-slate-800 hover:bg-white hover:text-blue-900 focus-visible:ring-2 focus-visible:ring-blue-600 data-[state=active]:bg-blue-800 data-[state=active]:text-white data-[state=active]:shadow-md">Gobernanza comercial</TabsTrigger>
+                <TabsTrigger value="configuration" data-testid="audit-tab-configuration" className="font-semibold whitespace-normal text-left px-3 py-2.5 rounded-md text-slate-800 hover:bg-white hover:text-blue-900 focus-visible:ring-2 focus-visible:ring-blue-600 data-[state=active]:bg-blue-800 data-[state=active]:text-white data-[state=active]:shadow-md">Reglas comerciales</TabsTrigger>
+                <TabsTrigger value="requests" data-testid="audit-tab-requests" className="font-semibold whitespace-normal text-left px-3 py-2.5 rounded-md text-slate-800 hover:bg-white hover:text-blue-900 focus-visible:ring-2 focus-visible:ring-blue-600 data-[state=active]:bg-blue-800 data-[state=active]:text-white data-[state=active]:shadow-md">Solicitudes de estado</TabsTrigger>
+                <TabsTrigger value="email" data-testid="audit-tab-email" className="font-semibold whitespace-normal text-left px-3 py-2.5 rounded-md text-slate-800 hover:bg-white hover:text-blue-900 focus-visible:ring-2 focus-visible:ring-blue-600 data-[state=active]:bg-blue-800 data-[state=active]:text-white data-[state=active]:shadow-md">Correos comerciales</TabsTrigger>
               </TabsList>
             </div>
             {section !== "activity" && section !== "email" && <Card className="border-border/70 mt-3">
@@ -306,7 +305,7 @@ export default function SuperAdminAudit() {
               </CardContent>
             </Card>}
             <TabsContent value="activity" className="mt-4">{section === "activity" && <AdministrativeActivity />}</TabsContent>
-            <TabsContent value="email" className="mt-4">{section === "email" && <div className="space-y-4"><CommercialMailDrafts/><EmailDeliveryAudit/></div>}</TabsContent>
+            <TabsContent value="email" className="mt-4">{section === "email" && <CommercialMailDrafts/>}</TabsContent>
 
             <TabsContent value="commercial" className="mt-4" data-testid="audit-commercial-content">
               {selectedAudit.isLoading || users.isLoading || requests.isLoading ?

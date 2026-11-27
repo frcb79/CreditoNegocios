@@ -582,7 +582,7 @@ export default function PendingRequests() {
         />
         <main className="flex-1 p-4 sm:p-6 lg:p-8 overflow-y-auto">
           <div className="space-y-4">
-            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+            <div className="cn-kpi-grid grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
               {Array.from({ length: 6 }).map((_, i) => (
                 <div key={i} className="bg-white border border-slate-200/80 rounded-xl p-3.5 shadow-xs animate-pulse">
                   <div className="h-3 w-16 bg-slate-200 rounded mb-3"></div>
@@ -697,7 +697,7 @@ export default function PendingRequests() {
           <TabsContent value="submissions" className="space-y-6 mt-4">
             <div className="space-y-6">
             {/* Summary Metrics Strip */}
-            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+            <div className="cn-kpi-grid grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
               {/* Por Revisar */}
               <div className="bg-white border border-slate-200/80 rounded-xl p-3.5 shadow-sm hover:border-slate-300 transition-colors">
                 <div className="flex items-center justify-between gap-2 mb-2">

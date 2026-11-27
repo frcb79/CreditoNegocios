@@ -66,7 +66,7 @@ export default function MetricsGrid() {
 
   if (isLoading) {
     return (
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-4 mb-2 sm:mb-6">
+      <div className="cn-kpi-grid grid grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-4 mb-2 sm:mb-6">
         {Array.from({ length: 4 }).map((_, i) => (
           <Card key={i} className="border border-border/70 bg-card shadow-sm">
             <CardContent className="p-2.5 sm:p-4">
@@ -82,7 +82,7 @@ export default function MetricsGrid() {
 
   if (!metrics) {
     return (
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-4 mb-2 sm:mb-6">
+      <div className="cn-kpi-grid grid grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-4 mb-2 sm:mb-6">
         <Card className="border border-border/70 bg-card p-4">
           <CardContent className="p-2">
             <p className="text-center text-sm text-muted-foreground">Error al cargar métricas operativas</p>
@@ -303,7 +303,7 @@ export default function MetricsGrid() {
 
   return (
     <div
-      className="grid grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-4 mb-2 sm:mb-6"
+      className="cn-kpi-grid grid grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-4 mb-2 sm:mb-6"
       data-testid="metrics-grid"
     >
       {displayCards.map((card, index) => {
@@ -324,13 +324,13 @@ export default function MetricsGrid() {
               <div className="flex items-start justify-between gap-1 sm:gap-3">
                 <div className="flex-1 min-w-0">
                   <p
-                    className="text-[10px] sm:text-[11px] font-medium text-muted-foreground leading-tight sm:uppercase sm:tracking-wider sm:truncate"
+                    className="text-[10px] sm:text-[11px] font-medium text-muted-foreground leading-tight sm:uppercase sm:tracking-wider break-words"
                     data-testid={`${card.testId}-title`}
                   >
                     {card.title}
                   </p>
                   <p
-                    className="text-sm sm:text-xl font-bold text-foreground mt-1 tracking-tight font-mono tabular-nums break-words sm:truncate"
+                    className="text-sm sm:text-xl font-bold text-foreground mt-1 tracking-tight font-mono tabular-nums cn-kpi-value break-words"
                     data-testid={`${card.testId}-value`}
                   >
                     {card.value}
@@ -339,7 +339,7 @@ export default function MetricsGrid() {
                     {'trend' in card && card.trend ? (
                       renderTrendIndicator(card.trend)
                     ) : 'subtitle' in card && card.subtitle ? (
-                      <p className="text-[10px] sm:text-[11px] leading-tight text-muted-foreground break-words sm:truncate">{card.subtitle}</p>
+                      <p className="text-[10px] sm:text-[11px] leading-tight text-muted-foreground break-words">{card.subtitle}</p>
                     ) : null}
                   </div>
                 </div>
