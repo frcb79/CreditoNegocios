@@ -218,7 +218,7 @@ export default function ClientList({ onSelectClient, onNewClient }: ClientListPr
   return (
     <div className="bg-white border border-slate-200/80 rounded-xl shadow-sm overflow-hidden">
       {/* Subheader / Toolbar */}
-      <div className="p-3 sm:p-5 border-b border-slate-100 flex flex-col gap-3 bg-white">
+      <div className="cn-client-toolbar p-3 sm:p-5 border-b border-slate-100 flex flex-col gap-3 bg-white">
         <div className="flex items-center justify-between gap-2 min-w-0">
           <div className="flex items-center gap-1.5 min-w-0">
             <h2 className="text-sm sm:text-base font-semibold text-slate-900 tracking-tight leading-tight">
@@ -238,7 +238,7 @@ export default function ClientList({ onSelectClient, onNewClient }: ClientListPr
             </Button>
         </div>
 
-        <div data-testid="client-filters" className="grid grid-cols-2 sm:flex sm:flex-wrap items-stretch sm:items-center gap-2 min-w-0">
+        <div data-testid="client-filters" className="grid grid-cols-2 sm:flex sm:flex-wrap items-stretch sm:items-center gap-2 min-w-0 flex-1">
           {/* Search Input */}
           <div className="relative col-span-2 flex-1 min-w-0 sm:min-w-[200px]">
             <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
