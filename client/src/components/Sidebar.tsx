@@ -94,7 +94,15 @@ export default function Sidebar() {
   const { user } = useAuth();
   const { unreadCount } = useNotifications();
   const [isMobileOpen, setIsMobileOpen] = useState(false);
-  const [isCollapsed, setIsCollapsed] = useState(false);
+  const [sidebarPreference, setSidebarPreference] = useState<boolean | null>(null);
+  const [compactViewport, setCompactViewport] = useState(() => typeof window !== "undefined" && window.matchMedia("(max-width: 1399px)").matches);
+  useEffect(() => {
+    const media = window.matchMedia("(max-width: 1399px)");
+    const sync = () => setCompactViewport(media.matches);
+    sync(); media.addEventListener("change", sync);
+    return () => media.removeEventListener("change", sync);
+  }, []);
+  const isCollapsed = sidebarPreference ?? compactViewport;
 
   const isAdmin = user?.role === 'admin' || user?.role === 'super_admin' || user?.role === 'master_broker';
   const isFullAdmin = user?.role === 'admin' || user?.role === 'super_admin';
@@ -468,11 +476,11 @@ export default function Sidebar() {
 
       {/* Desktop sidebar */}
       <div className={cn(
-        "hidden lg:flex flex-col bg-sidebar-background shadow-lg border-r border-sidebar-border transition-all duration-300 ease-in-out relative h-screen sticky top-0",
+        "hidden lg:flex flex-col bg-sidebar-background shadow-lg border-r border-sidebar-border transition-all duration-300 ease-in-out shrink-0 h-dvh sticky top-0",
         isCollapsed ? "w-16" : "w-64"
       )}>
         <button
-          onClick={() => setIsCollapsed(!isCollapsed)}
+          onClick={() => setSidebarPreference(!isCollapsed)}
           className="absolute -right-3 top-20 z-10 bg-card border border-sidebar-border rounded-full p-1 shadow-md hover:bg-sidebar-accent transition-colors"
           aria-label={isCollapsed ? "Expandir sidebar" : "Colapsar sidebar"}
           data-testid="button-toggle-sidebar"
