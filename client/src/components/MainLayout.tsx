@@ -8,7 +8,7 @@ export default function MainLayout({ children }: MainLayoutProps) {
   return (
     <div className="cn-workspace min-h-screen flex bg-background">
       <Sidebar />
-      <div className="flex-1 flex flex-col min-w-0 overflow-x-hidden">
+      <div className="cn-workspace-content flex-1 flex flex-col min-w-0">
         {children}
       </div>
     </div>
