@@ -3,7 +3,7 @@ import {test} from "node:test";
 import {PGlite} from "@electric-sql/pglite";
 import {commercialPlanJobs,commercialBatchDate,commercialSendWindow} from "../shared/commercialMailSchedule";
 import {COMMERCIAL_MAIL_PLAN_SCHEMA_SQL,INSERT_COMMERCIAL_MAIL_PLAN_JOBS_SQL,LIST_COMMERCIAL_MAIL_PLANS_SQL} from "../server/commercialMailPlanSchema";
-import {COMMERCIAL_MAIL_DISPATCH_SCHEMA_SQL,DUE_COMMERCIAL_MAIL_SQL,CLAIM_COMMERCIAL_MAIL_SQL,EXPIRE_COMMERCIAL_MAIL_SQL} from "../server/commercialMailDispatchSchema";
+import {COMMERCIAL_MAIL_DISPATCH_SCHEMA_SQL,DUE_COMMERCIAL_MAIL_SQL,CLAIM_COMMERCIAL_MAIL_SQL,EXPIRE_COMMERCIAL_MAIL_SQL,RECENT_COMMERCIAL_MAIL_ATTEMPTS_SQL} from "../server/commercialMailDispatchSchema";
 test("campaign plans retain immutable revision, unique jobs and cancelled history",async()=>{
   const pg=await PGlite.create();
   try{
@@ -26,6 +26,9 @@ test("campaign plans retain immutable revision, unique jobs and cancelled histor
     assert.equal((await pg.query(DUE_COMMERCIAL_MAIL_SQL)).rows.length,2);
     assert.equal((await pg.query(CLAIM_COMMERCIAL_MAIL_SQL,["p1","a",1,"a@example.test"])).rows.length,1);
     assert.equal((await pg.query(CLAIM_COMMERCIAL_MAIL_SQL,["p1","a",1,"a@example.test"])).rows.length,0);
+    assert.equal((await pg.query<any>(RECENT_COMMERCIAL_MAIL_ATTEMPTS_SQL)).rows[0].n,1);
+    await pg.exec("UPDATE public.commercial_mail_dispatches SET claimed_at=now()-interval '31 minutes' WHERE plan_id='p1'");
+    assert.equal((await pg.query<any>(RECENT_COMMERCIAL_MAIL_ATTEMPTS_SQL)).rows[0].n,0);
     await pg.exec("UPDATE public.commercial_mail_plan_jobs SET scheduled_for=now()-interval '25 hours' WHERE plan_id='p1' AND step_day=4");
     await pg.exec(EXPIRE_COMMERCIAL_MAIL_SQL);
     assert.equal((await pg.query("SELECT 1 FROM public.commercial_mail_dispatches WHERE status='expired'")).rows.length,2);

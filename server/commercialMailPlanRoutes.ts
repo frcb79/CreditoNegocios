@@ -26,7 +26,7 @@ export function registerCommercialMailPlanRoutes(app:Express,auth:RequestHandler
       const candidates=(await pool.query(COMMERCIAL_MAIL_RECIPIENTS_SQL,[draft.data.audience])).rows;
       if(candidates.length>500)return res.status(422).json({message:"Audiencia supera el límite de revisión; no se puede confirmar elegibilidad."});
       const jobs=(await pool.query('SELECT user_id AS "userId",scheduled_for AS "scheduledFor" FROM public.commercial_mail_plan_jobs WHERE plan_id=$1',[req.params.id])).rows;
-      return res.json(summarizeCommercialMailPlan(draft.data.audience,plan.state,jobs,new Set(candidates.map(r=>r.id))));
+      return res.json(summarizeCommercialMailPlan(draft.data.audience,plan.state,jobs,new Set(candidates.map(r=>r.id)),new Date(),commercialMailDispatchSettings(process.env).enabled));
     }catch{return res.status(503).json({message:"No se pudo revalidar la campaña"});}
   });
   app.post(endpoint,auth,guard,async(req:any,res)=>{

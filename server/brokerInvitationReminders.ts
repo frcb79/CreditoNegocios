@@ -108,12 +108,12 @@ export async function runBrokerInvitationReminders(): Promise<{
       // a token once a password has been registered, nor for paused accounts.
       const tokenSet = await pool.query(
         `UPDATE public.users SET reset_token=$2, reset_token_expiry=$3, updated_at=NOW()
-          WHERE id=$1 AND password IS NULL AND is_active IS DISTINCT FROM FALSE AND status='active' AND access_status NOT IN ('expired','suspended')
+          WHERE id=$1 AND email=$4 AND password IS NULL AND is_active IS DISTINCT FROM FALSE AND status='active' AND access_status NOT IN ('expired','suspended')
             AND COALESCE(profile_data->>'commercialMailOptOut','false') <> 'true'
             AND (reset_token_expiry IS NULL OR reset_token_expiry <= NOW())
             AND COALESCE(profile_data->>'invitationFollowupPaused','false') <> 'true'
         RETURNING id`,
-        [user.id, token, new Date(Date.now() + 86400000)],
+        [user.id, token, new Date(Date.now() + 86400000),user.email],
       );
       if (!tokenSet.rowCount) {
         await pool.query(

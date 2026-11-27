@@ -56,3 +56,5 @@ AND NOT EXISTS(SELECT 1 FROM public.commercial_mail_dispatches d WHERE d.user_id
  AND (d.status IN ('claimed','uncertain') OR (d.status='sent' AND d.claimed_at>now()-interval '24 hours')))
 ON CONFLICT(plan_id,user_id,step_day) DO NOTHING RETURNING plan_id
 `;
+
+export const RECENT_COMMERCIAL_MAIL_ATTEMPTS_SQL="SELECT count(*)::int AS n FROM public.commercial_mail_dispatches WHERE status IN ('claimed','sent','uncertain') AND claimed_at>now()-interval '30 minutes'";
