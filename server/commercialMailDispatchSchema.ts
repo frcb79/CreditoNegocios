@@ -32,9 +32,9 @@ JOIN public.commercial_mail_plans p ON p.id=j.plan_id AND p.state='planned'
 JOIN public.commercial_mail_approvals a ON a.plan_id=p.id
 JOIN public.commercial_mail_draft_revisions r ON r.draft_id=p.draft_id AND r.revision=p.revision
 WHERE j.scheduled_for<=now() AND j.scheduled_for>=now()-interval '24 hours'
-AND r.content->>'audience' IN ('registered_no_requests','individual','newsletter')
+AND r.content->>'audience' IN ('registered_no_requests','individual','newsletter','pending_registration')
 AND NOT EXISTS(SELECT 1 FROM public.commercial_mail_dispatches d WHERE d.plan_id=j.plan_id AND d.user_id=j.user_id AND d.step_day=j.step_day)
-ORDER BY j.scheduled_for,j.plan_id,j.user_id,j.step_day LIMIT 25
+ORDER BY j.scheduled_for,j.plan_id,j.user_id,j.step_day LIMIT 10
 `;
 export const EXPIRE_COMMERCIAL_MAIL_SQL = `
 INSERT INTO public.commercial_mail_dispatches(plan_id,user_id,step_day,status,reason)

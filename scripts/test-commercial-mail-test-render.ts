@@ -19,3 +19,9 @@ test("test and real mail share corporate layout, test links remain inert",()=>{
   for(const html of [testMail.html,real.html]){assert.ok(html.includes("background:#142e4a"));assert.ok(html.includes('role="presentation"'));assert.ok(html.includes("background:#147d52"));assert.ok(html.includes("Equipo Crédito Negocios"));}
   assert.ok(!testMail.html.includes("href="));assert.ok(real.html.includes('href="https://app.creditonegocios.com.mx/"'));
 });
+
+test("approved recovery uses fresh activation and unsubscribe links; test stays inert",()=>{
+ const step={day:25,subject:"Recupera acceso",body:"Hola {{nombre}}",cta:"activate" as const};
+ const real=renderCommercialMail(step,"Asesor","https://app.creditonegocios.com.mx","https://app.creditonegocios.com.mx/optout","https://app.creditonegocios.com.mx/reset-password?token=synthetic");
+ assert.ok(real.html.includes("reset-password?token=synthetic"));assert.ok(real.html.includes("24 horas"));assert.ok(real.html.includes("/optout"));assert.ok(!renderCommercialTest(step).html.includes("href="));
+});

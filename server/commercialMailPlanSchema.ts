@@ -32,8 +32,8 @@ END $plan_roles$;
 
 export const INSERT_COMMERCIAL_MAIL_PLAN_JOBS_SQL = `
 INSERT INTO public.commercial_mail_plan_jobs(plan_id,user_id,step_day,scheduled_for)
-SELECT $1,recipient,day,$2::timestamptz+(day-1)*interval '24 hours'
-FROM unnest($3::varchar[]) AS recipient CROSS JOIN unnest($4::int[]) AS day
+SELECT $1,recipient,day,scheduled
+FROM unnest($2::varchar[],$3::int[],$4::timestamptz[]) AS jobs(recipient,day,scheduled)
 `;
 export const LIST_COMMERCIAL_MAIL_PLANS_SQL = `
 SELECT p.id,p.draft_id AS "draftId",p.revision,p.starts_at AS "startsAt",p.state,

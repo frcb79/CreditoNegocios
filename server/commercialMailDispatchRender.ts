@@ -21,6 +21,6 @@ export function readCommercialUnsubscribeToken(token:string,secret:string):{id:s
   if(a.length!==b.length||!timingSafeEqual(a,b))return null;
   try{const [id,hash]=JSON.parse(Buffer.from(value,"base64url").toString("utf8"));return typeof id==="string"&&id.length<=100&&typeof hash==="string"&&/^[a-f0-9]{64}$/.test(hash)?{id,hash}:null;}catch{return null;}
 }
-export function renderCommercialMail(step:CommercialMailDraft["steps"][number],name:string,base:string,unsubscribe:string){
-  return renderCommercialMailLayout(step,{name,test:false,base,unsubscribe});
+export function renderCommercialMail(step:CommercialMailDraft["steps"][number],name:string,base:string,unsubscribe:string,activationUrl?:string){
+  return renderCommercialMailLayout(step,{name,test:false,base,unsubscribe,activationUrl});
 }

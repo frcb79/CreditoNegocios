@@ -7,7 +7,7 @@ test("Commercial mail selection recalculates registration, activity and exclusio
   try{
     await pg.exec(`
       CREATE TABLE public.users(id varchar PRIMARY KEY,email varchar,first_name varchar,last_name varchar,role varchar DEFAULT 'broker',password varchar,status varchar DEFAULT 'active',is_active boolean DEFAULT true,access_status varchar DEFAULT 'free',profile_data jsonb DEFAULT '{}');
-      CREATE TABLE public.notifications(type varchar,data jsonb);
+      CREATE TABLE public.notifications(type varchar,data jsonb,created_at timestamptz DEFAULT now()-interval '30 days');
       CREATE TABLE public.broker_activation_welcome_events(user_id varchar,provider_message_id varchar);
       CREATE TABLE public.broker_invitation_reminder_events(user_id varchar,provider_message_id varchar);
       CREATE TABLE public.commercial_mail_dispatches(user_id varchar,provider_message_id varchar);
@@ -26,13 +26,16 @@ test("Commercial mail selection recalculates registration, activity and exclusio
       UPDATE public.users SET is_active=false WHERE id='inactive';
       UPDATE public.users SET access_status='expired' WHERE id='expired';
       INSERT INTO public.tenant_members SELECT id,'t',true FROM public.users WHERE id<>'nomember';
-      INSERT INTO public.notifications VALUES('broker_invitation_sent','{"brokerId":"pending","resendMessageId":"m1"}'),('broker_invitation_sent','{"brokerId":"bounce","resendMessageId":"m2"}');
+      INSERT INTO public.notifications(type,data) VALUES('broker_invitation_sent','{"brokerId":"pending","resendMessageId":"m1"}'),('broker_invitation_sent','{"brokerId":"bounce","resendMessageId":"m2"}');
       INSERT INTO public.resend_delivery_events VALUES('m2','email.bounced');
       INSERT INTO public.credit_submission_requests VALUES('originator','master');
       INSERT INTO public.commercial_marketing_leads VALUES('lead');
     `);
     const ids=async(a:string)=>(await pg.query<{id:string}>(COMMERCIAL_MAIL_RECIPIENTS_SQL,[a])).rows.map(r=>r.id).sort();
     assert.deepEqual(await ids("pending_registration"),["pending"]);
+    await pg.exec("UPDATE public.notifications SET created_at=now()-interval '2 days' WHERE data->>'brokerId'='pending'");
+    assert.deepEqual(await ids("pending_registration"),[]);
+    await pg.exec("UPDATE public.notifications SET created_at=now()-interval '30 days' WHERE data->>'brokerId'='pending'");
     assert.deepEqual(await ids("registered_no_requests"),["quiet"]);
     assert.deepEqual(await ids("individual"),["lead","master","originator","quiet"]);
     assert.deepEqual(await ids("newsletter"),["lead","master","originator","quiet"]);
